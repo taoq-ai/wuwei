@@ -494,3 +494,31 @@ chat adapter's DM.
   another workspace's directory, and a message is answered only with its own workspace's
   context. Credentials are per workspace, from that workspace's environment file, never
   shared.
+
+### 15.9 Sessions started from the control plane (owner, 2026-09-24)
+
+A plugin cannot open a top-level session; the listener can. Verified against the Claude Code
+docs on 2026-09-24: `claude -p --output-format json` returns a `session_id`; `claude -p
+--resume <id> "<message>"` continues it; `--permission-mode dontAsk` refuses anything not
+pre-approved and `--allowedTools` pre-approves tools; `claude --cloud "<task>"` starts a cloud
+session. Unconfirmed and therefore not relied on: enabling Remote Control at launch, and how
+a headless run treats a question to the user.
+
+- Command vocabulary, from a messaging control plane only: `plan`, `status`, `report`,
+  `run <routine>`, `ask <question>`, `cloud <repo> <task>`, `stop <session>`, `stop all`.
+  Anything else is answered with the vocabulary. No free-form shell, ever.
+- One control-plane thread maps to one session id. The listener starts `claude -p` with the
+  matching skill and the workspace, the role's tools pre-approved, `dontAsk` for the rest;
+  each reply in the thread resumes the session with `--resume`.
+- Headless runs never wait on a question widget: the planner writes decisions to the queue
+  and ends its turn; the listener sends them out; the reply resumes the session. A refused
+  tool call becomes a decision, never a silent stall.
+- `ask` runs a read-only seat. `cloud` starts a cloud session for repository-only work (no
+  access to the local workspace, memory or adapters); its result comes back as a summary
+  and a link, and it is covered by the budget governor.
+- Guards: only the owner's number; the sender's Signal safety number is pinned and a change
+  (new SIM, reinstall) refuses commands until re-confirmed on the host; `plan`, `run`,
+  `cloud` and anything that posts outward or spends above a configured threshold need a
+  second factor (a TOTP code in the message, or a confirmation reply within 2 minutes);
+  `stop all` is always accepted from the owner's number and needs no second factor; CAP,
+  memory floor, budget and quiet hours apply to every started session.
