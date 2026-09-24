@@ -1,6 +1,6 @@
 # WUWEI 无为: design
 
-- Status: PROPOSED, for owner review
+- Status: PROPOSED, owner questions resolved 2026-09-24
 - Date: 2026-09-24
 - Owner: TaoQ AI Labs
 - License: Apache 2.0
@@ -260,17 +260,22 @@ nothing mixes across workspaces.
 
 ## 7. Security integration (ZIRAN)
 
-All through the ZIRAN CLI via the `scanner` adapter.
+All through the ZIRAN CLI via the `scanner` adapter. ZIRAN exposes no MCP server (verified
+2026-09-24 against `main`, branches, issues and PRs; its only entry point is the `ziran` CLI;
+MCP appears only as a scan target), so the CLI is the sole integration surface.
 
 - S1. Role audit. ZIRAN's tool-chain analysis over the role and tool matrix proposes each
   agent's allowlist. The repository's CI runs the ZIRAN GitHub Action over `agents/` and
-  fails when an agent's tools widen past its allowlist. Requires a ZIRAN adapter that reads
-  Claude Code plugin agent files (a contribution to ZIRAN, tracked separately).
+  fails when an agent's tools widen past its allowlist. Prerequisite, decided 2026-09-24:
+  ZIRAN ships support for reading Claude Code plugin agent files (name, description, tools,
+  system prompt) in a ZIRAN release FIRST; WUWEI pins that release. No WUWEI-side converter.
 - S2. Runtime traces. Each sweep runs `ziran analyze-traces --source otel` over the day's
   `traces.jsonl`. A dangerous sequence observed in a live session parks the affected item
   and prompts the user.
-- S3. MCP audit. `/wuwei init` and each morning plan run ZIRAN's MCP metadata analysis over
-  the MCP servers attached to the session.
+- S3. MCP audit and drift. `/wuwei init` runs ZIRAN's MCP metadata analysis over the MCP
+  servers attached to the session and registers them with `ziran watch-registry`; each
+  morning plan runs the registry check, so a server whose tools changed after approval is
+  flagged before any seat uses it.
 - S4. Agent-surface gate. When `agent_surface` is set, the security sentinel runs
   `ziran audit` and `ziran ci --severity-threshold <config>` at pre-PR; each finding becomes a
   verdict row.
@@ -339,15 +344,18 @@ Three modules, one release, built in dependency order, each with its own impleme
    identity, obligations, outward-text lint, traces.
 2. Team: charters, agent generation, skills, planner flow, steward, runtime adapter.
 3. Memory and security: spine, notes, index, memory lint, consolidation, ZIRAN adapter
-   (S1 to S4).
+   (S2 to S4, then S1 once the ZIRAN release with plugin agent support exists).
+
+Upstream prerequisite, in parallel with module 1: the ZIRAN change for S1, planned and
+shipped in the ZIRAN repository under its own spec.
 
 v1 ships when all three pass the end-to-end scripted day and the owner has run one real day
-on it.
+on it. The repository stays PRIVATE until the owner judges it stable enough to publish.
 
-## 14. Open questions
+## 14. Resolved questions (owner, 2026-09-24)
 
-- Q1. ZIRAN reading Claude Code plugin agent files (S1) is a ZIRAN change. Ship it in ZIRAN
-  first, or ship S1 behind a WUWEI-side converter until ZIRAN supports it?
-- Q2. Does ZIRAN expose, or plan to expose, its own MCP server? The design does not depend on
-  it; if it exists, the security sentinel could use it for interactive investigation only.
-- Q3. Public from day one, or private until the first real day has run on it?
+- Q1. ZIRAN support for Claude Code plugin agent files ships in ZIRAN first; WUWEI pins that
+  release (section 7, S1).
+- Q2. ZIRAN has no MCP server; the CLI is the integration surface. `watch-registry` covers
+  MCP drift (section 7, S3).
+- Q3. Private until stable enough to become public (section 13).
