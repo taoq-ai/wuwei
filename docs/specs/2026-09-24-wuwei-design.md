@@ -31,7 +31,8 @@ that engagement ships in this repository.
 ### Non-goals
 
 - Merging or approving pull requests. Always a human act; no profile allows it.
-- A hosted service, database or long-running server.
+- A hosted service or database. A long-running process is out of scope for v1; M5 adds
+  exactly one, the listener (section 15).
 - Multi-user team coordination (v1 is one person's workspace).
 - Replacing the tracker, chat tool or CI. Adapters talk to them; WUWEI does not own them.
 - Runtime guardrails for production agents (use a guardrail product) or LLM evaluation.
@@ -294,6 +295,8 @@ that it did nothing and returns exit 2 where a measurement was expected.
 | review_bot | `score(pr)`, `open_findings(pr)` | Greptile |
 | runtime | `dispatch(role, brief_path, worktree, write)`, `status(job)`, `result(job)` | Claude (default), Codex |
 | scanner | `audit(path)`, `gate(result, threshold)`, `traces(file)`, `mcp(servers)` | ZIRAN |
+| inbound (M5) | `poll(since)` or `receive(request)`, `reply(thread, text)` | Slack (poll), WhatsApp (webhook) |
+| redactor (M5) | `redact(text) -> text, findings` | built-in patterns (default); WUMING once it ships a CLI |
 
 ## 9. Error handling
 
@@ -359,3 +362,66 @@ on it. The repository stays PRIVATE until the owner judges it stable enough to p
 - Q2. ZIRAN has no MCP server; the CLI is the integration surface. `watch-registry` covers
   MCP drift (section 7, S3).
 - Q3. Private until stable enough to become public (section 13).
+
+## 15. Post-v1 (M5): always-on responder and inbound messaging
+
+Decided 2026-09-24: designed now, built after v1, tracked under milestone M5.
+
+### 15.1 Why it needs a new process
+
+A plugin runs only inside a Claude Code session; hooks fire on session events and scheduled
+tasks need the app open. Responding to messages as they arrive needs one process outside
+Claude Code. It is the only long-running process WUWEI ever runs.
+
+### 15.2 Components
+
+- `wuwei listen`: stdlib process. Polls poll-type inbound adapters on an interval (default
+  60 s), accepts webhook-type adapters on a local port behind a tunnel, deduplicates by event
+  id, persists a cursor per source, and appends normalised events to `inbox/inbox.jsonl`:
+  `{id, source, channel, thread, sender, text, ts}` with text passed through the redactor
+  before it is stored. Writes a clock line like the watch; ships launchd and systemd unit
+  templates. Honours `responder.enabled = false` in `config.toml` as a kill switch.
+- `responder` role (tenth role): for each batch of new inbox events the listener launches a
+  headless Claude Code run (`claude -p`) with the responder agent, then exits. No resident
+  agent.
+- Inbound adapter interface (section 8): Slack by polling the Web API with `urllib`;
+  WhatsApp by webhook.
+- Redactor adapter (section 8): built-in patterns for phone numbers, emails and secrets by
+  default.
+
+### 15.3 Security envelope (every item is a guard with a mutation test)
+
+- Sender and channel allowlists from config; anything else is logged and ignored.
+- Responder tools: read-only lookups into the workspace and repos, and drafting. No shell, no
+  repository writes, no tracker writes, no `Agent` spawning.
+- Auto-send only acknowledgements and mechanical replies, through the outward-text guard.
+  Anything carrying a technical claim, disagreement or scope statement becomes a draft in the
+  owner's DM.
+- No new work: the responder may file an intake item for the next morning gate, never start
+  work.
+- Per-sender and global rate limits.
+- ZIRAN `analyze-traces` over every responder session at session end, not at the two-hour
+  sweep; a dangerous sequence disables the responder until the owner re-enables it.
+- An adversarial test suite drives the responder with injection messages drawn from ZIRAN's
+  vector library and asserts no tool call outside the allowlist and no send outside the
+  auto-send class.
+
+### 15.4 WhatsApp constraints
+
+- Official WhatsApp Business Platform only (Meta Cloud API, or a provider such as Twilio). It
+  needs a business account and a dedicated number. Libraries that drive personal WhatsApp
+  accounts break Meta's terms and are not supported.
+- Inbound is a webhook: a public HTTPS endpoint (tunnel or small relay) that answers Meta's
+  verification handshake and verifies the request signature on every call; unsigned or
+  mis-signed requests are dropped and logged.
+- Free-form replies only within the provider's customer-service window after the user's last
+  message; outside it, pre-approved templates only. The adapter enforces this and exits 1
+  instead of sending.
+- Phone numbers and message bodies are personal data: redacted before traces, inbox storage
+  and memory.
+
+### 15.5 Hosting
+
+The listener runs where it can stay up: the owner's machine while awake, or a small VM. The
+workspace on that host holds the inbox; the responder's drafts reach the owner through the
+chat adapter's DM.
