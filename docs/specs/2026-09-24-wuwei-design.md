@@ -295,7 +295,8 @@ that it did nothing and returns exit 2 where a measurement was expected.
 | review_bot | `score(pr)`, `open_findings(pr)` | Greptile |
 | runtime | `dispatch(role, brief_path, worktree, write)`, `status(job)`, `result(job)` | Claude (default), Codex |
 | scanner | `audit(path)`, `gate(result, threshold)`, `traces(file)`, `mcp(servers)` | ZIRAN |
-| inbound (M5) | `poll(since)` or `receive(request)`, `reply(thread, text)` | Slack (poll), WhatsApp (webhook) |
+| inbound (M5) | `poll(since)` or `receive(request)`, `reply(thread, text)` | Slack (poll) |
+| control_plane (M5) | `escalate(decision)`, `notify(summary)`, `poll_replies(since)` | Remote Control plus push (default), Signal, WhatsApp |
 | redactor (M5) | `redact(text) -> text, findings` | built-in patterns (default); WUMING once it ships a CLI |
 
 ## 9. Error handling
@@ -406,7 +407,43 @@ Claude Code. It is the only long-running process WUWEI ever runs.
   vector library and asserts no tool call outside the allowlist and no send outside the
   auto-send class.
 
-### 15.4 WhatsApp constraints
+### 15.4 Remote operation and the control plane (owner, 2026-09-24)
+
+Goal: the owner operates the team remotely, stays responsive in the workspace's chat
+channels, and receives escalations and replies to them without opening the chat tool or the
+code host.
+
+- Default control plane: Claude Code Remote Control plus push notifications. Decisions stay
+  question widgets in the planner's session and reach the phone as notifications with
+  tappable options. No extra infrastructure.
+- Messaging control planes, optional: Signal and WhatsApp adapters for alerts and short
+  replies when the owner is outside the Claude app. The listener parses replies such as
+  "approve D-3", "option B on D-5" or "drop it" into decision answers; an unparseable reply is
+  echoed back with the options, never guessed.
+- Escalations over a messaging adapter carry a one-line summary, the decision id and the
+  options only. Detail stays in the workspace. Whether workspace content may leave the
+  approved tools at all is the workspace owner's policy call, recorded in `config.toml`
+  (`control_plane.content = "summary" | "none"`), default `summary`.
+- Responder default for remote operation: every non-mechanical reply and every proactive post
+  is a draft delivered to the control plane for approve, edit or drop. Auto-send is limited
+  to acknowledgements in channels marked internal; channels marked external (client-facing)
+  never auto-send.
+- Remote operation needs the session host awake and online. Recommended: a small always-on
+  machine running the workspace session, driven from the phone. Cloud sessions free the
+  laptop but cannot read the local workspace.
+- On Team and Enterprise plans Remote Control is off until an organisation Owner enables it.
+
+### 15.5 Signal constraints
+
+- No official bot API. The adapter drives `signal-cli` (community project) on the listener
+  host, as a subprocess; it carries its own runtime dependency, outside the stdlib core.
+- A dedicated number registered for the bot. Never linked as a secondary device of the
+  owner's personal account, which would expose every private chat to the bot.
+- Received messages are polled; no public endpoint.
+- Protocol changes can break `signal-cli` until it is updated: the adapter reports exit 2
+  and the control plane falls back to Remote Control push.
+
+### 15.6 WhatsApp constraints
 
 - Official WhatsApp Business Platform only (Meta Cloud API, or a provider such as Twilio). It
   needs a business account and a dedicated number. Libraries that drive personal WhatsApp
@@ -420,7 +457,7 @@ Claude Code. It is the only long-running process WUWEI ever runs.
 - Phone numbers and message bodies are personal data: redacted before traces, inbox storage
   and memory.
 
-### 15.5 Hosting
+### 15.7 Hosting
 
 The listener runs where it can stay up: the owner's machine while awake, or a small VM. The
 workspace on that host holds the inbox; the responder's drafts reach the owner through the
