@@ -462,3 +462,35 @@ code host.
 The listener runs where it can stay up: the owner's machine while awake, or a small VM. The
 workspace on that host holds the inbox; the responder's drafts reach the owner through the
 chat adapter's DM.
+
+### 15.8 Always-on operations (owner, 2026-09-24)
+
+- Dead-man switch. The listener pings an external check endpoint (configurable URL, for
+  example a hosted cron monitor) every 5 minutes. When pings stop, the external service
+  alerts the owner's phone. Nothing on the host can report the host's own death, so this is
+  the only liveness signal trusted while the owner is away.
+- Budget governor. Daily token and cost caps per role and per workspace in `config.toml`,
+  measured from the headless runs' usage output. At 80 percent a notify goes to the control
+  plane; at 100 percent the workspace degrades to escalations only (no new seat launches,
+  no routines) until the owner raises the cap or the day rolls over. A launch that would
+  cross the cap is refused by the agent-launch guard.
+- Routines. Recurring jobs owned by the listener instead of the app: each routine declares a
+  cron, a charter, a budget, its allowed adapters and its outward-action class, and runs
+  headless. Approvals are stored per routine in the workspace, so a new routine is run once
+  by hand before its first unattended run. The owner's existing recurring jobs (daily brief,
+  mention triage, PR review watch, meeting prep, meeting-notes sync, weekly status) are the
+  reference set.
+- Quiet hours and urgency. Working hours for the owner and per channel audience (with time
+  zones) in config. Outside them, posts to people are queued and sent at the start of the
+  audience's next working window. Every escalation carries an urgency: `page` (the day is
+  blocked, loss is irreversible, or a security finding fired) goes out at once, even in quiet
+  hours; `digest` batches into the next digest.
+- Undo log. Every outward action (chat post, PR comment, tracker write) is recorded with the
+  adapter call that reverts it (delete or edit a message, delete a comment, restore the prior
+  tracker state). The control plane accepts "undo last post" and "retract <action id>".
+  Actions a provider cannot revert are marked irreversible and always need approval.
+- Workspace isolation. One listener process, credential set, memory, inbox and allowlist per
+  workspace, each with its own service unit and working directory. A process refuses to read
+  another workspace's directory, and a message is answered only with its own workspace's
+  context. Credentials are per workspace, from that workspace's environment file, never
+  shared.
