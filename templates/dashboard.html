@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WUWEI day board</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f4f6f8; --card:#fff; --ink:#202832;
+    --muted:#536173; --line:#cbd3dd; --accent:#185b9d; --warn:#8b5400; --warn-bg:#fff5df; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#121820; --card:#1d2732; --ink:#eef3f8; --muted:#a6b4c4;
+      --line:#3d4b5b; --accent:#80b9f2; --warn:#f4c776; --warn-bg:#332b1d; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:1.25rem; background:var(--bg); color:var(--ink);
+    font:14px/1.45 system-ui, sans-serif; }
+  header { display:flex; flex-wrap:wrap; align-items:baseline; gap:1rem; margin-bottom:1rem; }
+  h1 { font-size:1.25rem; margin:0; }
+  h2 { font-size:1rem; margin:.25rem 0 .75rem; }
+  h3 { font-size:.9rem; margin:0 0 .75rem; }
+  .muted, .meta { color:var(--muted); }
+  #error { color:var(--warn); min-height:1.5em; }
+  #blocked { border:1px solid var(--warn); background:var(--warn-bg);
+    border-radius:8px; padding:1rem; margin-bottom:1rem; }
+  #blocked[hidden] { display:none; }
+  #blocked-items { display:flex; flex-wrap:wrap; gap:.75rem; }
+  #columns { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(200px, 1fr);
+    gap:.75rem; overflow-x:auto; padding-bottom:.5rem; }
+  .column { min-height:12rem; padding:.75rem; background:var(--card);
+    border:1px solid var(--line); border-radius:8px; }
+  .column.over-cap { border-color:var(--warn); }
+  .card { min-width:180px; background:var(--bg); border:1px solid var(--line);
+    border-radius:6px; padding:.65rem; margin-bottom:.6rem; overflow-wrap:anywhere; }
+  .card.stale { opacity:.45; filter:grayscale(1); }
+  .card strong { display:block; margin-bottom:.3rem; }
+  .card dl { margin:0; display:grid; grid-template-columns:auto 1fr; gap:.1rem .4rem; font-size:.82rem; }
+  .card dt { color:var(--muted); }
+  .card dd { margin:0; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<header><h1>WUWEI day board</h1><span class="meta" id="updated"></span></header>
+<div id="error" role="status"></div>
+<section id="blocked" hidden><h2>Blocked <span id="blocked-count"></span></h2><div id="blocked-items"></div></section>
+<main id="columns" aria-label="Phase columns"></main>
+<script>
+"use strict";
+const STALE_MS = 15 * 60 * 1000, POLL_MS = 5000;
+const esc = value => String(value ?? "").replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+
+async function get(path) {
+  const response = await fetch(path + "?t=" + Date.now());
+  if (!response.ok) throw new Error(path + " " + response.status);
+  return response.text();
+}
+
+function itemEvents(events, id) {
+  return events.filter(e => e.payload?.item === id ||
+    e.payload?.path === "items." + id || e.payload?.path?.startsWith("items." + id + "."));
+}
+
+function elapsed(timestamp, now) {
+  const at = Date.parse(timestamp || "");
+  if (!Number.isFinite(at)) return "unknown";
+  const minutes = Math.max(0, Math.floor((now - at) / 60000));
+  if (minutes < 60) return minutes + "m";
+  if (minutes < 1440) return Math.floor(minutes / 60) + "h " + minutes % 60 + "m";
+  return Math.floor(minutes / 1440) + "d " + Math.floor(minutes % 1440 / 60) + "h";
+}
+
+function card(it, events, now) {
+  const own = itemEvents(events, it.id);
+  const transition = own.findLast(e => e.kind === "state.transition");
+  const activity = own.at(-1)?.ts || it.updated_at;
+  const age = Date.parse(activity || "");
+  const stale = !Number.isFinite(age) || now - age > STALE_MS;
+  const score = it.wsjf != null ? "WSJF " + it.wsjf :
+    it.rice != null ? "RICE " + it.rice : "unavailable";
+  // A URL is still untrusted item data. Keep only ordinary web links.
+  let pr = "unavailable";
+  try {
+    const url = new URL(it.pr_url);
+    if (["https:", "http:"].includes(url.protocol))
+      pr = `<a href="${esc(url.href)}" target="_blank" rel="noopener noreferrer">PR</a>`;
+  } catch {}
+  const field = (label, value) => `<dt>${label}</dt><dd>${value}</dd>`;
+  return `<article class="card ${stale ? "stale" : ""}">` +
+    `<strong>${esc(it.id)}</strong><dl>` +
+    field("Repo", esc(it.repo || "unavailable")) +
+    field("Goal", esc(it.goal_id || "unavailable")) +
+    field("Rank", esc(score)) +
+    field("In phase", esc(elapsed(transition?.ts, now))) +
+    field("PR", pr) +
+    ((it.phase === "parked" || it.phase === "escalated") ?
+      field("Decision", esc(it.decision_id || "unavailable")) : "") +
+    `</dl></article>`;
+}
+
+function render(state, events, board) {
+  const now = Date.now();
+  const all = Object.entries(state.items || {}).map(([id, data]) => ({...data, id}));
+  const blocked = all.filter(it => it.phase === "parked" || it.phase === "escalated");
+  const normal = all.filter(it => !blocked.includes(it));
+  const phases = [...board.phases, "other"];
+  const phaseOf = it => board.phases.includes(it.phase) ? it.phase : "other";
+  const buildRunning = normal.filter(it => board.build_phases.includes(it.phase) &&
+    it.status === "running").length;
+  const capLimit = state.cap ?? board.cap;
+  document.getElementById("blocked").hidden = blocked.length === 0;
+  document.getElementById("blocked-count").textContent = `(${blocked.length})`;
+  document.getElementById("blocked-items").innerHTML = blocked.map(it => card(it, events, now)).join("");
+  document.getElementById("columns").innerHTML = phases.map(phase => {
+    const inPhase = normal.filter(it => phaseOf(it) === phase);
+    const build = board.build_phases.includes(phase);
+    const cap = build ? ` | CAP ${buildRunning}/${esc(capLimit)}` : "";
+    const over = build && buildRunning > capLimit ? "over-cap" : "";
+    return `<section class="column ${over}"><h3>${esc(phase)} <span class="muted">` +
+      `WIP ${inPhase.length}${cap}</span></h3>${inPhase.map(it => card(it, events, now)).join("")}</section>`;
+  }).join("");
+  document.getElementById("updated").textContent = "Updated " + new Date(now).toLocaleTimeString();
+}
+
+async function tick() {
+  try {
+    const [bj, sj, ej] = await Promise.all([
+      get("./board.json"), get("./state.json"), get("./events.jsonl").catch(() => "")]);
+    const events = ej.split("\n").filter(Boolean).map(line => {
+      try { return JSON.parse(line); } catch { return null; }
+    }).filter(Boolean);
+    render(JSON.parse(sj), events, JSON.parse(bj));
+    document.getElementById("error").textContent = "";
+  } catch (error) {
+    document.getElementById("error").textContent = "Load failed: " + error.message;
+  }
+}
+tick(); setInterval(tick, POLL_MS);
+</script>
+</body>
+</html>
