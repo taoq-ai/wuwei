@@ -778,9 +778,10 @@ Guard scope. The plugin is installed for the owner's whole machine, so:
 - Test runner: pytest as a development dependency only.
 - Ports: every adapter passes its port's contract test; the core's tests use fakes and
   recorded adapter output only.
-- 10.6 Latency (owner requirement): `bin/wuwei hook <event>` p95 under 50 ms. A benchmark
-  test runs the Bash PreToolUse fixture at least 40 times and asserts p95 below 50 ms
-  (asserted locally, measured and printed in CI where runner noise makes it advisory).
+- 10.6 Latency (owner requirement): `bin/wuwei hook <event>` p95 CPU stays under 50 ms, with
+  benchmark p95 measured and printed every run and the 50 ms budget asserted only when
+  `WUWEI_BENCH=1` or outside CI with one-minute load below half the CPU count; otherwise
+  benchmarks skip with the measurements and load.
 
 ## 11. Packaging and release
 

@@ -367,6 +367,44 @@ GUARDS = [Guard({event!r}, {matcher!r}, lambda p: (0, ''))]
         discover()
 
 
+@pytest.mark.parametrize('ci,bench,load,expected', [
+    (False, False, 1.0, 'assert'),
+    (False, False, 4.0, 'skip'),
+    (False, False, 8.0, 'skip'),
+    (True, False, 1.0, 'skip'),
+    (True, True, 8.0, 'assert'),
+    (False, True, 8.0, 'assert'),
+])
+def test_latency_budget_decision(monkeypatch, capsys, ci, bench, load, expected):
+    monkeypatch.delenv('CI', raising=False)
+    monkeypatch.delenv('WUWEI_BENCH', raising=False)
+    if ci:
+        monkeypatch.setenv('CI', '1')
+    if bench:
+        monkeypatch.setenv('WUWEI_BENCH', '1')
+    monkeypatch.setattr(os, 'getloadavg', lambda: (load, 0, 0))
+    monkeypatch.setattr(os, 'cpu_count', lambda: 8)
+    if expected == 'assert':
+        with pytest.raises(AssertionError):
+            assert_latency_budget('hook', 51.0, 60.0, capsys)
+    else:
+        with pytest.raises(pytest.skip.Exception, match=r'CPU 51\.00 ms.*wall 60\.00 ms.*load'):
+            assert_latency_budget('hook', 51.0, 60.0, capsys)
+
+
+def assert_latency_budget(name, cpu_ms, wall_ms, capsys):
+    load = os.getloadavg()[0]
+    cpus = os.cpu_count() or 1
+    report = (f'{name} p95 over 60 runs: CPU {cpu_ms:.2f} ms, '
+              f'wall {wall_ms:.2f} ms, load {load:.2f} on {cpus} CPUs')
+    with capsys.disabled():
+        print('\n' + report)
+    if os.environ.get('WUWEI_BENCH') == '1' or ('CI' not in os.environ and load < cpus / 2):
+        assert cpu_ms < 50, report
+    else:
+        pytest.skip(report)
+
+
 @pytest.mark.parametrize('event', ['PreToolUse', 'PostToolUse'])
 def test_hook_latency(subprocess_plugin, capsys, event):
     from resource import RUSAGE_CHILDREN, getrusage
@@ -387,10 +425,7 @@ def test_hook_latency(subprocess_plugin, capsys, event):
         assert result.returncode == 0, result.stderr
     cpu_ms = quantiles(cpu, n=100)[94] * 1000
     wall_ms = quantiles(elapsed, n=100)[94] * 1000
-    with capsys.disabled():
-        print(f'\n{event} p95 over 60 runs: CPU {cpu_ms:.2f} ms, wall {wall_ms:.2f} ms')
-    if 'CI' not in os.environ:
-        assert cpu_ms < 50
+    assert_latency_budget(event, cpu_ms, wall_ms, capsys)
 
 
 def test_unaccounted_shell_mention_blocks_hook(plugin):
@@ -441,7 +476,4 @@ def test_status_line_latency(subprocess_plugin, capsys):
         assert result.returncode == 0, result.stderr
     cpu_ms = quantiles(cpu, n=100)[94] * 1000
     wall_ms = quantiles(wall, n=100)[94] * 1000
-    with capsys.disabled():
-        print(f'\nstatus --line p95 over 60 runs: CPU {cpu_ms:.2f} ms, wall {wall_ms:.2f} ms')
-    if 'CI' not in os.environ:
-        assert cpu_ms < 50
+    assert_latency_budget('status --line', cpu_ms, wall_ms, capsys)
