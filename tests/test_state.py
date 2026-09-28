@@ -387,3 +387,64 @@ def test_retry_transition_reports_state_may_already_be_at_target(workspace):
     assert result.returncode == 1
     assert 'state may already be at implement' in result.stderr
     assert len(events(workspace)) == 2
+
+
+def test_state_and_events_are_readonly_after_every_write(workspace, monkeypatch):
+    from wuwei import state
+    replace = state.os.replace
+
+    def readonly_replace(source, target):
+        assert Path(source).stat().st_mode & 0o777 == 0o444
+        replace(source, target)
+
+    monkeypatch.setattr(state.os, 'replace', readonly_replace)
+    state.append_event('started')
+    event_path = day(workspace) / 'events.jsonl'
+    assert event_path.stat().st_mode & 0o777 == 0o444
+    inode = event_path.stat().st_ino
+    for cap in (2, 3):
+        before = event_path.read_bytes()
+        state.set_state('cap', cap)
+        assert (day(workspace) / 'state.json').stat().st_mode & 0o777 == 0o444
+        assert event_path.stat().st_mode & 0o777 == 0o444
+        assert event_path.stat().st_ino == inode
+        assert event_path.read_bytes().startswith(before)
+    state.append_event('finished')
+    assert event_path.stat().st_mode & 0o777 == 0o444
+    assert len(events(workspace)) == 4
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason='root bypasses file mode permissions')
+@pytest.mark.parametrize('name', ['state.json', 'events.jsonl'])
+def test_plain_open_cannot_overwrite_state_as_nonroot(workspace, name):
+    from wuwei import state
+    state.set_state('cap', 2)
+    path = day(workspace) / name
+    before = path.read_bytes()
+    with pytest.raises(PermissionError):
+        with open(path, 'w'):
+            pass
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize('failure', ['open', 'write'])
+def test_event_failure_restores_readonly_mode(workspace, monkeypatch, failure):
+    from wuwei import state
+    state.append_event('started')
+    path = day(workspace) / 'events.jsonl'
+    path.chmod(0o444)
+    original_open = os.open
+
+    def fail_open(target, flags, mode=0o777):
+        if Path(target) == path:
+            raise OSError('event open failed')
+        return original_open(target, flags, mode)
+
+    def fail_write(fd, data):
+        assert os.fstat(fd).st_mode & 0o777 == 0o444
+        raise OSError('event write failed')
+
+    monkeypatch.setattr(state.os, failure, fail_open if failure == 'open' else fail_write)
+    with pytest.raises(OSError, match='event .* failed'):
+        state.append_event('failed')
+    assert path.stat().st_mode & 0o777 == 0o444

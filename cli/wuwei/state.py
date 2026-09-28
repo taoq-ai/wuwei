@@ -127,12 +127,20 @@ def _append_event(kind, payload, directory):
     record = {'kind': kind, 'payload': payload,
               'ts': workspace.now().isoformat()}
     encoded = (json.dumps(record, allow_nan=False) + '\n').encode('utf-8')
-    fd = os.open(directory / 'events.jsonl', os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+    path = directory / 'events.jsonl'
+    if path.is_file():
+        path.chmod(0o600)
     try:
-        if os.write(fd, encoded) != len(encoded):
-            raise OSError('short event write to events.jsonl')
+        fd = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o444)
+        try:
+            os.fchmod(fd, 0o444)
+            if os.write(fd, encoded) != len(encoded):
+                raise OSError('short event write to events.jsonl')
+        finally:
+            os.close(fd)
     finally:
-        os.close(fd)
+        if path.is_file():
+            path.chmod(0o444)
 
 
 def write_state(update, root=None, *, kind='state.write', payload=None):
@@ -148,7 +156,7 @@ def write_state(update, root=None, *, kind='state.write', payload=None):
         update(data)
         data = _validate(data, previous)
         encoded = json.dumps(data, allow_nan=False) + '\n'
-        workspace.atomic_write(directory / 'state.json', encoded)
+        workspace.atomic_write(directory / 'state.json', encoded, mode=0o444)
         _append_event(kind, payload, directory)
         return data
 

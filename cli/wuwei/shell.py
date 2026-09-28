@@ -10,17 +10,23 @@ class ParseError(ValueError):
     """The command cannot be inspected safely; guards must return exit 2."""
 
 
+class NonliteralPathError(ParseError):
+    """A file or directory operand cannot be resolved statically."""
+
+
 class Command(NamedTuple):
     argv: list[str]
     subshell: bool
     env: dict[str, str]
+    writes: tuple[str, ...] = ()
 
 
 # Words retain quote boundaries so expansion checks distinguish literal data.
 _TOKEN = re.compile(r'(?P<space>[ \t\r]+)|(?P<comment>\#[^\n]*)|'
-                    r'(?P<redirect>[0-9]*(?:<<-?|>>|<>|>&|<&|>\||[<>])|&>>?)|'
+                    r'(?P<redirect>[0-9]*(?:<<-?|>>!?|>!|<>|>&|<&|>\||[<>])|&>>?)|'
                     r'(?P<operator>\&\&|\|\||[;&|()\n])')
 _ASSIGNMENT = re.compile(r'[A-Za-z_][A-Za-z_0-9]*=')
+_PATH_COMMANDS = ('cd', 'pushd', 'popd', 'tee', 'cp', 'mv', 'sed', 'dd', 'truncate')
 _GUARDED = re.compile(r'(?<![.\w])(?:git|gh)\b')
 _QUOTED_PART = re.compile(r''' '[^']*'|"(?:\\[\s\S]|[^"\\])*"|\\[\s\S]|[^'"\\]+ ''', re.VERBOSE)
 
@@ -36,9 +42,9 @@ def _reject_mentions(text):
         raise ParseError('unaccounted git/gh mention')
 
 
-def _literal(raw):
+def _literal(raw, allow_globs=False):
     return not _expands(raw) and not any(
-        re.search(r'[`*?\[]|\{[^{}]*(,|\.\.)[^{}]*\}', part[0])
+        re.search((r'`' if allow_globs else r'[`*?\[]') + r'|\{[^{}]*(,|\.\.)[^{}]*\}', part[0])
         for part in _QUOTED_PART.finditer(raw)
         if not part[0].startswith(("'", '"', '\\')))
 
@@ -63,8 +69,9 @@ def normalize(command: str) -> list[Command]:
     try:
         return _parse(command, False)
     except (ValueError, RecursionError) as exc:
-        raise ParseError((str(exc) or 'shell nesting too deep') +
-                         '; run git or gh as a plain command') from exc
+        error = type(exc) if isinstance(exc, ParseError) else ParseError
+        raise error((str(exc) or 'shell nesting too deep') +
+                    '; run git or gh as a plain command') from exc
 
 
 def _heredoc(script, position, delimiter, strip_tabs=False):
@@ -122,6 +129,7 @@ def _parse(script, subshell, env=None):
     if not isinstance(script, str) or '\0' in script:
         raise ParseError('command must be text without NUL')
     tokens, raw_tokens, heredocs = [], [], []
+    writes_at = {}
     command_start = 0
     position = 0
     while position < len(script):
@@ -137,13 +145,17 @@ def _parse(script, subshell, env=None):
                     position += 1
                 start = position
                 target, position = _read_word(script, position)
-                _reject_mentions(script[start:position])
                 if '<<' in raw:
                     if not re.fullmatch(r"""(['"])[\w-]+\1""", target):
                         raise ParseError('only quoted here-doc delimiters are supported')
                     heredocs.append((_word(target), raw.endswith('-'), command_start))
-                elif _expands(target):
-                    raise ParseError('expanding redirection is unsupported')
+                elif not _literal(target):
+                    raise NonliteralPathError('nonliteral redirection is unsupported')
+                elif '>' in raw and not ('&' in raw and re.fullmatch(r'[0-9]+-?|-', _word(target))):
+                    writes_at[len(tokens)] = _word(target)
+                    tokens.append(('', False))
+                    raw_tokens.append('')
+                _reject_mentions(script[start:position])
                 continue
             if raw == '\n':
                 for delimiter, strip_tabs, owner_start in heredocs:
@@ -197,14 +209,25 @@ def _parse(script, subshell, env=None):
                 position += 1
             else:
                 argv = []
-                start = position
+                raw_argv, writes = [], []
                 while position < len(tokens) and not tokens[position][1]:
-                    argv.append(tokens[position][0])
+                    if position in writes_at:
+                        writes.append(writes_at[position])
+                    else:
+                        argv.append(tokens[position][0])
+                        raw_argv.append(raw_tokens[position])
                     position += 1
-                current = _unwrap(argv, nested, raw_tokens[start:position], env)
+                current = _unwrap(argv, nested, raw_argv, env)
+                if writes:
+                    if not current:
+                        current = [Command([], nested, dict(env or {}))]
+                    current[0] = current[0]._replace(writes=tuple(writes) + current[0].writes)
+            while position in writes_at:
+                current[0] = current[0]._replace(writes=current[0].writes + (writes_at[position],))
+                position += 1
             next_token = tokens[position] if position < len(tokens) else None
-            if pending == '|' or next_token in (('|', True), ('&', True)):
-                current = [Command(item.argv, True, item.env) for item in current]
+            if next_token in (('|', True), ('&', True)):
+                current = [item._replace(subshell=True) for item in current]
             commands.extend(current)
             pending = None
             if next_token is None or next_token == (')', True):
@@ -236,12 +259,18 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None):
             raw_argv = raw_argv[1:]
             continue
         program = PurePosixPath(argv[0]).name or argv[0]
+        if not _literal(raw_argv[0]):
+            raise ParseError('nonliteral command name is unsupported')
+        if program in _PATH_COMMANDS and not all(
+                _literal(raw, allow_globs=program not in ('cd', 'pushd', 'popd')) for raw in raw_argv):
+            raise NonliteralPathError('nonliteral file or directory arguments are unsupported')
         if program not in ('git', 'gh'):
             _reject_mentions(raw_argv[0])
         if any(char in argv[0] for char in '$`*?[]') or program in (
                 'if', 'then', 'else', 'fi', 'for', 'while', 'until', 'do', 'done',
                 'case', 'esac', 'function', '{', '}', '!', 'trap',
-                'alias', 'unalias', '.', 'source', 'shopt', 'enable'):
+                'alias', 'unalias', '.', 'source', 'shopt', 'enable',
+                'export', 'readonly', 'unset', 'declare', 'typeset'):
             raise ParseError('dynamic command or shell control flow is unsupported')
         if program in ('git', 'gh'):
             if not all(_literal(raw) for raw in raw_argv):
@@ -335,10 +364,15 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None):
             subshell = True
             if not argv:
                 return [Command(['echo'], True, env)]
-            if PurePosixPath(argv[0]).name in ('git', 'gh'):
-                raise ParseError('input-driven git/gh arguments are unsupported')
+            expanded = _unwrap(argv, subshell, raw_argv, env)
+            if any(item.writes or (item.argv and PurePosixPath(item.argv[0]).name in
+                                  ('git', 'gh', *_PATH_COMMANDS)) for item in expanded):
+                raise ParseError('input-driven guarded arguments are unsupported')
+            return expanded
         elif not argv:
             raise ParseError(f'missing command after {program}')
+    if any(key in env for key in ('HOME', 'OLDPWD', 'CDPATH')):
+        raise ParseError('standalone directory environment assignments are unsupported')
     return []
 
 

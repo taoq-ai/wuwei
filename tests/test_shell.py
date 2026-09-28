@@ -8,7 +8,7 @@ import pytest
     ('git status', [(['git', 'status'], False)]),
     ('git status; gh pr list && git push || echo failed | cat\npwd',
      [(['git', 'status'], False), (['gh', 'pr', 'list'], False),
-      (['git', 'push'], False), (['echo', 'failed'], True), (['cat'], True), (['pwd'], False)]),
+      (['git', 'push'], False), (['echo', 'failed'], True), (['cat'], False), (['pwd'], False)]),
     ('''echo 'a;b' "x&&y" '|' '(' ')' "" a"b c"d''',
      [(['echo', 'a;b', 'x&&y', '|', '(', ')', '', 'ab cd'], False)]),
     (r'echo a\;b \( \) \|', [(['echo', 'a;b', '(', ')', '|'], False)]),
@@ -451,3 +451,63 @@ def test_other_commands_cannot_borrow_guarded_heredoc_exemption(script):
     from wuwei.shell import ParseError, normalize
     with pytest.raises(ParseError):
         normalize(script)
+
+
+@pytest.mark.parametrize('script,targets', [
+    ('echo data > state.json', ['state.json']),
+    ('>> events.jsonl', ['events.jsonl']),
+    ('2>state.json echo data >>events.jsonl', ['state.json', 'events.jsonl']),
+    ('cat <>state.json', ['state.json']),
+    ('echo data &>state.json', ['state.json']),
+    ('echo data >|state.json', ['state.json']),
+    ('echo data >&state.json', ['state.json']),
+    ('cat <state.json 2>&1', []),
+    ("sh -c 'echo data > state.json' >events.jsonl", ['events.jsonl', 'state.json']),
+    ('(echo data) >state.json', ['state.json']),
+    ('echo data | tee log >state.json', ['state.json']),
+])
+def test_output_targets_survive_normalization(script, targets):
+    from wuwei.shell import normalize
+    assert sorted(path for item in normalize(script) for path in item.writes) == sorted(targets)
+
+
+@pytest.mark.parametrize('script', [
+    'tee "$TARGET"', 'mv source {state,events}.json',
+    "sed -i 's/a/b/' $FILE", 'dd of=$TARGET', 'truncate -s0 $FILE',
+    'cd "$DEST"', 'cd ../*', 'echo data >*.json',
+    'xargs tee', 'xargs cp source', 'xargs truncate -s0',
+])
+def test_state_writer_dynamic_forms_fail_closed(script):
+    from wuwei.shell import ParseError, normalize
+    with pytest.raises(ParseError):
+        normalize(script)
+
+
+@pytest.mark.parametrize('script', ['python3 -m pytest -q', 'python -m pip install x',
+                                    "python3 -c 'open(\"state.json\", \"w\")'"])
+def test_normalization_leaves_interpreter_policy_to_guards(script):
+    from wuwei.shell import normalize
+    assert normalize(script)
+
+
+@pytest.mark.parametrize('redirect', ['>!', '>>!', '2>!', '2>>!'])
+def test_zsh_clobber_targets(redirect):
+    from wuwei.shell import normalize
+    assert normalize('echo x ' + redirect + ' state.json')[0].writes == ('state.json',)
+
+
+@pytest.mark.parametrize('script', ['echo x > "$FILE"', 'echo x > "$git"',
+                                    'echo x > "$gh"', 'tee "$FILE"',
+                                    "sh -c 'tee \"$FILE\"'"])
+def test_nonliteral_path_error_retains_type(script):
+    from wuwei import shell
+    with pytest.raises(shell.ParseError) as error:
+        shell.normalize(script)
+    assert type(error.value).__name__ == 'NonliteralPathError'
+
+
+@pytest.mark.parametrize('script', ['cp *.py sub/', 'mv build/*.whl dist/',
+    'tee *.log', 'truncate -s0 *.log', 'sed -i s/a/b/ *.log', 'dd of=*.log'])
+def test_writer_globs_are_left_for_guard_expansion(script):
+    from wuwei.shell import normalize
+    assert normalize(script)[0].argv == script.split()
