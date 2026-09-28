@@ -52,8 +52,9 @@ satisfy a principle; Principle V wins a tie.
 ### VII. Security first
 
 Least privilege for agent tools. Guards refuse at the moment of action. Secrets, phone
-numbers and message bodies never land in traces, logs or memory unredacted. No profile
-allows merging or approving a pull request.
+numbers and message bodies never land in traces, logs or memory unredacted. A merge happens
+only through the merge policy, never by approval or override; nothing ever deploys (design
+spec 4.6 and 4.7).
 
 ## Constraints
 

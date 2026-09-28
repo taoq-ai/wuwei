@@ -17,7 +17,9 @@ that engagement ships in this repository.
 ### Goals
 
 - G1. One person runs a team of agents that plans, builds, reviews and shepherds work across
-  several repositories, and is asked only for decisions, new work, and merges.
+  several repositories, finds new work against the owner's goals throughout the day, and
+  asks the owner only for one-way-door decisions (5.8), work outside the goals, and merges
+  the merge policy does not clear (4.6).
 - G2. Guards enforce the rules at the moment of action. A rule that can be broken without a
   refusal is not a rule.
 - G3. Security first: agent tool permissions are least-privilege and audited, live sessions
@@ -30,7 +32,12 @@ that engagement ships in this repository.
 
 ### Non-goals
 
-- Merging or approving pull requests. Always a human act; no profile allows it.
+- Deploying. No profile, routine or command deploys, releases or promotes anything to an
+  environment (section 4.7). Owner decision 2026-09-28; supersedes the earlier non-goal that
+  merging was always a human act.
+- Approving pull requests, or bypassing branch protection to merge. WUWEI never approves a
+  review and never merges with admin override; a merge happens only when the repository's
+  own rules already allow it (section 4.6).
 - A hosted service or database. A long-running process is out of scope for v1; M5 adds
   exactly one, the listener (section 15).
 - Multi-user team coordination (v1 is one person's workspace).
@@ -97,12 +104,15 @@ Code repos receive only worktrees, branches and pull requests.
   charters/            local overrides layered over the plugin charters
   memory/
     spine.md           the structural model, loaded in full every session
+    goals.md           the owner's goals (5.7); edited only by the owner
     index.md           generated; one line per note and per past day
     notes/*.md         settled facts with frontmatter
+    archive/           retired notes; moving one back revives it
+    ledger.jsonl       append-only: every promoted or rejected change, with evidence
     CHANGELOG.md       every dated rule change, verbatim; never loaded by seats
   days/YYYY-MM-DD/
     plan.md  state.json  events.jsonl  traces.jsonl
-    briefs/  decisions/  deliverables/  retro/  report.md
+    briefs/  decisions/  deliverables/  retro/  proposals/  report.md
   archive/             days older than 30, summary lines kept in the index
 ```
 
@@ -121,7 +131,9 @@ run. Exit 2 blocks exactly like exit 1 and prints why. An absent adapter or scan
 | PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor |
 | PreToolUse | `git commit`, `git push` | author or committer differs from repository config; force-push; push to the default branch; push before the fast checks passed |
 | PreToolUse | `gh pr create` | the pre-PR gate set has not all passed; no reviewer named in the same action |
-| PreToolUse | `gh pr merge`, `gh pr review --approve` | always |
+| PreToolUse | `gh pr merge` | the merge policy (4.6) does not clear this PR at this head |
+| PreToolUse | `gh pr review --approve`, `--admin`, protection changes | always |
+| PreToolUse | any deploy action (4.7) | always |
 | PreToolUse | chat or tracker adapter call | outward-text lint fails; a technical claim, disagreement or scope statement without an approved draft |
 | PreToolUse | Write or Edit on `state.json`, `events.jsonl` | always; state changes go through the CLI |
 | PreToolUse | top-level `cd` out of the workspace | always; use `git -C` or a subshell |
@@ -150,8 +162,79 @@ queues, which agent wrote what), banned characters, and a maximum length per cha
 ### 4.4 Profiles
 
 - `strict` (default): every guard above blocks.
-- `standard`: the outward-text lint warns instead of blocking. Merge and approve are still
-  refused.
+- `standard`: the outward-text lint warns instead of blocking. The merge policy, the
+  approve refusal and the deployment ban are unchanged.
+
+### 4.5 Matching and bypass resistance (owner, 2026-09-28)
+
+A guard that matches the literal command string is bypassed by wrapping the command. Every
+Bash guard therefore matches after normalising: unwrap `sh -c`, `bash -c`, `zsh -c`, `env`,
+`command`, `exec`, `xargs` and subshells; resolve `git -C`, `git -c` and `GIT_*` environment
+overrides; treat `gh api` calls against the merge, review, branch-protection and
+deployment endpoints as the commands they implement. An interpreter one-liner (`python -c`,
+`node -e`, `perl -e`) or a script whose text invokes `git` or `gh` with a guarded verb is
+refused as opaque. A second anchor that does not depend on parsing: worktrees created by
+WUWEI get a `pre-push` git hook that calls the same push guard, and `wuwei init` writes
+`permissions.deny` rules for approve, `--admin` merges and the deploy commands in 4.7. Each
+bypass form is a test case in the guard's table.
+
+### 4.6 Merge policy (owner, 2026-09-28)
+
+WUWEI may merge a pull request when the policy clears it; otherwise the merge is a decision
+for the owner. The policy is one CLI function, `wuwei merge check <pr>`, used by the merge
+guard, the shepherd and the report; `wuwei merge <pr>` runs the check and merges in one step.
+
+Eligibility, per repository in `config.toml` (default off):
+
+- `merge.auto = true`, and `merge_deploys = false` declared explicitly. A repository whose
+  merge to the base branch triggers a deployment, or that does not declare it, is never
+  auto-merged: for it, merging is deploying (4.7).
+- The item carries none of `trust_surface`, `boundary_relevant`, `agent_surface`, and its
+  diff touches none of the configured never-auto paths (defaults: CI and workflow files,
+  dependency manifests and lockfiles, migrations and schemas, infrastructure code,
+  `CODEOWNERS`, anything under a `deploy` or `infra` directory).
+- The diff is at most `merge.max_changed_lines` (default 400) and the item went through at
+  most the cycle budget (one fix round plus one delta).
+
+Preconditions, all read fresh at the current head sha, never from cache or from
+`state.json`:
+
+- every pre-PR gate verdict is PASS for this head, and no finding with `blocks: yes` is open;
+- every required status check is green (a skipped or neutral required check is not green);
+- the repository's own branch protection is satisfied without override: required human
+  approvals present from people other than the author, no changes requested outstanding;
+- every review thread is resolved or answered, and the reply and visibility obligations
+  (4.2) for this PR are clear;
+- the review bot, when configured, reports no open blocking finding on this head;
+- the branch is up to date with its base, or the repository uses a merge queue;
+- a soak window has passed since the last approval or push (`merge.soak_minutes`, default
+  30), during which the owner can veto from the control plane.
+
+Mechanics: `gh pr merge --squash --match-head-commit <sha>` (or the repository's merge queue),
+so a push between the check and the merge makes it fail rather than merge unreviewed code.
+Never `--admin`, never a change to branch protection, never an approval. At most
+`merge.max_per_day` auto-merges per repository (default 5); none during quiet hours.
+
+After the merge: the watch follows the base branch's checks for the merge commit. A red check
+opens a revert PR at once, pages the owner, and trips the breaker. Every merge is an event
+carrying the evidence (head sha, verdicts, checks, approvals) and an undo-log entry whose undo
+is the revert PR.
+
+Circuit breaker: auto-merge turns off for a repository, until the owner turns it back on,
+when a merged PR is reverted or red on the base branch, or when the rolling 14-day escaped
+defect rate for auto-merged PRs (5.6) exceeds the owner's baseline. Any precondition that
+cannot be read is exit 2: not cleared, so the merge goes to the owner.
+
+### 4.7 Deployment ban (owner, 2026-09-28)
+
+WUWEI never deploys, in any profile, routine or remote command. Refused always, after the
+normalisation in 4.5: dispatching or re-running a workflow the config marks as deploying,
+`gh release create` and tag pushes, pushes and merges to branches in the configured
+environment register (for example `production`, `release/*`), GitHub deployment and
+environment API calls, and the deploy commands of common tools (`kubectl apply`, `helm
+upgrade`/`install`, `terraform apply`, `pulumi up`, `vercel`/`netlify` deploy, `fly deploy`,
+`gcloud`/`aws`/`az` deploy verbs, `docker push`), extendable by `deploy.deny` in config. A
+merge into a repository with `merge_deploys = true` is a deployment and goes to the owner.
 
 ## 5. The team
 
@@ -163,11 +246,11 @@ queues, which agent wrote what), banned characters, and a maximum length per cha
 | lead | per day | ranked discovery with evidence, scope, overlap matrix, track and flags |
 | builder | per item | spec and implementation in the item's worktree |
 | sentinel-arch | per gate | one verdict file |
-| sentinel-quality | per gate | one verdict file |
+| sentinel-quality | per gate | one verdict file, with `Simplicity:` and `Design:` rows (5.3) |
 | sentinel-security | per gate | one verdict file; runs the scanner when `agent_surface` is set |
 | sentinel-goal | per docs gate | one verdict file |
 | shepherd | per PR set | PR raise, reviewer requests, thread replies, obligation ledger |
-| steward | at each sweep and at close, fresh seat | steering notes, the decision queue, the retro and charter commits |
+| steward | at each sweep, at close and every N tool calls, fresh seat | steering notes, the decision queue, the retro and charter proposals |
 
 ### 5.2 Flow
 
@@ -175,7 +258,7 @@ queues, which agent wrote what), banned characters, and a maximum length per cha
 /wuwei plan -> planner -> lead -> MORNING GATE (user approves or edits)
   -> per item: builder -> pre-PR gates in parallel (arch, quality, security; goal on docs)
   -> shepherd raises, requests reviewers, posts
-  -> fix round -> arch delta -> ... -> user merges
+  -> fix round -> arch delta -> ... -> merge policy: auto-merge, or the user merges
 /wuwei report -> steward retro -> planner report -> Stop guard
 ```
 
@@ -197,20 +280,140 @@ queues, which agent wrote what), banned characters, and a maximum length per cha
   `file:line`, failure scenario and `blocks: yes|no`; a probe or mutation line per claim (or
   "not run"); residual risk; the retro note.
 - Retro note, every seat: three lines prefixed `Blocked:`, `Gap:`, `Change:`.
+- Engineering standards (owner, 2026-09-28), carried by the builder charter and checked by
+  the quality sentinel: test first (a failing test before the code that passes it); the
+  simplest solution that works (build only what the item asks, reuse what the repository
+  has, standard library before a dependency, no abstraction with one implementation);
+  SOLID where it makes the code smaller or the tests simpler, never as a layer for its own
+  sake; clean code (intent-revealing names, small functions with one job, no dead or
+  commented-out code, errors handled where they can be acted on); the repository's own
+  conventions over general preference. The quality verdict carries a `Simplicity:` row
+  (what can be deleted, and what replaces it) and a `Design:` row (SOLID and clean-code
+  findings that make the change harder to test or change now); the verdict lint refuses a
+  quality verdict missing either row.
 
 ### 5.4 When the user is asked
 
-At the morning gate; for any blocker or decision (one question per decision, recommended
-option first, pending decisions batched, pre-triaged by the steward); for new work items;
-for merges. Otherwise the session is silent, with a digest at most every two hours.
+At the morning gate (goals, ranked queue, seat policy); for one-way-door decisions (5.8), one
+question per decision, recommended option first, pending decisions batched, pre-triaged by
+the steward; for work outside the goals or above the auto-start bar (5.7); for merges the
+merge policy does not clear. Otherwise the session is silent, with a digest at most every
+two hours that lists the two-way-door decisions seats took on their own.
 
 ### 5.5 The steward
 
 Outside the dispatch path. Reads `events.jsonl`, verdicts, traces and CLI metrics: fix rounds
 per item, hand-backs per PR, time in phase, verdict-lint rejections, decisions reaching the
 user per day. Writes steering notes the planner must acknowledge, the pre-triaged decision
-queue, and the retro with its charter commits. Never briefs a seat, never dispatches, never
-changes item state. A day on which the steward did not run is a finding in the next plan.
+queue, and the retro. Charter and note changes it only proposes; `wuwei promote` lands them
+(section 6.8). Never briefs a seat, never dispatches, never changes item state. A day on
+which the steward did not run is a finding in the next plan.
+
+The steward runs at each sweep, at close, and after every `steward.every_tool_calls` tool
+calls counted from `traces.jsonl` (default 50), so a busy hour gets a reflection and an idle
+one does not.
+
+### 5.6 Outcome metrics (owner, 2026-09-28)
+
+The process metrics above say how the day ran; these say whether the work was good. `wuwei
+metrics` computes them from `gh`, `git` and `events.jsonl`, and `/wuwei report` shows each
+beside the owner's baseline:
+
+- escaped defects: share of merged PRs followed within 14 days by a revert or a fix
+  touching the same lines, counting only PRs with a full 14-day window; the raw count of
+  reverts and follow-up fixes is shown beside it
+- review rework: human review threads that led to a new commit; mean per PR, median, p90,
+  and share of PRs with at least one
+- owner intervention: attended minutes per complete weekday, from the owner's Claude Code
+  transcripts for the workspace's repositories. Human turns only (no tool results, no
+  subagent or system-injected turns); consecutive turns across all sessions less than 10
+  minutes apart form one attended stretch, each stretch counted once however many sessions
+  overlap it, plus half the cut-off as lead-in. Median, p25 and p75 over the window, with
+  the 5 and 15 minute cut-offs shown as the sensitivity band. The same estimator computes
+  the baseline, so the comparison is not flattered by a change of method. Optional: an
+  input-idle sampler on the owner's machine during the WUWEI period calibrates which
+  cut-off matches real keyboard time. Reads timestamps and turn structure only, never
+  message text.
+- lead time: from the tracker item moving to In Progress (the tracker adapter's `claim`) to
+  its first merged PR; median, p75 and p90; creation to merge and PR open to merge as
+  secondary figures
+
+The baseline is the owner's hand-run month before WUWEI, recorded once in the workspace at
+`memory/notes/baseline.md` (type `reference`), never in this repository. A metric that
+cannot be computed reports "unmeasured", never zero.
+
+### 5.7 Goals, discovery and prioritisation (owner, 2026-09-28)
+
+Goals. `memory/goals.md` holds the owner's goals, one block each: id (`G-n`), outcome, measure,
+target, date, priority. Only the owner edits it; seats and the steward may propose changes
+(6.8) but `wuwei promote` refuses a goal change that the owner has not approved at the
+morning gate. The morning gate confirms the day's goals.
+
+Discovery, all day. The lead runs discovery at the morning plan, at each sweep, and whenever
+a build seat frees up with the queue below `discovery.min_queue` (default 2). Sources, each
+through its adapter and each reporting "unmeasured" when absent: the tracker backlog, red
+checks on base branches, review-bot and scanner findings, review threads asking for
+follow-up work, regressions in the outcome metrics (5.6), and follow-ups recorded by the
+day's own PRs. Every candidate names the goal it serves with evidence, or is marked
+`unplanned`; the share of unplanned work is a steward metric. Candidates are deduplicated
+against the tracker and the day's items before ranking.
+
+Prioritisation, `prioritisation.framework` in config:
+
+- `wsjf` (default). Each candidate scores, on the Fibonacci scale 1, 2, 3, 5, 8, 13, 20:
+  value (to its goal), time criticality (cost of waiting a day), risk reduction or
+  unblocking (what it enables or de-risks), and job size. WSJF = (value + time criticality
+  + risk reduction) / job size.
+- `rice`. Reach (people or systems affected in the goal's period), impact (0.25, 0.5, 1, 2,
+  3), confidence (0.5, 0.8, 1.0) and effort (seat-days). RICE = reach x impact x confidence
+  / effort.
+
+Either way, ties are broken by goal priority, and every component cites evidence in one
+line; the plan lint refuses a candidate with a missing component or citation for the
+configured framework. `wuwei rank` computes the order; no seat orders the queue by hand. The
+steward calibrates: predicted size or effort against actual cycle time per item, and a
+persistent bias becomes a charter proposal.
+
+Intraday starts, `discovery.autostart` in config. In every mode, an item carrying a risk
+flag, touching never-auto paths (4.6), or not fitting CAP and the budget goes to the owner.
+
+- `off`: nothing found after the morning gate starts without the owner; every candidate
+  joins the next decision batch.
+- `strict` (default): a candidate starts when it serves a confirmed goal, is on the SLICE
+  track, and ranks above the cut line of the approved queue.
+- `goal`: a candidate starts when it serves a confirmed goal, on either track.
+
+Anything that does not start joins the next decision batch as a proposed item.
+
+### 5.8 Decision framework (owner, 2026-09-28)
+
+Every decision, whoever takes it, is a record `days/<date>/decisions/D-<n>.md` in one shape
+(MADR with a Kepner-Tregoe evaluation):
+
+- `Question:` one line; `Context:` what forces the decision, with evidence paths
+- `Options:` at least two, one of them doing nothing or deferring
+- `Musts:` pass/fail criteria that filter options out
+- `Wants:` weighted criteria (weights 1 to 10), each option scored 0 to 10 against each
+- `Recommendation:` the option with the highest weighted score among those passing every
+  must, with `Confidence: high|medium|low`
+- `Reversibility: one-way|two-way`, `Blast radius:` who or what is affected if it is wrong
+- `Pre-mortem:` the most likely way the recommendation fails
+- `Revisit:` a date or trigger that reopens it
+- `Decided-by:` seat or owner, and `Outcome:` once taken
+
+Routing by reversibility. A two-way door with a blast radius inside the item (its own
+branch, its own PR) is decided by the seat that raised it, logged, and listed in the next
+digest; the steward reviews a sample. A one-way door, anything touching goals, scope agreed
+with other people, trust boundaries, spend above the budget threshold, or a blast radius
+beyond the item, goes to the owner. When unsure, it is one-way.
+
+Enforcement. A PostToolUse decision lint on writes to `decisions/D-*.md` refuses a record
+missing any field, with fewer than two options, or whose recommendation is not the top
+passing option by the stated weights (the CLI recomputes the score). A PreToolUse guard
+refuses `AskUserQuestion` and every control-plane escalation that does not cite a decision
+id whose record passes the lint. The steward's metrics add: decisions per day by
+reversibility, share decided by seats, and seat decisions the owner later reversed (a
+rising reversal rate tightens the two-way criteria through a charter proposal).
 
 ## 6. Memory
 
@@ -220,8 +423,8 @@ changes item state. A day on which the steward did not run is a finding in the n
 |---|---|---|---|
 | Working | `days/<date>/state.json`, `events.jsonl` | on demand by the planner | CLI |
 | Episodic | `days/<date>/` | by summary line in the index | planner, steward |
-| Procedural | charters, `memory/CHANGELOG.md`, guards | charter as system prompt; changelog never | steward, via commits |
-| Semantic | `memory/spine.md`, `memory/notes/` | spine in full, notes by index | any seat, via `wuwei note` |
+| Procedural | charters, `memory/CHANGELOG.md`, `memory/ledger.jsonl`, guards | charter as system prompt; changelog and ledger never | `wuwei promote`, from steward proposals |
+| Semantic | `memory/spine.md`, `memory/notes/` | spine in full, notes by index | any seat: `wuwei note` creates, `wuwei promote` changes |
 
 ### 6.2 Frontmatter contract
 
@@ -241,23 +444,54 @@ the payload size.
 - note over its line cap
 - state note accumulating dated entries (turning into a log)
 - raw intake with nothing routed out of it
+- a note past probation that was never loaded (archive candidate, section 6.8)
 
 ### 6.5 Routing
 
 A decision goes to a decision note only if someone will later ask why the system is shaped
 this way. A world fact goes to the spine or a note, never only to a ticket. A lesson about
-how to work goes to a charter through the steward, never to a log.
+how to work goes to a charter through a steward proposal and `wuwei promote`, never to a log.
 
 ### 6.6 Consolidation
 
-Daily: the steward folds the retro into charters at close, and the Stop guard verifies it
-landed. Weekly: `/wuwei consolidate` as a scheduled task finds contradictions and stale
-summaries across notes and archives days older than 30.
+Daily: the steward folds the retro into charter proposals at close, `wuwei promote` lands
+them, and the Stop guard verifies they landed. Weekly: `/wuwei consolidate` as a scheduled
+task finds contradictions, near-duplicates and stale summaries across notes and local
+charter rules, folds duplicates under one survivor, and archives days older than 30. It
+snapshots `memory/` and `charters/` before it starts, since a fold is the one change a
+rename cannot undo.
 
 ### 6.7 Claude's own memory
 
 Holds user preferences and working style only. Workspace facts stay in the workspace, so
 nothing mixes across workspaces.
+
+### 6.8 Self-maintaining procedure (owner, 2026-09-28)
+
+Mechanisms adapted from autoharness (tigerless-labs/autoharness, MIT), applied to charters
+and notes rather than to Claude skills, so procedure keeps one home.
+
+- Propose, then promote. Seats and the steward never edit a charter override or an
+  existing note directly; they write a proposal to `days/<date>/proposals/` (target, action
+  `add`, `patch`, `fold` or `archive`, the new text or delta, reason, evidence path).
+  `wuwei promote` is the single writer: it lints the proposal and lands it by atomic
+  rename, or rejects it with the reason.
+- Promote lint: the target is WUWEI-authored (a local override in `.wuwei/charters/` or a
+  note), never a plugin charter or a user file; a rule body stays under its line cap; the
+  evidence path exists; an `add` that duplicates an existing rule is rejected in favour of a
+  `patch` of that rule; a lesson that contradicts an existing rule must rewrite that rule
+  in the same proposal; a `fold` names a live survivor.
+- Ledger. Every landed or rejected proposal appends one line to `memory/ledger.jsonl`:
+  target, action, reason, evidence, date. `memory/CHANGELOG.md` stays the human-readable
+  record; the ledger traces a rule back to the day that taught it.
+- Adherence, not age. A note's loads are counted from `traces.jsonl` (a seat read it); a
+  guard-backed rule's use is its refusals. A new note or rule is in probation for
+  `memory.probation_days` working days (default 10) and cannot be archived. After
+  probation, one never loaded and never fired is an archive candidate for the next
+  consolidate. The index is bounded by `memory.max_notes` (default 60); past it, the lowest
+  load rates are archived first. Archive moves to `memory/archive/`, never deletes.
+- Visible outcome. The SessionStart payload carries one line for the last promote run: what
+  landed and what was rejected, with the reason, so a lost lesson is never silent.
 
 ## 7. Security integration (ZIRAN)
 
@@ -312,8 +546,8 @@ that it did nothing and returns exit 2 where a measurement was expected.
 
 ## 10. Testing
 
-- Guards: table tests for exits 0, 1 and 2, plus a mutation test per guard that disables it
-  and asserts a test goes red.
+- Guards: table tests for exits 0, 1 and 2, including every bypass form in section 4.5,
+  plus a mutation test per guard that disables it and asserts a test goes red.
 - Hooks: recorded Claude Code hook payloads piped through each shim; assert allow or block
   and the message.
 - Agents: a golden test regenerates `agents/` from `charters/` and fails on drift; the ZIRAN
