@@ -491,6 +491,22 @@ def test_f12_ordinary_directory_operations(workspace, script):
     assert check_bash(payload(workspace, 'Bash', command=script))[0] == 0
 
 
+@pytest.mark.parametrize('script', [
+    'rm -rf .wuwei/memory',
+    'rm -rf .wuwei/memory/notes',
+    'rm -rf .wuwei/charters',
+    'mv .wuwei/memory /tmp/m',
+    'rm .wuwei/memory/archive/x.md',
+])
+def test_promotion_state_containers_are_protected(workspace, script):
+    from wuwei.guards.protect_state import check_bash
+    (workspace / '.wuwei/memory/notes').mkdir(parents=True)
+    (workspace / '.wuwei/memory/archive').mkdir()
+    (workspace / '.wuwei/memory/archive/x.md').write_text('Archived note\n')
+    (workspace / '.wuwei/charters').mkdir()
+    assert check_bash(payload(workspace, 'Bash', command=script))[0] == 1
+
+
 @pytest.mark.parametrize('script,expected', [
     ('git apply changes.patch', 0), ('git -C {root} apply changes.patch', 1),
     ('git -C{root}/inside apply changes.patch', 1),

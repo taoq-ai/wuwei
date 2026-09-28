@@ -37,6 +37,8 @@ def run_add(args):
         print(f'wuwei note: {exc}', file=sys.stderr)
         return FINDINGS
     root = find_workspace()
+    if (root / '.wuwei').is_symlink():
+        raise ValueError('.wuwei must not be a symlink')
     directory = root / '.wuwei/memory/notes'
     if directory.is_symlink() or not directory.resolve().is_relative_to(root):
         raise ValueError('notes directory must be inside the workspace and not a symlink')

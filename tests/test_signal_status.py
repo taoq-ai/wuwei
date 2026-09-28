@@ -185,7 +185,8 @@ def test_emitted_kinds_have_intended_tiers():
                 'seat launched': 'silent', 'brief written': 'silent',
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
                 'retro.gap': 'nudge', 'seat stop unmatched': 'nudge',
-                'hook.post_tool_use_error': 'nudge', 'verdict.rejected': 'nudge',
+                'hook.post_tool_use_error': 'nudge', 'hook.refusal': 'silent',
+                'verdict.rejected': 'nudge',
                 'adapter: none': 'nudge', 'reply: acknowledged': 'silent',
                 'watch: sweep': 'nudge'}
     assert emitted == set(expected)

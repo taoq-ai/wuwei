@@ -145,12 +145,12 @@ def test_index_invalid_utf8_report_replaces_stale_index(tmp_path):
     assert 'stale' not in index.read_text()
 
 
-def test_payload_has_no_promote_line(tmp_path):
+def test_payload_has_empty_promote_line(tmp_path):
     root = workspace(tmp_path)
     (root / '.wuwei/memory/index.md').write_text('')
     result = cli(root, 'payload')
     assert result.returncode == 0, result.stderr
-    assert 'Last promote:' not in result.stdout
+    assert 'Last promote: none' in result.stdout
 
 
 @pytest.mark.parametrize('location', ['days/day', 'archive/day', 'days/report'])

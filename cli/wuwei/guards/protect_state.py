@@ -9,7 +9,7 @@ from wuwei.guards import Guard
 
 
 _STATE_HINT = 'State files are protected; use the wuwei CLI for state changes.'
-_STATE_MENTION = re.compile(r'state\.json|events\.jsonl|\.wuwei', re.I)
+_STATE_MENTION = re.compile(r'state\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|\.wuwei', re.I)
 _STATE_GLOB = re.compile(r'\.w[\w*?\[]', re.I)
 _DYNAMIC = re.compile(r'\$\(|[`*?\[]')
 _WRITE_CONSTRUCT = re.compile(
@@ -45,9 +45,20 @@ def _protected_name(path, directories=False):
         tail = parts[index + 1:]
         if tail and tail[0] == 'archive':
             return True
+        if tail[:2] == ('memory', 'archive'):
+            return True
         if directories and (not tail or (len(tail) in (1, 2) and tail[0] == 'days')):
             return True
-        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'events.jsonl'):
+        if directories and tail in (('memory',), ('memory', 'notes'),
+                                    ('memory', 'archive'), ('charters',)):
+            return True
+        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'events.jsonl', 'traces.jsonl'):
+            return True
+        if tail == ('memory', 'ledger.jsonl'):
+            return True
+        if len(tail) == 2 and tail[0] == 'charters' and tail[1].endswith('.md'):
+            return True
+        if len(tail) == 3 and tail[:2] == ('memory', 'notes') and tail[2].endswith('.md'):
             return True
     return False
 
