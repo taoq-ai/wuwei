@@ -20,6 +20,7 @@ CALLS = [
     ('code_host', 'comment', ('ref', 'text', 'thread'), False),
     ('code_host', 'merge', ('ref', 'sha'), False),
     ('code_host', 'revert_pr', ('ref',), False),
+    ('vcs', 'resolve', ('repo', 'sha'), True),
     ('vcs', 'identity', ('repo',), True),
     ('vcs', 'head', ('repo',), True),
     ('vcs', 'merge_base', ('repo', 'ref'), True),
@@ -95,7 +96,7 @@ def test_module_contracts_allow_extra_import(monkeypatch):
 def test_none_call(tmp_path, monkeypatch, capsys, kind, call, parameters, measurement):
     api = registry()
     module = importlib.import_module(f'adapters.{kind}.none')
-    operation = getattr(module, call)
+    operation = inspect.unwrap(getattr(module, call))
     assert tuple(inspect.signature(operation).parameters) == (*parameters, 'root')
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00Z')
     (tmp_path / '.wuwei').mkdir()
@@ -135,6 +136,14 @@ def test_none_event_failure(tmp_path, monkeypatch, capsys, failure):
     assert result.exit == 2 and result.data is None
     assert str(failure) in result.reason
     assert result.reason in capsys.readouterr().err
+
+
+def test_none_port_without_workspace_creates_nothing(tmp_path):
+    none = importlib.import_module('adapters.scanner.none')
+    result = none.audit('probe', root=tmp_path)
+    assert result.exit == 2
+    assert 'could not record adapter event' in result.reason
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_registry_loads_config_selection(tmp_path):

@@ -36,6 +36,28 @@ def events(root):
     return [json.loads(line) for line in (day(root) / 'events.jsonl').read_text().splitlines()]
 
 
+@pytest.mark.parametrize('operation', ['event', 'event_directory', 'state'])
+@pytest.mark.parametrize('missing_root', [False, True])
+def test_writes_require_existing_workspace(tmp_path, operation, missing_root):
+    from wuwei import state
+    root = tmp_path / 'missing' if missing_root else tmp_path
+    with pytest.raises(FileNotFoundError):
+        if operation == 'event':
+            state.append_event('probe', root=root)
+        elif operation == 'event_directory':
+            state.append_event('probe', directory=day(root))
+        else:
+            state.set_state('cap', 2, root=root)
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize('args', [('event', 'probe'), ('state', 'set', 'cap', '2')])
+def test_cli_writes_without_workspace_exit_two(tmp_path, monkeypatch, args):
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    assert cli(*args).returncode == 2
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_get_set_defaults_and_audit(workspace):
     result = cli('state', 'get')
     assert result.returncode == 0, result.stderr
@@ -448,3 +470,23 @@ def test_event_failure_restores_readonly_mode(workspace, monkeypatch, failure):
     with pytest.raises(OSError, match='event .* failed'):
         state.append_event('failed')
     assert path.stat().st_mode & 0o777 == 0o444
+
+
+def test_reserved_namespaces_are_owned_by_later_features():
+    from wuwei import state
+    assert not state.RESERVED
+
+
+@pytest.mark.parametrize('path,value', [
+    ('example_records.A', 'PASS'), ('example_records', {}),
+    ('items.A.example_records', {'arch': 'PASS'}),
+    ('items', {'A': {'example_records': {'arch': 'PASS'}}}),
+])
+def test_generic_state_reservation_mechanism(workspace, monkeypatch, path, value):
+    from wuwei import state
+    monkeypatch.setattr(state, 'RESERVED', {'example_records'})
+    with pytest.raises(state.StateError, match='reserved'):
+        state.set_state(path, value, workspace)
+    with pytest.raises(state.StateError, match='reserved'):
+        state.write_state(lambda data: data.update(example_records=value), workspace)
+    assert not (day(workspace) / 'state.json').exists()

@@ -116,7 +116,8 @@ def append_event(kind, payload=None, root=None, *, directory=None):
     """Append one event using the shared clock, never a caller timestamp."""
     payload = _event_payload(kind, payload)
     directory = workspace.day_dir(root) if directory is None else Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
+    directory.parent.mkdir(exist_ok=True)
+    directory.mkdir(exist_ok=True)
     with (directory / 'state.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         _append_event(kind, payload, directory)
@@ -143,22 +144,46 @@ def _append_event(kind, payload, directory):
             path.chmod(0o444)
 
 
-def write_state(update, root=None, *, kind='state.write', payload=None):
+def _write_state(update, root=None, *, reserved=True, kind='state.write', payload=None):
     """Apply a callback that mutates fresh state while holding the writer lock."""
     directory = workspace.day_dir(root)
     payload = _event_payload(kind, payload)
-    directory.mkdir(parents=True, exist_ok=True)
+    directory.parent.mkdir(exist_ok=True)
+    directory.mkdir(exist_ok=True)
     # ponytail: POSIX-only sidecar flock; add a platform adapter if Windows is required.
     with (directory / 'state.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         data = read_state(directory=directory)
         previous = deepcopy(data) if (directory / 'state.json').exists() else None
+        trusted_before = _reserved(data)
         update(data)
+        if reserved and _reserved(data) != trusted_before:
+            raise StateError('reserved state fields require a dedicated producer')
         data = _validate(data, previous)
         encoded = json.dumps(data, allow_nan=False) + '\n'
         workspace.atomic_write(directory / 'state.json', encoded, mode=0o444)
         _append_event(kind, payload, directory)
         return data
+
+
+# Features add only the namespaces they own; #8 will reserve fast_checks.
+RESERVED = set()
+
+
+def _reserved(data, path=()):
+    records = {}
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key in RESERVED:
+                records[(*path, key)] = deepcopy(value)
+            else:
+                records.update(_reserved(value, (*path, key)))
+    return records
+
+
+def write_state(update, root=None, *, kind='state.write', payload=None):
+    """Generic writes cannot change namespaces reserved by dedicated producers."""
+    return _write_state(update, root, kind=kind, payload=payload)
 
 
 def _parts(path):
@@ -180,6 +205,8 @@ def get_state(path=None, root=None):
 
 def set_state(path, value, root=None):
     parts = _parts(path)
+    if RESERVED.intersection(parts):
+        raise StateError('reserved state path requires a dedicated producer')
 
     def update(data):
         parent = data

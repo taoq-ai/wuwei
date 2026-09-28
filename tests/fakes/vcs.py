@@ -6,6 +6,9 @@ from fakes.replay import Recorder
 class Fake(Recorder):
     port = 'vcs'
 
+    def resolve(self, repo, sha, root=None):
+        return self._call('resolve', (repo, sha), root)
+
     def identity(self, repo, root=None):
         return self._call('identity', (repo,), root)
 

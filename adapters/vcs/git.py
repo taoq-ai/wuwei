@@ -18,11 +18,17 @@ _REPOSITORY_ENV = {
 }
 
 
+class UnknownCommit(ValueError):
+    pass
+
+
 def _operation(function):
     @wraps(function)
     def call(*args, **kwargs):
         try:
             return Result(0, function(*args, **kwargs))
+        except UnknownCommit:
+            return Result(1, None, 'git.resolve: unknown commit')
         except (OSError, subprocess.SubprocessError, ValueError, TypeError, IndexError, RecursionError) as exc:
             detail = str(exc) if type(exc) is ValueError else type(exc).__name__
             reason = f'git.{function.__name__}: could not run: {detail}'
@@ -40,6 +46,8 @@ def _run(repo, *args):
             allowed = True
         case ('rev-parse', '--verify', 'HEAD^{commit}'):
             allowed = True
+        case ('rev-parse', '--verify', '--quiet', rev):
+            allowed = bool(re.fullmatch(r'[0-9a-fA-F]{7,64}\^\{commit\}', rev))
         case ('merge-base', 'HEAD', rev):
             allowed = bool(_revision(rev))
         case ('status', '--porcelain=v1', '-z', '--untracked-files=all'):
@@ -60,6 +68,8 @@ def _run(repo, *args):
                             capture_output=True, timeout=TIMEOUT,
                             env={k: v for k, v in os.environ.items()
                                  if k not in _REPOSITORY_ENV and not k.startswith('GIT_CONFIG')})
+    if result.returncode == 1 and args[:3] == ('rev-parse', '--verify', '--quiet'):
+        raise UnknownCommit()
     if result.returncode:
         raise ValueError(f'git exited {result.returncode}')
     return result.stdout.decode('utf-8', errors='surrogateescape')
@@ -164,3 +174,13 @@ def worktree_add(repo, branch, path, root=None):
         raise ValueError('missing worktree path')
     _run(repo, 'worktree', 'add', '-b', branch, '--', path)
     return {'branch': branch, 'path': path}
+
+
+@_operation
+def resolve(repo, sha, root=None):
+    if not isinstance(sha, str) or not re.fullmatch('[0-9a-fA-F]{7,64}', sha):
+        raise ValueError('invalid commit ID')
+    resolved = _sha(_run(repo, 'rev-parse', '--verify', '--quiet', sha + '^{commit}'))
+    if not resolved.lower().startswith(sha.lower()):
+        raise UnknownCommit()
+    return {'sha': resolved}

@@ -23,7 +23,7 @@ PARAMETERS = {
                   'create_pr': ('draft',), 'request_reviewers': ('ref', 'logins'),
                   'comment': ('ref', 'text', 'thread'), 'merge': ('ref', 'sha'),
                   'revert_pr': ('ref',)},
-    'vcs': {'identity': ('repo',), 'head': ('repo',), 'merge_base': ('repo', 'ref'),
+    'vcs': {'resolve': ('repo', 'sha'), 'identity': ('repo',), 'head': ('repo',), 'merge_base': ('repo', 'ref'),
             'status': ('repo',), 'diff_stat': ('repo', 'base', 'head'),
             'log_since': ('repo', 'sha'), 'worktree_add': ('repo', 'branch', 'path')},
 }
@@ -89,3 +89,29 @@ def record_none(kind, call, root=None, *, measurement=True):
         reason = f'could not record adapter event: {exc}'
     print(f'{kind}.{call}: {reason}', file=sys.stderr)
     return Result(UNRUN, None, reason)
+
+
+def outward_operation(kind):
+    """Enforce policy at text-bearing ports, including direct module callers."""
+    from functools import wraps
+    from inspect import signature
+
+    def decorate(operation):
+        parameters = signature(operation)
+
+        @wraps(operation)
+        def call(*args, **kwargs):
+            from wuwei import outward, workspace
+            try:
+                inputs = dict(parameters.bind(*args, **kwargs).arguments)
+                start = inputs.pop('root', None)
+                root = workspace.find_workspace(start)
+                config = workspace.load_config(root)
+                code, reason = outward.check_call(inputs, root, config, {kind})
+                if code:
+                    return Result(code, None, reason)
+            except (OSError, ValueError, TypeError, KeyError, AttributeError):
+                return Result(UNRUN, None, 'outward: cannot validate port call')
+            return operation(*args, **kwargs)
+        return call
+    return decorate
