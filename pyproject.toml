@@ -1,0 +1,14 @@
+[project]
+name = "wuwei"
+description = "Autonomous delivery where the safe path is the default one."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{name = "TaoQ AI Labs"}]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+pythonpath = ["cli"]
+testpaths = ["tests"]
