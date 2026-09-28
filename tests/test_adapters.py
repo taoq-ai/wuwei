@@ -46,6 +46,7 @@ CALLS = [
     ('runtime', 'dispatch', ('role', 'brief_path', 'worktree', 'write'), False),
     ('runtime', 'status', ('job',), True),
     ('runtime', 'result', ('job',), True),
+    ('runtime', 'continue_job', ('job', 'feedback'), False),
     ('scanner', 'audit', ('path',), True),
     ('scanner', 'gate', ('result', 'threshold'), True),
     ('scanner', 'traces', ('file',), True),
@@ -179,15 +180,14 @@ def test_registry_rejects_unknown_selection(kind, name):
         api.load(kind, {'adapters': {kind: name}})
 
 
-def test_runtime_default_is_explicitly_unavailable(tmp_path):
+def test_runtime_default_is_available(tmp_path):
     api = registry()
     from wuwei.workspace import load_config
 
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('')
     assert hasattr(api, 'load'), 'adapter loading is missing'
-    with pytest.raises(ValueError, match='runtime.*claude.*#26'):
-        api.load('runtime', load_config(tmp_path))
+    assert api.load('runtime', load_config(tmp_path)).__name__ == 'adapters.runtime.claude'
 
 
 def test_registry_discovers_new_modules(tmp_path, monkeypatch):

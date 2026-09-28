@@ -92,14 +92,14 @@ def check_write(payload):
         return record_rejection(path, UNRUN, message, root=root) if root else (UNRUN, message)
 
 
-def check_retro(payload):
+def check_retro(payload, *, root=None):
     # Keep persistence imports off unrelated hooks' startup path.
     from hashlib import sha256
     import json
     from wuwei import state, workspace
 
     try:
-        root = workspace_root(payload)
+        root = workspace_root(payload) if root is None else workspace.find_workspace(root)
         if root is None:
             return CLEAN, ''
         agent_type = payload.get('agent_type')

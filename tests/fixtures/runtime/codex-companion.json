@@ -1,0 +1,5 @@
+{
+  "task": {"jobId": "j1", "status": "queued", "title": "Codex task", "summary": "Do task", "logFile": "/tmp/j1.log"},
+  "status": {"workspaceRoot": "WORKTREE", "job": {"id": "j1", "status": "completed", "workspaceRoot": "WORKTREE"}},
+  "result": {"job": {"id": "j1", "status": "completed"}, "storedJob": {"result": {"rawOutput": "Blocked: none\nGap: none\nChange: none"}}}
+}
