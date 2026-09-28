@@ -22,7 +22,7 @@ def run(args):
         return FINDINGS
     template = Path(__file__).resolve().parents[3] / "templates/workspace"
     destination.parent.mkdir(parents=True, exist_ok=True)
-    staging = tempfile.mkdtemp(dir=destination.parent)
+    staging = tempfile.mkdtemp(prefix=".wuwei-init-", dir=destination.parent)
     try:
         shutil.copytree(template, staging, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns(".gitkeep"))

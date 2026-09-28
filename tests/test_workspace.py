@@ -139,27 +139,27 @@ banned_characters = ["!"]
 [outward.max_length]
 "team.chat" = 500
 [adapters]
-tracker = "custom"
-chat = "slack"
-review_bot = "future"
-runtime = "codex"
-scanner = "ziran"
+tracker = "none"
+chat = "none"
+review_bot = "none"
+runtime = "none"
+scanner = "none"
 ''')
     config = load_config(tmp_path)
     assert config['repos'][0]['default_branch'] == 'main'
     assert config['repos'][1]['fast_checks'] == []
     assert config['outward']['max_length']['team.chat'] == 500
-    assert config['adapters']['tracker'] == 'custom'
+    assert config['adapters']['tracker'] == 'none'
     assert cli(tmp_path, 'config', 'check').returncode == 0
 
 
 @pytest.mark.parametrize('text,key,line', [
     ('cap = 1\nfoo.bar = 1', 'foo', 2),
     ('[owner]\nname="x"\n[host]\nextra.a = 1', 'host.extra', 4),
-    ('repos = [{name="a"},\n {pth="b"}]', 'repos.1.pth', 2),
+    ('repos = [{name="a", path="/a"},\n {pth="b"}]', 'repos.1.pth', 2),
     ('# capp is a typo\ncapp = 2\n', 'capp', 2),
     ('[owner]\nname = "a"\n[host]\nseatz = 2\n', 'host.seatz', 4),
-    ('[[repos]]\nname = "a"\n[[repos]]\npth = "b"\n', 'repos.1.pth', 4),
+    ('[[repos]]\nname = "a"\npath = "/a"\n[[repos]]\npth = "b"\n', 'repos.1.pth', 5),
     ('[adaptrs]\nruntime = "claude"\n', 'adaptrs', 1),
     ('[outward.max_lenght]\nchat = 2\n', 'outward.max_lenght', 1),
     ('owner.nmae = "a"\n', 'owner.nmae', 1),
@@ -188,7 +188,7 @@ def test_unknown_key_without_known_line(tmp_path, monkeypatch):
     ('cap = true', 'cap'), ('cap = 0', 'cap'), ('cap = 1.5', 'cap'),
     ('profile = "relaxed"', 'profile'), ('owner = "Pat"', 'owner'),
     ('repos = ["app"]', 'repos.0'),
-    ('[[repos]]\nfast_checks = [1]', 'repos.0.fast_checks.0'),
+    ('[[repos]]\nname="a"\npath="/a"\nfast_checks = [1]', 'repos.0.fast_checks.0'),
     ('[owner]\npronouns = []', 'owner.pronouns'),
     ('[host]\nfree_memory_mb = -1', 'host.free_memory_mb'),
     ('[host]\nseats = 0', 'host.seats'),
@@ -302,3 +302,94 @@ def test_invalid_clock(monkeypatch, timestamp):
     monkeypatch.setenv('WUWEI_NOW', timestamp)
     with pytest.raises(ValueError, match='WUWEI_NOW.*ISO'):
         now()
+
+
+@pytest.mark.parametrize('kind', ['tracker', 'chat', 'review_bot', 'runtime', 'scanner'])
+def test_unknown_adapter_name(tmp_path, kind):
+    write_config(tmp_path, f'[adapters]\n{kind} = "missing"\n')
+    result = cli(tmp_path, 'config', 'check')
+    assert result.returncode == 1, result.stderr
+    assert f'adapters.{kind}' in result.stderr
+    assert 'known names: none' in result.stderr
+    assert 'line 2' in result.stderr
+
+
+def test_unknown_adapter_without_known_line(tmp_path, monkeypatch):
+    from wuwei import workspace
+    write_config(tmp_path, '[adapters]\nscanner = "missing"')
+    monkeypatch.setattr(workspace, '_key_line', lambda raw, path: None)
+    with pytest.raises(workspace.ConfigError, match='adapters.scanner.*known names: none') as error:
+        workspace.load_config(tmp_path)
+    assert 'at line' not in str(error.value)
+
+
+@pytest.mark.parametrize('text,key,line', [
+    ('[[repos]]\nname = "app"\n', 'repos.0.path', 1),
+    ('[[repos]]\npath = "../app"\n', 'repos.0.name', 1),
+    ('[[repos]]\nname = "app"\npath = ""\n', 'repos.0.path', 3),
+    ('[[repos]]\nname = " "\npath = "../app"\n', 'repos.0.name', 2),
+    ('[[repos]]\nname = "app"\npath = " "\n', 'repos.0.path', 3),
+    ('[[repos]]\nname = ""\npath = "../app"\n', 'repos.0.name', 2),
+    ('[[repos]]\nname = "a"\npath = "/a"\n[[repos]]\nname = "b"\n', 'repos.1.path', 4),
+    ('[[repos]]\nname = "a"\npath = "/a"\n[[repos]]\nname = "b"\npath = ""', 'repos.1.path', 6),
+])
+def test_required_repository_fields(tmp_path, text, key, line):
+    write_config(tmp_path, text)
+    result = cli(tmp_path, 'config', 'check')
+    assert result.returncode == 1, result.stderr
+    assert f'{key}: required' in result.stderr
+    assert f'line {line}' in result.stderr
+
+
+def test_required_repository_field_without_known_line(tmp_path, monkeypatch):
+    from wuwei import workspace
+    write_config(tmp_path, '[[repos]]\nname = "app"\n')
+    monkeypatch.setattr(workspace, '_key_line', lambda raw, path: None)
+    with pytest.raises(workspace.ConfigError, match='repos.0.path: required') as error:
+        workspace.load_config(tmp_path)
+    assert 'at line' not in str(error.value)
+
+
+@pytest.mark.parametrize('text,line', [
+    ('[[repos]]\nname = "app"\npath = "/a"\n[[repos]]\nname = "app"\npath = "/b"', 5),
+    ('repos = [{name="app", path="/a"}, {name="app", path="/b"}]', 1),
+])
+def test_duplicate_repository_names(tmp_path, text, line):
+    write_config(tmp_path, text)
+    result = cli(tmp_path, 'config', 'check')
+    assert result.returncode == 1, result.stderr
+    assert 'repos.1.name: duplicate' in result.stderr and 'app' in result.stderr
+    assert f'line {line}' in result.stderr
+
+
+@pytest.mark.parametrize('alias', ['same', 'absolute', 'normalized', 'symlink', 'home'])
+def test_duplicate_repository_paths(tmp_path, alias):
+    checkout = tmp_path / 'checkout'
+    checkout.mkdir()
+    (tmp_path / 'alias').symlink_to(checkout, target_is_directory=True)
+    first = str(Path.home()) if alias == 'home' else 'checkout'
+    second = {'same': 'checkout', 'absolute': str(checkout),
+              'normalized': './checkout/../checkout', 'symlink': 'alias', 'home': '~'}[alias]
+    write_config(tmp_path, f'[[repos]]\nname = "app"\npath = "{first}"\n'
+                 f'[[repos]]\nname = "alias"\npath = "{second}"\n')
+    result = cli(checkout, 'config', 'check', WUWEI_WORKSPACE=str(tmp_path))
+    assert result.returncode == 1, result.stderr
+    assert 'repos.1.path: duplicate' in result.stderr
+    assert 'line 6' in result.stderr
+
+
+def test_init_staging_prefix(tmp_path, monkeypatch):
+    from argparse import Namespace
+    from wuwei.commands import init
+
+    copytree = init.shutil.copytree
+    staging = []
+
+    def observe(source, destination, *args, **kwargs):
+        staging.append(Path(destination))
+        return copytree(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(init.shutil, 'copytree', observe)
+    assert init.run(Namespace(path=str(tmp_path))) == 0
+    assert staging[0].name.startswith('.wuwei-init-')
+    assert not staging[0].exists()
