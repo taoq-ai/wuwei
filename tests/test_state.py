@@ -65,7 +65,7 @@ def test_get_set_defaults_and_audit(workspace):
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == {
         'items': {}, 'cap': 1, 'seat_policy': {}, 'envelope': {},
-        'claimed_prs': [], 'raised_prs': [], 'gate_verdicts': {},
+        'claimed_prs': [], 'raised_prs': [], 'gate_verdicts': {}, 'seats': {},
     }
     assert not day(workspace).exists()
     for path, value in [('items.A', {}), ('cap', 3), ('seat_policy.builder', {'model': 'x'}),
@@ -479,9 +479,15 @@ def test_event_failure_restores_readonly_mode(workspace, monkeypatch, failure, n
     assert path.stat().st_mode & 0o777 == 0o444
 
 
-def test_reserved_namespaces_are_owned_by_later_features():
+@pytest.mark.parametrize('path,value', [
+    ('seats', '{}'), ('seats.b.status', '"done"'),
+])
+def test_seat_reservations_require_dedicated_writer(workspace, path, value):
     from wuwei import state
-    assert not state.RESERVED
+    result = cli('state', 'set', path, value)
+    assert result.returncode == 1
+    assert 'reserved' in result.stderr
+    assert state.read_state(workspace)['seats'] == {}
 
 
 @pytest.mark.parametrize('path,value', [

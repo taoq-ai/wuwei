@@ -18,7 +18,11 @@ SCHEMA = {
     "repos": [{"name": (str, None), "path": (str, None),
                "default_branch": (str, "main"), "fast_checks": [(str, "")]}],
     "cap": (int, 1, 1),
-    "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 1, 1)},
+    "brief": {"remote": (str, "origin"),
+              "prior_branch_pattern": (str, "*{item}*"),
+              "full_path_patterns": [(str, "")]},
+    "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 1, 1),
+             "reservation_timeout_seconds": (int, 14400, 1)},
     "memory": {"max_notes": (int, 60, 1)},
     "profile": (str, "strict", ("strict", "standard")),
     "boundary": {"*": (str, "")},
@@ -42,7 +46,7 @@ SCHEMA = {
     "adapters": {"tracker": (str, "none"), "chat": (str, "none"),
                  "review_bot": (str, "none"), "runtime": (str, "claude"),
                  "scanner": (str, "none"), "code_host": (str, "github"),
-                 "vcs": (str, "git")},
+                 "vcs": (str, "git"), "host": (str, "local")},
 }
 
 
@@ -205,7 +209,8 @@ def load_config(root=None):
     path = (find_workspace() if root is None else Path(root)) / ".wuwei/config.toml"
     try:
         raw = path.read_text(encoding="utf-8")
-        config = _validate(tomllib.loads(raw), SCHEMA, (), raw)
+        parsed = tomllib.loads(raw)
+        config = _validate(parsed, SCHEMA, (), raw)
         repo_names = set()
         repo_paths = set()
         for index, repo in enumerate(config['repos']):

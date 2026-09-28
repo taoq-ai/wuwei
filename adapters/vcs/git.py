@@ -52,6 +52,8 @@ def _run(repo, *args):
             allowed = bool(_revision(rev))
         case ('status', '--porcelain=v1', '-z', '--untracked-files=all'):
             allowed = True
+        case ('branch', '--list', '--format=%(refname:short)', '--', pattern):
+            allowed = bool(_revision(pattern))
         case ('diff', '--numstat', '-z', '--no-renames', base, head, '--'):
             allowed = bool(_revision(base) and _revision(head))
         case ('log', '-z', format_arg, rev, '--'):
@@ -184,3 +186,12 @@ def resolve(repo, sha, root=None):
     if not resolved.lower().startswith(sha.lower()):
         raise UnknownCommit()
     return {'sha': resolved}
+
+
+@_operation
+def branches(repo, pattern, root=None):
+    names = _run(repo, 'branch', '--list', '--format=%(refname:short)', '--',
+                 _revision(pattern)).splitlines()
+    if any(not name or any(c.isspace() or ord(c) < 32 for c in name) for name in names):
+        raise ValueError('invalid branch name')
+    return names

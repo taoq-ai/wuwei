@@ -24,7 +24,7 @@ PHASES = {
 BUILD_PHASES = ('spec', 'implement', 'fix')
 STATUSES = ('queued', 'running', 'blocked', 'done')
 DAY_DEFAULTS = {'items': {}, 'cap': 1, 'seat_policy': {}, 'envelope': {},
-                'claimed_prs': [], 'raised_prs': [], 'gate_verdicts': {}}
+                'claimed_prs': [], 'raised_prs': [], 'gate_verdicts': {}, 'seats': {}}
 ITEM_DEFAULTS = {'lane': 'build', 'status': 'queued', 'phase': 'planned',
                  'flags': {'trust_surface': False, 'boundary_relevant': False,
                            'agent_surface': False}, 'gates': {}, 'note': ''}
@@ -166,9 +166,9 @@ def _append_jsonl(path, record):
             path.chmod(0o444)
 
 
-def _write_state(update, root=None, *, reserved=True, kind='state.write', payload=None):
+def _write_state(update, root=None, *, reserved=True, kind='state.write', payload=None, directory=None):
     """Apply a callback that mutates fresh state while holding the writer lock."""
-    directory = workspace.day_dir(root)
+    directory = workspace.day_dir(root) if directory is None else Path(directory)
     payload = _event_payload(kind, payload)
     directory.parent.mkdir(exist_ok=True)
     directory.mkdir(exist_ok=True)
@@ -189,7 +189,7 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
 
 
 # Features add only the namespaces they own; #8 will reserve fast_checks.
-RESERVED = set()
+RESERVED = {'seats'}
 
 
 def _reserved(data, path=()):
@@ -253,3 +253,11 @@ def transition(item, phase, root=None):
 
     return write_state(update, root, kind='state.transition',
                        payload={'item': item, 'phase': phase})
+
+
+def stop_seat(name, root=None, *, directory=None):
+    """Release a reservation while preserving the used brief and seat identity."""
+    def update(data):
+        data['seats'][name]['status'] = 'stopped'
+    return _write_state(update, root, reserved=False, kind='seat stopped',
+                        payload={'name': name}, directory=directory)

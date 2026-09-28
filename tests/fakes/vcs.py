@@ -9,6 +9,9 @@ class Fake(Recorder):
     def resolve(self, repo, sha, root=None):
         return self._call('resolve', (repo, sha), root)
 
+    def branches(self, repo, pattern, root=None):
+        return self._call('branches', (repo, pattern), root)
+
     def identity(self, repo, root=None):
         return self._call('identity', (repo,), root)
 

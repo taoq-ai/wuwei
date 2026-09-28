@@ -105,12 +105,15 @@ def test_config_defaults_and_independence(tmp_path):
     assert outward['max_length'] == {}
     assert config == {
         'owner': {'name': '', 'pronouns': '', 'handles': []}, 'repos': [], 'cap': 1,
-        'host': {'free_memory_mb': 1024, 'seats': 1}, 'profile': 'strict',
+        'host': {'free_memory_mb': 1024, 'seats': 1, 'reservation_timeout_seconds': 14400}, 'profile': 'strict',
         'memory': {'max_notes': 60},
+        'brief': {'remote': 'origin',
+                  'prior_branch_pattern': '*{item}*',
+                  'full_path_patterns': []},
         'boundary': {}, 'environments': {},
         'adapters': {'tracker': 'none', 'chat': 'none', 'review_bot': 'none',
                      'runtime': 'claude', 'scanner': 'none',
-                     'code_host': 'github', 'vcs': 'git'},
+                     'code_host': 'github', 'vcs': 'git', 'host': 'local'},
     }
     outward['patterns'].append('changed')
     assert 'changed' not in load_config(tmp_path)['outward']['patterns']

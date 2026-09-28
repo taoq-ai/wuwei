@@ -10,6 +10,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CALLS = [
+    ('host', 'free_memory', (), True),
     ('code_host', 'pr', ('ref',), True),
     ('code_host', 'checks', ('ref', 'sha'), True),
     ('code_host', 'reviews', ('ref',), True),
@@ -28,6 +29,7 @@ CALLS = [
     ('vcs', 'diff_stat', ('repo', 'base', 'head'), True),
     ('vcs', 'log_since', ('repo', 'sha'), True),
     ('vcs', 'worktree_add', ('repo', 'branch', 'path'), False),
+    ('vcs', 'branches', ('repo', 'pattern'), True),
     ('tracker', 'claim', ('item',), False),
     ('tracker', 'transition', ('item', 'state'), False),
     ('tracker', 'create', ('draft',), False),
@@ -155,7 +157,7 @@ def test_registry_loads_config_selection(tmp_path):
     config = load_config(tmp_path)
     assert hasattr(api, 'known'), 'adapter discovery is missing'
     for kind in api.INTERFACES:
-        expected = {'code_host': 'github', 'vcs': 'git'}.get(kind, 'none')
+        expected = {'code_host': 'github', 'vcs': 'git', 'host': 'local'}.get(kind, 'none')
         assert expected in api.known(kind)
         assert config['adapters'][kind] == expected
         assert api.load(kind, config) is importlib.import_module(f'adapters.{kind}.{expected}')
