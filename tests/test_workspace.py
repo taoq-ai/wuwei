@@ -14,7 +14,7 @@ def cli(cwd, *args, **env):
     environment = {k: v for k, v in os.environ.items()
                    if k not in ('WUWEI_WORKSPACE', 'WUWEI_NOW')}
     return subprocess.run(
-        [sys.executable, '-S', '-m', 'wuwei', *args], cwd=cwd,
+        [sys.executable, '-S', '-P', '-m', 'wuwei', *args], cwd=cwd,
         env={**environment, 'PYTHONPATH': str(ROOT / 'cli'), **env},
         capture_output=True, text=True,
     )
@@ -415,3 +415,206 @@ def test_config_requires_default_branch(tmp_path):
 def test_init_records_runtime_location(tmp_path):
     assert cli(tmp_path, 'init').returncode == 0
     assert (tmp_path / '.wuwei/executable').read_text().strip() == str(ROOT / 'bin/wuwei')
+
+
+def previous_workspace(root):
+    directory = root / '.wuwei'
+    (directory / 'charters').mkdir(parents=True)
+    # Shape from the first workspace template, before memory, brief and deploy settings.
+    (directory / 'config.toml').write_text('''# Owner comment stays.
+cap = 3
+profile = "standard"
+repos = []
+[owner]
+name = "Pat"
+pronouns = "they/them"
+[host]
+free_memory_mb = 2048
+seats = 2
+[adapters]
+tracker = "none"
+chat = "none"
+review_bot = "none"
+runtime = "claude"
+scanner = "none"
+[boundary]
+[environments]
+[outward]
+patterns = []
+banned_characters = []
+[outward.max_length]
+''')
+    (directory / 'executable').write_text(str(root / 'previous-plugin/bin/wuwei') + '\n')
+    (directory / 'charters/builder.md').write_text('---\nversion: 0.9.0\n---\nLocal builder\n')
+    return directory
+
+
+def test_upgrade_previous_workspace(tmp_path):
+    import tomllib
+
+    directory = previous_workspace(tmp_path)
+    result = cli(tmp_path, 'init', '--upgrade')
+    assert result.returncode == 0, result.stderr
+    raw = (directory / 'config.toml').read_text()
+    config = tomllib.loads(raw)
+    assert '# Owner comment stays.' in raw
+    assert config['cap'] == 3 and config['owner']['name'] == 'Pat'
+    assert config['host']['free_memory_mb'] == 2048
+    assert config['memory']['max_notes'] == 60
+    assert config['host']['reservation_timeout_seconds'] == 14400
+    assert '# Report stale reservations' in raw
+    assert config['adapters']['checks'] == 'local'
+    assert config['outward']['patterns'] == []
+    assert (directory / 'executable').read_text() == str(ROOT / 'bin/wuwei') + '\n'
+    assert 'builder.md' in result.stdout and '0.9.0' in result.stdout
+    assert (directory / 'charters/builder.md').read_text().endswith('Local builder\n')
+    assert 'statusLine' in result.stdout
+    assert cli(tmp_path, 'config', 'check').returncode == 0
+
+
+def test_upgrade_is_idempotent(tmp_path):
+    directory = previous_workspace(tmp_path)
+    assert cli(tmp_path, 'init', '--upgrade').returncode == 0
+    before = {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+    result = cli(tmp_path, 'init', '--upgrade')
+    assert result.returncode == 0, result.stderr
+    assert 'No workspace changes needed' in result.stdout
+    assert before == {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+
+
+def test_upgrade_preserves_nonadjacent_repo_tables(tmp_path):
+    assert cli(tmp_path, 'init').returncode == 0
+    config_path = tmp_path / '.wuwei/config.toml'
+    raw = config_path.read_text().replace(
+        'repos = []\n',
+        '[[repos]]\nname = "b"\npath = "b"\ndefault_branch = "main"\n# b stays here',
+        1,
+    ) + '\n[[repos]]\nname = "a"\npath = "a"\ndefault_branch = "main"\n# a stays here\n'
+    config_path.write_text(raw)
+    before = config_path.read_bytes()
+
+    preview = cli(tmp_path, 'init', '--upgrade', '--dry-run')
+    assert preview.returncode == 0, preview.stderr
+    assert 'No workspace changes needed' in preview.stdout
+    assert 'Would upgrade' not in preview.stdout
+    assert config_path.read_bytes() == before
+
+    result = cli(tmp_path, 'init', '--upgrade')
+    assert result.returncode == 0, result.stderr
+    assert 'No workspace changes needed' in result.stdout
+    assert 'Upgraded' not in result.stdout
+    assert config_path.read_bytes() == before
+
+
+def test_upgrade_dry_run_does_not_write(tmp_path):
+    directory = previous_workspace(tmp_path)
+    before = {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+    result = cli(tmp_path, 'init', '--upgrade', '--dry-run')
+    assert result.returncode == 0, result.stderr
+    assert 'Would upgrade config.toml' in result.stdout
+    assert 'Would upgrade executable pointer' in result.stdout
+    assert 'builder.md' in result.stdout
+    assert before == {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+
+
+def test_upgrade_rejects_unknown_key_without_writes(tmp_path):
+    directory = previous_workspace(tmp_path)
+    config_path = directory / 'config.toml'
+    config_path.write_text(config_path.read_text().replace('pronouns = "they/them"',
+                                                      'pronouns = "they/them"\nmystery = 1'))
+    before = {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+    result = cli(tmp_path, 'init', '--upgrade')
+    assert result.returncode == 1
+    assert 'unknown key owner.mystery at line 8' in result.stderr
+    assert before == {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+
+
+def test_upgrade_handles_configured_repo_tables(tmp_path):
+    import tomllib
+
+    directory = previous_workspace(tmp_path)
+    config_path = directory / 'config.toml'
+    config_path.write_text(config_path.read_text().replace('profile = "standard"\n', '').replace('repos = []',
+        '[[repos]]\nname = "app"\npath = "repo"\ndefault_branch = "main"'))
+    result = cli(tmp_path, 'init', '--upgrade')
+    assert result.returncode == 0, result.stderr
+    config = tomllib.loads(config_path.read_text())
+    assert config['repos'][0]['name'] == 'app'
+    assert config['cap'] == 3 and config['profile'] == 'strict'
+
+
+def test_upgrade_malformed_config_fails_closed(tmp_path):
+    directory = previous_workspace(tmp_path)
+    (directory / 'config.toml').write_text('[owner\nname = "Pat"\n')
+    result = cli(tmp_path, 'init', '--upgrade')
+    assert result.returncode == 2
+    assert 'wuwei init:' in result.stderr
+    assert (directory / 'executable').read_text() == str(tmp_path / 'previous-plugin/bin/wuwei') + '\n'
+
+
+def test_upgrade_write_failure_preserves_files_and_can_retry(tmp_path, monkeypatch, capsys):
+    from argparse import Namespace
+    from wuwei.commands import init
+
+    directory = previous_workspace(tmp_path)
+    before = {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+    def fail_write(path, text):
+        raise OSError('disk full')
+
+    with monkeypatch.context() as patch:
+        patch.setattr(init.workspace, 'atomic_write', fail_write)
+        assert init.run(Namespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 2
+    output = capsys.readouterr()
+    assert 'disk full' in output.err
+    assert 'Upgraded' not in output.out
+    assert before == {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+    assert init.run(Namespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+
+
+def test_upgrade_reports_only_changed_charter_versions(tmp_path):
+    directory = previous_workspace(tmp_path)
+    current = (ROOT / 'charters/builder.md').read_text()
+    (directory / 'charters/builder.md').write_text(current.replace('Builder charter', 'Local builder'))
+    result = cli(tmp_path, 'init', '--upgrade', '--dry-run')
+    assert result.returncode == 0, result.stderr
+    assert 'Charter override needs review' not in result.stdout
+
+
+def test_upgrade_config_without_trailing_newline(tmp_path):
+    directory = previous_workspace(tmp_path)
+    config_path = directory / 'config.toml'
+    config_path.write_text('[owner]\nname = "Pat"')
+    result = cli(tmp_path, 'init', '--upgrade')
+    assert result.returncode == 0, result.stderr
+    assert 'name = "Pat"\n# Added' in config_path.read_text()
+    assert cli(tmp_path, 'config', 'check').returncode == 0
+
+
+def test_upgrade_never_changes_multiline_owner_value(tmp_path):
+    directory = previous_workspace(tmp_path)
+    config_path = directory / 'config.toml'
+    raw = config_path.read_text().replace('name = "Pat"',
+        'name = """Pat\n[host]\nThis is a name\n"""')
+    config_path.write_text(raw)
+    result = cli(tmp_path, 'init', '--upgrade')
+    assert result.returncode in (0, 2)
+    if result.returncode == 0:
+        import tomllib
+        assert tomllib.loads(config_path.read_text())['owner']['name'] == 'Pat\n[host]\nThis is a name\n'
+    else:
+        assert 'wuwei init:' in result.stderr
+        assert config_path.read_text() == raw
+
+
+def test_upgrade_rejects_symlinked_config_without_writes(tmp_path):
+    directory = previous_workspace(tmp_path)
+    config_path = directory / 'config.toml'
+    original = tmp_path / 'owner-config.toml'
+    original.write_bytes(config_path.read_bytes())
+    raw = original.read_text()
+    config_path.unlink()
+    config_path.symlink_to(original)
+    result = cli(tmp_path, 'init', '--upgrade')
+    assert result.returncode == 2
+    assert 'symlinks' in result.stderr
+    assert original.read_text() == raw
