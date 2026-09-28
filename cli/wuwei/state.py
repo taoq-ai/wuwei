@@ -127,16 +127,38 @@ def _append_event(kind, payload, directory):
     """Append validated event data while the caller holds state.lock."""
     record = {'kind': kind, 'payload': payload,
               'ts': workspace.now().isoformat()}
+    _append_jsonl(directory / 'events.jsonl', record)
+
+
+def append_jsonl(path, record):
+    """Append a JSON record under the same lock used by events and state."""
+    path = Path(path)
+    path.parent.parent.mkdir(exist_ok=True)
+    path.parent.mkdir(exist_ok=True)
+    with (path.parent / 'state.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        _append_jsonl(path, record)
+
+
+def _append_jsonl(path, record):
+    """Write one line under state.lock, leaving events and traces read-only."""
     encoded = (json.dumps(record, allow_nan=False) + '\n').encode('utf-8')
-    path = directory / 'events.jsonl'
     if path.is_file():
         path.chmod(0o600)
     try:
-        fd = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o444)
+        fd = os.open(path, os.O_APPEND | os.O_CREAT | os.O_RDWR, 0o444)
         try:
             os.fchmod(fd, 0o444)
-            if os.write(fd, encoded) != len(encoded):
-                raise OSError('short event write to events.jsonl')
+            previous_size = os.fstat(fd).st_size
+            try:
+                if previous_size and os.pread(fd, 1, previous_size - 1) != b'\n':
+                    encoded = b'\n' + encoded
+                if os.write(fd, encoded) != len(encoded):
+                    raise OSError(f'short event write to {path.name}')
+            except OSError:
+                # Discard only the failed append while holding the shared writer lock.
+                os.ftruncate(fd, previous_size)
+                raise
         finally:
             os.close(fd)
     finally:
