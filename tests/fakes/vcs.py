@@ -32,3 +32,15 @@ class Fake(Recorder):
 
     def worktree_add(self, repo, branch, path, root=None):
         return self._call('worktree_add', (repo, branch, path), root)
+
+    def commit_context(self, repo, settings, env, root=None):
+        return self._call('commit_context', (repo, settings, env), root)
+
+    def push_context(self, repo, remote, refspecs, root=None):
+        return self._call('push_context', (repo, remote, refspecs), root)
+
+    def hooks_path(self, repo, path, root=None):
+        return self._call('hooks_path', (repo, path), root)
+
+    def push_commits(self, repo, remote, destination, local_sha, remote_sha, default_branch, root=None):
+        return self._call('push_commits', (repo, remote, destination, local_sha, remote_sha, default_branch), root)

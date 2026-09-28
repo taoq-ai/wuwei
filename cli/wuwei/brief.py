@@ -147,7 +147,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             changed = status(vcs, tree, root)
             head = read(vcs.head, tree, root=root)['sha']
             repo = next((r for r in config['repos'] if (root / r['path']).resolve() == tree), {})
-            ref = config['brief']['remote'] + '/' + repo.get('default_branch', workspace.SCHEMA['repos'][0]['default_branch'][1])
+            ref = config['brief']['remote'] + '/' + repo.get('default_branch', 'main')
             base = read(vcs.merge_base, tree, ref, root=root)['sha']
             prior = read(vcs.branches, tree, config['brief']['prior_branch_pattern'].format(item=item.lower()), root=root)
             header += [f'Worktree: {tree}', f'HEAD: {head}', f'Merge-base: {base} ({ref})',

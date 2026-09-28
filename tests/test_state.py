@@ -490,6 +490,23 @@ def test_seat_reservations_require_dedicated_writer(workspace, path, value):
     assert state.read_state(workspace)['seats'] == {}
 
 
+def test_fast_checks_namespace_is_owned_by_recorder():
+    from wuwei import state
+    assert state.RESERVED == {'seats', 'fast_checks'}
+
+
+@pytest.mark.parametrize('path,value', [
+    ('fast_checks', {'demo': {'unit': {'sha': 'a' * 40, 'exit': 0}}}),
+    ('fast_checks.demo.unit.exit', 0),
+    ('envelope', {'fast_checks': {'demo': {'unit': {'sha': 'a' * 40, 'exit': 0}}}}),
+])
+def test_cli_cannot_forge_fast_checks(workspace, path, value):
+    result = cli('state', 'set', path, json.dumps(value))
+    assert result.returncode == 1, result.stderr
+    assert 'reserved' in result.stderr
+    assert not (day(workspace) / 'state.json').exists()
+
+
 @pytest.mark.parametrize('path,value', [
     ('example_records.A', 'PASS'), ('example_records', {}),
     ('items.A.example_records', {'arch': 'PASS'}),

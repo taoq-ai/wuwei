@@ -16,7 +16,8 @@ import tomllib
 SCHEMA = {
     "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)]},
     "repos": [{"name": (str, None), "path": (str, None),
-               "default_branch": (str, "main"), "fast_checks": [(str, "")]}],
+               "default_branch": (str, None), "fast_checks": [(str, "")],
+               "identity": {"name": (str, ""), "email": (str, "")}}],
     "cap": (int, 1, 1),
     "brief": {"remote": (str, "origin"),
               "prior_branch_pattern": (str, "*{item}*"),
@@ -46,7 +47,8 @@ SCHEMA = {
     "adapters": {"tracker": (str, "none"), "chat": (str, "none"),
                  "review_bot": (str, "none"), "runtime": (str, "claude"),
                  "scanner": (str, "none"), "code_host": (str, "github"),
-                 "vcs": (str, "git"), "host": (str, "local")},
+                 "vcs": (str, "git"), "host": (str, "local"),
+                 "checks": (str, "local")},
 }
 
 
@@ -237,3 +239,15 @@ def load_config(root=None):
         return config
     except (ConfigError, tomllib.TOMLDecodeError, UnicodeError) as exc:
         raise ConfigError(f"{path}: {exc}") from exc
+
+
+def create_worktree(repo, branch, path, root, vcs):
+    """Create and anchor a WUWEI worktree before handing it to a seat."""
+    from wuwei.commands.git_hook import install
+    from wuwei.guards.commit_push import data
+
+    if not (Path(root) / '.wuwei').is_dir():
+        raise ValueError('worktree creation requires a workspace')
+    result = data(vcs.worktree_add(str(repo), branch, str(path), root=root))
+    install(path, root, vcs)
+    return result

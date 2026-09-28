@@ -42,6 +42,30 @@ def _reject_mentions(text):
         raise ParseError('unaccounted git/gh mention')
 
 
+def mentions(raw, names) -> bool:
+    """Conservative relevance check, including obfuscated and constructed names."""
+    pattern = re.compile(r'(?<![.\w])(?:' + '|'.join(map(re.escape, names)) + r')\b')
+    # ANSI-C quoting can hide every character of a name.
+    if "$'" in raw:
+        return True
+    unquoted = re.sub(r'''['"\\]''', '', raw)
+    if pattern.search(raw) or pattern.search(unquoted):
+        return True
+    substitutions = r'\$\(([^()]*)\)|`([^`]*)`'
+    for match in re.finditer(substitutions, unquoted):
+        if mentions(match[1] if match[1] is not None else match[2], names):
+            return True
+    unquoted = re.sub(substitutions, '$substitution', unquoted)
+    if '$(' in unquoted or '`' in unquoted:
+        return True
+    # Redirect targets do not construct a Git verb. Their bodies were checked above.
+    unquoted = re.sub(r'(?:[0-9]*[<>]+[!&|]?|&>>?)\s*[^\s;&|]+', '', unquoted)
+    if _GUARDED.search(unquoted) and not _literal(unquoted):
+        return True
+    return any(not _literal(word) for word in re.findall(
+        r'(?:^|[;&|(\n])\s*([^\s;&|()]+)', unquoted))
+
+
 def _literal(raw, allow_globs=False):
     return not _expands(raw) and not any(
         re.search((r'`' if allow_globs else r'[`*?\[]') + r'|\{[^{}]*(,|\.\.)[^{}]*\}', part[0])

@@ -23,7 +23,7 @@ def configured(tmp_path, monkeypatch):
         SimpleNamespace(resolve=lambda *a, **k: registry.Result(0, {'sha': 'abc1234' + '0' * 33}))
         if kind == 'vcs' else original_load(kind, config)))
     with (directory / 'config.toml').open('a') as stream:
-        stream.write('\n[[repos]]\nname = "demo"\npath = "demo"\n')
+        stream.write('\n[[repos]]\nname = "demo"\npath = "demo"\ndefault_branch = "main"\n')
     return tmp_path, workspace.load_config(tmp_path)
 
 

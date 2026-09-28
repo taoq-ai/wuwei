@@ -26,6 +26,8 @@ def run(args):
     try:
         shutil.copytree(template, staging, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns(".gitkeep"))
+        executable = Path(__file__).resolve().parents[3] / "bin/wuwei"
+        (Path(staging) / "executable").write_text(str(executable) + "\n")
         os.rename(staging, destination)
     finally:
         if os.path.exists(staging):

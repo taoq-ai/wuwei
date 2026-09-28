@@ -11,6 +11,7 @@ from wuwei.exits import UNRUN
 
 PARAMETERS = {
     'host': {'free_memory': ()},
+    'checks': {'run': ('path', 'command')},
     'tracker': {'claim': ('item',), 'transition': ('item', 'state'),
                 'create': ('draft',), 'history': ('item',)},
     'chat': {'post': ('channel', 'text', 'thread'), 'dm': ('text',)},
@@ -27,7 +28,10 @@ PARAMETERS = {
     'vcs': {'resolve': ('repo', 'sha'), 'identity': ('repo',), 'head': ('repo',), 'merge_base': ('repo', 'ref'),
             'status': ('repo',), 'diff_stat': ('repo', 'base', 'head'),
             'log_since': ('repo', 'sha'), 'worktree_add': ('repo', 'branch', 'path'),
-            'branches': ('repo', 'pattern')},
+            'branches': ('repo', 'pattern'),
+            'commit_context': ('repo', 'settings', 'env'),
+            'push_context': ('repo', 'remote', 'refspecs'), 'hooks_path': ('repo', 'path'),
+            'push_commits': ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch')},
 }
 INTERFACES = {kind: tuple(operations) for kind, operations in PARAMETERS.items()}
 

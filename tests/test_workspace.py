@@ -113,7 +113,8 @@ def test_config_defaults_and_independence(tmp_path):
         'boundary': {}, 'environments': {},
         'adapters': {'tracker': 'none', 'chat': 'none', 'review_bot': 'none',
                      'runtime': 'claude', 'scanner': 'none',
-                     'code_host': 'github', 'vcs': 'git', 'host': 'local'},
+                     'code_host': 'github', 'vcs': 'git', 'host': 'local',
+                     'checks': 'local'},
     }
     outward['patterns'].append('changed')
     assert 'changed' not in load_config(tmp_path)['outward']['patterns']
@@ -129,6 +130,7 @@ pronouns = "they/them"
 [[repos]]
 name = "app"
 path = "../app"
+default_branch = "main"
 fast_checks = ["python -m pytest -q"]
 [[repos]]
 name = "docs"
@@ -164,10 +166,10 @@ scanner = "none"
 @pytest.mark.parametrize('text,key,line', [
     ('cap = 1\nfoo.bar = 1', 'foo', 2),
     ('[owner]\nname="x"\n[host]\nextra.a = 1', 'host.extra', 4),
-    ('repos = [{name="a", path="/a"},\n {pth="b"}]', 'repos.1.pth', 2),
+    ('repos = [{name="a", path="/a", default_branch="main"},\n {pth="b"}]', 'repos.1.pth', 2),
     ('# capp is a typo\ncapp = 2\n', 'capp', 2),
     ('[owner]\nname = "a"\n[host]\nseatz = 2\n', 'host.seatz', 4),
-    ('[[repos]]\nname = "a"\npath = "/a"\n[[repos]]\npth = "b"\n', 'repos.1.pth', 5),
+    ('[[repos]]\nname = "a"\npath = "/a"\ndefault_branch = "main"\n[[repos]]\npth = "b"\n', 'repos.1.pth', 6),
     ('[adaptrs]\nruntime = "claude"\n', 'adaptrs', 1),
     ('[outward.max_lenght]\nchat = 2\n', 'outward.max_lenght', 1),
     ('owner.nmae = "a"\n', 'owner.nmae', 1),
@@ -196,7 +198,7 @@ def test_unknown_key_without_known_line(tmp_path, monkeypatch):
     ('cap = true', 'cap'), ('cap = 0', 'cap'), ('cap = 1.5', 'cap'),
     ('profile = "relaxed"', 'profile'), ('owner = "Pat"', 'owner'),
     ('repos = ["app"]', 'repos.0'),
-    ('[[repos]]\nname="a"\npath="/a"\nfast_checks = [1]', 'repos.0.fast_checks.0'),
+    ('[[repos]]\nname="a"\npath="/a"\ndefault_branch="main"\nfast_checks = [1]', 'repos.0.fast_checks.0'),
     ('[owner]\npronouns = []', 'owner.pronouns'),
     ('[host]\nfree_memory_mb = -1', 'host.free_memory_mb'),
     ('[host]\nseats = 0', 'host.seats'),
@@ -338,8 +340,8 @@ def test_unknown_adapter_without_known_line(tmp_path, monkeypatch):
     ('[[repos]]\nname = " "\npath = "../app"\n', 'repos.0.name', 2),
     ('[[repos]]\nname = "app"\npath = " "\n', 'repos.0.path', 3),
     ('[[repos]]\nname = ""\npath = "../app"\n', 'repos.0.name', 2),
-    ('[[repos]]\nname = "a"\npath = "/a"\n[[repos]]\nname = "b"\n', 'repos.1.path', 4),
-    ('[[repos]]\nname = "a"\npath = "/a"\n[[repos]]\nname = "b"\npath = ""', 'repos.1.path', 6),
+    ('[[repos]]\nname = "a"\npath = "/a"\ndefault_branch = "main"\n[[repos]]\nname = "b"\n', 'repos.1.path', 5),
+    ('[[repos]]\nname = "a"\npath = "/a"\ndefault_branch = "main"\n[[repos]]\nname = "b"\npath = ""', 'repos.1.path', 7),
 ])
 def test_required_repository_fields(tmp_path, text, key, line):
     write_config(tmp_path, text)
@@ -359,8 +361,8 @@ def test_required_repository_field_without_known_line(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize('text,line', [
-    ('[[repos]]\nname = "app"\npath = "/a"\n[[repos]]\nname = "app"\npath = "/b"', 5),
-    ('repos = [{name="app", path="/a"}, {name="app", path="/b"}]', 1),
+    ('[[repos]]\nname = "app"\npath = "/a"\ndefault_branch = "main"\n[[repos]]\nname = "app"\npath = "/b"\ndefault_branch = "main"', 6),
+    ('repos = [{name="app", path="/a", default_branch="main"}, {name="app", path="/b", default_branch="main"}]', 1),
 ])
 def test_duplicate_repository_names(tmp_path, text, line):
     write_config(tmp_path, text)
@@ -378,12 +380,12 @@ def test_duplicate_repository_paths(tmp_path, alias):
     first = str(Path.home()) if alias == 'home' else 'checkout'
     second = {'same': 'checkout', 'absolute': str(checkout),
               'normalized': './checkout/../checkout', 'symlink': 'alias', 'home': '~'}[alias]
-    write_config(tmp_path, f'[[repos]]\nname = "app"\npath = "{first}"\n'
-                 f'[[repos]]\nname = "alias"\npath = "{second}"\n')
+    write_config(tmp_path, f'[[repos]]\nname = "app"\npath = "{first}"\ndefault_branch = "main"\n'
+                 f'[[repos]]\nname = "alias"\npath = "{second}"\ndefault_branch = "main"\n')
     result = cli(checkout, 'config', 'check', WUWEI_WORKSPACE=str(tmp_path))
     assert result.returncode == 1, result.stderr
     assert 'repos.1.path: duplicate' in result.stderr
-    assert 'line 6' in result.stderr
+    assert 'line 7' in result.stderr
 
 
 def test_init_staging_prefix(tmp_path, monkeypatch):
@@ -401,3 +403,14 @@ def test_init_staging_prefix(tmp_path, monkeypatch):
     assert init.run(Namespace(path=str(tmp_path))) == 0
     assert staging[0].name.startswith('.wuwei-init-')
     assert not staging[0].exists()
+
+
+def test_config_requires_default_branch(tmp_path):
+    write_config(tmp_path, '[[repos]]\nname="test"\npath="repo"\n')
+    result = cli(tmp_path, 'config', 'check')
+    assert result.returncode == 1 and 'default_branch' in result.stderr
+
+
+def test_init_records_runtime_location(tmp_path):
+    assert cli(tmp_path, 'init').returncode == 0
+    assert (tmp_path / '.wuwei/executable').read_text().strip() == str(ROOT / 'bin/wuwei')

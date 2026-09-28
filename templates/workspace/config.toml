@@ -6,9 +6,10 @@ repos = []
 # Replace repos = [] with one or more tables like:
 # [[repos]]
 # name = "example"
-# path = "/path/to/repo"
-# default_branch = "main"
-# fast_checks = ["python -m pytest -q"]
+# path = "repos/example" # Relative to the workspace, or an absolute repository path.
+# default_branch = "main" # Required for each configured repository.
+# identity = {name = "Builder", email = "builder@example.test"} # Required by Git guards.
+# fast_checks = ["python3 -m pytest -q"] # Run and record with wuwei fast-checks <checkout>.
 
 [owner]
 name = ""
@@ -32,6 +33,7 @@ scanner = "none"
 code_host = "github"
 vcs = "git"
 host = "local"
+checks = "local"
 
 [brief]
 remote = "origin"

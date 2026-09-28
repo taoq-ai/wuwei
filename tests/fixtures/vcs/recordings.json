@@ -67,15 +67,18 @@
         "argv": [
           "-C",
           "/repo with spaces",
-          "rev-parse",
-          "--verify",
-          "HEAD^{commit}"
+          "show",
+          "-s",
+          "--format=%H%x00%an%x00%ae%x00%cn%x00%ce",
+          "HEAD"
         ],
-        "stdout": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+        "stdout": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\u0000Builder\u0000builder@example.test\u0000Builder\u0000builder@example.test\n"
       }
     ],
     "data": {
-      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "author": {"name": "Builder", "email": "builder@example.test"},
+      "committer": {"name": "Builder", "email": "builder@example.test"}
     }
   },
   {
