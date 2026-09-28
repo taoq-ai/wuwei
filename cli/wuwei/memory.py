@@ -1,7 +1,8 @@
 """Generated memory index and session payload."""
 
-from datetime import date
+from datetime import date, timedelta
 import json
+import re
 from pathlib import Path
 
 from wuwei import state, workspace
@@ -92,3 +93,114 @@ def session_payload(root=None):
     content = (f'Spine:\n{spine.rstrip()}\n\nIndex:\n{index.rstrip()}\n\n'
                f'Today state:\n{state_text}\n{promote_line}\n')
     return content, len(content.encode('utf-8')), estimated_tokens(content)
+
+
+DATE_RE = re.compile(r"(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)")
+
+
+def _dates(text):
+    dates = []
+    for token in DATE_RE.findall(text):
+        try:
+            dates.append(date.fromisoformat(token))
+        except ValueError:
+            pass
+    return dates
+
+
+def lint(root=None):
+    """Return active note findings for the session-start caller."""
+    root = workspace.find_workspace() if root is None else Path(root)
+    notes = root / '.wuwei/memory/notes'
+    if (notes.is_symlink() or not notes.is_dir()
+            or not notes.resolve().is_relative_to(root)):
+        raise ValueError('memory notes directory must be inside the workspace and not a symlink')
+    config = workspace.load_config(root)['memory']
+    findings = []
+    loads = None
+    for path in sorted(notes.glob('*.md')):
+        if path.is_symlink():
+            raise ValueError(f'note must not be a symlink: {path}')
+        if not SLUG_RE.fullmatch(path.stem):
+            raise ValueError(f'invalid note slug: {path.name}')
+        content = path.read_text(encoding='utf-8')
+        fields, body = parse_note(content)
+        if fields['status'] != 'active':
+            continue
+        summary_dates = _dates(fields['summary'])
+        body_dates = _dates(body)
+        if summary_dates and body_dates and max(body_dates) > max(summary_dates):
+            findings.append(f'{path.name}: stale summary; body dated {max(body_dates)}')
+        count = len(content.splitlines())
+        if count > config['note_line_cap']:
+            findings.append(f'{path.name}: line cap {config["note_line_cap"]} exceeded ({count})')
+        if path.stem == 'state' or path.stem.endswith('-state'):
+            entries = sum(bool(re.match(r'^\s*(?:#{1,6}\s*)?\d{4}-\d{2}-\d{2}\b', line))
+                          for line in body.splitlines())
+            if entries > config['state_entry_cap']:
+                findings.append(f'{path.name}: {entries} dated entries; state note is log-shaped')
+        if fields.get('created'):
+            created = date.fromisoformat(fields['created'])
+            today = workspace.now().date()
+            working_days = sum((created + timedelta(days=offset)).weekday() < 5
+                               for offset in range(1, max(0, (today - created).days) + 1))
+            if working_days > config['probation_days']:
+                if loads is None:
+                    loads = _loaded_notes(root)
+                if path.resolve() not in loads:
+                    findings.append(f'{path.name}: archive candidate; never loaded after probation')
+        if path.stem == 'intake' or path.stem.endswith('-intake'):
+            outbound = re.search(r'\[[^]]+\]\((?!#)[^)]+\)|\[\[[^]]+\]\]', body)
+            if not outbound and not _promoted_intake(root, path.name):
+                findings.append(f'{path.name}: unrouted intake')
+    return findings
+
+
+def _promoted_intake(root, name):
+    ledger = root / '.wuwei/memory/ledger.jsonl'
+    if ledger.is_symlink():
+        raise ValueError(f'ledger must not be a symlink: {ledger}')
+    if not ledger.exists():
+        return False
+    for line in ledger.read_text(encoding='utf-8').splitlines():
+        record = json.loads(line)
+        if not isinstance(record, dict):
+            raise ValueError(f'invalid ledger record: {ledger}')
+        if record.get('evidence') in (name, f'notes/{name}', f'memory/notes/{name}') and record.get('action') in ('add', 'patch', 'fold') and record.get('target'):
+            return True
+    return False
+
+
+def _loaded_notes(root):
+    loads = set()
+    for parent in (root / '.wuwei/days', root / '.wuwei/archive'):
+        if parent.is_symlink():
+            raise ValueError(f'trace directory must not be a symlink: {parent}')
+        if not parent.exists():
+            continue
+        for day in parent.iterdir():
+            if day.is_symlink():
+                raise ValueError(f'trace day must not be a symlink: {day}')
+            if not day.is_dir():
+                continue
+            trace = day / 'traces.jsonl'
+            if trace.is_symlink():
+                raise ValueError(f'trace must not be a symlink: {trace}')
+            if not trace.exists():
+                continue
+            for number, line in enumerate(trace.read_text(encoding='utf-8').splitlines(), 1):
+                try:
+                    record = json.loads(line)
+                    for resource in record['resourceSpans']:
+                        for scope in resource['scopeSpans']:
+                            for span in scope['spans']:
+                                attrs = {item['key']: item['value']['stringValue']
+                                         for item in span['attributes']}
+                                if attrs.get('gen_ai.tool.name') == 'Read' and attrs.get('gen_ai.agent.name') not in ('', 'unknown'):
+                                    arguments = json.loads(attrs['gen_ai.tool.arguments'])
+                                    path = arguments.get('file_path')
+                                    if isinstance(path, str):
+                                        loads.add(Path(path).resolve())
+                except (KeyError, TypeError, ValueError, AttributeError) as exc:
+                    raise ValueError(f'{trace}:{number}: invalid trace: {exc}') from exc
+    return loads

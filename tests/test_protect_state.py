@@ -555,3 +555,13 @@ def test_f13_git_apply_directory(workspace, script, expected):
 def test_f13_permissions_on_containers(workspace, operation, target, expected):
     from wuwei.guards.protect_state import check_bash
     assert check_bash(payload(workspace, 'Bash', command=f'{operation} {target}'))[0] == expected
+
+
+@pytest.mark.parametrize('path', [
+    '.wuwei/days/2026-09-28/traces.jsonl',
+    '.wuwei/memory/ledger.jsonl',
+])
+def test_memory_lint_evidence_is_cli_owned(workspace, path):
+    from wuwei.guards.protect_state import check_bash, check_file
+    assert check_file(payload(workspace, 'Write', file_path=path))[0] == 1
+    assert check_bash(payload(workspace, 'Bash', command=f'echo forged > {path}'))[0] == 1
