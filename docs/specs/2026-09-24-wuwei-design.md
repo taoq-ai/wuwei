@@ -304,6 +304,26 @@ approved-draft rule, whatever the disclosure setting.
 Metrics (steward): share of drafts sent without edit, and the size of the owner's edits to the
 rest, per audience. Both should rise as the voice converges; a fall is a steward finding.
 
+### 4.9 Outbound approval tiers (owner, 2026-09-28)
+
+Every message sent as the owner is either auto-sent or drafted for approval. The tier is
+decided by one CLI function (`wuwei outbound tier`) from the channel, the audience and the
+message, before the outward-text lint and the voice checks (4.3, 4.8) run.
+
+- Auto-send: channels the owner marks as work channels in config (for example PR and review
+  channels, the team engineering channel) and code-host threads on the owner's team's pull
+  requests. Covers acknowledgements, status, mechanical answers and technical replies within
+  the pull request's own scope. This replaces, for these channels only, the approved-draft
+  requirement for technical claims in 4.1 and 4.3.
+- Approve: every direct message; every external party (anyone outside the company domains
+  and code-host organisations listed in config, shared or connected channels, client
+  channels); every sensitive topic in any channel (performance, feedback, compensation,
+  hiring, personal or health matters, conflict, legal or HR); and, in any channel,
+  disagreement with a person and commitments of scope or time. Drafts go to the control
+  plane for approve, edit or drop.
+- Precedence: external beats channel; sensitivity is judged per message, and unsure means
+  approve. A message that cannot be classified is a draft, never an auto-send.
+
 ## 5. The team
 
 ### 5.1 Roles
@@ -483,6 +503,56 @@ id whose record passes the lint. The steward's metrics add: decisions per day by
 reversibility, share decided by seats, and seat decisions the owner later reversed (a
 rising reversal rate tightens the two-way criteria through a charter proposal).
 
+### 5.9 Cockpit, signals and briefings (owner, 2026-09-28)
+
+The owner should not need to ask for status. State is pushed to three surfaces, and
+attention is demanded only for what matters.
+
+Signals. Every event is classified once by `wuwei signal classify` into a delivery tier and
+an owner lane. Tiers: `page` (interrupt now, even in quiet hours: the day is blocked, a
+security finding fired, a base branch went red after an auto-merge, a one-way-door decision
+blocks a running item, the dead-man switch or the budget cap hit), `nudge` (shown at the next
+glance, batched to the phone at most every two hours: a one-way-door decision not yet
+blocking, a merge the policy does not clear, work outside the goals, budget at 80 percent, a
+person's ask nearing its reply window), `silent` (visible, never pushed: normal progress,
+seat-taken two-way-door decisions, auto-merges that went well). Lanes: Work (items by phase),
+Decisions (waiting on the owner), People (asks owed by the owner, 15.10). An event the
+classifier cannot read is a `nudge`, never `silent`.
+
+Surfaces, all reading the same classification:
+
+- Status line. `wuwei status --line` for the Claude Code status line: one line with pages,
+  nudges, items per phase against CAP, the next person reply due and the next meeting. It
+  shares the hook latency budget (10.6) and shows `WUWEI ? unmeasured` rather than a false
+  green when it cannot read state.
+- Cockpit. The dashboard (#28) grows into the three lanes plus the briefing pack, served on
+  127.0.0.1 and opened in the desktop app's browser pane or any browser. Approving a
+  decision or a draft from the cockpit calls the CLI, so every guard applies. Passive
+  otherwise.
+- Menu bar (optional adapter). `wuwei status --json` feeds a SwiftBar plugin script shipped
+  in `templates/`: a green, amber or red mark visible when the app is in the background,
+  with the pages and nudges in its menu. macOS only; absent when SwiftBar is not installed.
+- Phone. Pages at once and nudge digests through the control plane (Remote Control push by
+  default, messaging adapters in M5), plus the briefing pack and approvals.
+
+Briefings. A routine produces a pack before each calendar event that has attendees (lead
+time in config) and once a day:
+
+- audio brief of five minutes or less with chapters, through the `tts` port;
+- one visual of what changed since the last brief, highlighted, plus an optional deep dive
+  per topic for when the owner wants to go further;
+- a meeting card: three glanceable bullets (key facts, the one thing the owner will likely
+  be asked) for use during the meeting;
+- a defend drill: three questions the meeting is likely to raise, hardest first, answered
+  by voice or text, with immediate feedback and a streak; scores are a steward metric (is
+  the owner staying on top of the work).
+
+Every brief has the same fixed shape (headline, what changed, what is decided, what is at
+risk, what you will be asked), arrives at predictable times, and leads with the most
+interesting or contentious point. `brief.style` in config tunes length, speed, order and
+which parts are on. Sources: events, verdicts, decision records, memory, the calendar and
+meeting transcripts through their ports.
+
 ## 6. Memory
 
 ### 6.1 Kinds
@@ -602,6 +672,10 @@ that it did nothing and returns exit 2 where a measurement was expected.
 | inbound (M5) | `poll(since)` or `receive(request)`, `reply(thread, text)` | Slack (poll) |
 | control_plane (M5) | `escalate(decision)`, `notify(summary)`, `poll_replies(since)` | Remote Control plus push (default), Signal, WhatsApp |
 | redactor (M5) | `redact(text) -> text, findings` | built-in patterns (default); WUMING once it ships a CLI |
+| tts | `speak(text, voice, out)` | macOS `say` (default on macOS), none |
+| calendar | `events(since, until)` | private ICS feed URL through `urllib`, none |
+| transcripts | `recent(since)`, `transcript(meeting)` | none (default); a meeting recorder's API |
+| menu_bar | `render(status)` | SwiftBar plugin script (optional, macOS), none |
 
 ## 9. Error handling
 
@@ -831,3 +905,23 @@ a headless run treats a question to the user.
   second factor (a TOTP code in the message, or a confirmation reply within 2 minutes);
   `stop all` is always accepted from the owner's number and needs no second factor; CAP,
   memory floor, budget and quiet hours apply to every started session.
+
+### 15.10 People and inbound routing (owner, 2026-09-28)
+
+The listener routes messages from people, not only work.
+
+- People register in config: person, relationship (manager, client lead, direct team, peer,
+  other) and reply window in working hours.
+- Each inbound message is classified as mechanical (answered under 4.9), work within the
+  goals (to discovery intake, 5.7), work outside the goals (a new-work decision), needs-you
+  (a holistic or personal ask the owner must answer), or FYI (digest only).
+- Needs-you from internal people: an acknowledgement in the owner's voice with a time
+  commitment only if the channel's tier allows auto-send, otherwise drafted; plus a full
+  draft reply with a prep brief from the workspace for the owner to approve, edit or drop.
+  Needs-you from external people: surfaced with a prep brief only; the owner writes the reply.
+- Outbound tiers (4.9) govern what the responder may send; where 15.3 and 15.4 are stricter
+  for a channel, the stricter rule wins, and every direct message, including an
+  acknowledgement, is a draft for one-tap approval.
+- Reply obligations: each needs-you ask is owed until answered. It starts as a `nudge` and
+  becomes a `page` as its reply window closes. The Stop guard refuses day close while a reply
+  is owed to a person.
