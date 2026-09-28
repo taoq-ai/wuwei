@@ -7,6 +7,7 @@ import re
 TYPES = {'hub', 'reference', 'decision', 'person', 'question'}
 STATUSES = {'active', 'archived'}
 FIELDS = {'type', 'summary', 'aliases', 'status', 'created'}
+SLUG_RE = re.compile(r'[a-z0-9]+(?:-[a-z0-9]+)*')
 
 
 def parse_note(text):

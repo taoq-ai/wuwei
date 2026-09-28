@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 from pathlib import Path
 import re
+import tempfile
 import tomllib
 
 
@@ -16,6 +17,7 @@ SCHEMA = {
                "default_branch": (str, "main"), "fast_checks": [(str, "")]}],
     "cap": (int, 1, 1),
     "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 1, 1)},
+    "memory": {"max_notes": (int, 60, 1)},
     "profile": (str, "strict", ("strict", "standard")),
     "boundary": {"*": (str, "")},
     "environments": {"*": (str, "")},
@@ -29,6 +31,36 @@ SCHEMA = {
 
 class ConfigError(ValueError):
     """A configuration finding, rather than an inability to read the file."""
+
+
+def atomic_write(path, text, *, replace=True, mode=None):
+    """Durably write text through a temporary file in the destination directory."""
+    path = Path(path)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
+                                         delete=False) as stream:
+            temporary = Path(stream.name)
+            if mode is not None:
+                os.fchmod(stream.fileno(), mode)
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if replace:
+            os.replace(temporary, path)
+        else:
+            os.link(temporary, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            try:
+                os.fsync(directory_fd)
+            except OSError:
+                pass
+        finally:
+            os.close(directory_fd)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def find_workspace(start=None):

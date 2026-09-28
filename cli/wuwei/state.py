@@ -5,7 +5,6 @@ import fcntl
 import json
 import os
 from pathlib import Path
-import tempfile
 
 from wuwei import workspace
 
@@ -148,27 +147,7 @@ def write_state(update, root=None, *, kind='state.write', payload=None):
         update(data)
         data = _validate(data, previous)
         encoded = json.dumps(data, allow_nan=False) + '\n'
-        temporary = None
-        try:
-            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8',
-                                             dir=directory, delete=False) as stream:
-                temporary = Path(stream.name)
-                stream.write(encoded)
-                stream.flush()
-                # ponytail: fsync only; add macOS F_FULLFSYNC if hardware flush is required.
-                os.fsync(stream.fileno())
-            os.replace(temporary, directory / 'state.json')
-            fd = os.open(directory, os.O_RDONLY)
-            try:
-                try:
-                    os.fsync(fd)
-                except OSError:
-                    pass  # Some platforms refuse directory fsync.
-            finally:
-                os.close(fd)
-        finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
+        workspace.atomic_write(directory / 'state.json', encoded)
         _append_event(kind, payload, directory)
         return data
 
