@@ -64,12 +64,19 @@ NUDGE = [
     ({'kind': 'budget.usage', 'payload': {'fraction': .8}}, 'Work'),
     ({'kind': 'person.ask', 'payload': {'due': '2026-09-28T13:00:00+02:00'}}, 'People'),
     ({'kind': 'mystery'}, 'Work'),
+    ({'kind': 'watch: sweep', 'payload': {'owed': 1, 'unreadable': 0}}, 'Work'),
+    ({'kind': 'watch: sweep', 'payload': {'owed': 0, 'unreadable': 1}}, 'Work'),
+    ({'kind': 'watch: sweep', 'payload': {'owed': 0, 'unreadable': 'unknown'}}, 'Work'),
+    ({'kind': 'watch: sweep', 'payload': {'owed': 0}}, 'Work'),
+    ({'kind': 'watch: sweep', 'payload': {'unreadable': 0}}, 'Work'),
     (None, 'Work'),
 ]
 SILENT = [
     ({'kind': 'item.progress'}, 'Work'),
     ({'kind': 'decision.two_way'}, 'Decisions'),
     ({'kind': 'merge.auto'}, 'Work'),
+    ({'kind': 'reply: acknowledged'}, 'Work'),
+    ({'kind': 'watch: sweep', 'payload': {'owed': 0, 'unreadable': 0}}, 'Work'),
 ]
 
 
@@ -179,7 +186,8 @@ def test_emitted_kinds_have_intended_tiers():
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
                 'retro.gap': 'nudge', 'seat stop unmatched': 'nudge',
                 'hook.post_tool_use_error': 'nudge', 'verdict.rejected': 'nudge',
-                'adapter: none': 'nudge'}
+                'adapter: none': 'nudge', 'reply: acknowledged': 'silent',
+                'watch: sweep': 'nudge'}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier

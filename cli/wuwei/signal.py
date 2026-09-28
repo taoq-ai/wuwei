@@ -5,7 +5,8 @@ from datetime import datetime
 
 SILENT = ('item.progress', 'state.write', 'state.set', 'state.transition',
           'seat started', 'seat stopped', 'seat launched', 'brief written',
-          'fast_checks.record', 'retro.captured', 'decision.two_way', 'merge.auto')
+          'fast_checks.record', 'retro.captured', 'decision.two_way', 'merge.auto',
+          'reply: acknowledged')
 
 
 def classify(event, state):
@@ -49,6 +50,10 @@ def classify(event, state):
         if isinstance(fraction, (int, float)) and not isinstance(fraction, bool) and fraction < .8:
             return 'silent', lane
         return 'nudge', lane
+    if kind == 'watch: sweep':
+        counts = (payload.get('owed'), payload.get('unreadable'))
+        return ('silent' if all(type(count) is int and count == 0 for count in counts)
+                else 'nudge'), lane
     if kind in ('merge.policy_blocked', 'work.outside_goals'):
         return 'nudge', lane
     if kind in SILENT:
