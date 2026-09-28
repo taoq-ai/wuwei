@@ -1,7 +1,6 @@
 """Shared outward approval tiers and mechanical text lint."""
 
 import re
-import sys
 from pathlib import Path
 import unicodedata
 
@@ -302,8 +301,21 @@ def classify(text, root, config, context=None, *, kind='chat'):
 
 def check_call(inputs, root, config, channels):
     """Shared lint and send policy for MCP hooks and text-bearing adapter ports."""
+    from wuwei.guards import profile_result
+    result = check_tier(inputs, root, config, channels)
+    if result[0]:
+        return result
     try:
-        texts, destinations = _text(inputs)
+        return profile_result(check_lint(inputs, root, config, channels),
+                              config['profile'], root, next(iter(channels)))
+    except KeyError:
+        return UNRUN, 'outward: cannot read profile'
+
+
+def check_tier(inputs, root, config, channels):
+    """Approval tiers are blocking under every profile."""
+    try:
+        texts, _ = _text(inputs)
         text = '\n'.join(texts)
         if len(channels) != 1:
             return UNRUN, 'outward: ambiguous tool channel configuration'
@@ -312,13 +324,21 @@ def check_call(inputs, root, config, channels):
             return code, 'outward: cannot classify policy, audience or message evidence; deliver as a draft for the owner to send'
         if decision == 'draft':
             return code, 'outward: deliver as a draft for the owner to send'
+        return CLEAN, ''
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
+        return UNRUN, 'outward: cannot read or validate policy or payload'
+
+
+def check_lint(inputs, root, config, channels):
+    """Return raw lint results so the dispatcher can apply the profile."""
+    try:
+        texts, destinations = _text(inputs)
+        text = '\n'.join(texts)
+        if len(channels) != 1:
+            return UNRUN, 'outward: ambiguous tool channel configuration'
         for channel in sorted(channels.union(destinations)):
             code, reason = lint(text, channel, config)
-            if code == FINDINGS and config['profile'] == 'standard':
-                print(f'warning: {reason}', file=sys.stderr)
-            elif code:
-                if code == FINDINGS:
-                    reason += '; deliver as a draft for the owner to send'
+            if code:
                 return code, reason
         return CLEAN, ''
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
