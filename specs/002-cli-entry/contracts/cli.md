@@ -1,7 +1,16 @@
 # CLI contract
 
-Invoke `PYTHONPATH=<plugin root>/cli python3 -P -m wuwei [arguments]` or
-`<plugin root>/bin/wuwei [arguments]`.
+Invoke `<plugin root>/bin/wuwei [arguments]`.
+
+The shim unsets PYTHONEXECUTABLE and execs `python3 -I -P` (isolated mode).
+Isolated mode ignores PYTHON* environment settings except PYTHONEXECUTABLE on macOS,
+excludes user site-packages, and implies -P. Passing -P explicitly enforces Python 3.11+:
+older interpreters reject it with usage exit 2. PATH remains trusted for interpreter selection.
+It explicitly prepends `<plugin root>/cli` and `<plugin root>` to sys.path, removes
+those bootstrap arguments, and runs the installed wuwei module as __main__ via runpy.
+The working directory and inherited import paths cannot shadow plugin or stdlib modules.
+Arguments (including spaces and quotes), stdin hook payloads, and exit statuses pass
+through unchanged. Missing python3 or the plugin's cli/wuwei directory reports exit 2.
 
 - `--version`: manifest version and newline on stdout, exit 0.
 - `--help`: argparse help on stdout, exit 0.

@@ -63,6 +63,9 @@ The CLI works with the Python standard library alone.
 - **FR-005**: Read version from the installed plugin manifest and print it with exit 0.
 - **FR-006**: Support standard help and usage errors.
 - **FR-007**: Enforce the runtime dependency rule with a static import test.
+- **FR-008**: Unset PYTHONEXECUTABLE, then run the shim with `python3 -I -P` to ignore
+  other PYTHON* settings and user site-packages and enforce Python 3.11+, while preserving
+  arguments, stdin, and the 0/1/2 exit contract. PATH remains trusted for interpreter selection.
 
 ## Success Criteria
 
@@ -74,7 +77,9 @@ The CLI works with the Python standard library alone.
 
 ## Assumptions
 
-- Binding orchestrator invocation `PYTHONPATH=<plugin root>/cli python3 -P -m wuwei` supersedes the issue's directory-before-`-m` spelling.
+- Owner decision: the shim unsets PYTHONEXECUTABLE and uses `python3 -I -P` with explicit plugin import paths,
+  superseding the earlier PYTHONPATH-based shim. This fixes the existing feature on
+  `fix/shim-isolated`; no new issue or feature directory is needed.
 - Version output is the manifest version alone, followed by a newline.
 - The shim requires POSIX sh and Python 3.11+ on PATH; symlink installations are outside this issue.
 - Commands return integer statuses; booleans are rejected despite being integer subclasses.

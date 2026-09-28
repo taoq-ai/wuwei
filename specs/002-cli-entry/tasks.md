@@ -40,6 +40,16 @@ Independent check: import audit rejects a temporary forbidden import.
 
 ## Dependencies and Execution
 
+### Isolated shim follow-up
+
+- [X] T016 [US2] Add hostile environment and stdin regression coverage in tests/test_cli.py and tests/test_hooks.py; observe isolation failure before implementation.
+- [X] T017 [US2] Switch bin/wuwei to isolated startup and update specs/002-cli-entry/contracts/cli.md.
+- [X] T018 Run the full suite and hook p95 benchmark with the supplied interpreter; record results here.
+- [X] T019 Fix isolation review: reproduce PYTHONEXECUTABLE .pth execution and the missing
+  -P gate, correct user site discovery, unset PYTHONEXECUTABLE, and restore explicit -P.
+- [X] T020 Remove duplicate hook stdin coverage and process prose; correct the documented
+  isolation boundary and rerun the full suite with the supplied interpreter.
+
 T001 -> T002 -> T003 -> T004 -> T005 -> T006 -> T007 -> T008 -> T009 -> T010 -> T011.
 US1 supplies the minimal dispatcher; US2 adds installation entry points; US3 audits all runtime
 sources. Work is sequential in this seat because the CLI tests and dispatcher are shared.
@@ -66,3 +76,19 @@ Business commands, guards, adapters, and workspace state remain in later issues.
 - After review fixes and cleanup: 36 passed. Invalid-result cases retain non-integer,
   boolean, and out-of-range coverage; metadata cases retain read failure, non-string,
   and empty-string coverage. Existing help, usage, version, and shim argument tests remain.
+- Isolated shim red: hostile json.py and usercustomize.py ran under the old shim;
+  1 failed and 11 passed in the shim selection. Hook stdin cases passed before the change.
+- Isolated shim green: full suite with the supplied interpreter, 949 passed in 16.32 s.
+  Hostile PYTHONPATH modules, PYTHONSTARTUP, and user site startup did not run; shim
+  argument forwarding, stdin, preflight failures, adapters, and exits 0/1/2 passed.
+  Direct module tests explicitly set PYTHONPATH and do not rely on the shim inheriting it,
+  so they require no changes.
+- Hook benchmark over 60 runs: CPU p95 35.88 ms, below its asserted 50 ms limit;
+  wall p95 56.26 ms (reported by the existing benchmark, not asserted).
+- Review red: 2 failed. On macOS the hostile venv .pth wrote its marker despite -I;
+  the static Python 3.11+ gate check also failed because explicit -P was missing.
+- Review green: both regressions passed after unsetting PYTHONEXECUTABLE and adding -P.
+  User site discovery now evaluates site.getusersitepackages() with the test environment,
+  which also sets PYTHONINSPECT=1. Existing subprocess replays retain hook stdin coverage.
+- Final review suite with the supplied interpreter: 947 passed in 15.85 s. Hook p95 over
+  60 runs: CPU 38.68 ms (below the asserted 50 ms limit), wall 77.41 ms (reported only).
