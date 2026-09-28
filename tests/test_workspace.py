@@ -105,6 +105,7 @@ def test_config_defaults_and_independence(tmp_path):
     assert outward['max_length'] == {}
     assert config == {
         'owner': {'name': '', 'pronouns': '', 'handles': []}, 'repos': [], 'cap': 1,
+        'chat': {'identity': 'connector'},
         'host': {'free_memory_mb': 1024, 'seats': 1, 'reservation_timeout_seconds': 14400}, 'profile': 'strict',
         'memory': {'max_notes': 60, 'probation_days': 10},
         'brief': {'remote': 'origin',
@@ -321,7 +322,8 @@ def test_unknown_adapter_name(tmp_path, kind):
     result = cli(tmp_path, 'config', 'check')
     assert result.returncode == 1, result.stderr
     assert f'adapters.{kind}' in result.stderr
-    assert 'known names: none' in result.stderr
+    from wuwei import registry
+    assert 'known names: ' + ', '.join(registry.known(kind)) in result.stderr
     assert 'line 2' in result.stderr
 
 

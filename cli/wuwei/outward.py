@@ -71,7 +71,8 @@ def lint(text, channel, config):
 TEXT_FIELDS = {'text', 'message', 'body', 'title', 'description'}
 METADATA_FIELDS = {'ref', 'channel', 'thread', 'thread_ts', 'item', 'issue', 'issue_id', 'id',
                    'team', 'team_id', 'project', 'project_id', 'state', 'assignee', 'labels',
-                   'channel_id', 'issueId', 'owner', 'repo'}
+                   'channel_id', 'issueId', 'teamId', 'stateId', 'assigneeId', 'projectId',
+                   'owner', 'repo'}
 
 
 def _text(inputs, *, nested=False):

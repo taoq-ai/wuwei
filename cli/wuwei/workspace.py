@@ -46,6 +46,7 @@ SCHEMA = {
             {"pattern": r"mcp__.*github.*__(add|create|update)_.*comment.*", "channel": "code_host"},
         ]],
     },
+    "chat": {"identity": (str, "connector", ("connector", "custom_app"))},
     "adapters": {"tracker": (str, "none"), "chat": (str, "none"),
                  "review_bot": (str, "none"), "runtime": (str, "claude"),
                  "scanner": (str, "none"), "code_host": (str, "github"),
