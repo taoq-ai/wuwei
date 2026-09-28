@@ -12,6 +12,7 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
     parser = argparse.ArgumentParser(prog="wuwei")
     subparsers = parser.add_subparsers(dest="command", required=True)
     try:
@@ -23,7 +24,11 @@ def main(argv=None):
         for module in pkgutil.iter_modules(commands.__path__, commands.__name__ + "."):
             if module.name.rsplit(".", 1)[-1].startswith("_"):
                 continue
-            import_module(module.name).register(subparsers)
+            name = module.name.rsplit(".", 1)[-1]
+            if argv and argv[0] in (name, '--help', '-h'):
+                import_module(module.name).register(subparsers)
+            else:
+                subparsers.add_parser(name)
     except Exception as exc:
         print(f"wuwei: {str(exc) or type(exc).__name__}", file=sys.stderr)
         return UNRUN

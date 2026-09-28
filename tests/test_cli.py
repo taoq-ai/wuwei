@@ -24,7 +24,7 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 
 def register(subparsers):
-    parser = subparsers.add_parser("probe")
+    parser = subparsers.add_parser("probe", help="Exercise the exit contract")
     parser.add_argument("action")
     parser.add_argument("--message", default="a command reason")
     parser.set_defaults(func=run)
@@ -106,6 +106,7 @@ def test_help(plugin):
     result = run_cli(plugin, "--help")
     assert result.returncode == 0, result.stderr
     assert "probe" in result.stdout
+    assert "Exercise the exit contract" in result.stdout
     assert result.stderr == ""
 
 
@@ -196,3 +197,14 @@ def test_shim_missing_dependency(plugin, tmp_path, missing):
     )
     assert result.returncode == 2, result.stderr
     assert "wuwei:" in result.stderr
+
+
+@pytest.mark.parametrize('args,code', [(('probe', 'clean'), 0),
+                                      (('probe', '--help'), 0),
+                                      (('--version',), 0), (('missing',), 2)])
+def test_dispatch_does_not_import_other_commands(plugin, args, code):
+    (plugin / 'cli/wuwei/commands/unrelated.py').write_text(
+        'raise RuntimeError("unrelated command imported")\n')
+    result = run_cli(plugin, *args)
+    assert result.returncode == code, result.stderr
+    assert 'unrelated command imported' not in result.stderr
