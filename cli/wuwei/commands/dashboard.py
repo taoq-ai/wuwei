@@ -7,7 +7,67 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from wuwei import state, workspace
+from wuwei.decision import clarification_fields, evaluate, lint_clarification, route
+from wuwei.commands.status import snapshot as status_snapshot
+from wuwei.signal import classify
 from wuwei.exits import CLEAN
+
+
+def cockpit_snapshot(directory):
+    """Read today's owner surfaces without recording any outcome."""
+    directory = Path(directory)
+    data = state.read_state(directory=directory)
+    decisions = []
+    for path in sorted((directory / 'decisions').glob('*.md')):
+        if path.is_symlink() or not path.name.startswith(('D-', 'C-')):
+            continue
+        content = path.read_text(encoding='utf-8')
+        if path.name.startswith('D-'):
+            fields, _ = evaluate(content)
+            if fields['Outcome'].lower() != 'pending':
+                continue
+            lines = fields['Options'].splitlines()
+            options = [{'id': cells[0], 'description': cells[1]} for line in lines
+                       if len(cells := [part.strip() for part in line.strip().strip('|').split('|')]) == 2
+                       and cells[0] not in ('Option', '---')]
+            decision_route = route(fields)
+            question = fields['Question']
+        else:
+            fields = clarification_fields(content)
+            code, reason = lint_clarification(content, fields=fields)
+            if code:
+                raise ValueError(f'{path.name}: {reason}')
+            question = fields['Question'][0]
+            option_lines = [line.removeprefix('- ').strip() for line in fields['Options']
+                            if line.strip()]
+            options = [{'id': str(index), 'description': line}
+                       for index, line in enumerate(filter(None, option_lines), 1)]
+            decision_route = 'owner'
+        decisions.append({'id': path.stem, 'question': question, 'options': options,
+                          'route': decision_route, 'record': content})
+    refs = dict.fromkeys(data['raised_prs'] + data['claimed_prs'])
+    prs = [{'ref': ref, 'state': 'unmeasured', 'last_action': 'unmeasured',
+            'waiting_on': 'unmeasured', 'deadline': 'unmeasured'} for ref in refs]
+    pack = directory / 'briefing-pack.md'
+    if pack.is_symlink():
+        raise ValueError('briefing pack must be a regular file')
+    signals = []
+    events = directory / 'events.jsonl'
+    if events.exists():
+        for line in events.read_text(encoding='utf-8').splitlines():
+            if not line.strip():
+                continue
+            try:
+                event = json.loads(line)
+            except ValueError:
+                event = None
+            tier, lane = classify(event, {**data, 'now': workspace.now().isoformat()})
+            signals.append({'tier': tier, 'lane': lane,
+                            'kind': event.get('kind', 'unreadable') if isinstance(event, dict)
+                            else 'unreadable'})
+    return {'decisions': decisions, 'people': data.get('reply_obligations', 'unmeasured'),
+            'prs': prs, 'status': status_snapshot(directory), 'signals': signals,
+            'briefing': pack.read_text(encoding='utf-8') if pack.exists() else 'unmeasured'}
 
 
 class DayHandler(BaseHTTPRequestHandler):
@@ -26,6 +86,13 @@ class DayHandler(BaseHTTPRequestHandler):
             data, content_type = self.page, 'text/html; charset=utf-8'
         elif path == '/board.json':
             data, content_type = self.board, 'application/json'
+        elif path == '/cockpit.json':
+            try:
+                data = json.dumps(cockpit_snapshot(self.directory)).encode()
+            except (OSError, UnicodeError, ValueError, KeyError, TypeError) as exc:
+                self.send_error(503, f'cockpit unmeasured: {exc}')
+                return
+            content_type = 'application/json'
         elif path in ('/state.json', '/events.jsonl'):
             file = self.directory / path[1:]
             if not file.resolve().is_relative_to(self.directory.resolve()):
@@ -46,6 +113,12 @@ class DayHandler(BaseHTTPRequestHandler):
         self.send_header('Cache-Control', 'no-store')
         self.end_headers()
         self.wfile.write(data)
+
+    def do_POST(self):
+        if self.headers.get('Host') != f'127.0.0.1:{self.server.server_port}':
+            self.send_error(403)
+        else:
+            self.send_error(405)
 
 
 def register(subparsers):

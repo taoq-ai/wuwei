@@ -120,22 +120,32 @@ def record_rejection(path, code, message, *, root=None):
     return code, message
 
 
-def lint_clarification(text):
-    """Clarifications carry evidence and options, without decision scoring."""
+def clarification_fields(text):
+    """Read active clarification fields in their recorded order."""
     fields, current = {}, None
     for line in active_text(text).splitlines():
         match = re.match(r'^(?:#{1,6} )?([A-Za-z][A-Za-z -]*):\s*(.*)$', line)
         if match:
             current, value = match.groups()
             if current not in ('Question', 'Context', 'Options'):
-                return 1, f'clarification: unexpected {current} field'
+                raise ValueError(f'clarification: unexpected {current} field')
             if current in fields and current != 'Options':
-                return 1, f'clarification: duplicate {current} field'
+                raise ValueError(f'clarification: duplicate {current} field')
             fields.setdefault(current, []).append(value)
         elif line.strip():
             if current is None or line.startswith('#'):
-                return 1, 'clarification: expected Question, Context and Options'
+                raise ValueError('clarification: expected Question, Context and Options')
             fields[current].append(line)
+    return fields
+
+
+def lint_clarification(text, *, fields=None):
+    """Clarifications carry evidence and options, without decision scoring."""
+    if fields is None:
+        try:
+            fields = clarification_fields(text)
+        except ValueError as exc:
+            return 1, str(exc)
     question = fields.get('Question', [])
     context = fields.get('Context', [])
     options = [line.strip() for line in fields.get('Options', []) if line.strip()]
