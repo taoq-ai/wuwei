@@ -111,6 +111,8 @@ def outward_operation(kind):
             try:
                 inputs = dict(parameters.bind(*args, **kwargs).arguments)
                 start = inputs.pop('root', None)
+                if kind == 'chat' and operation.__name__ == 'dm':
+                    inputs['is_dm'] = True
                 root = workspace.find_workspace(start)
                 config = workspace.load_config(root)
                 code, reason = outward.check_call(inputs, root, config, {kind})

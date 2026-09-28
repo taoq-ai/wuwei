@@ -224,6 +224,7 @@ def test_review_path_scope(workspace, path, expected):
 
 @pytest.mark.parametrize('tool', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash'])
 @pytest.mark.parametrize('protected', ['.wuwei/days/2026-09-28/state.json',
+                                      '.wuwei/config.toml',
                                       '.wuwei/archive/day/notes.md'])
 def test_review_hardlink_alias(workspace, tool, protected, monkeypatch, capsys):
     target = workspace / protected
@@ -237,6 +238,31 @@ def test_review_hardlink_alias(workspace, tool, protected, monkeypatch, capsys):
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload(workspace, tool, **fields))))
     assert run(SimpleNamespace(event='PreToolUse')) == 2
     assert json.loads(capsys.readouterr().out)['hookSpecificOutput']['permissionDecision'] == 'deny'
+
+
+@pytest.mark.parametrize('tool', ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash'])
+@pytest.mark.parametrize('target', ['.wuwei/config.toml', 'inside/../.wuwei/config.toml', 'config-alias'])
+def test_config_is_protected(workspace, tool, target):
+    from wuwei.guards.protect_state import check_bash, check_file
+    (workspace / 'config-alias').symlink_to(workspace / '.wuwei/config.toml')
+    fields = ({'command': 'echo x >> ' + target} if tool == 'Bash' else
+              {'notebook_path' if tool == 'NotebookEdit' else 'file_path': target})
+    check = check_bash if tool == 'Bash' else check_file
+    code, reason = check(payload(workspace, tool, **fields))
+    assert code == 1
+    assert 'owner' in reason and 'outside agent tools' in reason
+
+
+@pytest.mark.parametrize('script,expected', [
+    ("sed -i 's/a/b/' .wuwei/config.toml", 1),
+    ("sh -c 'echo x >> .wuwei/config.toml'", 1),
+    ('cd .wuwei; tee -a config.toml', 1),
+    ('cat .wuwei/config.toml', 0),
+    ('echo x >> config.toml', 0),
+])
+def test_config_shell_writes(workspace, script, expected):
+    from wuwei.guards.protect_state import check_bash
+    assert check_bash(payload(workspace, 'Bash', command=script))[0] == expected
 
 
 @pytest.mark.parametrize('script,expected', [

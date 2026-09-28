@@ -27,31 +27,6 @@ def merge_check(repo, pr, cwd, root, config):
     return 1, 'merge policy not available; the owner merges'
 
 
-def scope(path):
-    """An environment-selected workspace is context, not proof of membership."""
-    try:
-        root = workspace.find_workspace(path)
-    except FileNotFoundError:
-        return None
-    config = workspace.load_config(root)
-    if path.is_relative_to(root):
-        return root, config
-    repos = [(root / Path(repo['path']).expanduser()).resolve() for repo in config['repos']]
-    if any(path.is_relative_to(repo) for repo in repos):
-        return root, config
-    # External worktrees share a configured repository's common directory.
-    if any((parent / '.git').exists() for parent in (path, *path.parents)):
-        vcs = registry.load('vcs', config)
-        actual = data(vcs.commit_context(str(path), {}, {}, root=root))
-        common = actual.get('common_dir')
-        if not isinstance(common, str) or not Path(common).is_absolute():
-            raise ValueError('missing worktree repository context')
-        if any(data(vcs.commit_context(str(repo), {}, {}, root=root)).get('common_dir') == common
-               for repo in repos):
-            return root, config
-    return None
-
-
 def possible_workspace_change(raw, directories):
     """Scope a failed parse from directory operands, never from gh arguments."""
     lexer = shlex.shlex(raw, posix=False, punctuation_chars=';&|()')
@@ -84,7 +59,7 @@ def possible_workspace_change(raw, directories):
             except ValueError:
                 return True
             destinations = {(base / target).resolve() for base in directories}
-            if any(scope(path) for path in destinations):
+            if any(workspace.scope(path) for path in destinations):
                 return True
             directories.update(destinations)
             if len(directories) > 64:
@@ -281,7 +256,7 @@ def check(payload):
         if not shell.mentions(raw, {'gh'}):
             return 0, ''
         cwd = _cwd(payload)
-        initial = scope(cwd)
+        initial = workspace.scope(cwd)
         try:
             commands = shell.normalize(raw)
         except shell.ParseError:
@@ -303,7 +278,7 @@ def check(payload):
                     raise ValueError('too many possible directories; split the command')
             for directory in directories:
                 if directory not in contexts:
-                    context = scope(directory)
+                    context = workspace.scope(directory)
                     if context:
                         contexts[directory] = context
         if not contexts:

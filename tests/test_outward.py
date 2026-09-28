@@ -24,6 +24,8 @@ def configured(tmp_path, monkeypatch):
         if kind == 'vcs' else original_load(kind, config)))
     with (directory / 'config.toml').open('a') as stream:
         stream.write('\n[[repos]]\nname = "demo"\npath = "demo"\ndefault_branch = "main"\n')
+    with (directory / 'config.toml').open('a') as stream:
+        stream.write('\n[outbound]\nwork_channels = ["chat", "C1"]\n')
     return tmp_path, workspace.load_config(tmp_path)
 
 
@@ -161,21 +163,21 @@ def test_reusable_classification(configured, text, code, decision):
     from wuwei import outward
     classify = getattr(outward, 'classify', None)
     assert callable(classify)
-    assert classify(text, *configured) == (code, decision)
+    assert classify(text, *configured, {'channel': 'chat'}) == (code, decision)
 
 
 @pytest.mark.parametrize('tool,inputs,code', [
-    ('mcp__slack__post_message', {'text': 'fixed in abc1234'}, 0),
-    ('mcp__slack__send_message', {'text': 'fixed in abc1234'}, 0),
-    ('mcp__linear__create_issue', {'draft': {'title': 'fixed in abc1234'}}, 0),
+    ('mcp__slack__post_message', {'text': 'fixed in abc1234'}, 1),
+    ('mcp__slack__send_message', {'text': 'fixed in abc1234'}, 1),
+    ('mcp__linear__create_issue', {'draft': {'title': 'fixed in abc1234'}}, 1),
     ('mcp__slack__slack_post_message', {'text': 'fixed in abc1234', 'channel': 'C1'}, 0),
     ('mcp__slack__chat_postMessage', {'text': 'per Pat, the fix is in'}, 1),
     ('mcp__slack__slack_reply_to_thread', {'text': 'drafts are with the owner'}, 1),
-    ('mcp__linear__create_comment', {'body': 'fixed in abc1234', 'issue_id': 'issue-1'}, 0),
+    ('mcp__linear__create_comment', {'body': 'fixed in abc1234', 'issue_id': 'issue-1'}, 1),
     ('mcp__linear__update_issue', {'description': 'drafts are with the owner'}, 1),
     ('mcp__linear__create_issue', {'draft': {'title': 'fixed in abc1234', 'description': 'They wrote it'}}, 1),
     ('mcp__slack__post_message', {'message': 'drafts are with the owner'}, 1),
-    ('mcp__slack__post_message', {'body': 'fixed in abc1234'}, 0),
+    ('mcp__slack__post_message', {'body': 'fixed in abc1234'}, 1),
     ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'body': 'This is thread safe.'}, 1),
     ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'blocks': [{'text': 'per Pat'}]}, 2),
     ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'approved': True}, 2),
@@ -224,7 +226,7 @@ def test_channel_limits_cannot_be_bypassed(configured, monkeypatch, specific):
 
 
 @pytest.mark.parametrize('text,invalid,code,warning', [
-    ('per Pat, the fix is in', False, 1, True),
+    ('per Pat, the fix is in', False, 1, False),
     ('The cache is thread safe.', False, 1, False),
     ('fixed in abc1234', True, 2, False),
 ])
@@ -348,8 +350,10 @@ def test_port_boundary(configured, monkeypatch, kind, operation, inputs, mode):
     if mode == 'broken-policy':
         (root / '.wuwei/config.toml').write_text('broken [')
     result = getattr(adapter, operation)(**inputs, root=root)
-    assert result.exit == {'missing': 1, 'mechanical': 0, 'lint': 1, 'broken-policy': 2}[mode], result
-    assert bool(performed) == (mode == 'mechanical')
+    sends = mode == 'mechanical' and operation == 'post'
+    expected = 2 if mode == 'broken-policy' else 0 if sends else 1
+    assert result.exit == expected, result
+    assert bool(performed) == sends
 
 
 def test_only_mcp_defaults_and_no_textless_operations(configured):
@@ -404,7 +408,7 @@ def test_mechanical_sha_must_resolve(configured, monkeypatch, exits, code):
     calls = []
     def resolve(repo, sha, root=None):
         calls.append((repo, sha))
-        return registry.Result(exits[len(calls) - 1], {'sha': 'a' * 40})
+        return registry.Result(exits[len(calls) - 1], {'sha': 'abc1234' + '0' * 33})
     monkeypatch.setattr(registry, 'load', lambda kind, config: SimpleNamespace(resolve=resolve))
     assert check(payload(root))[0] == code
     assert all(str(repo).startswith(str(root)) and sha == 'abc1234' for repo, sha in calls)
@@ -480,7 +484,8 @@ def test_default_tool_payload_metadata(configured, tool, inputs):
     from wuwei.guards.outward import check
     call = payload(configured[0], tool=tool)
     call['tool_input'] = inputs
-    assert check(call) == (0, '')
+    # Metadata parses, but an unverified chat thread is never eligible.
+    assert check(call)[0] == 1
 
 
 def test_channel_id_limit(configured, monkeypatch):
