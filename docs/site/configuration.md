@@ -73,6 +73,13 @@ fast_checks = ["python3 -m pytest -q"]
 | `brief.full_path_patterns` | `[]` | Owner supplied regexes for paths needing full context. |
 | `chat.identity` | `"connector"` | Optional CLI default: connector or custom_app. This key is not in the template. |
 
+## Owner voice
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `voice.review_prs` | `[]` | PR references whose owner comments teach the review audience voice. |
+| `voice.sources.internal` | Not set | Example internal audience mapped to sent chat channel IDs. |
+
 ## Boundaries and deployment
 
 | Key | Default | Meaning |
