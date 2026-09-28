@@ -239,6 +239,10 @@ def test_configured_external_repo_and_worktree(case, tmp_path):
     ('gh -R o/r pr merge 9', 'o/r', '9'),
     ('gh pr --repo=o/r merge 9', 'o/r', '9'),
     ('gh pr merge 9 --repo o/r', 'o/r', '9'),
+    ('gh pr merge 9 --repo old/repo -R o/r', 'o/r', '9'),
+    ('gh pr merge 9 -R old/repo --repo o/r', 'o/r', '9'),
+    ('gh -R old/repo pr merge 9 --repo o/r', 'o/r', '9'),
+    ('gh pr --repo old/repo merge 9 -Ro/r', 'o/r', '9'),
     ('gh api repos/o/r/pulls/9/merge -X PUT', 'o/r', '9'),
     ('gh api repos/o/r/merges -f base=main -f head=topic', 'o/r', None),
 ])
@@ -332,13 +336,16 @@ def test_authentication_environment_is_not_repository_selection(case, monkeypatc
     assert guard().check(payload(case[0], 'gh pr create -r alice'))[0] == 0
 
 
-@pytest.mark.parametrize('command', [
-    'gh api repos/o/r/pulls/9/merge -X GET --method PUT',
-    'gh api repos/o/r/pulls/9/reviews -X GET --method POST -f event=APPROVE',
-    'gh api repos/o/r/branches/main/protection -X GET --method DELETE',
+@pytest.mark.parametrize('command,code', [
+    ('gh api repos/o/r/pulls/9/merge -X GET --method PUT', 1),
+    ('gh api repos/o/r/pulls/9/reviews -X GET --method POST -f event=APPROVE', 1),
+    ('gh api repos/o/r/branches/main/protection -X GET --method DELETE', 1),
+    ('gh api repos/o/r/pulls/9/merge --method PUT -X GET', 0),
+    ('gh api repos/o/r/pulls/9/merge -X PUT -X GET', 0),
+    ('gh api repos/o/r/pulls/9/merge --method GET --method PUT', 1),
 ])
-def test_conflicting_api_method_flags_fail_closed(case, command):
-    assert guard().check(payload(case[0], command))[0] == 2
+def test_api_method_flags_use_last_value(case, command, code):
+    assert guard().check(payload(case[0], command))[0] == code
 
 
 @pytest.mark.parametrize('variable', ['GIT_DIR', 'GIT_WORK_TREE'])
@@ -482,7 +489,9 @@ def test_create_environment_only_rejects_repository_selection(case, monkeypatch,
     assert guard().check(payload(case[0], command))[0] == code
 
 
-@pytest.mark.parametrize('command', ['gh --version', 'gh --help'])
+@pytest.mark.parametrize('command', [
+    'gh --version', 'gh --help', 'gh -h', 'gh help', 'gh version',
+])
 def test_global_information_flags(case, command):
     assert guard().check(payload(case[0], command)) == (0, '')
 

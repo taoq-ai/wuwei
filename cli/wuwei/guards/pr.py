@@ -95,38 +95,8 @@ def possible_workspace_change(raw, directories):
                 return True
 
 
-def options(args, values, flags):
-    """Read normalized CLI arguments with explicit value-taking option names."""
-    found, operands = {}, []
-    index = 0
-    while index < len(args):
-        arg = args[index]
-        index += 1
-        if arg == '--':
-            operands.extend(args[index:])
-            break
-        if not arg.startswith('-'):
-            operands.append(arg)
-            continue
-        key, equals, value = arg.partition('=')
-        if key not in values and key not in flags and arg[:2] in values:
-            key, value, equals = arg[:2], arg[2:], True
-        if key in values:
-            if not equals:
-                if index == len(args):
-                    raise ValueError(f'missing {key} value')
-                value = args[index]
-                index += 1
-            found.setdefault(key, []).append(value)
-        elif key in flags and (not equals or value in ('true', 'false')):
-            found.setdefault(key, []).append(value if equals else 'true')
-        else:
-            raise ValueError(f'unsupported gh option: {key}')
-    return found, operands
-
-
 def values(found, *keys):
-    return [value for key in keys for value in found.get(key, [])]
+    return [found[key] for key in keys if key in found]
 
 
 def gate_check(root, cwd, config):
@@ -175,7 +145,7 @@ def gate_check(root, cwd, config):
 
 
 def create_check(args, command, cwd, root, config):
-    found, operands = options(args, {
+    operands, found = shell.operands(args, {
         '--reviewer', '-r', '--title', '-t', '--body', '-b', '--body-file', '-F',
         '--base', '-B', '--head', '-H', '--repo', '-R', '--assignee', '-a',
         '--label', '-l', '--milestone', '-m', '--project', '-p', '--template', '-T', '--recover',
@@ -198,7 +168,7 @@ def create_check(args, command, cwd, root, config):
 
 
 def api_check(args, cwd, root, config):
-    found, operands = options(args, {'--method', '-X', '--field', '-F', '--raw-field', '-f',
+    operands, found = shell.operands(args, {'--method', '-X', '--field', '-F', '--raw-field', '-f',
                                     '--input', '--header', '-H', '--hostname', '--jq', '-q',
                                     '--template', '-t', '--cache', '--preview', '-p'},
                               {'--silent', '--include', '-i', '--paginate', '--slurp', '--verbose'})
@@ -213,8 +183,6 @@ def api_check(args, cwd, root, config):
     endpoint = re.sub(r'^api/v3/', '', endpoint, flags=re.I)
     fields = values(found, '--field', '-F', '--raw-field', '-f')
     methods = values(found, '--method', '-X')
-    if len(set(methods)) > 1:
-        raise ValueError('conflicting API method options')
     method = methods[-1].upper() if methods else ('POST' if fields or '--input' in found else 'GET')
     if endpoint.casefold() in ('graphql', 'api/graphql'):
         raise ValueError('opaque GraphQL API request; use explicit PR commands')
@@ -251,7 +219,7 @@ def api_check(args, cwd, root, config):
 
 def action(command, cwd, root, config, isolated):
     args = command.argv[1:]
-    if args in (['--version'], ['--help']):
+    if args in (['--version'], ['--help'], ['-h']):
         return 0, ''
     # Global repository selection can appear before the subcommand.
     prefix = []
@@ -282,25 +250,23 @@ def action(command, cwd, root, config, isolated):
             return 1, 'gh alias changes are refused'
     if not args or family != 'pr':
         return 0, ''
-    verb, args = args[0], args[1:] + prefix
+    verb, args = args[0], prefix + args[1:]
     if verb == 'create':
         if not isolated:
             raise ValueError('run PR create separately without redirections to keep HEAD evidence current')
         return create_check(args, command, cwd, root, config)
     if verb == 'merge':
-        found, operands = options(args, {'--repo', '-R', '--subject', '-t', '--body', '-b',
+        operands, found = shell.operands(args, {'--repo', '-R', '--subject', '-t', '--body', '-b',
                                         '--body-file', '-F', '--author-email', '-A', '--match-head-commit'},
                                   {'--admin', '--auto', '--disable-auto', '--delete-branch', '-d',
                                    '--merge', '-m', '--rebase', '-r', '--squash', '-s'})
         if 'true' in values(found, '--admin'):
             return 1, 'admin merge is refused'
         repos = values(found, '--repo', '-R')
-        if len(set(repos)) > 1:
-            raise ValueError('conflicting repository options')
         return merge_check(repos[0] if repos else None, operands[0] if operands else None,
                            cwd, root, config)
     if verb == 'review':
-        found, _ = options(args, {'--repo', '-R', '--body', '-b', '--body-file', '-F'},
+        _, found = shell.operands(args, {'--repo', '-R', '--body', '-b', '--body-file', '-F'},
                            {'--approve', '-a', '--comment', '-c', '--request-changes', '-r'})
         if 'true' in values(found, '--approve', '-a'):
             return 1, 'PR approval is refused'

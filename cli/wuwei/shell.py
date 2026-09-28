@@ -21,6 +21,42 @@ class Command(NamedTuple):
     writes: tuple[str, ...] = ()
 
 
+def operands(args, valued=(), flags=()):
+    """Read normalized argv; repeated options and gh method/repo aliases use the last value."""
+    result, values = [], {}
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        index += 1
+        if arg == '--':
+            result.extend(args[index:])
+            break
+        if not arg.startswith('-'):
+            result.append(arg)
+            continue
+        key, sep, value = arg.partition('=')
+        if key in flags and (not sep or value in ('true', 'false')):
+            values[key] = value if sep else 'true'
+            continue
+        if key not in valued:
+            # Short value options also accept attached values, e.g. -Rorg/repo.
+            key = next((k for k in valued if len(k) == 2 and arg.startswith(k)), '')
+            if not key:
+                raise ValueError('unsupported option; use explicit targets')
+            value, sep = arg[len(key):], '='
+        if not sep:
+            if index == len(args):
+                raise ValueError('missing option value')
+            value = args[index]
+            index += 1
+        for aliases in (('-X', '--method'), ('-R', '--repo')):
+            if key in aliases:
+                for alias in aliases:
+                    values.pop(alias, None)
+        values[key] = value
+    return result, values
+
+
 # Words retain quote boundaries so expansion checks distinguish literal data.
 _TOKEN = re.compile(r'(?P<space>[ \t\r]+)|(?P<comment>\#[^\n]*)|'
                     r'(?P<redirect>[0-9]*(?:<<-?|>>!?|>!|<>|>&|<&|>\||[<>])|&>>?)|'

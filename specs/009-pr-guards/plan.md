@@ -25,7 +25,9 @@ existing guard registration, short scoped diff. Do not commit, push or run gh.
 5. API review bodies supplied indirectly cannot prove a non-approval, so return 2.
    Read-only API requests pass; unknown GraphQL requests fail closed in scope.
    REST endpoint matching includes enterprise prefixes, encoded paths and dot segments.
-   Conflicting method options fail closed.
+   Repeated method options use the last value, including short/long aliases.
+6. Reuse shell.operands for PR and deploy option reading. Extend the existing
+   deploy PERMISSIONS_DENY list for init; retain the single settings writer.
 
 ## Validation
 
@@ -38,7 +40,7 @@ files for local machine paths, emojis and em-dashes.
 ## Deferred
 
 #77 replaces merge_check with the current-head merge policy. No merge execution is
-implemented here. Shared shell.py behavior remains unchanged.
+implemented here.
 
 ## Review refinements
 

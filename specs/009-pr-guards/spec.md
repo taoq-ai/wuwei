@@ -52,6 +52,10 @@ Acceptance:
 - FR-005: Match merge, review and branch-protection API endpoints after normalisation.
 - FR-006: Return 0 clean, 1 policy findings, 2 unable to inspect; errors block with a reason.
 - FR-007: External tool reads go through existing ports; tests use recording fakes.
+- FR-008: Init adds approval and admin-merge deny patterns through the existing
+  PERMISSIONS_DENY list and settings writer.
+- FR-009: PR and deploy guards share one option reader. Repeated options use the
+  last value, including the method and repository short/long aliases.
 
 ## Key Entities
 
