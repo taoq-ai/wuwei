@@ -52,6 +52,14 @@ def test_initial_release_state():
     assert json.loads((root / ".release-please-manifest.json").read_text()) == {".": "0.0.0"}
 
 
+def test_release_pre_major_bump_options():
+    root = Path(__file__).resolve().parents[1]
+    config = json.loads((root / "release-please-config.json").read_text())
+    package = config["packages"]["."]
+    assert package.get("bump-minor-pre-major") is True
+    assert package.get("bump-patch-for-minor-pre-major", False) is False
+
+
 def test_python_metadata():
     import tomllib
 

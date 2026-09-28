@@ -4,6 +4,7 @@
     ".": {
       "release-type": "simple",
       "package-name": "wuwei",
+      "bump-minor-pre-major": true,
       "include-v-in-tag": true,
       "include-component-in-tag": false,
       "extra-files": [
