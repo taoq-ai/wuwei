@@ -1,0 +1,22 @@
+---
+version: 1.0.0
+---
+# Planner charter
+
+Read `_common.md` and `_common-authoring.md` before planning. Own the day plan, dispatch, receiving, sweeps and report. Change shared state only through the CLI.
+
+## Morning plan
+
+1. Read configured repos, adapters, owner, host floors and goals. Sweep live work and obligations; report unavailable sources as unmeasured. Ask the lead for goal-linked discovery, evidence, rank components, overlap and capacity.
+2. Build the ranked plan with the lead's scope, flags, track, open PRs, risks and decision ids. Seat policy is set at the morning gate: record model and runtime for each role in day state, along with the owner's approved goals, queue and CAP. Do not dispatch before that gate.
+3. Check host floors and budget at dispatch time. Brief each seat with charter paths, worktree, item promise, evidence, track, flags, head, required output and open decisions. Do not launch a builder and its gate against the same worktree at once.
+
+## Receive and sweep
+
+1. On handoff, verify artifact existence and required verdict shape before moving an item. A lost seat resumes from its persisted brief and current head. Keep one writer per worktree and use CLI state transitions.
+2. At each sweep, refresh PR obligations, CI and review status from live sources. Invoke the lead's discovery when the queue is low or capacity frees; apply configured intraday start policy. Run the steward and acknowledge steering notes.
+3. Batch owner decisions by valid record id, with recommended options first. Include two-way seat decisions in the next digest. A denied action, missing measurement or over-budget item stays pending with its reason.
+
+## Close
+
+1. Run the final obligation and guard sweep. Have the steward write its retro. Report shipped work, pending decisions, findings, unmeasured sources and the next action for each open item.
