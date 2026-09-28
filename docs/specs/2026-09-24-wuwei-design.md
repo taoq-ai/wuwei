@@ -371,6 +371,18 @@ message, before the outward-text lint and the voice checks (4.3, 4.8) run.
   `file:line`, failure scenario and `blocks: yes|no`; a probe or mutation line per claim (or
   "not run"); residual risk; the retro note.
 - Retro note, every seat: three lines prefixed `Blocked:`, `Gap:`, `Change:`.
+- Build loop (owner, 2026-09-28; adapted from ralph-starter). The runtime adapter runs a
+  builder seat as a loop rather than a single dispatch: dispatch, run the item's fast checks
+  (backpressure), feed failures back into the same seat, repeat until green or until
+  `build.max_iterations` (default 8). Each iteration's failing checks are hashed into an
+  error signature (check name, failing test ids, normalised error text); the same signature
+  in `build.stuck_after` consecutive iterations (default 3) is a stuck loop: the item parks
+  with a decision record instead of spending more budget. Progress, not activity, keeps a
+  seat running.
+- Cost per iteration (owner, 2026-09-28). Every dispatch records the runtime's reported
+  usage (input and output tokens, cost when the runtime reports it, model, duration) as a
+  `seat.usage` event per iteration. The steward reports cost per item, per role and per
+  day; the M5 budget governor (15.8) enforces caps on the same events.
 - Engineering standards (owner, 2026-09-28), carried by the builder charter and checked by
   the quality sentinel: test first (a failing test before the code that passes it); the
   simplest solution that works (build only what the item asks, reuse what the repository
@@ -395,7 +407,7 @@ two hours that lists the two-way-door decisions seats took on their own.
 
 Outside the dispatch path. Reads `events.jsonl`, verdicts, traces and CLI metrics: fix rounds
 per item, hand-backs per PR, time in phase, verdict-lint rejections, decisions reaching the
-user per day. Writes steering notes the planner must acknowledge, the pre-triaged decision
+user per day, build-loop iterations and stuck parks per item, and cost per item, role and day. Writes steering notes the planner must acknowledge, the pre-triaged decision
 queue, and the retro. Charter and note changes it only proposes; `wuwei promote` lands them
 (section 6.8). Never briefs a seat, never dispatches, never changes item state. A day on
 which the steward did not run is a finding in the next plan.
@@ -692,7 +704,7 @@ that it did nothing and returns exit 2 where a measurement was expected.
 | tracker | `claim(item)`, `transition(item, state)`, `create(draft)`, `history(item)` | Linear |
 | chat | `post(channel, text, thread)`, `dm(text)` | Slack |
 | review_bot | `score(pr)`, `open_findings(pr)` | Greptile |
-| runtime | `dispatch(role, brief_path, worktree, write)`, `status(job)`, `result(job)` | Claude (default), Codex |
+| runtime | `dispatch(role, brief_path, worktree, write)`, `status(job)`, `result(job)` (includes usage: tokens, cost, model, duration) | Claude (default), Codex |
 | scanner | `audit(path)`, `gate(result, threshold)`, `traces(file)`, `mcp(servers)` | ZIRAN |
 | code_host | `pr(ref)`, `checks(ref, sha)`, `reviews(ref)`, `threads(ref)`, `protection(repo, branch)`, `create_pr(draft)`, `request_reviewers(ref, logins)`, `comment(ref, text, thread)`, `merge(ref, sha)`, `revert_pr(ref)` | GitHub through `gh` (default); GitLab possible later |
 | vcs | `identity(repo)`, `head(repo)`, `merge_base(repo, ref)`, `status(repo)`, `diff_stat(repo, base, head)`, `log_since(repo, sha)`, `worktree_add(repo, branch, path)` | git |
