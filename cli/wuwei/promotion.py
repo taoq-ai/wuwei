@@ -32,8 +32,10 @@ def _target(root, raw):
     elif path.parent == root / '.wuwei/memory/notes':
         if not SLUG_RE.fullmatch(path.stem) or path.suffix != '.md':
             raise ValueError('invalid note target')
+    elif path == root / '.wuwei/memory/voice.md':
+        pass
     else:
-        raise ValueError('target must be a WUWEI charter override or note')
+        raise ValueError('target must be a WUWEI charter override, note or voice profile')
     return path
 
 
@@ -80,6 +82,9 @@ def _apply(root, proposal):
             raise ValueError('target exceeds 200 line cap')
         if target.parent == root / '.wuwei/memory/notes':
             parse_note(updated)
+        if target == root / '.wuwei/memory/voice.md':
+            from wuwei.voice import parse_profile
+            parse_profile(updated)
         target.parent.mkdir(parents=True, exist_ok=True)
         workspace.atomic_write(target, updated)
     else:

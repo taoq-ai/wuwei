@@ -12,3 +12,7 @@ def post(channel, text, thread, *, root=None):
 @outward_operation('chat')
 def dm(text, *, root=None):
     return registry.record_none('chat', 'dm', root, measurement=False)
+
+
+def sent(channel, owner, *, root=None):
+    return registry.record_none('chat', 'sent', root)

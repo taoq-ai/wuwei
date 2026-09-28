@@ -26,7 +26,8 @@ def test_init_layout(tmp_path, explicit):
     result = cli(tmp_path, 'init', *([str(target)] if explicit else []))
     assert result.returncode == 0, result.stderr
     workspace = target / '.wuwei'
-    for name in ('config.toml', 'memory/spine.md', 'memory/index.md', 'memory/CHANGELOG.md'):
+    for name in ('config.toml', 'memory/spine.md', 'memory/index.md',
+                 'memory/CHANGELOG.md', 'memory/voice.md'):
         assert (workspace / name).is_file()
     for name in ('charters', 'memory/notes', 'days', 'archive'):
         assert (workspace / name).is_dir()
@@ -110,7 +111,8 @@ def test_config_defaults_and_independence(tmp_path):
         'owner': {'name': '', 'pronouns': '', 'handles': []}, 'repos': [], 'cap': 1,
         'chat': {'identity': 'connector'},
         'host': {'free_memory_mb': 1024, 'seats': 1, 'reservation_timeout_seconds': 14400}, 'profile': 'strict',
-        'memory': {'max_notes': 60, 'note_line_cap': 80, 'probation_days': 10, 'state_entry_cap': 3},
+            'memory': {'max_notes': 60, 'note_line_cap': 80, 'probation_days': 10, 'state_entry_cap': 3},
+            'voice': {'sources': {}, 'review_prs': []},
         'build': {'max_iterations': 8, 'stuck_after': 3,
                   'poll_interval_seconds': 5, 'poll_timeout_seconds': 3600},
         'codex': {'command': [], 'timeout_seconds': 300},
