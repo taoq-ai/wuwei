@@ -50,7 +50,15 @@ that engagement ships in this repository.
 - A second runtime (Codex) is supported through an adapter that dispatches the same charter
   by file path. Codex sandboxes have no network and cannot reach an MCP server, so every
   guard and state change is a CLI, not an MCP tool.
-- Stdlib Python only at runtime. No package install beyond the plugin itself.
+- Stdlib Python only at runtime. No package install beyond the plugin itself. Language
+  decision (owner, 2026-09-28): Python stays. Measured on the owner's machine, the
+  interpreter starts in about 17 ms and Node in about 18 ms, so TypeScript buys no speed; a
+  Rust binary would save about 35 ms per tool call at the cost of per-platform binaries and
+  a rewrite. The hook path carries a latency budget instead: `wuwei hook` p95 under 50 ms
+  (10.6). If the budget is broken, only the hook dispatcher is a candidate for a compiled
+  rewrite.
+- The CLI is invoked only through `bin/wuwei`, which runs `python3 -P` so a `wuwei/` or
+  `adapters/` directory in the working directory cannot shadow the plugin.
 - Writing style for everything the plugin authors: no emojis, no em-dashes.
 
 ## 3. Architecture
@@ -72,6 +80,8 @@ wuwei/
     review_bot/      none (default), greptile
     runtime/         claude (default), codex
     scanner/         none (default), ziran
+    code_host/       github (default, through `gh`), none
+    vcs/             git (default)
   templates/         workspace skeleton, dashboard.html
   tests/
   docs/
@@ -86,7 +96,7 @@ wuwei/
 | Agents | Charter as system prompt plus a tool allowlist. Generated at build time. | charters, allowlist file |
 | Skills | Entry points the user types. Orchestrate; never write state directly. | CLI |
 | Hooks | Map Claude Code lifecycle events to CLI guard calls. | CLI |
-| CLI | The only writer of workspace state and the only home of guards, sweeps, index and metrics. | stdlib, adapters |
+| CLI | The only writer of workspace state and the only home of guards, sweeps, index and metrics. | stdlib, ports |
 | Adapters | Fixed interfaces to external systems, each with a `none` default. | the external tool |
 
 Rule: a behaviour lives in exactly one CLI function with one test. Hooks, skills and seats
@@ -122,6 +132,28 @@ Code repos receive only worktrees, branches and pull requests.
 Every guard, sweep and adapter call returns one of: `0` clean, `1` findings, `2` could not
 run. Exit 2 blocks exactly like exit 1 and prints why. An absent adapter or scanner reports
 "unmeasured", which the report shows as such and never counts as clean.
+
+### 3.5 Ports and adapters (owner, 2026-09-28)
+
+WUWEI is built as ports and adapters (hexagonal).
+
+- Core: `cli/wuwei/`. Guards, sweeps, the state writer, policies (merge, deployment,
+  decisions, ranking), memory, metrics. The core never runs an external tool and never
+  parses a vendor's output format; it calls ports and receives plain data (dicts, lists,
+  the shared `(exit, data, reason)` result).
+- Driven ports, one per external concern, listed in section 8. A port is a named set of
+  functions with fixed parameters, declared once in the registry; there is no abstract base
+  class. Every port has a `none` adapter (or a fake for ports that must answer, such as
+  `vcs`) and a contract test that every adapter under `adapters/<port>/` satisfies.
+- Driven adapters: `adapters/<port>/<name>.py`. The only code that runs `gh`, `git`,
+  `ziran`, `claude`, `codex`, `signal-cli` or talks HTTP. An adapter turns an error body
+  into exit 2 (section 9) before anything reaches the core.
+- Driving adapters: `hooks/hooks.json` with `wuwei hook <event>` (Claude Code lifecycle),
+  the `wuwei` command line, `skills/` (typed entry points), and in M5 the listener and its
+  inbound and control-plane parsing. Each translates its input into one core call and its
+  result into the caller's format. None holds a rule.
+- Tests: the core is tested against fake adapters and recorded fixtures, never against the
+  real tools or the network; adapters get contract tests plus recorded-output tests.
 
 ## 4. Guards
 
@@ -555,7 +587,7 @@ With the adapter set to `none` or ZIRAN absent, S2 to S4 report "unmeasured" (ex
 
 ## 8. Adapters
 
-Each adapter is a module implementing a fixed interface. The `none` implementation records
+Each adapter is a module implementing a port (3.5). The `none` implementation records
 that it did nothing and returns exit 2 where a measurement was expected.
 
 | Adapter | Interface | Reference implementation |
@@ -565,6 +597,8 @@ that it did nothing and returns exit 2 where a measurement was expected.
 | review_bot | `score(pr)`, `open_findings(pr)` | Greptile |
 | runtime | `dispatch(role, brief_path, worktree, write)`, `status(job)`, `result(job)` | Claude (default), Codex |
 | scanner | `audit(path)`, `gate(result, threshold)`, `traces(file)`, `mcp(servers)` | ZIRAN |
+| code_host | `pr(ref)`, `checks(ref, sha)`, `reviews(ref)`, `threads(ref)`, `protection(repo, branch)`, `create_pr(draft)`, `request_reviewers(ref, logins)`, `comment(ref, text, thread)`, `merge(ref, sha)`, `revert_pr(ref)` | GitHub through `gh` (default); GitLab possible later |
+| vcs | `identity(repo)`, `head(repo)`, `merge_base(repo, ref)`, `status(repo)`, `diff_stat(repo, base, head)`, `log_since(repo, sha)`, `worktree_add(repo, branch, path)` | git |
 | inbound (M5) | `poll(since)` or `receive(request)`, `reply(thread, text)` | Slack (poll) |
 | control_plane (M5) | `escalate(decision)`, `notify(summary)`, `poll_replies(since)` | Remote Control plus push (default), Signal, WhatsApp |
 | redactor (M5) | `redact(text) -> text, findings` | built-in patterns (default); WUMING once it ships a CLI |
@@ -593,6 +627,11 @@ that it did nothing and returns exit 2 where a measurement was expected.
   asserting on events and exit codes, never on model prose.
 - Triggering: `claude plugin eval` over skill descriptions, including near-miss negatives.
 - Test runner: pytest as a development dependency only.
+- Ports: every adapter passes its port's contract test; the core's tests use fakes and
+  recorded adapter output only.
+- 10.6 Latency (owner requirement): `bin/wuwei hook <event>` p95 under 50 ms. A benchmark
+  test runs the Bash PreToolUse fixture at least 40 times and asserts p95 below 50 ms
+  (asserted locally, measured and printed in CI where runner noise makes it advisory).
 
 ## 11. Packaging and release
 
