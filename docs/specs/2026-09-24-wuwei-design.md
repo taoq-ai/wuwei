@@ -178,7 +178,7 @@ WUWEI is built as ports and adapters (hexagonal).
 | SubagentStop | a seat finishes | its three-line retro note is missing; otherwise records it |
 | SessionStart | new session | never refuses; prints the memory payload and its size, flags a dead watch process and orphans from the last close |
 | PreCompact | before summarising | never refuses; flushes pending state and events |
-| Stop | day close | reply obligations owed, visibility obligations owed, or the retro did not land |
+| Stop | every planner turn end (4.2.1), and day close | any owned PR has an overdue action; at day close also reply or visibility obligations owed, or the retro did not land |
 
 ### 4.2 Sweeps
 
@@ -188,6 +188,37 @@ ledger), PR visibility (reviewer requested, channel post logged with reviewer me
 verdict recorded), staleness (no commit and no report for 15 minutes), and the scanner over
 the day's traces. The watch writes a clock line every 10 minutes; a missing clock line is a
 failure signal.
+
+#### 4.2.1 PR ownership loop (owner, 2026-09-28)
+
+The shepherd owns every PR the day raised or claimed until it is merged or the owner parks
+it. Ownership is enforced by three mechanisms, none of which depends on the model remembering:
+
+- State from absolute state. `wuwei pr state` computes one current state per owned PR from the
+  code host, never from memory: `conflicted` (not mergeable against its base), `ci_red`,
+  `changes_requested`, `threads_unanswered` (the reply obligations above), `review_stale`
+  (awaiting review past `pr.review_window`), `approved`, `merged`. Each state names its
+  required action and a deadline (`pr.action_minutes`, default 30):
+  - `conflicted`: rebase in the item's worktree, resolve, run the fast checks, push;
+  - `ci_red`: a fix round in the item's worktree;
+  - `changes_requested` and `threads_unanswered`: triage each thread: a fix request becomes a
+    fix round, a question gets a reply (auto-send tier for team PR threads, 4.9), a
+    disagreement or scope change becomes a decision for the owner (5.8);
+  - `review_stale`: re-request review, then post in the review channel;
+  - `approved`: `wuwei merge` when the policy clears it (4.6), otherwise a merge decision;
+  - `merged`: done.
+  An overdue action is a `nudge`, then a `page` at twice the deadline (5.9).
+- Wake outside the model. The watch process polls owned PRs every `pr.poll_seconds` (default
+  120; head, CI, mergeability, reviews, comments, threads) and, on any change, records a
+  `pr.changed` event and wakes the planner session (and, in M5, launches a headless shepherd
+  run). Nothing needs to be re-armed by a seat.
+- Anchor at every turn. The Stop hook refuses to end a planner turn while any owned PR has an
+  action past its deadline and no decision record parking it, naming the PR, its state and the
+  action. The day close additionally requires every owned PR merged, parked or explicitly
+  carried to the next day.
+
+The cockpit shows one row per owned PR: state, last action, what it waits on and time to
+deadline, so the owner never checks PRs one by one.
 
 ### 4.3 Outward-text lint
 
@@ -348,7 +379,7 @@ message, before the outward-text lint and the voice checks (4.3, 4.8) run.
 ```
 /wuwei plan -> planner -> lead -> MORNING GATE (user approves or edits)
   -> per item: builder -> pre-PR gates in parallel (arch, quality, security; goal on docs)
-  -> shepherd raises, requests reviewers, posts
+  -> shepherd raises, requests reviewers, posts, and owns the PR until merged (4.2.1)
   -> fix round -> arch delta -> ... -> merge policy: auto-merge, or the user merges
 /wuwei report -> steward retro -> planner report -> Stop guard
 ```
