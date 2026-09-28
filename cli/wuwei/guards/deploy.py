@@ -7,7 +7,7 @@ from urllib.parse import unquote, urlsplit
 
 from wuwei import registry
 from wuwei.guards import Guard
-from wuwei.shell import ParseError, is_opaque, mentions, normalize
+from wuwei.shell import ParseError, is_opaque, mentions, normalize, operands
 from wuwei.workspace import find_workspace, load_config
 
 
@@ -28,7 +28,9 @@ PERMISSIONS_DENY = [f'Bash({command})' for command in (
     'terraform apply*', 'tofu apply*', 'kubectl apply*', 'helm install*',
     'helm upgrade*', 'pulumi up*', 'vercel*', 'vc *', 'netlify deploy*',
     'ntl deploy*', 'fly deploy*', 'flyctl deploy*', 'docker push*',
-    'podman push*', 'gh release create*', 'git push --tags*', 'git push * --tags*')]
+    'podman push*', 'gh release create*', 'git push --tags*', 'git push * --tags*',
+    'gh pr review --approve*', 'gh pr review * --approve*', 'gh pr review * -a*',
+    'gh pr merge * --admin*')]
 
 
 def deny(rule):
@@ -37,40 +39,6 @@ def deny(rule):
 
 def unknown(reason):
     raise ValueError(reason)
-
-
-def operands(args, valued=(), flags=()):
-    """Read CLI options from normalized argv; unknown options cannot hide targets."""
-    result, values = [], {}
-    index = 0
-    while index < len(args):
-        arg = args[index]
-        index += 1
-        if arg == '--':
-            result.extend(args[index:])
-            break
-        if not arg.startswith('-'):
-            result.append(arg)
-            continue
-        key, sep, value = arg.partition('=')
-        if key in flags and not sep:
-            continue
-        if key not in valued:
-            # Common short value options also accept attached values, e.g. -Rorg/repo.
-            key = next((k for k in valued if len(k) == 2 and arg.startswith(k)), '')
-            if not key:
-                unknown('unsupported option; use explicit deployment targets')
-            value, sep = arg[len(key):], '='
-        if not sep:
-            if index == len(args):
-                unknown('missing option value')
-            value = args[index]
-            index += 1
-        if key in ('-X', '--method'):
-            values.pop('-X', None)
-            values.pop('--method', None)
-        values[key] = value
-    return result, values
 
 
 def environment(branch, config):
@@ -210,6 +178,8 @@ def api(args, config, root):
 
 
 def gh(args, env, config, root):
+    if args in (['--version'], ['--help'], ['-h']) or args[:1] in (['help'], ['version']):
+        return 0, ''
     if env.get('GH_HOST', 'github.com') != 'github.com':
         unknown('GH_HOST override is unsupported by the code_host port')
     repo = env.get('GH_REPO')

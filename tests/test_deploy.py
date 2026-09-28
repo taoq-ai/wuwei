@@ -57,6 +57,11 @@ def check(root, command):
     ('git status', 0, ''),
     ('gh workflow run test.yml', 2, 'workflow'),
     ('gh pr view 42', 0, ''),
+    ('gh --version', 0, ''),
+    ('gh --help', 0, ''),
+    ('gh -h', 0, ''),
+    ('gh help', 0, ''),
+    ('gh version', 0, ''),
     ('docker ps', 0, ''),
     ('echo hello', 0, ''),
     ("sh -c 'terraform apply -auto-approve'", 1, 'terraform apply'),
@@ -268,7 +273,9 @@ def test_init_permissions(tmp_path, monkeypatch):
             'helm upgrade*', 'pulumi up*', 'vercel*', 'vc *', 'netlify deploy*',
             'ntl deploy*', 'fly deploy*', 'flyctl deploy*', 'docker push*',
             'podman push*', 'gh release create*', 'git push --tags*',
-            'git push * --tags*'))}
+            'git push * --tags*', 'gh pr review --approve*',
+            'gh pr review * --approve*', 'gh pr review * -a*',
+            'gh pr merge * --admin*'))}
     assert global_settings.read_text() == '{"owner": true}'
 
 
