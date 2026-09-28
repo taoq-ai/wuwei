@@ -14,13 +14,14 @@ PHASES = {
     'spec': ('implement', 'parked', 'escalated'),
     'implement': ('gate', 'parked', 'escalated'),
     'gate': ('raised', 'fix', 'parked', 'escalated'),
-    'raised': ('fix', 'merged', 'parked', 'escalated'),
     'fix': ('delta', 'parked', 'escalated'),
     'delta': ('raised', 'fix', 'parked', 'escalated'),
+    'raised': ('fix', 'merged', 'parked', 'escalated'),
     'parked': ('planned', 'spec', 'implement', 'gate', 'raised', 'fix', 'delta'),
     'escalated': ('planned', 'spec', 'implement', 'gate', 'raised', 'fix', 'delta'),
     'merged': (),
 }
+BUILD_PHASES = ('spec', 'implement', 'fix')
 STATUSES = ('queued', 'running', 'blocked', 'done')
 DAY_DEFAULTS = {'items': {}, 'cap': 1, 'seat_policy': {}, 'envelope': {},
                 'claimed_prs': [], 'raised_prs': [], 'gate_verdicts': {}}
