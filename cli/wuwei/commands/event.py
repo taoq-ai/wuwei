@@ -15,7 +15,7 @@ def register(subparsers):
 
 
 def run(args):
-    if args.kind.startswith('state.') or args.kind in (
+    if args.kind.startswith(('state.', 'decision.')) or args.kind in (
             'brief written', 'seat stood down', 'watch: sweep', 'reply: acknowledged',
             'hook.refusal'):
         print('wuwei event: event kind reserved for its dedicated writer', file=sys.stderr)

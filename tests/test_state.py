@@ -492,7 +492,7 @@ def test_seat_reservations_require_dedicated_writer(workspace, path, value):
 
 def test_fast_checks_namespace_is_owned_by_recorder():
     from wuwei import state
-    assert {'seats', 'fast_checks'} <= state.RESERVED
+    assert {'seats', 'fast_checks', 'reply_acks', 'channel_posts', 'decision_outcomes'} <= state.RESERVED
 
 
 @pytest.mark.parametrize('path,value', [
