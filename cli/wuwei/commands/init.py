@@ -20,10 +20,23 @@ def register(subparsers):
     parser.add_argument("path", nargs="?", default=".")
     parser.add_argument("--upgrade", action="store_true", help="upgrade an existing workspace")
     parser.add_argument("--dry-run", action="store_true", help="show the upgrade plan")
+    parser.add_argument("--menu-bar", action="store_true", help="show SwiftBar setup instructions")
     parser.set_defaults(func=run)
 
 
 def run(args):
+    if getattr(args, 'menu_bar', False):
+        if getattr(args, 'upgrade', False) or getattr(args, 'dry_run', False):
+            raise ValueError('--menu-bar cannot be combined with --upgrade or --dry-run')
+        if sys.platform != 'darwin':
+            print('SwiftBar menu bar is macOS only')
+            return CLEAN
+        template = Path(__file__).resolve().parents[3] / 'templates/swiftbar/wuwei.1m.sh'
+        print(f'Copy {template} into your SwiftBar Plugins folder as wuwei.1m.sh.')
+        print('Add this line near the top of the copied script:')
+        print(f'export WUWEI_WORKSPACE={shlex.quote(str(Path(args.path).expanduser().resolve()))}')
+        print('Install SwiftBar first if it is absent. No menu bar plugin runs until installed.')
+        return CLEAN
     if getattr(args, 'dry_run', False) and not getattr(args, 'upgrade', False):
         raise ValueError('--dry-run requires --upgrade')
     if getattr(args, 'upgrade', False):
