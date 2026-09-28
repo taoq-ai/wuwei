@@ -106,7 +106,7 @@ def test_config_defaults_and_independence(tmp_path):
     assert config == {
         'owner': {'name': '', 'pronouns': '', 'handles': []}, 'repos': [], 'cap': 1,
         'host': {'free_memory_mb': 1024, 'seats': 1, 'reservation_timeout_seconds': 14400}, 'profile': 'strict',
-        'memory': {'max_notes': 60},
+        'memory': {'max_notes': 60, 'probation_days': 10},
         'brief': {'remote': 'origin',
                   'prior_branch_pattern': '*{item}*',
                   'full_path_patterns': []},

@@ -54,7 +54,7 @@ def run(args):
         elif message:
             context.append(message)
     if reasons:
-        return refuse(args.event, '\n'.join(reasons))
+        return refuse(args.event, '\n'.join(reasons), cwd=payload.get('cwd'))
     if args.event == 'SessionStart' and context:
         print(json.dumps({'hookSpecificOutput': {
             'hookEventName': args.event, 'additionalContext': '\n'.join(context)}}))
@@ -75,8 +75,19 @@ def validate(payload, event):
         raise ValueError('hook_event_name does not match command event')
 
 
-def refuse(event, reason, *, malformed=False):
+def refuse(event, reason, *, malformed=False, cwd=None):
     print(reason, file=sys.stderr)
+    if event == 'PreToolUse' and not malformed:
+        from wuwei import state, workspace
+        try:
+            root = workspace.find_workspace(cwd)
+        except FileNotFoundError:
+            root = None
+        if root is not None:
+            try:
+                state.append_event('hook.refusal', {'reason': reason}, root)
+            except BaseException as exc:
+                print(f'wuwei hook: could not record refusal: {exc}', file=sys.stderr)
     if event == 'PreToolUse':
         print(json.dumps({'hookSpecificOutput': {
             'hookEventName': event, 'permissionDecision': 'deny',

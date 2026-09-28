@@ -87,6 +87,8 @@ def session_payload(root=None):
     spine = (memory / 'spine.md').read_text(encoding='utf-8')
     index = (memory / 'index.md').read_text(encoding='utf-8')
     state_text = json.dumps(state.read_state(root), ensure_ascii=False, sort_keys=True)
+    from wuwei.promotion import last_run
+    promote_line = last_run(root)
     content = (f'Spine:\n{spine.rstrip()}\n\nIndex:\n{index.rstrip()}\n\n'
-               f'Today state:\n{state_text}\n')
+               f'Today state:\n{state_text}\n{promote_line}\n')
     return content, len(content.encode('utf-8')), estimated_tokens(content)

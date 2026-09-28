@@ -25,7 +25,7 @@ SCHEMA = {
               "full_path_patterns": [(str, "")]},
     "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 1, 1),
              "reservation_timeout_seconds": (int, 14400, 1)},
-    "memory": {"max_notes": (int, 60, 1)},
+    "memory": {"max_notes": (int, 60, 1), "probation_days": (int, 10, 0)},
     "profile": (str, "strict", ("strict", "standard")),
     "boundary": {"*": (str, "")},
     "environments": {"*": (str, "")},
@@ -97,10 +97,14 @@ def find_workspace(start=None):
             raise FileNotFoundError(
                 f"WUWEI_WORKSPACE={override!r} must name a root containing .wuwei/"
             )
+        if (root / '.wuwei').is_symlink():
+            raise ValueError('.wuwei must not be a symlink')
         return root
     start = (Path.cwd() if start is None else Path(start)).resolve()
     for root in (start, *start.parents):
         if (root / ".wuwei").is_dir():
+            if (root / '.wuwei').is_symlink():
+                raise ValueError('.wuwei must not be a symlink')
             return root
     raise FileNotFoundError(f"No .wuwei/ found from {start}; run wuwei init")
 
