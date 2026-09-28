@@ -26,8 +26,9 @@ def subprocess_plugin(tmp_path):
     path = tmp_path / 'path'
     path.mkdir()
     (path / 'python3').symlink_to(sys.executable)
+    (tmp_path / '.wuwei').mkdir()
     return root, {**os.environ, 'PATH': str(path) + os.pathsep + os.environ['PATH'],
-                  'PYTHONPATH': '/unused/inherited/path'}
+                  'PYTHONPATH': '/unused/inherited/path', 'WUWEI_WORKSPACE': str(tmp_path)}
 
 
 def subprocess_replay(plugin, event, payload):
@@ -45,6 +46,8 @@ def plugin(tmp_path, monkeypatch, capsys):
     import wuwei.guards
     path = tmp_path / 'cli/wuwei/guards'
     path.mkdir(parents=True)
+    (tmp_path / '.wuwei').mkdir()
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setattr(wuwei.guards, '__path__', [str(path)])
     yield tmp_path, monkeypatch, capsys
     for name in list(sys.modules):
@@ -112,6 +115,8 @@ def test_discovery_returns_plain_list():
     from wuwei.guards.outward import GUARDS
     assert type(discover()) is list
     assert all(guard in discover() for guard in GUARDS)
+    assert any(g.event == 'PostToolUse' and g.matcher is None
+               and g.check.__module__ == 'wuwei.guards.traces' for g in discover())
 
 
 def test_private_guard_module_is_ignored(plugin):
@@ -357,18 +362,20 @@ GUARDS = [Guard({event!r}, {matcher!r}, lambda p: (0, ''))]
         discover()
 
 
-def test_hook_latency(subprocess_plugin, capsys):
+@pytest.mark.parametrize('event', ['PreToolUse', 'PostToolUse'])
+def test_hook_latency(subprocess_plugin, capsys, event):
     from resource import RUSAGE_CHILDREN, getrusage
     from statistics import quantiles
     from time import perf_counter
 
-    payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
+    name = 'bash' if event == 'PreToolUse' else 'example'
+    payload = (ROOT / f'tests/payloads/{event}/{name}.json').read_text()
     elapsed = []
     cpu = []
     for _ in range(60):
         before = getrusage(RUSAGE_CHILDREN)
         start = perf_counter()
-        result = subprocess_replay(subprocess_plugin, 'PreToolUse', payload)
+        result = subprocess_replay(subprocess_plugin, event, payload)
         elapsed.append(perf_counter() - start)
         after = getrusage(RUSAGE_CHILDREN)
         cpu.append(after.ru_utime - before.ru_utime + after.ru_stime - before.ru_stime)
@@ -376,7 +383,7 @@ def test_hook_latency(subprocess_plugin, capsys):
     cpu_ms = quantiles(cpu, n=100)[94] * 1000
     wall_ms = quantiles(elapsed, n=100)[94] * 1000
     with capsys.disabled():
-        print(f'\nHook p95 over 60 runs: CPU {cpu_ms:.2f} ms, wall {wall_ms:.2f} ms')
+        print(f'\n{event} p95 over 60 runs: CPU {cpu_ms:.2f} ms, wall {wall_ms:.2f} ms')
     if 'CI' not in os.environ:
         assert cpu_ms < 50
 

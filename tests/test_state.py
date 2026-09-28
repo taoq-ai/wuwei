@@ -36,7 +36,7 @@ def events(root):
     return [json.loads(line) for line in (day(root) / 'events.jsonl').read_text().splitlines()]
 
 
-@pytest.mark.parametrize('operation', ['event', 'event_directory', 'state'])
+@pytest.mark.parametrize('operation', ['event', 'event_directory', 'state', 'jsonl'])
 @pytest.mark.parametrize('missing_root', [False, True])
 def test_writes_require_existing_workspace(tmp_path, operation, missing_root):
     from wuwei import state
@@ -46,6 +46,8 @@ def test_writes_require_existing_workspace(tmp_path, operation, missing_root):
             state.append_event('probe', root=root)
         elif operation == 'event_directory':
             state.append_event('probe', directory=day(root))
+        elif operation == 'jsonl':
+            state.append_jsonl(day(root) / 'traces.jsonl', {'probe': True})
         else:
             state.set_state('cap', 2, root=root)
     assert list(tmp_path.iterdir()) == []
@@ -450,10 +452,12 @@ def test_plain_open_cannot_overwrite_state_as_nonroot(workspace, name):
 
 
 @pytest.mark.parametrize('failure', ['open', 'write'])
-def test_event_failure_restores_readonly_mode(workspace, monkeypatch, failure):
+@pytest.mark.parametrize('name', ['events.jsonl', 'traces.jsonl'])
+def test_event_failure_restores_readonly_mode(workspace, monkeypatch, failure, name):
     from wuwei import state
     state.append_event('started')
-    path = day(workspace) / 'events.jsonl'
+    path = day(workspace) / name
+    state.append_jsonl(path, {'before': True})
     path.chmod(0o444)
     original_open = os.open
 
@@ -468,7 +472,10 @@ def test_event_failure_restores_readonly_mode(workspace, monkeypatch, failure):
 
     monkeypatch.setattr(state.os, failure, fail_open if failure == 'open' else fail_write)
     with pytest.raises(OSError, match='event .* failed'):
-        state.append_event('failed')
+        if name == 'events.jsonl':
+            state.append_event('failed')
+        else:
+            state.append_jsonl(path, {'failed': True})
     assert path.stat().st_mode & 0o777 == 0o444
 
 

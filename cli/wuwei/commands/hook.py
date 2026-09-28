@@ -17,17 +17,28 @@ def register(subparsers):
 def run(args):
     try:
         payload = json.load(sys.stdin, parse_constant=invalid_constant)
+    except BaseException as exc:
+        reason = (f'wuwei hook: {type(exc).__name__}: could not read PostToolUse payload'
+                  if args.event == 'PostToolUse' else f'wuwei hook: {type(exc).__name__}: {exc}')
+        return refuse(args.event, reason, malformed=True)
+    try:
         validate(payload, args.event)
+    except BaseException as exc:
+        return refuse(args.event, f'wuwei hook: {type(exc).__name__}: {exc}',
+                      malformed=True)
+    try:
         guards = discover()
     except BaseException as exc:
-        return refuse(args.event, f'wuwei hook: {type(exc).__name__}: {exc}', malformed=True)
+        reason = (f'{type(exc).__name__}: could not discover guards' if args.event == 'PostToolUse'
+                  else f'wuwei hook: {type(exc).__name__}: {exc}')
+        return refuse(args.event, reason, malformed=True)
     reasons, context = [], []
     for guard in guards:
         if guard.event != args.event:
             continue
-        if guard.matcher is not None and not re.fullmatch(guard.matcher, payload.get('tool_name', '')):
-            continue
         try:
+            if guard.matcher is not None and not re.fullmatch(guard.matcher, payload.get('tool_name', '')):
+                continue
             result = guard.check(payload)
             if (not isinstance(result, tuple) or len(result) != 2
                     or type(result[0]) is not int or result[0] not in (CLEAN, FINDINGS, UNRUN)
@@ -35,7 +46,9 @@ def run(args):
                 raise ValueError('invalid guard result; expected (0|1|2, message)')
             code, message = result
         except BaseException as exc:
-            code, message = UNRUN, f'{type(exc).__name__}: {exc}'
+            code = UNRUN
+            message = (f'{type(exc).__name__}: could not run PostToolUse guard'
+                       if args.event == 'PostToolUse' else f'{type(exc).__name__}: {exc}')
         if code:
             reasons.append(message)
         elif message:
