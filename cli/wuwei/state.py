@@ -188,8 +188,8 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
         return data
 
 
-# Features add only the namespaces they own; #8 will reserve fast_checks.
-RESERVED = {'seats'}
+# Features add only the namespaces they own.
+RESERVED = {'seats', 'fast_checks'}
 
 
 def _reserved(data, path=()):

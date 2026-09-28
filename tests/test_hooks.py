@@ -118,6 +118,8 @@ def test_discovery_returns_plain_list():
     assert any(g.event == 'PostToolUse' and g.matcher is None
                and g.check.__module__ == 'wuwei.guards.traces' for g in discover())
     assert any(guard.event == 'PreToolUse' and guard.matcher == 'Agent' for guard in discover())
+    assert any(record.event == 'PreToolUse' and record.matcher == 'Bash'
+               and record.check.__module__ == 'wuwei.guards.commit_push' for record in discover())
 
 
 def test_private_guard_module_is_ignored(plugin):

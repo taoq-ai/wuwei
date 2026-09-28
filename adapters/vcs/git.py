@@ -2,6 +2,7 @@
 
 from functools import wraps
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -11,6 +12,7 @@ from wuwei.registry import Result
 
 TIMEOUT = 30
 _LOG_FORMAT = '--format=%H%x00%an%x00%ae%x00%cn%x00%ce%x00%cI%x00%s'
+_HEAD_FORMAT = '--format=%H%x00%an%x00%ae%x00%cn%x00%ce'
 _REPOSITORY_ENV = {
     'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR',
     'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE',
@@ -37,9 +39,29 @@ def _operation(function):
     return call
 
 
-def _run(repo, *args):
+def _run(repo, *args, settings=None, env=None, missing=False):
     allowed = False
     match args:
+        case ('rev-parse', '--absolute-git-dir') | ('rev-parse', '--path-format=absolute', '--git-common-dir') | ('rev-parse', '--path-format=absolute', '--git-path', 'hooks'):
+            allowed = True
+        case ('show', '-s', format_arg, 'HEAD'):
+            allowed = format_arg == _HEAD_FORMAT
+        case ('symbolic-ref', '--quiet', '--short', 'HEAD'):
+            allowed = True
+        case ('check-ref-format', ref):
+            allowed = isinstance(ref, str) and ref.startswith('refs/heads/')
+        case ('config', '--type=bool', '--get', key):
+            allowed = key == 'push.followtags' or bool(re.fullmatch(r'remote\.[A-Za-z0-9_.-]+\.mirror', key))
+        case ('config', '--get-all', key):
+            allowed = bool(re.fullmatch(r'remote\.[A-Za-z0-9_.-]+\.push', key))
+        case ('config', '--get', 'core.hooksPath'):
+            allowed = True
+        case ('config', '--local', 'extensions.worktreeConfig', 'true'):
+            allowed = True
+        case ('config', '--worktree', 'core.hooksPath', path):
+            allowed = isinstance(path, str) and Path(path).is_absolute()
+        case ('config', '--local', '--get', 'core.bare' | 'core.worktree'):
+            allowed = True
         case ('config', '--get', 'user.name' | 'user.email'):
             allowed = True
         case ('var', 'GIT_AUTHOR_IDENT' | 'GIT_COMMITTER_IDENT'):
@@ -47,7 +69,8 @@ def _run(repo, *args):
         case ('rev-parse', '--verify', 'HEAD^{commit}'):
             allowed = True
         case ('rev-parse', '--verify', '--quiet', rev):
-            allowed = bool(re.fullmatch(r'[0-9a-fA-F]{7,64}\^\{commit\}', rev))
+            allowed = isinstance(rev, str) and (bool(re.fullmatch(r'[0-9a-fA-F]{7,64}\^\{commit\}', rev))
+                    or rev.startswith('refs/remotes/') and rev.endswith('^{commit}'))
         case ('merge-base', 'HEAD', rev):
             allowed = bool(_revision(rev))
         case ('status', '--porcelain=v1', '-z', '--untracked-files=all'):
@@ -59,6 +82,8 @@ def _run(repo, *args):
         case ('log', '-z', format_arg, rev, '--'):
             allowed = (format_arg == _LOG_FORMAT and isinstance(rev, str) and
                        rev.endswith('..HEAD') and bool(_revision(rev[:-6])))
+            if format_arg == _HEAD_FORMAT:
+                allowed = bool(re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})\.\.(?:[0-9a-f]{40}|[0-9a-f]{64})', rev))
         case ('worktree', 'add', '-b', branch, '--', path):
             allowed = (bool(_revision(branch)) and isinstance(path, str) and
                        bool(path) and '\0' not in path)
@@ -66,10 +91,25 @@ def _run(repo, *args):
         raise ValueError('unsupported git command')
     if not os.fspath(repo):
         raise ValueError('missing repository')
-    result = subprocess.run(['git', '-C', os.fspath(repo), *args],
-                            capture_output=True, timeout=TIMEOUT,
-                            env={k: v for k, v in os.environ.items()
-                                 if k not in _REPOSITORY_ENV and not k.startswith('GIT_CONFIG')})
+    if settings is None:
+        argv = ['git', '-C', os.fspath(repo), *args]
+        options = {'env': {k: v for k, v in os.environ.items()
+                          if k not in _REPOSITORY_ENV and not k.startswith('GIT_CONFIG')}}
+    else:
+        # Context reads must observe the same identity/config as the pending command.
+        argv = ['git']
+        for key, value in settings.items():
+            if key not in {f'{kind}.{field}' for kind in ('user', 'author', 'committer')
+                           for field in ('name', 'email')} or not isinstance(value, str):
+                raise ValueError('unsupported identity setting')
+            argv.extend(['-c', key + '=' + value])
+        argv.extend(args)
+        options = {'cwd': os.fspath(repo), 'env': {**{k: v for k, v in os.environ.items()
+                                      if k not in _REPOSITORY_ENV and not k.startswith('GIT_CONFIG')}, **env}}
+    options['env']['GIT_NO_REPLACE_OBJECTS'] = '1'
+    result = subprocess.run(argv, capture_output=True, timeout=TIMEOUT, **options)
+    if missing and result.returncode == 1:
+        return ''
     if result.returncode == 1 and args[:3] == ('rev-parse', '--verify', '--quiet'):
         raise UnknownCommit()
     if result.returncode:
@@ -110,7 +150,12 @@ def identity(repo, root=None):
 
 @_operation
 def head(repo, root=None):
-    return {'sha': _sha(_run(repo, 'rev-parse', '--verify', 'HEAD^{commit}'))}
+    output = _run(repo, 'show', '-s', _HEAD_FORMAT, 'HEAD').rstrip('\n').split('\0')
+    if len(output) != 5 or not all(output):
+        raise ValueError('invalid HEAD identity')
+    sha, author, email, committer, committer_email = output
+    return {'sha': _sha(sha), 'author': {'name': author, 'email': email},
+            'committer': {'name': committer, 'email': committer_email}}
 
 
 @_operation
@@ -195,3 +240,110 @@ def branches(repo, pattern, root=None):
     if any(not name or any(c.isspace() or ord(c) < 32 for c in name) for name in names):
         raise ValueError('invalid branch name')
     return names
+
+
+@_operation
+def commit_context(repo, settings, env, root=None):
+    def read(*args):
+        return _run(repo, *args, settings=settings, env=env)
+    path = read('rev-parse', '--absolute-git-dir').rstrip('\n')
+    if not path or not Path(path).is_absolute():
+        raise ValueError('invalid repository path')
+    common = read('rev-parse', '--path-format=absolute', '--git-common-dir').rstrip('\n')
+    if not common or not Path(common).is_absolute():
+        raise ValueError('invalid common directory')
+    return {'path': str(Path(path).resolve()), 'common_dir': str(Path(common).resolve()),
+            'author': _identity(read('var', 'GIT_AUTHOR_IDENT')),
+            'committer': _identity(read('var', 'GIT_COMMITTER_IDENT'))}
+
+
+@_operation
+def push_context(repo, remote, refspecs, root=None):
+    if not remote or not refspecs:
+        raise ValueError('use an explicit remote and branch refspec: git push origin <branch>')
+    result = head(repo, root=root)
+    if result.exit:
+        raise ValueError(result.reason)
+    head_data = result.data
+    sha = head_data['sha']
+    branch = _run(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD').strip()
+    if not branch:
+        raise ValueError('missing current branch')
+    if not isinstance(remote, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', remote) or remote.startswith('-'):
+        raise ValueError('use a named push remote')
+
+    def boolean(key):
+        value = _run(repo, 'config', '--type=bool', '--get', key, missing=True).strip()
+        if value not in ('', 'true', 'false'):
+            raise ValueError('invalid boolean push setting')
+        return value == 'true'
+
+    if boolean('push.followtags'):
+        raise ValueError('tag pushes require deployment policy')
+    force = boolean(f'remote.{remote}.mirror')
+    configured = _run(repo, 'config', '--get-all', f'remote.{remote}.push', missing=True)
+    updates = []
+    for ref in refspecs:
+        if ref.startswith('+'):
+            force, ref = True, ref[1:]
+        source, sep, destination = ref.partition(':')
+        if source not in ('HEAD', branch, 'refs/heads/' + branch):
+            raise ValueError('only current HEAD branch pushes are supported')
+        if not sep:
+            if configured or source == 'HEAD':
+                raise ValueError('use an explicit HEAD:refs/heads/branch refspec')
+            destination = 'refs/heads/' + branch
+        _run(repo, 'check-ref-format', destination)
+        if not destination.startswith('refs/heads/') or destination == 'refs/heads/':
+            raise ValueError('only branch pushes are supported')
+        updates.append({'source': head_data['sha'], 'destination': destination})
+    return {'head': head_data, 'updates': updates, 'force': force, 'remote': remote}
+
+
+@_operation
+def hooks_path(repo, path, root=None):
+    path = os.fspath(path)
+    git_dir = _run(repo, 'rev-parse', '--absolute-git-dir').strip()
+    common_dir = _run(repo, 'rev-parse', '--path-format=absolute', '--git-common-dir').strip()
+    if not Path(git_dir).is_absolute() or not Path(common_dir).is_absolute() or git_dir == common_dir:
+        raise ValueError('hooks require a linked worktree')
+    existing = _run(repo, 'config', '--get', 'core.hooksPath', missing=True).strip()
+    if existing and existing != path:
+        raise ValueError('custom core.hooksPath exists; refusing to replace hooks')
+    if not existing:
+        default = Path(_run(repo, 'rev-parse', '--path-format=absolute', '--git-path', 'hooks').strip())
+        if not default.is_absolute():
+            raise ValueError('invalid default hooks path')
+        if default.exists() and any(not item.name.endswith('.sample') for item in default.iterdir()):
+            raise ValueError('existing default hooks would be disabled')
+    # These common settings change meaning when worktreeConfig is enabled.
+    bare = _run(repo, 'config', '--local', '--get', 'core.bare', missing=True).strip()
+    worktree = _run(repo, 'config', '--local', '--get', 'core.worktree', missing=True).strip()
+    if bare not in ('', 'false') or worktree:
+        raise ValueError('migrate core.bare/core.worktree before enabling worktreeConfig')
+    _run(repo, 'config', '--local', 'extensions.worktreeConfig', 'true')
+    _run(repo, 'config', '--worktree', 'core.hooksPath', path)
+    return {'git_dir': git_dir}
+
+
+@_operation
+def push_commits(repo, remote, destination, local_sha, remote_sha, default_branch, root=None):
+    """Read every outgoing commit, using actual hook SHAs when available."""
+    local_sha = _sha(local_sha)
+    if not isinstance(remote, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', remote) or remote.startswith('-'):
+        raise ValueError('use a named push remote')
+    if not destination.startswith('refs/heads/'):
+        raise ValueError('only branch pushes are supported')
+    if remote_sha is None:
+        tracking = 'refs/remotes/' + remote + '/' + destination.removeprefix('refs/heads/')
+        remote_sha = _run(repo, 'rev-parse', '--verify', '--quiet', tracking + '^{commit}', missing=True).strip()
+    if not remote_sha or set(remote_sha) == {'0'}:
+        remote_sha = _run(repo, 'merge-base', 'HEAD', 'refs/remotes/' + remote + '/' + default_branch).strip()
+    base = _sha(remote_sha)
+    fields = _records(_run(repo, 'log', '-z', _HEAD_FORMAT, base + '..' + local_sha, '--'))
+    if len(fields) % 5:
+        raise ValueError('incomplete pushed commit record')
+    return {'commits': [{'sha': _sha(fields[i]),
+                         'author': {'name': fields[i+1], 'email': fields[i+2]},
+                         'committer': {'name': fields[i+3], 'email': fields[i+4]}}
+                        for i in range(0, len(fields), 5)]}

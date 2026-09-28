@@ -1,0 +1,325 @@
+"""Commit and push policy shared by tool guards and native Git hooks."""
+
+from pathlib import Path
+import os
+from fnmatch import fnmatchcase
+import re
+
+from wuwei import shell
+from wuwei.guards import Guard
+
+
+def _identity(value):
+    if not isinstance(value, dict) or any(
+            not isinstance(value.get(key), str) or not value[key].strip()
+            or any(char in value[key] for char in '\n\r\0<>')
+            for key in ('name', 'email')):
+        raise ValueError('missing or malformed identity')
+    return value['name'], value['email']
+
+
+def identity_check(expected, actual, head=None):
+    """Preserve harness order: effective author, committer, then HEAD identities."""
+    try:
+        owner = _identity(expected)
+        for kind in ('author', 'committer'):
+            if _identity(actual[kind]) != owner:
+                return 1, f'GIT_{kind.upper()}_IDENT differs from configured identity'
+        if head is not None:
+            for kind in ('author', 'committer'):
+                if _identity(head[kind]) != owner:
+                    return 1, 'HEAD author/committer do not match configured identity'
+        return 0, ''
+    except (KeyError, TypeError, ValueError) as exc:
+        return 2, f'could not check identity: {exc}'
+
+
+IDENTITY_SETTINGS = {f'{kind}.{field}' for kind in ('user', 'author', 'committer')
+                     for field in ('name', 'email')}
+IDENTITY_ENV = {f'GIT_{kind}_{field}' for kind in ('AUTHOR', 'COMMITTER')
+                for field in ('NAME', 'EMAIL', 'DATE')}
+COMMIT_VERBS = {'commit', 'merge', 'revert', 'cherry-pick', 'rebase', 'am', 'commit-tree', 'notes'}
+REPO_ENV = {'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'}
+
+
+def data(result):
+    from wuwei import registry
+
+    if not isinstance(result, registry.Result) or type(result.exit) is not int or result.exit != 0:
+        raise ValueError(getattr(result, 'reason', '') or 'VCS operation unavailable')
+    if not isinstance(result.data, dict):
+        raise ValueError('malformed VCS data')
+    return result.data
+
+
+def context(cwd, settings, env, root):
+    from wuwei import registry, workspace
+
+    if 'GIT_COMMON_DIR' in env:
+        raise ValueError('GIT_COMMON_DIR overrides cannot be inspected safely')
+    config = workspace.load_config(root)
+    vcs = registry.load('vcs', config)
+    actual = data(vcs.commit_context(str(cwd), settings, env, root=root))
+    for key in ('path', 'common_dir'):
+        if not isinstance(actual.get(key), str) or not Path(actual[key]).is_absolute():
+            raise ValueError('missing repository context')
+    for repo in config['repos']:
+        path = (root / Path(repo['path']).expanduser()).resolve()
+        configured = data(vcs.commit_context(str(path), {}, {}, root=root))
+        if configured.get('common_dir') == actual['common_dir']:
+            return repo, actual, vcs
+    raise ValueError('repository is not configured in this workspace')
+
+
+def push_check(repo, actual, push, root, vcs):
+    """Check identities, push shape and current-HEAD evidence for either anchor."""
+    from wuwei import state, workspace
+
+    result = identity_check(repo['identity'], actual, push['head'])
+    if result[0]:
+        return result
+    sha = push['head']['sha']
+    if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', sha):
+        raise ValueError('invalid HEAD')
+    if type(push['force']) is not bool:
+        raise ValueError('invalid force evidence')
+    if push['force']:
+        return 1, 'force-push is refused'
+    updates = push['updates']
+    if not isinstance(updates, list) or not updates:
+        raise ValueError('push destinations are unmeasured')
+    if not repo['default_branch'].strip():
+        raise ValueError('missing default branch')
+    for update in updates:
+        destination = update['destination']
+        if not isinstance(destination, str) or not destination.startswith('refs/heads/'):
+            raise ValueError('only branch pushes are supported; tags require deployment policy')
+        if destination == 'refs/heads/' + repo['default_branch']:
+            return 1, 'push to the default branch is refused'
+        if any(fnmatchcase(destination.removeprefix('refs/heads/'), pattern)
+               for pattern in workspace.load_config(root)['environments']):
+            return 1, 'push to an environment branch is refused'
+        if update['source'] != sha:
+            return 1, 'push must use the checked current HEAD'
+        commits = data(vcs.push_commits(actual['path'], push['remote'], destination,
+                                       sha, update.get('remote_sha'), repo['default_branch'],
+                                       root=root))['commits']
+        if not isinstance(commits, list):
+            raise ValueError('malformed pushed commit range')
+        for commit in commits:
+            result = identity_check(repo['identity'], commit)
+            if result[0]:
+                return result[0], 'pushed commit identity: ' + result[1]
+    evidence = state.read_state(root).get('fast_checks', {})
+    if not isinstance(evidence, dict) or not isinstance(evidence.get(repo['name'], {}), dict):
+        raise ValueError('malformed fast-check evidence')
+    for check in repo['fast_checks']:
+        if not check.strip():
+            raise ValueError('empty configured fast check')
+        record = evidence.get(repo['name'], {}).get(check)
+        if record is None:
+            return 1, f'fast check has not passed for current HEAD: {check}'
+        if (not isinstance(record, dict) or not isinstance(record.get('sha'), str)
+                or type(record.get('exit')) is not int or record['exit'] not in (0, 1, 2)):
+            raise ValueError('malformed fast-check evidence')
+        if record['sha'] != sha or record['exit'] != 0:
+            return 1, f'fast check has not passed for current HEAD: {check}'
+    return 0, ''
+
+
+def git_command(command, cwd):
+    """Consume Git's global argv options, never shell text."""
+    args = iter(command.argv[1:])
+    settings, env = {}, dict(command.env)
+    for arg in args:
+        if arg in ('-C', '-c') or arg.startswith(('-C', '-c')):
+            flag, value = arg[:2], arg[2:] or next(args, None)
+            if value is None:
+                raise ValueError(f'missing {flag} value')
+            if flag == '-C':
+                cwd = (cwd / value).resolve()
+            else:
+                key, separator, value = value.partition('=')
+                if not separator or key.lower() not in IDENTITY_SETTINGS:
+                    raise ValueError('unsupported Git configuration override')
+                settings[key.lower()] = value
+        elif arg.startswith(('--git-dir=', '--work-tree=')):
+            key, _, value = arg.partition('=')
+            env['GIT_DIR' if key == '--git-dir' else 'GIT_WORK_TREE'] = value
+        elif arg in ('--no-pager', '--literal-pathspecs'):
+            continue
+        elif arg.startswith('-'):
+            raise ValueError('unsupported Git global option')
+        else:
+            return cwd, settings, env, arg, list(args)
+    raise ValueError('missing Git command')
+
+
+def commit_options(args, actual):
+    # Expand common short flag bundles before interpreting value-taking options.
+    args = list(args)
+    reused = False
+    reset = False
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        index += 1
+        if arg.startswith('-a') and len(arg) > 2:
+            args.insert(index, '-' + arg[2:])
+            arg = '-a'
+        if arg == '--':
+            break
+        if arg in ('--no-verify', '-n'):
+            return 1, 'disabling commit hooks is refused'
+        if arg == '--reset-author':
+            reset = True
+        elif arg == '--amend':
+            reused = True
+        elif arg in ('-a', '--all', '-s', '--signoff', '-v', '--verbose', '-q', '--quiet',
+                     '--allow-empty', '--allow-empty-message', '--no-edit', '--edit', '-e',
+                     '--no-gpg-sign', '--dry-run') or arg.startswith('-S'):
+            continue
+        else:
+            key, separator, value = arg.partition('=')
+            if key in ('--author', '--message', '--file', '--template', '--date',
+                       '--reuse-message', '--reedit-message', '--fixup', '--trailer'):
+                if not separator:
+                    if index == len(args):
+                        raise ValueError('missing commit option value')
+                    value, index = args[index], index + 1
+            elif arg[:2] in ('-m', '-F', '-t', '-C', '-c'):
+                key, value = arg[:2], arg[2:]
+                if not value:
+                    if index == len(args):
+                        raise ValueError('missing commit option value')
+                    value, index = args[index], index + 1
+            elif not arg.startswith('-'):
+                continue
+            else:
+                raise ValueError('unsupported commit option')
+            if key == '--author':
+                match = re.fullmatch(r'([^<>]+) <([^<>]+)>', value)
+                if not match:
+                    raise ValueError('commit author must be an explicit name and email')
+                actual['author'] = {'name': match[1], 'email': match[2]}
+            if key in ('-C', '-c', '--reuse-message', '--reedit-message'):
+                reused = True
+    if reused and not reset:
+        raise ValueError('reused commit authors require --reset-author')
+    return 0, ''
+
+
+def push_options(args):
+    operands = []
+    for arg in args:
+        if (arg.startswith(('--force', '--mirror')) or arg.startswith('+')
+                or arg.startswith('-') and not arg.startswith('--') and 'f' in arg[1:]):
+            return (1, 'force-push is refused'), None, []
+        if arg in ('--no-verify', '-n'):
+            return (1, 'disabling push hooks is refused'), None, []
+        if arg in ('-u', '--set-upstream', '-v', '--verbose', '-q', '--quiet',
+                   '--porcelain', '--atomic', '--dry-run', '--thin', '--no-thin'):
+            continue
+        if arg.startswith('-'):
+            raise ValueError('unsupported push option; use an explicit remote and HEAD refspec')
+        operands.append(arg)
+    if len(operands) < 2:
+        raise ValueError('use an explicit remote and branch refspec: git push origin <branch>')
+    return (0, ''), operands[0], operands[1:]
+
+
+def check(payload):
+    try:
+        from wuwei import workspace
+
+        try:
+            root = workspace.find_workspace(payload['cwd'])
+        except FileNotFoundError:
+            return 0, ''
+        raw = payload['tool_input']['command']
+        relevant = COMMIT_VERBS | {'push', 'config', 'wuwei-workspace', 'executable'} | IDENTITY_ENV | IDENTITY_SETTINGS
+        if not shell.mentions(raw, {'git', 'gh', 'rm'}) or not shell.mentions(raw, relevant):
+            return 0, ''
+        # The shared parser intentionally discards these context-changing wrappers.
+        if re.search(r'\benv\s+(?:-i|--ignore-environment|-u|--unset)\b|\bexec\s+-c\b', raw):
+            raise ValueError('unsupported environment clearing around Git')
+        if re.search(r'''(?:^|[;\n'"])\s*\w+=[^;\n]*[;\n]''', raw):
+            raise ValueError('standalone environment assignment before Git')
+        commands = shell.normalize(raw)
+        creates_commit = False
+        for command in commands:
+            if Path(command.argv[0]).name == 'rm':
+                for arg in command.argv[1:]:
+                    target = (Path(payload['cwd']) / arg).resolve()
+                    if target.name == 'wuwei-workspace' or target == root / '.wuwei/executable':
+                        return 1, 'removing a WUWEI hook pointer is refused'
+            if Path(command.argv[0]).name != 'git':
+                if (shell.is_opaque(command.argv) or len(commands) > 1
+                        or '/' in command.argv[0]
+                        or re.fullmatch(r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua',
+                                        Path(command.argv[0]).name)):
+                    raise ValueError('opaque interpreter command; run git as a plain command')
+                continue
+            cwd, settings, env, verb, args = git_command(command, Path(payload['cwd']))
+            if verb == 'push' and creates_commit:
+                return 1, 'run push separately after commit creation and fresh fast checks'
+            creates_commit |= verb in COMMIT_VERBS
+            if verb == 'config':
+                args = [part for arg in args for part in arg.split('=', 1)]
+                action = next((arg for arg in args if arg not in
+                               ('--local', '--global', '--system', '--worktree')), '')
+                protected = any(arg.lower() in ('core.hookspath', 'extensions.worktreeconfig')
+                                for arg in args)
+                section_change = any(arg in ('--remove-section', '--rename-section',
+                                             'remove-section', 'rename-section') for arg in args)
+                protected |= section_change and any(arg.lower() in ('core', 'extensions') for arg in args)
+                if protected and action not in (
+                        '--get', '--get-all', '--get-regexp', '--list', '-l', 'get', 'list'):
+                    return 1, 'changing Git hook configuration is refused'
+                if len(commands) > 1:
+                    raise ValueError('run configuration changes separately')
+            overrides = settings or any(key in IDENTITY_ENV or key.startswith('GIT_CONFIG')
+                                        for key in command.env)
+            if verb not in COMMIT_VERBS | {'push'} and not overrides:
+                if len(commands) > 1 and verb != 'add':
+                    raise ValueError('unsupported compound Git command')
+                continue
+            if any(key in command.env for key in ('HOME', 'XDG_CONFIG_HOME', 'PATH')):
+                raise ValueError('unsupported Git configuration or executable environment override')
+            env = {**{key: value for key, value in os.environ.items() if key.startswith('GIT_')}, **env}
+            allowed_env = IDENTITY_ENV | REPO_ENV | {'GIT_EDITOR', 'GIT_PAGER'}
+            if any(key.startswith('GIT_') and key not in allowed_env for key in env):
+                raise ValueError('unsupported GIT_* override')
+            repo, actual, vcs = context(cwd, settings, env, root)
+            expected = repo['identity']
+            _identity(expected)
+            # Explicit mismatching overrides are refused even if another override wins.
+            for key, value in settings.items():
+                if value != expected[key.rsplit('.', 1)[1]]:
+                    return 1, 'Git configuration override differs from configured identity'
+            for key, value in env.items():
+                if key in IDENTITY_ENV and not key.endswith('_DATE'):
+                    if value != expected[key.rsplit('_', 1)[1].lower()]:
+                        return 1, 'Git environment override differs from configured identity'
+            if verb == 'commit':
+                result = commit_options(args, actual)
+                if result[0]:
+                    return result
+            result = identity_check(expected, actual)
+            if result[0]:
+                return result
+            if verb != 'push':
+                continue
+            result, remote, refs = push_options(args)
+            if result[0]:
+                return result
+            push = data(vcs.push_context(actual['path'], remote, refs, root=root))
+            result = push_check(repo, actual, push, root, vcs)
+            if result[0]:
+                return result
+        return 0, ''
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError) as exc:
+        return 2, f'commit/push guard could not run: {exc}'
+
+
+GUARDS = [Guard('PreToolUse', 'Bash', check)]

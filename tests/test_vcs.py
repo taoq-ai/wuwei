@@ -150,7 +150,8 @@ def test_git_environment_is_scrubbed(monkeypatch):
         assert not any(key in env for key in removed)
         assert all(env.get(key) == 'retained' for key in retained)
         assert env['ADAPTER_TEST_KEEP'] == 'retained'
-        return subprocess.CompletedProcess(args, 0, b'a' * 40 + b'\n', b'')
+        return subprocess.CompletedProcess(args, 0,
+            b'a' * 40 + b'\0Builder\0builder@example.test\0Builder\0builder@example.test\n', b'')
     monkeypatch.setattr(subprocess, 'run', run)
     assert adapter().head('/repo').exit == 0
 
