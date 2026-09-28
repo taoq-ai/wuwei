@@ -25,7 +25,8 @@ SCHEMA = {
                 "max_length": {"*": (int, 1, 1)}},
     "adapters": {"tracker": (str, "none"), "chat": (str, "none"),
                  "review_bot": (str, "none"), "runtime": (str, "claude"),
-                 "scanner": (str, "none")},
+                 "scanner": (str, "none"), "code_host": (str, "github"),
+                 "vcs": (str, "git")},
 }
 
 

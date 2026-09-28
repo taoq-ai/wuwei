@@ -106,7 +106,8 @@ def test_config_defaults_and_independence(tmp_path):
         'boundary': {}, 'environments': {},
         'outward': {'patterns': [], 'banned_characters': [], 'max_length': {}},
         'adapters': {'tracker': 'none', 'chat': 'none', 'review_bot': 'none',
-                     'runtime': 'claude', 'scanner': 'none'},
+                     'runtime': 'claude', 'scanner': 'none',
+                     'code_host': 'github', 'vcs': 'git'},
     }
     config['outward']['patterns'].append('changed')
     assert load_config(tmp_path)['outward']['patterns'] == []

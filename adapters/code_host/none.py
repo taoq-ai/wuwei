@@ -1,0 +1,43 @@
+"""Unavailable code host, using the shared event and result contract."""
+
+from wuwei.registry import record_none
+
+
+def pr(ref, root=None):
+    return record_none("code_host", "pr", root, measurement=True)
+
+
+def checks(ref, sha, root=None):
+    return record_none("code_host", "checks", root, measurement=True)
+
+
+def reviews(ref, root=None):
+    return record_none("code_host", "reviews", root, measurement=True)
+
+
+def threads(ref, root=None):
+    return record_none("code_host", "threads", root, measurement=True)
+
+
+def protection(repo, branch, root=None):
+    return record_none("code_host", "protection", root, measurement=True)
+
+
+def create_pr(draft, root=None):
+    return record_none("code_host", "create_pr", root, measurement=False)
+
+
+def request_reviewers(ref, logins, root=None):
+    return record_none("code_host", "request_reviewers", root, measurement=False)
+
+
+def comment(ref, text, thread, root=None):
+    return record_none("code_host", "comment", root, measurement=False)
+
+
+def merge(ref, sha, root=None):
+    return record_none("code_host", "merge", root, measurement=False)
+
+
+def revert_pr(ref, root=None):
+    return record_none("code_host", "revert_pr", root, measurement=False)
