@@ -658,6 +658,30 @@ MCP appears only as a scan target), so the CLI is the sole integration surface.
 
 With the adapter set to `none` or ZIRAN absent, S2 to S4 report "unmeasured" (exit 2).
 
+### 7.1 Integrity and canaries (owner, 2026-09-28)
+
+Tamper evidence, not tamper-proofing (9.1): a process running as the owner can also edit the
+verifier, so these catch accidental changes, other plugins or packages writing into WUWEI,
+supply-chain drift between sessions and prompt-injected edits, and surface them loudly.
+
+- Signed manifest. Each release ships `MANIFEST.sha256` (every shipped file: cli, adapters,
+  hooks, charters, skills, agents, templates) signed in CI with an SSH signing key
+  (`ssh-keygen -Y sign`); the public key is pinned in the plugin and in the workspace at
+  `wuwei init`. SessionStart and every sweep re-hash the installed plugin and verify the
+  signature (`ssh-keygen -Y verify`). A mismatch is a `page`, and every guard fails closed
+  until the owner reinstalls or re-confirms on the host.
+- Workspace integrity. `.wuwei/` is a git repository; `wuwei promote` commits every change
+  it lands with a `Promoted-by: wuwei` trailer. SessionStart flags any change to charters,
+  memory, goals or voice that is uncommitted or committed without that trailer: a `nudge`,
+  a `page` for charter overrides and the voice.
+- Prompt canary. `wuwei init` generates a random canary token per workspace, embedded in
+  every charter and skill the seats load. The canary appearing in outbound text, a PR or
+  tracker comment, or content fetched from outside means instructions leaked or were echoed
+  through an injection: the outward lint refuses the message and the event is a `page`.
+- Honeytoken. A decoy credentials file in the workspace that no legitimate process reads.
+  A trace of any tool reading it, or its value appearing anywhere outbound, is a `page` and
+  a scanner finding.
+
 ## 8. Adapters
 
 Each adapter is a module implementing a port (3.5). The `none` implementation records
