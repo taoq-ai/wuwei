@@ -1,0 +1,38 @@
+# Defaults apply when settings are omitted. Unknown keys are errors.
+# Running build seats and host limits. Integer counts must be positive.
+cap = 1
+profile = "strict" # strict or standard
+repos = []
+# Replace repos = [] with one or more tables like:
+# [[repos]]
+# name = "example"
+# path = "/path/to/repo"
+# default_branch = "main"
+# fast_checks = ["python -m pytest -q"]
+
+[owner]
+name = ""
+pronouns = ""
+
+[host]
+free_memory_mb = 1024 # Nonnegative free-memory floor in MB.
+seats = 1
+
+[adapters]
+tracker = "none"
+chat = "none"
+review_bot = "none"
+runtime = "claude"
+scanner = "none"
+
+# Registers map names to descriptions.
+[boundary]
+# api = "Public HTTP interface"
+[environments]
+# development = "Local machine"
+
+[outward]
+patterns = [] # Patterns describing internal state that must not be sent.
+banned_characters = []
+[outward.max_length]
+# slack = 4000 # Positive maximum length for this channel.
