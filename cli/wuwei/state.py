@@ -193,7 +193,7 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
 
 
 # Features add only the namespaces they own.
-RESERVED = {'seats', 'fast_checks', 'reply_acks', 'channel_posts'}
+RESERVED = {'seats', 'fast_checks', 'reply_acks', 'channel_posts', 'decision_outcomes'}
 
 
 def _reserved(data, path=()):
@@ -204,6 +204,9 @@ def _reserved(data, path=()):
                 records[(*path, key)] = deepcopy(value)
             else:
                 records.update(_reserved(value, (*path, key)))
+    elif isinstance(data, (list, tuple)):
+        for index, value in enumerate(data):
+            records.update(_reserved(value, (*path, index)))
     return records
 
 

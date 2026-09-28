@@ -186,7 +186,8 @@ def test_emitted_kinds_have_intended_tiers():
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
                 'retro.gap': 'nudge', 'seat stop unmatched': 'nudge',
                 'hook.post_tool_use_error': 'nudge', 'hook.refusal': 'silent',
-                'verdict.rejected': 'nudge',
+                'verdict.rejected': 'nudge', 'decision.rejected': 'nudge',
+                'decision.decided': 'silent',
                 'adapter: none': 'nudge', 'reply: acknowledged': 'silent',
                 'watch: sweep': 'nudge'}
     assert emitted == set(expected)
@@ -208,19 +209,19 @@ def test_transition_to_escalated_uses_running_seat():
     assert classify(event, {'seats': {}}) == ('nudge', 'Decisions')
 
 
-@pytest.mark.parametrize('page,spoof', [
-    ('security.finding', 'security.resolved'),
-    ('base.red', 'base.green'),
-    ('dead_man.hit', 'dead_man.cleared'),
-    ('budget.cap', 'budget.cleared'),
-    ('day.blocked', 'day.unblocked'),
-    ('decision.one_way', 'decision.resolved'),
-    ('person.ask', 'person.answered'),
+@pytest.mark.parametrize('page,spoof,exit_code', [
+    ('security.finding', 'security.resolved', 0),
+    ('base.red', 'base.green', 0),
+    ('dead_man.hit', 'dead_man.cleared', 0),
+    ('budget.cap', 'budget.cleared', 0),
+    ('day.blocked', 'day.unblocked', 0),
+    ('decision.one_way', 'decision.resolved', 1),
+    ('person.ask', 'person.answered', 0),
 ])
-def test_seat_event_cannot_clear_day_page(tmp_path, page, spoof):
+def test_seat_event_cannot_clear_day_page(tmp_path, page, spoof, exit_code):
     payload = {'id': 'same', 'blocking': True, 'due': NOW}
     day(tmp_path, {'items': {}, 'cap': 1}, [{'kind': page, 'payload': payload}])
-    assert cli(tmp_path, 'event', spoof, json.dumps({'id': 'same'})).returncode == 0
+    assert cli(tmp_path, 'event', spoof, json.dumps({'id': 'same'})).returncode == exit_code
     result = cli(tmp_path, 'status', '--json')
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)['pages'] == 1

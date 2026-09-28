@@ -9,6 +9,10 @@ from wuwei.guards import Guard
 from wuwei.verdict import lint_file, record_rejection, retro_fields
 
 
+INTERPRETERS = ((r'(?:python|pypy)[\d.]*', 'c'), ('node', 'ep'),
+                ('perl', 'eE'), ('ruby', 'e'), ('php', 'r'), ('lua', 'e'))
+
+
 def required_text(payload, key, *, blank=False):
     value = payload.get(key)
     if not isinstance(value, str) or not blank and not value.strip():
@@ -65,8 +69,7 @@ def check_write(payload):
                 return CLEAN, ''
             path = '<opaque gate file>'
             # Refuse literal interpreter snippets without parsing shell paths.
-            for program, flags in ((r'(?:python|pypy)[\d.]*', 'c'), ('node', 'ep'),
-                                   ('perl', 'eE'), ('ruby', 'e'), ('php', 'r'), ('lua', 'e')):
+            for program, flags in INTERPRETERS:
                 if re.search(r'\b' + program + r'''["']?\s+(?:[^\n;&|]*?\s)?'''
                              r'(?:-[a-zA-Z]*[' + flags + r']|--eval(?:=|\b))', command):
                     results.append(record_rejection(path, FINDINGS,
