@@ -21,14 +21,17 @@ def main(argv=None):
         if not isinstance(version, str) or not version.strip():
             raise ValueError("plugin version must be a non-empty string")
         parser.add_argument("--version", action="version", version=version)
-        for module in pkgutil.iter_modules(commands.__path__, commands.__name__ + "."):
-            if module.name.rsplit(".", 1)[-1].startswith("_"):
-                continue
-            name = module.name.rsplit(".", 1)[-1]
-            if argv and argv[0] in (name, '--help', '-h'):
-                import_module(module.name).register(subparsers)
-            else:
-                subparsers.add_parser(name)
+        modules = {
+            module.name.rsplit(".", 1)[-1]: module.name
+            for module in pkgutil.iter_modules(commands.__path__, commands.__name__ + ".")
+            if not module.name.rsplit(".", 1)[-1].startswith("_")
+        }
+        selected = modules.pop(argv[0].replace("-", "_"), None) if argv else None
+        if selected:
+            import_module(selected).register(subparsers)
+        if not argv or (argv[0] != "--version" and argv[0] not in subparsers.choices):
+            for module in modules.values():
+                import_module(module).register(subparsers)
     except Exception as exc:
         print(f"wuwei: {str(exc) or type(exc).__name__}", file=sys.stderr)
         return UNRUN

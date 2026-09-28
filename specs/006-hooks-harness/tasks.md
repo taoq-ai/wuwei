@@ -166,3 +166,18 @@ task follows its failing test task. Extension hooks are skipped as instructed.
 - Required interpreter, full suite: `592 passed in 8.79s`. Hook p95 over 60 runs:
   CPU `29.71 ms`, wall-clock `37.54 ms`. The 50 ms local CPU assertion remains.
 - Diff and authored whitespace/character checks passed. Changes remain uncommitted.
+
+## Post-rebase review fixes
+
+- [X] T032 Reproduce hyphenated dispatch and discovery fallback failures, map typed
+  hyphens to module underscores, and document the convention in the CLI contract.
+  Keep matching command dispatch lazy; unknown names now require full discovery.
+- [X] T033 Extend neutral-path coverage to every payload, replace home-directory
+  placeholders, and preserve the adapter and hygiene tests unchanged.
+- Test-first evidence: all three reported failures reproduced. Three new dispatch
+  cases and nine payload path cases failed before the fixes, then passed. Focused
+  CLI, adapter, hygiene, and payload validation: `50 passed in 3.09s`.
+- [X] T034 Run the required full suite and inspect the working-tree diff.
+  Result: `761 passed in 16.03s`; hook p95 over 60 runs: CPU `42.36 ms`, wall
+  `96.16 ms`. `git diff --check` passed. The rebased commit remains intact;
+  these fixes are uncommitted.

@@ -91,10 +91,13 @@ def test_clean_replay(subprocess_plugin, payload_path):
     assert result.stdout == result.stderr == ''
 
 
-def test_recorded_session_uses_neutral_paths():
-    payload = fixture('SessionStart')
+@pytest.mark.parametrize('payload_path', PAYLOADS, ids=lambda p: str(p.relative_to(ROOT / 'tests/payloads')))
+def test_payloads_use_neutral_paths(payload_path):
+    payload = json.loads(payload_path.read_text())
     assert payload['cwd'] == '/workspace/project'
-    assert payload['transcript_path'] == '/home/user/.claude/projects/example/session.jsonl'
+    assert payload['transcript_path'] == '/workspace/.claude/projects/example/session.jsonl'
+    if 'agent_transcript_path' in payload:
+        assert payload['agent_transcript_path'] == '/workspace/.claude/projects/example/subagents/agent-def456.jsonl'
 
 
 def test_scratchpad_fixtures_use_neutral_paths():

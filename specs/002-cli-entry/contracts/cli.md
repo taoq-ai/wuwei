@@ -14,3 +14,8 @@ Each other module in `cli/wuwei/commands/` exposes `register(subparsers)`. It ad
 and sets `func` to a callable accepting the parsed argparse namespace and returning
 one of `wuwei.exits.CLEAN`, `FINDINGS`, or `UNRUN`. Commands returning UNRUN print their
 own reason. New modules require no shared registry edit. No demo commands ship.
+
+Dispatch loads the module matching the typed command, mapping hyphens to underscores
+(for example, `scan-probe` loads `scan_probe.py`). If that module is absent or does not
+register the typed command, dispatch falls back to full discovery. Top-level help also
+uses full discovery; `--version` imports no command modules.

@@ -1,13 +1,13 @@
 {
   "session_id": "abc123",
-  "transcript_path": "~/.claude/projects/.../abc123.jsonl",
-  "cwd": "/Users/...",
+  "transcript_path": "/workspace/.claude/projects/example/session.jsonl",
+  "cwd": "/workspace/project",
   "permission_mode": "default",
   "hook_event_name": "SubagentStop",
   "stop_hook_active": false,
   "agent_id": "def456",
   "agent_type": "Explore",
-  "agent_transcript_path": "~/.claude/projects/.../abc123/subagents/agent-def456.jsonl",
+  "agent_transcript_path": "/workspace/.claude/projects/example/subagents/agent-def456.jsonl",
   "last_assistant_message": "Analysis complete. Found 3 potential issues...",
   "background_tasks": [],
   "session_crons": []
