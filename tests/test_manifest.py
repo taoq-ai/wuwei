@@ -56,6 +56,7 @@ def test_release_pre_major_bump_options():
     root = Path(__file__).resolve().parents[1]
     config = json.loads((root / "release-please-config.json").read_text())
     package = config["packages"]["."]
+    assert package.get("initial-version") == "0.1.0"
     assert package.get("bump-minor-pre-major") is True
     assert package.get("bump-patch-for-minor-pre-major", False) is False
 
