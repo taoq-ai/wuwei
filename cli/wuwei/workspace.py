@@ -30,6 +30,26 @@ SCHEMA = {
     "boundary": {"*": (str, "")},
     "environments": {"*": (str, "")},
     "deploy": {"workflows": [(str, None)], "deny": [(str, None)]},
+    "outbound": {
+        "work_channels": [(str, None)], "external_channels": [(str, None)],
+        "company_domains": [(str, None)], "code_host_orgs": [(str, None)],
+        "people": {"*": {"email": (str, ""), "org": (str, "")}},
+        "sensitive_keywords": [(str, None), [
+            "performance", "feedback", "compensation", "salary", "pay", "bonus",
+            "hiring", "interview", "firing", "personal", "health", "medical",
+            "conflict", "legal", "hr", "harassment", "promotion", "illness",
+        ]],
+        "sensitive_patterns": [(str, None), [r"\bmental\s+health\b"]],
+        "commitment_patterns": [(str, None), [
+            r"\b(?:i|we)\s*(?:['\u2019]ll|will|shall|can|promise|commit)\b",
+            r"\b(?:by|before|after)\s+(?:\w+day|tomorrow|noon|\d)",
+            r"\b(?:follow[ -]?up|deadline|out of scope|next (?:week|sprint))\b",
+        ]],
+        "disagreement_patterns": [(str, None), [
+            r"\bdisagree\b", r"\b(?:you|that)\s*(?:are|['\u2019]re|is)\s+wrong\b",
+            r"\b(?:i|we)\s+(?:object|oppose)\b",
+        ]],
+    },
     "outward": {
         "patterns": [(str, ""), [
             r"\bdrafts?\b.*\b(?:pending|owner|approval)\b",
@@ -108,6 +128,77 @@ def find_workspace(start=None):
                 raise ValueError('.wuwei must not be a symlink')
             return root
     raise FileNotFoundError(f"No .wuwei/ found from {start}; run wuwei init")
+
+
+def worktree_workspace(path):
+    """Read the local anchor installed by wuwei git-hook in managed worktrees."""
+    for parent in (path, *path.parents):
+        gitdir = parent / '.git'
+        if gitdir.is_file():
+            prefix, separator, value = gitdir.read_text().strip().partition(': ')
+            if prefix != 'gitdir' or not separator:
+                continue
+            gitdir = (parent / value).resolve()
+        anchor = gitdir / 'wuwei-workspace'
+        if anchor.is_file():
+            value = anchor.read_text().strip()
+            root = Path(value).resolve()
+            if not value or not (root / '.wuwei').is_dir():
+                raise ValueError('invalid worktree workspace anchor')
+            return root
+    return None
+
+
+def scope(path):
+    """An environment-selected workspace is context, not proof of membership."""
+    from wuwei import registry
+    from wuwei.guards.commit_push import data
+
+    try:
+        root = find_workspace(path)
+    except FileNotFoundError:
+        if 'WUWEI_WORKSPACE' in os.environ:
+            raise ValueError('invalid WUWEI_WORKSPACE override')
+        root = worktree_workspace(path)
+        if root is None:
+            return None
+    config = load_config(root)
+    if path.is_relative_to(root) or worktree_workspace(path) == root:
+        return root, config
+    repos = [(root / Path(repo['path']).expanduser()).resolve() for repo in config['repos']]
+    if any(path.is_relative_to(repo) for repo in repos):
+        return root, config
+    # External worktrees share a configured repository's common directory.
+    if any((parent / '.git').exists() for parent in (path, *path.parents)):
+        vcs = registry.load('vcs', config)
+        actual = data(vcs.commit_context(str(path), {}, {}, root=root))
+        common = actual.get('common_dir')
+        if not isinstance(common, str) or not Path(common).is_absolute():
+            raise ValueError('missing worktree repository context')
+        if any(data(vcs.commit_context(str(repo), {}, {}, root=root)).get('common_dir') == common
+               for repo in repos):
+            return root, config
+    return None
+
+
+def guard_scope(payload):
+    """Find a workspace covering cwd or a resolvable target, including Git anchors."""
+    cwd = Path(payload.get('cwd') or Path.cwd()).resolve()
+    paths = [cwd]
+    inputs = payload.get('tool_input')
+    if isinstance(inputs, dict):
+        for key in ('path', 'file_path', 'repo'):
+            value = inputs.get(key)
+            if isinstance(value, str) and value:
+                try:
+                    paths.append((cwd / Path(value).expanduser()).resolve())
+                except (OSError, ValueError, RuntimeError):
+                    continue
+    for path in paths:
+        context = scope(path)
+        if context is not None:
+            return context[0]
+    return None
 
 
 def now():

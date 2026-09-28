@@ -99,6 +99,9 @@ def test_config_defaults_and_independence(tmp_path):
     from wuwei.workspace import load_config
     write_config(tmp_path, '')
     config = load_config(tmp_path)
+    outbound = config.pop('outbound')
+    assert outbound['work_channels'] == outbound['company_domains'] == []
+    assert outbound['people'] == {} and outbound['sensitive_keywords']
     outward = config.pop('outward')
     assert outward['patterns'] and outward['tool_patterns']
     assert outward['banned_characters'] == ['emoji', '\u2014', '\u2015', '\u2e3a', '\u2e3b']

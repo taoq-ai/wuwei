@@ -64,3 +64,27 @@ deny = [] # Literal executable plus argument glob, for example "make publish*".
 # shapes fail closed. See specs/011-outward-lint/contracts/outward.md.
 [outward.max_length]
 # slack = 4000 # Positive maximum length for this channel.
+
+[outbound]
+# Only these internal channel IDs may auto-send routine work replies.
+# Missing/unknown destinations draft. Every DM drafts, even an acknowledgement.
+# Chat threads draft until the chat port can verify all participants; tracker writes draft.
+work_channels = []
+# Shared, connected and client channels override work_channels.
+external_channels = []
+# Exact, case-insensitive identity boundaries; subdomains must be listed explicitly.
+company_domains = []
+code_host_orgs = []
+# People keys use slack:<id>, github:<login>, or email:<address> namespaces.
+# Unknown addressed people or PR participants draft. Any external identity wins.
+# people = {"slack:U123" = {email = "dev@example.test"}, "github:developer" = {org = "example"}}
+# Team PRs also require a configured repos.name, a known internal author and
+# internal discussion participants, verified through the code_host port.
+# GitHub identities require the PR's org; email alone cannot vouch for a login.
+# The auto-send allowlist is the ceiling; keyword lists are defence in depth.
+# These lists replace their defaults. Keep them conservative.
+# sensitive_keywords = ["performance", "feedback", "compensation", "salary", "pay", "bonus", "hiring", "interview", "firing", "personal", "health", "medical", "conflict", "legal", "hr", "harassment", "promotion", "illness"]
+# sensitive_patterns = ['\bmental\s+health\b']
+# commitment_patterns = ["\\b(?:i|we)\\s*(?:['\\u2019]ll|will|shall|can|promise|commit)\\b", "\\b(?:by|before|after)\\s+(?:\\w+day|tomorrow|noon|\\d)", "\\b(?:follow[ -]?up|deadline|out of scope|next (?:week|sprint))\\b"]
+# disagreement_patterns = ["\\bdisagree\\b", "\\b(?:you|that)\\s*(?:are|['\\u2019]re|is)\\s+wrong\\b", "\\b(?:i|we)\\s+(?:object|oppose)\\b"]
+# See specs/095-outbound-tiers/contracts/outbound.md for payloads and safe forms.

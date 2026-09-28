@@ -1,6 +1,7 @@
-"""Enforce outward lint and draft-only substantive messages before writes."""
+"""Enforce outbound approval tiers and outward lint before writes."""
 
 import os
+from pathlib import Path
 import re
 
 from wuwei.exits import CLEAN, UNRUN
@@ -16,37 +17,55 @@ NATIVE_TOOLS = {'Bash', 'Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'A
 def check(payload):
     try:
         from wuwei import workspace
+        if payload.get('tool_name') in NATIVE_TOOLS:
+            if 'WUWEI_WORKSPACE' in os.environ:
+                workspace.find_workspace(payload.get('cwd'))
+            return CLEAN, ''
+        tool = payload.get('tool_name')
+        cwd = Path(payload.get('cwd') or Path.cwd()).resolve()
         try:
-            root = workspace.find_workspace(payload.get('cwd'))
+            policy_root = workspace.find_workspace(cwd)
         except FileNotFoundError:
             if 'WUWEI_WORKSPACE' in os.environ:
-                return UNRUN, 'outward: invalid WUWEI_WORKSPACE override'
-            return CLEAN, ''
-        tool = payload['tool_name']
-        if not isinstance(tool, str) or not tool.strip():
-            return UNRUN, 'outward: tool name required'
-        if tool in NATIVE_TOOLS:
-            return CLEAN, ''
-        from wuwei import outward
-
-        config = workspace.load_config(root)
-        channels = {rule['channel'] for rule in config['outward']['tool_patterns']
-                    if re.fullmatch(rule['pattern'], tool, re.IGNORECASE)}
+                raise ValueError('invalid WUWEI_WORKSPACE override')
+            policy_root = workspace.worktree_workspace(cwd)
+        config = workspace.load_config(policy_root) if policy_root else None
+        patterns = (config['outward']['tool_patterns'] if config else
+                    workspace.SCHEMA['outward']['tool_patterns'][1])
+        channels = {rule['channel'] for rule in patterns
+                    if isinstance(tool, str) and re.fullmatch(rule['pattern'], tool, re.IGNORECASE)}
         if not channels:
-            if tool.startswith('mcp__'):
+            if isinstance(tool, str) and tool.startswith('mcp__'):
                 server, _, name = tool[5:].lower().rpartition('__')
                 words = name.split('_')
                 reads = ('get', 'list', 'search', 'read', 'find', 'fetch',
                          'query', 'describe', 'view', 'lookup')
-                if not (words[0] in reads or
+                if (words[0] in reads or
                         (len(words) > 1 and words[0] and words[0] in server
                          and words[1] in reads)):
-                    return UNRUN, 'outward: configure outward.tool_patterns for this write tool'
+                    return CLEAN, ''
+            elif isinstance(tool, str) and tool.strip():
+                return CLEAN, ''
+        root = workspace.guard_scope(payload)
+        if root is None:
             return CLEAN, ''
+        if not isinstance(tool, str) or not tool.strip():
+            return UNRUN, 'outward: tool name required'
+        from wuwei import outward
+
+        if root != policy_root:
+            config = workspace.load_config(root)
+            channels = {rule['channel'] for rule in config['outward']['tool_patterns']
+                        if re.fullmatch(rule['pattern'], tool, re.IGNORECASE)}
+        if not channels:
+            return UNRUN, 'outward: configure outward.tool_patterns for this write tool'
         if len(channels) != 1:
             return UNRUN, 'outward: ambiguous tool channel configuration'
-        return outward.check_call(payload['tool_input'], root, config, channels)
-    except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
+        inputs = payload['tool_input']
+        if re.search(r'(?:^|_)(?:dm|direct_message)(?:_|$)', tool, re.IGNORECASE):
+            inputs = {**inputs, 'is_dm': True}
+        return outward.check_call(inputs, root, config, channels)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError, re.error):
         return UNRUN, 'outward: cannot read or validate policy or payload'
 
 
