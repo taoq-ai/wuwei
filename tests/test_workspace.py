@@ -110,7 +110,7 @@ def test_config_defaults_and_independence(tmp_path):
         'owner': {'name': '', 'pronouns': '', 'handles': []}, 'repos': [], 'cap': 1,
         'chat': {'identity': 'connector'},
         'host': {'free_memory_mb': 1024, 'seats': 1, 'reservation_timeout_seconds': 14400}, 'profile': 'strict',
-        'memory': {'max_notes': 60, 'probation_days': 10},
+        'memory': {'max_notes': 60, 'note_line_cap': 80, 'probation_days': 10, 'state_entry_cap': 3},
         'brief': {'remote': 'origin',
                   'prior_branch_pattern': '*{item}*',
                   'full_path_patterns': []},
