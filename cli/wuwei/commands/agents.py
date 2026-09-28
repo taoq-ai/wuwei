@@ -1,0 +1,88 @@
+"""Build and check Claude Code agents from versioned charters."""
+
+import json
+from pathlib import Path
+import sys
+
+from wuwei import workspace
+from wuwei.exits import CLEAN, FINDINGS, UNRUN
+
+
+ROLES = (
+    'planner', 'lead', 'builder', 'sentinel-arch', 'sentinel-quality',
+    'sentinel-security', 'sentinel-goal', 'shepherd', 'steward',
+)
+TOOLS = {'Read', 'Glob', 'Grep', 'Bash', 'Write', 'Edit', 'Agent'}
+ROOT = Path(__file__).resolve().parents[3]
+
+
+def register(subparsers):
+    parser = subparsers.add_parser('agents', help='Build or check generated role agents')
+    actions = parser.add_subparsers(dest='action', required=True)
+    actions.add_parser('build', help='Regenerate agent files').set_defaults(func=lambda args: build(ROOT))
+    actions.add_parser('check', help='Report generated agent drift').set_defaults(func=lambda args: check(ROOT))
+
+
+def _charter(root, name):
+    text = (root / 'charters' / f'{name}.md').read_text(encoding='utf-8')
+    lines = text.splitlines(keepends=True)
+    if len(lines) < 4 or lines[0] != '---\n' or not lines[1].startswith('version: ') or lines[2] != '---\n':
+        raise ValueError(f'{name}: expected versioned charter frontmatter')
+    if not lines[1][len('version: '):].strip():
+        raise ValueError(f'{name}: empty charter version')
+    return text
+
+
+def render(root):
+    """Return every expected agent; validate all sources before any write."""
+    root = Path(root)
+    allowlist = json.loads((root / 'agents/allowlist.json').read_text(encoding='utf-8'))
+    if not isinstance(allowlist, dict) or set(allowlist) != set(ROLES):
+        raise ValueError('allowlist must contain exactly the nine roles')
+    common = _charter(root, '_common')
+    authoring = _charter(root, '_common-authoring')
+    output = {}
+    for role in ROLES:
+        tools = allowlist[role]
+        if (not isinstance(tools, list) or not tools or
+                any(not isinstance(tool, str) or tool not in TOOLS for tool in tools) or
+                len(tools) != len(set(tools))):
+            raise ValueError(f'{role}: expected a nonempty, explicit, unique tool list')
+        body = common + '\n' + authoring + '\n' + _charter(root, role)
+        description = f'Follow the {role.replace("-", " ")} charter for assigned WUWEI work.'
+        output[f'{role}.md'] = (
+            f'---\nname: {role}\ndescription: {description}\n'
+            f'tools: {", ".join(tools)}\n---\n\n{body}'
+        )
+    return output
+
+
+def _error(action, exc):
+    print(f'wuwei agents {action}: {str(exc) or type(exc).__name__}', file=sys.stderr)
+    return UNRUN
+
+
+def build(root=ROOT):
+    try:
+        output = render(root)
+        for name, content in output.items():
+            workspace.atomic_write(Path(root) / 'agents' / name, content)
+    except (OSError, UnicodeError, ValueError, TypeError) as exc:
+        return _error('build', exc)
+    return CLEAN
+
+
+def check(root=ROOT):
+    try:
+        expected = render(root)
+        directory = Path(root) / 'agents'
+        actual = {path.name for path in directory.glob('*.md') if path.name != 'README.md'}
+        drift = set(expected) ^ actual
+        for name in set(expected) & actual:
+            if (directory / name).read_text(encoding='utf-8') != expected[name]:
+                drift.add(name)
+    except (OSError, UnicodeError, ValueError, TypeError) as exc:
+        return _error('check', exc)
+    for name in sorted(drift):
+        print(f'wuwei agents check: drift in {name}', file=sys.stderr)
+    return FINDINGS if drift else CLEAN
