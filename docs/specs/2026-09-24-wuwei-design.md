@@ -57,8 +57,11 @@ that engagement ships in this repository.
   a rewrite. The hook path carries a latency budget instead: `wuwei hook` p95 under 50 ms
   (10.6). If the budget is broken, only the hook dispatcher is a candidate for a compiled
   rewrite.
-- The CLI is invoked only through `bin/wuwei`, which runs `python3 -P` so a `wuwei/` or
-  `adapters/` directory in the working directory cannot shadow the plugin.
+- The CLI is invoked only through `bin/wuwei`, which unsets PYTHONEXECUTABLE and runs
+  `python3 -I -P` with explicit plugin import paths (owner decision, 2026-09-28).
+  Isolated mode ignores PYTHON* settings except PYTHONEXECUTABLE on macOS, excludes user
+  site-packages and the working directory from import paths. Explicit -P enforces Python
+  3.11+. PATH remains trusted for interpreter selection.
 - Writing style for everything the plugin authors: no emojis, no em-dashes.
 
 ## 3. Architecture

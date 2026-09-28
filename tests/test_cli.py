@@ -199,6 +199,56 @@ def test_shim_missing_dependency(plugin, tmp_path, missing):
     assert "wuwei:" in result.stderr
 
 
+def test_shim_requires_python_311():
+    assert "exec python3 -I -P -c " in (ROOT / "bin/wuwei").read_text()
+
+
+def test_shim_ignores_python_environment(plugin, tmp_path):
+    shutil.copytree(ROOT / "bin", plugin / "bin")
+    hostile = tmp_path / "hostile"
+    (hostile / "wuwei").mkdir(parents=True)
+    for name in ("wuwei/__init__.py", "wuwei/__main__.py", "json.py", "startup.py"):
+        (hostile / name).write_text(
+            'from pathlib import Path\n'
+            f'Path({(Path(name).stem + ".ran")!r}).touch()\n'
+            'raise RuntimeError("hostile code executed")\n'
+        )
+    userbase = tmp_path / "userbase"
+    path = tmp_path / "path"
+    path.mkdir()
+    (path / "python3").symlink_to(sys.executable)
+    venv = tmp_path / "hostile-venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin/python3").symlink_to(sys.executable)
+    (venv / "pyvenv.cfg").write_text("include-system-site-packages = false\n")
+    venv_site = venv / f"lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages"
+    venv_site.mkdir(parents=True)
+    (venv_site / "hostile.pth").write_text(
+        'import pathlib; pathlib.Path("venv.ran").touch()\n'
+    )
+    env = {**os.environ, "PATH": str(path) + os.pathsep + os.environ["PATH"],
+           "PYTHONPATH": str(hostile), "PYTHONSTARTUP": str(hostile / "startup.py"),
+           "PYTHONUSERBASE": str(userbase), "PYTHONINSPECT": "1",
+           "PYTHONEXECUTABLE": str(venv / "bin/python3")}
+    site = Path(subprocess.run(
+        [sys.executable, "-S", "-c", "import site; print(site.getusersitepackages())"],
+        env=env, capture_output=True, text=True, check=True, input="",
+    ).stdout.strip())
+    site.mkdir(parents=True)
+    (site / "usercustomize.py").write_text(
+        'from pathlib import Path\nPath("usercustomize.ran").touch()\n'
+    )
+    result = subprocess.run(
+        [str(plugin / "bin/wuwei"), "--version"], cwd=tmp_path,
+        env=env, capture_output=True, text=True, input="",
+    )
+    assert not list(tmp_path.glob("*.ran")), result.stderr
+    assert result.returncode == 0, result.stderr
+    version = json.loads((plugin / ".claude-plugin/plugin.json").read_text())["version"]
+    assert result.stdout == version + "\n"
+    assert result.stderr == ""
+
+
 @pytest.mark.parametrize('args,code', [(('probe', 'clean'), 0),
                                       (('probe', '--help'), 0),
                                       (('--version',), 0)])

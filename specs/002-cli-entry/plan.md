@@ -29,8 +29,10 @@ The supplied non-interactive spec-kit process governs this work. Extension hooks
 - `cli/wuwei/exits.py`: CLEAN, FINDINGS, UNRUN constants.
 - `cli/wuwei/__main__.py`: parser, manifest version, discovery, execution boundary.
 - `cli/wuwei/commands/__init__.py`: command package and registration contract.
-- `bin/wuwei`: executable POSIX shim resolving its directory, prepending cli to PYTHONPATH,
-  and using exec to preserve Python's exit status.
+- `bin/wuwei`: executable POSIX shim resolving its directory, unsetting PYTHONEXECUTABLE,
+  and using `python3 -I -P` for isolated startup and the Python 3.11+ gate.
+  Prepend the explicit cli and plugin root arguments to sys.path, remove those arguments,
+  and dispatch with runpy.run_module, using exec to preserve Python's exit status.
 - `tests/test_cli.py`: entry point, discovery, return contract, and failure tests.
 - `tests/test_stdlib.py`: AST import audit over cli and optional adapters.
 - `specs/002-cli-entry/`: spec, plan, tasks, quality checklist, and command contract.
