@@ -17,6 +17,7 @@ SCHEMA = {
     "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)]},
     "repos": [{"name": (str, None), "path": (str, None),
                "default_branch": (str, None), "fast_checks": [(str, "")],
+               "merge_deploys": (bool, True),
                "identity": {"name": (str, ""), "email": (str, "")}}],
     "cap": (int, 1, 1),
     "brief": {"remote": (str, "origin"),
@@ -28,6 +29,7 @@ SCHEMA = {
     "profile": (str, "strict", ("strict", "standard")),
     "boundary": {"*": (str, "")},
     "environments": {"*": (str, "")},
+    "deploy": {"workflows": [(str, None)], "deny": [(str, None)]},
     "outward": {
         "patterns": [(str, ""), [
             r"\bdrafts?\b.*\b(?:pending|owner|approval)\b",
@@ -213,6 +215,10 @@ def load_config(root=None):
         raw = path.read_text(encoding="utf-8")
         parsed = tomllib.loads(raw)
         config = _validate(parsed, SCHEMA, (), raw)
+        for pattern in config['deploy']['deny']:
+            program = pattern.split()[0]
+            if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]*', program):
+                raise ConfigError('deploy.deny: start each pattern with a literal executable name')
         repo_names = set()
         repo_paths = set()
         for index, repo in enumerate(config['repos']):

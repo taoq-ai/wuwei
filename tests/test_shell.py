@@ -321,6 +321,8 @@ def test_unaccounted_guarded_mentions_fail_closed(script):
     (['python3'], True), (['python3', '-I'], True), (['python3', '-'], True),
     (['node'], True), (['perl', '-w'], True), (['ruby', '-'], True),
     (['php'], True), (['lua', '-'], True),
+    (['python3', '-m', 'pytest', '-q'], True), (['node', '-v'], True),
+    (['python3', '--version'], True),
     (['python3', 'script.py'], False), (['node', 'script.js'], False),
     (['python3', '-c', 'print(1)'], False), (['node', '-e', 'safe()'], False),
 ])

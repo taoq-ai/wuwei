@@ -111,6 +111,7 @@ def test_config_defaults_and_independence(tmp_path):
                   'prior_branch_pattern': '*{item}*',
                   'full_path_patterns': []},
         'boundary': {}, 'environments': {},
+        'deploy': {'workflows': [], 'deny': []},
         'adapters': {'tracker': 'none', 'chat': 'none', 'review_bot': 'none',
                      'runtime': 'claude', 'scanner': 'none',
                      'code_host': 'github', 'vcs': 'git', 'host': 'local',
