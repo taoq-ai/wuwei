@@ -409,3 +409,39 @@ GUARDS = [Guard('PreToolUse', 'Bash', check)]
     result = replay(plugin, 'PreToolUse', json.dumps(payload))
     assert result.returncode == 2
     assert 'run git or gh as a plain command' in result.stderr
+
+
+def test_status_line_latency(subprocess_plugin, capsys):
+    from resource import RUSAGE_CHILDREN, getrusage
+    from statistics import quantiles
+    from time import perf_counter
+
+    root, env = subprocess_plugin
+    env['WUWEI_NOW'] = '2026-09-28T12:00:00+02:00'
+    directory = root.parent / '.wuwei/days/2026-09-28'
+    directory.mkdir(parents=True)
+    (directory / 'state.json').write_text('{"items":{},"cap":1}\n')
+    kinds = ('state.write', 'state.set', 'state.transition', 'seat launched',
+             'brief written', 'fast_checks.record', 'seat stopped', 'retro.captured')
+    events = ''.join(json.dumps({'kind': kinds[index % len(kinds)],
+                                 'payload': {'detail': 'x' * 400},
+                                 'ts': '2026-09-28T12:00:00+02:00'}) + '\n'
+                     for index in range(10000))
+    (directory / 'events.jsonl').write_text(events)
+    cpu = []
+    wall = []
+    for _ in range(60):
+        before = getrusage(RUSAGE_CHILDREN)
+        start = perf_counter()
+        result = subprocess.run([str(root / 'bin/wuwei'), 'status', '--line'],
+                                capture_output=True, text=True, cwd=root.parent, env=env)
+        wall.append(perf_counter() - start)
+        after = getrusage(RUSAGE_CHILDREN)
+        cpu.append(after.ru_utime - before.ru_utime + after.ru_stime - before.ru_stime)
+        assert result.returncode == 0, result.stderr
+    cpu_ms = quantiles(cpu, n=100)[94] * 1000
+    wall_ms = quantiles(wall, n=100)[94] * 1000
+    with capsys.disabled():
+        print(f'\nstatus --line p95 over 60 runs: CPU {cpu_ms:.2f} ms, wall {wall_ms:.2f} ms')
+    if 'CI' not in os.environ:
+        assert cpu_ms < 50

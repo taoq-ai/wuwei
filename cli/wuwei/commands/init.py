@@ -2,6 +2,7 @@
 
 import json
 import os
+import shlex
 from pathlib import Path
 import shutil
 import sys
@@ -51,4 +52,6 @@ def run(args):
         if os.path.exists(staging):
             shutil.rmtree(staging)
     print(f"Created {destination.resolve()}")
+    print(json.dumps({"statusLine": {"type": "command",
+                                   "command": shlex.quote(str(executable)) + " status --line"}}))
     return CLEAN
