@@ -108,6 +108,7 @@ def test_config_defaults_and_independence(tmp_path):
     assert outward['banned_characters'] == ['emoji', '\u2014', '\u2015', '\u2e3a', '\u2e3b']
     assert outward['max_length'] == {}
     assert config == {
+        'security': {'required': False},
         'owner': {'name': '', 'pronouns': '', 'handles': []}, 'repos': [], 'cap': 1,
         'chat': {'identity': 'connector'},
         'host': {'free_memory_mb': 1024, 'seats': 1, 'reservation_timeout_seconds': 14400}, 'profile': 'strict',
@@ -571,7 +572,7 @@ def test_upgrade_write_failure_preserves_files_and_can_retry(tmp_path, monkeypat
 
     directory = previous_workspace(tmp_path)
     before = {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
-    def fail_write(path, text):
+    def fail_write(path, text, **kwargs):
         raise OSError('disk full')
 
     with monkeypatch.context() as patch:

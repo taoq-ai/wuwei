@@ -19,6 +19,7 @@ class Command(NamedTuple):
     subshell: bool
     env: dict[str, str]
     writes: tuple[str, ...] = ()
+    reads: tuple[str, ...] = ()
 
 
 def operands(args, valued=(), flags=()):
@@ -191,7 +192,7 @@ def _parse(script, subshell, env=None, protected=('git', 'gh')):
     if not isinstance(script, str) or '\0' in script:
         raise ParseError('command must be text without NUL')
     tokens, raw_tokens, heredocs = [], [], []
-    writes_at = {}
+    writes_at, reads_at = {}, {}
     command_start = 0
     position = 0
     while position < len(script):
@@ -215,6 +216,10 @@ def _parse(script, subshell, env=None, protected=('git', 'gh')):
                     raise NonliteralPathError('nonliteral redirection is unsupported')
                 elif '>' in raw and not ('&' in raw and re.fullmatch(r'[0-9]+-?|-', _word(target))):
                     writes_at[len(tokens)] = _word(target)
+                    tokens.append(('', False))
+                    raw_tokens.append('')
+                elif '<' in raw and not ('&' in raw and re.fullmatch(r'[0-9]+-?|-', _word(target))):
+                    reads_at[len(tokens)] = _word(target)
                     tokens.append(('', False))
                     raw_tokens.append('')
                 _reject_mentions(script[start:position])
@@ -271,21 +276,27 @@ def _parse(script, subshell, env=None, protected=('git', 'gh')):
                 position += 1
             else:
                 argv = []
-                raw_argv, writes = [], []
+                raw_argv, writes, reads = [], [], []
                 while position < len(tokens) and not tokens[position][1]:
                     if position in writes_at:
                         writes.append(writes_at[position])
+                    elif position in reads_at:
+                        reads.append(reads_at[position])
                     else:
                         argv.append(tokens[position][0])
                         raw_argv.append(raw_tokens[position])
                     position += 1
                 current = _unwrap(argv, nested, raw_argv, env, protected)
-                if writes:
+                if writes or reads:
                     if not current:
                         current = [Command([], nested, dict(env or {}))]
-                    current[0] = current[0]._replace(writes=tuple(writes) + current[0].writes)
+                    current[0] = current[0]._replace(writes=tuple(writes) + current[0].writes,
+                                                   reads=tuple(reads) + current[0].reads)
             while position in writes_at:
                 current[0] = current[0]._replace(writes=current[0].writes + (writes_at[position],))
+                position += 1
+            while position in reads_at:
+                current[0] = current[0]._replace(reads=current[0].reads + (reads_at[position],))
                 position += 1
             next_token = tokens[position] if position < len(tokens) else None
             if next_token in (('|', True), ('&', True)):

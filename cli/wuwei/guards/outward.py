@@ -26,6 +26,20 @@ def check_lint(payload):
 def _check(payload, policy):
     try:
         from wuwei import workspace
+        if payload.get('tool_name') == 'Bash' and policy is outward.check_tier:
+            from wuwei import security
+            cwd = Path(payload.get('cwd') or Path.cwd()).resolve()
+            try:
+                root = workspace.find_workspace(cwd)
+            except FileNotFoundError:
+                if 'WUWEI_WORKSPACE' in os.environ:
+                    raise
+                root = workspace.worktree_workspace(cwd)
+            if root is None or not security.matches(payload.get('tool_input'), security.load(root)):
+                return CLEAN, ''
+            if workspace.guard_scope(payload) is None:
+                return CLEAN, ''
+            return security.outbound(payload.get('tool_input'), root)
         if payload.get('tool_name') in NATIVE_TOOLS:
             if 'WUWEI_WORKSPACE' in os.environ:
                 workspace.find_workspace(payload.get('cwd'))

@@ -44,7 +44,7 @@ def _protected_name(path, directories=False):
         if part != '.wuwei':
             continue
         tail = parts[index + 1:]
-        if tail == ('config.toml',):
+        if tail in (('config.toml',), ('security.json',), ('.gitignore',)) or tail[:1] == ('generated',):
             return True
         if tail == ('memory', 'voice.md'):
             return True
@@ -72,6 +72,15 @@ def _protected(value, cwd, root, directories=False):
     path = _path(value, cwd).resolve()
     if _protected_name(path, directories):
         return True
+    root = root or _workspace(path)
+    if root is not None:
+        from wuwei import security
+        data = security.load(root)
+        if data:
+            decoy = root / '.wuwei' / data['honeytoken_path']
+            if (path == decoy or directories and decoy.is_relative_to(path)
+                    or path.is_file() and decoy.is_file() and os.path.samefile(path, decoy)):
+                return True
     if directories and path.is_dir():
         if root is not None and root.is_relative_to(path):
             return True

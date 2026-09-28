@@ -193,6 +193,7 @@ def api_check(args, cwd, root, config):
 
 
 def action(command, cwd, root, config, isolated):
+    from wuwei.security import gh_outbound
     args = command.argv[1:]
     if args in (['--version'], ['--help'], ['-h']):
         return 0, ''
@@ -216,6 +217,9 @@ def action(command, cwd, root, config, isolated):
             prefix.append(args.pop(0))
         elif not option.startswith(('--repo=', '-R')):
             raise ValueError('unsupported gh global option')
+    code, reason = gh_outbound(command.argv, cwd, root, api=family == 'api')
+    if code:
+        return code, reason
     if family == 'api':
         return api_check(args + prefix, cwd, root, config)
     if family is None and args:

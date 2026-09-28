@@ -14,6 +14,7 @@ import tomllib
 # A '*' table entry describes user-defined register/channel names.
 # A None default marks a required, nonblank field.
 SCHEMA = {
+    "security": {"required": (bool, False)},
     "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)]},
     "repos": [{"name": (str, None), "path": (str, None),
                "default_branch": (str, None), "fast_checks": [(str, "")],

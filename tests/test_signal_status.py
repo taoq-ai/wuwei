@@ -178,10 +178,11 @@ def test_routine_progress_is_silent(kind):
 def test_emitted_kinds_have_intended_tiers():
     from wuwei.signal import classify
     emitted = emitted_kinds(sorted((ROOT / 'cli/wuwei').rglob('*.py')))
-    emitted.update(['retro.gap', 'retro.captured'])
+    emitted.update(['retro.gap', 'retro.captured', 'security.canary', 'security.honeytoken'])
     emitted.add('state.write')  # default writer kind
     emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
-    expected = {'state.write': 'silent', 'state.set': 'silent',
+    expected = {'security.canary': 'page', 'security.honeytoken': 'page',
+                'scanner.finding': 'page', 'state.write': 'silent', 'state.set': 'silent',
                 'state.transition': 'silent', 'seat stopped': 'silent',
                 'seat launched': 'silent', 'brief written': 'silent',
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
@@ -218,7 +219,7 @@ def test_transition_to_escalated_uses_running_seat():
 
 
 @pytest.mark.parametrize('page,spoof,exit_code', [
-    ('security.finding', 'security.resolved', 0),
+    ('security.finding', 'security.resolved', 1),
     ('base.red', 'base.green', 0),
     ('dead_man.hit', 'dead_man.cleared', 0),
     ('budget.cap', 'budget.cleared', 0),

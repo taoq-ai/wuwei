@@ -116,3 +116,6 @@ sweep_seconds = 7200
 
 [pr]
 poll_seconds = 120
+
+[security]
+required = true

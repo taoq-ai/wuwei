@@ -3,7 +3,7 @@
 from wuwei.guards import Guard
 
 
-def _record(payload, root):
+def _record(payload, root, findings=()):
     # Discovery runs on every hook; load recorder dependencies only for PostToolUse.
     import hashlib
     import json
@@ -40,6 +40,8 @@ def _record(payload, root):
         'gen_ai.tool.arguments': json.dumps(redact(payload['tool_input']), allow_nan=False),
         'gen_ai.agent.name': role,
     }
+    if findings:
+        attributes['security.findings'] = json.dumps(['security.' + key for key in sorted(findings)])
     span = {
         'traceId': hashlib.sha256(payload['session_id'].encode()).hexdigest()[:32],
         'spanId': uuid4().hex[:16], 'parentSpanId': '',
@@ -57,19 +59,25 @@ def _record(payload, root):
 
 
 def check(payload):
-    import os
     import sys
-    from wuwei import state, workspace
+    from wuwei import security, state, workspace
 
-    root = None
+    security_data = None
+    try:
+        root = workspace.guard_scope(payload)
+        if root is None:
+            return 0, ''
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return 2, 'wuwei traces: cannot determine workspace scope'
     try:
         try:
-            root = workspace.find_workspace(payload.get('cwd'))
-        except FileNotFoundError:
-            if 'WUWEI_WORKSPACE' not in os.environ:
-                return 0, ''
-            raise
-        code, reason = _record(payload, root)
+            security_data = security.load(root)
+            findings = security.trace_findings(payload, root, security_data)
+            security.record(findings, root, 'tool_trace')
+            payload = security.redact(payload, security_data)
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError):
+            return 2, 'wuwei traces: cannot inspect or record workspace security evidence'
+        code, reason = _record(payload, root, findings)
         if not code:
             return 0, ''
     except BaseException as exc:
@@ -80,7 +88,7 @@ def check(payload):
     except BaseException as exc:
         print(f'wuwei traces: {type(exc).__name__}: could not log PostToolUse error',
               file=sys.stderr)
-    return 0, ''
+    return (2, reason) if security_data is not None else (0, '')
 
 
 GUARDS = [Guard('PostToolUse', None, check)]

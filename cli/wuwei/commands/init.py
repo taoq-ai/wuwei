@@ -11,7 +11,7 @@ import tempfile
 import tomllib
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
-from wuwei import workspace
+from wuwei import security, workspace
 from wuwei.guards.deploy import PERMISSIONS_DENY
 
 
@@ -21,6 +21,8 @@ def register(subparsers):
     parser.add_argument("--upgrade", action="store_true", help="upgrade an existing workspace")
     parser.add_argument("--dry-run", action="store_true", help="show the upgrade plan")
     parser.add_argument("--menu-bar", action="store_true", help="show SwiftBar setup instructions")
+    parser.add_argument("--honeytoken-path", default=security.DEFAULT_HONEYTOKEN_PATH,
+                        help="decoy credentials path relative to .wuwei")
     parser.set_defaults(func=run)
 
 
@@ -64,6 +66,9 @@ def run(args):
     try:
         shutil.copytree(template, staging, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns(".gitkeep"))
+        security.initialize(Path(staging), getattr(args, "honeytoken_path", security.DEFAULT_HONEYTOKEN_PATH))
+        from wuwei.commands.agents import write_workspace
+        write_workspace(template.parents[1], Path(staging))
         executable = Path(__file__).resolve().parents[3] / "bin/wuwei"
         (Path(staging) / "executable").write_text(str(executable) + "\n")
         settings.parent.mkdir(exist_ok=True)
@@ -174,14 +179,21 @@ def upgrade(args):
             base_version = _charter_version(base.read_text(encoding='utf-8')) if base.is_file() else None
             if local_version != base_version or base_version is None:
                 conflicts.append((local.name, local_version, base_version))
+        security_data = security.load(destination.parent)
         config_changed = migrated != raw
         pointer_changed = pointer != str(executable) + '\n'
         prefix = 'Would upgrade' if args.dry_run else 'Upgraded'
         if not args.dry_run:
+            if security_data is None:
+                security.initialize(destination, getattr(args, 'honeytoken_path', security.DEFAULT_HONEYTOKEN_PATH))
+            from wuwei.commands.agents import write_workspace
+            write_workspace(plugin, destination)
             if config_changed:
                 workspace.atomic_write(config_path, migrated)
             if pointer_changed:
                 workspace.atomic_write(pointer_path, str(executable) + '\n')
+        if security_data is None:
+            print(f'{prefix} workspace security material and instructions')
         for key in added:
             print(f'{prefix} config.toml: add {key}')
         if pointer_changed:

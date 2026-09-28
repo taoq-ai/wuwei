@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import re
 
-from wuwei import registry, state, workspace
+from wuwei import registry, security, state, workspace
 
 
 class Refused(ValueError):
@@ -134,10 +134,15 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         now = workspace.now().isoformat()
         charter_root = Path(__file__).resolve().parents[2] / 'charters'
         charters = ['_common'] + ([] if role.startswith('sentinel-') else ['_common-authoring']) + [role]
+        secured = security.load(root) is not None
+        if secured:
+            from wuwei.commands.agents import write_workspace
+            write_workspace(charter_root.parent, root / '.wuwei')
         header = []
         for charter in charters:
             local = root / '.wuwei/charters' / (charter + '.md')
-            path = local if local.is_file() else charter_root / (charter + '.md')
+            path = (root / '.wuwei/generated/charters' / (charter + '.md') if secured
+                    else local if local.is_file() else charter_root / (charter + '.md'))
             if not path.is_file():
                 raise ValueError(f'unknown charter: {charter}')
             header.append(f'Charter: {path}')
