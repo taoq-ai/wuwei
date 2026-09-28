@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WUWEI day board</title>
+<title>WUWEI cockpit</title>
 <style>
   :root { color-scheme: light dark; --bg:#f4f6f8; --card:#fff; --ink:#202832;
     --muted:#536173; --line:#cbd3dd; --accent:#185b9d; --warn:#8b5400; --warn-bg:#fff5df; }
@@ -37,13 +37,25 @@
   .card dt { color:var(--muted); }
   .card dd { margin:0; }
   a { color:var(--accent); }
+  .lanes { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:.75rem; margin-top:1rem; }
+  .lane { padding:.75rem; background:var(--card); border:1px solid var(--line); border-radius:8px; }
+  .lane pre { white-space:pre-wrap; overflow-wrap:anywhere; }
 </style>
 </head>
 <body>
-<header><h1>WUWEI day board</h1><span class="meta" id="updated"></span></header>
+<header><h1>WUWEI cockpit</h1><span class="meta" id="updated"></span></header>
 <div id="error" role="status"></div>
+<div id="signals" role="status"></div>
+<div id="signal-events"></div>
+<h2>Work</h2>
 <section id="blocked" hidden><h2>Blocked <span id="blocked-count"></span></h2><div id="blocked-items"></div></section>
 <main id="columns" aria-label="Phase columns"></main>
+<div class="lanes">
+  <section class="lane" aria-label="Decisions"><h2>Decisions</h2><div id="decisions"></div></section>
+  <section class="lane" aria-label="People"><h2>People</h2><div id="people"></div></section>
+  <section class="lane" aria-label="PRs"><h2>PRs</h2><div id="prs"></div></section>
+  <section class="lane" aria-label="Briefing pack"><h2>Briefing pack</h2><pre id="briefing"></pre></section>
+</div>
 <script>
 "use strict";
 const STALE_MS = 15 * 60 * 1000, POLL_MS = 5000;
@@ -122,15 +134,55 @@ function render(state, events, board) {
   document.getElementById("updated").textContent = "Updated " + new Date(now).toLocaleTimeString();
 }
 
+function webLink(value, label) {
+  try {
+    const url = new URL(value);
+    if (["https:", "http:"].includes(url.protocol))
+      return `<a href="${esc(url.href)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`;
+  } catch {}
+  return esc(label);
+}
+
+function renderCockpit(data) {
+  const decisions = Array.isArray(data.decisions) ? data.decisions : [];
+  document.getElementById("decisions").innerHTML = decisions.length ? decisions.map(row =>
+    `<article class="card"><strong>${esc(row.id)}</strong><p>${esc(row.question)}</p>` +
+    `<p>Route: ${esc(row.route)}. Answer in the session.</p><ul>` +
+    (row.options || []).map(option => `<li>${esc(option.id)}: ${esc(option.description)}</li>`).join("") +
+    `</ul><details><summary>Record</summary><pre>${esc(row.record)}</pre></details></article>`
+  ).join("") : "None pending";
+  document.getElementById("people").innerHTML = Array.isArray(data.people) ?
+    (data.people.map(row => `<article class="card"><strong>${esc(row.person || "Person")}</strong>` +
+      `<p>${esc(row.reason || "Reply owed")}</p><p>Due: ${esc(row.due || "unmeasured")}</p></article>`).join("") || "None owed") :
+    "unmeasured";
+  document.getElementById("prs").innerHTML = Array.isArray(data.prs) ?
+    (data.prs.map(row => `<article class="card"><strong>${webLink(row.ref, row.ref)}</strong>` +
+      `<p>State: ${esc(row.state)}</p><p>Last action: ${esc(row.last_action)}</p>` +
+      `<p>Waiting on: ${esc(row.waiting_on)}</p><p>Deadline: ${esc(row.deadline)}</p></article>`).join("") || "None owned") :
+    "unmeasured";
+  const status = data.status || {};
+  document.getElementById("signals").textContent =
+    `${status.pages ?? "unmeasured"} page(s), ${status.nudges ?? "unmeasured"} nudges`;
+  document.getElementById("signal-events").innerHTML = (data.signals || []).map(row =>
+    `<span class="meta">${esc(row.tier)} / ${esc(row.lane)}: ${esc(row.kind)}</span>`
+  ).join(" | ");
+  document.getElementById("briefing").textContent = data.briefing || "unmeasured";
+}
+
 async function tick() {
   try {
-    const [bj, sj, ej] = await Promise.all([
-      get("./board.json"), get("./state.json"), get("./events.jsonl").catch(() => "")]);
+    const [bj, sj, ej, cj] = await Promise.all([
+      get("./board.json"), get("./state.json"), get("./events.jsonl").catch(() => ""),
+      get("./cockpit.json").catch(error => ({error: error.message}))]);
     const events = ej.split("\n").filter(Boolean).map(line => {
       try { return JSON.parse(line); } catch { return null; }
     }).filter(Boolean);
     render(JSON.parse(sj), events, JSON.parse(bj));
-    document.getElementById("error").textContent = "";
+    if (cj.error) document.getElementById("error").textContent = "Cockpit load failed: " + cj.error;
+    else {
+      renderCockpit(JSON.parse(cj));
+      document.getElementById("error").textContent = "";
+    }
   } catch (error) {
     document.getElementById("error").textContent = "Load failed: " + error.message;
   }
