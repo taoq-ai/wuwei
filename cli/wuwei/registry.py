@@ -10,6 +10,7 @@ from wuwei.exits import UNRUN
 
 
 PARAMETERS = {
+    'host': {'free_memory': ()},
     'tracker': {'claim': ('item',), 'transition': ('item', 'state'),
                 'create': ('draft',), 'history': ('item',)},
     'chat': {'post': ('channel', 'text', 'thread'), 'dm': ('text',)},
@@ -25,7 +26,8 @@ PARAMETERS = {
                   'revert_pr': ('ref',)},
     'vcs': {'resolve': ('repo', 'sha'), 'identity': ('repo',), 'head': ('repo',), 'merge_base': ('repo', 'ref'),
             'status': ('repo',), 'diff_stat': ('repo', 'base', 'head'),
-            'log_since': ('repo', 'sha'), 'worktree_add': ('repo', 'branch', 'path')},
+            'log_since': ('repo', 'sha'), 'worktree_add': ('repo', 'branch', 'path'),
+            'branches': ('repo', 'pattern')},
 }
 INTERFACES = {kind: tuple(operations) for kind, operations in PARAMETERS.items()}
 

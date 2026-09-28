@@ -16,8 +16,9 @@ pronouns = ""
 handles = [] # Bare chat IDs and code-host handles, e.g. "U12345", "pat-dev".
 
 [host]
-free_memory_mb = 1024 # Nonnegative free-memory floor in MB.
+free_memory_mb = 1024 # Nonnegative free-memory floor in MiB.
 seats = 1
+reservation_timeout_seconds = 14400 # Report stale reservations; never silently release them.
 
 [memory]
 max_notes = 60
@@ -30,6 +31,12 @@ runtime = "claude"
 scanner = "none"
 code_host = "github"
 vcs = "git"
+host = "local"
+
+[brief]
+remote = "origin"
+prior_branch_pattern = "*{item}*" # Item is lowercased.
+full_path_patterns = [] # Owner-supplied regexes. Example: '(^|/)(infra|infrastructure|terraform|migrations?|secrets?)(/|$)'
 
 # Registers map names to descriptions.
 [boundary]
