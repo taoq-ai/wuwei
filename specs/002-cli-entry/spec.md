@@ -74,7 +74,7 @@ The CLI works with the Python standard library alone.
 
 ## Assumptions
 
-- Binding orchestrator invocation `PYTHONPATH=<plugin root>/cli python3 -m wuwei` supersedes the issue's directory-before-`-m` spelling.
+- Binding orchestrator invocation `PYTHONPATH=<plugin root>/cli python3 -P -m wuwei` supersedes the issue's directory-before-`-m` spelling.
 - Version output is the manifest version alone, followed by a newline.
 - The shim requires POSIX sh and Python 3.11+ on PATH; symlink installations are outside this issue.
 - Commands return integer statuses; booleans are rejected despite being integer subclasses.

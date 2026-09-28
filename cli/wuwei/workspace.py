@@ -9,9 +9,10 @@ import tomllib
 
 # Dicts describe tables; lists describe arrays; tuples are type/default/constraint.
 # A '*' table entry describes user-defined register/channel names.
+# A None default marks a required, nonblank field.
 SCHEMA = {
     "owner": {"name": (str, ""), "pronouns": (str, "")},
-    "repos": [{"name": (str, ""), "path": (str, ""),
+    "repos": [{"name": (str, None), "path": (str, None),
                "default_branch": (str, "main"), "fast_checks": [(str, "")]}],
     "cap": (int, 1, 1),
     "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 1, 1)},
@@ -73,6 +74,8 @@ def _key_line(raw, path):
     names = [part for part in path if not isinstance(part, int)]
     table = []
     assignment = []
+    repo_index = -1
+    requested_repo = path[1] if len(path) > 1 and path[0] == 'repos' and isinstance(path[1], int) else None
     for number, line in enumerate(raw.splitlines(), 1):
         line = line.split("#", 1)[0].strip()
         if not line:
@@ -80,9 +83,15 @@ def _key_line(raw, path):
         if line.startswith("["):
             header = line.strip("[] ")
             table = [part.strip(' \"\'') for part in header.split(".")]
+            if line.startswith('[[') and table == ['repos']:
+                repo_index += 1
+            if requested_repo is not None and repo_index >= 0 and repo_index != requested_repo:
+                continue
             if table[:len(names)] == names:
                 return number
         else:
+            if requested_repo is not None and repo_index >= 0 and repo_index != requested_repo:
+                continue
             lhs = line.split("=", 1)[0]
             keys = [part.strip(' \"\'') for part in lhs.split(".")]
             if (table + keys)[:len(names)] == names:
@@ -98,6 +107,12 @@ def _key_line(raw, path):
 
 def _validate(value, schema, path, raw):
     key = ".".join(map(str, path)) or "config"
+    if isinstance(schema, tuple) and schema[1] is None and (
+        value is None or isinstance(value, str) and not value.strip()
+    ):
+        line = _key_line(raw, path) or _key_line(raw, path[:-1])
+        location = f' at line {line}' if line is not None else ''
+        raise ConfigError(f'{key}: required{location}')
     expected = dict if isinstance(schema, dict) else list if isinstance(schema, list) else schema[0]
     if type(value) is not expected:
         raise ConfigError(f"{key}: expected {expected.__name__}")
@@ -141,6 +156,30 @@ def load_config(root=None):
     path = (find_workspace() if root is None else Path(root)) / ".wuwei/config.toml"
     try:
         raw = path.read_text(encoding="utf-8")
-        return _validate(tomllib.loads(raw), SCHEMA, (), raw)
+        config = _validate(tomllib.loads(raw), SCHEMA, (), raw)
+        repo_names = set()
+        repo_paths = set()
+        for index, repo in enumerate(config['repos']):
+            if repo['name'] in repo_names:
+                line = _key_line(raw, ('repos', index, 'name'))
+                location = f' at line {line}' if line is not None else ''
+                raise ConfigError(f'repos.{index}.name: duplicate {repo["name"]!r}{location}')
+            repo_names.add(repo['name'])
+            resolved = (path.parent.parent / Path(repo['path']).expanduser()).resolve()
+            if resolved in repo_paths:
+                line = _key_line(raw, ('repos', index, 'path'))
+                location = f' at line {line}' if line is not None else ''
+                raise ConfigError(f'repos.{index}.path: duplicate {repo["path"]!r}{location}')
+            repo_paths.add(resolved)
+        from wuwei import registry
+
+        for kind, name in config['adapters'].items():
+            try:
+                registry.validate(kind, name, for_config=True)
+            except ValueError as exc:
+                line = _key_line(raw, ('adapters', kind))
+                location = f' at line {line}' if line is not None else ''
+                raise ConfigError(f'{exc}{location}') from exc
+        return config
     except (ConfigError, tomllib.TOMLDecodeError, UnicodeError) as exc:
         raise ConfigError(f"{path}: {exc}") from exc

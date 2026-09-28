@@ -10,5 +10,5 @@ authors = [{name = "TaoQ AI Labs"}]
 dev = ["pytest"]
 
 [tool.pytest.ini_options]
-pythonpath = ["cli"]
+pythonpath = ["cli", "."]
 testpaths = ["tests"]

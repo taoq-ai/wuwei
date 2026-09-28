@@ -1,6 +1,6 @@
 # CLI contract
 
-Invoke `PYTHONPATH=<plugin root>/cli python3 -m wuwei [arguments]` or
+Invoke `PYTHONPATH=<plugin root>/cli python3 -P -m wuwei [arguments]` or
 `<plugin root>/bin/wuwei [arguments]`.
 
 - `--version`: manifest version and newline on stdout, exit 0.
