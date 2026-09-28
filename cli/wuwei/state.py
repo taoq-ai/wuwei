@@ -60,6 +60,9 @@ def _validate(data, previous=None):
         raise StateError('cap: expected integer >= 1')
     if previous is not None and previous['items'].keys() - data['items'].keys():
         raise StateError('items: removing an item is not allowed')
+    for field in ('raised_prs', 'claimed_prs'):
+        if previous is not None and any(ref not in data[field] for ref in previous[field]):
+            raise StateError(f'{field}: removing a PR is not allowed')
     for name, item in data['items'].items():
         path = f'items.{name}'
         _defaults(item, ITEM_DEFAULTS, path)
@@ -184,12 +187,13 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
         data = _validate(data, previous)
         encoded = json.dumps(data, allow_nan=False) + '\n'
         workspace.atomic_write(directory / 'state.json', encoded, mode=0o444)
-        _append_event(kind, payload, directory)
+        _append_event(kind, {**payload, 'prs_seen': bool(data['raised_prs'] or data['claimed_prs'])},
+                      directory)
         return data
 
 
 # Features add only the namespaces they own.
-RESERVED = {'seats', 'fast_checks'}
+RESERVED = {'seats', 'fast_checks', 'reply_acks', 'channel_posts'}
 
 
 def _reserved(data, path=()):

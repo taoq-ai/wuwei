@@ -14,7 +14,7 @@
           "--hostname",
           "github.com"
         ],
-        "stdout": "{\"number\": 7, \"html_url\": \"https://github.com/acme/widget/pull/7\", \"user\": {\"login\": \"builder\"}, \"state\": \"open\", \"draft\": false, \"head\": {\"sha\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"ref\": \"feature\"}, \"base\": {\"ref\": \"main\", \"sha\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}, \"mergeable\": true, \"mergeable_state\": \"clean\", \"additions\": 4, \"deletions\": 2, \"changed_files\": 1, \"updated_at\": \"2026-09-28T12:00:00Z\", \"node_id\": \"PR_7\"}"
+        "stdout": "{\"number\": 7, \"html_url\": \"https://github.com/acme/widget/pull/7\", \"user\": {\"login\": \"builder\"}, \"state\": \"open\", \"draft\": false, \"head\": {\"sha\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"ref\": \"feature\"}, \"base\": {\"ref\": \"main\", \"sha\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}, \"mergeable\": true, \"mergeable_state\": \"clean\", \"additions\": 4, \"deletions\": 2, \"changed_files\": 1, \"updated_at\": \"2026-09-28T12:00:00Z\", \"node_id\": \"PR_7\", \"requested_reviewers\": [{\"login\": \"reviewer\"}], \"requested_teams\": []}"
       }
     ],
     "data": {
@@ -34,7 +34,11 @@
       "deletions": 2,
       "changed_files": 1,
       "updated_at": "2026-09-28T12:00:00Z",
-      "node_id": "PR_7"
+      "node_id": "PR_7",
+      "requested_reviewers": [
+        "reviewer"
+      ],
+      "requested_teams": []
     }
   },
   {
@@ -105,7 +109,7 @@
           "--hostname",
           "github.com"
         ],
-        "stdout": "[[{\"id\": 11, \"user\": {\"login\": \"reviewer\"}, \"state\": \"APPROVED\", \"body\": \"Looks good\", \"commit_id\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"submitted_at\": \"2026-09-28T11:00:00Z\"}], []]"
+        "stdout": "[[{\"id\": 11, \"user\": {\"login\": \"reviewer\", \"type\": \"User\"}, \"state\": \"APPROVED\", \"body\": \"Looks good\", \"commit_id\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"submitted_at\": \"2026-09-28T11:00:00Z\"}], []]"
       }
     ],
     "data": [
@@ -115,7 +119,8 @@
         "state": "approved",
         "body": "Looks good",
         "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "submitted_at": "2026-09-28T11:00:00Z"
+        "submitted_at": "2026-09-28T11:00:00Z",
+        "is_bot": false
       }
     ]
   },
@@ -136,7 +141,7 @@
           "--hostname",
           "github.com"
         ],
-        "stdout": "[[{\"id\": 21, \"user\": {\"login\": \"reviewer\"}, \"body\": \"Please check\", \"created_at\": \"2026-09-28T10:00:00Z\", \"updated_at\": \"2026-09-28T10:01:00Z\"}]]"
+        "stdout": "[[{\"id\": 21, \"user\": {\"login\": \"reviewer\", \"type\": \"User\"}, \"body\": \"Please check\", \"created_at\": \"2026-09-28T10:00:00Z\", \"updated_at\": \"2026-09-28T10:01:00Z\"}]]"
       },
       {
         "argv": [
@@ -148,14 +153,14 @@
           "github.com"
         ],
         "input": {
-          "query": "query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated comments(first:100){pageInfo{hasNextPage} nodes{databaseId author{login} body createdAt}}}}}}}",
+          "query": "query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated comments(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename} body createdAt}}}}}}}",
           "variables": {
             "o": "acme",
             "r": "widget",
             "n": 7
           }
         },
-        "stdout": "{\"data\": {\"repository\": {\"pullRequest\": {\"reviewThreads\": {\"pageInfo\": {\"hasNextPage\": false}, \"nodes\": [{\"id\": \"THREAD_1\", \"isResolved\": false, \"isOutdated\": false, \"comments\": {\"pageInfo\": {\"hasNextPage\": false}, \"nodes\": [{\"databaseId\": 31, \"author\": {\"login\": \"reviewer\"}, \"body\": \"Why?\", \"createdAt\": \"2026-09-28T10:00:00Z\"}]}}]}}}}}"
+        "stdout": "{\"data\": {\"repository\": {\"pullRequest\": {\"reviewThreads\": {\"pageInfo\": {\"hasNextPage\": false}, \"nodes\": [{\"id\": \"THREAD_1\", \"isResolved\": false, \"isOutdated\": false, \"comments\": {\"pageInfo\": {\"hasNextPage\": false}, \"nodes\": [{\"databaseId\": 31, \"author\": {\"login\": \"reviewer\", \"__typename\": \"User\"}, \"body\": \"Why?\", \"createdAt\": \"2026-09-28T10:00:00Z\"}]}}]}}}}}"
       }
     ],
     "data": {
@@ -165,7 +170,8 @@
           "author": "reviewer",
           "body": "Please check",
           "created_at": "2026-09-28T10:00:00Z",
-          "updated_at": "2026-09-28T10:01:00Z"
+          "updated_at": "2026-09-28T10:01:00Z",
+          "is_bot": false
         }
       ],
       "threads": [
@@ -178,7 +184,8 @@
               "id": 31,
               "author": "reviewer",
               "body": "Why?",
-              "created_at": "2026-09-28T10:00:00Z"
+              "created_at": "2026-09-28T10:00:00Z",
+              "is_bot": false
             }
           ]
         }

@@ -7,6 +7,8 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 
 RETRO_KEYS = ('Blocked', 'Gap', 'Change')
+VERDICTS = ('PASS', 'FIX', 'PARK', 'ESCALATE')
+VERDICT_ROW = r'^(?:## |- )?Verdict:? *(' + '|'.join(VERDICTS) + r')\b'
 CITATION = r'[A-Za-z0-9_./-]+\.[a-z]+:[0-9]+|\bL[0-9]+\b'
 BLOCKS = r'blocks?:? *(yes|no)\b|\| *(yes|no) *\|'
 SCENARIO = r'scenario|reproduc|fails? when|would |impact|consequence|breaks? '
@@ -84,7 +86,7 @@ def finding_blocks(text):
 def lint(text, *, quality=False, class_sweep=False):
     text = active_text(text)
     failures = []
-    verdicts = re.findall(r'^(?:## |- )?Verdict:? *(PASS|FIX|PARK|ESCALATE)\b', text, re.M)
+    verdicts = re.findall(VERDICT_ROW, text, re.M)
     verdict = verdicts[0] if verdicts else None
     if not verdict:
         failures.append("missing a 'Verdict: PASS|FIX|PARK|ESCALATE' line at the start of a line")

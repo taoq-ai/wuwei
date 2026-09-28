@@ -8,13 +8,14 @@ import sys
 from urllib.parse import quote
 
 from wuwei.registry import Result, outward_operation
+from wuwei.references import pull_request, repository as _repo
 
 
 TIMEOUT = 30
 _THREADS = ('query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){'
             'pullRequest(number:$n){reviewThreads(first:100){pageInfo{hasNextPage} '
             'nodes{id isResolved isOutdated comments(first:100){pageInfo{hasNextPage} '
-            'nodes{databaseId author{login} body createdAt}}}}}}}')
+            'nodes{databaseId author{login __typename} body createdAt}}}}}}}')
 
 _REVERT = ('mutation($id:ID!){revertPullRequest(input:{pullRequestId:$id})'
            '{revertPullRequest{number url}}}')
@@ -115,21 +116,11 @@ def _pages(endpoint, key=None):
     return [item for page in pages for item in _list(page[key] if key else page)]
 
 
-def _repo(repo):
-    if not isinstance(repo, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo):
-        raise ValueError('expected owner/repo')
-    if any(part in ('.', '..') for part in repo.split('/')):
-        raise ValueError('invalid repository')
-    return repo
-
-
 def _ref(ref):
-    if not isinstance(ref, str):
-        raise ValueError('expected PR reference')
-    match = re.fullmatch(r'(?:https://github\.com/([^/]+/[^/]+)/pull/|([^#]+)#)([1-9][0-9]*)', ref)
-    if not match:
-        raise ValueError('expected owner/repo#number or GitHub PR URL')
-    return _repo(match[1] or match[2]), int(match[3])
+    if isinstance(ref, str):
+        ref = re.sub(r'^https://github\.com/([^/]+/[^/]+)/pull/', r'\1#', ref)
+    repo, number = pull_request(ref).split('#')
+    return repo, int(number)
 
 
 def _sha(sha):
@@ -140,6 +131,13 @@ def _sha(sha):
 
 def _login(value):
     return _field(value, 'login', str) if value is not None else None
+
+
+def _bot(actor, field='type'):
+    kind = _field(actor, field, str)
+    if kind not in ('User', 'Bot'):
+        raise ValueError('unknown actor type')
+    return kind == 'Bot'
 
 
 @_operation
@@ -157,6 +155,8 @@ def pr(ref, root=None):
         'additions': _field(value, 'additions', int), 'deletions': _field(value, 'deletions', int),
         'changed_files': _field(value, 'changed_files', int),
         'updated_at': _field(value, 'updated_at', str), 'node_id': _field(value, 'node_id', str),
+        'requested_reviewers': [_field(v, 'login', str) for v in _list(value['requested_reviewers'])],
+        'requested_teams': [_field(v, 'slug', str) for v in _list(value['requested_teams'])],
     }
 
 
@@ -188,6 +188,7 @@ def checks(ref, sha, root=None):
 def reviews(ref, root=None):
     repo, number = _ref(ref)
     return [{'id': _field(v, 'id', int), 'author': _login(v['user']),
+             'is_bot': _bot(v['user']),
              'state': _field(v, 'state', str).lower(), 'body': _field(v, 'body', str),
              'sha': _field(v, 'commit_id', str, nullable=True),
              'submitted_at': _field(v, 'submitted_at', str, nullable=True)}
@@ -205,6 +206,7 @@ def _nodes(connection):
 def threads(ref, root=None):
     repo, number = _ref(ref)
     comments = [{'id': _field(v, 'id', int), 'author': _login(v['user']),
+                 'is_bot': _bot(v['user']),
                  'body': _field(v, 'body', str), 'created_at': _field(v, 'created_at', str),
                  'updated_at': _field(v, 'updated_at', str)}
                 for v in _pages(f'repos/{repo}/issues/{number}/comments')]
@@ -216,6 +218,7 @@ def threads(ref, root=None):
         {'id': _field(v, 'id', str), 'resolved': _field(v, 'isResolved', bool),
          'outdated': _field(v, 'isOutdated', bool),
          'comments': [{'id': _field(c, 'databaseId', int), 'author': _login(c['author']),
+                       'is_bot': _bot(c['author'], '__typename'),
                        'body': _field(c, 'body', str), 'created_at': _field(c, 'createdAt', str)}
                       for c in _nodes(v['comments'])]} for v in _nodes(connection)]}
 

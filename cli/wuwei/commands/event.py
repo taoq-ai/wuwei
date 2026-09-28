@@ -15,7 +15,8 @@ def register(subparsers):
 
 
 def run(args):
-    if args.kind.startswith('state.') or args.kind in ('brief written', 'seat stood down'):
+    if args.kind.startswith('state.') or args.kind in (
+            'brief written', 'seat stood down', 'watch: sweep', 'reply: acknowledged'):
         print('wuwei event: event kind reserved for its dedicated writer', file=sys.stderr)
         return FINDINGS
     payload = json.loads(args.payload)

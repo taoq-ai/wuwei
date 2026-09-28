@@ -223,3 +223,31 @@ def test_real_path_smoke(tmp_path, monkeypatch):
     (tmp_path / 'tools/gh').unlink()
     result = adapter().pr('acme/widget#7')
     assert result.exit == 2 and 'FileNotFoundError' in result.reason
+
+
+@pytest.mark.parametrize('actor,expected', [
+    ({'login': 'robot', '__typename': 'Bot'}, 0),
+    ({'login': 'robot'}, 2), (None, 2),
+    ({'login': 'robot', '__typename': 'Unknown'}, 2),
+])
+def test_thread_actor_type_is_explicit(actor, expected, monkeypatch):
+    case = deepcopy(next(c for c in CASES if c['operation'] == 'threads'))
+    body = json.loads(case['steps'][-1]['stdout'])
+    comment = body['data']['repository']['pullRequest']['reviewThreads']['nodes'][0]['comments']['nodes'][0]
+    comment['author'] = actor
+    case['steps'][-1]['stdout'] = json.dumps(body)
+    install_replay(monkeypatch, 'gh', case['steps'])
+    result = adapter().threads(*case['args'])
+    assert result.exit == expected
+    if expected == 0:
+        assert result.data['threads'][0]['comments'][0]['is_bot'] is True
+
+
+@pytest.mark.parametrize('field', ['requested_reviewers', 'requested_teams'])
+def test_pr_missing_reviewer_evidence_is_unreadable(field, monkeypatch):
+    case = deepcopy(next(c for c in CASES if c['operation'] == 'pr'))
+    body = json.loads(case['steps'][0]['stdout'])
+    del body[field]
+    case['steps'][0]['stdout'] = json.dumps(body)
+    install_replay(monkeypatch, 'gh', case['steps'])
+    assert adapter().pr(*case['args']).exit == 2

@@ -492,7 +492,7 @@ def test_seat_reservations_require_dedicated_writer(workspace, path, value):
 
 def test_fast_checks_namespace_is_owned_by_recorder():
     from wuwei import state
-    assert state.RESERVED == {'seats', 'fast_checks'}
+    assert {'seats', 'fast_checks'} <= state.RESERVED
 
 
 @pytest.mark.parametrize('path,value', [
@@ -520,3 +520,29 @@ def test_generic_state_reservation_mechanism(workspace, monkeypatch, path, value
     with pytest.raises(state.StateError, match='reserved'):
         state.write_state(lambda data: data.update(example_records=value), workspace)
     assert not (day(workspace) / 'state.json').exists()
+
+
+@pytest.mark.parametrize('field', ['raised_prs', 'claimed_prs'])
+@pytest.mark.parametrize('writer', ['set', 'update'])
+def test_pr_lists_cannot_remove_entries(workspace, field, writer):
+    from wuwei import state
+    refs = ['acme/widget#7', 'acme/widget#8']
+    state.set_state(field, refs, workspace)
+    before = (day(workspace) / 'state.json').read_bytes()
+    before_events = events(workspace)
+    with pytest.raises(state.StateError, match='removing'):
+        if writer == 'set':
+            state.set_state(field, refs[1:], workspace)
+        else:
+            state.write_state(lambda data: data.pop(field), workspace)
+    assert (day(workspace) / 'state.json').read_bytes() == before
+    assert events(workspace) == before_events
+    state.set_state(field, refs + ['acme/widget#9'], workspace)
+
+
+@pytest.mark.parametrize('kind', ['watch: sweep', 'reply: acknowledged'])
+def test_obligation_event_kinds_reserved(workspace, kind):
+    result = cli('event', kind, '{"exit":0,"owed":0}')
+    assert result.returncode == 1
+    assert 'reserved' in result.stderr
+    assert not (day(workspace) / 'events.jsonl').exists()
