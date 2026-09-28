@@ -99,18 +99,21 @@ def test_config_defaults_and_independence(tmp_path):
     from wuwei.workspace import load_config
     write_config(tmp_path, '')
     config = load_config(tmp_path)
+    outward = config.pop('outward')
+    assert outward['patterns'] and outward['tool_patterns']
+    assert outward['banned_characters'] == ['emoji', '\u2014', '\u2015', '\u2e3a', '\u2e3b']
+    assert outward['max_length'] == {}
     assert config == {
-        'owner': {'name': '', 'pronouns': ''}, 'repos': [], 'cap': 1,
+        'owner': {'name': '', 'pronouns': '', 'handles': []}, 'repos': [], 'cap': 1,
         'host': {'free_memory_mb': 1024, 'seats': 1}, 'profile': 'strict',
         'memory': {'max_notes': 60},
         'boundary': {}, 'environments': {},
-        'outward': {'patterns': [], 'banned_characters': [], 'max_length': {}},
         'adapters': {'tracker': 'none', 'chat': 'none', 'review_bot': 'none',
                      'runtime': 'claude', 'scanner': 'none',
                      'code_host': 'github', 'vcs': 'git'},
     }
-    config['outward']['patterns'].append('changed')
-    assert load_config(tmp_path)['outward']['patterns'] == []
+    outward['patterns'].append('changed')
+    assert 'changed' not in load_config(tmp_path)['outward']['patterns']
 
 
 def test_all_config_fields(tmp_path):

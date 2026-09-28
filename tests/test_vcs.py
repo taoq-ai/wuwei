@@ -200,3 +200,16 @@ def test_real_path_smoke(tmp_path, monkeypatch):
     (tmp_path / 'tools/git').unlink()
     result = adapter().head('/repo')
     assert result.exit == 2 and 'FileNotFoundError' in result.reason
+
+
+@pytest.mark.parametrize('exit_code,stdout,expected', [(0, 'a' * 40 + '\n', 0),
+                                                       (1, '', 1), (128, '', 2)])
+def test_resolve_commit(exit_code, stdout, expected, monkeypatch):
+    calls = install_replay(monkeypatch, 'git', [{'stdout': stdout, 'exit': exit_code}])
+    port = adapter()
+    assert hasattr(port, 'resolve'), 'vcs must resolve approval-free commit claims'
+    result = port.resolve('/repo', 'aaaaaaa')
+    assert result.exit == expected
+    assert calls[0][-4:] == ['rev-parse', '--verify', '--quiet', 'aaaaaaa^{commit}']
+    if expected == 0:
+        assert result.data == {'sha': 'a' * 40}

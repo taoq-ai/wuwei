@@ -1,6 +1,6 @@
 """Unavailable code host, using the shared event and result contract."""
 
-from wuwei.registry import record_none
+from wuwei.registry import record_none, outward_operation
 
 
 def pr(ref, root=None):
@@ -31,6 +31,7 @@ def request_reviewers(ref, logins, root=None):
     return record_none("code_host", "request_reviewers", root, measurement=False)
 
 
+@outward_operation('code_host')
 def comment(ref, text, thread, root=None):
     return record_none("code_host", "comment", root, measurement=False)
 

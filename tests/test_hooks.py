@@ -107,10 +107,11 @@ def test_scratchpad_fixtures_use_neutral_paths():
             assert payload['scratchpad_dir'] == '/tmp/scratch/example', path
 
 
-def test_discovery_returns_plain_list(plugin):
+def test_discovery_returns_plain_list():
     from wuwei.guards import discover
+    from wuwei.guards.outward import GUARDS
     assert type(discover()) is list
-    assert discover() == []
+    assert all(guard in discover() for guard in GUARDS)
 
 
 def test_private_guard_module_is_ignored(plugin):

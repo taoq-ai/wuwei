@@ -1,6 +1,7 @@
 """Unavailable tracker operations, recorded without sensitive arguments."""
 
 from wuwei import registry
+from wuwei.registry import outward_operation
 
 
 def claim(item, *, root=None):
@@ -11,6 +12,7 @@ def transition(item, state, *, root=None):
     return registry.record_none('tracker', 'transition', root, measurement=False)
 
 
+@outward_operation('tracker')
 def create(draft, *, root=None):
     return registry.record_none('tracker', 'create', root, measurement=False)
 

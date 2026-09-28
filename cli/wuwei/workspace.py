@@ -1,5 +1,6 @@
 """Shared workspace paths and validated configuration."""
 
+from copy import deepcopy
 from datetime import datetime
 import os
 from pathlib import Path
@@ -8,11 +9,12 @@ import tempfile
 import tomllib
 
 
-# Dicts describe tables; lists describe arrays; tuples are type/default/constraint.
+# Dicts describe tables; lists contain an item rule and optional array defaults;
+# tuples are type/default/constraint.
 # A '*' table entry describes user-defined register/channel names.
 # A None default marks a required, nonblank field.
 SCHEMA = {
-    "owner": {"name": (str, ""), "pronouns": (str, "")},
+    "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)]},
     "repos": [{"name": (str, None), "path": (str, None),
                "default_branch": (str, "main"), "fast_checks": [(str, "")]}],
     "cap": (int, 1, 1),
@@ -21,8 +23,22 @@ SCHEMA = {
     "profile": (str, "strict", ("strict", "standard")),
     "boundary": {"*": (str, "")},
     "environments": {"*": (str, "")},
-    "outward": {"patterns": [(str, "")], "banned_characters": [(str, "")],
-                "max_length": {"*": (int, 1, 1)}},
+    "outward": {
+        "patterns": [(str, ""), [
+            r"\bdrafts?\b.*\b(?:pending|owner|approval)\b",
+            r"\bpending\s+drafts?\b", r"\bqueues?\b",
+            r"\b(?:the\s+)?agents?\b", r"\bsentinel\b", r"\bseats?\b",
+            r"\b(?:claude|codex|subagents?|steward|gate\s+verdicts?)\b",
+            r"\bwuwei\b", r"\bqueued\b", r"\bthe\s+owner\b",
+        ]],
+        "banned_characters": [(str, ""), ["emoji", "\u2014", "\u2015", "\u2e3a", "\u2e3b"]],
+        "max_length": {"*": (int, 1, 1)},
+        "tool_patterns": [{"pattern": (str, None), "channel": (str, None)}, [
+            {"pattern": r"mcp__.*slack.*__.*(send|post|reply|schedule|update).*", "channel": "slack"},
+            {"pattern": r"mcp__.*linear.*__(save|create|update)_(issue|comment)", "channel": "tracker"},
+            {"pattern": r"mcp__.*github.*__(add|create|update)_.*comment.*", "channel": "code_host"},
+        ]],
+    },
     "adapters": {"tracker": (str, "none"), "chat": (str, "none"),
                  "review_bot": (str, "none"), "runtime": (str, "claude"),
                  "scanner": (str, "none"), "code_host": (str, "github"),
@@ -180,7 +196,7 @@ def _default(schema):
     if isinstance(schema, dict):
         return {}
     if isinstance(schema, list):
-        return []
+        return deepcopy(schema[1]) if len(schema) > 1 else []
     return schema[1]
 
 

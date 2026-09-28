@@ -7,7 +7,7 @@ import subprocess
 import sys
 from urllib.parse import quote
 
-from wuwei.registry import Result
+from wuwei.registry import Result, outward_operation
 
 
 TIMEOUT = 30
@@ -269,6 +269,7 @@ def request_reviewers(ref, logins, root=None):
     return {'requested': [_login(user) for user in _list(value['requested_reviewers'])]}
 
 
+@outward_operation('code_host')
 @_operation
 def comment(ref, text, thread, root=None):
     repo, number = _ref(ref)

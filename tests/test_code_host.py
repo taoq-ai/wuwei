@@ -19,6 +19,12 @@ def adapter():
     return importlib.import_module('adapters.code_host.github')
 
 
+def transport(name):
+    # Skip outward policy only, preserving the adapter's result/error wrapper.
+    operation = getattr(adapter(), name)
+    return operation.__wrapped__ if name == 'comment' else operation
+
+
 @pytest.mark.parametrize('case', CASES, ids=lambda c: c['operation'])
 def test_read_recording(case, tmp_path, monkeypatch):
     calls = install_replay(monkeypatch, 'gh', case['steps'])
@@ -85,7 +91,8 @@ def test_checks_reject_wrong_head(tmp_path, monkeypatch):
 @pytest.mark.parametrize('case', WRITES, ids=lambda c: c['operation'])
 def test_write_recording(case, tmp_path, monkeypatch):
     calls = install_replay(monkeypatch, 'gh', case['steps'])
-    result = getattr(adapter(), case['operation'])(*case['args'], root=tmp_path)
+    # These recordings exercise transport encoding; outward port policy has its own tests.
+    result = transport(case['operation'])(*case['args'], root=tmp_path)
     assert (result.exit, result.data, result.reason) == (0, case['data'], '')
     assert len(calls) == len(case['steps'])
 
@@ -98,7 +105,7 @@ def test_write_recording(case, tmp_path, monkeypatch):
 ])
 def test_write_failure(case, response, tmp_path, monkeypatch):
     install_replay(monkeypatch, 'gh', [response])
-    result = getattr(adapter(), case['operation'])(*case['args'])
+    result = transport(case['operation'])(*case['args'])
     assert result.exit == 2 and result.data is None
 
 
@@ -114,7 +121,7 @@ def test_invalid_write_input_never_spawns(operation, args, monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail('invalid input reached subprocess')
     monkeypatch.setattr(subprocess, 'run', forbidden)
-    result = getattr(adapter(), operation)(*args)
+    result = transport(operation)(*args)
     assert result.exit == 2 and result.data is None
 
 
@@ -204,7 +211,7 @@ def test_real_path_smoke(tmp_path, monkeypatch):
 
     case = next(c for c in WRITES if c['operation'] == 'comment')
     calls = install_stub(tmp_path, monkeypatch, 'gh', case['steps'])
-    result = adapter().comment(*case['args'])
+    result = transport('comment')(*case['args'])
     assert result.exit == 0 and result.data == case['data']
     assert len(calls.read_text().splitlines()) == 1  # Stub checks JSON stdin too.
 
