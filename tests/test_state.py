@@ -66,6 +66,7 @@ def test_get_set_defaults_and_audit(workspace):
     assert json.loads(result.stdout) == {
         'items': {}, 'cap': 1, 'seat_policy': {}, 'envelope': {},
         'claimed_prs': [], 'raised_prs': [], 'gate_verdicts': {}, 'seats': {},
+        'gate_approved': False, 'approved_items': [], 'goals': [],
     }
     assert not day(workspace).exists()
     for path, value in [('items.A', {}), ('cap', 3), ('seat_policy.builder', {'model': 'x'}),

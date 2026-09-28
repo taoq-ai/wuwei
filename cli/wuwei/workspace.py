@@ -354,9 +354,12 @@ def create_worktree(repo, branch, path, root, vcs):
     """Create and anchor a WUWEI worktree before handing it to a seat."""
     from wuwei.commands.git_hook import install
     from wuwei.guards.commit_push import data
+    from wuwei import state
 
     if not (Path(root) / '.wuwei').is_dir():
         raise ValueError('worktree creation requires a workspace')
+    if not state.read_state(root).get('gate_approved'):
+        raise state.StateError('morning gate approval required before worktree creation')
     result = data(vcs.worktree_add(str(repo), branch, str(path), root=root))
     install(path, root, vcs)
     return result
