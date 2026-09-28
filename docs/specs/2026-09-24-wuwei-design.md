@@ -105,6 +105,7 @@ Code repos receive only worktrees, branches and pull requests.
   memory/
     spine.md           the structural model, loaded in full every session
     goals.md           the owner's goals (5.7); edited only by the owner
+    voice.md           the owner's voice per audience (4.8); edited only by the owner
     index.md           generated; one line per note and per past day
     notes/*.md         settled facts with frontmatter
     archive/           retired notes; moving one back revives it
@@ -157,7 +158,9 @@ failure signal.
 
 Configured in `config.toml`: the owner's name and pronouns (never used in third person in
 text sent as the owner), patterns that reveal the routine's internal state (drafts pending,
-queues, which agent wrote what), banned characters, and a maximum length per channel.
+queues, which agent wrote what), banned characters, and a maximum length per channel. The
+lint also applies the mechanical checks of the owner's voice for the message's audience
+(4.8).
 
 ### 4.4 Profiles
 
@@ -235,6 +238,39 @@ environment API calls, and the deploy commands of common tools (`kubectl apply`,
 upgrade`/`install`, `terraform apply`, `pulumi up`, `vercel`/`netlify` deploy, `fly deploy`,
 `gcloud`/`aws`/`az` deploy verbs, `docker push`), extendable by `deploy.deny` in config. A
 merge into a repository with `merge_deploys = true` is a deployment and goes to the owner.
+
+### 4.8 Voice (owner, 2026-09-28)
+
+Everything sent as the owner (chat posts, PR comments and replies, tracker comments, digests,
+responder drafts) is written in one voice, so the owner reads as one consistent person.
+
+Home. `memory/voice.md`, owned by the owner like `goals.md`: seats and the steward propose
+changes (6.8) and the owner approves them at the morning gate. One profile per audience
+(`internal`, `external`, `review`, `tracker`, plus any named channel from config), each with
+register, length target, structure (for example answer first, one ask per message), phrases
+the owner uses, phrases the owner never uses, and 5 to 10 exemplars of the owner's real
+messages with personal data redacted. A shared `never` list holds machine tells (stock
+openers and closers, hedging preambles, summary sign-offs, filler praise). The profile stays
+in the workspace, never in this repository.
+
+Learning. `wuwei voice learn` reads only the owner's own sent messages and PR comments
+through the chat and tracker adapters, read-only, and writes a proposal for each audience.
+Every draft the owner edits before sending is recorded as a before and after pair; the
+steward turns repeated edits into voice proposals, so the profile converges on the owner.
+
+Enforcement. Seats that write outward text (shepherd, planner digests, responder) load the
+profile for the audience. The outward-text lint (4.3) checks what is mechanical: length,
+`never` phrases, required structure, banned characters. Tone cannot be linted, so under
+`strict` every message that is not mechanical stays a draft the owner approves (the
+approved-draft rule), and the draft shows which profile it was written against.
+
+Disclosure. `voice.disclosure = "none" | "footer" | "per-channel"` (default `per-channel`:
+`none` on internal channels, a short footer marking agent-sent messages on external ones).
+Substantive claims, disagreement and scope statements are always the owner's own, through the
+approved-draft rule, whatever the disclosure setting.
+
+Metrics (steward): share of drafts sent without edit, and the size of the owner's edits to the
+rest, per audience. Both should rise as the voice converges; a fall is a steward finding.
 
 ## 5. The team
 
