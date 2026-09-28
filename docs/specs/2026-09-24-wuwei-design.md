@@ -691,6 +691,42 @@ that it did nothing and returns exit 2 where a measurement was expected.
   item's recorded head and never redoes committed work.
 - A dead watch process is detected by its missing clock line, not by its pid file.
 
+### 9.1 Threat model and guard scope (owner, 2026-09-28)
+
+What the guards defend against: agent mistakes, corner-cutting, and actions a prompt
+injection pushes through the normal tools. Refusing at the moment of action, with the
+reason, is what turns a rule into a default.
+
+What they do not defend against: a determined process running as the owner's user with a
+shell. It can forge any local file, including state, events, hook payloads and any
+approval record, so no local file is a trust anchor. Hard boundaries therefore sit outside
+the owner's user account:
+
+- the code host's server-side rules (branch protection, required reviews and checks), which
+  the merge policy never overrides (4.6);
+- the owner sending messages that need approval: approve-tier text is delivered as a draft
+  the owner sends (a chat draft, a pending review comment, or the text in the cockpit or on
+  the phone), never sent by WUWEI (4.9);
+- the out-of-process control plane (M5) for anything decided remotely.
+
+Seats on the Codex runtime run in a write sandbox limited to their worktree, so they cannot
+touch workspace state; this is a reason to route build seats there. Further hardening for
+Claude seats (Claude Code's Bash sandbox, or a separate OS user for seats) is a later option.
+Local anchors that do not depend on parsing still raise the bar cheaply: pre-commit and
+pre-push hooks in WUWEI worktrees, state files at mode 0444 outside the writer, and
+`permissions.deny` for unambiguous deploy verbs.
+
+Guard scope. The plugin is installed for the owner's whole machine, so:
+
+- a guard acts only when the session cwd or a path it targets (the resolved target decides
+  for file guards) is inside a WUWEI workspace, one of its configured repos, or a WUWEI
+  worktree; everywhere else it returns 0;
+- relevance comes before parsing: a guard first decides from the raw input whether the
+  call concerns it, and only relevant calls are parsed; a parse failure blocks only a
+  relevant call, so a parser limit never blocks unrelated work;
+- guards that concern roles (brief, retro, verdicts) apply to WUWEI role seats only, not to
+  other subagents.
+
 ## 10. Testing
 
 - Guards: table tests for exits 0, 1 and 2, including every bypass form in section 4.5,
