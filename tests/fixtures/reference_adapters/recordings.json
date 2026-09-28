@@ -1,0 +1,107 @@
+{
+  "linear": [
+    {
+      "data": {
+        "viewer": {
+          "id": "user-1"
+        }
+      }
+    },
+    {
+      "data": {
+        "issueUpdate": {
+          "success": true,
+          "issue": {
+            "id": "issue-1"
+          }
+        }
+      }
+    },
+    {
+      "data": {
+        "issueUpdate": {
+          "success": true,
+          "issue": {
+            "id": "issue-1"
+          }
+        }
+      }
+    },
+    {
+      "data": {
+        "issueCreate": {
+          "success": true,
+          "issue": {
+            "id": "issue-2"
+          }
+        }
+      }
+    },
+    {
+      "data": {
+        "issue": {
+          "history": {
+            "nodes": [
+              {
+                "id": "change-1"
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": false
+            }
+          }
+        }
+      }
+    }
+  ],
+  "slack": [
+    {
+      "ok": true,
+      "channel": "C123",
+      "ts": "1.2"
+    },
+    {
+      "ok": true,
+      "channel": "D123",
+      "ts": "2.3"
+    }
+  ],
+  "greptile": [
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"mergeRequest\":{\"codeReviews\":[{\"status\":\"COMPLETED\"}],\"reviewAnalysis\":{\"hasNewCommitsSinceReview\":false},\"comments\":{\"greptile\":[{\"body\":\"Confidence Score: 4/5\"}]}}}"
+          }
+        ]
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"mergeRequest\":{\"codeReviews\":[{\"status\":\"COMPLETED\"}],\"reviewAnalysis\":{\"hasNewCommitsSinceReview\":false},\"comments\":{\"greptile\":[{\"body\":\"Confidence Score: 4/5\"}]}}}"
+          }
+        ]
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"comments\":[{\"id\":\"finding-1\",\"body\":\"Bug\",\"addressed\":false,\"isGreptileComment\":true}],\"total\":1}"
+          }
+        ]
+      }
+    }
+  ]
+}
