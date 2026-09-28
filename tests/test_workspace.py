@@ -102,6 +102,7 @@ def test_config_defaults_and_independence(tmp_path):
     assert config == {
         'owner': {'name': '', 'pronouns': ''}, 'repos': [], 'cap': 1,
         'host': {'free_memory_mb': 1024, 'seats': 1}, 'profile': 'strict',
+        'memory': {'max_notes': 60},
         'boundary': {}, 'environments': {},
         'outward': {'patterns': [], 'banned_characters': [], 'max_length': {}},
         'adapters': {'tracker': 'none', 'chat': 'none', 'review_bot': 'none',

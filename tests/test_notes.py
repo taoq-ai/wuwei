@@ -103,6 +103,7 @@ def test_add_refuses_notes_directory_outside_workspace(workspace, tmp_path):
 
 def test_add_syncs_note_and_directory(workspace, monkeypatch):
     from wuwei.commands import note
+    from wuwei import workspace as workspace_module
     synced = []
     real_fsync = os.fsync
 
@@ -112,7 +113,7 @@ def test_add_syncs_note_and_directory(workspace, monkeypatch):
 
     monkeypatch.setenv('WUWEI_WORKSPACE', str(workspace))
     monkeypatch.setenv('WUWEI_NOW', NOW)
-    monkeypatch.setattr(note.os, 'fsync', record_fsync)
+    monkeypatch.setattr(workspace_module.os, 'fsync', record_fsync)
     args = SimpleNamespace(slug='synced', type='hub', summary='Good', alias=[], body='')
     assert note.run_add(args) == 0
     import stat

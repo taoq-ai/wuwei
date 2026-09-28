@@ -18,6 +18,9 @@ pronouns = ""
 free_memory_mb = 1024 # Nonnegative free-memory floor in MB.
 seats = 1
 
+[memory]
+max_notes = 60
+
 [adapters]
 tracker = "none"
 chat = "none"

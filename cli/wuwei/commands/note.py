@@ -1,14 +1,11 @@
 """Create a workspace note."""
 
 import json
-import os
-import re
 import sys
-import tempfile
 
 from wuwei.exits import CLEAN, FINDINGS
-from wuwei.notes import parse_note
-from wuwei.workspace import find_workspace, now
+from wuwei.notes import SLUG_RE, parse_note
+from wuwei.workspace import atomic_write, find_workspace, now
 
 
 def register(subparsers):
@@ -24,7 +21,7 @@ def register(subparsers):
 
 
 def run_add(args):
-    if not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', args.slug):
+    if not SLUG_RE.fullmatch(args.slug):
         print('wuwei note: invalid slug', file=sys.stderr)
         return FINDINGS
     fields = [('type', args.type), ('summary', args.summary),
@@ -44,28 +41,10 @@ def run_add(args):
     if directory.is_symlink() or not directory.resolve().is_relative_to(root):
         raise ValueError('notes directory must be inside the workspace and not a symlink')
     path = directory / f'{args.slug}.md'
-    temporary = None
     try:
-        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=directory,
-                                         prefix='.note-', delete=False) as stream:
-            temporary = stream.name
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.link(temporary, path)
-        fd = os.open(directory, os.O_RDONLY)
-        try:
-            try:
-                os.fsync(fd)
-            except OSError:
-                pass
-        finally:
-            os.close(fd)
+        atomic_write(path, content, replace=False)
     except FileExistsError:
         print(f'wuwei note: {path} already exists', file=sys.stderr)
         return FINDINGS
-    finally:
-        if temporary is not None:
-            os.unlink(temporary)
     print(path)
     return CLEAN
