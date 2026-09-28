@@ -27,6 +27,9 @@ SCHEMA = {
              "reservation_timeout_seconds": (int, 14400, 1)},
     "memory": {"max_notes": (int, 60, 1), "note_line_cap": (int, 80, 1),
                "probation_days": (int, 10, 0), "state_entry_cap": (int, 3, 1)},
+    "build": {"max_iterations": (int, 8, 1), "stuck_after": (int, 3, 1),
+              "poll_interval_seconds": (int, 5, 0), "poll_timeout_seconds": (int, 3600, 1)},
+    "codex": {"command": [(str, None)], "timeout_seconds": (int, 300, 1)},
     "profile": (str, "strict", ("strict", "standard")),
     "boundary": {"*": (str, "")},
     "environments": {"*": (str, "")},
@@ -324,7 +327,10 @@ def load_config(root=None):
                 location = f' at line {line}' if line is not None else ''
                 raise ConfigError(f'repos.{index}.name: duplicate {repo["name"]!r}{location}')
             repo_names.add(repo['name'])
-            resolved = (path.parent.parent / Path(repo['path']).expanduser()).resolve()
+            try:
+                resolved = (path.parent.parent / Path(repo['path']).expanduser()).resolve()
+            except (ValueError, OSError) as exc:
+                raise ConfigError(f'repos.{index}.path: {exc}') from exc
             if resolved in repo_paths:
                 line = _key_line(raw, ('repos', index, 'path'))
                 location = f' at line {line}' if line is not None else ''

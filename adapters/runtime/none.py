@@ -13,3 +13,7 @@ def status(job, *, root=None):
 
 def result(job, *, root=None):
     return registry.record_none('runtime', 'result', root)
+
+
+def continue_job(job, feedback, *, root=None):
+    return registry.record_none('runtime', 'continue_job', root, measurement=False)

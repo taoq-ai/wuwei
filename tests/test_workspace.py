@@ -111,6 +111,9 @@ def test_config_defaults_and_independence(tmp_path):
         'chat': {'identity': 'connector'},
         'host': {'free_memory_mb': 1024, 'seats': 1, 'reservation_timeout_seconds': 14400}, 'profile': 'strict',
         'memory': {'max_notes': 60, 'note_line_cap': 80, 'probation_days': 10, 'state_entry_cap': 3},
+        'build': {'max_iterations': 8, 'stuck_after': 3,
+                  'poll_interval_seconds': 5, 'poll_timeout_seconds': 3600},
+        'codex': {'command': [], 'timeout_seconds': 300},
         'brief': {'remote': 'origin',
                   'prior_branch_pattern': '*{item}*',
                   'full_path_patterns': []},
@@ -623,3 +626,10 @@ def test_upgrade_rejects_symlinked_config_without_writes(tmp_path):
     assert result.returncode == 2
     assert 'symlinks' in result.stderr
     assert original.read_text() == raw
+
+
+def test_nul_repo_path_is_config_finding(tmp_path):
+    from wuwei.workspace import ConfigError, load_config
+    write_config(tmp_path, '[[repos]]\nname="app"\npath="bad\\u0000path"\ndefault_branch="main"\n')
+    with pytest.raises(ConfigError, match='repos.0.path'):
+        load_config(tmp_path)

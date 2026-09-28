@@ -184,6 +184,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'state.transition': 'silent', 'seat stopped': 'silent',
                 'seat launched': 'silent', 'brief written': 'silent',
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
+                'seat.usage': 'silent', 'build.parked': 'nudge',
                 'retro.gap': 'nudge', 'seat stop unmatched': 'nudge',
                 'hook.post_tool_use_error': 'nudge', 'hook.refusal': 'silent',
                 'verdict.rejected': 'nudge', 'decision.rejected': 'nudge',
@@ -193,6 +194,7 @@ def test_emitted_kinds_have_intended_tiers():
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier
+    assert classify({'kind': 'build.iteration'}, {})[0] == 'silent'
 
 
 def test_emitted_kinds_scan_both_writer_forms_in_nested_files(tmp_path):

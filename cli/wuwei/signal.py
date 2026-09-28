@@ -6,7 +6,8 @@ from datetime import datetime
 SILENT = ('item.progress', 'state.write', 'state.set', 'state.transition',
           'seat started', 'seat stopped', 'seat launched', 'brief written',
           'fast_checks.record', 'retro.captured', 'decision.two_way', 'merge.auto',
-          'reply: acknowledged', 'hook.refusal', 'decision.decided')
+          'reply: acknowledged', 'hook.refusal', 'decision.decided',
+          'seat.usage', 'build.iteration')
 
 
 def classify(event, state):
@@ -54,7 +55,7 @@ def classify(event, state):
         counts = (payload.get('owed'), payload.get('unreadable'))
         return ('silent' if all(type(count) is int and count == 0 for count in counts)
                 else 'nudge'), lane
-    if kind in ('merge.policy_blocked', 'work.outside_goals'):
+    if kind in ('merge.policy_blocked', 'work.outside_goals', 'build.parked'):
         return 'nudge', lane
     if kind in SILENT:
         return 'silent', lane

@@ -540,8 +540,12 @@ def test_pr_lists_cannot_remove_entries(workspace, field, writer):
     state.set_state(field, refs + ['acme/widget#9'], workspace)
 
 
-@pytest.mark.parametrize('kind', ['watch: sweep', 'reply: acknowledged'])
-def test_obligation_event_kinds_reserved(workspace, kind):
+@pytest.mark.parametrize('kind', [
+    'watch: sweep', 'reply: acknowledged', 'seat.usage', 'build.iteration',
+    'build.parked', 'retro.captured', 'retro.gap', 'verdict.rejected',
+    'fast_checks.record',
+])
+def test_dedicated_event_kinds_reserved(workspace, kind):
     result = cli('event', kind, '{"exit":0,"owed":0}')
     assert result.returncode == 1
     assert 'reserved' in result.stderr

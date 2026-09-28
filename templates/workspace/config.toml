@@ -24,6 +24,19 @@ reservation_timeout_seconds = 14400 # Report stale reservations; never silently 
 
 [memory]
 max_notes = 60
+note_line_cap = 80
+probation_days = 10
+state_entry_cap = 3
+
+[build]
+max_iterations = 8
+stuck_after = 3
+poll_interval_seconds = 5
+poll_timeout_seconds = 3600
+
+[codex]
+command = [] # Set to the companion command, for example ["node", "path/to/codex-companion.mjs"].
+timeout_seconds = 300
 
 [adapters]
 tracker = "none"

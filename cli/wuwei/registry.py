@@ -17,7 +17,8 @@ PARAMETERS = {
     'chat': {'post': ('channel', 'text', 'thread'), 'dm': ('text',)},
     'review_bot': {'score': ('pr',), 'open_findings': ('pr',)},
     'runtime': {'dispatch': ('role', 'brief_path', 'worktree', 'write'),
-                'status': ('job',), 'result': ('job',)},
+                'status': ('job',), 'result': ('job',),
+                'continue_job': ('job', 'feedback')},
     'scanner': {'audit': ('path',), 'gate': ('result', 'threshold'),
                 'traces': ('file',), 'mcp': ('servers',)},
     'code_host': {'pr': ('ref',), 'checks': ('ref', 'sha'), 'reviews': ('ref',),
@@ -51,11 +52,6 @@ def validate(kind, name, *, for_config=False):
     """Validate installed names, allowing the reserved default in config only."""
     names = known(kind)
     if name not in names:
-        if kind == 'runtime' and name == 'claude':
-            # ponytail: reserve the shipped default until #26 supplies its module.
-            if for_config:
-                return
-            raise ValueError('adapters.runtime: claude unavailable until issue #26')
         raise ValueError(f'adapters.{kind}: unknown adapter {name!r}; '
                          f'known names: {", ".join(names)}')
 
