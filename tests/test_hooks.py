@@ -21,7 +21,7 @@ EVENTS = ('PreToolUse', 'PostToolUse', 'SubagentStop', 'SessionStart', 'PreCompa
 def subprocess_plugin(tmp_path):
     root = tmp_path / "plugin's $literal `path`"
     root.mkdir()
-    for directory in ('cli', 'bin', '.claude-plugin'):
+    for directory in ('cli', 'bin', '.claude-plugin', 'adapters'):
         shutil.copytree(ROOT / directory, root / directory)
     path = tmp_path / 'path'
     path.mkdir()
@@ -131,6 +131,11 @@ def test_private_guard_module_is_ignored(plugin):
 
 
 def assert_refusal(result, event, reason, *, malformed=False):
+    if event == 'SessionStart':
+        assert result.returncode == 0
+        assert reason in json.loads(result.stdout)['hookSpecificOutput']['additionalContext']
+        assert result.stderr == reason + '\n'
+        return
     assert result.returncode == (1 if event == 'PreCompact' and not malformed else 2)
     assert result.stderr == reason + '\n'
     if event == 'PreToolUse':
@@ -152,11 +157,15 @@ from wuwei.guards import Guard
 GUARDS = [Guard({event!r}, None, lambda payload: ({code}, 'guard reason'))]
 ''')
     result = replay(plugin, event, payload_path.read_text())
-    if code:
+    if event == 'SessionStart':
+        assert result.returncode == 0
+        assert json.loads(result.stdout)['hookSpecificOutput']['additionalContext'] == 'guard reason'
+        assert result.stderr == ('guard reason\n' if code else '')
+    elif code:
         assert_refusal(result, event, 'guard reason')
     else:
         assert result.returncode == 0, result.stderr
-        assert result.stderr == ''
+        assert result.stderr == ('guard reason\n' if event == 'Stop' else '')
         expected = {'hookSpecificOutput': {'hookEventName': event,
                                           'additionalContext': 'guard reason'}}
         assert result.stdout == (json.dumps(expected) + '\n' if event == 'SessionStart' else '')

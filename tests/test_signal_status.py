@@ -180,6 +180,7 @@ def test_emitted_kinds_have_intended_tiers():
     emitted = emitted_kinds(sorted((ROOT / 'cli/wuwei').rglob('*.py')))
     emitted.update(['retro.gap', 'retro.captured'])
     emitted.add('state.write')  # default writer kind
+    emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
     expected = {'state.write': 'silent', 'state.set': 'silent',
                 'state.transition': 'silent', 'seat stopped': 'silent',
                 'seat launched': 'silent', 'brief written': 'silent',
@@ -191,7 +192,10 @@ def test_emitted_kinds_have_intended_tiers():
                 'verdict.rejected': 'nudge', 'decision.rejected': 'nudge',
                 'decision.decided': 'silent',
                 'adapter: none': 'nudge', 'reply: acknowledged': 'silent',
-                'watch: sweep': 'nudge'}
+                'watch: sweep': 'nudge', 'watch: clock': 'silent',
+                'watch: heartbeat': 'silent', 'watch: observation': 'silent',
+                'watch: read-failed': 'nudge', 'pr.changed': 'nudge',
+                'session: compact': 'silent', 'session: wake-seen': 'silent'}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier

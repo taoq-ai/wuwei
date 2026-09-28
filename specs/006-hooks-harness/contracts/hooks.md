@@ -26,14 +26,17 @@ approval-tier check passes.
 Private modules are ignored. A broken module fails closed. An individual throwing or
 invalid-result guard contributes an error and does not prevent subsequent guards running.
 
-Clean hooks exit 0 without output, except successful SessionStart messages combined in
-`hookSpecificOutput` with `hookEventName: SessionStart` and `additionalContext`.
+Clean hooks exit 0 without output, except SessionStart messages combined in
+`hookSpecificOutput` with `hookEventName: SessionStart` and `additionalContext`,
+and advisory Stop context printed to stderr. SessionStart findings retain the
+payload and exit 0; errors and malformed input also exit 0 with unmeasured
+diagnostics in additionalContext. SessionStart never refuses.
 PreToolUse refuses with exit 2 and `hookSpecificOutput` containing `hookEventName`,
 `permissionDecision: deny`, `permissionDecisionReason`. Stop/SubagentStop refuse with
 exit 2 and `decision: block`, `reason`. Refusal reasons are newline-joined and also sent
-to stderr. PostToolUse/SessionStart errors use stderr and exit 2; PreCompact guard
-failures use stderr and exit 1. Malformed input always exits 2. See spec assumptions for
-the newer PreCompact blocking behavior in the supplied reference.
+to stderr. PostToolUse errors use stderr and exit 2; PreCompact guard
+failures use stderr and exit 1. Malformed input exits 2 except for SessionStart.
+See spec assumptions for the newer PreCompact blocking behavior in the supplied reference.
 
 `wuwei.shell.normalize(command)` returns `list[Command]` where each record has `argv`
 (a list of strings), `subshell` (bool), and `env` (explicit environment assignments).

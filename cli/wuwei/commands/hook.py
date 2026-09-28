@@ -58,11 +58,16 @@ def run(args):
             reasons.append(message)
         elif message:
             context.append(message)
+    if args.event == 'SessionStart' and (context or reasons):
+        print(json.dumps({'hookSpecificOutput': {
+            'hookEventName': args.event, 'additionalContext': '\n'.join(context + reasons)}}))
+        if reasons:
+            print('\n'.join(reasons), file=sys.stderr)
+        return CLEAN
     if reasons:
         return refuse(args.event, '\n'.join(reasons), cwd=payload.get('cwd'))
-    if args.event == 'SessionStart' and context:
-        print(json.dumps({'hookSpecificOutput': {
-            'hookEventName': args.event, 'additionalContext': '\n'.join(context)}}))
+    if args.event == 'Stop' and context:
+        print('\n'.join(context), file=sys.stderr)
     return CLEAN
 
 
@@ -82,6 +87,10 @@ def validate(payload, event):
 
 def refuse(event, reason, *, malformed=False, cwd=None):
     print(reason, file=sys.stderr)
+    if event == 'SessionStart':
+        print(json.dumps({'hookSpecificOutput': {
+            'hookEventName': event, 'additionalContext': f'session unmeasured: {reason}'}}))
+        return CLEAN
     if event == 'PreToolUse' and not malformed:
         from wuwei import state, workspace
         try:

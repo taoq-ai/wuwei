@@ -87,7 +87,9 @@ def session_payload(root=None):
     memory = root / '.wuwei/memory'
     spine = (memory / 'spine.md').read_text(encoding='utf-8')
     index = (memory / 'index.md').read_text(encoding='utf-8')
-    state_text = json.dumps(state.read_state(root), ensure_ascii=False, sort_keys=True)
+    data = state.read_state(root)
+    data.pop('watch', None)
+    state_text = json.dumps(data, ensure_ascii=False, sort_keys=True)
     from wuwei.promotion import last_run
     promote_line = last_run(root)
     content = (f'Spine:\n{spine.rstrip()}\n\nIndex:\n{index.rstrip()}\n\n'
