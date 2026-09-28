@@ -9,13 +9,26 @@ from wuwei import state
 from wuwei.exits import UNRUN
 
 
-INTERFACES = {
-    'tracker': ('claim', 'transition', 'create', 'history'),
-    'chat': ('post', 'dm'),
-    'review_bot': ('score', 'open_findings'),
-    'runtime': ('dispatch', 'status', 'result'),
-    'scanner': ('audit', 'gate', 'traces', 'mcp'),
+PARAMETERS = {
+    'tracker': {'claim': ('item',), 'transition': ('item', 'state'),
+                'create': ('draft',), 'history': ('item',)},
+    'chat': {'post': ('channel', 'text', 'thread'), 'dm': ('text',)},
+    'review_bot': {'score': ('pr',), 'open_findings': ('pr',)},
+    'runtime': {'dispatch': ('role', 'brief_path', 'worktree', 'write'),
+                'status': ('job',), 'result': ('job',)},
+    'scanner': {'audit': ('path',), 'gate': ('result', 'threshold'),
+                'traces': ('file',), 'mcp': ('servers',)},
+    'code_host': {'pr': ('ref',), 'checks': ('ref', 'sha'), 'reviews': ('ref',),
+                  'threads': ('ref',), 'protection': ('repo', 'branch'),
+                  'create_pr': ('draft',), 'request_reviewers': ('ref', 'logins'),
+                  'comment': ('ref', 'text', 'thread'), 'merge': ('ref', 'sha'),
+                  'revert_pr': ('ref',)},
+    'vcs': {'identity': ('repo',), 'head': ('repo',), 'merge_base': ('repo', 'ref'),
+            'status': ('repo',), 'diff_stat': ('repo', 'base', 'head'),
+            'log_since': ('repo', 'sha'), 'worktree_add': ('repo', 'branch', 'path')},
 }
+INTERFACES = {kind: tuple(operations) for kind, operations in PARAMETERS.items()}
+
 ADAPTERS = Path(__file__).resolve().parents[2] / 'adapters'
 
 

@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_runtime_imports_are_stdlib_only():
-    allowed = sys.stdlib_module_names | {"wuwei", "adapters"}
+    allowed = sys.stdlib_module_names | {"wuwei"}
     sources = sorted((ROOT / "cli").rglob("*.py"))
     assert sources, "the CLI package must exist"
     sources += sorted((ROOT / "adapters").rglob("*.py"))

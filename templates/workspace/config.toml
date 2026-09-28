@@ -27,6 +27,8 @@ chat = "none"
 review_bot = "none"
 runtime = "claude"
 scanner = "none"
+code_host = "github"
+vcs = "git"
 
 # Registers map names to descriptions.
 [boundary]

@@ -10,6 +10,23 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CALLS = [
+    ('code_host', 'pr', ('ref',), True),
+    ('code_host', 'checks', ('ref', 'sha'), True),
+    ('code_host', 'reviews', ('ref',), True),
+    ('code_host', 'threads', ('ref',), True),
+    ('code_host', 'protection', ('repo', 'branch'), True),
+    ('code_host', 'create_pr', ('draft',), False),
+    ('code_host', 'request_reviewers', ('ref', 'logins'), False),
+    ('code_host', 'comment', ('ref', 'text', 'thread'), False),
+    ('code_host', 'merge', ('ref', 'sha'), False),
+    ('code_host', 'revert_pr', ('ref',), False),
+    ('vcs', 'identity', ('repo',), True),
+    ('vcs', 'head', ('repo',), True),
+    ('vcs', 'merge_base', ('repo', 'ref'), True),
+    ('vcs', 'status', ('repo',), True),
+    ('vcs', 'diff_stat', ('repo', 'base', 'head'), True),
+    ('vcs', 'log_since', ('repo', 'sha'), True),
+    ('vcs', 'worktree_add', ('repo', 'branch', 'path'), False),
     ('tracker', 'claim', ('item',), False),
     ('tracker', 'transition', ('item', 'state'), False),
     ('tracker', 'create', ('draft',), False),
@@ -39,6 +56,10 @@ def test_module_contracts():
         kind: tuple(call for group, call, _, _ in CALLS if group == kind)
         for kind in {row[0] for row in CALLS}
     }
+    assert api.PARAMETERS == {
+        kind: {call: params for group, call, params, _ in CALLS if group == kind}
+        for kind in api.INTERFACES
+    }
     for kind, names in api.INTERFACES.items():
         paths = list((ROOT / 'adapters' / kind).glob('*.py'))
         assert paths
@@ -56,7 +77,7 @@ def test_module_contracts():
 
 @pytest.mark.parametrize('operation', [lambda item: None, lambda wrong, root=None: None])
 def test_module_contracts_reject_wrong_signature(monkeypatch, operation):
-    from adapters.tracker import none
+    none = importlib.import_module('adapters.tracker.none')
 
     monkeypatch.setattr(none, 'claim', operation)
     with pytest.raises(AssertionError):
@@ -64,13 +85,13 @@ def test_module_contracts_reject_wrong_signature(monkeypatch, operation):
 
 
 def test_module_contracts_allow_extra_import(monkeypatch):
-    from adapters.tracker import none
+    none = importlib.import_module('adapters.tracker.none')
 
     monkeypatch.setattr(none, 'Result', registry().Result, raising=False)
     test_module_contracts()
 
 
-@pytest.mark.parametrize('kind,call,parameters,measurement', CALLS)
+@pytest.mark.parametrize('kind,call,parameters,measurement', [c for c in CALLS if c[0] != 'vcs'])
 def test_none_call(tmp_path, monkeypatch, capsys, kind, call, parameters, measurement):
     api = registry()
     module = importlib.import_module(f'adapters.{kind}.none')
@@ -103,7 +124,7 @@ def test_none_call(tmp_path, monkeypatch, capsys, kind, call, parameters, measur
 @pytest.mark.parametrize('failure', [OSError('disk unavailable'), ValueError('invalid clock')])
 def test_none_event_failure(tmp_path, monkeypatch, capsys, failure):
     registry()
-    from adapters.scanner import none
+    none = importlib.import_module('adapters.scanner.none')
     from wuwei import state
 
     def fail(*args, **kwargs):
@@ -125,8 +146,10 @@ def test_registry_loads_config_selection(tmp_path):
     config = load_config(tmp_path)
     assert hasattr(api, 'known'), 'adapter discovery is missing'
     for kind in api.INTERFACES:
-        assert 'none' in api.known(kind)
-        assert api.load(kind, config) is importlib.import_module(f'adapters.{kind}.none')
+        expected = {'code_host': 'github', 'vcs': 'git'}.get(kind, 'none')
+        assert expected in api.known(kind)
+        assert config['adapters'][kind] == expected
+        assert api.load(kind, config) is importlib.import_module(f'adapters.{kind}.{expected}')
 
 
 @pytest.mark.parametrize('kind,name', [('missing', 'none'), ('../scanner', 'none'),
@@ -230,3 +253,128 @@ assert Path(module.__file__) == registry.ADAPTERS / 'scanner/none.py'
         capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize('kind', ['code_host', 'vcs'])
+def test_recording_fake(kind, monkeypatch, tmp_path):
+    from copy import deepcopy
+    import subprocess
+    from fakes.replay import recordings
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('fake spawned a tool')
+    monkeypatch.setattr(subprocess, 'run', forbidden)
+    fake_type = importlib.import_module(f'fakes.{kind}').Fake
+    first = recordings(kind)[0]
+    assert getattr(fake_type(), first['operation'])(*first['args']).data == first['data']
+    for case in recordings(kind):
+        fake = fake_type({case['operation']: registry().Result(0, case['data'])})
+        operation = getattr(fake, case['operation'])
+        assert tuple(inspect.signature(operation).parameters) == (
+            *registry().PARAMETERS[kind][case['operation']], 'root')
+        result = operation(*case['args'], root=tmp_path)
+        expected = deepcopy(case['data'])
+        assert result.exit == 0 and result.data == expected
+        result.data.clear()
+        assert operation(*case['args'], root=tmp_path).data == expected
+        assert fake.calls == [(case['operation'], tuple(case['args']), tmp_path)] * 2
+    empty = fake_type({})
+    case = recordings(kind)[0]
+    result = getattr(empty, case['operation'])(*case['args'])
+    assert result.exit == 2 and result.data is None
+    failed = fake_type({case['operation']: registry().Result(2, None, 'offline')})
+    assert getattr(failed, case['operation'])(*case['args']).reason == 'offline'
+
+
+def _process_access(source):
+    """Core modules cannot import process launchers or reference launch APIs."""
+    import ast
+
+    # ponytail: static imports/references only; importlib, __import__, getattr and
+    # sys.modules can evade this scan. Use runtime isolation for hostile code.
+    tree = ast.parse(source)
+    module_names = {'os': 'os', 'asyncio': 'asyncio'}
+    violations = []
+
+    def forbidden(name):
+        return (name.split('.')[0] in ('subprocess', 'pty') or
+                name == 'asyncio.subprocess' or name.startswith('asyncio.subprocess.') or
+                name in ('asyncio.create_subprocess_exec', 'asyncio.create_subprocess_shell',
+                         'os.*', 'asyncio.*') or
+                name in ('os.system', 'os.popen') or
+                name.startswith(('os.exec', 'os.spawn', 'os.posix_spawn')))
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in ('os', 'asyncio'):
+                    module_names[alias.asname or alias.name] = alias.name
+                if forbidden(alias.name):
+                    violations.append(node.lineno)
+        elif isinstance(node, ast.ImportFrom):
+            if forbidden(node.module or '') or any(
+                    forbidden(f'{node.module}.{alias.name}') for alias in node.names):
+                violations.append(node.lineno)
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and
+                node.value.id in module_names and
+                forbidden(f'{module_names[node.value.id]}.{node.attr}')):
+            violations.append(node.lineno)
+    return violations
+
+
+@pytest.mark.parametrize('source', [
+    "import subprocess\nsubprocess.run(['git', 'status'])",
+    "import subprocess as sp\nsp.Popen(args=['gh', 'api'])",
+    "from subprocess import check_output as run\nargv = ['git', '-C', '/repo']\nrun(argv)",
+    "import subprocess\nsubprocess.run('gh pr view 7', shell=True)",
+    "import subprocess\nsubprocess.call(['anything'], executable='/usr/bin/git')",
+    "import os\nos.system('git status')",
+    "import subprocess\nsubprocess.run(['env', 'git', 'status'])",
+    "import subprocess\nsubprocess.run(['sh', '-c', 'git status'])",
+    "import subprocess\nargv = make_args()\nsubprocess.run(argv)",
+    "import subprocess, shutil\nsubprocess.run([shutil.which('git'), 'status'])",
+    "import subprocess\ndef run(tool): subprocess.run([tool, 'status'])",
+    "import asyncio.subprocess\nasyncio.subprocess.create_subprocess_exec('git', 'status')",
+    "import os\nos.execvp('git', ['git', 'status'])",
+    "import pty",
+    "from asyncio import subprocess as sp",
+    "from os import popen as spawn",
+    "import os as operating\noperating.posix_spawn('git', [], {})",
+    "import asyncio\nasyncio.create_subprocess_exec('git', 'status')",
+    "import asyncio as aio\naio.create_subprocess_shell('git status')",
+    "from asyncio import create_subprocess_exec as spawn",
+    "from asyncio import create_subprocess_shell as spawn",
+    "from os import *\nsystem('git status')",
+    "from subprocess import *\nrun(['git', 'status'])",
+    "from asyncio import *\ncreate_subprocess_exec('git', 'status')",
+])
+def test_core_boundary_scan_detects_tool_spawn(source):
+    assert _process_access(source)
+
+
+def test_core_does_not_access_process_launchers():
+    for path in (ROOT / 'cli/wuwei').rglob('*.py'):
+        assert not _process_access(path.read_text()), path
+
+
+def test_workspace_template_selects_new_ports():
+    import tomllib
+    config = tomllib.loads((ROOT / 'templates/workspace/config.toml').read_text())
+    assert config['adapters']['code_host'] == 'github'
+    assert config['adapters']['vcs'] == 'git'
+
+
+@pytest.mark.parametrize('tool,port', [('gh', 'code_host'), ('git', 'vcs')])
+def test_fixture_replay_never_spawns(tool, port, tmp_path, monkeypatch):
+    import subprocess
+    from fakes.replay import install_replay, recordings
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('fixture replay spawned a process')
+    monkeypatch.setattr(subprocess, 'Popen', forbidden)
+    case = recordings(port)[0]
+    install_replay(monkeypatch, tool, case['steps'])
+    module = importlib.import_module(f'adapters.{port}.{"github" if tool == "gh" else "git"}')
+    result = getattr(module, case['operation'])(*case['args'])
+    assert result.exit == 0 and result.data == case['data']

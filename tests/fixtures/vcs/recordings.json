@@ -1,0 +1,238 @@
+[
+  {
+    "operation": "identity",
+    "args": [
+      "/repo with spaces"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "-C",
+          "/repo with spaces",
+          "config",
+          "--get",
+          "user.name"
+        ],
+        "stdout": "Builder\n"
+      },
+      {
+        "argv": [
+          "-C",
+          "/repo with spaces",
+          "config",
+          "--get",
+          "user.email"
+        ],
+        "stdout": "builder@example.test\n"
+      },
+      {
+        "argv": [
+          "-C",
+          "/repo with spaces",
+          "var",
+          "GIT_AUTHOR_IDENT"
+        ],
+        "stdout": "Builder <builder@example.test> 1790596800 +0200\n"
+      },
+      {
+        "argv": [
+          "-C",
+          "/repo with spaces",
+          "var",
+          "GIT_COMMITTER_IDENT"
+        ],
+        "stdout": "Other <other@example.test> 1790596800 +0200\n"
+      }
+    ],
+    "data": {
+      "name": "Builder",
+      "email": "builder@example.test",
+      "author": {
+        "name": "Builder",
+        "email": "builder@example.test"
+      },
+      "committer": {
+        "name": "Other",
+        "email": "other@example.test"
+      }
+    }
+  },
+  {
+    "operation": "head",
+    "args": [
+      "/repo with spaces"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "-C",
+          "/repo with spaces",
+          "rev-parse",
+          "--verify",
+          "HEAD^{commit}"
+        ],
+        "stdout": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+      }
+    ],
+    "data": {
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  {
+    "operation": "merge_base",
+    "args": [
+      "/repo with spaces",
+      "main"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "-C",
+          "/repo with spaces",
+          "merge-base",
+          "HEAD",
+          "main"
+        ],
+        "stdout": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n"
+      }
+    ],
+    "data": {
+      "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  },
+  {
+    "operation": "status",
+    "args": [
+      "/repo with spaces"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "-C",
+          "/repo with spaces",
+          "status",
+          "--porcelain=v1",
+          "-z",
+          "--untracked-files=all"
+        ],
+        "stdout": " M file with spaces\u0000R  new\nname\u0000old\tname\u0000?? untracked\u0000"
+      }
+    ],
+    "data": [
+      {
+        "path": "file with spaces",
+        "index": " ",
+        "worktree": "M",
+        "original_path": null
+      },
+      {
+        "path": "new\nname",
+        "index": "R",
+        "worktree": " ",
+        "original_path": "old\tname"
+      },
+      {
+        "path": "untracked",
+        "index": "?",
+        "worktree": "?",
+        "original_path": null
+      }
+    ]
+  },
+  {
+    "operation": "diff_stat",
+    "args": [
+      "/repo with spaces",
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "-C",
+          "/repo with spaces",
+          "diff",
+          "--numstat",
+          "-z",
+          "--no-renames",
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "--"
+        ],
+        "stdout": "4\t2\tfile\tname\u0000-\t-\tbinary\u0000"
+      }
+    ],
+    "data": [
+      {
+        "path": "file\tname",
+        "additions": 4,
+        "deletions": 2
+      },
+      {
+        "path": "binary",
+        "additions": null,
+        "deletions": null
+      }
+    ]
+  },
+  {
+    "operation": "log_since",
+    "args": [
+      "/repo with spaces",
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "-C",
+          "/repo with spaces",
+          "log",
+          "-z",
+          "--format=%H%x00%an%x00%ae%x00%cn%x00%ce%x00%cI%x00%s",
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb..HEAD",
+          "--"
+        ],
+        "stdout": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\u0000Builder\u0000builder@example.test\u0000Other\u0000other@example.test\u00002026-09-28T12:00:00+02:00\u0000Subject with tab\ttext\u0000"
+      }
+    ],
+    "data": [
+      {
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "author": "Builder",
+        "email": "builder@example.test",
+        "committed_at": "2026-09-28T12:00:00+02:00",
+        "subject": "Subject with tab\ttext",
+        "committer": "Other",
+        "committer_email": "other@example.test"
+      }
+    ]
+  },
+  {
+    "operation": "worktree_add",
+    "args": [
+      "/repo with spaces",
+      "feature",
+      "/new worktree"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "-C",
+          "/repo with spaces",
+          "worktree",
+          "add",
+          "-b",
+          "feature",
+          "--",
+          "/new worktree"
+        ],
+        "stdout": "HEAD is now at aaaaaaa base\n",
+        "stderr": "Preparing worktree (new branch 'feature')\n"
+      }
+    ],
+    "data": {
+      "branch": "feature",
+      "path": "/new worktree"
+    }
+  }
+]

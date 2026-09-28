@@ -1,0 +1,424 @@
+[
+  {
+    "operation": "pr",
+    "args": [
+      "acme/widget#7"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget/pulls/7",
+          "-H",
+          "Cache-Control: no-cache",
+          "--hostname",
+          "github.com"
+        ],
+        "stdout": "{\"number\": 7, \"html_url\": \"https://github.com/acme/widget/pull/7\", \"user\": {\"login\": \"builder\"}, \"state\": \"open\", \"draft\": false, \"head\": {\"sha\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"ref\": \"feature\"}, \"base\": {\"ref\": \"main\", \"sha\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}, \"mergeable\": true, \"mergeable_state\": \"clean\", \"additions\": 4, \"deletions\": 2, \"changed_files\": 1, \"updated_at\": \"2026-09-28T12:00:00Z\", \"node_id\": \"PR_7\"}"
+      }
+    ],
+    "data": {
+      "repo": "acme/widget",
+      "number": 7,
+      "url": "https://github.com/acme/widget/pull/7",
+      "author": "builder",
+      "state": "open",
+      "draft": false,
+      "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "base": "main",
+      "base_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "branch": "feature",
+      "mergeable": true,
+      "merge_state": "clean",
+      "additions": 4,
+      "deletions": 2,
+      "changed_files": 1,
+      "updated_at": "2026-09-28T12:00:00Z",
+      "node_id": "PR_7"
+    }
+  },
+  {
+    "operation": "checks",
+    "args": [
+      "acme/widget#7",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/check-runs?per_page=100",
+          "-H",
+          "Cache-Control: no-cache",
+          "--paginate",
+          "--slurp",
+          "--hostname",
+          "github.com"
+        ],
+        "stdout": "[{\"check_runs\": [{\"name\": \"tests\", \"status\": \"completed\", \"conclusion\": \"success\", \"head_sha\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"html_url\": \"https://example.test/check/1\"}]}, {\"check_runs\": []}]"
+      },
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/statuses?per_page=100",
+          "-H",
+          "Cache-Control: no-cache",
+          "--paginate",
+          "--slurp",
+          "--hostname",
+          "github.com"
+        ],
+        "stdout": "[[{\"context\": \"lint\", \"state\": \"success\", \"target_url\": \"https://example.test/status/2\"}], []]"
+      }
+    ],
+    "data": [
+      {
+        "name": "tests",
+        "state": "completed",
+        "conclusion": "success",
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "url": "https://example.test/check/1"
+      },
+      {
+        "name": "lint",
+        "state": "completed",
+        "conclusion": "success",
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "url": "https://example.test/status/2"
+      }
+    ]
+  },
+  {
+    "operation": "reviews",
+    "args": [
+      "acme/widget#7"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget/pulls/7/reviews?per_page=100",
+          "-H",
+          "Cache-Control: no-cache",
+          "--paginate",
+          "--slurp",
+          "--hostname",
+          "github.com"
+        ],
+        "stdout": "[[{\"id\": 11, \"user\": {\"login\": \"reviewer\"}, \"state\": \"APPROVED\", \"body\": \"Looks good\", \"commit_id\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"submitted_at\": \"2026-09-28T11:00:00Z\"}], []]"
+      }
+    ],
+    "data": [
+      {
+        "id": 11,
+        "author": "reviewer",
+        "state": "approved",
+        "body": "Looks good",
+        "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "submitted_at": "2026-09-28T11:00:00Z"
+      }
+    ]
+  },
+  {
+    "operation": "threads",
+    "args": [
+      "acme/widget#7"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget/issues/7/comments?per_page=100",
+          "-H",
+          "Cache-Control: no-cache",
+          "--paginate",
+          "--slurp",
+          "--hostname",
+          "github.com"
+        ],
+        "stdout": "[[{\"id\": 21, \"user\": {\"login\": \"reviewer\"}, \"body\": \"Please check\", \"created_at\": \"2026-09-28T10:00:00Z\", \"updated_at\": \"2026-09-28T10:01:00Z\"}]]"
+      },
+      {
+        "argv": [
+          "api",
+          "graphql",
+          "--input",
+          "-",
+          "--hostname",
+          "github.com"
+        ],
+        "input": {
+          "query": "query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated comments(first:100){pageInfo{hasNextPage} nodes{databaseId author{login} body createdAt}}}}}}}",
+          "variables": {
+            "o": "acme",
+            "r": "widget",
+            "n": 7
+          }
+        },
+        "stdout": "{\"data\": {\"repository\": {\"pullRequest\": {\"reviewThreads\": {\"pageInfo\": {\"hasNextPage\": false}, \"nodes\": [{\"id\": \"THREAD_1\", \"isResolved\": false, \"isOutdated\": false, \"comments\": {\"pageInfo\": {\"hasNextPage\": false}, \"nodes\": [{\"databaseId\": 31, \"author\": {\"login\": \"reviewer\"}, \"body\": \"Why?\", \"createdAt\": \"2026-09-28T10:00:00Z\"}]}}]}}}}}"
+      }
+    ],
+    "data": {
+      "comments": [
+        {
+          "id": 21,
+          "author": "reviewer",
+          "body": "Please check",
+          "created_at": "2026-09-28T10:00:00Z",
+          "updated_at": "2026-09-28T10:01:00Z"
+        }
+      ],
+      "threads": [
+        {
+          "id": "THREAD_1",
+          "resolved": false,
+          "outdated": false,
+          "comments": [
+            {
+              "id": 31,
+              "author": "reviewer",
+              "body": "Why?",
+              "created_at": "2026-09-28T10:00:00Z"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "operation": "protection",
+    "args": [
+      "acme/widget",
+      "release/next"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget/branches/release%2Fnext/protection",
+          "-H",
+          "Cache-Control: no-cache",
+          "--hostname",
+          "github.com"
+        ],
+        "stdout": "{\"required_status_checks\": {\"strict\": true, \"contexts\": [\"lint\"], \"checks\": [{\"context\": \"tests\", \"app_id\": 123}]}, \"required_pull_request_reviews\": {\"required_approving_review_count\": 2, \"dismiss_stale_reviews\": true, \"require_code_owner_reviews\": true, \"require_last_push_approval\": false}, \"enforce_admins\": {\"enabled\": true}, \"required_conversation_resolution\": {\"enabled\": true}}"
+      }
+    ],
+    "data": {
+      "required_checks": [
+        {
+          "name": "tests",
+          "app_id": 123
+        },
+        {
+          "name": "lint",
+          "app_id": null
+        }
+      ],
+      "strict": true,
+      "approvals": 2,
+      "dismiss_stale_reviews": true,
+      "require_code_owner_reviews": true,
+      "require_last_push_approval": false,
+      "enforce_admins": true,
+      "conversation_resolution": true
+    }
+  },
+  {
+    "operation": "create_pr",
+    "args": [
+      {
+        "repo": "acme/widget",
+        "base": "main",
+        "head": "feature",
+        "title": "A useful change",
+        "body": "Details",
+        "draft": false
+      }
+    ],
+    "steps": [
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget/pulls",
+          "--method",
+          "POST",
+          "--input",
+          "-",
+          "--hostname",
+          "github.com"
+        ],
+        "input": {
+          "base": "main",
+          "head": "feature",
+          "title": "A useful change",
+          "body": "Details",
+          "draft": false
+        },
+        "stdout": "{\"number\": 7, \"html_url\": \"https://github.com/acme/widget/pull/7\"}"
+      }
+    ],
+    "data": {
+      "number": 7,
+      "url": "https://github.com/acme/widget/pull/7"
+    }
+  },
+  {
+    "operation": "request_reviewers",
+    "args": [
+      "acme/widget#7",
+      [
+        "reviewer"
+      ]
+    ],
+    "steps": [
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget/pulls/7/requested_reviewers",
+          "--method",
+          "POST",
+          "--input",
+          "-",
+          "--hostname",
+          "github.com"
+        ],
+        "input": {
+          "reviewers": [
+            "reviewer"
+          ]
+        },
+        "stdout": "{\"requested_reviewers\": [{\"login\": \"reviewer\"}]}"
+      }
+    ],
+    "data": {
+      "requested": [
+        "reviewer"
+      ]
+    }
+  },
+  {
+    "operation": "comment",
+    "args": [
+      "acme/widget#7",
+      "--admin is plain text; $(false)",
+      null
+    ],
+    "steps": [
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget/issues/7/comments",
+          "--method",
+          "POST",
+          "--input",
+          "-",
+          "--hostname",
+          "github.com"
+        ],
+        "input": {
+          "body": "--admin is plain text; $(false)"
+        },
+        "stdout": "{\"id\": 41, \"html_url\": \"https://github.com/acme/widget/pull/7#discussion_r41\"}"
+      }
+    ],
+    "data": {
+      "id": 41,
+      "url": "https://github.com/acme/widget/pull/7#discussion_r41"
+    }
+  },
+  {
+    "operation": "comment",
+    "args": [
+      "acme/widget#7",
+      "--admin is plain text; $(false)",
+      31
+    ],
+    "steps": [
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget/pulls/7/comments/31/replies",
+          "--method",
+          "POST",
+          "--input",
+          "-",
+          "--hostname",
+          "github.com"
+        ],
+        "input": {
+          "body": "--admin is plain text; $(false)"
+        },
+        "stdout": "{\"id\": 41, \"html_url\": \"https://github.com/acme/widget/pull/7#discussion_r41\"}"
+      }
+    ],
+    "data": {
+      "id": 41,
+      "url": "https://github.com/acme/widget/pull/7#discussion_r41"
+    }
+  },
+  {
+    "operation": "merge",
+    "args": [
+      "acme/widget#7",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "pr",
+          "merge",
+          "https://github.com/acme/widget/pull/7",
+          "--squash",
+          "--match-head-commit",
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        "stdout": ""
+      }
+    ],
+    "data": {
+      "accepted": true,
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  {
+    "operation": "revert_pr",
+    "args": [
+      "acme/widget#7"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget/pulls/7",
+          "-H",
+          "Cache-Control: no-cache",
+          "--hostname",
+          "github.com"
+        ],
+        "stdout": "{\"number\": 7, \"html_url\": \"https://github.com/acme/widget/pull/7\", \"user\": {\"login\": \"builder\"}, \"state\": \"open\", \"draft\": false, \"head\": {\"sha\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"ref\": \"feature\"}, \"base\": {\"ref\": \"main\", \"sha\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}, \"mergeable\": true, \"mergeable_state\": \"clean\", \"additions\": 4, \"deletions\": 2, \"changed_files\": 1, \"updated_at\": \"2026-09-28T12:00:00Z\", \"node_id\": \"PR_7\"}"
+      },
+      {
+        "argv": [
+          "api",
+          "graphql",
+          "--input",
+          "-",
+          "--hostname",
+          "github.com"
+        ],
+        "input": {
+          "query": "mutation($id:ID!){revertPullRequest(input:{pullRequestId:$id}){revertPullRequest{number url}}}",
+          "variables": {
+            "id": "PR_7"
+          }
+        },
+        "stdout": "{\"data\": {\"revertPullRequest\": {\"revertPullRequest\": {\"number\": 8, \"url\": \"https://github.com/acme/widget/pull/8\"}}}}"
+      }
+    ],
+    "data": {
+      "number": 8,
+      "url": "https://github.com/acme/widget/pull/8"
+    }
+  }
+]
