@@ -13,6 +13,15 @@ SubagentStop also requires `agent_id`, string `agent_type` (possibly empty), and
 
 Guard modules import `Guard` from `wuwei.guards` and expose a plain `GUARDS` list.
 `Guard(event, matcher, check)` uses None for all tools or a full-match regular expression.
+An optional `profile_relaxable=False` boolean preserves blocking by default. Only the
+outward-text lint registration sets it true; approval tiers have a separate blocking
+registration. Invalid metadata fails discovery. Checks return raw results without
+applying profiles. For a relaxable finding (exit 1), the dispatcher resolves the scoped
+workspace profile: strict (default) refuses, standard prints `warning: <reason>` to stderr
+and allows unless another guard refuses. Exit 2 and invalid results always refuse.
+Warnings append `hook.warning` with redacted reason and tool, and do not create refusal
+events. Direct outward ports reuse the same library profile translation only after their
+approval-tier check passes.
 `check(payload)` returns `(0|1|2, message: str)`. `discover()` returns a plain list.
 Private modules are ignored. A broken module fails closed. An individual throwing or
 invalid-result guard contributes an error and does not prevent subsequent guards running.

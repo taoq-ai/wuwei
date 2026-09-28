@@ -6,6 +6,7 @@ import re
 
 from wuwei.exits import CLEAN, UNRUN
 from wuwei.guards import Guard
+from wuwei import outward
 
 
 NATIVE_TOOLS = {'Bash', 'Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'Agent',
@@ -14,7 +15,15 @@ NATIVE_TOOLS = {'Bash', 'Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'A
                 'WebFetch', 'WebSearch', 'NotebookEdit'}
 
 
-def check(payload):
+def check_tier(payload):
+    return _check(payload, outward.check_tier)
+
+
+def check_lint(payload):
+    return _check(payload, outward.check_lint)
+
+
+def _check(payload, policy):
     try:
         from wuwei import workspace
         if payload.get('tool_name') in NATIVE_TOOLS:
@@ -51,8 +60,6 @@ def check(payload):
             return CLEAN, ''
         if not isinstance(tool, str) or not tool.strip():
             return UNRUN, 'outward: tool name required'
-        from wuwei import outward
-
         if root != policy_root:
             config = workspace.load_config(root)
             channels = {rule['channel'] for rule in config['outward']['tool_patterns']
@@ -64,9 +71,10 @@ def check(payload):
         inputs = payload['tool_input']
         if re.search(r'(?:^|_)(?:dm|direct_message)(?:_|$)', tool, re.IGNORECASE):
             inputs = {**inputs, 'is_dm': True}
-        return outward.check_call(inputs, root, config, channels)
+        return policy(inputs, root, config, channels)
     except (OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError, re.error):
         return UNRUN, 'outward: cannot read or validate policy or payload'
 
 
-GUARDS = [Guard('PreToolUse', None, check)]
+GUARDS = [Guard('PreToolUse', None, check_tier),
+          Guard('PreToolUse', None, check_lint, profile_relaxable=True)]

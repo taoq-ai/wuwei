@@ -121,7 +121,7 @@ def payload(root, text='fixed in abc1234', tool='mcp__slack__post_message', **fi
     ('fixed in abc1234; ship it', 1), ('fixed in abc123', 1),
 ])
 def test_send_or_draft(configured, text, code):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     result = check(payload(configured[0], text))
     assert result[0] == code
     if code:
@@ -196,7 +196,7 @@ def test_reusable_classification(configured, text, code, decision):
     ('', {}, 2), (None, {}, 2),
 ])
 def test_routing_and_bypass_table(configured, tool, inputs, code):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     call = payload(configured[0], tool=tool)
     call['tool_input'] = inputs
     assert check(call)[0] == code
@@ -209,7 +209,7 @@ def test_routing_and_bypass_table(configured, tool, inputs, code):
     ([{'pattern': '.*', 'channel': 'chat'}, {'pattern': 'custom_send', 'channel': 'other'}], 'custom_send', 2),
 ])
 def test_configured_matching(configured, monkeypatch, rules, tool, code):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     root, config = configured
     config['outward']['tool_patterns'] = rules
     monkeypatch.setattr(workspace, 'load_config', lambda root: config)
@@ -218,7 +218,7 @@ def test_configured_matching(configured, monkeypatch, rules, tool, code):
 
 @pytest.mark.parametrize('specific', [False, True])
 def test_channel_limits_cannot_be_bypassed(configured, monkeypatch, specific):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_lint as check
     root, config = configured
     config['outward']['max_length'] = {'slack': 100, 'C1': 5} if specific else {'slack': 5, 'C1': 100}
     monkeypatch.setattr(workspace, 'load_config', lambda root: config)
@@ -231,12 +231,13 @@ def test_channel_limits_cannot_be_bypassed(configured, monkeypatch, specific):
     ('fixed in abc1234', True, 2, False),
 ])
 def test_standard_profile(configured, monkeypatch, capsys, text, invalid, code, warning):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_lint, check_tier
     root, config = configured
     config['profile'] = 'standard'
     if invalid:
         config['outward']['patterns'] = ['[']
     monkeypatch.setattr(workspace, 'load_config', lambda root: config)
+    check = check_tier if text == 'The cache is thread safe.' else check_lint
     assert check(payload(root, text))[0] == code
     output = capsys.readouterr()
     assert ('warning' in output.err) == warning
@@ -261,7 +262,7 @@ def test_hook_integration(configured, monkeypatch, capsys, code):
 
 
 def test_missing_workspace_and_policy(tmp_path, monkeypatch):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     assert check(payload(tmp_path))[0] == 0
     (tmp_path / '.wuwei').mkdir()
@@ -300,7 +301,7 @@ def test_missing_workspace_and_policy(tmp_path, monkeypatch):
     ('mcp__unknown__anything', 2),
 ])
 def test_real_mcp_write_names(configured, tool, code):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     result = check(payload(configured[0], 'A technical claim.', tool=tool))
     assert result[0] == code
     if code == 2:
@@ -310,14 +311,14 @@ def test_real_mcp_write_names(configured, tool, code):
 @pytest.mark.parametrize('tool', ['Skill', 'ToolSearch', 'AskUserQuestion', 'LS', 'Read',
                                   'mcp__unknown__send', 'mcp__slack__post', None])
 def test_scope_before_payload_and_policy(tmp_path, monkeypatch, tool):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     assert check({'cwd': str(tmp_path), 'tool_name': tool, 'tool_input': None}) == (0, '')
 
 
 @pytest.mark.parametrize('tool', ['Skill', 'ToolSearch', 'AskUserQuestion', 'LS'])
 def test_irrelevant_native_tools_ignore_broken_policy(configured, tool):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     root, _ = configured
     (root / '.wuwei/config.toml').write_text('broken [')
     assert check({'cwd': str(root), 'tool_name': tool, 'tool_input': None}) == (0, '')
@@ -357,7 +358,7 @@ def test_port_boundary(configured, monkeypatch, kind, operation, inputs, mode):
 
 
 def test_only_mcp_defaults_and_no_textless_operations(configured):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     root, config = configured
     assert all(row['pattern'].startswith('mcp__') for row in config['outward']['tool_patterns'])
     for tool in ('tracker.claim', 'tracker.transition'):
@@ -401,7 +402,7 @@ def test_character_default_corrections(configured, char, code):
 @pytest.mark.parametrize('exits,code', [([], 1), ([1], 1), ([2], 2), ([1, 0], 0), ([0], 0)])
 def test_mechanical_sha_must_resolve(configured, monkeypatch, exits, code):
     from wuwei import registry
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     root, config = configured
     config['repos'] = [{'name': str(i), 'path': f'repo-{i}'} for i in range(len(exits))]
     monkeypatch.setattr(workspace, 'load_config', lambda root: config)
@@ -439,7 +440,7 @@ def test_ports_require_workspace(tmp_path, monkeypatch, override):
 @pytest.mark.parametrize('override', ['', 'missing'])
 @pytest.mark.parametrize('tool', ['Bash', 'mcp__slack__post_message'])
 def test_hook_invalid_workspace_override(configured, monkeypatch, override, tool):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     monkeypatch.setenv('WUWEI_WORKSPACE', override)
     code, reason = check(payload(configured[0], tool=tool))
     assert code == 2
@@ -449,7 +450,7 @@ def test_hook_invalid_workspace_override(configured, monkeypatch, override, tool
 @pytest.mark.parametrize('verb', ['get', 'list', 'search', 'read', 'find', 'fetch',
                                   'query', 'describe', 'view', 'lookup'])
 def test_unmatched_mcp_read_prefixes(configured, verb):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     assert check(payload(configured[0], tool=f'mcp__unknown__{verb}_item')) == (0, '')
 
 
@@ -467,7 +468,7 @@ def test_unmatched_mcp_read_prefixes(configured, verb):
     ('mcp__x__readwrite', 2),
 ])
 def test_service_prefixed_mcp_reads(configured, tool, code):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     assert check(payload(configured[0], 'A technical claim.', tool=tool))[0] == code
 
 
@@ -481,7 +482,7 @@ def test_service_prefixed_mcp_reads(configured, tool, code):
      {'body': 'fixed in abc1234', 'owner': 'org', 'repo': 'demo', 'pull_number': 42}),
 ])
 def test_default_tool_payload_metadata(configured, tool, inputs):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     call = payload(configured[0], tool=tool)
     call['tool_input'] = inputs
     # Metadata parses, but an unverified chat thread is never eligible.
@@ -489,7 +490,7 @@ def test_default_tool_payload_metadata(configured, tool, inputs):
 
 
 def test_channel_id_limit(configured, monkeypatch):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_lint as check
     root, config = configured
     config['outward']['max_length'] = {'C1': 5}
     monkeypatch.setattr(workspace, 'load_config', lambda root: config)
@@ -498,7 +499,7 @@ def test_channel_id_limit(configured, monkeypatch):
 
 @pytest.mark.parametrize('value', [True, 1.5, {}, []])
 def test_invalid_numeric_metadata(configured, value):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     assert check(payload(configured[0], issue_number=value))[0] == 2
 
 

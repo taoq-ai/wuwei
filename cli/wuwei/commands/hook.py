@@ -5,7 +5,7 @@ import re
 import sys
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
-from wuwei.guards import EVENTS, discover
+from wuwei.guards import EVENTS, discover, profile_result
 
 
 def register(subparsers):
@@ -45,6 +45,11 @@ def run(args):
                     or not isinstance(result[1], str) or (result[0] and not result[1].strip())):
                 raise ValueError('invalid guard result; expected (0|1|2, message)')
             code, message = result
+            if code == FINDINGS and guard.profile_relaxable:
+                from wuwei import workspace
+                root = workspace.guard_scope(payload)
+                profile = workspace.load_config(root)['profile'] if root is not None else 'strict'
+                code, message = profile_result(result, profile, root, payload.get('tool_name'))
         except BaseException as exc:
             code = UNRUN
             message = (f'{type(exc).__name__}: could not run PostToolUse guard'

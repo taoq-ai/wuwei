@@ -55,7 +55,8 @@ def classify(event, state):
         counts = (payload.get('owed'), payload.get('unreadable'))
         return ('silent' if all(type(count) is int and count == 0 for count in counts)
                 else 'nudge'), lane
-    if kind in ('merge.policy_blocked', 'work.outside_goals', 'build.parked'):
+    if kind in ('hook.warning', 'merge.policy_blocked', 'work.outside_goals',
+                'build.parked'):
         return 'nudge', lane
     if kind in SILENT:
         return 'silent', lane

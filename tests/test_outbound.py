@@ -236,7 +236,7 @@ def call(root, inputs, tool='mcp__slack__post_message'):
     ('Bash', {'command': 'export X=1'}, 0),
 ])
 def test_guard_tiers_and_bypasses(configured, tool, inputs, code):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     result = check(call(configured[0], inputs, tool))
     assert result[0] == code
     if code == 1:
@@ -337,7 +337,7 @@ def test_hook_translation(configured, monkeypatch, capsys, code):
 
 @pytest.mark.parametrize('location,expected', [('workspace', 1), ('repo', 1), ('outside', 0), ('target', 1)])
 def test_guard_workspace_scope(configured, monkeypatch, tmp_path, location, expected):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     root, _, _ = configured
     outside = tmp_path / 'outside'
     root = root / 'managed'
@@ -370,12 +370,12 @@ def test_anchored_worktree_scope(configured, monkeypatch, tmp_path, kind):
     if kind == 'pr':
         assert pr.check(call(tree, {'command': 'gh pr review --approve'}, 'Bash'))[0] == 1
     else:
-        assert outward_guard.check(call(tree, {'text': 'Thanks', 'channel': 'Cclient'}))[0] == 1
+        assert outward_guard.check_tier(call(tree, {'text': 'Thanks', 'channel': 'Cclient'}))[0] == 1
 
 
 @pytest.mark.parametrize('evidence,expected', [('same', 1), ('different', 0), ('unavailable', 2)])
 def test_outward_worktree_common_directory(configured, monkeypatch, tmp_path, evidence, expected):
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     root, vcs, _ = configured
     root = root / 'managed'
     root.mkdir()
@@ -399,7 +399,7 @@ def test_outward_worktree_common_directory(configured, monkeypatch, tmp_path, ev
 @pytest.mark.parametrize('tool', ['mcp__sentry__search_issues', 'mcp__slack__post_message'])
 def test_bad_target_outside_workspace_is_skipped(monkeypatch, tool):
     from pathlib import Path
-    from wuwei.guards.outward import check
+    from wuwei.guards.outward import check_tier as check
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     assert check(call(Path('/tmp'), {'path': '~nosuchuser9/x'}, tool)) == (0, '')
 
@@ -407,7 +407,7 @@ def test_bad_target_outside_workspace_is_skipped(monkeypatch, tool):
 def test_irrelevant_tool_does_not_compute_scope(configured, monkeypatch):
     from wuwei.guards import outward as guard
     monkeypatch.setattr(workspace, 'guard_scope', lambda *a: pytest.fail('irrelevant tool computed scope'))
-    assert guard.check(call(configured[0], {'path': '~nosuchuser9/x'},
+    assert guard.check_tier(call(configured[0], {'path': '~nosuchuser9/x'},
                             'mcp__sentry__search_issues')) == (0, '')
 
 
