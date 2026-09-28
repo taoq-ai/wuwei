@@ -5,10 +5,11 @@ profile = "strict" # strict or standard
 repos = []
 # Replace repos = [] with one or more tables like:
 # [[repos]]
-# name = "example"
+# name = "owner/repo" # GitHub repository name used for merge_deploys matching.
 # path = "repos/example" # Relative to the workspace, or an absolute repository path.
 # default_branch = "main" # Required for each configured repository.
 # identity = {name = "Builder", email = "builder@example.test"} # Required by Git guards.
+# merge_deploys = false # Explicitly declare that merges do not deploy.
 # fast_checks = ["python3 -m pytest -q"] # Run and record with wuwei fast-checks <checkout>.
 
 [owner]
@@ -44,7 +45,12 @@ full_path_patterns = [] # Owner-supplied regexes. Example: '(^|/)(infra|infrastr
 [boundary]
 # api = "Public HTTP interface"
 [environments]
-# development = "Local machine"
+# production = "Live branch"
+# "release/*" = "Release branches"
+
+[deploy]
+workflows = [] # Deploying workflow names, filenames, paths or IDs.
+deny = [] # Literal executable plus argument glob, for example "make publish*".
 
 [outward]
 # Defaults block pending drafts, queues, agent/seat references and routine internals.

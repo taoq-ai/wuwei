@@ -27,6 +27,7 @@ def subprocess_plugin(tmp_path):
     path.mkdir()
     (path / 'python3').symlink_to(sys.executable)
     (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
     return root, {**os.environ, 'PATH': str(path) + os.pathsep + os.environ['PATH'],
                   'PYTHONPATH': '/unused/inherited/path', 'WUWEI_WORKSPACE': str(tmp_path)}
 
@@ -120,6 +121,7 @@ def test_discovery_returns_plain_list():
     assert any(guard.event == 'PreToolUse' and guard.matcher == 'Agent' for guard in discover())
     assert any(record.event == 'PreToolUse' and record.matcher == 'Bash'
                and record.check.__module__ == 'wuwei.guards.commit_push' for record in discover())
+    assert any(guard.check.__module__ == 'wuwei.guards.deploy' for guard in discover())
 
 
 def test_private_guard_module_is_ignored(plugin):
