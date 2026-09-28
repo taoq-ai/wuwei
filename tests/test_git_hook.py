@@ -174,6 +174,8 @@ def test_hook_failure_prevents_core_success(workspace_case):
     from wuwei import workspace
     from wuwei.registry import Result
     root, fake = workspace_case
+    from wuwei import state
+    state._write_state(lambda data: data.update(gate_approved=True), root, reserved=False)
     fake.results['worktree_add'] = Result(0, {'branch': 'feature', 'path': str(root / 'tree')})
     fake.results['hooks_path'] = Result(2, None, 'unavailable hooks')
     with pytest.raises(ValueError, match='unavailable hooks'):
@@ -204,6 +206,8 @@ def test_managed_worktree_isolation_and_runtime_pointer(tmp_path, monkeypatch):
     assert git(owner, 'worktree', 'add', '-b', 'unmanaged', str(sibling)).returncode == 0
     (tmp_path / '.wuwei').mkdir()
     workspace.atomic_write(tmp_path / '.wuwei/executable', str(ROOT / 'bin/wuwei') + '\n')
+    from wuwei import state
+    state._write_state(lambda data: data.update(gate_approved=True), tmp_path, reserved=False)
     assert hasattr(workspace, 'create_worktree'), 'core worktree caller is missing'
     workspace.create_worktree(owner, 'managed', managed, tmp_path, adapter())
     assert git(owner, 'config', '--get', 'extensions.worktreeConfig').stdout.strip() == 'true'

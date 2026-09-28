@@ -24,7 +24,8 @@ PHASES = {
 BUILD_PHASES = ('spec', 'implement', 'fix')
 STATUSES = ('queued', 'running', 'blocked', 'done')
 DAY_DEFAULTS = {'items': {}, 'cap': 1, 'seat_policy': {}, 'envelope': {},
-                'claimed_prs': [], 'raised_prs': [], 'gate_verdicts': {}, 'seats': {}}
+                'claimed_prs': [], 'raised_prs': [], 'gate_verdicts': {}, 'seats': {},
+                'gate_approved': False, 'approved_items': [], 'goals': []}
 ITEM_DEFAULTS = {'lane': 'build', 'status': 'queued', 'phase': 'planned',
                  'flags': {'trust_surface': False, 'boundary_relevant': False,
                            'agent_surface': False}, 'gates': {}, 'note': ''}
@@ -193,14 +194,15 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
 
 
 # Features add only the namespaces they own.
-RESERVED = {'seats', 'fast_checks', 'reply_acks', 'channel_posts', 'decision_outcomes'}
+RESERVED = {'seats', 'fast_checks', 'reply_acks', 'channel_posts', 'decision_outcomes',
+            'gate_approved', 'approved_items', 'goals', 'cap', 'seat_policy', 'envelope'}
 
 
 def _reserved(data, path=()):
     records = {}
     if isinstance(data, dict):
         for key, value in data.items():
-            if key in RESERVED:
+            if key in RESERVED and (key not in {'cap', 'seat_policy', 'envelope'} or data.get('gate_approved')):
                 records[(*path, key)] = deepcopy(value)
             else:
                 records.update(_reserved(value, (*path, key)))
@@ -234,7 +236,8 @@ def get_state(path=None, root=None):
 
 def set_state(path, value, root=None):
     parts = _parts(path)
-    if RESERVED.intersection(parts):
+    if RESERVED.intersection(parts) and (not RESERVED.intersection(parts) <= {'cap', 'seat_policy', 'envelope'}
+                                        or read_state(root).get('gate_approved')):
         raise StateError('reserved state path requires a dedicated producer')
 
     def update(data):
