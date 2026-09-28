@@ -1,0 +1,17 @@
+{
+  "session_id": "abc123",
+  "prompt_id": "550e8400-e29b-41d4-a716-446655440000",
+  "transcript_path": "/workspace/.claude/projects/example/session.jsonl",
+  "cwd": "/workspace/project",
+  "scratchpad_dir": "/tmp/scratch/example",
+  "permission_mode": "default",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/path/to/file.txt",
+    "old_string": "original text",
+    "new_string": "replacement text",
+    "replace_all": false
+  },
+  "tool_use_id": "toolu_01ABC123..."
+}

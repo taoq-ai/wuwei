@@ -1,0 +1,8 @@
+{
+  "session_id": "abc123",
+  "transcript_path": "/workspace/.claude/projects/example/session.jsonl",
+  "cwd": "/workspace/project",
+  "hook_event_name": "PreCompact",
+  "trigger": "manual",
+  "custom_instructions": null
+}
