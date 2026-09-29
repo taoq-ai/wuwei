@@ -32,6 +32,7 @@ MERGE_SCHEMA = {
 }
 
 SCHEMA = {
+    "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low"))},
     "security": {"required": (bool, False)},
     "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)]},
     "repos": [{"name": (str, None), "path": (str, None),

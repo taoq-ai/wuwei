@@ -108,6 +108,7 @@ def test_config_defaults_and_independence(tmp_path):
     assert outward['banned_characters'] == ['emoji', '\u2014', '\u2015', '\u2e3a', '\u2e3b']
     assert outward['max_length'] == {}
     assert config == {
+        'scanner': {'severity_threshold': 'high'},
         'security': {'required': False},
         'owner': {'name': '', 'pronouns': '', 'handles': []}, 'repos': [], 'cap': 1,
         'prioritisation': {'framework': 'wsjf'},

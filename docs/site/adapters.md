@@ -14,10 +14,10 @@ The CLI core asks named ports for plain data. Modules under `adapters/` implemen
 | chat | none, slack | none |
 | review_bot | none, greptile | none |
 | runtime | none, claude, codex | claude |
-| scanner | none | none |
+| scanner | none, ziran | none |
 | code_host | none, github | github |
 | vcs | git | git |
 | host | none, local | local |
 | checks | none, local | local |
 
-The `vcs` port calls git; `code_host.github` calls `gh`. Tracker and chat integrations require their external access and credentials. The Codex runtime uses the configured companion command and timeout. The current scanner port has only `none`; a ZIRAN scanner implementation is **planned**. Other ports in the design, including inbound messaging and control planes, are **planned** and have no config keys in the shipped template.
+The `vcs` port calls git; `code_host.github` calls `gh`. Tracker and chat integrations require their external access and credentials. The Codex runtime uses the configured companion command and timeout. The ZIRAN scanner supports S4 audit and CI through the [JSON CLI contract](configuration.html); incompatible versions report unmeasured. Trace and MCP scanning remain deferred. Other ports in the design, including inbound messaging and control planes, are **planned** and have no config keys in the shipped template.

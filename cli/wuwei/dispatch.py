@@ -125,6 +125,20 @@ def receive(item, role, name, round_name='initial', root=None):
     current = [_record(data, item, gate, round_name) for gate in ROLES]
     if any(record and record['head'] != head for record in current):
         raise Refused('gate HEAD differs from sibling verdict')
+    if role == 'security' and data['items'][item]['flags']['agent_surface']:
+        from wuwei import scanner
+        if not trees or trees[0] == 'none':
+            raise OSError('scanner: unmeasured: missing reviewed worktree')
+        findings = scanner.rows(tree, item, data['items'][item]['flags'],
+                                workspace.load_config(root), root)
+        measured_head = brief.read(registry.load('vcs', workspace.load_config(root)).head,
+                                   str(tree), root=root)['sha']
+        if measured_head != current_head:
+            raise OSError('scanner: unmeasured: worktree HEAD changed during audit')
+        text = scanner.merge(text, findings)
+        code, message = verdict.lint(text, class_sweep=True)
+        if code:
+            raise OSError('scanner: unmeasured: ' + message)
     result = re.search(verdict.VERDICT_ROW, text, re.M)[1]
     blocks = verdict.finding_blocks(text)
     notes = [block.strip() for block in blocks if not re.search(verdict.BLOCKS_YES, block, re.I)]
@@ -135,12 +149,16 @@ def receive(item, role, name, round_name='initial', root=None):
 
     def update(fresh):
         _item(fresh, item)
+        if fresh['items'][item]['flags'] != data['items'][item]['flags']:
+            raise OSError('scanner: unmeasured: item flags changed during receive')
         if fresh['items'][item]['phase'] != data['items'][item]['phase'] or key in fresh['gate_verdicts']:
             raise Refused('gate state changed during receive')
         fresh['gate_verdicts'][key] = value
 
     state._write_state(update, root, reserved=False, kind='gate.received',
                        payload={'item': item, 'role': role, 'round': round_name, 'verdict': result})
+    if role == 'security' and data['items'][item]['flags']['agent_surface']:
+        workspace.atomic_write(path, text + '\n')
     return value
 
 
