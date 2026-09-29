@@ -64,6 +64,14 @@ fast_checks = ["python3 -m pytest -q"]
 | `pr.poll_seconds` | `120` | Interval between polls of raised and claimed PRs. |
 | `pr.action_minutes` | `30` | Positive minutes to act on a measured PR finding. Nudge after this deadline, page at twice the interval. |
 | `pr.review_window` | `120` | Positive minutes to await review before re-requesting it. Starts at first observation of the head; comments do not reset it. |
+| `shepherd.lead_login` | `""` | Lead code host login. Counts as a reviewer when different from the author. |
+| `shepherd.review_channel` | `""` | Chat channel ID for review requests. |
+| `shepherd.review_gate_check` | `"Review Gate"` | Check excluded during review requests. |
+| `shepherd.min_reviewers` | `1` | Minimum eligible reviewers required to raise or request review. |
+| `shepherd.author_windows_days` | `[90, 180]` | Authorship lookback windows, then all history. |
+| `shepherd.tie_commits` | `2` | Include a third author within this many commits of second place. |
+| `shepherd.source_exclude` | `specs/*`, lock files and generated files | Changed paths excluded from reviewer selection. |
+| `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity. |
 | `watch.clock_seconds` | `600` | Interval between watch clock events. |
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |

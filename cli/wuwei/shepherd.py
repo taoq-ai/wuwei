@@ -25,7 +25,7 @@ def _source(path, config):
     return not any(fnmatchcase(path, pattern) for pattern in config['shepherd']['source_exclude'])
 
 
-def _rank(root, config, repo, branch, paths, author):
+def _rank(root, config, repo, branch, paths, author, source_path=None):
     mapping = config['shepherd']['authors']
     vcs = registry.load('vcs', config)
     selected = []
@@ -33,7 +33,7 @@ def _rank(root, config, repo, branch, paths, author):
     if not windows or windows != sorted(set(windows)):
         raise ValueError('authorship windows must increase')
     for days in (*windows, 0):
-        rows = merge.read(vcs.authorship, str((root / repo['path']).resolve()), branch,
+        rows = merge.read(vcs.authorship, str(source_path or (root / repo['path']).resolve()), branch,
                           paths, days, root=root)
         if not isinstance(rows, list):
             raise ValueError('invalid authorship evidence')
@@ -43,23 +43,23 @@ def _rank(root, config, repo, branch, paths, author):
             if not isinstance(email, str) or '@' not in email or type(commits) is not int or commits < 1:
                 raise ValueError('invalid authorship record')
             if email not in mapping:
-                raise ValueError('unmapped author email: configure reviewer identity')
+                raise ValueError(f'shepherd.authors has no mapping for {email}')
             login = mapping[email]['login']
             if login != author and not login.casefold().endswith('[bot]'):
                 counts[login] = counts.get(login, 0) + commits
         selected = sorted(counts, key=lambda login: (-counts[login], login))
-        if len(selected) >= 2:
+        if len(selected) >= max(2, config['shepherd']['min_reviewers']):
             if (len(selected) >= 3 and counts[selected[1]] - counts[selected[2]]
                     <= config['shepherd']['tie_commits']):
                 selected = selected[:3]
             else:
-                selected = selected[:2]
+                selected = selected[:max(2, config['shepherd']['min_reviewers'])]
             break
     lead = config['shepherd']['lead_login']
     if lead and lead != author and lead not in selected:
         selected.append(lead)
-    if len(selected) < 2:
-        raise merge.Refused('fewer than two eligible reviewers from authorship and lead')
+    if len(selected) < config['shepherd']['min_reviewers']:
+        raise merge.Refused('fewer eligible reviewers than shepherd.min_reviewers')
     if any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]*', login) for login in selected):
         raise ValueError('invalid reviewer login')
     emails = {row['login']: email for email, row in mapping.items()}
@@ -174,7 +174,7 @@ def post_review_request(root, ref):
         reviewers = state.read_state(root).get('pr_reviewers', {}).get(ref)
         if reviewers is None:
             reviewers = select_reviewers(root, ref)
-        if (not isinstance(reviewers, list) or len(reviewers) < 2
+        if (not isinstance(reviewers, list) or len(reviewers) < config['shepherd']['min_reviewers']
                 or len(set(reviewers)) != len(reviewers)):
             raise ValueError('invalid selected reviewer record')
         host = registry.load('code_host', config)
@@ -230,8 +230,19 @@ def raise_pr(root, repo_name, base, title, body, item):
         merge.require(item in data['items'] and item in data['approved_items'],
                       'PR item must be in the approved plan')
         merge.require(data['items'][item].get('pr') is None, 'item already links another PR')
-        repo_path = (root / settings['path']).resolve()
+        if config['adapters']['code_host'] == 'none':
+            raise ValueError('code_host adapter is none; configure github')
+        tree = data['items'][item].get('worktree')
+        if not isinstance(tree, str) or not tree:
+            raise ValueError('item worktree is not recorded; write a brief with --worktree')
+        repo_path = (root / tree).resolve()
         vcs = registry.load('vcs', config)
+        configured_path = (root / settings['path']).resolve()
+        if repo_path != configured_path:
+            common = merge.read(vcs.commit_context, str(repo_path), {}, {}, root=root).get('common_dir')
+            configured_common = merge.read(vcs.commit_context, str(configured_path), {}, {}, root=root).get('common_dir')
+            merge.require(isinstance(common, str) and bool(common) and common == configured_common,
+                          'item worktree does not belong to the raised repository')
         head = merge.read(vcs.head, str(repo_path), root=root)['sha']
         merge.sha(head)
         code, reason = gate_check(root, repo_path, config, sha=head, item=item)
@@ -259,7 +270,7 @@ def raise_pr(root, repo_name, base, title, body, item):
         paths = [row['path'] for row in changes if _source(row['path'], config)]
         merge.require(paths, 'no changed source paths for reviewer selection')
         author = obligations._owner_login(config)
-        reviewers = _rank(root, config, settings, branch, paths, author)
+        reviewers = _rank(root, config, settings, branch, paths, author, repo_path)
         host = registry.load('code_host', config)
         head_branch = merge.read(vcs.branch, str(repo_path), root=root)['name']
         created = merge.read(host.create_pr, {'repo': repo_name, 'base': base,

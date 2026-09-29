@@ -237,6 +237,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                     raise ValueError('state changed while collecting brief evidence; retry')
                 if role != 'steward':
                     fresh['items'].setdefault(item, {})['track'] = track
+                    if tree:
+                        fresh['items'][item]['worktree'] = str(tree)
                 workspace.atomic_write(output, text, replace=False)
                 created = True
             state._write_state(update, root, reserved=False, kind='brief written', payload=payload)

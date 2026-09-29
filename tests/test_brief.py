@@ -52,6 +52,11 @@ def test_resolved_ruling(day, monkeypatch):
     assert 'Ruling D-ABC-1 [RULED]' in (day[1] / 'briefs/n2.md').read_text()
 
 
+def test_brief_records_item_worktree(day, monkeypatch):
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'tree-brief', '--worktree', 'tree') == 0
+    assert state.read_state(day[0])['items']['X']['worktree'] == str((day[0] / 'tree').resolve())
+
+
 def test_declared_full_and_persisted(day, monkeypatch):
     args = ('builder', 'X')
     assert brief(monkeypatch, 'Paths: core/x.py, infrastructure/db.ts', *args, 'n3') == 1
