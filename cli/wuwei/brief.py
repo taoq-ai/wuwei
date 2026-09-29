@@ -101,8 +101,8 @@ def rulings(body, directory, tree, data):
     return result
 
 
-def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=None):
-    root = workspace.find_workspace()
+def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=None, root=None):
+    root = workspace.find_workspace(root)
     directory, data = read_day(root)
     for value in (role, item, name):
         identifier(value)
@@ -210,7 +210,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                         or fresh['gate_verdicts'] != data['gate_verdicts']
                         or fresh.get('gate_policy') != data.get('gate_policy')):
                     raise ValueError('state changed while collecting brief evidence; retry')
-                fresh['items'].setdefault(item, {})['track'] = track
+                if role != 'steward':
+                    fresh['items'].setdefault(item, {})['track'] = track
                 workspace.atomic_write(output, text, replace=False)
                 created = True
             state._write_state(update, root, reserved=False, kind='brief written', payload=payload)

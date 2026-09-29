@@ -7,11 +7,11 @@ SILENT = ('item.progress', 'state.write', 'state.set', 'state.transition',
           'seat started', 'seat stopped', 'seat launched', 'brief written',
           'fast_checks.record', 'retro.captured', 'decision.two_way', 'merge.auto',
           'merge.observation', 'merge.metric', 'merge.intent', 'merge.completed', 'merge.red', 'merge.revert',
-          'reply: acknowledged', 'hook.refusal', 'decision.decided',
+          'reply: acknowledged', 'hook.refusal', 'decision.decided', 'decision.routed',
           'seat.usage', 'build.iteration',
           'watch: clock', 'watch: heartbeat', 'watch: observation', 'session: compact',
           'session: wake-seen', 'plan.session', 'pr.disposition', 'day.close_requested',
-          'gate.received', 'discovery.requested')
+          'gate.received', 'discovery.requested', 'steward.run', 'steward.acknowledged')
 
 
 def classify(event, state):
@@ -63,7 +63,7 @@ def classify(event, state):
         return ('silent' if all(type(count) is int and count == 0 for count in counts)
                 else 'nudge'), lane
     if kind in ('hook.warning', 'merge.policy_blocked', 'work.outside_goals',
-                'build.parked'):
+                'build.parked', 'steward.due'):
         return 'nudge', lane
     if kind in SILENT:
         return 'silent', lane

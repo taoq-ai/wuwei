@@ -38,6 +38,9 @@ def stored(root):
     ('raised_prs', 'dedicated command'),
     ('gate_verdicts', 'wuwei dispatch receive'),
     ('decision_outcomes', 'wuwei decision outcome'),
+    ('decision_routes', 'wuwei decision route'),
+    ('steward_notes', 'wuwei steward run'),
+    ('steward_acks', 'wuwei steward ack'),
     ('gate_approved', 'wuwei plan approve'),
     ('envelope', 'wuwei plan approve'),
     ('watch', 'wuwei watch'),
@@ -101,6 +104,11 @@ def test_approved_settings_stay_frozen_under_writer_lock(root, field, value):
     ('plan.approved', 'wuwei plan approve'),
     ('reply: acknowledged', 'wuwei reply'),
     ('decision.decided', 'wuwei decision outcome'),
+    ('decision.routed', 'wuwei decision route'),
+    ('steward.notes', 'wuwei steward run'),
+    ('steward.run', 'wuwei steward run'),
+    ('steward.due', 'wuwei hook PostToolUse'),
+    ('steward.acknowledged', 'wuwei steward ack'),
     ('day.close_requested', 'wuwei close'),
 ])
 def test_nonfree_events_refuse_without_append(root, capsys, kind, producer):

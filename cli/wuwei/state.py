@@ -213,9 +213,11 @@ STATE_PRODUCERS = {
     'goals': 'wuwei plan approve', 'planner_session_id': 'wuwei plan session',
     'seats': 'wuwei hook PreToolUse', 'fast_checks': 'wuwei fast-checks',
     'reply_acks': 'wuwei reply', 'decision_outcomes': 'wuwei decision outcome',
+    'decision_routes': 'wuwei decision route',
     'watch': 'wuwei watch', 'pr_dispositions': 'wuwei pr disposition',
     'close_requested': 'wuwei close', 'merges': 'wuwei merge',
     'merge_breakers': 'wuwei merge', 'gate_verdicts': 'wuwei dispatch receive',
+    'steward_notes': 'wuwei steward run', 'steward_acks': 'wuwei steward ack',
 }
 
 

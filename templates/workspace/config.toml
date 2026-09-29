@@ -124,6 +124,9 @@ clock_seconds = 600
 stale_seconds = 900
 sweep_seconds = 7200
 
+[steward]
+every_tool_calls = 50
+
 [pr]
 poll_seconds = 120
 action_minutes = 30

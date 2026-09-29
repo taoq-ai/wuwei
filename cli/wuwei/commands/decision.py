@@ -30,6 +30,15 @@ def decide(args):
         return record_rejection(path, 1, str(exc), root=root)
     target = route(fields)
     if target == 'owner':
+        def mark(data):
+            routed = data.setdefault('decision_routes', {})
+            if args.id not in routed:
+                routed[args.id] = {'reversibility': fields['Reversibility'],
+                                   'recommendation': fields['Recommendation']}
+
+        if args.id not in state.read_state(root).get('decision_routes', {}):
+            state._write_state(mark, root, reserved=False, kind='decision.routed',
+                               payload={'id': args.id, 'reversibility': fields['Reversibility']})
         return 0, target
     record = {'option': fields['Recommendation'], 'score': scores[fields['Recommendation']],
               'decided_by': 'seat', 'outcome': fields['Recommendation'],
