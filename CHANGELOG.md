@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/taoq-ai/wuwei/compare/v0.1.0...v0.2.0) (2026-09-29)
+
+
+### Features
+
+* **security:** MCP audit and drift watch at init and each morning (S3) ([#158](https://github.com/taoq-ai/wuwei/issues/158)) ([4a326ca](https://github.com/taoq-ai/wuwei/commit/4a326ca9a178017aaa9647765f254166a767b37d)), closes [#35](https://github.com/taoq-ai/wuwei/issues/35)
+* **security:** ZIRAN over live session traces at each sweep (S2) ([#156](https://github.com/taoq-ai/wuwei/issues/156)) ([d1ea031](https://github.com/taoq-ai/wuwei/commit/d1ea031d0ca40c7390f63a20097dff1047b55a7c)), closes [#34](https://github.com/taoq-ai/wuwei/issues/34)
+
 ## 0.1.0 (2026-09-29)
 
 
