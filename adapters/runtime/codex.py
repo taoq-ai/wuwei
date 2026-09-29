@@ -6,7 +6,7 @@ import re
 import subprocess
 import time
 
-from wuwei import registry, workspace
+from wuwei import env, registry, workspace
 
 
 def _call(action, tree, *args, root=None):
@@ -16,7 +16,7 @@ def _call(action, tree, *args, root=None):
         if not command:
             return registry.Result(2, reason='codex.command is not configured')
         process = subprocess.run([*command, action, *args, '--json'], cwd=str(tree),
-                                 capture_output=True, text=True,
+                                 capture_output=True, text=True, env=env.child_environment(),
                                  timeout=config['codex']['timeout_seconds'])
         if process.returncode:
             return registry.Result(2, reason=f'Codex {action} failed: {process.stderr.strip() or process.returncode}')

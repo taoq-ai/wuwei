@@ -1,11 +1,50 @@
 """Conservative built-in patterns for data persisted by the trace recorder."""
 
 import hashlib
+import json
 import re
-from urllib.parse import unquote
+from urllib.parse import quote, quote_plus, unquote
 
 
 REDACTED = '[REDACTED]'
+VALUES = set()
+
+
+def known_values(value):
+    """Remove loaded credentials without hiding public diagnostic field names."""
+    if isinstance(value, dict):
+        return {known_values(key): known_values(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [known_values(item) for item in value]
+    if isinstance(value, str):
+        variants = {encoded for secret in VALUES for encoded in
+                    (secret, quote(secret, safe=''), quote_plus(secret),
+                     json.dumps(secret)[1:-1]) if encoded}
+        for secret in sorted(variants, key=len, reverse=True):
+            value = value.replace(secret, REDACTED)
+    return value
+
+
+class Output:
+    """Filter credentials from CLI stdout and stderr, including watch logs."""
+
+    def __init__(self, stream):
+        self.stream = stream
+        self.pending = ''
+
+    def write(self, value):
+        self.pending += value
+        complete, newline, self.pending = self.pending.rpartition('\n')
+        if newline:
+            self.stream.write(known_values(complete + newline))
+        return len(value)
+
+    def flush(self):
+        self.stream.write(known_values(self.pending))
+        self.pending = ''
+        self.stream.flush()
+
+
 SENSITIVE_FIELD = (
     r'password|passwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|'
     r'authorization|cookie|credential|phone|mobile|message|body|text|pass\b|pwd|auth|[_-]key\b')
@@ -36,11 +75,13 @@ def body_marker(value):
 
 
 def redact(value):
+    value = known_values(value)
     if isinstance(value, dict):
         path = value.get('file_path', '')
         private_file = isinstance(path, str) and (
             len(path) > 2048 or any(part.startswith('.env') for part in path.lower().split('/'))
             or path.lower().endswith(('.pem', '.key'))
+            or path.replace('\\', '/').endswith('.wuwei/env')
             or 'credentials' in path.lower() or 'secret' in path.lower())
         return {redact(key): REDACTED if (
             len(key) > 2048 or SENSITIVE_KEY.search(key)

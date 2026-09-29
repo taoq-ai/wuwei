@@ -19,6 +19,7 @@ CALLS = [
     ('integrity', 'verify', ('manifest', 'signature', 'key'), True),
     ('host', 'free_memory', (), True),
     ('checks', 'run', ('path', 'command'), True),
+    ('code_host', 'auth_status', (), True),
     ('code_host', 'pr', ('ref',), True),
     ('code_host', 'checks', ('ref', 'sha'), True),
     ('code_host', 'reviews', ('ref',), True),

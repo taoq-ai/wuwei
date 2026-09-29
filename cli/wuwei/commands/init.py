@@ -11,7 +11,7 @@ import tempfile
 import tomllib
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
-from wuwei import security, workspace
+from wuwei import env, security, workspace
 from wuwei.guards.deploy import PERMISSIONS_DENY
 
 
@@ -67,6 +67,7 @@ def run(args):
         shutil.copytree(template, staging, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns(".gitkeep"))
         security.initialize(Path(staging), getattr(args, "honeytoken_path", security.DEFAULT_HONEYTOKEN_PATH))
+        env.initialize(Path(staging))
         from wuwei.commands.agents import write_workspace
         write_workspace(template.parents[1], Path(staging))
         executable = Path(__file__).resolve().parents[3] / "bin/wuwei"
@@ -174,6 +175,7 @@ def upgrade(args):
         print('wuwei init: config.toml and executable must not be symlinks', file=sys.stderr)
         return UNRUN
     try:
+        env.load(destination.parent)
         raw = config_path.read_text(encoding='utf-8')
         tomllib.loads(raw)
         workspace.load_config(destination.parent)
@@ -192,6 +194,7 @@ def upgrade(args):
         security_data = security.load(destination.parent)
         config_changed = migrated != raw
         pointer_changed = pointer != str(executable) + '\n'
+        env_changed = env.initialize(destination, dry_run=args.dry_run)
         prefix = 'Would upgrade' if args.dry_run else 'Upgraded'
         if not args.dry_run:
             if security_data is None:
@@ -204,6 +207,8 @@ def upgrade(args):
                 workspace.atomic_write(pointer_path, str(executable) + '\n')
         if security_data is None:
             print(f'{prefix} workspace security material and instructions')
+        if env_changed:
+            print(f'{prefix} private .wuwei/env and Git ignore rule')
         for key in added:
             print(f'{prefix} config.toml: add {key}')
         if pointer_changed:
@@ -214,7 +219,7 @@ def upgrade(args):
         if not args.dry_run:
             print(json.dumps({'statusLine': {'type': 'command',
                                             'command': shlex.quote(str(executable)) + ' status --line'}}))
-        if not added and not pointer_changed:
+        if not added and not pointer_changed and not env_changed:
             print('No workspace changes needed')
         return CLEAN if args.dry_run else _register_mcp(destination.parent)
     except workspace.ConfigError as exc:

@@ -160,7 +160,8 @@ def append_jsonl(path, record):
 
 def _append_jsonl(path, record):
     """Write one line under state.lock, leaving events and traces read-only."""
-    encoded = (json.dumps(record, allow_nan=False) + '\n').encode('utf-8')
+    from wuwei.redact import known_values
+    encoded = (json.dumps(known_values(record), allow_nan=False) + '\n').encode('utf-8')
     if path.is_file():
         path.chmod(0o600)
     try:

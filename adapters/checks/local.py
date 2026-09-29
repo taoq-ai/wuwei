@@ -1,9 +1,9 @@
 """Execute a configured fast check in its checkout, without storing output."""
 
-import os
 import re
 import subprocess
 
+from wuwei import env
 from wuwei.registry import Result
 
 
@@ -13,7 +13,7 @@ def run(path, command, root=None):
             raise ValueError('empty fast check')
         result = subprocess.run(['/bin/sh', '-c', command], cwd=path, timeout=300,
                                 capture_output=True, text=True,
-                                env={key: value for key, value in os.environ.items()
+                                env={key: value for key, value in env.child_environment().items()
                                      if not key.startswith('GIT_')})
         if result.returncode == 0:
             return Result(0)

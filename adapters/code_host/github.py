@@ -50,6 +50,8 @@ def _errors(value):
 def _run(args, payload=None, *, json_output=True):
     allowed = False
     match args:
+        case ['auth', 'status', '--hostname', 'github.com']:
+            allowed = payload is None and not json_output
         case ['pr', 'merge', url, '--squash', '--match-head-commit', sha]:
             repo, number = _ref(url)
             allowed = (url == f'https://github.com/{repo}/pull/{number}' and
@@ -78,6 +80,8 @@ def _run(args, payload=None, *, json_output=True):
         args = [*args, '--hostname', 'github.com']
     result = subprocess.run(['gh', *args], input=json.dumps(payload) if payload is not None else None,
                             capture_output=True, text=True, timeout=TIMEOUT)
+    if args[0] == 'auth':
+        return result.returncode
     if result.returncode:
         if (args[:1] == ['api'] and len(args) > 1 and
                 re.fullmatch(r'repos/[^/]+/[^/]+/branches/.+/protection', args[1]) and
@@ -422,3 +426,16 @@ def revert_pr(ref, root=None):
                  {'query': _REVERT, 'variables': {'id': _field(original, 'node_id', str)}})
     created = value['data']['revertPullRequest']['revertPullRequest']
     return {'number': _field(created, 'number', int), 'url': _field(created, 'url', str)}
+
+
+def auth_status(root=None):
+    """Measure gh authentication without exposing account or token output."""
+    try:
+        code = _run(['auth', 'status', '--hostname', 'github.com'], json_output=False)
+        if code == 0:
+            return Result(0)
+        if code == 1:
+            return Result(1, reason='gh auth: missing')
+        return Result(2, reason='gh auth: could not run')
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return Result(2, reason='gh auth: could not run; check gh installation and authentication')

@@ -247,3 +247,16 @@ latest clock is older than `watch.dead_seconds`.
 
 Run `bin/wuwei nudges` to list current nudges and pages with their sources. Its
 entry count matches the page and nudge counts in `bin/wuwei status --line`.
+
+## Private workspace environment
+
+`.wuwei/env` stores adapter credentials outside tracked configuration. Init and
+upgrade create it empty with mode `0600` and add its Git ignore rule. Existing
+contents are preserved by upgrade. Use literal `KEY=value` lines; process
+environment values take precedence. The CLI, scoped hooks and watch all load the
+file before adapter calls. Restart a running watch after editing the file.
+
+`wuwei config check` reports credential names and set/missing status per effective
+adapter. It returns 1 for missing requirements and 2 when a check cannot run.
+See [adapter credentials](adapters.html#credentials) for every variable, syntax
+rules and authentication requirements. No new config.toml keys are needed.

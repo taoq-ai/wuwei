@@ -1,21 +1,39 @@
 """Discover commands and enforce the three-state exit contract."""
 
 import argparse
+from contextlib import redirect_stdout, redirect_stderr
 from importlib import import_module
 import json
 from pathlib import Path
 import pkgutil
 import sys
 
-from wuwei import commands
+from wuwei import commands, env, redact, workspace
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 
 def main(argv=None):
+    output, errors = redact.Output(sys.stdout), redact.Output(sys.stderr)
+    with env.session(), redirect_stdout(output), redirect_stderr(errors):
+        try:
+            return _main(argv)
+        finally:
+            output.flush()
+            errors.flush()
+
+
+def _main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     parser = argparse.ArgumentParser(prog="wuwei")
     subparsers = parser.add_subparsers(dest="command", required=True)
     try:
+        if argv and argv[0] not in ('hook', 'init'):
+            try:
+                root = workspace.find_workspace()
+            except FileNotFoundError:
+                root = None
+            if root is not None:
+                env.load(root)
         manifest = Path(__file__).resolve().parents[2] / ".claude-plugin/plugin.json"
         version = json.loads(manifest.read_text())["version"]
         if not isinstance(version, str) or not version.strip():

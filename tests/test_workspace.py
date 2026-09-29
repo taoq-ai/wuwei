@@ -10,6 +10,15 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def fake_credential_tools(tmp_path_factory, monkeypatch):
+    tools = tmp_path_factory.mktemp('credential-tools')
+    gh = tools / 'gh'
+    gh.write_text('#!/bin/sh\n[ "$*" = "auth status --hostname github.com" ] || exit 2\n')
+    gh.chmod(0o755)
+    monkeypatch.setenv('PATH', str(tools) + os.pathsep + os.environ.get('PATH', ''))
+
+
 def cli(cwd, *args, **env):
     environment = {k: v for k, v in os.environ.items()
                    if k not in ('WUWEI_WORKSPACE', 'WUWEI_NOW')}

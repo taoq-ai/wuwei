@@ -58,3 +58,7 @@ def history(repo, start, branch, patches=True, root=None):
 
 def author_login(repo, email, root=None):
     return record_none('code_host', 'author_login', root, measurement=True)
+
+
+def auth_status(root=None):
+    return record_none('code_host', 'auth_status', root, measurement=True)
