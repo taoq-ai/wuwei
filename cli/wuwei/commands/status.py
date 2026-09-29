@@ -17,6 +17,84 @@ def register(subparsers):
     parser.set_defaults(func=run)
 
 
+def attention(directory, classified_state=None):
+    """Current page and nudge causes from the day's event stream."""
+    if not (directory / 'state.json').is_file():
+        raise FileNotFoundError('day state is missing')
+    classified_state = classified_state or {**state.read_state(directory=directory),
+                                              'now': workspace.now().isoformat()}
+    current = {}
+    path = directory / 'events.jsonl'
+    if path.exists():
+        with path.open(encoding='utf-8') as stream:
+            for number, line in enumerate(stream):
+                if not line.strip():
+                    continue
+                try:
+                    event = json.loads(line)
+                except ValueError:
+                    event = None
+                if isinstance(event, dict):
+                    kind = event.get('kind')
+                    payload = event.get('payload', {})
+                    stamp = event.get('ts')
+                    if isinstance(stamp, str) and datetime.fromisoformat(stamp).date() != workspace.now().date():
+                        continue
+                    if kind in ('state.transition', 'item.escalated'):
+                        continue
+                    if kind == 'mcp.checked' and isinstance(payload, dict) and payload.get('exit') == 0:
+                        current = {key: value for key, value in current.items() if key[0] != 'mcp.finding'}
+                        continue
+                    if kind == 'pr.action' and isinstance(payload, dict) and 'tier' not in payload:
+                        current.pop(('pr.action', payload.get('pr')), None)
+                        continue
+                    if kind == 'decision.decided' and isinstance(payload, dict):
+                        current.pop(('decision.one_way', payload.get('id')), None)
+                        continue
+                    if kind in SILENT:
+                        continue
+                else:
+                    kind, payload = 'unreadable event', {}
+                if kind == 'watch: sweep' and isinstance(payload, dict):
+                    current = {key: value for key, value in current.items() if key[0] != 'watch: sweep'}
+                    fields = (('reply_owed', 'reply', 'nudge'),
+                              ('visibility_owed', 'visibility', 'nudge'),
+                              ('stale_owed', 'stale', 'nudge'),
+                              ('watch_dead', 'watch', 'page'),
+                              ('scanner_owed', 'scanner', 'page'),
+                              ('integrity_owed', 'integrity', 'page'),
+                              ('unreadable', 'unmeasured', 'nudge'))
+                    if all(type(payload.get(field)) is int and payload[field] >= 0
+                           for field, _, _ in fields):
+                        for field, source, level in fields:
+                            for index in range(payload[field]):
+                                current[('watch: sweep', source, index)] = {
+                                    'tier': level, 'source': f'watch: sweep:{source}',
+                                    'lane': 'Work', 'reason': source}
+                        continue
+                tier, lane = classify(event, classified_state)
+                if kind == 'watch: sweep':
+                    key = (kind, '')
+                elif kind == 'pr.action' and isinstance(payload, dict):
+                    key = (kind, payload.get('pr'))
+                elif kind == 'decision.one_way' and isinstance(payload, dict):
+                    key = (kind, payload.get('id', number))
+                else:
+                    key = (kind, number)
+                if tier == 'silent':
+                    current.pop(key, None)
+                else:
+                    current[key] = {'tier': tier, 'source': kind, 'lane': lane,
+                                    'reason': payload.get('reason', kind) if isinstance(payload, dict) else kind}
+    for name, item in classified_state['items'].items():
+        if item['phase'] == 'escalated':
+            tier, lane = classify({'kind': 'item.escalated', 'payload': {'item': name}},
+                                  classified_state)
+            current[('item.escalated', name)] = {'tier': tier, 'source': 'item.escalated',
+                                                 'lane': lane, 'reason': name}
+    return list(current.values())
+
+
 def snapshot(directory):
     if not (directory / 'state.json').is_file():
         raise FileNotFoundError('day state is missing')
@@ -28,42 +106,10 @@ def snapshot(directory):
         phase = item['phase']
         if phase in result['phases']:
             result['phases'][phase] += 1
-    events = directory / 'events.jsonl'
     classified_state = {**data, 'now': workspace.now().isoformat()}
-    active = {}
-    today = workspace.now().date()
-    if events.exists():
-        with events.open(encoding='utf-8') as stream:
-            for number, line in enumerate(stream):
-                if not line.strip():
-                    continue
-                if any(line.startswith(f'{{"kind": "{kind}"') for kind in SILENT):
-                    continue
-                try:
-                    event = json.loads(line)
-                except ValueError:
-                    event = None
-                if isinstance(event, dict):
-                    kind = event.get('kind')
-                    payload = event.get('payload', {})
-                    if isinstance(payload, dict):
-                        stamp = event.get('ts')
-                        if isinstance(stamp, str) and datetime.fromisoformat(stamp).date() != today:
-                            continue
-                        if kind == 'state.transition':
-                            continue  # current item state below owns this condition
-                        if kind == 'item.escalated':
-                            continue
-                tier, _ = classify(event, classified_state)
-                if tier != 'silent':
-                    active[(number, '')] = tier
-    for name, item in data['items'].items():
-        if item['phase'] == 'escalated':
-            tier, _ = classify({'kind': 'item.escalated', 'payload': {'item': name}},
-                               classified_state)
-            active[('item.escalated', name)] = tier
-    result['pages'] = sum(tier == 'page' for tier in active.values())
-    result['nudges'] = sum(tier == 'nudge' for tier in active.values())
+    active = attention(directory, classified_state)
+    result['pages'] = sum(row['tier'] == 'page' for row in active)
+    result['nudges'] = sum(row['tier'] == 'nudge' for row in active)
     for key, field, destination in (('reply_obligations', 'due', 'next_reply_due'),
                                      ('meetings', 'start', 'next_meeting')):
         rows = data.get(key, [])

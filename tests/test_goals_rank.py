@@ -135,7 +135,7 @@ def test_discovery_deduplicates_and_marks_unmeasured():
                'review_bot': [{'id': 'B', 'evidence': 'review'}]}
     result = dedupe(sources, tracker_ids={'A'}, day_ids={'B'})
     assert result['candidates'] == []
-    assert result['sources']['tracker'] == 'unmeasured'
+    assert result['sources']['tracker'].startswith('unmeasured:')
     assert result['sources']['scanner'] == 'measured: 1'
 
 
@@ -180,8 +180,8 @@ def test_discover_reads_ports_and_skips_day_items(tmp_path, monkeypatch):
 
     result = discover(tmp_path, ports={'review_bot': Bot(), 'code_host': Host()})
     assert [row['id'] for row in result['candidates']] == ['x/y#1:thread:t1']
-    assert result['sources']['tracker'] == 'unmeasured'
-    assert result['sources']['scanner'] == 'unmeasured'
+    assert result['sources']['tracker'].startswith('not implemented:')
+    assert result['sources']['scanner'].startswith('not configured:')
 
 
 def test_morning_plan_reports_discovery_sources(tmp_path, monkeypatch):
@@ -232,7 +232,7 @@ def test_failed_discovery_port_is_unmeasured(tmp_path, monkeypatch):
             return Result(2, None, 'timeout')
 
     result = discover(tmp_path, ports={'review_bot': Bot()})
-    assert result['sources']['review_bot'] == 'unmeasured'
+    assert result['sources']['review_bot'].startswith('unmeasured:')
 
 
 def test_sweep_records_discovery_measurement(tmp_path, monkeypatch):

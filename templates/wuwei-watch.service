@@ -7,7 +7,7 @@ Type=simple
 WorkingDirectory=@WORKSPACE@
 Environment="WUWEI_WORKSPACE=@WORKSPACE@"
 Environment="PATH=@PATH@"
-ExecStart=@PLUGIN_ROOT@/bin/wuwei watch
+ExecStart="@PLUGIN_ROOT@/bin/wuwei" watch
 Restart=on-failure
 RestartSec=30
 StandardOutput=journal

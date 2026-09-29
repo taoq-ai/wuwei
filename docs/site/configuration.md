@@ -73,6 +73,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `shepherd.source_exclude` | `specs/*`, lock files and generated files | Changed paths excluded from reviewer selection. |
 | `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity. |
 | `watch.clock_seconds` | `600` | Interval between watch clock events. |
+| `watch.dead_seconds` | `1200` | Clock age after which the watch is reported dead. |
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
 | `steward.every_tool_calls` | `50` | Completed tool calls between steward reviews. |
@@ -224,3 +225,16 @@ command. A decision file or forged event alone never clears a flag. Confirmation
 cannot excuse exit 2. Pending findings and report references survive rechecks
 and day rollover. The host terminal follows the local friction boundary in
 threat model 9.1; remote authenticated decisions remain M5 work.
+
+## Running the watch
+
+Run `bin/wuwei watch install` inside an initialized workspace to install and start a
+user service. On macOS this creates a launchd agent; on Linux it creates a systemd
+user unit. The service uses the active workspace and current `PATH`. Run
+`bin/wuwei watch uninstall` to stop and remove it. `bin/wuwei watch --once` runs
+one due cycle without installing a service. The watch writes clock events at
+`watch.clock_seconds` intervals, and the next sweep reports a dead watch when the
+latest clock is older than `watch.dead_seconds`.
+
+Run `bin/wuwei nudges` to list current nudges and pages with their sources. Its
+entry count matches the page and nudge counts in `bin/wuwei status --line`.

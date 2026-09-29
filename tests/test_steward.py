@@ -67,6 +67,15 @@ def test_fresh_seat_run_and_pending_decision_queue(root, monkeypatch):
     assert 'brief written' in kinds and 'steward.run' in kinds
 
 
+def test_failed_steward_launch_leaves_no_brief(root):
+    from wuwei import steward
+
+    (root / '.wuwei/config.toml').write_text('[adapters]\nruntime = "none"\n')
+    with pytest.raises(ValueError, match='no adapter configured'):
+        steward.run(root)
+    assert not list((workspace.day_dir(root) / 'briefs').glob('steward-*.md'))
+
+
 def test_prior_day_without_steward_is_next_plan_finding(root):
     from wuwei import steward
 
