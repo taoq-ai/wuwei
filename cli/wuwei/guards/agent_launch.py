@@ -106,9 +106,19 @@ def _check(payload):
     if available < floor:
         raise brief.Refused(f'free memory {available} bytes below floor {floor}')
     def reserve(data):
-        if logged['name'] in brief.seats(data) or any(
+        existing = brief.seats(data).get(logged['name'])
+        build = data.get('builds', {}).get(logged['item'])
+        resume = inputs.get('resume')
+        continuing = (resume and existing and existing['status'] == 'stopped'
+                      and build and build['status'] == 'ready'
+                      and build['action']['action'] == 'continue'
+                      and build.get('agent_id') == resume
+                      and build.get('seat') == logged['name'])
+        if role == 'builder' and resume and not continuing:
+            raise brief.Refused('resume does not match the stopped builder')
+        if not continuing and (logged['name'] in brief.seats(data) or any(
                 row['kind'] == 'seat launched' and row['payload'].get('name') == logged['name']
-                for row in rows):
+                for row in rows)):
             raise brief.Refused('brief already used for a seat launch')
         stale = []
         for name, seat in brief.seats(data).items():
@@ -118,7 +128,7 @@ def _check(payload):
                     stale.append(name)
         stale_note = '; stale seat reservations: ' + ', '.join(stale) if stale else ''
         tree = logged.get('worktree')
-        if tree:
+        if tree and not continuing:
             vcs = registry.load('vcs', config)
             if brief.read(vcs.head, tree, root=root)['sha'] != logged.get('head'):
                 raise brief.Refused('worktree HEAD changed since brief was written')
@@ -137,15 +147,18 @@ def _check(payload):
                 raise brief.Refused('gate launch on a dirty tree')
         running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
         builders = sum(seat['role'] == 'builder' for seat in running)
-        if builders >= config['cap']:
+        if role == 'builder' and builders >= config['cap']:
             raise brief.Refused(f'running build seats {builders} at CAP {config["cap"]}' + stale_note)
         if len(running) >= config['host']['seats']:
-            raise brief.Refused(f'running seats {len(running)} at host seat ceiling {config["host"]["seats"]}' + stale_note)
+            raise brief.Refused(f'running seats {len(running)} at host seat ceiling host.seats={config["host"]["seats"]}' + stale_note)
         data['seats'][logged['name']] = {
             'id': logged['name'], 'role': logged['role'], 'item': logged['item'],
             'brief': relative, 'head': logged.get('head'), 'status': 'running',
             'started_at': workspace.now().isoformat(),
         }
+        from wuwei.commands import build as build_command
+        if role == 'builder':
+            build_command.started(data, logged['item'], logged['name'])
     state._write_state(reserve, root, reserved=False, kind='seat launched',
                       payload={'name': logged['name'], 'item': logged['item']})
     return 0, ''
@@ -180,7 +193,7 @@ def stopping_seat(payload, root):
 
 
 def stop(payload):
-    from wuwei import state, workspace
+    from wuwei import brief, state, workspace
 
     try:
         root = workspace.find_workspace(payload.get('cwd'))
@@ -191,7 +204,7 @@ def stop(payload):
     directory = None
     try:
         directory, name, role = stopping_seat(payload, root)
-        state.stop_seat(name, root, directory=directory)
+        item = brief.seats(state.read_state(directory=directory))[name]['item']
     except Exception as exc:
         try:
             state.append_event('seat stop unmatched',
@@ -201,6 +214,15 @@ def stop(payload):
             import sys
             print(f'seat stop could not be recorded: {log_error}', file=sys.stderr)
         return 0, ''
+    try:
+        handled = False
+        if role == 'builder' and directory == workspace.day_dir(root):
+            from wuwei.commands import build
+            handled = build.stopped(item, name, payload, root=root)
+        if not handled:
+            state.stop_seat(name, root, directory=directory)
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
+        return 2, f'build result could not be recorded: {exc}'
     if role == 'builder' and directory == workspace.day_dir(root):
         try:
             from wuwei import dispatch

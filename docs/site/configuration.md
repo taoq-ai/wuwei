@@ -46,7 +46,7 @@ fast_checks = ["python3 -m pytest -q"]
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `host.free_memory_mb` | `1024` | Nonnegative free memory floor in MiB. |
-| `host.seats` | `1` | Host seat count. |
+| `host.seats` | `4` | Total seat ceiling: default cap plus three parallel gates. Increase with custom cap; refusals name `host.seats`. |
 | `host.reservation_timeout_seconds` | `14400` | Age at which a reservation is reported stale. |
 | `memory.max_notes` | `60` | Index note limit. |
 | `memory.note_line_cap` | `80` | Maximum lines in a note. |

@@ -1,9 +1,11 @@
-"""Run a builder seat with fast-check backpressure."""
+"""Select one build action; only Codex seats are polled by the CLI."""
 
+from datetime import datetime
 import hashlib
 import json
 from pathlib import Path
 import re
+import shlex
 import sys
 import time
 
@@ -11,15 +13,32 @@ from wuwei import registry, state, workspace
 
 
 def register(subparsers):
-    parser = subparsers.add_parser('build', help='Run a builder until fast checks pass or it parks')
-    parser.add_argument('item')
-    parser.add_argument('brief')
-    parser.add_argument('worktree')
+    parser = subparsers.add_parser('build', help='Select the next builder action')
+    parser.add_argument('operation', help='next, check, or legacy Codex item')
+    parser.add_argument('arguments', nargs='*', metavar='item/brief/worktree')
     parser.set_defaults(func=run)
 
 
 def run(args):
-    return run_loop(args.item, args.brief, args.worktree)
+    try:
+        if args.operation in ('next', 'check'):
+            root = workspace.find_workspace()
+            if len(args.arguments) not in ((1, 3) if args.operation == 'next' else (1,)):
+                raise ValueError('usage: build next <item> [<brief> <worktree>] or build check <item>')
+            item, *paths = args.arguments
+            if args.operation == 'check':
+                return check(item, root=root)
+            print(json.dumps(next_action(item, *paths, root=root)))
+            return 0
+        if len(args.arguments) not in (0, 2):
+            raise ValueError('usage: build next <item> or build <item> <brief> <worktree> (Codex only)')
+        return run_loop(args.operation, *(args.arguments or [None, None]))
+    except PortExit as exc:
+        print(f'build: {exc}', file=sys.stderr)
+        return exc.code
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(f'build: {exc}', file=sys.stderr)
+        return 2
 
 
 class PortExit(Exception):
@@ -54,49 +73,278 @@ def _signature(failures):
     return hashlib.sha256(json.dumps(normalized, sort_keys=True).encode()).hexdigest()
 
 
-def _park(root, item, iteration, reason):
-    directory = workspace.day_dir(root)
-    decision = directory / 'decisions' / f'build-{item}.md'
-    decision.parent.mkdir(parents=True, exist_ok=True)
-    workspace.atomic_write(decision, f'# Build parked: {item}\n\nIteration: {iteration}\nReason: {reason}\n')
+def _repo(root, tree, config):
+    repo = next((row for row in config['repos'] if (root / row['path']).resolve() == tree), None)
+    if repo is None:
+        from wuwei.guards.commit_push import context
+        repo, _, _ = context(tree, {}, {}, root)
+    if not repo['fast_checks']:
+        raise ValueError('worktree has no configured fast checks')
+    return repo
 
+
+def _save(item, record, root, kind, expected):
     def update(data):
-        if item not in data['items']:
-            raise ValueError(f'unknown item: {item}')
-        data['items'][item]['phase'] = 'parked'
-        data['items'][item]['status'] = 'blocked'
+        builds = data.setdefault('builds', {})
+        if builds.get(item) != expected:
+            raise ValueError('build changed before recording action')
+        builds[item] = record
+    state._write_state(update, root, reserved=False, kind=kind, payload={'item': item})
+
+
+def next_action(item, brief=None, worktree=None, *, root=None):
+    """Return one stable action. Executing it belongs to the caller."""
+    from wuwei.brief import identifier, launch_prompt
+    from wuwei.security import agent_path
+    root = workspace.find_workspace(root)
+    identifier(item)
+    data = state.read_state(root)
+    if item not in data['items']:
+        raise PortExit(1, f'unknown item {item}')
+    record = data.get('builds', {}).get(item)
+    if record is not None and record['status'] == 'running':
+        raise ValueError('builder is still running; call build next after its stop hook')
+    config = workspace.load_config(root)
+    if brief is None:
+        rows = [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+        if any(not isinstance(row, dict) or not isinstance(row.get('payload'), dict)
+               or not isinstance(row.get('kind'), str) for row in rows):
+            raise ValueError('invalid build event record')
+        matches = [row['payload'] for row in rows if row['kind'] == 'brief written'
+                   and row['payload'].get('item') == item and row['payload'].get('role') == 'builder']
+        if not matches:
+            raise ValueError('no logged builder brief for item')
+        brief = root / matches[-1]['path']
+        worktree = matches[-1].get('worktree') or data['items'][item].get('worktree')
+    if worktree is None:
+        raise ValueError('builder brief needs a worktree')
+    tree = (root / worktree).resolve(strict=True)
+    path = (root / brief).resolve(strict=True)
+    if record is not None:
+        if str(path.relative_to(root)) == record['brief'] and str(tree) == record['worktree']:
+            return record['action']
+        if record['status'] not in ('done', 'parked'):
+            raise ValueError('cannot replace an unfinished build with a new brief')
+        if data['items'][item]['phase'] in ('parked', 'escalated'):
+            raise ValueError('resume the parked item before starting a new build')
+    repo = _repo(root, tree, config)
+    action = {'action': 'launch', 'brief': str(path), 'worktree': str(tree),
+              'agent_type': 'wuwei:builder',
+              'prompt': launch_prompt(path, agent_path(root, 'builder'), root=root)}
+    previous = record
+    record = {'brief': str(path.relative_to(root)), 'worktree': str(tree),
+              'runtime': config['adapters']['runtime'], 'repo': repo['name'],
+              'commands': repo['fast_checks'], 'iteration': 0, 'repeats': 0,
+              'signature': None, 'status': 'ready', 'action': action}
+    _save(item, record, root, 'build.started', previous)
+    return action
+
+
+def started(data, item, name):
+    """Bind a Claude iteration inside the existing seat reservation transaction."""
+    record = data.get('builds', {}).get(item)
+    if record is None:
+        return
+    if record['status'] != 'ready' or record['action']['action'] not in ('launch', 'continue'):
+        raise ValueError('build is not ready for a seat')
+    if data['seats'][name]['brief'] != record['brief']:
+        raise ValueError('seat brief differs from active build')
+    record.update(status='running', seat=name, started_at=workspace.now().isoformat())
+
+
+def record_result(item, result, *, root, agent_id=None, model=None, completion=None, expected=None):
+    record = expected if expected is not None else state.read_state(root)['builds'][item]
+    if record['status'] != 'running':
+        return
+    if not isinstance(result, dict):
+        raise ValueError('invalid runtime result')
+    reported = result.get('usage', {})
+    if not isinstance(reported, dict):
+        raise ValueError('malformed runtime usage')
+    for key in ('input_tokens', 'output_tokens'):
+        if key in reported and (type(reported[key]) is not int or reported[key] < 0):
+            raise ValueError('malformed runtime usage')
+    if 'cost' in reported and (type(reported['cost']) not in (int, float) or reported['cost'] < 0):
+        raise ValueError('malformed runtime usage')
+    iteration = record['iteration'] + 1
+    usage = {**reported, 'input_tokens': reported.get('input_tokens'),
+             'output_tokens': reported.get('output_tokens'),
+             'model': reported.get('model') or result.get('model') or model or 'unreported',
+             'duration': max(0, (workspace.now() - datetime.fromisoformat(record['started_at'])).total_seconds())}
+    # The result and usage share the writer lock, so duplicate hooks cannot charge twice.
+    def update(data):
+        current = data['builds'][item]
+        if current != record:
+            raise ValueError('build changed during result recording')
+        if agent_id is not None:
+            data['seats'][record['seat']]['status'] = 'stopped'
+        current.update(status='check', iteration=iteration, agent_id=agent_id, completion=completion,
+                       result=result, action={'action': 'check',
+                       'command': 'wuwei build check ' + shlex.quote(item),
+                       'worktree': record['worktree'], 'checks': record['commands']})
+    updated = state._write_state(update, root, reserved=False, kind='seat.usage',
+                       payload={'item': item, 'role': 'builder', 'iteration': iteration, 'usage': usage})
+    if agent_id is not None:
+        state.append_event('seat stopped', {'name': record['seat']}, root)
+    return updated['builds'][item]
+
+
+def check_binding(item, record):
+    return {'item': item, 'brief': record['brief'], 'iteration': record['iteration'] + 1}
+
+
+def stopped(item, name, payload, *, root):
+    """Accept only the hook-bound seat result and current measured check evidence."""
+    data = state.read_state(root)
+    record = data.get('builds', {}).get(item)
+    if record is None or record.get('seat') != name:
+        return False
+    if record['status'] != 'running':
+        return True
+    agent_id = payload.get('agent_id')
+    if not isinstance(agent_id, str) or not agent_id.strip():
+        raise ValueError('SubagentStop omitted builder agent_id')
+    if record.get('agent_id') and record['agent_id'] != agent_id:
+        raise ValueError('SubagentStop agent_id differs from resumed builder')
+    text = payload.get('last_assistant_message')
+    if not isinstance(text, str):
+        raise ValueError('SubagentStop omitted builder result')
+    completion, message = None, None
+    for index, line in enumerate(Path(payload['agent_transcript_path']).read_text().splitlines()):
+        row = json.loads(line)
+        if row.get('type') == 'assistant':
+            content = row['message']['content']
+            message = ('\n'.join(part['text'] for part in content if part.get('type') == 'text')
+                       if isinstance(content, list) else content)
+            completion = [index, hashlib.sha256(line.encode()).hexdigest()]
+    if completion is None or not isinstance(message, str) or message.strip() != text.strip():
+        raise ValueError('SubagentStop has no matching assistant completion')
+    if completion == record.get('completion'):
+        return True
+    expected = record_result(item, {'text': text, 'usage': payload.get('usage', {})},
+                             root=root, agent_id=agent_id, completion=completion, expected=record)
+    measured = data.get('fast_checks', {}).get(record['repo'], {})
+    rows = [measured.get(command, {}) for command in record['commands']]
+    if not all(row.get('build') == check_binding(item, record)
+               and row.get('worktree') == record['worktree'] and row.get('clean') is True
+               and 'data' in row for row in rows):
+        return True
+    vcs = registry.load('vcs', workspace.load_config(root))
+    head = _data(vcs.head(record['worktree'], root=root), 'HEAD')['sha']
+    from wuwei.brief import status
+    if not all(row.get('sha') == head for row in rows) or status(vcs, record['worktree'], root):
+        return True
+    complete_checks(item, [registry.Result(row['exit'], row.get('data'), row.get('reason', ''))
+                           for row in rows], root=root, expected=expected)
+    return True
+
+
+def complete_checks(item, results, *, root, expected=None):
+    if expected is None:
+        expected = state.read_state(root)['builds'][item]
+    record = dict(expected)
+    if record['status'] != 'check':
+        raise ValueError('build is not awaiting checks')
+    failures = []
+    if len(results) != len(record['commands']):
+        raise ValueError('incomplete fast checks')
+    for command, result in zip(record['commands'], results):
+        if not isinstance(result, registry.Result) or type(result.exit) is not int or result.exit not in (0, 1, 2):
+            raise ValueError('invalid check result')
+        if result.exit == 2:
+            raise ValueError(result.reason or 'fast check could not run')
+        if result.exit == 1:
+            failures.append((command, result.data))
+    if not failures:
+        record.update(status='done', action={'action': 'done'})
+    else:
+        signature = _signature(failures)
+        record['repeats'] = record['repeats'] + 1 if signature == record['signature'] else 1
+        record['signature'] = signature
+        config = workspace.load_config(root)
+        reason = ('same fast-check failure repeated' if record['repeats'] >= config['build']['stuck_after']
+                  else 'maximum build iterations reached' if record['iteration'] >= config['build']['max_iterations'] else None)
+        if reason:
+            _park(root, item, record, reason, expected)
+            return 1
+        from wuwei.brief import launch_prompt
+        from wuwei.security import agent_path
+        feedback = '\n'.join(f'{name}: {data}' for name, data in failures)
+        action = {'action': 'continue', 'feedback': feedback, 'resume': record.get('agent_id'),
+                  'agent_type': 'wuwei:builder',
+                  'prompt': launch_prompt(root / record['brief'], agent_path(root, 'builder'), root=root) + '\n\n' + feedback}
+        record.update(status='ready', action=action)
+    _save(item, record, root, 'build.checked', expected)
+    return 1 if failures else 0
+
+
+def check(item, *, root=None):
+    root = workspace.find_workspace(root)
+    record = state.read_state(root).get('builds', {}).get(item)
+    if record is None or record['status'] != 'check':
+        raise ValueError('build is not awaiting checks')
+    checks = registry.load('checks', workspace.load_config(root))
+    results = [checks.run(record['worktree'], command, root=root) for command in record['commands']]
+    return complete_checks(item, results, root=root, expected=record)
+
+
+def _park(root, item, record, reason, expected):
+    from wuwei import decision
+    text = (
+        f'Question: Park build {item}?\nContext: Iteration {record["iteration"]}: {reason}.\n'
+        'Options:\n| Option | Description |\n| --- | --- |\n'
+        '| defer | Defer work until the failure is investigated |\n'
+        '| retry | Continue spending the build budget |\n'
+        'Musts:\n| Criterion | defer | retry |\n| --- | --- | --- |\n'
+        '| Respect iteration limits | pass | fail |\n'
+        'Wants:\n| Criterion | Weight | defer | retry |\n| --- | --- | --- | --- |\n'
+        '| Preserve budget | 10 | 10 | 0 |\n'
+        'Recommendation: defer\nConfidence: high\nReversibility: two-way\n'
+        'Blast radius: own branch\nPre-mortem: Repeated failures consume the remaining budget.\n'
+        'Revisit: After investigating the failure and revising the brief.\n'
+        'Decided-by: seat\nOutcome: parked\n')
+    def update(data):
+        if data['builds'][item] != expected:
+            raise ValueError('build changed before parking')
+        path = decision.write(text, root)
+        record.update(status='parked', action={'action': 'park', 'reason': reason,
+                                               'decision': str(path.relative_to(root))})
+        data['builds'][item] = record
+        data['items'][item].update(phase='parked', status='blocked')
     state._write_state(update, root, reserved=False, kind='build.parked',
-                       payload={'item': item, 'iteration': iteration, 'reason': reason})
+                       payload={'item': item, 'iteration': record['iteration'], 'reason': reason})
 
 
 def run_loop(item, brief, worktree, *, root=None):
     try:
         root = workspace.find_workspace(root)
         config = workspace.load_config(root)
-        tree = Path(worktree).resolve(strict=True)
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', item):
-            print(f'build: invalid item {item}', file=sys.stderr)
-            return 1
-        if item not in state.read_state(root)['items']:
-            print(f'build: unknown item {item}', file=sys.stderr)
-            return 1
-        repo = next((row for row in config['repos'] if (root / row['path']).resolve() == tree), None)
-        if repo is None:
-            from wuwei.guards.commit_push import context
-            repo, _, _ = context(tree, {}, {}, root)
-        if not repo['fast_checks']:
-            raise ValueError('worktree has no configured fast checks')
+        if config['adapters']['runtime'] == 'claude':
+            raise ValueError('Claude builders require build next <item> in the planner session')
+        if brief is None or worktree is None:
+            raise ValueError('usage: build <item> <brief> <worktree> (Codex only)')
         runtime = registry.load('runtime', config)
-        checks = registry.load('checks', config)
-        previous = None
-        repeats = 0
-        job = None
-        for iteration in range(1, config['build']['max_iterations'] + 1):
-            iteration_start = time.monotonic()
-            if iteration == 1:
-                job = _data(runtime.dispatch('builder', brief, str(tree), True, root=root), 'dispatch')
+        while True:
+            record = state.read_state(root).get('builds', {}).get(item)
+            if record and record['status'] == 'running' and record.get('job'):
+                job = record['job']
             else:
-                job = _data(runtime.continue_job(job, feedback, root=root), 'continuation')
+                action = next_action(item, brief, worktree, root=root)
+                if action['action'] == 'done':
+                    return 0
+                if action['action'] == 'park':
+                    return 1
+                if action['action'] == 'check':
+                    check(item, root=root)
+                    continue
+                record = state.read_state(root)['builds'][item]
+                if action['action'] == 'launch':
+                    job = _data(runtime.dispatch('builder', brief, worktree, True, root=root), 'dispatch')
+                else:
+                    job = _data(runtime.continue_job(record['job'], action['feedback'], root=root), 'continuation')
+                previous = dict(record)
+                record.update(status='running', job=job, started_at=workspace.now().isoformat())
+                _save(item, record, root, 'build.launched', previous)
             deadline = time.monotonic() + config['build']['poll_timeout_seconds']
             while True:
                 status = _data(runtime.status(job, root=root), 'status')
@@ -109,46 +357,11 @@ def run_loop(item, brief, worktree, *, root=None):
                 if time.monotonic() >= deadline:
                     raise TimeoutError('runtime seat timed out')
                 time.sleep(config['build']['poll_interval_seconds'])
-            result = _data(runtime.result(job, root=root), 'result')
-            if not isinstance(result, dict):
-                raise ValueError('invalid runtime result')
-            reported = result.get('usage', {})
-            if not isinstance(reported, dict):
-                raise ValueError('malformed runtime usage')
-            for key in ('input_tokens', 'output_tokens'):
-                if key in reported and (type(reported[key]) is not int or reported[key] < 0):
-                    raise ValueError('malformed runtime usage')
-            if 'cost' in reported and (type(reported['cost']) not in (int, float) or reported['cost'] < 0):
-                raise ValueError('malformed runtime usage')
-            usage = {**reported, 'input_tokens': reported.get('input_tokens'),
-                     'output_tokens': reported.get('output_tokens'),
-                     'model': reported.get('model') or result.get('model') or status.get('model') or 'unreported',
-                     'duration': time.monotonic() - iteration_start}
-            state.append_event('seat.usage', {'item': item, 'role': 'builder', 'iteration': iteration,
-                                              'usage': usage}, root=root)
-            failures = []
-            for command in repo['fast_checks']:
-                check = checks.run(str(tree), command, root=root)
-                if not isinstance(check, registry.Result) or type(check.exit) is not int or check.exit not in (0, 1, 2):
-                    raise ValueError('invalid check result')
-                if check.exit == 2:
-                    raise RuntimeError(check.reason or 'fast check could not run')
-                if check.exit == 1:
-                    failures.append((command, check.data))
-            if not failures:
-                return 0
-            signature = _signature(failures)
-            repeats = repeats + 1 if signature == previous else 1
-            previous = signature
-            if repeats >= config['build']['stuck_after']:
-                _park(root, item, iteration, 'same fast-check failure repeated')
-                return 1
-            feedback = '\n'.join(f'{name}: {data}' for name, data in failures)
-        _park(root, item, config['build']['max_iterations'], 'maximum build iterations reached')
-        return 1
+            record_result(item, _data(runtime.result(job, root=root), 'result'),
+                          root=root, model=status.get('model'))
     except PortExit as exc:
         print(f'build: {exc}', file=sys.stderr)
         return exc.code
-    except (OSError, ValueError, RuntimeError, TimeoutError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         print(f'build: {exc}', file=sys.stderr)
         return 2

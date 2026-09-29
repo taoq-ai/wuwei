@@ -55,7 +55,7 @@ SCHEMA = {
               "remote": (str, "origin"),
               "prior_branch_pattern": (str, "*{item}*"),
               "full_path_patterns": [(str, "")]},
-    "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 1, 1),
+    "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 4, 1),
              "reservation_timeout_seconds": (int, 14400, 1)},
     "consolidation": {"archive_after_days": (int, 30, 0),
                       "similarity_threshold": (float, 0.85)},

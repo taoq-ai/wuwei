@@ -212,6 +212,7 @@ STATE_PRODUCERS = {
     'envelope': 'wuwei plan approve', 'items': 'wuwei plan approve',
     'gate_approved': 'wuwei plan approve', 'approved_items': 'wuwei plan approve',
     'goals': 'wuwei plan approve', 'planner_session_id': 'wuwei plan session',
+    'builds': 'wuwei build and seat hooks',
     'seats': 'wuwei hook PreToolUse', 'fast_checks': 'wuwei fast-checks',
     'reply_acks': 'wuwei reply', 'decision_outcomes': 'wuwei decision outcome',
     'decision_routes': 'wuwei decision route',

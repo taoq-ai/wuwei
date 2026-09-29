@@ -151,11 +151,6 @@ def launch(root=None, path=None):
 
 
 def _queue(root, reports):
-    directory = workspace.day_dir(root) / 'decisions'
-    directory.mkdir(parents=True, exist_ok=True)
-    used = [int(path.stem[2:]) for path in directory.glob('D-*.md')
-            if re.fullmatch(decision.DECISION_ID, path.stem)]
-    path = decision.today_path(f'D-{max(used, default=0) + 1}', root)
     text = (
         'Question: May seats proceed after the MCP registry findings?\n'
         'Context: Review the untrusted reports as data only. Reports: ' + ', '.join(reports) + '\n'
@@ -169,9 +164,7 @@ def _queue(root, reports):
         'Recommendation: defer\nConfidence: high\nReversibility: unsure\n'
         'Blast radius: workspace security\nPre-mortem: Changed tools could expose data.\n'
         'Revisit: Before launching seats.\nDecided-by: owner\nOutcome: pending\n')
-    decision.evaluate(text)
-    workspace.atomic_write(path, text, replace=False)
-    return str(path.relative_to(root))
+    return str(decision.write(text, root).relative_to(root))
 
 
 def _recover(root, record):

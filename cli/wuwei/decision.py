@@ -178,3 +178,15 @@ def today_path(decision_id, root, *, clarification=False):
 def route(fields):
     return ('seat' if fields['Reversibility'] == 'two-way'
             and fields['Blast radius'] in ('own branch', 'own PR') else 'owner')
+
+
+def write(text, root):
+    """Validate and allocate a numbered decision without replacing an existing record."""
+    evaluate(text)
+    directory = workspace.day_dir(root) / 'decisions'
+    directory.mkdir(parents=True, exist_ok=True)
+    used = [int(path.stem[2:]) for path in directory.glob('D-*.md')
+            if re.fullmatch(DECISION_ID, path.stem)]
+    path = today_path(f'D-{max(used, default=0) + 1}', root)
+    workspace.atomic_write(path, text, replace=False)
+    return path

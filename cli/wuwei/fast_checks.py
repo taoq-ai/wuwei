@@ -12,6 +12,12 @@ def record(path):
     root = workspace.find_workspace(path)
     repo, actual, vcs = context(path, {}, {}, root)
     records = {}
+    from wuwei.commands.build import check_binding
+    builds = [check_binding(item, build) for item, build in state.read_state(root).get('builds', {}).items()
+              if build['status'] == 'running' and Path(build['worktree']) == path]
+    if len(builds) > 1:
+        raise ValueError('multiple running builds share the check worktree')
+    binding = builds[0] if builds else None
 
     def save():
         state._write_state(
@@ -24,6 +30,8 @@ def record(path):
     sha = data(vcs.head(actual['path'], root=root))['sha']
     if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', sha):
         raise ValueError('invalid HEAD for fast checks')
+    from wuwei.brief import status
+    clean = not status(vcs, str(path), root) if binding else False
     code = 0
     for command in repo['fast_checks']:
         result = runner.run(str(path), command, root=root)
@@ -32,7 +40,9 @@ def record(path):
             raise ValueError('invalid fast-check result')
         if data(vcs.head(actual['path'], root=root))['sha'] != sha:
             raise ValueError('HEAD changed during fast checks; rerun checks')
-        records[command] = {'sha': sha, 'exit': result.exit}
+        records[command] = {'sha': sha, 'exit': result.exit, 'data': result.data,
+                            'reason': result.reason, 'worktree': str(path), 'build': binding,
+                            'clean': clean and not status(vcs, str(path), root)}
         code = max(code, result.exit)
     save()
     return code
