@@ -533,3 +533,94 @@ def test_bash_quoted_gate_path_with_spaces(tmp_path):
                                 'tool_input': {'command': f'cat > "{path}"'}})
     assert code == 1
     assert 'file:line' in message
+
+
+@pytest.fixture
+def registered_stop(tmp_path):
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    from wuwei import state
+    from wuwei.workspace import day_dir
+    directory = day_dir(tmp_path)
+    relative = (directory / 'briefs/review-1.md').relative_to(tmp_path).as_posix()
+    state._write_state(lambda data: data.update(seats={'review-1': {
+        'id': 'review-1', 'role': 'sentinel-quality', 'item': 'X',
+        'brief': relative, 'status': 'stopped'}}), tmp_path, reserved=False)
+    transcript = tmp_path / 'agent.jsonl'
+    transcript.write_text(json.dumps({'type': 'user', 'message': {
+        'content': [{'type': 'text', 'text': 'WUWEI brief: ' + relative}]}}) + '\n')
+    path = directory / 'decisions/gate-review-1.md'
+    path.parent.mkdir()
+    path.write_text(PASS + 'Simplicity: none\nDesign: none\n')
+    return {'cwd': str(tmp_path), 'hook_event_name': 'SubagentStop',
+            'agent_id': 'runtime-id', 'agent_type': 'wuwei:sentinel-quality',
+            'agent_transcript_path': str(transcript), 'stop_hook_active': False}, path
+
+
+@pytest.mark.parametrize('case,code,hint', [
+    ('security', 0, ''), ('same-role', 0, ''), ('prefix', 0, ''),
+    ('missing-row', 1, 'Design:'), ('unreadable', 2, 'could not read'),
+    ('missing-file', 0, ''), ('missing-transcript', 2, 'agent_transcript_path'),
+    ('bad-transcript', 2, 'verdict lint'), ('no-reservation', 2, 'reservation'),
+    ('wrong-role', 2, 'role'), ('next-day', 0, ''), ('outside', 0, ''),
+    ('builder', 0, ''), ('active', 0, ''), ('outside-override', 0, ''),
+    ('worktree', 1, 'Design:'),
+])
+def test_stop_lints_only_registered_seat(registered_stop, tmp_path, monkeypatch, case, code, hint):
+    from pathlib import Path
+    from wuwei import state
+    from wuwei.guards.verdict import check_write
+    payload, path = registered_stop
+    if case == 'security':
+        (path.parent / 'gate-security.md').write_text(PASS)
+    if case == 'same-role':
+        (path.parent / 'gate-other-quality.md').write_text(PASS)
+    if case == 'prefix':
+        (path.parent / 'gate-review-10.md').write_text('invalid')
+    if case in ('missing-row', 'active'):
+        path.write_text(PASS + 'Simplicity: none\n')
+    if case == 'unreadable':
+        path.write_bytes(b'\xff')
+    if case == 'missing-file':
+        path.unlink()
+    if case == 'missing-transcript':
+        del payload['agent_transcript_path']
+    if case == 'bad-transcript':
+        Path(payload['agent_transcript_path']).write_text('{}\n{broken')
+    if case == 'no-reservation':
+        state._write_state(lambda data: data.update(seats={}), tmp_path, reserved=False)
+    if case == 'wrong-role':
+        payload['agent_type'] = 'sentinel-security'
+    if case == 'next-day':
+        monkeypatch.setenv('WUWEI_NOW', '2099-01-01T00:01:00+00:00')
+        other = tmp_path / '.wuwei/days/2099-01-01/decisions/gate-review-1.md'
+        other.parent.mkdir(parents=True)
+        other.write_text('invalid')
+    if case in ('outside', 'outside-override', 'worktree'):
+        outside = tmp_path.parent / (tmp_path.name + '-outside')
+        outside.mkdir()
+        payload['cwd'] = str(outside)
+        if case == 'worktree':
+            (outside / '.git').mkdir()
+            (outside / '.git/wuwei-workspace').write_text(str(tmp_path))
+            path.write_text(PASS + 'Simplicity: none\n')
+        else:
+            del payload['agent_transcript_path']
+        if case == 'outside-override':
+            monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    if case == 'builder':
+        payload['agent_type'] = 'builder'
+        del payload['agent_transcript_path']
+    if case == 'active':
+        payload['stop_hook_active'] = True
+    result, message = check_write(payload)
+    assert result == code, message
+    assert hint in message
+    if case in ('missing-row', 'unreadable', 'worktree'):
+        assert path.name in message
+    records = [json.loads(line) for line in
+               (path.parent.parent / 'events.jsonl').read_text().splitlines()]
+    rejected = [row['payload']['file'] for row in records if row['kind'] == 'verdict.rejected']
+    if case in ('missing-row', 'unreadable', 'active', 'worktree'):
+        assert rejected == [str(path)]
+    elif not code:
+        assert rejected == []

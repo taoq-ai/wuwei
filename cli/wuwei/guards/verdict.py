@@ -36,11 +36,16 @@ def is_gate(path):
 
 
 def check_write(payload):
-    from wuwei.workspace import day_dir, find_workspace
+    from wuwei.workspace import day_dir, find_workspace, guard_scope
 
     root, path = None, '<unknown>'
     try:
-        root = workspace_root(payload)
+        role = payload.get('agent_type', '')
+        role = role.rsplit(':', 1)[-1] if isinstance(role, str) else ''
+        stop = payload.get('hook_event_name') == 'SubagentStop'
+        if stop and not role.startswith('sentinel-'):
+            return CLEAN, ''
+        root = guard_scope(payload) if stop else workspace_root(payload)
         tool_input = payload.get('tool_input')
         if root is None and payload.get('tool_name') != 'Bash' and isinstance(tool_input, dict):
             target = tool_input.get('notebook_path', tool_input.get('file_path'))
@@ -54,11 +59,6 @@ def check_write(payload):
         if root is None:
             return CLEAN, ''
         cwd = required_text(payload, 'cwd')
-        role = payload.get('agent_type', '')
-        role = role.rsplit(':', 1)[-1] if isinstance(role, str) else ''
-        stop = payload.get('hook_event_name') == 'SubagentStop'
-        if stop and not role.startswith('sentinel-'):
-            return CLEAN, ''
         if not stop and not isinstance(tool_input, dict):
             raise ValueError('missing or invalid tool_input')
         results = []
@@ -75,7 +75,11 @@ def check_write(payload):
                     results.append(record_rejection(path, FINDINGS,
                                    'verdict lint: opaque interpreter gate write', root=root))
                     break
-        if stop or bash:
+        if stop:
+            from wuwei.guards.agent_launch import stopping_seat
+            directory, name, role = stopping_seat(payload, root)
+            paths = sorted((directory / 'decisions').glob(f'[gG][aA][tT][eE]-{name}.[mM][dD]'))
+        elif bash:
             paths = sorted((day_dir(root) / 'decisions').glob('[gG][aA][tT][eE]-*.[mM][dD]'))
         else:
             key = 'notebook_path' if 'notebook_path' in tool_input else 'file_path'
@@ -83,11 +87,12 @@ def check_write(payload):
         for path in paths:
             if not is_gate(path):
                 continue
-            results.append(lint_file(path, role=role, root=root))
+            code, message = lint_file(path, role=role, root=root)
+            results.append((code, f'{path}: {message}' if stop and code else message))
         return (CLEAN, '') if stop and payload.get('stop_hook_active') else (
                 max((code for code, _ in results), default=CLEAN),
                 '\n'.join(message for code, message in results if code))
-    except (OSError, ValueError, RuntimeError) as exc:
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
         message = f'verdict lint: {exc}'
         return record_rejection(path, UNRUN, message, root=root) if root else (UNRUN, message)
 

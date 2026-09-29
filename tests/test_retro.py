@@ -195,12 +195,22 @@ def test_retro_outside_workspace_is_irrelevant(seat, tmp_path):
                                  'plugin:wuwei:sentinel-security', 'wuwei:sentinel-goal',
                                  'wuwei:sentinel-custom', 'builder'])
 @pytest.mark.parametrize('active', [False, True])
-def test_sentinel_stop_lints_daily_gates(seat, tmp_path, monkeypatch, capsys, role, active):
+def test_sentinel_stop_lints_owned_gate(seat, tmp_path, monkeypatch, capsys, role, active):
+    (tmp_path / '.wuwei/config.toml').write_text('')
     from wuwei.__main__ import main
     from wuwei.workspace import day_dir
     directory = day_dir(tmp_path) / 'decisions'
     directory.mkdir(parents=True)
-    for name in ('gate-first.md', 'GaTe-second.MD'):
+    from wuwei import state
+    relative = (directory.parent / 'briefs/seat-one.md').relative_to(tmp_path).as_posix()
+    state._write_state(lambda data: data.update(seats={'seat-one': {
+        'id': 'seat-one', 'role': role.rsplit(':', 1)[-1], 'item': 'X',
+        'brief': relative, 'status': 'running'}}), tmp_path, reserved=False)
+    transcript = tmp_path / 'agent.jsonl'
+    transcript.write_text(json.dumps({'type': 'user', 'message': {
+        'content': 'WUWEI brief: ' + relative}}) + '\n')
+    seat['agent_transcript_path'] = str(transcript)
+    for name in ('GaTe-seat-one.MD', 'gate-other.md'):
         (directory / name).write_text('Verdict: FIX')
     seat.update(agent_type=role, stop_hook_active=active)
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(seat)))
@@ -210,6 +220,8 @@ def test_sentinel_stop_lints_daily_gates(seat, tmp_path, monkeypatch, capsys, ro
     if sentinel and not active:
         assert json.loads(output.out)['decision'] == 'block'
         assert 'file:line' in output.err
+        assert 'GaTe-seat-one.MD' in output.err
+        assert 'gate-other.md' not in output.err
     rejected = [event for event in events(seat) if event['kind'] == 'verdict.rejected']
     assert {event['payload']['file'] for event in rejected} == (
-        {str(path) for path in directory.iterdir()} if sentinel else set())
+        {str(directory / 'GaTe-seat-one.MD')} if sentinel else set())
