@@ -10,6 +10,7 @@ from wuwei.state import append_event
 FREE_KINDS = frozenset({'note'})
 EVENT_PRODUCERS = {
     'build.started': 'wuwei build next', 'build.launched': 'wuwei build',
+    'build.fix_opened': 'wuwei pr act',
     'build.checked': 'wuwei build check',
     'build.requested': 'wuwei dispatch discovery',
     'seat.usage': 'wuwei build or SubagentStop',
@@ -30,7 +31,8 @@ EVENT_PRODUCERS = {
     'decision.routed': 'wuwei decision route',
     'scanner.finding': 'wuwei scanner or security recorder',
     'watch: clock': 'wuwei watch', 'pr.disposition': 'wuwei pr disposition',
-    'pr.action': 'wuwei pr state',
+    'pr.action': 'wuwei pr state', 'pr.action.done': 'wuwei pr act',
+    'pr.reply.drafted': 'wuwei pr act', 'pr.action.decision': 'wuwei pr act',
     'pr.review_posted': 'wuwei pr ping', 'pr.raised': 'wuwei pr raise',
     'pr.claimed': 'wuwei pr claim',
     'pr.reviewers_selected': 'wuwei pr ping',

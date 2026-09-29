@@ -25,6 +25,10 @@ class UnknownCommit(ValueError):
     pass
 
 
+class RebaseConflict(ValueError):
+    pass
+
+
 def _operation(function):
     @wraps(function)
     def call(*args, **kwargs):
@@ -32,6 +36,8 @@ def _operation(function):
             return Result(0, function(*args, **kwargs))
         except UnknownCommit:
             return Result(1, None, 'git.resolve: unknown commit')
+        except RebaseConflict:
+            return Result(1, None, 'git.rebase: conflicts require resolution in the item worktree')
         except (OSError, subprocess.SubprocessError, ValueError, TypeError, IndexError, RecursionError) as exc:
             detail = str(exc) if type(exc) is ValueError else type(exc).__name__
             reason = f'git.{function.__name__}: could not run: {detail}'
@@ -78,7 +84,9 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False):
             allowed = True
         case ('var', 'GIT_AUTHOR_IDENT' | 'GIT_COMMITTER_IDENT'):
             allowed = True
-        case ('rev-parse', '--verify', 'HEAD^{commit}'):
+        case ('rev-parse', '--verify', 'HEAD^{commit}' | 'FETCH_HEAD^{commit}'):
+            allowed = True
+        case ('rev-parse', '--git-path', 'rebase-merge' | 'rebase-apply'):
             allowed = True
         case ('rev-parse', '--verify', '--quiet', rev):
             allowed = isinstance(rev, str) and (bool(re.fullmatch(r'[0-9a-fA-F]{7,64}\^\{commit\}', rev))
@@ -114,6 +122,20 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False):
         case ('worktree', 'add', '-b', branch, '--', path):
             allowed = (bool(_revision(branch)) and isinstance(path, str) and
                        bool(path) and '\0' not in path)
+        case ('rebase', '--', ref):
+            allowed = bool(_revision(ref))
+        case ('fetch', '--no-tags', remote, branch):
+            allowed = (bool(re.fullmatch(r'[A-Za-z0-9_.-]+', remote)) and not remote.startswith('-')
+                       and bool(re.fullmatch(r'[A-Za-z0-9_./-]+', branch))
+                       and not branch.startswith('-') and '..' not in branch)
+        case ('push', lease, remote, refspec):
+            matched = re.fullmatch(r'HEAD:refs/heads/([A-Za-z0-9_./-]+)', refspec)
+            allowed = (bool(matched) and '..' not in matched[1] and
+                       lease.startswith('--force-with-lease=' + matched[1] + ':') and
+                       bool(re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}',
+                                         lease.split(':', 1)[-1])) and
+                       bool(re.fullmatch(r'[A-Za-z0-9_.-]+', remote)) and
+                       not remote.startswith('-'))
     if not allowed:
         raise ValueError('unsupported git command')
     if not os.fspath(repo):
@@ -144,6 +166,11 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False):
         return ''
     if result.returncode == 1 and args[:3] == ('rev-parse', '--verify', '--quiet'):
         raise UnknownCommit()
+    if result.returncode == 1 and args[:1] == ('rebase',):
+        if any(Path(_run(repo, 'rev-parse', '--git-path', name).strip()).exists()
+               for name in ('rebase-merge', 'rebase-apply')):
+            raise RebaseConflict()
+        raise ValueError(result.stderr.decode('utf-8', errors='replace').strip() or 'git rebase exited 1')
     if result.returncode:
         raise ValueError(f'git exited {result.returncode}')
     return result.stdout.decode('utf-8', errors='surrogateescape')
@@ -193,6 +220,29 @@ def head(repo, root=None):
 @_operation
 def merge_base(repo, ref, root=None):
     return {'sha': _sha(_run(repo, 'merge-base', 'HEAD', _revision(ref)))}
+
+
+@_operation
+def rebase(repo, ref, root=None):
+    _run(repo, 'rebase', '--', _revision(ref))
+    return {'rebased': True}
+
+
+@_operation
+def fetch(repo, remote, branch, expected, root=None):
+    expected = _sha(expected)
+    _run(repo, 'fetch', '--no-tags', remote, branch)
+    actual = _sha(_run(repo, 'rev-parse', '--verify', 'FETCH_HEAD^{commit}'))
+    if actual != expected:
+        raise ValueError('fetched base differs from current PR base')
+    return {'sha': actual}
+
+
+@_operation
+def push(repo, remote, branch, expected, root=None):
+    _run(repo, 'push', f'--force-with-lease={branch}:{expected}', remote,
+         'HEAD:refs/heads/' + branch)
+    return {'pushed': True}
 
 
 def _records(value):

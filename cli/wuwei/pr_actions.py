@@ -1,8 +1,10 @@
 """Fresh PR ownership state, action deadlines and verified owner dispositions."""
 
 from datetime import timedelta
+import json
+import re
 
-from wuwei import decision, obligations, state, watch, workspace
+from wuwei import decision, obligations, registry, state, watch, workspace
 from wuwei.references import pull_request
 
 
@@ -166,6 +168,7 @@ def observe(root, host, ref, config, measured):
             row['state'] = 'review_stale'
         action, dispatch = ACTIONS.get(row['state'], ('', {}))
         row.update(action=action, dispatch=dispatch, deadline=None, overdue=False)
+        completed = False
         if action:
             if episode is None or episode['state'] != row['state']:
                 episode = {'state': row['state'], 'action': action, 'created_at': now.isoformat(),
@@ -175,14 +178,24 @@ def observe(root, host, ref, config, measured):
                 raise ValueError('invalid action deadline')
             actions[ref] = episode
             row.update(deadline=episode['deadline'], overdue=now > deadline)
+            done = data.get('pr_action_done', {}).get(ref)
+            if done is not None and (not isinstance(done, dict) or not isinstance(done.get('head'), str)
+                    or not isinstance(done.get('from_head'), str)
+                    or not isinstance(done.get('created_at'), str)):
+                raise ValueError('invalid PR action completion')
+            completed = (done is not None and done['created_at'] == episode['created_at']
+                         and done['state'] == row['state']
+                         and done['from_head'] == measured['pr']['head'])
             tier = ('page' if now >= deadline + (deadline - created) else
                     'nudge' if now > deadline else 'silent')
-            if not row['parked'] and tier != 'silent' and episode.get('tier', 'silent') != tier:
+            if not completed and not row['parked'] and tier != 'silent' and episode.get('tier', 'silent') != tier:
                 event.update(tier=tier, state=row['state'], action=action, deadline=episode['deadline'])
                 episode['tier'] = tier
         else:
             actions.pop(ref, None)
-        row['exit'] = int(bool(action) and not row['parked'])
+        if completed:
+            row.update(overdue=False, deadline=None, action='')
+        row['exit'] = int(bool(action) and not row['parked'] and not completed)
     state._write_state(update, root, reserved=False, kind='pr.action', payload=event)
     return row
 
@@ -211,13 +224,209 @@ def evaluate(root, refs=None):
     return max((row['exit'] for row in rows), default=0), rows
 
 
-def act(root, ref):
+def _item(root, ref):
+    matches = [(name, row) for name, row in state.read_state(root)['items'].items()
+               if row.get('pr') == ref]
+    if len(matches) != 1:
+        raise ValueError('owned PR needs exactly one linked item')
+    name, item = matches[0]
+    tree = item.get('worktree')
+    if not isinstance(tree, str) or not tree:
+        raise ValueError('linked item has no worktree')
+    path = (root / tree).resolve(strict=True)
+    if not path.is_dir():
+        raise ValueError('linked item worktree is missing')
+    return name, path
+
+
+def _rebase(root, ref, item, tree, *, resume=False):
+    from wuwei import fast_checks, registry
+    from wuwei.guards import commit_push
+    config = workspace.load_config(root)
+    host = registry.load('code_host', config)
+    measured = watch.evidence(host, ref, root)
+    pr = measured['pr']
+    if pr['mergeable'] is not False:
+        raise ValueError('PR is no longer conflicted; refresh its action')
+    if (not re.fullmatch(r'[A-Za-z0-9_./-]+', pr['branch'])
+            or pr['branch'].startswith('-') or '..' in pr['branch']):
+        raise ValueError('invalid PR branch')
+    vcs = registry.load('vcs', config)
+    repo, actual, _ = commit_push.context(tree, {}, {}, root)
+    if repo['name'] != pr['repo']:
+        raise ValueError('item worktree belongs to another PR repository')
+    local = commit_push.data(vcs.head(str(tree), root=root))['sha']
+    if not resume and local != pr['head']:
+        raise ValueError('item worktree HEAD differs from PR head')
+    if resume and local == pr['head']:
+        raise ValueError('resolved rebase has not changed the PR head')
+    branch = commit_push.data(vcs.branch(str(tree), root=root))['name']
+    if branch != pr['branch']:
+        raise ValueError('item worktree branch differs from PR branch')
+    base_sha = pr['base_sha']
+    if not isinstance(base_sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', base_sha):
+        raise ValueError('invalid PR base SHA')
+    if not resume:
+        fetched = commit_push.data(vcs.fetch(str(tree), config['brief']['remote'],
+                                             pr['base'], base_sha, root=root))
+        if fetched.get('sha') != base_sha:
+            raise ValueError('fetched base differs from current PR base')
+        result = vcs.rebase(str(tree), base_sha, root=root)
+        if isinstance(result, registry.Result) and result.exit == 1:
+            print(result.reason or 'rebase did not complete')
+            return 1
+        commit_push.data(result)
+    checked = fast_checks.record(tree)
+    if checked:
+        print('rebase fast checks did not pass')
+        return checked
+    head = commit_push.data(vcs.head(str(tree), root=root))['sha']
+    if head == pr['head']:
+        raise ValueError('rebase did not change PR head')
+    base = commit_push.data(vcs.merge_base(str(tree), base_sha, root=root))['sha']
+    if base != base_sha:
+        raise ValueError('resolved rebase does not contain the current PR base')
+    push = commit_push.data(vcs.push_context(str(tree), config['brief']['remote'],
+        ['HEAD:refs/heads/' + pr['branch']], root=root))
+    # The push context has no force refspec; the expected PR head is the lease guard.
+    code, reason = commit_push.push_check(repo, actual, push, root, vcs)
+    if code:
+        print(reason)
+        return code
+    result = vcs.push(str(tree), config['brief']['remote'], pr['branch'], pr['head'], root=root)
+    if result.exit:
+        print(result.reason or 'push did not complete')
+        return result.exit
+    episode = state.read_state(root).get('watch', {}).get('actions', {}).get(ref)
+    if not isinstance(episode, dict) or episode.get('state') != 'conflicted':
+        raise ValueError('conflict action changed before completion')
+    record = {'state': 'conflicted', 'head': head, 'from_head': pr['head'],
+              'created_at': episode['created_at'],
+              'item': item}
+    state._write_state(lambda data: data.setdefault('pr_action_done', {}).update({ref: record}),
+                       root, reserved=False, kind='pr.action.done', payload={'pr': ref, **record})
+    print(json.dumps({'action': 'done', 'pr': ref, 'item': item, 'head': head}))
+    return 0
+
+
+def _fix(root, ref, item, measured, feedback=None):
+    from wuwei.commands import build
+    if state.read_state(root)['items'][item]['phase'] == 'delta':
+        print(json.dumps({'action': 'gate', 'item': item, 'gate': 'arch_delta'}))
+        return 1
+    red = [row for row in measured['checks'] if row['state'] == 'completed'
+           and row['conclusion'] not in ('success', 'neutral', 'skipped')]
+    if feedback is None and red:
+        feedback = '\n'.join(f'{row["name"]}: {row["conclusion"]} {row.get("url", "")}' for row in red)
+    elif feedback is None:
+        feedback = '\n'.join(row['body'] for row in measured['reviews']
+                             if row['state'] == 'changes_requested' and row['body'].strip())
+        if not feedback:
+            raise ValueError('review fix request has no feedback')
+    action = build.open_fix(item, feedback, root=root)
+    print(json.dumps(action, sort_keys=True))
+    return 1
+
+
+def _thread(root, ref, item, measured, reply=None):
+    from wuwei import outward, registry
+    config = workspace.load_config(root)
+    me = obligations._owner_login(config)
+    owed = obligations._replies(measured['reviews'], measured['threads'], me,
+                                obligations._ledger(state.read_state(root)).get(ref, {}))
+    pending = None
+    for key in owed:
+        surface, target = key.split(':', 1)
+        if surface not in ('thread', 'review', 'comment'):
+            continue
+        thread = (next(row for row in measured['threads']['threads'] if row['id'] == target)
+                  if surface == 'thread' else None)
+        latest = (thread['comments'][-1] if thread else next(row for row in
+                  (measured['reviews'] if surface == 'review' else measured['threads']['comments'])
+                  if str(row['id']) == target))
+        text = latest['body']
+        if re.search(r'\b(scope|out of scope|disagree|instead)\b', text, re.I):
+            fingerprint = obligations._fingerprint(latest)
+            prior = state.read_state(root).get('pr_action_decisions', {}).get(ref, {}).get(key)
+            if prior is not None and prior.get('fingerprint') == fingerprint:
+                path = root / prior['path']
+                if not path.is_file():
+                    raise ValueError('recorded scope decision is missing')
+                pending = pending or ({'action': 'owner_decision', 'decision': prior['path']}, 1)
+                continue
+            path = decision.write(
+                f'Question: How should {ref} thread {target} change scope?\n'
+                f'Context: Reviewer wrote: {json.dumps(text)}\nOptions:\n| Option | Description |\n'
+                '| --- | --- |\n| change | Make the requested scope change |\n'
+                '| defer | Defer until the owner decides |\nMusts:\n'
+                '| Criterion | change | defer |\n| --- | --- | --- |\n'
+                '| Owner scope decision | fail | pass |\nWants:\n'
+                '| Criterion | Weight | change | defer |\n| --- | --- | --- | --- |\n'
+                '| Avoid unapproved scope | 10 | 0 | 10 |\nRecommendation: defer\n'
+                'Confidence: medium\nReversibility: unsure\nBlast radius: own PR\n'
+                'Pre-mortem: Scope changes without owner review.\n'
+                'Revisit: After owner decision.\nDecided-by: owner\nOutcome: pending\n', root)
+            relative = str(path.relative_to(root))
+            state._write_state(lambda data: data.setdefault('pr_action_decisions', {})
+                               .setdefault(ref, {}).update({key: {'path': relative,
+                                                                    'fingerprint': fingerprint}}),
+                               root, reserved=False, kind='pr.action.decision',
+                               payload={'pr': ref, 'surface': surface, 'target': target})
+            print(json.dumps({'action': 'owner_decision', 'decision': str(path.relative_to(root))}))
+            return 1
+        if re.search(r'\b(fix|change|update|correct)\b', text, re.I):
+            return _fix(root, ref, item, measured, feedback=text)
+        if reply is None:
+            print(json.dumps({'action': 'reply', 'pr': ref, 'surface': surface,
+                              'thread': target, 'question': text}))
+            return 1
+        if not reply.strip():
+            raise ValueError('reply needs a nonempty body')
+        context = {'ref': ref, 'thread': target} if thread else {'ref': ref}
+        channel_kind = 'code_host'
+        code, tier = outward.classify(reply, root, config, context, kind=channel_kind)
+        if type(code) is not int or code not in (0, 1, 2) or tier not in ('send', 'draft'):
+            raise ValueError('invalid outward tier result')
+        if code == 0 and tier == 'send':
+            return obligations.reply(ref, surface,
+                thread['comments'][0]['id'] if thread else latest['id'], reply, root)
+        draft = {'surface': surface, 'thread': target, 'body': reply, 'source_id': latest['id']}
+        if draft in state.read_state(root).get('pr_reply_drafts', {}).get(ref, []):
+            pending = pending or ({'action': 'draft_reply', 'pr': ref, **draft}, 1)
+            if code == 2:
+                pending = (pending[0], 2)
+            continue
+        state._write_state(lambda data: data.setdefault('pr_reply_drafts', {}).setdefault(ref, [])
+                           .append(draft), root, reserved=False, kind='pr.reply.drafted',
+                           payload={'pr': ref, 'thread': target})
+        print(json.dumps({'action': 'draft_reply', 'pr': ref, **draft}))
+        if code == 2:
+            print('outward tier unmeasured; reply kept as a draft')
+        return 2 if code == 2 else 1
+    if pending is not None:
+        action, code = pending
+        print(json.dumps(action))
+        if code == 2:
+            print('outward tier unmeasured; reply kept as a draft')
+        return code
+    raise ValueError('no unanswered review thread found')
+
+
+def act(root, ref, *, run=False, complete=False, reply=None):
     """Execute safe PR actions and surface work requiring a builder or owner."""
     ref = pull_request(ref)
     _, rows = evaluate(root, [ref])
     row, = rows
     if row['exit'] == 2:
         print(row['reason'])
+        return 2
+    if row['exit'] == 0:
+        return 0
+    if (run or complete) and row['state'] != 'conflicted':
+        print('--run and --complete require a conflicted PR')
+        return 2
+    if reply is not None and row['state'] not in ('changes_requested', 'threads_unanswered'):
+        print('--reply requires an unanswered review question')
         return 2
     if row['parked'] or row['state'] in ('merged', 'waiting'):
         return 0
@@ -230,5 +439,26 @@ def act(root, ref):
     if row['state'] == 'review_stale':
         from wuwei import shepherd
         return shepherd.post_review_request(root, ref)
+    if row['state'] in ('conflicted', 'ci_red', 'changes_requested', 'threads_unanswered'):
+        try:
+            item, tree = _item(root, ref)
+            if row['state'] == 'conflicted':
+                if run or complete:
+                    return _rebase(root, ref, item, tree, resume=complete)
+                print(json.dumps({'action': 'rebase', 'pr': ref, 'item': item,
+                                  'worktree': str(tree), 'steps': row['dispatch']['steps'],
+                                  'run': f'wuwei pr act {ref} --run',
+                                  'after_conflict': f'wuwei pr act {ref} --complete'}))
+                return 1
+            if run or complete:
+                raise ValueError('--run and --complete apply only to a conflicted PR')
+            config = workspace.load_config(root)
+            measured = watch.evidence(registry.load('code_host', config), ref, root)
+            if row['state'] == 'ci_red':
+                return _fix(root, ref, item, measured)
+            return _thread(root, ref, item, measured, reply)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+            print(f'{ref}: PR action unmeasured: {exc}')
+            return 2
     print(f'{ref}: {row["action"]}')
     return 1

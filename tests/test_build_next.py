@@ -69,6 +69,11 @@ def test_claude_stop_records_available_usage(seat):
                         'cost': 'unmeasured', 'model': 'sonnet', 'duration': 3.2}
 
 
+def test_unknown_build_item_exits_two(seat, capsys):
+    assert main(['build', 'next', 'missing']) == 2
+    assert 'build: unknown item' in capsys.readouterr().err
+
+
 def test_agent_launch_refuses_role_assigned_to_codex(seat):
     root, _, _, _, _ = seat
     state._write_state(lambda data: data.update(seat_policy={
