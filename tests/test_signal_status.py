@@ -186,6 +186,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'scanner.finding': 'page', 'state.write': 'silent', 'state.set': 'silent',
                 'state.transition': 'silent', 'seat stopped': 'silent',
                 'seat launched': 'silent', 'brief written': 'silent',
+                'brief.pack': 'silent', 'brief.answer': 'silent',
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
                 'seat.usage': 'silent', 'build.parked': 'nudge',
                 'retro.gap': 'nudge', 'seat stop unmatched': 'nudge',

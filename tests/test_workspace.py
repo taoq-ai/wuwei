@@ -138,7 +138,9 @@ def test_config_defaults_and_independence(tmp_path):
                      'authors': {}},
         'retro': {'repo': '.', 'charter_paths': ['.wuwei/charters'],
                   'changelog': '.wuwei/memory/CHANGELOG.md'},
-        'brief': {'remote': 'origin',
+        'calendar': {'url': ''},
+        'brief': {'lead_minutes': 30, 'style': {'length': 'standard', 'speed': 180},
+                  'remote': 'origin',
                   'prior_branch_pattern': '*{item}*',
                   'full_path_patterns': []},
         'boundary': {}, 'environments': {},
@@ -146,7 +148,8 @@ def test_config_defaults_and_independence(tmp_path):
         'adapters': {'tracker': 'none', 'chat': 'none', 'review_bot': 'none',
                      'runtime': 'claude', 'scanner': 'none',
                      'code_host': 'github', 'vcs': 'git', 'host': 'local',
-                     'checks': 'local'},
+                     'checks': 'local', 'tts': 'say' if sys.platform == 'darwin' else 'none', 'calendar': 'none',
+                     'transcripts': 'none'},
     }
     outward['patterns'].append('changed')
     assert 'changed' not in load_config(tmp_path)['outward']['patterns']

@@ -83,10 +83,24 @@ fast_checks = ["python3 -m pytest -q"]
 | `adapters.vcs` | `"git"` | Version control: git. |
 | `adapters.host` | `"local"` | Host measurement: local or none. |
 | `adapters.checks` | `"local"` | Fast check execution: local or none. |
+| `adapters.tts` | `"say"` on macOS, `"none"` elsewhere | Speech output for owner packs. `none` writes a text pack with an explicit no-audio note. |
+| `adapters.calendar` | `"none"` | Meeting source: none or a private ICS feed. |
+| `adapters.transcripts` | `"none"` | Meeting transcript source. |
+| `calendar.url` | `""` | Private HTTPS ICS URL. `WUWEI_CALENDAR_URL` overrides this setting. Keep the URL secret. |
+| `brief.lead_minutes` | `30` | Meeting pack window before an event with attendees. |
+| `brief.style.length` | `"standard"` | `standard` or `concise` pack text. |
+| `brief.style.speed` | `180` | Speech rate in words per minute for `say`. |
 | `brief.remote` | `"origin"` | Git remote used for a brief. |
 | `brief.prior_branch_pattern` | `"*{item}*"` | Branch match, with lowercased item substituted. |
 | `brief.full_path_patterns` | `[]` | Owner supplied regexes for paths needing full context. |
 | `chat.identity` | `"connector"` | Optional CLI default: connector or custom_app. This key is not in the template. |
+
+Run `bin/wuwei brief pack` once for a daily text pack, or `bin/wuwei brief pack --meeting`
+inside the lead window for the next attendee meeting. The returned path contains the
+five fixed sections, a what-changed visual, a three-bullet card and a three-question
+drill. Answer with `bin/wuwei brief answer 1 "your answer"`; the command prints feedback
+and records the score and streak. The existing `bin/wuwei brief ROLE ITEM NAME` command
+continues to write seat briefs.
 
 When the approved item's `flags.agent_surface` is true, `bin/wuwei dispatch receive`
 runs the scanner for the security sentinel's reviewed worktree, including delta reviews.
