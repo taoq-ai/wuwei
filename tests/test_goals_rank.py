@@ -180,7 +180,7 @@ def test_discover_reads_ports_and_skips_day_items(tmp_path, monkeypatch):
 
     result = discover(tmp_path, ports={'review_bot': Bot(), 'code_host': Host()})
     assert [row['id'] for row in result['candidates']] == ['x/y#1:thread:t1']
-    assert result['sources']['tracker'].startswith('not implemented:')
+    assert result['sources']['tracker'].startswith('not configured:')
     assert result['sources']['scanner'].startswith('not configured:')
 
 

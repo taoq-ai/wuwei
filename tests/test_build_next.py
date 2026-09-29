@@ -59,10 +59,14 @@ def stop(seat, agent_id='agent-builder'):
         'last_assistant_message': 'Blocked: none\nGap: none\nChange: none'})
 
 
-def test_claude_launch_check_continue_done_idempotent(seat):
+def test_claude_launch_check_continue_done_idempotent(seat, monkeypatch):
     root, repo, path, day, results = seat
+    from wuwei import dispatch
+    tracker_calls = []
+    monkeypatch.setattr(dispatch, 'tracker_call', lambda *args: tracker_calls.append(args))
     action = build.next_action('A', root=root)
     assert action['action'] == 'launch'
+    assert tracker_calls == [('A', 'claim', root)]
     assert action['prompt'].splitlines()[0] == 'WUWEI brief: ' + str(path.relative_to(root))
     before = (day / 'events.jsonl').read_bytes()
     assert build.next_action('A', root=root) == action

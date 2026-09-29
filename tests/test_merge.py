@@ -349,11 +349,37 @@ def merged(case):
     return root, host
 
 
+def test_merge_done_uses_item_from_merge_day(case, monkeypatch):
+    root, _ = merged(case)
+    from wuwei import dispatch
+    calls = []
+    monkeypatch.setattr(dispatch, 'tracker_call', lambda *args: calls.append(args))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:00:00Z')
+    assert state.read_state(root)['items'] == {}
+    assert policy().poll(root) == 0
+    assert calls == [('item-7', 'done', root)]
+
+
+def test_merge_without_linked_item_records_tracker_miss(case):
+    root, _ = merged(case)
+    state._write_state(lambda data: data['items']['item-7'].update(pr='example/project#8'),
+                       root, reserved=False)
+    assert policy().poll(root) == 0
+    assert any(event['kind'] == 'tracker.call' and event['payload']['action'] == 'done'
+               and event['payload']['exit'] == 2
+               and event['payload']['reason'] == 'no item linked to merged PR'
+               for event in events(root))
+
+
 def test_red_base_check_reverts_pages_and_disables_across_days(case, monkeypatch):
     root, host = merged(case)
+    from wuwei import dispatch
+    tracker_calls = []
+    monkeypatch.setattr(dispatch, 'tracker_call', lambda *args: tracker_calls.append(args))
     host.results['checks'].data[0]['conclusion'] = 'failure'
     result = policy().poll(root)
     assert result == 1
+    assert tracker_calls == [('item-7', 'done', root)]
     assert ('checks', (REF, MERGED), root) in host.calls
     assert ('revert_pr', (REF,), root) in host.calls
     assert state.read_state(root)['merges'][REF]['revert_pr'].endswith('/8')

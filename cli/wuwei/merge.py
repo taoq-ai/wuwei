@@ -488,6 +488,14 @@ def monitor(root, directory, ref, entry, host, settings):
         entry.update(status='merged', merge_commit=merge_commit, merged_at=pr['merged_at'])
         undo(root, directory, ref, entry)
         save_entry(root, directory, ref, entry, 'merge.completed')
+        from wuwei import dispatch
+        items = state.read_state(directory=directory)['items']
+        item = next((name for name, row in items.items() if row.get('pr') == ref), None)
+        if item is not None:
+            dispatch.tracker_call(item, 'done', root)
+        else:
+            state.append_event('tracker.call', {'item': '', 'pr': ref, 'action': 'done',
+                               'exit': 2, 'reason': 'no item linked to merged PR'}, root)
     age = workspace.now() - obligations._time(entry['merged_at'])
     if age >= timedelta(days=28):
         return 0, None

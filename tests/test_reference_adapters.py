@@ -48,15 +48,19 @@ def replay(monkeypatch, *responses):
 def test_linear_replay(monkeypatch):
     linear = importlib.import_module('adapters.tracker.linear')
     monkeypatch.setenv('LINEAR_API_KEY', 'private-linear-key')
-    calls = replay(monkeypatch, *RECORDINGS['linear'][:3], RECORDINGS['linear'][4])
+    calls = replay(monkeypatch, *RECORDINGS['linear'][:2],
+                   {'data': {'issue': {'team': {'id': 'team-1'}}}},
+                   {'data': {'workflowStates': {'nodes': [{'id': 'state-1', 'name': 'In Review'}],
+                                                'pageInfo': {'hasNextPage': False}}}},
+                   RECORDINGS['linear'][2], RECORDINGS['linear'][4])
     assert linear.claim('ABC-1').exit == 0
-    assert linear.transition('ABC-1', 'state-1').exit == 0
+    assert linear.transition('ABC-1', 'In Review').exit == 0
     assert linear.history('ABC-1').data == [{'id': 'change-1'}]
-    assert len(calls) == 4
+    assert len(calls) == 6
     assert all(url == 'https://api.linear.app/graphql' for url, _, _ in calls)
     assert all('private-linear-key' in headers['Authorization'] for _, headers, _ in calls)
     assert calls[1][2]['variables']['input'] == {'assigneeId': 'user-1'}
-    assert calls[2][2]['variables']['input'] == {'stateId': 'state-1'}
+    assert calls[4][2]['variables']['input'] == {'stateId': 'state-1'}
 
 
 def test_linear_failure_is_redacted(monkeypatch):

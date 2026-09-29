@@ -68,11 +68,22 @@ def discover(root=None, *, ports=None):
     day = state.read_state(root)
     ports = {} if ports is None else ports
     sources = {name: 'not applicable: no open PRs' for name in SOURCES}
-    sources.update(tracker='not implemented: tracker backlog listing',
+    sources.update(tracker='not configured: tracker adapter',
                    metric_regressions='not implemented: metric regression source',
                    scanner=('not configured: scanner adapter' if config['adapters']['scanner'] == 'none'
                             else 'not applicable: no repositories'))
-    # The tracker port lacks backlog listing until #121.
+    if config['adapters']['tracker'] != 'none':
+        sources['tracker'] = 'unmeasured: tracker backlog read failed'
+        tracker = ports.get('tracker') or registry.load('tracker', config)
+        result = tracker.backlog(config['tracker']['backlog_filter'], root=root)
+        if not isinstance(result, registry.Result) or result.exit not in (0, 1, 2):
+            sources['tracker'] = 'unmeasured: invalid tracker backlog result'
+        elif result.exit:
+            sources['tracker'] = 'unmeasured: ' + (result.reason or 'tracker backlog unmeasured')
+        elif isinstance(result.data, list):
+            sources['tracker'] = result.data
+        else:
+            sources['tracker'] = 'unmeasured: invalid tracker backlog data'
     refs = day.get('raised_prs', []) + day.get('claimed_prs', [])
     if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
         raise ValueError('invalid day PR references')

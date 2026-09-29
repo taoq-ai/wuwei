@@ -16,7 +16,7 @@ PARAMETERS = {
     'integrity': {'sign': ('manifest', 'key'), 'verify': ('manifest', 'signature', 'key')},
     'host': {'free_memory': ()},
     'checks': {'run': ('path', 'command')},
-    'tracker': {'claim': ('item',), 'transition': ('item', 'state'),
+    'tracker': {'backlog': ('filter',), 'claim': ('item',), 'transition': ('item', 'state'),
                 'create': ('draft',), 'history': ('item',), 'created': ('item',)},
     'chat': {'post': ('channel', 'text', 'thread'), 'dm': ('text',),
              'sent': ('channel', 'owner')},
@@ -94,7 +94,7 @@ class Result:
 
 def record_none(kind, call, root=None, *, measurement=True):
     """Record an unavailable operation without logging its arguments."""
-    reason = 'unmeasured' if measurement else 'no adapter configured'
+    reason = 'tracker adapter is none' if kind == 'tracker' else ('unmeasured' if measurement else 'no adapter configured')
     try:
         state.append_event('adapter: none', {
             'adapter': 'none', 'kind': kind, 'call': call,

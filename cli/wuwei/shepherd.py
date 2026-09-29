@@ -280,6 +280,8 @@ def raise_pr(root, repo_name, base, title, body, item):
         if pr['head'] != head or pr['url'] != created['url']:
             raise ValueError('created PR does not match checked head and URL')
         state.record_pr(root, item, ref, raised=True, head=head, reviewers=reviewers)
+        from wuwei import dispatch
+        dispatch.tracker_call(item, 'in_review', root)
         requested = merge.read(host.request_reviewers, ref, reviewers, root=root)
         if set(requested['requested']) != set(reviewers):
             raise ValueError('reviewer request could not be verified')

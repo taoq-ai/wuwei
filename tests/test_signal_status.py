@@ -207,6 +207,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'day.close_requested': 'silent', 'merge.unmeasured': 'nudge',
                 'merge.metric': 'silent', 'merge.policy_blocked': 'nudge', 'base.red': 'page',
                 'gate.received': 'silent', 'discovery.requested': 'silent',
+                'tracker.call': 'nudge',
                 'discovery.unmeasured': 'nudge', 'steward.notes': 'nudge',
                 'steward.run': 'silent', 'steward.due': 'nudge',
                 'steward.acknowledged': 'silent'}
