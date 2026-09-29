@@ -157,10 +157,6 @@ function renderCockpit(data) {
     (row.options || []).map(option => `<li>${esc(option.id)}: ${esc(option.description)}</li>`).join("") +
     `</ul><details><summary>Record</summary><pre>${esc(row.record)}</pre></details></article>`
   ).join("") : "None pending";
-  const drafts = Array.isArray(data.drafts) ? data.drafts : [];
-  document.getElementById("drafts").innerHTML = drafts.length ? drafts.map(row =>
-    `<article class="card"><strong>${esc(row.id)}</strong><p><code>${esc(row.command)}</code></p></article>`
-  ).join("") : "None pending";
   document.getElementById("people").innerHTML = Array.isArray(data.people) ?
     (data.people.map(row => `<article class="card"><strong>${esc(row.person || "Person")}</strong>` +
       `<p>${esc(row.reason || "Reply owed")}</p><p>Due: ${esc(row.due || "unmeasured")}</p></article>`).join("") || "None owed") :

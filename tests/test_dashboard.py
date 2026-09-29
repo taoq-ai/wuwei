@@ -132,7 +132,6 @@ setImmediate(() => process.stdout.write(JSON.stringify(cells)));
                'approve_command': 'bin/wuwei drafts approve draft-test'}], 'decisions': [{'id': 'D-3', 'question': '<owner>?', 'route': 'owner',
                'options': [{'id': 'A', 'description': '<script>alert(1)</script>'}],
                'record': 'Question: <owner>?', 'command': 'bin/wuwei decision route D-3' }],
-               'drafts': [{'id': 'draft-1', 'command': 'bin/wuwei outbound tier'}],
                'people': [{'person': '<Ada>', 'reason': 'reply', 'due': NOW}],
                'prs': [{'ref': 'javascript:alert(1)', 'state': 'unmeasured',
                         'last_action': 'unmeasured', 'waiting_on': 'unmeasured',
@@ -171,7 +170,6 @@ setImmediate(() => process.stdout.write(JSON.stringify(cells)));
     assert '<script>' not in cells['drafts']['innerHTML']
     assert 'D-3' in cells['decisions']['innerHTML']
     assert 'bin/wuwei decision route D-3' in cells['decisions']['innerHTML']
-    assert 'draft-1' in cells['drafts']['innerHTML']
     assert '&lt;owner&gt;' in cells['decisions']['innerHTML']
     assert '<script>' not in cells['decisions']['innerHTML']
     assert '&lt;Ada&gt;' in cells['people']['innerHTML']
@@ -250,7 +248,10 @@ Outcome: pending
             'state': 'ci_red', 'action': 'start a fix round',
             'deadline': '2026-09-28T15:00:00+02:00'}}},
         'brief_packs': {'daily': {'path': '.wuwei/days/2026-09-28/briefs/pack-daily.md'}},
-        'drafts': [{'id': 'draft-1'}],
+        'drafts': {'draft-1': {'id': 'draft-1', 'channel': 'chat', 'operation': 'post', 'adapter': 'slack',
+                               'destination': 'C1', 'inputs': {'channel': 'C1', 'text': 'hi'}, 'text': 'hi',
+                               'created': '2026-09-29T12:00:00+00:00', 'tier_reason': 'approve tier',
+                               'audience': 'default', 'status': 'pending', 'item': None}},
         'reply_obligations': [{'person': '<Ada>', 'due': NOW, 'reason': 'Review'}]}))
     (day / 'events.jsonl').write_text(json.dumps({'kind': 'security.finding',
                                                    'ts': NOW}) + '\n')
@@ -264,7 +265,8 @@ Outcome: pending
     assert data['prs'][0]['state'] == 'ci_red'
     assert data['prs'][0]['action'] == 'start a fix round'
     assert data['decisions'][1]['command'] == 'bin/wuwei decision route D-3'
-    assert data['drafts'] == [{'id': 'draft-1', 'command': 'bin/wuwei outbound tier'}]
+    assert [row['id'] for row in data['drafts']] == ['draft-1']
+    assert data['drafts'][0]['approve_command'] == 'bin/wuwei drafts approve draft-1'
     assert data['status']['pages'] == 1
     assert data['signals'] == [{'tier': 'page', 'lane': 'Work', 'kind': 'security.finding'}]
     assert data['briefing'] == 'Today <important>'
