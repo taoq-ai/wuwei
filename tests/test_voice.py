@@ -106,6 +106,9 @@ def test_voice_command_reports_unavailable_chat(tmp_path, monkeypatch):
 
 
 def test_promote_can_land_voice_proposal(tmp_path, monkeypatch):
+    monkeypatch.setattr(registry, 'load', lambda *a: SimpleNamespace(
+        workspace_changes=lambda *a, **kw: registry.Result(0, []),
+        workspace_commit=lambda *a, **kw: registry.Result(0)))
     from wuwei.promotion import promote
     base = setup(tmp_path)
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00Z')

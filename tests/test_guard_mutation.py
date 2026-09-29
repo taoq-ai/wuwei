@@ -17,6 +17,8 @@ PROBES = {
     ('decision', 'PreToolUse', 'AskUserQuestion', 'check_question'):
         ('AskUserQuestion', {'questions': [{}]}, 2),
     ('deploy', 'PreToolUse', 'Bash', 'check'): ('Bash', {'command': 'terraform apply'}, 1),
+    ('integrity', 'PreToolUse', None, 'check'): ('Bash', {'command': 'echo hi'}, 2),
+    ('integrity', 'SessionStart', None, 'session_start'): ('Bash', {}, 1),
     ('lifecycle', 'PreCompact', None, 'pre_compact'): ('Bash', {}, 2),
     ('lifecycle', 'SessionStart', None, 'session_start'): ('Bash', {}, 2),
     ('lifecycle', 'Stop', None, 'stop'): ('Bash', {}, 'message'),
@@ -144,6 +146,16 @@ def test_disabling_guard_makes_its_probe_red(tmp_path, monkeypatch, guard):
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('')
     row = PROBES[key(guard)]
+    if key(guard)[0] == 'integrity':
+        from wuwei import integrity
+        from wuwei.registry import Result
+
+        directory = tmp_path / '.wuwei/integrity'
+        directory.mkdir()
+        (directory / 'verdict.json').write_text(
+            '{"exit":1,"reason":"page: changed plugin"}')
+        monkeypatch.setattr(integrity, 'check', lambda root: Result(1, reason='page: changed plugin'))
+        monkeypatch.setattr(integrity, 'workspace_check', lambda root: Result(0))
     assert_probe(guard.check, row, tmp_path, monkeypatch)
     disabled = guard._replace(check=lambda _: (0, ''))
     with pytest.raises(AssertionError):

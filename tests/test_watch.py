@@ -20,6 +20,8 @@ REF = 'example/project#7'
 
 @pytest.fixture
 def case(tmp_path, monkeypatch):
+    from fakes.integrity import measured
+    measured(monkeypatch)
     (tmp_path / '.wuwei/memory/notes').mkdir(parents=True)
     from wuwei import memory
     if not hasattr(memory, 'lint'):

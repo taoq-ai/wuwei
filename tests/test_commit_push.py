@@ -70,6 +70,8 @@ identity = {name = "Builder", email = "builder@example.test"}
 ''')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00Z')
+    from fakes.integrity import seed
+    seed(tmp_path)
     set_fast_checks(tmp_path, {'example/project': {'unit': {'sha': SHA, 'exit': 0}}})
     context = {'path': str(tmp_path / 'repo'), 'common_dir': str(tmp_path / 'repo/.git'),
                'author': dict(OWNER), 'committer': dict(OWNER)}

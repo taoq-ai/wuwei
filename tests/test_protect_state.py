@@ -22,6 +22,9 @@ def workspace(tmp_path, monkeypatch):
     (root / 'alias').symlink_to(day / 'state.json')
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     monkeypatch.delenv('CDPATH', raising=False)
+    from fakes.integrity import seed
+    seed(root)
+    (root / '.wuwei/config.toml').write_text('')
     return root
 
 

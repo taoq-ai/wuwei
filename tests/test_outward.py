@@ -26,6 +26,8 @@ def configured(tmp_path, monkeypatch):
         stream.write('\n[[repos]]\nname = "demo"\npath = "demo"\ndefault_branch = "main"\n')
     with (directory / 'config.toml').open('a') as stream:
         stream.write('\n[outbound]\nwork_channels = ["chat", "C1"]\n')
+    from fakes.integrity import seed
+    seed(tmp_path)
     return tmp_path, workspace.load_config(tmp_path)
 
 

@@ -16,6 +16,7 @@ def setup(root):
     base = root / '.wuwei'
     (base / 'memory/notes').mkdir(parents=True)
     (base / 'charters').mkdir()
+    (base / '.git').mkdir()
     (base / 'days' / DAY / 'proposals').mkdir(parents=True)
     (base / 'config.toml').write_text('')
     (base / 'memory/spine.md').write_text('Spine\n')
@@ -24,8 +25,15 @@ def setup(root):
 
 
 def cli(root, *args):
+    # Promotion policy tests use a PATH stub; real git history has one integrity smoke test.
+    tools = root / 'tools'
+    tools.mkdir(exist_ok=True)
+    git = tools / 'git'
+    git.write_text("#!/bin/sh\ncase \" $* \" in *' log '*) printf '\\036wuwei\\000';; esac\nexit 0\n")
+    git.chmod(0o755)
     return subprocess.run([sys.executable, '-P', '-m', 'wuwei', *args],
-                          env={**os.environ, 'PYTHONPATH': str(ROOT / 'cli'),
+                          env={**os.environ, 'PATH': str(tools) + os.pathsep + os.environ['PATH'],
+                               'PYTHONPATH': str(ROOT / 'cli'),
                                'WUWEI_WORKSPACE': str(root),
                                'WUWEI_NOW': DAY + 'T12:00:00+02:00'},
                           capture_output=True, text=True)

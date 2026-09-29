@@ -10,6 +10,7 @@ from wuwei.exits import UNRUN
 
 
 PARAMETERS = {
+    'integrity': {'sign': ('manifest', 'key'), 'verify': ('manifest', 'signature', 'key')},
     'host': {'free_memory': ()},
     'checks': {'run': ('path', 'command')},
     'tracker': {'claim': ('item',), 'transition': ('item', 'state'),
@@ -28,7 +29,8 @@ PARAMETERS = {
                   'create_pr': ('draft',), 'request_reviewers': ('ref', 'logins'),
                   'comment': ('ref', 'text', 'thread'), 'merge': ('ref', 'sha'),
                   'revert_pr': ('ref',)},
-    'vcs': {'resolve': ('repo', 'sha'), 'identity': ('repo',), 'head': ('repo',), 'merge_base': ('repo', 'ref'),
+    'vcs': {'workspace_init': ('repo',), 'workspace_changes': ('repo',),
+            'workspace_commit': ('repo', 'paths'), 'resolve': ('repo', 'sha'), 'identity': ('repo',), 'head': ('repo',), 'merge_base': ('repo', 'ref'),
             'status': ('repo',), 'diff_stat': ('repo', 'base', 'head'),
             'log_since': ('repo', 'sha'), 'worktree_add': ('repo', 'branch', 'path'),
             'changes_on': ('repo', 'day'), 'read_tree': ('repo', 'ref', 'paths'),

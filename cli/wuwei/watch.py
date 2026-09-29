@@ -143,6 +143,10 @@ def activity(root):
 
 def sweep(root=None, *, watch_health=None):
     root = workspace.find_workspace(root)
+    from wuwei import integrity
+    measured = integrity.check(root)
+    if measured.reason:
+        print(measured.reason, flush=True)
     config = workspace.load_config(root)
     counts = dict(sweep='obligations', prs=0, reply_owed=0, visibility_owed=0, unreadable=0)
     try:
@@ -185,8 +189,10 @@ def sweep(root=None, *, watch_health=None):
             counts['scanner'] = 'unreadable'
             counts['unreadable'] += 1
             print(f'watch scanner: {exc}', flush=True)
+    counts['integrity_owed'] = int(measured.exit == 1)
+    counts['unreadable'] += int(measured.exit == 2)
     counts['owed'] = sum(counts[key] for key in (
-        'reply_owed', 'visibility_owed', 'stale_owed', 'watch_dead', 'scanner_owed', 'unreadable'))
+        'reply_owed', 'visibility_owed', 'stale_owed', 'watch_dead', 'scanner_owed', 'unreadable', 'integrity_owed'))
     counts['exit'] = 2 if counts['unreadable'] else int(counts['owed'] > 0)
     state.append_event('watch: sweep', counts, root)
     from wuwei import dispatch

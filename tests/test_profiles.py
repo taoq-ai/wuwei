@@ -30,6 +30,8 @@ work_channels = ["Cwork"]
 slack = 3
 chat = 3
 ''')
+    from fakes.integrity import seed
+    seed(tmp_path)
     return tmp_path
 
 
