@@ -25,6 +25,16 @@ def _text(value, name):
     return value
 
 
+def _wuwei_action(argv):
+    program = Path(argv[0]).name if argv else ''
+    if program == 'wuwei':
+        return argv[1:]
+    if (re.fullmatch(r'(?:python|pypy)[\d.]*', program)
+            and argv[1:4] == ['-P', '-m', 'wuwei']):
+        return argv[4:]
+    return None
+
+
 def _input(payload, field):
     value = payload.get('tool_input')
     if not isinstance(value, dict):
@@ -252,6 +262,10 @@ def check_bash(payload):
         if not isinstance(script, str):
             raise ValueError('missing or invalid command')
         from wuwei.shell import mentions
+        owner_action_text = re.sub(r"['\"\\]", '', script)
+        owner_outcome_relevant = (root is not None and re.search(r'\bwuwei\b', owner_action_text)
+                                  and re.search(r'\bdecision\b', owner_action_text)
+                                  and re.search(r'\boutcome\b', owner_action_text))
         owner_edit_relevant = (root is not None
                                and re.search(r'(?i)wuwei|goals|voice|edit', script)
                                and mentions(script, ('wuwei',))
@@ -275,24 +289,30 @@ def check_bash(payload):
         try:
             commands = normalize(script)
         except ParseError as exc:
-            if (owner_edit_relevant or mcp_relevant or drafts_relevant or _STATE_MENTION.search(script) or _STATE_GLOB.search(script)
+            if (owner_edit_relevant or owner_outcome_relevant or mcp_relevant or drafts_relevant
+                    or _STATE_MENTION.search(script) or _STATE_GLOB.search(script)
                     or (root is not None and _protected_name(cwd, directories=True)
                         and (isinstance(exc, NonliteralPathError)
                              or (_DYNAMIC.search(script) and _WRITE_CONSTRUCT.search(script))))
                     or (contain_cwd and re.search(r'\b(?:cd|pushd|popd)\b', script, re.I))):
                 return 2, str(exc)
             return 0, ''
+        if owner_outcome_relevant:
+            for command in commands:
+                action = _wuwei_action(command.argv)
+                if action is None:
+                    return 2, 'Opaque owner decision action; use the host terminal.'
+                if action[:2] == ['decision', 'outcome']:
+                    return 1, 'Decision outcomes require the owner terminal, outside agent tools.'
+            if not commands:
+                return 2, 'Opaque owner decision action; use the host terminal.'
         if owner_edit_relevant:
             from wuwei.shell import is_opaque
             for command in commands:
                 argv = command.argv
                 program = Path(argv[0]).name if argv else ''
-                if program == 'wuwei':
-                    action = argv[1:]
-                elif (re.fullmatch(r'(?:python|pypy)[\d.]*', program)
-                      and argv[1:4] == ['-P', '-m', 'wuwei']):
-                    action = argv[4:]
-                else:
+                action = _wuwei_action(argv)
+                if action is None:
                     if (is_opaque(argv) or
                             re.fullmatch(r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua', program)
                             and any(re.fullmatch(r'-(?:[a-zA-Z]*[ceEr]|-eval)(?:=.*)?', arg)

@@ -10,6 +10,7 @@ from wuwei.references import pull_request
 
 ACTIVITY_SECONDS = 60
 MAX_READ_FAILURES = 5
+DIGEST_SECONDS = 7200
 
 ERRORS = (OSError, ValueError, TypeError, KeyError, AttributeError)
 
@@ -67,6 +68,54 @@ def save(root, changes, kind='watch: observation', payload=None):
     def update(data):
         data.setdefault('watch', {}).update(changes)
     return state._write_state(update, root, reserved=False, kind=kind, payload=payload)
+
+
+def digest(root, config):
+    """Batch undigested seat choices through the owner chat port."""
+    try:
+        data = state.read_state(root)
+        prior = data.get('watch', {})
+        last = prior.get('digest_at')
+        if last is None:
+            prior_days = [directory for directory in days(root)
+                          if directory != workspace.day_dir(root)]
+            if prior_days:
+                last = state.read_state(directory=prior_days[0]).get('watch', {}).get('digest_at')
+        if last is not None:
+            age = (workspace.now() - obligations._time(last)).total_seconds()
+            if age < 0:
+                raise ValueError('digest timestamp is in the future')
+            if age < DIGEST_SECONDS:
+                return 0
+        sent = set(prior.get('digest_ids', []))
+        pending = sorted((ident, value['option']) for ident, value in
+                         data.get('decision_outcomes', {}).items()
+                         if ident not in sent and value.get('decided_by') == 'seat'
+                         and value.get('reversibility') == 'two-way')
+        if not pending:
+            return 0
+        from wuwei import decision
+        for ident, option in pending:
+            if not re.fullmatch(decision.DECISION_ID, ident) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', option):
+                raise ValueError('invalid two-way decision evidence')
+        text = 'Two-way decisions taken:\n' + '\n'.join(f'- {ident}: {option}' for ident, option in pending) + '\n'
+        result = registry.load('chat', config).dm(text, root=root)
+        draft = (result.exit == 1 and result.reason.startswith('outward: deliver as a draft')
+                 or result.reason == 'no adapter configured')
+        if draft:
+            path = workspace.day_dir(root) / 'decisions' / ('two-way-digest-' + workspace.now().strftime('%H%M%S') + '.md')
+            path.parent.mkdir(parents=True, exist_ok=True)
+            workspace.atomic_write(path, text, replace=False)
+        elif result.exit != 0:
+            raise ValueError(f'chat digest unavailable: {result.reason or "unknown error"}')
+        save(root, {'digest_at': workspace.now().isoformat(),
+                    'digest_ids': sorted(sent | {ident for ident, _ in pending})},
+             kind='decision.digest', payload={'ids': [ident for ident, _ in pending],
+                                              'draft': draft})
+        return 0
+    except ERRORS as exc:
+        print(f'watch digest unmeasured: {exc}', flush=True)
+        return 2
 
 
 def owned(root, config):
@@ -177,6 +226,7 @@ def sweep(root=None, *, watch_health=None):
     counts['unreadable'] += scan['unreadable']
     counts['integrity_owed'] = int(measured.exit == 1)
     counts['unreadable'] += int(measured.exit == 2)
+    counts['unreadable'] += int(digest(root, config) == 2)
     counts['owed'] = sum(counts[key] for key in (
         'reply_owed', 'visibility_owed', 'stale_owed', 'watch_dead', 'scanner_owed', 'unreadable', 'integrity_owed'))
     counts['exit'] = 2 if counts['unreadable'] else int(counts['owed'] > 0)

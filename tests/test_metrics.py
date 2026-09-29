@@ -44,7 +44,7 @@ def test_metrics_from_recorded_events(root, capsys):
     assert value['build_loop_iterations_per_item']['A'] == 1
     assert value['stuck_parks_per_item']['A'] == 1
     assert value['cost_per_item']['A'] == 0.5
-    assert value['seat_decisions_owner_reversed'] == 'unmeasured'
+    assert value['seat_decisions_owner_reversed'] == 0
     assert main(['metrics']) == 0
     assert json.loads(capsys.readouterr().out)['fix_rounds_per_item']['A'] == 3
 
