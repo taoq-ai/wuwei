@@ -23,7 +23,7 @@ def _normalize(text):
                    if unicodedata.category(c) not in {'Mn', 'Me', 'Cf'}).casefold()
 
 
-def lint(text, channel, config):
+def lint(text, channel, config, *, root=None):
     """Return a redacted (0|1|2, reason); callers decide how to present findings."""
     if not isinstance(text, str) or not text.strip():
         return UNRUN, 'outward: nonempty text required'
@@ -64,6 +64,11 @@ def lint(text, channel, config):
         return FINDINGS, 'outward: banned character'
     if channel in limits and len(text) > limits[channel]:
         return FINDINGS, 'outward: channel length exceeded'
+    if root is not None:
+        from wuwei.voice import lint as voice_lint
+        code, reason = voice_lint(text, channel, config, root)
+        if code:
+            return code, reason
     return CLEAN, ''
 
 
@@ -337,7 +342,7 @@ def check_lint(inputs, root, config, channels):
         if len(channels) != 1:
             return UNRUN, 'outward: ambiguous tool channel configuration'
         for channel in sorted(channels.union(destinations)):
-            code, reason = lint(text, channel, config)
+            code, reason = lint(text, channel, config, root=root)
             if code:
                 return code, reason
         return CLEAN, ''

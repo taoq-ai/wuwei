@@ -49,6 +49,13 @@ vcs = "git"
 host = "local"
 checks = "local"
 
+[voice]
+# Owner identifiers in [owner].handles match sent chat users and PR authors exactly.
+# review_prs = ["org/repo#123"] # PR comments use the review audience.
+review_prs = []
+[voice.sources]
+# internal = ["C123"] # Map an audience to sent chat channel IDs.
+
 [brief]
 remote = "origin"
 prior_branch_pattern = "*{item}*" # Item is lowercased.

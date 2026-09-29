@@ -9,7 +9,7 @@ from wuwei.guards import Guard
 
 
 _STATE_HINT = ('State and config files are protected; use the wuwei CLI for state changes. '
-               'The owner edits config.toml outside agent tools.')
+               'The owner edits config.toml and voice.md outside agent tools.')
 _STATE_MENTION = re.compile(r'state\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|\.wuwei', re.I)
 _STATE_GLOB = re.compile(r'\.w[\w*?\[]', re.I)
 _DYNAMIC = re.compile(r'\$\(|[`*?\[]')
@@ -45,6 +45,8 @@ def _protected_name(path, directories=False):
             continue
         tail = parts[index + 1:]
         if tail == ('config.toml',):
+            return True
+        if tail == ('memory', 'voice.md'):
             return True
         if tail and tail[0] == 'archive':
             return True

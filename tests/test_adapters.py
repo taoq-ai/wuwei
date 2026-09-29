@@ -41,6 +41,7 @@ CALLS = [
     ('tracker', 'history', ('item',), True),
     ('chat', 'post', ('channel', 'text', 'thread'), False),
     ('chat', 'dm', ('text',), False),
+    ('chat', 'sent', ('channel', 'owner'), True),
     ('review_bot', 'score', ('pr',), True),
     ('review_bot', 'open_findings', ('pr',), True),
     ('runtime', 'dispatch', ('role', 'brief_path', 'worktree', 'write'), False),
