@@ -170,6 +170,49 @@ def test_next_due_uses_instant_across_offsets(tmp_path):
     assert json.loads(result.stdout)['next_reply_due'] == '2026-09-28T11:30:00+02:00'
 
 
+def test_reply_due_at_1500_appears_in_status_line(tmp_path):
+    day(tmp_path, {'items': {}, 'cap': 1,
+                   'reply_obligations': [{'person': 'Pat', 'due': '2026-09-28T15:00:00+02:00'}]})
+    result = cli(tmp_path, 'status', '--line')
+    assert result.returncode == 0, result.stderr
+    assert 'reply 2026-09-28T15:00:00+02:00' in result.stdout
+    assert 'meeting unmeasured' in result.stdout
+
+
+def test_status_reads_next_meeting_from_configured_calendar(tmp_path, monkeypatch):
+    from wuwei import registry
+    from wuwei.commands.status import snapshot
+    directory = day(tmp_path, {'items': {}, 'cap': 1})
+    (tmp_path / '.wuwei/config.toml').write_text('[adapters]\ncalendar = "ics"\n')
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+02:00')
+    class Calendar:
+        def events(self, since, until, root=None):
+            return registry.Result(0, [
+                {'start': '2026-09-28T17:00:00+02:00', 'summary': 'Later'},
+                {'start': '2026-09-28T14:00:00+02:00', 'summary': 'Soon'}])
+    monkeypatch.setattr(registry, 'load', lambda kind, config: Calendar())
+    assert snapshot(directory)['next_meeting'] == '2026-09-28T14:00:00+02:00'
+
+
+def test_status_calendar_failure_is_unmeasured(tmp_path, monkeypatch):
+    from wuwei import registry
+    from wuwei.commands.status import snapshot
+    directory = day(tmp_path, {'items': {}, 'cap': 1}, [{'kind': 'security.finding'}])
+    (tmp_path / '.wuwei/config.toml').write_text('[adapters]\ncalendar = "ics"\n')
+    class Calendar:
+        def events(self, since, until, root=None):
+            return registry.Result(2, reason='calendar unavailable')
+    monkeypatch.setattr(registry, 'load', lambda kind, config: Calendar())
+    result = snapshot(directory)
+    assert result['next_meeting'] is None
+    assert result['pages'] == 1
+    monkeypatch.setenv('WUWEI_CALENDAR_URL', 'invalid-url')
+    line = cli(tmp_path, 'status', '--line')
+    assert line.returncode == 0, line.stderr
+    assert 'pages 1' in line.stdout
+    assert 'meeting unmeasured' in line.stdout
+
+
 @pytest.mark.parametrize('kind', ['state.set', 'state.transition', 'seat started', 'seat stopped'])
 def test_routine_progress_is_silent(kind):
     from wuwei.signal import classify

@@ -4,9 +4,10 @@ from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import re
 from urllib.parse import urlsplit
 
-from wuwei import drafts, state, workspace
+from wuwei import brief_pack, drafts, state, workspace
 from wuwei.decision import clarification_fields, evaluate, lint_clarification, route
 from wuwei.commands.status import snapshot as status_snapshot
 from wuwei.signal import classify
@@ -44,13 +45,37 @@ def cockpit_snapshot(directory):
                        for index, line in enumerate(filter(None, option_lines), 1)]
             decision_route = 'owner'
         decisions.append({'id': path.stem, 'question': question, 'options': options,
-                          'route': decision_route, 'record': content})
+                          'route': decision_route, 'record': content,
+                          'command': (f'bin/wuwei decision route {path.stem}' if path.name.startswith('D-')
+                                      else f'bin/wuwei decision lint {path}')})
     refs = dict.fromkeys(data['raised_prs'] + data['claimed_prs'])
-    prs = [{'ref': ref, 'state': 'unmeasured', 'last_action': 'unmeasured',
-            'waiting_on': 'unmeasured', 'deadline': 'unmeasured'} for ref in refs]
-    pack = directory / 'briefing-pack.md'
-    if pack.is_symlink():
-        raise ValueError('briefing pack must be a regular file')
+    prs = []
+    actions = data.get('watch', {}).get('actions', {})
+    for ref in refs:
+        episode = actions.get(ref)
+        state_name = episode['state'] if episode else 'unmeasured'
+        action = episode['action'] if episode else 'unmeasured'
+        prs.append({'ref': ref, 'state': state_name, 'action': action,
+                    'last_action': action,
+                    'waiting_on': action if episode else 'run bin/wuwei pr state',
+                    'deadline': episode['deadline'] if episode else 'unmeasured'})
+    pack = None
+    packs = data.get('brief_packs', {})
+    if not isinstance(packs, dict):
+        raise ValueError('brief packs: expected records')
+    if packs:
+        key = next(reversed(packs))
+        entry = packs[key]
+        if (not isinstance(key, str) or not re.fullmatch(r'daily|meeting-[0-9a-f]{16}', key)
+                or not isinstance(entry, dict) or not isinstance(entry.get('path'), str)):
+            raise ValueError('briefing pack path is invalid')
+        relative = entry['path']
+        expected = brief_pack.relative_path(directory.name, key)
+        if relative != str(expected):
+            raise ValueError('briefing pack path is invalid')
+        pack = workspace.find_workspace(directory, use_environment=False) / relative
+        if pack.parent.resolve() != pack.parent or pack.is_symlink() or not pack.is_file():
+            raise ValueError('briefing pack must be a regular file')
     signals = []
     events = directory / 'events.jsonl'
     if events.exists():
@@ -70,7 +95,7 @@ def cockpit_snapshot(directory):
     return {'decisions': decisions, 'drafts': pending,
             'people': data.get('reply_obligations', 'unmeasured'),
             'prs': prs, 'status': status_snapshot(directory), 'signals': signals,
-            'briefing': pack.read_text(encoding='utf-8') if pack.exists() else 'unmeasured'}
+            'briefing': pack.read_text(encoding='utf-8') if pack else 'unmeasured'}
 
 
 class DayHandler(BaseHTTPRequestHandler):

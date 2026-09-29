@@ -1,6 +1,6 @@
 """Read-only status snapshots for the owner surfaces."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import sys
 
@@ -122,6 +122,31 @@ def snapshot(directory):
             if any(instant.tzinfo is None for instant, _ in parsed):
                 raise ValueError(f'{key}: expected timezone-aware timestamps')
             result[destination] = min(parsed, key=lambda row: row[0])[1]
+    config_path = directory.parents[1] / 'config.toml'
+    config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
+    if config is not None and config['adapters']['calendar'] != 'none':
+        from wuwei import registry
+        root = directory.parents[2]
+        now = workspace.now()
+        result['next_meeting'] = None
+        try:
+            measured = registry.load('calendar', config).events(
+                now.isoformat(), (now + timedelta(days=7)).isoformat(), root=root)
+            if measured.exit == 0:
+                if not isinstance(measured.data, list):
+                    raise ValueError('calendar returned invalid events')
+                upcoming = []
+                for event in measured.data:
+                    if not isinstance(event, dict) or not isinstance(event.get('start'), str):
+                        raise ValueError('calendar event missing start')
+                    start = datetime.fromisoformat(event['start'])
+                    if start.tzinfo is None:
+                        raise ValueError('calendar event needs timezone')
+                    if start >= now:
+                        upcoming.append((start, event['start']))
+                result['next_meeting'] = min(upcoming, default=(None, None))[1]
+        except (OSError, ValueError, KeyError, TypeError, UnicodeError):
+            pass
     return result
 
 
@@ -142,7 +167,6 @@ def run(args):
         parts.extend(f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items())
         if data['next_reply_due']:
             parts.append(f'reply {data["next_reply_due"]}')
-        if data['next_meeting']:
-            parts.append(f'meeting {data["next_meeting"]}')
+        parts.append(f'meeting {data["next_meeting"] or "unmeasured"}')
         print(' | '.join(parts))
     return CLEAN

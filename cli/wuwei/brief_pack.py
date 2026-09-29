@@ -66,6 +66,10 @@ def _meeting(root, config, secret):
     return {**selected, 'summary': _clean(selected['summary'], secret)}
 
 
+def relative_path(day_name, key):
+    return Path('.wuwei/days') / day_name / 'briefs' / f'pack-{key}.md'
+
+
 def pack(*, meeting=False, root=None):
     root = workspace.find_workspace(root)
     config = workspace.load_config(root)
@@ -74,7 +78,7 @@ def pack(*, meeting=False, root=None):
     key = ('meeting-' + hashlib.sha256(event['uid'].encode()).hexdigest()[:16]
            if event else 'daily')
     directory = workspace.day_dir(root)
-    relative = Path('.wuwei/days') / directory.name / 'briefs' / f'pack-{key}.md'
+    relative = relative_path(directory.name, key)
     output = root / relative
     if output.parent.resolve() != output.parent or output.is_symlink():
         raise ValueError('brief pack path must not be a symlink')

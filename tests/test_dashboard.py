@@ -131,7 +131,8 @@ setImmediate(() => process.stdout.write(JSON.stringify(cells)));
                'destination': '<channel>', 'tier_reason': 'approve',
                'approve_command': 'bin/wuwei drafts approve draft-test'}], 'decisions': [{'id': 'D-3', 'question': '<owner>?', 'route': 'owner',
                'options': [{'id': 'A', 'description': '<script>alert(1)</script>'}],
-               'record': 'Question: <owner>?' }],
+               'record': 'Question: <owner>?', 'command': 'bin/wuwei decision route D-3' }],
+               'drafts': [{'id': 'draft-1', 'command': 'bin/wuwei outbound tier'}],
                'people': [{'person': '<Ada>', 'reason': 'reply', 'due': NOW}],
                'prs': [{'ref': 'javascript:alert(1)', 'state': 'unmeasured',
                         'last_action': 'unmeasured', 'waiting_on': 'unmeasured',
@@ -169,6 +170,8 @@ setImmediate(() => process.stdout.write(JSON.stringify(cells)));
     assert '&lt;script&gt;private&lt;/script&gt;' in cells['drafts']['innerHTML']
     assert '<script>' not in cells['drafts']['innerHTML']
     assert 'D-3' in cells['decisions']['innerHTML']
+    assert 'bin/wuwei decision route D-3' in cells['decisions']['innerHTML']
+    assert 'draft-1' in cells['drafts']['innerHTML']
     assert '&lt;owner&gt;' in cells['decisions']['innerHTML']
     assert '<script>' not in cells['decisions']['innerHTML']
     assert '&lt;Ada&gt;' in cells['people']['innerHTML']
@@ -240,9 +243,14 @@ Decided-by: owner
 Outcome: pending
 ''')
     (decision / 'C-2.md').write_text('Question: Which scope?\nContext: owner needs to choose.\nOptions:\n- Keep\n- Defer\n')
-    (day / 'briefing-pack.md').write_text('Today <important>')
+    (day / 'briefs/pack-daily.md').write_text('Today <important>')
     (day / 'state.json').write_text(json.dumps({'items': {}, 'cap': 3,
         'claimed_prs': ['https://example.test/pull/1'], 'raised_prs': [],
+        'watch': {'actions': {'https://example.test/pull/1': {
+            'state': 'ci_red', 'action': 'start a fix round',
+            'deadline': '2026-09-28T15:00:00+02:00'}}},
+        'brief_packs': {'daily': {'path': '.wuwei/days/2026-09-28/briefs/pack-daily.md'}},
+        'drafts': [{'id': 'draft-1'}],
         'reply_obligations': [{'person': '<Ada>', 'due': NOW, 'reason': 'Review'}]}))
     (day / 'events.jsonl').write_text(json.dumps({'kind': 'security.finding',
                                                    'ts': NOW}) + '\n')
@@ -253,10 +261,70 @@ Outcome: pending
     assert [row['description'] for row in data['decisions'][0]['options']] == ['Keep', 'Defer']
     assert [row['id'] for row in data['decisions'][1]['options']] == ['A', 'B']
     assert data['people'][0]['person'] == '<Ada>'
-    assert data['prs'][0]['state'] == 'unmeasured'
+    assert data['prs'][0]['state'] == 'ci_red'
+    assert data['prs'][0]['action'] == 'start a fix round'
+    assert data['decisions'][1]['command'] == 'bin/wuwei decision route D-3'
+    assert data['drafts'] == [{'id': 'draft-1', 'command': 'bin/wuwei outbound tier'}]
     assert data['status']['pages'] == 1
     assert data['signals'] == [{'tier': 'page', 'lane': 'Work', 'kind': 'security.finding'}]
     assert data['briefing'] == 'Today <important>'
+
+
+def test_cockpit_two_owned_prs_keep_measured_actions_and_failures(workspace, monkeypatch):
+    from wuwei.commands.dashboard import cockpit_snapshot
+    day = workspace / '.wuwei/days/2026-09-28'
+    refs = ['https://example.test/pull/1', 'https://example.test/pull/2']
+    (day / 'state.json').write_text(json.dumps({'items': {}, 'cap': 3,
+        'raised_prs': refs, 'claimed_prs': [], 'watch': {'actions': {
+            refs[0]: {'state': 'ci_red', 'action': 'start a fix round',
+                      'deadline': '2026-09-28T15:00:00+02:00'},
+            refs[1]: {'state': 'approved', 'action': 'wuwei merge or merge decision',
+                      'deadline': '2026-09-28T16:00:00+02:00'}}}}))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    rows = cockpit_snapshot(day)['prs']
+    assert [(row['state'], row['action'], row['deadline']) for row in rows] == [
+        ('ci_red', 'start a fix round', '2026-09-28T15:00:00+02:00'),
+        ('approved', 'wuwei merge or merge decision', '2026-09-28T16:00:00+02:00')]
+
+
+def test_cockpit_unrecorded_pr_stays_unmeasured_and_does_not_write(workspace):
+    from wuwei.commands.dashboard import cockpit_snapshot
+    day = workspace / '.wuwei/days/2026-09-28'
+    ref = 'https://example.test/pull/1'
+    (day / 'state.json').write_text(json.dumps({'items': {}, 'cap': 3,
+        'raised_prs': [ref], 'claimed_prs': []}))
+    before = {name: (day / name).read_bytes() for name in ('state.json', 'events.jsonl')}
+    row = cockpit_snapshot(day)['prs'][0]
+    assert row['state'] == 'unmeasured'
+    assert row['action'] == row['deadline'] == 'unmeasured'
+    assert row['waiting_on'] == 'run bin/wuwei pr state'
+    assert {name: (day / name).read_bytes() for name in before} == before
+
+
+def test_cockpit_reads_meeting_pack_recorded_today(workspace):
+    from wuwei.commands.dashboard import cockpit_snapshot
+    day = workspace / '.wuwei/days/2026-09-28'
+    (day / 'briefs/pack-meeting-a1b2c3d4e5f60708.md').write_text('Meeting brief')
+    (day / 'state.json').write_text(json.dumps({'items': {}, 'cap': 3,
+        'brief_packs': {'meeting-a1b2c3d4e5f60708': {
+            'path': '.wuwei/days/2026-09-28/briefs/pack-meeting-a1b2c3d4e5f60708.md'}}}))
+    assert cockpit_snapshot(day)['briefing'] == 'Meeting brief'
+
+
+def test_cockpit_rejects_linked_briefs_directory(workspace, tmp_path):
+    from wuwei.commands.dashboard import cockpit_snapshot
+    day = workspace / '.wuwei/days/2026-09-28'
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    (outside / 'pack-daily.md').write_text('outside')
+    (day / 'briefs/private.md').unlink()
+    (day / 'briefs').rmdir()
+    (day / 'briefs').symlink_to(outside, target_is_directory=True)
+    (day / 'state.json').write_text(json.dumps({'items': {}, 'cap': 3,
+        'brief_packs': {'daily': {
+            'path': '.wuwei/days/2026-09-28/briefs/pack-daily.md'}}}))
+    with pytest.raises(ValueError, match='regular file'):
+        cockpit_snapshot(day)
 
 
 def test_cockpit_snapshot_marks_missing_producers_unmeasured(workspace, monkeypatch):

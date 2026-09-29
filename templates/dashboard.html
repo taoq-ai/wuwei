@@ -153,9 +153,13 @@ function renderCockpit(data) {
   const decisions = Array.isArray(data.decisions) ? data.decisions : [];
   document.getElementById("decisions").innerHTML = decisions.length ? decisions.map(row =>
     `<article class="card"><strong>${esc(row.id)}</strong><p>${esc(row.question)}</p>` +
-    `<p>Route: ${esc(row.route)}. Answer in the session.</p><ul>` +
+    `<p>Route: ${esc(row.route)}. Answer in the session.</p><p><code>${esc(row.command)}</code></p><ul>` +
     (row.options || []).map(option => `<li>${esc(option.id)}: ${esc(option.description)}</li>`).join("") +
     `</ul><details><summary>Record</summary><pre>${esc(row.record)}</pre></details></article>`
+  ).join("") : "None pending";
+  const drafts = Array.isArray(data.drafts) ? data.drafts : [];
+  document.getElementById("drafts").innerHTML = drafts.length ? drafts.map(row =>
+    `<article class="card"><strong>${esc(row.id)}</strong><p><code>${esc(row.command)}</code></p></article>`
   ).join("") : "None pending";
   document.getElementById("people").innerHTML = Array.isArray(data.people) ?
     (data.people.map(row => `<article class="card"><strong>${esc(row.person || "Person")}</strong>` +
@@ -163,7 +167,7 @@ function renderCockpit(data) {
     "unmeasured";
   document.getElementById("prs").innerHTML = Array.isArray(data.prs) ?
     (data.prs.map(row => `<article class="card"><strong>${webLink(row.ref, row.ref)}</strong>` +
-      `<p>State: ${esc(row.state)}</p><p>Last action: ${esc(row.last_action)}</p>` +
+      `<p>State: ${esc(row.state)}</p><p>Action: ${esc(row.action || row.last_action)}</p>` +
       `<p>Waiting on: ${esc(row.waiting_on)}</p><p>Deadline: ${esc(row.deadline)}</p></article>`).join("") || "None owned") :
     "unmeasured";
   const status = data.status || {};
