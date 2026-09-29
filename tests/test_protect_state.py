@@ -510,6 +510,34 @@ def test_f12_workspace_container_removal(workspace, operation, location, target)
     assert check_bash(payload(cwd, 'Bash', command=operation.format(target=target)))[0] == 1
 
 
+def test_directory_removal_never_walks_the_tree(tmp_path, monkeypatch):
+    # rm -rf / outside a workspace hung the hook: the container check walked the whole disk.
+    import os
+    import pathlib
+    from wuwei.guards.protect_state import check_bash
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    def walk(*args, **kwargs):
+        raise AssertionError('recursive directory walk in a PreToolUse guard')
+    monkeypatch.setattr(pathlib.Path, 'rglob', walk)
+    monkeypatch.setattr(os, 'walk', walk)
+    assert check_bash(payload(tmp_path, 'Bash', command='rm -rf /')) == (0, '')
+
+
+@pytest.mark.parametrize('operation', ['rm -rf {target}', 'mv {target} /tmp/backup'])
+def test_anchored_worktree_protects_distant_workspace_ancestors(tmp_path, monkeypatch, operation):
+    from wuwei.guards.protect_state import check_bash
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    root = tmp_path / 'a/b/workspace'
+    (root / '.wuwei').mkdir(parents=True)
+    worktree, gitdir = tmp_path / 'worktree', tmp_path / 'gitdir'
+    worktree.mkdir()
+    gitdir.mkdir()
+    (worktree / '.git').write_text(f'gitdir: {gitdir}\n')
+    (gitdir / 'wuwei-workspace').write_text(f'{root}\n')
+    command = operation.format(target=shlex.quote(str(tmp_path / 'a')))
+    assert check_bash(payload(worktree, 'Bash', command=command))[0] == 1
+
+
 @pytest.mark.parametrize('script', ['rm -rf inside', 'mv inside backup',
                                     'mv notes.md .', 'mv -t . notes.md', 'cp notes.md .'])
 def test_f12_ordinary_directory_operations(workspace, script):

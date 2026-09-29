@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 
 from wuwei.guards import Guard
+from wuwei.workspace import worktree_workspace
 
 
 _STATE_HINT = ('State and config files are protected; use the wuwei CLI for state changes. '
@@ -84,13 +85,24 @@ def _protected(value, cwd, root, directories=False):
     if directories and path.is_dir():
         if root is not None and root.is_relative_to(path):
             return True
-        if (path / '.wuwei').is_dir() or any(candidate.is_dir() for candidate in path.rglob('.wuwei')):
+        # ponytail: one level only; a recursive walk hung the hook on rm -rf /. Deeper
+        # containers are caught when the session runs in the workspace or an anchored worktree.
+        if (path / '.wuwei').is_dir() or _contains_workspace(path):
             return True
     # Only multiply linked files need a scan; ordinary commands pay no tree walk.
     if root is not None and path.is_file() and path.stat().st_nlink > 1:
         return any(_protected_name(candidate) and os.path.samefile(path, candidate)
                    for candidate in (root / '.wuwei').rglob('*') if candidate.is_file())
     return False
+
+
+def _contains_workspace(path):
+    try:
+        with os.scandir(path) as entries:
+            return any(entry.is_dir() and os.path.isdir(os.path.join(entry.path, '.wuwei'))
+                       for entry in entries)
+    except PermissionError:
+        return False
 
 
 def _workspace(cwd):
@@ -116,7 +128,7 @@ def _cwd(payload):
 def check_file(payload):
     try:
         cwd = _cwd(payload)
-        root = _workspace(cwd)
+        root = _workspace(cwd) or worktree_workspace(cwd)
         field = 'notebook_path' if payload.get('tool_name') == 'NotebookEdit' else 'file_path'
         if _protected(_input(payload, field), cwd, root):
             return 1, _STATE_HINT
@@ -230,7 +242,7 @@ def _cd_target(command):
 def check_bash(payload):
     try:
         cwd = _cwd(payload)
-        root = _workspace(cwd)
+        root = _workspace(cwd) or worktree_workspace(cwd)
         contain_cwd = root is not None and cwd.is_relative_to(root)
         script = _input(payload, 'command')
         if not isinstance(script, str):
