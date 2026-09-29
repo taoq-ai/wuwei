@@ -10,6 +10,15 @@ from wuwei import state, workspace
 FLAGS = ('trust_surface', 'boundary_relevant', 'agent_surface')
 
 
+def session(session_id, root=None):
+    """Register the plan skill's session as today's planner wake recipient."""
+    if not isinstance(session_id, str) or not session_id.strip():
+        raise ValueError('planner session id must be a nonempty string')
+    return state._write_state(lambda data: data.update(planner_session_id=session_id),
+                              root, reserved=False, kind='plan.session',
+                              payload={'session_id': session_id})
+
+
 def _proposal(data, goals_text):
     if not isinstance(data, dict):
         raise ValueError('proposal must be an object')

@@ -191,8 +191,8 @@ def _owner_login(config):
     return handles[0]
 
 
-def sweep(root=None):
-    """Sweep today's union once, retaining failures and recording one summary."""
+def evaluate(root=None):
+    """Calculate today's obligations without writing a summary event."""
     root = workspace.find_workspace(root)
     directory = workspace.day_dir(root)
     counts = dict(sweep='obligations', prs=0, reply_owed=0, visibility_owed=0, unreadable=0)
@@ -210,7 +210,7 @@ def sweep(root=None):
                 counts['unreadable'] += 1
                 print(f'day PR reference UNREADABLE: {exc}')
         counts['prs'] = len(refs)
-        if not data['raised_prs'] and not data['claimed_prs']:
+        if not refs:
             _check_empty_day(directory)
         if refs:
             config = workspace.load_config(root)
@@ -238,6 +238,14 @@ def sweep(root=None):
         print(f'obligations UNREADABLE: {exc}')
     counts['owed'] = counts['reply_owed'] + counts['visibility_owed'] + counts['unreadable']
     counts['exit'] = 2 if counts['unreadable'] else int(counts['owed'] > 0)
+    return counts
+
+
+def sweep(root=None):
+    """Sweep today's union once, retaining failures and recording one summary."""
+    root = workspace.find_workspace(root)
+    directory = workspace.day_dir(root)
+    counts = evaluate(root)
     state.append_event('watch: sweep', counts, directory=directory)
     print(f'obligations: {counts["reply_owed"]} replies, {counts["visibility_owed"]} visibility, '
           f'{counts["unreadable"]} unreadable')

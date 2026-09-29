@@ -108,3 +108,11 @@ code_host_orgs = []
 # commitment_patterns = ["\\b(?:i|we)\\s*(?:['\\u2019]ll|will|shall|can|promise|commit)\\b", "\\b(?:by|before|after)\\s+(?:\\w+day|tomorrow|noon|\\d)", "\\b(?:follow[ -]?up|deadline|out of scope|next (?:week|sprint))\\b"]
 # disagreement_patterns = ["\\bdisagree\\b", "\\b(?:you|that)\\s*(?:are|['\\u2019]re|is)\\s+wrong\\b", "\\b(?:i|we)\\s+(?:object|oppose)\\b"]
 # See specs/095-outbound-tiers/contracts/outbound.md for payloads and safe forms.
+
+[watch]
+clock_seconds = 600
+stale_seconds = 900
+sweep_seconds = 7200
+
+[pr]
+poll_seconds = 120
