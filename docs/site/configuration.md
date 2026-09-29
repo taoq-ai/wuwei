@@ -73,7 +73,8 @@ fast_checks = ["python3 -m pytest -q"]
 | `adapters.chat` | `"none"` | Chat implementation: none or slack. |
 | `adapters.review_bot` | `"none"` | Review bot: none or greptile. |
 | `adapters.runtime` | `"claude"` | Seat runtime: claude, codex or none. |
-| `adapters.scanner` | `"none"` | Scanner: only none is shipped; ZIRAN is planned. |
+| `adapters.scanner` | `"none"` | Scanner: none or ziran. S4 requires the compatible JSON CLI described below. |
+| `scanner.severity_threshold` | `"high"` | Blocking threshold: critical, high, medium or low. Trust-boundary findings always block. |
 | `adapters.code_host` | `"github"` | Code host: github or none. |
 | `adapters.vcs` | `"git"` | Version control: git. |
 | `adapters.host` | `"local"` | Host measurement: local or none. |
@@ -82,6 +83,26 @@ fast_checks = ["python3 -m pytest -q"]
 | `brief.prior_branch_pattern` | `"*{item}*"` | Branch match, with lowercased item substituted. |
 | `brief.full_path_patterns` | `[]` | Owner supplied regexes for paths needing full context. |
 | `chat.identity` | `"connector"` | Optional CLI default: connector or custom_app. This key is not in the template. |
+
+When the approved item's `flags.agent_surface` is true, `bin/wuwei dispatch receive`
+runs the scanner for the security sentinel's reviewed worktree, including delta reviews.
+Every finding becomes a verdict row and a `scanner.finding` event. Findings change PASS
+to FIX; PARK and ESCALATE remain unchanged. Findings at or above the threshold block.
+Findings also block when marked as a trust boundary, when the item's `trust_surface` or
+`boundary_relevant` flag is set, or for ZIRAN checks SA001, SA002, SA003, SA007, SA008,
+SA009 and SA010 (secrets, input validation, execution and data exposure).
+
+The adapter requires `ziran audit PATH --format json` with an AnalysisReport body
+(`files_analyzed` greater than zero and a `findings` list), followed by
+`ziran ci REPORT --severity-threshold LEVEL --format json` with a boolean `passed` field.
+Finding fields are `check_id`, `severity`, `file_path`, `line_number` and `message`;
+`trust_boundary` is an optional boolean. Each command has a 60-second timeout.
+
+The available upstream console-only audit and campaign CI interface do not yet meet
+this contract. A compatible upstream release is required for live use. `none`, missing
+or incompatible ZIRAN, command errors, invalid bodies and timeouts report unmeasured
+(exit 2) and leave the gate unreceived. CI exit 1 counts as findings only when its body
+and the validated audit agree. Trace scanning (#34) and MCP audit (#35) remain deferred.
 
 ## Owner voice
 

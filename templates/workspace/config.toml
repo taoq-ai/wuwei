@@ -50,11 +50,14 @@ tracker = "none"
 chat = "none"
 review_bot = "none"
 runtime = "claude"
-scanner = "none"
+scanner = "none" # none or ziran; agent_surface gates require a compatible JSON CLI.
 code_host = "github"
 vcs = "git"
 host = "local"
 checks = "local"
+
+[scanner]
+severity_threshold = "high" # critical, high, medium or low; trust-boundary findings always block.
 
 [voice]
 # Owner identifiers in [owner].handles match sent chat users and PR authors exactly.
