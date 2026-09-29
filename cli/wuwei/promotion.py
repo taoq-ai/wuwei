@@ -10,6 +10,37 @@ from wuwei import registry, state, workspace
 from wuwei.notes import OWNER_NOTES, SLUG_RE, parse_note
 
 
+def owner_edit(root, name, text):
+    """Validate and promote an owner's complete goals or voice document."""
+    root = workspace.find_workspace(root)
+    if name not in ('goals', 'voice'):
+        raise ValueError('unknown owner memory target')
+    target = safe_path(root, f'.wuwei/memory/{name}.md', label='target')
+    if not target.is_file():
+        raise OSError(f'{name} target is missing')
+    if name == 'goals':
+        from wuwei.goals import parse
+        parse(text)
+    else:
+        from wuwei.voice import parse_profile
+        parse_profile(text)
+    previous = target.read_text(encoding='utf-8')
+    vcs = registry.load('vcs', workspace.load_config(root))
+    if text == previous:
+        result = vcs.workspace_changes(root / '.wuwei', root=root)
+        if result.exit:
+            raise OSError(result.reason)
+        if f'memory/{name}.md' not in result.data:
+            return False
+    # The producer writes only after validation and records the exact target.
+    workspace.atomic_write(target, text)
+    result = vcs.workspace_owner_commit(root / '.wuwei', [f'memory/{name}.md'], root=root)
+    if result.exit:
+        workspace.atomic_write(target, previous)
+        raise OSError(result.reason)
+    return True
+
+
 def safe_path(root, raw, *, label):
     """Resolve a workspace-relative path without following symlinked components."""
     if not isinstance(raw, str) or not raw or Path(raw).is_absolute():

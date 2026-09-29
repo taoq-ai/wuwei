@@ -194,7 +194,9 @@ Unknown destinations and direct messages draft by default. A channel allowlist i
 
 ## Goals and discovery
 
-The owner edits `.wuwei/memory/goals.md` before the morning plan. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei rank candidates.json` reads JSON candidates with a goal or `unplanned` mark, a `score` object, and one `evidence_lines` entry per score component. `wuwei discover` reports unavailable sources as `unmeasured`.
+Before the morning plan, the owner runs `bin/wuwei goals edit` to open `$EDITOR`, or `bin/wuwei goals edit --file goals.md` to use a prepared file. The command validates and commits the change in `.wuwei` history with `Promoted-by: wuwei` and `Edited-by: owner`, so SessionStart does not flag it as an unpromoted edit. Seats cannot use this owner action. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei rank candidates.json` reads JSON candidates with a goal or `unplanned` mark, a `score` object, and one `evidence_lines` entry per score component. `wuwei discover` reports unavailable sources as `unmeasured`.
+
+The owner uses `bin/wuwei voice edit` or `bin/wuwei voice edit --file voice.md` for the same validated history flow. Seat proposals still go through `wuwei promote`.
 
 
 ### MCP registry checks (S3)

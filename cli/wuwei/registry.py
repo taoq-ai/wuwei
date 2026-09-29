@@ -10,6 +10,7 @@ from wuwei.exits import UNRUN
 
 
 PARAMETERS = {
+    'editor': {'edit': ('path', 'command')},
     'tts': {'speak': ('text', 'rate', 'out')},
     'calendar': {'events': ('since', 'until')},
     'transcripts': {'recent': ('since',)},
@@ -36,7 +37,8 @@ PARAMETERS = {
                   'revert_pr': ('ref',)},
     'vcs': {'workspace_init': ('repo',),
             'workspace_changes': ('repo',),
-            'workspace_commit': ('repo', 'paths'), 'resolve': ('repo', 'sha'), 'identity': ('repo',), 'head': ('repo',), 'merge_base': ('repo', 'ref'),
+            'workspace_commit': ('repo', 'paths'), 'workspace_owner_commit': ('repo', 'paths'),
+            'resolve': ('repo', 'sha'), 'identity': ('repo',), 'head': ('repo',), 'merge_base': ('repo', 'ref'),
             'status': ('repo',), 'diff_stat': ('repo', 'base', 'head'),
             'log_since': ('repo', 'sha'), 'worktree_add': ('repo', 'branch', 'path'),
             'changes_on': ('repo', 'day'), 'read_tree': ('repo', 'ref', 'paths'),

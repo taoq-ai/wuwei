@@ -1,6 +1,6 @@
 # Owner voice
 
-The owner edits this profile. Agents propose changes with `wuwei voice learn` and
+The owner edits this profile with `bin/wuwei voice edit` or `bin/wuwei voice edit --file voice.md`. Agents propose changes with `wuwei voice learn` and
 the owner reviews proposals before `wuwei promote`. Keep real examples here in
 the workspace, never in the plugin repository.
 

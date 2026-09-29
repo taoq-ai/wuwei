@@ -252,6 +252,11 @@ def check_bash(payload):
         if not isinstance(script, str):
             raise ValueError('missing or invalid command')
         from wuwei.shell import mentions
+        owner_edit_relevant = (root is not None
+                               and re.search(r'(?i)wuwei|goals|voice|edit', script)
+                               and mentions(script, ('wuwei',))
+                               and mentions(script, ('goals', 'voice'))
+                               and (mentions(script, ('edit',)) or 'owner_edit' in script))
         if (mentions(script, ('integrity',))
                 and 'reconfirm' in re.sub(r"['\"\\]", '', script)):
             from wuwei.workspace import guard_scope
@@ -264,13 +269,33 @@ def check_bash(payload):
         try:
             commands = normalize(script)
         except ParseError as exc:
-            if (mcp_relevant or _STATE_MENTION.search(script) or _STATE_GLOB.search(script)
+            if (owner_edit_relevant or mcp_relevant or _STATE_MENTION.search(script) or _STATE_GLOB.search(script)
                     or (root is not None and _protected_name(cwd, directories=True)
                         and (isinstance(exc, NonliteralPathError)
                              or (_DYNAMIC.search(script) and _WRITE_CONSTRUCT.search(script))))
                     or (contain_cwd and re.search(r'\b(?:cd|pushd|popd)\b', script, re.I))):
                 return 2, str(exc)
             return 0, ''
+        if owner_edit_relevant:
+            from wuwei.shell import is_opaque
+            for command in commands:
+                argv = command.argv
+                program = Path(argv[0]).name if argv else ''
+                if program == 'wuwei':
+                    action = argv[1:]
+                elif (re.fullmatch(r'(?:python|pypy)[\d.]*', program)
+                      and argv[1:4] == ['-P', '-m', 'wuwei']):
+                    action = argv[4:]
+                else:
+                    if (is_opaque(argv) or
+                            re.fullmatch(r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua', program)
+                            and any(re.fullmatch(r'-(?:[a-zA-Z]*[ceEr]|-eval)(?:=.*)?', arg)
+                                    for arg in argv[1:])):
+                        return 2, 'Opaque owner edit; use the wuwei CLI.'
+                    continue
+                if action[:2] in (['goals', 'edit'], ['voice', 'edit']):
+                    if guard_scope(payload) is not None:
+                        return 1, 'Owner memory edits are an owner action on the host, outside agent tools.'
         if mcp_relevant:
             from wuwei.shell import is_opaque
             for command in commands:

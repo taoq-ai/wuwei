@@ -47,8 +47,9 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False):
             allowed = local
         case ('add', '-A', '--', *paths):
             allowed = local and bool(paths) and all(_workspace_path(p) for p in paths)
-        case ('commit', '--only', '-m', 'WUWEI promotion\n\nPromoted-by: wuwei', '--', *paths):
-            allowed = local and bool(paths) and all(_workspace_path(p) for p in paths)
+        case ('commit', '--only', '-m', message, '--', *paths):
+            allowed = (local and message in (_PROMOTION_MESSAGE, _OWNER_EDIT_MESSAGE)
+                       and bool(paths) and all(_workspace_path(p) for p in paths))
         case ('commit', '--allow-empty', '-m', 'WUWEI promotion\n\nPromoted-by: wuwei'):
             allowed = local
         case ('log', '-z', '--format=%x1e%(trailers:key=Promoted-by,valueonly)%x00', '--name-only', '--no-renames', 'HEAD', '--', 'charters', 'memory', 'goals', 'voice'):
@@ -465,6 +466,7 @@ def read_tree(repo, ref, paths, root=None):
 
 _WORKSPACE_DIRS = ('charters', 'memory', 'goals', 'voice')
 _PROMOTION_MESSAGE = 'WUWEI promotion\n\nPromoted-by: wuwei'
+_OWNER_EDIT_MESSAGE = _PROMOTION_MESSAGE + '\nEdited-by: owner'
 
 
 def _workspace_repository(repo):
@@ -497,13 +499,24 @@ def workspace_init(repo, root=None):
 
 @_operation
 def workspace_commit(repo, paths, root=None):
+    return _commit_workspace(repo, paths, _PROMOTION_MESSAGE)
+
+
+@_operation
+def workspace_owner_commit(repo, paths, root=None):
+    if paths not in (['memory/goals.md'], ['memory/voice.md']):
+        raise ValueError('owner edit must name goals or voice')
+    return _commit_workspace(repo, paths, _OWNER_EDIT_MESSAGE)
+
+
+def _commit_workspace(repo, paths, message):
     _workspace_repository(repo)
     if not isinstance(paths, list) or not paths:
         raise ValueError('expected nonempty workspace paths')
     paths = [_workspace_path(p) for p in paths]
     _run(repo, 'add', '-A', '--', *paths, local=True)
     # --only excludes unrelated staged edits from the producer's commit.
-    _run(repo, 'commit', '--only', '-m', _PROMOTION_MESSAGE, '--', *paths, local=True)
+    _run(repo, 'commit', '--only', '-m', message, '--', *paths, local=True)
 
 
 @_operation
