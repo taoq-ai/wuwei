@@ -194,6 +194,8 @@ def test_emitted_kinds_have_intended_tiers():
                 'verdict.rejected': 'nudge', 'decision.rejected': 'nudge',
                 'decision.decided': 'silent', 'decision.routed': 'silent',
                 'adapter: none': 'nudge', 'reply: acknowledged': 'silent',
+                'reply: thread_posted': 'silent', 'pr.raised': 'silent',
+                'pr.reviewers_selected': 'silent', 'pr.review_posted': 'silent',
                 'watch: sweep': 'nudge', 'watch: clock': 'silent',
                 'watch: heartbeat': 'silent', 'watch: observation': 'silent',
                 'watch: read-failed': 'nudge', 'pr.changed': 'nudge',

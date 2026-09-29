@@ -6,6 +6,12 @@ from fakes.replay import Recorder
 class Fake(Recorder):
     port = 'vcs'
 
+    def authorship(self, repo, branch, paths, days, root=None):
+        return self._call('authorship', (repo, branch, paths, days), root)
+
+    def branch(self, repo, root=None):
+        return self._call('branch', (repo,), root)
+
     def resolve(self, repo, sha, root=None):
         return self._call('resolve', (repo, sha), root)
 
