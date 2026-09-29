@@ -46,6 +46,8 @@ def gate_file(root, verdict='PASS', head='a' * 40):
 
 @pytest.fixture
 def case(tmp_path, monkeypatch):
+    from fakes.integrity import measured
+    measured(monkeypatch)
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles = ["U12345", "builder"]\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))

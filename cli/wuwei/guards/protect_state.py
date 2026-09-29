@@ -47,6 +47,8 @@ def _protected_name(path, directories=False):
         tail = parts[index + 1:]
         if tail in (('config.toml',), ('security.json',), ('.gitignore',), ('merge.lock',)) or tail[:1] == ('generated',):
             return True
+        if tail[:1] in (('integrity',), ('.git',)):
+            return True
         if tail in (('memory', 'voice.md'), ('memory', 'goals.md')):
             return True
         if tail and tail[0] == 'archive':
@@ -247,6 +249,12 @@ def check_bash(payload):
         script = _input(payload, 'command')
         if not isinstance(script, str):
             raise ValueError('missing or invalid command')
+        from wuwei.shell import mentions
+        if (mentions(script, ('integrity',))
+                and 'reconfirm' in re.sub(r"['\"\\]", '', script)):
+            from wuwei.workspace import guard_scope
+            if guard_scope(payload) is not None:
+                return 1, 'Integrity re-confirmation is an owner action on the host, outside agent tools.'
         from wuwei.shell import NonliteralPathError, ParseError, normalize
         try:
             commands = normalize(script)

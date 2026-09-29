@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-from wuwei import state, workspace
+from wuwei import registry, state, workspace
 from wuwei.notes import OWNER_NOTES, SLUG_RE, parse_note
 
 
@@ -50,6 +50,17 @@ def _working_days(created, today):
                for i in range(1, max(0, (today - created).days) + 1))
 
 
+def _ensure_clean(root, target):
+    vcs = registry.load('vcs', workspace.load_config(root))
+    result = vcs.workspace_changes(root / '.wuwei', root=root)
+    if result.exit:
+        raise OSError(result.reason)
+    if not isinstance(result.data, list) or not all(isinstance(p, str) for p in result.data):
+        raise OSError('workspace integrity evidence unreadable')
+    if target.relative_to(root / '.wuwei').as_posix() in result.data:
+        raise ValueError('target has unpromoted changes; owner must review workspace history')
+
+
 def _apply(root, proposal):
     raw = proposal.get('target')
     target = _target(root, raw)
@@ -87,6 +98,7 @@ def _apply(root, proposal):
         if target == root / '.wuwei/memory/voice.md':
             from wuwei.voice import parse_profile
             parse_profile(updated)
+        _ensure_clean(root, target)
         target.parent.mkdir(parents=True, exist_ok=True)
         workspace.atomic_write(target, updated)
     else:
@@ -114,7 +126,10 @@ def _apply(root, proposal):
         if destination.exists() or destination.is_symlink():
             raise ValueError('archive destination already exists')
         # A move preserves the complete original note and does not delete its content.
+        _ensure_clean(root, target)
         target.rename(destination)
+        return [target, destination]
+    return [target]
 
 
 def promote(root=None):
@@ -140,7 +155,7 @@ def promote(root=None):
             proposal = json.loads(path.read_text(encoding='utf-8'))
             if not isinstance(proposal, dict):
                 raise ValueError('proposal must be an object')
-            _apply(root, proposal)
+            changed = _apply(root, proposal)
             status, reason = 'landed', proposal['reason']
         except (ValueError, TypeError, KeyError) as exc:
             status, reason = 'rejected', str(exc)
@@ -152,6 +167,12 @@ def promote(root=None):
         state.append_jsonl(ledger, record)
         path.rename(path.with_suffix(f'.{status}'))
         records.append(record)
+        if status == 'landed':
+            vcs = registry.load('vcs', workspace.load_config(root))
+            paths = [p.relative_to(root / '.wuwei').as_posix() for p in [*changed, ledger]]
+            result = vcs.workspace_commit(root / '.wuwei', paths, root=root)
+            if result.exit:
+                raise OSError(result.reason)
     return records
 
 

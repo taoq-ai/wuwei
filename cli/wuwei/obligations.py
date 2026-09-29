@@ -244,8 +244,15 @@ def evaluate(root=None):
 def sweep(root=None):
     """Sweep today's union once, retaining failures and recording one summary."""
     root = workspace.find_workspace(root)
+    from wuwei import integrity
+    measured = integrity.check(root)
+    if measured.reason:
+        print(measured.reason)
     directory = workspace.day_dir(root)
     counts = evaluate(root)
+    counts['integrity_owed'] = int(measured.exit == 1)
+    counts['unreadable'] += int(measured.exit == 2)
+    counts['exit'] = max(counts['exit'], measured.exit)
     state.append_event('watch: sweep', counts, directory=directory)
     print(f'obligations: {counts["reply_owed"]} replies, {counts["visibility_owed"]} visibility, '
           f'{counts["unreadable"]} unreadable')

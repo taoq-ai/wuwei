@@ -40,9 +40,19 @@ def _operation(function):
     return call
 
 
-def _run(repo, *args, settings=None, env=None, missing=False):
+def _run(repo, *args, settings=None, env=None, missing=False, local=False):
     allowed = False
     match args:
+        case ('init', '--quiet'):
+            allowed = local
+        case ('add', '-A', '--', *paths):
+            allowed = local and bool(paths) and all(_workspace_path(p) for p in paths)
+        case ('commit', '--only', '-m', 'WUWEI promotion\n\nPromoted-by: wuwei', '--', *paths):
+            allowed = local and bool(paths) and all(_workspace_path(p) for p in paths)
+        case ('commit', '--allow-empty', '-m', 'WUWEI promotion\n\nPromoted-by: wuwei'):
+            allowed = local
+        case ('log', '-z', '--format=%x1e%(trailers:key=Promoted-by,valueonly)%x00', '--name-only', '--no-renames', 'HEAD', '--', 'charters', 'memory', 'goals', 'voice'):
+            allowed = local
         case ('rev-parse', '--absolute-git-dir') | ('rev-parse', '--path-format=absolute', '--git-common-dir') | ('rev-parse', '--path-format=absolute', '--git-path', 'hooks'):
             allowed = True
         case ('show', '-s', format_arg, 'HEAD'):
@@ -115,6 +125,11 @@ def _run(repo, *args, settings=None, env=None, missing=False):
         argv.extend(args)
         options = {'cwd': os.fspath(repo), 'env': {**{k: v for k, v in os.environ.items()
                                       if k not in _REPOSITORY_ENV and not k.startswith('GIT_CONFIG')}, **env}}
+    if local:
+        argv[1:1] = ['-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgSign=false',
+                     '-c', 'user.name=WUWEI', '-c', 'user.email=wuwei@localhost']
+        options['env'].update(GIT_AUTHOR_NAME='WUWEI', GIT_AUTHOR_EMAIL='wuwei@localhost',
+                              GIT_COMMITTER_NAME='WUWEI', GIT_COMMITTER_EMAIL='wuwei@localhost')
     options['env']['GIT_NO_REPLACE_OBJECTS'] = '1'
     result = subprocess.run(argv, capture_output=True, timeout=TIMEOUT, **options)
     if missing and result.returncode == 1:
@@ -391,3 +406,72 @@ def read_tree(repo, ref, paths, root=None):
     _tree_ref(ref)
     names = _records(_run(repo, 'ls-tree', '-r', '--name-only', '-z', ref, '--', *paths))
     return {_tree_path(name): _run(repo, 'show', ref + ':' + name) for name in names}
+
+
+_WORKSPACE_DIRS = ('charters', 'memory', 'goals', 'voice')
+_PROMOTION_MESSAGE = 'WUWEI promotion\n\nPromoted-by: wuwei'
+
+
+def _workspace_repository(repo):
+    metadata = Path(repo) / '.git'
+    if metadata.is_symlink() or not metadata.is_dir():
+        raise ValueError('workspace needs its own local git repository')
+
+
+def _workspace_path(path):
+    _tree_path(path)
+    if path.split('/')[0] not in _WORKSPACE_DIRS:
+        raise ValueError('not a workspace procedure path')
+    return path
+
+
+@_operation
+def workspace_init(repo, root=None):
+    if (Path(repo) / '.git').exists():
+        raise ValueError('workspace history already exists')
+    _run(repo, 'init', '--quiet', local=True)
+    paths = sorted(p.relative_to(repo).as_posix() for name in _WORKSPACE_DIRS
+                   for p in (Path(repo) / name).rglob('*') if p.is_file())
+    if paths:
+        result = workspace_commit(repo, paths, root=root)
+        if result.exit:
+            raise ValueError(result.reason)
+    else:
+        _run(repo, 'commit', '--allow-empty', '-m', _PROMOTION_MESSAGE, local=True)
+
+
+@_operation
+def workspace_commit(repo, paths, root=None):
+    _workspace_repository(repo)
+    if not isinstance(paths, list) or not paths:
+        raise ValueError('expected nonempty workspace paths')
+    paths = [_workspace_path(p) for p in paths]
+    _run(repo, 'add', '-A', '--', *paths, local=True)
+    # --only excludes unrelated staged edits from the producer's commit.
+    _run(repo, 'commit', '--only', '-m', _PROMOTION_MESSAGE, '--', *paths, local=True)
+
+
+@_operation
+def workspace_changes(repo, root=None):
+    _workspace_repository(repo)
+    current = status(repo, root=root)
+    if current.exit:
+        raise ValueError(current.reason)
+    changes = {p for row in current.data for p in (row['path'], row['original_path'])
+               if p and p.split('/')[0] in _WORKSPACE_DIRS and not p.endswith('/state.lock')}
+    # ponytail: inspect all procedure history; add a verified checkpoint if it grows costly.
+    history = _run(repo, 'log', '-z',
+                   '--format=%x1e%(trailers:key=Promoted-by,valueonly)%x00',
+                   '--name-only', '--no-renames', 'HEAD', '--', *_WORKSPACE_DIRS, local=True)
+    if not history.startswith('\x1e'):
+        raise ValueError('workspace history missing or malformed')
+    for entry in history.split('\x1e')[1:]:
+        trailer, separator, names = entry.partition('\0')
+        if not separator:
+            raise ValueError('malformed workspace history')
+        paths = [p.lstrip('\n') for p in names.split('\0') if p.lstrip('\n')]
+        for path in paths:
+            _workspace_path(path)
+        if trailer.strip() != 'wuwei':
+            changes.update(paths)
+    return sorted(changes)

@@ -71,6 +71,8 @@ def run(args):
         write_workspace(template.parents[1], Path(staging))
         executable = Path(__file__).resolve().parents[3] / "bin/wuwei"
         (Path(staging) / "executable").write_text(str(executable) + "\n")
+        from wuwei import integrity
+        integrity.initialize(Path(staging))
         settings.parent.mkdir(exist_ok=True)
         workspace.atomic_write(settings, json.dumps(data, indent=2) + '\n')
         os.rename(staging, destination)

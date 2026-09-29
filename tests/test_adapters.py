@@ -10,6 +10,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CALLS = [
+    ('integrity', 'sign', ('manifest', 'key'), False),
+    ('integrity', 'verify', ('manifest', 'signature', 'key'), True),
     ('host', 'free_memory', (), True),
     ('checks', 'run', ('path', 'command'), True),
     ('code_host', 'pr', ('ref',), True),
@@ -24,6 +26,9 @@ CALLS = [
     ('code_host', 'comment', ('ref', 'text', 'thread'), False),
     ('code_host', 'merge', ('ref', 'sha'), False),
     ('code_host', 'revert_pr', ('ref',), False),
+    ('vcs', 'workspace_init', ('repo',), False),
+    ('vcs', 'workspace_changes', ('repo',), True),
+    ('vcs', 'workspace_commit', ('repo', 'paths'), False),
     ('vcs', 'resolve', ('repo', 'sha'), True),
     ('vcs', 'identity', ('repo',), True),
     ('vcs', 'head', ('repo',), True),
@@ -168,6 +173,8 @@ def test_registry_loads_config_selection(tmp_path):
     config = load_config(tmp_path)
     assert hasattr(api, 'known'), 'adapter discovery is missing'
     for kind in api.INTERFACES:
+        if kind == 'integrity':
+            continue  # Fixed signing mechanism, not owner-selectable config.
         expected = {'code_host': 'github', 'vcs': 'git', 'host': 'local',
                     'checks': 'local'}.get(kind, 'none')
         assert expected in api.known(kind)

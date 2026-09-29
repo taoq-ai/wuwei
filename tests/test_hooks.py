@@ -102,7 +102,10 @@ def test_clean_replay(subprocess_plugin, payload_path):
 ])
 def test_harmless_commands_through_shim(subprocess_plugin, tmp_path, inside, command):
     root, env = subprocess_plugin
-    if not inside:
+    if inside:
+        from fakes.integrity import seed
+        seed(tmp_path)
+    else:
         shutil.rmtree(tmp_path / '.wuwei')
         env.pop('WUWEI_WORKSPACE')
     payload = fixture('PreToolUse')

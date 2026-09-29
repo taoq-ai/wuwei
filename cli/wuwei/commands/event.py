@@ -9,6 +9,8 @@ from wuwei.state import append_event
 
 FREE_KINDS = frozenset({'note'})
 EVENT_PRODUCERS = {
+    'integrity': 'wuwei integrity check', 'integrity_failed': 'wuwei integrity check',
+    'integrity_confirmation': 'owner host re-confirmation',
     'state.set': 'wuwei state set', 'state.transition': 'wuwei state transition',
     'state.import': 'wuwei plan approve', 'plan.approved': 'wuwei plan approve',
     'plan.session': 'wuwei plan session', 'brief written': 'wuwei brief',

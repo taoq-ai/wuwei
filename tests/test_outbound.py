@@ -40,6 +40,8 @@ email = "dev@acme.test"
 email = "visitor@elsewhere.test"
 org = "outside"
 ''')
+    from fakes.integrity import seed
+    seed(tmp_path)
     vcs = VCS({'resolve': Result(0, {'sha': 'abc1234' + '0' * 33})})
     host = CodeHost({'pr': Result(0, {'repo': 'acme/app', 'number': 7, 'author': 'dev'}),
                      'reviews': Result(0, []),
