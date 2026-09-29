@@ -38,6 +38,10 @@ state_entry_cap = 3
 [metrics]
 transcripts = "~/.claude/projects" # Claude Code project transcripts for this workspace.
 
+[consolidation]
+archive_after_days = 30
+similarity_threshold = 0.85
+
 [build]
 max_iterations = 8
 stuck_after = 3

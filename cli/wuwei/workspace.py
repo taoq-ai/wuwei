@@ -49,6 +49,8 @@ SCHEMA = {
               "full_path_patterns": [(str, "")]},
     "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 1, 1),
              "reservation_timeout_seconds": (int, 14400, 1)},
+    "consolidation": {"archive_after_days": (int, 30, 0),
+                      "similarity_threshold": (float, 0.85)},
     "memory": {"max_notes": (int, 60, 1), "note_line_cap": (int, 80, 1),
                "probation_days": (int, 10, 0), "state_entry_cap": (int, 3, 1)},
     "metrics": {"transcripts": (str, "~/.claude/projects")},
