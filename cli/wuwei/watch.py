@@ -189,6 +189,8 @@ def sweep(root=None, *, watch_health=None):
         'reply_owed', 'visibility_owed', 'stale_owed', 'watch_dead', 'scanner_owed', 'unreadable'))
     counts['exit'] = 2 if counts['unreadable'] else int(counts['owed'] > 0)
     state.append_event('watch: sweep', counts, root)
+    from wuwei import dispatch
+    dispatch.discovery('sweep', root)
     print('watch: sweep ' + json.dumps(counts, sort_keys=True), flush=True)
     return counts['exit']
 

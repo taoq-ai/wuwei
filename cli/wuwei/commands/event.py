@@ -19,6 +19,7 @@ EVENT_PRODUCERS = {
     'decision.decided': 'wuwei decision outcome', 'watch: sweep': 'wuwei sweep',
     'watch: clock': 'wuwei watch', 'pr.disposition': 'wuwei pr disposition',
     'day.close_requested': 'wuwei close', 'build.parked': 'wuwei build',
+    'gate.received': 'wuwei dispatch receive', 'discovery.requested': 'wuwei dispatch discovery',
 }
 
 

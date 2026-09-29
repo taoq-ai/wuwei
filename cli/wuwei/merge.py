@@ -247,7 +247,11 @@ def check(ref, root=None, *, cwd=None, repo=None):
         require(code == 0, reason)
         verdicts = []
         for gate in GATES:
-            path = workspace.day_dir(root) / 'decisions' / f'gate-{item}-{gate}.md'
+            first = data['gate_verdicts'].get(f'{item}:{gate}:initial')
+            selected = (data['gate_verdicts'].get(f'{item}:{gate}:delta')
+                        if first and first['verdict'] == 'FIX' else first)
+            path = (root / selected['file'] if selected else
+                    workspace.day_dir(root) / 'decisions' / f'gate-{item}-{gate}.md')
             verdicts.append({'path': str(path.relative_to(root)),
                              'digest': hashlib.sha256(path.read_bytes()).hexdigest()})
         checks = checks_at(host, ref, head, root)

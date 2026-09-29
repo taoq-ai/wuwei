@@ -36,7 +36,7 @@ def stored(root):
     ('reply_acks', 'wuwei reply'),
     ('claimed_prs', 'dedicated command'),
     ('raised_prs', 'dedicated command'),
-    ('gate_verdicts', 'dedicated command'),
+    ('gate_verdicts', 'wuwei dispatch receive'),
     ('decision_outcomes', 'wuwei decision outcome'),
     ('gate_approved', 'wuwei plan approve'),
     ('envelope', 'wuwei plan approve'),

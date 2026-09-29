@@ -199,7 +199,9 @@ def test_emitted_kinds_have_intended_tiers():
                 'session: compact': 'silent', 'session: wake-seen': 'silent',
                 'plan.session': 'silent', 'pr.disposition': 'silent',
                 'day.close_requested': 'silent', 'merge.unmeasured': 'nudge',
-                'merge.metric': 'silent', 'merge.policy_blocked': 'nudge', 'base.red': 'page'}
+                'merge.metric': 'silent', 'merge.policy_blocked': 'nudge', 'base.red': 'page',
+                'gate.received': 'silent', 'discovery.requested': 'silent',
+                'discovery.unmeasured': 'nudge'}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier

@@ -344,6 +344,48 @@ def test_subagent_stop_resolves_runtime_id_from_brief(launch, monkeypatch, block
         assert state.read_state(day[0])['seats']['runtime-id']['status'] == 'running'
 
 
+def test_builder_stop_requests_discovery(launch, monkeypatch):
+    from wuwei.guards import agent_launch
+    from wuwei import dispatch
+    day, payload = launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    assert check(payload) == (0, '')
+    state._write_state(lambda data: data['seats']['gate'].update(role='builder'),
+                       day[0], reserved=False)
+    transcript = day[0] / 'builder.jsonl'
+    transcript.write_text(json.dumps({'type': 'user', 'message': {
+        'content': payload['tool_input']['prompt']}}) + '\n')
+    seen = []
+    monkeypatch.setattr(dispatch, 'discovery', lambda trigger, root: seen.append((trigger, root)))
+    stop = {'cwd': str(day[0]), 'agent_type': 'builder',
+            'agent_transcript_path': str(transcript)}
+    assert agent_launch.stop(stop) == (0, '')
+    assert seen == [('seat-free', day[0])]
+
+
+def test_builder_stop_reports_unmeasured_discovery(launch, monkeypatch):
+    from wuwei.guards import agent_launch
+    from wuwei import dispatch
+    day, payload = launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    assert check(payload) == (0, '')
+    state._write_state(lambda data: data['seats']['gate'].update(role='builder'),
+                       day[0], reserved=False)
+    transcript = day[0] / 'builder.jsonl'
+    transcript.write_text(json.dumps({'type': 'user', 'message': {
+        'content': payload['tool_input']['prompt']}}) + '\n')
+    monkeypatch.setattr(dispatch, 'discovery',
+                        lambda trigger, root: (_ for _ in ()).throw(OSError('unreadable queue')))
+    code, reason = agent_launch.stop({
+        'cwd': str(day[0]), 'agent_type': 'builder',
+        'agent_transcript_path': str(transcript)})
+    assert (code, reason) == (0, '')
+    assert state.read_state(day[0])['seats']['gate']['status'] == 'stopped'
+    event = json.loads((day[1] / 'events.jsonl').read_text().splitlines()[-1])
+    assert event['kind'] == 'discovery.unmeasured'
+    assert 'unreadable queue' in event['payload']['reason']
+
+
 def test_head_rechecked_after_memory_probe(launch, monkeypatch):
     from wuwei.guards import agent_launch
     day, payload = launch

@@ -16,3 +16,13 @@ Register this planner session with `wuwei plan session "${CLAUDE_SESSION_ID}"` b
 5. After the owner confirms the goals and approves the queue and settings, call `wuwei plan approve --items <approved IDs> --goals-confirmed`, adding `--import-yesterday` only if carry-over was explicitly approved. Verify `wuwei state get` shows `gate_approved`, `goals`, `approved_items`, `seat_policy`, `cap` and `envelope`; for carry-over, verify a `state.import` event. Only then continue to dispatch, with host floors checked at launch.
 
 A CLI exit of 1 is a finding to resolve with the owner. Exit 2 means the plan could not run; show its reason and stop dispatch.
+
+## Item dispatch and receive
+
+For an approved code item, use its own worktree and the recorded seat policy. Run the builder through `wuwei build` with the item's fast checks. Before pre-PR gates, stop the builder, confirm its stop event and move the item to `gate`. Call `wuwei dispatch next <item>`. For an `action: gates` result, write one brief per returned role using `wuwei brief --gate --worktree`, then launch those roles in parallel. The brief and launch commands refuse a dirty tree, live builder and missing evidence. A refused brief is never launched.
+
+When each sentinel stops, call `wuwei dispatch receive <item> <role> <seat-name>`. This lints and records the verdict file at the dispatched HEAD. Rejected or unmeasured verdicts return to that seat; they never count as PASS. Call `wuwei dispatch next <item>` again after each receipt. Wait for all required verdicts before a fix or PR raise.
+
+For `action: fix`, transition the item to `fix`, give the builder only the named findings, run its fast checks and stand it down. Transition to `delta`; `wuwei dispatch next` returns only gates that gave FIX. Continue those same sentinel seats with the diff since their first verdict and parked findings by id; use a fresh seat only if the sentinel was lost. Receive deltas with `--round delta`. After the delta, `action: raise` includes residual review notes for the PR body. `action: escalate` blocks the PR. Do not run another pre-PR fix round. Once the PR is open, use the normal shepherd and review flow; pre-PR gates do not repeat.
+
+The watch sweep emits a discovery request. A freed builder seat emits one when the queued planned item count is below `discovery.min_queue`. Discovery ranking and intraday start decisions are owned by the discovery workflow.
