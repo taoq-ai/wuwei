@@ -41,6 +41,7 @@ PARAMETERS = {
             'log_since': ('repo', 'sha'), 'worktree_add': ('repo', 'branch', 'path'),
             'changes_on': ('repo', 'day'), 'read_tree': ('repo', 'ref', 'paths'),
             'branches': ('repo', 'pattern'),
+            'pushed_branches': ('repo',),
             'authorship': ('repo', 'branch', 'paths', 'days'), 'branch': ('repo',),
             'commit_context': ('repo', 'settings', 'env'),
             'push_context': ('repo', 'remote', 'refspecs'), 'hooks_path': ('repo', 'path'),

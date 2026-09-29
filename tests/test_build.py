@@ -171,3 +171,32 @@ def test_build_reports_unknown_item(tmp_path, monkeypatch, capsys):
     repo, brief, day, runtime = setup(tmp_path, monkeypatch, [])
     assert build.run_loop('missing', str(brief), str(repo), root=tmp_path) == 1
     assert 'build: unknown item missing' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('maximum', [False, True])
+def test_build_park_is_recorded_lintable_decision(tmp_path, monkeypatch, maximum):
+    from wuwei import decision
+    from wuwei.__main__ import main
+    from wuwei.commands import build
+    failure = lambda: registry.Result(1, {'test_ids': ['test_a'], 'error': 'failed'})
+    repo, brief, day, _ = setup(tmp_path, monkeypatch, [failure(), failure(), failure()])
+    if maximum:
+        config = tmp_path / '.wuwei/config.toml'
+        config.write_text(config.read_text().replace('max_iterations=8', 'max_iterations=1'))
+    decisions = day / 'decisions'
+    decisions.mkdir()
+    (decisions / 'D-1.md').write_text('preserve existing record')
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 1
+    path = decisions / 'D-2.md'
+    assert path.exists()
+    monkeypatch.chdir(tmp_path)
+    assert main(['decision', 'lint', str(path)]) == 0
+    assert (decisions / 'D-1.md').read_text() == 'preserve existing record'
+    fields, _ = decision.evaluate(path.read_text())
+    assert fields['Outcome'] == 'parked A'
+    assert decision.route(fields) == 'seat'
+    data = state.read_state(tmp_path)
+    assert data['decision_outcomes']['D-2']['decided_by'] == 'seat'
+    record = data['builds']['A']
+    assert record['status'] == 'parked'
+    assert tmp_path / record['action']['decision'] == path

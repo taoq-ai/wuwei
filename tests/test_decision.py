@@ -342,6 +342,17 @@ def test_route_invalid_record(ws, monkeypatch, text, code):
     assert not state.read_state(ws).get('decision_outcomes')
 
 
+def test_seat_route_rejects_owner_decider(ws, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    from wuwei import state
+    monkeypatch.chdir(ws)
+    save(ws, VALID.replace('Decided-by: seat', 'Decided-by: owner'))
+    assert main(['decision', 'route', 'D-3']) == 1
+    assert 'Decided-by must be seat for a seat-routed decision' in capsys.readouterr().err
+    assert not state.read_state(ws).get('decision_outcomes')
+    assert events(ws)[-1]['kind'] == 'decision.rejected'
+
+
 @pytest.mark.parametrize('decision_id', ['../D-3', 'D-0', 'D-3.md', 'D-3/../../state'])
 def test_route_invalid_id(ws, monkeypatch, decision_id):
     from wuwei.__main__ import main

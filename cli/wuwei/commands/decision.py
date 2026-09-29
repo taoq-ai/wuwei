@@ -3,7 +3,7 @@
 import sys
 
 from wuwei import state, workspace
-from wuwei.decision import evaluate, lint_file, record_rejection, route, today_path
+from wuwei.decision import evaluate, lint_file, record_rejection, route, seat_outcome, today_path
 
 
 def register(subparsers):
@@ -40,9 +40,10 @@ def decide(args):
             state._write_state(mark, root, reserved=False, kind='decision.routed',
                                payload={'id': args.id, 'reversibility': fields['Reversibility']})
         return 0, target
-    record = {'option': fields['Recommendation'], 'score': scores[fields['Recommendation']],
-              'decided_by': 'seat', 'outcome': fields['Recommendation'],
-              'reversibility': fields['Reversibility'], 'blast_radius': fields['Blast radius']}
+    try:
+        record = seat_outcome(fields, scores)
+    except ValueError as exc:
+        return record_rejection(path, 1, str(exc), root=root)
 
     def update(data):
         data.setdefault('decision_outcomes', {})[args.id] = record

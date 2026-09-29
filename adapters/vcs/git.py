@@ -88,6 +88,8 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False):
             allowed = True
         case ('branch', '--list', '--format=%(refname:short)', '--', pattern):
             allowed = bool(_revision(pattern))
+        case ('for-each-ref', '--format=%(refname)', 'refs/remotes/'):
+            allowed = True
         case ('diff', '--numstat', '-z', '--no-renames', base, head, '--'):
             allowed = bool(_revision(base) and _revision(head))
         case ('log', '-z', format_arg, rev, '--'):
@@ -269,6 +271,20 @@ def branches(repo, pattern, root=None):
     if any(not name or any(c.isspace() or ord(c) < 32 for c in name) for name in names):
         raise ValueError('invalid branch name')
     return names
+
+
+@_operation
+def pushed_branches(repo, root=None):
+    """Branch names observed on any remote, without fetching at day close."""
+    refs = _run(repo, 'for-each-ref', '--format=%(refname)', 'refs/remotes/').splitlines()
+    names = set()
+    for ref in refs:
+        match = re.fullmatch(r'refs/remotes/[^/\s]+/([^\s]+)', ref)
+        if not match or any(ord(c) < 32 for c in ref):
+            raise ValueError('invalid remote branch evidence')
+        if match[1] != 'HEAD':
+            names.add(match[1])
+    return sorted(names)
 
 
 @_operation

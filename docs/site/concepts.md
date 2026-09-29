@@ -81,6 +81,32 @@ actions, naming the PR, state and action. Only a verified owner parking decision
 a PR; carry-forward applies to day close. See [configuration](configuration.html) for
 `pr.action_minutes` and `pr.review_window`.
 
+## Day close
+
+`bin/wuwei close` and the planner Stop hook after a close request refuse while an
+approved item remains open or blocked without a park or carry decision, an owner
+decision remains pending, or a pushed item branch lacks a raised or claimed PR.
+The refusal names each item, decision or branch. Unreadable evidence returns exit
+2 with a reason; unresolved work returns exit 1. Existing PR, reply, visibility
+and retro requirements still apply. Stop retry flags do not bypass these checks.
+
+A seat may park or carry its own item with a valid two-way decision whose blast
+radius is `own branch` or `own PR`. Use `Outcome: parked ITEM` or
+`Outcome: carried ITEM`, then run `bin/wuwei decision route D-1` with its actual
+ID. The recorded outcome must match the file. A parked phase alone does not count.
+A merged phase also needs fresh merge evidence from the linked PR.
+The build loop creates and records this decision automatically after repeated
+fast-check failures or exhausted iterations. Its `D-<n>.md` file passes
+`bin/wuwei decision lint` and does not overwrite earlier decisions.
+
+A linked PR's externally verified owner park or carry also accounts for its item.
+Editing an owner decision's Outcome does not prove an owner action. Owner-routed
+decisions remain pending until existing PR disposition verification supplies that
+proof; a general authenticated owner-completion command is not yet available.
+Pushed branch checks read remote-tracking refs in recorded item worktrees through
+the VCS port, without fetching. A parked item still needs a raised or claimed PR
+when its branch has been pushed.
+
 ## Builder steps
 
 Claude Code builders run as subagents in the planner session. After writing a builder

@@ -18,6 +18,9 @@ class Fake(Recorder):
     def branches(self, repo, pattern, root=None):
         return self._call('branches', (repo, pattern), root)
 
+    def pushed_branches(self, repo, root=None):
+        return self._call('pushed_branches', (repo,), root)
+
     def identity(self, repo, root=None):
         return self._call('identity', (repo,), root)
 
