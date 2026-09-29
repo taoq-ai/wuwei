@@ -1,8 +1,8 @@
 """Select one build action; only Codex seats are polled by the CLI."""
 
-from datetime import datetime
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import shlex
@@ -133,12 +133,14 @@ def next_action(item, brief=None, worktree=None, *, root=None):
         if data['items'][item]['phase'] in ('parked', 'escalated'):
             raise ValueError('resume the parked item before starting a new build')
     repo = _repo(root, tree, config)
+    runtime_name = registry.runtime_config('builder', config, root)['adapters']['runtime']
     action = {'action': 'launch', 'brief': str(path), 'worktree': str(tree),
+              'runtime': runtime_name,
               'agent_type': 'wuwei:builder',
               'prompt': launch_prompt(path, agent_path(root, 'builder'), root=root)}
     previous = record
     record = {'brief': str(path.relative_to(root)), 'worktree': str(tree),
-              'runtime': config['adapters']['runtime'], 'repo': repo['name'],
+              'runtime': runtime_name, 'repo': repo['name'],
               'commands': repo['fast_checks'], 'iteration': 0, 'repeats': 0,
               'signature': None, 'status': 'ready', 'action': action}
     _save(item, record, root, 'build.started', previous)
@@ -172,13 +174,17 @@ def record_result(item, result, *, root, agent_id=None, model=None, completion=N
     for key in ('input_tokens', 'output_tokens'):
         if key in reported and (type(reported[key]) is not int or reported[key] < 0):
             raise ValueError('malformed runtime usage')
-    if 'cost' in reported and (type(reported['cost']) not in (int, float) or reported['cost'] < 0):
+    for key in ('cost', 'duration'):
+        if key in reported and (type(reported[key]) not in (int, float)
+                                or not math.isfinite(reported[key]) or reported[key] < 0):
+            raise ValueError('malformed runtime usage')
+    if 'model' in reported and (not isinstance(reported['model'], str) or not reported['model']):
         raise ValueError('malformed runtime usage')
     iteration = record['iteration'] + 1
-    usage = {**reported, 'input_tokens': reported.get('input_tokens'),
-             'output_tokens': reported.get('output_tokens'),
-             'model': reported.get('model') or result.get('model') or model or 'unreported',
-             'duration': max(0, (workspace.now() - datetime.fromisoformat(record['started_at'])).total_seconds())}
+    usage = {key: reported.get(key, 'unmeasured')
+             for key in ('input_tokens', 'output_tokens', 'cost', 'model', 'duration')}
+    if usage['model'] == 'unmeasured':
+        usage['model'] = result.get('model') or model or 'unmeasured'
     # The result and usage share the writer lock, so duplicate hooks cannot charge twice.
     def update(data):
         current = data['builds'][item]
@@ -229,7 +235,17 @@ def stopped(item, name, payload, *, root):
         raise ValueError('SubagentStop has no matching assistant completion')
     if completion == record.get('completion'):
         return True
-    expected = record_result(item, {'text': text, 'usage': payload.get('usage', {})},
+    reported = payload.get('usage', {})
+    if isinstance(reported, dict):
+        reported = {**{key: payload[source] for key, source in (
+            ('input_tokens', 'total_input_tokens'), ('output_tokens', 'total_output_tokens'),
+            ('duration', 'duration_seconds'), ('model', 'model')) if source in payload}, **reported}
+        if 'duration' not in reported and 'duration_ms' in payload:
+            milliseconds = payload['duration_ms']
+            if type(milliseconds) not in (int, float) or not math.isfinite(milliseconds) or milliseconds < 0:
+                raise ValueError('malformed runtime usage')
+            reported['duration'] = milliseconds / 1000
+    expected = record_result(item, {'text': text, 'usage': reported},
                              root=root, agent_id=agent_id, completion=completion, expected=record)
     measured = data.get('fast_checks', {}).get(record['repo'], {})
     rows = [measured.get(command, {}) for command in record['commands']]
@@ -262,6 +278,12 @@ def complete_checks(item, results, *, root, expected=None):
         if result.exit == 2:
             raise ValueError(result.reason or 'fast check could not run')
         if result.exit == 1:
+            if isinstance(result.data, dict) and 'environment' in result.data:
+                reason = result.data['environment']
+                if not isinstance(reason, str) or not reason.strip():
+                    raise ValueError('invalid environment check reason')
+                _park(root, item, record, f'environment: {reason}', expected)
+                return 1
             failures.append((command, result.data))
     if not failures:
         record.update(status='done', action={'action': 'done'})
@@ -328,11 +350,12 @@ def run_loop(item, brief, worktree, *, root=None):
     try:
         root = workspace.find_workspace(root)
         config = workspace.load_config(root)
-        if config['adapters']['runtime'] == 'claude':
+        runtime_config = registry.runtime_config('builder', config, root)
+        if runtime_config['adapters']['runtime'] == 'claude':
             raise ValueError('Claude builders require build next <item> in the planner session')
         if brief is None or worktree is None:
             raise ValueError('usage: build <item> <brief> <worktree> (Codex only)')
-        runtime = registry.load('runtime', config)
+        runtime = registry.load('runtime', runtime_config)
         while True:
             record = state.read_state(root).get('builds', {}).get(item)
             if record and record['status'] == 'running' and record.get('job'):

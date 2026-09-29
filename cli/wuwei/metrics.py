@@ -361,7 +361,7 @@ def _costs(events, key):
         if not isinstance(usage, dict):
             raise ValueError('invalid seat usage')
         cost = usage.get('cost')
-        if cost is None:
+        if cost is None or cost == UNMEASURED:
             continue
         if type(cost) not in (int, float) or cost < 0:
             raise ValueError('invalid seat cost')

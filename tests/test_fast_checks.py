@@ -97,3 +97,40 @@ def test_local_checks_execute_configured_shell_command(tmp_path, monkeypatch, re
     result = adapter.run(str(tmp_path), 'unit && lint')
     assert result.exit == expected
     assert calls == [['/bin/sh', '-c', 'unit && lint']]
+
+
+@pytest.mark.parametrize('command,output,reason', [
+    ('python3 -m pytest -q', 'python3: No module named pytest', 'pytest not found'),
+    ('pytest -q', '/bin/sh: pytest: command not found', 'pytest not found'),
+    ('pytest -q', '/bin/sh: 1: pytest: not found', 'pytest not found'),
+    ('python3 -m pytest -q', '/bin/sh: python3: not found', 'python3 not found'),
+    ('python3 -m pytest -q', "ModuleNotFoundError: No module named 'hypothesis'", 'hypothesis not found'),
+])
+def test_local_checks_classify_missing_environment(tmp_path, monkeypatch, command, output, reason):
+    import subprocess
+    adapter = importlib.import_module('adapters.checks.local')
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **kw:
+                        subprocess.CompletedProcess(a[0], 1, '', output))
+    result = adapter.run(str(tmp_path), command)
+    assert result.exit == 1
+    assert result.data['environment'] == reason
+
+
+def test_local_checks_leave_application_import_as_code_failure(tmp_path, monkeypatch):
+    import subprocess
+    adapter = importlib.import_module('adapters.checks.local')
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **kw:
+                        subprocess.CompletedProcess(a[0], 1, '', "ModuleNotFoundError: No module named 'app'"))
+    result = adapter.run(str(tmp_path), 'python3 -m pytest -q')
+    assert result.exit == 1
+    assert 'environment' not in result.data
+
+
+def test_local_checks_leave_application_not_found_message_as_code_failure(tmp_path, monkeypatch):
+    import subprocess
+    adapter = importlib.import_module('adapters.checks.local')
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **kw:
+                        subprocess.CompletedProcess(a[0], 1, '', 'item: not found'))
+    result = adapter.run(str(tmp_path), 'python3 -m pytest -q')
+    assert result.exit == 1
+    assert 'environment' not in result.data

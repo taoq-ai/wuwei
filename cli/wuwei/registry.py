@@ -87,6 +87,17 @@ def load(kind, config):
     return module
 
 
+def runtime_config(role, config, root):
+    """Apply the approved role runtime to a single adapter selection."""
+    policy = state.read_state(root)['seat_policy'].get(role, {})
+    if not policy:
+        return config
+    selected = policy.get('runtime')
+    if not isinstance(selected, str) or not selected:
+        raise ValueError(f'invalid runtime policy for {role}')
+    return {**config, 'adapters': {**config['adapters'], 'runtime': selected}}
+
+
 @dataclass(frozen=True)
 class Result:
     exit: int

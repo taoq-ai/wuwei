@@ -49,6 +49,15 @@ def test_metrics_from_recorded_events(root, capsys):
     assert json.loads(capsys.readouterr().out)['fix_rounds_per_item']['A'] == 3
 
 
+def test_unmeasured_seat_cost_remains_unmeasured(root):
+    from wuwei import metrics
+    state.append_event('seat.usage', {'item': 'A', 'role': 'builder', 'iteration': 1,
+                                      'usage': {'cost': 'unmeasured'}}, root)
+    value = metrics.collect(root)
+    assert value['cost_per_item'] == 'unmeasured'
+    assert value['cost_per_role'] == 'unmeasured'
+
+
 def test_missing_source_is_unmeasured_and_corrupt_source_exits_two(root, capsys):
     from wuwei import metrics
 

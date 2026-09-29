@@ -47,7 +47,7 @@ def launch(seat, action, resume=None):
         stream.write(json.dumps({'type': 'user', 'message': {'content': action['prompt']}}) + '\n')
 
 
-def stop(seat, agent_id='agent-builder'):
+def stop(seat, agent_id='agent-builder', **usage):
     root, _, path, _, _ = seat
     transcript = root / 'agent.jsonl'
     if state.read_state(root)['builds']['A']['status'] == 'running':
@@ -56,7 +56,42 @@ def stop(seat, agent_id='agent-builder'):
                 'content': [{'type': 'text', 'text': 'Blocked: none\nGap: none\nChange: none'}]}}) + '\n')
     return agent_launch.stop({'cwd': str(root), 'agent_type': 'wuwei:builder',
         'agent_id': agent_id, 'agent_transcript_path': str(transcript),
-        'last_assistant_message': 'Blocked: none\nGap: none\nChange: none'})
+        'last_assistant_message': 'Blocked: none\nGap: none\nChange: none', **usage})
+
+
+def test_claude_stop_records_available_usage(seat):
+    root, _, _, day, _ = seat
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat, usage={'input_tokens': 14, 'output_tokens': 6, 'duration': 3.2,
+                             'model': 'sonnet'}) == (0, '')
+    recorded = next(e['payload']['usage'] for e in events(day) if e['kind'] == 'seat.usage')
+    assert recorded == {'input_tokens': 14, 'output_tokens': 6,
+                        'cost': 'unmeasured', 'model': 'sonnet', 'duration': 3.2}
+
+
+def test_agent_launch_refuses_role_assigned_to_codex(seat):
+    root, _, _, _, _ = seat
+    state._write_state(lambda data: data.update(seat_policy={
+        'builder': {'runtime': 'codex', 'model': 'test'}}), root, reserved=False)
+    action = build.next_action('A', root=root)
+    assert action['runtime'] == 'codex'
+    code, reason = agent_launch.check({'cwd': str(root), 'tool_input': {
+        'subagent_type': 'wuwei:builder', 'description': 'Build A', 'prompt': action['prompt']}})
+    assert code == 1 and 'Codex' in reason
+    assert not state.read_state(root)['seats']
+
+
+def test_step_build_parks_missing_pytest_without_continue(seat):
+    root, _, _, day, results = seat
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat) == (0, '')
+    results.append(registry.Result(1, {'test_ids': [], 'error': 'No module named pytest',
+                                       'environment': 'pytest not found'}))
+    assert main(['build', 'check', 'A']) == 1
+    action = build.next_action('A', root=root)
+    assert action['action'] == 'park'
+    assert action['reason'] == 'environment: pytest not found'
+    assert len([e for e in events(day) if e['kind'] == 'seat.usage']) == 1
 
 
 def test_claude_launch_check_continue_done_idempotent(seat, monkeypatch):

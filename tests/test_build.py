@@ -69,6 +69,20 @@ def test_stuck_after_three_same_failures(tmp_path, monkeypatch):
     assert list((day / 'decisions').glob('*.md'))
 
 
+def test_environment_failure_parks_after_first_check_without_feedback(tmp_path, monkeypatch):
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [
+        registry.Result(1, {'test_ids': [], 'error': 'No module named pytest',
+                            'environment': 'pytest not found'})])
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 1
+    record = state.read_state(tmp_path)['builds']['A']
+    assert record['iteration'] == 1
+    assert record['action']['action'] == 'park'
+    assert record['action']['reason'] == 'environment: pytest not found'
+    assert runtime.calls == [('dispatch', str(brief))]
+    assert not any(event['kind'] == 'build.checked' for event in events(day))
+
+
 def test_green_on_second_iteration_records_two_usages(tmp_path, monkeypatch):
     from wuwei.commands import build
     repo, brief, day, runtime = setup(tmp_path, monkeypatch, [
@@ -149,14 +163,26 @@ def test_signature_normalizes_variable_text_in_failed_summary_lines(first_path, 
     assert _signature(first) == _signature(second)
 
 
-def test_build_accepts_unreported_usage_and_records_duration(tmp_path, monkeypatch):
+def test_build_marks_missing_usage_unmeasured(tmp_path, monkeypatch):
     from wuwei.commands import build
     repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)])
     monkeypatch.setattr(runtime, 'result', lambda job, *, root=None: registry.Result(0, {'text': 'done'}))
     assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0
     usage = next(e['payload']['usage'] for e in events(day) if e['kind'] == 'seat.usage')
-    assert usage['input_tokens'] is None and usage['output_tokens'] is None
-    assert usage['model'] == 'unreported' and usage['duration'] >= 0
+    assert usage == {'input_tokens': 'unmeasured', 'output_tokens': 'unmeasured',
+                     'cost': 'unmeasured', 'model': 'unmeasured', 'duration': 'unmeasured'}
+
+
+def test_build_records_reported_usage(tmp_path, monkeypatch):
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)])
+    reported = {'input_tokens': 12, 'output_tokens': 7, 'cost': 0.03,
+                'model': 'codex-test', 'duration': 4.5}
+    monkeypatch.setattr(runtime, 'result', lambda job, *, root=None:
+                        registry.Result(0, {'text': 'done', 'usage': reported}))
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0
+    usage = next(e['payload']['usage'] for e in events(day) if e['kind'] == 'seat.usage')
+    assert usage == reported
 
 
 def test_build_rejects_malformed_reported_usage(tmp_path, monkeypatch):
@@ -164,6 +190,21 @@ def test_build_rejects_malformed_reported_usage(tmp_path, monkeypatch):
     repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)])
     monkeypatch.setattr(runtime, 'result', lambda job, *, root=None: registry.Result(0, {'usage': {'input_tokens': 'bad'}}))
     assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 2
+
+
+def test_builder_policy_overrides_workspace_runtime(tmp_path, monkeypatch):
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)])
+    config = tmp_path / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('runtime="codex"', 'runtime="claude"'))
+    state._write_state(lambda data: data.update(seat_policy={
+        'builder': {'runtime': 'codex', 'model': 'test'}}), tmp_path, reserved=False)
+    selected = []
+    original = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, settings:
+                        selected.append((kind, settings['adapters']['runtime'])) or original(kind, settings))
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0
+    assert ('runtime', 'codex') in selected
 
 
 def test_build_reports_unknown_item(tmp_path, monkeypatch, capsys):
