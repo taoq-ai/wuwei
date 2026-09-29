@@ -23,6 +23,26 @@ jobs:
         run: python -m pip install pytest
       - run: python -m pytest -q
 
+  ziran-audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Audit role grants
+        uses: taoq-ai/ziran@v0.40.0
+        with:
+          command: audit
+          path: agents
+          baseline: agents/ziran-baseline.json
+          severity-threshold: high
+          ziran-version: "ziran==0.40.0"
+      - name: Verify baseline and widening detection
+        run: |
+          python -m pip install pytest
+          python -m pytest -q tests/test_ziran_ci_audit.py
+
   skill-evals:
     runs-on: ubuntu-latest
     env:
