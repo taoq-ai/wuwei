@@ -55,6 +55,8 @@ def _protected_name(path, directories=False):
             return True
         if tail[:2] == ('memory', 'archive'):
             return True
+        if tail[:2] == ('memory', 'snapshots'):
+            return True
         if directories and (not tail or (len(tail) in (1, 2) and tail[0] == 'days')):
             return True
         if directories and tail in (('memory',), ('memory', 'notes'),

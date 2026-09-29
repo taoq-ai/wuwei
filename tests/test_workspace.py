@@ -123,6 +123,7 @@ def test_config_defaults_and_independence(tmp_path):
         'host': {'free_memory_mb': 1024, 'seats': 1, 'reservation_timeout_seconds': 14400}, 'profile': 'strict',
             'memory': {'max_notes': 60, 'note_line_cap': 80, 'probation_days': 10, 'state_entry_cap': 3},
             'metrics': {'transcripts': '~/.claude/projects'},
+            'consolidation': {'archive_after_days': 30, 'similarity_threshold': 0.85},
             'voice': {'sources': {}, 'review_prs': []},
         'build': {'max_iterations': 8, 'stuck_after': 3,
                   'poll_interval_seconds': 5, 'poll_timeout_seconds': 3600},

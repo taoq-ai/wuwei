@@ -53,6 +53,8 @@ fast_checks = ["python3 -m pytest -q"]
 | `memory.probation_days` | `10` | Working days before a note or rule can be archived for nonuse. |
 | `memory.state_entry_cap` | `3` | State entries included in memory payload. |
 | `metrics.transcripts` | `"~/.claude/projects"` | Claude Code project transcript directory for attended time. Sessions are filtered to the workspace and its repositories. |
+| `consolidation.archive_after_days` | `30` | Move older day directories into the archive. |
+| `consolidation.similarity_threshold` | `0.85` | Text similarity ratio for near-duplicate review. |
 | `build.max_iterations` | `8` | Maximum build iterations. |
 | `build.stuck_after` | `3` | Repeated progress limit. |
 | `build.poll_interval_seconds` | `5` | Runtime job poll interval. |

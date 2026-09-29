@@ -3,6 +3,7 @@
 from datetime import date, timedelta
 import json
 from pathlib import Path
+import shutil
 from uuid import uuid4
 
 from wuwei import registry, state, workspace
@@ -63,6 +64,25 @@ def _ensure_clean(root, target):
 
 def _changelog(root):
     return safe_path(root, workspace.load_config(root)['retro']['changelog'], label='changelog')
+
+
+def _snapshot(root):
+    """Keep pre-fold memory and charters under protected workspace history."""
+    base = root / '.wuwei'
+    target = base / 'memory/snapshots' / uuid4().hex
+    for name in ('memory', 'charters'):
+        source = base / name
+        if source.is_symlink() or not source.is_dir():
+            raise ValueError(f'{name} must be a real directory before folding')
+        if any(path.is_symlink() for path in source.rglob('*')):
+            raise ValueError(f'{name} contains a symlink')
+    if target.parent.is_symlink():
+        raise ValueError('snapshot directory must not be a symlink')
+    target.mkdir(parents=True)
+    shutil.copytree(base / 'memory', target / 'memory',
+                    ignore=shutil.ignore_patterns('snapshots'))
+    shutil.copytree(base / 'charters', target / 'charters')
+    return [path for path in target.rglob('*') if path.is_file()]
 
 
 def _apply(root, proposal):
@@ -127,8 +147,22 @@ def _apply(root, proposal):
             survivor = _target(root, proposal.get('survivor'))
             if survivor == target or survivor.parent != target.parent or not survivor.is_file():
                 raise ValueError('fold requires a live note survivor')
-            if parse_note(survivor.read_text(encoding='utf-8'))[0]['status'] != 'active':
+            survivor_text = survivor.read_text(encoding='utf-8')
+            if parse_note(survivor_text)[0]['status'] != 'active':
                 raise ValueError('fold requires a live note survivor')
+            _, retired_body = parse_note(old)
+            _, survivor_body = parse_note(survivor_text)
+            merged = survivor_text
+            if retired_body.strip() and retired_body.strip() not in survivor_body:
+                merged = (survivor_text.rstrip() + f'\n\n## Folded from {target.name}\n'
+                          + retired_body.strip() + '\n')
+            if len(merged.splitlines()) > workspace.load_config(root)['memory']['note_line_cap']:
+                raise ValueError('folded survivor exceeds note line cap')
+            _ensure_clean(root, survivor)
+        from wuwei import memory
+        findings = memory.write_index(root)
+        if findings:
+            raise ValueError('; '.join(findings))
         archive = root / '.wuwei/memory/archive'
         if archive.is_symlink():
             raise ValueError('archive path must not be a symlink')
@@ -138,8 +172,15 @@ def _apply(root, proposal):
             raise ValueError('archive destination already exists')
         # A move preserves the complete original note and does not delete its content.
         _ensure_clean(root, target)
+        index = root / '.wuwei/memory/index.md'
+        snapshot = _snapshot(root) if action == 'fold' else []
+        if action == 'fold' and merged != survivor_text:
+            workspace.atomic_write(survivor, merged)
         target.rename(destination)
-        return [target, destination]
+        findings = memory.write_index(root)
+        if findings:
+            raise ValueError('; '.join(findings))
+        return [target, destination, index, *([survivor] if action == 'fold' else []), *snapshot]
     return [target]
 
 

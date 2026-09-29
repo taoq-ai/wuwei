@@ -448,7 +448,7 @@ def _workspace_repository(repo):
 
 def _workspace_path(path):
     _tree_path(path)
-    if path.split('/')[0] not in _WORKSPACE_DIRS:
+    if path.split('/')[0] not in (*_WORKSPACE_DIRS, 'days', 'archive'):
         raise ValueError('not a workspace procedure path')
     return path
 

@@ -101,6 +101,62 @@ def test_add_patch_and_archive_land(tmp_path):
     assert (base / 'memory/archive/old.md').exists()
 
 
+def test_archive_accepts_regenerated_index(tmp_path, monkeypatch):
+    from wuwei import promotion, registry
+
+    base = setup(tmp_path)
+    (base / 'memory/notes/old.md').write_text(
+        '---\ntype: reference\nsummary: Old\naliases: []\nstatus: active\n'
+        'created: 2026-09-01\n---\nOld fact\n')
+    proposal(base, target='.wuwei/memory/notes/old.md', action='archive')
+    monkeypatch.setenv('WUWEI_NOW', DAY + 'T12:00:00+02:00')
+
+    class VCS:
+        def workspace_changes(self, *args, **kwargs):
+            return registry.Result(0, ['memory/index.md'])
+
+        def workspace_commit(self, *args, **kwargs):
+            return registry.Result(0, None)
+
+    monkeypatch.setattr(registry, 'load', lambda *args: VCS())
+    assert promotion.promote(tmp_path)[0]['status'] == 'landed'
+    assert (base / 'memory/archive/old.md').exists()
+
+
+def test_invalid_unrelated_note_rejects_fold_before_moving_files(tmp_path, monkeypatch):
+    from wuwei import promotion, registry
+
+    base = setup(tmp_path)
+    note = ('---\ntype: reference\nsummary: One\naliases: []\nstatus: active\n'
+            'created: 2026-09-01\n---\n')
+    old = base / 'memory/notes/old.md'
+    live = base / 'memory/notes/live.md'
+    old.write_text(note + 'Original\n')
+    live.write_text(note + 'Survivor\n')
+    (base / 'memory/notes/broken.md').write_text('no frontmatter\n')
+    monkeypatch.setenv('WUWEI_NOW', DAY + 'T12:00:00+02:00')
+    memory.write_index(tmp_path)
+    index_before = (base / 'memory/index.md').read_text()
+    proposal(base, target='.wuwei/memory/notes/old.md', action='fold',
+             survivor='.wuwei/memory/notes/live.md')
+    class VCS:
+        def workspace_changes(self, *args, **kwargs):
+            return registry.Result(0, [])
+
+        def workspace_commit(self, *args, **kwargs):
+            return registry.Result(0, None)
+
+    monkeypatch.setattr(registry, 'load', lambda *args: VCS())
+    record = promotion.promote(tmp_path)[0]
+    assert record['status'] == 'rejected'
+    assert 'INVALID broken' in record['reason']
+    assert old.read_text() == note + 'Original\n'
+    assert live.read_text() == note + 'Survivor\n'
+    assert not (base / 'memory/archive/old.md').exists()
+    assert not (base / 'memory/snapshots').exists()
+    assert (base / 'memory/index.md').read_text() == index_before
+
+
 def test_dirty_changelog_rejects_before_charter_write(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from wuwei import promotion, registry
