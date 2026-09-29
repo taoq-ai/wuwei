@@ -130,7 +130,7 @@ def test_config_defaults_and_independence(tmp_path):
         'build': {'max_iterations': 8, 'stuck_after': 3,
                   'poll_interval_seconds': 5, 'poll_timeout_seconds': 3600},
         'codex': {'command': [], 'timeout_seconds': 300},
-        'watch': {'clock_seconds': 600, 'stale_seconds': 900,
+        'watch': {'clock_seconds': 600, 'dead_seconds': 1200, 'stale_seconds': 900,
                   'sweep_seconds': 7200},
         'steward': {'every_tool_calls': 50},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},

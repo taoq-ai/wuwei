@@ -123,8 +123,11 @@ def trace_sweep(root, config):
             counts['scanner'] = 'no sessions'
             return counts
         if config['adapters']['scanner'] == 'none':
-            counts['unreadable'] = 1
-            print('watch scanner: unmeasured: no scanner adapter', flush=True)
+            counts['scanner'] = 'not configured'
+            from wuwei import watch
+            if not any(row['kind'] == 'watch: sweep' and row['payload'].get('scanner') == 'not configured'
+                       for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
+                print('watch scanner: not configured', flush=True)
             return counts
         result = registry.load('scanner', config).traces(str(path), root=root)
         if type(result.exit) is not int or result.exit not in (0, 1):

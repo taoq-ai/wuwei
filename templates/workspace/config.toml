@@ -149,6 +149,7 @@ code_host_orgs = []
 
 [watch]
 clock_seconds = 600
+dead_seconds = 1200
 stale_seconds = 900
 sweep_seconds = 7200
 

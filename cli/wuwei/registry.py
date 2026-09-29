@@ -133,3 +133,11 @@ def outward_operation(kind):
             return operation(*args, **kwargs)
         return call
     return decorate
+
+
+def watch_service():
+    """Load the fixed local service manager adapter only when installation runs."""
+    spec = spec_from_file_location('adapters.watch_service', ADAPTERS / 'watch_service.py')
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module

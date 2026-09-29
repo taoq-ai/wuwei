@@ -9,7 +9,6 @@ from wuwei.references import pull_request
 
 
 ACTIVITY_SECONDS = 60
-DEAD_SECONDS = 1200
 MAX_READ_FAILURES = 5
 
 ERRORS = (OSError, ValueError, TypeError, KeyError, AttributeError)
@@ -51,7 +50,7 @@ def health(root):
                 age = (workspace.now() - max(clocks)).total_seconds()
                 if age < 0:
                     raise ValueError('clock line is in the future')
-                return (1, 'watch dead: no clock line within deadline') if age >= DEAD_SECONDS else (0, '')
+                return (1, 'watch dead: no clock line within deadline') if age >= workspace.load_config(root)['watch']['dead_seconds'] else (0, '')
         return 1, 'watch dead: missing clock line'
     except ERRORS as exc:
         return 2, f'watch health unmeasured: {exc}'
@@ -166,7 +165,7 @@ def sweep(root=None, *, watch_health=None):
         found = discovery.discover(root)
         counts.update({f'discovery.{key}': value for key, value in found['sources'].items()})
         counts['discovery_candidates'] = len(found['candidates'])
-        counts['unreadable'] += int(any(value == 'unmeasured' for value in found['sources'].values()))
+        counts['unreadable'] += int(any(value.startswith('unmeasured') for value in found['sources'].values()))
     except ERRORS as exc:
         counts['discovery'] = f'unmeasured: {exc}'
         counts['unreadable'] += 1
@@ -184,7 +183,10 @@ def sweep(root=None, *, watch_health=None):
     dispatch.discovery('sweep', root)
     from wuwei import steward
     try:
-        steward.run(root, trigger='sweep')
+        prior = saved(root).get('steward_at')
+        if prior is None or (workspace.now() - obligations._time(prior)).total_seconds() >= config['watch']['sweep_seconds']:
+            steward.run(root, trigger='sweep')
+            save(root, {'steward_at': workspace.now().isoformat()})
     except ERRORS as exc:
         counts['unreadable'] += 1
         counts['owed'] += 1
@@ -319,6 +321,8 @@ def tick(root):
     old_health = health(root)
     if due('clock_at', config['watch']['clock_seconds']):
         save(root, {'clock_at': now.isoformat()}, kind='watch: clock')
+        if 'clock_at' not in before:
+            old_health = health(root)
     if due('poll_at', config['pr']['poll_seconds']):
         from wuwei import merge
         result = max(result, poll(root), merge.poll(root))

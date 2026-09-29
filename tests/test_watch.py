@@ -120,7 +120,7 @@ def test_sweep_one_summary_with_counts_and_dead_watch(case, scanner, expected, c
     assert row['payload']['visibility_owed'] == 2
     assert row['payload']['watch_dead'] == 1
     assert row['payload']['reply_owed'] == 0
-    assert row['payload']['scanner'] == ('unmeasured' if scanner == 'none' else
+    assert row['payload']['scanner'] == ('not configured' if scanner == 'none' else
                                         'unmeasured' if scanner == 'failed' else 'measured')
     assert 'watch dead' in capsys.readouterr().out
     assert events(root, 'discovery.requested')[-1]['payload']['trigger'] == 'sweep'
@@ -505,7 +505,7 @@ def test_successful_empty_discovery_after_pr_gone_is_measured(case):
     watch.sweep(root)
     summary = events(root, 'watch: sweep')[-1]['payload']
     assert summary['prs'] == 0
-    assert summary['unreadable'] == 2  # Discovery and steward runtime are unmeasured.
+    assert summary['unreadable'] == 1  # Steward runtime remains unmeasured.
     assert summary['scanner'] == 'no sessions'
 
 
@@ -885,10 +885,10 @@ def test_opaque_session_identity_still_maps_without_decision_injection(case):
     assert finding['payload']['session_id'] == session
 
 
-def test_unmeasured_sweep_prints_reason(case, capsys):
+def test_unconfigured_scanner_sweep_is_quiet(case, capsys):
     root = case[0]
     trace_sweep_case(case)
     config = root / '.wuwei/config.toml'
     config.write_text(config.read_text().replace('scanner="ziran"', 'scanner="none"'))
-    assert watch_module().sweep(root, watch_health=(0, '')) == 2
-    assert 'no scanner adapter' in capsys.readouterr().out
+    assert watch_module().sweep(root, watch_health=(0, '')) == 0
+    assert 'watch scanner: not configured' in capsys.readouterr().out

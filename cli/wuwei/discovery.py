@@ -17,8 +17,11 @@ def dedupe(sources, *, tracker_ids=(), day_ids=()):
     measured = {}
     for name in SOURCES:
         rows = sources.get(name)
+        if isinstance(rows, str):
+            measured[name] = rows
+            continue
         if rows is None:
-            measured[name] = 'unmeasured'
+            measured[name] = 'unmeasured: source unavailable'
             continue
         if not isinstance(rows, list):
             raise ValueError(f'{name}: expected candidate list')
@@ -64,13 +67,23 @@ def discover(root=None, *, ports=None):
     config = workspace.load_config(root)
     day = state.read_state(root)
     ports = {} if ports is None else ports
-    sources = {name: None for name in SOURCES}
+    sources = {name: 'not applicable: no open PRs' for name in SOURCES}
+    sources.update(tracker='not implemented: tracker backlog listing',
+                   metric_regressions='not implemented: metric regression source',
+                   scanner=('not configured: scanner adapter' if config['adapters']['scanner'] == 'none'
+                            else 'not applicable: no repositories'))
     # The tracker port lacks backlog listing until #121.
     refs = day.get('raised_prs', []) + day.get('claimed_prs', [])
     if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
         raise ValueError('invalid day PR references')
     if refs:
+        if config['adapters']['review_bot'] == 'none':
+            sources['review_bot'] = 'not configured: review bot adapter'
+        if config['adapters']['code_host'] == 'none':
+            for name in ('base_checks', 'follow_up_threads', 'pr_follow_ups'):
+                sources[name] = 'not configured: code host adapter'
         if config['adapters']['review_bot'] != 'none':
+            sources['review_bot'] = 'unmeasured: review bot read failed'
             bot = ports.get('review_bot') or registry.load('review_bot', config)
             findings = []
             complete = True
@@ -90,6 +103,8 @@ def discover(root=None, *, ports=None):
             if complete:
                 sources['review_bot'] = findings
         if config['adapters']['code_host'] != 'none':
+            for name in ('base_checks', 'follow_up_threads', 'pr_follow_ups'):
+                sources[name] = 'unmeasured: code host read failed'
             host = ports.get('code_host') or registry.load('code_host', config)
             followups = []
             pr_followups = []
@@ -154,6 +169,7 @@ def discover(root=None, *, ports=None):
                 if complete:
                     sources['base_checks'] = red
     if config['repos'] and config['adapters']['scanner'] != 'none':
+        sources['scanner'] = 'unmeasured: scanner read failed'
         scanner = ports.get('scanner') or registry.load('scanner', config)
         found = []
         complete = True
