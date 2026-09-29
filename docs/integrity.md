@@ -44,8 +44,8 @@ owner boundary. Cache freshness is bounded by sessions and sweeps.
 
 1. Generate and retain an SSH signing key outside the repository. Do not commit the
    private key. Use an unencrypted CI-specific key and restrict secret access.
-2. Replace the explicit `OWNER_SETUP_REQUIRED` placeholder in
-   `keys/manifest-signing-key.pub` with the real SSH public key before releasing.
+2. Put the SSH public key in `keys/manifest-signing-key.pub` before releasing. The current
+   pin is ED25519 `SHA256:D1UTIXN6ywO+2Li0w/Ja0RDoTKcRTMNmHaO0aYan9UY`.
 3. Store the private key as repository Actions secret `WUWEI_MANIFEST_SIGNING_KEY`.
 4. Create a release through release-please. CI stages the shipped files, builds the
    inventory, signs with namespace `wuwei-manifest`, verifies against the pinned key,
