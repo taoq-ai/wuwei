@@ -1,8 +1,33 @@
 # Generated agents
 
-Run `bin/wuwei agents build` after changing a charter or `allowlist.json`. Run
-`bin/wuwei agents check` to detect drift. CI runs the same check as a pytest
-golden test. Agent files are generated; edit their sources instead.
+Agent files are generated; edit their sources instead. After a reviewed change
+to a charter or `allowlist.json`, run these commands from the plugin repository
+root (outside an initialized WUWEI workspace):
+
+```sh
+bin/wuwei agents build
+bin/wuwei agents check
+ziran audit agents/ --write-baseline agents/ziran-baseline.json
+ziran audit agents/ --baseline agents/ziran-baseline.json --format json
+```
+
+Use ZIRAN **0.40.0**, installed as a dev-time tool in a disposable virtual
+environment with `python -m pip install 'ziran==0.40.0'`. Review the generated
+agents and baseline diff, then commit both with their source changes. Never
+hand-edit the baseline or regenerate it just to silence an unreviewed widening.
+It records declared tools and dangerous chains, never prompts or descriptions.
+
+CI pins `taoq-ai/ziran@v0.40.0` and `ziran==0.40.0`, auditing `agents/` against
+`ziran-baseline.json` on pull requests and main pushes. Existing Bash and Write
+grants are accepted; widened tools/chains or new critical findings fail. Adding
+WebFetch to the builder reports a new chain containing WebFetch. Audit exits
+1 (findings) and 2 (could not run) both fail CI. SARIF uploads use the action's
+default output; unavailable code-scanning permissions do not hide audit failures.
+
+The default pytest suite checks generated-agent drift and baseline version,
+agent names and tool lists without ZIRAN. When `ziran` is on PATH, it also audits
+a clean copy and a copy with WebFetch added to the builder. Only those real-tool
+cases skip when ZIRAN is absent; the audit job runs them with the pinned install.
 
 | Role | Tool rationale |
 |---|---|
