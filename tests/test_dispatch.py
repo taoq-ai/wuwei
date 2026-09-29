@@ -259,10 +259,14 @@ def agent_gate(root, monkeypatch, *, findings=True, trust=False, threshold='high
 
     def run(argv, **kwargs):
         calls.append(argv)
-        if argv[1] == 'audit':
-            return SimpleNamespace(returncode=0, stdout=json.dumps(payload), stderr='')
-        failed = bool(payload['findings']) and threshold == 'high'
-        return SimpleNamespace(returncode=int(failed), stdout=json.dumps({'passed': not failed}), stderr='')
+        if argv[1] == '--version':
+            return SimpleNamespace(returncode=0, stdout='ziran, version 0.39.0', stderr='')
+        assert argv[1] == 'audit' and argv[-2] == '--severity'
+        levels = ('critical', 'high', 'medium', 'low')
+        filtered = {**payload, 'findings': [f for f in payload['findings']
+                    if levels.index(f['severity']) <= levels.index(argv[-1])]}
+        return SimpleNamespace(returncode=int(bool(filtered['findings'])),
+                               stdout=json.dumps(filtered), stderr='')
 
     ziran = importlib.import_module('adapters.scanner.ziran')
     monkeypatch.setattr(ziran.subprocess, 'run', run)
@@ -367,7 +371,18 @@ def test_scanner_finding_declared_trust_boundary_blocks_below_threshold(root, mo
     from wuwei import dispatch
 
     payload, _, _ = agent_gate(root, monkeypatch, threshold='critical')
-    payload['findings'][0]['trust_boundary'] = True
+    payload['findings'][0].update(rule='SA004', trust_boundary=True)
+    assert dispatch.receive('A', 'security', 'security', root=root)['blocks']
+
+
+@pytest.mark.parametrize('flag', ['trust_surface', 'boundary_relevant'])
+def test_flagged_item_blocks_ordinary_finding_below_threshold(root, monkeypatch, flag):
+    from wuwei import dispatch
+
+    payload, _, _ = agent_gate(root, monkeypatch, threshold='critical')
+    payload['findings'][0].update(rule='SA004', severity='low')
+    state._write_state(lambda data: data['items']['A']['flags'].update({flag: True}),
+                       root, reserved=False)
     assert dispatch.receive('A', 'security', 'security', root=root)['blocks']
 
 
@@ -384,7 +399,7 @@ def test_ordinary_finding_below_threshold_remains_a_note(root, monkeypatch):
     record(root, 'arch', 'arch', PASS)
     record(root, 'quality', 'quality', PASS + 'Simplicity: none\nDesign: none\n')
     payload, _, _ = agent_gate(root, monkeypatch, threshold='critical')
-    payload['findings'][0].update(check_id='SA004', severity='medium')
+    payload['findings'][0].update(rule='SA004', severity='medium')
     result = dispatch.receive('A', 'security', 'security', root=root)
     assert result['verdict'] == 'PASS' and not result['blocks']
     assert 'ZIRAN SA004' in result['notes'][0]
@@ -398,7 +413,7 @@ def test_scan_evidence_stays_bound_to_worktree_and_item(root, monkeypatch, fault
 
     payload, _, _ = agent_gate(root, monkeypatch)
     if fault == 'outside':
-        payload['findings'][0]['file_path'] = str(root / 'outside.py')
+        payload['findings'][0]['file'] = str(root / 'outside.py')
     elif fault == 'symlink':
         outside = root / 'outside.py'
         outside.write_text('pass\n')
@@ -470,7 +485,7 @@ def test_scanner_redacts_private_markers_from_rule_and_events(root, monkeypatch)
 
     payload, _, _ = agent_gate(root, monkeypatch)
     material = security.initialize(root / '.wuwei')
-    payload['findings'][0]['check_id'] = material['canary']
+    payload['findings'][0]['rule'] = material['canary']
     result = dispatch.receive('A', 'security', 'security', root=root)
     assert material['canary'] not in (root / result['file']).read_text()
     assert material['canary'] not in (workspace.day_dir(root) / 'events.jsonl').read_text()

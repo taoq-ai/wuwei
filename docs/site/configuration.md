@@ -110,17 +110,33 @@ Findings also block when marked as a trust boundary, when the item's `trust_surf
 `boundary_relevant` flag is set, or for ZIRAN checks SA001, SA002, SA003, SA007, SA008,
 SA009 and SA010 (secrets, input validation, execution and data exposure).
 
-The adapter requires `ziran audit PATH --format json` with an AnalysisReport body
-(`files_analyzed` greater than zero and a `findings` list), followed by
-`ziran ci REPORT --severity-threshold LEVEL --format json` with a boolean `passed` field.
-Finding fields are `check_id`, `severity`, `file_path`, `line_number` and `message`;
-`trust_boundary` is an optional boolean. Each command has a 60-second timeout.
+The adapter requires **ZIRAN 0.39.0 or newer**, verified with `ziran --version`.
+It runs `ziran audit PATH --format json --severity low` to retain every finding.
+Exit 1 means findings are present; the configured blocking threshold is applied locally.
+Stdout is one JSON document with `files_analyzed` greater than zero and a `findings` list.
+Each finding contains
+`rule`, `severity`, `file`, `line` and `message`; matched source lines are never included.
+The gate evaluates these validated findings locally. No `ziran ci` command is used.
+Each external command has a 60-second timeout. Missing or incompatible tools, command
+errors, malformed reports and timeouts report unmeasured (exit 2).
 
-The available upstream console-only audit and campaign CI interface do not yet meet
-this contract. A compatible upstream release is required for live use. `none`, missing
-or incompatible ZIRAN, command errors, invalid bodies and timeouts report unmeasured
-(exit 2) and leave the gate unreceived. CI exit 1 counts as findings only when its body
-and the validated audit agree. Trace scanning (#34) and MCP audit (#35) remain deferred.
+At each watch sweep, nonempty daily traces are scanned with
+`ziran analyze-traces --source otel --input DAY/traces.jsonl --out OUTPUT --format json`.
+The adapter reads `OUTPUT/trace_analysis.json` from a temporary directory and discards it
+after validation. Exit 0 means measured with no critical chain, 1 means critical chains,
+and 2 means unmeasured; errors take precedence over findings. Missing or blank trace
+files report `no sessions` in the sweep line without invoking ZIRAN, including when the
+scanner adapter is `none`.
+
+Critical chains page through `scanner.finding` events containing only chain, risk level
+and session identity. Subagents use `session_id:agent_id` identities and their own
+transcript brief references to bind to seat reservations. Transcript lookup is best-effort;
+affected active items park and valid pending owner decisions appear in the existing queue.
+Unknown sessions still page and queue a decision. Repeated sweeps
+remeasure without duplicating a session/chain decision. Commands and argument values
+never enter finding events or decisions. A session identity changed by secret redaction
+uses a stable digest to keep different sessions distinct. MCP scanning (#35) and role
+audits (#36) remain deferred.
 
 ## Owner voice
 

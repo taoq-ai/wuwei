@@ -512,3 +512,106 @@ def test_fractional_duration_cannot_round_before_epoch(trace_workspace, call_pay
     assert (code, reason) == (0, '')
     assert 'duration_ms' in error_events(trace_workspace)[0]['payload']['reason']
     assert not (trace_workspace / 'traces.jsonl').exists()
+
+
+def test_span_contract_types(trace_workspace, call_payload):
+    import re
+    assert recorder()(call_payload) == (0, '')
+    batch = json.loads((trace_workspace / 'traces.jsonl').read_text().splitlines()[0])
+    assert isinstance(batch['resourceSpans'], list)
+    resource, = batch['resourceSpans']
+    attrs = resource['resource']['attributes']
+    assert any(a['key'] == 'service.name' and isinstance(a['value']['stringValue'], str) for a in attrs)
+    span, = resource['scopeSpans'][0]['spans']
+    for key, pattern in [('traceId', r'[0-9a-f]{32}'), ('spanId', r'[0-9a-f]{16}'),
+                         ('startTimeUnixNano', r'[0-9]+'), ('endTimeUnixNano', r'[0-9]+')]:
+        assert isinstance(span[key], str) and re.fullmatch(pattern, span[key])
+    assert span['name'] == call_payload['tool_name']
+    attrs = {a['key']: a['value']['stringValue'] for a in span['attributes']}
+    assert all(isinstance(attrs[key], str) for key in ('session.id', 'gen_ai.tool.name', 'gen_ai.tool.arguments'))
+    assert attrs['gen_ai.tool.name'] == call_payload['tool_name']
+    assert json.loads(attrs['gen_ai.tool.arguments']) == call_payload['tool_input']
+
+
+def test_redacted_sessions_remain_distinct_and_bind_reservations(trace_workspace, call_payload):
+    from uuid import uuid4
+    from wuwei import workspace
+    root = trace_workspace.parents[2]
+    identities = ['ghp_' + uuid4().hex, 'ghp_' + uuid4().hex]
+    relative = str((trace_workspace / 'briefs/builder.md').relative_to(root))
+    state._write_state(lambda data: data.update(items={'work': {}}, seats={'builder': {
+        'item': 'work', 'role': 'builder', 'status': 'running', 'brief': relative}}), root, reserved=False)
+    transcript = root / 'session.jsonl'
+    transcript.write_text(json.dumps({'type': 'user', 'message': {'content': 'WUWEI brief: ' + relative}}) + '\n')
+    for identity in [*identities, identities[0]]:
+        assert recorder()({**call_payload, 'session_id': identity, 'transcript_path': str(transcript)}) == (0, '')
+    spans = read_spans(trace_workspace)
+    ids = [span['attrs']['session.id'] for span in spans]
+    assert ids[0] != ids[1] and ids[0] == ids[2]
+    assert set(state.read_state(root)['seats']['builder']['trace_sessions']) == set(ids)
+    assert all(identity not in (trace_workspace / 'traces.jsonl').read_text() for identity in identities)
+
+
+def test_unmatched_transcript_does_not_infer_item(trace_workspace, call_payload):
+    root = trace_workspace.parents[2]
+    state._write_state(lambda data: data.update(items={'work': {}}, seats={'builder': {
+        'item': 'work', 'role': 'builder', 'status': 'running', 'brief': 'unrelated'}}), root, reserved=False)
+    transcript = root / 'session.jsonl'
+    transcript.write_text(json.dumps({'type': 'user', 'message': {'content': 'ordinary request'}}) + '\n')
+    assert recorder()({**call_payload, 'transcript_path': str(transcript)}) == (0, '')
+    assert 'trace_sessions' not in state.read_state(root)['seats']['builder']
+
+
+@pytest.mark.parametrize('content', ['{"type": "us', '{"type": "user"}',
+                                   '{"type": "user", "message": null}', None])
+def test_unreadable_transcript_binding_does_not_fail_recorded_span(trace_workspace, call_payload, content, capsys):
+    transcript = trace_workspace / 'partial.jsonl'
+    transcript.parent.mkdir(parents=True, exist_ok=True)
+    if content is None:
+        transcript.mkdir()
+    else:
+        transcript.write_text(content)
+    assert recorder()({**call_payload, 'transcript_path': str(transcript)}) == (0, '')
+    assert len(read_spans(trace_workspace)) == 1
+    assert not (trace_workspace / 'events.jsonl').exists()
+    assert not capsys.readouterr().err
+
+
+@pytest.mark.parametrize('secret_field', [None, 'session_id', 'agent_id'])
+def test_subagents_bind_separately_from_shared_planner_session(trace_workspace, call_payload, secret_field):
+    from pathlib import Path
+    from uuid import uuid4
+
+    root = trace_workspace.parents[2]
+    recorded = json.loads((Path(__file__).parent / 'payloads/SubagentStop/example.json').read_text())
+    payload = {**call_payload, 'session_id': recorded['session_id']}
+    if secret_field == 'session_id':
+        payload['session_id'] = 'ghp_' + uuid4().hex
+    main = root / 'session.jsonl'
+    main.write_text(json.dumps({'type': 'user', 'message': {'content': 'plan my day'}}) + '\n')
+    payload['transcript_path'] = str(main)
+    assert recorder()(payload) == (0, '')
+    seats = {}
+    identities = []
+    for name in ('builder', 'fixer'):
+        agent_id = recorded['agent_id'] + name if secret_field != 'agent_id' else 'ghp_' + uuid4().hex
+        identities.append(payload['session_id'] + ':' + agent_id)
+        relative = str((trace_workspace / 'briefs' / (name + '.md')).relative_to(root))
+        seats[name] = {'item': name, 'role': name, 'status': 'running', 'brief': relative}
+        state._write_state(lambda data: data['seats'].update({name: seats[name]}), root, reserved=False)
+        transcript = main.parent / payload['session_id'] / 'subagents' / f'agent-{agent_id}.jsonl'
+        transcript.parent.mkdir(parents=True, exist_ok=True)
+        transcript.write_text(json.dumps({'type': 'user', 'message': {'content': 'WUWEI brief: ' + relative}}) + '\n')
+        for tool in ('Read', 'WebFetch'):
+            assert recorder()({**payload, 'agent_id': agent_id, 'tool_name': tool}) == (0, '')
+    spans = read_spans(trace_workspace)
+    ids = [span['attrs']['session.id'] for span in spans]
+    assert len(set(ids)) == len({span['traceId'] for span in spans}) == 3
+    assert ids[1] == ids[2] and ids[3] == ids[4]
+    stored = state.read_state(root)['seats']
+    assert stored['builder']['trace_sessions'] == [ids[1]]
+    assert stored['fixer']['trace_sessions'] == [ids[3]]
+    if secret_field is None:
+        assert ids[1::2] == identities
+    else:
+        assert ids[1::2] == [hashlib.sha256(identity.encode()).hexdigest() for identity in identities]

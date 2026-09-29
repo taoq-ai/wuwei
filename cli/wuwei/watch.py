@@ -170,25 +170,11 @@ def sweep(root=None, *, watch_health=None):
     except ERRORS as exc:
         counts['discovery'] = f'unmeasured: {exc}'
         counts['unreadable'] += 1
-    counts['scanner'] = 'unmeasured'
-    counts['scanner_owed'] = 0
-    if config['adapters']['scanner'] == 'none':
-        counts['unreadable'] += 1
-        print('watch scanner: unmeasured (no adapter)', flush=True)
-    else:
-        try:
-            path = workspace.day_dir(root) / 'traces.jsonl'
-            if not path.is_file():
-                raise ValueError('traces missing')
-            result = registry.load('scanner', config).traces(str(path), root=root)
-            if type(result.exit) is not int or result.exit not in (0, 1, 2) or result.exit == 2:
-                raise ValueError(result.reason or 'scanner unavailable')
-            counts['scanner'] = 'measured'
-            counts['scanner_owed'] = int(result.exit == 1)
-        except ERRORS as exc:
-            counts['scanner'] = 'unreadable'
-            counts['unreadable'] += 1
-            print(f'watch scanner: {exc}', flush=True)
+    from wuwei import scanner
+    scan = scanner.trace_sweep(root, config)
+    counts['scanner'] = scan['scanner']
+    counts['scanner_owed'] = scan['scanner_owed']
+    counts['unreadable'] += scan['unreadable']
     counts['integrity_owed'] = int(measured.exit == 1)
     counts['unreadable'] += int(measured.exit == 2)
     counts['owed'] = sum(counts[key] for key in (

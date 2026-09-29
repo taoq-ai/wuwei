@@ -1,1 +1,1 @@
-{"files_analyzed": 1, "findings": [{"check_id": "SA003", "severity": "high", "file_path": "vulnerable.py", "line_number": 5, "message": "Untrusted input reaches eval", "context": "eval(user_input)", "recommendation": "Validate input and remove evaluation"}]}
+{"files_analyzed": 1, "findings": [{"rule": "SA003", "severity": "high", "file": "vulnerable.py", "line": 5, "message": "Untrusted input reaches eval"}]}
