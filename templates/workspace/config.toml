@@ -19,7 +19,7 @@ framework = "wsjf" # wsjf or rice
 
 [discovery]
 min_queue = 2
-autostart = "strict" # off, strict or goal
+autostart = "strict" # off: next morning; strict: ranked goal SLICE; goal: goal SLICE under CAP
 
 [tracker]
 backlog_filter = "" # Optional Linear team ID; empty reads accessible issues.

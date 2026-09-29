@@ -239,6 +239,8 @@ STATE_PRODUCERS = {
     'merge_breakers': 'wuwei merge', 'gate_verdicts': 'wuwei dispatch receive',
     'brief_packs': 'wuwei brief pack', 'brief_drill': 'wuwei brief answer',
     'steward_notes': 'wuwei steward run', 'steward_acks': 'wuwei steward ack',
+    'discovery_candidates': 'wuwei dispatch discovery',
+    'intraday_proposals': 'wuwei plan add',
 }
 
 

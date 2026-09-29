@@ -118,7 +118,7 @@ def test_autostart_strict_full_and_safety():
     config = {'discovery': {'autostart': 'strict'}, 'repos': [{'merge': {'never_auto_paths': ['infra/*']}}]}
     assert start_decision(row, config, {'G-1'}, within_budget=True, above_cut=True) == 'owner'
     config['discovery']['autostart'] = 'goal'
-    assert start_decision(row, config, {'G-1'}, within_budget=True, above_cut=True) == 'start'
+    assert start_decision(row, config, {'G-1'}, within_budget=True, above_cut=True) == 'owner'
     row['paths'] = ['infra/main.tf']
     assert start_decision(row, config, {'G-1'}, within_budget=True, above_cut=True) == 'owner'
     row['paths'] = []

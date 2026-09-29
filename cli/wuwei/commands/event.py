@@ -11,6 +11,7 @@ FREE_KINDS = frozenset({'note'})
 EVENT_PRODUCERS = {
     'build.started': 'wuwei build next', 'build.launched': 'wuwei build',
     'build.checked': 'wuwei build check',
+    'build.requested': 'wuwei dispatch discovery',
     'seat.usage': 'wuwei build or SubagentStop',
     'mcp.finding': 'wuwei mcp check', 'mcp.checked': 'wuwei mcp check',
     'mcp.decided': 'owner host MCP decision',
@@ -18,6 +19,7 @@ EVENT_PRODUCERS = {
     'integrity_confirmation': 'owner host re-confirmation',
     'state.set': 'wuwei state set', 'state.transition': 'wuwei state transition',
     'state.import': 'wuwei plan approve', 'plan.approved': 'wuwei plan approve',
+    'plan.added': 'wuwei plan add', 'plan.proposed': 'wuwei plan add',
     'plan.session': 'wuwei plan session', 'brief written': 'wuwei brief',
     'seat launched': 'wuwei hook PreToolUse',
     'seat stopped': 'wuwei hook SubagentStop',
@@ -34,6 +36,7 @@ EVENT_PRODUCERS = {
     'pr.reviewers_selected': 'wuwei pr ping',
     'day.close_requested': 'wuwei close', 'build.parked': 'wuwei build',
     'gate.received': 'wuwei dispatch receive', 'discovery.requested': 'wuwei dispatch discovery',
+    'discovery.intake': 'wuwei dispatch discovery',
     'tracker.call': 'wuwei tracker lifecycle',
     'brief.pack': 'wuwei brief pack', 'brief.answer': 'wuwei brief answer',
     'steward.notes': 'wuwei steward run', 'steward.run': 'wuwei steward run',

@@ -75,6 +75,13 @@ def decision_queue(root=None):
                       'reversibility': fields.get('Reversibility', 'unmeasured'),
                       'blast_radius': fields.get('Blast radius', 'unmeasured'),
                       'lint': 'valid' if code == 0 else message})
+    for ident, proposal in sorted(state.read_state(root).get('intraday_proposals', {}).items()):
+        if proposal.get('decision') != 'owner':
+            continue
+        queue.append({'id': ident, 'question': f'Admit intraday item {ident}?',
+                      'recommendation': 'defer', 'reversibility': 'two-way',
+                      'blast_radius': proposal.get('candidate', {}).get('scope', 'unmeasured'),
+                      'lint': proposal.get('reason', 'proposal pending owner')})
     workspace.atomic_write(day / 'steward-decisions.json',
                            json.dumps(queue, allow_nan=False, indent=2) + '\n')
     return queue
