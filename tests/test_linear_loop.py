@@ -87,6 +87,17 @@ def test_discover_command_lists_tracker_backlog(tmp_path, monkeypatch, capsys):
         {'id': 'ABC-2', 'title': 'Candidate', 'source': 'tracker'}]
 
 
+def test_discover_command_exits_unmeasured_when_tracker_fails(tmp_path, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('[adapters]\ntracker = "linear"\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    tracker = Fake({'backlog': registry.Result(2, reason='LINEAR_API_KEY is missing')})
+    monkeypatch.setattr(registry, 'load', lambda kind, config: tracker)
+    assert main(['discover']) == 2
+    assert json.loads(capsys.readouterr().out)['sources']['tracker'].startswith('unmeasured')
+
+
 def test_tracker_calls_record_order_and_failures(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text(
