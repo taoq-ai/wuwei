@@ -35,6 +35,15 @@ with a consumed brief. `wuwei steward run --trigger close` returns the same cont
 inside `steward_launch`, through the configured runtime adapter. Use these generated
 instructions for lead, builder, sentinel, shepherd and steward seats.
 
+Commit and push guards follow the target repository even when the session starts
+elsewhere. This includes `git -C`, `--git-dir`, `--work-tree`, repository environment
+variables, and literal `cd` chains inside or outside subshells. Managed worktree
+anchors connect external checkouts to their workspace. An unrelated repository
+remains outside scope even when `WUWEI_WORKSPACE` selects another workspace.
+Ambiguous directory changes or unresolved targets may require separate, literal
+commands. A detached HEAD refusal asks you to check out a branch before pushing;
+other context failures identify the failed read and a corrective action.
+
 ## Memory
 
 `wuwei init` creates `.wuwei/memory/` with a spine, index and changelog. Day records live under `.wuwei/days/`. Settled facts belong in notes; procedure belongs in charters. The CLI provides `note`, `index`, `consolidate`, `payload` and `promote` commands. The owner edits goals and voice; seats propose changes for promotion. The index is generated and notes are bounded by configuration defaults.

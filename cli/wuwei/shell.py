@@ -1,5 +1,6 @@
 """Static shell normalization for guards. Never execute or expand input text."""
 
+from itertools import count
 from pathlib import Path, PurePosixPath
 import re
 import shlex
@@ -20,6 +21,8 @@ class Command(NamedTuple):
     env: dict[str, str]
     writes: tuple[str, ...] = ()
     reads: tuple[str, ...] = ()
+    scope: tuple[int, ...] = ()
+    separator: str = ''
 
 
 def operands(args, valued=(), flags=()):
@@ -155,17 +158,20 @@ def _word(raw):
                    for part in parts)
 
 
-def normalize(command: str, *, protected=()) -> list[Command]:
+def normalize(command: str, *, protected=(), words=None) -> list[Command]:
     """Return argv lists with subshell scope, or raise ParseError.
 
     Extra protected executable names receive literal argument checks only.
+    If supplied, words collects literal tokens even when parsing fails, allowing
+    callers to establish target scope without reparsing rejected shell text.
 
     ponytail: this is a conservative simple-command parser, not a shell evaluator.
     Reject dynamic substitutions, control flow and unknown wrapper options; extend
     the supported grammar with bypass tests when a guard needs those constructs.
     """
     try:
-        return _parse(command, False, protected=('git', 'gh', *protected))
+        return _parse(command, False, protected=('git', 'gh', *protected),
+                      words=[] if words is None else words, scope_ids=count())
     except (ValueError, RecursionError) as exc:
         error = type(exc) if isinstance(exc, ParseError) else ParseError
         raise error((str(exc) or 'shell nesting too deep') +
@@ -223,7 +229,7 @@ def _read_word(script, position):
     return ''.join(raw), position
 
 
-def _parse(script, subshell, env=None, protected=('git', 'gh')):
+def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, scope=(), scope_ids):
     if not isinstance(script, str) or '\0' in script:
         raise ParseError('command must be text without NUL')
     tokens, raw_tokens, heredocs = [], [], []
@@ -283,6 +289,8 @@ def _parse(script, subshell, env=None, protected=('git', 'gh')):
             continue
         tokens.append((raw if operator else _word(raw), operator))
         raw_tokens.append(raw)
+        if not operator and _literal(raw):
+            words.append(_word(raw))
         if operator:
             command_start = len(tokens)
     if heredocs:
@@ -290,8 +298,9 @@ def _parse(script, subshell, env=None, protected=('git', 'gh')):
 
     position = 0
 
-    def group(nested):
+    def group(nested, parent_scope):
         nonlocal position
+        current_scope = (*parent_scope, next(scope_ids))
         commands = []
         pending = None
         while position < len(tokens):
@@ -305,7 +314,7 @@ def _parse(script, subshell, env=None, protected=('git', 'gh')):
                 raise ParseError('unexpected shell separator')
             if operator:
                 position += 1
-                current = group(True)
+                current = group(True, current_scope)
                 if position == len(tokens) or tokens[position] != (')', True) or not current:
                     raise ParseError('unbalanced or empty subshell')
                 position += 1
@@ -321,7 +330,8 @@ def _parse(script, subshell, env=None, protected=('git', 'gh')):
                         argv.append(tokens[position][0])
                         raw_argv.append(raw_tokens[position])
                     position += 1
-                current = _unwrap(argv, nested, raw_argv, env, protected)
+                current = _unwrap(argv, nested, raw_argv, env, protected,
+                                  words=words, scope=current_scope, scope_ids=scope_ids)
                 if writes or reads:
                     if not current:
                         current = [Command([], nested, dict(env or {}))]
@@ -334,8 +344,13 @@ def _parse(script, subshell, env=None, protected=('git', 'gh')):
                 current[0] = current[0]._replace(reads=current[0].reads + (reads_at[position],))
                 position += 1
             next_token = tokens[position] if position < len(tokens) else None
-            if next_token in (('|', True), ('&', True)):
-                current = [item._replace(subshell=True) for item in current]
+            if next_token in (('|', True), ('&', True)) or pending == '|':
+                detached = (*current_scope, next(scope_ids))
+                current = [item._replace(subshell=item.subshell or next_token in (('|', True), ('&', True)),
+                                         scope=detached + item.scope[len(current_scope):])
+                           for item in current]
+            if current:
+                current[-1] = current[-1]._replace(separator=next_token[0] if next_token else '')
             commands.extend(current)
             pending = None
             if next_token is None or next_token == (')', True):
@@ -348,13 +363,13 @@ def _parse(script, subshell, env=None, protected=('git', 'gh')):
             raise ParseError('missing command after separator')
         return commands
 
-    result = group(subshell)
+    result = group(subshell, scope)
     if position != len(tokens):
         raise ParseError('unmatched closing parenthesis')
     return result
 
 
-def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh')):
+def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'), *, words, scope, scope_ids):
     env = dict(inherited_env or {})
     while argv:
         if _ASSIGNMENT.match(argv[0]):
@@ -386,7 +401,11 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
             for raw in raw_argv[1:]:
                 if len(list(_QUOTED_PART.finditer(raw))) > 1:
                     _reject_mentions(raw)
-            return _parse(' '.join(argv[1:]), subshell, env, protected)
+            expanded = _parse(' '.join(argv[1:]), subshell, env, protected,
+                              words=words, scope=scope, scope_ids=scope_ids)
+            # eval runs in the current shell, unlike a shell -c child.
+            return [item._replace(scope=scope + item.scope[len(scope) + 1:])
+                    for item in expanded]
         if program == 'busybox':
             if len(argv) < 2 or argv[1] != 'sh':
                 raise ParseError('unsupported busybox applet')
@@ -413,21 +432,22 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
                 _reject_mentions(raw_argv[index])
             if len(_GUARDED.findall(re.sub(r'''['"\\]''', '', argv[index]))) > len(_GUARDED.findall(argv[index])):
                 raise ParseError('obfuscated git/gh mention in shell script')
-            return _parse(argv[index], True, env, protected)
+            return _parse(argv[index], True, env, protected,
+                          words=words, scope=scope, scope_ids=scope_ids)
         if program not in ('env', 'command', 'exec', 'nohup', 'time', 'xargs',
                            'nice', 'timeout', 'sudo', 'stdbuf', 'setsid'):
             if program in protected:
                 if not all(_literal(raw) for raw in raw_argv):
                     raise ParseError('nonliteral guarded arguments are unsupported')
-                return [Command(argv, subshell, env)]
+                return [Command(argv, subshell, env, scope=scope)]
             _reject_mentions(' '.join(raw_argv))
             _reject_mentions(' '.join(argv))
-            return [Command(argv, subshell, env)]
+            return [Command(argv, subshell, env, scope=scope)]
         if program == 'xargs':
             _reject_mentions(' '.join(raw_argv))
         if program == 'command' and any(option in ('-v', '-V') for option in argv[1:2]):
             _reject_mentions(' '.join(raw_argv))
-            return [Command(argv, subshell, env)]
+            return [Command(argv, subshell, env, scope=scope)]
         index = 1
         no_value = {'env': ('-i', '--ignore-environment'), 'command': ('-p',),
                     'exec': ('-c', '-l'), 'nohup': (), 'time': ('-p',),
@@ -472,7 +492,8 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
             subshell = True
             if not argv:
                 return [Command(['echo'], True, env)]
-            expanded = _unwrap(argv, subshell, raw_argv, env, protected)
+            expanded = _unwrap(argv, subshell, raw_argv, env, protected,
+                               words=words, scope=scope, scope_ids=scope_ids)
             if any(item.writes or (item.argv and PurePosixPath(item.argv[0]).name in
                                   (*protected, *_PATH_COMMANDS)) for item in expanded):
                 raise ParseError('input-driven guarded arguments are unsupported')

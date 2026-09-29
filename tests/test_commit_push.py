@@ -453,3 +453,227 @@ def test_unrelated_substitutions_do_not_make_commit_push_relevant(workspace_case
     root, fake = workspace_case
     assert guard().check(payload(root, command)) == (0, '')
     assert not fake.calls
+
+
+@pytest.mark.parametrize('form', [
+    'git -C {repo} {action}',
+    'git -C{repo} {action}',
+    'git -C {root} -C repo {action}',
+    'cd {repo} && git {action}',
+    '(cd {repo} && git {action})',
+    "sh -c 'cd {repo} && git {action}'",
+    'pushd {repo} && git {action}',
+    'git --git-dir={repo}/.git --work-tree={repo} {action}',
+    'git --git-dir {repo}/.git --work-tree {repo} {action}',
+    'GIT_DIR={repo}/.git GIT_WORK_TREE={repo} git {action}',
+    'git --git-dir={repo}/.git {action}',
+    'git --work-tree={repo} {action}',
+])
+@pytest.mark.parametrize('action,code', [
+    ('push --force origin main', 1),
+    ('push origin main', 1),
+    ('push origin feature', 0),
+    ('commit --author="Other <other@example.test>"', 1),
+    ('commit -m safe', 0),
+    ('push', 2),
+])
+def test_outside_cwd_targets_configured_repository(workspace_case, monkeypatch, form, action, code):
+    root, fake = workspace_case
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    if action == 'push origin main':
+        fake.results['push_context'].data['updates'][0]['destination'] = 'refs/heads/main'
+    command = form.format(root=root, repo=root / 'repo', action=action)
+    event = {'cwd': str(root.parent), 'tool_input': {'command': command}}
+    result = guard().check(event)
+    assert result[0] == code, result
+    if code:
+        assert result[1]
+    else:
+        assert any(call[0] == 'commit_context' for call in fake.calls)
+
+
+@pytest.mark.parametrize('form', [
+    'git -C {target} push --force',
+    'cd {target} && git push --force',
+    '(cd {target} && git push --force)',
+    'git --git-dir={gitdir} push --force',
+    'GIT_DIR={gitdir} git push --force',
+])
+def test_outside_managed_worktree_target(workspace_case, monkeypatch, form):
+    root, fake = workspace_case
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    target = root.parent / (root.name + '-worktree')
+    gitdir = root.parent / (root.name + '-metadata')
+    target.mkdir()
+    gitdir.mkdir()
+    (target / '.git').write_text(f'gitdir: {gitdir}\n')
+    (gitdir / 'wuwei-workspace').write_text(str(root) + '\n')
+    fake.results['commit_context'].data['path'] = str(gitdir)
+    result = guard().check({'cwd': str(root.parent), 'tool_input': {
+        'command': form.format(target=target, gitdir=gitdir)}})
+    assert result[0] == 1, result
+
+
+@pytest.mark.parametrize('selected', [False, True])
+@pytest.mark.parametrize('command', [
+    'git push --force origin main', 'git commit --no-verify',
+    'git -C . push --force', 'cd . && git push --force',
+    'git --git-dir=.git --work-tree=. push --force',
+    'GIT_DIR=.git git push --force',
+])
+def test_unrelated_target_passes_with_or_without_workspace_context(workspace_case, monkeypatch, selected, command):
+    root, fake = workspace_case
+    if not selected:
+        monkeypatch.delenv('WUWEI_WORKSPACE')
+    outside = root.parent / (root.name + '-unrelated')
+    outside.mkdir()
+    result = guard().check({'cwd': str(outside), 'tool_input': {'command': command}})
+    assert result == (0, ''), result
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize('command', [
+    'python3 -m pytest -q', 'for x in a b; do echo "$x"; done', 'export X=1',
+])
+def test_irrelevance_precedes_normalization(workspace_case, monkeypatch, command):
+    from wuwei import shell
+    root, _ = workspace_case
+    monkeypatch.setattr(shell, 'normalize', lambda *_: pytest.fail('irrelevant call parsed'))
+    assert guard().check(payload(root, command)) == (0, '')
+
+
+@pytest.mark.parametrize('command', [
+    'git -C {repo} push --force && git push origin feature',
+    '(cd {repo} && git status); git -C {repo} push --force',
+    'cd {repo} && (cd child && git status); git push --force',
+    'cd {repo} && popd && git push --force',
+    'cd {repo} && git commit -m safe && git push origin feature',
+])
+def test_compound_target_cannot_escape_rules(workspace_case, monkeypatch, command):
+    root, _ = workspace_case
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    result = guard().check({'cwd': str(root.parent), 'tool_input': {
+        'command': command.format(repo=root / 'repo')}})
+    assert result[0] in (1, 2), result
+
+
+def test_inherited_repository_target_is_scoped(workspace_case, monkeypatch):
+    root, _ = workspace_case
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    monkeypatch.setenv('GIT_DIR', str(root / 'repo/.git'))
+    assert guard().check({'cwd': str(root.parent), 'tool_input': {
+        'command': 'git push --force'}})[0] == 1
+
+
+def test_outside_push_preserves_actionable_port_reason(workspace_case, monkeypatch):
+    root, fake = workspace_case
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    reason = 'detached HEAD; check out a branch before pushing'
+    fake.results['push_context'] = Result(2, None, reason)
+    result = guard().check({'cwd': str(root.parent), 'tool_input': {
+        'command': f'git -C {root / "repo"} push origin feature'}})
+    assert result[0] == 2 and reason in result[1]
+
+
+@pytest.mark.parametrize('command', [
+    'env -i git push --force', 'exec -c git commit -m safe',
+    'GIT_AUTHOR_EMAIL=x; git commit',
+    'git -c core.hooksPath=elsewhere push --force',
+    'git --no-optional-locks push --force',
+])
+def test_unrelated_overrides_do_not_block(workspace_case, monkeypatch, command):
+    root, _ = workspace_case
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    assert guard().check({'cwd': str(root.parent), 'tool_input': {'command': command}}) == (0, '')
+
+
+def test_relative_cd_context_reaches_vcs(workspace_case, monkeypatch):
+    root, fake = workspace_case
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    result = guard().check({'cwd': str(root.parent), 'tool_input': {
+        'command': f'cd {root.name}/repo && git commit -m safe'}})
+    assert result == (0, '')
+    assert fake.calls[0][1][0] == str(root / 'repo')
+
+
+@pytest.mark.parametrize('command', [
+    'git push "$REMOTE"', 'git push "',
+    'for ref in main; do git push origin "$ref"; done',
+    'python3 -c "print(\'git push\')"',
+])
+def test_unrelated_parse_failures_pass(workspace_case, monkeypatch, command):
+    root, _ = workspace_case
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    assert guard().check({'cwd': str(root.parent), 'tool_input': {'command': command}}) == (0, '')
+
+
+@pytest.mark.parametrize('command', [
+    'git -C {repo} push "$REMOTE"', 'git -C {repo} push "',
+    'for ref in main; do git -C {repo} push origin "$ref"; done',
+    'sh -c \'git -C {repo} push "$REMOTE"\'',
+])
+def test_target_parse_failures_are_scoped(workspace_case, monkeypatch, command):
+    root, _ = workspace_case
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    result = guard().check({'cwd': str(root.parent), 'tool_input': {
+        'command': command.format(repo=root / 'repo')}})
+    assert result[0] == 2 and 'plain command' in result[1], result
+
+
+def test_target_workspace_wins_over_unrelated_environment(workspace_case, monkeypatch):
+    root, _ = workspace_case
+    other = root.parent / (root.name + '-other-workspace')
+    (other / '.wuwei').mkdir(parents=True)
+    (other / '.wuwei/config.toml').write_text('repos = []\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(other))
+    result = guard().check({'cwd': str(root.parent), 'tool_input': {
+        'command': f'git -C {root / "repo"} push --force'}})
+    assert result[0] == 1, result
+
+
+@pytest.mark.parametrize('command', [
+    'cd repo && git commit -m safe',
+    '(cd repo && git commit -m safe)',
+    'sh -c "cd repo && git commit -m safe"',
+])
+def test_workspace_root_cd_does_not_read_obsolete_cwd(workspace_case, command):
+    root, fake = workspace_case
+    original = fake._call
+    def call(operation, args, context):
+        if operation == 'commit_context' and args[0] == str(root):
+            return Result(2, None, 'not a Git repository')
+        return original(operation, args, context)
+    fake._call = call
+    result = guard().check({'cwd': str(root), 'tool_input': {'command': command}})
+    assert result == (0, ''), result
+
+
+def test_subshell_directory_is_restored_for_outside_push(workspace_case, monkeypatch):
+    root, _ = workspace_case
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    result = guard().check({'cwd': str(root.parent), 'tool_input': {
+        'command': f'(cd {root / "repo"} && git add x); git push --force'}})
+    assert result == (0, ''), result
+
+
+@pytest.mark.parametrize('command', [
+    'eval "cd {repo}"; git push --force',
+    '(cd {repo} && git push --force) &',
+    'echo $(date); git -C {repo} push --force',
+    'git -C {repo} -c core.pager=cat push --force',
+])
+def test_wrapped_directory_targets_fail_closed(workspace_case, monkeypatch, command):
+    root, _ = workspace_case
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    result = guard().check({'cwd': str(root.parent), 'tool_input': {
+        'command': command.format(repo=root / 'repo')}})
+    assert result[0] in (1, 2), result
+
+
+@pytest.mark.parametrize('separator', [';', '||', '&'])
+def test_failed_or_background_cd_keeps_original_target(workspace_case, monkeypatch, separator):
+    root, _ = workspace_case
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    result = guard().check({'cwd': str(root.parent), 'tool_input': {
+        'command': f'cd absent && echo skipped {separator} git -C {root.name}/repo push --force'}})
+    assert result[0] in (1, 2), result
