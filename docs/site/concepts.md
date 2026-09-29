@@ -21,3 +21,25 @@ Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse 
 ## Day flow
 
 Plan, Build, Review, Close is the intended flow. Today's CLI supports individual guard, state and memory operations. **Planned:** the skill that runs the full day from `/wuwei plan`.
+
+## PR ownership
+
+`bin/wuwei pr state [owner/repo#number ...]` reads fresh code-host evidence for today's
+raised and claimed PRs and emits JSON rows with state, dispatch instructions, deadline
+and per-PR exit status. Without arguments it measures the complete ownership union.
+Exit 1 means action is required; exit 2 means a PR could not be measured and includes a reason.
+Dispatch instructions are data for the shepherd; this command does not execute them.
+
+Conflicts require rebase, resolution, fast checks and push. Red CI requires a fix round.
+Outstanding review requests and unanswered threads require triage: fixes, outward-tier
+replies, or owner decisions for disagreements and scope changes. Stale reviews require
+requesting reviewers again and posting in the review channel. Approved PRs go through
+`wuwei merge` or a merge decision. Closed, unmerged PRs require an owner decision.
+Waiting within the review window and merged PRs have no action deadline.
+
+The watch produces the same action deadlines while polling. Repeated observations do
+not postpone an unresolved action. Overdue actions produce a nudge, then a page at twice
+the action interval. The planner's Stop hook rechecks fresh evidence and refuses overdue
+actions, naming the PR, state and action. Only a verified owner parking decision exempts
+a PR; carry-forward applies to day close. See [configuration](configuration.html) for
+`pr.action_minutes` and `pr.review_window`.

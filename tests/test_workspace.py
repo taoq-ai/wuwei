@@ -121,7 +121,7 @@ def test_config_defaults_and_independence(tmp_path):
         'codex': {'command': [], 'timeout_seconds': 300},
         'watch': {'clock_seconds': 600, 'stale_seconds': 900,
                   'sweep_seconds': 7200},
-        'pr': {'poll_seconds': 120},
+        'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
         'retro': {'repo': '.', 'charter_paths': ['.wuwei/charters'],
                   'changelog': '.wuwei/memory/CHANGELOG.md'},
         'brief': {'remote': 'origin',

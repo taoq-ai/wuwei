@@ -123,6 +123,8 @@ sweep_seconds = 7200
 
 [pr]
 poll_seconds = 120
+action_minutes = 30
+review_window = 120
 
 [security]
 required = true

@@ -27,6 +27,9 @@ def classify(event, state):
     lane = 'People' if kind.startswith('person.') else (
         'Decisions' if kind.startswith('decision.') or kind in (
             'item.escalated', 'merge.policy_blocked', 'work.outside_goals') else 'Work')
+    if kind == 'pr.action':
+        tier = payload.get('tier')
+        return (tier if tier in ('silent', 'nudge', 'page') else 'nudge'), lane
     if kind == 'item.escalated':
         seats = state.get('seats', {}) if isinstance(state, dict) else {}
         if not isinstance(seats, dict):

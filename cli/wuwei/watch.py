@@ -220,7 +220,7 @@ def fingerprint(value):
     return obligations._fingerprint(value)
 
 
-def snapshot(host, ref, root):
+def evidence(host, ref, root):
     pr = obligations._read(host.pr, ref, root=root)
     if (pr['state'] not in ('open', 'closed') or
             f'{pr["repo"]}#{pr["number"]}' != ref or
@@ -237,9 +237,15 @@ def snapshot(host, ref, root):
                 or not isinstance(check.get('state'), str) or not check['state']
                 or 'conclusion' not in check):
             raise ValueError('invalid checks evidence')
+    return dict(pr=pr, reviews=reviews, threads=threads, checks=checks)
+
+
+def snapshot(host, ref, root, *, measured=None):
+    measured = evidence(host, ref, root) if measured is None else measured
+    pr = measured['pr']
     fields = {key: pr[key] for key in ('state', 'head', 'mergeable', 'merge_state',
                                       'updated_at', 'requested_reviewers', 'requested_teams')}
-    fields.update(reviews=reviews, threads=threads, checks=checks)
+    fields.update({key: measured[key] for key in ('reviews', 'threads', 'checks')})
     return {key: fingerprint(value) for key, value in fields.items()}
 
 
@@ -263,10 +269,13 @@ def poll(root):
     current, unreadable = {}, False
     for ref in refs:
         try:
-            current[ref] = snapshot(host, ref, root)
+            from wuwei import pr_actions
+            measured = evidence(host, ref, root)
+            current[ref] = snapshot(host, ref, root, measured=measured)
+            pr_actions.observe(root, host, ref, config, measured)
         except ERRORS as exc:
             unreadable = True
-            if old is not None and ref in old:
+            if ref not in current and old is not None and ref in old:
                 current[ref] = old[ref]
             state.append_event('watch: read-failed', {'pr': ref, 'reason': str(exc)}, root)
             print(f'watch PR read failed: {ref}: {exc}', flush=True)

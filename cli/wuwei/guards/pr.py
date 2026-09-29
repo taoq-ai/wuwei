@@ -199,6 +199,7 @@ def create_check(args, command, cwd, root, config):
 
 
 def api_check(args, cwd, root, config):
+    from wuwei.security import gh_outbound
     operands, found = shell.operands(args, {'--method', '-X', '--field', '-F', '--raw-field', '-f',
                                     '--input', '--header', '-H', '--hostname', '--jq', '-q',
                                     '--template', '-t', '--cache', '--preview', '-p'},
@@ -215,6 +216,11 @@ def api_check(args, cwd, root, config):
     fields = values(found, '--field', '-F', '--raw-field', '-f')
     methods = values(found, '--method', '-X')
     method = methods[-1].upper() if methods else ('POST' if fields or '--input' in found else 'GET')
+    code, reason = gh_outbound(args, cwd, root, api=True,
+                              text_write=bool(fields or '--input' in found
+                                              or method not in ('GET', 'HEAD', 'OPTIONS')))
+    if code:
+        return code, reason
     if endpoint.casefold() in ('graphql', 'api/graphql'):
         raise ValueError('opaque GraphQL API request; use explicit PR commands')
     if method in ('GET', 'HEAD', 'OPTIONS'):
@@ -273,11 +279,14 @@ def action(command, cwd, root, config, isolated):
             prefix.append(args.pop(0))
         elif not option.startswith(('--repo=', '-R')):
             raise ValueError('unsupported gh global option')
-    code, reason = gh_outbound(command.argv, cwd, root, api=family == 'api')
-    if code:
-        return code, reason
     if family == 'api':
         return api_check(args + prefix, cwd, root, config)
+    text_write = ((family == 'pr' and args and args[0] in ('comment', 'create', 'edit', 'review', 'merge'))
+                  or (len(args) > 1 and ((args[0] == 'issue' and args[1] in ('comment', 'create', 'edit'))
+                                        or (args[0] == 'release' and args[1] in ('create', 'edit')))))
+    code, reason = gh_outbound(command.argv, cwd, root, text_write=text_write)
+    if code:
+        return code, reason
     if family is None and args:
         if args[0] not in GH_BUILTINS:
             raise ValueError('opaque gh alias or extension; use a built-in command')
