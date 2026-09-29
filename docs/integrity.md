@@ -2,7 +2,9 @@
 
 Install the `wuwei.tar.gz` asset from a release by extracting it into the plugin
 installation directory. This archive includes `MANIFEST.sha256` and its SSH
-signature. Git source archives and source checkouts are unsigned and report a page.
+signature. Git source archives are unsigned and report a page. A source checkout
+is pinned by `wuwei integrity reconfirm` at a clean commit and passes until HEAD or
+the tracked tree changes; ignored development artifacts do not affect its fingerprint.
 The manifest inventories every packaged file except itself and its signature.
 Git metadata and generated Python bytecode are not shipped or measured.
 

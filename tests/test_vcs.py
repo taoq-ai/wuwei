@@ -235,14 +235,16 @@ def test_changes_on_preserves_git_output_paths(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize('ref', ['HEAD', 'a' * 40])
-def test_read_tree_recording(tmp_path, monkeypatch, ref):
+@pytest.mark.parametrize('path', ['roles', '.'])
+def test_read_tree_recording(tmp_path, monkeypatch, ref, path):
     api = adapter()
     assert hasattr(api, 'read_tree'), 'committed tree evidence missing'
     steps = [{'stdout': 'roles/a b.md\0'}, {'stdout': 'learned rule\n'}]
     calls = install_replay(monkeypatch, 'git', steps)
-    result = api.read_tree(str(tmp_path), ref, ['roles'])
+    result = api.read_tree(str(tmp_path), ref, [path])
     assert result.exit == 0 and result.data == {'roles/a b.md': 'learned rule\n'}
     assert calls[-1][-1] == ref + ':roles/a b.md'
+    assert calls[0][-1] == path
 
 
 @pytest.mark.parametrize('operation,args', [

@@ -99,7 +99,7 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False):
             allowed = bool(re.fullmatch(r'--since=\d{4}-\d{2}-\d{2}T00:00:00', since)
                            and re.fullmatch(r'--until=\d{4}-\d{2}-\d{2}T23:59:59', until))
         case ('ls-tree', '-r', '--name-only', '-z', ref, '--', *paths):
-            allowed = bool(_tree_ref(ref) and paths and all(_tree_path(p) for p in paths))
+            allowed = bool(_tree_ref(ref) and paths and all(p == '.' or _tree_path(p) for p in paths))
         case ('log', '--format=%ae', since, branch, '--', *paths):
             allowed = (bool(re.fullmatch(r'--since=[1-9][0-9]{0,3}\.days', since))
                        and bool(_revision(branch)) and paths and all(_tree_path(p) for p in paths))
@@ -441,7 +441,7 @@ def branch(repo, root=None):
 def read_tree(repo, ref, paths, root=None):
     if not isinstance(paths, list) or not paths:
         raise ValueError('expected nonempty paths')
-    paths = [_tree_path(path) for path in paths]
+    paths = [path if path == '.' else _tree_path(path) for path in paths]
     _tree_ref(ref)
     names = _records(_run(repo, 'ls-tree', '-r', '--name-only', '-z', ref, '--', *paths))
     return {_tree_path(name): _run(repo, 'show', ref + ':' + name) for name in names}

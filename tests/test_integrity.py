@@ -453,6 +453,7 @@ def test_check_failure_replaces_old_clean_cache(tmp_path, monkeypatch):
     root = workspace_root(tmp_path)
     from fakes.integrity import seed
     seed(root)
+    monkeypatch.setattr(api, 'PLUGIN', plugin(tmp_path))
     monkeypatch.setattr(api, 'measure', lambda **kw: (_ for _ in ()).throw(ValueError('bad evidence')))
     assert api.check(root).exit == 2
     assert api.cached(root).exit == 2
@@ -463,6 +464,7 @@ def test_declined_confirmation_caches_new_failure(tmp_path, monkeypatch):
     root = workspace_root(tmp_path)
     from fakes.integrity import seed
     seed(root)
+    monkeypatch.setattr(api, 'PLUGIN', plugin(tmp_path))
     monkeypatch.setattr(api, 'measure', lambda **kw: registry.Result(1, 'b' * 64, 'page: changed'))
     assert api.reconfirm(root, confirm=lambda digest: False).exit == 1
     assert api.cached(root).exit == 2
@@ -591,3 +593,178 @@ def test_cli_names_changed_charter_and_missing_tool(tmp_path, monkeypatch, capsy
         verify=lambda *a: registry.Result(2, reason='ssh-keygen unmeasured: missing')))
     assert main(['integrity', 'check']) == 2
     assert 'unmeasured' in capsys.readouterr().out
+
+
+@pytest.fixture
+def checkout(tmp_path, monkeypatch):
+    from fakes.vcs import Fake
+    api = core()
+    root = workspace_root(tmp_path)
+    base = plugin(tmp_path)
+    (base / '.git').mkdir()
+    shutil.copyfile(base / api.KEY, root / '.wuwei/integrity/pinned.pub')
+    fake = Fake({'head': registry.Result(0, {'sha': 'a' * 40}),
+                 'status': registry.Result(0, []),
+                 'read_tree': registry.Result(0, {
+                     'charters/builder.md': 'Run tests.\n',
+                     api.KEY: 'ssh-ed25519 test-key\n'})})
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake if kind == 'vcs' else load(kind, config))
+    monkeypatch.setattr(api, 'PLUGIN', base)
+    monkeypatch.setattr(api, 'signature_adapter', lambda: Namespace(
+        verify=lambda *a: registry.Result(1, reason='missing MANIFEST.sha256 or signature')))
+    return api, root, base, fake
+
+
+@pytest.mark.parametrize('artifact', ['file', 'symlink'])
+def test_checkout_ignored_artifacts_preserve_confirmation(checkout, artifact):
+    api, root, base, fake = checkout
+    confirmed = api.reconfirm(root, confirm=lambda digest: True)
+    assert confirmed.exit == 0
+    if artifact == 'file':
+        (base / '.pytest_cache').mkdir()
+        (base / '.pytest_cache/README.md').write_text('Generated cache\n')
+    else:
+        (base / '.venv/bin').mkdir(parents=True)
+        (base / '.venv/bin/python').symlink_to(sys.executable)
+    measured = api.check(root)
+    assert measured.data == confirmed.data
+    assert measured.exit == api.cached(root).exit == 0
+    assert api.reconfirm(root, confirm=lambda digest: digest == confirmed.data).exit == 0
+
+
+@pytest.mark.parametrize('result', [registry.Result(2, reason='git unavailable'),
+                                  registry.Result(0, None), registry.Result(0, [])])
+def test_checkout_unreadable_tracked_paths_cannot_be_confirmed(checkout, result):
+    api, root, base, fake = checkout
+    fake.results['read_tree'] = result
+    assert api.reconfirm(root, confirm=lambda digest: pytest.fail('unmeasured tree')).exit == 2
+
+
+@pytest.mark.parametrize('git_file', [False, True])
+def test_checkout_confirmation_pins_commit_and_clean_tree(checkout, git_file):
+    api, root, base, fake = checkout
+    if git_file:
+        (base / '.git').rmdir()
+        (base / '.git').write_text('gitdir: ../git/worktrees/plugin\n')
+    assert api.check(root).exit == 1
+    assert api.cached(root).exit == 2
+    assert api.reconfirm(root, confirm=lambda digest: True).exit == 0
+    confirmation = json.loads((root / '.wuwei/integrity/confirmation.json').read_text())
+    verdict = json.loads((root / '.wuwei/integrity/verdict.json').read_text())
+    assert confirmation['checkout'] == verdict['checkout'] == {'head': 'a' * 40, 'clean': True}
+    from wuwei.guards.integrity import check
+    payload = {'cwd': str(root), 'tool_name': 'Bash', 'tool_input': {'command': 'ls'}}
+    fake.calls.clear()
+    for _ in range(3):
+        assert check(payload) == (0, '')
+    assert len(fake.calls) == 6
+    assert all(call[1] == (base,) for call in fake.calls)
+    assert api.check(root).exit == 0
+    # A pull can move HEAD without changing any installed file content.
+    fake.results['head'] = registry.Result(0, {'sha': 'b' * 40})
+    assert check(payload)[0] == 2
+    assert api.check(root).exit == 1
+    assert api.reconfirm(root, confirm=lambda digest: True).exit == 0
+    assert check(payload)[0] == 0
+    (base / 'charters/builder.md').write_text('Uncommitted edit\n')
+    fake.results['status'] = registry.Result(0, [
+        {'path': 'charters/builder.md', 'index': ' ', 'worktree': 'M', 'original_path': None}])
+    assert check(payload)[0] == 2
+    assert api.check(root).exit == 1
+    assert api.reconfirm(root, confirm=lambda digest: pytest.fail('dirty tree cannot be confirmed')).exit == 1
+    assert api.cached(root).exit == 2
+
+
+@pytest.mark.parametrize('operation,result', [
+    ('head', registry.Result(2, reason='git missing')),
+    ('head', registry.Result(1, reason='HEAD missing')),
+    ('head', registry.Result(0, {'error': 'unknown HEAD'})),
+    ('head', registry.Result(0, {'sha': 'short'})),
+    ('head', registry.Result(0, {'sha': 40})),
+    ('status', registry.Result(2, reason='git timed out')),
+    ('status', registry.Result(0, {'error': 'unreadable tree'})),
+    ('status', registry.Result(0, None)),
+    ('status', registry.Result(0, [None])),
+])
+def test_checkout_evidence_failures_close_cache_and_confirmation(checkout, operation, result):
+    api, root, base, fake = checkout
+    assert api.reconfirm(root, confirm=lambda digest: True).exit == 0
+    fake.results[operation] = result
+    cached = api.cached(root)
+    assert cached.exit == 2 and cached.reason
+    measured = api.check(root)
+    assert measured.exit == 2 and measured.reason
+    assert api.reconfirm(root, confirm=lambda digest: pytest.fail('unmeasured checkout')).exit == 2
+
+
+@pytest.mark.parametrize('change', ['head', 'dirty', 'content'])
+def test_checkout_changes_during_confirmation_are_not_confirmed(checkout, change):
+    api, root, base, fake = checkout
+    def confirm(digest):
+        if change == 'head':
+            fake.results['head'] = registry.Result(0, {'sha': 'b' * 40})
+        elif change == 'dirty':
+            fake.results['status'] = registry.Result(0, [
+                {'path': 'charters/builder.md', 'index': 'M', 'worktree': ' ', 'original_path': None}])
+        else:
+            (base / 'charters/builder.md').write_text('Changed\n')
+        return True
+    assert api.reconfirm(root, confirm=confirm).exit == 2
+    assert not (root / '.wuwei/integrity/confirmation.json').exists()
+    assert api.cached(root).exit == 2
+
+
+def test_checkout_does_not_need_signature_tool(checkout, monkeypatch):
+    api, root, base, fake = checkout
+    monkeypatch.setattr(api, 'signature_adapter', lambda: pytest.fail('checkout is pinned through VCS'))
+    assert api.reconfirm(root, confirm=lambda digest: True).exit == 0
+
+
+def test_checkout_legacy_confirmation_needs_new_host_confirmation(checkout):
+    api, root, base, fake = checkout
+    fingerprint = api.measure(pinned=root / '.wuwei/integrity/pinned.pub').data
+    api._record(root, 'confirmation.json', {'fingerprint': fingerprint})
+    assert api.check(root).exit == 1
+    assert api.cached(root).exit == 2
+
+
+@pytest.mark.parametrize('command', ['python3 -m pytest -q', 'for x in a; do echo "$x"; done', 'export X=1'])
+def test_checkout_guard_uses_existing_scope_before_vcs_reads(checkout, tmp_path, command):
+    from wuwei.guards.integrity import check
+    api, root, base, fake = checkout
+    fake.results['head'] = registry.Result(2, reason='git missing')
+    payload = {'cwd': str(tmp_path), 'tool_name': 'Bash', 'tool_input': {'command': command}}
+    assert check(payload) == (0, '')
+    assert not fake.calls
+    payload.update(tool_name='Read', tool_input={'file_path': str(root / 'source.py')})
+    assert check(payload)[0] == 2
+
+
+@pytest.mark.parametrize('artifact', ['MANIFEST.sha256', 'MANIFEST.sha256.sig', 'both'])
+def test_checkout_never_bypasses_present_release_artifacts(checkout, monkeypatch, artifact):
+    api, root, base, fake = checkout
+    if artifact in ('MANIFEST.sha256', 'both'):
+        api.write_manifest(base)
+    if artifact in ('MANIFEST.sha256.sig', 'both'):
+        (base / 'MANIFEST.sha256.sig').write_text('signature')
+    monkeypatch.setattr(api, 'signature_adapter', lambda: Namespace(
+        verify=lambda *a: registry.Result(2, reason='signature verifier unavailable')))
+    assert api.check(root).exit == 2
+    assert api.reconfirm(root, confirm=lambda digest: pytest.fail('unmeasured signature')).exit == 2
+    assert not fake.calls
+
+
+def test_signed_install_passes_without_confirmation_or_vcs(tmp_path, monkeypatch):
+    api = core()
+    root = workspace_root(tmp_path)
+    base = plugin(tmp_path)
+    api.write_manifest(base)
+    (base / 'MANIFEST.sha256.sig').write_text('signature')
+    shutil.copyfile(base / api.KEY, root / '.wuwei/integrity/pinned.pub')
+    monkeypatch.setattr(api, 'PLUGIN', base)
+    monkeypatch.setattr(api, 'signature_adapter', lambda: Namespace(verify=lambda *a: registry.Result(0)))
+    monkeypatch.setattr(registry, 'load', lambda *a: pytest.fail('signed install needs no VCS'))
+    assert api.check(root).exit == 0
+    assert api.cached(root).exit == 0
+    assert not (root / '.wuwei/integrity/confirmation.json').exists()
