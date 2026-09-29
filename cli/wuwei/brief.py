@@ -1,6 +1,5 @@
 """Brief evidence and ordered source refusals shared with launch checks."""
 
-import fcntl
 import hashlib
 import json
 from pathlib import Path
@@ -77,10 +76,10 @@ def gate_ready(data, item):
         raise ValueError(f'unknown gate item: {item}')
     phase = data['items'][item]['phase']
     if phase not in ('gate', 'delta', 'raised', 'merged'):
-        raise Refused(f"gate brief while item phase is '{phase}' (builder not stood down)")
+        raise Refused(f"gate brief while item phase is '{phase}'; wait for builder SubagentStop, then run wuwei state transition {item} gate")
     for seat in seats(data).values():
         if seat['item'] == item and seat['role'] == 'builder' and seat['status'] == 'running':
-            raise Refused('gate refused: builder is live')
+            raise Refused('gate refused: builder is live; wait for its SubagentStop before the gate brief')
 
 
 def status(vcs, tree, root):
@@ -139,7 +138,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         raise ValueError('brief directory must not be a symlink')
     # ponytail: serialize brief publication for this day.
     with (directory / 'brief.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        state.lock_ex(lock, 'brief.lock')
         if output.exists() or output.is_symlink():
             raise Refused('brief exists (one brief per name)')
         _, data = read_day(root)
@@ -183,7 +182,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             header += [f'Worktree: {tree}', f'HEAD: {head}', f'Merge-base: {base} ({ref})',
                        f'Status: {json.dumps(changed)}', f'Prior branches: {json.dumps(prior)}']
             if gate and changed:
-                raise Refused('gate brief on a dirty tree')
+                raise Refused('gate brief on a dirty tree: ' + ', '.join(row['path'] for row in changed))
             changed += read(vcs.diff_stat, tree, base, head, root=root)
         else:
             header += ['Worktree: none', 'HEAD: not applicable', 'Merge-base: not applicable',
@@ -228,8 +227,9 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                 nonlocal created
                 if gate:
                     gate_ready(fresh, item)
-                    if status(vcs, tree, root):
-                        raise Refused('gate brief on a dirty tree')
+                    fresh_changes = status(vcs, tree, root)
+                    if fresh_changes:
+                        raise Refused('gate brief on a dirty tree: ' + ', '.join(row['path'] for row in fresh_changes))
                 if (fresh['items'].get(item) != data['items'].get(item)
                         or fresh['seat_policy'] != data['seat_policy']
                         or fresh['gate_verdicts'] != data['gate_verdicts']

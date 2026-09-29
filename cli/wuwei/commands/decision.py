@@ -9,6 +9,7 @@ from wuwei.decision import evaluate, lint_file, record_rejection, route, seat_ou
 def register(subparsers):
     parser = subparsers.add_parser('decision', help='Check and route decision records')
     commands = parser.add_subparsers(dest='action', required=True)
+    commands.add_parser('template', help='Print a valid decision record').set_defaults(func=run)
     lint = commands.add_parser('lint', help='Lint a saved decision file')
     lint.add_argument('file')
     lint.set_defaults(func=run)
@@ -54,6 +55,31 @@ def decide(args):
 
 
 def run(args):
+    if args.action == 'template':
+        print('''Question: Which option should we take?
+Context: Replace with the evidence file and reason for deciding.
+Options:
+| Option | Description |
+| --- | --- |
+| A | Make the scoped change |
+| B | Defer until more evidence exists |
+Musts:
+| Criterion | A | B |
+| --- | --- | --- |
+| Safe | pass | pass |
+Wants:
+| Criterion | Weight | A | B |
+| --- | --- | --- | --- |
+| Outcome | 10 | 8 | 2 |
+Recommendation: A
+Confidence: medium
+Reversibility: two-way
+Blast radius: Own branch and PR.
+Pre-mortem: The change misses an edge case.
+Revisit: Reopen if tests fail.
+Decided-by: seat
+Outcome: pending''')
+        return 0
     code, message = lint_file(args.file) if args.action == 'lint' else decide(args)
     print(message, file=sys.stderr if code else sys.stdout)
     return code

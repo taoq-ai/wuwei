@@ -143,8 +143,9 @@ def _check(payload):
             current_tree = data['items'][logged['item']].get('worktree')
             if current_tree and (root / current_tree).resolve() != Path(tree):
                 raise brief.Refused('item worktree changed since brief was written')
-            if brief.status(vcs, tree, root):
-                raise brief.Refused('gate launch on a dirty tree')
+            changes = brief.status(vcs, tree, root)
+            if changes:
+                raise brief.Refused('gate launch on a dirty tree: ' + ', '.join(row['path'] for row in changes))
         running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
         builders = sum(seat['role'] == 'builder' for seat in running)
         if role == 'builder' and builders >= config['cap']:

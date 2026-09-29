@@ -27,7 +27,12 @@ def run(args):
                 raise ValueError('usage: build next <item> [<brief> <worktree>] or build check <item>')
             item, *paths = args.arguments
             if args.operation == 'check':
-                return check(item, root=root)
+                code = check(item, root=root)
+                if code == 1:
+                    action = state.read_state(root).get('builds', {}).get(item, {}).get('action', {})
+                    if action.get('action') == 'park':
+                        print(f'build: parked {item}: {action["reason"]}; decision {action["decision"]}', file=sys.stderr)
+                return code
             print(json.dumps(next_action(item, *paths, root=root)))
             return 0
         if len(args.arguments) not in (0, 2):
@@ -337,6 +342,7 @@ def run_loop(item, brief, worktree, *, root=None):
                 if action['action'] == 'done':
                     return 0
                 if action['action'] == 'park':
+                    print(f'build: parked {item}: {action["reason"]}; decision {action["decision"]}', file=sys.stderr)
                     return 1
                 if action['action'] == 'check':
                     check(item, root=root)

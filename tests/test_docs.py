@@ -27,7 +27,7 @@ def test_readme_install_and_hero():
 
 
 def test_site_pages_and_links():
-    pages = ('index', 'concepts', 'configuration', 'adapters', 'charter-overrides', 'security')
+    pages = ('index', 'concepts', 'configuration', 'adapters', 'charter-overrides', 'security', 'reference')
     index = (SITE / 'index.md').read_text()
     assert index.startswith('---\nlayout: default\n---\n')
     for page in pages[1:]:
@@ -38,6 +38,25 @@ def test_site_pages_and_links():
     assert '9.1' in (SITE / 'security.md').read_text()
     assert (ROOT / 'skills/wuwei-plan/SKILL.md').is_file()
     assert 'docs/site' in (ROOT / '.github/workflows/docs.yml').read_text()
+
+
+def test_operator_reference_covers_schema_and_companion():
+    page = (SITE / 'reference.md').read_text()
+    for name in ('plan template', 'rank template', 'decision template', 'WSJF', 'RICE',
+                 'trust_surface', 'boundary_relevant', 'agent_surface', 'envelope',
+                 'Blocked:', 'Gap:', 'Change:', '[retro]', 'merge.auto', 'task',
+                 'status', 'result', 'cancel', '--json', 'jobId', 'workspaceRoot',
+                 'storedJob.result.rawOutput'):
+        assert name in page
+
+
+def test_retro_and_merge_examples_are_in_shipped_config():
+    template = (ROOT / 'templates/workspace/config.toml').read_text()
+    page = (SITE / 'configuration.md').read_text()
+    for phrase in ('[retro]', 'repo = "."', 'charter_paths', 'changelog', '[repos.merge]', 'auto = false'):
+        assert phrase in template
+    for key in ('retro.repo', 'retro.charter_paths', 'retro.changelog', 'repos.merge.auto'):
+        assert f'`{key}`' in page
 
 
 def test_every_template_config_key_is_documented():

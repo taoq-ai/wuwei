@@ -298,13 +298,12 @@ def check(ref, root=None, *, cwd=None, repo=None):
 
 def locked(root):
     """Serialize merge and monitor decisions across day rollover."""
-    import fcntl
     from contextlib import contextmanager
 
     @contextmanager
     def hold():
         with (root / '.wuwei/merge.lock').open('a') as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+            state.lock_ex(lock, 'merge.lock')
             yield
     return hold()
 

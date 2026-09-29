@@ -5,8 +5,22 @@ import fcntl
 import json
 import os
 from pathlib import Path
+from time import monotonic as _monotonic, sleep as _sleep
 
 from wuwei import workspace
+
+
+def lock_ex(lock, name, timeout=30):
+    """Bound state and brief lock waits so an abandoned holder prints a reason."""
+    deadline = _monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            if _monotonic() >= deadline:
+                raise TimeoutError(f'{name} remained locked for {timeout}s; retry after the other wuwei command finishes') from None
+            _sleep(0.1)
 
 
 PHASES = {
@@ -123,7 +137,7 @@ def append_event(kind, payload=None, root=None, *, directory=None):
     directory.parent.mkdir(exist_ok=True)
     directory.mkdir(exist_ok=True)
     with (directory / 'state.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        lock_ex(lock, 'state.lock')
         _append_event(kind, payload, directory)
 
 
@@ -140,7 +154,7 @@ def append_jsonl(path, record):
     path.parent.parent.mkdir(exist_ok=True)
     path.parent.mkdir(exist_ok=True)
     with (path.parent / 'state.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        lock_ex(lock, 'state.lock')
         _append_jsonl(path, record)
 
 
@@ -178,7 +192,7 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
     directory.mkdir(exist_ok=True)
     # ponytail: POSIX-only sidecar flock; add a platform adapter if Windows is required.
     with (directory / 'state.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        lock_ex(lock, 'state.lock')
         data = read_state(directory=directory)
         previous = deepcopy(data) if (directory / 'state.json').exists() else None
         before = deepcopy(data) if reserved else None

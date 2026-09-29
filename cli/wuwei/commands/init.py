@@ -45,7 +45,7 @@ def run(args):
         return upgrade(args)
     destination = Path(args.path).expanduser() / ".wuwei"
     if destination.exists() or destination.is_symlink():
-        print(f"wuwei init: {destination} already exists; choose another path", file=sys.stderr)
+        print(f"wuwei init: {destination} already exists; run wuwei init {args.path} --upgrade to update it", file=sys.stderr)
         return FINDINGS
     settings = destination.parent / '.claude/settings.json'
     if settings.parent.is_symlink() or settings.is_symlink():
