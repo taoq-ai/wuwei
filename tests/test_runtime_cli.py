@@ -26,3 +26,25 @@ def test_runtime_cli_dispatch_and_status(tmp_path, monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out) == {'id': 'one'}
     assert runtime.run(SimpleNamespace(action='status', job='{"id":"one"}'), root=tmp_path) == 0
     assert json.loads(capsys.readouterr().out) == {'status': 'completed'}
+
+
+def test_runtime_dispatch_uses_approved_role_policy(tmp_path, monkeypatch, capsys):
+    from wuwei import state
+    from wuwei.commands import runtime
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('[adapters]\nruntime="claude"\n')
+    state._write_state(lambda data: data.update(seat_policy={
+        'sentinel-arch': {'runtime': 'codex', 'model': 'test'}}), tmp_path, reserved=False)
+    selected = []
+    adapter = SimpleNamespace(dispatch=lambda *args, **kwargs:
+                              registry.Result(0, {'id': 'one'}))
+    monkeypatch.setattr(registry, 'load', lambda kind, config:
+                        selected.append(config['adapters']['runtime']) or adapter)
+    assert runtime.run(SimpleNamespace(action='dispatch', role='sentinel-arch',
+                                       brief='brief.md', worktree='tree', write=False), root=tmp_path) == 0
+    assert selected == ['codex']
+    job = json.loads(capsys.readouterr().out)
+    assert job['runtime'] == 'codex'
+    adapter.status = lambda job, *, root=None: registry.Result(0, {'status': 'completed'})
+    assert runtime.run(SimpleNamespace(action='status', job=json.dumps(job)), root=tmp_path) == 0
+    assert selected == ['codex', 'codex']

@@ -101,6 +101,10 @@ def _check(payload):
     if hashlib.sha256(path.read_bytes()).hexdigest() != logged.get('sha256'):
         raise brief.Refused('brief modified since it was logged')
     config = workspace.load_config(root)
+    runtime = registry.runtime_config(role, config, root)['adapters']['runtime']
+    registry.validate('runtime', runtime)
+    if runtime != 'claude':
+        raise brief.Refused(f'{role} uses {runtime.capitalize()} runtime, not Agent')
     available = free_memory(config, root)
     floor = config['host']['free_memory_mb'] * 1024**2
     if available < floor:

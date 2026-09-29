@@ -74,6 +74,20 @@ def test_codex_matches_then_polls_and_validates_result(tmp_path, monkeypatch):
     assert 'usage' not in result.data
 
 
+def test_codex_result_preserves_stored_usage(tmp_path, monkeypatch):
+    root = setup(tmp_path, monkeypatch)
+    adapter = importlib.import_module('adapters.runtime.codex')
+    payloads = companion_payloads(root)
+    usage = {'input_tokens': 17, 'output_tokens': 9, 'cost': 0.04,
+             'model': 'codex-test', 'duration': 2.5}
+    payloads['result']['storedJob']['result']['usage'] = usage
+    monkeypatch.setattr(adapter.subprocess, 'run', lambda argv, **kw:
+                        SimpleNamespace(returncode=0, stdout=json.dumps(payloads['result']), stderr=''))
+    result = adapter.result({'id': 'j1', 'worktree': str(root)}, root=root)
+    assert result.exit == 0
+    assert result.data['usage'] == usage
+
+
 def test_codex_rejects_conflicting_nested_workspace_root(tmp_path, monkeypatch):
     root = setup(tmp_path, monkeypatch)
     brief = root / 'brief.md'

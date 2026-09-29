@@ -120,6 +120,8 @@ def result(job, *, root=None):
         if not isinstance(text, str) or not text:
             return registry.Result(2, reason='Codex result omitted text')
         output = {'text': text}
+        if 'usage' in result_data:
+            output['usage'] = result_data['usage']
         role = job.get('role', 'builder')
         from wuwei.guards.verdict import check_retro
         retro_code, retro_reason = check_retro({'cwd': str(tree), 'agent_id': job_id,

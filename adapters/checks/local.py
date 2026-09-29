@@ -7,6 +7,18 @@ import subprocess
 from wuwei.registry import Result
 
 
+def _environment(output):
+    missing = re.search(r"(?:No module named|ModuleNotFoundError: No module named) ['\"]?([\w.-]+)", output)
+    if missing:
+        module = missing.group(1).split('.')[0]
+        if module in ('pytest', 'hypothesis', 'coverage', 'pluggy', 'ruff', 'mypy', 'tox'):
+            return f'{module} not found'
+    missing = re.search(r'(?:^|\n)(?:/bin/)?sh: (?:(?:line )?\d+: )?([\w.-]+): (?:command )?not found', output)
+    if missing:
+        return f'{missing.group(1)} not found'
+    return None
+
+
 def run(path, command, root=None):
     try:
         if not isinstance(command, str) or not command.strip():
@@ -19,6 +31,10 @@ def run(path, command, root=None):
             return Result(0)
         output = ((result.stdout or "") + "\n" + (result.stderr or ""))[-8192:]
         ids = re.findall(r'^FAILED\s+(\S+?::\S+)(?:\s|$)', output, re.M)
-        return Result(1, {'test_ids': ids, 'error': output})
+        data = {'test_ids': ids, 'error': output}
+        environment = _environment(output)
+        if environment:
+            data['environment'] = environment
+        return Result(1, data)
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return Result(2, reason=f'fast check could not run: {type(exc).__name__}')

@@ -76,6 +76,19 @@ def test_failed_steward_launch_leaves_no_brief(root):
     assert not list((workspace.day_dir(root) / 'briefs').glob('steward-*.md'))
 
 
+def test_steward_launch_uses_approved_role_runtime(root, monkeypatch):
+    from wuwei import registry, steward
+    state._write_state(lambda data: data.update(seat_policy={
+        'steward': {'runtime': 'codex', 'model': 'test'}}), root, reserved=False)
+    selected = []
+    adapter = SimpleNamespace(dispatch=lambda *args, **kwargs:
+                              registry.Result(0, {'id': 'one'}))
+    monkeypatch.setattr(registry, 'load', lambda kind, config:
+                        selected.append(config['adapters']['runtime']) or adapter)
+    assert steward.run(root) == 0
+    assert selected == ['codex']
+
+
 def test_prior_day_without_steward_is_next_plan_finding(root):
     from wuwei import steward
 

@@ -114,7 +114,8 @@ def run(root=None, *, trigger='sweep'):
     brief_relative = brief.write('steward', 'day',
                                   f'steward-{uuid4().hex}', body, root=root)
     try:
-        adapter = registry.load('runtime', workspace.load_config(root))
+        adapter = registry.load('runtime', registry.runtime_config(
+            'steward', workspace.load_config(root), root))
         result = adapter.dispatch('steward', str(root / brief_relative), str(root), True, root=root)
         if not isinstance(result, registry.Result) or type(result.exit) is not int or result.exit not in (0, 1, 2):
             raise ValueError('invalid runtime result')

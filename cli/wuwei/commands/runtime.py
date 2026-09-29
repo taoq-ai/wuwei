@@ -26,11 +26,18 @@ def register(subparsers):
 def run(args, *, root=None):
     try:
         root = workspace.find_workspace(root)
-        adapter = registry.load('runtime', workspace.load_config(root))
+        config = workspace.load_config(root)
         if args.action == 'dispatch':
+            selected = registry.runtime_config(args.role, config, root)
+            adapter = registry.load('runtime', selected)
             response = adapter.dispatch(args.role, args.brief, args.worktree, args.write, root=root)
         else:
             job = json.loads(args.job)
+            selected_name = job.get('runtime') if isinstance(job, dict) else None
+            if selected_name is not None:
+                registry.validate('runtime', selected_name)
+                config = {**config, 'adapters': {**config['adapters'], 'runtime': selected_name}}
+            adapter = registry.load('runtime', config)
             if args.action == 'status':
                 response = adapter.status(job, root=root)
             elif args.action == 'result':
@@ -42,7 +49,12 @@ def run(args, *, root=None):
         if response.exit:
             print(response.reason or 'runtime operation did not complete', file=sys.stderr)
         else:
-            print(json.dumps(response.data, allow_nan=False))
+            data = response.data
+            if args.action == 'dispatch' and selected['adapters']['runtime'] != config['adapters']['runtime']:
+                if not isinstance(data, dict):
+                    raise ValueError('invalid runtime job')
+                data = {**data, 'runtime': selected['adapters']['runtime']}
+            print(json.dumps(data, allow_nan=False))
         return response.exit
     except (OSError, ValueError, TypeError, KeyError) as exc:
         print(f'runtime: {exc}', file=sys.stderr)
