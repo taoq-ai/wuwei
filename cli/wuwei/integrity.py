@@ -53,17 +53,33 @@ def write_manifest(plugin):
         f'{files[name]}  {name}\n' for name in sorted(files)))
 
 
-def measure(plugin=None, pinned=None):
+def measure(plugin=None, pinned=None, *, checkout=None, root=None):
     plugin = PLUGIN if plugin is None else Path(plugin)
     try:
-        actual = inventory(plugin)
+        if checkout is None:
+            actual = inventory(plugin)
+        else:
+            vcs = registry.load('vcs', workspace.load_config(root))
+            tree = vcs.read_tree(plugin, checkout['head'], ['.'], root=root)
+            if tree.exit:
+                return Result(2, reason='checkout tracked files unmeasured: ' + tree.reason)
+            if (not isinstance(tree.data, dict) or not tree.data
+                    or not all(isinstance(name, str) for name in tree.data)):
+                return Result(2, reason='invalid checkout tracked files evidence')
+            actual = {}
+            for name in tree.data:
+                relative = Path(_name(name))
+                if any((plugin / part).is_symlink() for part in (relative, *relative.parents)):
+                    raise ValueError(f'symlink in installed plugin: {name}')
+                actual[name] = hashlib.sha256((plugin / relative).read_bytes()).hexdigest()
         key = plugin / KEY
         signature = plugin / (MANIFEST + '.sig')
         manifest = plugin / MANIFEST
         for path in (manifest, signature, key):
             if path.is_symlink():
                 raise ValueError(f'symlink in installed plugin: {path.name}')
-        result = signature_adapter().verify(manifest, signature, key)
+        result = (Result(1, reason='development checkout requires host reconfirmation')
+                  if checkout is not None else signature_adapter().verify(manifest, signature, key))
         if result.exit == 2:
             return result
         reasons = [result.reason] if result.exit else []
@@ -86,6 +102,7 @@ def measure(plugin=None, pinned=None):
             'manifest': hashlib.sha256(manifest.read_bytes()).hexdigest() if manifest.exists() else None,
             'signature': hashlib.sha256(signature.read_bytes()).hexdigest() if signature.exists() else None,
             'pinned': Path(pinned).read_text() if pinned is not None else None,
+            **({'checkout': checkout} if checkout is not None else {}),
         }, sort_keys=True).encode()).hexdigest()
         return Result(int(bool(reasons)), fingerprint,
                       'page: plugin integrity: ' + '; '.join(reasons) if reasons else '')
@@ -108,18 +125,49 @@ def _record(root, name, data):
     workspace.atomic_write(path, json.dumps(data, sort_keys=True) + '\n', mode=0o444)
 
 
+def _checkout(root):
+    # Partial release artifacts must still go through signature verification.
+    if any((PLUGIN / name).exists() or (PLUGIN / name).is_symlink() for name in EXCLUDED):
+        return None
+    git = PLUGIN / '.git'
+    if git.is_symlink():
+        raise ValueError('checkout .git must not be a symlink')
+    if not git.exists():
+        return None
+    vcs = registry.load('vcs', workspace.load_config(root))
+    head = vcs.head(PLUGIN, root=root)
+    if head.exit:
+        raise ValueError('checkout HEAD unmeasured: ' + head.reason)
+    if (not isinstance(head.data, dict) or not isinstance(head.data.get('sha'), str)
+            or not re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})', head.data['sha'])):
+        raise ValueError('invalid checkout HEAD evidence')
+    status = vcs.status(PLUGIN, root=root)
+    if status.exit:
+        raise ValueError('checkout tree unmeasured: ' + status.reason)
+    if (not isinstance(status.data, list) or not all(
+            isinstance(entry, dict) and all(isinstance(entry.get(key), str)
+                                          for key in ('path', 'index', 'worktree'))
+            for entry in status.data)):
+        raise ValueError('invalid checkout status evidence')
+    return {'head': head.data['sha'], 'clean': not status.data}
+
+
 def check(root):
     try:
         _record(root, 'verdict.json', {'exit': 2, 'fingerprint': None,
                                      'reason': 'plugin integrity measurement incomplete'})
-        result = measure(pinned=_path(root, 'pinned.pub'))
+        checkout = _checkout(root)
+        result = (Result(1, reason='page: plugin integrity: dirty development checkout; restore a clean commit')
+                  if checkout is not None and not checkout['clean'] else
+                  measure(pinned=_path(root, 'pinned.pub'), checkout=checkout, root=root))
         confirmation = _path(root, 'confirmation.json')
         if result.exit == 1 and result.data and confirmation.exists():
             record = json.loads(confirmation.read_text())
-            if isinstance(record, dict) and record.get('fingerprint') == result.data:
+            if (isinstance(record, dict) and record.get('fingerprint') == result.data
+                    and record.get('checkout') == checkout):
                 result = Result(0, result.data, 'plugin integrity: owner-confirmed content (local evidence)')
         _record(root, 'verdict.json', {'exit': result.exit, 'fingerprint': result.data,
-                                     'reason': result.reason})
+                                     'reason': result.reason, 'checkout': checkout})
         return result
     except (OSError, ValueError, TypeError) as exc:
         return Result(2, reason=f'plugin integrity unmeasured: {exc}')
@@ -134,6 +182,11 @@ def cached(root):
             raise ValueError('invalid cached integrity verdict')
         if record['exit']:
             return Result(2, reason=record['reason'] or 'plugin integrity unmeasured')
+        if record.get('checkout') is not None:
+            current = _checkout(root)
+            if current != record['checkout'] or not current or not current['clean']:
+                return Result(2, reason='plugin integrity: checkout HEAD or tree changed; '
+                              'restore a clean commit and run wuwei integrity reconfirm on the host')
         return Result(0)
     except (OSError, ValueError, TypeError) as exc:
         return Result(2, reason=f'plugin integrity unmeasured: {exc}; run wuwei integrity check on the host')
@@ -160,7 +213,9 @@ def reconfirm(root, *, confirm=None):
         current = check(root)
         if current.exit == 2 or current.data != result.data:
             return Result(2, reason='integrity changed during confirmation; retry on the host')
-        _record(root, 'confirmation.json', {'fingerprint': result.data})
+        verdict = json.loads(_path(root, 'verdict.json').read_text())
+        _record(root, 'confirmation.json', {'fingerprint': result.data,
+                                          'checkout': verdict.get('checkout')})
         return check(root)
     except (OSError, ValueError) as exc:
         return Result(2, reason=f'host confirmation unmeasured: {exc}')

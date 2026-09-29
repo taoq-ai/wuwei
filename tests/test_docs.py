@@ -1,5 +1,6 @@
 """Keep the public docs aligned with the shipped entry points and config."""
 
+import json
 from pathlib import Path
 import re
 import tomllib
@@ -35,7 +36,7 @@ def test_site_pages_and_links():
         assert f'({page}.html)' in index
     assert (SITE / '_config.yml').is_file()
     assert '9.1' in (SITE / 'security.md').read_text()
-    assert 'planned' in (SITE / 'index.md').read_text().lower()
+    assert (ROOT / 'skills/wuwei-plan/SKILL.md').is_file()
     assert 'docs/site' in (ROOT / '.github/workflows/docs.yml').read_text()
 
 
@@ -55,3 +56,22 @@ def test_every_template_config_key_is_documented():
     missing = sorted(key for key in keys if f'`{key}`' not in page)
     assert not missing, f'Undocumented config keys: {missing}'
     tomllib.loads(template)
+
+
+def test_entry_guides_install_signed_release_and_explain_development_checkout():
+    integrity = (ROOT / 'docs/integrity.md').read_text()
+    assert 'source checkouts are unsigned and report a page' not in integrity
+    assert 'clean commit' in integrity and 'HEAD' in integrity
+    for path in (ROOT / 'README.md', SITE / 'index.md'):
+        text = path.read_text()
+        for phrase in ('releases/latest/download/wuwei.tar.gz', 'curl -fL', 'tar -xzf',
+                       'bin/wuwei init', 'integrity reconfirm', 'clean', 'HEAD', '/wuwei plan'):
+            assert phrase in text, (path.name, phrase)
+        assert text.index('wuwei.tar.gz') < text.index('/plugin marketplace add')
+        for stale in ('git clone', 'skill is not present', 'not shipped in this version',
+                      'interactive day planner is planned'):
+            assert stale not in text, (path.name, stale)
+    marketplace = json.loads((ROOT / '.claude-plugin/marketplace.json').read_text())
+    entry = next(plugin for plugin in marketplace['plugins'] if plugin['name'] == 'wuwei')
+    assert entry['source'] == './'
+    assert 'development source' in entry['description'].lower()
