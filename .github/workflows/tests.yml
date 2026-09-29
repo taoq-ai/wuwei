@@ -64,3 +64,30 @@ jobs:
       - name: Run skill evals
         if: env.ANTHROPIC_API_KEY != '' && github.event_name == 'push'
         run: claude plugin eval . --trust-plugin --ablation none --threshold 0.9 --json skill-evals.json
+
+  headless-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Skip without credentials
+        if: env.ANTHROPIC_API_KEY == ''
+        run: echo 'ANTHROPIC_API_KEY is not set; skipping headless e2e'
+      - name: Skip on pull requests
+        if: env.ANTHROPIC_API_KEY != '' && github.event_name != 'push'
+        run: echo 'Headless e2e runs only on pushes to main; skipping pull request'
+      - uses: actions/setup-python@v7
+        if: env.ANTHROPIC_API_KEY != '' && github.event_name == 'push'
+        with:
+          python-version: '3.11'
+      - name: Install Claude Code
+        if: env.ANTHROPIC_API_KEY != '' && github.event_name == 'push'
+        run: |
+          set -o pipefail
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Run real headless day
+        if: env.ANTHROPIC_API_KEY != '' && github.event_name == 'push'
+        run: python scripts/headless_e2e.py
