@@ -226,6 +226,10 @@ def raise_pr(root, repo_name, base, title, body, item):
         settings = _settings(config, repo_name + '#1')
         if not all(isinstance(v, str) and v.strip() for v in (base, title, body, item)):
             raise ValueError('raise needs base, title, body and item')
+        data = state.read_state(root)
+        merge.require(item in data['items'] and item in data['approved_items'],
+                      'PR item must be in the approved plan')
+        merge.require(data['items'][item].get('pr') is None, 'item already links another PR')
         repo_path = (root / settings['path']).resolve()
         vcs = registry.load('vcs', config)
         head = merge.read(vcs.head, str(repo_path), root=root)['sha']
@@ -264,20 +268,36 @@ def raise_pr(root, repo_name, base, title, body, item):
         pr = merge.checked_pr(host, ref, root)
         if pr['head'] != head or pr['url'] != created['url']:
             raise ValueError('created PR does not match checked head and URL')
-        def record(data):
-            if ref not in data['raised_prs']:
-                data['raised_prs'].append(ref)
-            data.setdefault('pr_reviewers', {})[ref] = reviewers
-        state._write_state(record, root, reserved=False, kind='pr.raised',
-                           payload={'pr': ref, 'head': head, 'reviewers': reviewers})
+        state.record_pr(root, item, ref, raised=True, head=head, reviewers=reviewers)
         requested = merge.read(host.request_reviewers, ref, reviewers, root=root)
         if set(requested['requested']) != set(reviewers):
             raise ValueError('reviewer request could not be verified')
         print(ref)
         return 0
-    except merge.Refused as exc:
+    except (merge.Refused, state.StateError) as exc:
         print(exc)
         return 1
     except ERRORS as exc:
         print(f'PR raise unmeasured: {exc}')
+        return 2
+
+
+def claim_pr(root, ref, item):
+    """Claim a fresh, externally verified PR for an approved item."""
+    try:
+        root = workspace.find_workspace(root)
+        config = workspace.load_config(root)
+        ref = pull_request(ref)
+        _settings(config, ref)
+        host = registry.load('code_host', config)
+        pr = merge.checked_pr(host, ref, root)
+        merge.require(pr['state'] == 'open' and not pr['merged'], 'PR is not open')
+        state.record_pr(root, item, ref, raised=False, head=pr['head'])
+        print(ref)
+        return 0
+    except (merge.Refused, state.StateError) as exc:
+        print(exc)
+        return 1
+    except ERRORS as exc:
+        print(f'PR claim unmeasured: {exc}')
         return 2

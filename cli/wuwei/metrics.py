@@ -139,6 +139,7 @@ def _references(root):
         if data is None:
             continue
         refs.update(data.get('raised_prs', []))
+        refs.update(data.get('claimed_prs', []))
         refs.update(data.get('merges', {}))
         for item, record in data.get('items', {}).items():
             if isinstance(record.get('pr'), str):

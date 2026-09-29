@@ -91,6 +91,58 @@ def test_two_authors_selected_and_named(case):
     assert state.read_state(root)['channel_posts'][0]['reviewers'] == reviewers
 
 
+def test_claim_links_existing_pr_for_ownership_and_metrics(case):
+    from wuwei.__main__ import main
+    from wuwei import metrics
+    root, host, _, _, _ = case
+    claimed = 'acme/widget#8'
+    host.results['pr'].data.update(number=8, url='https://github.com/acme/widget/pull/8')
+    state._write_state(lambda data: (data['items'].update(A={}),
+                      data['approved_items'].append('A')), root, reserved=False)
+    assert main(['pr', 'claim', claimed, '--item', 'A']) == 0
+    data = state.read_state(root)
+    assert data['items']['A']['pr'] == claimed
+    assert data['claimed_prs'] == [claimed]
+    assert metrics._references(root)[1] == {'A': {claimed}}
+    assert main(['pr', 'claim', claimed, '--item', 'A']) == 0
+    assert state.read_state(root)['claimed_prs'] == [claimed]
+
+
+def test_claim_refuses_pr_already_raised_today(case):
+    from wuwei.__main__ import main
+    root, _, _, _, _ = case
+    state._write_state(lambda data: (data['items'].update(A={'pr': REF}),
+                      data['approved_items'].append('A')), root, reserved=False)
+    before = state.read_state(root)
+    assert main(['pr', 'claim', REF, '--item', 'A']) == 1
+    assert state.read_state(root) == before
+
+
+def test_claim_refuses_unapproved_item_and_unreadable_pr(case):
+    from wuwei.__main__ import main
+    root, host, _, _, _ = case
+    state._write_state(lambda data: data['items'].update(A={}), root, reserved=False)
+    assert main(['pr', 'claim', REF, '--item', 'A']) == 1
+    state._write_state(lambda data: data['approved_items'].append('A'), root, reserved=False)
+    host.results['pr'] = Result(2, reason='offline')
+    assert main(['pr', 'claim', REF, '--item', 'A']) == 2
+    assert 'pr' not in state.read_state(root)['items']['A']
+
+
+def test_claim_refuses_conflicting_link_without_state_change(case):
+    from wuwei.__main__ import main
+    root, host, _, _, _ = case
+    state._write_state(lambda data: (data['items'].update(A={'pr': 'acme/widget#8'}, B={}),
+                      data['approved_items'].extend(['A', 'B'])), root, reserved=False)
+    before = state.read_state(root)
+    assert main(['pr', 'claim', REF, '--item', 'A']) == 1
+    assert state.read_state(root) == before
+    state._write_state(lambda data: data['items']['A'].update(pr=REF), root, reserved=False)
+    before = state.read_state(root)
+    assert main(['pr', 'claim', REF, '--item', 'B']) == 1
+    assert state.read_state(root) == before
+
+
 @pytest.mark.parametrize('change,expected', [
     ('clean', 0), ('dirty', 1), ('behind', 1), ('red', 1),
     ('pending', 1), ('missing_required', 1), ('no_required', 1),
@@ -152,7 +204,8 @@ def test_review_request_rechecks_gate_after_requesting_reviewers(case):
     assert not chat.calls
 
 
-def test_raise_checks_gates_then_requests_recent_authors(case, monkeypatch):
+@pytest.mark.parametrize('approved', [True, False])
+def test_raise_checks_gates_then_requests_recent_authors(case, monkeypatch, approved):
     from wuwei import shepherd
     root, host, _, _, vcs = case
     monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:00:00Z')
@@ -165,10 +218,25 @@ def test_raise_checks_gates_then_requests_recent_authors(case, monkeypatch):
                          diff_stat=Result(0, [{'path': 'src/app.py', 'additions': 1, 'deletions': 0}]))
     host.results['create_pr'] = Result(0, {'number': 7, 'url': 'https://github.com/acme/widget/pull/7'})
     monkeypatch.setattr('wuwei.guards.pr.gate_check', lambda *a, **kw: (0, ''))
+    state._write_state(lambda data: (data['items'].update({'ITEM-1': {}}),
+                      data['approved_items'].extend(['ITEM-1'] if approved else [])), root, reserved=False)
+    if not approved:
+        assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
+        assert not any(name == 'create_pr' for name, _, _ in host.calls)
+        return
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
     assert state.read_state(root)['pr_reviewers'][REF] == ['alice', 'bob', 'lead']
     assert ('request_reviewers', (REF, ['alice', 'bob', 'lead']), root) in host.calls
     assert not any(name == 'post' for name, _ in case[3].calls)
+
+
+def test_raise_refuses_item_already_linked_before_creating_pr(case):
+    from wuwei import shepherd
+    root, host, _, _, _ = case
+    state._write_state(lambda data: (data['items'].update(A={'pr': 'acme/widget#8'}),
+                      data['approved_items'].append('A')), root, reserved=False)
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'A') == 1
+    assert not any(name == 'create_pr' for name, _, _ in host.calls)
 
 
 def test_raise_refuses_failed_gate_without_creating(case, monkeypatch):

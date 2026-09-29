@@ -27,6 +27,7 @@ EVENT_PRODUCERS = {
     'watch: clock': 'wuwei watch', 'pr.disposition': 'wuwei pr disposition',
     'pr.action': 'wuwei pr state',
     'pr.review_posted': 'wuwei pr ping', 'pr.raised': 'wuwei pr raise',
+    'pr.claimed': 'wuwei pr claim',
     'pr.reviewers_selected': 'wuwei pr ping',
     'day.close_requested': 'wuwei close', 'build.parked': 'wuwei build',
     'gate.received': 'wuwei dispatch receive', 'discovery.requested': 'wuwei dispatch discovery',

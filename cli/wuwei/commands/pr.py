@@ -18,6 +18,10 @@ def register(subparsers):
     raise_cmd.add_argument('--body-file', required=True)
     raise_cmd.add_argument('--item', required=True)
     raise_cmd.set_defaults(func=run_raise)
+    claim = commands.add_parser('claim', help='Claim an existing PR for an item')
+    claim.add_argument('ref')
+    claim.add_argument('--item', required=True)
+    claim.set_defaults(func=run_claim)
     ping = commands.add_parser('ping', help='Request reviewers and post when gates clear')
     ping.add_argument('ref')
     ping.set_defaults(func=run_ping)
@@ -53,6 +57,10 @@ def run_raise(args):
         raise ValueError('body file must be a regular file')
     return shepherd.raise_pr(workspace.find_workspace(), args.repo, args.base,
                              args.title, path.read_text(encoding='utf-8'), args.item)
+
+
+def run_claim(args):
+    return shepherd.claim_pr(workspace.find_workspace(), args.ref, args.item)
 
 
 def run_ping(args):
