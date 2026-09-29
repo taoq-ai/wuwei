@@ -22,3 +22,25 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install pytest
       - run: python -m pytest -q
+
+  skill-evals:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Skip without credentials
+        if: env.ANTHROPIC_API_KEY == ''
+        run: echo 'ANTHROPIC_API_KEY is not set; skipping skill evals'
+      - name: Skip on pull requests
+        if: env.ANTHROPIC_API_KEY != '' && github.event_name != 'push'
+        run: echo 'Skill evals run only on pushes to main; skipping pull request'
+      - name: Install Claude Code
+        if: env.ANTHROPIC_API_KEY != '' && github.event_name == 'push'
+        run: |
+          set -o pipefail
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Run skill evals
+        if: env.ANTHROPIC_API_KEY != '' && github.event_name == 'push'
+        run: claude plugin eval . --trust-plugin --ablation none --threshold 0.9 --json skill-evals.json
