@@ -47,9 +47,13 @@ def test_release_configuration():
     assert "token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}" in workflow
 
 
-def test_initial_release_state():
+def test_release_manifest_tracks_plugin_version():
     root = Path(__file__).resolve().parents[1]
-    assert json.loads((root / ".release-please-manifest.json").read_text()) == {".": "0.0.0"}
+    manifest = json.loads((root / ".release-please-manifest.json").read_text())
+    plugin = json.loads((root / ".claude-plugin/plugin.json").read_text())
+    assert list(manifest) == ["."]
+    assert re.fullmatch(r"\d+\.\d+\.\d+", manifest["."])
+    assert manifest["."] == plugin["version"]
 
 
 def test_release_pre_major_bump_options():
