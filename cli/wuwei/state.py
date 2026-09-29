@@ -233,6 +233,7 @@ def _producer_error(parts):
         producer = {'phase': 'wuwei state transition',
                     'resume_phase': 'wuwei state transition',
                     'flags': 'wuwei plan approve', 'track': 'wuwei brief',
+                    'pr': 'wuwei pr raise or wuwei pr claim',
                     'goal': 'wuwei plan approve'}.get(parts[2], 'its dedicated command')
     return StateError(f'{".".join(parts)}: reserved; written by {producer}')
 
@@ -296,6 +297,36 @@ def set_state(path, value, root=None):
         parent[parts[-1]] = value
 
     return write_state(update, root, kind='state.set', payload={'path': path, 'value': value})
+
+
+def record_pr(root, item, ref, *, raised, head=None, reviewers=None):
+    """Link one owned PR to its item in the same write as day ownership."""
+    from wuwei.references import pull_request
+    ref = pull_request(ref)
+    def update(data):
+        if item not in data['items'] or item not in data['approved_items']:
+            raise StateError('PR item must be in the approved plan')
+        if data['items'][item].get('pr') not in (None, ref):
+            raise StateError('item already links another PR')
+        if any(name != item and row.get('pr') == ref for name, row in data['items'].items()):
+            raise StateError('PR already links another item')
+        other = 'claimed_prs' if raised else 'raised_prs'
+        if ref in data[other]:
+            raise StateError('PR is already owned today')
+        data['items'][item]['pr'] = ref
+        field = 'raised_prs' if raised else 'claimed_prs'
+        if ref not in data[field]:
+            data[field].append(ref)
+        if reviewers is not None:
+            data.setdefault('pr_reviewers', {})[ref] = reviewers
+    payload = {'pr': ref, 'item': item}
+    if head is not None:
+        payload['head'] = head
+    if reviewers is not None:
+        payload['reviewers'] = reviewers
+    if raised:
+        return _write_state(update, root, reserved=False, kind='pr.raised', payload=payload)
+    return _write_state(update, root, reserved=False, kind='pr.claimed', payload=payload)
 
 
 def transition(item, phase, root=None):

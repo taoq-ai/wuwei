@@ -45,6 +45,13 @@ Plan, Build, Review, Close is the intended flow. Today's CLI supports individual
 
 ## PR ownership
 
+`bin/wuwei pr raise` links a newly raised PR to its approved item. To take
+ownership of an existing open PR, run
+`bin/wuwei pr claim owner/repo#number --item ITEM`. Both commands record the
+item link and the day's owned PR set.
+The item link lets merge checks and lead-time metrics find the same work.
+`wuwei state set items.ITEM.pr` is reserved for these commands.
+
 `bin/wuwei pr state [owner/repo#number ...]` reads fresh code-host evidence for today's
 raised and claimed PRs and emits JSON rows with state, dispatch instructions, deadline
 and per-PR exit status. Without arguments it measures the complete ownership union.

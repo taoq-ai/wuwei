@@ -43,6 +43,9 @@ def test_scripted_day(day):
     day.raise_pr()
     day.transition('raised')
     assert day.data['raised_prs'] == [day.ref]
+    assert day.data['items']['A']['pr'] == day.ref
+    from wuwei import merge
+    assert merge.item_evidence(day.root, day.ref, day.data) == 'A'
     assert day.data['pr_reviewers'][day.ref] == ['reviewer', 'lead']
     assert len([call for call in day.host.calls if call[0] == 'create_pr']) == 1
     assert any(call[0] == 'request_reviewers' for call in day.host.calls)
