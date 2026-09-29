@@ -397,12 +397,14 @@ def test_discovery_pr_comment_follow_up(tmp_path, monkeypatch):
     assert result['candidates'][0]['id'] == 'x/y#1:followup:2'
 
 
-def test_shipped_goals_guide_parses_to_no_goals():
+def test_shipped_goals_guide_fails_only_for_having_no_goals():
     from pathlib import Path
+    import pytest
     from wuwei import goals
     root = Path(__file__).resolve().parents[1]
     text = (root / 'templates/workspace/memory/goals.md').read_text(encoding='utf-8')
-    assert goals.parse(text) == {}
+    with pytest.raises(ValueError, match='no goals'):  # not 'expected goal field' on the guide text
+        goals.parse(text)
 
 
 def test_goals_preamble_is_ignored_and_indented_example_is_not_a_goal():
