@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0](https://github.com/taoq-ai/wuwei/compare/v0.3.0...v0.4.0) (2026-09-29)
+
+
+### Features
+
+* **adapters:** credentials from a workspace env file and a configuration check that names them ([#195](https://github.com/taoq-ai/wuwei/issues/195)) ([d9cedd5](https://github.com/taoq-ai/wuwei/commit/d9cedd5066dc03464b0026861930b79d5d969584)), closes [#170](https://github.com/taoq-ai/wuwei/issues/170)
+* **adapters:** Linear backlog discovery and tracker transitions in the loop ([#191](https://github.com/taoq-ai/wuwei/issues/191)) ([f0e174a](https://github.com/taoq-ai/wuwei/commit/f0e174a3a22fa3269ad87513775fd8300c6c6ca7)), closes [#172](https://github.com/taoq-ai/wuwei/issues/172)
+* **memory:** owner edits to goals and voice satisfy workspace integrity ([#194](https://github.com/taoq-ai/wuwei/issues/194)) ([987ddc9](https://github.com/taoq-ai/wuwei/commit/987ddc9314bbfc3c4ecf0aa9de0622697db2ca35)), closes [#169](https://github.com/taoq-ai/wuwei/issues/169)
+
+
+### Bug Fixes
+
+* **cli:** documented schemas, valid templates and actionable errors ([#193](https://github.com/taoq-ai/wuwei/issues/193)) ([bfefcc8](https://github.com/taoq-ai/wuwei/commit/bfefcc8e3da7e69ba27aaaf026a69ede2d86514e)), closes [#171](https://github.com/taoq-ai/wuwei/issues/171)
+* **sweeps:** quiet defaults, a nudge list and a watch installer ([#189](https://github.com/taoq-ai/wuwei/issues/189)) ([64b08ad](https://github.com/taoq-ai/wuwei/commit/64b08ad128ab7eb219e46c8f5e10cf8a7cfadcd8)), closes [#168](https://github.com/taoq-ai/wuwei/issues/168)
+* **team:** build loop distinguishes environment failures and reports seat usage ([#192](https://github.com/taoq-ai/wuwei/issues/192)) ([97a0f9c](https://github.com/taoq-ai/wuwei/commit/97a0f9cbbc250f663a107f05d74917f0eab313c5)), closes [#173](https://github.com/taoq-ai/wuwei/issues/173)
+
 ## [0.3.0](https://github.com/taoq-ai/wuwei/compare/v0.2.0...v0.3.0) (2026-09-29)
 
 
