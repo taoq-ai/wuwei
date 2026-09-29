@@ -513,3 +513,23 @@ def test_nonliteral_path_error_retains_type(script):
 def test_writer_globs_are_left_for_guard_expansion(script):
     from wuwei.shell import normalize
     assert normalize(script)[0].argv == script.split()
+
+
+@pytest.mark.parametrize('kind', ['binary', 'large', 'directory', 'fifo', 'missing', 'unreadable'])
+def test_script_text_skips_unreadable_or_non_script_files(tmp_path, monkeypatch, kind):
+    import os
+    from pathlib import Path
+    from wuwei.shell import script_text
+
+    path = tmp_path / 'run.sh'
+    if kind == 'directory':
+        path.mkdir()
+    elif kind == 'fifo':
+        os.mkfifo(path)
+    elif kind != 'missing':
+        path.write_bytes(b'\xff\x00' if kind == 'binary' else b'x' * (65537 if kind == 'large' else 1))
+    if kind == 'unreadable':
+        def denied(*args, **kwargs):
+            raise PermissionError('unreadable script')
+        monkeypatch.setattr(Path, 'open', denied)
+    assert script_text('./run.sh', tmp_path) is None

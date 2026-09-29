@@ -147,13 +147,21 @@ def check(root, command):
     ('terraform "$ACTION"', 2, 'literal'),
     ('terraform ap*', 2, 'literal'),
     ('python -c \'import os; os.system("terraform apply")\'', 0, ''),
+    ('python -c \'import os; os.system("gh release create v1")\'', 2, 'git/gh mention'),
+    ('node -e "run(\'gh release create v1\')"', 2, 'git/gh mention'),
+    ('perl -e "system(\'git push --tags\')"', 2, 'git/gh mention'),
     ('echo terraform apply | sh', 2, ''),
     ('xargs terraform', 2, ''),
     ('terraform apply "', 2, 'plain command'),
     ('gh secret-alias', 2, ''),
     ('git ship', 2, ''),
+    ('./push.sh', 2, 'opaque'), ('sh push.sh', 2, 'opaque'),
+    ('bash push.sh', 2, 'opaque'),
+    ('./run.sh', 0, ''), ('sh run.sh', 0, ''), ('bash run.sh', 0, ''),
 ])
 def test_decisions(workspace, profile, command, code, reason):
+    (workspace / 'push.sh').write_text('terraform apply\n')
+    (workspace / 'run.sh').write_text('echo ok\n')
     path = workspace / '.wuwei/config.toml'
     path.write_text(path.read_text().replace('"strict"', json.dumps(profile)))
     actual, message = check(workspace, command)

@@ -1,6 +1,6 @@
 """Static shell normalization for guards. Never execute or expand input text."""
 
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 import re
 import shlex
 from typing import NamedTuple
@@ -101,6 +101,41 @@ def mentions(raw, names) -> bool:
         return True
     return any(not _literal(word) for word in re.findall(
         r'(?:^|[;&|(\n])\s*([^\s;&|()]+)', unquoted))
+
+
+def script_path(raw, cwd):
+    """Identify a locally invoked script without reading it."""
+    if not isinstance(raw, str):
+        return None
+    try:
+        argv = shlex.split(raw)
+    except ValueError:
+        return None
+    if not argv:
+        return None
+    name = PurePosixPath(argv[0]).name
+    if name in ('sh', 'bash', 'zsh'):
+        if len(argv) < 2 or argv[1].startswith('-'):
+            return None
+        target = argv[1]
+    elif '/' in argv[0] or argv[0].endswith('.sh'):
+        target = argv[0]
+    else:
+        return None
+    return Path(cwd) / target
+
+
+def script_text(raw, cwd):
+    """Read a small text script for guard relevance; never execute it."""
+    path = script_path(raw, cwd)
+    if path is None:
+        return None
+    try:
+        if not path.is_file() or path.stat().st_size > 65536:
+            return None
+        return path.read_text(encoding='utf-8')
+    except (OSError, UnicodeDecodeError):
+        return None
 
 
 def _literal(raw, allow_globs=False):
