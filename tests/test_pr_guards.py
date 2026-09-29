@@ -83,6 +83,56 @@ def test_create_options(case, command, code, hint):
         assert ('head', (str(root / 'repo'),), root) in fake.calls
 
 
+def test_pr_gate_accepts_quality_only_delta_after_fix(case):
+    from wuwei import state
+    root, fake, decisions = case
+    new_head = 'c' * 40
+    fake.results['head'] = Result(0, {'sha': new_head})
+    records = {}
+    for role in ('arch', 'quality', 'security'):
+        path = decisions / f'gate-9-{role}.md'
+        if role == 'quality':
+            path.write_text(evidence(OLD, 'FIX') +
+                '- P1 | cli/example.py:12 | fails when empty | blocks: yes\n')
+        else:
+            path.write_text(evidence(OLD))
+        records[f'9:{role}:initial'] = {
+            'item': '9', 'role': role, 'round': 'initial',
+            'verdict': 'FIX' if role == 'quality' else 'PASS',
+            'head': OLD, 'file': str(path.relative_to(root)), 'blocks': role == 'quality', 'notes': []}
+    delta = decisions / 'gate-9-quality-delta.md'
+    delta.write_text(evidence(new_head))
+    records['9:quality:delta'] = {
+        'item': '9', 'role': 'quality', 'round': 'delta', 'verdict': 'PASS',
+        'head': new_head, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
+    state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+    assert guard().gate_check(root, root / 'repo', workspace.load_config(root), item='9') == (0, '')
+
+
+def test_pr_gate_accepts_nonblocking_delta_residual(case):
+    from wuwei import state
+    root, fake, decisions = case
+    new_head = 'c' * 40
+    fake.results['head'] = Result(0, {'sha': new_head})
+    records = {}
+    for role in ('arch', 'quality', 'security'):
+        path = decisions / f'gate-9-{role}.md'
+        path.write_text(evidence(OLD) if role != 'quality' else
+            evidence(OLD, 'FIX') + '- P2 | cli/example.py:12 | fails when empty | blocks: yes\n')
+        records[f'9:{role}:initial'] = {
+            'item': '9', 'role': role, 'round': 'initial',
+            'verdict': 'FIX' if role == 'quality' else 'PASS', 'head': OLD,
+            'file': str(path.relative_to(root)), 'blocks': role == 'quality', 'notes': []}
+    delta = decisions / 'gate-9-quality-delta.md'
+    delta.write_text(evidence(new_head, 'FIX') +
+        '- P3 | cli/example.py:12 | fails when empty | blocks: no\n')
+    records['9:quality:delta'] = {
+        'item': '9', 'role': 'quality', 'round': 'delta', 'verdict': 'FIX',
+        'head': new_head, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
+    state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+    assert guard().gate_check(root, root / 'repo', workspace.load_config(root), item='9') == (0, '')
+
+
 @pytest.mark.parametrize('kind,code,hint', [
     ('missing', 1, 'security'), ('stale', 1, 'security'),
     ('fix', 1, 'security'), ('short', 0, ''),

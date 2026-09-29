@@ -104,6 +104,29 @@ def test_clean_has_head_bound_evidence(case):
     assert not any(call[0] == 'merge' for call in case[1].calls)
 
 
+def test_merge_uses_quality_delta_record(case):
+    root, _ = case
+    directory = workspace.day_dir(root) / 'decisions'
+    records = {}
+    for role in ('arch', 'quality', 'security'):
+        path = directory / f'gate-item-7-{role}.md'
+        path.write_text(evidence(BASE) if role != 'quality' else
+            evidence(BASE, 'FIX') + '- P1 | cli/example.py:12 | fails when empty | blocks: yes\n')
+        records[f'item-7:{role}:initial'] = {
+            'item': 'item-7', 'role': role, 'round': 'initial',
+            'verdict': 'FIX' if role == 'quality' else 'PASS', 'head': BASE,
+            'file': str(path.relative_to(root)), 'blocks': role == 'quality', 'notes': []}
+    delta = directory / 'gate-item-7-quality-delta.md'
+    delta.write_text(evidence(SHA))
+    records['item-7:quality:delta'] = {
+        'item': 'item-7', 'role': 'quality', 'round': 'delta', 'verdict': 'PASS',
+        'head': SHA, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
+    state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+    result = check(case)
+    assert result.exit == 0, result
+    assert any(row['path'].endswith('quality-delta.md') for row in result.data['verdicts'])
+
+
 @pytest.mark.parametrize('conclusion', ['skipped', 'neutral', 'failure', 'cancelled', 'timed_out', None])
 def test_required_check_must_be_green(case, conclusion):
     case[1].results['checks'].data[0]['conclusion'] = conclusion

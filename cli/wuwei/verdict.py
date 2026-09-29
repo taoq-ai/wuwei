@@ -11,6 +11,7 @@ VERDICTS = ('PASS', 'FIX', 'PARK', 'ESCALATE')
 VERDICT_ROW = r'^(?:## |- )?Verdict:? *(' + '|'.join(VERDICTS) + r')\b'
 CITATION = r'[A-Za-z0-9_./-]+\.[a-z]+:[0-9]+|\bL[0-9]+\b'
 BLOCKS = r'blocks?:? *(yes|no)\b|\| *(yes|no) *\|'
+BLOCKS_YES = r'blocks?:? *yes\b|\| *yes *\|'
 SCENARIO = r'scenario|reproduc|fails? when|would |impact|consequence|breaks? '
 CLASSES = r'(AUTH|VAL|DOC|TEST|INF|RET|ERR|STATE|CON|BUD|DATA|PROOF): *(PASS|N\.A\.|FINDING)'
 SEVERITY = r'(?:P[0-3]|critical|high|medium|low|info)\b'
@@ -114,7 +115,7 @@ def lint(text, *, quality=False, class_sweep=False):
             failures.append(f"retro note has duplicate '{key}:' lines")
 
     blocks = finding_blocks(text)
-    if verdict == 'PASS' and any(re.search(r'blocks?:? *yes\b|\| *yes *\|', block, re.I)
+    if verdict == 'PASS' and any(re.search(BLOCKS_YES, block, re.I)
                                  for block in blocks):
         failures.append('PASS verdict carries a blocking finding')
     if verdict and verdict != 'PASS' and not blocks:

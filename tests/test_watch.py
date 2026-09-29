@@ -120,6 +120,7 @@ def test_sweep_one_summary_with_counts_and_dead_watch(case, scanner, expected, c
     assert row['payload']['scanner'] == ('unmeasured' if scanner == 'none' else
                                         'unreadable' if scanner == 'failed' else 'measured')
     assert 'watch dead' in capsys.readouterr().out
+    assert events(root, 'discovery.requested')[-1]['payload']['trigger'] == 'sweep'
 
 
 def test_sweep_failed_discovery_never_clean(case):

@@ -181,6 +181,7 @@ def stop(payload):
             raise ValueError('SubagentStop has no matching seat reservation')
         if records[name]['role'] != payload['agent_type'].rsplit(':', 1)[-1]:
             raise ValueError('SubagentStop role does not match seat reservation')
+        role = records[name]['role']
         state.stop_seat(name, root, directory=directory)
     except Exception as exc:
         try:
@@ -190,6 +191,18 @@ def stop(payload):
         except Exception as log_error:
             import sys
             print(f'seat stop could not be recorded: {log_error}', file=sys.stderr)
+        return 0, ''
+    if role == 'builder' and directory == workspace.day_dir(root):
+        try:
+            from wuwei import dispatch
+            dispatch.discovery('seat-free', root)
+        except (OSError, ValueError, RuntimeError) as exc:
+            try:
+                state.append_event('discovery.unmeasured', {'reason': str(exc)},
+                                   root, directory=directory)
+            except Exception as log_error:
+                import sys
+                print(f'discovery failure could not be recorded: {log_error}', file=sys.stderr)
     return 0, ''
 
 

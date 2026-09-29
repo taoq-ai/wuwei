@@ -79,12 +79,60 @@ def values(found, *keys):
     return [found[key] for key in keys if key in found]
 
 
+def _recorded_gates(root, sha, records, item):
+    """Check the bounded fix and delta path recorded by the receive producer."""
+    candidates = [item] if item is not None else sorted({
+        key.split(':', 1)[0] for key in records if isinstance(key, str) and ':' in key})
+    for candidate in candidates:
+        initial = [records.get(f'{candidate}:{role}:initial') for role in GATES]
+        if any(row is None for row in initial):
+            continue
+        if len({row['head'] for row in initial}) != 1:
+            raise ValueError('initial gate verdicts disagree on HEAD')
+        complete = True
+        for role, first in zip(GATES, initial):
+            row = records.get(f'{candidate}:{role}:delta') if first['verdict'] == 'FIX' else first
+            if row is None or (row['verdict'] != 'PASS' and not (
+                    first['verdict'] == 'FIX' and row['verdict'] == 'FIX'
+                    and row['blocks'] is False)):
+                complete = False
+                continue
+            path = root / row['file']
+            expected = workspace.day_dir(root) / 'decisions'
+            if path.parent != expected or path.is_symlink() or not path.name.startswith('gate-'):
+                raise ValueError('gate verdict path is outside the day decisions')
+            text = path.read_text(encoding='utf-8')
+            code, reason = verdict.lint(text, quality=role == 'quality', class_sweep=True)
+            if code:
+                raise ValueError(f'{role} verdict: {reason}')
+            active = verdict.active_text(text)
+            heads = verdict.rows(active, 'Head')
+            decisions = re.findall(verdict.VERDICT_ROW, active, re.M)
+            if heads != [row['head']] or decisions != [row['verdict']]:
+                raise ValueError(f'{role} recorded verdict differs from file')
+            actual_blocks = any(re.search(verdict.BLOCKS_YES, block, re.I)
+                                for block in verdict.finding_blocks(active))
+            if row['blocks'] is not actual_blocks:
+                raise ValueError(f'{role} recorded blocking status differs from file')
+            if not sha.lower().startswith(row['head'].lower()) and (
+                    first['verdict'] == 'FIX' or not any(
+                        initial_row['verdict'] == 'FIX' for initial_row in initial)):
+                complete = False
+        if complete:
+            return 0, ''
+    return 1, 'pre-PR gates not passed at current HEAD'
+
+
 def gate_check(root, cwd, config, *, sha=None, item=None):
     vcs = registry.load('vcs', config)
     if sha is None:
         sha = data(vcs.head(str(cwd), root=root)).get('sha')
     if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', sha):
         raise ValueError('invalid current HEAD')
+    from wuwei import state
+    recorded = state.read_state(root)['gate_verdicts']
+    if recorded:
+        return _recorded_gates(root, sha, recorded, item)
     groups = {}
     for path in sorted((workspace.day_dir(root) / 'decisions').glob('gate-*.md')):
         match = re.fullmatch(r'gate-(.+)-(arch|quality|security)\.md', path.name)
