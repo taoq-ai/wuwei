@@ -120,6 +120,8 @@ def test_config_defaults_and_independence(tmp_path):
         'watch': {'clock_seconds': 600, 'stale_seconds': 900,
                   'sweep_seconds': 7200},
         'pr': {'poll_seconds': 120},
+        'retro': {'repo': '.', 'charter_paths': ['.wuwei/charters'],
+                  'changelog': '.wuwei/memory/CHANGELOG.md'},
         'brief': {'remote': 'origin',
                   'prior_branch_pattern': '*{item}*',
                   'full_path_patterns': []},

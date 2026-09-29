@@ -196,7 +196,8 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
 # Features add only the namespaces they own.
 RESERVED = {'seats', 'fast_checks', 'reply_acks', 'channel_posts', 'decision_outcomes',
             'gate_approved', 'approved_items', 'goals', 'cap', 'seat_policy', 'envelope', 'watch',
-            'planner_session_id', 'security', 'scanner_findings'}
+            'planner_session_id', 'security', 'scanner_findings',
+            'pr_dispositions', 'close_requested'}
 
 
 def _reserved(data, path=()):

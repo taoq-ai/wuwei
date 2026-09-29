@@ -147,7 +147,7 @@ def pr(ref, root=None):
     return {
         'repo': repo, 'number': _field(value, 'number', int),
         'url': _field(value, 'html_url', str), 'author': _login(value['user']),
-        'state': _field(value, 'state', str), 'draft': _field(value, 'draft', bool),
+        'state': _field(value, 'state', str), 'merged': _field(value, 'merged', bool), 'draft': _field(value, 'draft', bool),
         'head': _sha(value['head']['sha']), 'base': _field(value['base'], 'ref', str),
         'base_sha': _sha(value['base']['sha']), 'branch': _field(value['head'], 'ref', str),
         'mergeable': _field(value, 'mergeable', bool, nullable=True),

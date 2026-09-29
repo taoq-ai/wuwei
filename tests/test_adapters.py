@@ -30,6 +30,8 @@ CALLS = [
     ('vcs', 'diff_stat', ('repo', 'base', 'head'), True),
     ('vcs', 'log_since', ('repo', 'sha'), True),
     ('vcs', 'worktree_add', ('repo', 'branch', 'path'), False),
+    ('vcs', 'changes_on', ('repo', 'day'), True),
+    ('vcs', 'read_tree', ('repo', 'ref', 'paths'), True),
     ('vcs', 'branches', ('repo', 'pattern'), True),
     ('vcs', 'commit_context', ('repo', 'settings', 'env'), True),
     ('vcs', 'push_context', ('repo', 'remote', 'refspecs'), True),

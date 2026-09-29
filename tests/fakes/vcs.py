@@ -44,3 +44,9 @@ class Fake(Recorder):
 
     def push_commits(self, repo, remote, destination, local_sha, remote_sha, default_branch, root=None):
         return self._call('push_commits', (repo, remote, destination, local_sha, remote_sha, default_branch), root)
+
+    def changes_on(self, repo, day, root=None):
+        return self._call('changes_on', (repo, day), root)
+
+    def read_tree(self, repo, ref, paths, root=None):
+        return self._call('read_tree', (repo, ref, paths), root)
