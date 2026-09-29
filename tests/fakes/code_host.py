@@ -35,3 +35,9 @@ class Fake(Recorder):
 
     def revert_pr(self, ref, root=None):
         return self._call('revert_pr', (ref,), root)
+
+    def files(self, ref, root=None):
+        return self._call('files', (ref,), root)
+
+    def history(self, repo, start, branch, patches=True, root=None):
+        return self._call('history', (repo, start, branch, patches), root)

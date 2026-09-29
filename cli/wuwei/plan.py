@@ -148,4 +148,5 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
     kind = 'state.import' if import_yesterday else 'plan.approved'
     return state._write_state(update, root, reserved=False, kind=kind,
                               payload={'items': sorted(imported) if import_yesterday else items,
-                                       'approved_items': items})
+                                       'approved_items': items,
+                                       'flags': {name: candidates[name]['flags'] for name in items}})

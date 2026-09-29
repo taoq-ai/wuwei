@@ -24,6 +24,7 @@ PARAMETERS = {
                 'traces': ('file',), 'mcp': ('servers',)},
     'code_host': {'pr': ('ref',), 'checks': ('ref', 'sha'), 'reviews': ('ref',),
                   'threads': ('ref',), 'protection': ('repo', 'branch'),
+                  'files': ('ref',), 'history': ('repo', 'start', 'branch', 'patches'),
                   'create_pr': ('draft',), 'request_reviewers': ('ref', 'logins'),
                   'comment': ('ref', 'text', 'thread'), 'merge': ('ref', 'sha'),
                   'revert_pr': ('ref',)},

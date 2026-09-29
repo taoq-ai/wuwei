@@ -1,0 +1,723 @@
+"""Merge policy tables use ports in process, never real git or gh."""
+
+from copy import deepcopy
+import importlib
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from fakes.code_host import Fake
+from wuwei import registry, state, workspace
+from wuwei.registry import Result
+from test_pr_guards import evidence
+
+SHA = 'a' * 40
+BASE = 'b' * 40
+MERGED = 'c' * 40
+REF = 'example/project#7'
+
+
+def policy():
+    return importlib.import_module('wuwei.merge')
+
+
+def events(root):
+    from wuwei.watch import records
+    return records(workspace.day_dir(root) / 'events.jsonl')
+
+
+@pytest.fixture
+def case(tmp_path, monkeypatch):
+    root = tmp_path / 'workspace'
+    (root / 'repo').mkdir(parents=True)
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('''
+[environments]
+production = "production"
+[owner]
+handles = ["owner"]
+[[repos]]
+name = "example/project"
+path = "repo"
+default_branch = "main"
+merge_deploys = false
+[repos.merge]
+auto = true
+''')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    directory = workspace.day_dir(root)
+    (directory / 'decisions').mkdir(parents=True)
+    for gate in ('arch', 'quality', 'security'):
+        (directory / 'decisions' / f'gate-item-7-{gate}.md').write_text(evidence())
+    flags = {key: False for key in state.ITEM_DEFAULTS['flags']}
+    state._write_state(lambda d: d.update(items={'item-7': {'pr': REF, 'flags': flags}},
+        raised_prs=[REF], gate_approved=True, approved_items=['item-7'],
+        channel_posts=[{'pr': REF, 'status': 'posted', 'url': 'https://chat.test/thread/1',
+                        'reviewers': ['reviewer']}]), root, reserved=False,
+        kind='plan.approved', payload={'flags': {'item-7': flags}, 'approved_items': ['item-7']})
+    host = Fake({
+        'pr': Result(0, {'repo': 'example/project', 'number': 7, 'head': SHA,
+            'base': 'main', 'base_sha': BASE, 'state': 'open', 'draft': False,
+            'author': 'owner', 'mergeable': True, 'merge_state': 'clean',
+            'updated_at': '2026-09-29T10:00:00Z', 'additions': 10, 'deletions': 0,
+            'changed_files': 1, 'requested_reviewers': ['reviewer'], 'requested_teams': [],
+            'merged': False, 'merged_at': None, 'merge_commit': None}),
+        'files': Result(0, [{'path': 'src/a.py', 'previous_path': None, 'status': 'added',
+            'additions': 10, 'deletions': 0, 'patch': '@@ -0,0 +1,10 @@\n' + '+line\n' * 10}]),
+        'checks': Result(0, [{'name': 'tests', 'sha': SHA, 'app_id': 1,
+                            'state': 'completed', 'conclusion': 'success'}]),
+        'protection': Result(0, {'required_checks': [{'name': 'tests', 'app_id': 1}],
+            'approvals': 1, 'strict': True, 'merge_queue': False,
+            'require_code_owner_reviews': False, 'require_last_push_approval': False,
+            'dismiss_stale_reviews': True, 'conversation_resolution': True,
+            'enforce_admins': True}),
+        'reviews': Result(0, [{'id': 1, 'author': 'reviewer', 'is_bot': False, 'sha': SHA,
+            'state': 'approved', 'body': '', 'submitted_at': '2026-09-29T10:00:00Z'}]),
+        'threads': Result(0, {'comments': [], 'threads': []}),
+        'merge': Result(0, {'accepted': True, 'sha': SHA}),
+        'revert_pr': Result(0, {'number': 8, 'url': 'https://github.com/example/project/pull/8'}),
+        'history': Result(0, {'files': [], 'commits': []}),
+    })
+    monkeypatch.setattr(registry, 'load', lambda kind, config: host)
+    return root, host
+
+
+def check(case):
+    return policy().check(REF, root=case[0])
+
+
+def config_change(root, old, new):
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace(old, new))
+
+
+def test_clean_has_head_bound_evidence(case):
+    result = check(case)
+    assert result.exit == 0, result
+    assert result.data['head'] == SHA
+    assert len(result.data['verdicts']) == 3
+    assert result.data['approvals'] == ['reviewer']
+    assert result.data['checks'][0]['sha'] == SHA
+    assert not any(call[0] == 'merge' for call in case[1].calls)
+
+
+@pytest.mark.parametrize('conclusion', ['skipped', 'neutral', 'failure', 'cancelled', 'timed_out', None])
+def test_required_check_must_be_green(case, conclusion):
+    case[1].results['checks'].data[0]['conclusion'] = conclusion
+    result = check(case)
+    assert result.exit == 1 and 'tests' in result.reason
+
+
+@pytest.mark.parametrize('change,hint', [
+    (('merge_deploys = false', ''), 'merge_deploys'),
+    (('merge_deploys = false', 'merge_deploys = true'), 'merge_deploys'),
+    (('auto = true', 'auto = false'), 'merge.auto'),
+    (('auto = true', 'auto = true\nmax_changed_lines = 5'), 'lines'),
+    (('auto = true', 'auto = true\nsoak_minutes = 180'), 'soak'),
+    (('auto = true', 'auto = true\nquiet_hours = ["11:00-13:00"]'), 'quiet'),
+])
+def test_config_eligibility(case, change, hint):
+    config_change(case[0], *change)
+    result = check(case)
+    assert result.exit == 1 and hint in result.reason, result
+
+
+@pytest.mark.parametrize('field,value,hint', [
+    ('merge_state', 'dirty', 'dirty'), ('merge_state', 'behind', 'behind'),
+    ('merge_state', 'blocked', 'protection'), ('draft', True, 'draft'),
+    ('state', 'closed', 'open'), ('mergeable', None, 'mergeability'),
+    ('base', 'production', 'base'), ('changed_files', 2, 'files'),
+    ('head', 'bad', 'head'),
+])
+def test_host_refusals(case, field, value, hint):
+    case[1].results['pr'].data[field] = value
+    result = check(case)
+    assert result.exit in (1, 2) and hint in result.reason, result
+
+
+@pytest.mark.parametrize('path', ['.github/workflows/test.yml', 'package.json',
+    'pkg/package-lock.json', 'src/deploy/a.py', 'infra/main.tf', 'CODEOWNERS',
+    'db/migrations/001.sql', 'schema.sql', 'requirements.txt', 'pyproject.toml'])
+def test_never_auto_paths(case, path):
+    case[1].results['files'].data[0]['path'] = path
+    assert check(case).exit == 1
+
+
+def test_rename_cannot_hide_protected_source(case):
+    case[1].results['files'].data[0]['previous_path'] = 'infra/a.py'
+    assert check(case).exit == 1
+
+
+@pytest.mark.parametrize('operation', ['pr', 'files', 'checks', 'protection', 'reviews', 'threads'])
+@pytest.mark.parametrize('result', [Result(2, None, 'offline'), Result(0, {'message': 'Denied',
+    'documentation_url': 'url'})])
+def test_unreadable_evidence_routes_to_owner(case, operation, result):
+    case[1].results[operation] = result
+    answer = check(case)
+    assert answer.exit == 2 and 'owner' in answer.reason, answer
+    assert not any(call[0] == 'merge' for call in case[1].calls)
+
+
+@pytest.mark.parametrize('change,hint', [
+    ('missing-check', 'tests'), ('pending-optional', 'optional'),
+    ('missing-required', 'required'), ('wrong-app', 'tests'),
+    ('stale-check', 'head'), ('author-approval', 'approvals'),
+    ('bot-approval', 'approvals'), ('stale-approval', 'approvals'),
+    ('changes-requested', 'changes requested'), ('visibility', 'channel-post'),
+    ('reply', 'comment'), ('thread', 'thread'), ('risk', 'risk'),
+    ('cycle', 'cycle'), ('unlinked', 'item'), ('gate', 'security'),
+    ('forged-flags', 'risk'),
+])
+def test_policy_preconditions(case, change, hint):
+    root, host = case
+    if change == 'missing-check': host.results['checks'] = Result(0, [])
+    elif change == 'pending-optional': host.results['checks'].data.append(
+        {'name': 'optional', 'sha': SHA, 'state': 'in_progress', 'conclusion': None, 'app_id': 1})
+    elif change == 'missing-required': host.results['protection'].data['required_checks'] = []
+    elif change == 'wrong-app': host.results['checks'].data[0]['app_id'] = 2
+    elif change == 'stale-check': host.results['checks'].data[0]['sha'] = BASE
+    elif change == 'author-approval': host.results['reviews'].data[0]['author'] = 'owner'
+    elif change == 'bot-approval': host.results['reviews'].data[0]['is_bot'] = True
+    elif change == 'stale-approval': host.results['reviews'].data[0]['sha'] = BASE
+    elif change == 'changes-requested': host.results['reviews'].data[0]['state'] = 'changes_requested'
+    elif change == 'visibility': state._write_state(lambda d: d.update(channel_posts=[]), root, reserved=False)
+    elif change == 'reply': host.results['threads'].data['comments'] = [
+        {'id': 2, 'author': 'reviewer', 'is_bot': False, 'body': 'Please explain',
+         'created_at': '2026-09-29T10:00:00Z'}]
+    elif change == 'thread': host.results['threads'].data['threads'] = [
+        {'id': 't1', 'resolved': False, 'outdated': False, 'comments': [
+            {'id': 2, 'author': 'reviewer', 'is_bot': False, 'body': 'Please fix',
+             'created_at': '2026-09-29T10:00:00Z'}]}]
+    elif change == 'risk': state.set_state('items.item-7.flags.agent_surface', True, root)
+    elif change == 'forged-flags': state.append_event('plan.approved', {
+        'flags': {'item-7': {'trust_surface': True, 'boundary_relevant': False, 'agent_surface': False}},
+        'approved_items': ['item-7']}, root)
+    elif change == 'cycle':
+        for _ in range(2): state.append_event('state.transition', {'item': 'item-7', 'phase': 'fix'}, root)
+    elif change == 'unlinked': state.set_state('items.item-7.pr', 'example/project#8', root)
+    elif change == 'gate': (workspace.day_dir(root) / 'decisions/gate-item-7-security.md').unlink()
+    answer = check(case)
+    assert answer.exit == (2 if change == 'stale-check' else 1) and hint in answer.reason, answer
+
+
+def test_changed_head_during_reads_is_not_cleared(case, monkeypatch):
+    root, host = case
+    original = host.pr
+    calls = 0
+    def read(ref, root=None):
+        nonlocal calls
+        calls += 1
+        result = original(ref, root)
+        if calls > 1: result.data['head'] = BASE
+        return result
+    monkeypatch.setattr(host, 'pr', read)
+    assert check(case).exit == 1
+
+
+@pytest.mark.parametrize('score,head,findings,code', [(5, SHA, [], 0), (4, SHA, [], 1),
+    (5, BASE, [], 1), (5, SHA, [{'blocking': True}], 1)])
+def test_review_bot_score_and_same_summary_head(case, monkeypatch, score, head, findings, code):
+    root, host = case
+    config_change(root, 'auto = true', 'auto = true\nbot_login = "reviewer-bot"')
+    with (root / '.wuwei/config.toml').open('a') as f:
+        f.write('\n[adapters]\nreview_bot = "greptile"\n')
+    host.results['threads'].data['comments'] = [{'id': 3, 'author': 'reviewer-bot',
+        'is_bot': True, 'body': f'Confidence Score: {score}/5\nhttps://github.com/example/project/commit/{head}',
+        'created_at': '2026-09-29T10:00:00Z'}]
+    bot = SimpleNamespace(score=lambda *a, **k: Result(0, score),
+                          open_findings=lambda *a, **k: Result(0, findings))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: bot if kind == 'review_bot' else host)
+    assert check(case).exit == code
+
+
+def test_merge_pins_head_and_writes_evidence_and_undo(case):
+    root, host = case
+    result = policy().execute(REF, root)
+    assert result.exit == 0, result
+    assert ('merge', (REF, SHA), root) in host.calls
+    entry = state.read_state(root)['merges'][REF]
+    assert entry['head'] == SHA and entry['status'] == 'accepted'
+    assert entry['evidence']['approvals'] == ['reviewer']
+    assert any(e['kind'] == 'merge.auto' for e in events(root))
+    undo = [json.loads(line) for line in (workspace.day_dir(root) / 'undo.jsonl').read_text().splitlines()]
+    assert undo[0]['payload']['pr'] == REF and undo[0]['payload']['operation'] == 'revert_pr'
+    assert undo[0]['payload']['head'] == SHA
+
+
+def test_push_between_check_and_merge_fails(case, monkeypatch):
+    root, host = case
+    def race(ref, head, root=None):
+        assert head == SHA
+        host.results['pr'].data['head'] = BASE
+        return Result(2, None, 'head does not match')
+    monkeypatch.setattr(host, 'merge', race)
+    result = policy().execute(REF, root)
+    assert result.exit == 2 and 'head' in result.reason
+    assert state.read_state(root)['merges'][REF]['status'] == 'intent'
+    assert not any(e['kind'] == 'merge.auto' for e in events(root))
+
+
+def test_refused_merge_never_calls_mutation(case):
+    root, host = case
+    host.results['checks'].data[0]['conclusion'] = 'skipped'
+    assert policy().execute(REF, root).exit == 1
+    assert not any(c[0] == 'merge' for c in host.calls)
+    assert events(root)[-1]['kind'] == 'merge.policy_blocked'
+
+
+def test_cli_check_and_numeric_merge(case, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    root, host = case
+    monkeypatch.chdir(root / 'repo')
+    assert main(['merge', 'check', '7']) == 0
+    assert not any(c[0] == 'merge' for c in host.calls)
+    assert main(['merge', '7']) == 0
+    assert 'head' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('key', ['merges', 'merge_breakers'])
+def test_generic_state_cannot_forge_merge_evidence(case, key):
+    with pytest.raises(state.StateError, match='reserved'):
+        state.set_state(key, {}, case[0])
+
+
+@pytest.mark.parametrize('kind', ['merge.auto', 'merge.intent', 'merge.breaker', 'base.red'])
+def test_generic_event_cannot_forge_merge_evidence(case, kind):
+    from argparse import Namespace
+    from wuwei.commands.event import run
+    assert run(Namespace(kind=kind, payload='{}')) == 1
+
+
+@pytest.mark.parametrize('command,code', [
+    ('gh pr merge 7', 1), ('env X=1 gh pr merge 7 --squash', 1),
+    ('gh pr merge 7 --admin', 1), ('gh api repos/example/project/pulls/7/merge -X PUT', 1),
+    ('gh pr merge $PR', 2), ('gh pr merge "', 2),
+    ('python3 -m pytest -q', 0), ('for x in 1; do echo x; done', 0), ('export X=1', 0),
+])
+def test_guard_never_bypasses_dedicated_writer(case, command, code):
+    from wuwei.guards.pr import check as guard
+    root, host = case
+    result = guard({'cwd': str(root / 'repo'), 'tool_input': {'command': command}})
+    assert result[0] == code, result
+    assert not any(c[0] == 'merge' for c in host.calls)
+
+
+def test_guard_calls_shared_policy(case, monkeypatch):
+    from wuwei.guards.pr import check as guard
+    calls = []
+    def fail(*args, **kwargs):
+        calls.append((args, kwargs))
+        return Result(2, None, 'offline')
+    monkeypatch.setattr(policy(), 'check', fail)
+    result = guard({'cwd': str(case[0] / 'repo'), 'tool_input': {'command': 'gh pr merge 7'}})
+    assert result == (2, 'offline') and len(calls) == 1
+
+
+def merged(case):
+    root, host = case
+    assert policy().execute(REF, root).exit == 0
+    host.results['pr'].data.update(state='closed', merged=True, merge_commit=MERGED,
+                                  merged_at='2026-09-29T12:00:00Z')
+    host.results['checks'].data[0]['sha'] = MERGED
+    host.results['history'].data['files'] = deepcopy(host.results['files'].data)
+    return root, host
+
+
+def test_red_base_check_reverts_pages_and_disables_across_days(case, monkeypatch):
+    root, host = merged(case)
+    host.results['checks'].data[0]['conclusion'] = 'failure'
+    result = policy().poll(root)
+    assert result == 1
+    assert ('checks', (REF, MERGED), root) in host.calls
+    assert ('revert_pr', (REF,), root) in host.calls
+    assert state.read_state(root)['merges'][REF]['revert_pr'].endswith('/8')
+    from wuwei.signal import classify
+    red = next(e for e in events(root) if e['kind'] == 'base.red')
+    assert classify(red, {})[0] == 'page'
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:00:00Z')
+    result = check(case)
+    assert result.exit == 1 and 'breaker' in result.reason
+    host.calls.clear()
+    assert policy().poll(root) == 1
+    assert not any(c[0] == 'revert_pr' for c in host.calls)
+
+
+def test_failed_revert_still_disables_and_retries(case):
+    root, host = merged(case)
+    host.results['checks'].data[0]['conclusion'] = 'failure'
+    host.results['revert_pr'] = Result(2, None, 'unavailable')
+    assert policy().poll(root) == 2
+    assert check(case).exit == 1
+    host.results['revert_pr'] = Result(0, {'number': 8, 'url': 'https://github.com/example/project/pull/8'})
+    assert policy().poll(root) == 1
+    assert state.read_state(root)['merges'][REF]['revert_pr'].endswith('/8')
+
+
+def test_watch_reconciles_accepted_mutation_after_timeout(case, monkeypatch):
+    root, host = case
+    host.results['merge'] = Result(2, None, 'timeout')
+    assert policy().execute(REF, root).exit == 2
+    host.results['pr'].data.update(state='closed', merged=True, merge_commit=MERGED,
+                                  merged_at='2026-09-29T12:00:00Z')
+    host.results['checks'].data[0]['sha'] = MERGED
+    assert policy().poll(root) == 0
+    assert state.read_state(root)['merges'][REF]['status'] == 'merged'
+    assert (workspace.day_dir(root) / 'undo.jsonl').exists()
+
+
+def test_missing_base_checks_are_unmeasured_and_keep_monitoring(case):
+    root, host = merged(case)
+    host.results['checks'] = Result(0, [])
+    assert policy().poll(root) == 2
+    assert state.read_state(root)['merges'][REF]['status'] == 'merged'
+
+
+def test_watch_scheduler_runs_merge_poll(case, monkeypatch):
+    from wuwei import watch
+    root, host = case
+    calls = []
+    monkeypatch.setattr(policy(), 'poll', lambda r: calls.append(r) or 1)
+    monkeypatch.setattr(watch, 'poll', lambda r: 0)
+    monkeypatch.setattr(watch, 'sweep', lambda *a, **k: 0)
+    assert watch.tick(root) == 1
+    assert calls == [root]
+
+
+def test_daily_cap_counts_pending_intents(case):
+    root, host = case
+    config_change(root, 'auto = true', 'auto = true\nmax_per_day = 1')
+    state._write_state(lambda d: d.update(merges={'example/project#6': {
+        'head': SHA, 'status': 'intent', 'at': workspace.now().isoformat()}}), root, reserved=False)
+    result = check(case)
+    assert result.exit == 1 and 'cap' in result.reason
+
+
+def test_completed_windows_only_and_baseline_comparison(case, monkeypatch):
+    root, host = merged(case)
+    assert policy().poll(root) == 0
+    host.results['history'].data['commits'] = [{'sha': 'd' * 40, 'at': '2026-10-01T12:00:00Z',
+        'message': 'fix: regression', 'files': [{'path': 'src/a.py', 'previous_path': None,
+        'status': 'modified', 'additions': 1, 'deletions': 1, 'patch': '@@ -2 +2 @@\n-line\n+fixed'}]}]
+    directory = root / '.wuwei/memory/notes'
+    directory.mkdir(parents=True)
+    (directory / 'baseline.md').write_text('---\ntype: reference\n---\nEscaped-defect-rate: 0.1\n')
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-02T12:00:00Z')
+    assert policy().poll(root) == 0  # Too young for a rate denominator.
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-14T12:00:00Z')
+    assert policy().poll(root) == 1
+    assert 'defect rate' in state.read_state(root)['merge_breakers']['example/project']['reason']
+
+
+@pytest.mark.parametrize('now', ['2026-10-27T12:00:00Z', '2026-11-28T12:00:00Z'])
+def test_expired_monitor_stops_host_reads_and_clears_old_errors(case, monkeypatch, now):
+    root, host = merged(case)
+    directory = workspace.day_dir(root)
+    host.results['history'] = Result(2, None, 'nonlinear base history')
+    assert policy().poll(root) == 2
+    monkeypatch.setenv('WUWEI_NOW', now)
+    host.calls.clear()
+    assert policy().poll(root) == 0
+    assert host.calls == []
+    assert 'monitor_error' not in state.read_state(directory=directory)['merges'][REF]
+    result = policy().check('example/project#8', root)
+    assert 'post-merge observations' not in result.reason
+
+
+def test_outcome_measured_once_at_fourteen_days_but_later_reverts_still_trip(case, monkeypatch):
+    root, host = merged(case)
+    directory = workspace.day_dir(root)
+    notes = root / '.wuwei/memory/notes'
+    notes.mkdir(parents=True)
+    (notes / 'baseline.md').write_text('Escaped-defect-rate: 1\n')
+    measured = []
+    original = policy().outcome
+    def measure(*args):
+        measured.append(True)
+        return original(*args)
+    monkeypatch.setattr(policy(), 'outcome', measure)
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-13T11:59:59Z')
+    assert policy().poll(root) == 0
+    assert measured == []
+    assert ('history', ('example/project', MERGED, 'main', False), root) in host.calls
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-13T12:00:00Z')
+    assert policy().poll(root) == 0
+    assert measured == [True]
+    cached = state.read_state(directory=directory)['merges'][REF]['outcome']
+    assert cached['escaped'] is False
+    assert ('history', ('example/project', MERGED, 'main', True), root) in host.calls
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-26T12:00:00Z')
+    host.results['history'].data['files'] = None
+    host.results['history'].data['commits'] = [{'sha': 'd' * 40,
+        'at': '2026-10-26T12:00:00Z', 'message': f'This reverts commit {MERGED}.'}]
+    host.calls.clear()
+    assert policy().poll(root) == 1
+    assert measured == [True]
+    assert state.read_state(directory=directory)['merges'][REF]['outcome'] == cached
+    assert ('history', ('example/project', MERGED, 'main', False), root) in host.calls
+    assert 'reverted' in state.read_state(root)['merge_breakers']['example/project']['reason']
+
+
+def test_mature_outcomes_without_baseline_are_unmeasured(case, monkeypatch):
+    root, host = merged(case)
+    assert policy().poll(root) == 0
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-14T12:00:00Z')
+    assert policy().poll(root) == 2
+
+
+def test_revert_in_base_history_trips_immediately(case):
+    root, host = merged(case)
+    host.results['history'].data['commits'] = [{'sha': 'd' * 40, 'at': '2026-09-29T12:00:00Z',
+        'message': f'Revert change\n\nThis reverts commit {MERGED}.', 'files': []}]
+    assert policy().poll(root) == 1
+    assert 'revert' in state.read_state(root)['merge_breakers']['example/project']['reason']
+
+
+@pytest.mark.parametrize('path', [None, '', '../src/a.py'])
+def test_malformed_primary_path_fails_closed(case, path):
+    case[1].results['files'].data[0]['path'] = path
+    assert check(case).exit == 2
+
+
+def test_required_app_cannot_be_spoofed_by_latest_status(case):
+    case[1].results['checks'].data.append({'name': 'tests', 'sha': SHA,
+        'state': 'completed', 'conclusion': 'failure', 'app_id': 2})
+    assert check(case).exit == 1
+
+
+def test_fail_before_external_merge_if_undo_cannot_be_written(case, monkeypatch):
+    root, host = case
+    monkeypatch.setattr(policy(), 'undo', lambda *a: (_ for _ in ()).throw(OSError('disk full')))
+    assert policy().execute(REF, root).exit == 2
+    assert not any(c[0] == 'merge' for c in host.calls)
+
+
+def test_concurrent_merges_only_one_mutation(case, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    root, host = case
+    entered, release = Event(), Event()
+    def merge(ref, head, root=None):
+        host.calls.append(('merge', (ref, head), root))
+        entered.set()
+        assert release.wait(5)
+        return Result(0, {'accepted': True, 'sha': head})
+    monkeypatch.setattr(host, 'merge', merge)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(policy().execute, REF, root)
+        assert entered.wait(5)
+        second = pool.submit(policy().execute, REF, root)
+        release.set()
+        assert first.result().exit == 0
+        assert second.result().exit == 1
+    assert sum(c[0] == 'merge' for c in host.calls) == 1
+
+
+def test_owner_reset_allows_next_policy_evaluation(case):
+    root, host = case
+    policy().trip(root, 'example/project', workspace.load_config(root)['repos'][0]['merge'], 'test')
+    assert check(case).exit == 1
+    config_change(root, 'auto = true', 'auto = true\nreset_epoch = 1')
+    assert check(case).exit == 0
+
+
+def test_same_line_fixes_follow_intervening_insertions():
+    entry = {'merged_at': '2026-09-01T12:00:00Z', 'merge_commit': MERGED,
+        'evidence': {'files': [{'path': 'a.py', 'patch': '@@ -0,0 +1,2 @@\n+one\n+two',
+                              'additions': 2, 'deletions': 0}]}}
+    config = {'fix_pattern': r'\bfix\b'}
+    def commit(patch, add, delete, message='refactor'):
+        return {'sha': SHA, 'at': '2026-09-02T12:00:00Z', 'message': message, 'files': [
+            {'path': 'a.py', 'previous_path': None, 'patch': patch,
+             'additions': add, 'deletions': delete}]}
+    history = [commit('@@ -0,0 +1 @@\n+heading', 1, 0),
+               commit('@@ -3 +3 @@\n-two\n+correct', 1, 1, 'fix bug')]
+    assert policy().outcome(entry, history, config)['escaped'] is True
+    history[-1] = commit('@@ -4 +4 @@\n-unrelated\n+other', 1, 1, 'fix bug')
+    assert policy().outcome(entry, history, config)['escaped'] is False
+
+
+def test_patch_context_does_not_count_as_changed_line():
+    file = {'patch': '@@ -1,3 +1,3 @@\n context\n-old\n+new\n context',
+            'additions': 1, 'deletions': 1}
+    assert policy().edits(file) == [[2, 1, 2, 1]]
+
+
+def test_truncated_patch_is_unmeasured():
+    with pytest.raises(ValueError, match='patch'):
+        policy().edits({'patch': '@@ -1,3 +1,3 @@\n-a\n+b', 'additions': 1, 'deletions': 1})
+
+
+def test_owner_reset_is_not_undone_by_old_red_entry(case):
+    root, host = merged(case)
+    host.results['checks'].data[0]['conclusion'] = 'failure'
+    assert policy().poll(root) == 1
+    config_change(root, 'auto = true', 'auto = true\nreset_epoch = 1')
+    assert policy().poll(root) == 1
+    _, breakers = policy().journals(root)
+    assert breakers['example/project']['epoch'] == 0
+
+
+def test_new_red_pr_pages_even_when_repo_already_disabled(case):
+    root, host = merged(case)
+    policy().trip(root, 'example/project', workspace.load_config(root)['repos'][0]['merge'],
+                  'previous regression', ref='example/project#6')
+    host.results['checks'].data[0]['conclusion'] = 'failure'
+    assert policy().poll(root) == 1
+    assert any(e['kind'] == 'base.red' and e['payload']['pr'] == REF for e in events(root))
+
+
+def test_pending_base_check_cannot_become_clean_mature_metric(case, monkeypatch):
+    root, host = merged(case)
+    directory = root / '.wuwei/memory/notes'
+    directory.mkdir(parents=True)
+    (directory / 'baseline.md').write_text('Escaped-defect-rate: 0.1\n')
+    host.results['checks'].data[0].update(state='in_progress', conclusion=None)
+    assert policy().poll(root) == 0
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-14T12:00:00Z')
+    assert policy().poll(root) == 2
+    assert not any(e['kind'] == 'merge.metric' for e in events(root))
+
+
+def test_generic_phase_writes_cannot_erase_cycle_budget(case):
+    root, host = case
+    for phase in ('implement', 'gate', 'fix', 'delta', 'fix'):
+        state.set_state('items.item-7.phase', phase, root)
+    result = check(case)
+    assert result.exit == 1 and 'cycle' in result.reason
+
+
+def test_mature_missing_required_base_check_is_unmeasured(case, monkeypatch):
+    root, host = merged(case)
+    host.results['checks'].data[0]['name'] = 'unrelated'
+    directory = root / '.wuwei/memory/notes'
+    directory.mkdir(parents=True)
+    (directory / 'baseline.md').write_text('Escaped-defect-rate: 0.1\n')
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-14T12:00:00Z')
+    assert policy().poll(root) == 2
+    assert not any(e['kind'] == 'merge.metric' for e in events(root))
+
+
+def test_outcome_uses_actual_merge_patch_and_fresh_base_branch(case):
+    root, host = merged(case)
+    host.results['history'] = Result(0, {'files': [{'path': 'src/a.py', 'previous_path': None,
+        'additions': 1, 'deletions': 1, 'patch': '@@ -100 +100 @@\n-old\n+new'}],
+        'commits': [{'sha': 'd' * 40, 'at': '2026-09-29T12:00:00Z', 'message': 'fix bug',
+            'files': [{'path': 'src/a.py', 'previous_path': None, 'additions': 1,
+                      'deletions': 1, 'patch': '@@ -100 +100 @@\n-new\n+fixed'}]}]})
+    assert policy().poll(root) == 0
+    assert ('history', ('example/project', MERGED, 'main', False), root) in host.calls
+
+
+def test_undo_file_is_protected(case):
+    from wuwei.guards.protect_state import check_file
+    path = workspace.day_dir(case[0]) / 'undo.jsonl'
+    payload = {'cwd': str(case[0]), 'tool_name': 'Write',
+               'tool_input': {'file_path': str(path), 'content': '{}'}}
+    assert check_file(payload)[0] == 1
+
+
+def test_insertions_preserve_original_line_tracking():
+    entry = {'merged_at': '2026-09-01T12:00:00Z', 'merge_commit': MERGED,
+        'evidence': {'files': [{'path': 'a.py', 'patch': '@@ -0,0 +1 @@\n+one',
+                              'additions': 1, 'deletions': 0}]}}
+    def change(patch, additions, deletions, message):
+        return {'sha': SHA, 'at': '2026-09-02T12:00:00Z', 'message': message,
+                'files': [{'path': 'a.py', 'previous_path': None, 'patch': patch,
+                           'additions': additions, 'deletions': deletions}]}
+    history = [change('@@ -0,0 +1 @@\n+heading', 1, 0, 'refactor'),
+               change('@@ -2 +2 @@\n-one\n+fixed', 1, 1, 'fix bug')]
+    assert policy().outcome(entry, history, {'fix_pattern': 'fix'})['escaped'] is True
+
+
+def test_unreadable_post_merge_measurement_blocks_next_merge(case):
+    root, host = merged(case)
+    host.results['checks'] = Result(2, None, 'offline')
+    assert policy().poll(root) == 2
+    # A new PR must not bypass an unmeasured post-merge breaker input.
+    result = policy().check('example/project#8', root)
+    assert result.exit == 2 and 'post-merge' in result.reason
+
+
+def test_skipped_check_is_named_even_when_host_marks_branch_blocked(case):
+    case[1].results['pr'].data['merge_state'] = 'blocked'
+    case[1].results['checks'].data[0]['conclusion'] = 'skipped'
+    result = check(case)
+    assert result.exit == 1 and 'tests' in result.reason
+
+
+@pytest.mark.parametrize('path', ['ci/check.sh', '.buildkite/pipeline.yml',
+                                  'setup.py', 'infrastructure/stack.py'])
+def test_default_never_auto_covers_ci_and_infrastructure(case, path):
+    case[1].results['files'].data[0]['path'] = path
+    assert check(case).exit == 1
+
+
+def test_evidence_does_not_copy_source_patch_to_state_or_events(case):
+    root, host = case
+    host.results['files'].data[0]['patch'] = 'private-source-marker'
+    result = policy().execute(REF, root)
+    assert result.exit == 0
+    assert 'private-source-marker' not in json.dumps(result.data)
+    assert 'private-source-marker' not in (workspace.day_dir(root) / 'events.jsonl').read_text()
+    assert 'private-source-marker' not in (workspace.day_dir(root) / 'state.json').read_text()
+
+
+def test_owner_disabling_config_during_reads_vetoes_merge(case, monkeypatch):
+    root, host = case
+    original = host.pr
+    def read_pr(ref, root=None):
+        config_change(root, 'auto = true', 'auto = false')
+        return original(ref, root)
+    monkeypatch.setattr(host, 'pr', read_pr)
+    assert policy().execute(REF, root).exit == 1
+    assert not any(c[0] == 'merge' for c in host.calls)
+
+
+def test_protected_stacked_base_is_eligible(case):
+    case[1].results['pr'].data['base'] = 'parent-feature'
+    assert check(case).exit == 0
+
+
+@pytest.mark.parametrize('checks', [Result(0, [{'name': 'tests', 'sha': MERGED, 'app_id': 1,
+    'state': 'in_progress', 'conclusion': None}]), Result(0, []), Result(2, None, 'offline')])
+def test_revert_is_detected_even_with_incomplete_base_checks(case, checks):
+    root, host = merged(case)
+    host.results['checks'] = checks
+    host.results['history'].data['files'][0]['patch'] = None
+    host.results['history'].data['commits'] = [{'sha': 'd' * 40,
+        'at': '2026-09-29T12:00:00Z', 'message': f'This reverts commit {MERGED}.', 'files': []}]
+    assert policy().poll(root) in (1, 2)
+    assert 'reverted' in state.read_state(root)['merge_breakers']['example/project']['reason']
+
+
+def test_generic_note_writer_cannot_forge_owner_baseline(case):
+    from argparse import Namespace
+    from wuwei.commands.note import run_add
+    root, _ = case
+    directory = root / '.wuwei/memory/notes'
+    directory.mkdir(parents=True)
+    assert run_add(Namespace(slug='baseline', type='reference', summary='Baseline',
+                             alias=[], body='Escaped-defect-rate: 1')) == 1
+    assert not (directory / 'baseline.md').exists()
+
+
+@pytest.mark.parametrize('action', ['patch', 'archive', 'fold'])
+def test_generic_promotion_cannot_change_owner_baseline(case, action):
+    from wuwei.promotion import _apply
+    root, _ = case
+    directory = root / '.wuwei/memory/notes'
+    directory.mkdir(parents=True)
+    target = directory / 'baseline.md'
+    original = ('---\ntype: reference\nsummary: Baseline\naliases: []\nstatus: active\n'
+                'created: 2026-01-01\n---\nEscaped-defect-rate: 0.1\n')
+    target.write_text(original)
+    proof = '.wuwei/memory/notes/proof.md'
+    (root / proof).write_text('Observation')
+    with pytest.raises(ValueError, match='owner'):
+        _apply(root, {'target': '.wuwei/memory/notes/baseline.md', 'action': action,
+                     'reason': 'Improve', 'evidence': proof, 'old_text': '0.1', 'text': '1',
+                     'survivor': proof})
+    assert target.read_text() == original

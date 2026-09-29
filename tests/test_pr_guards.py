@@ -136,7 +136,7 @@ def test_port_errors(case, operation, result):
 
 @pytest.mark.parametrize('profile', ['strict', 'standard'])
 @pytest.mark.parametrize('command,code,hint', [
-    ('gh pr merge 9', 1, 'merge policy not available; the owner merges'),
+    ('gh pr merge 9', 1, 'merge.auto is off'),
     ('gh pr merge 9 --admin', 1, 'admin'),
     ('gh pr review 9 --approve', 1, 'approv'),
     ('gh pr review 9 -a', 1, 'approv'),

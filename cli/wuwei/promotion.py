@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from wuwei import state, workspace
-from wuwei.notes import SLUG_RE, parse_note
+from wuwei.notes import OWNER_NOTES, SLUG_RE, parse_note
 
 
 def safe_path(root, raw, *, label):
@@ -30,6 +30,8 @@ def _target(root, raw):
         if not SLUG_RE.fullmatch(path.stem) or path.suffix != '.md':
             raise ValueError('invalid charter target')
     elif path.parent == root / '.wuwei/memory/notes':
+        if path.stem in OWNER_NOTES:
+            raise ValueError('baseline is maintained by the owner outside agent tools')
         if not SLUG_RE.fullmatch(path.stem) or path.suffix != '.md':
             raise ValueError('invalid note target')
     elif path == root / '.wuwei/memory/voice.md':

@@ -13,12 +13,30 @@ import tomllib
 # tuples are type/default/constraint.
 # A '*' table entry describes user-defined register/channel names.
 # A None default marks a required, nonblank field.
+MERGE_SCHEMA = {
+    "auto": (bool, False), "max_changed_lines": (int, 400, 0),
+    "max_per_day": (int, 5, 1), "soak_minutes": (int, 30, 0),
+    "reset_epoch": (int, 0, 0), "quiet_hours": [(str, None)],
+    "bot_login": (str, ""), "bot_min_score": (int, 5, 0),
+    "bot_score_pattern": (str, r"Confidence Score:\s*([0-9]+)/5"),
+    "fix_pattern": (str, r"(?i)\b(?:fix(?:es|ed)?|bugfix|hotfix|revert)\b"),
+    "never_auto_paths": [(str, None), [
+        ".github/*", "ci/*", "workflows/*", ".buildkite/*", ".travis.yml", ".gitlab-ci.yml", "Jenkinsfile", ".circleci/*", "azure-pipelines*",
+        "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock*",
+        "pyproject.toml", "setup.py", "setup.cfg", "requirements*.txt", "Pipfile*", "poetry.lock", "uv.lock",
+        "Cargo.toml", "Cargo.lock", "go.mod", "go.sum", "Gemfile*", "composer.*",
+        "pom.xml", "build.gradle*", "*.csproj", "*.lock", "CODEOWNERS",
+        "migrations/*", "schema*", "schemas/*", "deploy/*", "infra/*", "infrastructure/*",
+        "*.tf", "*.tfvars", "Dockerfile*", "docker-compose*", "Pulumi.*",
+    ]],
+}
+
 SCHEMA = {
     "security": {"required": (bool, False)},
     "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)]},
     "repos": [{"name": (str, None), "path": (str, None),
                "default_branch": (str, None), "fast_checks": [(str, "")],
-               "merge_deploys": (bool, True),
+               "merge_deploys": (bool, True), "merge": MERGE_SCHEMA,
                "identity": {"name": (str, ""), "email": (str, "")}}],
     "cap": (int, 1, 1),
     "brief": {"remote": (str, "origin"),

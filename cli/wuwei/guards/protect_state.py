@@ -44,7 +44,7 @@ def _protected_name(path, directories=False):
         if part != '.wuwei':
             continue
         tail = parts[index + 1:]
-        if tail in (('config.toml',), ('security.json',), ('.gitignore',)) or tail[:1] == ('generated',):
+        if tail in (('config.toml',), ('security.json',), ('.gitignore',), ('merge.lock',)) or tail[:1] == ('generated',):
             return True
         if tail == ('memory', 'voice.md'):
             return True
@@ -57,7 +57,7 @@ def _protected_name(path, directories=False):
         if directories and tail in (('memory',), ('memory', 'notes'),
                                     ('memory', 'archive'), ('charters',)):
             return True
-        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'events.jsonl', 'traces.jsonl'):
+        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'events.jsonl', 'traces.jsonl', 'undo.jsonl'):
             return True
         if tail == ('memory', 'ledger.jsonl'):
             return True

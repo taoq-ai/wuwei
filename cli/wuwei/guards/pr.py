@@ -23,8 +23,13 @@ GH_BUILTINS = set('agent-task alias api attestation auth browse cache codespace 
 
 
 def merge_check(repo, pr, cwd, root, config):
-    # ponytail: #77 replaces this refusal with the fresh-head merge policy.
-    return 1, 'merge policy not available; the owner merges'
+    from wuwei import merge
+    if pr is None:
+        return 1, 'merge policy requires an explicit PR; use wuwei merge <pr>'
+    result = merge.check(pr, root, cwd=cwd, repo=repo)
+    if result.exit:
+        return result.exit, result.reason
+    return 1, 'merge policy passed; use wuwei merge <pr> to record evidence and monitor the merge'
 
 
 def possible_workspace_change(raw, directories):
@@ -74,9 +79,10 @@ def values(found, *keys):
     return [found[key] for key in keys if key in found]
 
 
-def gate_check(root, cwd, config):
+def gate_check(root, cwd, config, *, sha=None, item=None):
     vcs = registry.load('vcs', config)
-    sha = data(vcs.head(str(cwd), root=root)).get('sha')
+    if sha is None:
+        sha = data(vcs.head(str(cwd), root=root)).get('sha')
     if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', sha):
         raise ValueError('invalid current HEAD')
     groups = {}
@@ -84,8 +90,10 @@ def gate_check(root, cwd, config):
         match = re.fullmatch(r'gate-(.+)-(arch|quality|security)\.md', path.name)
         if not match:
             continue
-        item, gate = match.groups()
-        passed = groups.setdefault(item, set())
+        found_item, gate = match.groups()
+        if item is not None and found_item != item:
+            continue
+        passed = groups.setdefault(found_item, set())
         try:
             text = path.read_text(encoding='utf-8')
             active = verdict.active_text(text)
