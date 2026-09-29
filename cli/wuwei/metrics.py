@@ -434,7 +434,7 @@ def collect(root=None, *, day=None):
             'cost_per_role': _costs(events, 'role'),
             'cost_per_day': {directory.name: sum(item_cost.values())} if isinstance(item_cost, dict) else UNMEASURED,
             'seat_decisions_owner_reversed': (count('decision.reversed')
-                                              if any(row['kind'] == 'decision.reversed'
+                                              if any(row['kind'] in ('decision.decided', 'build.parked')
                                                      for row in events) else UNMEASURED),
         }
     if data is None or not data['items']:

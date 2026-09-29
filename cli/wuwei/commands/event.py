@@ -31,6 +31,8 @@ EVENT_PRODUCERS = {
     'reply: thread_posted': 'wuwei reply',
     'decision.decided': 'wuwei decision outcome', 'watch: sweep': 'wuwei sweep',
     'decision.routed': 'wuwei decision route',
+    'decision.reversed': 'wuwei decision outcome',
+    'decision.digest': 'wuwei sweep',
     'scanner.finding': 'wuwei scanner or security recorder',
     'watch: clock': 'wuwei watch', 'pr.disposition': 'wuwei pr disposition',
     'pr.action': 'wuwei pr state', 'pr.action.done': 'wuwei pr act',

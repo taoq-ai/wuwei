@@ -557,3 +557,67 @@ def test_question_rejection_is_feedback_without_write_event(ws):
     save(ws, 'bad')
     assert check_question(question_payload(ws))[0] == 1
     assert not (day_dir(ws) / 'events.jsonl').exists()
+
+
+def test_owner_outcome_resumes_linked_item_and_report(ws, monkeypatch):
+    from wuwei.__main__ import main
+    from wuwei import state, report
+    monkeypatch.chdir(ws)
+    decision_path = save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
+    def park(data):
+        data['items']['X'] = {'phase': 'parked', 'status': 'blocked', 'resume_phase': 'planned'}
+        data.setdefault('builds', {})['X'] = {'action': {'decision': str(decision_path)}}
+    state._write_state(park, ws, reserved=False)
+    assert main(['decision', 'route', 'D-3']) == 0
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+    assert main(['decision', 'outcome', 'D-3', 'A']) == 0
+    data = state.read_state(ws)
+    assert data['items']['X']['phase'] == 'planned'
+    assert data['items']['X']['status'] == 'queued'
+    assert data['decision_outcomes']['D-3']['outcome'] == 'A'
+    assert '- D-3: A' in report.build(ws)
+
+
+def test_owner_outcome_rejects_bad_choice_and_declined_confirmation(ws, monkeypatch):
+    from wuwei.__main__ import main
+    from wuwei import state
+    monkeypatch.chdir(ws)
+    save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
+    assert main(['decision', 'route', 'D-3']) == 0
+    assert main(['decision', 'outcome', 'D-3', 'missing']) == 1
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: False)
+    assert main(['decision', 'outcome', 'D-3', 'A']) == 1
+    assert not state.read_state(ws).get('decision_outcomes')
+
+
+def test_owner_reversal_is_recorded_once_and_measured(ws, monkeypatch):
+    from wuwei.__main__ import main
+    from wuwei import metrics
+    monkeypatch.chdir(ws)
+    save(ws)
+    assert main(['decision', 'route', 'D-3']) == 0
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+    assert metrics.collect(ws)['seat_decisions_owner_reversed'] == 0
+    assert main(['decision', 'outcome', 'D-3', 'B']) == 0
+    assert main(['decision', 'outcome', 'D-3', 'B']) == 1
+    assert [row['kind'] for row in events(ws)].count('decision.reversed') == 1
+    assert metrics.collect(ws)['seat_decisions_owner_reversed'] == 1
+
+
+@pytest.mark.parametrize('command,expected', [
+    ('bin/wuwei decision outcome D-3 A', 1),
+    ('expect -c "spawn bin/wuwei decision outcome D-3 A"', 2),
+    ('wuwei decision route D-2; expect -c "spawn wuwei decision outcome D-2 A"', 2),
+    ('script -q /dev/null wuwei decision outcome D-2 A', 2),
+    ('unbuffer wuwei decision outcome D-2 A', 2),
+    ('python3 -mwuwei decision outcome D-3 A', 2),
+    ('X=outcome; wuwei decision $X D-3 A', 2),
+    ('wuwei decision route D-2', 0),
+    ('python3 -m pytest -q', 0),
+])
+def test_agent_tool_cannot_invoke_owner_outcome(ws, command, expected):
+    from wuwei.guards.protect_state import check_bash
+    save(ws)
+    payload = {'cwd': str(ws), 'tool_name': 'Bash',
+               'tool_input': {'command': command}}
+    assert check_bash(payload)[0] == expected
