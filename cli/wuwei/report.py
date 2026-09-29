@@ -2,7 +2,7 @@
 
 import re
 
-from wuwei import metrics, state, watch, workspace
+from wuwei import metrics, state, workspace
 
 
 def build(root=None):
@@ -12,30 +12,12 @@ def build(root=None):
         raise ValueError('day state missing; report cannot infer open work')
     data = state.read_state(root)
     measured = metrics.collect(root)
-    baseline = root / '.wuwei/memory/notes/baseline.md'
-    if baseline.is_symlink():
-        raise ValueError('baseline must not be a symlink')
-    baseline_text = baseline.read_text(encoding='utf-8') if baseline.exists() else ''
-    escaped = re.findall(r'^Escaped-defect-rate:\s*([^\n]*)$', baseline_text, re.M)
-    if len(escaped) > 1 or escaped and (not re.fullmatch(r'[01](?:\.\d+)?', escaped[0].strip())
-                                      or not 0 <= float(escaped[0]) <= 1):
-        raise ValueError('invalid escaped defect baseline')
-    expected = escaped[0].strip() if escaped else 'unmeasured'
-    def baseline_value(label):
-        values = re.findall(r'^' + re.escape(label) + r':\s*(\S[^\n]*)$', baseline_text, re.M)
-        if len(values) > 1:
-            raise ValueError(f'duplicate {label} baseline')
-        return values[0] if values else 'unmeasured'
-    events = watch.records(day / 'events.jsonl')
-    rates = [row['payload'].get('rate') for row in events if row['kind'] == 'merge.metric']
-    actual = rates[-1] if rates else 'unmeasured'
-    if actual != 'unmeasured' and (type(actual) not in (int, float) or not 0 <= actual <= 1):
-        raise ValueError('invalid escaped defect rate')
+    baseline = measured['baseline']
     lines = ['# WUWEI report ' + day.name, '', '## Outcome',
-             f'- Escaped defects: {actual}; baseline: {expected}',
-             f'- Review rework: unmeasured; baseline: {baseline_value("Review-rework")}',
-             f'- Owner intervention: unmeasured; baseline: {baseline_value("Owner-intervention")}',
-             f'- Lead time: unmeasured; baseline: {baseline_value("Lead-time")}',
+             f'- Escaped defects: {measured["escaped_defects"]}; baseline: {baseline["escaped_defects"]}',
+             f'- Review rework: {measured["review_rework"]}; baseline: {baseline["review_rework"]}',
+             f'- Owner intervention: {measured["owner_intervention"]}; baseline: {baseline["owner_intervention"]}',
+             f'- Lead time: {measured["lead_time"]}; baseline: {baseline["lead_time"]}',
              '', '## Open at close']
     items = data['items']
     lines.extend(f"- {name}: {item['phase']} ({item['status']})" for name, item in sorted(items.items())

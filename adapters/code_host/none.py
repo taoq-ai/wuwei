@@ -7,6 +7,10 @@ def pr(ref, root=None):
     return record_none("code_host", "pr", root, measurement=True)
 
 
+def commits(ref, root=None):
+    return record_none('code_host', 'commits', root, measurement=True)
+
+
 def checks(ref, sha, root=None):
     return record_none("code_host", "checks", root, measurement=True)
 

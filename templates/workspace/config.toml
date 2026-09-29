@@ -35,6 +35,9 @@ note_line_cap = 80
 probation_days = 10
 state_entry_cap = 3
 
+[metrics]
+transcripts = "~/.claude/projects" # Claude Code project transcripts for this workspace.
+
 [build]
 max_iterations = 8
 stuck_after = 3

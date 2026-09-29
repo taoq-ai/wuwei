@@ -9,6 +9,9 @@ class Fake(Recorder):
     def pr(self, ref, root=None):
         return self._call('pr', (ref,), root)
 
+    def commits(self, ref, root=None):
+        return self._call('commits', (ref,), root)
+
     def checks(self, ref, sha, root=None):
         return self._call('checks', (ref, sha), root)
 

@@ -52,6 +52,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `memory.note_line_cap` | `80` | Maximum lines in a note. |
 | `memory.probation_days` | `10` | Working days before a note or rule can be archived for nonuse. |
 | `memory.state_entry_cap` | `3` | State entries included in memory payload. |
+| `metrics.transcripts` | `"~/.claude/projects"` | Claude Code project transcript directory for attended time. Sessions are filtered to the workspace and its repositories. |
 | `build.max_iterations` | `8` | Maximum build iterations. |
 | `build.stuck_after` | `3` | Repeated progress limit. |
 | `build.poll_interval_seconds` | `5` | Runtime job poll interval. |

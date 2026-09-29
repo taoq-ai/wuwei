@@ -158,6 +158,7 @@ def pr(ref, root=None):
         'head': _sha(value['head']['sha']), 'base': _field(value['base'], 'ref', str),
         'base_sha': _sha(value['base']['sha']), 'branch': _field(value['head'], 'ref', str),
         'merged_at': _field(value, 'merged_at', str, nullable=True),
+        'created_at': _field(value, 'created_at', str),
         'merge_commit': (_sha(value['merge_commit_sha']) if value['merged'] else None),
         'mergeable': _field(value, 'mergeable', bool, nullable=True),
         'merge_state': _field(value, 'mergeable_state', str),
@@ -192,6 +193,14 @@ def checks(ref, sha, root=None):
                             'conclusion': None if state == 'pending' else state, 'sha': sha,
                             'app_id': None, 'url': _field(status, 'target_url', str, nullable=True)})
     return results
+
+
+@_operation
+def commits(ref, root=None):
+    repo, number = _ref(ref)
+    return [{'sha': _sha(value['sha']),
+             'at': _field(value['commit']['committer'], 'date', str)}
+            for value in _pages(f'repos/{repo}/pulls/{number}/commits')]
 
 
 @_operation
