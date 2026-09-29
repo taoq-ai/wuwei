@@ -205,10 +205,14 @@ def test_review_request_rechecks_gate_after_requesting_reviewers(case):
 
 
 @pytest.mark.parametrize('approved', [True, False])
-def test_raise_checks_gates_then_requests_recent_authors(case, monkeypatch, approved):
+@pytest.mark.parametrize('solo', [False, True])
+def test_raise_checks_gates_then_requests_recent_authors(case, monkeypatch, approved, solo):
     from wuwei import shepherd
     root, host, _, _, vcs = case
+    tree = root / 'item-tree'
+    tree.mkdir()
     monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:00:00Z')
+    vcs.responses['commit_context'] = Result(0, {'common_dir': str(root / 'repo.git')})
     vcs.responses.update(identity=Result(0, {'name': 'Builder', 'email': 'builder@example.test',
                                              'author': {'name': 'Builder', 'email': 'builder@example.test'},
                                              'committer': {'name': 'Builder', 'email': 'builder@example.test'}}),
@@ -217,16 +221,22 @@ def test_raise_checks_gates_then_requests_recent_authors(case, monkeypatch, appr
                          merge_base=Result(0, {'sha': 'b' * 40}),
                          diff_stat=Result(0, [{'path': 'src/app.py', 'additions': 1, 'deletions': 0}]))
     host.results['create_pr'] = Result(0, {'number': 7, 'url': 'https://github.com/acme/widget/pull/7'})
+    if solo:
+        vcs.responses['authorship'] = Result(0, [])
+        host.results['request_reviewers'] = Result(0, {'requested': ['lead']})
     monkeypatch.setattr('wuwei.guards.pr.gate_check', lambda *a, **kw: (0, ''))
-    state._write_state(lambda data: (data['items'].update({'ITEM-1': {}}),
+    state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(tree)}}),
                       data['approved_items'].extend(['ITEM-1'] if approved else [])), root, reserved=False)
     if not approved:
         assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
         assert not any(name == 'create_pr' for name, _, _ in host.calls)
         return
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
-    assert state.read_state(root)['pr_reviewers'][REF] == ['alice', 'bob', 'lead']
-    assert ('request_reviewers', (REF, ['alice', 'bob', 'lead']), root) in host.calls
+    expected_reviewers = ['lead'] if solo else ['alice', 'bob', 'lead']
+    assert state.read_state(root)['pr_reviewers'][REF] == expected_reviewers
+    assert all(args[0] == str(tree) for name, args in vcs.calls
+               if name in ('head', 'identity', 'merge_base', 'diff_stat', 'authorship', 'branch'))
+    assert ('request_reviewers', (REF, expected_reviewers), root) in host.calls
     assert not any(name == 'post' for name, _ in case[3].calls)
 
 
@@ -246,6 +256,87 @@ def test_raise_refuses_failed_gate_without_creating(case, monkeypatch):
     monkeypatch.setattr('wuwei.guards.pr.gate_check', lambda *a, **kw: (1, 'gate failed'))
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
     assert not any(name == 'create_pr' for name, _, _ in host.calls)
+
+
+def test_raise_checks_item_worktree_head(case, monkeypatch):
+    from wuwei import shepherd
+    root, _, _, _, vcs = case
+    tree = root / 'item-tree'
+    tree.mkdir()
+    state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(tree)}}),
+                       data['approved_items'].append('ITEM-1')), root, reserved=False)
+    vcs.responses['commit_context'] = Result(0, {'common_dir': str(root / 'repo.git')})
+    vcs.responses['head'] = Result(0, {'sha': SHA})
+    observed = []
+    monkeypatch.setattr('wuwei.guards.pr.gate_check',
+                        lambda _, path, __, **kw: (observed.append((path, kw['sha'])) or 1, 'stop'))
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
+    assert observed == [(tree, SHA)]
+    assert ('head', (str(tree),)) in vcs.calls
+
+
+def test_raise_refuses_worktree_from_another_repository(case, capsys):
+    from wuwei import shepherd
+    root, host, _, _, vcs = case
+    tree = root / 'other-repo'
+    tree.mkdir()
+    state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(tree)}}),
+                       data['approved_items'].append('ITEM-1')), root, reserved=False)
+    vcs.responses['commit_context'] = lambda path, *_: Result(0, {
+        'common_dir': str(root / ('other.git' if path == str(tree) else 'repo.git'))})
+
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
+    assert 'item worktree does not belong to the raised repository' in capsys.readouterr().out
+    assert not any(name == 'head' for name, _ in vcs.calls)
+    assert not any(name == 'create_pr' for name, _, _ in host.calls)
+
+
+def test_minimum_one_reviewer_can_be_lead(case):
+    from wuwei import shepherd
+    root, _, _, _, vcs = case
+    vcs.responses['authorship'] = Result(0, [])
+    assert shepherd.select_reviewers(root, REF) == ['lead']
+
+
+def test_zero_reviewers_names_minimum(case, capsys):
+    from wuwei import shepherd
+    root, _, _, _, vcs = case
+    vcs.responses['authorship'] = Result(0, [])
+    config_path = root / '.wuwei/config.toml'
+    config_path.write_text(config_path.read_text().replace('lead_login = "lead"', 'lead_login = ""'))
+    with pytest.raises(shepherd.merge.Refused, match='shepherd.min_reviewers'):
+        shepherd.select_reviewers(root, REF)
+
+
+def test_configured_minimum_two_requires_two(case):
+    from wuwei import shepherd
+    root, _, _, _, vcs = case
+    vcs.responses['authorship'] = Result(0, [])
+    config_path = root / '.wuwei/config.toml'
+    config_path.write_text(config_path.read_text().replace('lead_login = "lead"',
+                                                'lead_login = "lead"\nmin_reviewers = 2'))
+    with pytest.raises(shepherd.merge.Refused, match='shepherd.min_reviewers'):
+        shepherd.select_reviewers(root, REF)
+
+
+def test_unmapped_author_names_email_and_key(case):
+    from wuwei import shepherd
+    root, _, _, _, vcs = case
+    vcs.responses['authorship'] = Result(0, [{'email': 'missing@example.test', 'commits': 1}])
+    with pytest.raises(ValueError, match='shepherd.authors.*missing@example.test'):
+        shepherd.select_reviewers(root, REF)
+
+
+def test_raise_none_code_host_has_actionable_error(case, capsys):
+    from wuwei import shepherd
+    root, _, _, _, _ = case
+    config_path = root / '.wuwei/config.toml'
+    config_path.write_text(config_path.read_text().replace('[adapters]',
+                                                 '[adapters]\ncode_host = "none"'))
+    state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(root / 'repo')}}),
+                       data['approved_items'].append('ITEM-1')), root, reserved=False)
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 2
+    assert 'code_host adapter is none; configure github' in capsys.readouterr().out
 
 
 def test_thread_reply_rechecks_last_word(case):

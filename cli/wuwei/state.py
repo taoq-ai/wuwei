@@ -233,6 +233,7 @@ def _producer_error(parts):
         producer = {'phase': 'wuwei state transition',
                     'resume_phase': 'wuwei state transition',
                     'flags': 'wuwei plan approve', 'track': 'wuwei brief',
+                    'worktree': 'wuwei brief',
                     'pr': 'wuwei pr raise or wuwei pr claim',
                     'goal': 'wuwei plan approve'}.get(parts[2], 'its dedicated command')
     return StateError(f'{".".join(parts)}: reserved; written by {producer}')

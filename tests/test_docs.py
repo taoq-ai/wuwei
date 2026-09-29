@@ -75,3 +75,14 @@ def test_entry_guides_install_signed_release_and_explain_development_checkout():
     entry = next(plugin for plugin in marketplace['plugins'] if plugin['name'] == 'wuwei')
     assert entry['source'] == './'
     assert 'development source' in entry['description'].lower()
+
+
+def test_shepherd_settings_are_visible_in_template_and_site():
+    template = (ROOT / 'templates/workspace/config.toml').read_text()
+    page = (SITE / 'configuration.md').read_text()
+    settings = tomllib.loads(template)['shepherd']
+    for key in ('lead_login', 'authors', 'review_channel', 'review_gate_check',
+                'tie_commits', 'source_exclude', 'min_reviewers'):
+        assert key in settings
+        assert f'`shepherd.{key}`' in page
+    assert settings['min_reviewers'] == 1
