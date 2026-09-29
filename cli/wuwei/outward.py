@@ -77,6 +77,7 @@ def lint(text, channel, config, *, root=None):
 
 
 TEXT_FIELDS = {'text', 'message', 'body', 'title', 'description'}
+APPROVAL_REQUIRED = 'outward: deliver as a draft for the owner to send'
 METADATA_FIELDS = {'ref', 'channel', 'thread', 'thread_ts', 'item', 'issue', 'issue_id', 'id',
                    'team', 'team_id', 'project', 'project_id', 'state', 'assignee', 'labels',
                    'channel_id', 'issueId', 'teamId', 'stateId', 'assigneeId', 'projectId',
@@ -349,7 +350,7 @@ def check_tier(inputs, root, config, channels):
         if code == UNRUN:
             return code, 'outward: cannot classify policy, audience or message evidence; deliver as a draft for the owner to send'
         if decision == 'draft':
-            return code, 'outward: deliver as a draft for the owner to send'
+            return code, APPROVAL_REQUIRED
         return CLEAN, ''
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
         return UNRUN, 'outward: cannot read or validate policy or payload'

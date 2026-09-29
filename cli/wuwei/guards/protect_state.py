@@ -265,11 +265,17 @@ def check_bash(payload):
         from wuwei.workspace import guard_scope
         mcp_relevant = (re.search(r'\bwuwei\b', re.sub(r"['\"\\]", '', script))
                         and mentions(script, ('mcp',)) and guard_scope(payload) is not None)
+        drafts_relevant = ((re.search(r'(?i)wuwei|drafts', re.sub(r"['\"\\]", '', script))
+                            or "$'" in script)
+                           and (mentions(script, ('wuwei',)) or
+                                re.search(r'-[A-Za-z]*mwuwei\b', re.sub(r"['\"\\]", '', script)))
+                           and mentions(script, ('drafts',))
+                           and guard_scope(payload) is not None)
         from wuwei.shell import NonliteralPathError, ParseError, normalize
         try:
             commands = normalize(script)
         except ParseError as exc:
-            if (owner_edit_relevant or mcp_relevant or _STATE_MENTION.search(script) or _STATE_GLOB.search(script)
+            if (owner_edit_relevant or mcp_relevant or drafts_relevant or _STATE_MENTION.search(script) or _STATE_GLOB.search(script)
                     or (root is not None and _protected_name(cwd, directories=True)
                         and (isinstance(exc, NonliteralPathError)
                              or (_DYNAMIC.search(script) and _WRITE_CONSTRUCT.search(script))))
@@ -296,16 +302,24 @@ def check_bash(payload):
                 if action[:2] in (['goals', 'edit'], ['voice', 'edit']):
                     if guard_scope(payload) is not None:
                         return 1, 'Owner memory edits are an owner action on the host, outside agent tools.'
-        if mcp_relevant:
+        if mcp_relevant or drafts_relevant:
             from wuwei.shell import is_opaque
             for command in commands:
                 argv = command.argv
                 cli = argv and (Path(argv[0]).name == 'wuwei'
                         or re.fullmatch(r'(?:python|pypy)[\d.]*', Path(argv[0]).name)
-                        and '-m' in argv and argv[argv.index('-m') + 1:][:1] == ['wuwei'])
-                if is_opaque(argv) and not cli:
-                    return 2, 'Opaque MCP owner action; use the host terminal.'
+                        and (any(re.fullmatch(r'-[A-Za-z]*mwuwei', arg) for arg in argv) or
+                             '-m' in argv and argv[argv.index('-m') + 1:][:1] == ['wuwei']))
+                if not cli and (is_opaque(argv) or argv and re.fullmatch(
+                        r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua', Path(argv[0]).name)):
+                    return 2, 'Opaque owner action; use the host terminal.'
                 if cli:
+                    if drafts_relevant and 'drafts' in argv:
+                        action = argv[argv.index('drafts') + 1:]
+                        if action[:1] in (['approve'], ['drop']):
+                            return 1, 'Draft decisions require the owner terminal, outside agent tools.'
+                        if action and action != ['--help']:
+                            return 2, 'Draft action is not a literal list; use the host terminal.'
                     if 'mcp' in argv:
                         action = argv[argv.index('mcp') + 1:]
                         if action == ['decide']:

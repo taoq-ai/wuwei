@@ -52,6 +52,7 @@
 <main id="columns" aria-label="Phase columns"></main>
 <div class="lanes">
   <section class="lane" aria-label="Decisions"><h2>Decisions</h2><div id="decisions"></div></section>
+  <section class="lane" aria-label="Drafts"><h2>Drafts</h2><div id="drafts"></div></section>
   <section class="lane" aria-label="People"><h2>People</h2><div id="people"></div></section>
   <section class="lane" aria-label="PRs"><h2>PRs</h2><div id="prs"></div></section>
   <section class="lane" aria-label="Briefing pack"><h2>Briefing pack</h2><pre id="briefing"></pre></section>
@@ -144,6 +145,11 @@ function webLink(value, label) {
 }
 
 function renderCockpit(data) {
+  document.getElementById("drafts").innerHTML = (data.drafts || []).map(row =>
+    `<article class="card"><strong>${esc(row.id)}</strong><p>To: ${esc(row.destination)}</p>` +
+    `<pre>${esc(row.text)}</pre><p>${esc(row.tier_reason)}</p><p>Voice: ${esc(row.audience)}</p>` +
+    `<p>Approve on the host:</p><code>${esc(row.approve_command)}</code></article>`
+  ).join("") || "None pending";
   const decisions = Array.isArray(data.decisions) ? data.decisions : [];
   document.getElementById("decisions").innerHTML = decisions.length ? decisions.map(row =>
     `<article class="card"><strong>${esc(row.id)}</strong><p>${esc(row.question)}</p>` +

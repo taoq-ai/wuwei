@@ -171,6 +171,11 @@ def test_direct_port_preserves_profile_and_tiers(configured, monkeypatch, capsys
         record, = [json.loads(line) for line in events[0].read_text().splitlines()
                    if json.loads(line)['kind'] == 'hook.warning']
         assert record['payload'] == {'reason': 'outward: channel length exceeded', 'tool': 'chat'}
+    elif channel == 'Cclient':
+        record, = [json.loads(line) for line in events[0].read_text().splitlines()]
+        assert record['kind'] == 'draft.created'
+        assert record['payload']['channel'] == 'chat'
+        assert 'Thanks' not in events[0].read_text()
     else:
         assert not events
 

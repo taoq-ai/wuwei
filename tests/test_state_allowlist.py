@@ -188,7 +188,7 @@ def test_reader_inventory_cannot_be_written_generically(root, capsys):
     assert {'raised_prs', 'claimed_prs', 'fast_checks', 'reply_acks', 'channel_posts',
             'gate_approved', 'approved_items', 'decision_outcomes', 'gate_verdicts',
             'seats', 'watch', 'merges', 'flags', 'phase', 'report_at', 'trust_surface',
-            'clock_at', 'poll_at', 'sweep_at', 'activity_at'} <= keys
+            'clock_at', 'poll_at', 'sweep_at', 'activity_at', 'drafts'} <= keys
     assert {'brief written', 'seat launched', 'plan.approved', 'state.',
             'watch: clock', 'watch: sweep', 'reply: acknowledged'} <= kinds
     before = stored(root)

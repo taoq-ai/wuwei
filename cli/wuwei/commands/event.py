@@ -9,6 +9,8 @@ from wuwei.state import append_event
 
 FREE_KINDS = frozenset({'note'})
 EVENT_PRODUCERS = {
+    **{f'draft.{action}': 'wuwei drafts and outward adapters'
+       for action in ('created', 'sending', 'sent', 'failed', 'dropped')},
     'build.started': 'wuwei build next', 'build.launched': 'wuwei build',
     'build.fix_opened': 'wuwei pr act',
     'build.checked': 'wuwei build check',

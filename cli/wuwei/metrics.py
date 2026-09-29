@@ -392,6 +392,11 @@ def collect(root=None, *, day=None):
     config = workspace.load_config(root)
     directory = workspace.day_dir(root) if day is None else Path(day)
     events, data = _events(directory), _state(directory)
+    from wuwei import drafts
+    voice = defaultdict(list)
+    for row in drafts.read(data if data is not None else {}).values():
+        if row['status'] == 'sent':
+            voice[row['audience']].append(row)
     traces = _traces(directory)
     now = workspace.now()
     if events is None:
@@ -448,4 +453,9 @@ def collect(root=None, *, day=None):
     event_metrics['lead_time'] = _lead_time(root, config, items, prs)
     event_metrics['brief_drill_score'] = (data.get('brief_drill', UNMEASURED)
                                           if data is not None else UNMEASURED)
+    event_metrics['voice_drafts'] = {
+        audience: {'sent': len(rows),
+                   'share_sent_unedited': sum(row['sent_unedited'] for row in rows) / len(rows),
+                   'edit_sizes': [row['edit_size'] for row in rows if not row['sent_unedited']]}
+        for audience, rows in voice.items()} if voice else UNMEASURED
     return event_metrics
