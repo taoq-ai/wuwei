@@ -219,6 +219,7 @@ STATE_PRODUCERS = {
     'watch': 'wuwei watch', 'pr_dispositions': 'wuwei pr disposition',
     'close_requested': 'wuwei close', 'merges': 'wuwei merge',
     'merge_breakers': 'wuwei merge', 'gate_verdicts': 'wuwei dispatch receive',
+    'brief_packs': 'wuwei brief pack', 'brief_drill': 'wuwei brief answer',
     'steward_notes': 'wuwei steward run', 'steward_acks': 'wuwei steward ack',
 }
 

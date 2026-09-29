@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 from pathlib import Path
 import re
+import sys
 import tempfile
 import tomllib
 
@@ -44,7 +45,11 @@ SCHEMA = {
     "prioritisation": {"framework": (str, "wsjf", ("wsjf", "rice"))},
     "discovery": {"min_queue": (int, 2, 1),
                   "autostart": (str, "strict", ("off", "strict", "goal"))},
-    "brief": {"remote": (str, "origin"),
+    "calendar": {"url": (str, "")},
+    "brief": {"lead_minutes": (int, 30, 1),
+              "style": {"length": (str, "standard", ("concise", "standard")),
+                        "speed": (int, 180, 120, 240)},
+              "remote": (str, "origin"),
               "prior_branch_pattern": (str, "*{item}*"),
               "full_path_patterns": [(str, "")]},
     "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 1, 1),
@@ -118,7 +123,8 @@ SCHEMA = {
                  "review_bot": (str, "none"), "runtime": (str, "claude"),
                  "scanner": (str, "none"), "code_host": (str, "github"),
                  "vcs": (str, "git"), "host": (str, "local"),
-                 "checks": (str, "local")},
+                 "checks": (str, "local"), "tts": (str, "say" if sys.platform == "darwin" else "none"),
+                 "calendar": (str, "none"), "transcripts": (str, "none")},
 }
 
 
@@ -338,6 +344,8 @@ def _validate(value, schema, path, raw):
         constraint = schema[2]
         if expected is int and value < constraint:
             raise ConfigError(f"{key}: expected integer >= {constraint}")
+        if expected is int and len(schema) > 3 and value > schema[3]:
+            raise ConfigError(f"{key}: expected integer <= {schema[3]}")
         if expected is str and value not in constraint:
             raise ConfigError(f"{key}: expected {' or '.join(constraint)}")
     return value

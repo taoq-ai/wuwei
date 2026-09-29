@@ -27,6 +27,7 @@ EVENT_PRODUCERS = {
     'pr.reviewers_selected': 'wuwei pr ping',
     'day.close_requested': 'wuwei close', 'build.parked': 'wuwei build',
     'gate.received': 'wuwei dispatch receive', 'discovery.requested': 'wuwei dispatch discovery',
+    'brief.pack': 'wuwei brief pack', 'brief.answer': 'wuwei brief answer',
     'steward.notes': 'wuwei steward run', 'steward.run': 'wuwei steward run',
     'steward.due': 'wuwei hook PostToolUse',
     'steward.acknowledged': 'wuwei steward ack',

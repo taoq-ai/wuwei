@@ -445,4 +445,6 @@ def collect(root=None, *, day=None):
     event_metrics['escaped_defects'] = _escaped_defects(root, config, now, refs, prs)
     event_metrics['review_rework'] = _review_rework(root, config, refs, prs)
     event_metrics['lead_time'] = _lead_time(root, config, items, prs)
+    event_metrics['brief_drill_score'] = (data.get('brief_drill', UNMEASURED)
+                                          if data is not None else UNMEASURED)
     return event_metrics
