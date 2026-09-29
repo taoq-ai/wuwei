@@ -12,6 +12,13 @@ repos = []
 # merge_deploys = false # Explicitly declare that merges do not deploy.
 # fast_checks = ["python3 -m pytest -q"] # Run and record with wuwei fast-checks <checkout>.
 
+[prioritisation]
+framework = "wsjf" # wsjf or rice
+
+[discovery]
+min_queue = 2
+autostart = "strict" # off, strict or goal
+
 [owner]
 name = ""
 pronouns = ""
