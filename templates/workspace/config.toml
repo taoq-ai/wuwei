@@ -19,6 +19,12 @@ framework = "wsjf" # wsjf or rice
 min_queue = 2
 autostart = "strict" # off, strict or goal
 
+[tracker]
+backlog_filter = "" # Optional Linear team ID; empty reads accessible issues.
+[tracker.states]
+in_review = "In Review"
+done = "Done"
+
 [owner]
 name = ""
 pronouns = ""

@@ -48,6 +48,8 @@ SCHEMA = {
     "prioritisation": {"framework": (str, "wsjf", ("wsjf", "rice"))},
     "discovery": {"min_queue": (int, 2, 1),
                   "autostart": (str, "strict", ("off", "strict", "goal"))},
+    "tracker": {"backlog_filter": (str, ""),
+                "states": {"in_review": (str, "In Review"), "done": (str, "Done")}},
     "calendar": {"url": (str, "")},
     "brief": {"lead_minutes": (int, 30, 1),
               "style": {"length": (str, "standard", ("concise", "standard")),

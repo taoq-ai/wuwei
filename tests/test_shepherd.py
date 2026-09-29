@@ -207,7 +207,9 @@ def test_review_request_rechecks_gate_after_requesting_reviewers(case):
 @pytest.mark.parametrize('approved', [True, False])
 @pytest.mark.parametrize('solo', [False, True])
 def test_raise_checks_gates_then_requests_recent_authors(case, monkeypatch, approved, solo):
-    from wuwei import shepherd
+    from wuwei import dispatch, shepherd
+    tracker_calls = []
+    monkeypatch.setattr(dispatch, 'tracker_call', lambda *args: tracker_calls.append(args))
     root, host, _, _, vcs = case
     tree = root / 'item-tree'
     tree.mkdir()
@@ -230,8 +232,10 @@ def test_raise_checks_gates_then_requests_recent_authors(case, monkeypatch, appr
     if not approved:
         assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
         assert not any(name == 'create_pr' for name, _, _ in host.calls)
+        assert tracker_calls == []
         return
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
+    assert tracker_calls == [('ITEM-1', 'in_review', root)]
     expected_reviewers = ['lead'] if solo else ['alice', 'bob', 'lead']
     assert state.read_state(root)['pr_reviewers'][REF] == expected_reviewers
     assert all(args[0] == str(tree) for name, args in vcs.calls

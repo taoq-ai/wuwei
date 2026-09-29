@@ -58,7 +58,7 @@ def test_discovery_explains_unavailable_sources(root):
     found = discovery.discover(root)
     assert all(value != 'unmeasured' for value in found['sources'].values())
     assert 'not configured' in found['sources']['scanner']
-    assert 'not implemented' in found['sources']['tracker']
+    assert 'not configured' in found['sources']['tracker']
 
 
 def test_sweep_with_none_scanner_and_no_live_watch_is_finding(root, monkeypatch):

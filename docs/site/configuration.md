@@ -16,6 +16,9 @@ layout: default
 | `prioritisation.framework` | `"wsjf"` | Ranking formula: `wsjf` or `rice`. |
 | `discovery.min_queue` | `2` | Discover again when a seat frees and the queue is below this count. |
 | `discovery.autostart` | `"strict"` | Intraday start policy: `off`, `strict` or `goal`. Safety and budget checks always send the item to the owner. |
+| `tracker.backlog_filter` | `""` | Optional Linear team ID for backlog discovery. Empty reads accessible issues. |
+| `tracker.states.in_review` | `"In Review"` | Linear workflow state name after a PR is raised. |
+| `tracker.states.done` | `"Done"` | Linear workflow state name after a confirmed merge. |
 | `profile` | `"strict"` | Guard profile: `strict` or `standard`. Standard warns for outward text lint. |
 | `security.required` | `true` | When true, a missing `.wuwei/security.json` makes guards fail closed instead of treating security as disabled. |
 | `repos` | `[]` | Configured repositories. Each `[[repos]]` entry has the fields below. |

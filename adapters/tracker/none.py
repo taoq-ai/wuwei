@@ -4,6 +4,10 @@ from wuwei import registry
 from wuwei.registry import outward_operation
 
 
+def backlog(filter, *, root=None):
+    return registry.record_none('tracker', 'backlog', root)
+
+
 def claim(item, *, root=None):
     return registry.record_none('tracker', 'claim', root, measurement=False)
 

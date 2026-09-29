@@ -137,6 +137,9 @@ def next_action(item, brief=None, worktree=None, *, root=None):
               'commands': repo['fast_checks'], 'iteration': 0, 'repeats': 0,
               'signature': None, 'status': 'ready', 'action': action}
     _save(item, record, root, 'build.started', previous)
+    if previous is None:
+        from wuwei import dispatch
+        dispatch.tracker_call(item, 'claim', root)
     return action
 
 

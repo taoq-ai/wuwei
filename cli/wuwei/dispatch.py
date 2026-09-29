@@ -2,11 +2,39 @@
 
 from pathlib import Path
 import re
+import sys
 
-from wuwei import brief, state, verdict, workspace
+from wuwei import brief, registry, state, verdict, workspace
 
 
 ROLES = ('arch', 'quality', 'security')
+
+
+def tracker_call(item, action, root=None):
+    """Record the tracker measurement without blocking the local build loop."""
+    root = workspace.find_workspace(root)
+    try:
+        config = workspace.load_config(root)
+        if config['adapters']['tracker'] == 'none':
+            result = registry.Result(2, reason='tracker adapter is none')
+        else:
+            tracker = registry.load('tracker', config)
+            if action == 'claim':
+                result = tracker.claim(item, root=root)
+            elif action in ('in_review', 'done'):
+                result = tracker.transition(item, config['tracker']['states'][action], root=root)
+            else:
+                raise ValueError('unknown tracker action')
+            if not isinstance(result, registry.Result) or result.exit not in (0, 1, 2):
+                raise ValueError('invalid tracker result')
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        result = registry.Result(2, reason=f'tracker call unmeasured: {type(exc).__name__}')
+    try:
+        state.append_event('tracker.call', {'item': item, 'action': action,
+                           'exit': result.exit, 'reason': result.reason or ''}, root)
+    except (OSError, ValueError) as exc:
+        print(f'tracker call unmeasured: could not record result: {type(exc).__name__}', file=sys.stderr)
+    return result
 
 
 class Refused(ValueError):

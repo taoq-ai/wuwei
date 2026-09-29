@@ -53,6 +53,7 @@ CALLS = [
     ('vcs', 'push_context', ('repo', 'remote', 'refspecs'), True),
     ('vcs', 'hooks_path', ('repo', 'path'), False),
     ('vcs', 'push_commits', ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'), True),
+    ('tracker', 'backlog', ('filter',), True),
     ('tracker', 'claim', ('item',), False),
     ('tracker', 'transition', ('item', 'state'), False),
     ('tracker', 'create', ('draft',), False),
@@ -132,7 +133,8 @@ def test_none_call(tmp_path, monkeypatch, capsys, kind, call, parameters, measur
     directory = tmp_path / '.wuwei/days/2026-09-28'
     directory.mkdir(parents=True)
     (directory / 'state.json').write_text('unchanged')
-    reason = 'unmeasured' if measurement else 'no adapter configured'
+    reason = ('tracker adapter is none' if kind == 'tracker' else
+              'unmeasured' if measurement else 'no adapter configured')
     for kwargs in ({}, {'root': tmp_path}):
         result = operation(*['private argument'] * len(parameters), **kwargs)
         assert isinstance(result, api.Result)

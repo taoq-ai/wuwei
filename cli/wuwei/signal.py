@@ -34,6 +34,8 @@ def classify(event, state):
         return ('page' if payload.get('severity') in ('high', 'critical') else 'nudge'), lane
     if kind == 'mcp.checked':
         return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'nudge'), lane
+    if kind == 'tracker.call':
+        return ('silent' if payload.get('exit') == 0 else 'nudge'), lane
     if kind == 'pr.action':
         tier = payload.get('tier')
         return (tier if tier in ('silent', 'nudge', 'page') else 'nudge'), lane
