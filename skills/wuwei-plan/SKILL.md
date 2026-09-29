@@ -17,6 +17,14 @@ Register this planner session with `wuwei plan session "${CLAUDE_SESSION_ID}"` b
 
 A CLI exit of 1 is a finding to resolve with the owner. Exit 2 means the plan could not run; show its reason and stop dispatch.
 
+## Seat launch contract
+
+For every role, including the lead, log the brief with `wuwei brief <role> <item> <name>` and obtain instructions from `wuwei runtime dispatch <role> <brief> <worktree>`. The item is bound by the brief, not an extra runtime argument. The core function `wuwei.brief.launch_prompt` owns the Claude prompt format. Pass its returned `prompt` unchanged to Agent and its `agent_type` (`wuwei:<role>`) as `subagent_type`, with an Agent description.
+
+Launch from the workspace root so the hook payload's `cwd` resolves the exact first line: `WUWEI brief: <relative brief path>`. The path is relative to that workspace, for example `.wuwei/days/2026-09-29/briefs/builder-1.md`, even when the assigned worktree is elsewhere. Do not prepend text or reconstruct the prompt from charter paths. A refused brief is never launched.
+
+For continuation, use `wuwei runtime continue <job-json> <feedback>` and deliver its generated prompt to the same seat. A consumed brief cannot launch another seat. For the steward, use the `steward_launch` instructions returned by `wuwei steward run --trigger close` (or `sweep` or `tool-calls`); they use the same formatter through runtime dispatch.
+
 ## Item dispatch and receive
 
 For an approved code item, use its own worktree and the recorded seat policy. Run the builder through `wuwei build` with the item's fast checks. Before pre-PR gates, stop the builder, confirm its stop event and move the item to `gate`. Call `wuwei dispatch next <item>`. For an `action: gates` result, write one brief per returned role using `wuwei brief --gate --worktree`, then launch those roles in parallel. The brief and launch commands refuse a dirty tree, live builder and missing evidence. A refused brief is never launched.

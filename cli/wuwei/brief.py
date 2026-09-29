@@ -9,6 +9,16 @@ import re
 from wuwei import registry, security, state, workspace
 
 
+REFERENCE_PREFIX = 'WUWEI brief: '
+
+
+def launch_prompt(brief_path, charter, *, root=None):
+    """Format every Claude seat's instructions with a workspace-relative reference."""
+    root = workspace.find_workspace(root)
+    relative = Path(brief_path).resolve(strict=True).relative_to(root)
+    return f'{REFERENCE_PREFIX}{relative}\nRead instructions {charter} and brief {relative}.'
+
+
 class Refused(ValueError):
     """A measured policy finding, exit 1."""
 
@@ -45,8 +55,8 @@ def transcript_reference(path):
             content = row['message']['content']
             if isinstance(content, list):
                 content = '\n'.join(part['text'] for part in content if part.get('type') == 'text')
-            if content.startswith('WUWEI brief: '):
-                return content.splitlines()[0].removeprefix('WUWEI brief: ')
+            if content.startswith(REFERENCE_PREFIX):
+                return content.splitlines()[0].removeprefix(REFERENCE_PREFIX)
     return None
 
 
