@@ -157,3 +157,30 @@ def test_pushed_range_uses_author_and_committer(tmp_path, monkeypatch, remote_sh
         assert 'refs/remotes/origin/feature^{commit}' in calls[0]
     if not tracking:
         assert any(call[-1] == 'refs/remotes/origin/main' for call in calls)
+
+
+@pytest.mark.parametrize('index,failure,reason,action', [
+    (1, {'exit': 1}, 'detached HEAD', 'check out a branch'),
+    (0, {'exit': 128}, 'HEAD', 'create a commit'),
+    (1, {'exit': 128}, 'symbolic-ref', 'check repository state'),
+    (2, {'exit': 128}, 'config', 'check repository state'),
+    (5, {'exit': 1}, 'check-ref-format', 'refs/heads/'),
+])
+def test_push_context_failures_explain_recovery(tmp_path, monkeypatch, index, failure, reason, action):
+    steps = push_steps(tmp_path)
+    steps[index] = failure
+    install_replay(monkeypatch, 'git', steps)
+    result = adapter().push_context(str(tmp_path), 'origin', ['HEAD:refs/heads/feature'])
+    assert result.exit == 2
+    assert reason in result.reason
+    assert action in result.reason
+
+
+@pytest.mark.parametrize('failure', [FileNotFoundError(), subprocess.TimeoutExpired('git', 30)])
+def test_push_context_tool_failure_explains_recovery(tmp_path, monkeypatch, failure):
+    def run(*args, **kwargs):
+        raise failure
+    monkeypatch.setattr(subprocess, 'run', run)
+    result = adapter().push_context(str(tmp_path), 'origin', ['feature'])
+    assert result.exit == 2
+    assert 'HEAD' in result.reason and 'check' in result.reason

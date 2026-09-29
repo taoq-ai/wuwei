@@ -127,32 +127,45 @@ def push_check(repo, actual, push, root, vcs):
     return 0, ''
 
 
-def git_command(command, cwd):
+def git_command(command, cwd, errors=None):
     """Consume Git's global argv options, never shell text."""
+    def invalid(reason):
+        if errors is None:
+            raise ValueError(reason)
+        errors.append(reason)
+
     args = iter(command.argv[1:])
     settings, env = {}, dict(command.env)
     for arg in args:
         if arg in ('-C', '-c') or arg.startswith(('-C', '-c')):
             flag, value = arg[:2], arg[2:] or next(args, None)
             if value is None:
-                raise ValueError(f'missing {flag} value')
+                invalid(f'missing {flag} value')
+                break
             if flag == '-C':
                 cwd = (cwd / value).resolve()
             else:
                 key, separator, value = value.partition('=')
                 if not separator or key.lower() not in IDENTITY_SETTINGS:
-                    raise ValueError('unsupported Git configuration override')
+                    invalid('unsupported Git configuration override')
                 settings[key.lower()] = value
         elif arg.startswith(('--git-dir=', '--work-tree=')):
             key, _, value = arg.partition('=')
             env['GIT_DIR' if key == '--git-dir' else 'GIT_WORK_TREE'] = value
+        elif arg in ('--git-dir', '--work-tree'):
+            value = next(args, None)
+            if value is None:
+                invalid(f'missing {arg} value')
+                break
+            env['GIT_DIR' if arg == '--git-dir' else 'GIT_WORK_TREE'] = value
         elif arg in ('--no-pager', '--literal-pathspecs'):
             continue
         elif arg.startswith('-'):
-            raise ValueError('unsupported Git global option')
+            invalid('unsupported Git global option')
         else:
             return cwd, settings, env, arg, list(args)
-    raise ValueError('missing Git command')
+    invalid('missing Git command')
+    return cwd, settings, env, '', []
 
 
 def commit_options(args, actual):
@@ -232,28 +245,93 @@ def check(payload):
     try:
         from wuwei import workspace
 
-        try:
-            root = workspace.find_workspace(payload['cwd'])
-        except FileNotFoundError:
-            return 0, ''
         raw = payload['tool_input']['command']
         relevant = COMMIT_VERBS | {'push', 'config', 'wuwei-workspace', 'executable'} | IDENTITY_ENV | IDENTITY_SETTINGS
         script = shell.script_text(raw, payload['cwd'])
-        if script and shell.mentions(script, {'git', 'gh'}) and shell.mentions(script, relevant):
-            raise ValueError('opaque script command; run git as a plain command')
+        opaque_script = script and shell.mentions(script, {'git', 'gh'}) and shell.mentions(script, relevant)
+        if opaque_script:
+            raw = script
         if not shell.mentions(raw, {'git', 'gh', 'rm'}) or not shell.mentions(raw, relevant):
             return 0, ''
+        initial = Path(payload['cwd']).resolve()
+        session = workspace.scope(initial)
+        session_root = session[0] if session else None
+        words = [value for key, value in os.environ.items() if key in REPO_ENV]
+        try:
+            commands = shell.normalize(raw, words=words)
+        except shell.ParseError:
+            if session_root:
+                raise
+            # Literal tokens are observed by the shared parser, not reparsed here.
+            bases = {initial}
+            for word in words:
+                value = word.partition('=')[2] if '=' in word else word.removeprefix('-C')
+                for base in tuple(bases):
+                    path = (base / value).resolve()
+                    if workspace.scope(path):
+                        raise
+                    if path.is_dir() and len(bases) < 64:
+                        bases.add(path)
+            if re.search(r'-C|\b(?:cd|pushd|popd|git-dir|work-tree|GIT_DIR|GIT_WORK_TREE)\b',
+                         re.sub(r'''['"\\]''', '', raw)):
+                # Parsing may have stopped before a target; do not guess its scope.
+                raise
+            return 0, ''
+        scoped = []
+        locations = {(): {initial}}
+        mixed = any(command.separator in (';', '||', '|', '&', '\n') for command in commands)
+        from wuwei.guards.protect_state import _cd_target
+        for command in commands:
+            program = Path(command.argv[0]).name
+            for depth in range(1, len(command.scope) + 1):
+                scope = command.scope[:depth]
+                locations.setdefault(scope, set(locations[scope[:-1]]))
+            directories = locations[command.scope]
+            if program in ('cd', 'pushd'):
+                target = _cd_target(command)
+                destinations = {(base / target).resolve() for base in directories}
+                # ponytail: mixed lists retain all paths because a failed cd or
+                # backgrounded AND-list can leave the caller's directory intact.
+                locations[command.scope] = (destinations if command.separator == '&&' and not mixed
+                                            else directories | destinations)
+                if len(locations[command.scope]) > 64:
+                    raise ValueError('too many possible working directories; split the command')
+                continue
+            for directory in sorted(directories):
+                parsed = None
+                errors = []
+                paths = [directory]
+                if program == 'git':
+                    parsed = git_command(command, directory, errors)
+                    cwd, settings, env, verb, args = parsed
+                    env = {**{key: value for key, value in os.environ.items()
+                              if key.startswith('GIT_')}, **env}
+                    parsed = cwd, settings, env, verb, args
+                    paths = [(cwd / env[key]).resolve() for key in ('GIT_DIR', 'GIT_WORK_TREE')
+                             if key in env] + [cwd]
+                elif program == 'rm':
+                    paths += [(directory / arg).resolve() for arg in command.argv[1:]
+                              if not arg.startswith('-')]
+                root = next((found[0] for path in paths
+                             if (found := workspace.scope(path)) is not None), session_root)
+                if root is not None:
+                    scoped.append((command, directory, root, parsed, errors))
+        if not scoped:
+            return 0, ''
+        if opaque_script:
+            raise ValueError('opaque script command; run git as a plain command')
         # The shared parser intentionally discards these context-changing wrappers.
         if re.search(r'\benv\s+(?:-i|--ignore-environment|-u|--unset)\b|\bexec\s+-c\b', raw):
             raise ValueError('unsupported environment clearing around Git')
         if re.search(r'''(?:^|[;\n'"])\s*\w+=[^;\n]*[;\n]''', raw):
             raise ValueError('standalone environment assignment before Git')
-        commands = shell.normalize(raw)
         creates_commit = False
-        for command in commands:
+        for command, directory, root, parsed, errors in scoped:
+            if errors:
+                raise ValueError(errors[0])
             if Path(command.argv[0]).name == 'rm':
                 for arg in command.argv[1:]:
-                    target = (Path(payload['cwd']) / arg).resolve()
+                    target = (directory / arg).resolve()
                     if target.name == 'wuwei-workspace' or target == root / '.wuwei/executable':
                         return 1, 'removing a WUWEI hook pointer is refused'
             if Path(command.argv[0]).name != 'git':
@@ -263,7 +341,7 @@ def check(payload):
                                         Path(command.argv[0]).name)):
                     raise ValueError('opaque interpreter command; run git as a plain command')
                 continue
-            cwd, settings, env, verb, args = git_command(command, Path(payload['cwd']))
+            cwd, settings, env, verb, args = parsed
             if verb == 'push' and creates_commit:
                 return 1, 'run push separately after commit creation and fresh fast checks'
             creates_commit |= verb in COMMIT_VERBS
@@ -289,7 +367,6 @@ def check(payload):
                 continue
             if any(key in command.env for key in ('HOME', 'XDG_CONFIG_HOME', 'PATH')):
                 raise ValueError('unsupported Git configuration or executable environment override')
-            env = {**{key: value for key, value in os.environ.items() if key.startswith('GIT_')}, **env}
             allowed_env = IDENTITY_ENV | REPO_ENV | {'GIT_EDITOR', 'GIT_PAGER'}
             if any(key.startswith('GIT_') and key not in allowed_env for key in env):
                 raise ValueError('unsupported GIT_* override')

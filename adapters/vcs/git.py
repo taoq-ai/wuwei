@@ -288,21 +288,32 @@ def commit_context(repo, settings, env, root=None):
 
 @_operation
 def push_context(repo, remote, refspecs, root=None):
+    def read(*args, missing=False):
+        try:
+            return _run(repo, *args, missing=missing)
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            detail = str(exc) if type(exc) is ValueError else type(exc).__name__
+            action = ('use a valid refs/heads/<branch> destination'
+                      if args[0] == 'check-ref-format' else
+                      'check repository state, Git installation and configuration before retrying')
+            raise ValueError(f'git {args[0]} failed ({detail}); {action}') from exc
+
     if not remote or not refspecs:
         raise ValueError('use an explicit remote and branch refspec: git push origin <branch>')
     result = head(repo, root=root)
     if result.exit:
-        raise ValueError(result.reason)
+        raise ValueError(f'HEAD is unavailable ({result.reason}); check the repository and Git '
+                         'installation; create a commit if the branch has no commits before pushing')
     head_data = result.data
     sha = head_data['sha']
-    branch = _run(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD').strip()
+    branch = read('symbolic-ref', '--quiet', '--short', 'HEAD', missing=True).strip()
     if not branch:
-        raise ValueError('missing current branch')
+        raise ValueError('detached HEAD; check out a branch before pushing')
     if not isinstance(remote, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', remote) or remote.startswith('-'):
         raise ValueError('use a named push remote')
 
     def boolean(key):
-        value = _run(repo, 'config', '--type=bool', '--get', key, missing=True).strip()
+        value = read('config', '--type=bool', '--get', key, missing=True).strip()
         if value not in ('', 'true', 'false'):
             raise ValueError('invalid boolean push setting')
         return value == 'true'
@@ -310,7 +321,7 @@ def push_context(repo, remote, refspecs, root=None):
     if boolean('push.followtags'):
         raise ValueError('tag pushes require deployment policy')
     force = boolean(f'remote.{remote}.mirror')
-    configured = _run(repo, 'config', '--get-all', f'remote.{remote}.push', missing=True)
+    configured = read('config', '--get-all', f'remote.{remote}.push', missing=True)
     updates = []
     for ref in refspecs:
         if ref.startswith('+'):
@@ -322,7 +333,7 @@ def push_context(repo, remote, refspecs, root=None):
             if configured or source == 'HEAD':
                 raise ValueError('use an explicit HEAD:refs/heads/branch refspec')
             destination = 'refs/heads/' + branch
-        _run(repo, 'check-ref-format', destination)
+        read('check-ref-format', destination)
         if not destination.startswith('refs/heads/') or destination == 'refs/heads/':
             raise ValueError('only branch pushes are supported')
         updates.append({'source': head_data['sha'], 'destination': destination})

@@ -165,9 +165,9 @@ def atomic_write(path, text, *, replace=True, mode=None):
             temporary.unlink(missing_ok=True)
 
 
-def find_workspace(start=None):
+def find_workspace(start=None, *, use_environment=True):
     """Return the root containing .wuwei, honoring WUWEI_WORKSPACE first."""
-    if "WUWEI_WORKSPACE" in os.environ:
+    if use_environment and "WUWEI_WORKSPACE" in os.environ:
         override = os.environ["WUWEI_WORKSPACE"]
         root = Path(override).expanduser().resolve()
         if not override or not (root / ".wuwei").is_dir():
@@ -189,7 +189,8 @@ def find_workspace(start=None):
 def worktree_workspace(path):
     """Read the local anchor installed by wuwei git-hook in managed worktrees."""
     for parent in (path, *path.parents):
-        gitdir = parent / '.git'
+        # Explicit --git-dir targets may already name the anchored metadata directory.
+        gitdir = parent if (parent / 'wuwei-workspace').is_file() else parent / '.git'
         if gitdir.is_file():
             prefix, separator, value = gitdir.read_text().strip().partition(': ')
             if prefix != 'gitdir' or not separator:
@@ -210,12 +211,16 @@ def scope(path):
     from wuwei import registry
     from wuwei.guards.commit_push import data
 
+    selected = None
+    if 'WUWEI_WORKSPACE' in os.environ:
+        try:
+            selected = find_workspace(path)
+        except FileNotFoundError as exc:
+            raise ValueError('invalid WUWEI_WORKSPACE override') from exc
     try:
-        root = find_workspace(path)
+        root = find_workspace(path, use_environment=False)
     except FileNotFoundError:
-        if 'WUWEI_WORKSPACE' in os.environ:
-            raise ValueError('invalid WUWEI_WORKSPACE override')
-        root = worktree_workspace(path)
+        root = worktree_workspace(path) or selected
         if root is None:
             return None
     config = load_config(root)
