@@ -179,3 +179,40 @@ Unknown destinations and direct messages draft by default. A channel allowlist i
 ## Goals and discovery
 
 The owner edits `.wuwei/memory/goals.md` before the morning plan. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei rank candidates.json` reads JSON candidates with a goal or `unplanned` mark, a `score` object, and one `evidence_lines` entry per score component. `wuwei discover` reports unavailable sources as `unmeasured`.
+
+
+### MCP registry checks (S3)
+
+`wuwei init` and `wuwei init --upgrade` discover attached MCP configurations and
+register them through `scanner.mcp`. Set `adapters.scanner = "ziran"` to use ZIRAN
+0.39.0 or newer. Missing tools or the `none` adapter are unmeasured when servers
+are attached. No attached servers is a clean empty registry.
+
+`scanner.mcp.project_file` defaults to `.mcp.json` in the workspace and each
+configured repo. `scanner.mcp.plugins_file` defaults to
+`~/.claude/plugins/installed_plugins.json`; registry v2 user installations and
+project/local installations matching those repos contribute their `.mcp.json`.
+`scanner.mcp.user_file` defaults to `~/.claude.json` with top-level `mcpServers`.
+Relative overrides resolve against the workspace. Missing default user/plugin
+files and absent project/plugin MCP files are optional; explicit user/plugin
+file overrides must exist. Invalid or unreadable input is exit 2.
+
+The scanner receives file paths only, once per config. It keeps independent
+snapshots under `.wuwei/ziran/snapshots` and untrusted raw reports under
+`.wuwei/ziran/report-*/registry-watch-report.json`. An incomplete measurement
+restores the prior snapshots so retries cannot silently accept drift. Events
+contain server name, drift type, severity and tool name only.
+
+Run `bin/wuwei mcp check` before the first morning seat. The plan skill does this
+before the lead, and `bin/wuwei plan propose` checks again. High/critical findings
+return 1 and open an owner decision. Exit 2 means unmeasured and blocks launches
+until a successful recheck. Medium/low findings remain visible and return 0.
+Agent and runtime launches refuse stale or missing measurements and open flags.
+
+An owner reviews every linked report, sets `Decided-by: owner` and
+`Outcome: proceed` in the queued decision and runs `bin/wuwei mcp decide` from a
+host terminal, typing the displayed digest. Agent tools cannot invoke this owner
+command. A decision file or forged event alone never clears a flag. Confirmation
+cannot excuse exit 2. Pending findings and report references survive rechecks
+and day rollover. The host terminal follows the local friction boundary in
+threat model 9.1; remote authenticated decisions remain M5 work.

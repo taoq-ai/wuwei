@@ -70,6 +70,16 @@ transcripts = "none"
 [scanner]
 severity_threshold = "high" # critical, high, medium or low; trust-boundary findings always block.
 
+[scanner.mcp]
+# Workspace and configured repository paths are checked for this project file.
+project_file = ".mcp.json"
+# Installed plugin registry v2; user installs and matching project/local installs.
+plugins_file = "~/.claude/plugins/installed_plugins.json"
+# Top-level mcpServers in user settings. Relative overrides use the workspace.
+user_file = "~/.claude.json"
+# Missing defaults and absent project/plugin MCP files mean no attachment.
+# Explicit user_file/plugins_file overrides must exist. Invalid inputs fail closed.
+
 [voice]
 # Owner identifiers in [owner].handles match sent chat users and PR authors exactly.
 # review_prs = ["org/repo#123"] # PR comments use the review audience.

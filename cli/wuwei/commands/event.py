@@ -9,6 +9,8 @@ from wuwei.state import append_event
 
 FREE_KINDS = frozenset({'note'})
 EVENT_PRODUCERS = {
+    'mcp.finding': 'wuwei mcp check', 'mcp.checked': 'wuwei mcp check',
+    'mcp.decided': 'owner host MCP decision',
     'integrity': 'wuwei integrity check', 'integrity_failed': 'wuwei integrity check',
     'integrity_confirmation': 'owner host re-confirmation',
     'state.set': 'wuwei state set', 'state.transition': 'wuwei state transition',

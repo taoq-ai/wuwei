@@ -10,7 +10,7 @@ SILENT = ('item.progress', 'state.write', 'state.set', 'state.transition',
           'merge.observation', 'merge.metric', 'merge.intent', 'merge.completed', 'merge.red', 'merge.revert',
           'reply: acknowledged', 'reply: thread_posted', 'pr.raised',
           'pr.reviewers_selected', 'pr.review_posted', 'hook.refusal', 'decision.decided',
-          'decision.routed',
+          'decision.routed', 'mcp.decided',
           'seat.usage', 'build.iteration',
           'watch: clock', 'watch: heartbeat', 'watch: observation', 'session: compact',
           'session: wake-seen', 'plan.session', 'pr.disposition', 'day.close_requested',
@@ -30,6 +30,10 @@ def classify(event, state):
     lane = 'People' if kind.startswith('person.') else (
         'Decisions' if kind.startswith('decision.') or kind in (
             'item.escalated', 'merge.policy_blocked', 'work.outside_goals') else 'Work')
+    if kind == 'mcp.finding':
+        return ('page' if payload.get('severity') in ('high', 'critical') else 'nudge'), lane
+    if kind == 'mcp.checked':
+        return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'nudge'), lane
     if kind == 'pr.action':
         tier = payload.get('tier')
         return (tier if tier in ('silent', 'nudge', 'page') else 'nudge'), lane

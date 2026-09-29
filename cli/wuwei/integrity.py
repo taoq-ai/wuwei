@@ -139,13 +139,12 @@ def cached(root):
         return Result(2, reason=f'plugin integrity unmeasured: {exc}; run wuwei integrity check on the host')
 
 
-def _host_confirm(fingerprint):
+def _host_confirm(fingerprint, *, prompt='Review the installation on this host. To confirm its exact content, type:'):
     # This is a local friction boundary, not proof against a same-uid process (spec 9.1).
     with open('/dev/tty', 'r') as reader, open('/dev/tty', 'w') as terminal:
         if not reader.isatty() or not terminal.isatty():
             return False
-        terminal.write('Review the installation on this host. To confirm its exact content, type:\n'
-                       + fingerprint + '\n> ')
+        terminal.write(prompt + '\n' + fingerprint + '\n> ')
         terminal.flush()
         return reader.readline().strip() == fingerprint
 

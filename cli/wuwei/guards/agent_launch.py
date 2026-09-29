@@ -39,9 +39,13 @@ def _check(payload):
     import hashlib
     from wuwei import brief, registry, state, workspace
 
-    try:
-        root = workspace.find_workspace(payload.get('cwd'))
-    except FileNotFoundError:
+    inputs = payload.get('tool_input')
+    if isinstance(inputs, dict):
+        agent_type = inputs.get('subagent_type')
+        if agent_type is None or isinstance(agent_type, str) and not wuwei_role(agent_type):
+            return 0, ''
+    root = workspace.guard_scope(payload)
+    if root is None:
         return 0, ''
     inputs = payload.get('tool_input')
     if not isinstance(inputs, dict):
@@ -54,6 +58,10 @@ def _check(payload):
     role = agent_type.rsplit(':', 1)[-1]
     if not wuwei_role(agent_type):
         return 0, ''
+    from wuwei import mcp
+    measured = mcp.cached(root)
+    if measured.exit:
+        return measured.exit, measured.reason
     for key in ('prompt', 'description', 'subagent_type'):
         if not isinstance(inputs.get(key), str) or not inputs[key].strip():
             raise ValueError(f'invalid Agent {key}')

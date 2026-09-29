@@ -205,6 +205,7 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
 # Only these root settings are tunable, and only before morning approval.
 OWNER_FIELDS = frozenset({'cap', 'seat_policy'})
 STATE_PRODUCERS = {
+    'mcp': 'wuwei mcp check or owner host decision',
     'integrity': 'wuwei integrity check', 'integrity_failed': 'wuwei integrity check',
     'integrity_confirmation': 'owner host re-confirmation',
     'cap': 'wuwei plan approve', 'seat_policy': 'wuwei plan approve',

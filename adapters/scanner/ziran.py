@@ -1,5 +1,6 @@
 """S2 and S4 JSON CLI boundary; incompatible ZIRAN versions remain unmeasured."""
 
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -8,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 
-from wuwei.registry import Result, record_none
+from wuwei.registry import Result
 
 
 LEVELS = ('critical', 'high', 'medium', 'low')
@@ -73,7 +74,70 @@ def _trace_report(data):
 
 
 def mcp(servers, *, root=None):
-    return record_none('scanner', 'mcp', root)
+    """One file per invocation; descriptions remain only in retained reports."""
+    from wuwei import workspace
+
+    measured = {'findings': [], 'reports': []}
+    code, reasons = 0, []
+    try:
+        root = workspace.find_workspace() if root is None else Path(root).resolve()
+        base = root / '.wuwei/ziran'
+        if base.resolve() != base:
+            raise ValueError('registry storage must not use symlinks')
+        base.mkdir(exist_ok=True)
+        _version()
+        for file in servers:
+            try:
+                target = Path(file).resolve(strict=True)
+                config = json.loads(target.read_text(encoding='utf-8'))
+                _object(config)
+                entries = config.get('mcpServers', config)
+                if not isinstance(entries, dict) or any(not isinstance(v, dict) for v in entries.values()):
+                    raise ValueError('invalid MCP config')
+                key = hashlib.sha256(str(target).encode()).hexdigest()
+                snapshots = base / 'snapshots' / key
+                if snapshots.resolve() != snapshots:
+                    raise ValueError('registry snapshots must not use symlinks')
+                snapshots.mkdir(parents=True, exist_ok=True)
+                output = Path(tempfile.mkdtemp(prefix='report-', dir=base))
+                measured['reports'].append(str((output / 'registry-watch-report.json').relative_to(root)))
+                process = subprocess.run(['ziran', 'watch-registry', '--from-claude-config', str(target),
+                    '--snapshot-dir', str(snapshots), '--out', str(output), '--format', 'json'],
+                    timeout=60 + 30 * len(entries), capture_output=True, text=True)
+                if process.returncode not in (0, 1, 2):
+                    raise ValueError(f'command exited {process.returncode}')
+                data = json.loads((output / 'registry-watch-report.json').read_text(encoding='utf-8'))
+                findings = _mcp_report(data)
+                measured['findings'].extend(findings)
+                high = any(row['severity'] in ('critical', 'high') for row in findings)
+                if process.returncode != 2 and process.returncode != int(high):
+                    raise ValueError('inconsistent registry measurement')
+                code = max(code, process.returncode)
+                if process.returncode == 2:
+                    reasons.append('watch-registry: unmeasured: registry check incomplete (exit 2)')
+            except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
+                code = 2
+                reasons.append(_unmeasured('watch-registry', exc).reason)
+        return Result(code, measured, '; '.join(reasons))
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
+        return _unmeasured('watch-registry', exc)
+
+
+def _mcp_report(data):
+    if not isinstance(data, list):
+        raise ValueError('invalid registry report')
+    result = []
+    for row in data:
+        _object(row)
+        if (row.get('drift_type') not in ('tool_added', 'tool_removed', 'description_changed',
+                'schema_changed', 'permission_changed', 'typosquat', 'tool_poisoning')
+                or row.get('severity') not in LEVELS
+                or not isinstance(row.get('server_name'), str) or not row['server_name'].strip()
+                or 'tool_name' not in row
+                or row['tool_name'] is not None and not isinstance(row['tool_name'], str)):
+            raise ValueError('invalid registry finding')
+        result.append({key: row[key] for key in ('server_name', 'drift_type', 'severity', 'tool_name')})
+    return result
 
 
 def _unmeasured(operation, exc):
