@@ -410,6 +410,18 @@ message, before the outward-text lint and the voice checks (4.3, 4.8) run.
   in `build.stuck_after` consecutive iterations (default 3) is a stuck loop: the item parks
   with a decision record instead of spending more budget. Progress, not activity, keeps a
   seat running.
+- Step loop amendment (owner, 2026-09-29). Claude Code subagents are the primary
+  runtime. `wuwei build next <item>` returns one JSON action: `launch` with the shared
+  dispatch prompt, `continue` with feedback and the stopped agent identity, `check`
+  with the fast-check command, `park` with a reason and valid numbered decision, or
+  `done`. The planner executes launch and continue with Agent and check through Bash,
+  then asks for the next action. PreToolUse Agent registers the seat; SubagentStop
+  records its result and hands the iteration back. Repeated next calls without changed
+  state return the same action. The CLI never waits for a Claude seat; the old blocking
+  form exits 2 naming `build next`. Codex executes the same actions through its polling
+  adapter. Backpressure, signature, stuck and iteration limits, and usage events retain
+  their semantics. `host.seats` defaults to four, the default cap plus three gate seats;
+  increase it with a custom cap. A ceiling refusal names `host.seats`.
 - Cost per iteration (owner, 2026-09-28). Every dispatch records the runtime's reported
   usage (input and output tokens, cost when the runtime reports it, model, duration) as a
   `seat.usage` event per iteration. The steward reports cost per item, per role and per

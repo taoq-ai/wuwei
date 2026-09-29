@@ -28,7 +28,7 @@ def check(payload):
     ('clean', 0, ''), ('unlogged', 1, 'logged'), ('wrong-role', 1, 'role'),
     ('wrong-name', 1, 'name'), ('modified', 1, 'modified'), ('missing-file', 2, 'brief'),
     ('phase', 1, 'phase'), ('dirty', 1, 'dirty'), ('live', 1, 'builder'),
-    ('missing-pid', 1, 'builder'), ('cap', 1, '3'), ('memory', 1, 'memory'),
+    ('missing-pid', 1, 'builder'), ('cap', 0, ''), ('memory', 1, 'memory'),
     ('memory-error', 2, 'unmeasured'), ('status-error', 2, 'unavailable'),
     ('malformed-event', 2, 'events'), ('missing-state', 2, 'state'),
     ('no-marker', 1, 'brief'), ('nested-marker', 1, 'brief'), ('traversal', 2, 'path'),
@@ -132,7 +132,7 @@ def test_unknown_or_reused_launch_refuses(launch, monkeypatch, case):
 
 @pytest.mark.parametrize('cap,host_seats,role,code,hint', [
     (1, 3, 'sentinel-quality', 0, ''), (3, 1, 'sentinel-quality', 1, 'host seat'),
-    (1, 3, 'builder', 1, 'CAP 1'),
+    (1, 3, 'builder', 0, ''),
 ])
 def test_build_cap_and_host_seat_ceiling(launch, monkeypatch, cap, host_seats, role, code, hint):
     day, payload = launch
@@ -278,10 +278,10 @@ def test_reserved_builder_blocks_gate_without_pid(day, monkeypatch):
 
 @pytest.mark.parametrize('age,cap,host_seats,item,code,hint', [
     (14401, 3, 3, 'Y', 0, ''),
-    (14401, 1, 3, 'Y', 1, 'CAP'),
+    (14401, 1, 3, 'Y', 0, ''),
     (14401, 3, 1, 'Y', 1, 'host seat'),
     (14401, 3, 3, 'X', 1, 'builder'),
-    (14399, 1, 3, 'Y', 1, 'CAP'),
+    (14399, 1, 3, 'Y', 0, ''),
 ])
 def test_stale_reservation_is_named(launch, monkeypatch, age, cap, host_seats, item, code, hint):
     from datetime import timedelta
@@ -430,3 +430,40 @@ def test_unmatched_stop_records_event_and_allows(launch, monkeypatch, case):
 def test_default_general_purpose_agent_passes_before_validation(day, inputs):
     (day[0] / '.wuwei/config.toml').write_text('broken config')
     assert check({'cwd': str(day[0]), 'tool_input': inputs}) == (0, '')
+
+
+def test_default_capacity_fits_builder_and_three_gates(day, monkeypatch):
+    from wuwei import workspace
+    from wuwei.guards import agent_launch
+    root, directory, _, _ = day
+    (root / '.wuwei/config.toml').write_text('')
+    assert workspace.load_config(root)['host']['seats'] == 4
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    state._write_state(lambda data: data['items'].update({'Y': {}}), root, reserved=False)
+    for role, item, name in [('builder', 'Y', 'builder'),
+                             ('sentinel-arch', 'X', 'arch'),
+                             ('sentinel-quality', 'X', 'quality'),
+                             ('sentinel-security', 'X', 'security')]:
+        assert brief(monkeypatch, 'body', role, item, name, '--worktree', 'tree') == 0
+        relative = str((directory / f'briefs/{name}.md').relative_to(root))
+        code, reason = check({'cwd': str(root), 'tool_input': {
+            'subagent_type': role, 'description': name, 'prompt': 'WUWEI brief: ' + relative}})
+        assert code == 0, reason
+    assert len(state.read_state(root)['seats']) == 4
+
+
+def test_ceiling_refusal_names_configuration_key(launch, monkeypatch):
+    from wuwei.guards import agent_launch
+    day, payload = launch
+    (day[0] / '.wuwei/config.toml').write_text('[host]\nseats=1\n')
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    set_seats({'other': {'item': 'Y', 'role': 'sentinel-quality', 'status': 'running'}}, day[0])
+    code, reason = check(payload)
+    assert code == 1 and 'host.seats' in reason
+
+
+def test_non_builder_resume_keeps_existing_fresh_brief_contract(launch, monkeypatch):
+    from wuwei.guards import agent_launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    launch[1]['tool_input']['resume'] = 'prior-sentinel'
+    assert check(launch[1]) == (0, '')

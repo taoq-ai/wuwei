@@ -48,7 +48,9 @@ def test_recorder_runs_configured_check_and_records_derived_evidence(workspace_c
     assert main(['fast-checks', str(root / 'repo')]) == exit_code
     assert calls == [(str(root / 'repo'), 'unit')]
     assert state.read_state(root)['fast_checks'] == {
-        'example/project': {'unit': {'sha': SHA, 'exit': exit_code}}}
+        'example/project': {'unit': {'sha': SHA, 'exit': exit_code, 'data': None,
+            'reason': 'check unavailable' if exit_code == 2 else '',
+            'worktree': str(root / 'repo'), 'build': None, 'clean': False}}}
     assert guard().check(payload(root, 'git push origin feature'))[0] == (0 if exit_code == 0 else 1)
 
 

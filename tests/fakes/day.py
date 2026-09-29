@@ -54,7 +54,8 @@ class Runtime:
         else:
             assert role == 'steward'
         transcript = day.root / (path.stem + '.jsonl')
-        transcript.write_text(json.dumps({'type': 'user', 'message': {'content': prompt}}) + '\n')
+        transcript.write_text(json.dumps({'type': 'user', 'message': {'content': prompt}}) + '\n'
+                              + json.dumps({'type': 'assistant', 'message': {'content': RETRO}}) + '\n')
         day.hook('SubagentStop', agent_type=role, agent_id=path.stem,
                  agent_transcript_path=str(transcript), last_assistant_message=RETRO)
         assert day.data['seats'][path.stem]['status'] == 'stopped'
@@ -208,7 +209,7 @@ lead_login = "lead"
         source.write_text(json.dumps(candidates))
         assert [row['id'] for row in json.loads(self.run('rank', source))] == ['A', 'B']
         proposal = {'goals': ['G-1'], 'cap': 1,
-            'seat_policy': {'builder': {'runtime': 'codex', 'model': 'scripted'}},
+            'seat_policy': {'builder': {'runtime': 'claude', 'model': 'scripted'}},
             'envelope': {'start': '09:00', 'end': '17:00', 'net_build_hours': 5},
             'sweep': {'processes': 'measured: none'}, 'candidates': candidates}
         source = self.root / 'proposal.json'
@@ -231,7 +232,12 @@ lead_login = "lead"
 
     def build(self, name):
         path = self.brief('builder', name)
-        self.run('build', 'A', self.root / path, self.repo)
+        action = json.loads(self.run('build', 'next', 'A'))
+        assert action['action'] == 'launch'
+        self.runtime.dispatch('builder', action['brief'], action['worktree'], True, root=self.root)
+        assert json.loads(self.run('build', 'next', 'A'))['action'] == 'check'
+        self.run('build', 'check', 'A')
+        assert json.loads(self.run('build', 'next', 'A'))['action'] == 'done'
 
     def gate(self, role, verdict, round_name='initial', expected=0):
         name = f'{role}-{round_name}'

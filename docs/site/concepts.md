@@ -80,3 +80,20 @@ the action interval. The planner's Stop hook rechecks fresh evidence and refuses
 actions, naming the PR, state and action. Only a verified owner parking decision exempts
 a PR; carry-forward applies to day close. See [configuration](configuration.html) for
 `pr.action_minutes` and `pr.review_window`.
+
+## Builder steps
+
+Claude Code builders run as subagents in the planner session. After writing a builder
+brief with its worktree, call `wuwei build next <item>`. It returns one JSON action:
+`launch` supplies the Agent prompt, `continue` supplies the same agent's resume ID and
+feedback, `check` supplies a command to run through Bash, `park` supplies a reason and
+numbered decision path, and `done` means checks passed. Call next again after executing
+the action. Hooks register the seat and record its result; unchanged state returns the
+same action, so execute each action once. Never poll a Claude seat through the CLI.
+
+A check command records measurements itself. Exit 1 means failed checks and another next
+call; exit 2 means unmeasured and requires resolving the reported error. The old blocking
+Claude build form exits 2 and directs you to build next. Codex retains
+`wuwei build <item> <brief> <worktree>` and executes the same action loop with polling.
+Default `host.seats` is four: one builder plus three parallel gates. Increase the host
+ceiling when increasing cap.

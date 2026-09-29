@@ -258,7 +258,7 @@ def test_build_returns_loop_status_without_discovery(monkeypatch, code):
     monkeypatch.setattr(build, 'run_loop', lambda *args: code)
     monkeypatch.setattr(discovery, 'when_seat_frees',
                         lambda *args, **kwargs: pytest.fail('build called discovery'))
-    assert build.run(Namespace(item='A', brief='brief', worktree='tree')) == code
+    assert build.run(Namespace(operation='A', arguments=['brief', 'tree'])) == code
 
 
 def test_discovery_red_base_checks_from_code_host_port(tmp_path, monkeypatch):

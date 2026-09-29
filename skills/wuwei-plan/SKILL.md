@@ -19,15 +19,29 @@ A CLI exit of 1 is a finding to resolve with the owner. Exit 2 means the plan co
 
 ## Seat launch contract
 
-For every role, including the lead, log the brief with `wuwei brief <role> <item> <name>` and obtain instructions from `wuwei runtime dispatch <role> <brief> <worktree>`. The item is bound by the brief, not an extra runtime argument. The core function `wuwei.brief.launch_prompt` owns the Claude prompt format. Pass its returned `prompt` unchanged to Agent and its `agent_type` (`wuwei:<role>`) as `subagent_type`, with an Agent description.
+For non-builder roles, including the lead, log the brief with `wuwei brief <role> <item> <name>` and obtain instructions from `wuwei runtime dispatch <role> <brief> <worktree>`. The item is bound by the brief, not an extra runtime argument. The core function `wuwei.brief.launch_prompt` owns the Claude prompt format. Pass its returned `prompt` unchanged to Agent and its `agent_type` (`wuwei:<role>`) as `subagent_type`, with an Agent description.
 
 Launch from the workspace root so the hook payload's `cwd` resolves the exact first line: `WUWEI brief: <relative brief path>`. The path is relative to that workspace, for example `.wuwei/days/2026-09-29/briefs/builder-1.md`, even when the assigned worktree is elsewhere. Do not prepend text or reconstruct the prompt from charter paths. A refused brief is never launched.
 
-For continuation, use `wuwei runtime continue <job-json> <feedback>` and deliver its generated prompt to the same seat. A consumed brief cannot launch another seat. For the steward, use the `steward_launch` instructions returned by `wuwei steward run --trigger close` (or `sweep` or `tool-calls`); they use the same formatter through runtime dispatch.
+For non-builder continuation, use `wuwei runtime continue <job-json> <feedback>` and deliver its generated prompt to the same seat. Builders use the step loop below. A consumed brief cannot launch another seat. For the steward, use the `steward_launch` instructions returned by `wuwei steward run --trigger close` (or `sweep` or `tool-calls`); they use the same formatter through runtime dispatch.
+
+## Builder step loop
+
+Write the builder brief with its worktree using `wuwei brief builder <item> <name> --worktree <worktree>`. Call `wuwei build next <item>` from the workspace root. It selects the latest logged builder brief and returns exactly one JSON action. Repeat the following until done or parked:
+
+- `launch`: pass `prompt` unchanged to Agent, `agent_type` as `subagent_type`, and a description. Wait for the Agent call to return in the planner session. PreToolUse registers the seat and SubagentStop records its result.
+- `continue`: use Agent with `resume` set to the returned runtime agent ID, `prompt` unchanged, the returned `agent_type` as `subagent_type`, and a description. The prompt includes the failed-check feedback. A consumed brief cannot authorize a fresh seat; the hook requires the recorded stopped agent.
+- `check`: execute the returned `command` through Bash, using the workspace's recorded executable in place of `wuwei`. This runs and records the configured fast checks in the returned `worktree`. Exit 1 means measured failures: call next again for feedback or parking. Exit 2 means unmeasured: show the reason and resolve it before continuing. Never submit invented check results.
+- `park`: show the reason and decision path and stop this item's loop.
+- `done`: the checks passed; proceed to the item gate flow.
+
+After each Agent or measured check returns, call `wuwei build next <item>` again. Repeating next without a state change returns the same action; do not execute it twice. Calling next while the seat is running exits 2. SubagentStop can reuse fast checks recorded by the builder only for that iteration, worktree and current HEAD, with a clean tree at measurement and stop; otherwise next returns check. Do not poll Claude through the CLI or use the old blocking `wuwei build <item>` form. For Codex, the CLI can execute the same loop with `wuwei build <item> <brief> <worktree>` using its polling adapter. A new logged brief after completion starts the next build or fix round; resume a parked item's phase before restarting it.
+
+The default `host.seats` is four, allowing the default builder cap of one plus three parallel gate seats. Increase `host.seats` when increasing cap. CAP counts builders only; gate launches still obey the total host ceiling and memory floor.
 
 ## Item dispatch and receive
 
-For an approved code item, use its own worktree and the recorded seat policy. Run the builder through `wuwei build` with the item's fast checks. Before pre-PR gates, stop the builder, confirm its stop event and move the item to `gate`. Call `wuwei dispatch next <item>`. For an `action: gates` result, write one brief per returned role using `wuwei brief --gate --worktree`, then launch those roles in parallel. The brief and launch commands refuse a dirty tree, live builder and missing evidence. A refused brief is never launched.
+For an approved code item, use its own worktree and the recorded seat policy. Run the builder through the step loop below with the item's fast checks. Before pre-PR gates, stop the builder, confirm its stop event and move the item to `gate`. Call `wuwei dispatch next <item>`. For an `action: gates` result, write one brief per returned role using `wuwei brief --gate --worktree`, then launch those roles in parallel. The brief and launch commands refuse a dirty tree, live builder and missing evidence. A refused brief is never launched.
 
 When each sentinel stops, call `wuwei dispatch receive <item> <role> <seat-name>`. This lints and records the verdict file at the dispatched HEAD. Rejected or unmeasured verdicts return to that seat; they never count as PASS. Call `wuwei dispatch next <item>` again after each receipt. Wait for all required verdicts before a fix or PR raise.
 

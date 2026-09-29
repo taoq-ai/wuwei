@@ -26,7 +26,7 @@ handles = [] # Bare chat IDs and code-host handles, e.g. "U12345", "pat-dev".
 
 [host]
 free_memory_mb = 1024 # Nonnegative free-memory floor in MiB.
-seats = 1
+seats = 4 # Default cap plus three parallel gate seats. Increase with cap.
 reservation_timeout_seconds = 14400 # Report stale reservations; never silently release them.
 
 [memory]

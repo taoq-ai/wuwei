@@ -85,6 +85,32 @@ def test_unmeasured_check_exits_two(tmp_path, monkeypatch):
     assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 2
 
 
+def test_codex_rerun_resumes_job_after_poll_timeout(tmp_path, monkeypatch, capsys):
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)])
+    with (tmp_path / '.wuwei/config.toml').open('a') as config:
+        config.write('poll_timeout_seconds=1\n')
+    with monkeypatch.context() as patch:
+        clock = iter([0, 2])
+        patch.setattr(build.time, 'monotonic', lambda: next(clock))
+        patch.setattr(runtime, 'status', lambda job, *, root=None:
+                      registry.Result(0, {'status': 'running'}))
+        assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 2
+    assert 'runtime seat timed out' in capsys.readouterr().err
+    record = state.read_state(tmp_path)['builds']['A']
+    assert record['status'] == 'running'
+
+    def completed(job, *, root=None):
+        assert job == record['job']
+        return registry.Result(0, {'status': 'completed'})
+
+    monkeypatch.setattr(runtime, 'status', completed)
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0
+    assert state.read_state(tmp_path)['builds']['A']['status'] == 'done'
+    assert runtime.calls == [('dispatch', str(brief))]
+    assert len([e for e in events(day) if e['kind'] == 'seat.usage']) == 1
+
+
 def test_local_check_exposes_failing_ids_and_error(monkeypatch):
     from adapters.checks import local
     from types import SimpleNamespace
