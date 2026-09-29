@@ -150,6 +150,14 @@ def observe(root, host, ref, config, measured):
         if waiting is None or waiting['head'] != head:
             waiting = {'head': head, 'since': now.isoformat()}
         since = obligations._time(waiting['since'])
+        for post in data.get('channel_posts', []):
+            if post.get('pr') == ref and post.get('status') == 'posted' and post.get('head') == head:
+                posted_at = obligations._time(post['posted_at'])
+                if posted_at > now:
+                    raise ValueError('review post is in the future')
+                if posted_at > since:
+                    since = posted_at
+                    waiting = {'head': head, 'since': since.isoformat()}
         if since > now:
             raise ValueError('review observation is in the future')
         reviews[ref] = waiting
@@ -200,3 +208,26 @@ def evaluate(root, refs=None):
     except watch.ERRORS as exc:
         rows.append({'exit': 2, 'reason': f'PR state unmeasured: {exc}'})
     return max((row['exit'] for row in rows), default=0), rows
+
+
+def act(root, ref):
+    """Execute safe PR actions and surface work requiring a builder or owner."""
+    ref = pull_request(ref)
+    _, rows = evaluate(root, [ref])
+    row, = rows
+    if row['exit'] == 2:
+        print(row['reason'])
+        return 2
+    if row['parked'] or row['state'] in ('merged', 'waiting'):
+        return 0
+    if row['state'] == 'approved':
+        from wuwei import merge
+        result = merge.execute(ref, root=root)
+        if result.exit:
+            print(f'{ref}: owner merge decision required: {result.reason}')
+        return result.exit
+    if row['state'] == 'review_stale':
+        from wuwei import shepherd
+        return shepherd.post_review_request(root, ref)
+    print(f'{ref}: {row["action"]}')
+    return 1

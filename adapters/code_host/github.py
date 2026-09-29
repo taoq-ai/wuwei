@@ -57,6 +57,9 @@ def _run(args, payload=None, *, json_output=True):
         case ['api', 'graphql', '--input', '-']:
             allowed = isinstance(payload, dict) and payload.get('query') in (_THREADS, _REVERT)
         case ['api', endpoint, *options]:
+            if re.fullmatch(r'search/commits\?q=author-email%3A[A-Za-z0-9._%+-]+'
+                            r'%20repo%3A[A-Za-z0-9._%-]+&per_page=1', endpoint):
+                allowed = payload is None and options == ['-H', 'Cache-Control: no-cache']
             match = re.fullmatch(r'repos/([^/]+/[^/]+)/(.+)', endpoint)
             if match:
                 _repo(match[1])
@@ -76,6 +79,10 @@ def _run(args, payload=None, *, json_output=True):
     result = subprocess.run(['gh', *args], input=json.dumps(payload) if payload is not None else None,
                             capture_output=True, text=True, timeout=TIMEOUT)
     if result.returncode:
+        if (args[:1] == ['api'] and len(args) > 1 and
+                re.fullmatch(r'repos/[^/]+/[^/]+/branches/.+/protection', args[1]) and
+                re.search(r'HTTP 404\b', result.stderr)):
+            raise ValueError('branch protection absent')
         raise ValueError(f'gh exited {result.returncode}')
     if json_output:
         value = json.loads(result.stdout)
@@ -335,6 +342,23 @@ def history(repo, start, branch, patches=True, root=None):
     if parent != end:
         raise ValueError('incomplete base history')
     return {'files': original['files'], 'commits': result}
+
+
+@_operation
+def author_login(repo, email, root=None):
+    repo = _repo(repo)
+    if not isinstance(email, str) or not re.fullmatch(r'[A-Za-z0-9_.+%-]+@[A-Za-z0-9.-]+', email):
+        raise ValueError('invalid author email')
+    endpoint = ('search/commits?q=author-email%3A' + quote(email, safe='') +
+                '%20repo%3A' + quote(repo, safe='') + '&per_page=1')
+    value = _api(endpoint)
+    items = _list(value['items'])
+    if _field(value, 'total_count', int) < 1 or not items:
+        raise ValueError('author login unavailable')
+    login = _login(items[0]['author'])
+    if not login:
+        raise ValueError('author login unavailable')
+    return {'login': login}
 
 
 @_operation

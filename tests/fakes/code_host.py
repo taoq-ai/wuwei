@@ -41,3 +41,6 @@ class Fake(Recorder):
 
     def history(self, repo, start, branch, patches=True, root=None):
         return self._call('history', (repo, start, branch, patches), root)
+
+    def author_login(self, repo, email, root=None):
+        return self._call('author_login', (repo, email), root)

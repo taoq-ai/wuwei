@@ -15,6 +15,10 @@ EMOJI = re.compile('[\U0001f000-\U0001faff\u2300-\u23ff\u2600-\u27bf'
                    '\u2122\u2139\u20e3\u3030\u303d\u3297\u3299]|[^\n]\ufe0f')
 PRONOUNS = ('he him his himself', 'she her hers herself',
             'they them their theirs themself themselves')
+REVIEW_REQUEST = re.compile(
+    r'PR #([1-9][0-9]*) ready for review: '
+    r'<https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/\1\|#\1> '
+    r'((?:<@[A-Z0-9]+>(?: |$))+)')
 
 
 # ponytail: cross-script confusables remain distinct; add a Unicode confusable table if needed.
@@ -249,7 +253,10 @@ def classify(text, root, config, context=None, *, kind='chat'):
         recipients = list(context.get('recipients', []))
         if 'recipient' in context:
             recipients.append(context['recipient'])
-        mentions = re.findall(r'(?<![\w@])@([\w.-]+)', normalized)
+        review_match = (REVIEW_REQUEST.fullmatch(text) if kind in ('chat', 'slack')
+                        and destinations == [config['shepherd']['review_channel']] else None)
+        mention_text = re.sub(r'<@[\w.-]+>', '', normalized) if review_match else normalized
+        mentions = re.findall(r'(?<![\w@])@([\w.-]+)', mention_text)
         recipients.extend(mentions)
         # Email addresses and mentions are audience evidence, never merely message text.
         recipients.extend(re.findall(r'[^\s<>@]+@[^\s<>@]+', normalized))
@@ -274,6 +281,16 @@ def classify(text, root, config, context=None, *, kind='chat'):
               or any(channel not in rules['work_channels'] for channel in destinations)):
             return FINDINGS, 'draft'
         plain = re.sub(r'<@[\w.-]+>|(?<![\w@])@[\w.-]+', '', normalized).strip()
+        if review_match:
+            from wuwei import shepherd, state
+            ref = f'{review_match[2]}#{review_match[1]}'
+            expected = state.read_state(root).get('pr_reviewers', {}).get(ref)
+            mapped = {row['login']: row['mention'] for row in config['shepherd']['authors'].values()}
+            mentions = re.findall(r'<@([A-Z0-9]+)>', review_match[3])
+            if (expected and set(mentions) == {mapped.get(login) for login in expected}
+                    and len(mentions) == len(expected)):
+                gate = shepherd.ping_gate(root, ref)
+                return (CLEAN, 'send') if gate.exit == 0 else (gate.exit, 'draft')
         if re.fullmatch(r'(?:ack|acknowledged|thanks|thank you|got it|done|'
                         r'(?:tests?|build|ci) (?:passed|failed|running|is running))[.!]?', plain):
             return CLEAN, 'send'

@@ -260,11 +260,11 @@ def sweep(root=None):
 
 
 def reply(ref, surface, target_id, text, root=None):
-    """The shepherd's unthreaded reply path, the sole acknowledgement producer."""
+    """Reply using fresh API evidence; only unthreaded surfaces need an ack."""
     root = workspace.find_workspace(root)
     directory = workspace.day_dir(root)
     ref = pull_request(ref)
-    if (surface not in ('comment', 'review') or type(target_id) is not int or target_id <= 0
+    if (surface not in ('comment', 'review', 'thread') or type(target_id) is not int or target_id <= 0
             or not isinstance(text, str) or not text.strip()):
         raise ValueError('reply needs a surface, positive ID and nonempty body')
     if not (directory / 'state.json').is_file():
@@ -278,6 +278,8 @@ def reply(ref, surface, target_id, text, root=None):
     host = registry.load('code_host', config)
     if _read(host.pr, ref, root=root)['state'] != 'open':
         raise ValueError('PR is not open')
+    if surface == 'thread':
+        return _thread_reply(host, ref, target_id, text, me, root)
     reviews, discussion = _evidence(host, ref, root)
     rows = discussion['comments'] if surface == 'comment' else reviews
     target = next((row for row in rows if row['id'] == target_id), None)
@@ -313,4 +315,37 @@ def reply(ref, surface, target_id, text, root=None):
     state._write_state(acknowledge, reserved=False, directory=directory,
                        kind='reply: acknowledged', payload={'pr': ref, 'surface': surface,
                        'id': target_id, 'reply_id': reply_id})
+    return 0
+
+
+def _thread_reply(host, ref, target_id, text, me, root):
+    def target():
+        discussion = _read(host.threads, ref, root=root)
+        for thread in _list(discussion['threads']):
+            comments = sorted(_records(thread['comments']),
+                              key=lambda row: (_time(row['created_at']), row['id']))
+            if comments and comments[0]['id'] == target_id:
+                if thread['resolved'] or thread['outdated']:
+                    return None
+                return comments[-1]
+        return None
+
+    first = target()
+    if first is None or first['author'] == me:
+        raise ValueError('thread is resolved, missing or already answered')
+    latest = target()
+    if latest is None or latest['id'] != first['id'] or _fingerprint(latest) != _fingerprint(first):
+        print('thread last word changed; reread before replying')
+        return 1
+    result = host.comment(ref, text, target_id, root=root)
+    if result.exit:
+        print(result.reason or 'thread reply was not posted')
+        return result.exit
+    reply_id = result.data['id']
+    posted = target()
+    if (posted is None or posted['id'] != reply_id or posted['author'] != me
+            or posted['body'] != text or posted['is_bot']):
+        raise ValueError('posted thread reply could not be verified')
+    state.append_event('reply: thread_posted', {'pr': ref, 'root_id': target_id,
+                                                'reply_id': reply_id}, root=root)
     return 0

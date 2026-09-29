@@ -50,3 +50,7 @@ def files(ref, root=None):
 
 def history(repo, start, branch, patches=True, root=None):
     return record_none('code_host', 'history', root, measurement=True)
+
+
+def author_login(repo, email, root=None):
+    return record_none('code_host', 'author_login', root, measurement=True)

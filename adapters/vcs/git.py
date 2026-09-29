@@ -100,6 +100,11 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False):
                            and re.fullmatch(r'--until=\d{4}-\d{2}-\d{2}T23:59:59', until))
         case ('ls-tree', '-r', '--name-only', '-z', ref, '--', *paths):
             allowed = bool(_tree_ref(ref) and paths and all(_tree_path(p) for p in paths))
+        case ('log', '--format=%ae', since, branch, '--', *paths):
+            allowed = (bool(re.fullmatch(r'--since=[1-9][0-9]{0,3}\.days', since))
+                       and bool(_revision(branch)) and paths and all(_tree_path(p) for p in paths))
+        case ('log', '--format=%ae', branch, '--', *paths):
+            allowed = bool(_revision(branch) and paths and all(_tree_path(p) for p in paths))
         case ('show', object_name):
             ref, sep, path = object_name.partition(':')
             allowed = bool(sep and _tree_ref(ref) and _tree_path(path))
@@ -396,6 +401,29 @@ def changes_on(repo, day, root=None):
     output = _run(repo, 'log', '--format=', '--name-only', '-z',
                   '--since=' + day + 'T00:00:00', '--until=' + day + 'T23:59:59', 'HEAD', '--')
     return sorted({path.lstrip('\n') for path in _records(output) if path.lstrip('\n')})
+
+
+@_operation
+def authorship(repo, branch, paths, days, root=None):
+    if type(days) is not int or not 0 <= days <= 9999 or not isinstance(paths, list) or not paths:
+        raise ValueError('expected authorship window and source paths')
+    paths = [_tree_path(path) for path in paths]
+    args = ('--since=' + str(days) + '.days',) if days else ()
+    output = _run(repo, 'log', '--format=%ae', *args, _revision(branch), '--', *paths)
+    counts = {}
+    for email in output.splitlines():
+        if not email or '@' not in email or any(ord(c) < 32 for c in email):
+            raise ValueError('invalid author email')
+        counts[email.casefold()] = counts.get(email.casefold(), 0) + 1
+    return [{'email': email, 'commits': count} for email, count in counts.items()]
+
+
+@_operation
+def branch(repo, root=None):
+    name = _run(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD').strip()
+    if not name or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]*', name):
+        raise ValueError('invalid current branch')
+    return {'name': name}
 
 
 @_operation

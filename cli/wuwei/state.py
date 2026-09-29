@@ -214,6 +214,8 @@ STATE_PRODUCERS = {
     'seats': 'wuwei hook PreToolUse', 'fast_checks': 'wuwei fast-checks',
     'reply_acks': 'wuwei reply', 'decision_outcomes': 'wuwei decision outcome',
     'decision_routes': 'wuwei decision route',
+    'channel_posts': 'wuwei pr ping',
+    'pr_reviewers': 'wuwei pr raise or ping',
     'watch': 'wuwei watch', 'pr_dispositions': 'wuwei pr disposition',
     'close_requested': 'wuwei close', 'merges': 'wuwei merge',
     'merge_breakers': 'wuwei merge', 'gate_verdicts': 'wuwei dispatch receive',
