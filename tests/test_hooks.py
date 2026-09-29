@@ -95,6 +95,22 @@ def test_clean_replay(subprocess_plugin, payload_path):
     assert result.stdout == result.stderr == ''
 
 
+@pytest.mark.parametrize('inside', [True, False], ids=['workspace', 'outside'])
+@pytest.mark.parametrize('command', [
+    '/bin/ls -la', '/bin/echo hi', '/usr/bin/python3 -m pytest -q',
+    'python3 -m pytest -q', 'for i in 1; do echo ok; done', 'export X=1',
+])
+def test_harmless_commands_through_shim(subprocess_plugin, tmp_path, inside, command):
+    root, env = subprocess_plugin
+    if not inside:
+        shutil.rmtree(tmp_path / '.wuwei')
+        env.pop('WUWEI_WORKSPACE')
+    payload = fixture('PreToolUse')
+    payload.update(cwd=str(tmp_path), tool_name='Bash', tool_input={'command': command})
+    result = subprocess_replay((root, env), 'PreToolUse', json.dumps(payload))
+    assert result.returncode == 0, result.stderr
+
+
 @pytest.mark.parametrize('payload_path', PAYLOADS, ids=lambda p: str(p.relative_to(ROOT / 'tests/payloads')))
 def test_payloads_use_neutral_paths(payload_path):
     payload = json.loads(payload_path.read_text())

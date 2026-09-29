@@ -265,10 +265,15 @@ def check(payload):
         raw = payload['tool_input']['command']
         if not isinstance(raw, str):
             raise ValueError('command must be text')
-        if not shell.mentions(raw, {'gh'}):
+        if not shell.mentions(raw, {'gh'}) and shell.script_path(raw, payload['cwd']) is None:
             return 0, ''
         cwd = _cwd(payload)
         initial = workspace.scope(cwd)
+        script = shell.script_text(raw, cwd) if initial else None
+        script_relevant = bool(script and shell.mentions(script, {'gh'})
+                               and shell.mentions(script, {'create', 'merge', 'review', 'api', 'admin'}))
+        if not shell.mentions(raw, {'gh'}) and not script_relevant:
+            return 0, ''
         try:
             commands = shell.normalize(raw)
         except shell.ParseError:
@@ -295,6 +300,8 @@ def check(payload):
                         contexts[directory] = context
         if not contexts:
             return 0, ''
+        if script_relevant:
+            raise ValueError('opaque script command; run gh as a plain command')
         for command in commands:
             if not command.argv:
                 continue

@@ -183,9 +183,13 @@ def test_policy_actions(case, profile, command, code, hint):
     ('gh pr create -r alice && gh pr review -a', 2),
     ('python3 -m pytest -q', 0), ('for i in 1; do echo ok; done', 0),
     ('export X=1', 0), ('git status', 0),
+    ('./push.sh', 2), ('sh push.sh', 2), ('bash push.sh', 2),
+    ('./run.sh', 0), ('sh run.sh', 0), ('bash run.sh', 0),
 ])
 def test_bypasses_and_relevance(case, command, code):
     root, _, _ = case
+    (root / 'repo/push.sh').write_text('gh pr merge 9 --admin\n')
+    (root / 'repo/run.sh').write_text('echo ok\n')
     result = guard().check(payload(root, command))
     assert result[0] == code, result
 
@@ -209,6 +213,23 @@ def test_unrelated_project_passes(case, tmp_path, monkeypatch, override):
     for command in ('gh pr merge 9', 'gh pr review --approve', 'gh pr merge "'):
         assert guard().check(payload(root, command, outside)) == (0, '')
     assert not fake.calls
+
+
+def test_outside_workspace_does_not_read_scripts(case, tmp_path, monkeypatch):
+    from wuwei import shell
+
+    def fail(*args):
+        pytest.fail('out-of-scope command reached script reader')
+
+    monkeypatch.setattr(shell, 'script_text', fail)
+    assert guard().check(payload(case[0], './push.sh', tmp_path)) == (0, '')
+
+
+@pytest.mark.parametrize('command', ['python3 -m pytest -q', 'export X=1', 'for x in 1; do echo x; done'])
+def test_irrelevant_commands_do_not_require_config(case, command):
+    root, _, _ = case
+    (root / '.wuwei/config.toml').unlink()
+    assert guard().check(payload(root, command)) == (0, '')
 
 
 @pytest.mark.parametrize('wrapper', ['cd {repo} && gh pr merge 9',

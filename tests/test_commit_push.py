@@ -108,6 +108,12 @@ def payload(root, command):
     ('git push --force-if-includes', 1), ('git push --mirror', 1),
     ('git push origin +HEAD:feature', 1),
     ('sh -c \'git push --force\'', 1), ('env command git push --force', 1),
+    ('bash -c \'git push --force\'', 1),
+    ('zsh -c \'git push --force\'', 1),
+    ('exec git push --force', 1),
+    ('git -C . push --force', 1),
+    ('node -e "require(\'child_process\').execSync(\'git push --force\')"', 2),
+    ('perl -e "system(\'git push --force\')"', 2),
     ('python3 -c "import subprocess; subprocess.run([\'git\',\'push\',\'-f\'])"', 2),
     ('printf x | xargs git push', 2),
     ('git push "$REMOTE"', 2), ('git push --receive-pack=helper', 2),
@@ -117,9 +123,13 @@ def payload(root, command):
     ('cd other; git push', 2), ('git config user.email x; git commit', 2),
     ('GIT_AUTHOR_EMAIL=x; git commit', 2),
     ('npm test', 0), ('git status', 0),
+    ('./push.sh', 2), ('sh push.sh', 2), ('bash push.sh', 2),
+    ('./run.sh', 0), ('sh run.sh', 0), ('bash run.sh', 0),
 ])
 def test_bash_table(workspace_case, command, code):
     root, fake = workspace_case
+    (root / 'repo/push.sh').write_text('git push --force\n')
+    (root / 'repo/run.sh').write_text('echo ok\n')
     result = guard().check(payload(root, command))
     assert result[0] == code, result
     if code:

@@ -238,6 +238,9 @@ def check(payload):
             return 0, ''
         raw = payload['tool_input']['command']
         relevant = COMMIT_VERBS | {'push', 'config', 'wuwei-workspace', 'executable'} | IDENTITY_ENV | IDENTITY_SETTINGS
+        script = shell.script_text(raw, payload['cwd'])
+        if script and shell.mentions(script, {'git', 'gh'}) and shell.mentions(script, relevant):
+            raise ValueError('opaque script command; run git as a plain command')
         if not shell.mentions(raw, {'git', 'gh', 'rm'}) or not shell.mentions(raw, relevant):
             return 0, ''
         # The shared parser intentionally discards these context-changing wrappers.
