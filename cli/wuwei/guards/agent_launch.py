@@ -65,9 +65,10 @@ def _check(payload):
     for key in ('prompt', 'description', 'subagent_type'):
         if not isinstance(inputs.get(key), str) or not inputs[key].strip():
             raise ValueError(f'invalid Agent {key}')
-    prefix = 'WUWEI brief: '
+    prefix = brief.REFERENCE_PREFIX
     if not inputs['prompt'].startswith(prefix):
-        raise brief.Refused('no logged brief reference at start of Agent prompt')
+        raise brief.Refused('no logged brief reference at start of Agent prompt; '
+                            f'required first line: {prefix}<relative brief path>')
     relative = inputs['prompt'].splitlines()[0][len(prefix):]
     directory, _ = brief.read_day(root)
     path = root / relative

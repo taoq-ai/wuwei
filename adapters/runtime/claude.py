@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 
 from wuwei.registry import Result
+from wuwei.brief import launch_prompt
 
 
 def dispatch(role, brief_path, worktree, write, *, root=None):
@@ -20,10 +21,10 @@ def dispatch(role, brief_path, worktree, write, *, root=None):
         tree = Path(worktree).resolve(strict=True)
         if not charter.is_file() or not brief.is_file() or not tree.is_dir():
             return Result(1, reason='unknown role, brief or worktree')
-        return Result(0, {'prompt': f'Read instructions {charter} and brief {brief}.',
+        return Result(0, {'prompt': launch_prompt(brief, charter, root=root),
                           'agent_type': 'wuwei:' + role, 'brief_path': str(brief),
                           'worktree': str(tree), 'write': write})
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, TypeError) as exc:
         return Result(2, reason=f'Claude dispatch could not run: {exc}')
 
 
@@ -42,5 +43,16 @@ def continue_job(job, feedback, *, root=None):
         return measured
     if not isinstance(job, dict) or not isinstance(feedback, str) or not feedback:
         return Result(2, reason='invalid Claude continuation')
-    return Result(0, {'agent_type': job['agent_type'], 'worktree': job['worktree'],
-                      'feedback': feedback, 'write': job['write']})
+    try:
+        agent_type = job['agent_type']
+        if not isinstance(agent_type, str) or not agent_type.startswith('wuwei:'):
+            raise ValueError('invalid Claude agent type')
+        result = dispatch(agent_type.removeprefix('wuwei:'), job['brief_path'],
+                          job['worktree'], job['write'], root=root)
+        if result.exit:
+            return result
+        result.data['feedback'] = feedback
+        result.data['prompt'] += '\n\n' + feedback
+        return result
+    except (KeyError, TypeError, ValueError) as exc:
+        return Result(2, reason=f'Claude continuation could not run: {exc}')

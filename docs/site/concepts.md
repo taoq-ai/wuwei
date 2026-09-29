@@ -14,6 +14,27 @@ The shipped charters define planner, lead, builder, shepherd, steward, and four 
 
 Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse relevant unsafe actions inside a WUWEI workspace or configured repository. Outside that scope they return clean. The three outcomes are 0 clean, 1 findings and 2 could not run. A relevant parse or measurement failure returns 2 with a reason. The CLI also records traces and events. See [security](security.html) for the trust boundary.
 
+## Seat launch contract
+
+Write and log a brief with `wuwei brief <role> <item> <name>`, then obtain launch
+instructions with `wuwei runtime dispatch <role> <brief> <worktree>`. With the Claude
+runtime, pass the returned `prompt` unchanged to Agent and use its `agent_type`
+(`wuwei:<role>`) as Agent's `subagent_type`. Supply an Agent description and launch
+from the workspace root, which is the hook payload's `cwd`.
+
+The exact first line is `WUWEI brief: <relative brief path>`. The path is relative
+to the workspace root, for example `.wuwei/days/2026-09-29/briefs/builder-1.md`,
+not relative to the item's worktree. Do not prepend instructions to the prompt.
+The guard still requires the logged, unchanged brief and matching role, fresh
+evidence and available capacity; a missing first line is refused with the required format.
+
+The core function `wuwei.brief.launch_prompt` generates these instructions for all
+Claude roles. `wuwei runtime continue <job-json> <feedback>` preserves the reference
+and includes feedback for the same seat. It does not authorize a second launch
+with a consumed brief. `wuwei steward run --trigger close` returns the same contract
+inside `steward_launch`, through the configured runtime adapter. Use these generated
+instructions for lead, builder, sentinel, shepherd and steward seats.
+
 ## Memory
 
 `wuwei init` creates `.wuwei/memory/` with a spine, index and changelog. Day records live under `.wuwei/days/`. Settled facts belong in notes; procedure belongs in charters. The CLI provides `note`, `index`, `consolidate`, `payload` and `promote` commands. The owner edits goals and voice; seats propose changes for promotion. The index is generated and notes are bounded by configuration defaults.
