@@ -527,7 +527,7 @@ flag, touching never-auto paths (4.6), or not fitting CAP and the budget goes to
   joins the next decision batch.
 - `strict` (default): a candidate starts when it serves a confirmed goal, is on the SLICE
   track, and ranks above the cut line of the approved queue.
-- `goal`: a candidate starts when it serves a confirmed goal, on either track.
+- `goal`: a candidate starts when it serves a confirmed goal and is on the SLICE track.
 
 Anything that does not start joins the next decision batch as a proposed item.
 

@@ -20,6 +20,8 @@ def register(subparsers):
     approve.add_argument('--items', nargs='*', required=True)
     approve.add_argument('--goals-confirmed', action='store_true')
     approve.add_argument('--import-yesterday', action='store_true')
+    add = actions.add_parser('add', help='Admit a discovered item after the morning gate')
+    add.add_argument('item')
     parser.set_defaults(func=run)
 
 
@@ -42,6 +44,8 @@ def run(args):
         elif args.action == 'propose':
             source = sys.stdin.read() if str(args.input) == '-' else args.input.read_text(encoding='utf-8')
             print(plan.propose(json.loads(source)))
+        elif args.action == 'add':
+            print(json.dumps(plan.add(args.item)))
         else:
             plan.approve(args.items, goals_confirmed=args.goals_confirmed,
                          import_yesterday=args.import_yesterday)

@@ -49,15 +49,17 @@ def start_decision(item, config, confirmed_goals, *, within_budget, above_cut):
     if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
         raise ValueError('invalid candidate paths')
     never_auto = [pattern for repo in config['repos'] for pattern in repo['merge']['never_auto_paths']]
-    if (mode == 'off' or item.get('goal') not in confirmed_goals or
+    if (item.get('goal') not in confirmed_goals or
             any(flags.values()) or not within_budget or
             any(fnmatchcase('/'.join(path.split('/')[i:]), pattern)
                 for path in paths for i in range(len(path.split('/'))) for pattern in never_auto)):
         return 'owner'
-    if mode == 'strict' and (item.get('track') != 'SLICE' or not above_cut):
-        return 'owner'
     if item.get('track') not in ('SLICE', 'FULL'):
         raise ValueError('invalid candidate track')
+    if mode == 'off':
+        return 'tomorrow'
+    if item.get('track') != 'SLICE' or mode == 'strict' and not above_cut:
+        return 'owner'
     return 'start'
 
 
@@ -202,3 +204,50 @@ def when_seat_frees(root=None, *, queue_size):
     if queue_size < workspace.load_config(root)['discovery']['min_queue']:
         return discover(root)
     return None
+
+
+def intake(root=None, *, trigger, found=None):
+    """Persist discovery evidence, then apply the same gate as plan add."""
+    if trigger not in ('sweep', 'seat-free'):
+        raise ValueError('unknown discovery trigger')
+    root = workspace.find_workspace(root)
+    found = discover(root) if found is None else found
+    if not isinstance(found, dict) or not isinstance(found.get('candidates'), list):
+        raise ValueError('invalid discovery result')
+    candidates = {}
+    for row in found['candidates']:
+        if not isinstance(row, dict) or not isinstance(row.get('id'), str):
+            raise ValueError('invalid discovery candidate')
+        candidates[row['id']] = row
+
+    def save(data):
+        data.setdefault('discovery_candidates', {}).update(candidates)
+    state._write_state(save, root, reserved=False, kind='discovery.intake',
+                       payload={'trigger': trigger, 'items': sorted(candidates)})
+    result = {'started': [], 'owner': [], 'tomorrow': []}
+    day = state.read_state(root)
+    if not day['gate_approved']:
+        return result
+    from wuwei import plan
+    for item in candidates:
+        if item in day['items'] or item in day.get('intraday_proposals', {}):
+            continue
+        try:
+            action = plan.add(item, root)['action']
+        except ValueError as exc:
+            def propose(data):
+                data.setdefault('intraday_proposals', {})[item] = {
+                    'decision': 'owner', 'candidate': candidates[item], 'reason': str(exc)}
+            state._write_state(propose, root, reserved=False, kind='plan.proposed',
+                               payload={'item': item, 'decision': 'owner', 'reason': str(exc)})
+            action = 'owner'
+        if action == 'build next':
+            from wuwei.commands import build
+            try:
+                build.next_action(item, root=root)
+            except ValueError as exc:
+                if str(exc) != 'no logged builder brief for item':
+                    raise
+                state.append_event('build.requested', {'item': item}, root)
+        result['started' if action == 'build next' else action].append(item)
+    return result

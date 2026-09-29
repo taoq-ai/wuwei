@@ -79,6 +79,18 @@ def propose(data, root=None):
     goals_text = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
     goal_list = goals.parse(goals_text)
     found = discovery.discover(root)
+    day = workspace.day_dir(root)
+    prior = sorted((path for path in (root / '.wuwei/days').glob('*')
+                    if path.is_dir() and re.fullmatch(r'\d{4}-\d{2}-\d{2}', path.name)
+                    and path.name < day.name), reverse=True)
+    carried = []
+    if prior:
+        earlier = state.read_state(directory=prior[0])
+        carried = [proposal['candidate'] for proposal in
+                   earlier.get('intraday_proposals', {}).values()
+                   if proposal.get('decision') == 'tomorrow']
+    discovered_ids = {row['id'] for row in found['candidates']}
+    found['candidates'].extend(row for row in carried if row['id'] not in discovered_ids)
     data = {**data, 'sweep': {**data.get('sweep', {}),
             **{f'discovery.{key}': value for key, value in found['sources'].items()}},
             'discovered': found['candidates']}
@@ -125,9 +137,10 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
     proposal_path = directory / 'proposal.json'
     if proposal_path.is_symlink() or (directory / 'plan.md').is_symlink():
         raise ValueError('plan files must not be symlinks')
+    framework = workspace.load_config(root)['prioritisation']['framework']
     data = _proposal(json.loads(proposal_path.read_text(encoding='utf-8')),
                      (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8'),
-                     workspace.load_config(root)['prioritisation']['framework'])
+                     framework)
     if not isinstance(items, list) or len(items) != len(set(items)):
         raise ValueError('approved items must be a unique list')
     candidates = {item['id']: item for item in data['candidates']}
@@ -157,7 +170,9 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
         current['items'].update(imported)
         current['items'].update({name: {'goal': candidates[name].get('goal', 'unplanned'),
                                        'track': candidates[name]['track'],
-                                       'flags': candidates[name]['flags']}
+                                       'flags': candidates[name]['flags'],
+                                       'budget_size': candidates[name]['score'][
+                                           'job_size' if framework == 'wsjf' else 'effort']}
                                  for name in items})
         current.update(cap=data['cap'], seat_policy=data['seat_policy'],
                        envelope=data['envelope'], goals=data['goals'],
@@ -168,3 +183,62 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
                               payload={'items': sorted(imported) if import_yesterday else items,
                                        'approved_items': items,
                                        'flags': {name: candidates[name]['flags'] for name in items}})
+
+
+def add(item, root=None):
+    """Apply the intraday policy to one discovered candidate after the gate."""
+    root = workspace.find_workspace(root)
+    day = state.read_state(root)
+    if not day['gate_approved']:
+        raise state.StateError('morning gate has not been approved')
+    candidate = day.get('discovery_candidates', {}).get(item)
+    if candidate is None:
+        raise state.StateError(f'unknown discovery candidate {item}')
+    config = workspace.load_config(root)
+    goals_text = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
+    _proposal({'goals': day['goals'], 'cap': day['cap'],
+               'seat_policy': day['seat_policy'], 'envelope': day['envelope'],
+               'sweep': {'discovery': 'measured: candidate'},
+               'candidates': [candidate]}, goals_text,
+              config['prioritisation']['framework'])
+    size_key = 'job_size' if config['prioritisation']['framework'] == 'wsjf' else 'effort'
+    size = candidate['score'][size_key]
+    committed = sum(row.get('budget_size', float('inf')) for row in day['items'].values())
+    within_budget = committed + size <= day['envelope']['net_build_hours']
+    running = sum(seat.get('status') == 'running' and seat.get('role') == 'builder'
+                  for seat in day['seats'].values())
+    within_cap = running < day['cap']
+    above_cut = True
+    if config['discovery']['autostart'] == 'strict' and day['approved_items']:
+        proposal_path = workspace.day_dir(root) / 'proposal.json'
+        if proposal_path.is_symlink():
+            raise ValueError('proposal.json must not be a symlink')
+        proposal = json.loads(proposal_path.read_text(encoding='utf-8'))
+        approved = [row for row in proposal['candidates']
+                    if row['id'] in day['approved_items']]
+        if approved:
+            ordered = rank.rank([*approved, candidate], config['prioritisation']['framework'],
+                                goals.parse(goals_text))
+            above_cut = [row['id'] for row in ordered].index(item) < len(approved)
+    decision = discovery.start_decision(candidate, config, set(day['goals']),
+                                        within_budget=within_budget and within_cap,
+                                        above_cut=above_cut)
+    if decision != 'start':
+        def propose(current):
+            if item in current['items']:
+                raise state.StateError(f'item {item} is already in the plan')
+            current.setdefault('intraday_proposals', {})[item] = {
+                'decision': decision, 'candidate': candidate}
+        state._write_state(propose, root, reserved=False, kind='plan.proposed',
+                           payload={'item': item, 'decision': decision})
+        return {'action': decision, 'item': item}
+
+    def admit(current):
+        if item in current['items']:
+            raise state.StateError(f'item {item} is already in the plan')
+        current['items'][item] = {'goal': candidate['goal'], 'track': candidate['track'],
+                                  'flags': candidate['flags'], 'budget_size': size}
+        current['approved_items'].append(item)
+    state._write_state(admit, root, reserved=False, kind='plan.added',
+                       payload={'item': item})
+    return {'action': 'build next', 'item': item}

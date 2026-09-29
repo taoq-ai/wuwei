@@ -381,11 +381,36 @@ def test_builder_stop_reports_unmeasured_discovery(launch, monkeypatch):
     code, reason = agent_launch.stop({
         'cwd': str(day[0]), 'agent_type': 'builder',
         'agent_transcript_path': str(transcript)})
-    assert (code, reason) == (0, '')
+    assert (code, reason) == (2, 'discovery unmeasured: unreadable queue')
     assert state.read_state(day[0])['seats']['gate']['status'] == 'stopped'
     event = json.loads((day[1] / 'events.jsonl').read_text().splitlines()[-1])
     assert event['kind'] == 'discovery.unmeasured'
     assert 'unreadable queue' in event['payload']['reason']
+
+
+def test_builder_stop_retry_does_not_repeat_discovery_failure(launch, monkeypatch):
+    from wuwei.guards import agent_launch
+    from wuwei import dispatch
+    day, payload = launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    assert check(payload) == (0, '')
+    state._write_state(lambda data: data['seats']['gate'].update(role='builder'),
+                       day[0], reserved=False)
+    transcript = day[0] / 'builder.jsonl'
+    transcript.write_text(json.dumps({'type': 'user', 'message': {
+        'content': payload['tool_input']['prompt']}}) + '\n')
+    calls = []
+    def failing_discovery(trigger, root):
+        calls.append(trigger)
+        raise OSError('tracker down')
+    monkeypatch.setattr(dispatch, 'discovery', failing_discovery)
+    stop = {'cwd': str(day[0]), 'agent_type': 'builder',
+            'agent_transcript_path': str(transcript)}
+    assert agent_launch.stop(stop) == (2, 'discovery unmeasured: tracker down')
+    assert agent_launch.stop({**stop, 'stop_hook_active': True}) == (0, '')
+    assert calls == ['seat-free']
+    events = [json.loads(line) for line in (day[1] / 'events.jsonl').read_text().splitlines()]
+    assert sum(event['kind'] == 'discovery.unmeasured' for event in events) == 1
 
 
 def test_head_rechecked_after_memory_probe(launch, monkeypatch):

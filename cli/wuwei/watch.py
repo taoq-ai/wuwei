@@ -161,6 +161,7 @@ def sweep(root=None, *, watch_health=None):
     _, activity_counts = activity(root)
     counts['stale_owed'] = len(activity_counts['stale'])
     counts['unreadable'] += activity_counts['unreadable']
+    found = {'sources': {}, 'candidates': []}
     try:
         found = discovery.discover(root)
         counts.update({f'discovery.{key}': value for key, value in found['sources'].items()})
@@ -180,7 +181,13 @@ def sweep(root=None, *, watch_health=None):
         'reply_owed', 'visibility_owed', 'stale_owed', 'watch_dead', 'scanner_owed', 'unreadable', 'integrity_owed'))
     counts['exit'] = 2 if counts['unreadable'] else int(counts['owed'] > 0)
     from wuwei import dispatch
-    dispatch.discovery('sweep', root)
+    try:
+        dispatch.discovery('sweep', root, found)
+    except ERRORS as exc:
+        counts['unreadable'] += 1
+        counts['owed'] += 1
+        counts['exit'] = 2
+        print(f'watch discovery intake unmeasured: {exc}', flush=True)
     from wuwei import steward
     try:
         prior = saved(root).get('steward_at')

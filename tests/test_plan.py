@@ -60,6 +60,16 @@ def test_approve_selected_items_and_reserve_gate_fields(root):
     assert not list(root.glob('**/.git'))
 
 
+def test_intraday_budget_counts_morning_rank_size(root):
+    plan.propose(proposal(), root)
+    plan.approve(['A'], root, goals_confirmed=True)
+    candidate = {**proposal()['candidates'][0], 'id': 'B', 'paths': ['src/file.py']}
+    candidate['score'] = {**candidate['score'], 'job_size': 5}
+    state._write_state(lambda day: day.setdefault('discovery_candidates', {}).update(B=candidate),
+                       root, reserved=False)
+    assert plan.add('B', root)['action'] == 'owner'
+
+
 def test_import_requires_explicit_approval(root):
     yesterday = root / '.wuwei/days/2026-09-27'
     yesterday.mkdir(parents=True)

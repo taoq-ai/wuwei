@@ -195,7 +195,7 @@ def receive(item, role, name, round_name='initial', root=None):
     return value
 
 
-def discovery(trigger, root=None):
+def discovery(trigger, root=None, found=None):
     """Emit a discovery wake; ranking and starts belong to discovery policy."""
     if trigger not in ('sweep', 'seat-free'):
         raise Refused('unknown discovery trigger')
@@ -207,4 +207,6 @@ def discovery(trigger, root=None):
     needed = trigger == 'sweep' or queued < config['discovery']['min_queue']
     if needed:
         state.append_event('discovery.requested', {'trigger': trigger, 'queued': queued}, root)
+        from wuwei import discovery as discovery_module
+        discovery_module.intake(root, trigger=trigger, found=found)
     return {'action': 'discover' if needed else 'none'}
