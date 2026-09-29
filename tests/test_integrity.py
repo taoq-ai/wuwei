@@ -393,7 +393,7 @@ def test_promotion_commits_only_landed_targets(tmp_path, monkeypatch):
         workspace_commit=lambda repo, paths, **kw: calls.append(paths) or registry.Result(0)))
     records = promotion.promote(tmp_path)
     assert records[0]['status'] == 'landed'
-    assert calls == [['charters/builder.md', 'memory/ledger.jsonl']]
+    assert calls == [['charters/builder.md', 'memory/CHANGELOG.md', 'memory/ledger.jsonl']]
 
 
 def test_promotion_vcs_failure_is_unmeasured(tmp_path, monkeypatch):

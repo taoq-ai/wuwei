@@ -61,6 +61,10 @@ def _ensure_clean(root, target):
         raise ValueError('target has unpromoted changes; owner must review workspace history')
 
 
+def _changelog(root):
+    return safe_path(root, workspace.load_config(root)['retro']['changelog'], label='changelog')
+
+
 def _apply(root, proposal):
     raw = proposal.get('target')
     target = _target(root, raw)
@@ -75,7 +79,12 @@ def _apply(root, proposal):
         raise ValueError('evidence does not exist')
     if target.parent == root / '.wuwei/memory/notes' and action == 'add':
         raise ValueError('new notes require wuwei note add')
-    old = target.read_text(encoding='utf-8') if target.exists() else ''
+    if target.exists():
+        old = target.read_text(encoding='utf-8')
+    elif target.parent == root / '.wuwei/charters':
+        old = (Path(__file__).resolve().parents[2] / 'charters' / target.name).read_text(encoding='utf-8')
+    else:
+        old = ''
     if action != 'add' and not target.is_file():
         raise ValueError('target does not exist')
     if action in ('add', 'patch'):
@@ -99,6 +108,8 @@ def _apply(root, proposal):
             from wuwei.voice import parse_profile
             parse_profile(updated)
         _ensure_clean(root, target)
+        if target.parent == root / '.wuwei/charters':
+            _ensure_clean(root, _changelog(root))
         target.parent.mkdir(parents=True, exist_ok=True)
         workspace.atomic_write(target, updated)
     else:
@@ -169,6 +180,14 @@ def promote(root=None):
         records.append(record)
         if status == 'landed':
             vcs = registry.load('vcs', workspace.load_config(root))
+            charter = [p for p in changed if p.parent == root / '.wuwei/charters']
+            if charter:
+                changelog = _changelog(root)
+                prior = changelog.read_text(encoding='utf-8') if changelog.exists() else ''
+                line = f"- {day} {', '.join(p.name for p in charter)}: {reason}\n"
+                changelog.parent.mkdir(parents=True, exist_ok=True)
+                workspace.atomic_write(changelog, prior + line)
+                changed.append(changelog)
             paths = [p.relative_to(root / '.wuwei').as_posix() for p in [*changed, ledger]]
             result = vcs.workspace_commit(root / '.wuwei', paths, root=root)
             if result.exit:

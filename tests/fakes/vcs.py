@@ -56,3 +56,6 @@ class Fake(Recorder):
 
     def read_tree(self, repo, ref, paths, root=None):
         return self._call('read_tree', (repo, ref, paths), root)
+
+    def workspace_changes(self, repo, root=None):
+        return self._call('workspace_changes', (repo,), root)

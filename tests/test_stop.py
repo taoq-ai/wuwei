@@ -30,6 +30,7 @@ def module(name):
 @pytest.fixture
 def case(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/.git').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles=["builder"]\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', DAY + 'T12:00:00+00:00')
@@ -46,12 +47,13 @@ def case(tmp_path, monkeypatch):
     host.results['reviews'] = Result(0, [])
     host.results['threads'] = Result(0, {'comments': [], 'threads': []})
     host.results['checks'] = Result(0, [])
-    vcs.results['changes_on'] = Result(0, [CHARTER, CHANGELOG])
+    vcs.results['changes_on'] = Result(0, ['charters/builder.md', 'memory/CHANGELOG.md'])
     (tmp_path / CHANGELOG).parent.mkdir(parents=True)
     (tmp_path / CHANGELOG).write_text('- (2026-09-01) Keep tests.\n')
     # HEAD contains the committed charter and changelog.
-    vcs.results['read_tree'] = Result(0, {CHARTER: '- (2026-09-01) Keep tests.\n',
-        CHANGELOG: '- ' + DAY + ' builder changed\n- (2026-09-01) Keep tests.\n'})
+    vcs.results['read_tree'] = Result(0, {'charters/builder.md': '- (2026-09-01) Keep tests.\n',
+        'memory/CHANGELOG.md': '- ' + DAY + ' builder changed\n- (2026-09-01) Keep tests.\n'})
+    vcs.results['workspace_changes'] = Result(0, [])
     runtime = SimpleNamespace(dispatch=lambda *args, **kwargs: Result(0, {'agent_type': 'wuwei:steward'}))
     monkeypatch.setattr(registry, 'load', lambda kind, config: {'code_host': host, 'vcs': vcs,
                                                                'runtime': runtime}[kind])
@@ -103,9 +105,9 @@ def test_retro_table(case, change, expected, fragment):
         if change in ('uncommitted', 'none_bypass'):
             vcs.results['changes_on'] = Result(0, [])
         elif change == 'no_changelog':
-            vcs.results['read_tree'].data[CHANGELOG] = '- 2026-09-27 prior change\n'
+            vcs.results['read_tree'].data['memory/CHANGELOG.md'] = '- 2026-09-27 prior change\n'
         elif change == 'uncommitted_changelog':
-            vcs.results['changes_on'] = Result(0, [CHARTER])
+            vcs.results['changes_on'] = Result(0, ['charters/builder.md'])
         elif change == 'read_error':
             vcs.results['changes_on'] = Result(2, None, 'timeout')
         elif change == 'malformed_paths':
@@ -122,6 +124,35 @@ def test_duplicate_capture_cannot_hide_shortfall(case):
     capture(root)
     capture(root)
     assert module('closing').retro(root)[0] == 1
+
+
+def test_pending_charter_proposal_blocks_retro(case):
+    root, _, _ = case
+    directory = workspace.day_dir(root)
+    (directory / 'proposals').mkdir()
+    (directory / 'proposals/one.json').write_text(json.dumps({
+        'target': CHARTER, 'action': 'add', 'text': '- Check tests.',
+        'reason': 'gap', 'evidence': '.wuwei/days/' + DAY + '/retro/note.json'}))
+    code, reason = module('closing').retro(root)
+    assert code == 1 and 'promote' in reason
+
+
+def test_landed_charter_omitted_from_retro_blocks(case):
+    root, _, _ = case
+    directory = workspace.day_dir(root)
+    (directory / 'proposals').mkdir()
+    (directory / 'proposals/one.landed').write_text(json.dumps({'target': CHARTER}))
+    code, reason = module('closing').retro(root)
+    assert code == 1 and 'Applied' in reason
+
+
+def test_rejected_charter_proposal_without_landing_blocks(case):
+    root, _, _ = case
+    directory = workspace.day_dir(root)
+    (directory / 'proposals').mkdir()
+    (directory / 'proposals/one.rejected').write_text(json.dumps({'target': CHARTER}))
+    code, reason = module('closing').retro(root)
+    assert code == 1 and 'rejected' in reason
 
 
 def test_close_without_amendments_needs_no_git_repository(case, monkeypatch):

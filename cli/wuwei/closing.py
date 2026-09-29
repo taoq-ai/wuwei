@@ -20,7 +20,7 @@ def _settings(root):
         if (path.is_absolute() or '..' in path.parts or raw.startswith(('-', ':'))
                 or any(c in raw for c in '*?[]\n\r\0')):
             raise ValueError('retro paths must be literal repository-relative paths')
-    return settings, registry.load('vcs', config), str((root / settings['repo']).resolve())
+    return settings, registry.load('vcs', config), str((root / '.wuwei').resolve())
 
 
 def _tree(vcs, repo, ref, paths, root):
@@ -79,27 +79,60 @@ def retro(root):
         paths = sorted(set(re.findall(r'(?<![\w./-])([\w./-]+\.md)\b', applied_text)))
         if 'Applied' in sections and not paths and applied_text.lower() != 'none':
             findings.append('OWED: Applied must list charter paths or exactly none')
+        proposal_dir = directory / 'proposals'
+        if proposal_dir.is_symlink():
+            raise ValueError('proposals directory must not be a symlink')
+        if proposal_dir.exists() and any(proposal_dir.glob('*.json')):
+            findings.append('OWED: retro proposals await wuwei promote')
+        if proposal_dir.exists():
+            landed = set()
+            for proposal in proposal_dir.glob('*.landed'):
+                if proposal.is_symlink():
+                    raise ValueError('landed proposal must not be a symlink')
+                record = json.loads(proposal.read_text(encoding='utf-8'))
+                target = record.get('target')
+                if not isinstance(target, str):
+                    raise ValueError('invalid landed proposal target')
+                landed.add(target)
+                if target.startswith('.wuwei/charters/') and target not in paths:
+                    findings.append(f'OWED: Applied omits promoted charter {target}')
+            for proposal in proposal_dir.glob('*.rejected'):
+                if proposal.is_symlink():
+                    raise ValueError('rejected proposal must not be a symlink')
+                record = json.loads(proposal.read_text(encoding='utf-8'))
+                target = record.get('target')
+                if not isinstance(target, str):
+                    raise ValueError('invalid rejected proposal target')
+                if target.startswith('.wuwei/charters/') and target not in landed:
+                    findings.append(f'OWED: rejected charter proposal {target} needs a landed revision')
         if paths:
             settings, vcs, repo = _settings(root)
             for path in paths:
                 if not any(Path(path) == Path(p) or Path(path).is_relative_to(p)
                            for p in settings['charter_paths']) or '..' in Path(path).parts:
                     raise ValueError(f'Applied path outside retro.charter_paths: {path}')
+            local_paths = [str(Path(path).relative_to('.wuwei')) for path in paths]
             changed = obligations._read(vcs.changes_on, repo, day, root=root)
             if not isinstance(changed, list) or any(not isinstance(p, str) for p in changed):
                 raise ValueError('invalid changed paths evidence')
-            for path in paths:
+            for path in local_paths:
                 if path not in changed:
                     findings.append(f'OWED: retro says {path} was amended but no commit today touches it')
-            changelog = settings['changelog']
-            tree = _tree(vcs, repo, 'HEAD', [*paths, changelog], root)
-            for path in paths:
+            changelog = str(Path(settings['changelog']).relative_to('.wuwei'))
+            tree = _tree(vcs, repo, 'HEAD', [*local_paths, changelog], root)
+            for path in local_paths:
                 if path not in tree:
                     findings.append(f'OWED: applied charter {path} absent from committed HEAD')
             if changelog not in changed:
                 findings.append('OWED: no commit today touches the changelog')
             if not re.search(r'^- ' + re.escape(day) + r'(?:\s|$)', tree.get(changelog, ''), re.M):
                 findings.append(f'OWED: changelog has no committed line dated {day}')
+            integrity = obligations._read(vcs.workspace_changes, repo, root=root)
+            if not isinstance(integrity, list) or any(not isinstance(p, str) for p in integrity):
+                raise ValueError('invalid workspace history evidence')
+            for path in [*local_paths, changelog]:
+                if path in integrity:
+                    findings.append(f'OWED: {path} has unpromoted changes or history')
         notes = _notes(root, directory)
         if not notes:
             findings.append('OWED: collected retro notes are empty')
