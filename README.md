@@ -55,4 +55,19 @@ Run the test suite with Python 3.11 or newer and pytest:
 python3 -m pytest -q
 ```
 
+Skill routing cases under `evals/` are checked for structure by pytest without network
+access. To measure the live triggering rate, install Claude Code, set
+`ANTHROPIC_API_KEY` in your environment, then run:
+
+```sh
+claude plugin eval . --trust-plugin --ablation none --threshold 0.9 --json skill-evals.json
+```
+
+The runner exits 1 if any case scores below 0.9 (default 3 runs per case, so
+each case must pass every run), and 2 if authentication or a cost limit prevents
+a complete run. The `skill-evals` CI job runs on pushes to
+main when the key is configured. The repository owner must add
+`ANTHROPIC_API_KEY` as a GitHub Actions secret; until then the job prints a
+skip message.
+
 See the [design](docs/specs/2026-09-24-wuwei-design.md) and [NOTICE](NOTICE).
