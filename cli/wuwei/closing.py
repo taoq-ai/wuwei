@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import re
 
-from wuwei import obligations, registry, verdict, watch, workspace
+from wuwei import decision, obligations, registry, state, verdict, watch, workspace
 from wuwei.promotion import safe_path
 
 
@@ -147,10 +147,86 @@ def retro(root):
         return 2, '\n'.join([*findings, f'retro unmeasured: {exc}'])
 
 
+def unresolved(root, rows):
+    """Account for approved items, owner decisions and pushed item branches."""
+    findings, code = [], 0
+
+    def unmeasured(label, exc):
+        nonlocal code
+        code = 2
+        findings.append(f'{label} unmeasured: {exc}')
+
+    try:
+        data = state.read_state(root)
+        config = workspace.load_config(root)
+        outcomes = data.get('decision_outcomes', {})
+        routes = data.get('decision_routes', {})
+        if not isinstance(outcomes, dict) or not isinstance(routes, dict):
+            raise ValueError('invalid decision ledger')
+        prs = {row['pr']: row for row in rows if row['exit'] != 2 and 'pr' in row}
+        resolved = {data['pr_dispositions'][ref]['decision'] for ref, row in prs.items()
+                    if row.get('disposition') in ('parked', 'carried')}
+        dispositions = set()
+        directory = workspace.day_dir(root) / 'decisions'
+        identifiers = outcomes.keys() | routes.keys()
+        try:
+            if directory.is_symlink():
+                raise ValueError('decisions directory must belong to today')
+            if directory.exists():
+                identifiers |= {p.stem for p in directory.iterdir()
+                                if p.name.startswith('D-') and p.suffix == '.md'}
+        except watch.ERRORS as exc:
+            unmeasured('decisions', exc)
+        for identifier in sorted(identifiers):
+            try:
+                fields, _ = decision.evaluate(decision.today_path(identifier, root).read_text(encoding='utf-8'))
+                if identifier in routes or decision.route(fields) == 'owner':
+                    if identifier not in resolved:
+                        findings.append(f'{identifier}: pending owner decision: {fields["Question"]}')
+                elif identifier in outcomes:
+                    record = outcomes[identifier]
+                    if (fields['Decided-by'] == record['decided_by'] == 'seat'
+                            and record.get('item_disposition') == fields['Outcome']):
+                        dispositions.add(fields['Outcome'])
+            except watch.ERRORS as exc:
+                unmeasured(identifier, exc)
+        owned = data['raised_prs'] + data['claimed_prs']
+        for name in data['approved_items']:
+            try:
+                item = data['items'][name]
+                ref = item.get('pr')
+                pr = prs.get(ref, {})
+                if (pr.get('state') != 'merged'
+                        and pr.get('disposition') not in ('parked', 'carried')
+                        and not {f'parked {name}', f'carried {name}'} & dispositions):
+                    findings.append(f'{name}: approved item is {item["status"]}/{item["phase"]}; '
+                                    'needs a park or carry decision')
+                tree = item.get('worktree')
+                if tree is not None and ref not in owned:
+                    if not isinstance(tree, str) or not tree:
+                        raise ValueError('invalid item worktree')
+                    vcs = registry.load('vcs', config)
+                    path = str((root / tree).resolve())
+                    branch = obligations._read(vcs.branch, path, root=root)['name']
+                    pushed = obligations._read(vcs.pushed_branches, path, root=root)
+                    if (not isinstance(branch, str) or not branch
+                            or not isinstance(pushed, list)
+                            or any(not isinstance(b, str) or not b for b in pushed)):
+                        raise ValueError('invalid pushed branch evidence')
+                    if branch in pushed:
+                        findings.append(f'{name}: pushed branch {branch} has no raised or claimed PR')
+            except watch.ERRORS as exc:
+                unmeasured(f'item {name}', exc)
+    except watch.ERRORS as exc:
+        unmeasured('day work', exc)
+    return max(code, int(bool(findings))), '\n'.join(findings)
+
+
 def check(root):
     """Recheck all closing conditions, retaining findings even when another read fails."""
     from wuwei import pr_actions
-    results = [pr_actions.check(root)]
+    _, rows = pr_actions.evaluate(root)
+    results = [pr_actions.check(root, rows=rows), unresolved(root, rows)]
     output = io.StringIO()
     try:
         with redirect_stdout(output):
@@ -158,6 +234,6 @@ def check(root):
         results.append((counts['exit'], output.getvalue().strip()))
     except watch.ERRORS as exc:
         results.append((2, f'obligations unmeasured: {exc}'))
-    results.extend([retro(root), pr_actions.check(root, closing=True)])
+    results.extend([retro(root), pr_actions.check(root, closing=True, rows=rows)])
     return max(code for code, _ in results), '\n'.join(dict.fromkeys(
         message for code, message in results if code and message))

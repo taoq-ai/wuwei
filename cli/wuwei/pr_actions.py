@@ -47,9 +47,10 @@ def record_disposition(root, ref, kind, identifier, comment_id):
     return 0
 
 
-def check(root, *, closing=False):
+def check(root, *, closing=False, rows=None):
     """Stop checks fresh states, enforcing only overdue actions and day close."""
-    _, rows = evaluate(root)
+    if rows is None:
+        _, rows = evaluate(root)
     findings, code = [], 0
     for row in rows:
         if row['exit'] == 2:
@@ -129,7 +130,7 @@ def observe(root, host, ref, config, measured):
     if not isinstance(dispositions, dict):
         raise ValueError('invalid PR disposition ledger')
     disposition = (_verify(root, host, ref, dispositions[ref], config)
-                   if ref in dispositions and current != 'merged' else None)
+                   if ref in dispositions else None)
     row = {'pr': ref, 'state': current, 'disposition': disposition, 'parked': disposition == 'parked'}
     now = workspace.now()
     event = {'pr': ref, 'tier': 'silent'}

@@ -302,11 +302,12 @@ def _park(root, item, record, reason, expected):
         'Recommendation: defer\nConfidence: high\nReversibility: two-way\n'
         'Blast radius: own branch\nPre-mortem: Repeated failures consume the remaining budget.\n'
         'Revisit: After investigating the failure and revising the brief.\n'
-        'Decided-by: seat\nOutcome: parked\n')
+        f'Decided-by: seat\nOutcome: parked {item}\n')
     def update(data):
         if data['builds'][item] != expected:
             raise ValueError('build changed before parking')
         path = decision.write(text, root)
+        data.setdefault('decision_outcomes', {})[path.stem] = decision.seat_outcome(*decision.evaluate(text))
         record.update(status='parked', action={'action': 'park', 'reason': reason,
                                                'decision': str(path.relative_to(root))})
         data['builds'][item] = record

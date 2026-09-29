@@ -46,6 +46,7 @@ CALLS = [
     ('vcs', 'changes_on', ('repo', 'day'), True),
     ('vcs', 'read_tree', ('repo', 'ref', 'paths'), True),
     ('vcs', 'branches', ('repo', 'pattern'), True),
+    ('vcs', 'pushed_branches', ('repo',), True),
     ('vcs', 'authorship', ('repo', 'branch', 'paths', 'days'), True),
     ('vcs', 'branch', ('repo',), True),
     ('vcs', 'commit_context', ('repo', 'settings', 'env'), True),

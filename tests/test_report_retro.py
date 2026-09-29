@@ -135,7 +135,7 @@ def test_promotion_changelog_and_real_stop(tmp_path, monkeypatch):
     assert '- 2026-09-29 ' in (base / 'memory/CHANGELOG.md').read_text()
     monkeypatch.setattr('wuwei.closing.obligations.evaluate', lambda root: {'exit': 0})
     from wuwei import pr_actions
-    monkeypatch.setattr(pr_actions, 'check', lambda root, closing=False: (0, ''))
+    monkeypatch.setattr(pr_actions, 'check', lambda root, closing=False, rows=None: (0, ''))
     assert stop_check({'cwd': str(root), 'session_id': 'planner',
                        'stop_hook_active': False}) == (0, '')
 

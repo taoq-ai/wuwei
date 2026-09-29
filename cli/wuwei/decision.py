@@ -180,6 +180,16 @@ def route(fields):
             and fields['Blast radius'] in ('own branch', 'own PR') else 'owner')
 
 
+def seat_outcome(fields, scores):
+    """Snapshot a validated seat decision, including any explicit item disposition."""
+    if route(fields) != 'seat' or fields['Decided-by'] != 'seat':
+        raise ValueError('Decided-by must be seat for a seat-routed decision')
+    return {'option': fields['Recommendation'], 'score': scores[fields['Recommendation']],
+            'decided_by': 'seat', 'outcome': fields['Recommendation'],
+            'reversibility': fields['Reversibility'], 'blast_radius': fields['Blast radius'],
+            'item_disposition': fields['Outcome']}
+
+
 def write(text, root):
     """Validate and allocate a numbered decision without replacing an existing record."""
     evaluate(text)

@@ -128,7 +128,7 @@ lead_login = "lead"
         assert result.exit == 0, result.reason
         initial = self.head
         vcs = VCS()
-        for name in ('head', 'status', 'diff_stat', 'branches', 'branch'):
+        for name in ('head', 'status', 'diff_stat', 'branches', 'branch', 'pushed_branches'):
             setattr(vcs, name, getattr(git, name))
         identity = {'name': 'Builder', 'email': 'builder@example.test'}
         vcs.results['identity'] = Result(0, {**identity, 'author': identity, 'committer': identity})

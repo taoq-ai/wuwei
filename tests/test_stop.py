@@ -560,3 +560,192 @@ def test_stop_registration_does_not_parse_bash(case, command, monkeypatch):
         'hook_event_name': 'PreToolUse', 'tool_name': 'Bash',
         'tool_input': {'command': command}, 'tool_use_id': 'call'})))
     assert main(['hook', 'PreToolUse']) == 0
+
+
+def approved(root, **item):
+    state._write_state(lambda data: data.update(items={'A': item}, approved_items=['A']),
+                       root, reserved=False)
+
+
+def seat_disposition(root, monkeypatch, outcome='parked A', recorded=True):
+    from test_decision import VALID
+    path = workspace.day_dir(root) / 'decisions/D-1.md'
+    path.write_text(VALID.replace('Outcome: pending', 'Outcome: ' + outcome))
+    monkeypatch.chdir(root)
+    if recorded:
+        assert main(['decision', 'route', 'D-1']) == 0
+    return path
+
+
+@pytest.mark.parametrize('mode,expected', [
+    ('open', 1), ('blocked', 1), ('phase_only', 1), ('done_only', 1),
+    ('merged', 1), ('parked', 0), ('carried', 0), ('unrecorded', 1),
+    ('other_item', 1), ('invalid_decision', 2), ('missing_decision', 2),
+])
+def test_close_approved_item_table(case, monkeypatch, capsys, mode, expected):
+    root, _, _ = case
+    approved(root)
+    if mode in ('blocked', 'phase_only', 'done_only', 'merged'):
+        data = state.read_state(root)
+        data['items']['A'].update(
+            status='done' if mode == 'done_only' else 'blocked',
+            phase={'phase_only': 'parked', 'merged': 'merged'}.get(mode, 'planned'))
+        if mode == 'phase_only':
+            data['items']['A']['resume_phase'] = 'planned'
+        workspace.atomic_write(workspace.day_dir(root) / 'state.json', json.dumps(data))
+    elif mode not in ('open',):
+        path = seat_disposition(root, monkeypatch,
+            outcome='carried A' if mode == 'carried' else 'parked B' if mode == 'other_item' else 'parked A',
+            recorded=mode != 'unrecorded')
+        if mode == 'invalid_decision':
+            path.write_text('Outcome: parked A\n')
+        elif mode == 'missing_decision':
+            path.unlink()
+    monkeypatch.chdir(root)
+    assert main(['close']) == expected
+    if expected:
+        assert 'A' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('retry', [False, True])
+@pytest.mark.parametrize('mode,expected', [
+    ('pending', 1), ('forged_outcome', 1), ('forged_route', 1),
+    ('malformed', 2), ('symlink', 2), ('missing', 2), ('seat', 0),
+])
+def test_close_owner_decision_table(case, monkeypatch, retry, mode, expected):
+    from test_decision import VALID
+    root, _, _ = case
+    monkeypatch.chdir(root)
+    path = workspace.day_dir(root) / 'decisions/D-1.md'
+    owner_text = VALID.replace('Reversibility: two-way', 'Reversibility: one-way').replace(
+        'Decided-by: seat', 'Decided-by: owner')
+    path.write_text(VALID if mode == 'seat' else owner_text)
+    assert main(['decision', 'route', 'D-1']) == 0
+    if mode == 'forged_outcome':
+        path.write_text(owner_text.replace('Outcome: pending', 'Outcome: approved'))
+    elif mode == 'forged_route':
+        path.write_text(VALID.replace('Outcome: pending', 'Outcome: approved'))
+    elif mode == 'malformed':
+        path.write_text('bad')
+    elif mode in ('symlink', 'missing'):
+        path.unlink()
+        if mode == 'symlink':
+            target = root / 'decision.md'
+            target.write_text(owner_text)
+            path.symlink_to(target)
+    state._write_state(lambda data: data.update(close_requested=True,
+                       planner_session_id='planner'), root, reserved=False)
+    code, reason = module('guards/stop').check(payload(root, stop_hook_active=retry))
+    assert code == expected, reason
+    if expected:
+        assert 'D-1' in reason
+
+
+@pytest.mark.parametrize('mode,expected', [
+    ('unpushed', 0), ('pushed', 1), ('unlinked', 1), ('raised', 0), ('claimed', 0),
+    ('read_error', 2), ('error_body', 2), ('branch_error', 2),
+])
+def test_close_pushed_branch_table(case, monkeypatch, mode, expected):
+    root, host, vcs = case
+    approved(root, worktree='repo')
+    seat_disposition(root, monkeypatch)
+    vcs.results['branch'] = Result(0, {'name': 'feature-A'})
+    vcs.results['pushed_branches'] = Result(0, [] if mode == 'unpushed' else ['feature-A'])
+    if mode in ('raised', 'claimed'):
+        state._write_state(lambda data: (data['items']['A'].update(pr=REF),
+            data[mode + '_prs'].append(REF)), root, reserved=False)
+        host.results['pr'].data.update(state='closed', merged=True)
+    elif mode == 'unlinked':
+        state._write_state(lambda data: data['items']['A'].update(pr=REF), root, reserved=False)
+    elif mode == 'read_error':
+        vcs.results['pushed_branches'] = Result(2, reason='timeout')
+    elif mode == 'error_body':
+        vcs.results['pushed_branches'] = Result(0, {'error': 'unavailable'})
+    elif mode == 'branch_error':
+        vcs.results['branch'] = Result(2, reason='detached HEAD')
+    code, reason = module('closing').check(root)
+    assert code == expected, reason
+    if mode in ('pushed', 'unlinked'):
+        assert 'feature-A' in reason and 'A' in reason
+
+
+def test_close_lists_all_offenders_despite_read_error(case, monkeypatch):
+    from test_decision import VALID
+    root, _, vcs = case
+    approved(root, worktree='repo')
+    state._write_state(lambda data: (data['items'].update(B={}), data['approved_items'].append('B')),
+                       root, reserved=False)
+    (workspace.day_dir(root) / 'decisions/D-2.md').write_text(
+        VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
+    vcs.results['branch'] = Result(2, reason='missing git')
+    code, reason = module('closing').check(root)
+    assert code == 2
+    assert all(text in reason for text in ('A', 'B', 'D-2', 'missing git'))
+
+
+def test_editing_recorded_seat_outcome_cannot_park_another_item(case, monkeypatch):
+    root, _, _ = case
+    approved(root)
+    path = seat_disposition(root, monkeypatch, outcome='parked B')
+    path.write_text(path.read_text().replace('parked B', 'parked A'))
+    code, reason = module('closing').check(root)
+    assert code == 1 and 'A' in reason
+
+
+@pytest.mark.parametrize('kind', ['parked', 'carried'])
+def test_linked_verified_disposition_resolves_item_and_owner_decision(case, kind):
+    root, _, _ = case
+    own(root)
+    approved(root, pr=REF)
+    assert disposition(case, kind) == 0
+    _, rows = module('pr_actions').evaluate(root)
+    assert module('closing').unresolved(root, rows) == (0, '')
+
+
+def test_build_park_counts_at_close(case):
+    from wuwei.commands.build import _park
+    root, _, _ = case
+    approved(root)
+    record = {'iteration': 3, 'status': 'check'}
+    state._write_state(lambda data: data.update(builds={'A': record}), root, reserved=False)
+    _park(root, 'A', dict(record), 'same fast-check failure repeated', record)
+    assert state.read_state(root)['builds']['A']['status'] == 'parked'
+    assert module('closing').check(root) == (0, '')
+
+
+def test_merged_phase_requires_actual_merge_evidence(case):
+    root, _, _ = case
+    approved(root)
+    for phase in ('implement', 'gate', 'raised', 'merged'):
+        state.transition('A', phase, root=root)
+    code, reason = module('closing').check(root)
+    assert code == 1 and 'A' in reason
+
+
+def test_invalid_decision_directory_fails_closed_and_retains_items(case):
+    root, _, _ = case
+    approved(root)
+    path = workspace.day_dir(root) / 'decisions'
+    path.rmdir()
+    path.write_text('not a directory')
+    code, reason = module('closing').check(root)
+    assert code == 2 and 'decisions' in reason and 'A' in reason
+
+
+@pytest.mark.parametrize('kind', ['parked', 'carried'])
+def test_merging_keeps_verified_owner_decision_resolved(case, kind):
+    root, host, _ = case
+    own(root)
+    approved(root, pr=REF)
+    assert disposition(case, kind) == 0
+    host.results['pr'].data.update(state='closed', merged=True)
+    assert module('closing').check(root) == (0, '')
+
+
+def test_merged_item_can_close_after_worktree_cleanup(case):
+    root, host, vcs = case
+    own(root)
+    approved(root, pr=REF, worktree='removed-tree')
+    host.results['pr'].data.update(state='closed', merged=True)
+    vcs.results['branch'] = Result(2, reason='worktree no longer exists')
+    assert module('closing').check(root) == (0, '')
