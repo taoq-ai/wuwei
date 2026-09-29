@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 
 from wuwei.guards import Guard
+from wuwei.workspace import worktree_workspace
 
 
 _STATE_HINT = ('State and config files are protected; use the wuwei CLI for state changes. '
@@ -85,7 +86,7 @@ def _protected(value, cwd, root, directories=False):
         if root is not None and root.is_relative_to(path):
             return True
         # ponytail: one level only; a recursive walk hung the hook on rm -rf /. Deeper
-        # containers are caught when the session runs inside the workspace (root above).
+        # containers are caught when the session runs in the workspace or an anchored worktree.
         if (path / '.wuwei').is_dir() or _contains_workspace(path):
             return True
     # Only multiply linked files need a scan; ordinary commands pay no tree walk.
@@ -127,7 +128,7 @@ def _cwd(payload):
 def check_file(payload):
     try:
         cwd = _cwd(payload)
-        root = _workspace(cwd)
+        root = _workspace(cwd) or worktree_workspace(cwd)
         field = 'notebook_path' if payload.get('tool_name') == 'NotebookEdit' else 'file_path'
         if _protected(_input(payload, field), cwd, root):
             return 1, _STATE_HINT
@@ -241,7 +242,7 @@ def _cd_target(command):
 def check_bash(payload):
     try:
         cwd = _cwd(payload)
-        root = _workspace(cwd)
+        root = _workspace(cwd) or worktree_workspace(cwd)
         contain_cwd = root is not None and cwd.is_relative_to(root)
         script = _input(payload, 'command')
         if not isinstance(script, str):
