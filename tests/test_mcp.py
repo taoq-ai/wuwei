@@ -261,6 +261,7 @@ def test_protect_registry_evidence(configured, relative):
 
 
 @pytest.mark.parametrize('command', ['bin/wuwei mcp decide', 'python3 -P -m wuwei mcp decide',
+    'python3 -mwuwei mcp decide',
     'eval "bin/wuwei mcp decide"'])
 def test_owner_command_not_available_to_seats(configured, command):
     from wuwei.guards.protect_state import check_bash

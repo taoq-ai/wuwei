@@ -25,6 +25,11 @@ def _text(value, name):
     return value
 
 
+def _names_wuwei(text):
+    """True when quote-stripped script text names the wuwei CLI, including python -mwuwei."""
+    return bool(re.search(r'\bwuwei\b|-[A-Za-z]*mwuwei\b', text))
+
+
 def _wuwei_action(argv):
     program = Path(argv[0]).name if argv else ''
     if program == 'wuwei':
@@ -263,7 +268,7 @@ def check_bash(payload):
             raise ValueError('missing or invalid command')
         from wuwei.shell import mentions
         owner_action_text = re.sub(r"['\"\\]", '', script)
-        owner_outcome_relevant = (root is not None and re.search(r'\bwuwei\b', owner_action_text)
+        owner_outcome_relevant = (root is not None and _names_wuwei(owner_action_text)
                                   and re.search(r'\bdecision\b', owner_action_text)
                                   and re.search(r'\boutcome\b', owner_action_text))
         owner_edit_relevant = (root is not None
@@ -277,12 +282,11 @@ def check_bash(payload):
             if guard_scope(payload) is not None:
                 return 1, 'Integrity re-confirmation is an owner action on the host, outside agent tools.'
         from wuwei.workspace import guard_scope
-        mcp_relevant = (re.search(r'\bwuwei\b', re.sub(r"['\"\\]", '', script))
+        mcp_relevant = (_names_wuwei(owner_action_text)
                         and mentions(script, ('mcp',)) and guard_scope(payload) is not None)
         drafts_relevant = ((re.search(r'(?i)wuwei|drafts', re.sub(r"['\"\\]", '', script))
                             or "$'" in script)
-                           and (mentions(script, ('wuwei',)) or
-                                re.search(r'-[A-Za-z]*mwuwei\b', re.sub(r"['\"\\]", '', script)))
+                           and _names_wuwei(owner_action_text)
                            and mentions(script, ('drafts',))
                            and guard_scope(payload) is not None)
         from wuwei.shell import NonliteralPathError, ParseError, normalize
@@ -302,6 +306,8 @@ def check_bash(payload):
                 action = _wuwei_action(command.argv)
                 if action is None:
                     return 2, 'Opaque owner decision action; use the host terminal.'
+                if action[:1] == ['decision'] and any('$' in arg or '`' in arg for arg in action[1:2]):
+                    return 2, 'Decision action is not a literal list; use the host terminal.'
                 if action[:2] == ['decision', 'outcome']:
                     return 1, 'Decision outcomes require the owner terminal, outside agent tools.'
             if not commands:
