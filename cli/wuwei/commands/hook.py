@@ -1,6 +1,7 @@
 """Translate Claude Code lifecycle hooks into registered guard calls."""
 
 import json
+from pathlib import Path
 import re
 import sys
 
@@ -27,6 +28,16 @@ def run(args):
         return refuse(args.event, f'wuwei hook: {type(exc).__name__}: {exc}',
                       malformed=True)
     try:
+        from wuwei import env, workspace
+        cwd = Path(payload['cwd']).resolve()
+        try:
+            root = workspace.find_workspace(cwd)
+        except FileNotFoundError:
+            root = None
+        if root is None or not cwd.is_relative_to(root):
+            root = workspace.guard_scope(payload)
+        if root is not None:
+            env.load(root)
         guards = discover()
     except BaseException as exc:
         reason = (f'{type(exc).__name__}: could not discover guards' if args.event == 'PostToolUse'

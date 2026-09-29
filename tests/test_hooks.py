@@ -45,6 +45,8 @@ def subprocess_replay(plugin, event, payload):
 @pytest.fixture
 def plugin(tmp_path, monkeypatch, capsys):
     import wuwei.guards
+    from wuwei import workspace
+    monkeypatch.setattr(workspace, 'guard_scope', lambda payload: tmp_path)
     path = tmp_path / 'cli/wuwei/guards'
     path.mkdir(parents=True)
     (tmp_path / '.wuwei').mkdir()
