@@ -103,6 +103,10 @@ def test_promotion_changelog_and_real_stop(tmp_path, monkeypatch):
     (base / 'config.toml').write_text('')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    # The retro checks git log for a commit on the pinned day; stamp the commit with that day too,
+    # or the test depends on the wall clock.
+    monkeypatch.setenv('GIT_AUTHOR_DATE', '2026-09-29T12:00:00Z')
+    monkeypatch.setenv('GIT_COMMITTER_DATE', '2026-09-29T12:00:00Z')
     monkeypatch.setenv('GIT_AUTHOR_DATE', '2026-09-29T12:00:00Z')
     monkeypatch.setenv('GIT_COMMITTER_DATE', '2026-09-29T12:00:00Z')
     vcs = registry.load('vcs', workspace.load_config(root))
