@@ -151,8 +151,36 @@ def _check(payload):
     return 0, ''
 
 
+def stopping_seat(payload, root):
+    """Resolve a stop to its registered seat and original day."""
+    from wuwei import brief, state
+
+    # Runtime IDs can repeat across days; only the transcript brief binds the stop.
+    transcript = payload.get('agent_transcript_path')
+    if not isinstance(transcript, str) or not transcript.strip():
+        raise ValueError('missing or invalid agent_transcript_path')
+    relative = brief.transcript_reference(transcript)
+    if relative is None:
+        raise ValueError('SubagentStop has no brief reference')
+    path = Path(relative)
+    if (len(path.parts) != 5 or path.parts[:2] != ('.wuwei', 'days')
+            or path.parts[3] != 'briefs' or path.suffix != '.md'
+            or date.fromisoformat(path.parts[2]).isoformat() != path.parts[2]
+            or (root / path).resolve() != root / path):
+        raise ValueError('invalid stop brief path')
+    directory = (root / path).parent.parent
+    records = brief.seats(state.read_state(directory=directory))
+    name = next((key for key, seat in records.items() if seat.get('brief') == relative), None)
+    if name is None:
+        raise ValueError('SubagentStop has no matching seat reservation')
+    if records[name]['role'] != payload['agent_type'].rsplit(':', 1)[-1]:
+        raise ValueError('SubagentStop role does not match seat reservation')
+    role = records[name]['role']
+    return directory, brief.identifier(name), role
+
+
 def stop(payload):
-    from wuwei import brief, state, workspace
+    from wuwei import state, workspace
 
     try:
         root = workspace.find_workspace(payload.get('cwd'))
@@ -162,24 +190,7 @@ def stop(payload):
         return 0, ''
     directory = None
     try:
-        # Runtime IDs can repeat across days; only the transcript brief binds the stop.
-        relative = brief.transcript_reference(payload['agent_transcript_path'])
-        if relative is None:
-            raise ValueError('SubagentStop has no brief reference')
-        path = Path(relative)
-        if (len(path.parts) != 5 or path.parts[:2] != ('.wuwei', 'days')
-                or path.parts[3] != 'briefs' or path.suffix != '.md'
-                or date.fromisoformat(path.parts[2]).isoformat() != path.parts[2]
-                or (root / path).resolve() != root / path):
-            raise ValueError('invalid stop brief path')
-        directory = (root / path).parent.parent
-        records = brief.seats(state.read_state(directory=directory))
-        name = next((key for key, seat in records.items() if seat.get('brief') == relative), None)
-        if name is None:
-            raise ValueError('SubagentStop has no matching seat reservation')
-        if records[name]['role'] != payload['agent_type'].rsplit(':', 1)[-1]:
-            raise ValueError('SubagentStop role does not match seat reservation')
-        role = records[name]['role']
+        directory, name, role = stopping_seat(payload, root)
         state.stop_seat(name, root, directory=directory)
     except Exception as exc:
         try:
