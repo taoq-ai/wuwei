@@ -154,18 +154,7 @@ def stop(payload):
     directory = None
     try:
         # Runtime IDs can repeat across days; only the transcript brief binds the stop.
-        relative = None
-        with Path(payload['agent_transcript_path']).open() as transcript:
-            for line in transcript:
-                row = json.loads(line)
-                if row.get('type') != 'user':
-                    continue
-                content = row['message']['content']
-                if isinstance(content, list):
-                    content = '\n'.join(part['text'] for part in content if part.get('type') == 'text')
-                if content.startswith('WUWEI brief: '):
-                    relative = content.splitlines()[0].removeprefix('WUWEI brief: ')
-                    break
+        relative = brief.transcript_reference(payload['agent_transcript_path'])
         if relative is None:
             raise ValueError('SubagentStop has no brief reference')
         path = Path(relative)

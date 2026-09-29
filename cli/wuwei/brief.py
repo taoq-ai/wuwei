@@ -35,6 +35,21 @@ def read_day(root):
     return directory, state.read_state(root)
 
 
+def transcript_reference(path):
+    """Read the same brief reference for session binding and seat stop."""
+    with Path(path).open(encoding='utf-8') as transcript:
+        for line in transcript:
+            row = json.loads(line)
+            if row.get('type') != 'user':
+                continue
+            content = row['message']['content']
+            if isinstance(content, list):
+                content = '\n'.join(part['text'] for part in content if part.get('type') == 'text')
+            if content.startswith('WUWEI brief: '):
+                return content.splitlines()[0].removeprefix('WUWEI brief: ')
+    return None
+
+
 def seats(data):
     records = data.get('seats')
     if not isinstance(records, dict):

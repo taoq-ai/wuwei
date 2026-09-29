@@ -3,7 +3,7 @@
 from wuwei.guards import Guard
 
 
-def _record(payload, root, findings=()):
+def _record(payload, root, findings=(), transcript_path=None):
     # Discovery runs on every hook; load recorder dependencies only for PostToolUse.
     import hashlib
     import json
@@ -35,7 +35,7 @@ def _record(payload, root, findings=()):
     role = redact(payload.get('agent_type', 'unknown'))
     tool = redact(payload['tool_name'])
     attributes = {
-        'session.id': redact(payload['session_id']),
+        'session.id': payload['session_id'],
         'gen_ai.tool.name': tool,
         'gen_ai.tool.arguments': json.dumps(redact(payload['tool_input']), allow_nan=False),
         'gen_ai.agent.name': role,
@@ -55,6 +55,21 @@ def _record(payload, root, findings=()):
         'resource': {'attributes': [{'key': 'service.name', 'value': {'stringValue': role}}]},
         'scopeSpans': [{'scope': {'name': 'wuwei'}, 'spans': [span]}],
     }]})
+    # The reservation is the item link; role and tool arguments are not links.
+    from wuwei import brief
+    if transcript_path:
+        try:
+            reference = brief.transcript_reference(transcript_path)
+        except (OSError, ValueError, KeyError, TypeError):
+            reference = None
+        if reference is not None:
+            def bind(data):
+                for seat in brief.seats(data).values():
+                    if seat.get('brief') == reference:
+                        sessions = seat.setdefault('trace_sessions', [])
+                        if payload['session_id'] not in sessions:
+                            sessions.append(payload['session_id'])
+            state._write_state(bind, root, reserved=False)
     try:
         from wuwei import steward
         with (directory / 'traces.jsonl').open(encoding='utf-8') as stream:
@@ -80,10 +95,28 @@ def check(payload):
             security_data = security.load(root)
             findings = security.trace_findings(payload, root, security_data)
             security.record(findings, root, 'tool_trace')
+            payload = dict(payload)
+            transcript_path = payload.get('transcript_path')
+            if 'agent_id' in payload:
+                from pathlib import Path
+                agent_id = payload['agent_id']
+                if not isinstance(agent_id, str) or not agent_id.strip():
+                    raise ValueError('invalid agent_id')
+                if transcript_path:
+                    transcript_path = (Path(transcript_path).parent / payload['session_id']
+                                       / 'subagents' / f'agent-{agent_id}.jsonl')
+                payload['session_id'] = payload['session_id'] + ':' + agent_id
+            original_session = payload.get('session_id')
             payload = security.redact(payload, security_data)
+            if isinstance(original_session, str):
+                import hashlib
+                from wuwei.redact import redact
+                if redact(payload['session_id']) != original_session:
+                    payload['session_id'] = hashlib.sha256(original_session.encode()).hexdigest()
+
         except (OSError, ValueError, TypeError, KeyError, RuntimeError):
             return 2, 'wuwei traces: cannot inspect or record workspace security evidence'
-        code, reason = _record(payload, root, findings)
+        code, reason = _record(payload, root, findings, transcript_path)
         if not code:
             return 0, ''
     except BaseException as exc:

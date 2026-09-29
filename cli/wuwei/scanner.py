@@ -1,4 +1,4 @@
-"""Mandatory S4 measurement and verdict rows at the security receive boundary."""
+"""S2 trace response and mandatory S4 security measurement."""
 
 import re
 
@@ -25,7 +25,7 @@ def rows(tree, item, flags, config, root):
     result = []
     for finding in audit.data['findings']:
         try:
-            source = (tree / finding['file_path']).resolve(strict=True)
+            source = (tree / finding['file']).resolve(strict=True)
             location = source.relative_to(tree.resolve())
             with source.open(encoding='utf-8') as stream:
                 stream.read()
@@ -33,12 +33,12 @@ def rows(tree, item, flags, config, root):
             raise OSError('scanner: unmeasured: finding source is unreadable or outside worktree') from None
         blocks = (flags['trust_surface'] or flags['boundary_relevant']
                   or finding.get('trust_boundary', False)
-                  or finding['check_id'] in TRUST_RULES
+                  or finding['rule'] in TRUST_RULES
                   or levels.index(finding['severity']) <= levels.index(threshold))
         rule, location, message = redact.redact(security.redact(
-            [finding['check_id'], str(location), finding['message']], markers))
+            [finding['rule'], str(location), finding['message']], markers))
         message = re.sub(r'[^a-zA-Z0-9 .,:()/=_-]', ' ', message)
-        result.append(f"- {finding['severity']} | {location}:{finding['line_number']} | "
+        result.append(f"- {finding['severity']} | {location}:{finding['line']} | "
                       f"ZIRAN {rule} scenario: {message} | "
                       f"blocks: {'yes' if blocks else 'no'}")
         state.append_event('scanner.finding', {
@@ -53,4 +53,92 @@ def merge(text, findings):
         return text
     if any(finding.endswith('blocks: yes') for finding in findings):
         text = re.sub(r'^(?:## |- )?Verdict:? *PASS\b', 'Verdict: FIX', text, flags=re.M)
-    return text + '\n\n## ZIRAN findings\n' + '\n'.join(findings) + '\nProbe: ziran audit and ci\n'
+    return text + '\n\n## ZIRAN findings\n' + '\n'.join(findings) + '\nProbe: ziran audit\n'
+
+
+def _trace_response(finding, root):
+    """Page first, then park reserved items and queue one owner decision per chain."""
+    import hashlib
+    import json
+    from wuwei import brief, decision
+
+    state.append_event('scanner.finding', finding, root)
+    key = hashlib.sha256(json.dumps(finding, sort_keys=True).encode()).hexdigest()
+    directory = workspace.day_dir(root) / 'decisions'
+
+    def update(data):
+        items = {seat['item'] for seat in brief.seats(data).values()
+                 if finding['session_id'] in seat.get('trace_sessions', [])}
+        for name in items:
+            item = data['items'].get(name)
+            if item is not None and 'parked' in state.PHASES[item['phase']]:
+                item.update(phase='parked', status='blocked')
+        queued = data.setdefault('scanner_decisions', {})
+        if key in queued:
+            path = decision.today_path(queued[key], root)
+            if path.is_file():
+                return
+        else:
+            used = [int(path.stem[2:]) for path in directory.glob('D-*.md')
+                    if re.fullmatch(decision.DECISION_ID, path.stem)]
+            used.extend(int(value[2:]) for value in queued.values())
+            queued[key] = f'D-{max(used, default=0) + 1}'
+            path = decision.today_path(queued[key], root)
+        context = 'Affected reserved items parked where active.' if items else 'Session has no matching item reservation.'
+        body = (
+            'Question: How should this critical tool sequence be investigated?\n'
+            f'Context: {context}\n'
+            + 'Chain: ' + ' -> '.join(finding['chain']) + '\n'
+            + 'Session digest: ' + hashlib.sha256(finding['session_id'].encode()).hexdigest() + '\n'
+            'Options:\n| Option | Description |\n| --- | --- |\n'
+            '| investigate | Investigate the session and contain any exposure |\n'
+            '| defer | Defer investigation while affected work stays paused |\n'
+            'Musts:\n| Criterion | investigate | defer |\n| --- | --- | --- |\n'
+            '| Keep affected work paused | pass | pass |\n'
+            'Wants:\n| Criterion | Weight | investigate | defer |\n| --- | --- | --- | --- |\n'
+            '| Resolve potential exposure | 10 | 10 | 0 |\n'
+            'Recommendation: investigate\nConfidence: high\nReversibility: unsure\n'
+            'Blast radius: workspace security\nPre-mortem: Further activity could expose data.\n'
+            'Revisit: Before resuming affected work.\nDecided-by: owner\nOutcome: pending\n')
+        decision.evaluate(body)
+        directory.mkdir(parents=True, exist_ok=True)
+        workspace.atomic_write(path, body)
+
+    state._write_state(update, root, reserved=False)
+
+
+def trace_sweep(root, config):
+    """Return scanner counts for the watch summary, including empty-day status."""
+    counts = {'scanner': 'unmeasured', 'scanner_owed': 0, 'unreadable': 0}
+    try:
+        path = workspace.day_dir(root) / 'traces.jsonl'
+        try:
+            with path.open(encoding='utf-8') as stream:
+                has_sessions = any(line.strip() for line in stream)
+        except FileNotFoundError:
+            if path.is_symlink():
+                raise ValueError('unreadable trace input') from None
+            has_sessions = False
+        if not has_sessions:
+            counts['scanner'] = 'no sessions'
+            return counts
+        if config['adapters']['scanner'] == 'none':
+            counts['unreadable'] = 1
+            print('watch scanner: unmeasured: no scanner adapter', flush=True)
+            return counts
+        result = registry.load('scanner', config).traces(str(path), root=root)
+        if type(result.exit) is not int or result.exit not in (0, 1):
+            raise ValueError(result.reason or 'scanner unavailable')
+        markers = security.load(root)
+        for finding in result.data['findings']:
+            safe = redact.redact(security.redact(finding, markers))
+            # Match the recorder's identity when redaction changes an opaque session id.
+            if safe['session_id'] != finding['session_id']:
+                import hashlib
+                safe['session_id'] = hashlib.sha256(finding['session_id'].encode()).hexdigest()
+            _trace_response(safe, root)
+        counts.update(scanner='measured', scanner_owed=len(result.data['findings']))
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        counts['unreadable'] = 1
+        print(f'watch scanner: unmeasured: {type(exc).__name__}', flush=True)
+    return counts

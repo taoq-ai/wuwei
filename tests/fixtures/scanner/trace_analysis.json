@@ -1,0 +1,1 @@
+{"critical_chain_count": 1, "metadata": {"sessions_analyzed": 1}, "dangerous_tool_chains": [{"tools": ["Read", "WebFetch"], "risk_level": "critical", "vulnerability_type": "data_exfiltration", "risk_score": 0.95, "evidence": {"sessions": [{"session_id": null, "commands": ["Read [REDACTED]", "WebFetch [REDACTED]"]}]}}]}
