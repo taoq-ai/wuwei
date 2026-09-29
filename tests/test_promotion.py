@@ -87,18 +87,55 @@ def test_add_patch_and_archive_land(tmp_path):
     base = setup(tmp_path)
     proposal(base)
     assert cli(tmp_path, 'promote').returncode == 0
-    assert (base / 'charters/builder.md').read_text() == 'Check tests before review.\n'
+    assert (base / 'charters/builder.md').read_text().endswith('Check tests before review.\n')
     assert ledger(base)[0]['status'] == 'landed'
     proposal(base, 'two', action='patch', old_text='Check tests before review.',
              text='Check tests and lint before review.')
     assert cli(tmp_path, 'promote').returncode == 0
-    assert (base / 'charters/builder.md').read_text() == 'Check tests and lint before review.\n'
+    assert (base / 'charters/builder.md').read_text().endswith('Check tests and lint before review.\n')
     note = base / 'memory/notes/old.md'
     note.write_text('---\ntype: reference\nsummary: Old\naliases: []\nstatus: active\ncreated: 2026-09-01\n---\nOld fact\n')
     proposal(base, 'three', target='.wuwei/memory/notes/old.md', action='archive', text='')
     assert cli(tmp_path, 'promote').returncode == 0
     assert not note.exists()
     assert (base / 'memory/archive/old.md').exists()
+
+
+def test_dirty_changelog_rejects_before_charter_write(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from wuwei import promotion, registry
+
+    base = setup(tmp_path)
+    proposal(base)
+    monkeypatch.setenv('WUWEI_NOW', DAY + 'T12:00:00+02:00')
+    commits = []
+    monkeypatch.setattr(registry, 'load', lambda *a: SimpleNamespace(
+        workspace_changes=lambda *a, **kw: registry.Result(0, ['memory/CHANGELOG.md']),
+        workspace_commit=lambda *a, **kw: commits.append(a) or registry.Result(0)))
+
+    assert promotion.promote(tmp_path)[0]['status'] == 'rejected'
+    assert not (base / 'charters/builder.md').exists()
+    assert (base / 'days' / DAY / 'proposals/one.rejected').exists()
+    assert not commits
+
+
+def test_promote_uses_configured_changelog(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from wuwei import promotion, registry
+
+    base = setup(tmp_path)
+    (base / 'config.toml').write_text('[retro]\nchangelog = ".wuwei/memory/retro-history.md"\n')
+    proposal(base)
+    monkeypatch.setenv('WUWEI_NOW', DAY + 'T12:00:00+02:00')
+    commits = []
+    monkeypatch.setattr(registry, 'load', lambda *a: SimpleNamespace(
+        workspace_changes=lambda *a, **kw: registry.Result(0, []),
+        workspace_commit=lambda repo, paths, **kw: commits.append(paths) or registry.Result(0)))
+
+    assert promotion.promote(tmp_path)[0]['status'] == 'landed'
+    assert '- ' + DAY in (base / 'memory/retro-history.md').read_text()
+    assert not (base / 'memory/CHANGELOG.md').exists()
+    assert commits == [['charters/builder.md', 'memory/retro-history.md', 'memory/ledger.jsonl']]
 
 
 def test_missing_evidence_and_missing_fold_survivor_rejected(tmp_path):
