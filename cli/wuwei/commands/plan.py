@@ -11,6 +11,8 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 def register(subparsers):
     parser = subparsers.add_parser('plan', help='Propose or approve the morning plan')
     actions = parser.add_subparsers(dest='action', required=True)
+    session = actions.add_parser('session', help='Register the planner session for wake delivery')
+    session.add_argument('session_id')
     propose = actions.add_parser('propose')
     propose.add_argument('input', type=Path, help='Lead discovery JSON')
     approve = actions.add_parser('approve')
@@ -22,7 +24,9 @@ def register(subparsers):
 
 def run(args):
     try:
-        if args.action == 'propose':
+        if args.action == 'session':
+            plan.session(args.session_id)
+        elif args.action == 'propose':
             print(plan.propose(json.loads(args.input.read_text(encoding='utf-8'))))
         else:
             plan.approve(args.items, goals_confirmed=args.goals_confirmed,

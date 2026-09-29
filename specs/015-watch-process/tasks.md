@@ -29,13 +29,18 @@ keeps the shared watch module consistent. The MVP is US1; all stories are requir
 
 - [X] T012 F1: SessionStart exits 0 for findings, errors and malformed input, preserving additionalContext; update hook tests and contract.
 - [X] T013 F2: Call memory.lint(root) directly with list[str] findings; missing notes are unmeasured. Test the signature pending rebase and verify against the real function from local main.
-- [X] T014 F3: Force a same-tick sweep for nonzero old health; cover restart after a 30-minute gap with 60-second ticks.
+- [X] T014 F3: Force a same-tick sweep for dead old health; cover restart after a 30-minute gap with 60-second ticks. Narrowed from nonzero health by D2.
 - [X] T015 F4/F7: Accumulate pending PR wakes, block Stop once per unseen marker, reserve its acknowledgement and honour stop_hook_active. Read failures allow Stop. Record M5 idle-session launch boundary.
 - [X] T016 F5: Isolate snapshot errors per PR, preserve its old fingerprint, record its reserved read-failed event and count only discovery failures toward the streak.
 - [X] T017 F6: Remove live discovery adapter, registry entry, fake and tests; poll and sweep only raised and claimed day PRs.
 - [X] T018 F8/F10/F11: Omit watch state from the memory payload, finish ticks on SIGTERM via threading.Event, and replace fixed policy config keys with constants.
 - [ ] T019 F9 (optional, deferred): Combine all tick state saves and remove observation events. This requires restructuring shared poll/activity/sweep persistence, beyond a small review fix.
 - [X] T020 Run the full specified pytest command and guard pre-flight checks after fixes.
+- [X] T021 T1: Document all four watch and PR timing keys and defaults on the public configuration page; reproduce and resolve the docs regression.
+- [X] T022 D1/D3: Test missing day state after midnight, allow an empty owned PR set to poll and continue the loop, and remove the discovered argument and its caller while retaining the sweep's empty-day evidence check.
+- [X] T023 D4: Test planner-only wake consumption and generic-write refusals; add the plan session producer, reserved key/event, silent registration signal, skill registration and Stop session check. Keep SessionStart exit 0.
+- [X] T024 D2: Test that unmeasured health keeps the sweep schedule; only dead health forces an early sweep.
+- [X] T025 Run the full specified pytest command and inspect the final review-fix diff after rebase.
 
 ## Guard pre-flight
 
@@ -48,11 +53,12 @@ race. All five feature requirements checklist entries remain checked.
 
 ## Verification result
 
-Full specified pytest command: `3777 passed, 3 skipped in 32.52s`. The three
-performance checks were skipped by the existing machine-load guard. Targeted
-watch tests: 62 passed. Signal tests: 51 passed. Diff whitespace checks passed. The real memory.lint from local
-main was exercised in an isolated temporary workspace for clean notes, a line-cap
-finding and a missing notes directory. No implementation was copied into this
-branch; the repository regression fixture matches list[str] until rebase.
+Full specified pytest command after rebase and review fixes:
+`3941 passed, 3 skipped in 41.64s`. The three performance checks were skipped by
+the existing machine-load guard. Docs, midnight polling, planner registration and
+isolation, sweep scheduling and signal-tier regressions were observed failing
+before their fixes. Diff whitespace checks passed. Both sides of the rebase
+unions in event kinds, signal tiers, reserved state, config schema and workspace
+tests remain intact.
 
 Changes remain uncommitted. No commits, pushes or gh commands were run.

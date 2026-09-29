@@ -32,8 +32,9 @@ waits on that event between ticks, then releases the workspace lock.
 ## PR discovery and wake
 
 The watch polls only the deduplicated union of raised and claimed day references.
-It adds no discovery operation to the code_host port. An empty day uses the
-existing empty-day evidence check. Failed reads never replace a prior snapshot.
+It adds no discovery operation to the code_host port. Polling an empty day is valid
+even before day state exists; sweeps retain the existing empty-day evidence check.
+Failed reads never replace a prior snapshot.
 
 The watch hashes head, PR state, mergeability, provider update time, requested
 reviewers/teams, checks, reviews and discussion surfaces. Reordering lists is not
@@ -46,7 +47,13 @@ The wake marker is the reserved `watch.wake` object in day `state.json`, with an
 `at` timestamp and `prs` list. This reuses the protected state file and atomic
 writer rather than creating another trusted file. It is saved before advancing
 the baseline. A crash may repeat a notification, but cannot silently lose it.
-SessionStart includes it in additionalContext. Stop returns `decision: block`
+SessionStart includes it in additionalContext. The plan skill calls
+`wuwei plan session <session-id>` to write reserved `planner_session_id` and the
+reserved `plan.session` event. Registration applies to today's state and is
+repeated for a new planner session or day. Generic state and event commands cannot
+forge registration. Only a Stop payload matching that recorded session ID can
+consume the wake; missing or different IDs return 0 without acknowledgement.
+The planner's Stop returns `decision: block`
 with the wake reason once per unseen marker and records `wake.at` in reserved
 `watch.wake_seen_at`, with a reserved `session: wake-seen` event. Changes accumulate
 PRs until seen. `stop_hook_active` bypasses the wake check; read failures print
@@ -60,8 +67,9 @@ Exactly one aggregate `watch: sweep` includes `prs`, `reply_owed`,
 `visibility_owed`, `stale_owed`, `watch_dead`, `scanner_owed`, `unreadable`, `owed`
 and `exit`. Scanner status is `measured`, `unmeasured` or `unreadable`; a missing
 adapter is never clean. An absent trace file with an installed scanner is unreadable.
-Watch health is sampled before refreshing a clock; nonzero health forces a
-sweep in that tick, so restart cannot mask a gap.
+Watch health is sampled before refreshing a clock; dead health (exit 1) forces a
+sweep in that tick, so restart cannot mask a gap. Unmeasured health (exit 2) keeps
+the normal sweep schedule.
 
 SessionStart calls the existing memory payload producer and displays its byte and
 estimated token counts, omitting reserved watch state from the rendered day.

@@ -74,8 +74,6 @@ def owned(root, config):
     data = state.read_state(root)
     host = registry.load('code_host', config)
     refs = sorted({pull_request(ref) for ref in data['raised_prs'] + data['claimed_prs']})
-    if not refs:
-        obligations._check_empty_day(workspace.day_dir(root))
     return host, refs
 
 
@@ -148,8 +146,7 @@ def sweep(root=None, *, watch_health=None):
     config = workspace.load_config(root)
     counts = dict(sweep='obligations', prs=0, reply_owed=0, visibility_owed=0, unreadable=0)
     try:
-        _, refs = owned(root, config)
-        counts.update(obligations.evaluate(root, refs))
+        counts.update(obligations.evaluate(root))
     except ERRORS as exc:
         counts['unreadable'] += 1
         print(f'watch sweep unmeasured: {exc}', flush=True)
@@ -306,7 +303,7 @@ def tick(root):
     if due('poll_at', config['pr']['poll_seconds']):
         result = max(result, poll(root))
         save(root, {'poll_at': now.isoformat()})
-    if old_health[0] or due('sweep_at', config['watch']['sweep_seconds']):
+    if old_health[0] == 1 or due('sweep_at', config['watch']['sweep_seconds']):
         result = max(result, sweep(root, watch_health=old_health))
         save(root, {'sweep_at': now.isoformat(), 'activity_at': now.isoformat()})
     elif due('activity_at', ACTIVITY_SECONDS):

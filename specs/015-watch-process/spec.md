@@ -28,8 +28,10 @@ or the fifth consecutive discovery failure ends the watch with exit 2.
 SessionStart displays the existing memory payload and UTF-8 byte/token size,
 watch health, prior-day unresolved process reservations and the wake marker.
 PreCompact checks synchronous state/event consistency and records a flush event.
-Stop blocks once per unseen wake marker and records its timestamp through a
-reserved producer. It honours stop_hook_active; read failures remain non-blocking. Lifecycle checks only act in workspace scope.
+Stop blocks once per unseen wake marker only when its session ID matches the
+reserved `planner_session_id` registered by `wuwei plan session`. Missing or
+different IDs leave the wake unseen. It honours stop_hook_active; read failures
+remain non-blocking. Lifecycle checks only act in workspace scope.
 
 Acceptance: clean, findings and unreadable cases return 0, 1 and 2 from checks;
 SessionStart always exits 0 at the hook boundary, with diagnostics inside
@@ -62,8 +64,8 @@ or real external tools. The full repository suite passes.
 ## Assumptions
 
 - New scope supersedes harness exit-on-change and omitted mergeability behavior.
-- A successful empty discovery is valid; unlike an empty shell pipeline, the port
-  provides typed evidence. Empty configured repositories require recorded day PR state.
+- Polling an empty day PR set is valid, including before day state exists after
+  midnight. Sweeps retain the obligations empty-day evidence check.
 - Active worktrees are running items with a `worktree`, plus worktrees in the
   logged briefs of running seats. `report_at` is an item report timestamp.
   The first observation starts the inactivity timer.
@@ -75,8 +77,11 @@ or real external tools. The full repository suite passes.
 - Call memory.lint(root) directly: it returns list[str]. A ValueError, including
   missing notes, becomes an unmeasured payload line. Until rebase brings the main
   implementation, tests use its list[str] signature.
-- Any nonzero watch health forces a sweep in the same tick before the old clock
-  gap is forgotten. SIGTERM sets an event so an active tick finishes its writes.
+- Dead watch health (exit 1) forces a sweep in the same tick before the old clock
+  gap is forgotten. Unmeasured health (exit 2) keeps the normal sweep schedule.
+  SIGTERM sets an event so an active tick finishes its writes.
+- Planner registration is per day. The plan skill registers the current runtime
+  session ID at invocation and again after day rollover; prior IDs are not inherited.
 
 ## Deferred
 

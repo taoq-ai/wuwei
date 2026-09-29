@@ -202,6 +202,27 @@ def test_poll_new_gone_and_midnight(case):
     assert events(root, 'pr.changed')[-1]['payload']['fields'] == ['gone']
 
 
+def test_midnight_without_day_state_keeps_polling(case, capsys):
+    root, _, _, monkeypatch = case
+    watch = watch_module()
+    watch.poll(root)
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T00:05:00+00:00')
+    assert not (workspace.day_dir(root) / 'state.json').exists()
+    assert watch.owned(root, workspace.load_config(root))[1] == []
+    assert watch.poll(root) == 1
+    assert events(root, 'pr.changed')[-1]['payload']['fields'] == ['gone']
+    waited = []
+    def stop(seconds):
+        waited.append(seconds)
+        raise KeyboardInterrupt
+    assert watch.run(root, sleep=stop) == 0
+    assert waited
+    assert watch.saved(root)['prs'] == {}
+    assert watch.saved(root)['failures'] == 0
+    assert 'poll_at' in watch.saved(root)
+    assert 'watch blind' not in capsys.readouterr().out
+
+
 @pytest.mark.parametrize('kind', ['pr.changed', 'watch: clock', 'watch: heartbeat',
                                   'watch: read-failed', 'session: compact', 'session: wake-seen'])
 def test_producer_events_reserved(case, kind):
@@ -301,8 +322,9 @@ def test_session_orphans_and_wake(case):
     assert 'orphan' in message and 'old-builder' in message and 'finished' not in message
     assert 'planner wake' in message
     notice = watch.wake(root)
-    assert lifecycle.stop({'cwd': str(root)}) == (1, notice)
-    assert lifecycle.stop({'cwd': str(root)}) == (0, '')
+    assert main(['plan', 'session', 'planner']) == 0
+    assert lifecycle.stop({'cwd': str(root), 'session_id': 'planner'}) == (1, notice)
+    assert lifecycle.stop({'cwd': str(root), 'session_id': 'planner'}) == (0, '')
 
 
 @pytest.mark.parametrize('event', ['session_start', 'pre_compact', 'stop'])
@@ -514,6 +536,58 @@ def test_restart_dead_watch_swept_before_clock_hides_gap(case):
     assert len(events(root, 'watch: sweep')) == 2
 
 
+def test_unmeasured_health_keeps_sweep_schedule(case):
+    root, _, _, monkeypatch = case
+    watch = watch_module()
+    watch.tick(root)
+    monkeypatch.setattr(watch, 'health', lambda root: (2, 'watch health unmeasured'))
+    advance(case, 120)
+    watch.tick(root)
+    assert len(events(root, 'watch: sweep')) == 1
+    advance(case, 7200)
+    watch.tick(root)
+    assert len(events(root, 'watch: sweep')) == 2
+
+
+@pytest.mark.parametrize('planner,session,expected', [
+    ('planner', 'planner', 1), ('planner', 'seat', 0),
+    ('planner', None, 0), (None, 'planner', 0), (None, None, 0),
+])
+def test_only_registered_planner_consumes_wake(case, planner, session, expected):
+    root, host, _, _ = case
+    watch = watch_module()
+    if planner is not None:
+        state._write_state(lambda data: data.update(planner_session_id=planner),
+                           root, reserved=False)
+    watch.poll(root)
+    host.results['pr'].data['head'] = 'b' * 40
+    watch.poll(root)
+    notice = watch.wake(root)
+    payload = {'cwd': str(root)}
+    if session is not None:
+        payload['session_id'] = session
+    assert lifecycle_module().stop(payload) == (expected, notice if expected else '')
+    assert ('wake_seen_at' in watch.saved(root)) is bool(expected)
+    assert watch.wake(root) == ('' if expected else notice)
+
+
+def test_plan_session_producer_and_generic_write_refusal(case):
+    root, _, _, _ = case
+    assert main(['plan', 'session', 'planner']) == 0
+    assert state.read_state(root)['planner_session_id'] == 'planner'
+    assert events(root, 'plan.session')[-1]['payload']['session_id'] == 'planner'
+    assert main(['plan', 'session', '']) == 2
+    assert state.read_state(root)['planner_session_id'] == 'planner'
+
+
+def test_planner_session_reserved_from_state_and_events(case):
+    root, _, _, _ = case
+    assert main(['state', 'set', 'planner_session_id', '"seat"']) == 1
+    assert main(['event', 'plan.session', '{"session_id": "seat"}']) == 1
+    assert main(['event', 'state.write', '{"planner_session_id": "seat"}']) == 1
+    assert 'planner_session_id' not in state.read_state(root)
+
+
 def test_poll_and_sweep_only_day_prs(case):
     root, host, _, monkeypatch = case
     watch = watch_module()
@@ -566,6 +640,7 @@ def test_stop_wake_once_accumulates_until_seen(case, capsys):
     root, host, _, monkeypatch = case
     watch = watch_module()
     lifecycle_module()
+    assert main(['plan', 'session', 'planner']) == 0
     other = 'example/project#8'
     watch.poll(root)
     host.results['pr'].data['head'] = 'b' * 40
@@ -611,8 +686,10 @@ def test_stop_wake_once_accumulates_until_seen(case, capsys):
 def test_stop_wake_read_failure_never_blocks(case, active):
     root, _, _, _ = case
     watch = watch_module()
+    assert main(['plan', 'session', 'planner']) == 0
     watch.save(root, {'wake': {'at': 'invalid', 'prs': [REF]}})
-    code, message = lifecycle_module().stop({'cwd': str(root), 'stop_hook_active': active})
+    code, message = lifecycle_module().stop({'cwd': str(root), 'session_id': 'planner',
+                                             'stop_hook_active': active})
     assert code == 0
     assert ('unmeasured' in message) is (not active)
 
@@ -654,6 +731,7 @@ def test_loop_waits_on_shutdown_event(case, monkeypatch):
 def test_stop_does_not_overwrite_newer_acknowledgement(case, monkeypatch):
     root, host, _, _ = case
     watch = watch_module()
+    assert main(['plan', 'session', 'planner']) == 0
     watch.poll(root)
     host.results['pr'].data['head'] = 'b' * 40
     watch.poll(root)
@@ -666,5 +744,5 @@ def test_stop_does_not_overwrite_newer_acknowledgement(case, monkeypatch):
         original(newer, root, reserved=False)
         return original(update, *args, **kwargs)
     monkeypatch.setattr(state, '_write_state', raced)
-    assert lifecycle_module().stop({'cwd': str(root)}) == (0, '')
+    assert lifecycle_module().stop({'cwd': str(root), 'session_id': 'planner'}) == (0, '')
     assert state.read_state(root)['watch']['wake_seen_at'] == later

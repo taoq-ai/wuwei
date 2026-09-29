@@ -195,7 +195,8 @@ def test_emitted_kinds_have_intended_tiers():
                 'watch: sweep': 'nudge', 'watch: clock': 'silent',
                 'watch: heartbeat': 'silent', 'watch: observation': 'silent',
                 'watch: read-failed': 'nudge', 'pr.changed': 'nudge',
-                'session: compact': 'silent', 'session: wake-seen': 'silent'}
+                'session: compact': 'silent', 'session: wake-seen': 'silent',
+                'plan.session': 'silent'}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier

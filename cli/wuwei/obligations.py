@@ -191,7 +191,7 @@ def _owner_login(config):
     return handles[0]
 
 
-def evaluate(root=None, discovered=None):
+def evaluate(root=None):
     """Calculate today's obligations without writing a summary event."""
     root = workspace.find_workspace(root)
     directory = workspace.day_dir(root)
@@ -202,7 +202,7 @@ def evaluate(root=None, discovered=None):
         data = state.read_state(directory=directory)
         ledger = _ledger(data)
         refs = []
-        for ref in data['raised_prs'] + data['claimed_prs'] + (discovered or []):
+        for ref in data['raised_prs'] + data['claimed_prs']:
             try:
                 if pull_request(ref) not in refs:
                     refs.append(ref)
@@ -210,7 +210,7 @@ def evaluate(root=None, discovered=None):
                 counts['unreadable'] += 1
                 print(f'day PR reference UNREADABLE: {exc}')
         counts['prs'] = len(refs)
-        if not refs and discovered is None:
+        if not refs:
             _check_empty_day(directory)
         if refs:
             config = workspace.load_config(root)

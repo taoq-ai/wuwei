@@ -70,7 +70,13 @@ def stop(payload):
         return 0, ''
     try:
         context = scoped(payload)
-        message = watch.wake(context[0], consume=True) if context is not None else ''
+        if context is None:
+            return 0, ''
+        root, _ = context
+        planner = state.read_state(root).get('planner_session_id')
+        if not planner or payload.get('session_id') != planner:
+            return 0, ''
+        message = watch.wake(root, consume=True)
         return int(bool(message)), message
     except watch.ERRORS as exc:
         return 0, f'planner wake unmeasured: {exc}'
