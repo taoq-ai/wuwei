@@ -510,6 +510,19 @@ def test_f12_workspace_container_removal(workspace, operation, location, target)
     assert check_bash(payload(cwd, 'Bash', command=operation.format(target=target)))[0] == 1
 
 
+def test_directory_removal_never_walks_the_tree(tmp_path, monkeypatch):
+    # rm -rf / outside a workspace hung the hook: the container check walked the whole disk.
+    import os
+    import pathlib
+    from wuwei.guards.protect_state import check_bash
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    def walk(*args, **kwargs):
+        raise AssertionError('recursive directory walk in a PreToolUse guard')
+    monkeypatch.setattr(pathlib.Path, 'rglob', walk)
+    monkeypatch.setattr(os, 'walk', walk)
+    assert check_bash(payload(tmp_path, 'Bash', command='rm -rf /')) == (0, '')
+
+
 @pytest.mark.parametrize('script', ['rm -rf inside', 'mv inside backup',
                                     'mv notes.md .', 'mv -t . notes.md', 'cp notes.md .'])
 def test_f12_ordinary_directory_operations(workspace, script):

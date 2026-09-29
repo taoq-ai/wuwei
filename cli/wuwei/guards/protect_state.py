@@ -84,13 +84,24 @@ def _protected(value, cwd, root, directories=False):
     if directories and path.is_dir():
         if root is not None and root.is_relative_to(path):
             return True
-        if (path / '.wuwei').is_dir() or any(candidate.is_dir() for candidate in path.rglob('.wuwei')):
+        # ponytail: one level only; a recursive walk hung the hook on rm -rf /. Deeper
+        # containers are caught when the session runs inside the workspace (root above).
+        if (path / '.wuwei').is_dir() or _contains_workspace(path):
             return True
     # Only multiply linked files need a scan; ordinary commands pay no tree walk.
     if root is not None and path.is_file() and path.stat().st_nlink > 1:
         return any(_protected_name(candidate) and os.path.samefile(path, candidate)
                    for candidate in (root / '.wuwei').rglob('*') if candidate.is_file())
     return False
+
+
+def _contains_workspace(path):
+    try:
+        with os.scandir(path) as entries:
+            return any(entry.is_dir() and os.path.isdir(os.path.join(entry.path, '.wuwei'))
+                       for entry in entries)
+    except PermissionError:
+        return False
 
 
 def _workspace(cwd):
