@@ -6,6 +6,7 @@ import json
 from datetime import timedelta
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -51,7 +52,9 @@ def case(tmp_path, monkeypatch):
     # HEAD contains the committed charter and changelog.
     vcs.results['read_tree'] = Result(0, {CHARTER: '- (2026-09-01) Keep tests.\n',
         CHANGELOG: '- ' + DAY + ' builder changed\n- (2026-09-01) Keep tests.\n'})
-    monkeypatch.setattr(registry, 'load', lambda kind, config: {'code_host': host, 'vcs': vcs}[kind])
+    runtime = SimpleNamespace(dispatch=lambda *args, **kwargs: Result(0, {'agent_type': 'wuwei:steward'}))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: {'code_host': host, 'vcs': vcs,
+                                                               'runtime': runtime}[kind])
     return tmp_path, host, vcs
 
 
@@ -124,7 +127,9 @@ def test_duplicate_capture_cannot_hide_shortfall(case):
 def test_close_without_amendments_needs_no_git_repository(case, monkeypatch):
     root, host, _ = case
     vcs = importlib.import_module('adapters.vcs.git')
-    monkeypatch.setattr(registry, 'load', lambda kind, config: {'code_host': host, 'vcs': vcs}[kind])
+    runtime = SimpleNamespace(dispatch=lambda *args, **kwargs: Result(0, {'agent_type': 'wuwei:steward'}))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: {'code_host': host, 'vcs': vcs,
+                                                               'runtime': runtime}[kind])
     monkeypatch.chdir(root)
     assert not (root / '.git').exists()
     assert main(['close']) == 0

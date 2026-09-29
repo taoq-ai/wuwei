@@ -69,6 +69,7 @@ NUDGE = [
     ({'kind': 'watch: sweep', 'payload': {'owed': 0, 'unreadable': 'unknown'}}, 'Work'),
     ({'kind': 'watch: sweep', 'payload': {'owed': 0}}, 'Work'),
     ({'kind': 'watch: sweep', 'payload': {'unreadable': 0}}, 'Work'),
+    ({'kind': 'steward.due', 'payload': {'tool_calls': 50}}, 'Work'),
     (None, 'Work'),
 ]
 SILENT = [
@@ -191,7 +192,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'hook.post_tool_use_error': 'nudge', 'hook.refusal': 'silent',
                 'hook.warning': 'nudge',
                 'verdict.rejected': 'nudge', 'decision.rejected': 'nudge',
-                'decision.decided': 'silent',
+                'decision.decided': 'silent', 'decision.routed': 'silent',
                 'adapter: none': 'nudge', 'reply: acknowledged': 'silent',
                 'watch: sweep': 'nudge', 'watch: clock': 'silent',
                 'watch: heartbeat': 'silent', 'watch: observation': 'silent',
@@ -201,7 +202,9 @@ def test_emitted_kinds_have_intended_tiers():
                 'day.close_requested': 'silent', 'merge.unmeasured': 'nudge',
                 'merge.metric': 'silent', 'merge.policy_blocked': 'nudge', 'base.red': 'page',
                 'gate.received': 'silent', 'discovery.requested': 'silent',
-                'discovery.unmeasured': 'nudge'}
+                'discovery.unmeasured': 'nudge', 'steward.notes': 'nudge',
+                'steward.run': 'silent', 'steward.due': 'nudge',
+                'steward.acknowledged': 'silent'}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier

@@ -194,9 +194,17 @@ def sweep(root=None, *, watch_health=None):
     counts['owed'] = sum(counts[key] for key in (
         'reply_owed', 'visibility_owed', 'stale_owed', 'watch_dead', 'scanner_owed', 'unreadable', 'integrity_owed'))
     counts['exit'] = 2 if counts['unreadable'] else int(counts['owed'] > 0)
-    state.append_event('watch: sweep', counts, root)
     from wuwei import dispatch
     dispatch.discovery('sweep', root)
+    from wuwei import steward
+    try:
+        steward.run(root, trigger='sweep')
+    except ERRORS as exc:
+        counts['unreadable'] += 1
+        counts['owed'] += 1
+        counts['exit'] = 2
+        print(f'watch steward unmeasured: {exc}', flush=True)
+    state.append_event('watch: sweep', counts, root)
     print('watch: sweep ' + json.dumps(counts, sort_keys=True), flush=True)
     return counts['exit']
 

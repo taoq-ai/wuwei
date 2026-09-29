@@ -19,10 +19,14 @@ EVENT_PRODUCERS = {
     'seat stood down': 'wuwei hook SubagentStop',
     'fast_checks.record': 'wuwei fast-checks', 'reply: acknowledged': 'wuwei reply',
     'decision.decided': 'wuwei decision outcome', 'watch: sweep': 'wuwei sweep',
+    'decision.routed': 'wuwei decision route',
     'watch: clock': 'wuwei watch', 'pr.disposition': 'wuwei pr disposition',
     'pr.action': 'wuwei pr state',
     'day.close_requested': 'wuwei close', 'build.parked': 'wuwei build',
     'gate.received': 'wuwei dispatch receive', 'discovery.requested': 'wuwei dispatch discovery',
+    'steward.notes': 'wuwei steward run', 'steward.run': 'wuwei steward run',
+    'steward.due': 'wuwei hook PostToolUse',
+    'steward.acknowledged': 'wuwei steward ack',
 }
 
 

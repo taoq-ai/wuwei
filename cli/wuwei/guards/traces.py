@@ -55,6 +55,12 @@ def _record(payload, root, findings=()):
         'resource': {'attributes': [{'key': 'service.name', 'value': {'stringValue': role}}]},
         'scopeSpans': [{'scope': {'name': 'wuwei'}, 'spans': [span]}],
     }]})
+    try:
+        from wuwei import steward
+        with (directory / 'traces.jsonl').open(encoding='utf-8') as stream:
+            steward.maybe_run_for_tool_calls(sum(1 for _ in stream), root)
+    except Exception:
+        pass  # The due signal must never turn a recorded tool span into a hook refusal.
     return 0, ''
 
 

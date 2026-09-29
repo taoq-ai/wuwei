@@ -64,6 +64,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `watch.clock_seconds` | `600` | Interval between watch clock events. |
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
+| `steward.every_tool_calls` | `50` | Completed tool calls between steward reviews. |
 
 ## Adapters and brief
 

@@ -1,0 +1,3 @@
+# Implementation Plan: Steward seat and process metrics
+
+Use Python 3.11 standard library and existing state, watch, plan, dispatch, runtime port and event readers. A compact metrics module maps metric names to functions. Add a dedicated steward command for run, record and acknowledge. The watch sweep and close command call steward run, and the plan incorporates a prior-day absence finding. Store notes and acknowledgements in reserved state and events; serialize the decision queue in the day directory with the atomic writer. Use in-process tests with fake ports and recorded events; test each behavior red then green. No external plugin system or outcome baseline implementation.

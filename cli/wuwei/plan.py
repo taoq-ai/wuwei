@@ -74,6 +74,8 @@ def _proposal(data, goals_text, framework="wsjf"):
 
 def propose(data, root=None):
     root = workspace.find_workspace() if root is None else Path(root)
+    from wuwei import steward
+    steward_finding = steward.previous_day_finding(root)
     goals_text = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
     goal_list = goals.parse(goals_text)
     found = discovery.discover(root)
@@ -87,6 +89,7 @@ def propose(data, root=None):
     if (directory / 'state.json').exists() and state.read_state(root).get('gate_approved'):
         raise state.StateError('morning gate already approved')
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
+             *(['Finding: ' + steward_finding, ''] if steward_finding else []),
              '## Goals to confirm', *[f'- {goal}' for goal in data['goals']], '',
              '## Measured sweep', *[f'- {key}: {value}' for key, value in data['sweep'].items()], '',
              '## Proposed queue']

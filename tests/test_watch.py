@@ -504,7 +504,7 @@ def test_successful_empty_discovery_after_pr_gone_is_measured(case):
     watch.sweep(root)
     summary = events(root, 'watch: sweep')[-1]['payload']
     assert summary['prs'] == 0
-    assert summary['unreadable'] == 2  # Scanner and discovery are unmeasured.
+    assert summary['unreadable'] == 3  # Scanner, discovery and steward runtime are unmeasured.
 
 
 def test_missing_notes_lint_is_unmeasured(case):
