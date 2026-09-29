@@ -175,7 +175,7 @@ def test_api_error_body_stdout_is_unreadable(case, monkeypatch):
 def test_union_deduplicates_and_continues_after_error(case):
     root, host = case
     other = 'acme/widget#8'
-    state.set_state('claimed_prs', [REF, other], root)
+    state._write_state(lambda data: data.update(claimed_prs=[REF, other]), root, reserved=False)
     original = host.pr
     def pr(ref, root=None):
         if ref == other:
@@ -193,7 +193,7 @@ def test_day_and_closed_pr(case, monkeypatch, mode, expected):
     root, host = case
     if mode == 'empty':
         monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
-        state.set_state('raised_prs', [], root)
+        state._write_state(lambda data: data.update(raised_prs=[]), root, reserved=False)
     if mode == 'closed': host.results['pr'].data['state'] = 'closed'
     if mode == 'missing': (workspace.day_dir(root) / 'state.json').unlink()
     if mode == 'malformed':
@@ -315,7 +315,7 @@ def test_reply_missing_target_never_posts(case, monkeypatch, surface, id):
 
 def test_bad_reference_does_not_skip_other_prs(case):
     root, host = case
-    state.set_state('raised_prs', ['invalid', REF], root)
+    state._write_state(lambda data: data.update(raised_prs=['invalid', REF]), root, reserved=False)
     host.results['reviews'] = Result(0, [review()])
     assert sweep() == 2
     event, = sweep_event(root)
@@ -362,7 +362,7 @@ def test_channel_post_stays_owed_without_producer(case):
 @pytest.mark.parametrize('value', ['PASS', 'FIX', 'PARK', 'ESCALATE'])
 def test_linted_gate_file_supplies_verdict_without_state(case, value):
     root, _ = case
-    state.set_state('gate_verdicts', {}, root)
+    state._write_state(lambda data: data.update(gate_verdicts={}), root, reserved=False)
     gate_file(root, verdict=value)
     assert sweep() == 0
 

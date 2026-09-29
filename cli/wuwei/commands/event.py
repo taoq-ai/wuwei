@@ -7,6 +7,21 @@ from wuwei.exits import CLEAN, FINDINGS
 from wuwei.state import append_event
 
 
+FREE_KINDS = frozenset({'note'})
+EVENT_PRODUCERS = {
+    'state.set': 'wuwei state set', 'state.transition': 'wuwei state transition',
+    'state.import': 'wuwei plan approve', 'plan.approved': 'wuwei plan approve',
+    'plan.session': 'wuwei plan session', 'brief written': 'wuwei brief',
+    'seat launched': 'wuwei hook PreToolUse',
+    'seat stopped': 'wuwei hook SubagentStop',
+    'seat stood down': 'wuwei hook SubagentStop',
+    'fast_checks.record': 'wuwei fast-checks', 'reply: acknowledged': 'wuwei reply',
+    'decision.decided': 'wuwei decision outcome', 'watch: sweep': 'wuwei sweep',
+    'watch: clock': 'wuwei watch', 'pr.disposition': 'wuwei pr disposition',
+    'day.close_requested': 'wuwei close', 'build.parked': 'wuwei build',
+}
+
+
 def register(subparsers):
     parser = subparsers.add_parser('event', help='Append a timestamped day event')
     parser.add_argument('kind')
@@ -15,14 +30,11 @@ def register(subparsers):
 
 
 def run(args):
-    if args.kind.startswith(('state.', 'decision.', 'watch:', 'session:',
-                                   'security.', 'scanner.', 'pr.disposition',
-                                   'day.close', 'merge.')) or args.kind in (
-            'brief written', 'seat stood down', 'watch: sweep', 'reply: acknowledged',
-            'hook.refusal', 'seat.usage', 'build.iteration', 'build.parked',
-            'retro.captured', 'retro.gap', 'verdict.rejected', 'fast_checks.record',
-            'plan.approved', 'plan.session', 'pr.changed', 'base.red'):
-        print('wuwei event: event kind reserved for its dedicated writer', file=sys.stderr)
+    if not args.kind.strip():
+        raise ValueError('event kind must be a nonempty string')
+    if args.kind not in FREE_KINDS:
+        producer = EVENT_PRODUCERS.get(args.kind, 'its dedicated command')
+        print(f'wuwei event: {args.kind}: reserved; written by {producer}', file=sys.stderr)
         return FINDINGS
     payload = json.loads(args.payload)
     append_event(args.kind, payload)

@@ -131,7 +131,7 @@ def test_close_without_amendments_needs_no_git_repository(case, monkeypatch):
 
 
 def own(root):
-    state.write_state(lambda data: data.update(raised_prs=[REF]), root)
+    state._write_state(lambda data: data.update(raised_prs=[REF]), root, reserved=False)
     state._write_state(lambda data: data.update(planner_session_id='planner'), root, reserved=False)
 
 

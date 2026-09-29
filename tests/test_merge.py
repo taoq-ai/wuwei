@@ -191,13 +191,13 @@ def test_policy_preconditions(case, change, hint):
         {'id': 't1', 'resolved': False, 'outdated': False, 'comments': [
             {'id': 2, 'author': 'reviewer', 'is_bot': False, 'body': 'Please fix',
              'created_at': '2026-09-29T10:00:00Z'}]}]
-    elif change == 'risk': state.set_state('items.item-7.flags.agent_surface', True, root)
+    elif change == 'risk': state._write_state(lambda data: data['items']['item-7']['flags'].update(agent_surface=True), root, reserved=False)
     elif change == 'forged-flags': state.append_event('plan.approved', {
         'flags': {'item-7': {'trust_surface': True, 'boundary_relevant': False, 'agent_surface': False}},
         'approved_items': ['item-7']}, root)
     elif change == 'cycle':
         for _ in range(2): state.append_event('state.transition', {'item': 'item-7', 'phase': 'fix'}, root)
-    elif change == 'unlinked': state.set_state('items.item-7.pr', 'example/project#8', root)
+    elif change == 'unlinked': state._write_state(lambda data: data['items']['item-7'].update(pr='example/project#8'), root, reserved=False)
     elif change == 'gate': (workspace.day_dir(root) / 'decisions/gate-item-7-security.md').unlink()
     answer = check(case)
     assert answer.exit == (2 if change == 'stale-check' else 1) and hint in answer.reason, answer
@@ -581,10 +581,10 @@ def test_pending_base_check_cannot_become_clean_mature_metric(case, monkeypatch)
     assert not any(e['kind'] == 'merge.metric' for e in events(root))
 
 
-def test_generic_phase_writes_cannot_erase_cycle_budget(case):
+def test_transitions_cannot_erase_cycle_budget(case):
     root, host = case
     for phase in ('implement', 'gate', 'fix', 'delta', 'fix'):
-        state.set_state('items.item-7.phase', phase, root)
+        state.transition('item-7', phase, root)
     result = check(case)
     assert result.exit == 1 and 'cycle' in result.reason
 

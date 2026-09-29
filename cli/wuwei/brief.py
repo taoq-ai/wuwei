@@ -213,7 +213,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                 fresh['items'].setdefault(item, {})['track'] = track
                 workspace.atomic_write(output, text, replace=False)
                 created = True
-            state.write_state(update, root, kind='brief written', payload=payload)
+            state._write_state(update, root, reserved=False, kind='brief written', payload=payload)
         except BaseException:
             if created:
                 output.unlink()
