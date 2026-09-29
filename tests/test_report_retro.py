@@ -107,8 +107,6 @@ def test_promotion_changelog_and_real_stop(tmp_path, monkeypatch):
     # or the test depends on the wall clock.
     monkeypatch.setenv('GIT_AUTHOR_DATE', '2026-09-29T12:00:00Z')
     monkeypatch.setenv('GIT_COMMITTER_DATE', '2026-09-29T12:00:00Z')
-    monkeypatch.setenv('GIT_AUTHOR_DATE', '2026-09-29T12:00:00Z')
-    monkeypatch.setenv('GIT_COMMITTER_DATE', '2026-09-29T12:00:00Z')
     vcs = registry.load('vcs', workspace.load_config(root))
     assert vcs.workspace_init(base).exit == 0
     state._write_state(lambda data: data.update(planner_session_id='planner', close_requested=True),
