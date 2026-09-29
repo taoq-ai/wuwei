@@ -258,6 +258,7 @@ def test_pr_exposes_verified_merge_bit(monkeypatch, merged):
     case = deepcopy(next(c for c in CASES if c['operation'] == 'pr'))
     raw = json.loads(case['steps'][0]['stdout'])
     raw['merged'] = merged
+    raw['merge_commit_sha'] = 'a' * 40 if merged is True else None
     case['steps'][0]['stdout'] = json.dumps(raw)
     install_replay(monkeypatch, 'gh', case['steps'])
     result = adapter().pr(*case['args'])

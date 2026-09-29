@@ -188,8 +188,11 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
         data = _validate(data, previous)
         encoded = json.dumps(data, allow_nan=False) + '\n'
         workspace.atomic_write(directory / 'state.json', encoded, mode=0o444)
-        _append_event(kind, {**payload, 'prs_seen': bool(data['raised_prs'] or data['claimed_prs'])},
-                      directory)
+        changes = {name: item['phase'] for name, item in data['items'].items()
+                   if previous is not None and name in previous['items']
+                   and item['phase'] != previous['items'][name]['phase']}
+        _append_event(kind, {**payload, 'prs_seen': bool(data['raised_prs'] or data['claimed_prs']),
+                             **({'phase_changes': changes} if changes else {})}, directory)
         return data
 
 
@@ -197,7 +200,7 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
 RESERVED = {'seats', 'fast_checks', 'reply_acks', 'channel_posts', 'decision_outcomes',
             'gate_approved', 'approved_items', 'goals', 'cap', 'seat_policy', 'envelope', 'watch',
             'planner_session_id', 'security', 'scanner_findings',
-            'pr_dispositions', 'close_requested'}
+            'pr_dispositions', 'close_requested', 'merges', 'merge_breakers'}
 
 
 def _reserved(data, path=()):

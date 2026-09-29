@@ -150,6 +150,8 @@ def pr(ref, root=None):
         'state': _field(value, 'state', str), 'merged': _field(value, 'merged', bool), 'draft': _field(value, 'draft', bool),
         'head': _sha(value['head']['sha']), 'base': _field(value['base'], 'ref', str),
         'base_sha': _sha(value['base']['sha']), 'branch': _field(value['head'], 'ref', str),
+        'merged_at': _field(value, 'merged_at', str, nullable=True),
+        'merge_commit': (_sha(value['merge_commit_sha']) if value['merged'] else None),
         'mergeable': _field(value, 'mergeable', bool, nullable=True),
         'merge_state': _field(value, 'mergeable_state', str),
         'additions': _field(value, 'additions', int), 'deletions': _field(value, 'deletions', int),
@@ -170,7 +172,8 @@ def checks(ref, sha, root=None):
             raise ValueError('check belongs to a different head')
         results.append({'name': _field(check, 'name', str), 'state': _field(check, 'status', str),
                         'conclusion': _field(check, 'conclusion', str, nullable=True),
-                        'sha': sha, 'url': _field(check, 'html_url', str)})
+                        'sha': sha, 'app_id': _field(check['app'], 'id', int),
+                        'url': _field(check, 'html_url', str)})
     # The statuses endpoint is newest first; retain only the latest per context.
     seen = set()
     for status in _pages(endpoint + '/statuses'):
@@ -180,7 +183,7 @@ def checks(ref, sha, root=None):
             seen.add(name)
             results.append({'name': name, 'state': 'pending' if state == 'pending' else 'completed',
                             'conclusion': None if state == 'pending' else state, 'sha': sha,
-                            'url': _field(status, 'target_url', str, nullable=True)})
+                            'app_id': None, 'url': _field(status, 'target_url', str, nullable=True)})
     return results
 
 
@@ -242,7 +245,7 @@ def protection(repo, branch, root=None):
                 raise ValueError('invalid check context')
             if not any(check['name'] == name for check in required):
                 required.append({'name': name, 'app_id': None})
-    return {'required_checks': required,
+    result = {'required_checks': required,
             'strict': _field(checks, 'strict', bool) if checks is not None else False,
             'approvals': _field(reviews, 'required_approving_review_count', int) if reviews is not None else 0,
             **{key: _field(reviews, key, bool) if reviews is not None else False for key in
@@ -250,6 +253,88 @@ def protection(repo, branch, root=None):
             'enforce_admins': admins,
             'conversation_resolution': _field(value.get('required_conversation_resolution',
                                                          {'enabled': False}), 'enabled', bool)}
+
+
+    result['merge_queue'] = False
+    for rule in _pages(f'repos/{_repo(repo)}/rules/branches/{quote(branch, safe="")}'):
+        kind = _field(rule, 'type', str)
+        if kind == 'merge_queue':
+            result['merge_queue'] = True
+        elif kind == 'required_status_checks':
+            params = rule['parameters']
+            result['strict'] |= _field(params, 'strict_required_status_checks_policy', bool)
+            for check in _list(params['required_status_checks']):
+                entry = {'name': _field(check, 'context', str),
+                         'app_id': _field({'v': check.get('integration_id')}, 'v', int, nullable=True)}
+                if entry not in required:
+                    required.append(entry)
+        elif kind == 'pull_request':
+            params = rule['parameters']
+            result['approvals'] = max(result['approvals'],
+                _field(params, 'required_approving_review_count', int))
+            for target, source in (
+                ('dismiss_stale_reviews', 'dismiss_stale_reviews_on_push'),
+                ('require_code_owner_reviews', 'require_code_owner_review'),
+                ('require_last_push_approval', 'require_last_push_approval'),
+                ('conversation_resolution', 'required_review_thread_resolution'),
+            ):
+                result[target] |= _field(params, source, bool)
+    return result
+
+
+def _files(values):
+    return [{'path': _field(v, 'filename', str),
+             'previous_path': v.get('previous_filename'),
+             'status': _field(v, 'status', str),
+             'additions': _field(v, 'additions', int),
+             'deletions': _field(v, 'deletions', int), 'patch': v.get('patch')}
+            for v in _list(values)]
+
+
+@_operation
+def files(ref, root=None):
+    repo, number = _ref(ref)
+    return _files(_pages(f'repos/{repo}/pulls/{number}/files'))
+
+
+def _commit(repo, sha):
+    pages = _list(_api(f'repos/{repo}/commits/{sha}?per_page=100', pages=True))
+    if not pages or any(_sha(page['sha']) != sha for page in pages):
+        raise ValueError('missing or mismatched commit page')
+    value = pages[0]
+    return {'sha': sha, 'parents': [_sha(v['sha']) for v in _list(value['parents'])],
+            'at': _field(value['commit']['committer'], 'date', str),
+            'message': _field(value['commit'], 'message', str),
+            'files': _files([v for page in pages for v in _list(page['files'])])}
+
+
+@_operation
+def history(repo, start, branch, patches=True, root=None):
+    repo, start = _repo(repo), _sha(start)
+    if not isinstance(branch, str) or not branch:
+        raise ValueError('missing base branch')
+    end = _sha(_api(f'repos/{repo}/branches/{quote(branch, safe="")}')['commit']['sha'])
+    original = _commit(repo, start) if patches else None
+    value = _api(f'repos/{repo}/compare/{start}...{end}')
+    commits = _list(value['commits'])
+    # ponytail: bounded history; larger comparisons are unmeasured.
+    if (value['status'] not in ('ahead', 'identical') or
+            _field(value, 'total_commits', int) != len(commits)):
+        raise ValueError('incomplete base history')
+    if not patches:
+        return {'commits': [{'sha': _sha(c['sha']),
+                            'at': _field(c['commit']['committer'], 'date', str),
+                            'message': _field(c['commit'], 'message', str)} for c in commits]}
+    result, parent = [], start
+    for commit in commits:
+        value = _commit(repo, _sha(commit['sha']))
+        if value['parents'] != [parent]:
+            raise ValueError('nonlinear base history')
+        result.append(value)
+        parent = value['sha']
+    if parent != end:
+        raise ValueError('incomplete base history')
+    return {'files': original['files'], 'commits': result}
 
 
 @_operation

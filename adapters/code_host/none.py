@@ -42,3 +42,11 @@ def merge(ref, sha, root=None):
 
 def revert_pr(ref, root=None):
     return record_none("code_host", "revert_pr", root, measurement=False)
+
+
+def files(ref, root=None):
+    return record_none('code_host', 'files', root, measurement=True)
+
+
+def history(repo, start, branch, patches=True, root=None):
+    return record_none('code_host', 'history', root, measurement=True)

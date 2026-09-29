@@ -301,7 +301,8 @@ def tick(root):
     if due('clock_at', config['watch']['clock_seconds']):
         save(root, {'clock_at': now.isoformat()}, kind='watch: clock')
     if due('poll_at', config['pr']['poll_seconds']):
-        result = max(result, poll(root))
+        from wuwei import merge
+        result = max(result, poll(root), merge.poll(root))
         save(root, {'poll_at': now.isoformat()})
     if old_health[0] == 1 or due('sweep_at', config['watch']['sweep_seconds']):
         result = max(result, sweep(root, watch_health=old_health))

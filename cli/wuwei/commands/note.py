@@ -4,7 +4,7 @@ import json
 import sys
 
 from wuwei.exits import CLEAN, FINDINGS
-from wuwei.notes import SLUG_RE, parse_note
+from wuwei.notes import OWNER_NOTES, SLUG_RE, parse_note
 from wuwei.workspace import atomic_write, find_workspace, now
 
 
@@ -21,6 +21,9 @@ def register(subparsers):
 
 
 def run_add(args):
+    if args.slug in OWNER_NOTES:
+        print('wuwei note: baseline is maintained by the owner outside agent tools', file=sys.stderr)
+        return FINDINGS
     if not SLUG_RE.fullmatch(args.slug):
         print('wuwei note: invalid slug', file=sys.stderr)
         return FINDINGS

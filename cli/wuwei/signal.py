@@ -6,6 +6,7 @@ from datetime import datetime
 SILENT = ('item.progress', 'state.write', 'state.set', 'state.transition',
           'seat started', 'seat stopped', 'seat launched', 'brief written',
           'fast_checks.record', 'retro.captured', 'decision.two_way', 'merge.auto',
+          'merge.observation', 'merge.metric', 'merge.intent', 'merge.completed', 'merge.red', 'merge.revert',
           'reply: acknowledged', 'hook.refusal', 'decision.decided',
           'seat.usage', 'build.iteration',
           'watch: clock', 'watch: heartbeat', 'watch: observation', 'session: compact',
@@ -32,7 +33,7 @@ def classify(event, state):
         blocking = any(isinstance(seat, dict) and seat.get('item') == payload.get('item')
                        and seat.get('status') == 'running' for seat in seats.values())
         return ('page' if blocking else 'nudge'), lane
-    if kind in ('day.blocked', 'security.finding', 'security.canary', 'security.honeytoken', 'scanner.finding', 'base.red', 'dead_man.hit', 'budget.cap'):
+    if kind in ('day.blocked', 'security.finding', 'security.canary', 'security.honeytoken', 'scanner.finding', 'base.red', 'merge.breaker', 'dead_man.hit', 'budget.cap'):
         return 'page', lane
     if kind == 'decision.one_way':
         return ('page' if payload.get('blocking') is True else 'nudge'), lane

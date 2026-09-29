@@ -4,6 +4,8 @@ from datetime import date
 import json
 import re
 
+OWNER_NOTES = {'baseline'}
+
 TYPES = {'hub', 'reference', 'decision', 'person', 'question'}
 STATUSES = {'active', 'archived'}
 FIELDS = {'type', 'summary', 'aliases', 'status', 'created'}
