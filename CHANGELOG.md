@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/taoq-ai/wuwei/compare/v0.2.0...v0.3.0) (2026-09-29)
+
+
+### Features
+
+* **team:** item-to-PR link and PR claiming ([#183](https://github.com/taoq-ai/wuwei/issues/183)) ([e57f536](https://github.com/taoq-ai/wuwei/commit/e57f536bab445c0432eeb2cd05e54d88b9b87720)), closes [#162](https://github.com/taoq-ai/wuwei/issues/162)
+* **team:** step-wise build loop for Claude Code subagent seats ([#187](https://github.com/taoq-ai/wuwei/issues/187)) ([d35dbd1](https://github.com/taoq-ai/wuwei/commit/d35dbd152e5dc03d57dca40cf4fdb310a9027f0d)), closes [#161](https://github.com/taoq-ai/wuwei/issues/161)
+
+
+### Bug Fixes
+
+* **guards:** commit and push guards act on the target repository, not only the cwd ([#184](https://github.com/taoq-ai/wuwei/issues/184)) ([895c5e0](https://github.com/taoq-ai/wuwei/commit/895c5e02b49e46d72d0b1658d7c39a48f6baffd6)), closes [#164](https://github.com/taoq-ai/wuwei/issues/164)
+* **guards:** day close refuses while work is unresolved ([#188](https://github.com/taoq-ai/wuwei/issues/188)) ([26a98ed](https://github.com/taoq-ai/wuwei/commit/26a98edcb0495650b3c5a107b27ead1f39aa8561)), closes [#167](https://github.com/taoq-ai/wuwei/issues/167)
+* **guards:** SubagentStop verdict lint checks only the stopping seat's own verdict ([#182](https://github.com/taoq-ai/wuwei/issues/182)) ([0b6a06c](https://github.com/taoq-ai/wuwei/commit/0b6a06c3211371f2a58b977124461b4e38cc9c76)), closes [#166](https://github.com/taoq-ai/wuwei/issues/166)
+* **security:** plugin installs from the marketplace or a source checkout do not lock the workspace ([#185](https://github.com/taoq-ai/wuwei/issues/185)) ([201ad0a](https://github.com/taoq-ai/wuwei/commit/201ad0a5cebb8845d73402891147dc14f41416ca)), closes [#165](https://github.com/taoq-ai/wuwei/issues/165)
+* **team:** PR raise works for a solo owner and reads the item worktree ([#186](https://github.com/taoq-ai/wuwei/issues/186)) ([9a16758](https://github.com/taoq-ai/wuwei/commit/9a16758de36ec7aa0b334339335dd7eb67e67248)), closes [#163](https://github.com/taoq-ai/wuwei/issues/163)
+* **team:** seat launch prompts carry the brief reference the launch guard requires ([#180](https://github.com/taoq-ai/wuwei/issues/180)) ([b4304db](https://github.com/taoq-ai/wuwei/commit/b4304dba3cb1e28bd4689ed1c252c90ab27414f9)), closes [#160](https://github.com/taoq-ai/wuwei/issues/160)
+
 ## [0.2.0](https://github.com/taoq-ai/wuwei/compare/v0.1.0...v0.2.0) (2026-09-29)
 
 
