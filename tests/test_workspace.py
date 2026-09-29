@@ -96,6 +96,12 @@ def test_initialized_config_checks(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
+def test_initialized_memory_lint(tmp_path):
+    assert cli(tmp_path, 'init').returncode == 0
+    result = cli(tmp_path, 'memory', 'lint')
+    assert result.returncode == 0, result.stderr
+
+
 def test_config_defaults_and_independence(tmp_path):
     from wuwei.workspace import load_config
     write_config(tmp_path, '')
@@ -116,6 +122,7 @@ def test_config_defaults_and_independence(tmp_path):
         'chat': {'identity': 'connector'},
         'host': {'free_memory_mb': 1024, 'seats': 1, 'reservation_timeout_seconds': 14400}, 'profile': 'strict',
             'memory': {'max_notes': 60, 'note_line_cap': 80, 'probation_days': 10, 'state_entry_cap': 3},
+            'metrics': {'transcripts': '~/.claude/projects'},
             'voice': {'sources': {}, 'review_prs': []},
         'build': {'max_iterations': 8, 'stuck_after': 3,
                   'poll_interval_seconds': 5, 'poll_timeout_seconds': 3600},

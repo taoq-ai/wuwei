@@ -19,3 +19,7 @@ def create(draft, *, root=None):
 
 def history(item, *, root=None):
     return registry.record_none('tracker', 'history', root)
+
+
+def created(item, *, root=None):
+    return registry.record_none('tracker', 'created', root)

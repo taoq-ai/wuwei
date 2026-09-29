@@ -56,3 +56,11 @@ def history(item, *, root=None):
     if value['pageInfo']['hasNextPage'] or not isinstance(value['nodes'], list):
         raise Failure('incomplete Linear history')
     return value['nodes']
+
+
+@operation('linear.created')
+def created(item, *, root=None):
+    value = _query('query($id:String!){issue(id:$id){createdAt}}', {'id': item})['issue']
+    if not isinstance(value, dict) or not isinstance(value.get('createdAt'), str):
+        raise Failure('missing issue creation time')
+    return value['createdAt']

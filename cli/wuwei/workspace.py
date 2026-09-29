@@ -51,6 +51,7 @@ SCHEMA = {
              "reservation_timeout_seconds": (int, 14400, 1)},
     "memory": {"max_notes": (int, 60, 1), "note_line_cap": (int, 80, 1),
                "probation_days": (int, 10, 0), "state_entry_cap": (int, 3, 1)},
+    "metrics": {"transcripts": (str, "~/.claude/projects")},
     "voice": {"sources": {"*": [(str, None)]}, "review_prs": [(str, None)]},
     "build": {"max_iterations": (int, 8, 1), "stuck_after": (int, 3, 1),
               "poll_interval_seconds": (int, 5, 0), "poll_timeout_seconds": (int, 3600, 1)},

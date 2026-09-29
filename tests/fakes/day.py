@@ -138,6 +138,7 @@ lead_login = "lead"
         self.host.results['threads'] = Result(0, {'comments': [], 'threads': []})
         self.host.results['request_reviewers'] = Result(0, {'requested': ['reviewer', 'lead']})
         self.host.results['files'] = Result(0, [{'path': 'memory/demo.py'}])
+        self.host.results['commits'] = Result(0, [])
         self.host.author_login = lambda repo, email, root=None: Result(0, {'login': email.split('@')[0]})
         self.chat = Recorder({'post': Result(0, {'channel': 'CREVIEW', 'ts': '1.1'}),
                               'sent': Result(0, [])})
