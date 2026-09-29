@@ -196,3 +196,13 @@ def test_next_sweep_reports_stale_watch_clock(root, monkeypatch):
     assert watch.sweep(root) == 1
     row = json.loads((workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()[-1])
     assert row['payload']['watch_dead'] == 1
+
+
+def test_nudges_on_a_workspace_without_day_state_lists_nothing(tmp_path, monkeypatch, capsys):
+    import json
+    from wuwei.__main__ import main
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    assert main(['nudges']) == 0
+    assert json.loads(capsys.readouterr().out) == []

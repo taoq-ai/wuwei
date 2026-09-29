@@ -17,6 +17,9 @@ def parse(text):
         line = raw.strip()
         if not line or line == '# Goals':
             continue
+        # Text before the first heading is the owner guide; indented lines there are examples.
+        if current is None and (raw[:1].isspace() or not line.startswith('## ')):
+            continue
         if line.startswith('## '):
             if current is not None:
                 missing = [field for field in FIELDS if field not in goals[current]]

@@ -395,3 +395,20 @@ def test_discovery_pr_comment_follow_up(tmp_path, monkeypatch):
     result = discover(tmp_path, ports={'code_host': Host()})
     assert result['sources']['pr_follow_ups'] == 'measured: 1'
     assert result['candidates'][0]['id'] == 'x/y#1:followup:2'
+
+
+def test_shipped_goals_guide_parses_to_no_goals():
+    from pathlib import Path
+    from wuwei import goals
+    root = Path(__file__).resolve().parents[1]
+    text = (root / 'templates/workspace/memory/goals.md').read_text(encoding='utf-8')
+    assert goals.parse(text) == {}
+
+
+def test_goals_preamble_is_ignored_and_indented_example_is_not_a_goal():
+    from wuwei import goals
+    text = ('# Goals\n\nOwner: replace this guide.\nEach block uses this shape:\n\n'
+            '    ## G-9\n    outcome: example\n\n'
+            '## G-1\noutcome: Ship\nmeasure: PRs\ntarget: 3\ndate: 2026-10-30\npriority: 1\n')
+    parsed = goals.parse(text)
+    assert list(parsed) == ['G-1'] and parsed['G-1']['outcome'] == 'Ship'
