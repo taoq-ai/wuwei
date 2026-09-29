@@ -139,12 +139,11 @@ def advance(monkeypatch, seconds):
     monkeypatch.setenv('WUWEI_NOW', (workspace.now() + timedelta(seconds=seconds)).isoformat())
 
 
-def action(root):
-    at = workspace.now()
-    record = {'state': 'open', 'action': 'resolve review thread T17',
-              'created_at': at.isoformat(), 'deadline': (at + timedelta(minutes=30)).isoformat()}
-    state._write_state(lambda data: data.setdefault('watch', {}).update(actions={REF: record}),
-                       root, reserved=False)
+def action(case):
+    root, host, _ = case
+    host.results['pr'].data['mergeable'] = False
+    from wuwei import pr_actions
+    assert pr_actions.evaluate(root)[0] == 1
 
 
 def disposition(case, kind='parked', text=None):
@@ -203,7 +202,7 @@ def test_native_tools_cannot_produce_disposition_markers(case, monkeypatch, caps
 def test_explicit_action_deadline(case, monkeypatch, seconds, expected):
     root, _, _ = case
     own(root)
-    action(root)
+    action(case)
     assert watch.poll(root) == 0
     saved = state.read_state(root)['watch']
     assert 'actions' in saved, 'watch action producer missing'
@@ -214,7 +213,7 @@ def test_explicit_action_deadline(case, monkeypatch, seconds, expected):
     code, reason = module('pr_actions').check(root)
     assert code == expected, reason
     if expected:
-        assert REF in reason and 'open' in reason and 'resolve review thread' in reason
+        assert REF in reason and 'conflicted' in reason and 'rebase' in reason
 
 
 @pytest.mark.parametrize('poll', [False, True])
@@ -244,12 +243,13 @@ def test_only_recorded_close_request_triggers_day_close(case, flag):
 def test_watch_never_inherits_yesterdays_actions(case, monkeypatch):
     root, _, _ = case
     own(root)
-    action(root)
+    action(case)
     assert watch.poll(root) == 0
+    prior = watch.saved(root)['actions'][REF]['deadline']
     advance(monkeypatch, 86400)
     own(root)
     assert watch.poll(root) == 0
-    assert not watch.saved(root).get('actions')
+    assert watch.saved(root)['actions'][REF]['deadline'] > prior
     assert module('guards/stop').check(payload(root)) == (0, '')
 
 
@@ -301,7 +301,7 @@ def test_local_disposition_never_proves_owner_action(case, change):
 def test_carried_does_not_waive_overdue_action(case, monkeypatch):
     root, _, _ = case
     own(root)
-    action(root)
+    action(case)
     watch.poll(root)
     assert disposition(case, 'carried') == 0
     advance(monkeypatch, 1801)
@@ -311,7 +311,7 @@ def test_carried_does_not_waive_overdue_action(case, monkeypatch):
 def test_failed_poll_does_not_reset_deadline(case, monkeypatch):
     root, host, _ = case
     own(root)
-    action(root)
+    action(case)
     watch.poll(root)
     assert 'actions' in state.read_state(root)['watch'], 'watch action producer missing'
     before = state.read_state(root)['watch']['actions']
@@ -350,7 +350,7 @@ def test_stop_table(case, monkeypatch, change, expected):
         elif change == 'error':
             host.results['pr'] = Result(2, None, 'timeout')
     elif change == 'active_retry':
-        action(root)
+        action(case)
         advance(monkeypatch, 1801)
         hook_payload['stop_hook_active'] = True
     elif change == 'unknown_session':
@@ -374,7 +374,7 @@ def test_stop_table(case, monkeypatch, change, expected):
 def test_stop_scope(case, tmp_path, monkeypatch, location):
     root, _, _ = case
     own(root)
-    action(root)
+    action(case)
     watch.poll(root)
     advance(monkeypatch, 1801)
     other = root.parent / ('outside-' + root.name)
@@ -433,7 +433,7 @@ def test_disable_stop_guard_mutation(case, monkeypatch, capsys):
     from wuwei.commands import hook
     root, _, _ = case
     own(root)
-    action(root)
+    action(case)
     watch.poll(root)
     advance(monkeypatch, 1801)
     def refusal():
@@ -483,7 +483,7 @@ def test_agents_cannot_send_owner_disposition_markers(case, kind, profile):
 def test_planner_handoff_does_not_exempt_original_session(case, monkeypatch):
     root, _, _ = case
     own(root)
-    action(root)
+    action(case)
     watch.poll(root)
     assert main(['plan', 'session', 'planner']) == 0
     assert main(['plan', 'session', 'replacement']) == 0

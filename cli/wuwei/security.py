@@ -220,21 +220,21 @@ def trace_findings(payload, root, data):
     return findings
 
 
-def gh_outbound(argv, cwd, root, *, api=False):
-    """Inspect file-backed bodies; the outward tier guard checks literal gh text."""
-    if load(root) is None:
-        return 0, ''
+def gh_outbound(argv, cwd, root, *, api=False, text_write=False):
+    """Inspect parsed arguments and file-backed bodies for protected markers."""
+    if text_write and any(marker in arg for arg in argv for marker in ('WUWEI parked ', 'WUWEI carried ')):
+        return 1, 'owner disposition markers must be posted by the owner'
     paths = []
     for index, arg in enumerate(argv):
         flags = ('--input',) if api else ('--body-file', '-F')
         if arg in flags:
             if index + 1 >= len(argv):
                 raise ValueError('missing outbound body file')
-            paths.append(argv[index + 1])
+            paths.append((argv[index + 1], api))
         elif any(arg.startswith(flag + '=') for flag in flags):
-            paths.append(arg.partition('=')[2])
+            paths.append((arg.partition('=')[2], api))
         elif not api and arg.startswith('-F'):
-            paths.append(arg[2:])
+            paths.append((arg[2:], False))
         elif api:
             field = ''
             if arg in ('--field', '-F') and index + 1 < len(argv):
@@ -244,15 +244,19 @@ def gh_outbound(argv, cwd, root, *, api=False):
             elif arg.startswith('-F'):
                 field = arg[2:]
             if '=@' in field:
-                paths.append(field.partition('=@')[2])
-    for name in paths:
+                paths.append((field.partition('=@')[2], False))
+    for name, json_body in paths:
         if not name or name == '-':
             return 2, 'outward: cannot inspect outbound stdin or missing body file'
         try:
             text = (cwd / name).read_text(encoding='utf-8')
+            if json_body:
+                text = json.dumps(json.loads(text), ensure_ascii=False)
         except (OSError, ValueError):
-            return 2, 'outward: cannot read outbound body file'
+            return 2, 'outward: opaque request, cannot read outbound body file'
         code, reason = outbound(text, root)
         if code:
             return code, reason
+        if any(marker in text for marker in ('WUWEI parked ', 'WUWEI carried ')):
+            return 1, 'owner disposition markers must be posted by the owner'
     return 0, ''

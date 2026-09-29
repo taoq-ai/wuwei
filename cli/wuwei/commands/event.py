@@ -20,6 +20,7 @@ EVENT_PRODUCERS = {
     'fast_checks.record': 'wuwei fast-checks', 'reply: acknowledged': 'wuwei reply',
     'decision.decided': 'wuwei decision outcome', 'watch: sweep': 'wuwei sweep',
     'watch: clock': 'wuwei watch', 'pr.disposition': 'wuwei pr disposition',
+    'pr.action': 'wuwei pr state',
     'day.close_requested': 'wuwei close', 'build.parked': 'wuwei build',
     'gate.received': 'wuwei dispatch receive', 'discovery.requested': 'wuwei dispatch discovery',
 }

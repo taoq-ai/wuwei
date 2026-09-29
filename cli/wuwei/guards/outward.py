@@ -28,12 +28,22 @@ def _check(payload, policy):
     try:
         from wuwei import workspace
         raw = json.dumps(payload.get('tool_input', {}))
-        if policy is outward.check_tier and any(marker in raw for marker in ('WUWEI parked ', 'WUWEI carried ')):
+        if (policy is outward.check_tier
+                and any(marker in raw for marker in ('WUWEI parked ', 'WUWEI carried '))):
             scope = workspace.guard_scope(payload)
             if scope is not None:
-                from wuwei import security
-                code, reason = security.outbound(payload.get('tool_input'), scope)
-                return (code, reason) if code else (FINDINGS, 'owner disposition markers must be posted by the owner')
+                from wuwei import security, shell
+                commands = []
+                if payload.get('tool_name') == 'Bash':
+                    try:
+                        commands = shell.normalize(payload['tool_input']['command'])
+                    except shell.ParseError:
+                        pass
+                # Only scripts entirely parsed as gh are covered by the PR guard.
+                if not commands or not all(command.argv and Path(command.argv[0]).name == 'gh'
+                                           for command in commands):
+                    code, reason = security.outbound(payload.get('tool_input'), scope)
+                    return (code, reason) if code else (FINDINGS, 'owner disposition markers must be posted by the owner')
         if payload.get('tool_name') == 'Bash' and policy is outward.check_tier:
             from wuwei import security
             cwd = Path(payload.get('cwd') or Path.cwd()).resolve()

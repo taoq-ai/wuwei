@@ -59,6 +59,8 @@ fast_checks = ["python3 -m pytest -q"]
 | `codex.command` | `[]` | Companion command; fill in to use Codex runtime. |
 | `codex.timeout_seconds` | `300` | Codex command timeout. |
 | `pr.poll_seconds` | `120` | Interval between polls of raised and claimed PRs. |
+| `pr.action_minutes` | `30` | Positive minutes to act on a measured PR finding. Nudge after this deadline, page at twice the interval. |
+| `pr.review_window` | `120` | Positive minutes to await review before re-requesting it. Starts at first observation of the head; comments do not reset it. |
 | `watch.clock_seconds` | `600` | Interval between watch clock events. |
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
