@@ -30,6 +30,10 @@ def register(subparsers):
     ping_check.set_defaults(func=run_ping_check)
     act = commands.add_parser('act', help='Execute the next owned PR action')
     act.add_argument('ref')
+    mode = act.add_mutually_exclusive_group()
+    mode.add_argument('--run', action='store_true', help='Execute the returned rebase step')
+    mode.add_argument('--complete', action='store_true', help='Finish a manually resolved rebase')
+    mode.add_argument('--reply', help='Composed answer to the next unanswered review question')
     act.set_defaults(func=run_act)
     record = commands.add_parser('disposition')
     record.add_argument('ref')
@@ -74,4 +78,5 @@ def run_ping_check(args):
 
 
 def run_act(args):
-    return pr_actions.act(workspace.find_workspace(), args.ref)
+    return pr_actions.act(workspace.find_workspace(), args.ref, run=args.run,
+                          complete=args.complete, reply=args.reply)

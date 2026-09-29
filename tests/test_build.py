@@ -210,7 +210,7 @@ def test_builder_policy_overrides_workspace_runtime(tmp_path, monkeypatch):
 def test_build_reports_unknown_item(tmp_path, monkeypatch, capsys):
     from wuwei.commands import build
     repo, brief, day, runtime = setup(tmp_path, monkeypatch, [])
-    assert build.run_loop('missing', str(brief), str(repo), root=tmp_path) == 1
+    assert build.run_loop('missing', str(brief), str(repo), root=tmp_path) == 2
     assert 'build: unknown item missing' in capsys.readouterr().err
 
 

@@ -45,6 +45,9 @@ def stored(root):
     ('gate_approved', 'wuwei plan approve'),
     ('envelope', 'wuwei plan approve'),
     ('watch', 'wuwei watch'),
+    ('pr_action_done', 'wuwei pr act'),
+    ('pr_reply_drafts', 'wuwei pr act'),
+    ('pr_action_decisions', 'wuwei pr act'),
 ])
 def test_nonallowlisted_state_paths_refuse_without_write(root, capsys, path, producer):
     before = stored(root)

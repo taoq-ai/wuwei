@@ -105,7 +105,7 @@ def next_action(item, brief=None, worktree=None, *, root=None):
     identifier(item)
     data = state.read_state(root)
     if item not in data['items']:
-        raise PortExit(1, f'unknown item {item}')
+        raise PortExit(2, f'unknown item {item}')
     record = data.get('builds', {}).get(item)
     if record is not None and record['status'] == 'running':
         raise ValueError('builder is still running; call build next after its stop hook')
@@ -148,6 +148,60 @@ def next_action(item, brief=None, worktree=None, *, root=None):
         from wuwei import dispatch
         dispatch.tracker_call(item, 'claim', root)
     return action
+
+
+def open_fix(item, feedback, *, root):
+    """Resume the linked builder once with measured PR feedback."""
+    from wuwei.brief import launch_prompt
+    from wuwei.security import agent_path
+    if not isinstance(feedback, str) or not feedback.strip():
+        raise ValueError('fix round needs measured feedback')
+    data = state.read_state(root)
+    if item not in data['items']:
+        raise ValueError(f'unknown item {item}')
+    record = data.get('builds', {}).get(item)
+    if record is None:
+        next_action(item, root=root)
+        data = state.read_state(root)
+        record = data.get('builds', {}).get(item)
+    if data['items'][item]['phase'] == 'fix' and record is not None:
+        if record['status'] == 'ready':
+            return next_action(item, root / record['brief'], record['worktree'], root=root)
+        if record['status'] in ('running', 'check'):
+            return {'action': 'wait', 'item': item, 'status': record['status']}
+    if record is None or record['status'] not in ('done', 'ready'):
+        raise ValueError('fix round needs a completed or ready build')
+    if record.get('fix_rounds', 0) >= 1:
+        raise ValueError('fix round budget exhausted')
+    if data['items'][item]['phase'] != 'raised':
+        raise ValueError('fix round needs a raised item')
+    brief = root / record['brief']
+    resume = record.get('agent_id') or record.get('job')
+    if not resume and (record['status'] == 'done' or record['runtime'] == 'codex'):
+        from wuwei import brief as brief_writer
+        body = f'Read the original builder brief {record["brief"]}.\n\nPR fix feedback:\n{feedback}'
+        relative = brief_writer.write('builder', item, f'{item}-pr-fix', body,
+                                      worktree=record['worktree'],
+                                      pr=data['items'][item]['pr'], root=root)
+        brief = root / relative
+    prompt = launch_prompt(brief, agent_path(root, 'builder'), root=root) + '\n\n' + feedback
+    action = {'action': 'continue' if resume else 'launch',
+              'feedback': feedback, 'prompt': prompt, 'agent_type': 'wuwei:builder',
+              'runtime': record['runtime'], 'brief': str(brief),
+              'worktree': record['worktree']}
+    if record.get('agent_id'):
+        action['resume'] = record['agent_id']
+    def update(fresh):
+        if fresh.get('builds', {}).get(item) != record:
+            raise ValueError('build changed before fix round')
+        fresh['items'][item]['phase'] = 'fix'
+        fresh['builds'][item] = {**record, 'brief': str(brief.relative_to(root)),
+                                 'status': 'ready', 'action': action,
+                                 'fix_rounds': 1, 'iteration': 0, 'repeats': 0,
+                                 'signature': None}
+    state._write_state(update, root, reserved=False, kind='build.fix_opened',
+                       payload={'item': item})
+    return next_action(item, brief, record['worktree'], root=root)
 
 
 def started(data, item, name):
@@ -305,6 +359,9 @@ def complete_checks(item, results, *, root, expected=None):
                   'prompt': launch_prompt(root / record['brief'], agent_path(root, 'builder'), root=root) + '\n\n' + feedback}
         record.update(status='ready', action=action)
     _save(item, record, root, 'build.checked', expected)
+    if (not failures and record.get('fix_rounds') == 1
+            and state.read_state(root)['items'][item]['phase'] == 'fix'):
+        state.transition(item, 'delta', root)
     return 1 if failures else 0
 
 

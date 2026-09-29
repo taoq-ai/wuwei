@@ -61,11 +61,60 @@ def test_worktree_creation(exit_code, tmp_path, monkeypatch):
     assert (result.exit, result.data) == ((0, case['data']) if exit_code == 0 else (2, None))
 
 
+@pytest.mark.parametrize('code,expected', [(0, 0), (1, 1), (128, 2)])
+def test_rebase_port_reports_conflict_and_errors(code, expected, monkeypatch, tmp_path):
+    conflict = tmp_path / 'rebase-merge'
+    conflict.mkdir()
+    steps = [{'argv': ['-C', '/repo', 'rebase', '--', 'origin/main'], 'exit': code}]
+    if code == 1:
+        steps.append({'argv': ['-C', '/repo', 'rev-parse', '--git-path', 'rebase-merge'],
+                      'stdout': str(conflict) + '\n'})
+    calls = install_replay(monkeypatch, 'git', steps)
+    result = adapter().rebase('/repo', 'origin/main')
+    assert result.exit == expected
+    assert len(calls) == len(steps)
+
+
+def test_push_port_uses_current_head_and_explicit_branch(monkeypatch):
+    calls = install_replay(monkeypatch, 'git', [{'argv': ['-C', '/repo', 'push',
+                                                '--force-with-lease=feature:' + 'a' * 40, 'origin',
+                                                'HEAD:refs/heads/feature']}])
+    assert adapter().push('/repo', 'origin', 'feature', 'a' * 40).exit == 0
+    assert len(calls) == 1
+
+
+def test_rebase_dirty_worktree_is_unavailable(monkeypatch):
+    install_replay(monkeypatch, 'git', [
+        {'argv': ['-C', '/repo', 'rebase', '--', 'origin/main'], 'exit': 1,
+         'stderr': 'Please commit or stash them'},
+        {'argv': ['-C', '/repo', 'rev-parse', '--git-path', 'rebase-merge'],
+         'stdout': '/repo/.git/rebase-merge\n'},
+        {'argv': ['-C', '/repo', 'rev-parse', '--git-path', 'rebase-apply'],
+         'stdout': '/repo/.git/rebase-apply\n'},
+    ])
+    result = adapter().rebase('/repo', 'origin/main')
+    assert result.exit == 2 and 'Please commit or stash them' in result.reason
+
+
+def test_fetch_port_checks_current_host_base(monkeypatch):
+    sha = 'b' * 40
+    calls = install_replay(monkeypatch, 'git', [
+        {'argv': ['-C', '/repo', 'fetch', '--no-tags', 'origin', 'main']},
+        {'argv': ['-C', '/repo', 'rev-parse', '--verify', 'FETCH_HEAD^{commit}'],
+         'stdout': sha + '\n'},
+    ])
+    assert adapter().fetch('/repo', 'origin', 'main', sha).data == {'sha': sha}
+    assert len(calls) == 2
+
+
 @pytest.mark.parametrize('operation,args', [
     ('merge_base', ['/repo', '--help']),
     ('diff_stat', ['/repo', '--output=/tmp/unwanted', 'HEAD']),
     ('log_since', ['/repo', '--all']),
     ('worktree_add', ['/repo', '--force', '/path']),
+    ('rebase', ['/repo', '--exec=touch unwanted']),
+    ('push', ['/repo', 'origin', '--force']),
+    ('fetch', ['/repo', '--force', 'main', 'b' * 40]),
 ])
 def test_option_injection_never_spawns(operation, args, monkeypatch):
     def forbidden(*args, **kwargs):

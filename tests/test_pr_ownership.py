@@ -333,7 +333,9 @@ def test_action_and_parking_state_reserved(case, path):
     assert main(['state', 'set', path, '{}']) == 1
 
 
-@pytest.mark.parametrize('kind', ['pr.action', 'pr.action.reset', 'pr.disposition'])
+@pytest.mark.parametrize('kind', ['pr.action', 'pr.action.reset', 'pr.disposition',
+                                  'pr.action.done', 'pr.reply.drafted', 'pr.action.decision',
+                                  'build.fix_opened'])
 def test_action_events_reserved(case, kind):
     assert main(['event', kind, '{"tier":"silent"}']) == 1
 

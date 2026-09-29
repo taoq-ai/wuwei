@@ -15,6 +15,15 @@ class Fake(Recorder):
     def resolve(self, repo, sha, root=None):
         return self._call('resolve', (repo, sha), root)
 
+    def rebase(self, repo, ref, root=None):
+        return self._call('rebase', (repo, ref), root)
+
+    def fetch(self, repo, remote, branch, expected, root=None):
+        return self._call('fetch', (repo, remote, branch, expected), root)
+
+    def push(self, repo, remote, branch, expected, root=None):
+        return self._call('push', (repo, remote, branch, expected), root)
+
     def branches(self, repo, pattern, root=None):
         return self._call('branches', (repo, pattern), root)
 

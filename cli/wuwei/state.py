@@ -235,6 +235,8 @@ STATE_PRODUCERS = {
     'pr_reviewers': 'wuwei pr raise or ping',
     'scanner_decisions': 'wuwei sweep',
     'watch': 'wuwei watch', 'pr_dispositions': 'wuwei pr disposition',
+    'pr_action_done': 'wuwei pr act', 'pr_reply_drafts': 'wuwei pr act',
+    'pr_action_decisions': 'wuwei pr act',
     'close_requested': 'wuwei close', 'merges': 'wuwei merge',
     'merge_breakers': 'wuwei merge', 'gate_verdicts': 'wuwei dispatch receive',
     'brief_packs': 'wuwei brief pack', 'brief_drill': 'wuwei brief answer',
@@ -354,6 +356,8 @@ def transition(item, phase, root=None):
             raise KeyError(f'no state item: {item}')
         current = data['items'][item]
         _check_transition(current, phase)
+        if current['phase'] == 'delta' and phase == 'raised' and item in data.get('builds', {}):
+            data['builds'][item]['fix_rounds'] = 0
         current['phase'] = phase
 
     return _write_state(update, root, reserved=False, kind='state.transition',
