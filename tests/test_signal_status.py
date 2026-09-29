@@ -222,12 +222,12 @@ def test_transition_to_escalated_uses_running_seat():
 
 @pytest.mark.parametrize('page,spoof,exit_code', [
     ('security.finding', 'security.resolved', 1),
-    ('base.red', 'base.green', 0),
-    ('dead_man.hit', 'dead_man.cleared', 0),
-    ('budget.cap', 'budget.cleared', 0),
-    ('day.blocked', 'day.unblocked', 0),
+    ('base.red', 'base.green', 1),
+    ('dead_man.hit', 'dead_man.cleared', 1),
+    ('budget.cap', 'budget.cleared', 1),
+    ('day.blocked', 'day.unblocked', 1),
     ('decision.one_way', 'decision.resolved', 1),
-    ('person.ask', 'person.answered', 0),
+    ('person.ask', 'person.answered', 1),
 ])
 def test_seat_event_cannot_clear_day_page(tmp_path, page, spoof, exit_code):
     payload = {'id': 'same', 'blocking': True, 'due': NOW}

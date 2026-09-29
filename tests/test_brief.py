@@ -22,7 +22,7 @@ def day(tmp_path, monkeypatch):
         "full_path_patterns = ['(^|/)(infra|infrastructure|terraform|migrations?|secrets?)(/|$)']\n")
     directory = workspace.day_dir(tmp_path)
     directory.mkdir(parents=True)
-    state.write_state(lambda data: data.update(items={'X': {'phase': 'gate'}}, seats={}), tmp_path)
+    state._write_state(lambda data: data.update(items={'X': {'phase': 'gate'}}, seats={}), tmp_path, reserved=False)
     (directory / 'decisions').mkdir()
     (directory / 'decisions/rulings.md').write_text('D-ABC-1 ruled: (a)\n')
     vcs, host = VCS(), CodeHost()
@@ -169,7 +169,7 @@ def test_ruling_sources(day, monkeypatch, source):
     path.write_text('D-ABC-2..6 accepted\n' if source == 'range' else 'D-ABC-3 pending\n')
     if source == 'policy':
         path.unlink()
-        state.set_state('gate_policy', 'D-ABC-3 ruled', root)
+        state._write_state(lambda data: data.update(gate_policy='D-ABC-3 ruled'), root, reserved=False)
     assert brief(monkeypatch, 'per D-ABC-3', 'builder', 'X', 'ruling', *opts) == (1 if source == 'gate-only' else 0)
 
 
@@ -232,7 +232,7 @@ def test_renamed_protected_path_requires_full(day, monkeypatch):
 def test_concurrent_track_change_is_not_overwritten(day, monkeypatch):
     original = day[2].head
     def head(*args, **kwargs):
-        state.set_state('items.X.track', 'FULL', day[0])
+        state._write_state(lambda data: data['items']['X'].update(track='FULL'), day[0], reserved=False)
         return original(*args, **kwargs)
     monkeypatch.setattr(day[2], 'head', head)
     assert brief(monkeypatch, 'body', 'builder', 'X', 'race-track', '--worktree', 'tree') == 2

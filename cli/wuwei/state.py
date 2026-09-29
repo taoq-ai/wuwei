@@ -181,10 +181,16 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
         fcntl.flock(lock, fcntl.LOCK_EX)
         data = read_state(directory=directory)
         previous = deepcopy(data) if (directory / 'state.json').exists() else None
-        trusted_before = _reserved(data)
+        before = deepcopy(data) if reserved else None
         update(data)
-        if reserved and _reserved(data) != trusted_before:
-            raise StateError('reserved state fields require a dedicated producer')
+        if reserved:
+            protected = _protected(before, before)
+            changed = _protected(data, before)
+            for key in protected.keys() | changed.keys():
+                if (key not in protected or key not in changed
+                        or json.dumps(protected[key], sort_keys=True)
+                        != json.dumps(changed[key], sort_keys=True)):
+                    raise _producer_error((key,))
         data = _validate(data, previous)
         encoded = json.dumps(data, allow_nan=False) + '\n'
         workspace.atomic_write(directory / 'state.json', encoded, mode=0o444)
@@ -196,29 +202,55 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
         return data
 
 
-# Features add only the namespaces they own.
-RESERVED = {'seats', 'fast_checks', 'reply_acks', 'channel_posts', 'decision_outcomes',
-            'gate_approved', 'approved_items', 'goals', 'cap', 'seat_policy', 'envelope', 'watch',
-            'planner_session_id', 'security', 'scanner_findings',
-            'pr_dispositions', 'close_requested', 'merges', 'merge_breakers'}
+# Only these root settings are tunable, and only before morning approval.
+OWNER_FIELDS = frozenset({'cap', 'seat_policy'})
+STATE_PRODUCERS = {
+    'cap': 'wuwei plan approve', 'seat_policy': 'wuwei plan approve',
+    'envelope': 'wuwei plan approve', 'items': 'wuwei plan approve',
+    'gate_approved': 'wuwei plan approve', 'approved_items': 'wuwei plan approve',
+    'goals': 'wuwei plan approve', 'planner_session_id': 'wuwei plan session',
+    'seats': 'wuwei hook PreToolUse', 'fast_checks': 'wuwei fast-checks',
+    'reply_acks': 'wuwei reply', 'decision_outcomes': 'wuwei decision outcome',
+    'watch': 'wuwei watch', 'pr_dispositions': 'wuwei pr disposition',
+    'close_requested': 'wuwei close', 'merges': 'wuwei merge',
+    'merge_breakers': 'wuwei merge',
+}
 
 
-def _reserved(data, path=()):
-    records = {}
-    if isinstance(data, dict):
-        for key, value in data.items():
-            if key in RESERVED and (key not in {'cap', 'seat_policy', 'envelope'} or data.get('gate_approved')):
-                records[(*path, key)] = deepcopy(value)
-            else:
-                records.update(_reserved(value, (*path, key)))
-    elif isinstance(data, (list, tuple)):
-        for index, value in enumerate(data):
-            records.update(_reserved(value, (*path, index)))
-    return records
+def _producer_error(parts):
+    key = parts[0]
+    producer = STATE_PRODUCERS.get(key, 'its dedicated command')
+    if key == 'items' and len(parts) > 2:
+        producer = {'phase': 'wuwei state transition',
+                    'resume_phase': 'wuwei state transition',
+                    'flags': 'wuwei plan approve', 'track': 'wuwei brief',
+                    'goal': 'wuwei plan approve'}.get(parts[2], 'its dedicated command')
+    return StateError(f'{".".join(parts)}: reserved; written by {producer}')
+
+
+def _generic_allowed(parts, data):
+    return ((parts[0] in OWNER_FIELDS and not data['gate_approved']
+             and (len(parts) == 1 or parts[0] == 'seat_policy'))
+            or (len(parts) == 3 and parts[0] == 'items' and parts[2] == 'note'
+                and parts[1] in data['items']))
+
+
+def _protected(data, before):
+    """Everything except explicitly tunable fields is producer-owned by default."""
+    result = deepcopy(data)
+    if not before['gate_approved']:
+        for key in OWNER_FIELDS:
+            result.pop(key, None)
+    items = result.get('items')
+    if isinstance(items, dict):
+        for name in before['items']:
+            if isinstance(items.get(name), dict):
+                items[name].pop('note', None)
+    return result
 
 
 def write_state(update, root=None, *, kind='state.write', payload=None):
-    """Generic writes cannot change namespaces reserved by dedicated producers."""
+    """Generic writes may change only explicitly allowlisted owner fields."""
     return _write_state(update, root, kind=kind, payload=payload)
 
 
@@ -241,11 +273,10 @@ def get_state(path=None, root=None):
 
 def set_state(path, value, root=None):
     parts = _parts(path)
-    if RESERVED.intersection(parts) and (not RESERVED.intersection(parts) <= {'cap', 'seat_policy', 'envelope'}
-                                        or read_state(root).get('gate_approved')):
-        raise StateError('reserved state path requires a dedicated producer')
 
     def update(data):
+        if not _generic_allowed(parts, data):
+            raise _producer_error(parts)
         parent = data
         for key in parts[:-1]:
             if not isinstance(parent, dict):
@@ -266,7 +297,7 @@ def transition(item, phase, root=None):
         _check_transition(current, phase)
         current['phase'] = phase
 
-    return write_state(update, root, kind='state.transition',
+    return _write_state(update, root, reserved=False, kind='state.transition',
                        payload={'item': item, 'phase': phase})
 
 

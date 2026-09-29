@@ -43,7 +43,7 @@ def case(tmp_path, monkeypatch):
     scanner = SimpleNamespace(traces=lambda file, root=None: Result(0, {}))
     ports = {'code_host': host, 'vcs': vcs, 'scanner': scanner}
     monkeypatch.setattr(registry, 'load', lambda kind, config: ports[kind])
-    state.write_state(lambda data: data.update(raised_prs=[REF]), tmp_path)
+    state._write_state(lambda data: data.update(raised_prs=[REF]), tmp_path, reserved=False)
     return tmp_path, host, vcs, monkeypatch
 
 
@@ -79,12 +79,12 @@ def test_health_clock_boundary(case, seconds, expected):
 def test_heartbeat_persists_and_staleness_uses_commit_or_report(case):
     root, _, vcs, _ = case
     watch = watch_module()
-    state.set_state('items.work', {'status': 'running', 'worktree': 'repo'}, root)
+    state._write_state(lambda data: data['items'].update(work={'status': 'running', 'worktree': 'repo'}), root, reserved=False)
     assert watch.activity(root)[0] == 0
     assert not events(root, 'watch: heartbeat')
     advance(case, 900)
     assert watch.activity(root)[0] == 1
-    state.set_state('items.work.report_at', workspace.now().isoformat(), root)
+    state._write_state(lambda data: data['items']['work'].update(report_at=workspace.now().isoformat()), root, reserved=False)
     assert watch.activity(root)[0] == 0
     advance(case, 900)
     vcs.results['head'].data['sha'] = 'b' * 40
@@ -185,7 +185,7 @@ def test_poll_new_gone_and_midnight(case):
     watch = watch_module()
     assert hasattr(watch, 'poll')
     assert watch.poll(root) == 0
-    state.set_state('claimed_prs', ['example/project#8'], root)
+    state._write_state(lambda data: data.update(claimed_prs=['example/project#8']), root, reserved=False)
     # Fake PR identity must match each reference.
     original = host.pr
     def read_pr(ref, root=None):
@@ -195,7 +195,7 @@ def test_poll_new_gone_and_midnight(case):
     monkeypatch.setattr(host, 'pr', read_pr)
     assert watch.poll(root) == 1
     advance(case, 86400)
-    state.write_state(lambda data: data.update(raised_prs=[REF]), root)
+    state._write_state(lambda data: data.update(raised_prs=[REF]), root, reserved=False)
     host.results['pr'].data['head'] = 'b' * 40
     assert watch.poll(root) == 1
     assert len(events(root, 'pr.changed')) == 2
@@ -433,7 +433,7 @@ def test_flush_rejects_complete_record_without_newline(case):
 def test_activity_tracks_launched_seat_worktree_from_brief(case):
     root, _, vcs, _ = case
     watch = watch_module()
-    state.set_state('items.work', {}, root)
+    state._write_state(lambda data: data['items'].update(work={}), root, reserved=False)
     state.append_event('brief written', {'name': 'builder', 'item': 'work',
         'path': 'briefs/builder.md', 'worktree': 'repo'}, root)
     state._write_state(lambda data: data['seats'].update(builder={
@@ -481,10 +481,10 @@ def test_session_real_cli_boundary(case):
 def test_activity_baseline_survives_midnight(case):
     root, _, vcs, _ = case
     watch = watch_module()
-    state.set_state('items.work', {'status': 'running', 'worktree': 'repo'}, root)
+    state._write_state(lambda data: data['items'].update(work={'status': 'running', 'worktree': 'repo'}), root, reserved=False)
     assert watch.activity(root)[0] == 0
     advance(case, 86400)
-    state.set_state('items.work', {'status': 'running', 'worktree': 'repo'}, root)
+    state._write_state(lambda data: data['items'].update(work={'status': 'running', 'worktree': 'repo'}), root, reserved=False)
     vcs.results['head'].data['sha'] = 'b' * 40
     assert watch.activity(root)[0] == 0
     assert len(events(root, 'watch: heartbeat')) == 1
@@ -591,7 +591,7 @@ def test_planner_session_reserved_from_state_and_events(case):
 def test_poll_and_sweep_only_day_prs(case):
     root, host, _, monkeypatch = case
     watch = watch_module()
-    state.set_state('claimed_prs', [REF, 'example/project#8'], root)
+    state._write_state(lambda data: data.update(claimed_prs=[REF, 'example/project#8']), root, reserved=False)
     original = host.pr
     def read_pr(ref, root=None):
         result = original(ref, root=root)
@@ -610,7 +610,7 @@ def test_failed_pr_does_not_hide_other_changes(case):
     root, host, _, monkeypatch = case
     watch = watch_module()
     other = 'example/project#8'
-    state.set_state('claimed_prs', [other], root)
+    state._write_state(lambda data: data.update(claimed_prs=[other]), root, reserved=False)
     broken = False
     original = host.pr
     def read_pr(ref, root=None):
@@ -645,7 +645,7 @@ def test_stop_wake_once_accumulates_until_seen(case, capsys):
     watch.poll(root)
     host.results['pr'].data['head'] = 'b' * 40
     watch.poll(root)
-    state.set_state('claimed_prs', [other], root)
+    state._write_state(lambda data: data.update(claimed_prs=[other]), root, reserved=False)
     original = host.pr
     def read_pr(ref, root=None):
         result = original(ref, root=root)

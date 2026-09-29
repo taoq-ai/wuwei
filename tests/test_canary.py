@@ -109,7 +109,7 @@ def test_custom_decoy_protected(secured):
 def test_brief_points_at_private_charters(secured, monkeypatch):
     from wuwei import brief, state
     monkeypatch.setenv('WUWEI_WORKSPACE', str(secured))
-    state.write_state(lambda data: data.update(items={'X': {'phase': 'implement'}}), secured)
+    state._write_state(lambda data: data.update(items={'X': {'phase': 'implement'}}), secured, reserved=False)
     brief.write('builder', 'X', 'example', 'Implement the change.')
     content = (workspace.day_dir(secured) / 'briefs/example.md').read_text()
     assert str(secured / '.wuwei/generated/charters/builder.md') in content
@@ -124,7 +124,7 @@ def test_refresh_generated_charter_override(secured, action):
                       + '\nFollow the updated local instruction.\n')
     before = material(secured)
     if action == 'brief':
-        state.write_state(lambda data: data.update(items={'X': {'phase': 'implement'}}), secured)
+        state._write_state(lambda data: data.update(items={'X': {'phase': 'implement'}}), secured, reserved=False)
         brief.write('builder', 'X', 'example', 'Implement the change.')
     else:
         args = SimpleNamespace(path=str(secured), upgrade=True, dry_run=True)

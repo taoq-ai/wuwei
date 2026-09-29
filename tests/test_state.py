@@ -26,7 +26,7 @@ def day(root):
 
 def cli(*args):
     return subprocess.run(
-        [sys.executable, '-S', '-m', 'wuwei', *args],
+        [sys.executable, '-P', '-S', '-m', 'wuwei', *args],
         env={**os.environ, 'PYTHONPATH': str(ROOT / 'cli')},
         capture_output=True, text=True,
     )
@@ -53,7 +53,7 @@ def test_writes_require_existing_workspace(tmp_path, operation, missing_root):
     assert list(tmp_path.iterdir()) == []
 
 
-@pytest.mark.parametrize('args', [('event', 'probe'), ('state', 'set', 'cap', '2')])
+@pytest.mark.parametrize('args', [('event', 'note'), ('state', 'set', 'cap', '2')])
 def test_cli_writes_without_workspace_exit_two(tmp_path, monkeypatch, args):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     assert cli(*args).returncode == 2
@@ -69,18 +69,19 @@ def test_get_set_defaults_and_audit(workspace):
         'gate_approved': False, 'approved_items': [], 'goals': [],
     }
     assert not day(workspace).exists()
-    for path, value in [('items.A', {}), ('cap', 3), ('seat_policy.builder', {'model': 'x'}),
-                        ('envelope', {'approved': True}), ('claimed_prs', [4]),
-                        ('raised_prs', [5]), ('gate_verdicts.arch', 'PASS')]:
+    from wuwei import state
+    state._write_state(lambda data: data['items'].update(A={}), reserved=False)
+    for path, value in [('items.A.note', 'progress'), ('cap', 3),
+                        ('seat_policy.builder', {'model': 'x'})]:
         result = cli('state', 'set', path, json.dumps(value))
         assert result.returncode == 0, result.stderr
     item = json.loads(cli('state', 'get', 'items.A').stdout)
     assert item == {'lane': 'build', 'status': 'queued', 'phase': 'planned',
                     'flags': dict.fromkeys(['trust_surface', 'boundary_relevant', 'agent_surface'], False),
-                    'gates': {}, 'note': ''}
+                    'gates': {}, 'note': 'progress'}
     assert json.loads(cli('state', 'get', 'cap').stdout) == 3
-    assert len(events(workspace)) == 7
-    assert all(e['ts'] == NOW and e['kind'] == 'state.set' for e in events(workspace))
+    assert len(events(workspace)) == 4
+    assert all(e['ts'] == NOW and e['kind'] == 'state.set' for e in events(workspace)[1:])
 
 
 @pytest.mark.parametrize('path,value', [
@@ -89,16 +90,22 @@ def test_get_set_defaults_and_audit(workspace):
     ('items.A.flags.trust_surface', 'yes'),
 ])
 def test_invalid_schema_is_finding_without_write(workspace, path, value):
-    result = cli('state', 'set', path, json.dumps(value))
-    assert result.returncode == 1, result.stderr
-    assert path.split('.')[0] in result.stderr
+    from wuwei import state
+    def update(data):
+        parent = data
+        parts = path.split('.')
+        for key in parts[:-1]:
+            parent = parent.setdefault(key, {})
+        parent[parts[-1]] = value
+    with pytest.raises(state.StateError, match=path.split('.')[0]):
+        state._write_state(update, reserved=False)
     assert not (day(workspace) / 'state.json').exists()
     assert not (day(workspace) / 'events.jsonl').exists()
 
 
 @pytest.mark.parametrize('args', [
-    ('get', 'missing'), ('set', 'a..b', '1'), ('set', 'cap.x', '1'),
-    ('set', 'cap', '{'), ('set', 'extra', 'NaN'), ('set', 'extra', '1e999'),
+    ('get', 'missing'), ('set', 'a..b', '1'),
+    ('set', 'cap', '{'), ('set', 'seat_policy.x', 'NaN'), ('set', 'seat_policy.x', '1e999'),
 ])
 def test_bad_paths_and_json_fail_closed(workspace, args):
     result = cli('state', *args)
@@ -150,7 +157,7 @@ def test_atomic_replace_and_cleanup(workspace, monkeypatch):
 def test_parallel_writers_preserve_every_update(workspace):
     count = 20
     processes = [subprocess.Popen(
-        [sys.executable, '-S', '-m', 'wuwei', 'state', 'set', f'parallel.k{i}', str(i)],
+        [sys.executable, '-P', '-S', '-m', 'wuwei', 'state', 'set', f'seat_policy.k{i}', str(i)],
         env={**os.environ, 'PYTHONPATH': str(ROOT / 'cli')},
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     ) for i in range(count)]
@@ -162,17 +169,18 @@ def test_parallel_writers_preserve_every_update(workspace):
         _, stderr = process.communicate(timeout=10)
         assert process.returncode == 0, stderr
     data = json.loads((day(workspace) / 'state.json').read_text())
-    assert data['parallel'] == {f'k{i}': i for i in range(count)}
+    assert data['seat_policy'] == {f'k{i}': i for i in range(count)}
     recorded = events(workspace)
     assert len(recorded) == count
-    assert {e['payload']['path'] for e in recorded} == {f'parallel.k{i}' for i in range(count)}
+    assert {e['payload']['path'] for e in recorded} == {f'seat_policy.k{i}' for i in range(count)}
 
 
 ACTIVE = ['planned', 'spec', 'implement', 'gate', 'raised', 'fix', 'delta']
 
 
 def test_transition_cli_rejects_implement_to_done(workspace):
-    assert cli('state', 'set', 'items.A', '{"phase":"implement"}').returncode == 0
+    from wuwei import state
+    state._write_state(lambda data: data['items'].update(A={'phase': 'implement'}), reserved=False)
     before = (day(workspace) / 'state.json').read_bytes()
     result = cli('state', 'transition', 'A', 'done')
     assert result.returncode == 1, result.stderr
@@ -195,7 +203,7 @@ def test_all_transition_edges(workspace, start):
         'delta': ['raised', 'fix'], 'raised': ['fix', 'merged'], 'merged': [],
     }
     targets = ACTIVE + ['parked', 'escalated', 'merged', 'done', 'invalid']
-    state.set_state('items', {f'item_{target}': {'phase': start} for target in targets})
+    state._write_state(lambda data: data.update(items={f'item_{target}': {'phase': start} for target in targets}), reserved=False)
     allowed = edges[start] + (['parked', 'escalated'] if start in ACTIVE else [])
     for target in ACTIVE + ['parked', 'escalated', 'merged', 'done', 'invalid']:
         # Separate items keep each attempted edge independent.
@@ -216,7 +224,7 @@ def test_all_transition_edges(workspace, start):
 @pytest.mark.parametrize('start', ACTIVE)
 def test_pause_returns_only_to_previous_phase(workspace, start, pause):
     from wuwei import state
-    state.set_state('items.A', {'phase': start})
+    state._write_state(lambda data: data['items'].update(A={'phase': start}), reserved=False)
     state.transition('A', pause)
     assert state.get_state('items.A.resume_phase') == start
     for target in ACTIVE + ['parked', 'escalated', 'merged', 'done']:
@@ -230,8 +238,8 @@ def test_pause_returns_only_to_previous_phase(workspace, start, pause):
 @pytest.mark.parametrize('replacement', ['path', 'item', 'items', 'writer'])
 def test_set_and_writer_cannot_skip_phases(workspace, replacement):
     from wuwei import state
-    state.set_state('items.A', {'phase': 'implement'})
-    with pytest.raises(state.StateError, match='legal next phases: gate, parked, escalated'):
+    state._write_state(lambda data: data['items'].update(A={'phase': 'implement'}), reserved=False)
+    with pytest.raises(state.StateError, match='reserved'):
         if replacement == 'path':
             state.set_state('items.A.phase', 'done')
         elif replacement == 'item':
@@ -240,9 +248,9 @@ def test_set_and_writer_cannot_skip_phases(workspace, replacement):
             state.set_state('items', {'A': {'phase': 'done'}})
         else:
             state.write_state(lambda data: data.update(items={'A': {'phase': 'done'}}))
-    state.set_state('items.A.status', 'done')
+    state._write_state(lambda data: data['items']['A'].update(status='done'), reserved=False)
     assert state.get_state('items.A.phase') == 'implement'
-    state.set_state('items.A.phase', 'parked')
+    state.transition('A', 'parked')
     assert state.get_state('items.A.resume_phase') == 'implement'
     with pytest.raises(state.StateError, match='resume_phase'):
         state.set_state('items.A.resume_phase', 'spec')
@@ -254,24 +262,24 @@ def test_set_and_writer_cannot_skip_phases(workspace, replacement):
 def test_invalid_resume_metadata(workspace, item):
     from wuwei import state
     with pytest.raises(state.StateError, match='resume_phase'):
-        state.set_state('items.A', item)
+        state._write_state(lambda data: data['items'].update(A=item), reserved=False)
 
 
 def test_explicit_events_use_shared_clock_and_one_line(workspace, monkeypatch):
-    result = cli('event', 'started')
+    result = cli('event', 'note')
     assert result.returncode == 0, result.stderr
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T13:00:00+02:00')
     result = cli('event', 'note', json.dumps({'ts': 'spoofed', 'text': 'a\nb'}))
     assert result.returncode == 0, result.stderr
     assert events(workspace) == [
-        {'kind': 'started', 'payload': {}, 'ts': NOW},
+        {'kind': 'note', 'payload': {}, 'ts': NOW},
         {'kind': 'note', 'payload': {'ts': 'spoofed', 'text': 'a\nb'},
          'ts': '2026-09-28T13:00:00+02:00'},
     ]
     assert not (day(workspace) / 'state.json').exists()
 
 
-@pytest.mark.parametrize('kind,payload', [('', '{}'), ('x', '[]'), ('x', '{'), ('x', '{"x":NaN}')])
+@pytest.mark.parametrize('kind,payload', [('', '{}'), ('note', '[]'), ('note', '{'), ('note', '{"x":NaN}')])
 def test_invalid_event_input(workspace, kind, payload):
     result = cli('event', kind, payload)
     assert result.returncode == 2
@@ -296,14 +304,14 @@ def test_invalid_imported_event_prevents_state_change(workspace):
 def test_operation_keeps_one_day_across_midnight(workspace, monkeypatch):
     from datetime import datetime
     from wuwei import state
-    state.set_state('preserved', True)
+    state.set_state('seat_policy.preserved', True)
     timestamps = iter([datetime.fromisoformat(NOW),
                        datetime.fromisoformat('2026-09-29T00:00:00+02:00')])
     monkeypatch.setattr(state.workspace, 'now', lambda: next(timestamps, datetime.fromisoformat('2026-09-29T00:00:00+02:00')))
-    state.set_state('added', True)
+    state.set_state('seat_policy.added', True)
     data = json.loads((day(workspace) / 'state.json').read_text())
-    assert data['preserved'] is True
-    assert data['added'] is True
+    assert data['seat_policy']['preserved'] is True
+    assert data['seat_policy']['added'] is True
     assert len(events(workspace)) == 2
     assert events(workspace)[-1]['ts'] == '2026-09-29T00:00:00+02:00'
     assert not (workspace / '.wuwei/days/2026-09-29').exists()
@@ -319,7 +327,8 @@ def test_event_io_failure_is_exit_two(workspace):
 
 
 def test_delete_recreate_cannot_bypass_lifecycle(workspace):
-    assert cli('state', 'set', 'items.A', '{}').returncode == 0
+    from wuwei import state
+    state._write_state(lambda data: data['items'].update(A={}), reserved=False)
     before = (day(workspace) / 'state.json').read_bytes()
     removal = cli('state', 'set', 'items', '{}')
     recreation = cli('state', 'set', 'items.A', '{"phase":"merged"}')
@@ -331,10 +340,10 @@ def test_delete_recreate_cannot_bypass_lifecycle(workspace):
 
 def test_later_items_must_start_planned(workspace):
     assert cli('state', 'set', 'cap', '2').returncode == 0
-    result = cli('state', 'set', 'items.A', '{"phase":"merged"}')
-    assert result.returncode == 1, result.stderr
-    assert 'planned' in result.stderr
-    assert cli('state', 'set', 'items.A', '{}').returncode == 0
+    from wuwei import state
+    with pytest.raises(state.StateError, match='planned'):
+        state._write_state(lambda data: data['items'].update(A={'phase': 'merged'}), reserved=False)
+    state._write_state(lambda data: data['items'].update(A={}), reserved=False)
 
 
 def test_explicit_event_cannot_forge_state_audit(workspace):
@@ -406,7 +415,8 @@ def test_event_timestamp_and_append_hold_state_lock(workspace, monkeypatch, writ
 
 
 def test_retry_transition_reports_state_may_already_be_at_target(workspace):
-    assert cli('state', 'set', 'items.A', '{}').returncode == 0
+    from wuwei import state
+    state._write_state(lambda data: data['items'].update(A={}), reserved=False)
     assert cli('state', 'transition', 'A', 'implement').returncode == 0
     result = cli('state', 'transition', 'A', 'implement')
     assert result.returncode == 1
@@ -491,11 +501,6 @@ def test_seat_reservations_require_dedicated_writer(workspace, path, value):
     assert state.read_state(workspace)['seats'] == {}
 
 
-def test_fast_checks_namespace_is_owned_by_recorder():
-    from wuwei import state
-    assert {'seats', 'fast_checks', 'reply_acks', 'channel_posts', 'decision_outcomes'} <= state.RESERVED
-
-
 @pytest.mark.parametrize('path,value', [
     ('fast_checks', {'demo': {'unit': {'sha': 'a' * 40, 'exit': 0}}}),
     ('fast_checks.demo.unit.exit', 0),
@@ -513,9 +518,8 @@ def test_cli_cannot_forge_fast_checks(workspace, path, value):
     ('items.A.example_records', {'arch': 'PASS'}),
     ('items', {'A': {'example_records': {'arch': 'PASS'}}}),
 ])
-def test_generic_state_reservation_mechanism(workspace, monkeypatch, path, value):
+def test_generic_state_denies_unknown_fields(workspace, path, value):
     from wuwei import state
-    monkeypatch.setattr(state, 'RESERVED', {'example_records'})
     with pytest.raises(state.StateError, match='reserved'):
         state.set_state(path, value, workspace)
     with pytest.raises(state.StateError, match='reserved'):
@@ -524,21 +528,21 @@ def test_generic_state_reservation_mechanism(workspace, monkeypatch, path, value
 
 
 @pytest.mark.parametrize('field', ['raised_prs', 'claimed_prs'])
-@pytest.mark.parametrize('writer', ['set', 'update'])
+@pytest.mark.parametrize('writer', ['replace', 'remove'])
 def test_pr_lists_cannot_remove_entries(workspace, field, writer):
     from wuwei import state
     refs = ['acme/widget#7', 'acme/widget#8']
-    state.set_state(field, refs, workspace)
+    state._write_state(lambda data: data.update({field: refs}), workspace, reserved=False)
     before = (day(workspace) / 'state.json').read_bytes()
     before_events = events(workspace)
     with pytest.raises(state.StateError, match='removing'):
-        if writer == 'set':
-            state.set_state(field, refs[1:], workspace)
+        if writer == 'replace':
+            state._write_state(lambda data: data.update({field: refs[1:]}), workspace, reserved=False)
         else:
-            state.write_state(lambda data: data.pop(field), workspace)
+            state._write_state(lambda data: data.pop(field), workspace, reserved=False)
     assert (day(workspace) / 'state.json').read_bytes() == before
     assert events(workspace) == before_events
-    state.set_state(field, refs + ['acme/widget#9'], workspace)
+    state._write_state(lambda data: data.update({field: refs + ['acme/widget#9']}), workspace, reserved=False)
 
 
 @pytest.mark.parametrize('kind', [
