@@ -83,19 +83,24 @@ def _recorded_gates(root, sha, records, item):
     """Check the bounded fix and delta path recorded by the receive producer."""
     candidates = [item] if item is not None else sorted({
         key.split(':', 1)[0] for key in records if isinstance(key, str) and ':' in key})
+    failures = []
     for candidate in candidates:
         initial = [records.get(f'{candidate}:{role}:initial') for role in GATES]
-        if any(row is None for row in initial):
+        missing = [role for role, row in zip(GATES, initial) if row is None]
+        if missing:
+            failures.append((candidate, missing))
             continue
         if len({row['head'] for row in initial}) != 1:
             raise ValueError('initial gate verdicts disagree on HEAD')
         complete = True
+        missing = []
         for role, first in zip(GATES, initial):
             row = records.get(f'{candidate}:{role}:delta') if first['verdict'] == 'FIX' else first
             if row is None or (row['verdict'] != 'PASS' and not (
                     first['verdict'] == 'FIX' and row['verdict'] == 'FIX'
                     and row['blocks'] is False)):
                 complete = False
+                missing.append(role)
                 continue
             path = root / row['file']
             expected = workspace.day_dir(root) / 'decisions'
@@ -118,9 +123,13 @@ def _recorded_gates(root, sha, records, item):
                     first['verdict'] == 'FIX' or not any(
                         initial_row['verdict'] == 'FIX' for initial_row in initial)):
                 complete = False
+                missing.append(role)
         if complete:
             return 0, ''
-    return 1, 'pre-PR gates not passed at current HEAD'
+        failures.append((candidate, missing))
+    candidate, missing = min(failures, key=lambda row: len(row[1])) if failures else (item, list(GATES))
+    label = f' for item {candidate}' if candidate else ''
+    return 1, f'pre-PR gates not passed at current HEAD {sha}{label}: {", ".join(missing or GATES)}; run the named gate for this HEAD'
 
 
 def gate_check(root, cwd, config, *, sha=None, item=None):
@@ -172,7 +181,7 @@ def gate_check(root, cwd, config, *, sha=None, item=None):
         return 0, ''
     best = max(groups.values(), key=len, default=set())
     missing = ', '.join(gate for gate in GATES if gate not in best)
-    return 1, f'pre-PR gates not passed at current HEAD: {missing}'
+    return 1, f'pre-PR gates not passed at current HEAD {sha}: {missing}; run the named gate for this HEAD'
 
 
 def create_check(args, command, cwd, root, config):

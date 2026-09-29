@@ -343,6 +343,16 @@ def test_raise_none_code_host_has_actionable_error(case, capsys):
     assert 'code_host adapter is none; configure github' in capsys.readouterr().out
 
 
+def test_raise_unmeasured_names_vcs_adapter(case, capsys):
+    from wuwei import shepherd
+    root, _, _, _, vcs = case
+    state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(root / 'repo')}}),
+                       data['approved_items'].append('ITEM-1')), root, reserved=False)
+    vcs.responses['head'] = Result(2, reason='unavailable')
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 2
+    assert 'adapters.vcs' in capsys.readouterr().out
+
+
 def test_thread_reply_rechecks_last_word(case):
     from wuwei import obligations
     root, host, _, _, _ = case

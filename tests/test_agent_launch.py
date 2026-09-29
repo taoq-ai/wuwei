@@ -88,6 +88,8 @@ def test_guard_table(launch, monkeypatch, case, code, hint):
     actual, message = check(payload)
     assert actual == code, message
     assert hint in message
+    if case == 'dirty':
+        assert 'untracked' in message
 
 
 def test_hook_denies_missing_brief(day, monkeypatch, capsys):

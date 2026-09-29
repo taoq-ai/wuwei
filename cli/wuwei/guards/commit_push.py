@@ -339,7 +339,7 @@ def check(payload):
                         or '/' in command.argv[0]
                         or re.fullmatch(r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua',
                                         Path(command.argv[0]).name)):
-                    raise ValueError('opaque interpreter command; run git as a plain command')
+                    raise ValueError('opaque interpreter command; run git directly, for example git push origin HEAD:refs/heads/<branch>')
                 continue
             cwd, settings, env, verb, args = parsed
             if verb == 'push' and creates_commit:
@@ -399,7 +399,10 @@ def check(payload):
                 return result
         return 0, ''
     except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError) as exc:
-        return 2, f'commit/push guard could not run: {exc}'
+        reason = str(exc)
+        if 'unaccounted git/gh mention' in reason:
+            reason += '; run git directly, for example git push origin HEAD:refs/heads/<branch>'
+        return 2, f'commit/push guard could not run: {reason}'
 
 
 GUARDS = [Guard('PreToolUse', 'Bash', check)]

@@ -67,7 +67,7 @@ def _proposal(data, goals_text, framework="wsjf"):
             raise ValueError(f'{name}: track must be SLICE or FULL')
         flags = item.get('flags')
         if not isinstance(flags, dict) or set(flags) != set(FLAGS) or any(type(v) is not bool for v in flags.values()):
-            raise ValueError(f'{name}: three boolean flags required')
+            raise ValueError(f'{name}: flags must contain boolean trust_surface, boundary_relevant, agent_surface')
     json.dumps(data, allow_nan=False)
     return data
 

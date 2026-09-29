@@ -174,7 +174,7 @@ def test_build_reports_unknown_item(tmp_path, monkeypatch, capsys):
 
 
 @pytest.mark.parametrize('maximum', [False, True])
-def test_build_park_is_recorded_lintable_decision(tmp_path, monkeypatch, maximum):
+def test_build_park_is_recorded_lintable_decision(tmp_path, monkeypatch, capsys, maximum):
     from wuwei import decision
     from wuwei.__main__ import main
     from wuwei.commands import build
@@ -187,6 +187,7 @@ def test_build_park_is_recorded_lintable_decision(tmp_path, monkeypatch, maximum
     decisions.mkdir()
     (decisions / 'D-1.md').write_text('preserve existing record')
     assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 1
+    assert ('maximum build iterations reached' if maximum else 'same fast-check failure repeated') in capsys.readouterr().err
     path = decisions / 'D-2.md'
     assert path.exists()
     monkeypatch.chdir(tmp_path)

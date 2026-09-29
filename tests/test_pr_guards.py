@@ -109,6 +109,28 @@ def test_pr_gate_accepts_quality_only_delta_after_fix(case):
     assert guard().gate_check(root, root / 'repo', workspace.load_config(root), item='9') == (0, '')
 
 
+def test_recorded_gate_refusal_names_only_unpassed_gate_at_head(case):
+    from wuwei import state
+    root, _, decisions = case
+    current = 'c' * 40
+    records = {}
+    for role in ('arch', 'quality'):
+        path = decisions / f'gate-9-{role}.md'
+        path.write_text(evidence(OLD, 'FIX') if role == 'quality' else evidence(OLD))
+        records[f'9:{role}:initial'] = {
+            'item': '9', 'role': role, 'round': 'initial', 'verdict': 'FIX' if role == 'quality' else 'PASS',
+            'head': OLD, 'file': str(path.relative_to(root)), 'blocks': False, 'notes': []}
+    delta = decisions / 'gate-9-quality-delta.md'
+    delta.write_text(evidence(current))
+    records['9:quality:delta'] = {'item': '9', 'role': 'quality', 'round': 'delta',
+        'verdict': 'PASS', 'head': current, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
+    state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+    code, reason = guard()._recorded_gates(root, current, records, '9')
+    assert code == 1
+    assert current in reason and 'security' in reason
+    assert 'quality' not in reason
+
+
 def test_pr_gate_accepts_nonblocking_delta_residual(case):
     from wuwei import state
     root, fake, decisions = case

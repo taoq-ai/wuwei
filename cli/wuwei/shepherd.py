@@ -291,7 +291,7 @@ def raise_pr(root, repo_name, base, title, body, item):
         print(exc)
         return 1
     except ERRORS as exc:
-        print(f'PR raise unmeasured: {exc}')
+        print(f'PR raise unmeasured: {exc}; check adapters.vcs and adapters.code_host, then retry wuwei pr raise')
         return 2
 
 

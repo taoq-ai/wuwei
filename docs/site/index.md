@@ -8,6 +8,7 @@ WUWEI 无为 means "effortless action." It is a Claude Code plugin for a charter
 
 - [Concepts](concepts.html): roles, guards, memory and the day flow
 - [Configuration](configuration.html): every shipped workspace setting
+- [Operator reference](reference.html): JSON, decisions, retro and companion protocol
 - [Adapters and ports](adapters.html): integrations and three-state results
 - [Charter overrides](charter-overrides.html): local rules and promote
 - [Security integration](security.html): scanner status and threat model 9.1

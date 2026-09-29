@@ -27,6 +27,7 @@ layout: default
 | `repos.default_branch` | Required per entry | Protected base branch. |
 | `repos.identity` | `{name = "", email = ""}` | Expected git identity for this repository. Set both values. |
 | `repos.merge_deploys` | `true` when omitted | Whether a merge deploys. Template example sets `false` only after explicit confirmation. |
+| `repos.merge.auto` | `false` | Allow automatic merge only when the merge policy's review, check, soak, path and budget rules pass. |
 | `repos.fast_checks` | `[]` | Commands for `wuwei fast-checks` on this checkout. |
 | `owner.name` | `""` | Name used by outward text checks. |
 | `owner.pronouns` | `""` | Owner pronouns for outward text checks. |
@@ -55,6 +56,9 @@ fast_checks = ["python3 -m pytest -q"]
 | `memory.note_line_cap` | `80` | Maximum lines in a note. |
 | `memory.probation_days` | `10` | Working days before a note or rule can be archived for nonuse. |
 | `memory.state_entry_cap` | `3` | State entries included in memory payload. |
+| `retro.repo` | `"."` | Repository used for retro evidence. |
+| `retro.charter_paths` | `[".wuwei/charters"]` | Paths to charter procedures reviewed during retro. |
+| `retro.changelog` | `".wuwei/memory/CHANGELOG.md"` | Retro change log path. |
 | `metrics.transcripts` | `"~/.claude/projects"` | Claude Code project transcript directory for attended time. Sessions are filtered to the workspace and its repositories. |
 | `consolidation.archive_after_days` | `30` | Move older day directories into the archive. |
 | `consolidation.similarity_threshold` | `0.85` | Text similarity ratio for near-duplicate review. |

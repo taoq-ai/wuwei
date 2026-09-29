@@ -1,7 +1,6 @@
 """S3 discovery, persistent registry gate and host-confirmed decisions."""
 
 from contextlib import contextmanager
-import fcntl
 import hashlib
 import json
 from pathlib import Path
@@ -89,7 +88,7 @@ def _lock(root):
     path = _path(root, 'registry.lock')
     path.parent.mkdir(exist_ok=True)
     with path.open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        state.lock_ex(lock, 'registry.lock')
         yield
 
 

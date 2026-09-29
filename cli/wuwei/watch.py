@@ -409,13 +409,12 @@ def wake(root, *, consume=False):
 
 def flush(root):
     """Check and sync the synchronous writer under its existing shared lock."""
-    import fcntl
     import os
 
     directory = workspace.day_dir(root)
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / 'state.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        state.lock_ex(lock, 'state.lock')
         state.read_state(root)
         rows = records(directory / 'events.jsonl')
         if (directory / 'state.json').exists() and not rows:

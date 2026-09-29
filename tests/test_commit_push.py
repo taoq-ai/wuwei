@@ -51,6 +51,13 @@ def test_missing_expected_identity_fails_closed(expected):
     assert guard().identity_check(expected, {'author': OWNER, 'committer': OWNER})[0] == 2
 
 
+def test_opaque_interpreter_names_direct_push_command(workspace_case):
+    root, _ = workspace_case
+    code, reason = guard().check(payload(root, 'python3 -c "import subprocess; subprocess.run([\'git\', \'push\', \'-f\'])"'))
+    assert code == 2
+    assert 'git push origin HEAD:refs/heads/<branch>' in reason
+
+
 @pytest.fixture
 def workspace_case(tmp_path, monkeypatch):
     from wuwei import registry, state
