@@ -32,7 +32,7 @@ def classify(event, state):
         blocking = any(isinstance(seat, dict) and seat.get('item') == payload.get('item')
                        and seat.get('status') == 'running' for seat in seats.values())
         return ('page' if blocking else 'nudge'), lane
-    if kind in ('day.blocked', 'security.finding', 'base.red', 'dead_man.hit', 'budget.cap'):
+    if kind in ('day.blocked', 'security.finding', 'security.canary', 'security.honeytoken', 'scanner.finding', 'base.red', 'dead_man.hit', 'budget.cap'):
         return 'page', lane
     if kind == 'decision.one_way':
         return ('page' if payload.get('blocking') is True else 'nudge'), lane

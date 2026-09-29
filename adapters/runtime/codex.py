@@ -34,7 +34,8 @@ def dispatch(role, brief_path, worktree, write, *, root=None):
     try:
         if not isinstance(role, str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9-]*', role):
             return registry.Result(1, reason='invalid role')
-        charter = Path(__file__).resolve().parents[2] / 'charters' / (role + '.md')
+        from wuwei.security import agent_path
+        charter = agent_path(root, role)
         tree = Path(worktree).resolve(strict=True)
         brief = Path(brief_path).resolve(strict=True)
         if not charter.is_file() or not brief.is_file() or not tree.is_dir():

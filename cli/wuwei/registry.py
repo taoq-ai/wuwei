@@ -114,7 +114,8 @@ def outward_operation(kind):
                 config = workspace.load_config(root)
                 code, reason = outward.check_call(inputs, root, config, {kind})
                 if code:
-                    return Result(code, inputs.get('text') if kind == 'chat' and code == 1 else None, reason)
+                    return Result(code, inputs.get('text') if kind == 'chat' and code == 1
+                                  and not reason.startswith('outward: security.') else None, reason)
             except (OSError, ValueError, TypeError, KeyError, AttributeError):
                 return Result(UNRUN, None, 'outward: cannot validate port call')
             return operation(*args, **kwargs)

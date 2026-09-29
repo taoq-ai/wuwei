@@ -48,6 +48,7 @@ def test_large_arguments_record_under_50ms_cpu(trace_workspace, call_payload, va
 @pytest.fixture
 def trace_workspace(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:34:56+02:00')
     return workspace.day_dir(tmp_path)
@@ -194,7 +195,12 @@ def test_no_workspace_is_quiet(tmp_path, call_payload, monkeypatch, capsys, argu
 
 
 def test_external_worktree_uses_workspace_override(trace_workspace, call_payload):
-    call_payload['cwd'] = '/external/worktree'
+    external = trace_workspace.parents[2].parent / 'external-worktree'
+    external.mkdir(exist_ok=True)
+    config = trace_workspace.parents[1] / 'config.toml'
+    config.write_text('[[repos]]\nname = "example"\npath = ' + json.dumps(str(external))
+                      + '\ndefault_branch = "main"\n')
+    call_payload['cwd'] = str(external)
     assert recorder()(call_payload) == (0, '')
     assert len(read_spans(trace_workspace)) == 1
 
@@ -329,11 +335,11 @@ def test_post_tool_failures_report_without_refusing(trace_workspace, call_payloa
     if failure == 'input':
         call_payload['tool_input'] = []
     code, output = run_hook(call_payload, monkeypatch, capsys)
-    assert code == (2 if failure in ('exception', 'registry', 'malformed') else 0)
+    assert code == (2 if failure in ('exception', 'registry', 'malformed', 'workspace') else 0)
     assert output.out == ''
     assert output.err and 'Traceback' not in output.err
     assert secret not in output.err
-    if failure in ('exception', 'registry', 'malformed'):
+    if failure in ('exception', 'registry', 'malformed', 'workspace'):
         assert not (trace_workspace / 'events.jsonl').exists()
     elif failure not in ('both', 'workspace'):
         event, = error_events(trace_workspace)

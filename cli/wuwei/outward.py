@@ -320,6 +320,10 @@ def check_call(inputs, root, config, channels):
 def check_tier(inputs, root, config, channels):
     """Approval tiers are blocking under every profile."""
     try:
+        from wuwei import security
+        code, reason = security.outbound(inputs, root)
+        if code:
+            return code, reason
         texts, _ = _text(inputs)
         text = '\n'.join(texts)
         if len(channels) != 1:
