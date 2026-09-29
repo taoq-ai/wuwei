@@ -2,6 +2,8 @@
   "name": "wuwei",
   "version": "0.1.0",
   "description": "Autonomous delivery where the safe path is the default one.",
-  "author": { "name": "TaoQ AI Labs" },
+  "author": {
+    "name": "TaoQ AI Labs"
+  },
   "license": "Apache-2.0"
 }
