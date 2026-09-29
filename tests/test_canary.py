@@ -213,6 +213,16 @@ def test_guard_detects_before_draft_and_style_policy(secured, field):
     assert events(secured)[0]['kind'] == 'security.canary'
 
 
+@pytest.mark.parametrize('tool', ['mcp__slack__post_message', 'Bash'])
+def test_disposition_marker_does_not_hide_a_token_leak(secured, tool):
+    from wuwei.guards.outward import check_tier
+    text = 'WUWEI parked #1 ' + material(secured)['canary']
+    inputs = {'command': f'echo "{text}"'} if tool == 'Bash' else {'text': text, 'channel': 'C1'}
+    code, reason = check_tier({'cwd': str(secured), 'tool_name': tool, 'tool_input': inputs})
+    assert code == 1 and 'security.canary' in reason
+    assert [e['kind'] for e in events(secured)] == ['security.canary']
+
+
 def test_port_security_finding_does_not_return_leaked_draft(secured):
     from wuwei import registry
     @registry.outward_operation('chat')

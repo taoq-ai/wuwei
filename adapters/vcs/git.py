@@ -1,5 +1,6 @@
 """Repository-local git commands returning plain port data."""
 
+from datetime import date
 from functools import wraps
 import os
 from pathlib import Path
@@ -84,6 +85,14 @@ def _run(repo, *args, settings=None, env=None, missing=False):
                        rev.endswith('..HEAD') and bool(_revision(rev[:-6])))
             if format_arg == _HEAD_FORMAT:
                 allowed = bool(re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})\.\.(?:[0-9a-f]{40}|[0-9a-f]{64})', rev))
+        case ('log', '--format=', '--name-only', '-z', since, until, 'HEAD', '--'):
+            allowed = bool(re.fullmatch(r'--since=\d{4}-\d{2}-\d{2}T00:00:00', since)
+                           and re.fullmatch(r'--until=\d{4}-\d{2}-\d{2}T23:59:59', until))
+        case ('ls-tree', '-r', '--name-only', '-z', ref, '--', *paths):
+            allowed = bool(_tree_ref(ref) and paths and all(_tree_path(p) for p in paths))
+        case ('show', object_name):
+            ref, sep, path = object_name.partition(':')
+            allowed = bool(sep and _tree_ref(ref) and _tree_path(path))
         case ('worktree', 'add', '-b', branch, '--', path):
             allowed = (bool(_revision(branch)) and isinstance(path, str) and
                        bool(path) and '\0' not in path)
@@ -347,3 +356,38 @@ def push_commits(repo, remote, destination, local_sha, remote_sha, default_branc
                          'author': {'name': fields[i+1], 'email': fields[i+2]},
                          'committer': {'name': fields[i+3], 'email': fields[i+4]}}
                         for i in range(0, len(fields), 5)]}
+
+
+def _tree_ref(ref):
+    if ref != 'HEAD' and (not isinstance(ref, str) or not re.fullmatch(r'[0-9a-fA-F]{40}|[0-9a-fA-F]{64}', ref)):
+        raise ValueError('tree ref must be HEAD or a full commit ID')
+    return ref
+
+
+def _tree_path(path):
+    if (not isinstance(path, str) or not path or Path(path).is_absolute()
+            or any(part in ('..', '.') for part in path.split('/'))
+            or path.startswith(('-', ':')) or any(ord(c) < 32 for c in path)
+            or any(c in path for c in '*?[]')):
+        raise ValueError('expected literal repository-relative path')
+    return path
+
+
+@_operation
+def changes_on(repo, day, root=None):
+    if not isinstance(day, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', day):
+        raise ValueError('expected ISO date')
+    date.fromisoformat(day)
+    output = _run(repo, 'log', '--format=', '--name-only', '-z',
+                  '--since=' + day + 'T00:00:00', '--until=' + day + 'T23:59:59', 'HEAD', '--')
+    return sorted({path.lstrip('\n') for path in _records(output) if path.lstrip('\n')})
+
+
+@_operation
+def read_tree(repo, ref, paths, root=None):
+    if not isinstance(paths, list) or not paths:
+        raise ValueError('expected nonempty paths')
+    paths = [_tree_path(path) for path in paths]
+    _tree_ref(ref)
+    names = _records(_run(repo, 'ls-tree', '-r', '--name-only', '-z', ref, '--', *paths))
+    return {_tree_path(name): _run(repo, 'show', ref + ':' + name) for name in names}

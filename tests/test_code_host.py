@@ -251,3 +251,17 @@ def test_pr_missing_reviewer_evidence_is_unreadable(field, monkeypatch):
     case['steps'][0]['stdout'] = json.dumps(body)
     install_replay(monkeypatch, 'gh', case['steps'])
     assert adapter().pr(*case['args']).exit == 2
+
+
+@pytest.mark.parametrize('merged', [True, False, None, 'true'])
+def test_pr_exposes_verified_merge_bit(monkeypatch, merged):
+    case = deepcopy(next(c for c in CASES if c['operation'] == 'pr'))
+    raw = json.loads(case['steps'][0]['stdout'])
+    raw['merged'] = merged
+    case['steps'][0]['stdout'] = json.dumps(raw)
+    install_replay(monkeypatch, 'gh', case['steps'])
+    result = adapter().pr(*case['args'])
+    if type(merged) is bool:
+        assert result.exit == 0 and result.data.get('merged') is merged
+    else:
+        assert result.exit == 2

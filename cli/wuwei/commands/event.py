@@ -16,7 +16,8 @@ def register(subparsers):
 
 def run(args):
     if args.kind.startswith(('state.', 'decision.', 'watch:', 'session:',
-                                   'security.', 'scanner.')) or args.kind in (
+                                   'security.', 'scanner.', 'pr.disposition',
+                                   'day.close')) or args.kind in (
             'brief written', 'seat stood down', 'watch: sweep', 'reply: acknowledged',
             'hook.refusal', 'seat.usage', 'build.iteration', 'build.parked',
             'retro.captured', 'retro.gap', 'verdict.rejected', 'fast_checks.record',

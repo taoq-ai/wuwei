@@ -214,3 +214,56 @@ def test_resolve_commit(exit_code, stdout, expected, monkeypatch):
     assert calls[0][-4:] == ['rev-parse', '--verify', '--quiet', 'aaaaaaa^{commit}']
     if expected == 0:
         assert result.data == {'sha': 'a' * 40}
+
+
+def test_changes_on_date_and_literal_paths(tmp_path, monkeypatch):
+    api = adapter()
+    assert hasattr(api, 'changes_on'), 'dated path evidence missing'
+    calls = install_replay(monkeypatch, 'git', [{'stdout': '\nroles/a b.md\0roles/planner.md\0'}])
+    result = api.changes_on(str(tmp_path), '2026-09-28')
+    assert result.exit == 0 and result.data == ['roles/a b.md', 'roles/planner.md']
+    assert '--since=2026-09-28T00:00:00' in calls[0]
+    assert '--until=2026-09-28T23:59:59' in calls[0]
+
+
+def test_changes_on_preserves_git_output_paths(tmp_path, monkeypatch):
+    paths = ['docs/[draft].md', 'docs/question?.md', 'docs/star*.md', '-notes.md']
+    install_replay(monkeypatch, 'git', [{'stdout': '\n' + '\0'.join(paths + paths) + '\0'}])
+    result = adapter().changes_on(str(tmp_path), '2026-09-28')
+    assert result.exit == 0
+    assert result.data == sorted(paths)
+
+
+@pytest.mark.parametrize('ref', ['HEAD', 'a' * 40])
+def test_read_tree_recording(tmp_path, monkeypatch, ref):
+    api = adapter()
+    assert hasattr(api, 'read_tree'), 'committed tree evidence missing'
+    steps = [{'stdout': 'roles/a b.md\0'}, {'stdout': 'learned rule\n'}]
+    calls = install_replay(monkeypatch, 'git', steps)
+    result = api.read_tree(str(tmp_path), ref, ['roles'])
+    assert result.exit == 0 and result.data == {'roles/a b.md': 'learned rule\n'}
+    assert calls[-1][-1] == ref + ':roles/a b.md'
+
+
+@pytest.mark.parametrize('operation,args', [
+    ('changes_on', ['--help']), ('changes_on', ['2026-09-31']),
+    ('read_tree', ['--help', ['roles']]), ('read_tree', ['HEAD', ['../outside']]),
+    ('read_tree', ['HEAD', [':(top)*']]), ('read_tree', ['HEAD', []]),
+    ('read_tree', ['', ['roles']]),
+])
+def test_retro_port_rejects_injection(tmp_path, monkeypatch, operation, args):
+    api = adapter()
+    assert hasattr(api, operation)
+    def forbidden(*args, **kwargs):
+        pytest.fail('invalid input reached subprocess')
+    monkeypatch.setattr(subprocess, 'run', forbidden)
+    assert getattr(api, operation)(str(tmp_path), *args).exit == 2
+
+
+@pytest.mark.parametrize('operation,args', [('changes_on', ['2026-09-28']),
+                                         ('read_tree', ['HEAD', ['roles']])])
+def test_retro_port_failed_read(tmp_path, monkeypatch, operation, args):
+    api = adapter()
+    assert hasattr(api, operation)
+    install_replay(monkeypatch, 'git', [{'exit': 128, 'stdout': 'fatal'}])
+    assert getattr(api, operation)(str(tmp_path), *args).exit == 2

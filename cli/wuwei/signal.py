@@ -9,7 +9,7 @@ SILENT = ('item.progress', 'state.write', 'state.set', 'state.transition',
           'reply: acknowledged', 'hook.refusal', 'decision.decided',
           'seat.usage', 'build.iteration',
           'watch: clock', 'watch: heartbeat', 'watch: observation', 'session: compact',
-          'session: wake-seen', 'plan.session')
+          'session: wake-seen', 'plan.session', 'pr.disposition', 'day.close_requested')
 
 
 def classify(event, state):

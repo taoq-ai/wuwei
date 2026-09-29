@@ -30,6 +30,7 @@ PARAMETERS = {
     'vcs': {'resolve': ('repo', 'sha'), 'identity': ('repo',), 'head': ('repo',), 'merge_base': ('repo', 'ref'),
             'status': ('repo',), 'diff_stat': ('repo', 'base', 'head'),
             'log_since': ('repo', 'sha'), 'worktree_add': ('repo', 'branch', 'path'),
+            'changes_on': ('repo', 'day'), 'read_tree': ('repo', 'ref', 'paths'),
             'branches': ('repo', 'pattern'),
             'commit_context': ('repo', 'settings', 'env'),
             'push_context': ('repo', 'remote', 'refspecs'), 'hooks_path': ('repo', 'path'),
