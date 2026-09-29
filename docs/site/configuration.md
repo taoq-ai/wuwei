@@ -13,6 +13,9 @@ layout: default
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `cap` | `1` | Maximum running build seats. |
+| `prioritisation.framework` | `"wsjf"` | Ranking formula: `wsjf` or `rice`. |
+| `discovery.min_queue` | `2` | Discover again when a seat frees and the queue is below this count. |
+| `discovery.autostart` | `"strict"` | Intraday start policy: `off`, `strict` or `goal`. Safety and budget checks always send the item to the owner. |
 | `profile` | `"strict"` | Guard profile: `strict` or `standard`. Standard warns for outward text lint. |
 | `security.required` | `true` | When true, a missing `.wuwei/security.json` makes guards fail closed instead of treating security as disabled. |
 | `repos` | `[]` | Configured repositories. Each `[[repos]]` entry has the fields below. |
@@ -115,3 +118,7 @@ The template also shows a `"release/*"` environment example. Add any actual envi
 | `outbound.disagreement_patterns` | Built-in disagreement regexes | Optional replacement list; see the template for exact regexes. |
 
 Unknown destinations and direct messages draft by default. A channel allowlist is a ceiling; it does not bypass outward text checks. The shipped [template](https://github.com/taoq-ai/wuwei/blob/main/templates/workspace/config.toml) contains the exact regex defaults and examples.
+
+## Goals and discovery
+
+The owner edits `.wuwei/memory/goals.md` before the morning plan. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei rank candidates.json` reads JSON candidates with a goal or `unplanned` mark, a `score` object, and one `evidence_lines` entry per score component. `wuwei discover` reports unavailable sources as `unmeasured`.

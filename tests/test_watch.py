@@ -96,7 +96,7 @@ def test_heartbeat_persists_and_staleness_uses_commit_or_report(case):
     assert watch.activity(root)[0] == 2
 
 
-@pytest.mark.parametrize('scanner,expected', [('none', 2), ('measured', 1), ('failed', 2)])
+@pytest.mark.parametrize('scanner,expected', [('none', 2), ('measured', 2), ('failed', 2)])
 def test_sweep_one_summary_with_counts_and_dead_watch(case, scanner, expected, capsys):
     root, _, _, monkeypatch = case
     watch = watch_module()
@@ -446,7 +446,7 @@ def test_activity_tracks_launched_seat_worktree_from_brief(case):
     assert row['payload']['item'] == 'work'
 
 
-def test_sweep_clean_with_measured_scanner(case, monkeypatch):
+def test_sweep_reports_unmeasured_discovery_with_measured_scanner(case, monkeypatch):
     root, host, _, _ = case
     watch = watch_module()
     known = registry.known
@@ -457,9 +457,10 @@ def test_sweep_clean_with_measured_scanner(case, monkeypatch):
     (workspace.day_dir(root) / 'traces.jsonl').write_text('')
     state.append_event('watch: clock', {}, root)
     host.results['pr'].data['state'] = 'closed'
-    assert watch.sweep(root) == 0
+    assert watch.sweep(root) == 2
     row, = events(root, 'watch: sweep')
-    assert row['payload']['owed'] == 0
+    assert any(key.startswith('discovery') and value.startswith('unmeasured')
+               for key, value in row['payload'].items() if isinstance(value, str))
 
 
 def test_session_real_cli_boundary(case):
@@ -500,7 +501,7 @@ def test_successful_empty_discovery_after_pr_gone_is_measured(case):
     watch.sweep(root)
     summary = events(root, 'watch: sweep')[-1]['payload']
     assert summary['prs'] == 0
-    assert summary['unreadable'] == 1  # Only the absent scanner is unmeasured.
+    assert summary['unreadable'] == 2  # Scanner and discovery are unmeasured.
 
 
 def test_missing_notes_lint_is_unmeasured(case):

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import re
 
-from wuwei import state, workspace
+from wuwei import discovery, goals, rank, state, workspace
 
 
 FLAGS = ('trust_surface', 'boundary_relevant', 'agent_surface')
@@ -19,7 +19,8 @@ def session(session_id, root=None):
                               payload={'session_id': session_id})
 
 
-def _proposal(data, goals_text):
+def _proposal(data, goals_text, framework="wsjf"):
+    goal_list = goals.parse(goals_text)
     if not isinstance(data, dict):
         raise ValueError('proposal must be an object')
     for key in ('goals', 'candidates', 'seat_policy', 'envelope', 'sweep', 'cap'):
@@ -27,7 +28,7 @@ def _proposal(data, goals_text):
             raise ValueError(f'missing {key}')
     if (not isinstance(data['goals'], list) or not data['goals'] or
             any(not isinstance(goal, str) or not re.fullmatch(r'G-[1-9][0-9]*', goal)
-                or goal not in goals_text for goal in data['goals'])):
+                or goal not in goal_list for goal in data['goals'])):
         raise ValueError('goals must cite identifiers in memory/goals.md')
     if type(data['cap']) is not int or data['cap'] < 1:
         raise ValueError('cap must be a positive integer')
@@ -59,8 +60,9 @@ def _proposal(data, goals_text):
         for key in ('evidence', 'scope', 'overlap'):
             if not isinstance(item.get(key), str) or not item[key].strip():
                 raise ValueError(f'{name}: {key} required')
-        if item.get('goal') not in (*data['goals'], 'unplanned'):
+        if item.get('goal', 'unplanned' if item.get('unplanned') is True else None) not in (*data['goals'], 'unplanned'):
             raise ValueError(f'{name}: goal must be confirmed or unplanned')
+        rank.validate(item, framework, goal_list)
         if item.get('track') not in ('SLICE', 'FULL'):
             raise ValueError(f'{name}: track must be SLICE or FULL')
         flags = item.get('flags')
@@ -72,10 +74,15 @@ def _proposal(data, goals_text):
 
 def propose(data, root=None):
     root = workspace.find_workspace() if root is None else Path(root)
-    goals = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
-    if not goals.strip():
-        raise ValueError('memory/goals.md is empty')
-    data = _proposal(data, goals)
+    goals_text = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
+    goal_list = goals.parse(goals_text)
+    found = discovery.discover(root)
+    data = {**data, 'sweep': {**data.get('sweep', {}),
+            **{f'discovery.{key}': value for key, value in found['sources'].items()}},
+            'discovered': found['candidates']}
+    framework = workspace.load_config(root)['prioritisation']['framework']
+    data = _proposal(data, goals_text, framework)
+    data['candidates'] = rank.rank(data['candidates'], framework, goal_list)
     directory = workspace.day_dir(root)
     if (directory / 'state.json').exists() and state.read_state(root).get('gate_approved'):
         raise state.StateError('morning gate already approved')
@@ -85,10 +92,12 @@ def propose(data, root=None):
              '## Proposed queue']
     for number, item in enumerate(data['candidates'], 1):
         lines += [f'### {number}. {item["id"]} ({item["track"]})',
-                  f'Goal: {item["goal"]}', f'Evidence: {item["evidence"]}',
+                  f'Goal: {item.get("goal", "unplanned")}', f'Evidence: {item["evidence"]}',
                   f'Scope: {item["scope"]}', f'Overlap: {item["overlap"]}',
                   'Flags: ' + ', '.join(key for key in FLAGS if item['flags'][key]) if any(item['flags'].values()) else 'Flags: none', '']
-    lines += ['## Gate proposal', f'CAP: {data["cap"]}',
+    lines += ['## Discovery intake',
+              *[f'- {item["id"]}: {item.get("evidence", "evidence pending")}' for item in data['discovered']], '',
+              '## Gate proposal', f'CAP: {data["cap"]}',
               'Seat policy: ' + json.dumps(data['seat_policy'], sort_keys=True),
               'Envelope: ' + json.dumps(data['envelope'], sort_keys=True), '']
     directory.mkdir(parents=True, exist_ok=True)
@@ -109,7 +118,8 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
     if proposal_path.is_symlink() or (directory / 'plan.md').is_symlink():
         raise ValueError('plan files must not be symlinks')
     data = _proposal(json.loads(proposal_path.read_text(encoding='utf-8')),
-                     (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8'))
+                     (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8'),
+                     workspace.load_config(root)['prioritisation']['framework'])
     if not isinstance(items, list) or len(items) != len(set(items)):
         raise ValueError('approved items must be a unique list')
     candidates = {item['id']: item for item in data['candidates']}
@@ -137,7 +147,7 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
         if set(current['items']) & (set(imported) | set(items)):
             raise state.StateError('day item already exists')
         current['items'].update(imported)
-        current['items'].update({name: {'goal': candidates[name]['goal'],
+        current['items'].update({name: {'goal': candidates[name].get('goal', 'unplanned'),
                                        'track': candidates[name]['track'],
                                        'flags': candidates[name]['flags']}
                                  for name in items})

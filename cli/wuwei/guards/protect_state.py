@@ -10,7 +10,7 @@ from wuwei.workspace import worktree_workspace
 
 
 _STATE_HINT = ('State and config files are protected; use the wuwei CLI for state changes. '
-               'The owner edits config.toml and voice.md outside agent tools.')
+               'The owner edits config.toml, voice.md and goals.md outside agent tools.')
 _STATE_MENTION = re.compile(r'state\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|\.wuwei', re.I)
 _STATE_GLOB = re.compile(r'\.w[\w*?\[]', re.I)
 _DYNAMIC = re.compile(r'\$\(|[`*?\[]')
@@ -47,7 +47,7 @@ def _protected_name(path, directories=False):
         tail = parts[index + 1:]
         if tail in (('config.toml',), ('security.json',), ('.gitignore',), ('merge.lock',)) or tail[:1] == ('generated',):
             return True
-        if tail == ('memory', 'voice.md'):
+        if tail in (('memory', 'voice.md'), ('memory', 'goals.md')):
             return True
         if tail and tail[0] == 'archive':
             return True
@@ -58,7 +58,7 @@ def _protected_name(path, directories=False):
         if directories and tail in (('memory',), ('memory', 'notes'),
                                     ('memory', 'archive'), ('charters',)):
             return True
-        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'events.jsonl', 'traces.jsonl', 'undo.jsonl'):
+        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'events.jsonl', 'traces.jsonl', 'undo.jsonl', 'proposal.json', 'plan.md'):
             return True
         if tail == ('memory', 'ledger.jsonl'):
             return True

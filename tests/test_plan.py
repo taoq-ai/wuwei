@@ -12,7 +12,8 @@ from wuwei import plan, state
 def root(tmp_path, monkeypatch):
     base = tmp_path / '.wuwei'
     (base / 'memory').mkdir(parents=True)
-    (base / 'memory/goals.md').write_text('# Goals\nG-1: Ship a useful result\n')
+    (base / 'memory/goals.md').write_text('# Goals\n## G-1\noutcome: Ship a useful result\nmeasure: shipped\ntarget: 1\ndate: 2026-10-30\npriority: 1\n')
+    (base / 'config.toml').write_text('')
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T09:00:00+02:00')
     return tmp_path
 
@@ -26,7 +27,9 @@ def proposal():
         'candidates': [{'id': 'A', 'goal': 'G-1', 'evidence': 'tracker A',
                         'scope': 'one function', 'overlap': 'none', 'track': 'SLICE',
                         'flags': {'trust_surface': False, 'boundary_relevant': False,
-                                  'agent_surface': False}}],
+                                  'agent_surface': False},
+                        'score': {'value': 5, 'time_criticality': 3, 'risk_reduction': 2, 'job_size': 2},
+                        'evidence_lines': {key: 'tracker A' for key in ('value', 'time_criticality', 'risk_reduction', 'job_size')}}],
     }
 
 
@@ -104,6 +107,7 @@ def test_cli_propose_and_approve(root, monkeypatch):
     command = [sys.executable, '-P', '-m', 'wuwei', 'plan']
     result = subprocess.run([*command, 'propose', str(source)], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+    assert 'unmeasured' in next((root / '.wuwei/days').glob('*/plan.md')).read_text()
     result = subprocess.run([*command, 'approve', '--items', 'A', '--goals-confirmed'],
                             env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr

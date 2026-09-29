@@ -4,7 +4,7 @@ from datetime import timedelta
 import json
 import re
 
-from wuwei import brief, obligations, registry, state, workspace
+from wuwei import brief, discovery, obligations, registry, state, workspace
 from wuwei.references import pull_request
 
 
@@ -158,6 +158,14 @@ def sweep(root=None, *, watch_health=None):
     _, activity_counts = activity(root)
     counts['stale_owed'] = len(activity_counts['stale'])
     counts['unreadable'] += activity_counts['unreadable']
+    try:
+        found = discovery.discover(root)
+        counts.update({f'discovery.{key}': value for key, value in found['sources'].items()})
+        counts['discovery_candidates'] = len(found['candidates'])
+        counts['unreadable'] += int(any(value == 'unmeasured' for value in found['sources'].values()))
+    except ERRORS as exc:
+        counts['discovery'] = f'unmeasured: {exc}'
+        counts['unreadable'] += 1
     counts['scanner'] = 'unmeasured'
     counts['scanner_owed'] = 0
     if config['adapters']['scanner'] == 'none':
