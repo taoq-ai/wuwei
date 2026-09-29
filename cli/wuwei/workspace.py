@@ -33,7 +33,10 @@ MERGE_SCHEMA = {
 }
 
 SCHEMA = {
-    "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low"))},
+    "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
+                "mcp": {"project_file": (str, ".mcp.json"),
+                        "plugins_file": (str, "~/.claude/plugins/installed_plugins.json"),
+                        "user_file": (str, "~/.claude.json")}},
     "security": {"required": (bool, False)},
     "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)]},
     "repos": [{"name": (str, None), "path": (str, None),

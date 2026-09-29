@@ -47,7 +47,7 @@ def _protected_name(path, directories=False):
         tail = parts[index + 1:]
         if tail in (('config.toml',), ('security.json',), ('.gitignore',), ('merge.lock',)) or tail[:1] == ('generated',):
             return True
-        if tail[:1] in (('integrity',), ('.git',)):
+        if tail[:1] in (('integrity',), ('.git',), ('ziran',)):
             return True
         if tail in (('memory', 'voice.md'), ('memory', 'goals.md')):
             return True
@@ -257,17 +257,36 @@ def check_bash(payload):
             from wuwei.workspace import guard_scope
             if guard_scope(payload) is not None:
                 return 1, 'Integrity re-confirmation is an owner action on the host, outside agent tools.'
+        from wuwei.workspace import guard_scope
+        mcp_relevant = (re.search(r'\bwuwei\b', re.sub(r"['\"\\]", '', script))
+                        and mentions(script, ('mcp',)) and guard_scope(payload) is not None)
         from wuwei.shell import NonliteralPathError, ParseError, normalize
         try:
             commands = normalize(script)
         except ParseError as exc:
-            if (_STATE_MENTION.search(script) or _STATE_GLOB.search(script)
+            if (mcp_relevant or _STATE_MENTION.search(script) or _STATE_GLOB.search(script)
                     or (root is not None and _protected_name(cwd, directories=True)
                         and (isinstance(exc, NonliteralPathError)
                              or (_DYNAMIC.search(script) and _WRITE_CONSTRUCT.search(script))))
                     or (contain_cwd and re.search(r'\b(?:cd|pushd|popd)\b', script, re.I))):
                 return 2, str(exc)
             return 0, ''
+        if mcp_relevant:
+            from wuwei.shell import is_opaque
+            for command in commands:
+                argv = command.argv
+                cli = argv and (Path(argv[0]).name == 'wuwei'
+                        or re.fullmatch(r'(?:python|pypy)[\d.]*', Path(argv[0]).name)
+                        and '-m' in argv and argv[argv.index('-m') + 1:][:1] == ['wuwei'])
+                if is_opaque(argv) and not cli:
+                    return 2, 'Opaque MCP owner action; use the host terminal.'
+                if cli:
+                    if 'mcp' in argv:
+                        action = argv[argv.index('mcp') + 1:]
+                        if action == ['decide']:
+                            return 1, 'MCP decisions require the owner terminal, outside agent tools.'
+                        if action != ['check']:
+                            return 2, 'MCP owner action is not a literal check; use the host terminal.'
         directories = persistent = {cwd}
         for command in commands:
             program = Path(command.argv[0]).name if command.argv else ''

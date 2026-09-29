@@ -82,7 +82,15 @@ def run(args):
     print(f"Created {destination.resolve()}")
     print(json.dumps({"statusLine": {"type": "command",
                                    "command": shlex.quote(str(executable)) + " status --line"}}))
-    return CLEAN
+    return _register_mcp(destination.parent)
+
+
+def _register_mcp(root):
+    from wuwei import mcp
+    result = mcp.check(root)
+    if result.reason:
+        print(result.reason, file=sys.stderr)
+    return result.exit
 
 
 def _sections(raw):
@@ -208,7 +216,7 @@ def upgrade(args):
                                             'command': shlex.quote(str(executable)) + ' status --line'}}))
         if not added and not pointer_changed:
             print('No workspace changes needed')
-        return CLEAN
+        return CLEAN if args.dry_run else _register_mcp(destination.parent)
     except workspace.ConfigError as exc:
         print(f'wuwei init: {exc}', file=sys.stderr)
         return FINDINGS

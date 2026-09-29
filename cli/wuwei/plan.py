@@ -84,6 +84,11 @@ def propose(data, root=None):
             'discovered': found['candidates']}
     framework = workspace.load_config(root)['prioritisation']['framework']
     data = _proposal(data, goals_text, framework)
+    from wuwei import mcp
+    measured = mcp.check(root)
+    if measured.exit:
+        raise (state.StateError if measured.exit == 1 else OSError)(measured.reason)
+    data['sweep']['mcp'] = measured.reason or 'MCP registry: no attached servers'
     data['candidates'] = rank.rank(data['candidates'], framework, goal_list)
     directory = workspace.day_dir(root)
     if (directory / 'state.json').exists() and state.read_state(root).get('gate_approved'):

@@ -182,7 +182,8 @@ def test_emitted_kinds_have_intended_tiers():
     emitted.update(['retro.gap', 'retro.captured', 'security.canary', 'security.honeytoken'])
     emitted.add('state.write')  # default writer kind
     emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
-    expected = {'security.canary': 'page', 'security.honeytoken': 'page',
+    expected = {'mcp.finding': 'nudge', 'mcp.checked': 'nudge', 'mcp.decided': 'silent',
+                'security.canary': 'page', 'security.honeytoken': 'page',
                 'scanner.finding': 'page', 'state.write': 'silent', 'state.set': 'silent',
                 'state.transition': 'silent', 'seat stopped': 'silent',
                 'seat launched': 'silent', 'brief written': 'silent',

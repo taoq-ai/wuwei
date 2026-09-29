@@ -31,6 +31,10 @@ def _call(action, tree, *args, root=None):
 
 
 def dispatch(role, brief_path, worktree, write, *, root=None):
+    from wuwei import mcp
+    measured = mcp.launch(root, worktree)
+    if measured.exit:
+        return measured
     try:
         if not isinstance(role, str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9-]*', role):
             return registry.Result(1, reason='invalid role')
@@ -136,6 +140,10 @@ def result(job, *, root=None):
 
 
 def continue_job(job, feedback, *, root=None):
+    from wuwei import mcp
+    measured = mcp.launch(root, job.get('worktree') if isinstance(job, dict) else None)
+    if measured.exit:
+        return measured
     try:
         _, tree = _job(job)
         if not isinstance(feedback, str) or not feedback:
