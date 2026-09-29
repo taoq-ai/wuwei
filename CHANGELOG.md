@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.0](https://github.com/taoq-ai/wuwei/compare/v0.4.0...v0.5.0) (2026-09-29)
+
+
+### Features
+
+* **cockpit:** live PR rows, briefing path and status producers ([#203](https://github.com/taoq-ai/wuwei/issues/203)) ([d3f525f](https://github.com/taoq-ai/wuwei/commit/d3f525f61b032d7e0743924895c685f9549588cc)), closes [#178](https://github.com/taoq-ai/wuwei/issues/178)
+* **team:** decision outcomes, reversal metric and the two-way digest ([#202](https://github.com/taoq-ai/wuwei/issues/202)) ([b9f5b2e](https://github.com/taoq-ai/wuwei/commit/b9f5b2e74baabb89e20b5cdfac101f9ac1b994da)), closes [#175](https://github.com/taoq-ai/wuwei/issues/175)
+* **team:** intraday intake and autostart ([#198](https://github.com/taoq-ai/wuwei/issues/198)) ([0e694b3](https://github.com/taoq-ai/wuwei/commit/0e694b38347a7b3518bb85b993147630365191b0)), closes [#176](https://github.com/taoq-ai/wuwei/issues/176)
+* **team:** owner draft queue for outward replies ([#201](https://github.com/taoq-ai/wuwei/issues/201)) ([a9c761f](https://github.com/taoq-ai/wuwei/commit/a9c761fb493dfc6b62a939fe171c34985832b5bf)), closes [#174](https://github.com/taoq-ai/wuwei/issues/174)
+* **team:** shepherd actions for conflicted, red, changes requested and unanswered PRs ([#199](https://github.com/taoq-ai/wuwei/issues/199)) ([2b9c527](https://github.com/taoq-ai/wuwei/commit/2b9c527d95f217a2a3587aebc5a5685c46c9db91)), closes [#177](https://github.com/taoq-ai/wuwei/issues/177)
+
+
+### Bug Fixes
+
+* **cli:** the shipped goals guide parses and nudges lists nothing on an empty day ([#196](https://github.com/taoq-ai/wuwei/issues/196)) ([72b3e1c](https://github.com/taoq-ai/wuwei/commit/72b3e1caffb915d8d235529e849d4d631e3acb9f))
+
 ## [0.4.0](https://github.com/taoq-ai/wuwei/compare/v0.3.0...v0.4.0) (2026-09-29)
 
 
