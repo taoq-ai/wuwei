@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from wuwei import state, workspace
+from wuwei import drafts, state, workspace
 from wuwei.decision import clarification_fields, evaluate, lint_clarification, route
 from wuwei.commands.status import snapshot as status_snapshot
 from wuwei.signal import classify
@@ -65,7 +65,10 @@ def cockpit_snapshot(directory):
             signals.append({'tier': tier, 'lane': lane,
                             'kind': event.get('kind', 'unreadable') if isinstance(event, dict)
                             else 'unreadable'})
-    return {'decisions': decisions, 'people': data.get('reply_obligations', 'unmeasured'),
+    pending = [{**row, 'approve_command': f"bin/wuwei drafts approve {row['id']}"}
+               for row in drafts.read(data).values() if row['status'] == 'pending']
+    return {'decisions': decisions, 'drafts': pending,
+            'people': data.get('reply_obligations', 'unmeasured'),
             'prs': prs, 'status': status_snapshot(directory), 'signals': signals,
             'briefing': pack.read_text(encoding='utf-8') if pack.exists() else 'unmeasured'}
 

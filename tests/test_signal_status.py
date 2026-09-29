@@ -180,9 +180,12 @@ def test_emitted_kinds_have_intended_tiers():
     from wuwei.signal import classify
     emitted = emitted_kinds(sorted((ROOT / 'cli/wuwei').rglob('*.py')))
     emitted.update(['retro.gap', 'retro.captured', 'security.canary', 'security.honeytoken'])
+    emitted.update(['draft.sent', 'draft.failed'])  # dynamic final outcome
     emitted.add('state.write')  # default writer kind
     emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
-    expected = {'mcp.finding': 'nudge', 'mcp.checked': 'nudge', 'mcp.decided': 'silent',
+    expected = {'draft.created': 'nudge', 'draft.sending': 'silent',
+                'draft.sent': 'silent', 'draft.dropped': 'silent', 'draft.failed': 'nudge',
+                'mcp.finding': 'nudge', 'mcp.checked': 'nudge', 'mcp.decided': 'silent',
                 'security.canary': 'page', 'security.honeytoken': 'page',
                 'scanner.finding': 'page', 'state.write': 'silent', 'state.set': 'silent',
                 'state.transition': 'silent', 'seat stopped': 'silent',
@@ -296,3 +299,10 @@ def test_init_leaves_owner_settings_untouched(tmp_path):
     assert settings.read_text() == '{"theme":"dark"}'
     assert json.loads(result.stdout.splitlines()[-1])['statusLine']['command'] == (
         shlex.quote(str(ROOT / 'bin/wuwei')) + ' status --line')
+
+
+@pytest.mark.parametrize('kind,tier', [('created', 'nudge'), ('sending', 'silent'),
+                                      ('sent', 'silent'), ('dropped', 'silent'), ('failed', 'nudge')])
+def test_draft_events_use_decisions_lane(kind, tier):
+    from wuwei.signal import classify
+    assert classify({'kind': 'draft.' + kind}, {}) == (tier, 'Decisions')

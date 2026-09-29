@@ -51,6 +51,11 @@ def parse_profile(text):
     return rules
 
 
+def audience(channel, config):
+    return next((name for name, channels in config['voice']['sources'].items()
+                 if channel in channels), 'review' if channel == 'code_host' else channel)
+
+
 def lint(text, channel, config, root):
     path = Path(root) / '.wuwei/memory/voice.md'
     if path.is_symlink():
@@ -59,10 +64,7 @@ def lint(text, channel, config, root):
         return CLEAN, ''
     try:
         rules = parse_profile(path.read_text(encoding='utf-8'))
-        sources = config['voice']['sources']
-        audience = next((name for name, channels in sources.items() if channel in channels),
-                        'review' if channel == 'code_host' else channel)
-        selected = [rules.get('shared', {}), rules.get(audience, {})]
+        selected = [rules.get('shared', {}), rules.get(audience(channel, config), {})]
         for rule in selected:
             if len(text) > rule.get('max_length', float('inf')):
                 return FINDINGS, 'voice: audience length exceeded'

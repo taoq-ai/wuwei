@@ -6,6 +6,7 @@ from datetime import datetime
 SILENT = ('item.progress', 'state.write', 'state.set', 'state.transition',
           'seat started', 'seat stopped', 'seat launched', 'brief written',
           'brief.pack', 'brief.answer',
+          'draft.sending', 'draft.sent', 'draft.dropped',
           'fast_checks.record', 'retro.captured', 'decision.two_way', 'merge.auto',
           'merge.observation', 'merge.metric', 'merge.intent', 'merge.completed', 'merge.red', 'merge.revert',
           'reply: acknowledged', 'reply: thread_posted', 'pr.raised', 'pr.claimed',
@@ -30,7 +31,7 @@ def classify(event, state):
     if kind == 'state.transition' and payload.get('phase') == 'escalated':
         kind = 'item.escalated'
     lane = 'People' if kind.startswith('person.') else (
-        'Decisions' if kind.startswith('decision.') or kind in (
+        'Decisions' if kind.startswith(('decision.', 'draft.')) or kind in (
             'item.escalated', 'merge.policy_blocked', 'work.outside_goals') else 'Work')
     if kind == 'mcp.finding':
         return ('page' if payload.get('severity') in ('high', 'critical') else 'nudge'), lane

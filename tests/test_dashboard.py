@@ -115,7 +115,7 @@ def test_page_renders_columns_other_and_escalated_decision():
                'ts': '2026-09-28T12:04:56+02:00'}]
     harness = '''
 const cells = Object.fromEntries(['blocked','blocked-count','blocked-items','columns','updated','error',
-  'decisions','people','prs','signals','signal-events','briefing']
+  'decisions','drafts','people','prs','signals','signal-events','briefing']
   .map(id => [id, {innerHTML:'', textContent:'', hidden:false}]));
 global.document = {getElementById: id => cells[id]};
 Date.now = () => Date.parse('2026-09-28T12:34:56+02:00');
@@ -127,7 +127,9 @@ global.fetch = async url => ({ok:true, text:async () => files[url.split('?')[0]]
 SCRIPT
 setImmediate(() => process.stdout.write(JSON.stringify(cells)));
 '''
-    cockpit = {'decisions': [{'id': 'D-3', 'question': '<owner>?', 'route': 'owner',
+    cockpit = {'drafts': [{'id': 'draft-test', 'text': '<script>private</script>',
+               'destination': '<channel>', 'tier_reason': 'approve',
+               'approve_command': 'bin/wuwei drafts approve draft-test'}], 'decisions': [{'id': 'D-3', 'question': '<owner>?', 'route': 'owner',
                'options': [{'id': 'A', 'description': '<script>alert(1)</script>'}],
                'record': 'Question: <owner>?' }],
                'people': [{'person': '<Ada>', 'reason': 'reply', 'due': NOW}],
@@ -163,6 +165,9 @@ setImmediate(() => process.stdout.write(JSON.stringify(cells)));
     assert 'D-3' in cells['blocked-items']['innerHTML']
     assert '30m' in cells['blocked-items']['innerHTML']
     assert cells['error']['textContent'] == ''
+    assert 'bin/wuwei drafts approve draft-test' in cells['drafts']['innerHTML']
+    assert '&lt;script&gt;private&lt;/script&gt;' in cells['drafts']['innerHTML']
+    assert '<script>' not in cells['drafts']['innerHTML']
     assert 'D-3' in cells['decisions']['innerHTML']
     assert '&lt;owner&gt;' in cells['decisions']['innerHTML']
     assert '<script>' not in cells['decisions']['innerHTML']
