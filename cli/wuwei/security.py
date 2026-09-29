@@ -19,7 +19,7 @@ def honeytoken_path(directory, value):
             or len(Path(value).parts) < 2):
         raise ValueError('honeytoken path must be a relative file in a private subdirectory')
     path = directory / value
-    if not path.resolve().is_relative_to(directory.resolve()) or path.resolve() != path.absolute():
+    if path.resolve() != directory.resolve() / value:
         raise ValueError('honeytoken path must not traverse symlinks')
     return path
 
@@ -221,12 +221,9 @@ def trace_findings(payload, root, data):
 
 
 def gh_outbound(argv, cwd, root, *, api=False):
-    """Inspect literal gh text and supported file-backed bodies before sending."""
+    """Inspect file-backed bodies; the outward tier guard checks literal gh text."""
     if load(root) is None:
         return 0, ''
-    code, reason = outbound(argv, root)
-    if code:
-        return code, reason
     paths = []
     for index, arg in enumerate(argv):
         flags = ('--input',) if api else ('--body-file', '-F')

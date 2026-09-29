@@ -14,6 +14,7 @@ layout: default
 | --- | --- | --- |
 | `cap` | `1` | Maximum running build seats. |
 | `profile` | `"strict"` | Guard profile: `strict` or `standard`. Standard warns for outward text lint. |
+| `security.required` | `true` | When true, a missing `.wuwei/security.json` makes guards fail closed instead of treating security as disabled. |
 | `repos` | `[]` | Configured repositories. Each `[[repos]]` entry has the fields below. |
 | `repos.name` | Required per entry | Code host name, such as `owner/repo`. |
 | `repos.path` | Required per entry | Repository path from workspace root or absolute path. |

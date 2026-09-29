@@ -140,6 +140,6 @@ def write_workspace(root, directory):
     for name, content in workspace_files(root, directory).items():
         path = directory / 'generated' / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        if path.resolve() != path.absolute():
+        if path.resolve() != directory.resolve() / 'generated' / name:
             raise ValueError('generated instructions must not traverse symlinks')
         workspace.atomic_write(path, content, mode=0o400)
