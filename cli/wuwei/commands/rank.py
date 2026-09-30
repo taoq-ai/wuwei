@@ -37,6 +37,8 @@ def run(args):
             return CLEAN
         source = sys.stdin.read() if str(args.input) == '-' else args.input.read_text(encoding='utf-8')
         rows = json.loads(source)
+        if isinstance(rows, dict):  # a whole lead JSON, such as proposal.json
+            rows = rows.get('candidates')
         print(json.dumps(rank.rank(rows, config['prioritisation']['framework'], goal_list)))
         return CLEAN
     except (OSError, UnicodeError, ValueError, TypeError, KeyError) as exc:

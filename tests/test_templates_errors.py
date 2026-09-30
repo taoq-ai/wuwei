@@ -1,5 +1,6 @@
 """Operator-facing templates and recovery cues."""
 
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -32,6 +33,12 @@ def test_plan_template_can_be_proposed_from_stdin(workspace):
     assert template.returncode == 0, template.stderr
     result = cli(workspace, 'plan', 'propose', '-', input=template.stdout)
     assert result.returncode == 0, result.stderr
+    ranked = cli(workspace, 'rank', '.wuwei/days/2026-09-29/proposal.json')
+    assert ranked.returncode == 0, ranked.stderr
+    assert isinstance(json.loads(ranked.stdout), list) and len(json.loads(ranked.stdout)) == 1
+    assert cli(workspace, 'rank', '-', input=template.stdout).returncode == 0
+    empty = cli(workspace, 'rank', '-', input='{}')
+    assert empty.returncode == 2 and 'candidates must be a list' in empty.stderr
 
 
 def test_rank_template_can_be_ranked_from_stdin(workspace):

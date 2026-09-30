@@ -23,6 +23,8 @@ Each candidate needs a unique `id`, a confirmed `goal` or `unplanned`, `evidence
 
 `bin/wuwei rank template` prints a candidate list for the configured framework. Pass it to `bin/wuwei rank -` to inspect the order. Ties use goal priority, then candidate id.
 
+`bin/wuwei rank FILE` (or `-` for stdin) also accepts a whole lead JSON, such as `bin/wuwei plan template` output or today's `.wuwei/days/<date>/proposal.json`, and ranks its `candidates`. An object without a `candidates` list exits 2 with `candidates must be a list`.
+
 ### WSJF and RICE
 
 For `prioritisation.framework = "wsjf"`, `score` contains `value`, `time_criticality`, `risk_reduction`, and `job_size`. Each uses the Fibonacci scale 1, 2, 3, 5, 8, 13, 20. WSJF is `(value + time_criticality + risk_reduction) / job_size`.
@@ -68,6 +70,10 @@ After the morning gate, create each code item's worktree with `bin/wuwei worktre
 
 A worktree made with raw `git worktree add` has no anchor. Its commits and pushes outside the Claude Bash hook skip the WUWEI guards.
 
+## Raising a PR
+
+`bin/wuwei pr raise OWNER/REPO --base BRANCH --title TEXT --body-file PATH --item ITEM` raises a prepared, pushed branch. All four options are required. The body file must be a regular file, not a symlink. The item must be in the approved plan with a worktree recorded by `bin/wuwei brief ... --worktree`, and it must not already link a PR. The pre-PR gate runs on the worktree head first; a finding exits 1 and raises nothing.
+
 ## Watch state
 
 `bin/wuwei status --line` and `status --json` report the watch from today's `watch: clock` events and from whether `bin/wuwei watch install` has installed its unit for this workspace:
@@ -75,6 +81,8 @@ A worktree made with raw `git worktree add` has no anchor. Its commits and pushe
 - Installed, and no clock line today or today's latest is older than `watch.dead_seconds`: `watch dead`, one `watch: health` page. This includes the morning after the watch died overnight. The page clears at the next clock line, or after `watch uninstall` when no clock line was written today.
 - Not installed, and no clock line today: `watch off`. It is not a page or a nudge.
 - Not installed, and today's clock line went stale (a watch started by hand died): `watch dead`, one page that clears at the next clock line.
+
+Before the morning gate is approved, including before today's `state.json` exists, the line starts `WUWEI no plan yet` and exits 0, for example `WUWEI no plan yet | pages 0 | nudges 0 | watch off | meeting unmeasured`. Pages and nudges stay visible. `status --json` carries the same fact as `gate_approved`. A lost state (no `state.json` next to a snapshot) still reads `WUWEI ? unmeasured` with exit 2.
 
 `watch unmeasured`: the clock cannot be read or is in the future; one nudge. The same health appears in `bin/wuwei nudges`, at session start and in sweeps. A running watch adds nothing to the line.
 
@@ -157,3 +165,19 @@ Run `bin/wuwei state recover` in a host terminal. It prints a short snapshot dig
 | `2` | No usable snapshot, the snapshot changed during confirmation, or no terminal could ask you. |
 
 Recovery is an owner action. Agent tool hooks refuse `wuwei state recover` inside a workspace and refuse writes to the snapshot. As with other host-only actions, this follows the cooperative hook threat model in spec 9.1.
+
+## Host terminal actions
+
+These are owner actions. Agent tool hooks refuse them inside a workspace, so run them yourself in a host terminal:
+
+| Command | Asks you to type a digest |
+| --- | --- |
+| `bin/wuwei decision outcome D-<n> <option>` | yes |
+| `bin/wuwei state recover` | yes |
+| `bin/wuwei integrity reconfirm` | yes |
+| `bin/wuwei mcp decide` | yes |
+| `bin/wuwei drafts approve <id>` and `drafts drop <id>` | no |
+| `bin/wuwei goals edit` and `voice edit` | no |
+| `bin/wuwei watch uninstall` | no |
+
+A command that asks for a digest reads it from `/dev/tty`. Without a terminal it changes nothing and exits 2 with `this is an owner action: run it in a host terminal`. `drafts approve --edit`, `goals edit` and `voice edit` open `EDITOR`. As with other host-only actions, this follows the cooperative hook threat model in spec 9.1.

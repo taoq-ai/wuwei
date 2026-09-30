@@ -425,7 +425,9 @@ def collect(root=None, *, day=None):
         event_metrics = {
             'fix_rounds_per_item': dict(fix), 'handbacks_per_pr': dict(handbacks),
             'time_in_phase_seconds': _phase_time(events, now),
-            'verdict_lint_rejections': count('verdict.rejected'),
+            # One rejection per file version: a hook, a dispatch and a lint of the same content count once.
+            'verdict_lint_rejections': len({(str(row['payload'].get('file')), row['payload'].get('sha256'))
+                                            for row in events if row['kind'] == 'verdict.rejected'}),
             'decisions_per_day': len(decisions),
             'owner_decisions_per_day': count('decision.routed'),
             'decisions_by_reversibility': dict(reversibility),

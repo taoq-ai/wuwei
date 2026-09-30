@@ -188,3 +188,19 @@ def test_report_lists_merged_items(tmp_path, monkeypatch):
     for section in ('## Open at close\n', '## Carry\n'):
         body = text.split(section)[1].split('\n\n')[0]
         assert 'B' in body and 'A' not in body
+
+
+def test_report_metrics_are_the_metrics_json(tmp_path, monkeypatch, capsys):
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    monkeypatch.chdir(root)
+    state._write_state(lambda data: None, root, reserved=False)
+    state.append_event('verdict.rejected', {'file': 'decisions/gate-a.md', 'reason': 'bad'}, root)
+    assert main(['report']) == 0
+    lines = capsys.readouterr().out.splitlines()
+    measured = json.loads(lines[lines.index('## Process metrics') + 1])
+    assert main(['metrics']) == 0
+    assert measured == json.loads(capsys.readouterr().out)

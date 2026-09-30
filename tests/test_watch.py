@@ -536,6 +536,37 @@ def test_session_payload_omits_watch_state(case):
     assert tokens == memory.estimated_tokens(content)
 
 
+def test_fresh_day_before_the_plan_is_clean(case, capsys):
+    from wuwei import steward
+    root, _, _, monkeypatch = case
+    monkeypatch.setattr(steward, 'run', lambda *a, **kw: None)
+    advance(case, 86400)
+    assert main(['status', '--line']) == 0
+    assert 'no plan yet' in capsys.readouterr().out
+    assert main(['sweep', 'watch']) == 0
+    assert main(['sweep', 'obligations']) == 0
+    sweeps = events(root, 'watch: sweep')
+    assert len(sweeps) == 2
+    assert all(row['payload']['unreadable'] == 0 and row['payload']['owed'] == 0 for row in sweeps)
+    capsys.readouterr()
+    assert main(['nudges']) == 0
+    assert json.loads(capsys.readouterr().out) == []
+
+
+def test_session_payload_lists_drafts_without_bodies(case):
+    from wuwei import drafts, memory
+    root, _, _, _ = case
+    text = 'A private reply body'
+    row = {'id': 'DR-1', 'status': 'pending', 'channel': 'chat', 'operation': 'post',
+           'adapter': 'slack', 'destination': 'C2', 'text': text, 'created': workspace.now().isoformat(),
+           'tier_reason': 'external', 'audience': 'external', 'inputs': {'channel': 'C2', 'text': text}}
+    state._write_state(lambda data: data.update(drafts={'DR-1': row}), root, reserved=False)
+    assert drafts.read(state.read_state(root))
+    content = memory.session_payload(root)[0]
+    assert '"DR-1": "C2"' in content
+    assert text not in content and '"inputs"' not in content
+
+
 def test_restart_dead_watch_swept_before_clock_hides_gap(case):
     root, _, _, _ = case
     watch = watch_module()

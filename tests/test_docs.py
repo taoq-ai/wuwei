@@ -140,3 +140,17 @@ def test_reference_verdict_example_and_phase_table():
     clears = 'clears at the next clock line, or after `watch uninstall` when no clock line was written today'
     assert clears in ' '.join(configuration.split()) and clears in ' '.join(reference.split())
     assert 'wuwei worktree add' in (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+
+
+def test_host_terminal_actions_and_morning_references():
+    reference = (SITE / 'reference.md').read_text()
+    concepts = (SITE / 'concepts.md').read_text()
+    for text in (reference, concepts):
+        assert 'Host terminal actions' in text
+        for command in ('decision outcome', 'state recover', 'integrity reconfirm', 'mcp decide',
+                        'drafts approve', 'watch uninstall'):
+            assert command in text
+    for phrase in ('run it in a host terminal', 'no plan yet', 'proposal.json', 'pr raise',
+                   '--base', '--title', '--body-file', '--item'):
+        assert phrase in reference
+    assert 'wuwei rank .wuwei/days/' in (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
