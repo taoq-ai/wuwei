@@ -162,7 +162,7 @@ def test_config_defaults_and_independence(tmp_path):
                      'runtime': 'claude', 'scanner': 'none',
                      'code_host': 'github', 'vcs': 'git', 'host': 'local',
                      'checks': 'local', 'tts': 'say' if sys.platform == 'darwin' else 'none', 'calendar': 'none',
-                     'transcripts': 'none'},
+                     'transcripts': 'none', 'inbound': 'none', 'redactor': 'builtin'},
     }
     outward['patterns'].append('changed')
     assert 'changed' not in load_config(tmp_path)['outward']['patterns']

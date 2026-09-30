@@ -15,6 +15,8 @@ CALLS = [
     ('tts', 'speak', ('text', 'rate', 'out'), False),
     ('calendar', 'events', ('since', 'until'), True),
     ('transcripts', 'recent', ('since',), True),
+    ('inbound', 'poll', ('since',), True),
+    ('redactor', 'redact', ('text',), True),
     ('integrity', 'sign', ('manifest', 'key'), False),
     ('integrity', 'verify', ('manifest', 'signature', 'key'), True),
     ('host', 'free_memory', (), True),
@@ -130,7 +132,7 @@ def test_module_contracts_allow_extra_import(monkeypatch):
     test_module_contracts()
 
 
-@pytest.mark.parametrize('kind,call,parameters,measurement', [c for c in CALLS if c[0] not in ('editor', 'vcs', 'tts', 'calendar', 'transcripts')])
+@pytest.mark.parametrize('kind,call,parameters,measurement', [c for c in CALLS if c[0] not in ('editor', 'vcs', 'tts', 'calendar', 'transcripts', 'redactor')])
 def test_none_call(tmp_path, monkeypatch, capsys, kind, call, parameters, measurement):
     api = registry()
     module = importlib.import_module(f'adapters.{kind}.none')
@@ -197,7 +199,8 @@ def test_registry_loads_config_selection(tmp_path):
         if kind in ('integrity', 'editor'):
             continue  # Fixed host mechanisms, not owner-selectable config.
         expected = {'code_host': 'github', 'vcs': 'git', 'host': 'local',
-                    'checks': 'local', 'tts': 'say' if sys.platform == 'darwin' else 'none'}.get(kind, 'none')
+                    'checks': 'local', 'redactor': 'builtin',
+                    'tts': 'say' if sys.platform == 'darwin' else 'none'}.get(kind, 'none')
         assert expected in api.known(kind)
         assert config['adapters'][kind] == expected
         assert api.load(kind, config) is importlib.import_module(f'adapters.{kind}.{expected}')

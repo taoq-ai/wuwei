@@ -14,6 +14,7 @@ EVENT_PRODUCERS = {
     'build.started': 'wuwei build next', 'build.launched': 'wuwei build',
     'build.fix_opened': 'wuwei pr act or wuwei dispatch next',
     'build.checked': 'wuwei build check',
+    'inbox.redacted': 'the inbox store',
     'build.requested': 'wuwei dispatch discovery',
     'seat.usage': 'wuwei build or SubagentStop',
     'mcp.finding': 'wuwei mcp check', 'mcp.checked': 'wuwei mcp check',
