@@ -54,6 +54,8 @@ _OWNER_ACTIONS = {
     ('listen', 'uninstall'): 'Listener uninstall requires the owner terminal, outside agent tools.',
     ('goals', 'edit'): 'Owner memory edits are an owner action on the host, outside agent tools.',
     ('voice', 'edit'): 'Owner memory edits are an owner action on the host, outside agent tools.',
+    # An acknowledged refusal stops paging, so a seat could silence an impostor alert.
+    ('remote', 'ack'): 'Remote acknowledgements require the owner terminal, outside agent tools.',
 }
 _OWNER_GROUPS = {group for group, _ in _OWNER_ACTIONS}
 _OWNER_VERBS = tuple(sorted({verb for _, verb in _OWNER_ACTIONS}))

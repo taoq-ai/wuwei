@@ -22,6 +22,7 @@ EVENT_PRODUCERS = {
     'decision.replied': 'wuwei control plane poll_replies or wuwei listen',
     'decision.escalated': 'wuwei listen',
     **{f'remote.{action}': 'wuwei listen' for action in ('pending', 'started', 'resumed', 'stopped', 'ignored', 'refused', 'confirmed')},
+    'remote.acknowledged': 'owner host wuwei remote ack',
     'integrity': 'wuwei integrity check', 'integrity_failed': 'wuwei integrity check',
     'integrity_confirmation': 'owner host re-confirmation',
     'state.set': 'wuwei state set', 'state.transition': 'wuwei state transition',

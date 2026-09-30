@@ -620,6 +620,16 @@ def test_seat_cannot_recover_state(workspace, tmp_path, command):
     assert check_bash(payload(outside, 'Bash', command=command)) == (0, '')
 
 
+@pytest.mark.parametrize('command', ['bin/wuwei remote ack', 'python3 -P -m wuwei remote ack'])
+def test_seat_cannot_acknowledge_refusals(workspace, tmp_path, command):
+    from wuwei.guards.protect_state import check_bash
+    assert check_bash(payload(workspace, 'Bash', command=command)) == (
+        1, 'Remote acknowledgements require the owner terminal, outside agent tools.')
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    assert check_bash(payload(outside, 'Bash', command=command)) == (0, '')
+
+
 @pytest.mark.parametrize('command', ['python3 -m pytest -q -k recover', 'grep -rn recover cli/',
                                      'bin/wuwei state get'])
 def test_unrelated_recover_mentions_are_allowed(workspace, command):

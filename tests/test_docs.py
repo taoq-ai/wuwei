@@ -260,6 +260,7 @@ def test_remote_runbook_matches_the_code():
     import contextlib
     import io
     from wuwei import control_plane, env, remote, workspace
+    from wuwei.commands.config import PIN_MISSING
     from wuwei.commands.event import EVENT_PRODUCERS
     page = (SITE / 'remote.md').read_text()
     flat = ' '.join(page.split())
@@ -295,8 +296,11 @@ def test_remote_runbook_matches_the_code():
                  'Allow users to send Slash commands and messages from the messages tab',
                  'OAuth & Permissions', 'Bot Token Scopes', 'Agent tools are refused these commands',
                  'answered from the phone', remote.ANSWERED.format(identifier='D-3', option='B'),
-                 'control_plane.owner: missing', 'WUWEI_TOTP_SECRET: set', 'status --line` shows `listen dead`'):
+                 'WUWEI_TOTP_SECRET: set', 'status --line` shows `listen dead`', 'phone answers 1',
+                 'bin/wuwei remote ack', 'remote.acknowledged'):
         assert text in flat, text
+    section = ' '.join(pin.split())
+    assert PIN_MISSING in section and 'stays paged until the day ends' not in section
     decisions = ' '.join(page[page.index('## 7. '):page.index('## 8. ')].split())
     assert 'for decisions a `plan` session raises' not in decisions
     output = io.StringIO()

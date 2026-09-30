@@ -15,7 +15,7 @@ LAUNCHER = Path(__file__).resolve().parents[1] / 'bin/wuwei'
 
 ACTIONS = [('decision', 'outcome'), ('drafts', 'approve'), ('drafts', 'drop'),
            ('mcp', 'decide'), ('integrity', 'reconfirm'), ('state', 'recover'),
-           ('watch', 'uninstall'), ('goals', 'edit'), ('voice', 'edit')]
+           ('watch', 'uninstall'), ('goals', 'edit'), ('voice', 'edit'), ('remote', 'ack')]
 # Ids stay free of owner verbs: pytest puts them in tmp_path, which reaches payloads.
 IDS = [f'pair{index}' for index in range(len(ACTIONS))]
 
@@ -79,6 +79,7 @@ def test_forwarding_script_and_plain_script(places):
 @pytest.mark.parametrize('command', [
     'python3 -m pytest -q', 'for x in a b; do echo "$x"; done', 'export X=1',
     'bin/wuwei state get', 'grep -rn uninstall docs/', "rg 'wuwei mcp decide' cli",
+    'git remote -v', 'bin/wuwei steward ack remote-fix-3',
     'bin/wuwei state transition "$i" review',
     # Review F1: a path segment or commit message is not the CLI.
     'git commit -m "wuwei: drop stale drafts"',

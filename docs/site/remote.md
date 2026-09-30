@@ -100,7 +100,9 @@ It checks presence only, not whether the token works.
 
 Only the sender pinned in `control_plane.owner = "T0123ABC/U0123ABC"` (your Slack team id,
 a slash, your user id) can command. There is one owner per workspace. Until it is set,
-`bin/wuwei config check` prints `control_plane.owner: missing` and exits 1; a malformed
+`bin/wuwei config check` prints
+`control_plane.owner: missing (<team id>/<user id>; see remote operation section 3)` and
+exits 1; a malformed
 pin prints `control_plane.owner: invalid`. It never prints the pin.
 
 Set `owner.name` in `.wuwei/config.toml` too. The outward lint uses it for messages to
@@ -130,7 +132,11 @@ With the pin set:
   a `remote.refused` event pages on the host. Editing the pin on the host is the
   re-confirmation: the event records the pin it was checked against, and the page clears
   once `control_plane.owner` holds a different value. A refusal while the pin is right
-  stays paged until the day ends. `stop all` is still accepted.
+  stays paged until you run `bin/wuwei remote ack` in a host terminal: it lists today's
+  refused message ids, asks you to type a digest and records a `remote.acknowledged`
+  event. A later refusal pages again. Agent tools are refused this command, and without
+  a terminal it exits 2. Otherwise the page ends with the day. `stop all` is still
+  accepted.
 
 ## 4. The second factor
 
@@ -310,9 +316,10 @@ Not recorded: D-3 already has option B from this DM. Record the outcome on the h
 ```
 
 Either way, record the outcome in a host terminal with `bin/wuwei decision outcome D-3 B`.
-Until then `bin/wuwei nudges`, `status --line` and session start show
-`D-3 answered from the phone: option B, confirm with decision outcome D-3 B`, and the
-report lists it as pending. Drafts are the same:
+Until then `bin/wuwei nudges` and session start show
+`D-3 answered from the phone: option B, confirm with decision outcome D-3 B`,
+`status --line` and the DM `status` reply count it as `phone answers 1`, and the report
+lists it as pending. Drafts are the same:
 `bin/wuwei drafts approve <id>` or `bin/wuwei drafts drop <id>`. Agent tools are refused
 these commands, and `decision outcome` and `drafts approve` also read a typed digest from
 the terminal, so they run neither through Remote Control nor the DM; from a phone,

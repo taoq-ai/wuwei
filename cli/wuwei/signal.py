@@ -3,7 +3,7 @@
 from datetime import datetime
 
 
-SILENT = ('item.progress', 'state.write', 'state.set', 'state.transition',
+SILENT = ('item.progress', 'remote.acknowledged', 'state.write', 'state.set', 'state.transition',
           'seat started', 'seat stopped', 'seat launched', 'brief written',
           'brief.pack', 'brief.answer', 'session.seen', 'item.claimed',
           'draft.sending', 'draft.sent', 'draft.dropped',

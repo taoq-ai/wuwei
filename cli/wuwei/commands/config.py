@@ -10,6 +10,9 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 from wuwei.workspace import ConfigError, load_config
 
 
+PIN_MISSING = 'control_plane.owner: missing (<team id>/<user id>; see remote operation section 3)'
+
+
 def register(subparsers):
     parser = subparsers.add_parser("config", help="inspect workspace configuration")
     actions = parser.add_subparsers(dest="action", required=True)
@@ -65,9 +68,8 @@ def run(args):
         from wuwei.remote import PIN
         pin = config['control_plane']['owner']
         valid = bool(re.fullmatch(PIN, pin))
-        print('Control plane:\n  control_plane.owner: ' + (
-            'set' if valid else 'invalid (expected <team id>/<user id>)' if pin else
-            'missing (<team id>/<user id>; see remote operation section 3)'))
+        print('Control plane:\n  ' + ('control_plane.owner: set' if valid else
+              'control_plane.owner: invalid (expected <team id>/<user id>)' if pin else PIN_MISSING))
         status = max(status, CLEAN if valid else FINDINGS)
         # Reported, not a finding: without it a confirm reply is the second factor.
         print('  WUWEI_TOTP_SECRET: ' + ('set' if os.environ.get('WUWEI_TOTP_SECRET') else
