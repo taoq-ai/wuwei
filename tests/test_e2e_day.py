@@ -21,11 +21,9 @@ def test_scripted_day(day):
     assert day.data['approved_items'] == ['A']
     assert day.data['items']['A']['phase'] == 'planned'
     day.run('plan', 'session', 'planner')
-    day.transition('implement')
     day.build('builder-initial')
     initial_head = day.head
     assert day.data['seats']['builder-initial']['status'] == 'stopped'
-    day.transition('gate')
     assert day.next() == {'action': 'gates', 'roles': ['arch', 'quality', 'security']}
     day.raise_pr(expected=1)
     assert not any(call[0] == 'create_pr' for call in day.host.calls)
@@ -36,7 +34,6 @@ def test_scripted_day(day):
     day.transition('fix')
     day.build('builder-fix')
     assert day.head != initial_head
-    day.transition('delta')
     assert day.next() == {'action': 'gates', 'roles': ['quality']}
     day.gate('quality', 'PASS', round_name='delta')
     assert day.next() == {'action': 'raise', 'notes': []}
@@ -91,9 +88,7 @@ def test_scripted_day(day):
 def test_agent_surface_without_scanner_is_unmeasured(day):
     day.plan(agent_surface=True)
     day.approve()
-    day.transition('implement')
     day.build('builder-initial')
-    day.transition('gate')
     day.gate('arch', 'PASS')
     day.gate('quality', 'PASS')
     output = day.gate('security', 'PASS', expected=2)

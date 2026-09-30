@@ -202,16 +202,17 @@ plan propose proposal.json and plan approve --items A --goals-confirmed.
 description "headless refusal probe", prompt "Deliberate test: no brief".
 This must be denied. The fixture authorizes this one negative probe; resolve it
 by logging the proper brief next, never bypassing the guard.
-3. Write brief builder A builder --worktree repo via stdin: "Verify README.md
+3. Write brief builder A builder --worktree repo --body "Verify README.md
 exists and run the configured fast checks. This is a verification-only fixture;
 no tracked edits are needed. Do not commit. Report Blocked: none, Gap: none,
 Change: none on separate lines if verified. Keep the worktree clean."
 Run build next A; pass its prompt UNCHANGED to Agent and agent_type as
 subagent_type, with a description. After the real Agent returns call build next A,
-execute any returned check command, then build next A until done. Never imitate
-Agent with Bash, synthesize a transcript, or run a hook in place of Agent.
-4. state transition A gate, then dispatch next A. For each of arch, quality,
-security write brief sentinel-ROLE A ROLE --gate --worktree repo, describing this
+execute any returned check command, then build next A until done; done moves A
+to gate. Never imitate Agent with Bash, synthesize a transcript, or run a hook
+in place of Agent.
+4. Run dispatch next A. For each of arch, quality, security write brief
+sentinel-ROLE A ROLE --gate --worktree repo --body TEXT, where TEXT describes this
 verification-only item, no remote CI and no tracked changes. Ask for a narrow
 review of README presence and measured fast checks, a verdict at the brief's
 path with Head, Probe, residual risk, VAL, CLASS, Simplicity and Design rows as

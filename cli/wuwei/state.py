@@ -365,9 +365,11 @@ def transition(item, phase, root=None):
                        payload={'item': item, 'phase': phase})
 
 
-def stop_seat(name, root=None, *, directory=None):
+def stop_seat(name, root=None, *, directory=None, agent_id=None):
     """Release a reservation while preserving the used brief and seat identity."""
     def update(data):
         data['seats'][name]['status'] = 'stopped'
+        if isinstance(agent_id, str) and agent_id.strip():
+            data['seats'][name]['agent_id'] = agent_id
     return _write_state(update, root, reserved=False, kind='seat stopped',
                         payload={'name': name}, directory=directory)

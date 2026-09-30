@@ -178,7 +178,7 @@ def test_scratch_build_and_observer_preserve_hook_results(tmp_path, monkeypatch)
     assert row['event'] == 'PreToolUse' and row['exit'] == 2 and row['tool'] == 'Write'
     for args in (['plan', 'propose', 'proposal.json'],
                  ['plan', 'approve', '--items', 'A', '--goals-confirmed'],
-                 ['brief', 'builder', 'A', 'builder', '--worktree', 'repo']):
+                 ['brief', 'builder', 'A', 'builder', '--worktree', 'repo', '--file', '-']):
         step = adapter.run([cli, *args], cwd=root, env=env, input='Verify README presence.')
         assert step.returncode == 0, step.stderr
     step = adapter.run([cli, 'build', 'next', 'A'], cwd=root, env=env)

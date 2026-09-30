@@ -81,7 +81,8 @@ class Day:
 
         def local_git(argv, **kwargs):
             assert argv[0] == 'git', f'unexpected external tool: {argv}'
-            assert '-C' in argv and Path(argv[argv.index('-C') + 1]).is_relative_to(root)
+            tree = argv[argv.index('-C') + 1] if '-C' in argv else kwargs.get('cwd', '')
+            assert Path(tree).is_relative_to(root), argv
             # The adapter sanitizes Git variables; isolate host config at the process boundary.
             kwargs['env'].update(GIT_CONFIG_GLOBAL='/dev/null', GIT_CONFIG_NOSYSTEM='1')
             return real_run(argv, **kwargs)
@@ -128,7 +129,8 @@ lead_login = "lead"
         assert result.exit == 0, result.reason
         initial = self.head
         vcs = VCS()
-        for name in ('head', 'status', 'diff_stat', 'branches', 'branch', 'pushed_branches'):
+        for name in ('head', 'status', 'diff_stat', 'branches', 'branch', 'pushed_branches',
+                     'commit_context'):
             setattr(vcs, name, getattr(git, name))
         identity = {'name': 'Builder', 'email': 'builder@example.test'}
         vcs.results['identity'] = Result(0, {**identity, 'author': identity, 'committer': identity})
@@ -227,7 +229,7 @@ lead_login = "lead"
         return json.loads(self.run('dispatch', 'next', 'A'))
 
     def brief(self, role, name):
-        return self.run('brief', role, 'A', name, '--worktree', self.repo,
+        return self.run('brief', role, 'A', name, '--worktree', self.repo, '--file', '-',
                         stdin='Implement or review the demo value.').strip()
 
     def build(self, name):

@@ -494,3 +494,28 @@ def test_non_builder_resume_keeps_existing_fresh_brief_contract(launch, monkeypa
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
     launch[1]['tool_input']['resume'] = 'prior-sentinel'
     assert check(launch[1]) == (0, '')
+
+
+def test_delta_continues_the_stopped_sentinel_by_agent_id(launch, monkeypatch):
+    from wuwei.guards import agent_launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    day, payload = launch
+    assert check(payload) == (0, '')
+    transcript = day[0] / 'agent.jsonl'
+    transcript.write_text(json.dumps({'type': 'user', 'message': {
+        'content': payload['tool_input']['prompt']}}) + '\n')
+    assert agent_launch.stop({'cwd': str(day[0]), 'agent_id': 'agent-7',
+                              'agent_type': 'wuwei:sentinel-arch',
+                              'agent_transcript_path': str(transcript)}) == (0, '')
+    assert state.read_state(day[0])['seats']['gate']['agent_id'] == 'agent-7'
+    day[2].results['head'] = registry.Result(0, {'sha': 'b' * 40})
+    for resume in (None, 'agent-other'):
+        payload['tool_input'].pop('resume', None)
+        if resume:
+            payload['tool_input']['resume'] = resume
+        code, message = check(payload)
+        assert code == 1 and 'brief already used' in message
+    payload['tool_input']['resume'] = 'agent-7'
+    assert check(payload) == (0, '')
+    seat = state.read_state(day[0])['seats']['gate']
+    assert seat['status'] == 'running' and seat['head'] == 'b' * 40

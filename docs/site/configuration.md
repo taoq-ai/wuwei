@@ -115,7 +115,7 @@ Run `bin/wuwei brief pack` once for a daily text pack, or `bin/wuwei brief pack 
 inside the lead window for the next attendee meeting. The returned path contains the
 five fixed sections, a what-changed visual, a three-bullet card and a three-question
 drill. Answer with `bin/wuwei brief answer 1 "your answer"`; the command prints feedback
-and records the score and streak. The existing `bin/wuwei brief ROLE ITEM NAME` command
+and records the score and streak. The existing `bin/wuwei brief ROLE ITEM NAME --body TEXT` command
 continues to write seat briefs.
 
 When the approved item's `flags.agent_surface` is true, `bin/wuwei dispatch receive`

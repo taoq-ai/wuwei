@@ -29,7 +29,9 @@ def seat(tmp_path, monkeypatch):
     results = []
     checks = SimpleNamespace(run=lambda *a, **kw: results.pop(0))
     vcs = SimpleNamespace(head=lambda *a, **kw: registry.Result(0, {'sha': 'a' * 40}),
-                          status=lambda *a, **kw: registry.Result(0, []))
+                          status=lambda *a, **kw: registry.Result(0, []),
+                          commit_context=lambda *a, **kw: registry.Result(0, {
+                              'path': str(repo), 'common_dir': str(repo / '.git')}))
     monkeypatch.setattr(registry, 'load', lambda kind, config: {
         'runtime': claude, 'checks': checks, 'vcs': vcs}[kind])
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *a: 8 * 1024**3)
@@ -357,3 +359,35 @@ def test_delayed_stop_cannot_consume_a_resumed_iteration(seat, monkeypatch):
     data = state.read_state(root)
     assert data['seats']['builder']['status'] == data['builds']['A']['status'] == 'running'
     assert data['builds']['A']['iteration'] == 1
+
+
+def phase(root, value=None):
+    if value is not None:
+        path = workspace.day_dir(root) / 'state.json'
+        data = json.loads(path.read_text())
+        data['items']['A']['phase'] = value
+        path.write_text(json.dumps(data))
+    return state.read_state(root)['items']['A']['phase']
+
+
+def test_launch_moves_planned_to_implement_once(seat):
+    root, _, _, day, _ = seat
+    phase(root, 'planned')
+    action = build.next_action('A', root=root)
+    assert phase(root) == 'implement'
+    before = (day / 'events.jsonl').read_bytes()
+    assert build.next_action('A', root=root) == action
+    assert (day / 'events.jsonl').read_bytes() == before
+
+
+@pytest.mark.parametrize('start,end', [('planned', 'gate'), ('implement', 'gate'), ('fix', 'delta')])
+def test_build_done_hands_item_to_next_phase(seat, start, end):
+    root, _, _, _, results = seat
+    phase(root, start)
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat) == (0, '')
+    results.append(registry.Result(0))
+    assert main(['build', 'check', 'A']) == 0
+    assert build.next_action('A', root=root)['action'] == 'done'
+    assert phase(root) == end
+    assert 'fix_rounds' not in state.read_state(root)['builds']['A']

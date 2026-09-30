@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -47,8 +48,13 @@ def setup(tmp_path, monkeypatch, checks):
         def run(self, path, command, *, root=None):
             return checks.pop(0)
 
+    vcs = SimpleNamespace(head=lambda *a, **kw: registry.Result(0, {'sha': 'a' * 40}),
+                          status=lambda *a, **kw: registry.Result(0, []),
+                          commit_context=lambda *a, **kw: registry.Result(0, {
+                              'path': str(repo), 'common_dir': str(repo / '.git')}))
+
     def load(kind, config):
-        return runtime if kind == 'runtime' else FakeChecks()
+        return {'runtime': runtime, 'vcs': vcs}.get(kind) or FakeChecks()
 
     monkeypatch.setattr(registry, 'load', load)
     return repo, brief, day, runtime
@@ -90,7 +96,7 @@ def test_green_on_second_iteration_records_two_usages(tmp_path, monkeypatch):
         registry.Result(0)])
     assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0
     assert len([e for e in events(day) if e['kind'] == 'seat.usage']) == 2
-    assert state.read_state(tmp_path)['items']['A']['phase'] == 'implement'
+    assert state.read_state(tmp_path)['items']['A']['phase'] == 'gate'
 
 
 def test_unmeasured_check_exits_two(tmp_path, monkeypatch):

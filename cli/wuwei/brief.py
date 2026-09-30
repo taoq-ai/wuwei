@@ -76,7 +76,7 @@ def gate_ready(data, item):
         raise ValueError(f'unknown gate item: {item}')
     phase = data['items'][item]['phase']
     if phase not in ('gate', 'delta', 'raised', 'merged'):
-        raise Refused(f"gate brief while item phase is '{phase}'; wait for builder SubagentStop, then run wuwei state transition {item} gate")
+        raise Refused(f"gate brief while item phase is '{phase}'; finish the build loop first (wuwei build next {item} returns done)")
     for seat in seats(data).values():
         if seat['item'] == item and seat['role'] == 'builder' and seat['status'] == 'running':
             raise Refused('gate refused: builder is live; wait for its SubagentStop before the gate brief')

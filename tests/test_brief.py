@@ -33,7 +33,7 @@ def day(tmp_path, monkeypatch):
 
 def brief(monkeypatch, body='body', *args):
     monkeypatch.setattr(sys, 'stdin', io.StringIO(body))
-    return main(['brief', *args])
+    return main(['brief', *args, '--file', '-'])
 
 
 def events(directory):
@@ -265,3 +265,38 @@ def test_repo_default_branch(day, monkeypatch):
 
 def set_seats(seats, root):
     state._write_state(lambda data: data.update(seats=seats), root, reserved=False)
+
+
+@pytest.mark.parametrize('role', ['quality', 'arch', 'security', 'sentinel-quality'])
+def test_gate_brief_accepts_dispatch_role_names(day, monkeypatch, role):
+    assert brief(monkeypatch, 'Review it.', role, 'X', 'g', '--gate', '--worktree', 'tree') == 0
+    charter = role if role.startswith('sentinel-') else 'sentinel-' + role
+    assert f'charters/{charter}.md' in (day[1] / 'briefs/g.md').read_text()
+    written = [e for e in events(day[1]) if e['kind'] == 'brief written']
+    assert written[-1]['payload']['role'] == charter
+
+
+def test_brief_body_from_option_or_file(day, monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, 'stdin', None)
+    assert main(['brief', 'builder', 'X', 'b1', '--body', 'inline body']) == 0
+    assert 'inline body' in (day[1] / 'briefs/b1.md').read_text()
+    source = tmp_path / 'body.txt'
+    source.write_text('file body')
+    assert main(['brief', 'builder', 'X', 'b2', '--file', str(source)]) == 0
+    assert 'file body' in (day[1] / 'briefs/b2.md').read_text()
+    assert brief(monkeypatch, 'stdin body', 'builder', 'X', 'b3') == 0
+    assert 'stdin body' in (day[1] / 'briefs/b3.md').read_text()
+
+
+def test_brief_without_body_option_never_reads_stdin(day, monkeypatch, capsys):
+    def blocked():
+        raise AssertionError('stdin read')
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(''))
+    monkeypatch.setattr(sys.stdin, 'read', blocked)
+    assert main(['brief', 'builder', 'X', 'b4']) == 2
+    err = capsys.readouterr().err
+    assert '--body' in err and '--file' in err
+    assert not (day[1] / 'briefs/b4.md').exists()
+    with pytest.raises(SystemExit) as exc:
+        main(['brief', 'builder', 'X', 'b5', '--body', 'x', '--file', '-'])
+    assert exc.value.code == 2

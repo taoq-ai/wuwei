@@ -134,3 +134,25 @@ def test_local_checks_leave_application_not_found_message_as_code_failure(tmp_pa
     result = adapter.run(str(tmp_path), 'python3 -m pytest -q')
     assert result.exit == 1
     assert 'environment' not in result.data
+
+
+@pytest.mark.parametrize('exit_code', [0, 1, 2])
+def test_build_check_writes_the_record_the_push_guard_reads(workspace_case, monkeypatch, exit_code):
+    from wuwei.commands import build
+    root, vcs = workspace_case
+    clear(root)
+    (root / 'brief.md').write_text('Build it')
+    tree = str(root / 'repo')
+    state._write_state(lambda data: data['items'].update(A={'phase': 'planned'}), root, reserved=False)
+    state.transition('A', 'implement', root)
+    state._write_state(lambda data: data.setdefault('builds', {}).update(A={
+        'brief': 'brief.md', 'worktree': tree, 'runtime': 'claude', 'repo': 'example/project',
+        'commands': ['unit'], 'iteration': 1, 'repeats': 0, 'signature': None,
+        'status': 'check', 'action': {'action': 'check'}}), root, reserved=False)
+    monkeypatch.setattr(registry, 'load', lambda kind, config: (
+        SimpleNamespace(run=lambda *args, **kwargs: Result(
+            exit_code, {'error': 'broken'} if exit_code == 1 else None,
+            'check unavailable' if exit_code == 2 else '')) if kind == 'checks' else vcs))
+    assert main(['build', 'check', 'A']) == exit_code
+    assert state.read_state(root)['fast_checks']['example/project']['unit']['sha'] == SHA
+    assert guard().check(payload(root, 'git push origin feature'))[0] == (0 if exit_code == 0 else 1)

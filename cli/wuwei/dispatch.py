@@ -143,7 +143,8 @@ def receive(item, role, name, round_name='initial', root=None):
     if brief_path.resolve() != directory / 'briefs' / f'{name}.md':
         raise Refused('seat brief path does not match gate name')
     brief_text = brief_path.read_text(encoding='utf-8')
-    if f'HEAD: {head}' not in brief_text and f'Head: {head}' not in brief_text:
+    if (f'HEAD: {head}' not in brief_text and f'Head: {head}' not in brief_text
+            and not str(seat.get('head') or '').lower().startswith(head.lower())):
         raise Refused('verdict HEAD differs from dispatched brief')
     trees = re.findall(r'^Worktree: (.+)$', brief_text, re.M)
     if trees and trees[0] != 'none':
