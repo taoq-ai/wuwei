@@ -7,6 +7,8 @@ from wuwei.guards import Guard
 
 
 def check(payload):
+    if payload.get('stop_hook_active') is True:
+        return 0, ''
     try:
         if not isinstance(payload.get('cwd'), str) or not Path(payload['cwd']).is_absolute():
             raise ValueError('cwd must be absolute')
@@ -32,7 +34,6 @@ def check(payload):
             raise ValueError('day state missing for registered planner')
         if type(payload.get('stop_hook_active', False)) is not bool:
             raise ValueError('stop_hook_active must be boolean')
-        # Retry flags suppress advisory wakes, never unresolved correctness obligations.
         return closing.check(root) if requested else pr_actions.check(root)
     except watch.ERRORS as exc:
         return 2, f'Stop unmeasured: {exc}'

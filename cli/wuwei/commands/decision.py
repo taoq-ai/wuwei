@@ -1,6 +1,7 @@
 """Lint, route and record outcomes through the shared evaluator and state writer."""
 
 import hashlib
+import re
 import sys
 
 from wuwei import state, workspace
@@ -108,6 +109,10 @@ def owner_outcome(args):
                        kind='decision.reversed' if reversed_choice else 'decision.decided',
                        payload={'id': args.id, 'option': args.option,
                                 'reversibility': fields['Reversibility']})
+    # ponytail: rewrites the first Outcome: line; a record with an inactive example
+    # Outcome: above the real field needs the active line from verdict.active_text.
+    workspace.atomic_write(path, re.sub(r'^((?:#{1,6} )?Outcome:).*$', lambda m: f'{m[1]} {args.option}',
+                                        text, count=1, flags=re.M))
     return 0, args.option
 
 

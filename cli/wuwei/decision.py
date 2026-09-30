@@ -180,6 +180,12 @@ def route(fields):
             and fields['Blast radius'] in ('own branch', 'own PR') else 'owner')
 
 
+def answered(data, identifier):
+    """Return the owner's recorded option for a decision, or None while it is unanswered."""
+    record = data.get('decision_outcomes', {}).get(identifier)
+    return record.get('option') if isinstance(record, dict) and record.get('decided_by') == 'owner' else None
+
+
 def seat_outcome(fields, scores):
     """Snapshot a validated seat decision, including any explicit item disposition."""
     if route(fields) != 'seat' or fields['Decided-by'] != 'seat':

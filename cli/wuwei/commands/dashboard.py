@@ -8,7 +8,7 @@ import re
 from urllib.parse import urlsplit
 
 from wuwei import brief_pack, drafts, state, workspace
-from wuwei.decision import clarification_fields, evaluate, lint_clarification, route
+from wuwei.decision import answered, clarification_fields, evaluate, lint_clarification, route
 from wuwei.commands.status import snapshot as status_snapshot
 from wuwei.signal import classify
 from wuwei.exits import CLEAN
@@ -25,7 +25,7 @@ def cockpit_snapshot(directory):
         content = path.read_text(encoding='utf-8')
         if path.name.startswith('D-'):
             fields, _ = evaluate(content)
-            if fields['Outcome'].lower() != 'pending':
+            if fields['Outcome'].lower() != 'pending' or answered(data, path.stem):
                 continue
             lines = fields['Options'].splitlines()
             options = [{'id': cells[0], 'description': cells[1]} for line in lines

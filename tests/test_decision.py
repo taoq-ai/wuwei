@@ -576,18 +576,25 @@ def test_owner_outcome_resumes_linked_item_and_report(ws, monkeypatch):
     assert data['items']['X']['status'] == 'queued'
     assert data['decision_outcomes']['D-3']['outcome'] == 'A'
     assert '- D-3: A' in report.build(ws)
+    text = decision_path.read_text()
+    assert 'Outcome: A\n' in text and 'Outcome: pending' not in text
+    from wuwei import decision
+    assert decision.lint(text)[0] == 0
 
 
 def test_owner_outcome_rejects_bad_choice_and_declined_confirmation(ws, monkeypatch):
     from wuwei.__main__ import main
     from wuwei import state
     monkeypatch.chdir(ws)
-    save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
+    path = save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
+    before = path.read_bytes()
     assert main(['decision', 'route', 'D-3']) == 0
     assert main(['decision', 'outcome', 'D-3', 'missing']) == 1
+    assert path.read_bytes() == before
     monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: False)
     assert main(['decision', 'outcome', 'D-3', 'A']) == 1
     assert not state.read_state(ws).get('decision_outcomes')
+    assert path.read_bytes() == before
 
 
 def test_owner_reversal_is_recorded_once_and_measured(ws, monkeypatch):
@@ -621,3 +628,16 @@ def test_agent_tool_cannot_invoke_owner_outcome(ws, command, expected):
     payload = {'cwd': str(ws), 'tool_name': 'Bash',
                'tool_input': {'command': command}}
     assert check_bash(payload)[0] == expected
+
+
+@pytest.mark.parametrize('data,expected', [
+    ({}, None),
+    ({'decision_outcomes': {}}, None),
+    ({'decision_outcomes': {'D-1': {}}}, None),
+    ({'decision_outcomes': {'D-1': {'option': 'A', 'decided_by': 'seat'}}}, None),
+    ({'decision_outcomes': {'D-1': 'defer'}}, None),
+    ({'decision_outcomes': {'D-1': {'option': 'defer', 'decided_by': 'owner'}}}, 'defer'),
+])
+def test_answered_reads_only_owner_outcomes(data, expected):
+    from wuwei import decision
+    assert decision.answered(data, 'D-1') == expected

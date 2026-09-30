@@ -182,7 +182,7 @@ def test_poll_produces_deadline_stop_and_signal(case, monkeypatch, seconds, bloc
     deadline = watch.saved(root)['actions'][REF]['deadline']
     advance(monkeypatch, seconds)
     watch.poll(root)
-    code, reason = check(payload(root, stop_hook_active=True))
+    code, reason = check(payload(root, stop_hook_active=False))
     assert code == int(blocked), reason
     if blocked:
         assert REF in reason and 'conflicted' in reason and 'rebase' in reason

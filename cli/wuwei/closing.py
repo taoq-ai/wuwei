@@ -181,7 +181,7 @@ def unresolved(root, rows):
             try:
                 fields, _ = decision.evaluate(decision.today_path(identifier, root).read_text(encoding='utf-8'))
                 if identifier in routes or decision.route(fields) == 'owner':
-                    if identifier not in resolved:
+                    if identifier not in resolved and not decision.answered(data, identifier):
                         findings.append(f'{identifier}: pending owner decision: {fields["Question"]}')
                 elif identifier in outcomes:
                     record = outcomes[identifier]

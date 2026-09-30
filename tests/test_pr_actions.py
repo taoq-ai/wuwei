@@ -3,6 +3,8 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from wuwei import pr_actions, registry, state, workspace
 from wuwei.__main__ import main
 from wuwei.registry import Result
@@ -130,6 +132,32 @@ def test_scope_disagreement_creates_decision(case, capsys):
     assert (root / action['decision']).is_file()
     assert main(['pr', 'act', REF]) == 1
     assert json.loads(capsys.readouterr().out.splitlines()[-1])['decision'] == action['decision']
+
+
+@pytest.mark.parametrize('option', ['defer', 'change'])
+def test_answered_scope_decision_routes_by_option(case, monkeypatch, capsys, option):
+    root, host, _, tree = linked(case)
+    if option == 'change':
+        completed_build(root, tree)
+    body = 'This is out of scope; add a new API instead'
+    host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
+        'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
+            'body': body, 'created_at': workspace.now().isoformat()}]}]
+    assert main(['pr', 'act', REF]) == 1
+    path = json.loads(capsys.readouterr().out)['decision']
+    identifier = path.rsplit('/', 1)[-1].removesuffix('.md')
+    assert main(['decision', 'route', identifier]) == 0
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+    assert main(['decision', 'outcome', identifier, option]) == 0
+    capsys.readouterr()
+    assert main(['pr', 'act', REF]) == 1
+    action = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert action.get('action') != 'owner_decision'
+    if option == 'defer':
+        assert action['action'] == 'reply'
+        assert action['decision'] == path and action['option'] == 'defer'
+    else:
+        assert body in action['prompt']
 
 
 def test_allowed_tier_sends_thread_reply(case, monkeypatch):
