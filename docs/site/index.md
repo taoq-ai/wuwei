@@ -7,6 +7,7 @@ layout: default
 WUWEI 无为 means "effortless action." It is a Claude Code plugin for a chartered team, workspace memory and action-time guards.
 
 - [Daily path](daily.html): one solo-owner path from install to close
+- [Remote operation](remote.html): run a day from the phone with Remote Control and the Slack owner DM
 - [Recovery](recovery.html): low-level commands for when evidence and state disagree
 - [Concepts](concepts.html): roles, guards, memory and the day flow
 - [Configuration](configuration.html): every shipped workspace setting

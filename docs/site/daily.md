@@ -99,7 +99,8 @@ To answer from your phone, run the planner session with Claude Code Remote Contr
 (`claude --remote-control`, or `/remote-control` inside the session) and turn on
 "Push when actions required" in `/config`. Each decision question then reaches the Claude
 mobile app and stays open until you answer. A phone answer is not yet your outcome: run
-`bin/wuwei decision outcome` in a host terminal to record it.
+`bin/wuwei decision outcome` in a host terminal to record it. To command the workspace and
+answer decisions from Slack as well, follow [remote operation](remote.html).
 
 ## 6. Close
 

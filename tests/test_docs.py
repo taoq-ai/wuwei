@@ -62,7 +62,7 @@ def test_hero_variants_share_geometry_and_motion():
 
 def test_site_pages_and_links():
     pages = ('index', 'daily', 'recovery', 'concepts', 'configuration', 'adapters', 'charter-overrides',
-             'security', 'reference', 'rehearsal')
+             'security', 'reference', 'rehearsal', 'remote')
     index = (SITE / 'index.md').read_text()
     assert index.startswith('---\nlayout: default\n---\n')
     for page in pages[1:]:
@@ -253,6 +253,51 @@ def test_daily_path_and_recovery_pages():
     for command in RECOVERY:
         section = recovery.split(command, 1)[1].split('\n## ', 1)[0]
         assert 'recovery' in section.lower(), command
+
+
+def test_remote_runbook_matches_the_code():
+    import base64
+    import contextlib
+    import io
+    from wuwei import control_plane, env, remote, workspace
+    from wuwei.commands.event import EVENT_PRODUCERS
+    page = (SITE / 'remote.md').read_text()
+    flat = ' '.join(page.split())
+    assert '(remote.html)' in (SITE / 'daily.md').read_text()
+    headings = ['## 1. Remote Control, no setup', '## 2. The Slack app', '## 3. Pin your identity',
+                '## 4. The second factor', '## 5. Install the listener', '## 6. Commands from the DM',
+                '## 7. Decisions on the phone', '## 8. Limits']
+    positions = [page.index(f'\n{heading}\n') for heading in headings]
+    assert positions == sorted(positions)
+    slack = (ROOT / 'adapters/chat/slack.py').read_text()
+    for method in ('conversations.history', 'chat.postMessage'):
+        assert method in slack and f'`{method}`' in page, method
+    for scope in ('channels:history', 'groups:history', 'im:history', 'chat:write'):
+        assert f'`{scope}`' in page, scope
+    for key in ('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL', 'WUWEI_TOTP_SECRET'):
+        assert key in env.CREDENTIALS and key in page, key
+    for section, key in re.findall(r'`([a-z_]+)\.([a-z_]+)(?: = [^`]*)?`', page):
+        assert (key in workspace.SCHEMA.get(section, {}) or f'{section}.{key}' in EVENT_PRODUCERS
+                or f'{section}.{key}' in ('conversations.history', 'config.toml')), f'{section}.{key}'
+    for command in re.findall(r'bin/wuwei ([a-z_]+)', page):
+        assert (ROOT / f'cli/wuwei/commands/{command}.py').is_file(), command
+    for text in (remote.VOCABULARY, remote.CONFIRM, remote.CHANGED, remote.NOTHING, remote.UNAVAILABLE,
+                 control_plane.HELP, 'Push when actions required', 'organisation Owner',
+                 'Recorded D-3 option B. Confirm it on the host.', 'decision.replied', 'decision outcome',
+                 'drafts approve', 'listen install', 'listen uninstall', 'listen dead',
+                 'responder.enabled = false', 'stop all', 'loginctl enable-linger', 'resets at midnight',
+                 'otpauth://totp/', 'algorithm=SHA1&digits=6&period=30', 'App Home', 'Messages Tab',
+                 'Allow users to send Slash commands and messages from the messages tab',
+                 'OAuth & Permissions', 'Bot Token Scopes', 'Agent tools are refused these commands'):
+        assert text in flat, text
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        exec(re.search(r'python3 -c "([^"]+)"', page)[1], {})
+    assert len(base64.b32decode(output.getvalue().strip())) == 20
+    assert not re.search(r'xox[a-z]-', page)
+    ids = {found for found in re.findall(r'\b[CDTUW][A-Z0-9]{6,}\b', page) if re.search(r'\d', found)}
+    assert ids <= {'T0123ABC', 'U0123ABC', 'D0123ABC'}, ids
+    assert '\N{EM DASH}' not in page
 
 
 def test_implemented_protections_are_not_planned():
