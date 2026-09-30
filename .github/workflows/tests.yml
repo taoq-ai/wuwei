@@ -28,6 +28,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      actions: read  # upload-sarif reads the workflow run; without it the upload fails silently
     steps:
       - uses: actions/checkout@v7
       - name: Audit role grants
