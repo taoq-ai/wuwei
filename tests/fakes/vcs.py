@@ -51,6 +51,9 @@ class Fake(Recorder):
     def worktree_add(self, repo, branch, path, root=None):
         return self._call('worktree_add', (repo, branch, path), root)
 
+    def repo_context(self, repo, root=None):
+        return self._call('repo_context', (repo,), root)
+
     def commit_context(self, repo, settings, env, root=None):
         return self._call('commit_context', (repo, settings, env), root)
 

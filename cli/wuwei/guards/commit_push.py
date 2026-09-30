@@ -52,27 +52,35 @@ def data(result):
     return result.data
 
 
-def context(cwd, settings, env, root, push=None):
-    """With push=(remote, refspecs), also return push_context read alongside, or None."""
+def context(cwd, settings, env, root, push=None, identity=True):
+    """Match cwd to a configured repository; identity=False reads no commit identity.
+
+    With push=(remote, refspecs), also return push_context read alongside, or None.
+    """
     from concurrent.futures import ThreadPoolExecutor
     from wuwei import registry, workspace
 
     if 'GIT_COMMON_DIR' in env:
         raise ValueError('GIT_COMMON_DIR overrides cannot be inspected safely')
+    if not identity and (settings or env):
+        raise ValueError('identity-free repository read takes no settings or env overrides')
+    if not identity and push is not None:
+        raise ValueError('push checks need the commit identity')
     config = workspace.load_config(root)
     vcs = registry.load('vcs', config)
     if push is None:
-        return _context(cwd, settings, env, root, config, vcs)
+        return _context(cwd, settings, env, root, config, vcs, identity)
     with ThreadPoolExecutor(1) as pool:
         # Without repository overrides, Git discovers the same repository from cwd.
         early = (pool.submit(vcs.push_context, str(cwd), *push, root=root)
                  if not REPO_ENV & env.keys() else None)
-        found = _context(cwd, settings, env, root, config, vcs)
+        found = _context(cwd, settings, env, root, config, vcs, identity)
     return *found, early and early.result()
 
 
-def _context(cwd, settings, env, root, config, vcs):
-    actual = data(vcs.commit_context(str(cwd), settings, env, root=root))
+def _context(cwd, settings, env, root, config, vcs, identity):
+    actual = data(vcs.commit_context(str(cwd), settings, env, root=root) if identity
+                  else vcs.repo_context(str(cwd), root=root))
     for key in ('path', 'common_dir'):
         if not isinstance(actual.get(key), str) or not Path(actual[key]).is_absolute():
             raise ValueError('missing repository context')
@@ -82,7 +90,7 @@ def _context(cwd, settings, env, root, config, vcs):
         # is that repository; reading it again would return the same directory.
         if (path / '.git').is_dir() and str((path / '.git').resolve()) == actual['common_dir']:
             return repo, actual, vcs
-        configured = data(vcs.commit_context(str(path), {}, {}, root=root))
+        configured = data(vcs.repo_context(str(path), root=root))
         if configured.get('common_dir') == actual['common_dir']:
             return repo, actual, vcs
     raise ValueError('repository is not configured in this workspace')

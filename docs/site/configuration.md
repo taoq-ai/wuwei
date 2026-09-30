@@ -116,7 +116,7 @@ inside the lead window for the next attendee meeting. The returned path contains
 five fixed sections, a what-changed visual, a three-bullet card and a three-question
 drill. The sections come from the day's items, decision records and owned PRs, never
 from adapter or guard messages. Answer with `bin/wuwei brief answer 1 "your answer"`; the command prints feedback
-and records the score and streak. The existing `bin/wuwei brief ROLE ITEM NAME` command
+and records the score and streak. The existing `bin/wuwei brief ROLE ITEM NAME --body TEXT` command
 continues to write seat briefs.
 
 When the approved item's `flags.agent_surface` is true, `bin/wuwei dispatch receive`

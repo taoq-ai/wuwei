@@ -52,6 +52,18 @@ def test_bad_context_fails_closed(tmp_path, monkeypatch, steps):
     assert result.exit == 2 and result.reason
 
 
+def test_repository_read_needs_no_identity(tmp_path, monkeypatch):
+    # A runner with no configured identity: git var exits 128 on any OS.
+    steps = context_steps(tmp_path)[:2] + [{'exit': 128}]
+    calls = install_replay(monkeypatch, 'git', steps)
+    result = adapter().repo_context(str(tmp_path))
+    assert result.exit == 0, result.reason
+    assert result.data == {'path': str(tmp_path / '.git'), 'common_dir': str(tmp_path / '.git')}
+    assert len(calls) == 2
+    install_replay(monkeypatch, 'git', steps)
+    assert adapter().commit_context(str(tmp_path), {}, {}).exit == 2
+
+
 def push_steps(tmp_path, mirror='false', tags='false', configured=''):
     settings = f'push.followtags\n{tags}\0remote.origin.mirror\n{mirror}\0' + configured
     return [

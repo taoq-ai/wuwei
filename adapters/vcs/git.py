@@ -364,6 +364,24 @@ def pushed_branches(repo, root=None):
     return sorted(names)
 
 
+def _repository(read, pair=None):
+    """Validated git and common directory; `pair` holds both reads when already made."""
+    path, common = pair or (read('rev-parse', '--absolute-git-dir'),
+                            read('rev-parse', '--path-format=absolute', '--git-common-dir'))
+    path, common = path.rstrip('\n'), common.rstrip('\n')
+    if not path or not Path(path).is_absolute():
+        raise ValueError('invalid repository path')
+    if not common or not Path(common).is_absolute():
+        raise ValueError('invalid common directory')
+    return {'path': str(Path(path).resolve()), 'common_dir': str(Path(common).resolve())}
+
+
+@_operation
+def repo_context(repo, root=None):
+    """Git and common directory only; needs no commit identity."""
+    return _repository(lambda *args: _run(repo, *args, settings={}, env={}))
+
+
 @_operation
 def commit_context(repo, settings, env, root=None):
     def read(*args):
@@ -372,12 +390,7 @@ def commit_context(repo, settings, env, root=None):
         lambda: read('rev-parse', '--absolute-git-dir'),
         lambda: read('rev-parse', '--path-format=absolute', '--git-common-dir'),
         lambda: read('var', 'GIT_AUTHOR_IDENT'), lambda: read('var', 'GIT_COMMITTER_IDENT'))
-    path, common = path.rstrip('\n'), common.rstrip('\n')
-    if not path or not Path(path).is_absolute():
-        raise ValueError('invalid repository path')
-    if not common or not Path(common).is_absolute():
-        raise ValueError('invalid common directory')
-    return {'path': str(Path(path).resolve()), 'common_dir': str(Path(common).resolve()),
+    return {**_repository(read, (path, common)),
             'author': _identity(author), 'committer': _identity(committer)}
 
 

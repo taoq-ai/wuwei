@@ -215,7 +215,7 @@ def test_raise_checks_gates_then_requests_recent_authors(case, monkeypatch, appr
     tree = root / 'item-tree'
     tree.mkdir()
     monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:00:00Z')
-    vcs.responses['commit_context'] = Result(0, {'common_dir': str(root / 'repo.git')})
+    vcs.responses['repo_context'] = Result(0, {'common_dir': str(root / 'repo.git')})
     vcs.responses.update(identity=Result(0, {'name': 'Builder', 'email': 'builder@example.test',
                                              'author': {'name': 'Builder', 'email': 'builder@example.test'},
                                              'committer': {'name': 'Builder', 'email': 'builder@example.test'}}),
@@ -255,7 +255,7 @@ def solo_raise(case, monkeypatch, minimum=0):
     tree = root / 'item-tree'
     tree.mkdir()
     identity = {'name': 'Builder', 'email': 'builder@example.test'}
-    vcs.responses.update(commit_context=Result(0, {'common_dir': str(root / 'repo.git')}),
+    vcs.responses.update(repo_context=Result(0, {'common_dir': str(root / 'repo.git')}),
                          identity=Result(0, {**identity, 'author': identity, 'committer': identity}),
                          head=Result(0, {'sha': SHA}), branch=Result(0, {'name': 'feature'}),
                          merge_base=Result(0, {'sha': 'b' * 40}),
@@ -318,7 +318,7 @@ def test_raise_checks_item_worktree_head(case, monkeypatch):
     tree.mkdir()
     state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(tree)}}),
                        data['approved_items'].append('ITEM-1')), root, reserved=False)
-    vcs.responses['commit_context'] = Result(0, {'common_dir': str(root / 'repo.git')})
+    vcs.responses['repo_context'] = Result(0, {'common_dir': str(root / 'repo.git')})
     vcs.responses['head'] = Result(0, {'sha': SHA})
     observed = []
     monkeypatch.setattr('wuwei.guards.pr.gate_check',
@@ -335,7 +335,7 @@ def test_raise_refuses_worktree_from_another_repository(case, capsys):
     tree.mkdir()
     state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(tree)}}),
                        data['approved_items'].append('ITEM-1')), root, reserved=False)
-    vcs.responses['commit_context'] = lambda path, *_: Result(0, {
+    vcs.responses['repo_context'] = lambda path, *_: Result(0, {
         'common_dir': str(root / ('other.git' if path == str(tree) else 'repo.git'))})
 
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1

@@ -503,3 +503,22 @@ def test_scanner_redacts_private_markers_from_rule_and_events(root, monkeypatch)
     result = dispatch.receive('A', 'security', 'security', root=root)
     assert material['canary'] not in (root / result['file']).read_text()
     assert material['canary'] not in (workspace.day_dir(root) / 'events.jsonl').read_text()
+
+
+def test_continued_sentinel_delta_head_matches_seat_head(root):
+    from wuwei import dispatch
+
+    record(root, 'arch', 'arch-1', PASS)
+    record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
+    record(root, 'security', 'security-1', PASS)
+    state.transition('A', 'fix', root)
+    state.transition('A', 'delta', root)
+    state._write_state(lambda data: data['seats']['quality-1'].update(head='def5678' + '0' * 33),
+                       root, reserved=False)
+    verdict = workspace.day_dir(root) / 'decisions/gate-quality-1.md'
+    delta = PASS + 'Simplicity: none\nDesign: none\n'
+    verdict.write_text(delta.replace('abc1234', '9999999'))
+    with pytest.raises(dispatch.Refused, match='verdict HEAD differs from dispatched brief'):
+        dispatch.receive('A', 'quality', 'quality-1', 'delta', root)
+    verdict.write_text(delta.replace('abc1234', 'def5678'))
+    assert dispatch.receive('A', 'quality', 'quality-1', 'delta', root)['head'] == 'def5678'

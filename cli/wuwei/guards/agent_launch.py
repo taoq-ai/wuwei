@@ -114,10 +114,11 @@ def _check(payload):
         build = data.get('builds', {}).get(logged['item'])
         resume = inputs.get('resume')
         continuing = (resume and existing and existing['status'] == 'stopped'
-                      and build and build['status'] == 'ready'
-                      and build['action']['action'] == 'continue'
-                      and build.get('agent_id') == resume
-                      and build.get('seat') == logged['name'])
+                      and (build and build['status'] == 'ready'
+                           and build['action']['action'] == 'continue'
+                           and build.get('agent_id') == resume
+                           and build.get('seat') == logged['name']
+                           if role == 'builder' else existing.get('agent_id') == resume))
         if role == 'builder' and resume and not continuing:
             raise brief.Refused('resume does not match the stopped builder')
         if not continuing and (logged['name'] in brief.seats(data) or any(
@@ -132,9 +133,11 @@ def _check(payload):
                     stale.append(name)
         stale_note = '; stale seat reservations: ' + ', '.join(stale) if stale else ''
         tree = logged.get('worktree')
-        if tree and not continuing:
+        head = logged.get('head')
+        if tree:
             vcs = registry.load('vcs', config)
-            if brief.read(vcs.head, tree, root=root)['sha'] != logged.get('head'):
+            head = brief.read(vcs.head, tree, root=root)['sha']
+            if not continuing and head != logged.get('head'):
                 raise brief.Refused('worktree HEAD changed since brief was written')
         if logged['gate'] or logged['role'].startswith('sentinel-'):
             try:
@@ -158,7 +161,7 @@ def _check(payload):
             raise brief.Refused(f'running seats {len(running)} at host seat ceiling host.seats={config["host"]["seats"]}' + stale_note)
         data['seats'][logged['name']] = {
             'id': logged['name'], 'role': logged['role'], 'item': logged['item'],
-            'brief': relative, 'head': logged.get('head'), 'status': 'running',
+            'brief': relative, 'head': head, 'status': 'running',
             'started_at': workspace.now().isoformat(),
         }
         from wuwei.commands import build as build_command
@@ -225,7 +228,7 @@ def stop(payload):
             from wuwei.commands import build
             handled = build.stopped(item, name, payload, root=root)
         if not handled:
-            state.stop_seat(name, root, directory=directory)
+            state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'))
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
         return 2, f'build result could not be recorded: {exc}'
     if payload.get('stop_hook_active'):

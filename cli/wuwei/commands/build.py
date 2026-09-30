@@ -82,7 +82,7 @@ def _repo(root, tree, config):
     repo = next((row for row in config['repos'] if (root / row['path']).resolve() == tree), None)
     if repo is None:
         from wuwei.guards.commit_push import context
-        repo, _, _ = context(tree, {}, {}, root)
+        repo, _, _ = context(tree, {}, {}, root, identity=False)
     if not repo['fast_checks']:
         raise ValueError('worktree has no configured fast checks')
     return repo
@@ -144,6 +144,8 @@ def next_action(item, brief=None, worktree=None, *, root=None):
               'commands': repo['fast_checks'], 'iteration': 0, 'repeats': 0,
               'signature': None, 'status': 'ready', 'action': action}
     _save(item, record, root, 'build.started', previous)
+    if data['items'][item]['phase'] == 'planned':
+        state.transition(item, 'implement', root)
     if previous is None:
         from wuwei import dispatch
         dispatch.tracker_call(item, 'claim', root)
@@ -359,9 +361,9 @@ def complete_checks(item, results, *, root, expected=None):
                   'prompt': launch_prompt(root / record['brief'], agent_path(root, 'builder'), root=root) + '\n\n' + feedback}
         record.update(status='ready', action=action)
     _save(item, record, root, 'build.checked', expected)
-    if (not failures and record.get('fix_rounds') == 1
-            and state.read_state(root)['items'][item]['phase'] == 'fix'):
-        state.transition(item, 'delta', root)
+    after = {'implement': 'gate', 'fix': 'delta'}.get(state.read_state(root)['items'][item]['phase'])
+    if not failures and after:
+        state.transition(item, after, root)
     return 1 if failures else 0
 
 
@@ -370,8 +372,13 @@ def check(item, *, root=None):
     record = state.read_state(root).get('builds', {}).get(item)
     if record is None or record['status'] != 'check':
         raise ValueError('build is not awaiting checks')
-    checks = registry.load('checks', workspace.load_config(root))
-    results = [checks.run(record['worktree'], command, root=root) for command in record['commands']]
+    from wuwei import fast_checks
+    fast_checks.record(record['worktree'])
+    measured = state.read_state(root).get('fast_checks', {}).get(record['repo'], {})
+    if any(command not in measured for command in record['commands']):
+        raise ValueError('incomplete fast checks')
+    results = [registry.Result(row['exit'], row.get('data'), row.get('reason') or '')
+               for row in (measured[command] for command in record['commands'])]
     return complete_checks(item, results, root=root, expected=record)
 
 
