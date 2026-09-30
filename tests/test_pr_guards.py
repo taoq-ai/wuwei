@@ -83,6 +83,26 @@ def test_create_options(case, command, code, hint):
         assert ('head', (str(root / 'repo'),), root) in fake.calls
 
 
+@pytest.mark.parametrize('command,code,hint,gate', [
+    ('gh pr create', 0, '', True),
+    ('gh pr create --title Example --body Text', 0, '', True),
+    ('gh pr create --reviewer ""', 1, 'reviewer', True),
+    ('gh pr create --reviewer ,', 1, 'reviewer', True),
+    ('gh pr create', 1, 'gates', False),
+])
+def test_solo_owner_create_needs_no_reviewer(case, command, code, hint, gate):
+    root, fake, decisions = case
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text() + '[shepherd]\nmin_reviewers = 0\n')
+    if not gate:
+        (decisions / 'gate-9-security.md').unlink()
+    result = guard().check(payload(root, command))
+    assert result[0] == code, result
+    assert hint in result[1]
+    if code == 0:
+        assert ('head', (str(root / 'repo'),), root) in fake.calls
+
+
 def test_pr_gate_accepts_quality_only_delta_after_fix(case):
     from wuwei import state
     root, fake, decisions = case

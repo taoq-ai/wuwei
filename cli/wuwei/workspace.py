@@ -75,7 +75,7 @@ SCHEMA = {
            "review_window": (int, 120, 1)},
     "shepherd": {"review_channel": (str, ""), "lead_login": (str, ""),
                  "review_gate_check": (str, "Review Gate"),
-                 "min_reviewers": (int, 1, 1),
+                 "min_reviewers": (int, 1, 0),
                  "author_windows_days": [(int, None, 1), [90, 180]],
                  "tie_commits": (int, 2, 0),
                  "source_exclude": [(str, None), ["specs/*", "*.lock", "*lock.json",

@@ -105,3 +105,5 @@ def test_shepherd_settings_are_visible_in_template_and_site():
         assert key in settings
         assert f'`shepherd.{key}`' in page
     assert settings['min_reviewers'] == 1
+    row = next(line for line in page.splitlines() if line.startswith('| `shepherd.min_reviewers`'))
+    assert '`0`' in row.split('|')[3]

@@ -49,7 +49,8 @@ def case(tmp_path, monkeypatch):
     from fakes.integrity import measured
     measured(monkeypatch)
     (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles = ["U12345", "builder"]\n')
+    (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles = ["U12345", "builder"]\n'
+                                                 '[adapters]\nchat = "slack"\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00Z')
     host = Fake()
@@ -145,6 +146,27 @@ def test_visibility_table(case, change, expected):
     state._write_state(lambda fresh: fresh.update(data), root, reserved=False)
     assert sweep() == expected
     assert sweep_event(root)[0]['visibility_owed'] == expected
+
+
+@pytest.mark.parametrize('minimum,gate,expected,owed,skipped', [
+    (0, True, 0, [], ['reviewer: shepherd.min_reviewers = 0', 'channel-post: shepherd.min_reviewers = 0']),
+    (1, True, 1, ['reviewer'], ['channel-post: adapters.chat = "none"']),
+    (0, False, 1, ['verdict'], ['reviewer: shepherd.min_reviewers = 0']),
+])
+def test_solo_owner_visibility_not_applicable(case, capsys, minimum, gate, expected, owed, skipped):
+    root, host = case
+    (root / '.wuwei/config.toml').write_text(
+        f'[owner]\nhandles = ["U12345", "builder"]\n[shepherd]\nmin_reviewers = {minimum}\n')
+    host.results['pr'].data['requested_reviewers'] = []
+    state._write_state(lambda data: data.update(channel_posts=[]), root, reserved=False)
+    if not gate:
+        gate_file(root).unlink()
+    assert sweep() == expected
+    assert sweep_event(root)[0]['visibility_owed'] == len(owed)
+    out = capsys.readouterr().out
+    assert [line.split(' OWED ')[1] for line in out.splitlines() if ' OWED ' in line] == owed
+    for line in skipped:
+        assert f'{REF} NOT APPLICABLE {line}' in out
 
 
 @pytest.mark.parametrize('operation,bad', [
