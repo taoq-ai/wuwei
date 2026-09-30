@@ -24,17 +24,18 @@ def test_scripted_day(day):
     day.build('builder-initial')
     initial_head = day.head
     assert day.data['seats']['builder-initial']['status'] == 'stopped'
-    assert day.next() == {'action': 'gates', 'roles': ['arch', 'quality', 'security']}
+    assert day.next() == {'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': []}
     day.raise_pr(expected=1)
     assert not any(call[0] == 'create_pr' for call in day.host.calls)
     for role in ('arch', 'quality', 'security'):
         day.gate(role, 'FIX' if role == 'quality' else 'PASS')
-    assert day.next() == {'action': 'fix', 'roles': ['quality']}
+    assert day.next() == {'action': 'fix', 'roles': ['quality'], 'command': 'wuwei build next A'}
     day.raise_pr(expected=1)
-    day.transition('fix')
-    day.build('builder-fix')
+    day.fix()
     assert day.head != initial_head
-    assert day.next() == {'action': 'gates', 'roles': ['quality']}
+    delta = day.next()
+    assert (delta['action'], delta['roles']) == ('gates', ['quality'])
+    assert [row['action'] for row in delta['seats']] == ['continue']
     day.gate('quality', 'PASS', round_name='delta')
     assert 'quality-delta' not in day.data['seats']
     assert day.data['seats']['quality-initial']['status'] == 'stopped'
@@ -99,10 +100,14 @@ def test_scripted_day(day):
     assert kinds.count('retro.captured') == 7
     assert 'seat stop unmatched' not in kinds
     assert json.loads(day.run('metrics'))['fix_rounds_per_item'] == {'A': 1}
+    assert not [call for call in day.calls if call[:2] == ('state', 'transition') or call[0] == 'runtime']
     assert time.monotonic() - started < 20
 
 
-def test_solo_owner_raise(tmp_path, monkeypatch):
+def test_solo_daily_path(tmp_path, monkeypatch):
+    """The fourth dry run: one item from plan to close using only the daily path page."""
+    import re
+    from pathlib import Path
     from fakes.day import Day
     day = Day(tmp_path / 'workspace', monkeypatch, solo=True)
     day.plan()
@@ -110,13 +115,35 @@ def test_solo_owner_raise(tmp_path, monkeypatch):
     day.run('plan', 'session', 'planner')
     day.build('builder-initial')
     for role in ('arch', 'quality', 'security'):
-        day.gate(role, 'PASS')
+        day.gate(role, 'FIX' if role == 'quality' else 'PASS')
+    day.fix()
+    day.gate('quality', 'PASS', round_name='delta')
     assert day.next() == {'action': 'raise', 'notes': []}
     day.raise_pr()
     assert day.data['pr_reviewers'][day.ref] == []
     assert len([call for call in day.host.calls if call[0] == 'create_pr']) == 1
     assert not any(call[0] == 'request_reviewers' for call in day.host.calls)
     assert day.chat.calls == []
+    assert json.loads(day.run('pr', 'state'))[0]['state'] != 'merged'
+    day.host.results['pr'].data.update(state='closed', merged=True,
+        merged_at='2026-09-29T12:00:00Z', merge_commit=day.head)
+    assert json.loads(day.run('pr', 'state'))[0]['state'] == 'merged'
+    day.run('report')
+    assert f'## Merged\n- A ({day.ref})' in (day.directory / 'report.md').read_text()
+    assert 'merged 1/1' in day.run('status', '--line')
+    day.run('retro')
+    day.run('close', '--check', 'retro')
+    day.run('close')
+    day.hook('Stop')
+    transitions = [row['payload']['phase_changes']['A'] for row in day.events
+                   if 'A' in row['payload'].get('phase_changes', {})]
+    assert transitions == ['implement', 'gate', 'fix', 'delta', 'raised', 'merged']
+    assert not [call for call in day.calls if call[:2] == ('state', 'transition') or call[0] == 'runtime']
+    page = (Path(__file__).resolve().parents[1] / 'docs/site/daily.md').read_text()
+    for call in day.calls:
+        # A gate brief's second word is a role, not a subcommand.
+        words = call[:2] if len(call) > 1 and call[0] != 'brief' and re.fullmatch('[a-z][a-z-]*', call[1]) else call[:1]
+        assert 'wuwei ' + ' '.join(words) in page, call
 
 
 def refuse_launcher(payload):
@@ -150,7 +177,7 @@ def test_agent_surface_without_scanner_is_unmeasured(day):
     output = day.gate('security', 'PASS', expected=2)
     assert 'unmeasured' in output
     assert 'A:security:initial' not in day.data['gate_verdicts']
-    assert day.next() == {'action': 'gates', 'roles': ['security']}
+    assert day.next() == {'action': 'gates', 'roles': ['security'], 'seats': []}
     day.raise_pr(expected=1)
     assert not any(call[0] == 'create_pr' for call in day.host.calls)
     assert not any(row['kind'] == 'gate.received' and row['payload']['role'] == 'security'

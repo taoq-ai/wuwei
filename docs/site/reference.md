@@ -92,15 +92,15 @@ Before the morning gate is approved, including before today's `state.json` exist
 | --- | --- |
 | Brief body | `wuwei brief ROLE ITEM NAME --body TEXT` or `--file PATH`; `--file -` reads stdin. With neither, the command exits 2 and never reads stdin. |
 | Gate role names | `arch`, `quality` and `security`, as returned by `wuwei dispatch next`, write briefs against the `sentinel-<role>` charter. |
-| Automatic phases | The first `build next` launch moves `planned` to `implement`. When checks pass, `implement` moves to `gate` and `fix` moves to `delta`. `gate` to `fix` stays a planner transition. `bin/wuwei pr raise` moves `gate` or `delta` to `raised`; an observed merge (`pr state`, `pr act`, the watch) moves `raised` to `merged`. |
-| Delta continuation | SubagentStop records the sentinel's agent ID on its seat. Agent `resume` with that ID continues the same brief at the current HEAD; any other reuse of the brief is refused. The continued seat rewrites its own verdict file. |
+| Automatic phases | The first `build next` launch moves `planned` to `implement`. When checks pass, `implement` moves to `gate` and `fix` moves to `delta`. `dispatch next` moves `gate` to `fix` when it returns `fix`, and opens the builder's fix round. `bin/wuwei pr raise` moves `gate` or `delta` to `raised`; an observed merge (`pr state`, `pr act`, the watch) moves `raised`, `fix` or `delta` to `merged`. |
+| Delta continuation | SubagentStop records the sentinel's agent ID on its seat. `dispatch next` returns a `continue` action in `seats` with that ID as `resume`. Agent `resume` with that ID continues the same brief at the current HEAD; any other reuse of the brief is refused. The continued seat rewrites its own verdict file. |
 | Push evidence | `wuwei build check ITEM` records fast checks through the same producer as `wuwei fast-checks`, so a passing check satisfies the push guard. |
 | Charter names | `lead`, `builder`, `shepherd`, `sentinel-arch`, `sentinel-quality`, `sentinel-security`, `sentinel-goal` or `steward`. Each seat name gets one brief. `runtime dispatch` accepts `arch`, `quality` and `security` for the sentinel roles, as `brief` does. |
 | Gate body | A gate body must not ask for an inline verdict or restate the verdict path; the brief adds it. A `Paths:` line lists extra paths for the SLICE protected-path check. |
 
 ## Item phase order
 
-`bin/wuwei state transition` accepts only these moves. `parked` and `escalated` resume only to the recorded prior phase.
+Phases move by themselves on the daily path. `bin/wuwei state transition` is a [recovery](recovery.html) command and accepts only these moves. `parked` and `escalated` resume only to the recorded prior phase.
 
 | Phase | Legal next phases |
 | --- | --- |
@@ -108,8 +108,8 @@ Before the morning gate is approved, including before today's `state.json` exist
 | `spec` | implement, parked, escalated |
 | `implement` | gate, parked, escalated |
 | `gate` | raised, fix, parked, escalated |
-| `fix` | delta, parked, escalated |
-| `delta` | raised, fix, parked, escalated |
+| `fix` | delta, merged, parked, escalated |
+| `delta` | raised, fix, merged, parked, escalated |
 | `raised` | fix, merged, parked, escalated |
 | `parked` | planned, spec, implement, gate, raised, fix, delta |
 | `escalated` | planned, spec, implement, gate, raised, fix, delta |
