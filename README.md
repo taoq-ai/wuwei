@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/assets/hero-light.svg">
-    <img src="docs/assets/hero-light.svg" alt="WUWEI day flow: Plan, Build, Review, Close. Guards and memory support each step." width="100%">
+    <img src="docs/assets/hero-light.svg" alt="WUWEI day loop: Plan, Build, Review and Close, with a build and check loop, three parallel review gates, one FIX round, a pull request shepherd, owner touchpoints, guards at action time and memory that carries each day into the next." width="100%">
   </picture>
 </p>
 
