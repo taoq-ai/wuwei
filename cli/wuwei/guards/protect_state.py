@@ -4,6 +4,7 @@ import glob
 import os
 from pathlib import Path
 import re
+import shlex
 
 from wuwei.guards import Guard
 from wuwei.workspace import worktree_workspace
@@ -25,18 +26,124 @@ def _text(value, name):
     return value
 
 
-def _names_wuwei(text):
-    """True when quote-stripped script text names the wuwei CLI, including python -mwuwei."""
-    return bool(re.search(r'\bwuwei\b|-[A-Za-z]*mwuwei\b', text))
-
-
 def _wuwei_action(argv):
     program = Path(argv[0]).name if argv else ''
     if program == 'wuwei':
         return argv[1:]
-    if (re.fullmatch(r'(?:python|pypy)[\d.]*', program)
-            and argv[1:4] == ['-P', '-m', 'wuwei']):
-        return argv[4:]
+    if re.fullmatch(r'(?:python|pypy)[\d.]*', program):
+        for index, arg in enumerate(argv[1:], 1):
+            if arg == '-m' and argv[index + 1:index + 2] == ['wuwei']:
+                return argv[index + 2:]
+            if re.fullmatch(r'-[A-Za-z]*mwuwei', arg):
+                return argv[index + 1:]
+            if not arg.startswith('-') or arg in ('-c', '-m'):
+                break
+    return None
+
+
+_OWNER_ACTIONS = {
+    ('decision', 'outcome'): 'Decision outcomes require the owner terminal, outside agent tools.',
+    ('drafts', 'approve'): 'Draft decisions require the owner terminal, outside agent tools.',
+    ('drafts', 'drop'): 'Draft decisions require the owner terminal, outside agent tools.',
+    ('mcp', 'decide'): 'MCP decisions require the owner terminal, outside agent tools.',
+    ('integrity', 'reconfirm'): 'Integrity re-confirmation is an owner action on the host, outside agent tools.',
+    ('state', 'recover'): 'State recovery is an owner action on the host, outside agent tools.',
+    # An uninstalled watch reads as off, so a seat could silence a dead-watch page.
+    ('watch', 'uninstall'): 'Watch uninstall requires the owner terminal, outside agent tools.',
+    ('goals', 'edit'): 'Owner memory edits are an owner action on the host, outside agent tools.',
+    ('voice', 'edit'): 'Owner memory edits are an owner action on the host, outside agent tools.',
+}
+_OWNER_GROUPS = {group for group, _ in _OWNER_ACTIONS}
+_OWNER_VERBS = tuple(sorted({verb for _, verb in _OWNER_ACTIONS}))
+# Owner words as tokens; `_` or `.` may precede them so python snippets such as
+# goals.owner_edit( stay relevant.
+_OWNER_VERB = re.compile(r'(?<![A-Za-z0-9])(?:' + '|'.join(_OWNER_VERBS) + r')(?![A-Za-z0-9])')
+_OWNER_GROUP = re.compile(r'(?<![A-Za-z0-9])(?:' + '|'.join(sorted(_OWNER_GROUPS)) + r')(?![A-Za-z0-9])')
+_INTERPRETER = r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua'
+# Any mention of the CLI word, path segments included, or a dotted owner call such as
+# integrity.reconfirm(); relevance starts here.
+_WUWEI = re.compile(r'\bwuwei\b|-[A-Za-z]*mwuwei\b|\b(?:'
+                    + '|'.join(rf'{g}\.{v}' for g, v in _OWNER_ACTIONS) + r')\b')
+# The CLI itself: a path segment such as cli/wuwei/x or .wuwei is a read, not the CLI.
+_CLI_WORD = re.compile(r'(?<![\w.-])wuwei(?![\w/.-])|-[A-Za-z]*mwuwei\b|\b(?:from|import)\s+wuwei\b')
+# The CLI with a non-literal group or verb: relevant with no verb in the text.
+_CLI_NONLITERAL = re.compile(r'(?<![\w.-])wuwei(?:\s+-\S*)*(?:\s+(?:' + '|'.join(sorted(_OWNER_GROUPS))
+                             + r'))?(?:\s+-\S*)*\s+[$`]')
+# Programs whose arguments are patterns or text, never run, and that write no file by
+# operand or flag (sort -o, uniq's output operand and tee do, so they are not here).
+_READERS = ('grep', 'rg', 'echo', 'printf', 'head', 'tail', 'wc', 'cut', 'tr')
+
+
+def _pair(words):
+    return tuple(([word for word in words if not word.startswith('-')] + ['', ''])[:2])
+
+
+def _owner_relevant(text, script=False):
+    """Text only: the CLI word plus an owner group and verb, a non-literal CLI word, or xargs."""
+    from wuwei.shell import mentions
+    stripped = re.sub(r"['\"\\]", '', text)
+    return bool(_WUWEI.search(stripped) and (
+        _CLI_NONLITERAL.search(stripped) or mentions(text, ('xargs',), script=script)
+        or (_OWNER_GROUP.search(stripped) or mentions(text, sorted(_OWNER_GROUPS), script=script))
+        and (_OWNER_VERB.search(stripped) or mentions(text, _OWNER_VERBS, script=script))))
+
+
+def _owner_action(commands, text, relevant, cwd, script=False):
+    """One rule for every owner-only action; (code, reason) or None."""
+    from wuwei.shell import _launcher, is_opaque, mentions
+    # normalize unwraps xargs, so a CLI command may take its group or verb from stdin.
+    xargs = relevant and mentions(text, ('xargs',), script=script)
+    unseen = len(_WUWEI.findall(re.sub(r"['\"\\]", '', text)))
+    readers = [bool(c.argv) and Path(c.argv[0]).name in _READERS for c in commands]
+    # A pipe feeds an executor unless every later stage is a reader with no redirect.
+    feeds = [False] * len(commands)
+    for index in range(len(commands) - 2, -1, -1):
+        feeds[index] = commands[index].separator == '|' and (
+            not readers[index + 1] or bool(commands[index + 1].writes) or feeds[index + 1])
+    for index, command in enumerate(commands):
+        argv = command.argv
+        named = len(_WUWEI.findall(' '.join([*argv, *command.env.values()])))
+        # A reader's mentions are only text when it stands alone: no redirect, no group or
+        # subshell (scope depth 1, or 2 for a top-level pipe stage), no pipe into an executor.
+        piped = command.separator == '|' or index > 0 and commands[index - 1].separator == '|'
+        if not readers[index] or (not command.writes and not feeds[index]
+                                  and len(command.scope) == (2 if piped else 1)):
+            unseen -= named
+        action = _wuwei_action(argv)
+        # A renamed or symlinked launcher is the CLI too; checked only for a literal owner pair.
+        if (action is None and argv and '/' in argv[0] and _pair(argv[1:]) in _OWNER_ACTIONS
+                and _launcher(Path(cwd, argv[0]), cwd)):
+            action = argv[1:]
+        if action is None:
+            program = Path(argv[0]).name if argv else ''
+            if not relevant or program in _READERS:
+                continue
+            # A directory such as the cli/wuwei package is read, not run.
+            words = [word for word in argv[1:]
+                     if not ('/' in word and Path(word).name == 'wuwei' and Path(cwd, word).is_dir())]
+            if program == 'git':
+                # A commit message or a search pattern is not a wuwei action.
+                words = [word for before, word in zip([''] + words, words)
+                         if not re.fullmatch(r'-[A-Za-z]*m|--message|--grep|-[SG]', before)
+                         and not re.fullmatch(r'--(?:message|grep)=.*|-[A-Za-z]*m.+|-[SG].+', word, re.S)]
+            # Code from stdin, a heredoc or an inline flag is unseen; a module or file operand is not.
+            hidden = (is_opaque(argv) and '-m' not in argv[1:]
+                      or re.fullmatch(_INTERPRETER, program) and (named or any(
+                          re.fullmatch(r'-(?:[a-zA-Z]*[ceEpr]|-eval)(?:=.*)?', arg, re.S) for arg in argv[1:])))
+            if hidden or _CLI_WORD.search(' '.join(words)):
+                return 2, 'Opaque owner action; use the host terminal.'
+            continue
+        group, verb = _pair(action)
+        if xargs and not (re.fullmatch(r'[a-z][\w-]*', group) and (
+                group not in _OWNER_GROUPS or re.fullmatch(r'[a-z][\w-]*', verb))):
+            return 2, 'Input-driven owner action; use the host terminal.'
+        if re.search(r'[$`]', group) or group in _OWNER_GROUPS and re.search(r'[$`]', verb):
+            return 2, 'Not a literal owner action; use the host terminal.'
+        if (group, verb) in _OWNER_ACTIONS:
+            return 1, _OWNER_ACTIONS[group, verb]
+    if relevant and unseen > 0:
+        # A CLI mention sits in a heredoc, comment or other input no argv shows.
+        return 2, 'Opaque owner action; use the host terminal.'
     return None
 
 
@@ -266,41 +373,35 @@ def check_bash(payload):
         script = _input(payload, 'command')
         if not isinstance(script, str):
             raise ValueError('missing or invalid command')
-        from wuwei.shell import mentions
-        owner_action_text = re.sub(r"['\"\\]", '', script)
-        owner_outcome_relevant = (root is not None and _names_wuwei(owner_action_text)
-                                  and re.search(r'\bdecision\b', owner_action_text)
-                                  and re.search(r'\boutcome\b', owner_action_text))
-        owner_edit_relevant = (root is not None
-                               and re.search(r'(?i)wuwei|goals|voice|edit', script)
-                               and mentions(script, ('wuwei',))
-                               and mentions(script, ('goals', 'voice'))
-                               and (mentions(script, ('edit',)) or 'owner_edit' in script))
-        if (mentions(script, ('integrity',))
-                and 'reconfirm' in re.sub(r"['\"\\]", '', script)):
-            from wuwei.workspace import guard_scope
-            if guard_scope(payload) is not None:
-                return 1, 'Integrity re-confirmation is an owner action on the host, outside agent tools.'
+        from wuwei.shell import NonliteralPathError, ParseError, normalize, script_text
         from wuwei.workspace import guard_scope
-        if (_names_wuwei(owner_action_text) and mentions(script, ('state',))
-                and re.search(r'\brecover\b', owner_action_text) and guard_scope(payload) is not None):
-            return 1, 'State recovery is an owner action on the host, outside agent tools.'
-        mcp_relevant = (_names_wuwei(owner_action_text)
-                        and mentions(script, ('mcp',)) and guard_scope(payload) is not None)
-        drafts_relevant = ((re.search(r'(?i)wuwei|drafts', re.sub(r"['\"\\]", '', script))
-                            or "$'" in script)
-                           and _names_wuwei(owner_action_text)
-                           and mentions(script, ('drafts',))
-                           and guard_scope(payload) is not None)
-        # An uninstalled watch reads as off, so a seat could silence a dead-watch page.
-        watch_relevant = (_names_wuwei(owner_action_text) and mentions(script, ('uninstall',))
-                          and guard_scope(payload) is not None)
-        from wuwei.shell import NonliteralPathError, ParseError, normalize
+
+        def owner_script(raw):
+            # ponytail: one script level; a script run by a script, or written and run in
+            # one call, is not read. The next call that runs the saved script is.
+            body = script_text(raw, cwd) if root is not None else None
+            # Every owner action in a script names the CLI word, so only such a body is parsed.
+            if body is None or 'wuwei' not in re.sub(r"['\"\\]", '', body):
+                return None
+            relevant = _owner_relevant(script + '\n' + body, script=True)
+            try:
+                found = _owner_action(normalize(body), body, relevant, cwd, script=True)
+            except ParseError:
+                found = relevant and (2, 'Opaque owner script; use the host terminal.')
+            return found if found and guard_scope(payload) is not None else None
+
+        owner_relevant = _owner_relevant(script)
+        words = []
         try:
-            commands = normalize(script)
+            commands = normalize(script, words=words)
         except ParseError as exc:
-            if (owner_edit_relevant or owner_outcome_relevant or mcp_relevant or drafts_relevant
-                    or watch_relevant
+            # The literal words, nested sh -c included, still name any script the call runs;
+            # only a .sh or executable word can be one, not a source file it reads.
+            for word in words:
+                if ((word.endswith('.sh') or os.access(Path(cwd, word), os.X_OK))
+                        and (found := owner_script(shlex.quote(word)))):
+                    return found
+            if ((owner_relevant and guard_scope(payload) is not None)
                     or _STATE_MENTION.search(script) or _STATE_GLOB.search(script)
                     or (root is not None and _protected_name(cwd, directories=True)
                         and (isinstance(exc, NonliteralPathError)
@@ -311,63 +412,13 @@ def check_bash(payload):
                            'cannot be resolved statically may leave the workspace; cd to a literal '
                            'directory inside it or use git -C')
             return 0, ''
-        if owner_outcome_relevant:
-            for command in commands:
-                action = _wuwei_action(command.argv)
-                if action is None:
-                    return 2, 'Opaque owner decision action; use the host terminal.'
-                if action[:1] == ['decision'] and any('$' in arg or '`' in arg for arg in action[1:2]):
-                    return 2, 'Decision action is not a literal list; use the host terminal.'
-                if action[:2] == ['decision', 'outcome']:
-                    return 1, 'Decision outcomes require the owner terminal, outside agent tools.'
-            if not commands:
-                return 2, 'Opaque owner decision action; use the host terminal.'
-        if owner_edit_relevant:
-            from wuwei.shell import is_opaque
-            for command in commands:
-                argv = command.argv
-                program = Path(argv[0]).name if argv else ''
-                action = _wuwei_action(argv)
-                if action is None:
-                    if (is_opaque(argv) or
-                            re.fullmatch(r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua', program)
-                            and any(re.fullmatch(r'-(?:[a-zA-Z]*[ceEr]|-eval)(?:=.*)?', arg)
-                                    for arg in argv[1:])):
-                        return 2, 'Opaque owner edit; use the wuwei CLI.'
-                    continue
-                if action[:2] in (['goals', 'edit'], ['voice', 'edit']):
-                    if guard_scope(payload) is not None:
-                        return 1, 'Owner memory edits are an owner action on the host, outside agent tools.'
-        if mcp_relevant or drafts_relevant or watch_relevant:
-            from wuwei.shell import is_opaque
-            for command in commands:
-                argv = command.argv
-                cli = argv and (Path(argv[0]).name == 'wuwei'
-                        or re.fullmatch(r'(?:python|pypy)[\d.]*', Path(argv[0]).name)
-                        and (any(re.fullmatch(r'-[A-Za-z]*mwuwei', arg) for arg in argv) or
-                             '-m' in argv and argv[argv.index('-m') + 1:][:1] == ['wuwei']))
-                if not cli and (is_opaque(argv) or argv and re.fullmatch(
-                        r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua', Path(argv[0]).name)):
-                    return 2, 'Opaque owner action; use the host terminal.'
-                if cli:
-                    if watch_relevant and 'watch' in argv:
-                        action = argv[argv.index('watch') + 1:]
-                        if 'uninstall' in action:
-                            return 1, 'Watch uninstall requires the owner terminal, outside agent tools.'
-                        if action not in ([], ['install'], ['install', '--dry-run'], ['--once'], ['--help']):
-                            return 2, 'Not a literal watch action; use the host terminal.'
-                    if drafts_relevant and 'drafts' in argv:
-                        action = argv[argv.index('drafts') + 1:]
-                        if action[:1] in (['approve'], ['drop']):
-                            return 1, 'Draft decisions require the owner terminal, outside agent tools.'
-                        if action and action != ['--help']:
-                            return 2, 'Draft action is not a literal list; use the host terminal.'
-                    if 'mcp' in argv:
-                        action = argv[argv.index('mcp') + 1:]
-                        if action == ['decide']:
-                            return 1, 'MCP decisions require the owner terminal, outside agent tools.'
-                        if action != ['check']:
-                            return 2, 'MCP owner action is not a literal check; use the host terminal.'
+        # normalize unwraps lists, subshells, wrappers, sh -c and xargs down to each script.
+        for command in commands:
+            if found := owner_script(shlex.join(command.argv)):
+                return found
+        found = _owner_action(commands, script, owner_relevant, cwd)
+        if found and guard_scope(payload) is not None:
+            return found
         directories = persistent = {cwd}
         for command in commands:
             program = Path(command.argv[0]).name if command.argv else ''
