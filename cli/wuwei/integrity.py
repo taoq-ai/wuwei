@@ -78,7 +78,8 @@ def measure(plugin=None, pinned=None, *, checkout=None, root=None):
         for path in (manifest, signature, key):
             if path.is_symlink():
                 raise ValueError(f'symlink in installed plugin: {path.name}')
-        result = (Result(1, reason='development checkout requires host reconfirmation')
+        result = (Result(1, reason='development checkout requires host reconfirmation; '
+                          'run wuwei integrity reconfirm on the host')
                   if checkout is not None else signature_adapter().verify(manifest, signature, key))
         if result.exit == 2:
             return result
@@ -157,7 +158,8 @@ def check(root):
         _record(root, 'verdict.json', {'exit': 2, 'fingerprint': None,
                                      'reason': 'plugin integrity measurement incomplete'})
         checkout = _checkout(root)
-        result = (Result(1, reason='page: plugin integrity: dirty development checkout; restore a clean commit')
+        result = (Result(1, reason='page: plugin integrity: dirty development checkout; restore a clean commit '
+                                 'and run wuwei integrity reconfirm on the host')
                   if checkout is not None and not checkout['clean'] else
                   measure(pinned=_path(root, 'pinned.pub'), checkout=checkout, root=root))
         confirmation = _path(root, 'confirmation.json')

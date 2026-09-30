@@ -33,14 +33,14 @@ archives are unsigned. In Claude Code, run:
 /plugin install wuwei@wuwei
 ```
 
-In your project directory, initialize the workspace and verify the installation:
+In your project directory, initialize the workspace:
 
 ```sh
 ../wuwei-plugin/bin/wuwei init .
-../wuwei-plugin/bin/wuwei integrity check
 ```
 
-An intact signed release needs no reconfirmation. Edit `.wuwei/config.toml` for your
+`init` ends by checking the installation. An intact signed release prints
+`plugin integrity: clean` and needs no reconfirmation. Edit `.wuwei/config.toml` for your
 repositories and adapters. Use `bin/wuwei` or `python3 -P -m wuwei` for CLI calls.
 Run `/wuwei plan` to start the planner and owner morning gate, followed by builders,
 review and close. The linked pages describe the CLI and configuration.
