@@ -201,6 +201,34 @@ CPU p95 on a 2-CPU runner, three `main` runs of 2026-09-30:
 | `git commit` check | 115 ms |
 | `git push` check | 135 to 148 ms |
 
+### Where hook time goes
+
+A hook process starts an interpreter, imports the CLI core, discovers the guards, then runs the ones that match its event and tool. Each hook imports only the guard modules its event and tool can run (`MODULES` in `cli/wuwei/guards/__init__.py`); a guard module missing from that map is imported for every event. Stop and PostToolUse never import the Bash guards, and a PreToolUse call for a file tool imports only the file guards.
+
+Guard discovery on an M-series Mac, before and after the import map (2026-09-30, three runs each):
+
+| Event and tool | Before | After | Modules imported after |
+| --- | --- | --- | --- |
+| Stop | 9.2 to 11 ms | 5.3 to 7 ms | lifecycle, stop |
+| PostToolUse | 7.9 to 9 ms | 3.6 to 4.2 ms | decision, traces, verdict |
+| PreToolUse Bash | 7.5 to 8.4 ms | 5.6 to 5.9 ms | commit_push, deploy, integrity, outward, pr, protect_state |
+| PreToolUse Write | 7.3 to 8.3 ms | 4.7 to 5.2 ms | integrity, outward, protect_state |
+| SubagentStop | 7.6 to 7.9 ms | 2.7 to 3 ms | agent_launch, verdict |
+| SessionStart | 8.3 to 10 ms | 4.6 to 5 ms | integrity, lifecycle |
+| PreCompact | 9.2 to 9.8 ms | 4.5 to 5 ms | lifecycle |
+
+Whole hook, same host, before and after run interleaved, 100 runs each, p95 of two runs (the `python3 -I -c pass` startup floor is 13 to 15 ms CPU on this host):
+
+| Path | CPU p95 before | CPU p95 after | Wall p95 before | Wall p95 after |
+| --- | --- | --- | --- | --- |
+| PreToolUse `npm test` | 42.5 to 43.9 ms | 39 to 41.8 ms | 46.8 to 47.5 ms | 42.1 to 45.1 ms |
+| PreToolUse `ls -la` | 41.6 to 45.9 ms | 37.9 to 41.5 ms | 45.5 to 48.7 ms | 42.2 to 44.7 ms |
+| PreToolUse Write | 40.7 to 44.1 ms | 37.3 to 39.2 ms | 43.3 to 46.8 ms | 40.8 to 41.6 ms |
+| PostToolUse | 41.3 to 48.7 ms | 39 to 42.8 ms | 43.8 to 52.7 ms | 42.9 to 46.4 ms |
+| Stop | 39.2 to 42.7 ms | 37.1 to 39.4 ms | 42.1 to 45.5 ms | 39.7 to 43.1 ms |
+
+The `git commit` and `git push` checks spend most of their time in `git` subprocesses, so the 2 ms they save on guard imports is inside their run-to-run spread.
+
 ### The latency CI job
 
 The `latency` job in `.github/workflows/tests.yml` runs `python -m pytest -q tests/test_hooks.py -k latency` with `WUWEI_BENCH=1` on every push and pull request. It is `continue-on-error`: a trend line, not a gate. On a 2-CPU runner it is red on every push, because the runner is about 2x slower than the hardware the budget is set for. A red job never blocks a merge.

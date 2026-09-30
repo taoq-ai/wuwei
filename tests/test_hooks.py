@@ -147,6 +147,71 @@ def test_discovery_returns_plain_list():
     assert any(guard.check.__module__ == 'wuwei.guards.deploy' for guard in discover())
 
 
+def test_import_map_matches_guard_tables():
+    from importlib import import_module
+    import pkgutil
+    import wuwei.guards
+    derived = {}
+    for module in pkgutil.iter_modules(wuwei.guards.__path__, 'wuwei.guards.'):
+        name = module.name.rsplit('.', 1)[-1]
+        if name.startswith('_'):
+            continue
+        events = {}
+        for guard in import_module(module.name).GUARDS:
+            events.setdefault(guard.event, []).append(guard.matcher)
+        derived[name] = {event: None if None in matchers else '|'.join(matchers)
+                         for event, matchers in events.items()}
+    assert wuwei.guards.MODULES == derived
+
+
+@pytest.mark.parametrize('event', EVENTS)
+@pytest.mark.parametrize('tool', ['', 'Bash', 'Write', 'Edit', 'Agent', 'AskUserQuestion',
+                                  'mcp__example__operation', 5])
+def test_selected_guards_match_full_discovery(event, tool):
+    from wuwei.guards import SELECTION, discover
+
+    def runnable(guards):
+        return [g for g in guards if g.event == event and (
+            not isinstance(tool, str) or g.matcher is None or re.fullmatch(g.matcher, tool))]
+
+    token = SELECTION.set((event, tool))
+    try:
+        selected = discover()
+    finally:
+        SELECTION.reset(token)
+    assert runnable(selected) == runnable(discover())
+
+
+BASH_GUARDS = {'commit_push', 'deploy', 'pr'}
+
+
+@pytest.mark.parametrize('event, name, unloaded', [
+    ('Stop', 'example', BASH_GUARDS | {'protect_state'}),
+    ('PostToolUse', 'example', BASH_GUARDS | {'protect_state'}),
+    ('PreToolUse', 'write', BASH_GUARDS),
+])
+def test_hook_imports_only_needed_guards(tmp_path, event, name, unloaded):
+    # A fresh interpreter: loaded modules are process state and other tests import every guard.
+    from fakes.integrity import seed
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    seed(tmp_path)
+    payload = {**json.loads((ROOT / f'tests/payloads/{event}/{name}.json').read_text()),
+               'cwd': str(tmp_path)}
+    if event == 'Stop':
+        payload['stop_hook_active'] = False
+    out = tmp_path / 'modules.json'
+    script = ('import json, sys\nsys.path.insert(0, sys.argv[1])\n'
+              'from wuwei.__main__ import main\ncode = main(["hook", sys.argv[2]])\n'
+              'names = [n.rsplit(".", 1)[-1] for n in sys.modules if n.startswith("wuwei.guards.")]\n'
+              'open(sys.argv[3], "w").write(json.dumps(sorted(names)))\nsys.exit(code)\n')
+    result = subprocess.run([sys.executable, '-I', '-P', '-c', script, str(ROOT / 'cli'), event, str(out)],
+                            input=json.dumps(payload), text=True, capture_output=True, cwd=tmp_path,
+                            env={**os.environ, 'WUWEI_WORKSPACE': str(tmp_path)})
+    assert result.returncode == 0, result.stderr
+    assert unloaded & set(json.loads(out.read_text())) == set()
+
+
 def test_private_guard_module_is_ignored(plugin):
     install(plugin, 'raise RuntimeError("private helper imported")', '_helper')
     result = replay(plugin, 'Stop', json.dumps(fixture('Stop')))

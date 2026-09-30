@@ -212,7 +212,7 @@ def worktree_workspace(path):
 def scope(path):
     """An environment-selected workspace is context, not proof of membership."""
     from wuwei import registry
-    from wuwei.guards.commit_push import data
+    from wuwei.registry import data
 
     selected = None
     if 'WUWEI_WORKSPACE' in os.environ:
@@ -433,7 +433,7 @@ def load_config(root=None):
 def create_worktree(repo, branch, path, root, vcs):
     """Create and anchor a WUWEI worktree before handing it to a seat."""
     from wuwei.commands.git_hook import install
-    from wuwei.guards.commit_push import data
+    from wuwei.registry import data
     from wuwei import state
 
     if not (Path(root) / '.wuwei').is_dir():
