@@ -102,6 +102,8 @@ fast_checks = ["python3 -m pytest -q"]
 | `adapters.tts` | `"say"` on macOS, `"none"` elsewhere | Speech output for owner packs. `none` writes a text pack with an explicit no-audio note. |
 | `adapters.calendar` | `"none"` | Meeting source: none or a private ICS feed. |
 | `adapters.transcripts` | `"none"` | Meeting transcript source. |
+| `adapters.inbound` | `"none"` | Inbound message source: none. |
+| `adapters.redactor` | `"builtin"` | Redacts inbound text before it is stored: built-in patterns for phone numbers, email addresses and secrets. |
 | `calendar.url` | `""` | Private HTTPS ICS URL. `WUWEI_CALENDAR_URL` overrides this setting. Keep the URL secret. |
 | `brief.lead_minutes` | `30` | Meeting pack window before an event with attendees. |
 | `brief.style.length` | `"standard"` | `standard` or `concise` pack text. |

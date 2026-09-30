@@ -130,7 +130,8 @@ SCHEMA = {
                  "scanner": (str, "none"), "code_host": (str, "github"),
                  "vcs": (str, "git"), "host": (str, "local"),
                  "checks": (str, "local"), "tts": (str, "say" if sys.platform == "darwin" else "none"),
-                 "calendar": (str, "none"), "transcripts": (str, "none")},
+                 "calendar": (str, "none"), "transcripts": (str, "none"),
+                 "inbound": (str, "none"), "redactor": (str, "builtin")},
 }
 
 

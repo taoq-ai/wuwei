@@ -19,8 +19,10 @@ The CLI core asks named ports for plain data. Modules under `adapters/` implemen
 | vcs | git | git |
 | host | none, local | local |
 | checks | none, local | local |
+| inbound | none | none |
+| redactor | builtin | builtin |
 
-The `vcs` port calls git; `code_host.github` calls `gh`. Tracker and chat integrations require their external access and credentials. The Codex runtime uses the configured companion command and timeout. The ZIRAN scanner requires **ZIRAN 0.39.0 or newer** and checks `ziran --version` before each measurement. Older or unavailable versions report unmeasured (exit 2). It supports S4 audit and S2 live traces through the [JSON CLI contract](configuration.html). S3 MCP registry checks run at init, upgrade and morning planning; they preserve snapshots and block launches on findings or incomplete measurement. Other ports in the design, including inbound messaging and control planes, are **planned** and have no config keys in the shipped template.
+The `vcs` port calls git; `code_host.github` calls `gh`. Tracker and chat integrations require their external access and credentials. The Codex runtime uses the configured companion command and timeout. The ZIRAN scanner requires **ZIRAN 0.39.0 or newer** and checks `ziran --version` before each measurement. Older or unavailable versions report unmeasured (exit 2). It supports S4 audit and S2 live traces through the [JSON CLI contract](configuration.html). S3 MCP registry checks run at init, upgrade and morning planning; they preserve snapshots and block launches on findings or incomplete measurement. Inbound text passes through the redactor port, which replaces phone numbers, email addresses and secrets, before it is stored in `.wuwei/inbox/inbox.jsonl`. Other ports in the design, including control planes, are **planned** and have no config keys in the shipped template.
 
 The read-only VCS operation `pushed_branches(repo)` returns unique branch names
 from all local remote-tracking refs, excluding remote HEAD aliases. Close compares

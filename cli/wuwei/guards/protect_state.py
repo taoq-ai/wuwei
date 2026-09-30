@@ -170,7 +170,7 @@ def _protected_name(path, directories=False):
         tail = parts[index + 1:]
         if tail in (('config.toml',), ('env',), ('security.json',), ('.gitignore',), ('merge.lock',), ('executable',)) or tail[:1] == ('generated',):
             return True
-        if tail[:1] in (('integrity',), ('.git',), ('ziran',)):
+        if tail[:1] in (('integrity',), ('.git',), ('ziran',), ('inbox',)):
             return True
         if tail in (('memory', 'voice.md'), ('memory', 'goals.md')):
             return True
