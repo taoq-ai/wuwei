@@ -14,6 +14,11 @@ test repository on the code host, and prints interventions, elapsed time, cost a
 refusals next to a three-state verdict. Skips become unmeasured (exit 2) in both modes.
 No new module, state key, event kind, configuration key or workflow.
 
+Superseded on rebase onto #238 (PR #249): `dispatch next` moves `gate` to `fix` through
+`build.open_fix`, and the delta round continues the sentinel from the `continue` seat
+action that `dispatch next` returns. The Part 1 notes on `dispatch.receive`, the
+`gate.received` phase change and `self.jobs` below record the dropped design.
+
 ## Technical Context
 
 **Language/Version**: Python 3.11+, stdlib only at runtime; the scripts are dev tooling
@@ -33,6 +38,7 @@ no absolute local paths in the repository; no emojis or em-dashes
 - Test first: tasks.md orders every test before its change.
 - No forgeable trust: the phase moves inside the `gate.received` write, a reserved event
   produced only by `wuwei dispatch receive` (`commands/event.py` `EVENT_PRODUCERS`).
+  Superseded on rebase: the move is on the `build.fix_opened` write from `dispatch next`.
   The rehearsal's measurements are a test oracle, never a product trust record.
 - Fail closed: every missing precondition, error result or unreadable evidence in the
   rehearsal is exit 2 with the reason.
@@ -40,6 +46,11 @@ no absolute local paths in the repository; no emojis or em-dashes
 ## Changes by file
 
 ### Part 1: the product moves `gate` to `fix`
+
+Superseded on rebase onto #238: the `dispatch.py`, `SKILL.md`, `reference.md` and
+fixture changes below were replaced by #238's `dispatch next` fix round and seat actions.
+Only the assertions in `tests/test_dispatch.py` and `tests/test_e2e_day.py` remain, and
+unit tests without a build keep `state.transition('A', 'fix', root)` as setup.
 
 #### `cli/wuwei/dispatch.py`
 

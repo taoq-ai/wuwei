@@ -319,7 +319,7 @@ def test_complete_rehearsal_evidence_passes():
 
 
 @pytest.mark.parametrize('mutation,step', [
-    ('no-continue', 'continue'), ('no-fix', 'FIX'), ('no-delta', 'delta'), ('no-raise', 'pr'),
+    ('no-continue', 'continue'), ('fix-round-continue', 'continue'), ('no-fix', 'FIX'), ('no-delta', 'delta'), ('no-raise', 'pr'),
     ('no-decision', 'D-1'), ('no-merge', 'merge'), ('not-merged', 'merged'),
     ('no-close', 'close'), ('live-seat', 'seat'), ('manual', 'manual repair: state transition A fix')])
 def test_missing_rehearsal_step_is_a_finding(mutation, step):
@@ -327,6 +327,9 @@ def test_missing_rehearsal_step_is_a_finding(mutation, step):
     data, events, hooks = rehearsal_evidence()
     if mutation == 'no-continue':
         hooks = []
+    elif mutation == 'fix-round-continue':
+        # The gate fix round also resumes the builder; only a continue before gates counts.
+        hooks.insert(0, {'event': 'cli', 'args': ['dispatch', 'next', 'A'], 'exit': 0})
     elif mutation == 'no-fix':
         events = [e for e in events if e['payload'].get('verdict') != 'FIX']
     elif mutation == 'no-delta':

@@ -16,6 +16,8 @@ the reason named. Run tests with `python -m pytest -q` from the repository root.
   - FIX recorded with security still missing: phase stays `gate`, `next_step` returns
     `gates` for `security`.
   Run: the first case fails (phase is `gate`, no `phase_changes`).
+  Superseded on rebase onto #238: the first case now asserts the item stays in `gate`
+  with no `phase_changes` on `gate.received`, and `dispatch next` moves it to `fix`.
 - [X] T002 Change the scripted day to assert instead of repair: in
   `tests/test_e2e_day.py:34` replace `day.transition('fix')` with
   `assert day.data['items']['A']['phase'] == 'fix'`. Run: fails at that assertion (phase
@@ -24,14 +26,21 @@ the reason named. Run tests with `python -m pytest -q` from the repository root.
   after the verdict is stored: for `round_name == 'initial'`, when all three
   `_record(fresh, item, role, 'initial')` exist, one is FIX and none is PARK or ESCALATE,
   `state._move(fresh, item, 'fix')`. Run T001 and T002 green.
+  Superseded on rebase onto #238: the move was removed from `receive`; `dispatch next`
+  owns it through `build.open_fix`.
 - [X] T004 In `tests/test_dispatch.py`, replace the now-illegal
   `state.transition('A', 'fix', root)` after the last initial receipt (lines 74, 92, 140,
   158, 325, 514) with `assert state.read_state(root)['items']['A']['phase'] == 'fix'`;
   keep lines 79 and 147 (from `delta`). Run `tests/test_dispatch.py` green.
+  Superseded on rebase onto #238: unit tests without a build keep
+  `state.transition('A', 'fix', root)` as setup; tests that call `dispatch next` assert
+  the phase.
 - [X] T005 Remove `Day.transition` from `tests/fakes/day.py`; in `Day.gate`, store the
   `runtime dispatch` stdout per seat name in `self.jobs` and pass it to `runtime continue`
   for the delta. Run `tests/test_e2e_day.py` green and confirm
   `grep -n "transition" tests/test_e2e_day.py` shows only the `phase_changes` read.
+  Superseded on rebase onto #238: `Day.gate` runs the seat actions from `dispatch next`
+  (a `continue` action with `resume` for the delta) and `self.jobs` is gone.
 - [X] T006 Update `skills/wuwei-plan/SKILL.md` line 48 and `docs/site/reference.md` line 95
   as the plan states (text only, no behaviour; `tests/test_docs.py` is the only test that
   reads either file). Run `tests/test_docs.py` green.

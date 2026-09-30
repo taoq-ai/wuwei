@@ -63,10 +63,13 @@ itself it certifies work the product does not do.
 
 1. **Given** the fixture without compensating actions and current main, **When** the
    scripted day runs, **Then** it passes, and after the last initial gate verdict (quality
-   FIX) the item is already in `fix` with no `state transition` call.
-2. **Given** an item in `gate` with arch PASS and security PASS recorded, **When**
-   `dispatch receive` records quality FIX, **Then** the same write moves the item to `fix`
-   and the `gate.received` event carries `phase_changes: {item: 'fix'}`.
+   FIX) `dispatch next` returns `fix` with the item already in `fix` and no
+   `state transition` call.
+2. **Given** a completed build and an item in `gate` with arch PASS and security PASS
+   recorded, **When** `dispatch receive` records quality FIX, **Then** the item stays in
+   `gate` and the `gate.received` event carries no `phase_changes`; **When** `dispatch next`
+   then runs, **Then** `build.open_fix` moves the item to `fix` and arms the builder in one
+   write, and the result is `fix` with the command `wuwei build next <item>`.
 3. **Given** three initial PASS verdicts, **When** the last is received, **Then** the item
    stays in `gate` and `dispatch next` returns `raise`.
 4. **Given** an initial FIX next to an initial PARK or ESCALATE, **When** the last verdict is
@@ -75,8 +78,8 @@ itself it certifies work the product does not do.
    `dispatch next` runs, **Then** it still returns `gates` for the missing role and the item
    stays in `gate`.
 6. **Given** the delta round in the scripted day, **When** the planner continues the
-   sentinel, **Then** it passes the job handle `runtime dispatch` printed for that seat, not
-   one the fixture builds.
+   sentinel, **Then** it runs the `continue` seat action that `dispatch next` returns, with
+   `resume` set to the stopped seat's agent ID, not one the fixture builds.
 
 ---
 
@@ -179,15 +182,16 @@ verdicts.
 
 ### Functional Requirements
 
-- **FR-001**: `dispatch.receive` MUST move an item from `gate` to `fix` in the same state
-  write that records the last initial verdict when all three initial verdicts are
-  recorded, at least one is FIX and none is PARK or ESCALATE.
+- **FR-001**: `dispatch next` MUST move an item from `gate` to `fix` through
+  `build.open_fix`, in the same write that arms the builder's fix round, when all three
+  initial verdicts are recorded, at least one is FIX and none is PARK or ESCALATE.
+  `dispatch receive` only records verdicts.
 - **FR-002**: Every other phase rule MUST stay as it is: `next_step` results, the
   `gate`/`delta` receive checks, `build` transitions, `record_pr` and `observe`.
 - **FR-003**: `tests/test_e2e_day.py` MUST contain no `state transition` call and no
   fixture step that performs product work; the `Day.transition` helper is removed.
-- **FR-004**: The delta continuation in the fixture MUST use the job handle printed by the
-  seat's `runtime dispatch`.
+- **FR-004**: The delta continuation in the fixture MUST run the `continue` seat action
+  from `dispatch next`, with `resume` set to the stopped seat's agent ID.
 - **FR-005**: The planner skill and the operator reference MUST say the product moves
   `gate` to `fix`, and MUST no longer tell the planner to transition it.
 - **FR-006**: `scripts/headless_e2e.py --rehearsal` MUST run the journey in User Story 2
@@ -230,12 +234,9 @@ verdicts.
 
 - #225 landed as #241 and already removed the raised and merged repairs; the only remaining
   compensating action is the manual `fix` transition, fixed at the shared producer
-  (`dispatch.receive`), not in the fixture.
-- The move happens on the receipt that completes the initial round because that is the
-  write that makes the fix round a fact; `next_step` stays a read and `build` stays
-  unaware of gate verdicts.
+  (`dispatch next`, after rebase), not in the fixture.
 - `merge.item_evidence` counts fix and delta phase changes only from `state.*` events. The
-  pre-PR fix change now arrives on `gate.received`, so it is not counted there; the delta
+  pre-PR fix change now arrives on `build.fix_opened`, so it is not counted there; the delta
   change still comes from the build-done `state.transition` and keeps the budget bound, and
   `dispatch.next_step` already escalates a second pre-PR fix round. `merge.py` is left
   unchanged. Metrics read `phase_changes` from every event and still count one fix round.
@@ -262,5 +263,7 @@ verdicts.
 - Superseded on rebase: #238 (PR #249) made `dispatch next` open the fix round through
   `build.open_fix`, which moves `gate` to `fix` and arms the builder in one write. That is
   the single `gate` to `fix` transition; `dispatch receive` only records verdicts, so FR-001
-  and scenario 2 hold through `dispatch next` rather than the receipt.
+  and scenario 2 hold through `dispatch next` rather than the receipt. #238 also made the
+  delta round a `continue` seat action from `dispatch next`, so FR-004 and scenario 6 use
+  that action instead of a `runtime dispatch` job handle.
 - Clarifying questions were not asked (AGENTS.md); the above are the defaults taken.

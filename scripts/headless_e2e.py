@@ -335,11 +335,11 @@ branch. Follow any fast check feedback exactly and commit again."
 3. Run the build next A step loop exactly as the skill says until done: pass each
 launch prompt unchanged to Agent with its agent_type, execute each returned
 check, and continue the builder when build next says continue.
-4. Run dispatch next A and dispatch the three gates as the skill says, through
-runtime dispatch and Agent. The sentinel-quality brief body must carry this
-rehearsal rule: return FIX with one finding marked blocks: yes when REHEARSAL.md
-lacks the line reviewed: quality, else PASS. Receive each verdict with dispatch
-receive. Follow action fix and the delta round exactly as the skill says.
+4. Run dispatch next A, launch each gate seat from the seats actions of dispatch
+next, as the skill says, and run each action's receive command. The
+sentinel-quality brief body must carry this rehearsal rule: return FIX with one
+finding marked blocks: yes when REHEARSAL.md lacks the line reviewed: quality,
+else PASS. Follow action fix and the delta round exactly as the skill says.
 5. When dispatch next A says raise, push the item branch to origin with git, write
 a short PR body file and run pr raise {repo} --base {base} --title "WUWEI
 rehearsal" --body-file <file> --item A.
@@ -397,8 +397,11 @@ def rehearsal_findings(data, events, hooks):
     def require(condition, message):
         if not condition:
             findings.append(message)
+    # The gate fix round also resumes the builder, so only a continue before gates counts.
+    gates_at = next((i for i, h in enumerate(hooks) if h.get('args') == ['dispatch', 'next', 'A']),
+                    len(hooks))
     require(any(h.get('args') == ['build', 'next', 'A'] and h['exit'] == 0
-                and (h.get('result') or {}).get('action') == 'continue' for h in hooks),
+                and (h.get('result') or {}).get('action') == 'continue' for h in hooks[:gates_at]),
             'failing check did not continue the builder')
     gates = [(e['payload'].get('role'), e['payload'].get('round'), e['payload'].get('verdict'))
              for e in events if e['kind'] == 'gate.received' and e['payload'].get('item') == 'A']
