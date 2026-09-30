@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.8.0](https://github.com/taoq-ai/wuwei/compare/v0.7.0...v0.8.0) (2026-09-30)
+
+
+### Features
+
+* **adapters:** Slack inbound by polling mentions and DMs ([#268](https://github.com/taoq-ai/wuwei/issues/268)) ([e8800e5](https://github.com/taoq-ai/wuwei/commit/e8800e55128f882480db810bbfa04394da3efb79)), closes [#50](https://github.com/taoq-ai/wuwei/issues/50)
+* **control-plane:** command vocabulary and session-per-thread over headless Claude Code ([#269](https://github.com/taoq-ai/wuwei/issues/269)) ([f614b5b](https://github.com/taoq-ai/wuwei/commit/f614b5bf2c951a1ec74b1b9696e40095a220958f)), closes [#65](https://github.com/taoq-ai/wuwei/issues/65)
+* **guards:** remote-command guards (pinned safety number, second factor, stop all) ([#270](https://github.com/taoq-ai/wuwei/issues/270)) ([5ca6e51](https://github.com/taoq-ai/wuwei/commit/5ca6e51d05b6c3425ac19b32ed0feb047aa0d6ad)), closes [#66](https://github.com/taoq-ai/wuwei/issues/66)
+* **listener:** `wuwei listen` process, inbox and service templates ([#266](https://github.com/taoq-ai/wuwei/issues/266)) ([493716a](https://github.com/taoq-ai/wuwei/commit/493716ac697d65f2908ee0a9176a7198b91e288b)), closes [#49](https://github.com/taoq-ai/wuwei/issues/49)
+
+
+### Bug Fixes
+
+* **remote:** decisions and health are visible on both ends ([#275](https://github.com/taoq-ai/wuwei/issues/275)) ([80f3573](https://github.com/taoq-ai/wuwei/commit/80f35739521141b9e41a639acaa19b60477701a5)), closes [#273](https://github.com/taoq-ai/wuwei/issues/273)
+* **remote:** phone answers as one status segment, an ack for a refused-sender page, and the section 3 quote ([#277](https://github.com/taoq-ai/wuwei/issues/277)) ([61e6704](https://github.com/taoq-ai/wuwei/commit/61e6704dd2143d9a84775c02042d82f606a03eac)), closes [#276](https://github.com/taoq-ai/wuwei/issues/276)
+* **remote:** the DM path works from the runbook alone ([#274](https://github.com/taoq-ai/wuwei/issues/274)) ([58f4889](https://github.com/taoq-ai/wuwei/commit/58f488973d44d187b853618320b35c5cbded9db3)), closes [#272](https://github.com/taoq-ai/wuwei/issues/272)
+
 ## [0.7.0](https://github.com/taoq-ai/wuwei/compare/v0.6.1...v0.7.0) (2026-09-30)
 
 
