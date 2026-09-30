@@ -1,10 +1,16 @@
 """Keep the public docs aligned with the shipped entry points and config."""
 
+from argparse import Namespace
 import json
 from pathlib import Path
+import posixpath
 import re
+import runpy
+import tarfile
 import tomllib
 from xml.etree import ElementTree
+
+from wuwei import integrity, registry
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -243,3 +249,37 @@ def test_config_check_host_and_credential_layout_are_documented():
     for text in ('Host protections', 'Seat credentials', '`ok`', '`missing`', '`unmeasured`',
                  'exit 0', 'exit 1', 'exit 2', 'design 4.5', '9.1'):
         assert text in section, text
+
+def test_release_asset_ships_every_linked_doc(tmp_path, monkeypatch):
+    signed = []
+    def sign(manifest, key):
+        signed.append(Path(manifest))
+        Path(str(manifest) + '.sig').write_text('signature')
+        return registry.Result(0)
+    monkeypatch.setattr(integrity, 'signature_adapter', lambda: Namespace(
+        sign=sign, verify=lambda *a: registry.Result(0)))
+    build = runpy.run_path(str(ROOT / 'scripts/build-release.py'))['build']
+    archive = build(ROOT, tmp_path / 'release', tmp_path / 'key')
+    stage = tmp_path / 'release/wuwei'
+    listed = {line[66:] for line in (stage / integrity.MANIFEST).read_text().splitlines()}
+    resolved, missing = set(), []
+    for path in [ROOT / 'README.md', *sorted((ROOT / 'skills').rglob('*.md')),
+                 *sorted((ROOT / 'agents').rglob('*.md'))]:
+        name = path.relative_to(ROOT).as_posix()
+        for match in re.finditer(r'\]\(([^)\s]+)\)|(?:src|srcset|href)="([^"]+)"', path.read_text()):
+            target = match.group(1) or match.group(2)
+            if ':' in target or target.startswith('#'):
+                continue
+            link = posixpath.normpath(posixpath.join(posixpath.dirname(name), target.split('#')[0]))
+            resolved.add(link)
+            if link not in listed:
+                missing.append(f'{name} -> {target}')
+    assert 'docs/site/index.md' in resolved
+    assert not missing, missing
+    expected = {p.relative_to(ROOT).as_posix() for p in
+                [*SITE.glob('*.md'), *(ROOT / 'docs/assets').glob('*.svg')]}
+    with tarfile.open(archive) as tar:
+        archived = {n.removeprefix('wuwei/') for n in tar.getnames()}
+    assert expected <= listed and expected <= archived
+    assert signed == [stage / integrity.MANIFEST]
+    assert integrity.measure(stage).exit == 0

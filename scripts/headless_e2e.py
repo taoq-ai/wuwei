@@ -145,7 +145,7 @@ def prepare(scratch, *, local_login=False, repo=None, url=None):
     for name in ('.claude-plugin', 'cli', 'adapters', 'bin', 'hooks', 'charters',
                  'skills', 'agents', 'templates', 'keys'):
         shutil.copytree(ROOT / name, source / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-    for name in ('README.md', 'LICENSE', 'pyproject.toml', 'docs/integrity.md', 'scripts/build-release.py'):
+    for name in ('README.md', 'LICENSE', 'NOTICE', 'pyproject.toml', 'docs/integrity.md', 'scripts/build-release.py'):
         target = source / name
         target.parent.mkdir(exist_ok=True)
         shutil.copyfile(ROOT / name, target)
