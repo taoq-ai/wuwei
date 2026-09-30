@@ -106,7 +106,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `adapters.tts` | `"say"` on macOS, `"none"` elsewhere | Speech output for owner packs. `none` writes a text pack with an explicit no-audio note. |
 | `adapters.calendar` | `"none"` | Meeting source: none or a private ICS feed. |
 | `adapters.transcripts` | `"none"` | Meeting transcript source. |
-| `adapters.inbound` | `"none"` | Inbound message source: none. |
+| `adapters.inbound` | `"none"` | Inbound message source: none or slack. |
 | `adapters.redactor` | `"builtin"` | Redacts inbound text before it is stored: built-in patterns for phone numbers, email addresses and secrets. |
 | `calendar.url` | `""` | Private HTTPS ICS URL. `WUWEI_CALENDAR_URL` overrides this setting. Keep the URL secret. |
 | `brief.lead_minutes` | `30` | Meeting pack window before an event with attendees. |
@@ -298,6 +298,15 @@ watch's: one launchd agent or systemd user unit per workspace, labelled
 `wuwei-listen-<hash>`. `bin/wuwei listen --once` runs one poll. With
 `adapters.inbound = "none"`, `listen`, `listen --once` and `listen install` exit 2.
 Uninstall is an owner action, refused from agent tools inside a workspace.
+
+With `adapters.inbound = "slack"` the listener reads every message in
+`SLACK_OWNER_DM_CHANNEL`, and messages in `outbound.work_channels` and
+`outbound.external_channels` that mention a Slack user id from `owner.handles` (such as
+`U0123ABC`). It reads top-level messages only, so answer in the DM as a new message, not
+in a thread. Bot and app posts are skipped. Each poll re-reads five minutes behind the
+previous successful poll, and the first poll starts five minutes back. A Slack rate limit fails that poll
+and the next poll retries. The reading token needs the `channels:history`,
+`groups:history` and `im:history` scopes and membership of the polled channels.
 
 The listener writes a `listen: clock` line every two minutes. Session start reports
 `listen dead` when today's latest clock line is older than `listen.dead_seconds`, or

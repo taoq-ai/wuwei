@@ -40,6 +40,9 @@ def case(tmp_path, monkeypatch):
     return tmp_path, source
 
 
+NOW = '1790769600'  # WUWEI_NOW in epoch seconds
+
+
 def event(ident, ts, text='hello'):
     return {'id': ident, 'source': 'slack', 'channel': 'D1', 'thread': '', 'sender': 'U1',
             'text': text, 'ts': ts}
@@ -98,11 +101,15 @@ def test_cursor_moves_after_each_stored_batch(case):
     source.results = [Result(0, [event('a', '1'), event('b', '2')]), Result(0, [])]
     assert listen().tick(root) == 1
     assert listen().tick(root) == 0
-    assert source.since == ['', '2']
-    assert json.loads((root / '.wuwei/inbox/cursor.json').read_text())['cursors'] == {'fake': '2'}
+    # A successful poll moves the cursor to the poll start, events or not.
+    assert source.since == ['', NOW]
+    assert json.loads((root / '.wuwei/inbox/cursor.json').read_text())['cursors'] == {'fake': NOW}
     source.results = [Result(0, [event('b', '2')])]
     assert listen().tick(root) == 0
-    assert source.since[-1] == '2' and ids(root) == ['a', 'b']
+    assert source.since[-1] == NOW and ids(root) == ['a', 'b']
+    source.results = [Result(0, [event('c', '1790769700.000100')])]
+    assert listen().tick(root) == 1
+    assert listen().cursor(root)['cursors'] == {'fake': '1790769700.000100'}
 
 
 def test_failing_source_or_store_leaves_the_cursor(case, monkeypatch, capsys):
@@ -146,7 +153,7 @@ def test_restart_mid_batch_loses_nothing_and_stores_nothing_twice(case, monkeypa
     assert listen().tick(root) == 1
     assert ids(root) == ['a', 'b', 'c']
     assert source.since == ['', '']
-    assert listen().cursor(root)['cursors'] == {'fake': '3'}
+    assert listen().cursor(root)['cursors'] == {'fake': NOW}
 
 
 def test_wake_marker_merges_prs_and_inbox(case):

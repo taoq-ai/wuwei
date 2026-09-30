@@ -27,6 +27,7 @@ def run(args):
     requirements = {
         ('tracker', 'linear'): [('LINEAR_API_KEY',)],
         ('chat', 'slack'): [('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN'), ('SLACK_OWNER_DM_CHANNEL',)],
+        ('inbound', 'slack'): [('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN'), ('SLACK_OWNER_DM_CHANNEL',)],
         ('review_bot', 'greptile'): [('GREPTILE_API_KEY',)],
         ('calendar', 'ics'): [('WUWEI_CALENDAR_URL',)],
     }

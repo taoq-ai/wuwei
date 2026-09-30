@@ -48,9 +48,15 @@ def tick(root):
             code = 2
         else:
             code = int(bool(stored.data))
-            if result.data:
-                data['cursors'][source] = result.data[-1]['ts']
-                _save(root, data)
+            # The cursor is an epoch watermark: every successful poll moves it to the
+            # poll start, so a quiet stretch does not pin it and grow each re-read.
+            start = str(int(now.timestamp()))
+            last = result.data[-1]['ts'] if result.data else start
+            try:
+                data['cursors'][source] = max(last, start, key=float)
+            except ValueError:
+                data['cursors'][source] = last
+            _save(root, data)
     if config['responder']['enabled']:
         # ponytail: reads the whole inbox per tick; keep a line count when it grows large.
         count = len(inbox.read(root))

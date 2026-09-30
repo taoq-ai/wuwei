@@ -248,6 +248,7 @@ def test_entry_paths(case, entry, monkeypatch):
 @pytest.mark.parametrize('adapter,settings,required', [
     ('tracker="linear"', '', ('LINEAR_API_KEY',)),
     ('chat="slack"', '', ('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL')),
+    ('inbound="slack"', '', ('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL')),
     ('review_bot="greptile"', '', ('GREPTILE_API_KEY',)),
     ('calendar="ics"', '', ('WUWEI_CALENDAR_URL',)),
     ('runtime="codex"', '', ('codex.command',)),
