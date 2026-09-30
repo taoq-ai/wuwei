@@ -173,6 +173,8 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
             raise RebaseConflict()
         raise ValueError(result.stderr.decode('utf-8', errors='replace').strip() or 'git rebase exited 1')
     if result.returncode:
+        if b'not a git repository' in result.stderr:
+            raise ValueError('not a git repository')
         raise ValueError(f'git exited {result.returncode}')
     return result.stdout.decode('utf-8', errors='surrogateescape')
 

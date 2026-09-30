@@ -304,9 +304,12 @@ def check_bash(payload):
                     or _STATE_MENTION.search(script) or _STATE_GLOB.search(script)
                     or (root is not None and _protected_name(cwd, directories=True)
                         and (isinstance(exc, NonliteralPathError)
-                             or (_DYNAMIC.search(script) and _WRITE_CONSTRUCT.search(script))))
-                    or (contain_cwd and re.search(r'\b(?:cd|pushd|popd)\b', script, re.I))):
+                             or (_DYNAMIC.search(script) and _WRITE_CONSTRUCT.search(script))))):
                 return 2, str(exc)
+            if contain_cwd and re.search(r'\b(?:cd|pushd|popd)\b', script, re.I):
+                return 2, ('workspace guard: a top-level cd, pushd or popd to a directory that '
+                           'cannot be resolved statically may leave the workspace; cd to a literal '
+                           'directory inside it or use git -C')
             return 0, ''
         if owner_outcome_relevant:
             for command in commands:

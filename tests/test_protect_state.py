@@ -632,3 +632,11 @@ def test_state_snapshot_is_protected(workspace, tool):
     path = '.wuwei/days/2026-09-28/state.snapshot.json'
     assert check_file(payload(workspace, tool, file_path=path))[0] == 1
     assert check_bash(payload(workspace, 'Bash', command='echo {} > ' + path))[0] == 1
+
+
+def test_unresolvable_cd_refusal_names_the_workspace_guard(workspace):
+    from wuwei.guards.protect_state import check_bash
+    code, reason = check_bash(payload(workspace, 'Bash',
+                                      command='cd $(git rev-parse --show-toplevel) && ls'))
+    assert code == 2 and 'workspace guard' in reason and 'cd' in reason
+    assert 'git or gh' not in reason

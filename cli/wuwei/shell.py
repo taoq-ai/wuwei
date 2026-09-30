@@ -110,8 +110,10 @@ def mentions(raw, names, *, script=False) -> bool:
     unquoted = re.sub(r'(?:[0-9]*[<>]+[!&|]?|&>>?)\s*[^\s;&|]+', '', unquoted)
     if _GUARDED.search(unquoted) and not _literal(unquoted):
         return True
+    # An assignment prefix is not a command name; the word after it is.
     return any(not _literal(word) for word in re.findall(
-        r'(?:^|[;&|(\n])\s*([^\s;&|()]+)', unquoted))
+        r'(?:^|[;&|(\n])\s*(?:[A-Za-z_]\w*=[^\s;&|()]*\s+)*([^\s;&|()]+)', unquoted)
+        if not _ASSIGNMENT.match(word))
 
 
 def _launcher(path, cwd):
@@ -533,8 +535,11 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
     return []
 
 
-def is_opaque(argv: list[str]) -> bool:
+def is_opaque(argv: list[str], stdin: bool = True) -> bool:
     """Flag hidden git/gh argv and interpreter snippets for guard refusal.
+
+    stdin=False: the list does not feed this command's standard input, so an
+    interpreter without a snippet cannot read guarded text from it.
 
     ponytail: constructed names such as "gi" + "t" remain opaque to this heuristic;
     the repository pre-push hook is the enforcement anchor for that residual.
@@ -564,4 +569,4 @@ def is_opaque(argv: list[str]) -> bool:
             return True
     # Without a snippet, only a leading path proves input is not stdin. Option
     # operands might otherwise look like paths; conservatively flag those forms.
-    return not has_snippet and (len(argv) == 1 or argv[1].startswith('-'))
+    return stdin and not has_snippet and (len(argv) == 1 or argv[1].startswith('-'))

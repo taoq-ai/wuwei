@@ -270,12 +270,13 @@ def check(payload):
             if not mentions(raw, (*DEPLOY_ACTIONS, *protected[len(PROGRAMS):])):
                 return 0, ''
             raise
-        for command in commands:
+        for index, command in enumerate(commands):
             argv, env = command.argv, command.env
             if not argv:
                 continue
-            if is_opaque(argv) and mentions(raw, ('git', 'gh')):
-                unknown('opaque deployment command; use a plain command')
+            fed = bool(command.reads) or index > 0 and commands[index - 1].separator == '|'
+            if is_opaque(argv, fed) and mentions(raw, ('git', 'gh')):
+                unknown(f'opaque deployment command: {" ".join(argv)}; use a plain command')
             program, *args = argv
             program = PurePosixPath(program).name
             text = ' '.join([program, *args])
