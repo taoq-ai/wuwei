@@ -3,7 +3,7 @@
 from fnmatch import fnmatchcase
 import re
 
-from wuwei import registry, state, workspace
+from wuwei import obligations, registry, state, workspace
 
 
 SOURCES = ('tracker', 'base_checks', 'review_bot', 'scanner', 'follow_up_threads',
@@ -119,6 +119,10 @@ def discover(root=None, *, ports=None):
             for name in ('base_checks', 'follow_up_threads', 'pr_follow_ups'):
                 sources[name] = 'unmeasured: code host read failed'
             host = ports.get('code_host') or registry.load('code_host', config)
+            try:
+                me = obligations._owner_login(config)
+            except ValueError:
+                me = None  # answered needs one owner login; without it every open thread stays
             followups = []
             pr_followups = []
             complete = True
@@ -146,7 +150,11 @@ def discover(root=None, *, ports=None):
                 for row in data['threads']:
                     if not isinstance(row, dict) or type(row.get('resolved')) is not bool or not isinstance(row.get('id'), str):
                         raise ValueError('invalid follow-up thread')
-                    if not row['resolved']:
+                    try:
+                        owner_answered = me is not None and obligations.answered(row, me)
+                    except (KeyError, TypeError, AttributeError) as exc:
+                        raise ValueError('invalid follow-up thread comment') from exc
+                    if not row['resolved'] and not owner_answered:
                         followups.append({'id': f'{ref}:thread:{row["id"]}', 'evidence': 'open review thread'})
             if complete:
                 sources['follow_up_threads'] = followups

@@ -1,5 +1,6 @@
 """Shared gate verdict lint, ported from the production verdict-lint script."""
 
+import hashlib
 from pathlib import Path
 import re
 
@@ -155,7 +156,11 @@ def record_rejection(path, code, message, *, root=None):
                 root = workspace.find_workspace(Path(path).parent)
             except FileNotFoundError:
                 return code, message
-        state.append_event('verdict.rejected', {'file': str(path),
+        try:
+            digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        except OSError:
+            digest = None
+        state.append_event('verdict.rejected', {'file': str(path), 'sha256': digest,
                            'reasons': message.splitlines()}, root=root)
     except (OSError, ValueError, RuntimeError) as exc:
         return UNRUN, f'{message}\nverdict lint: could not record rejection: {exc}'

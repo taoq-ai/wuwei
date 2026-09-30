@@ -658,6 +658,22 @@ def test_recover_command_exits(workspace, monkeypatch, capsys, case, expected):
         assert state.read_state()['cap'] == 3
 
 
+def test_recover_without_a_terminal_names_the_owner_action(workspace, monkeypatch, capsys):
+    import builtins
+    from wuwei.__main__ import main
+    path = corrupt(workspace)
+    real_open = builtins.open
+    def fake_open(name, *args, **kwargs):
+        if name == '/dev/tty':
+            raise OSError(6, 'Device not configured')
+        return real_open(name, *args, **kwargs)
+    monkeypatch.setattr(builtins, 'open', fake_open)
+    assert main(['state', 'recover']) == 2
+    err = capsys.readouterr().err
+    assert 'run it in a host terminal' in err and 'Errno' not in err
+    assert path.read_text() == '{"cap": 3, "ite'
+
+
 def test_hook_names_recovery_then_continues(workspace):
     from wuwei import integrity, state
     from wuwei.guards import stop
@@ -669,3 +685,15 @@ def test_hook_names_recovery_then_continues(workspace):
     assert code == 2 and 'wuwei state recover' in reason
     state.recover(confirm=lambda token: True)
     assert 'recover' not in stop.check(payload)[1]
+
+
+def test_recovered_event_names_the_recovery(workspace):
+    from wuwei import state
+    from wuwei.commands.status import attention
+    corrupt(workspace)
+    digest = state.recover(confirm=lambda token: True)
+    payload = events(workspace)[-1]['payload']
+    assert payload['reason'] == 'state recovered from snapshot ' + digest[:12]
+    assert 'state.json' in payload['error']
+    row, = [row for row in attention(day(workspace)) if row['source'] == 'state.recovered']
+    assert 'Unterminated' not in row['reason'] and 'recover in a host terminal' not in row['reason']

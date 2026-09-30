@@ -45,6 +45,10 @@ Ambiguous directory changes or unresolved targets may require separate, literal
 commands. A detached HEAD refusal asks you to check out a branch before pushing;
 other context failures identify the failed read and a corrective action.
 
+## Host terminal actions
+
+Some commands are the owner's alone: `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei goals edit` and `voice edit`, and `wuwei watch uninstall`. Agent tool hooks refuse them, so run them in a host terminal. The ones that ask you to type a digest exit 2 without a terminal. See [host terminal actions](reference.html#host-terminal-actions).
+
 ## Memory
 
 `wuwei init` creates `.wuwei/memory/` with a spine, index and changelog. Day records live under `.wuwei/days/`. Settled facts belong in notes; procedure belongs in charters. The CLI provides `note`, `index`, `consolidate`, `payload` and `promote` commands. The owner edits goals and voice; seats propose changes for promotion. The index is generated and notes are bounded by configuration defaults.

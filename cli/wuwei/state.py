@@ -415,5 +415,6 @@ def recover(root=None, *, confirm):
         if measure()[1] != digest:
             raise ValueError('state changed during confirmation; retry')
         workspace.atomic_write(path, text, mode=0o444)
-        _append_event('state.recovered', {'snapshot': digest, 'reason': reason}, directory)
+        _append_event('state.recovered', {'snapshot': digest, 'reason': f'state recovered from snapshot {digest[:12]}',
+                                           'error': reason}, directory)
     return digest

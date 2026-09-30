@@ -597,6 +597,27 @@ def test_owner_outcome_rejects_bad_choice_and_declined_confirmation(ws, monkeypa
     assert path.read_bytes() == before
 
 
+def test_owner_outcome_without_a_terminal_names_the_owner_action(ws, monkeypatch, capsys):
+    import builtins
+    from wuwei.__main__ import main
+    from wuwei import state
+    monkeypatch.chdir(ws)
+    path = save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
+    assert main(['decision', 'route', 'D-3']) == 0
+    before = path.read_bytes()
+    real_open = builtins.open
+    def fake_open(name, *args, **kwargs):
+        if name == '/dev/tty':
+            raise OSError(6, 'Device not configured')
+        return real_open(name, *args, **kwargs)
+    monkeypatch.setattr(builtins, 'open', fake_open)
+    capsys.readouterr()
+    assert main(['decision', 'outcome', 'D-3', 'A']) == 2
+    assert capsys.readouterr().err == 'wuwei decision: this is an owner action: run it in a host terminal\n'
+    assert path.read_bytes() == before
+    assert not state.read_state(ws).get('decision_outcomes')
+
+
 def test_owner_reversal_is_recorded_once_and_measured(ws, monkeypatch):
     from wuwei.__main__ import main
     from wuwei import metrics

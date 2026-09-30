@@ -194,14 +194,26 @@ def cached(root):
         return Result(2, reason=f'plugin integrity unmeasured: {exc}; run wuwei integrity check on the host')
 
 
+HOST_TERMINAL = 'this is an owner action: run it in a host terminal'
+
+
 def _host_confirm(fingerprint, *, prompt='Review the installation on this host. To confirm its exact content, type:'):
     # This is a local friction boundary, not proof against a same-uid process (spec 9.1).
-    with open('/dev/tty', 'r') as reader, open('/dev/tty', 'w') as terminal:
-        if not reader.isatty() or not terminal.isatty():
-            return False
-        terminal.write(prompt + '\n' + fingerprint + '\n> ')
-        terminal.flush()
-        return reader.readline().strip() == fingerprint
+    try:
+        reader = open('/dev/tty', 'r')
+    except OSError:
+        raise OSError(HOST_TERMINAL) from None
+    with reader:
+        try:
+            terminal = open('/dev/tty', 'w')
+        except OSError:
+            raise OSError(HOST_TERMINAL) from None
+        with terminal:
+            if not reader.isatty() or not terminal.isatty():
+                raise OSError(HOST_TERMINAL)
+            terminal.write(prompt + '\n' + fingerprint + '\n> ')
+            terminal.flush()
+            return reader.readline().strip() == fingerprint
 
 
 def reconfirm(root, *, confirm=None):

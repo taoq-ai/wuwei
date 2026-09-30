@@ -7,6 +7,7 @@ import re
 from urllib.parse import urlsplit
 
 from wuwei import registry, state, verdict, workspace
+from wuwei.commands.event import FREE_KINDS
 from wuwei.references import pull_request
 from wuwei.verdict import VERDICTS
 
@@ -104,13 +105,20 @@ def _replies(reviews, discussion, me, acks):
         if thread['resolved']:
             continue
         comments = sorted(thread['comments'], key=lambda row: (_time(row['created_at']), row['id']))
-        humans = [row for row in comments if not row['is_bot']]
-        if humans and humans[-1]['author'] != me:
+        humans = any(not row['is_bot'] for row in comments)
+        if humans and not answered(thread, me):
             owed.append(f'thread:{thread["id"]}')
         elif (not humans and not thread['outdated'] and
               re.search(r'badges/p1\.svg|\*\*P1\*\*', comments[0]['body'])):
             owed.append(f'bot-p1:{thread["id"]}')
     return owed
+
+
+def answered(thread, me):
+    """True when the latest human comment of the thread is by the owner login."""
+    comments = sorted(thread.get('comments') or [], key=lambda row: (_time(row['created_at']), row['id']))
+    humans = [row for row in comments if not row['is_bot']]
+    return bool(humans) and humans[-1]['author'] == me
 
 
 def _gate_recorded(directory, head):
@@ -173,15 +181,19 @@ def _visibility(ref, pr, reviews, data, me, directory, config):
 
 
 def _check_empty_day(directory):
+    written = (directory / 'state.json').exists()
+    path = directory / 'events.jsonl'
+    if not (written or path.exists()):
+        return
     recorded_state = False
-    for line in (directory / 'events.jsonl').read_text(encoding='utf-8').splitlines():
+    for line in path.read_text(encoding='utf-8').splitlines():
         row = json.loads(line)
         if (not isinstance(row, dict) or not isinstance(row.get('kind'), str)
                 or not isinstance(row.get('payload'), dict)):
             raise ValueError('invalid event record')
         kind, payload = row['kind'], row['payload']
+        recorded_state |= kind not in FREE_KINDS and type(payload.get('prs_seen')) is bool
         if kind.startswith('state.'):
-            recorded_state |= type(payload.get('prs_seen')) is bool
             seen = payload.get('prs_seen') or (kind == 'state.set'
                    and payload.get('path') in ('raised_prs', 'claimed_prs') and payload.get('value'))
         else:
@@ -189,7 +201,7 @@ def _check_empty_day(directory):
                     and payload.get('prs')) or kind == 'reply: acknowledged'
         if seen or payload.get('prs_seen'):
             raise ValueError('empty PR set contradicts today\'s events')
-    if not recorded_state:
+    if written and not recorded_state:
         raise ValueError('no recorded PR state for today')
 
 
@@ -207,8 +219,6 @@ def evaluate(root=None):
     directory = workspace.day_dir(root)
     counts = dict(sweep='obligations', prs=0, reply_owed=0, visibility_owed=0, unreadable=0)
     try:
-        if not (directory / 'state.json').is_file():
-            raise ValueError('day state missing')
         data = state.read_state(directory=directory)
         ledger = _ledger(data)
         refs = []

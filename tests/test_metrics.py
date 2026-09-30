@@ -96,3 +96,23 @@ def test_phase_time_includes_initial_planned_interval(root, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T14:00:00Z')
     assert metrics.collect(root)['time_in_phase_seconds']['A'] == {
         'planned': 3600.0, 'fix': 3600.0}
+
+
+def test_one_rejection_per_verdict_file_version(root):
+    import re
+    from wuwei import metrics, verdict
+    state._write_state(lambda data: None, root, reserved=False)
+    path = workspace.day_dir(root) / 'decisions/gate-quality.md'
+    path.parent.mkdir()
+    path.write_text('Verdict: maybe\n')
+    for _ in range(3):
+        assert verdict.lint_file(path, role='sentinel-quality')[0] == 1
+    assert metrics.collect(root)['verdict_lint_rejections'] == 1
+    path.write_text('Verdict: nope\n')
+    verdict.lint_file(path, role='sentinel-quality')
+    assert metrics.collect(root)['verdict_lint_rejections'] == 2
+    verdict.lint_file(path.with_name('gate-missing.md'), role='sentinel-quality')
+    rows = [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+    digests = [row['payload']['sha256'] for row in rows if row['kind'] == 'verdict.rejected']
+    assert all(re.fullmatch('[0-9a-f]{64}', digest) for digest in digests[:-1])
+    assert digests[-1] is None

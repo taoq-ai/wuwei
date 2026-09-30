@@ -860,3 +860,40 @@ def test_development_checkout_init_says_reconfirm(tmp_path, monkeypatch, capsys)
     assert pre_tool_use(monkeypatch, root) == 2
     reason = json.loads(capsys.readouterr().out)['hookSpecificOutput']['permissionDecisionReason']
     assert 'run wuwei integrity reconfirm on the host' in reason and 'Errno' not in reason
+
+
+def no_terminal(monkeypatch, tmp_path, mode):
+    """Make /dev/tty missing ('missing') or a regular file ('file')."""
+    import builtins
+    real_open = builtins.open
+    regular = tmp_path / 'not-a-tty'
+    regular.write_text('')
+    def fake_open(path, *args, **kwargs):
+        if path != '/dev/tty':
+            return real_open(path, *args, **kwargs)
+        if mode == 'missing':
+            raise OSError(6, 'Device not configured')
+        return real_open(regular, *args, **kwargs)
+    monkeypatch.setattr(builtins, 'open', fake_open)
+
+
+@pytest.mark.parametrize('mode', ['missing', 'file'])
+def test_host_confirmation_without_a_terminal_names_the_owner_action(tmp_path, monkeypatch, mode):
+    api = core()
+    no_terminal(monkeypatch, tmp_path, mode)
+    with pytest.raises(OSError) as raised:
+        api._host_confirm('a' * 64)
+    assert str(raised.value) == 'this is an owner action: run it in a host terminal'
+
+
+def test_reconfirm_without_a_terminal_cannot_run(tmp_path, monkeypatch):
+    api = core()
+    root = workspace_root(tmp_path)
+    from fakes.integrity import seed
+    seed(root)
+    monkeypatch.setattr(api, 'PLUGIN', plugin(tmp_path))
+    monkeypatch.setattr(api, 'measure', lambda **kw: registry.Result(1, 'b' * 64, 'page: changed'))
+    no_terminal(monkeypatch, tmp_path, 'missing')
+    result = api.reconfirm(root)
+    assert result.exit == 2
+    assert 'run it in a host terminal' in result.reason and 'Errno' not in result.reason

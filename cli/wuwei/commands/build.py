@@ -32,6 +32,8 @@ def run(args):
                     action = state.read_state(root).get('builds', {}).get(item, {}).get('action', {})
                     if action.get('action') == 'park':
                         print(f'build: parked {item}: {action["reason"]}; decision {action["decision"]}', file=sys.stderr)
+                    elif action.get('action') == 'continue':
+                        print(action['feedback'], file=sys.stderr)
                 return code
             print(json.dumps(next_action(item, *paths, root=root)))
             return 0

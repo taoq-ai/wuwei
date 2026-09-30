@@ -158,6 +158,20 @@ def test_three_sweep_obligations_make_three_nudges(root):
     assert all(row['source'] == 'watch: sweep:reply' for row in attention(day))
 
 
+@pytest.mark.parametrize('counts,expected', [
+    ({'unreadable': 1, 'owed': 1, 'exit': 2}, [('unmeasured', 'watch: sweep:unmeasured')]),
+    ({'unreadable': 0, 'owed': 0, 'exit': 0}, []),
+    ({'unreadable': 'x', 'owed': 1, 'exit': 2}, [('watch: sweep', 'watch: sweep')]),
+])
+def test_obligations_sweep_is_itemised_by_source(root, counts, expected):
+    from wuwei.commands.status import attention
+    state.append_event('watch: clock', {}, root)
+    state.append_event('watch: sweep', {'reply_owed': 0, 'visibility_owed': 0,
+                                        'integrity_owed': 0, **counts}, root)
+    rows = attention(workspace.day_dir(root))
+    assert [(row['reason'], row['source']) for row in rows] == expected
+
+
 def test_mac_watch_installer_escapes_values_and_reports_service_failure(root, monkeypatch, capsys):
     from wuwei.commands import watch as watch_command
     from types import SimpleNamespace

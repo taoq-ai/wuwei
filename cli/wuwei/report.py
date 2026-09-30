@@ -1,5 +1,6 @@
 """Build the local owner report from recorded day evidence."""
 
+import json
 import re
 
 from wuwei import metrics, state, workspace
@@ -67,7 +68,7 @@ def build(root=None):
     lines.extend(f"- {name}: {item['phase']}" for name, item in carry)
     if not carry:
         lines.append('none')
-    lines += ['', '## Process metrics', str(measured), '']
+    lines += ['', '## Process metrics', json.dumps(measured, sort_keys=True, allow_nan=False), '']
     return '\n'.join(lines)
 
 

@@ -89,6 +89,8 @@ def session_payload(root=None):
     index = (memory / 'index.md').read_text(encoding='utf-8')
     data = state.read_state(root)
     data.pop('watch', None)
+    from wuwei import drafts
+    data['drafts'] = {key: row['destination'] for key, row in drafts.read(data).items()}
     state_text = json.dumps(data, ensure_ascii=False, sort_keys=True)
     from wuwei.promotion import last_run
     promote_line = last_run(root)

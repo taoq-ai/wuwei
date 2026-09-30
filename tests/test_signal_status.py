@@ -152,14 +152,31 @@ def test_status_counts_every_nonzero_phase(tmp_path, monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)['phases'] == {'delta': 1, 'merged': 1}
 
 
-@pytest.mark.parametrize('contents', [None, '{broken'])
-def test_unreadable_state_fails_closed(tmp_path, contents):
+@pytest.mark.parametrize('name', ['state.json', 'state.snapshot.json'])
+def test_unreadable_state_fails_closed(tmp_path, name):
     directory = day(tmp_path)
-    if contents is not None:
-        (directory / 'state.json').write_text(contents)
+    (directory / name).write_text('{broken')
     result = cli(tmp_path, 'status', '--line')
     assert result.returncode == 2
     assert result.stdout == 'WUWEI ? unmeasured\n'
+
+
+@pytest.mark.parametrize('state_data', [None, {'cap': 1, 'items': {}}])
+def test_no_plan_yet_before_the_gate(tmp_path, state_data):
+    day(tmp_path, state_data)
+    result = cli(tmp_path, 'status', '--line')
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith('WUWEI no plan yet | pages 0 | nudges 0')
+    result = cli(tmp_path, 'status', '--json')
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)['gate_approved'] is False
+
+
+def test_approved_gate_has_no_plan_yet_prefix(tmp_path):
+    day(tmp_path, {'cap': 1, 'items': {}, 'gate_approved': True})
+    result = cli(tmp_path, 'status', '--line')
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith('WUWEI pages 0') and 'no plan yet' not in result.stdout
 
 
 def test_init_prints_snippet_without_owner_settings_write(tmp_path):

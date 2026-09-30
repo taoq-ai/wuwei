@@ -483,3 +483,35 @@ def test_gate_symlink_keeps_target_lint_requirements(case):
     path.symlink_to(target.name)
     assert sweep() == 1
     assert sweep_event(root)[-1]['visibility_owed'] == 1
+
+
+@pytest.mark.parametrize('before', ['nothing', 'plan_session', 'note_only', 'snapshot_only'])
+def test_fresh_day_before_the_first_pr(case, monkeypatch, before):
+    root, _ = case
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    directory = workspace.day_dir(root)
+    if before == 'plan_session':
+        state._write_state(lambda data: None, root, kind='plan.session',
+                           payload={'session_id': 's'}, reserved=False)
+    if before == 'note_only':
+        directory.mkdir()
+        workspace.atomic_write(directory / 'state.json', json.dumps(state.DAY_DEFAULTS))
+        (directory / 'events.jsonl').write_text(json.dumps(
+            {'kind': 'note', 'payload': {'prs_seen': False}}) + '\n')
+    if before == 'snapshot_only':
+        directory.mkdir()
+        (directory / state.SNAPSHOT).write_text(json.dumps(state.DAY_DEFAULTS))
+    expected = 2 if before in ('note_only', 'snapshot_only') else 0
+    assert sweep() == expected
+    if not expected:
+        event = sweep_event(root)[-1]
+        assert event['unreadable'] == 0 and event['owed'] == 0
+
+
+def test_answered_is_the_latest_human_comment():
+    from wuwei import obligations
+    later = '2026-09-28T11:00:00Z'
+    bot = comment(3, author='bot', is_bot=True, created_at=later, updated_at=later)
+    assert obligations.answered(thread([comment(1), comment(2, author=ME, created_at=later), bot]), ME)
+    assert not obligations.answered(thread([comment(1, author=ME), comment(2, created_at=later)]), ME)
+    assert not obligations.answered(thread([]), ME)

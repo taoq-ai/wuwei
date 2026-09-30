@@ -24,8 +24,6 @@ def attention(directory, classified_state=None):
 
 def scan(directory, classified_state=None):
     """Attention rows and watch state (alive, off, dead, unmeasured) from one read of the day."""
-    if not (directory / 'state.json').is_file():
-        raise FileNotFoundError('day state is missing')
     classified_state = classified_state or {**state.read_state(directory=directory),
                                               'now': workspace.now().isoformat()}
     today = workspace.now().date()
@@ -78,10 +76,12 @@ def scan(directory, classified_state=None):
                               ('scanner_owed', 'scanner', 'page'),
                               ('integrity_owed', 'integrity', 'page'),
                               ('unreadable', 'unmeasured', 'nudge'))
-                    if all(type(payload.get(field)) is int and payload[field] >= 0
-                           for field, _, _ in fields):
+                    # Absent counts are 0 (the obligations sweep has fewer), but owed must be covered.
+                    counts = [payload.get(field, 0) for field, _, _ in fields]
+                    if all(type(count) is int and count >= 0 for count in counts) and not (
+                            type(payload.get('owed')) is int and payload['owed'] > sum(counts)):
                         for field, source, level in fields:
-                            for index in range(payload[field]):
+                            for index in range(payload.get(field, 0)):
                                 current[('watch: sweep', source, index)] = {
                                     'tier': level, 'source': f'watch: sweep:{source}',
                                     'lane': 'Work', 'reason': source}
@@ -120,10 +120,8 @@ def scan(directory, classified_state=None):
 
 
 def snapshot(directory):
-    if not (directory / 'state.json').is_file():
-        raise FileNotFoundError('day state is missing')
     data = state.read_state(directory=directory)
-    result = {'pages': 0, 'nudges': 0, 'cap': data['cap'],
+    result = {'pages': 0, 'nudges': 0, 'cap': data['cap'], 'gate_approved': data['gate_approved'],
               'phases': {phase: count for phase in state.PHASES
                          if (count := sum(item['phase'] == phase for item in data['items'].values()))},
               'next_reply_due': None, 'next_meeting': None}
@@ -185,6 +183,8 @@ def run(args):
         print(json.dumps(data))
     else:
         parts = [f'WUWEI pages {data["pages"]}', f'nudges {data["nudges"]}']
+        if not data['gate_approved']:
+            parts[0] = 'WUWEI no plan yet | ' + parts[0][6:]
         if data['watch'] != 'alive':
             parts.append(f'watch {data["watch"]}')
         parts.extend(f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items())

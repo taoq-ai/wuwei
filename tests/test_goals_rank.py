@@ -184,6 +184,37 @@ def test_discover_reads_ports_and_skips_day_items(tmp_path, monkeypatch):
     assert result['sources']['scanner'].startswith('not configured:')
 
 
+def test_discover_skips_threads_the_owner_answered(tmp_path, monkeypatch):
+    from wuwei.discovery import discover
+    from wuwei import state
+    from wuwei.registry import Result
+
+    base = tmp_path / '.wuwei'
+    base.mkdir()
+    (base / 'config.toml').write_text('[owner]\nhandles=["owner"]\n'
+                                      '[[repos]]\nname = "x/y"\npath = "repo"\ndefault_branch = "main"\n'
+                                      '[adapters]\nscanner = "none"\n')
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T09:00:00+02:00')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    state._write_state(lambda value: value.update(raised_prs=['x/y#1']), tmp_path, reserved=False)
+
+    def said(author, at):
+        return {'id': 1, 'author': author, 'is_bot': False, 'body': 'ok',
+                'created_at': at, 'updated_at': at}
+
+    class Host:
+        def threads(self, ref, *, root):
+            return Result(0, {'comments': [], 'threads': [
+                {'id': 't1', 'resolved': False, 'comments': [said('reviewer', '2026-09-28T06:00:00Z'),
+                                                             said('owner', '2026-09-28T07:00:00Z')]},
+                {'id': 't2', 'resolved': False, 'comments': [said('reviewer', '2026-09-28T07:00:00Z')]}]})
+
+    result = discover(tmp_path, ports={'code_host': Host()})
+    ids = [row['id'] for row in result['candidates']]
+    assert 'x/y#1:thread:t2' in ids and 'x/y#1:thread:t1' not in ids
+    assert result['sources']['follow_up_threads'] == 'measured: 1'
+
+
 def test_morning_plan_reports_discovery_sources(tmp_path, monkeypatch):
     from wuwei import discovery
 

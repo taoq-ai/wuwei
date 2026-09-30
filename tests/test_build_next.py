@@ -101,7 +101,7 @@ def test_step_build_parks_missing_pytest_without_continue(seat):
     assert len([e for e in events(day) if e['kind'] == 'seat.usage']) == 1
 
 
-def test_claude_launch_check_continue_done_idempotent(seat, monkeypatch):
+def test_claude_launch_check_continue_done_idempotent(seat, monkeypatch, capsys):
     root, repo, path, day, results = seat
     from wuwei import dispatch
     tracker_calls = []
@@ -121,7 +121,10 @@ def test_claude_launch_check_continue_done_idempotent(seat, monkeypatch):
     assert check['action'] == 'check' and 'build check A' in check['command']
     assert build.next_action('A', root=root) == check
     results.append(registry.Result(1, {'test_ids': ['test_one'], 'error': 'failure'}))
+    capsys.readouterr()
     assert main(['build', 'check', 'A']) == 1
+    err = capsys.readouterr().err
+    assert 'failure' in err and 'test_one' in err
     action = build.next_action('A', root=root)
     assert action['action'] == 'continue' and 'test_one' in action['feedback']
     assert action['resume'] == 'agent-builder'
