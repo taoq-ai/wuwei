@@ -132,7 +132,17 @@ def _gate_recorded(directory, head):
     return False
 
 
-def _visibility(ref, pr, reviews, data, me, directory):
+def _not_applicable(config):
+    """Visibility findings the owner's config makes impossible to owe."""
+    if config['shepherd']['min_reviewers'] == 0:
+        return {'reviewer': 'shepherd.min_reviewers = 0', 'channel-post': 'shepherd.min_reviewers = 0'}
+    if config['adapters']['chat'] == 'none':
+        return {'channel-post': 'adapters.chat = "none"'}
+    return {}
+
+
+def _visibility(ref, pr, reviews, data, me, directory, config):
+    skip = _not_applicable(config)
     reviewers = []
     for field in ('requested_reviewers', 'requested_teams'):
         for name in _list(pr[field]):
@@ -142,7 +152,7 @@ def _visibility(ref, pr, reviews, data, me, directory):
                 reviewers.append(name)
     if not reviewers:
         reviewers = [row['author'] for row in reviews if not row['is_bot'] and row['author'] != me]
-    owed = [] if reviewers else ['reviewer']
+    owed = [] if reviewers or 'reviewer' in skip else ['reviewer']
     posts = _list(data.get('channel_posts', []))
     posted = False
     for post in posts:
@@ -155,7 +165,7 @@ def _visibility(ref, pr, reviews, data, me, directory):
                 and all(isinstance(name, str) and name.strip() for name in mentions)
                 and (not reviewers or set(reviewers).issubset(mentions))):
             posted = True
-    if not posted:
+    if not posted and 'channel-post' not in skip:
         owed.append('channel-post')
     if not _gate_recorded(directory, pr['head']):
         owed.append('verdict')
@@ -225,11 +235,13 @@ def evaluate(root=None):
                     raise ValueError('unknown PR state')
                 reviews, discussion = _evidence(host, ref, root)
                 replies = _replies(reviews, discussion, me, ledger.get(ref, {}))
-                visibility = _visibility(ref, pr, reviews, data, me, directory)
+                visibility = _visibility(ref, pr, reviews, data, me, directory, config)
                 counts['reply_owed'] += len(replies)
                 counts['visibility_owed'] += len(visibility)
                 for finding in replies + visibility:
                     print(f'{ref} OWED {finding}')
+                for finding, reason in _not_applicable(config).items():
+                    print(f'{ref} NOT APPLICABLE {finding}: {reason}')
             except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
                 counts['unreadable'] += 1
                 print(f'{ref} UNREADABLE: {exc}')

@@ -58,9 +58,10 @@ review_gate_check = "Review Gate"
     host.results['reviews'] = Result(0, [])
     host.results['request_reviewers'] = Result(0, {'requested': ['alice', 'bob', 'lead']})
     def author_login(repo, email, root=None):
-        return Result(0, {'login': {
-            'alice@example.test': 'alice', 'bob@example.test': 'bob',
-            'lead@example.test': 'lead'}[email]})
+        login = {'alice@example.test': 'alice', 'bob@example.test': 'bob',
+                 'lead@example.test': 'lead', 'carol@example.test': 'carol',
+                 'builder@example.test': 'builder'}.get(email)
+        return Result(0, {'login': login}) if login else Result(2, reason='author login unavailable')
     host.author_login = author_login
     host.results['files'] = Result(0, [{'path': 'src/app.py'}])
     bot = Port(score=Result(0, 5), open_findings=Result(0, []))
@@ -244,6 +245,54 @@ def test_raise_checks_gates_then_requests_recent_authors(case, monkeypatch, appr
     assert not any(name == 'post' for name, _ in case[3].calls)
 
 
+def solo_raise(case, monkeypatch, minimum=0):
+    from wuwei import dispatch
+    monkeypatch.setattr(dispatch, 'tracker_call', lambda *args: None)
+    root, host, _, _, vcs = case
+    config_path = root / '.wuwei/config.toml'
+    config_path.write_text(config_path.read_text().replace(
+        'lead_login = "lead"', f'lead_login = ""\nmin_reviewers = {minimum}'))
+    tree = root / 'item-tree'
+    tree.mkdir()
+    identity = {'name': 'Builder', 'email': 'builder@example.test'}
+    vcs.responses.update(commit_context=Result(0, {'common_dir': str(root / 'repo.git')}),
+                         identity=Result(0, {**identity, 'author': identity, 'committer': identity}),
+                         head=Result(0, {'sha': SHA}), branch=Result(0, {'name': 'feature'}),
+                         merge_base=Result(0, {'sha': 'b' * 40}),
+                         diff_stat=Result(0, [{'path': 'src/app.py', 'additions': 1, 'deletions': 0}]),
+                         authorship=Result(0, [{'email': 'builder@example.test', 'commits': 5}]))
+    host.results['create_pr'] = Result(0, {'number': 7, 'url': 'https://github.com/acme/widget/pull/7'})
+    host.results['request_reviewers'] = Result(2, reason='empty reviewer list')
+    monkeypatch.setattr('wuwei.guards.pr.gate_check', lambda *a, **kw: (0, ''))
+    state._write_state(lambda data: (data['items'].update({'ITEM-1': {'worktree': str(tree)}}),
+                      data['approved_items'].append('ITEM-1')), root, reserved=False)
+    return root, host
+
+
+def test_solo_owner_raise_requests_no_reviewer(case, monkeypatch):
+    from wuwei import shepherd
+    root, host = solo_raise(case, monkeypatch)
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
+    assert state.read_state(root)['pr_reviewers'][REF] == []
+    assert not any(name == 'request_reviewers' for name, _, _ in host.calls)
+
+
+def test_owner_handle_case_differs_from_code_host_login(case, monkeypatch):
+    from wuwei import shepherd
+    root, host = solo_raise(case, monkeypatch, minimum=1)
+    host.author_login = lambda repo, email, root=None: Result(0, {'login': 'Builder'})
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
+    assert not any(name == 'create_pr' for name, _, _ in host.calls)
+
+
+def test_empty_code_host_login_names_email_and_key(case, monkeypatch, capsys):
+    from wuwei import shepherd
+    root, host = solo_raise(case, monkeypatch)
+    host.author_login = lambda repo, email, root=None: Result(0, {'login': ''})
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 2
+    assert 'shepherd.authors has no mapping for builder@example.test' in capsys.readouterr().out
+
+
 def test_raise_refuses_item_already_linked_before_creating_pr(case):
     from wuwei import shepherd
     root, host, _, _, _ = case
@@ -329,6 +378,24 @@ def test_unmapped_author_names_email_and_key(case):
     vcs.responses['authorship'] = Result(0, [{'email': 'missing@example.test', 'commits': 1}])
     with pytest.raises(ValueError, match='shepherd.authors.*missing@example.test'):
         shepherd.select_reviewers(root, REF)
+
+
+def test_unmapped_author_falls_back_to_code_host_login(case):
+    from wuwei import shepherd
+    root, _, _, _, vcs = case
+    vcs.responses['authorship'] = Result(0, [
+        {'email': 'alice@example.test', 'commits': 4},
+        {'email': 'Carol@example.test', 'commits': 3},
+    ])
+    assert shepherd.select_reviewers(root, REF) == ['alice', 'carol', 'lead']
+
+
+def test_unmapped_owner_email_resolves_and_is_excluded(case):
+    from wuwei import shepherd
+    root, host, _, _, vcs = case
+    host.results['pr'].data['author'] = 'builder'
+    vcs.responses['authorship'] = Result(0, [{'email': 'builder@example.test', 'commits': 9}])
+    assert shepherd.select_reviewers(root, REF) == ['lead']
 
 
 def test_raise_none_code_host_has_actionable_error(case, capsys):

@@ -201,8 +201,9 @@ def create_check(args, command, cwd, root, config):
     if operands or values(found, '--web', '-w'):
         raise ValueError('opaque PR create; use explicit CLI options')
     reviewers = values(found, '--reviewer', '-r')
-    if not reviewers or not all(part.strip() and not part.strip().startswith('-')
-                               for value in reviewers for part in value.split(',')):
+    if (reviewers or config['shepherd']['min_reviewers']) and not (reviewers and all(
+            part.strip() and not part.strip().startswith('-')
+            for value in reviewers for part in value.split(','))):
         return 1, 'PR create requires a named --reviewer in the same command'
     return gate_check(root, cwd, config)
 

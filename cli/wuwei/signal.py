@@ -17,7 +17,8 @@ SILENT = ('item.progress', 'state.write', 'state.set', 'state.transition',
           'watch: clock', 'watch: heartbeat', 'watch: observation', 'session: compact',
           'session: wake-seen', 'plan.session', 'pr.disposition', 'day.close_requested',
           'gate.received', 'discovery.requested', 'discovery.intake',
-          'plan.added', 'steward.run', 'steward.acknowledged')
+          'plan.added', 'steward.run', 'steward.acknowledged', 'plan.approved', 'state.import',
+          'build.started', 'build.launched', 'build.checked', 'verdict.rejected')
 
 
 def classify(event, state):
@@ -38,7 +39,8 @@ def classify(event, state):
     if kind == 'mcp.checked':
         return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'nudge'), lane
     if kind == 'tracker.call':
-        return ('silent' if payload.get('exit') == 0 else 'nudge'), lane
+        return ('silent' if payload.get('exit') == 0
+                or payload.get('reason') == 'tracker adapter is none' else 'nudge'), lane
     if kind == 'pr.action':
         tier = payload.get('tier')
         return (tier if tier in ('silent', 'nudge', 'page') else 'nudge'), lane

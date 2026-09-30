@@ -74,11 +74,11 @@ fast_checks = ["python3 -m pytest -q"]
 | `shepherd.lead_login` | `""` | Lead code host login. Counts as a reviewer when different from the author. |
 | `shepherd.review_channel` | `""` | Chat channel ID for review requests. |
 | `shepherd.review_gate_check` | `"Review Gate"` | Check excluded during review requests. |
-| `shepherd.min_reviewers` | `1` | Minimum eligible reviewers required to raise or request review. |
+| `shepherd.min_reviewers` | `1` | Minimum eligible reviewers required to raise or request review. `0` is a solo owner: `wuwei pr raise` and `gh pr create` need no reviewer, the owner merges, and the reviewer and channel-post obligations are not applicable. |
 | `shepherd.author_windows_days` | `[90, 180]` | Authorship lookback windows, then all history. |
 | `shepherd.tie_commits` | `2` | Include a third author within this many commits of second place. |
 | `shepherd.source_exclude` | `specs/*`, lock files and generated files | Changed paths excluded from reviewer selection. |
-| `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity. |
+| `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity. An unmapped email is resolved to the code host login for that email before reviewer selection refuses. |
 | `watch.clock_seconds` | `600` | Interval between watch clock events. |
 | `watch.dead_seconds` | `1200` | Clock age after which the watch is reported dead. |
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
@@ -90,7 +90,7 @@ fast_checks = ["python3 -m pytest -q"]
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `adapters.tracker` | `"none"` | Tracker implementation: none or linear. |
-| `adapters.chat` | `"none"` | Chat implementation: none or slack. |
+| `adapters.chat` | `"none"` | Chat implementation: none or slack. With none, the channel-post obligation is not applicable. |
 | `adapters.review_bot` | `"none"` | Review bot: none or greptile. |
 | `adapters.runtime` | `"claude"` | Seat runtime: claude, codex or none. |
 | `adapters.scanner` | `"none"` | Scanner: none or ziran. S4 requires the compatible JSON CLI described below. |
@@ -114,7 +114,8 @@ fast_checks = ["python3 -m pytest -q"]
 Run `bin/wuwei brief pack` once for a daily text pack, or `bin/wuwei brief pack --meeting`
 inside the lead window for the next attendee meeting. The returned path contains the
 five fixed sections, a what-changed visual, a three-bullet card and a three-question
-drill. Answer with `bin/wuwei brief answer 1 "your answer"`; the command prints feedback
+drill. The sections come from the day's items, decision records and owned PRs, never
+from adapter or guard messages. Answer with `bin/wuwei brief answer 1 "your answer"`; the command prints feedback
 and records the score and streak. The existing `bin/wuwei brief ROLE ITEM NAME` command
 continues to write seat briefs.
 
@@ -249,6 +250,9 @@ latest clock is older than `watch.dead_seconds`.
 
 Run `bin/wuwei nudges` to list current nudges and pages with their sources. Its
 entry count matches the page and nudge counts in `bin/wuwei status --line`.
+Routine progress such as plan approval, build starts and checks, and a skipped call to a
+tracker set to `none` is silent. A nudge clears when its cause clears: a draft nudge when
+the draft is sent or dropped, a merge policy nudge when the PR merges or closes.
 
 ## Private workspace environment
 

@@ -28,6 +28,8 @@ def _source(path, config):
 def _rank(root, config, repo, branch, paths, author, source_path=None):
     mapping = config['shepherd']['authors']
     vcs = registry.load('vcs', config)
+    host = registry.load('code_host', config)
+    resolved = {}
     selected = []
     windows = config['shepherd']['author_windows_days']
     if not windows or windows != sorted(set(windows)):
@@ -42,10 +44,19 @@ def _rank(root, config, repo, branch, paths, author, source_path=None):
             email, commits = row['email'].casefold(), row['commits']
             if not isinstance(email, str) or '@' not in email or type(commits) is not int or commits < 1:
                 raise ValueError('invalid authorship record')
-            if email not in mapping:
-                raise ValueError(f'shepherd.authors has no mapping for {email}')
-            login = mapping[email]['login']
-            if login != author and not login.casefold().endswith('[bot]'):
+            if email in mapping:
+                login = mapping[email]['login']
+            else:
+                if email not in resolved:
+                    try:
+                        resolved[email] = merge.read(host.author_login, repo['name'], email,
+                                                     root=root)['login']
+                    except ERRORS as exc:
+                        raise ValueError(f'shepherd.authors has no mapping for {email}: {exc}')
+                    if not isinstance(resolved[email], str) or not resolved[email]:
+                        raise ValueError(f'shepherd.authors has no mapping for {email}')
+                login = resolved[email]
+            if login.casefold() != author.casefold() and not login.casefold().endswith('[bot]'):
                 counts[login] = counts.get(login, 0) + commits
         selected = sorted(counts, key=lambda login: (-counts[login], login))
         if len(selected) >= max(2, config['shepherd']['min_reviewers']):
@@ -62,8 +73,8 @@ def _rank(root, config, repo, branch, paths, author, source_path=None):
         raise merge.Refused('fewer eligible reviewers than shepherd.min_reviewers')
     if any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]*', login) for login in selected):
         raise ValueError('invalid reviewer login')
-    emails = {row['login']: email for email, row in mapping.items()}
-    host = registry.load('code_host', config)
+    emails = {login: email for email, login in resolved.items()}
+    emails.update({row['login']: email for email, row in mapping.items()})
     for login in selected:
         if login not in emails:
             raise ValueError('reviewer needs a configured email')
@@ -282,9 +293,10 @@ def raise_pr(root, repo_name, base, title, body, item):
         state.record_pr(root, item, ref, raised=True, head=head, reviewers=reviewers)
         from wuwei import dispatch
         dispatch.tracker_call(item, 'in_review', root)
-        requested = merge.read(host.request_reviewers, ref, reviewers, root=root)
-        if set(requested['requested']) != set(reviewers):
-            raise ValueError('reviewer request could not be verified')
+        if reviewers:
+            requested = merge.read(host.request_reviewers, ref, reviewers, root=root)
+            if set(requested['requested']) != set(reviewers):
+                raise ValueError('reviewer request could not be verified')
         print(ref)
         return 0
     except (merge.Refused, state.StateError) as exc:

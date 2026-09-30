@@ -77,6 +77,16 @@ def test_fresh_states_and_dispatch(case, condition, expected, action):
     assert {call[0] for call in host.calls} <= {'pr', 'checks', 'reviews', 'threads'}
 
 
+def test_pr_action_event_carries_observed_state(case):
+    root, host, _ = case
+    own(root)
+    host.results['pr'].data.update(state='closed', merged=True)
+    measure(root)
+    lines = (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()
+    event = [json.loads(line) for line in lines if json.loads(line)['kind'] == 'pr.action'][-1]
+    assert event['payload']['state'] == 'merged'
+
+
 def test_startup_failure_is_ci_red_and_wakes_poll(case):
     root, host, _ = case
     own(root)

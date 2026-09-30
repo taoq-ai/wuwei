@@ -5,6 +5,22 @@ import re
 from wuwei import metrics, state, workspace
 
 
+def decisions(day, data):
+    """Every recorded decision outcome, pending ones included, seat outcomes last."""
+    outcomes = {}
+    for path in sorted((day / 'decisions').glob('D-*.md')):
+        if path.is_symlink():
+            raise ValueError('decision record must not be a symlink')
+        values = re.findall(r'^Outcome:\s*(\S[^\n]*)$', path.read_text(encoding='utf-8'), re.M)
+        if len(values) > 1:
+            raise ValueError(f'duplicate decision outcome: {path.name}')
+        if values:
+            outcomes[path.stem] = values[0]
+    outcomes.update({ident: record.get('outcome', 'unmeasured')
+                     for ident, record in data.get('decision_outcomes', {}).items()})
+    return outcomes
+
+
 def build(root=None):
     root = workspace.find_workspace(root)
     day = workspace.day_dir(root)
@@ -18,8 +34,13 @@ def build(root=None):
              f'- Review rework: {measured["review_rework"]}; baseline: {baseline["review_rework"]}',
              f'- Owner intervention: {measured["owner_intervention"]}; baseline: {baseline["owner_intervention"]}',
              f'- Lead time: {measured["lead_time"]}; baseline: {baseline["lead_time"]}',
-             '', '## Open at close']
+             '', '## Merged']
     items = data['items']
+    lines.extend(f"- {name} ({item['pr']})" if item.get('pr') else f'- {name}'
+                 for name, item in sorted(items.items()) if item['phase'] == 'merged')
+    if lines[-1] == '## Merged':
+        lines.append('none')
+    lines += ['', '## Open at close']
     lines.extend(f"- {name}: {item['phase']} ({item['status']})" for name, item in sorted(items.items())
                  if item['phase'] not in ('merged', 'parked'))
     if lines[-1] == '## Open at close':
@@ -36,17 +57,8 @@ def build(root=None):
     if not parked:
         lines.append('none')
     lines += ['', '## Decisions answered']
-    outcomes = {}
-    for path in sorted((day / 'decisions').glob('D-*.md')):
-        if path.is_symlink():
-            raise ValueError('decision record must not be a symlink')
-        values = re.findall(r'^Outcome:\s*(\S[^\n]*)$', path.read_text(encoding='utf-8'), re.M)
-        if len(values) > 1:
-            raise ValueError(f'duplicate decision outcome: {path.name}')
-        if values and values[0].lower() != 'pending':
-            outcomes[path.stem] = values[0]
-    outcomes.update({ident: record.get('outcome', 'unmeasured')
-                     for ident, record in data.get('decision_outcomes', {}).items()})
+    outcomes = {ident: outcome for ident, outcome in decisions(day, data).items()
+                if outcome.lower() != 'pending'}
     lines.extend(f'- {ident}: {outcome}' for ident, outcome in sorted(outcomes.items()))
     if not outcomes:
         lines.append('none')

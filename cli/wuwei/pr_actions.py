@@ -136,7 +136,7 @@ def observe(root, host, ref, config, measured):
                    if ref in dispositions else None)
     row = {'pr': ref, 'state': current, 'disposition': disposition, 'parked': disposition == 'parked'}
     now = workspace.now()
-    event = {'pr': ref, 'tier': 'silent'}
+    event = {'pr': ref, 'tier': 'silent', 'state': current}
     def update(data):
         value = data.setdefault('watch', {})
         actions, reviews = value.setdefault('actions', {}), value.setdefault('reviews', {})
@@ -330,7 +330,7 @@ def _fix(root, ref, item, measured, feedback=None):
 
 
 def _thread(root, ref, item, measured, reply=None):
-    from wuwei import outward, registry
+    from wuwei import drafts, outward, registry
     config = workspace.load_config(root)
     me = obligations._owner_login(config)
     owed = obligations._replies(measured['reviews'], measured['threads'], me,
@@ -397,15 +397,19 @@ def _thread(root, ref, item, measured, reply=None):
             return obligations.reply(ref, surface,
                 thread['comments'][0]['id'] if thread else latest['id'], reply, root)
         draft = {'surface': surface, 'thread': target, 'body': reply, 'source_id': latest['id']}
-        if draft in state.read_state(root).get('pr_reply_drafts', {}).get(ref, []):
-            pending = pending or ({'action': 'draft_reply', 'pr': ref, **draft}, 1)
+        inputs = {'ref': ref, 'text': reply, 'thread': thread['comments'][0]['id'] if thread else None}
+        existing = next((key for key, row in drafts.read(state.read_state(root)).items()
+                         if row['status'] == 'pending' and row['channel'] == 'code_host'
+                         and row['inputs'] == inputs), None)
+        if existing is not None:
+            pending = pending or ({'action': 'draft_reply', 'pr': ref, **draft, 'draft': existing}, 1)
             if code == 2:
                 pending = (pending[0], 2)
             continue
-        state._write_state(lambda data: data.setdefault('pr_reply_drafts', {}).setdefault(ref, [])
-                           .append(draft), root, reserved=False, kind='pr.reply.drafted',
-                           payload={'pr': ref, 'thread': target})
-        print(json.dumps({'action': 'draft_reply', 'pr': ref, **draft}))
+        draft_id = drafts.create(root, config, channel_kind, 'comment', config['adapters']['code_host'],
+                                 inputs, 'outward tier unmeasured; reply kept as a draft' if code == 2
+                                 else outward.APPROVAL_REQUIRED)
+        print(json.dumps({'action': 'draft_reply', 'pr': ref, **draft, 'draft': draft_id}))
         if code == 2:
             print('outward tier unmeasured; reply kept as a draft')
         return 2 if code == 2 else 1
