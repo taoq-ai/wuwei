@@ -51,6 +51,12 @@ def attention(directory, classified_state=None):
                     if kind == 'decision.decided' and isinstance(payload, dict):
                         current.pop(('decision.one_way', payload.get('id')), None)
                         continue
+                    if kind in ('draft.sending', 'draft.sent', 'draft.failed', 'draft.dropped') \
+                            and isinstance(payload, dict):
+                        current.pop(('draft.created', payload.get('id')), None)
+                    if (kind == 'pr.action' and isinstance(payload, dict)
+                            and payload.get('state') in ('merged', 'closed')):
+                        current.pop(('merge.policy_blocked', payload.get('pr')), None)
                     if kind in SILENT:
                         continue
                 else:
@@ -75,9 +81,9 @@ def attention(directory, classified_state=None):
                 tier, lane = classify(event, classified_state)
                 if kind == 'watch: sweep':
                     key = (kind, '')
-                elif kind == 'pr.action' and isinstance(payload, dict):
+                elif kind in ('pr.action', 'merge.policy_blocked') and isinstance(payload, dict):
                     key = (kind, payload.get('pr'))
-                elif kind == 'decision.one_way' and isinstance(payload, dict):
+                elif kind in ('decision.one_way', 'draft.created') and isinstance(payload, dict):
                     key = (kind, payload.get('id', number))
                 else:
                     key = (kind, number)
@@ -100,12 +106,9 @@ def snapshot(directory):
         raise FileNotFoundError('day state is missing')
     data = state.read_state(directory=directory)
     result = {'pages': 0, 'nudges': 0, 'cap': data['cap'],
-              'phases': {phase: 0 for phase in state.BUILD_PHASES},
+              'phases': {phase: count for phase in state.PHASES
+                         if (count := sum(item['phase'] == phase for item in data['items'].values()))},
               'next_reply_due': None, 'next_meeting': None}
-    for item in data['items'].values():
-        phase = item['phase']
-        if phase in result['phases']:
-            result['phases'][phase] += 1
     classified_state = {**data, 'now': workspace.now().isoformat()}
     active = attention(directory, classified_state)
     result['pages'] = sum(row['tier'] == 'page' for row in active)

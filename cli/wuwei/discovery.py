@@ -229,8 +229,10 @@ def intake(root=None, *, trigger, found=None):
     if not day['gate_approved']:
         return result
     from wuwei import plan
+    from wuwei.steward import SAFE_ID
     for item in candidates:
-        if item in day['items'] or item in day.get('intraday_proposals', {}):
+        if (item in day['items'] or item in day.get('intraday_proposals', {})
+                or not SAFE_ID.fullmatch(item)):
             continue
         try:
             action = plan.add(item, root)['action']

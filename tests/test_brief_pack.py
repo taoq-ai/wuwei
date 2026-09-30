@@ -12,12 +12,63 @@ from wuwei.__main__ import main
 @pytest.fixture
 def root(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('[adapters]\ntts = "none"\ncalendar = "none"\n')
+    (tmp_path / '.wuwei/config.toml').write_text(CONFIG)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
-    state.append_event('note', {'text': 'Release risk changed: validation failed'}, tmp_path)
-    state.append_event('decision.decided', {'id': 'D-1', 'outcome': 'Delay release'}, tmp_path)
+    day(tmp_path, {'RELEASE-1': {'phase': 'parked', 'resume_phase': 'implement', 'decision': 'D-1'},
+                   'SHIP-1': {'phase': 'merged', 'pr': 'org/repo#1'}},
+        {'D-1': 'Delay release'})
     return tmp_path
+
+
+CONFIG = '[adapters]\ntts = "none"\ncalendar = "none"\ncode_host = "none"\n'
+
+
+def day(root, items, outcomes, **extra):
+    state._write_state(lambda data: data.update(
+        items={name: {**state.ITEM_DEFAULTS, **item} for name, item in items.items()}, **extra),
+        root, reserved=False)
+    decisions = workspace.day_dir(root) / 'decisions'
+    decisions.mkdir(exist_ok=True)
+    for ident, outcome in outcomes.items():
+        (decisions / f'{ident}.md').write_text(f'Question: q\nOutcome: {outcome}\n')
+
+
+def daily(capsys, root):
+    assert main(['brief', 'pack']) == 0
+    return (root / capsys.readouterr().out.strip()).read_text()
+
+
+def section(pack, name):
+    return pack.split(f'## {name}\n\n')[1].split('\n')[0]
+
+
+def test_pack_reports_items_and_decisions_not_tool_messages(tmp_path, monkeypatch, capsys):
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text(CONFIG)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    day(tmp_path, {'DIVIDE-1': {'phase': 'merged', 'pr': 'org/repo#1'}}, {'D-1': 'defer'})
+    state.append_event('tracker.call', {'exit': 2, 'reason': 'tracker adapter is none'}, tmp_path)
+    state.append_event('hook.refusal', {'reason': 'guard refused the push'}, tmp_path)
+    pack = daily(capsys, tmp_path)
+    assert section(pack, 'Headline') == section(pack, 'Changed') == 'DIVIDE-1: merged (org/repo#1)'
+    assert section(pack, 'Decided') == 'D-1: defer'
+    assert section(pack, 'At risk') == 'No recorded risks'
+    assert 'tracker adapter' not in pack and 'guard refused' not in pack
+
+
+def test_pack_risks_are_parked_items_pending_decisions_and_open_prs(root, capsys):
+    day(root, {'RELEASE-1': {'phase': 'parked', 'resume_phase': 'implement', 'decision': 'D-1'},
+               'SHIP-1': {'phase': 'merged', 'pr': 'org/repo#1'}}, {'D-2': 'pending'},
+        raised_prs=['org/repo#2'], watch={'actions': {'org/repo#2': {
+            'state': 'ci_red', 'action': 'fix round', 'created_at': '2026-09-29T11:00:00+00:00',
+            'deadline': '2026-09-29T13:00:00+00:00'}}})
+    from wuwei import brief_pack
+    _, _, risk = brief_pack._evidence(root, '')
+    assert risk == ['RELEASE-1: parked', 'D-2: pending owner decision',
+                    'org/repo#2: ci_red: fix round']
+    assert section(daily(capsys, root), 'Headline') == 'RELEASE-1: parked'
 
 
 def test_daily_pack_fixed_sections_card_and_no_audio(root, capsys):
@@ -37,7 +88,7 @@ def test_daily_pack_fixed_sections_card_and_no_audio(root, capsys):
 def test_daily_pack_creates_audio_directory_before_say(root, monkeypatch, capsys):
     from adapters.tts import say
 
-    (root / '.wuwei/config.toml').write_text('[adapters]\ntts = "say"\ncalendar = "none"\n')
+    (root / '.wuwei/config.toml').write_text(CONFIG.replace('"none"', '"say"', 1))
     monkeypatch.setattr(say.sys, 'platform', 'darwin')
 
     def fake_run(argv, **kwargs):
@@ -187,8 +238,8 @@ def test_recorded_metric_appears_in_visual(root, monkeypatch, capsys):
     assert 'ISSUE-1: 3 fix rounds' in (root / capsys.readouterr().out.strip()).read_text()
 
 
-def test_untrusted_event_html_is_escaped(root, capsys):
-    state.append_event('note', {'text': '<script>alert(1)</script>'}, root)
+def test_untrusted_decision_html_is_escaped(root, capsys):
+    (workspace.day_dir(root) / 'decisions/D-1.md').write_text('Outcome: <script>alert(1)</script>\n')
     assert main(['brief', 'pack']) == 0
     pack = (root / capsys.readouterr().out.strip()).read_text()
     assert '<script>' not in pack
