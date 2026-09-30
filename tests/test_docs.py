@@ -32,6 +32,27 @@ def test_readme_install_and_hero():
         assert all(word in art.read_text() for word in ('Plan', 'Build', 'Review', 'Close'))
 
 
+def test_readme_compares_with_other_tools():
+    readme = (ROOT / 'README.md').read_text()
+    assert '## How WUWEI compares' in readme
+    assert (readme.index('## What WUWEI is and is not') < readme.index('## How WUWEI compares')
+            < readme.index('## Install'))
+    section = readme.split('## How WUWEI compares', 1)[1].split('\n## ', 1)[0]
+    assert re.search(r'As of [A-Z][a-z]+ \d{4}', section)
+    for phrase in ('Spec Kit', 'OpenSpec', 'superpowers', 'BMAD Method', 'Kiro', 'Claude Code',
+                   'github.com/github/spec-kit', 'github.com/Fission-AI/OpenSpec',
+                   'github.com/obra/superpowers', 'github.com/bmad-code-org/BMAD-METHOD',
+                   'kiro.dev', 'code.claude.com/docs', '### How they compose'):
+        assert phrase in section
+    assert '### Where WUWEI is worse' in section
+    worse = ' '.join(section.split('### Where WUWEI is worse', 1)[1].split())
+    for phrase in ('only in Claude Code', 'one owner per workspace', '40 to 100 ms',
+                   'not an isolation boundary', 'proven only by', 'live rehearsal'):
+        assert phrase in worse
+    assert len(section.splitlines()) < 70
+    assert '\N{EM DASH}' not in section
+
+
 def test_hero_variants_share_geometry_and_motion():
     dark, light = ((ROOT / f'docs/assets/hero-{v}.svg').read_text() for v in ('dark', 'light'))
     mask = lambda text: re.sub(r'#[0-9A-Fa-f]{3,8}', '#', text)

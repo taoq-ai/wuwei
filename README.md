@@ -20,6 +20,51 @@ WUWEI is a Claude Code plugin for a chartered team of agents. It gives each role
 
 WUWEI is not a hosted service, a tracker, a chat system, or a replacement for repository rules. It does not deploy, approve pull requests, or bypass branch protection. The current release includes the CLI, role charters and interactive day planner.
 
+## How WUWEI compares
+
+As of September 2026. Each row describes the tool from its own README or docs; these
+projects move fast, so follow the links. WUWEI's design choice is that process written as
+prompts or skills is guidance a model can skip, so it anchors its process in hooks that
+refuse at the moment of action. It does not replace the tools below and can run alongside
+them.
+
+| Tool | What it does | Layer | Unit of work | Enforcement | State |
+|---|---|---|---|---|---|
+| [Spec Kit](https://github.com/github/spec-kit) | Constitution once per project, then specify, plan, tasks and implement per feature; many agents through integrations | Method and prompts | One feature | The agent follows the commands and templates | Markdown in the repository |
+| [OpenSpec](https://github.com/Fission-AI/OpenSpec) | A folder per change (proposal, specs with added requirements, design, tasks); propose, apply, then archive updates the specs; 30+ tools | Method and prompts | One change | The agent follows the commands | `openspec/` in the repository |
+| [superpowers](https://github.com/obra/superpowers) | Composable skills (brainstorming, plans, TDD, debugging, subagent-driven development) loaded by a session-start hook; Claude Code, Codex, Cursor and others | Method and prompts | One task or branch | The agent checks for a relevant skill before each task | Plans and code in the repository |
+| [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD) | Agent personas (analyst, product manager, architect, developer, UX designer) and documents (brief, PRD, architecture, epics and stories) | Method and prompts | One change or project, sized to scope | The agent follows the skills | Documents in the repository |
+| [Kiro](https://kiro.dev) | AWS agentic IDE, CLI and web; specs as requirements, design and tasks; hooks on file, tool and agent events | Its own agent runtime | One spec | Hooks, including PreToolUse hooks that can block a tool call | Spec files in the project |
+| [Claude Code](https://code.claude.com/docs/en/overview) plan mode, subagents, hooks, memory | Plan before edits, subagents in their own context, hooks that can deny a tool call, `CLAUDE.md` and auto memory | Runtime | One session | The hooks you write | `CLAUDE.md` and auto memory |
+| WUWEI | Chartered roles run a working day | Runtime (Claude Code hooks and a CLI) | A day across repositories: plan, seats, gates, PR, decisions, retro | Shipped hooks refuse at the moment of action and give the reason | Producer-only state and events under `.wuwei/`, written only by the CLI |
+
+WUWEI ships the roles and the day loop: planner, lead, builder, shepherd, steward and four
+sentinels, with three parallel review gates and one fix round ([concepts](docs/site/concepts.md)).
+It works through `gh` for the code host, with tracker and chat as optional adapters. Releases
+carry a signed manifest and an integrity check, and ZIRAN audits the role tool grants
+([security](docs/site/security.md)). Retros feed the charters: seats propose changes,
+`wuwei promote` lands them and a ledger records each outcome.
+
+### How they compose
+
+WUWEI is the loop and the enforcement, not a spec format. An item's spec can be written with
+Spec Kit or OpenSpec; this repository builds WUWEI itself with Spec Kit (see `specs/`). A seat
+can run superpowers' skills inside its worktree. Claude Code's hooks, subagents, skills and
+plugins are what WUWEI is made of.
+
+### Where WUWEI is worse
+
+- Heavier to set up: a signed release asset, `init`, config and owner actions in a host
+  terminal.
+- Runs only in Claude Code (Codex is an optional seat runtime).
+- It supports one owner per workspace.
+- Hooks add 40 to 100 ms per tool call depending on hardware
+  ([hook latency budget](docs/site/reference.md#hook-latency-budget)).
+- The guards are cooperative mistake prevention, not an isolation boundary
+  ([security](docs/site/security.md)).
+- It is proven only by its author's own use so far; the live rehearsal is the release
+  criterion ([rehearsal](docs/site/rehearsal.md)).
+
 ## Install
 
 You need Claude Code, Python 3.11 or newer, Git and `ssh-keygen`. Install the signed
