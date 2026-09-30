@@ -337,8 +337,8 @@ def check(payload):
         cwd = _cwd(payload)
         initial = workspace.scope(cwd)
         script = shell.script_text(raw, cwd) if initial else None
-        script_relevant = bool(script and shell.mentions(script, {'gh'})
-                               and shell.mentions(script, {'create', 'merge', 'review', 'api', 'admin'}))
+        script_relevant = bool(script and shell.mentions(script, {'gh'}, script=True)
+                               and shell.mentions(script, {'create', 'merge', 'review', 'api', 'admin'}, script=True))
         if not shell.mentions(raw, {'gh'}) and not script_relevant:
             return 0, ''
         try:

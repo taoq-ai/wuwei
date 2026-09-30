@@ -598,6 +598,16 @@ def test_memory_lint_evidence_is_cli_owned(workspace, path):
     assert check_bash(payload(workspace, 'Bash', command=f'echo forged > {path}'))[0] == 1
 
 
+@pytest.mark.parametrize('tool,fields', [
+    ('Write', {'file_path': '.wuwei/executable'}), ('Edit', {'file_path': '.wuwei/executable'}),
+    ('Bash', {'command': 'echo x > .wuwei/executable'}), ('Bash', {'command': 'cp other .wuwei/executable'}),
+])
+def test_recorded_executable_is_protected(workspace, tool, fields):
+    from wuwei.guards.protect_state import check_bash, check_file
+    check = check_bash if tool == 'Bash' else check_file
+    assert check(payload(workspace, tool, **fields))[0] == 1
+
+
 @pytest.mark.parametrize('command', ['bin/wuwei state recover', 'python3 -P -m wuwei state recover',
                                      "bin/wuwei 'state' recover > out"])
 def test_seat_cannot_recover_state(workspace, tmp_path, command):

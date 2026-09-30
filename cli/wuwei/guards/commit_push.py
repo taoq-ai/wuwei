@@ -265,7 +265,7 @@ def check(payload):
         raw = payload['tool_input']['command']
         relevant = COMMIT_VERBS | {'push', 'config', 'wuwei-workspace', 'executable'} | IDENTITY_ENV | IDENTITY_SETTINGS
         script = shell.script_text(raw, payload['cwd'])
-        opaque_script = script and shell.mentions(script, {'git', 'gh'}) and shell.mentions(script, relevant)
+        opaque_script = script and shell.mentions(script, {'git', 'gh'}, script=True) and shell.mentions(script, relevant, script=True)
         if opaque_script:
             raw = script
         if not shell.mentions(raw, {'git', 'gh', 'rm'}) or not shell.mentions(raw, relevant):
