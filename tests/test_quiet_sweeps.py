@@ -280,13 +280,65 @@ def test_nudges_on_a_workspace_without_day_state_lists_nothing(tmp_path, monkeyp
     assert json.loads(capsys.readouterr().out) == []
 
 
-def test_dead_watch_pages_until_a_fresh_clock(root, capsys):
+def test_watch_not_started_today_is_off(root, monkeypatch, capsys):
     from wuwei.commands.status import attention, snapshot
     day = workspace.day_dir(root)
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
+    state._write_state(lambda data: None, root, reserved=False)
+    state.append_event('watch: clock', {}, root)
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00+00:00')
+    assert watch.health(root) == (0, 'watch off: no clock line today')
+    assert attention(day) == [] and snapshot(day)['watch'] == 'off'
+    assert main(['status', '--line']) == 0
+    assert 'pages 0 | nudges 0 | watch off' in capsys.readouterr().out
+    assert main(['nudges']) == 0
+    assert json.loads(capsys.readouterr().out) == []
+
+
+def test_installed_watch_without_clock_today_is_dead_until_uninstalled(root, tmp_path, monkeypatch,
+                                                                        capsys):
+    import sys
+    from wuwei.commands.status import attention, snapshot
+    day = workspace.day_dir(root)
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T23:50:00+00:00')
+    state._write_state(lambda data: None, root, reserved=False)
+    state.append_event('watch: clock', {}, root)
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00+00:00')
+    service(monkeypatch, tmp_path, sys.platform)
+    assert main(['watch', 'install']) == 0
+    assert watch.health(root)[0] == 1
+    assert [(row['source'], row['tier']) for row in attention(day)] == [('watch: health', 'page')]
+    assert snapshot(day)['watch'] == 'dead'
+    capsys.readouterr()
+    assert main(['status', '--line']) == 0
+    assert 'pages 1 | nudges 0 | watch dead' in capsys.readouterr().out
+    assert main(['nudges']) == 0
+    assert [row['source'] for row in json.loads(capsys.readouterr().out)] == ['watch: health']
+    assert main(['watch', 'uninstall']) == 0
+    assert watch.health(root) == (0, 'watch off: no clock line today')
+    assert attention(day) == [] and snapshot(day)['watch'] == 'off'
+
+
+def test_installed_watch_with_fresh_clock_is_alive(root, tmp_path, monkeypatch):
+    import sys
+    from wuwei.commands.status import attention, snapshot
+    service(monkeypatch, tmp_path, sys.platform)
+    assert main(['watch', 'install']) == 0
+    state.append_event('watch: clock', {}, root)
+    assert watch.health(root) == (0, '')
+    day = workspace.day_dir(root)
+    assert attention(day) == [] and snapshot(day)['watch'] == 'alive'
+
+
+def test_dead_watch_pages_until_a_fresh_clock(root, monkeypatch, capsys):
+    from wuwei.commands.status import attention, snapshot
+    day = workspace.day_dir(root)
+    state.append_event('watch: clock', {}, root)
+    monkeypatch.setenv('WUWEI_NOW', (workspace.now() + timedelta(seconds=1200)).isoformat())
     assert [row['source'] for row in attention(day)] == ['watch: health']
     assert attention(day)[0]['tier'] == 'page' and snapshot(day)['watch'] == 'dead'
     assert main(['status', '--line']) == 0
-    assert 'watch dead' in capsys.readouterr().out
+    assert 'pages 1 | nudges 0 | watch dead' in capsys.readouterr().out
     assert main(['nudges']) == 0
     assert [row['source'] for row in json.loads(capsys.readouterr().out)] == ['watch: health']
     state.append_event('watch: sweep', {'reply_owed': 0, 'visibility_owed': 0, 'unreadable': 0,

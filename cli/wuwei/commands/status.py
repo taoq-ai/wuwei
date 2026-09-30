@@ -19,11 +19,17 @@ def register(subparsers):
 
 def attention(directory, classified_state=None):
     """Current page and nudge causes from the day's event stream."""
+    return scan(directory, classified_state)[0]
+
+
+def scan(directory, classified_state=None):
+    """Attention rows and watch state (alive, off, dead, unmeasured) from one read of the day."""
     if not (directory / 'state.json').is_file():
         raise FileNotFoundError('day state is missing')
     classified_state = classified_state or {**state.read_state(directory=directory),
                                               'now': workspace.now().isoformat()}
-    current = {}
+    today = workspace.now().date()
+    current, clocks = {}, []
     path = directory / 'events.jsonl'
     if path.exists():
         with path.open(encoding='utf-8') as stream:
@@ -38,8 +44,10 @@ def attention(directory, classified_state=None):
                     kind = event.get('kind')
                     payload = event.get('payload', {})
                     stamp = event.get('ts')
-                    if isinstance(stamp, str) and datetime.fromisoformat(stamp).date() != workspace.now().date():
+                    if isinstance(stamp, str) and datetime.fromisoformat(stamp).date() != today:
                         continue
+                    if kind == 'watch: clock':
+                        clocks.append(stamp)
                     if kind in ('state.transition', 'item.escalated'):
                         continue
                     if kind == 'mcp.checked' and isinstance(payload, dict) and payload.get('exit') == 0:
@@ -92,10 +100,13 @@ def attention(directory, classified_state=None):
                 else:
                     current[key] = {'tier': tier, 'source': kind, 'lane': lane,
                                     'reason': payload.get('reason', kind) if isinstance(payload, dict) else kind}
-    from wuwei import watch
     # Live health, not the last sweep's count: a partial sweep event must not hide a dead watch.
     current = {key: value for key, value in current.items() if key[:2] != ('watch: sweep', 'watch')}
-    code, message = watch.health(directory.parents[2])
+    code, message = 0, ''
+    # A watch with no clock line today and no installed unit is off: skip the watch import.
+    if clocks or workspace.watch_unit(directory.parents[2])[1].exists():
+        from wuwei import watch
+        code, message = watch.health(directory.parents[2], clocks)
     if code:
         current[('watch: health',)] = {'tier': 'page' if code == 1 else 'nudge',
                                        'source': 'watch: health', 'lane': 'Work', 'reason': message}
@@ -105,7 +116,7 @@ def attention(directory, classified_state=None):
                                   classified_state)
             current[('item.escalated', name)] = {'tier': tier, 'source': 'item.escalated',
                                                  'lane': lane, 'reason': name}
-    return list(current.values())
+    return list(current.values()), {1: 'dead', 2: 'unmeasured'}.get(code, 'alive' if clocks else 'off')
 
 
 def snapshot(directory):
@@ -117,11 +128,9 @@ def snapshot(directory):
                          if (count := sum(item['phase'] == phase for item in data['items'].values()))},
               'next_reply_due': None, 'next_meeting': None}
     classified_state = {**data, 'now': workspace.now().isoformat()}
-    active = attention(directory, classified_state)
+    active, result['watch'] = scan(directory, classified_state)
     result['pages'] = sum(row['tier'] == 'page' for row in active)
     result['nudges'] = sum(row['tier'] == 'nudge' for row in active)
-    health = [row['tier'] for row in active if row['source'] == 'watch: health']
-    result['watch'] = {'page': 'dead', 'nudge': 'unmeasured'}.get(next(iter(health), ''), 'alive')
     for key, field, destination in (('reply_obligations', 'due', 'next_reply_due'),
                                      ('meetings', 'start', 'next_meeting')):
         rows = data.get(key, [])

@@ -48,8 +48,9 @@ Commands are auto-discovered by `cli/wuwei/__main__.py`; no registration elsewhe
   - `code, message = watch.health(directory.parents[2])` (reuse; same root derivation `snapshot` already uses).
   - Drop every key whose first two parts are `('watch: sweep', 'watch')` (the sweep's `watch_dead` rows).
   - If `code == 1` add key `('watch: health',)` with `{'tier': 'page', 'source': 'watch: health', 'lane': 'Work', 'reason': message}`; if `code == 2` the same with tier `nudge`.
-- In `snapshot`, set `result['watch']` to `dead` when a `watch: health` page is active, `unmeasured` when a `watch: health` nudge is active, else `alive`. Derive it from the `active` rows already computed; do not call `watch.health` twice.
-- In `run`, for `--line`, append `watch dead` or `watch unmeasured` right after the nudges part when `data['watch'] != 'alive'`.
+- `status.scan` reads the event stream once, collects today's `watch: clock` stamps and passes them to `watch.health(root, clocks)` only when there are any, so the status line never reads events twice. It returns the rows and the watch state: `dead` (page), `unmeasured` (nudge), `alive`, or `off` when no clock line exists today (no row). `attention` returns the rows; `snapshot` takes both.
+- `watch.health` reads only today's clock lines. Fresh is alive; stale is dead. With none today it checks `workspace.watch_unit(root)`, the unit path `watch install` and `uninstall` now share: installed is dead, otherwise `(0, 'watch off: ...')`. `status.scan` does that one existence check itself when there is no clock line and imports `wuwei.watch` only when a clock line exists or the unit is installed.
+- In `run`, for `--line`, append `watch off`, `watch dead` or `watch unmeasured` right after the nudges part when `data['watch'] != 'alive'`.
 - `nudges` and the cockpit (`commands/dashboard.py`) need no change; they call `attention` and `snapshot`.
 - Import `watch` inside `attention` (as `snapshot` imports `registry`) to keep command import light.
 - Do not change `watch.sweep`, `obligations.sweep`, `signal.classify` or the sweep row fields.

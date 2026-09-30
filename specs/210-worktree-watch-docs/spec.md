@@ -45,11 +45,11 @@ The owner can preview the watch service, and a failed install never leaves a uni
 
 A dead watch shows in the status line and in `wuwei nudges` from live clock health, not only from the last recorded sweep.
 
-**Independent Test**: With a day state and no fresh clock line, `status --line` contains `watch dead` and `wuwei nudges` lists a page with source `watch: health`; after a fresh clock event both clear.
+**Independent Test**: With a clock line today older than `watch.dead_seconds`, `status --line` contains `watch dead` and `wuwei nudges` lists a page with source `watch: health`; after a fresh clock event both clear.
 
 **Acceptance Scenarios**:
 
-1. **Given** the latest clock line older than `watch.dead_seconds` (or none), **then** `wuwei nudges` includes one page with source `watch: health` and the health reason, and `status --line` shows `watch dead` and counts that page.
+1. **Given** today's latest clock line older than `watch.dead_seconds`, **then** `wuwei nudges` includes one page with source `watch: health` and the health reason, and `status --line` shows `watch dead` and counts that page.
 2. **Given** a later partial `sweep obligations` event, **then** the dead watch is still shown.
 3. **Given** a fresh clock line, **then** no watch entry appears even if an earlier sweep recorded `watch_dead: 1`.
 4. **Given** unreadable clock health, **then** a `watch: health` nudge carries the unmeasured reason and the status line shows `watch unmeasured`.
@@ -72,7 +72,7 @@ A dead watch shows in the status line and in `wuwei nudges` from live clock heal
 - Hook installation fails after the worktree is created: the command exits 2 with the reason (existing `create_worktree` behaviour, unchanged).
 - On Linux, `enable --now` fails after `daemon-reload`: the installer runs the same best-effort teardown as uninstall, removes the unit and exits 2 with the original reason.
 - `watch install --dry-run` with a unit already present exits 2 with "already installed", like the real install.
-- A watch that was never started (no clock line at all) is reported dead, matching the existing sweep and SessionStart behaviour.
+- The watch is expected when `watch install` has installed its unit for the workspace (the unit file at the path install and uninstall share exists). Expected with no fresh clock line (none today, or today's older than `watch.dead_seconds`) is dead, including the morning after an overnight death; it clears at a fresh clock line or after `watch uninstall`. Not expected with no clock line today is `watch off`, neither a page nor a nudge. Not expected with a stale clock line today is dead. The same rule applies to the status line, `wuwei nudges`, sweeps and SessionStart.
 
 ## Requirements *(mandatory)*
 
@@ -84,7 +84,7 @@ A dead watch shows in the status line and in `wuwei nudges` from live clock heal
 - **FR-004**: `wuwei watch install --dry-run` MUST print the unit path, rendered unit and service commands and MUST NOT write files or call the service adapter.
 - **FR-005**: A failed service load during install MUST remove the unit (best-effort teardown) and exit 2 with the load failure.
 - **FR-006**: `wuwei watch uninstall` MUST remove an existing unit and exit 0 even when a service command fails, printing each failure as a warning on stderr.
-- **FR-007**: `status.attention` MUST add live watch health from `watch.health`: a page for dead, a nudge for unmeasured, source `watch: health`, replacing any sweep-recorded watch row. `status --line` MUST show `watch dead` or `watch unmeasured`; `status --json` MUST carry `watch` as `alive`, `dead` or `unmeasured`.
+- **FR-007**: `status.attention` MUST add live watch health from `watch.health`: a page for dead, a nudge for unmeasured, source `watch: health`, replacing any sweep-recorded watch row. `status --line` MUST show `watch off`, `watch dead` or `watch unmeasured`; `status --json` MUST carry `watch` as `alive`, `off`, `dead` or `unmeasured`. An installed unit with no fresh clock line is `dead`; no installed unit and no clock line today is `off` and adds no row.
 - **FR-008**: `docs/site/reference.md` MUST document the verdict layout, phase order, brief body input and worktree command; `docs/site/configuration.md` MUST document the dry run, failure cleanup, idempotent uninstall and the dead watch surfaces; `skills/wuwei-plan/SKILL.md` MUST use `wuwei worktree add`.
 - **FR-009**: Documentation tests MUST lint the documented example verdict and compare the documented phase table with `state.PHASES`.
 
@@ -110,7 +110,7 @@ A dead watch shows in the status line and in `wuwei nudges` from live clock heal
 - The new branch starts from the configured repository's checked-out HEAD, which is how the existing `vcs.worktree_add(repo, branch, path)` port works. Choosing a base ref would change the port contract and recordings; the brief already reports the merge-base against the remote default branch.
 - `worktree add` does not record the worktree in day state; `wuwei brief ... --worktree` remains the producer of the item's `worktree` field.
 - `watch uninstall` succeeds even when the stop command fails, as the issue states. The warning names the failure so the owner can stop a still-loaded job by hand; the unit file is removed so it is not reloaded at the next login.
-- Live watch health is the authority for the watch row in attention; a sweep's `watch_dead` count no longer produces its own row. A workspace with no clock line at all reports a dead watch, consistent with sweep and SessionStart.
+- Live watch health is the authority for the watch row in attention; a sweep's `watch_dead` count no longer produces its own row. A workspace with no clock line today reports `watch off` unless its watch unit is installed, in which case it is dead.
 - Existing tests that expect an empty attention list or exact page counts gain a fresh `watch: clock` event in their fixtures; the existing uninstall-failure assertion (exit 2, unit kept) is replaced by the new behaviour.
 
 ## Deferred

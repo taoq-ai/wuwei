@@ -68,6 +68,16 @@ After the morning gate, create each code item's worktree with `bin/wuwei worktre
 
 A worktree made with raw `git worktree add` has no anchor. Its commits and pushes outside the Claude Bash hook skip the WUWEI guards.
 
+## Watch state
+
+`bin/wuwei status --line` and `status --json` report the watch from today's `watch: clock` events and from whether `bin/wuwei watch install` has installed its unit for this workspace:
+
+- Installed, and no clock line today or today's latest is older than `watch.dead_seconds`: `watch dead`, one `watch: health` page. This includes the morning after the watch died overnight. The page clears at the next clock line or after `bin/wuwei watch uninstall`.
+- Not installed, and no clock line today: `watch off`. It is not a page or a nudge.
+- Not installed, and today's clock line went stale (a watch started by hand died): `watch dead`, one page that clears at the next clock line.
+
+`watch unmeasured`: the clock cannot be read or is in the future; one nudge. The same health appears in `bin/wuwei nudges`, at session start and in sweeps. A running watch adds nothing to the line.
+
 ## Seat briefs
 
 ```text

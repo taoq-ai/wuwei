@@ -245,8 +245,8 @@ user service. On macOS this creates a launchd agent; on Linux it creates a syste
 user unit. The service uses the active workspace and current `PATH`. Run
 `bin/wuwei watch uninstall` to stop and remove it. `bin/wuwei watch --once` runs
 one due cycle without installing a service. The watch writes clock events at
-`watch.clock_seconds` intervals, and the next sweep reports a dead watch when the
-latest clock is older than `watch.dead_seconds`.
+`watch.clock_seconds` intervals, and the next sweep reports a dead watch when it
+has no fresh clock line (see below).
 
 `bin/wuwei watch install --dry-run` prints the unit path, the rendered unit and the
 service commands without writing or loading anything. If loading the service
@@ -255,10 +255,19 @@ fails, install removes the unit it wrote, so a retry after the fix works.
 warning and still removes the unit. A job that stays loaded after such a warning
 keeps running until you stop it by hand.
 
-`bin/wuwei status --line` shows `watch dead` when the latest clock is missing or
-older than `watch.dead_seconds`, and `watch unmeasured` when watch health cannot
-be read. The same condition is a `watch: health` page or nudge in
-`bin/wuwei nudges` and the cockpit, whatever the last sweep recorded.
+`bin/wuwei status --line`, `bin/wuwei nudges`, the cockpit, session start and
+sweeps all read watch health the same way, whatever the last sweep recorded:
+
+- Installed with `watch install`, and no clock line today or today's latest
+  clock older than `watch.dead_seconds`: `watch dead`, one `watch: health` page.
+  This catches a watch that died overnight. It clears at the next clock line or
+  after `watch uninstall`.
+- Not installed, and no clock line today: `watch off`, neither a page nor a
+  nudge.
+- Not installed, and today's clock went stale (a watch run by hand died):
+  `watch dead`, one page.
+
+`watch unmeasured` means watch health cannot be read; it is one nudge.
 
 Run `bin/wuwei nudges` to list current nudges and pages with their sources. Its
 entry count matches the page and nudge counts in `bin/wuwei status --line`.

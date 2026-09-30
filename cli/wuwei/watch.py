@@ -42,17 +42,25 @@ def days(root):
                    and p.name <= today), reverse=True)
 
 
-def health(root):
+def health(root, clocks=None):
+    """Dead when today's clock went stale, or when the installed watch wrote none today.
+
+    No clock line today and no installed unit means off, not a finding.
+    """
     try:
-        for directory in days(root):
-            clocks = [obligations._time(row['ts']) for row in records(directory / 'events.jsonl')
+        if clocks is None:
+            clocks = [row['ts'] for row in records(workspace.day_dir(root) / 'events.jsonl')
                       if row['kind'] == 'watch: clock']
-            if clocks:
-                age = (workspace.now() - max(clocks)).total_seconds()
-                if age < 0:
-                    raise ValueError('clock line is in the future')
-                return (1, 'watch dead: no clock line within deadline') if age >= workspace.load_config(root)['watch']['dead_seconds'] else (0, '')
-        return 1, 'watch dead: missing clock line'
+        if clocks:
+            age = (workspace.now() - max(map(obligations._time, clocks))).total_seconds()
+            if age < 0:
+                raise ValueError('clock line is in the future')
+            if age < workspace.load_config(root)['watch']['dead_seconds']:
+                return 0, ''
+            return 1, 'watch dead: no clock line within deadline'
+        if workspace.watch_unit(root)[1].exists():
+            return 1, 'watch dead: installed but no clock line today'
+        return 0, 'watch off: no clock line today'
     except ERRORS as exc:
         return 2, f'watch health unmeasured: {exc}'
 

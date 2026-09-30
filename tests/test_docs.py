@@ -132,8 +132,8 @@ def test_reference_verdict_example_and_phase_table():
     assert verdict.lint(example, quality=True, class_sweep=True)[0] == 0
     for phase, following in state.PHASES.items():
         assert f'| `{phase}` | {", ".join(following) or "none"} |' in reference
-    for phrase in ('worktree add', 'stdin', 'sentinel-arch'):
+    for phrase in ('worktree add', 'stdin', 'sentinel-arch', 'watch off', 'watch dead'):
         assert phrase in reference
     configuration = (SITE / 'configuration.md').read_text()
-    assert '--dry-run' in configuration and 'watch dead' in configuration
+    assert all(phrase in configuration for phrase in ('--dry-run', 'watch off', 'watch dead'))
     assert 'wuwei worktree add' in (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()

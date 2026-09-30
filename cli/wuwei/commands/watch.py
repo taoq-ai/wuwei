@@ -1,6 +1,5 @@
 """Run or install workspace watch supervision."""
 
-import hashlib
 import os
 from pathlib import Path
 import sys
@@ -34,11 +33,7 @@ def run(args):
     platform = service_platform()
     if platform not in ('darwin', 'linux'):
         raise ValueError('watch service installation supports macOS and Linux')
-    token = hashlib.sha256(str(root).encode()).hexdigest()[:12]
-    label = f'wuwei-{token}'
-    home = Path.home()
-    path = (home / 'Library/LaunchAgents' / f'{label}.plist' if platform == 'darwin' else
-            Path(os.environ.get('XDG_CONFIG_HOME', home / '.config')) / 'systemd/user' / f'{label}.service')
+    label, path = workspace.watch_unit(root, platform)
     if args.watch_action == 'uninstall':
         if not path.exists():
             return 0
