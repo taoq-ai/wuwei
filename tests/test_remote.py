@@ -1,4 +1,4 @@
-"""Commands from the owner DM: vocabulary, the read-only gate, and one session per thread."""
+"""Commands from the owner DM: vocabulary, the remote-command guards, and one session per thread."""
 
 import json
 
@@ -8,7 +8,7 @@ from wuwei import state, workspace
 from wuwei.registry import Result
 
 
-OWNER = '[owner]\nname = "Robin Example"\n'
+OWNER = '[owner]\nname = "Robin Example"\n[control_plane]\nowner = "T1/U1"\n'
 
 
 class Transport:
@@ -48,13 +48,18 @@ def bare(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def ws(bare):
+def ws(bare, monkeypatch):
+    from wuwei.guards import agent_launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda config, root: 2**40)
     state._write_state(lambda data: None, bare, reserved=False)
     return bare
 
 
-def event(ident, text, channel='D1'):
-    return {'id': ident, 'source': 'slack', 'channel': channel, 'thread': '', 'sender': 'U1',
+FRESH = 'D1/1790769590.000100'  # ten seconds before WUWEI_NOW
+
+
+def event(ident, text, channel='D1', sender='T1/U1'):
+    return {'id': ident, 'source': 'slack', 'channel': channel, 'thread': '', 'sender': sender,
             'text': text, 'ts': ident.rsplit('/', 1)[-1]}
 
 
@@ -75,6 +80,15 @@ def remote():
     return remote
 
 
+def test_config_and_credential(bare):
+    from wuwei import env
+    (bare / '.wuwei/config.toml').write_text('[owner]\nname = "Robin Example"\n')
+    assert workspace.load_config(bare)['control_plane']['owner'] == ''
+    (bare / '.wuwei/config.toml').write_text(OWNER)
+    assert workspace.load_config(bare)['control_plane']['owner'] == 'T1/U1'
+    assert 'WUWEI_TOTP_SECRET' in env.CREDENTIALS
+
+
 @pytest.mark.parametrize('text, parsed', [
     ('plan', ('plan', '')), ('Plan today.', ('plan', '')), ('status', ('status', '')),
     ('REPORT!', ('report', '')), ('stop all', ('stop', 'all')),
@@ -91,7 +105,8 @@ def test_parse_vocabulary(text, parsed):
 def test_fixed_lines_pass_the_outward_lint(ws):
     from wuwei import outward
     module, config = remote(), workspace.load_config(ws)
-    for text in (module.VOCABULARY, module.UNAVAILABLE, module.GUARDED, module.FAILED):
+    for text in (module.VOCABULARY, module.UNAVAILABLE, module.FAILED, module.CONFIRM,
+                 module.NOTHING, module.CHANGED, module.LOW_MEMORY):
         assert outward.lint(text, 'D1', config) == (0, ''), text
 
 
@@ -239,7 +254,7 @@ def test_status_sends_the_status_line_without_the_prefix(ws, monkeypatch):
     expected = status.line(status.snapshot(workspace.day_dir(ws))).removeprefix('WUWEI ')
     assert 'WUWEI' not in expected
     assert handled(ws, 'status') == (0, [expected])
-    (ws / '.wuwei/config.toml').write_text(OWNER + '[control_plane]\ncontent = "none"\n')
+    (ws / '.wuwei/config.toml').write_text(OWNER + 'content = "none"\n')
     assert handled(ws, 'Status.') == (0, ['An update is waiting in the workspace.'])
 
 
@@ -257,15 +272,13 @@ def test_report_counts_merged_items(bare):
         'Report 2026-09-30: merged 1, open 0, parked 0, decisions answered 0.']
 
 
-@pytest.mark.parametrize('text, verb', [
-    ('plan today', 'plan'), ('ask what changed', 'ask'), ('stop all', 'stop'),
-    ('stop 1a2b3c4d', 'stop')])
-def test_gate_records_guarded_commands_as_pending(ws, text, verb):
+@pytest.mark.parametrize('text', ['plan today', 'plan today 000000', 'ask what changed'])
+def test_issue_acceptance_plan_without_a_second_factor_starts_nothing(ws, text):
     runtime = Runtime()
-    assert handled(ws, text, runtime=runtime) == (1, [remote().GUARDED])
-    assert runtime.calls == []
-    assert [row['payload'] for row in events(ws, 'remote.')] == [{'id': 'D1/1.000001', 'command': verb}]
-    assert 'changed' not in (workspace.day_dir(ws) / 'events.jsonl').read_text()
+    assert handled(ws, text, runtime=runtime, ident=FRESH) == (1, [remote().CONFIRM])
+    assert runtime.calls == [] and state.read_state(ws).get('sessions', {}) == {}
+    assert [row['payload'] for row in events(ws, 'remote.')] == [
+        {'id': FRESH, 'command': text.split()[0]}]
 
 
 def test_reply_without_a_remote_session_is_recorded_evidence(ws):
@@ -274,16 +287,6 @@ def test_reply_without_a_remote_session_is_recorded_evidence(ws):
     assert identifier == 'D-1'
     assert [row['payload'] for row in events(ws, 'decision.replied')] == [{'id': 'D-1', 'option': 'B'}]
     assert state.read_state(ws).get('decision_outcomes', {}) == {}
-
-
-def test_gate_records_a_reply_that_would_resume_a_session(ws):
-    routed(ws)
-    remote_row(ws, 'S1', ['D-1'])
-    runtime = Runtime()
-    assert handled(ws, 'option B on D-1', runtime=runtime) == (1, [remote().GUARDED])
-    assert runtime.calls == []
-    assert [row['payload'] for row in events(ws, 'decision.replied')] == [{'id': 'D-1', 'option': 'B'}]
-    assert [row['payload'] for row in events(ws, 'remote.')] == [{'id': 'D1/1.000001', 'command': 'reply'}]
 
 
 S = '0f8fad5b-d9cb-469f-a165-70867728950e'
@@ -308,8 +311,9 @@ def escalation(root, identifier):
 
 @pytest.fixture
 def open_gate(monkeypatch):
+    """The second factor is satisfied: every code_step check returns a step."""
     module = remote()
-    monkeypatch.setattr(module, 'EXECUTABLE', module.EXECUTABLE | {'plan', 'reply', 'ask'})
+    monkeypatch.setattr(module, 'code_step', lambda root, event, code: 1)
     return module
 
 
@@ -340,7 +344,8 @@ def test_issue_acceptance_plan_starts_a_session_and_a_reply_resumes_it(ws, open_
     row = state.read_state(ws)['sessions'][S]
     assert (row['role'], row['thread'], row['command'], row['decisions']) == (
         'remote', 'D1/1.000001', 'plan', ['D-1'])
-    assert payloads(ws, 'remote.') == [{'session': S, 'command': 'plan'}]
+    assert payloads(ws, 'remote.') == [{'id': 'D1/1.000001', 'factor': 'code', 'step': 1},
+                                       {'session': S, 'command': 'plan'}]
     assert sent == [escalation(ws, 'D-1'), f'Session {S[:8]}: turn ended, 1 decisions waiting.']
     code, sent = handled(ws, 'option B on D-1', runtime=runtime, ident='D1/2.000001')
     assert code == 0
@@ -421,10 +426,185 @@ def test_stop_marks_remote_sessions_and_blocks_resumes(ws, open_gate):
     assert runtime.calls == []
 
 
-@pytest.mark.parametrize('kind', ['remote.pending', 'remote.started', 'remote.resumed', 'remote.stopped'])
-def test_remote_kinds_are_reserved_to_the_listener_and_silent(ws, kind, capsys):
+@pytest.mark.parametrize('kind', ['remote.pending', 'remote.started', 'remote.resumed', 'remote.stopped',
+                                  'remote.ignored', 'remote.refused', 'remote.confirmed'])
+def test_remote_kinds_are_reserved_to_the_listener(ws, kind, capsys):
     from wuwei import signal
     from wuwei.__main__ import main
     assert main(['event', kind]) == 1
     assert 'wuwei listen' in capsys.readouterr().err
-    assert kind in signal.SILENT
+    assert signal.classify({'kind': kind, 'payload': {}}, {})[0] == (
+        'page' if kind == 'remote.refused' else 'silent')
+
+
+@pytest.mark.parametrize('who, expected', [
+    ('T1/U1', 'owner'), ('T9/U1', 'changed'), ('/U1', 'changed'), ('T1/U2', 'other'), ('U1', 'changed')])
+def test_sender_compares_with_the_pin(who, expected):
+    config = {'control_plane': {'owner': 'T1/U1'}}
+    assert remote().sender(config, {'sender': who}) == expected
+
+
+@pytest.mark.parametrize('pin', ['', 'U1', 'T1/', 't1/u1', 'T1/U1/U2'])
+def test_sender_without_a_valid_pin_cannot_run(pin):
+    with pytest.raises(ValueError, match=r'control_plane\.owner.*T1/U1'):
+        remote().sender({'control_plane': {'owner': pin}}, {'sender': 'T1/U1'})
+
+
+@pytest.mark.parametrize('text', ['plan today', 'status'])
+def test_issue_acceptance_changed_identity_is_refused_and_alerted(ws, text):
+    runtime, transport = Runtime(), Transport()
+    assert remote().handle(ws, event('D1/1.000001', text, sender='T9/U1'),
+                           transport=transport, runtime=runtime) == 1
+    assert runtime.calls == [] and transport.sent == [remote().CHANGED]
+    assert [(row['kind'], row['payload']) for row in events(ws, 'remote.')] == [
+        ('remote.refused', {'id': 'D1/1.000001'})]
+
+
+def test_other_senders_are_logged_once_and_never_answered(ws):
+    transport = Transport()
+    for ident, who in (('D1/1.000001', 'T1/U2'), ('D1/2.000001', 'T1/U2'), ('D1/3.000001', 'T2/U3')):
+        assert remote().handle(ws, event(ident, 'plan', sender=who), transport=transport) == 0
+    assert transport.sent == []
+    assert [(row['kind'], row['payload']) for row in events(ws, 'remote.')] == [
+        ('remote.ignored', {'sender': 'T1/U2'}), ('remote.ignored', {'sender': 'T2/U3'})]
+
+
+def test_no_pin_cannot_run(ws, capsys):
+    (ws / '.wuwei/config.toml').write_text('[owner]\nname = "Robin Example"\n')
+    assert handled(ws, 'status') == (2, [remote().FAILED])
+    out = capsys.readouterr().out
+    assert 'control_plane.owner' in out and 'T1/U1' in out
+
+
+RFC_KEY = b'12345678901234567890'
+
+
+@pytest.mark.parametrize('t, code', [(59, '287082'), (1111111109, '081804'), (1111111111, '050471'),
+                                     (1234567890, '005924'), (2000000000, '279037')])
+def test_totp_matches_the_rfc_6238_vectors(t, code):
+    assert remote().totp(RFC_KEY, t // 30) == code
+
+
+@pytest.mark.parametrize('text, parts', [
+    ('plan today 123456', ('plan today', '123456')), ('plan', ('plan', '')),
+    ('stop 12345678', ('stop 12345678', '')), ('ask about 123456?', ('ask about 123456?', '')),
+    ('123456', ('123456', ''))])
+def test_split_takes_a_trailing_code(text, parts):
+    assert remote().split(text) == parts
+
+
+def test_parse_confirm():
+    assert remote().parse('Confirm.') == ('confirm', '')
+
+
+def coded(ts):
+    return remote().totp(RFC_KEY, int(float(ts)) // 30)
+
+
+@pytest.fixture
+def secret(monkeypatch):
+    import base64
+    monkeypatch.setenv('WUWEI_TOTP_SECRET', base64.b32encode(RFC_KEY).decode().lower())
+
+
+def test_a_current_code_starts_the_session_once(ws, secret):
+    stale = 'D1/1790769479.000100'
+    runtime = Runtime(ran())
+    assert handled(ws, f'plan today {coded(stale[3:])}', runtime=runtime, ident=stale) == (
+        1, [remote().CONFIRM])
+    code, sent = handled(ws, f'plan today {coded(FRESH[3:])}', runtime=runtime, ident=FRESH)
+    assert code == 0 and runtime.calls == [(remote().PLAN_PROMPT, None, planner_tools())]
+    rows = events(ws, 'remote.')
+    assert [row['kind'] for row in rows] == ['remote.pending', 'remote.confirmed', 'remote.started']
+    assert rows[1]['payload'] == {'id': FRESH, 'factor': 'code', 'step': 1790769590 // 30}
+    again = 'D1/1790769591.000100'
+    assert handled(ws, f'plan today {coded(FRESH[3:])}', runtime=runtime, ident=again) == (
+        1, [remote().CONFIRM])
+    assert len(runtime.calls) == 1
+
+
+def test_a_secret_that_is_not_base32_cannot_run(ws, monkeypatch, capsys):
+    monkeypatch.setenv('WUWEI_TOTP_SECRET', 'not-base32-1890')
+    assert handled(ws, 'plan today 123456', ident=FRESH) == (2, [remote().FAILED])
+    assert 'not-base32-1890' not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('text, sent', [
+    ('status', None), ('report', None), ('stop 0f8fad5b', ['Stopped 1 sessions.'])])
+def test_read_and_stop_commands_need_no_factor(ws, text, sent):
+    remote_row(ws, S, [])
+    code, said = handled(ws, text)
+    assert code == 0 and (sent is None or said == sent)
+    assert events(ws, 'remote.pending') == []
+
+
+def test_a_decision_reply_resumes_without_a_factor(ws):
+    routed(ws)
+    remote_row(ws, S, ['D-1'])
+    runtime = Runtime(ran())
+    assert handled(ws, 'option B on D-1', runtime=runtime)[0] == 0
+    assert runtime.calls == [('Decision D-1: option B.', S, planner_tools())]
+    assert events(ws, 'remote.pending') == []
+
+
+def pending(root, ident, text):
+    from wuwei import inbox
+    assert inbox.store(root, workspace.load_config(root), [event(ident, text)]).exit == 0
+    assert handled(root, text, ident=ident) == (1, [remote().CONFIRM])
+
+
+def test_a_confirm_reply_runs_the_latest_pending_command_once(ws):
+    pending(ws, 'D1/1790769580.000100', 'plan today')
+    pending(ws, FRESH, 'ask what changed')
+    runtime = Runtime(ran(result=''))
+    code, sent = handled(ws, 'confirm', runtime=runtime, ident='D1/1790769595.000100')
+    assert code == 0 and runtime.calls == [(remote().ASK_PROMPT + 'what changed', None, ['Read', 'Glob', 'Grep'])]
+    assert state.read_state(ws)['sessions'][S]['thread'] == FRESH
+    assert payloads(ws, 'remote.confirmed') == [{'id': FRESH, 'factor': 'reply'}]
+    assert handled(ws, 'Confirm.', runtime=runtime, ident='D1/1790769596.000100') == (1, [remote().NOTHING])
+    assert len(runtime.calls) == 1
+
+
+def test_confirm_with_nothing_to_confirm_runs_nothing(ws, monkeypatch):
+    runtime = Runtime()
+    assert handled(ws, 'confirm', runtime=runtime) == (1, [remote().NOTHING])
+    state.append_event('remote.pending', {'id': 'D1/0.000001', 'command': 'stop'}, root=ws)
+    assert handled(ws, 'confirm', runtime=runtime) == (1, [remote().NOTHING])
+    pending(ws, FRESH, 'plan today')
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:02:01+00:00')
+    assert handled(ws, 'confirm', runtime=runtime, ident='D1/1790769720.000100') == (1, [remote().NOTHING])
+    assert runtime.calls == [] and events(ws, 'remote.confirmed') == []
+
+
+def test_stop_all_is_accepted_from_a_changed_identity(ws):
+    remote_row(ws, S, [])
+    remote_row(ws, T, [])
+    transport = Transport()
+    assert remote().handle(ws, event('D1/1.000001', 'stop all', sender='T9/U1'), transport=transport) == 0
+    assert all('stopped' in row for row in state.read_state(ws)['sessions'].values())
+    assert events(ws, 'remote.refused') == [] and transport.sent == ['Stopped 2 sessions.']
+    remote_row(ws, 'ffffffff-d9cb-469f-a165-70867728950e', [])
+    assert remote().handle(ws, event('D1/2.000001', 'stop ffffffff', sender='T9/U1'), transport=transport) == 1
+    assert transport.sent[-1] == remote().CHANGED
+
+
+def test_low_memory_starts_and_resumes_nothing(ws, monkeypatch):
+    from wuwei.guards import agent_launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda config, root: 1)
+    runtime, t = Runtime(), Transport()
+    assert remote().start(ws, 'plan', FRESH, 'p', transport=t, runtime=runtime) == 1
+    remote_row(ws, S, [])
+    assert remote().resume(ws, S, 'D-1', 'B', transport=t, runtime=runtime) == 1
+    assert runtime.calls == [] and t.sent == [remote().LOW_MEMORY] * 2
+    assert list(state.read_state(ws)['sessions']) == [S] and events(ws, 'remote.') == []
+
+
+def test_unmeasured_memory_cannot_run(ws, monkeypatch, open_gate):
+    from wuwei.guards import agent_launch
+
+    def unmeasured(config, root):
+        raise ValueError('free memory unmeasured')
+    monkeypatch.setattr(agent_launch, 'free_memory', unmeasured)
+    runtime = Runtime()
+    assert handled(ws, 'plan today', runtime=runtime) == (2, [remote().FAILED])
+    assert runtime.calls == []

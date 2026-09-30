@@ -1,12 +1,15 @@
-"""Commands from the owner DM: the vocabulary, the read-only gate, one session per thread."""
+"""Commands from the owner DM: the vocabulary, the remote-command guards, one session per thread."""
 
+import base64
+import binascii
+import hmac
 import json
 import os
 import re
 from types import SimpleNamespace
 
-from wuwei import (control_plane, decision, outward, registry, report, security, sessions, state,
-                   workspace)
+from wuwei import (control_plane, decision, inbox, obligations, outward, registry, report, security,
+                   sessions, state, watch, workspace)
 from wuwei.registry import Result
 
 
@@ -14,9 +17,13 @@ from wuwei.registry import Result
 VOCABULARY = ('Commands: plan, status, report, ask <question>, stop <session>, stop all. '
               'Decisions: approve D-n, option X on D-n, drop it.')
 UNAVAILABLE = 'Not available in this version. ' + VOCABULARY
-GUARDED = 'Recorded, not run: this command needs the remote-command guards.'
 FAILED = 'That command could not run; see the listener log on the host.'
-EXECUTABLE = frozenset({'status', 'report'})  # #66 adds plan, ask, stop and reply behind its guards
+CHANGED = 'Refused: this sender does not match the pinned identity. Confirm it on the host.'
+CONFIRM = 'Reply confirm within 2 minutes to run it, or send it again ending with a current code.'
+LOW_MEMORY = 'Not started: free memory on the host is below the floor.'
+NOTHING = 'Nothing to confirm from the last 2 minutes.'
+FACTOR = frozenset({'plan', 'ask'})  # commands that need a code or a confirm reply
+WINDOW = 120  # seconds a code or a confirmation counts
 ASK_TOOLS = ('Read', 'Glob', 'Grep')
 PLAN_PROMPT = ('Invoke Skill wuwei:wuwei-plan. This run is headless, started from the '
                'control plane: nobody can answer AskUserQuestion. For each question, write '
@@ -59,6 +66,8 @@ def parse(text):
         return 'plan', ''
     if lower in ('status', 'report'):
         return lower, ''
+    if lower == 'confirm':
+        return 'confirm', ''
     if lower == 'stop all':
         return 'stop', 'all'
     if match := re.fullmatch(r'run ([a-z0-9][a-z0-9_-]*)', lower):
@@ -70,6 +79,65 @@ def parse(text):
     if match := re.fullmatch(r'stop ([0-9a-f][0-9a-f-]{7,35})', lower):
         return 'stop', match[1]
     return None
+
+
+def split(text):
+    """(text, code): a trailing six-digit code is the second factor, not part of the command."""
+    match = re.fullmatch(r'(.*\S)\s+([0-9]{6})', text.strip(), re.S)
+    return (match[1], match[2]) if match else (text, '')
+
+
+def totp(key, step):
+    """RFC 6238 with HMAC-SHA1 and six digits, for one 30 s step."""
+    digest = hmac.digest(key, step.to_bytes(8, 'big'), 'sha1')
+    offset = digest[-1] & 15
+    return f'{(int.from_bytes(digest[offset:offset + 4], "big") & 0x7fffffff) % 10**6:06d}'
+
+
+def sender(config, event):
+    """owner, changed (same user id, other or no team) or other, against control_plane.owner."""
+    pin = config['control_plane']['owner']
+    if not re.fullmatch(r'[A-Z0-9]+/[UW][A-Z0-9]+', pin):
+        raise ValueError(f'control_plane.owner must pin <team>/<user>; this message came from {event["sender"]}')
+    if event['sender'] == pin:
+        return 'owner'
+    return 'changed' if event['sender'].rsplit('/', 1)[-1] == pin.rsplit('/', 1)[-1] else 'other'
+
+
+def _today(root):
+    return watch.records(workspace.day_dir(root) / 'events.jsonl')
+
+
+def confirmation(root):
+    """The inbox line of the latest plan or ask pending under WINDOW seconds, once, else None."""
+    rows = _today(root)
+    row = next((row for row in reversed(rows) if row['kind'] == 'remote.pending'
+                and row['payload'].get('command') in FACTOR), None)
+    if row is None or (workspace.now() - obligations._time(row['ts'])).total_seconds() > WINDOW \
+            or any(other['kind'] == 'remote.confirmed' and other['payload'].get('id') == row['payload']['id']
+                   for other in rows):
+        return None
+    return next((line for line in inbox.read(root) if line['id'] == row['payload']['id']), None)
+
+
+# ponytail: used steps are read from today's events only; a code accepted in the last minute
+# of a day can be replayed in the first minute of the next. Keep the last step in the inbox
+# directory if that matters.
+def code_step(root, event, code):
+    """The TOTP step a fresh, unused code in this message matches, else None."""
+    secret = os.environ.get('WUWEI_TOTP_SECRET', '')
+    ts = float(event['ts'])
+    if not code or not secret or workspace.now().timestamp() - ts > WINDOW:
+        return None
+    secret = secret.replace(' ', '').upper()
+    try:
+        key = base64.b32decode(secret + '=' * (-len(secret) % 8))
+    except binascii.Error:
+        raise ValueError('WUWEI_TOTP_SECRET is not base32') from None
+    used = max((row['payload']['step'] for row in _today(root) if row['kind'] == 'remote.confirmed'
+                and row['payload'].get('factor') == 'code'), default=-1)
+    return next((step for step in (int(ts // 30) + d for d in (-1, 0, 1))
+                 if step > used and hmac.compare_digest(totp(key, step), code)), None)
 
 
 def dm(text, *, root=None):
@@ -134,9 +202,32 @@ def handle(root, event, *, transport=TRANSPORT, runtime=None):
     try:
         if event['id'] in sent(root):
             return 0
-        command = parse(event['text'])
+        text, code = split(event['text'])
+        command = parse(text)
+        who = sender(workspace.load_config(root), event)
+        if who == 'other':
+            if not any(row['kind'] == 'remote.ignored' and row['payload'].get('sender') == event['sender']
+                       for row in _today(root)):
+                state.append_event('remote.ignored', {'sender': event['sender']}, root=root)
+            return 0
+        if who == 'changed' and command != ('stop', 'all'):
+            state.append_event('remote.refused', {'id': event['id']}, root=root)
+            return _say(transport, root, CHANGED, 1)
+        if command == ('confirm', ''):
+            line = confirmation(root)
+            if line is None:
+                return _say(transport, root, NOTHING, 1)
+            state.append_event('remote.confirmed', {'id': line['id'], 'factor': 'reply'}, root=root)
+            event, command = line, parse(split(line['text'])[0])
+        elif command and command[0] in FACTOR:
+            step = code_step(root, event, code)
+            if step is None:
+                state.append_event('remote.pending', {'id': event['id'], 'command': command[0]}, root=root)
+                return _say(transport, root, CONFIRM, 1)
+            state.append_event('remote.confirmed', {'id': event['id'], 'factor': 'code', 'step': step},
+                               root=root)
         if command is None:
-            answer = control_plane.parse(event['text'], control_plane.pending(root))
+            answer = control_plane.parse(text, control_plane.pending(root))
             if answer is None:
                 return _say(transport, root, VOCABULARY, 1)
             identifier, option = answer
@@ -149,9 +240,6 @@ def handle(root, event, *, transport=TRANSPORT, runtime=None):
         verb, argument = command
         if verb in ('run', 'cloud'):
             return _say(transport, root, UNAVAILABLE, 1)
-        if verb not in EXECUTABLE:
-            state.append_event('remote.pending', {'id': event['id'], 'command': verb}, root=root)
-            return _say(transport, root, GUARDED, 1)
         if verb == 'status':
             from wuwei.commands import status
             text = status.line(status.snapshot(workspace.day_dir(root))).removeprefix('WUWEI ')
@@ -201,6 +289,13 @@ def deny(root, session, tool):
     decision.route_owner(path.stem, fields, root)
 
 
+def memory_floor(root):
+    """True when free memory is at the host floor; unmeasured memory raises ValueError."""
+    from wuwei.guards import agent_launch
+    config = workspace.load_config(root)
+    return agent_launch.free_memory(config, root) >= config['host']['free_memory_mb'] * 1024**2
+
+
 def start(root, command, thread, prompt, *, transport=TRANSPORT, runtime=None):
     return _turn(root, command, thread, prompt, None, transport, runtime)
 
@@ -214,6 +309,8 @@ def resume(root, session, identifier, option, *, transport=TRANSPORT, runtime=No
 # ponytail: a turn blocks the listener tick for up to the adapter TIMEOUT; move turns to a
 # background process when they outgrow the poll interval.
 def _turn(root, command, thread, prompt, session, transport, runtime):
+    if not memory_floor(root):
+        return _say(transport, root, LOW_MEMORY, 1)
     # Fixed selection: headless sessions exist only in the Claude Code runtime adapter.
     runtime = runtime or registry.load('runtime', {'adapters': {'runtime': 'claude'}})
     before = set(control_plane.pending(root))

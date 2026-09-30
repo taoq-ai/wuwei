@@ -181,7 +181,7 @@ def test_claude_headless_starts_a_session(tmp_path, monkeypatch):
     assert result.data == {'session_id': SID, 'result': 'done', 'denials': ['Bash']}
     [(argv, kwargs)] = calls
     assert argv == ['claude', '-p', '--output-format', 'json', '--permission-mode', 'dontAsk',
-                    '--tools', 'Read,Glob', '--allowedTools', 'Read,Glob']
+                    '--tools', 'Read,Glob', '--allowedTools', 'Read,Glob', '--strict-mcp-config']
     assert kwargs['input'] == 'plan the day'
     assert kwargs['cwd'] == str(root)
     assert 'SLACK_BOT_TOKEN' not in kwargs['env']
@@ -190,7 +190,8 @@ def test_claude_headless_starts_a_session(tmp_path, monkeypatch):
 def test_claude_headless_resumes_the_same_session(tmp_path, monkeypatch):
     root, adapter, calls = headless_case(tmp_path, monkeypatch)
     assert adapter.headless('Decision D-1: option B.', SID, ['Read'], root=root).exit == 0
-    assert calls[0][0][-2:] == ['--resume', SID]
+    assert calls[0][0][-3:] == ['--strict-mcp-config', '--resume', SID]
+    assert '--mcp-config' not in calls[0][0]
     other = SID.replace('0f8f', '1f8f')
     assert adapter.headless('Decision D-1: option B.', other, ['Read'], root=root).exit == 2
 

@@ -373,10 +373,10 @@ def test_slack_inbound_events(slack_case, monkeypatch):
     assert result.exit == 0
     assert result.data == [
         {'id': 'C1/1790769580.000200', 'source': 'slack', 'channel': 'C1',
-         'thread': '1790769000.000100', 'sender': 'U2',
+         'thread': '1790769000.000100', 'sender': '/U2',
          'text': 'ping <@U0OWNER|pat>, call +44 20 7946 0958', 'ts': '1790769580.000200'},
         {'id': 'C1/1790769590.000300', 'source': 'slack', 'channel': 'C1', 'thread': '',
-         'sender': 'U1', 'text': '<@U0OWNER> can you look at this', 'ts': '1790769590.000300'}]
+         'sender': 'T1/U1', 'text': '<@U0OWNER> can you look at this', 'ts': '1790769590.000300'}]
     assert [query(call)['channel'] for call in calls] == ['D1', 'C1']
     for call in calls:
         assert call[0].startswith('https://slack.com/api/conversations.history?')
@@ -389,11 +389,11 @@ def test_slack_inbound_dm_only(slack_case, monkeypatch):
     (slack_case / '.wuwei/config.toml').write_text(
         '[owner]\nhandles = ["pat-gh"]\n[adapters]\ninbound = "slack"\n')
     calls = replay(monkeypatch, history_page(
-        {'user': 'U0OWNER', 'text': 'approve D-3', 'ts': '1790769590.000100'},
+        {'user': 'U0OWNER', 'team': 'T1', 'text': 'approve D-3', 'ts': '1790769590.000100'},
         {'bot_id': 'B1', 'subtype': 'bot_message', 'text': 'Draft D-3', 'ts': '1790769580.000100'}))
     result = slack.poll('', root=slack_case)
     assert [query(call)['channel'] for call in calls] == ['D1']
-    assert [(event['id'], event['sender']) for event in result.data] == [('D1/1790769590.000100', 'U0OWNER')]
+    assert [(event['id'], event['sender']) for event in result.data] == [('D1/1790769590.000100', 'T1/U0OWNER')]
 
 
 GOOD = {'user': 'U1', 'text': '<@U0OWNER> hi', 'ts': '1790769590.000100'}
@@ -405,6 +405,7 @@ GOOD = {'user': 'U1', 'text': '<@U0OWNER> hi', 'ts': '1790769590.000100'}
     ('', None, [history_page(), history_page({'text': 'x', 'ts': '1790769590.000100'})],
      'invalid history message'),
     ('', None, [history_page(), history_page({**GOOD, 'ts': '1'})], 'invalid history message'),
+    ('', None, [history_page(), history_page({**GOOD, 'team': 5})], 'invalid history message'),
     ('abc', None, [], 'invalid cursor'),
     ('', None, [history_page(GOOD, next_cursor='n')] * 10, 'history exceeds ten pages'),
     ('', '[owner]\nhandles = ["pat-gh"]\n[outbound]\nexternal_channels = ["C2"]\n', [],

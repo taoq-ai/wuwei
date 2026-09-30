@@ -117,6 +117,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `brief.full_path_patterns` | `[]` | Owner supplied regexes for paths needing full context. |
 | `chat.identity` | `"connector"` | Optional CLI default: connector or custom_app. This key is not in the template. |
 | `control_plane.content` | `"summary"` | What a messaging transport sends about a pending decision. `summary` sends the id, the one-line question and each option with its description; `none` sends only the id and option letters, and a fixed line in place of an update. The question widget in the planner session always shows the summary. |
+| `control_plane.owner` | `""` | The pinned sender of commands from the owner DM, as `<team id>/<user id>` (such as `T0123ABC/U0123ABC`). Empty handles no command. |
 
 Run `bin/wuwei brief pack` once for a daily text pack, or `bin/wuwei brief pack --meeting`
 inside the lead window for the next attendee meeting. The returned path contains the
@@ -303,7 +304,8 @@ With `adapters.inbound = "slack"` the listener reads every message in
 `SLACK_OWNER_DM_CHANNEL`, and messages in `outbound.work_channels` and
 `outbound.external_channels` that mention a Slack user id from `owner.handles` (such as
 `U0123ABC`). It reads top-level messages only, so answer in the DM as a new message, not
-in a thread. Bot and app posts are skipped. Each poll re-reads five minutes behind the
+in a thread. Bot and app posts are skipped. The sender of each message is recorded as
+`<team id>/<user id>`. Each poll re-reads five minutes behind the
 previous successful poll, and the first poll starts five minutes back. A Slack rate limit fails that poll
 and the next poll retries. The reading token needs the `channels:history`,
 `groups:history` and `im:history` scopes and membership of the polled channels.
@@ -317,14 +319,29 @@ forms: `approve D-n`, `option X on D-n` or `drop it`. `run <routine>` and
 `cloud <repo> <task>` answer "Not available in this version." with the command list, and
 anything else gets the command list. Messages in other channels are never commands.
 
-Until the remote-command guards land, only `status` and `report` run from a message.
-Every other command, and a reply that would resume a remote session, is recorded as a
-`remote.pending` event and answered that it needs the remote-command guards. A reply to
-a decision is recorded as `decision.replied` evidence and confirmed on the host.
+Only the sender pinned in `control_plane.owner` (`<team id>/<user id>`) can command.
+With no pin, every message fails and the listener log names the pin and the sender.
+A message from any other user is ignored: nothing is answered, and a `remote.ignored`
+event records the sender once a day. A message from the pinned user id with a different or
+missing team id is refused: the DM answers that the sender does not match the pinned
+identity, and a `remote.refused` event pages on the host. Editing the pin in config.toml
+on the host is the re-confirmation. `stop all` is still accepted from a changed identity.
+
+`plan` and `ask` need a second factor. Put a base32 TOTP secret in `.wuwei/env` as
+`WUWEI_TOTP_SECRET` (30 second codes, six digits, HMAC-SHA1, as authenticator apps use)
+and end the message with the current code, such as `plan today 123456`. The code must
+reach the listener within 2 minutes of the message and each code works once. Without a
+valid code the command is recorded as `remote.pending` and the DM asks for `confirm`:
+replying `confirm` within 2 minutes runs the latest pending `plan` or `ask`. Each
+accepted factor is recorded as `remote.confirmed`. `status`, `report`, `stop <session>`,
+`stop all` and decision replies need no second factor. A reply to a decision is recorded
+as `decision.replied` evidence; with no remote session waiting on it, confirm it on the host.
 
 `plan` and `ask` start one headless Claude Code session per command message
-(`claude -p --output-format json --permission-mode dontAsk`, with the role's tools in
-`--allowedTools`); a reply to one of its decisions resumes it with `--resume`. The
+(`claude -p --output-format json --permission-mode dontAsk --strict-mcp-config`, with the
+role's tools in `--allowedTools`, and no MCP server); a reply to one of its decisions
+resumes it with `--resume`. No session starts or resumes while free memory on the host
+is below `host.free_memory_mb`. The
 session is listed in `wuwei sessions` with role `remote`. A tool outside the role's
 tools is refused and arrives as a decision; granting it stays a host change.
 
