@@ -52,20 +52,22 @@ def data(result):
     return result.data
 
 
-def context(cwd, settings, env, root):
+def context(cwd, settings, env, root, identity=True):
+    """Match cwd to a configured repository; identity=False reads no commit identity."""
     from wuwei import registry, workspace
 
     if 'GIT_COMMON_DIR' in env:
         raise ValueError('GIT_COMMON_DIR overrides cannot be inspected safely')
     config = workspace.load_config(root)
     vcs = registry.load('vcs', config)
-    actual = data(vcs.commit_context(str(cwd), settings, env, root=root))
+    actual = data(vcs.commit_context(str(cwd), settings, env, root=root) if identity
+                  else vcs.repo_context(str(cwd), root=root))
     for key in ('path', 'common_dir'):
         if not isinstance(actual.get(key), str) or not Path(actual[key]).is_absolute():
             raise ValueError('missing repository context')
     for repo in config['repos']:
         path = (root / Path(repo['path']).expanduser()).resolve()
-        configured = data(vcs.commit_context(str(path), {}, {}, root=root))
+        configured = data(vcs.repo_context(str(path), root=root))
         if configured.get('common_dir') == actual['common_dir']:
             return repo, actual, vcs
     raise ValueError('repository is not configured in this workspace')

@@ -82,7 +82,7 @@ def _repo(root, tree, config):
     repo = next((row for row in config['repos'] if (root / row['path']).resolve() == tree), None)
     if repo is None:
         from wuwei.guards.commit_push import context
-        repo, _, _ = context(tree, {}, {}, root)
+        repo, _, _ = context(tree, {}, {}, root, identity=False)
     if not repo['fast_checks']:
         raise ValueError('worktree has no configured fast checks')
     return repo

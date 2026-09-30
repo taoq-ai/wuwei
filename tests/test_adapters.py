@@ -55,6 +55,7 @@ CALLS = [
     ('vcs', 'pushed_branches', ('repo',), True),
     ('vcs', 'authorship', ('repo', 'branch', 'paths', 'days'), True),
     ('vcs', 'branch', ('repo',), True),
+    ('vcs', 'repo_context', ('repo',), True),
     ('vcs', 'commit_context', ('repo', 'settings', 'env'), True),
     ('vcs', 'push_context', ('repo', 'remote', 'refspecs'), True),
     ('vcs', 'hooks_path', ('repo', 'path'), False),

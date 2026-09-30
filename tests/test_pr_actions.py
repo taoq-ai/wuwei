@@ -53,7 +53,7 @@ def test_conflict_step_and_done(case, monkeypatch, capsys):
     vcs.results['branch'] = Result(0, {'name': 'feature'})
     monkeypatch.setattr('wuwei.fast_checks.record', lambda path: 0)
     monkeypatch.setattr('wuwei.guards.commit_push.context',
-                        lambda *args: ({'name': 'acme/widget'}, {'path': str(tree)}, vcs))
+                        lambda *args, **kwargs: ({'name': 'acme/widget'}, {'path': str(tree)}, vcs))
     monkeypatch.setattr('wuwei.guards.commit_push.push_check', lambda *args: (0, ''))
     vcs.results['push_context'] = Result(0, {'head': {'sha': 'b' * 40},
         'updates': [{'source': 'b' * 40, 'destination': 'refs/heads/feature'}],
@@ -235,7 +235,7 @@ def test_rebase_port_failure_does_not_record_done(case, monkeypatch, capsys):
     vcs.results['head'] = Result(0, {'sha': 'a' * 40})
     vcs.results['branch'] = Result(0, {'name': 'feature'})
     monkeypatch.setattr('wuwei.guards.commit_push.context',
-                        lambda *args: ({'name': 'acme/widget'}, {'path': str(tree)}, vcs))
+                        lambda *args, **kwargs: ({'name': 'acme/widget'}, {'path': str(tree)}, vcs))
     assert main(['pr', 'act', REF, '--run']) == 1
     assert 'conflict' in capsys.readouterr().out
     assert REF not in state.read_state(root).get('pr_action_done', {})
@@ -251,7 +251,7 @@ def test_conflict_can_complete_after_manual_resolution(case, monkeypatch):
     vcs.results['push_context'] = Result(0, {'head': {'sha': 'b' * 40}})
     monkeypatch.setattr('wuwei.fast_checks.record', lambda path: 0)
     monkeypatch.setattr('wuwei.guards.commit_push.context',
-                        lambda *args: ({'name': 'acme/widget'}, {'path': str(tree)}, vcs))
+                        lambda *args, **kwargs: ({'name': 'acme/widget'}, {'path': str(tree)}, vcs))
     monkeypatch.setattr('wuwei.guards.commit_push.push_check', lambda *args: (0, ''))
     assert main(['pr', 'act', REF, '--complete']) == 0
     assert state.read_state(root)['pr_action_done'][REF]['head'] == 'b' * 40
@@ -265,7 +265,7 @@ def test_unreadable_base_never_starts_rebase(case, monkeypatch, capsys):
     vcs.results['branch'] = Result(0, {'name': 'feature'})
     vcs.results['fetch'] = Result(2, reason='timeout')
     monkeypatch.setattr('wuwei.guards.commit_push.context',
-                        lambda *args: ({'name': 'acme/widget'}, {'path': str(tree)}, vcs))
+                        lambda *args, **kwargs: ({'name': 'acme/widget'}, {'path': str(tree)}, vcs))
     assert main(['pr', 'act', REF, '--run']) == 2
     assert 'timeout' in capsys.readouterr().out
     assert not any(call[0] == 'rebase' for call in vcs.calls)

@@ -30,7 +30,7 @@ def seat(tmp_path, monkeypatch):
     checks = SimpleNamespace(run=lambda *a, **kw: results.pop(0))
     vcs = SimpleNamespace(head=lambda *a, **kw: registry.Result(0, {'sha': 'a' * 40}),
                           status=lambda *a, **kw: registry.Result(0, []),
-                          commit_context=lambda *a, **kw: registry.Result(0, {
+                          repo_context=lambda *a, **kw: registry.Result(0, {
                               'path': str(repo), 'common_dir': str(repo / '.git')}))
     monkeypatch.setattr(registry, 'load', lambda kind, config: {
         'runtime': claude, 'checks': checks, 'vcs': vcs}[kind])
@@ -226,7 +226,7 @@ def test_checks_are_recorded_by_real_producer_before_stop(seat, monkeypatch):
     action = build.next_action('A', root=root)
     launch(seat, action)
     vcs = registry.load('vcs', {})
-    monkeypatch.setattr(fast_checks, 'context', lambda *args: (
+    monkeypatch.setattr(fast_checks, 'context', lambda *args, **kwargs: (
         {'name': 'app', 'fast_checks': ['test']}, {'path': str(repo)}, vcs))
     results.append(registry.Result(1, {'test_ids': ['test_real'], 'error': 'broken'}))
     assert fast_checks.record(repo) == 1
@@ -329,7 +329,7 @@ def test_cached_pass_never_skips_checking_uncommitted_changes(seat, monkeypatch,
     root, repo, _, _, results = seat
     launch(seat, build.next_action('A', root=root))
     vcs = registry.load('vcs', {})
-    monkeypatch.setattr(fast_checks, 'context', lambda *args: (
+    monkeypatch.setattr(fast_checks, 'context', lambda *args, **kwargs: (
         {'name': 'app', 'fast_checks': ['test']}, {'path': str(repo)}, vcs))
     if when_dirty == 'during-check':
         monkeypatch.setattr(vcs, 'status', lambda *args, **kw: registry.Result(0, [{'path': 'changed.py'}]))

@@ -47,7 +47,7 @@ PARAMETERS = {
             'branches': ('repo', 'pattern'),
             'pushed_branches': ('repo',),
             'authorship': ('repo', 'branch', 'paths', 'days'), 'branch': ('repo',),
-            'commit_context': ('repo', 'settings', 'env'),
+            'repo_context': ('repo',), 'commit_context': ('repo', 'settings', 'env'),
             'push_context': ('repo', 'remote', 'refspecs'), 'hooks_path': ('repo', 'path'),
             'push_commits': ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch')},
 }

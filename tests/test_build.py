@@ -50,7 +50,7 @@ def setup(tmp_path, monkeypatch, checks):
 
     vcs = SimpleNamespace(head=lambda *a, **kw: registry.Result(0, {'sha': 'a' * 40}),
                           status=lambda *a, **kw: registry.Result(0, []),
-                          commit_context=lambda *a, **kw: registry.Result(0, {
+                          repo_context=lambda *a, **kw: registry.Result(0, {
                               'path': str(repo), 'common_dir': str(repo / '.git')}))
 
     def load(kind, config):

@@ -85,6 +85,7 @@ identity = {name = "Builder", email = "builder@example.test"}
     push = {'head': {'sha': SHA, 'author': dict(OWNER), 'committer': dict(OWNER)},
             'updates': [{'source': SHA, 'destination': 'refs/heads/feature'}], 'force': False, 'remote': 'origin'}
     fake = Fake({'commit_context': Result(0, context), 'push_context': Result(0, push),
+                 'repo_context': Result(0, {key: context[key] for key in ('path', 'common_dir')}),
                  'head': Result(0, push['head']),
                  'push_commits': Result(0, {'commits': [push['head']]}),
                  'merge_base': Result(0, {'sha': OLD})})

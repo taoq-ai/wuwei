@@ -36,7 +36,7 @@ Each test task is written and run red before its implementation task. Run tests 
   both options together exit 2 (argparse). Switch the `brief` helper to `--file -`.
 - [X] T007 Implement `--body` and `--file` in `cli/wuwei/commands/brief.py`. Update
   `tests/fakes/day.py` (`Day.brief`) and `tests/test_headless_e2e.py` (brief step) to pass
-  `--file -`. Run green.
+  `--file -`, and `tests/test_operator_records.py` (from main) to pass `--body`. Run green.
 
 ## Joint 3: a delta continues the same sentinel (US3)
 
@@ -64,6 +64,16 @@ Each test task is written and run red before its implementation task. Run tests 
   vcs fake (`commit_context`, `head`, `status`) so the Codex loop still records.
 - [X] T011 Implement `check` in `cli/wuwei/commands/build.py` through
   `fast_checks.record`, reading per-command results from the recorded rows. Run green.
+
+- [X] T011a Add failing tests: `tests/test_vcs_guard.py` reads the repository with `git var`
+  exiting 128 (`repo_context` exit 0, `commit_context` exit 2); `tests/test_fast_checks.py`
+  runs `build check` with `commit_context` failing (exit 0, push guard exit 2);
+  `tests/fakes/day.py` answers `git var` with 128 so the scripted day runs as on a CI
+  runner with no identity. Then add the identity-free `repo_context` port operation in
+  `adapters/vcs/git.py`, `cli/wuwei/registry.py` and `tests/fakes/vcs.py`, build
+  `commit_context` on it, and use it in `commit_push.context(identity=False)` (fast checks,
+  build, PR actions), the configured-repository match, `merge.py`, `shepherd.py` and
+  `workspace.py`. Only the commit and push guards read an identity.
 
 ## Docs and messages
 

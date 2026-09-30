@@ -253,7 +253,7 @@ def _rebase(root, ref, item, tree, *, resume=False):
             or pr['branch'].startswith('-') or '..' in pr['branch']):
         raise ValueError('invalid PR branch')
     vcs = registry.load('vcs', config)
-    repo, actual, _ = commit_push.context(tree, {}, {}, root)
+    repo, actual, _ = commit_push.context(tree, {}, {}, root, identity=False)
     if repo['name'] != pr['repo']:
         raise ValueError('item worktree belongs to another PR repository')
     local = commit_push.data(vcs.head(str(tree), root=root))['sha']

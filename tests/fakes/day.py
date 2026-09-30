@@ -85,6 +85,9 @@ class Day:
             assert Path(tree).is_relative_to(root), argv
             # The adapter sanitizes Git variables; isolate host config at the process boundary.
             kwargs['env'].update(GIT_CONFIG_GLOBAL='/dev/null', GIT_CONFIG_NOSYSTEM='1')
+            if 'var' in argv:
+                # Like a CI runner with no identity; macOS would otherwise auto-detect one.
+                return subprocess.CompletedProcess(argv, 128, b'', b'')
             return real_run(argv, **kwargs)
 
         def no_network(*args, **kwargs):
@@ -130,7 +133,7 @@ lead_login = "lead"
         initial = self.head
         vcs = VCS()
         for name in ('head', 'status', 'diff_stat', 'branches', 'branch', 'pushed_branches',
-                     'commit_context'):
+                     'repo_context', 'commit_context'):
             setattr(vcs, name, getattr(git, name))
         identity = {'name': 'Builder', 'email': 'builder@example.test'}
         vcs.results['identity'] = Result(0, {**identity, 'author': identity, 'committer': identity})

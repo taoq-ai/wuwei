@@ -49,7 +49,7 @@ default_branch = "main"
     for gate in ('arch', 'quality', 'security'):
         (decisions / f'gate-9-{gate}.md').write_text(evidence())
     fake = Fake({'head': Result(0, {'sha': SHA}), 'resolve': Result(0, {'sha': SHA}),
-                 'commit_context': Result(0, {'path': str(repo), 'common_dir': str(repo / '.git')})})
+                 'repo_context': Result(0, {'path': str(repo), 'common_dir': str(repo / '.git')})})
     monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
     return root, fake, decisions
 

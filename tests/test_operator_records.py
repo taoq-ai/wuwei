@@ -1,8 +1,6 @@
 """Issue 209 acceptance: every record the operator reads tells the same true story."""
 
-import io
 import json
-import sys
 
 from wuwei import plan, state, workspace
 from wuwei.__main__ import main
@@ -31,8 +29,7 @@ def test_merged_item_and_answered_decision_read_the_same_everywhere(tmp_path, mo
                   'candidates': [candidate('DIVIDE-1')]}, root)
     plan.approve(['DIVIDE-1'], root, goals_confirmed=True)
     for args in (('lead', 'DISCOVERY', 'lead-1'), ('steward', 'day', 'steward-1')):
-        monkeypatch.setattr(sys, 'stdin', io.StringIO('body'))
-        assert main(['brief', *args]) == 0
+        assert main(['brief', *args, '--body', 'body']) == 0
     for phase in ('implement', 'gate', 'raised'):
         assert main(['state', 'transition', 'DIVIDE-1', phase]) == 0
     state._write_state(lambda data: data['items']['DIVIDE-1'].update(pr='org/repo#1'),

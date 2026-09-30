@@ -338,17 +338,27 @@ def pushed_branches(repo, root=None):
     return sorted(names)
 
 
-@_operation
-def commit_context(repo, settings, env, root=None):
-    def read(*args):
-        return _run(repo, *args, settings=settings, env=env)
+def _repository(read):
     path = read('rev-parse', '--absolute-git-dir').rstrip('\n')
     if not path or not Path(path).is_absolute():
         raise ValueError('invalid repository path')
     common = read('rev-parse', '--path-format=absolute', '--git-common-dir').rstrip('\n')
     if not common or not Path(common).is_absolute():
         raise ValueError('invalid common directory')
-    return {'path': str(Path(path).resolve()), 'common_dir': str(Path(common).resolve()),
+    return {'path': str(Path(path).resolve()), 'common_dir': str(Path(common).resolve())}
+
+
+@_operation
+def repo_context(repo, root=None):
+    """Git and common directory only; needs no commit identity."""
+    return _repository(lambda *args: _run(repo, *args, settings={}, env={}))
+
+
+@_operation
+def commit_context(repo, settings, env, root=None):
+    def read(*args):
+        return _run(repo, *args, settings=settings, env=env)
+    return {**_repository(read),
             'author': _identity(read('var', 'GIT_AUTHOR_IDENT')),
             'committer': _identity(read('var', 'GIT_COMMITTER_IDENT'))}
 

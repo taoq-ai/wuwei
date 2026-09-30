@@ -136,11 +136,13 @@ def test_local_checks_leave_application_not_found_message_as_code_failure(tmp_pa
     assert 'environment' not in result.data
 
 
-@pytest.mark.parametrize('exit_code', [0, 1, 2])
-def test_build_check_writes_the_record_the_push_guard_reads(workspace_case, monkeypatch, exit_code):
-    from wuwei.commands import build
+@pytest.mark.parametrize('exit_code,identity', [(0, True), (1, True), (2, True), (0, False)])
+def test_build_check_writes_the_record_the_push_guard_reads(workspace_case, monkeypatch, exit_code, identity):
     root, vcs = workspace_case
     clear(root)
+    if not identity:
+        # A runner with no commit identity: only the commit guard needs one, and it fails closed.
+        vcs.results['commit_context'] = Result(2, None, 'git.commit_context: could not run: git exited 128')
     (root / 'brief.md').write_text('Build it')
     tree = str(root / 'repo')
     state._write_state(lambda data: data['items'].update(A={'phase': 'planned'}), root, reserved=False)
@@ -155,4 +157,5 @@ def test_build_check_writes_the_record_the_push_guard_reads(workspace_case, monk
             'check unavailable' if exit_code == 2 else '')) if kind == 'checks' else vcs))
     assert main(['build', 'check', 'A']) == exit_code
     assert state.read_state(root)['fast_checks']['example/project']['unit']['sha'] == SHA
-    assert guard().check(payload(root, 'git push origin feature'))[0] == (0 if exit_code == 0 else 1)
+    assert guard().check(payload(root, 'git push origin feature'))[0] == (
+        2 if not identity else 0 if exit_code == 0 else 1)
