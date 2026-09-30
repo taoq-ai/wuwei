@@ -267,6 +267,7 @@ def test_emitted_kinds_have_intended_tiers():
     emitted.update(['draft.sent', 'draft.failed'])  # dynamic final outcome
     emitted.add('state.write')  # default writer kind
     emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
+    emitted.update(['remote.started', 'remote.resumed'])  # one conditional writer kind
     expected = {'draft.created': 'nudge', 'draft.sending': 'silent',
                 'draft.sent': 'silent', 'draft.dropped': 'silent', 'draft.failed': 'nudge',
                 'mcp.finding': 'nudge', 'mcp.checked': 'nudge', 'mcp.decided': 'silent',
@@ -304,7 +305,9 @@ def test_emitted_kinds_have_intended_tiers():
                 'discovery.unmeasured': 'nudge', 'steward.notes': 'nudge',
                 'steward.run': 'silent', 'steward.due': 'nudge',
                 'steward.acknowledged': 'silent', 'inbox.redacted': 'silent',
-                'listen: clock': 'silent', 'listen: wake': 'silent'}
+                'listen: clock': 'silent', 'listen: wake': 'silent',
+                'remote.pending': 'silent', 'remote.started': 'silent',
+                'remote.resumed': 'silent', 'remote.stopped': 'silent'}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier

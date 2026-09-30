@@ -13,3 +13,5 @@ def isolated_mcp_home(tmp_path_factory, monkeypatch):
     # A developer's Claude Code session must never leak into claims or the env export.
     monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
     monkeypatch.delenv('CLAUDE_ENV_FILE', raising=False)
+    # A developer's owner DM channel must never turn test inbox events into commands.
+    monkeypatch.delenv('SLACK_OWNER_DM_CHANNEL', raising=False)

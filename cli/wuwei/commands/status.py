@@ -206,16 +206,20 @@ def run(args):
     if args.json:
         print(json.dumps(data))
     else:
-        parts = [f'WUWEI pages {data["pages"]}', f'nudges {data["nudges"]}']
-        if not data['gate_approved']:
-            parts[0] = 'WUWEI no plan yet | ' + parts[0][6:]
-        if data['watch'] != 'alive':
-            parts.append(f'watch {data["watch"]}')
-        parts.extend(f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items())
-        if data['sessions']:
-            parts.append(f'sessions {data["sessions"]}')
-        if data['next_reply_due']:
-            parts.append(f'reply {data["next_reply_due"]}')
-        parts.append(f'meeting {data["next_meeting"] or "unmeasured"}')
-        print(' | '.join(parts))
+        print(line(data))
     return CLEAN
+
+
+def line(data):
+    parts = [f'WUWEI pages {data["pages"]}', f'nudges {data["nudges"]}']
+    if not data['gate_approved']:
+        parts[0] = 'WUWEI no plan yet | ' + parts[0][6:]
+    if data['watch'] != 'alive':
+        parts.append(f'watch {data["watch"]}')
+    parts.extend(f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items())
+    if data['sessions']:
+        parts.append(f'sessions {data["sessions"]}')
+    if data['next_reply_due']:
+        parts.append(f'reply {data["next_reply_due"]}')
+    parts.append(f'meeting {data["next_meeting"] or "unmeasured"}')
+    return ' | '.join(parts)
