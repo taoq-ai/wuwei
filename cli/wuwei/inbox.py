@@ -1,5 +1,8 @@
 """The workspace inbox: normalised inbound events, redacted before they are stored."""
 
+import json
+from pathlib import Path
+
 from wuwei import registry, state
 from wuwei.registry import Result
 
@@ -15,6 +18,15 @@ def _redacted(result):
                     for item in data['findings']))
 
 
+def read(root):
+    """Stored events, oldest first; a missing inbox is empty, a corrupt line fails."""
+    try:
+        text = (Path(root) / '.wuwei' / 'inbox' / 'inbox.jsonl').read_text(encoding='utf-8')
+    except FileNotFoundError:
+        return []
+    return [json.loads(line) for line in text.splitlines()]
+
+
 def store(root, config, events):
     """The only writer of .wuwei/inbox/inbox.jsonl; nothing is stored unless all events redact."""
     if not isinstance(events, list) or not all(
@@ -22,6 +34,19 @@ def store(root, config, events):
             and all(isinstance(value, str) for value in event.values())
             and all(event[key] for key in REQUIRED) for event in events):
         return Result(2, None, 'inbox: malformed event')
+    # ponytail: reads the whole inbox per store; index ids when the inbox grows large.
+    try:
+        seen = {(row['source'], row['id']) for row in read(root)}
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        return Result(2, None, f'inbox: unreadable: {exc}')
+    fresh = []
+    for event in events:
+        if (event['source'], event['id']) not in seen:
+            seen.add((event['source'], event['id']))
+            fresh.append(event)
+    events = fresh
+    if not events:
+        return Result(0, 0)
     redactor = registry.load('redactor', config)
     batch = []
     for event in events:

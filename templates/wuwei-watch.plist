@@ -4,7 +4,7 @@
 <dict>
   <key>Label</key><string>@LABEL@</string>
   <key>ProgramArguments</key>
-  <array><string>@PLUGIN_ROOT@/bin/wuwei</string><string>watch</string></array>
+  <array><string>@PLUGIN_ROOT@/bin/wuwei</string><string>@COMMAND@</string></array>
   <key>WorkingDirectory</key><string>@WORKSPACE@</string>
   <key>EnvironmentVariables</key>
   <dict>

@@ -381,6 +381,7 @@ def test_future_clock_nudges_unmeasured_watch(root, monkeypatch, capsys):
 
 @pytest.mark.parametrize('script,code', [
     ('bin/wuwei watch uninstall', 1),
+    ('bin/wuwei listen uninstall', 1),
     ('python3 -P -m wuwei watch uninstall', 1),
     ('python3 -P -mwuwei watch uninstall', 1),
     ('sh -c "bin/wuwei watch uninstall"', 1),

@@ -12,48 +12,57 @@ def service_platform():
     return sys.platform
 
 
-def register(subparsers):
-    parser = subparsers.add_parser('watch', help='Supervise workspace activity and owned PRs')
+def add(subparsers, name, help):
+    parser = subparsers.add_parser(name, help=help)
     parser.add_argument('--once', action='store_true', help='Run due work once and return 0/1/2')
-    actions = parser.add_subparsers(dest='watch_action')
-    install = actions.add_parser('install', help='Install and start the user watch service')
+    actions = parser.add_subparsers(dest=f'{name}_action')
+    install = actions.add_parser('install', help=f'Install and start the user {name} service')
     install.add_argument('--dry-run', action='store_true',
                          help='Print the unit path, unit and service commands without changing anything')
-    actions.add_parser('uninstall', help='Stop and remove the user watch service')
-    parser.set_defaults(func=run)
+    actions.add_parser('uninstall', help=f'Stop and remove the user {name} service')
+    return parser
+
+
+def register(subparsers):
+    add(subparsers, 'watch', 'Supervise workspace activity and owned PRs').set_defaults(func=run)
 
 
 def run(args):
-    if args.watch_action is None:
-        return watch.run(once=args.once)
+    return service(args, 'watch', watch.run)
+
+
+def service(args, name, loop):
+    action = getattr(args, f'{name}_action')
+    if action is None:
+        return loop(once=args.once)
     watch_service = registry.watch_service()
     if args.once:
         raise ValueError('--once cannot be combined with install or uninstall')
     root = workspace.find_workspace()
     platform = service_platform()
     if platform not in ('darwin', 'linux'):
-        raise ValueError('watch service installation supports macOS and Linux')
-    label, path = workspace.watch_unit(root, platform)
-    if args.watch_action == 'uninstall':
+        raise ValueError(f'{name} service installation supports macOS and Linux')
+    label, path = workspace.watch_unit(root, platform, name=name)
+    if action == 'uninstall':
         if not path.exists():
             return 0
-        _remove(path, platform, watch_service)
-        print(f'watch uninstalled: {label}')
+        _remove(path, platform, watch_service, name)
+        print(f'{name} uninstalled: {label}')
         return 0
     if path.exists():
-        raise ValueError('watch already installed; run watch uninstall first')
+        raise ValueError(f'{name} already installed; run {name} uninstall first')
     plugin = Path(__file__).resolve().parents[3]
     command = plugin / 'bin/wuwei'
     if not command.is_file():
-        raise OSError(f'watch executable missing: {command}')
+        raise OSError(f'{name} executable missing: {command}')
     values = {'@LABEL@': label, '@WORKSPACE@': str(root), '@PLUGIN_ROOT@': str(command.parent.parent),
-              '@PATH@': os.environ.get('PATH', ''), '@STDOUT_LOG@': str(root / '.wuwei/watch.stdout.log'),
-              '@STDERR_LOG@': str(root / '.wuwei/watch.stderr.log')}
+              '@PATH@': os.environ.get('PATH', ''), '@STDOUT_LOG@': str(root / f'.wuwei/{name}.stdout.log'),
+              '@STDERR_LOG@': str(root / f'.wuwei/{name}.stderr.log'), '@COMMAND@': name}
     template = plugin / ('templates/wuwei-watch.plist' if platform == 'darwin' else 'templates/wuwei-watch.service')
     rendered = template.read_text()
     for key, value in values.items():
         if '\n' in value or '\r' in value:
-            raise ValueError(f'invalid watch service value: {key}')
+            raise ValueError(f'invalid {name} service value: {key}')
         if platform == 'darwin':
             value = escape(value, {'"': '&quot;'})
         else:
@@ -73,19 +82,19 @@ def run(args):
         for argv in commands:
             watch_service.call(argv)
     except (OSError, ValueError):
-        _remove(path, platform, watch_service)
+        _remove(path, platform, watch_service, name)
         raise
-    print(f'watch installed: {label}')
+    print(f'{name} installed: {label}')
     return 0
 
 
-def _remove(path, platform, watch_service):
+def _remove(path, platform, watch_service, name):
     """Stop the service and delete its unit; service failures are warnings."""
     def call(argv):
         try:
             watch_service.call(argv)
         except (OSError, ValueError) as exc:
-            print(f'wuwei watch: warning: {exc}', file=sys.stderr)
+            print(f'wuwei {name}: warning: {exc}', file=sys.stderr)
     if platform == 'darwin':
         call(['launchctl', 'bootout', f'gui/{os.getuid()}', str(path)])
     else:

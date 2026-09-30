@@ -303,7 +303,8 @@ def test_emitted_kinds_have_intended_tiers():
                 'tracker.call': 'nudge',
                 'discovery.unmeasured': 'nudge', 'steward.notes': 'nudge',
                 'steward.run': 'silent', 'steward.due': 'nudge',
-                'steward.acknowledged': 'silent', 'inbox.redacted': 'silent'}
+                'steward.acknowledged': 'silent', 'inbox.redacted': 'silent',
+                'listen: clock': 'silent', 'listen: wake': 'silent'}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier

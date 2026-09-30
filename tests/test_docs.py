@@ -185,7 +185,7 @@ def test_host_terminal_actions_and_morning_references():
     for text in (reference, concepts):
         assert 'Host terminal actions' in text
         for command in ('decision outcome', 'state recover', 'integrity reconfirm', 'mcp decide',
-                        'drafts approve', 'watch uninstall'):
+                        'drafts approve', 'watch uninstall', 'listen uninstall'):
             assert command in text
     for phrase in ('run it in a host terminal', 'no plan yet', 'proposal.json', 'pr raise',
                    '--base', '--title', '--body-file', '--item'):
