@@ -370,6 +370,10 @@ def test_future_clock_nudges_unmeasured_watch(root, monkeypatch, capsys):
     ('python3 -P -m wuwei watch uninstall', 1),
     ('python3 -P -mwuwei watch uninstall', 1),
     ('sh -c "bin/wuwei watch uninstall"', 1),
+    ('bin/wuwei watch -- uninstall', 1),
+    ('bin/wuwei watch --dry-run -- uninstall', 1),
+    ('bin/wuwei watch "$A"; echo uninstall', 2),
+    ('bin/wuwei watch install; grep uninstall docs/', 0),
     ('bin/wuwei watch install --dry-run', 0),
     ('wuwei watch install --dry-run', 0),
     ('bin/wuwei watch --once', 0),
@@ -383,7 +387,7 @@ def test_seat_cannot_uninstall_the_watch(root, script, code):
     result = check_bash({'cwd': str(root), 'tool_name': 'Bash', 'tool_input': {'command': script}})
     assert result[0] == code
     if code:
-        assert 'owner terminal' in result[1]
+        assert ('owner terminal' if code == 1 else 'host terminal') in result[1]
 
 
 def test_watch_uninstall_outside_a_workspace_is_allowed(tmp_path, monkeypatch):

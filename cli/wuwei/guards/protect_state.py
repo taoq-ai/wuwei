@@ -345,11 +345,11 @@ def check_bash(payload):
                     return 2, 'Opaque owner action; use the host terminal.'
                 if cli:
                     if watch_relevant and 'watch' in argv:
-                        action = argv[argv.index('watch') + 1:][:1]
-                        if action == ['uninstall']:
+                        action = argv[argv.index('watch') + 1:]
+                        if 'uninstall' in action:
                             return 1, 'Watch uninstall requires the owner terminal, outside agent tools.'
-                        if any('$' in arg or '`' in arg for arg in action):
-                            return 2, 'Watch action is not literal; use the host terminal.'
+                        if action not in ([], ['install'], ['install', '--dry-run'], ['--once'], ['--help']):
+                            return 2, 'Not a literal watch action; use the host terminal.'
                     if drafts_relevant and 'drafts' in argv:
                         action = argv[argv.index('drafts') + 1:]
                         if action[:1] in (['approve'], ['drop']):
