@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 from fnmatch import fnmatchcase
 import re
+import shlex
 
 from wuwei import shell
 from wuwei.guards import Guard
@@ -25,7 +26,10 @@ def identity_check(expected, actual, head=None):
         owner = _identity(expected)
         for kind in ('author', 'committer'):
             if _identity(actual[kind]) != owner:
-                return 1, f'GIT_{kind.upper()}_IDENT differs from configured identity'
+                return 1, (f'GIT_{kind.upper()}_IDENT differs from configured identity; '
+                           'create item worktrees with wuwei worktree add, or run '
+                           f'git config user.name {shlex.quote(owner[0])} and then '
+                           f'git config user.email {shlex.quote(owner[1])} in this worktree')
         if head is not None:
             for kind in ('author', 'committer'):
                 if _identity(head[kind]) != owner:

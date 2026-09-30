@@ -69,8 +69,9 @@ _CLI_WORD = re.compile(r'(?<![\w.-])wuwei(?![\w/.-])|-[A-Za-z]*mwuwei\b|\b(?:fro
 # The CLI with a non-literal group or verb: relevant with no verb in the text.
 _CLI_NONLITERAL = re.compile(r'(?<![\w.-])wuwei(?:\s+-\S*)*(?:\s+(?:' + '|'.join(sorted(_OWNER_GROUPS))
                              + r'))?(?:\s+-\S*)*\s+[$`]')
-# Programs whose arguments are patterns or text, never run, and that write no file by
-# operand or flag (sort -o, uniq's output operand and tee do, so they are not here).
+# Programs whose arguments are patterns or text, never run (except rg --pre, checked in
+# _write_targets), and that write no file by operand or flag (sort -o, uniq's output
+# operand and tee do, so they are not here).
 _READERS = ('grep', 'rg', 'echo', 'printf', 'head', 'tail', 'wc', 'cut', 'tr')
 
 
@@ -319,6 +320,11 @@ def _write_targets(argv, cwd, root):
         from wuwei.shell import _launcher
         if program != 'wuwei' or argv[0] == 'wuwei' or _launcher(Path(cwd, argv[0]), cwd):
             return []
+    # Reader arguments are text; their redirects are checked from command.writes.
+    # rg --pre runs a command on each searched file, so those operands are checked.
+    if program in (*_READERS, 'cat', 'less', 'jq') and not (
+            program == 'rg' and any(a == '--pre' or a.startswith('--pre=') for a in argv[1:])):
+        return []
     if program in ('ln', 'install', 'rsync', 'rm', 'cp', 'mv', 'tee', 'truncate', 'sed'):
         # Normalized argv has no quote metadata; conservatively check glob matches.
         argv = [argv[0], *(match for arg in argv[1:]
@@ -341,8 +347,6 @@ def _write_targets(argv, cwd, root):
     if program == 'dd':
         return [match for arg in argv[1:] if arg.startswith('of=')
                 for match in (glob.glob(arg[3:], root_dir=cwd) or [arg[3:]])]
-    if program in ('cat', 'head', 'tail', 'less', 'jq', 'grep', 'wc'):
-        return []
     if program == 'sed' and not any(
             arg == '--in-place' or arg.startswith('--in-place=') or
             (arg.startswith('-') and not arg.startswith('--') and 'i' in arg)

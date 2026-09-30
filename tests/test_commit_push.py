@@ -746,3 +746,17 @@ def test_selected_git_directory_push_is_not_read_early(workspace_case):
     push, = [call for call in fake.calls if call[0] == 'push_context']
     assert push[1][0] == str(root / 'repo')
     assert [call[0] for call in fake.calls].index('commit_context') < fake.calls.index(push)
+
+
+def test_identity_refusal_names_the_fix():
+    for kind, actual in (('AUTHOR', {'author': OTHER, 'committer': OWNER}),
+                         ('COMMITTER', {'author': OWNER, 'committer': OTHER})):
+        code, reason = guard().identity_check(OWNER, actual)
+        assert code == 1
+        assert reason.startswith(f'GIT_{kind}_IDENT differs from configured identity')
+        assert 'wuwei worktree add' in reason
+        assert 'git config user.name Builder' in reason
+        assert 'git config user.email builder@example.test' in reason
+    demo = {'name': 'Demo Owner', 'email': 'demo@example.test'}
+    assert "git config user.name 'Demo Owner'" in guard().identity_check(
+        demo, {'author': OTHER, 'committer': demo})[1]

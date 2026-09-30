@@ -63,6 +63,9 @@ class Fake(Recorder):
     def hooks_path(self, repo, path, root=None):
         return self._call('hooks_path', (repo, path), root)
 
+    def worktree_identity(self, repo, name, email, root=None):
+        return self._call('worktree_identity', (repo, name, email), root)
+
     def push_commits(self, repo, remote, destination, local_sha, remote_sha, default_branch, root=None):
         return self._call('push_commits', (repo, remote, destination, local_sha, remote_sha, default_branch), root)
 

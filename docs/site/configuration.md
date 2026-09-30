@@ -25,7 +25,7 @@ layout: default
 | `repos.name` | Required per entry | Code host name, such as `owner/repo`. |
 | `repos.path` | Required per entry | Repository path from workspace root or absolute path. |
 | `repos.default_branch` | Required per entry | Protected base branch. |
-| `repos.identity` | `{name = "", email = ""}` | Expected git identity for this repository. Set both values. |
+| `repos.identity` | `{name = "", email = ""}` | Expected git identity for this repository; the commit guards compare commits against it. Set both values. `wuwei worktree add` writes it to each item worktree's Git config. |
 | `repos.merge_deploys` | `true` when omitted | Whether a merge deploys. Template example sets `false` only after explicit confirmation. |
 | `repos.merge.auto` | `false` | Allow automatic merge only when the merge policy's review, check, soak, path and budget rules pass. |
 | `repos.fast_checks` | `[]` | Commands for `wuwei fast-checks` on this checkout. |

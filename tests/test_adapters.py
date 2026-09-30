@@ -59,6 +59,7 @@ CALLS = [
     ('vcs', 'commit_context', ('repo', 'settings', 'env'), True),
     ('vcs', 'push_context', ('repo', 'remote', 'refspecs'), True),
     ('vcs', 'hooks_path', ('repo', 'path'), False),
+    ('vcs', 'worktree_identity', ('repo', 'name', 'email'), False),
     ('vcs', 'push_commits', ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'), True),
     ('tracker', 'backlog', ('filter',), True),
     ('tracker', 'claim', ('item',), False),

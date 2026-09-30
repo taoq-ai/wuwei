@@ -683,3 +683,28 @@ def test_wuwei_cli_arguments_are_data(workspace, command):
 def test_writes_beside_the_cli_stay_refused(workspace, command):
     from wuwei.guards.protect_state import check_bash
     assert check_bash(payload(workspace, 'Bash', command=command))[0] != 0
+
+
+@pytest.mark.parametrize('command,expected', [
+    ("echo 'see .wuwei/generated/agents/arch.md'", 0),
+    ('echo .wuwei/generated/agents/arch.md', 0),
+    ("echo 'Read instructions {root}/.wuwei/generated/agents/arch.md'", 0),
+    ("printf '%s\\n' .wuwei/generated/agents/arch.md", 0),
+    ('cut -c1 .wuwei/config.toml', 0),
+    ('tr a b .wuwei/config.toml', 0),
+    ('rg -n x .wuwei/config.toml', 0),
+    ('rg --pre rm x .wuwei/config.toml', 2),
+    ('rg --pre=rm x .wuwei/config.toml', 2),
+    ('rg --pre rm x .wuwei/days/2026-09-28/state.json', 2),
+    ('echo x > .wuwei/generated/agents/arch.md', 2),
+    ('printf x >> .wuwei/config.toml', 2),
+    ('echo x | tee .wuwei/config.toml', 2),
+    ('echo .wuwei/config.toml | xargs rm', 2),
+    ('echo .wuwei/config.toml | sh', 2),
+])
+def test_reader_mentions_are_not_writes(workspace, monkeypatch, capsys, command, expected):
+    from wuwei.commands.hook import run
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(
+        payload(workspace, 'Bash', command=command.format(root=workspace)))))
+    assert run(SimpleNamespace(event='PreToolUse')) == expected, capsys.readouterr().err
+    capsys.readouterr()

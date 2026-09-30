@@ -77,6 +77,8 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
             allowed = True
         case ('config', '--worktree', 'core.hooksPath', path):
             allowed = isinstance(path, str) and Path(path).is_absolute()
+        case ('config', '--worktree', 'user.name' | 'user.email', value):
+            allowed = isinstance(value, str) and bool(value) and not value.startswith('-')
         case ('config', '--local', '--get', 'core.bare' | 'core.worktree'):
             allowed = True
         case ('config', '--get', 'user.name' | 'user.email'):
@@ -500,6 +502,17 @@ def hooks_path(repo, path, root=None):
     _run(repo, 'config', '--local', 'extensions.worktreeConfig', 'true')
     _run(repo, 'config', '--worktree', 'core.hooksPath', path)
     return {'git_dir': git_dir}
+
+
+@_operation
+def worktree_identity(repo, name, email, root=None):
+    for value in (name, email):
+        if (not isinstance(value, str) or not value.strip() or value.startswith('-')
+                or any(char in value for char in '\n\r\0<>')):
+            raise ValueError('invalid identity')
+    _run(repo, 'config', '--worktree', 'user.name', name)
+    _run(repo, 'config', '--worktree', 'user.email', email)
+    return {'name': name, 'email': email}
 
 
 @_operation

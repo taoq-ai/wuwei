@@ -32,7 +32,7 @@ def run(args):
     repo = (root / Path(repos[0]['path']).expanduser()).resolve()
     try:
         result = workspace.create_worktree(repo, item.lower(), root / 'worktrees' / item, root,
-                                           registry.load('vcs', config))
+                                           registry.load('vcs', config), identity=repos[0]['identity'])
     except state.StateError as exc:
         print(f'wuwei worktree: {exc}', file=sys.stderr)
         return 1
