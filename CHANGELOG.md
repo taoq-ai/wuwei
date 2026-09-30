@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.7.0](https://github.com/taoq-ai/wuwei/compare/v0.6.1...v0.7.0) (2026-09-30)
+
+
+### Features
+
+* **adapters:** inbound adapter interface and redactor adapter ([#263](https://github.com/taoq-ai/wuwei/issues/263)) ([ce6c7cf](https://github.com/taoq-ai/wuwei/commit/ce6c7cf8e1b1bcbc854c4ce14e5f0921fa2a5f46)), closes [#48](https://github.com/taoq-ai/wuwei/issues/48)
+* **config:** config check verifies the host protections and seat credential layout that spec 4.5 and 9.1 now rely on ([#254](https://github.com/taoq-ai/wuwei/issues/254)) ([4b765ae](https://github.com/taoq-ai/wuwei/commit/4b765ae554eb4bf5fa57a2e69f10f0dd8a80db8f)), closes [#243](https://github.com/taoq-ai/wuwei/issues/243)
+* **control-plane:** control-plane interface with Remote Control and push as default ([#264](https://github.com/taoq-ai/wuwei/issues/264)) ([16ab360](https://github.com/taoq-ai/wuwei/commit/16ab36071a80af72f0eaf831fad132c271672fe1)), closes [#57](https://github.com/taoq-ai/wuwei/issues/57)
+* **team:** session registry: several Claude Code sessions in one workspace, with one planner ([#265](https://github.com/taoq-ai/wuwei/issues/265)) ([0fbe37e](https://github.com/taoq-ai/wuwei/commit/0fbe37e3f28daec989351bb18087eb5b04f9a5d8)), closes [#260](https://github.com/taoq-ai/wuwei/issues/260)
+
+
+### Bug Fixes
+
+* **cli:** operator records and owner-action consistency after the fourth dry run ([#256](https://github.com/taoq-ai/wuwei/issues/256)) ([3804c2b](https://github.com/taoq-ai/wuwei/commit/3804c2b7c7e417a6f30049ce48026bd9cb23ac58)), closes [#247](https://github.com/taoq-ai/wuwei/issues/247)
+* **release:** the asset ships the operator docs it links to ([#257](https://github.com/taoq-ai/wuwei/issues/257)) ([6806cbb](https://github.com/taoq-ai/wuwei/commit/6806cbbe797242ef26daa987ffd82162b18e2cc8)), closes [#245](https://github.com/taoq-ai/wuwei/issues/245)
+* **team:** seats can commit in a WUWEI worktree without setting git identity by hand ([#253](https://github.com/taoq-ai/wuwei/issues/253)) ([190ad8c](https://github.com/taoq-ai/wuwei/commit/190ad8c4acafaef142ed3a8df3a8730739a3766d)), closes [#246](https://github.com/taoq-ai/wuwei/issues/246)
+* **team:** the daily path runs without operator repairs and is documented as one path ([#249](https://github.com/taoq-ai/wuwei/issues/249)) ([527d384](https://github.com/taoq-ai/wuwei/commit/527d384c587f3696ac3a01cdf96a661bff4115f4)), closes [#238](https://github.com/taoq-ai/wuwei/issues/238)
+
+
+### Performance Improvements
+
+* **hooks:** import only the guards an event needs, after profiling on the owner's hardware ([#244](https://github.com/taoq-ai/wuwei/issues/244)) ([dccbe61](https://github.com/taoq-ai/wuwei/commit/dccbe61a11e6cb76b365eb9f4df0500b9dab8f89)), closes [#240](https://github.com/taoq-ai/wuwei/issues/240)
+
 ## [0.6.1](https://github.com/taoq-ai/wuwei/compare/v0.6.0...v0.6.1) (2026-09-30)
 
 
