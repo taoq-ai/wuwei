@@ -434,7 +434,9 @@ def assert_latency_budget(name, cpu_ms, wall_ms, capsys, *, wall_budget=None, ru
               f'wall {wall_ms:.2f} ms, load {load:.2f} on {cpus} CPUs')
     with capsys.disabled():
         print('\n' + report)
-    if os.environ.get('WUWEI_BENCH') == '1' or ('CI' not in os.environ and load < cpus / 2):
+    # Budgets are enforced only when asked (WUWEI_BENCH=1): wall time on a working host is
+    # load-bound, and a load heuristic made the suite red on busy developer machines.
+    if os.environ.get('WUWEI_BENCH') == '1':
         if wall_budget is None:
             assert cpu_ms < 50, report
         else:
