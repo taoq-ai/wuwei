@@ -48,6 +48,9 @@ def stored(root):
     ('pr_action_done', 'wuwei pr act'),
     ('pr_reply_drafts', 'wuwei pr act'),
     ('pr_action_decisions', 'wuwei pr act'),
+    ('sessions', 'wuwei hook SessionStart'),
+    ('sessions.A.role', 'wuwei hook SessionStart'),
+    ('claims', 'wuwei brief builder'),
 ])
 def test_nonallowlisted_state_paths_refuse_without_write(root, capsys, path, producer):
     before = stored(root)
@@ -103,6 +106,8 @@ def test_approved_settings_stay_frozen_under_writer_lock(root, field, value):
     ('seat launched', 'wuwei hook PreToolUse'),
     ('seat stopped', 'wuwei hook SubagentStop'),
     ('brief written', 'wuwei brief'),
+    ('session.seen', 'wuwei hook SessionStart'),
+    ('item.claimed', 'wuwei worktree add'),
     ('state.transition', 'wuwei state transition'),
     ('fast_checks.record', 'wuwei fast-checks'),
     ('plan.approved', 'wuwei plan approve'),

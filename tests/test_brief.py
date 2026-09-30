@@ -308,3 +308,30 @@ def test_brief_without_body_option_never_reads_stdin(day, monkeypatch, capsys):
     with pytest.raises(SystemExit) as exc:
         main(['brief', 'builder', 'X', 'b5', '--body', 'x', '--file', '-'])
     assert exc.value.code == 2
+
+
+def test_builder_brief_claims_item_for_the_session(day, monkeypatch, capsys):
+    root, directory, _, _ = day
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'A')
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'b1') == 0
+    data = state.read_state(root)
+    assert data['claims'] == {'X': 'A'} and 'A' in data['sessions']
+    assert events(directory)[-1]['payload']['session'] == 'A'
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'B')
+    before = events(directory)
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'b2') == 2
+    assert 'claimed by live session A' in capsys.readouterr().err
+    assert not (directory / 'briefs/b2.md').exists() and events(directory) == before
+    assert brief(monkeypatch, 'body', 'sentinel-arch', 'X', 'gate', '--worktree', 'tree') == 0
+    monkeypatch.delenv('WUWEI_SESSION_ID')
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'b3') == 2
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'B')
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T13:00:00+00:00')
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'b4') == 0
+    assert state.read_state(root)['claims'] == {'X': 'B'}
+
+
+def test_unclaimed_builder_brief_without_session_records_no_claim(day, monkeypatch):
+    root, _, _, _ = day
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'b1') == 0
+    assert 'claims' not in state.read_state(root)

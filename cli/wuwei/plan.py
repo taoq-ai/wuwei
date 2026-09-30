@@ -4,19 +4,31 @@ import json
 from pathlib import Path
 import re
 
-from wuwei import discovery, goals, rank, state, workspace
+from wuwei import discovery, goals, rank, sessions, state, workspace
 
 
 FLAGS = ('trust_surface', 'boundary_relevant', 'agent_surface')
 
 
-def session(session_id, root=None):
-    """Register the plan skill's session as today's planner wake recipient."""
+def session(session_id, root=None, *, take_over=False):
+    """Register the plan skill's session as today's single planner wake recipient."""
     if not isinstance(session_id, str) or not session_id.strip():
         raise ValueError('planner session id must be a nonempty string')
-    return state._write_state(lambda data: data.update(planner_session_id=session_id),
-                              root, reserved=False, kind='plan.session',
-                              payload={'session_id': session_id})
+    current = state.read_state(root).get('planner_session_id')
+    previous = current if current not in (None, session_id) else None
+    if previous and not take_over:
+        raise ValueError(f'planner session {previous} is registered; to hand over, run from '
+                         f'this session: wuwei plan session {session_id} --take-over')
+
+    def update(data):
+        if data.get('planner_session_id') != current:
+            raise ValueError('planner changed during registration; retry')
+        data['planner_session_id'] = session_id
+        sessions.record(data, session_id, hook='plan session', cwd=str(Path.cwd()))
+
+    return state._write_state(update, root, reserved=False, kind='plan.session',
+                              payload={'session_id': session_id,
+                                       **({'previous': previous} if previous else {})})
 
 
 def _proposal(data, goals_text, framework="wsjf"):

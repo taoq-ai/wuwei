@@ -143,6 +143,7 @@ def test_config_defaults_and_independence(tmp_path):
         'codex': {'command': [], 'timeout_seconds': 300},
             'watch': {'clock_seconds': 600, 'dead_seconds': 1200, 'stale_seconds': 900,
                       'sweep_seconds': 7200},
+        'sessions': {'stale_seconds': 3600},
         'steward': {'every_tool_calls': 50},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
             'shepherd': {'review_channel': '', 'lead_login': '', 'review_gate_check': 'Review Gate',

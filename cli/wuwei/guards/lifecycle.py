@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from wuwei import memory, state, watch, workspace
+from wuwei import memory, sessions, state, watch, workspace
 from wuwei.guards import Guard
 
 
@@ -11,6 +11,16 @@ def scoped(payload):
     if not cwd.is_absolute():
         raise ValueError('cwd must be absolute')
     return workspace.scope(cwd.resolve())
+
+
+def _seen(root, payload, event):
+    """Record hook activity in the registry; guards called directly may carry no id."""
+    session_id = payload.get('session_id')
+    if not isinstance(session_id, str) or not session_id.strip():
+        return None
+    detail = payload.get('source' if event == 'SessionStart' else 'agent_type')
+    hook = f'{event}:{detail}' if isinstance(detail, str) and detail.strip() else event
+    return sessions.touch(root, session_id, hook=hook, cwd=payload['cwd'])
 
 
 def session_start(payload):
@@ -23,10 +33,17 @@ def session_start(payload):
         return 2, f'session unmeasured: {exc}'
     code, lines = 0, []
     try:
+        if isinstance(payload.get('session_id'), str) and payload['session_id'].strip():
+            sessions.export(payload['session_id'])
+        _seen(root, payload, 'SessionStart')
+    except watch.ERRORS as exc:
+        code = 2
+        lines.append(f'session registry unmeasured: {exc}')
+    try:
         content, size, tokens = memory.session_payload(root)
         lines.extend([content, f'Size: {size} bytes, {tokens} estimated tokens'])
         findings = memory.lint(root)
-        code = int(bool(findings))
+        code = max(code, int(bool(findings)))
         lines.extend(findings)
     except watch.ERRORS as exc:
         code = 2
@@ -73,7 +90,8 @@ def stop(payload):
         if context is None:
             return 0, ''
         root, _ = context
-        planner = state.read_state(root).get('planner_session_id')
+        data = _seen(root, payload, 'Stop') or state.read_state(root)
+        planner = data.get('planner_session_id')
         if not planner or payload.get('session_id') != planner:
             return 0, ''
         message = watch.wake(root, consume=True)
@@ -82,5 +100,16 @@ def stop(payload):
         return 0, f'planner wake unmeasured: {exc}'
 
 
+def subagent_stop(payload):
+    try:
+        context = scoped(payload)
+        if context is not None:
+            _seen(context[0], payload, 'SubagentStop')
+        return 0, ''
+    except watch.ERRORS as exc:
+        return 0, f'session registry unmeasured: {exc}'
+
+
 GUARDS = [Guard('SessionStart', None, session_start),
-          Guard('PreCompact', None, pre_compact), Guard('Stop', None, stop)]
+          Guard('PreCompact', None, pre_compact), Guard('Stop', None, stop),
+          Guard('SubagentStop', None, subagent_stop)]
