@@ -68,10 +68,9 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False):
             allowed = True
         case ('check-ref-format', ref):
             allowed = isinstance(ref, str) and ref.startswith('refs/heads/')
-        case ('config', '--type=bool', '--get', key):
-            allowed = key == 'push.followtags' or bool(re.fullmatch(r'remote\.[A-Za-z0-9_.-]+\.mirror', key))
-        case ('config', '--get-all', key):
-            allowed = bool(re.fullmatch(r'remote\.[A-Za-z0-9_.-]+\.push', key))
+        case ('config', '-z', '--get-regexp', pattern):
+            remote = re.fullmatch(r'\^\(push\\\.followtags\|remote\\\.(.+)\\\.\(mirror\|push\)\)\$', pattern)
+            allowed = bool(remote) and pattern == _push_settings(remote[1].replace('\\.', '.'))
         case ('config', '--get', 'core.hooksPath'):
             allowed = True
         case ('config', '--local', 'extensions.worktreeConfig', 'true'):
@@ -105,7 +104,10 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False):
             allowed = (format_arg == _LOG_FORMAT and isinstance(rev, str) and
                        rev.endswith('..HEAD') and bool(_revision(rev[:-6])))
             if format_arg == _HEAD_FORMAT:
-                allowed = bool(re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})\.\.(?:[0-9a-f]{40}|[0-9a-f]{64})', rev))
+                base, _, tip = rev.rpartition('..')
+                allowed = bool(re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', tip) and (
+                    re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', base) or '..' not in base
+                    and re.fullmatch(r'refs/remotes/[^\s~^:?*\[\\]+', base)))
         case ('log', '--format=', '--name-only', '-z', since, until, 'HEAD', '--'):
             allowed = bool(re.fullmatch(r'--since=\d{4}-\d{2}-\d{2}T00:00:00', since)
                            and re.fullmatch(r'--until=\d{4}-\d{2}-\d{2}T23:59:59', until))
@@ -174,6 +176,30 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False):
     if result.returncode:
         raise ValueError(f'git exited {result.returncode}')
     return result.stdout.decode('utf-8', errors='surrogateescape')
+
+
+def _together(*calls):
+    """Run independent reads concurrently; results and the first error keep call order."""
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(len(calls)) as pool:
+        futures = [pool.submit(call) for call in calls]
+    return [future.result() for future in futures]
+
+
+def _later(call):
+    """Keep a speculative read's error until its result is used."""
+    def run():
+        try:
+            return call()
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            return exc
+    return run
+
+
+def _used(value):
+    if isinstance(value, Exception):
+        raise value
+    return value
 
 
 def _revision(value):
@@ -338,11 +364,13 @@ def pushed_branches(repo, root=None):
     return sorted(names)
 
 
-def _repository(read):
-    path = read('rev-parse', '--absolute-git-dir').rstrip('\n')
+def _repository(read, pair=None):
+    """Validated git and common directory; `pair` holds both reads when already made."""
+    path, common = pair or (read('rev-parse', '--absolute-git-dir'),
+                            read('rev-parse', '--path-format=absolute', '--git-common-dir'))
+    path, common = path.rstrip('\n'), common.rstrip('\n')
     if not path or not Path(path).is_absolute():
         raise ValueError('invalid repository path')
-    common = read('rev-parse', '--path-format=absolute', '--git-common-dir').rstrip('\n')
     if not common or not Path(common).is_absolute():
         raise ValueError('invalid common directory')
     return {'path': str(Path(path).resolve()), 'common_dir': str(Path(common).resolve())}
@@ -358,9 +386,19 @@ def repo_context(repo, root=None):
 def commit_context(repo, settings, env, root=None):
     def read(*args):
         return _run(repo, *args, settings=settings, env=env)
-    return {**_repository(read),
-            'author': _identity(read('var', 'GIT_AUTHOR_IDENT')),
-            'committer': _identity(read('var', 'GIT_COMMITTER_IDENT'))}
+    path, common, author, committer = _together(
+        lambda: read('rev-parse', '--absolute-git-dir'),
+        lambda: read('rev-parse', '--path-format=absolute', '--git-common-dir'),
+        lambda: read('var', 'GIT_AUTHOR_IDENT'), lambda: read('var', 'GIT_COMMITTER_IDENT'))
+    return {**_repository(read, (path, common)),
+            'author': _identity(author), 'committer': _identity(committer)}
+
+
+def _push_settings(remote):
+    """One read for push.followtags and the named remote's mirror and push keys."""
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+', remote):
+        raise ValueError('use a named push remote')
+    return r'^(push\.followtags|remote\.' + remote.replace('.', r'\.') + r'\.(mirror|push))$'
 
 
 @_operation
@@ -377,28 +415,48 @@ def push_context(repo, remote, refspecs, root=None):
 
     if not remote or not refspecs:
         raise ValueError('use an explicit remote and branch refspec: git push origin <branch>')
-    result = head(repo, root=root)
-    if result.exit:
-        raise ValueError(f'HEAD is unavailable ({result.reason}); check the repository and Git '
-                         'installation; create a commit if the branch has no commits before pushing')
-    head_data = result.data
-    sha = head_data['sha']
-    branch = read('symbolic-ref', '--quiet', '--short', 'HEAD', missing=True).strip()
+
+    def current():
+        result = head(repo, root=root)
+        if result.exit:
+            raise ValueError(f'HEAD is unavailable ({result.reason}); check the repository and Git '
+                             'installation; create a commit if the branch has no commits before pushing')
+        return result.data
+
+    named = isinstance(remote, str) and re.fullmatch(r'[A-Za-z0-9_.-]+', remote) and not remote.startswith('-')
+    key = f'remote.{remote}.'
+    settings = [lambda: read('config', '-z', '--get-regexp', _push_settings(remote), missing=True)]
+    # Explicit destinations are validated alongside; each result is used only where it was before.
+    targets = sorted({ref.removeprefix('+').partition(':')[2] for ref in refspecs
+                      if isinstance(ref, str) and ':' in ref} - {''})
+    head_data, branch, *values = _together(
+        current, lambda: read('symbolic-ref', '--quiet', '--short', 'HEAD', missing=True),
+        *(settings if named else ()),
+        *(_later(lambda target=target: read('check-ref-format', target)) for target in targets))
+    checked = dict(zip(targets, values[-len(targets):] if targets else []))
+    branch = branch.strip()
     if not branch:
         raise ValueError('detached HEAD; check out a branch before pushing')
-    if not isinstance(remote, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', remote) or remote.startswith('-'):
+    if not named:
         raise ValueError('use a named push remote')
 
-    def boolean(key):
-        value = read('config', '--type=bool', '--get', key, missing=True).strip()
-        if value not in ('', 'true', 'false'):
-            raise ValueError('invalid boolean push setting')
-        return value == 'true'
+    def boolean(value):
+        # Git's bool parsing: a key without a value is true; the last value wins.
+        value = value.lower()
+        if value in ('true', 'yes', 'on') or re.fullmatch(r'[+-]?\d+', value) and int(value):
+            return True
+        if value in ('false', 'no', 'off', '') or re.fullmatch(r'[+-]?\d+', value):
+            return False
+        raise ValueError('invalid boolean push setting')
 
-    if boolean('push.followtags'):
+    found = {}
+    for entry in values[0].split('\0')[:-1]:
+        name, sep, value = entry.partition('\n')
+        found.setdefault(name, []).append(value if sep else 'true')
+    if boolean(found.get('push.followtags', [''])[-1]):
         raise ValueError('tag pushes require deployment policy')
-    force = boolean(f'remote.{remote}.mirror')
-    configured = read('config', '--get-all', f'remote.{remote}.push', missing=True)
+    force = boolean(found.get(key + 'mirror', [''])[-1])
+    configured = found.get(key + 'push')
     updates = []
     for ref in refspecs:
         if ref.startswith('+'):
@@ -410,7 +468,7 @@ def push_context(repo, remote, refspecs, root=None):
             if configured or source == 'HEAD':
                 raise ValueError('use an explicit HEAD:refs/heads/branch refspec')
             destination = 'refs/heads/' + branch
-        read('check-ref-format', destination)
+        _used(checked[destination]) if destination in checked else read('check-ref-format', destination)
         if not destination.startswith('refs/heads/') or destination == 'refs/heads/':
             raise ValueError('only branch pushes are supported')
         updates.append({'source': head_data['sha'], 'destination': destination})
@@ -451,13 +509,23 @@ def push_commits(repo, remote, destination, local_sha, remote_sha, default_branc
         raise ValueError('use a named push remote')
     if not destination.startswith('refs/heads/'):
         raise ValueError('only branch pushes are supported')
+    def log(base):
+        return _run(repo, 'log', '-z', _HEAD_FORMAT, base + '..' + local_sha, '--')
+
+    # A new branch sends what the default branch lacks (merge base..local when that base
+    # is unique). The tracking-ref range is read alongside and used only if the ref exists.
+    fallback = _later(lambda: log('refs/remotes/' + remote + '/' + default_branch))
     if remote_sha is None:
         tracking = 'refs/remotes/' + remote + '/' + destination.removeprefix('refs/heads/')
-        remote_sha = _run(repo, 'rev-parse', '--verify', '--quiet', tracking + '^{commit}', missing=True).strip()
-    if not remote_sha or set(remote_sha) == {'0'}:
-        remote_sha = _run(repo, 'merge-base', 'HEAD', 'refs/remotes/' + remote + '/' + default_branch).strip()
-    base = _sha(remote_sha)
-    fields = _records(_run(repo, 'log', '-z', _HEAD_FORMAT, base + '..' + local_sha, '--'))
+        remote_sha, known, other = _together(lambda: _run(
+            repo, 'rev-parse', '--verify', '--quiet', tracking + '^{commit}', missing=True).strip(),
+            _later(lambda: log(tracking)), fallback)
+        output = _used(known if remote_sha else other)
+    elif not remote_sha or set(remote_sha) == {'0'}:
+        output = _used(fallback())
+    else:
+        output = log(_sha(remote_sha))
+    fields = _records(output)
     if len(fields) % 5:
         raise ValueError('incomplete pushed commit record')
     return {'commits': [{'sha': _sha(fields[i]),
@@ -582,15 +650,19 @@ def _commit_workspace(repo, paths, message):
 @_operation
 def workspace_changes(repo, root=None):
     _workspace_repository(repo)
-    current = status(repo, root=root)
-    if current.exit:
-        raise ValueError(current.reason)
-    changes = {p for row in current.data for p in (row['path'], row['original_path'])
-               if p and p.split('/')[0] in _WORKSPACE_DIRS and not p.endswith('/state.lock')}
+
+    def current():
+        result = status(repo, root=root)
+        if result.exit:
+            raise ValueError(result.reason)
+        return result.data
+
     # ponytail: inspect all procedure history; add a verified checkpoint if it grows costly.
-    history = _run(repo, 'log', '-z',
-                   '--format=%x1e%(trailers:key=Promoted-by,valueonly)%x00',
-                   '--name-only', '--no-renames', 'HEAD', '--', *_WORKSPACE_DIRS, local=True)
+    rows, history = _together(current, lambda: _run(
+        repo, 'log', '-z', '--format=%x1e%(trailers:key=Promoted-by,valueonly)%x00',
+        '--name-only', '--no-renames', 'HEAD', '--', *_WORKSPACE_DIRS, local=True))
+    changes = {p for row in rows for p in (row['path'], row['original_path'])
+               if p and p.split('/')[0] in _WORKSPACE_DIRS and not p.endswith('/state.lock')}
     if not history.startswith('\x1e'):
         raise ValueError('workspace history missing or malformed')
     for entry in history.split('\x1e')[1:]:

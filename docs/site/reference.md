@@ -143,3 +143,17 @@ The lint rules:
 - A finding starts on a bullet or table row, a line beginning with its severity, a `Severity:` line, or a numbered or `F1` line.
 - Each finding carries a severity (P0 to P3, critical, high, medium, low or info), a `file:line` (or `Lnn` for docs), `blocks: yes|no`, and a failure scenario (for example "fails when", "would" or "impact").
 - Fenced blocks, quoted lines and HTML comments are ignored.
+
+## State recovery
+
+Every state write also writes a read-only copy of the written state to `.wuwei/days/<date>/state.snapshot.json`. When today's `state.json` is truncated or otherwise unreadable, every hook and command that reads state fails closed and names `wuwei state recover`. A missing `state.json` next to a snapshot fails the same way, so no write can replace the snapshot first.
+
+Run `bin/wuwei state recover` in a host terminal. It prints a short snapshot digest and asks you to type it, then restores `state.json` from the snapshot under the state lock and appends a `state.recovered` event. The day continues from the last state WUWEI wrote.
+
+| Exit | Meaning |
+| --- | --- |
+| `0` | State restored from the snapshot. |
+| `1` | `state.json` is readable (nothing to recover), or you declined. |
+| `2` | No usable snapshot, the snapshot changed during confirmation, or no terminal could ask you. |
+
+Recovery is an owner action. Agent tool hooks refuse `wuwei state recover` inside a workspace and refuse writes to the snapshot. As with other host-only actions, this follows the cooperative hook threat model in spec 9.1.

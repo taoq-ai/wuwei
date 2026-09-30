@@ -18,6 +18,7 @@ def register(subparsers):
     transition = actions.add_parser('transition')
     transition.add_argument('item')
     transition.add_argument('phase')
+    actions.add_parser('recover', help="Restore today's unreadable state from its snapshot (owner, host terminal)")
     parser.set_defaults(func=run)
 
 
@@ -27,6 +28,11 @@ def run(args):
             print(json.dumps(state.get_state(args.path), allow_nan=False))
         elif args.action == 'set':
             state.set_state(args.path, json.loads(args.value))
+        elif args.action == 'recover':
+            from wuwei import integrity
+            digest = state.recover(confirm=lambda token: integrity._host_confirm(
+                token, prompt="Restore today's state from its snapshot. To confirm, type:"))
+            print(f'state recovered from snapshot {digest[:12]}')
         else:
             state.transition(args.item, args.phase)
         return CLEAN

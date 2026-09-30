@@ -21,6 +21,7 @@ EVENT_PRODUCERS = {
     'integrity': 'wuwei integrity check', 'integrity_failed': 'wuwei integrity check',
     'integrity_confirmation': 'owner host re-confirmation',
     'state.set': 'wuwei state set', 'state.transition': 'wuwei state transition',
+    'state.recovered': 'owner host wuwei state recover',
     'state.import': 'wuwei plan approve', 'plan.approved': 'wuwei plan approve',
     'plan.added': 'wuwei plan add', 'plan.proposed': 'wuwei plan add',
     'plan.session': 'wuwei plan session', 'brief written': 'wuwei brief',

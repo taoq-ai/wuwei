@@ -136,10 +136,10 @@ def test_installed_hook_executes_cli_safely(workspace_case, monkeypatch, event):
     (root / 'repo/wuwei/__main__.py').write_text('raise SystemExit(0)\n')
     (root / '.wuwei/executable').write_text(str(ROOT / 'bin/wuwei') + '\n')
     steps = [
-        {'stdout': str(root / 'repo') + '\n'},
-        {'stdout': str(root / 'repo/.git') + '\n'},
-        {'stdout': 'Other <other@example.test> 1790596800 +0200\n'},
-        {'stdout': 'Builder <builder@example.test> 1790596800 +0200\n'},
+        {'stdout': str(root / 'repo') + '\n', 'when': ['--absolute-git-dir']},
+        {'stdout': str(root / 'repo/.git') + '\n', 'when': ['--git-common-dir']},
+        {'stdout': 'Other <other@example.test> 1790596800 +0200\n', 'when': ['GIT_AUTHOR_IDENT']},
+        {'stdout': 'Builder <builder@example.test> 1790596800 +0200\n', 'when': ['GIT_COMMITTER_IDENT']},
     ] * 2
     original_path = os.environ['PATH']
     install_stub(root, monkeypatch, 'git', [{'stdout': str(root / 'repo') + '\n'}] + steps)

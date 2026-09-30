@@ -212,6 +212,13 @@ def test_identity_free_context_refuses_overrides(workspace_case, settings, env):
     assert not fake.calls
 
 
+def test_identity_free_context_refuses_push(workspace_case):
+    root, fake = workspace_case
+    with pytest.raises(ValueError, match='push checks need the commit identity'):
+        guard().context(root / 'repo', {}, {}, root, push=('origin', ['feature']), identity=False)
+    assert not fake.calls
+
+
 def test_unconfigured_repository_is_unmeasured(workspace_case):
     root, fake = workspace_case
     original = fake._call
@@ -693,3 +700,34 @@ def test_failed_or_background_cd_keeps_original_target(workspace_case, monkeypat
     result = guard().check({'cwd': str(root.parent), 'tool_input': {
         'command': f'cd absent && echo skipped {separator} git -C {root.name}/repo push --force'}})
     assert result[0] in (1, 2), result
+
+
+def test_configured_checkout_is_not_read_twice(workspace_case):
+    root, fake = workspace_case
+    (root / 'repo/.git').mkdir()
+    fake.results['commit_context'].data['common_dir'] = str((root / 'repo/.git').resolve())
+    assert guard().check(payload(root, 'git commit -m safe')) == (0, '')
+    assert [call[0] for call in fake.calls] == ['commit_context']
+
+
+def test_push_context_overlaps_repository_context(workspace_case):
+    import threading
+    root, fake = workspace_case
+    barrier = threading.Barrier(2, timeout=2)
+    original = fake._call
+    def call(operation, args, context):
+        if operation in ('commit_context', 'push_context') and not any(
+                seen[0] == operation for seen in fake.calls):
+            barrier.wait()
+        return original(operation, args, context)
+    fake._call = call
+    assert guard().check(payload(root, 'git push origin HEAD:refs/heads/feature')) == (0, '')
+    assert ('push_context', (str(root / 'repo'), 'origin', ['HEAD:refs/heads/feature']), root) in fake.calls
+
+
+def test_selected_git_directory_push_is_not_read_early(workspace_case):
+    root, fake = workspace_case
+    assert guard().check(payload(root, 'GIT_DIR=.git git push origin HEAD:refs/heads/feature'))[0] == 0
+    push, = [call for call in fake.calls if call[0] == 'push_context']
+    assert push[1][0] == str(root / 'repo')
+    assert [call[0] for call in fake.calls].index('commit_context') < fake.calls.index(push)

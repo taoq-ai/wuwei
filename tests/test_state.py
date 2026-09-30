@@ -133,6 +133,8 @@ def test_atomic_replace_and_cleanup(workspace, monkeypatch):
     replace = state.os.replace
 
     def inspect(source, target):
+        if Path(target).name == 'state.snapshot.json':
+            return replace(source, target)
         assert Path(source).parent == path.parent
         assert Path(target) == path
         assert json.loads(Path(source).read_text())['cap'] == 3
@@ -151,7 +153,8 @@ def test_atomic_replace_and_cleanup(workspace, monkeypatch):
         state.write_state(lambda data: data.update(cap=4))
     assert state.read_state()['cap'] == 3
     assert len(events(workspace)) == 2
-    assert sorted(p.name for p in path.parent.iterdir()) == ['events.jsonl', 'state.json', 'state.lock']
+    assert sorted(p.name for p in path.parent.iterdir()) == ['events.jsonl', 'state.json', 'state.lock',
+                                                             'state.snapshot.json']
 
 
 def test_parallel_writers_preserve_every_update(workspace):
@@ -371,14 +374,15 @@ def test_state_syncs_file_before_replace_and_directory_after(workspace, monkeypa
             assert json.loads(temporary.read_text())['cap'] == 2
 
     def rename(source, target):
-        assert operations == ['file']
+        assert operations[-1:] == ['file']
         operations.append('replace')
         replace(source, target)
 
     monkeypatch.setattr(state.os, 'fsync', sync)
     monkeypatch.setattr(state.os, 'replace', rename)
     state.set_state('cap', 2)
-    assert operations == ['file', 'replace', 'directory']
+    # The state file, then its snapshot, each synced before and after the rename.
+    assert operations == ['file', 'replace', 'directory'] * 2
 
 
 @pytest.mark.parametrize('writer', [False, True])
@@ -555,3 +559,113 @@ def test_dedicated_event_kinds_reserved(workspace, kind):
     assert result.returncode == 1
     assert 'reserved' in result.stderr
     assert not (day(workspace) / 'events.jsonl').exists()
+
+
+def test_corrupt_state_names_recovery_and_writes_keep_a_snapshot(workspace):
+    from wuwei import state
+    state.write_state(lambda data: data.update(cap=2))
+    state.write_state(lambda data: data.update(cap=3))
+    path, snapshot = day(workspace) / 'state.json', day(workspace) / 'state.snapshot.json'
+    assert snapshot.read_text() == path.read_text()
+    assert json.loads(snapshot.read_text())['cap'] == 3
+    assert snapshot.stat().st_mode & 0o777 == 0o444
+    path.chmod(0o644)
+    path.write_text(path.read_text()[:10])
+    with pytest.raises(ValueError, match='wuwei state recover'):
+        state.read_state()
+
+
+def corrupt(root, *, missing=False):
+    from wuwei import state
+    state.write_state(lambda data: data.update(cap=3))
+    path = day(root) / 'state.json'
+    path.chmod(0o644)
+    if missing:
+        path.unlink()
+    else:
+        path.write_text('{"cap": 3, "ite')
+    return path
+
+
+@pytest.mark.parametrize('missing', [False, True])
+def test_recover_restores_last_written_state(workspace, missing):
+    from wuwei import state
+    corrupt(workspace, missing=missing)
+    tokens = []
+    digest = state.recover(confirm=lambda token: tokens.append(token) or True)
+    assert tokens == [digest[:12]]
+    assert state.read_state()['cap'] == 3
+    assert (day(workspace) / 'state.json').stat().st_mode & 0o777 == 0o444
+    assert events(workspace)[-1]['kind'] == 'state.recovered'
+    assert events(workspace)[-1]['payload']['snapshot'] == digest
+
+
+@pytest.mark.parametrize('case,error', [
+    ('readable', 'nothing to recover'), ('declined', 'declined'),
+    ('no_terminal', 'no tty'), ('no_snapshot', 'No such file'), ('bad_snapshot', 'unusable'),
+    ('changed', 'changed during confirmation'),
+])
+def test_recover_refusals_change_nothing(workspace, case, error):
+    from wuwei import state
+    path = day(workspace) / 'state.json'
+    if case == 'readable':
+        state.write_state(lambda data: data.update(cap=3))
+    else:
+        corrupt(workspace)
+    snapshot = day(workspace) / 'state.snapshot.json'
+    if case in ('no_snapshot', 'bad_snapshot'):
+        snapshot.chmod(0o644)
+        snapshot.unlink() if case == 'no_snapshot' else snapshot.write_text('[]')
+
+    def confirm(token):
+        if case == 'no_terminal':
+            raise OSError('no tty')
+        if case == 'changed':
+            snapshot.chmod(0o644)
+            snapshot.write_text(snapshot.read_text().replace('"cap": 3', '"cap": 4'))
+        return case != 'declined'
+
+    before = path.read_text()
+    expected = state.StateError if case in ('readable', 'declined') else (OSError, ValueError)
+    with pytest.raises(expected, match=error) as raised:
+        state.recover(confirm=confirm)
+    if case not in ('readable', 'declined'):
+        assert not isinstance(raised.value, state.StateError)
+    assert path.read_text() == before
+    assert 'state.recovered' not in [row['kind'] for row in events(workspace)]
+
+
+@pytest.mark.parametrize('case,expected', [('confirmed', 0), ('declined', 1), ('readable', 1),
+                                           ('no_snapshot', 2), ('no_terminal', 2)])
+def test_recover_command_exits(workspace, monkeypatch, capsys, case, expected):
+    from wuwei import integrity, state
+    from wuwei.__main__ import main
+    if case == 'readable':
+        state.write_state(lambda data: data.update(cap=3))
+    else:
+        corrupt(workspace)
+    if case == 'no_snapshot':
+        (day(workspace) / 'state.snapshot.json').chmod(0o644)
+        (day(workspace) / 'state.snapshot.json').unlink()
+    def confirm(token, *, prompt):
+        if case == 'no_terminal':
+            raise OSError('no terminal')
+        return case != 'declined'
+    monkeypatch.setattr(integrity, '_host_confirm', confirm)
+    assert main(['state', 'recover']) == expected
+    if expected == 0:
+        assert 'state recovered from snapshot' in capsys.readouterr().out
+        assert state.read_state()['cap'] == 3
+
+
+def test_hook_names_recovery_then_continues(workspace):
+    from wuwei import integrity, state
+    from wuwei.guards import stop
+    (workspace / '.wuwei/config.toml').write_text('')
+    state._write_state(lambda data: data.update(planner_session_id='planner'), workspace, reserved=False)
+    corrupt(workspace)
+    payload = {'cwd': str(workspace), 'session_id': 'planner', 'stop_hook_active': False}
+    code, reason = stop.check(payload)
+    assert code == 2 and 'wuwei state recover' in reason
+    state.recover(confirm=lambda token: True)
+    assert 'recover' not in stop.check(payload)[1]

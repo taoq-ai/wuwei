@@ -11,10 +11,10 @@ from test_commit_push import OWNER, SHA
 
 
 def context_steps(tmp_path):
-    return [{'stdout': str(tmp_path / '.git') + '\n'},
-            {'stdout': str(tmp_path / '.git') + '\n'},
-            {'stdout': 'Builder <builder@example.test> 1790596800 +0200\n'},
-            {'stdout': 'Builder <builder@example.test> 1790596800 +0200\n'}]
+    return [{'stdout': str(tmp_path / '.git') + '\n', 'when': ['--absolute-git-dir']},
+            {'stdout': str(tmp_path / '.git') + '\n', 'when': ['--git-common-dir']},
+            {'stdout': 'Builder <builder@example.test> 1790596800 +0200\n', 'when': ['GIT_AUTHOR_IDENT']},
+            {'stdout': 'Builder <builder@example.test> 1790596800 +0200\n', 'when': ['GIT_COMMITTER_IDENT']}]
 
 
 def test_commit_context(tmp_path, monkeypatch):
@@ -29,15 +29,14 @@ def test_commit_context(tmp_path, monkeypatch):
 
 def test_context_applies_environment_and_config_without_shell(tmp_path, monkeypatch):
     assert hasattr(adapter(), 'commit_context'), 'commit context port is missing'
-    steps = context_steps(tmp_path)
-    calls = []
+    from fakes.replay import replay
+    replayed = replay(context_steps(tmp_path), 'git')
     def run(argv, **kwargs):
         assert kwargs['env']['GIT_AUTHOR_EMAIL'] == 'override@example.test'
         assert kwargs['env']['GIT_DIR'] == 'selected/.git'
         assert kwargs['cwd'] == str(tmp_path)
         assert argv[:3] == ['git', '-c', 'user.name=Builder']
-        calls.append(argv)
-        return subprocess.CompletedProcess(argv, 0, steps[len(calls)-1]['stdout'].encode(), b'')
+        return replayed(argv, **kwargs)
     monkeypatch.setattr(subprocess, 'run', run)
     result = adapter().commit_context(str(tmp_path), {'user.name': 'Builder'},
                                      {'GIT_DIR': 'selected/.git', 'GIT_AUTHOR_EMAIL': 'override@example.test'})
@@ -48,7 +47,7 @@ def test_context_applies_environment_and_config_without_shell(tmp_path, monkeypa
                                   [{'stdout': 'relative\n'}]])
 def test_bad_context_fails_closed(tmp_path, monkeypatch, steps):
     assert hasattr(adapter(), 'commit_context'), 'commit context port is missing'
-    install_replay(monkeypatch, 'git', steps)
+    install_replay(monkeypatch, 'git', steps + context_steps(tmp_path)[1:])
     result = adapter().commit_context(str(tmp_path), {}, {})
     assert result.exit == 2 and result.reason
 
@@ -66,11 +65,12 @@ def test_repository_read_needs_no_identity(tmp_path, monkeypatch):
 
 
 def push_steps(tmp_path, mirror='false', tags='false', configured=''):
+    settings = f'push.followtags\n{tags}\0remote.origin.mirror\n{mirror}\0' + configured
     return [
-        {'stdout': SHA + '\0Builder\0builder@example.test\0Builder\0builder@example.test\n'},
-        {'stdout': 'feature\n'},
-        {'stdout': tags + '\n'}, {'stdout': mirror + '\n'},
-        {'stdout': configured, 'exit': 0 if configured else 1}, {'stdout': ''},
+        {'stdout': SHA + '\0Builder\0builder@example.test\0Builder\0builder@example.test\n', 'when': ['show']},
+        {'stdout': 'feature\n', 'when': ['symbolic-ref']},
+        {'stdout': settings, 'when': ['--get-regexp']},
+        {'stdout': '', 'when': ['check-ref-format']},
     ]
 
 
@@ -89,7 +89,24 @@ def test_push_context(tmp_path, monkeypatch, refs, destination, mirror):
                            'updates': [{'source': SHA, 'destination': destination}],
                            'force': mirror == 'true', 'remote': 'origin'}
     assert any(call[-2:] == ['check-ref-format', destination] for call in calls)
-    assert any(call[-4:] == ['config', '--type=bool', '--get', 'push.followtags'] for call in calls)
+    assert [call[-4:] for call in calls if 'config' in call] == [
+        ['config', '-z', '--get-regexp', r'^(push\.followtags|remote\.origin\.(mirror|push))$']]
+
+
+@pytest.mark.parametrize('settings,code,force', [
+    ('', 0, False), ('remote.origin.mirror\0', 0, True), ('remote.origin.mirror\nYes\0', 0, True),
+    ('remote.origin.mirror\non\0remote.origin.mirror\n0\0', 0, False),
+    ('remote.origin.mirror\n2\0', 0, True), ('remote.origin.mirror\nmaybe\0', 2, None),
+    ('push.followtags\nTRUE\0', 2, None), ('push.followtags\noff\0', 0, False),
+])
+def test_push_settings_parse_git_booleans(tmp_path, monkeypatch, settings, code, force):
+    steps = push_steps(tmp_path)
+    steps[2] = {'stdout': settings, 'exit': 0 if settings else 1, 'when': ['--get-regexp']}
+    install_replay(monkeypatch, 'git', steps)
+    result = adapter().push_context(str(tmp_path), 'origin', ['HEAD:refs/heads/feature'])
+    assert result.exit == code, result.reason
+    if code == 0:
+        assert result.data['force'] is force
 
 
 @pytest.mark.parametrize('refs', [[], ['HEAD:refs/tags/v1'], [':feature'], [':'],
@@ -114,13 +131,12 @@ def test_configured_context_ignores_inherited_repository_and_config(tmp_path, mo
     import os
     monkeypatch.setenv('GIT_DIR', 'unrelated/.git')
     monkeypatch.setenv('GIT_CONFIG_PARAMETERS', "'user.email'='wrong@example.test'")
-    steps = context_steps(tmp_path)
-    calls = []
+    from fakes.replay import replay
+    replayed = replay(context_steps(tmp_path), 'git')
     def run(argv, **kwargs):
         assert 'GIT_DIR' not in kwargs['env']
         assert 'GIT_CONFIG_PARAMETERS' not in kwargs['env']
-        calls.append(argv)
-        return subprocess.CompletedProcess(argv, 0, steps[len(calls)-1]['stdout'].encode(), b'')
+        return replayed(argv, **kwargs)
     monkeypatch.setattr(subprocess, 'run', run)
     assert adapter().commit_context(str(tmp_path), {}, {}).exit == 0
 
@@ -138,11 +154,12 @@ def test_guard_reads_ignore_replacement_objects(tmp_path, monkeypatch):
 def test_selected_repository_reads_use_git_directory(tmp_path, monkeypatch):
     calls = install_replay(monkeypatch, 'git', context_steps(tmp_path))
     assert adapter().commit_context(str(tmp_path), {}, {'GIT_DIR': 'other/.git'}).exit == 0
-    assert calls[0][-2:] == ['rev-parse', '--absolute-git-dir']
+    assert any(call[-2:] == ['rev-parse', '--absolute-git-dir'] for call in calls)
 
 
 @pytest.mark.parametrize('refs,config', [
     (['feature'], 'remote.origin.push\nrefs/heads/feature:refs/heads/main\0'),
+    (['feature'], 'remote.origin.push\0'),
     (['HEAD:topic'], ''),
 ])
 def test_ambiguous_unqualified_destinations_are_not_guessed(tmp_path, monkeypatch, refs, config):
@@ -153,22 +170,31 @@ def test_ambiguous_unqualified_destinations_are_not_guessed(tmp_path, monkeypatc
 @pytest.mark.parametrize('remote_sha,tracking', [(None, True), (None, False), ('c'*40, True), ('0'*40, False)])
 def test_pushed_range_uses_author_and_committer(tmp_path, monkeypatch, remote_sha, tracking):
     assert hasattr(adapter(), 'push_commits')
-    base = 'c'*40
+    record = SHA + '\0Builder\0builder@example.test\0Other\0other@example.test\0'
     steps = []
     if remote_sha is None:
-        steps.append({'stdout': base + '\n'} if tracking else {'exit': 1})
-    if remote_sha == '0'*40 or remote_sha is None and not tracking:
-        steps.append({'stdout': base + '\n'})
-    steps.append({'stdout': SHA + '\0Builder\0builder@example.test\0Other\0other@example.test\0'})
+        steps.append({**({'stdout': 'c' * 40 + '\n'} if tracking else {'exit': 1}), 'when': ['--verify']})
+        steps.append({**({'stdout': record} if tracking else {'exit': 128}),
+                      'when': ['refs/remotes/origin/feature..' + SHA]})
+    if remote_sha != 'c' * 40:
+        steps.append({'stdout': record, 'when': ['refs/remotes/origin/main..' + SHA]})
+    else:
+        steps.append({'stdout': record, 'when': ['c' * 40 + '..' + SHA]})
     calls = install_replay(monkeypatch, 'git', steps)
     result = adapter().push_commits(str(tmp_path), 'origin', 'refs/heads/feature', SHA, remote_sha, 'main')
     assert result.exit == 0, result.reason
     assert result.data['commits'][0]['committer']['name'] == 'Other'
-    assert calls[-1][-2] == base + '..' + SHA
+    assert len(calls) == len(steps)
     if remote_sha is None:
-        assert 'refs/remotes/origin/feature^{commit}' in calls[0]
-    if not tracking:
-        assert any(call[-1] == 'refs/remotes/origin/main' for call in calls)
+        assert any('refs/remotes/origin/feature^{commit}' in call for call in calls)
+
+
+def test_pushed_range_needs_the_default_branch_tracking_ref(tmp_path, monkeypatch):
+    install_replay(monkeypatch, 'git', [{'exit': 1, 'when': ['--verify']},
+                                        {'exit': 128, 'when': ['refs/remotes/origin/feature..' + SHA]},
+                                        {'exit': 128, 'when': ['refs/remotes/origin/main..' + SHA]}])
+    result = adapter().push_commits(str(tmp_path), 'origin', 'refs/heads/feature', SHA, None, 'main')
+    assert result.exit == 2
 
 
 @pytest.mark.parametrize('index,failure,reason,action', [
@@ -176,7 +202,7 @@ def test_pushed_range_uses_author_and_committer(tmp_path, monkeypatch, remote_sh
     (0, {'exit': 128}, 'HEAD', 'create a commit'),
     (1, {'exit': 128}, 'symbolic-ref', 'check repository state'),
     (2, {'exit': 128}, 'config', 'check repository state'),
-    (5, {'exit': 1}, 'check-ref-format', 'refs/heads/'),
+    (3, {'exit': 1}, 'check-ref-format', 'refs/heads/'),
 ])
 def test_push_context_failures_explain_recovery(tmp_path, monkeypatch, index, failure, reason, action):
     steps = push_steps(tmp_path)
@@ -196,3 +222,53 @@ def test_push_context_tool_failure_explains_recovery(tmp_path, monkeypatch, fail
     result = adapter().push_context(str(tmp_path), 'origin', ['feature'])
     assert result.exit == 2
     assert 'HEAD' in result.reason and 'check' in result.reason
+
+
+def concurrent_run(monkeypatch, outputs):
+    """Replace git._run so reads succeed only when all of them wait together."""
+    import threading
+    git = adapter()
+    barrier = threading.Barrier(len(outputs), timeout=2)
+    def run(repo, *args, **kwargs):
+        output = next(value for key, value in outputs.items() if key in args)
+        barrier.wait()
+        return output
+    monkeypatch.setattr(git, '_run', run)
+    return git
+
+
+def test_commit_context_reads_run_together(tmp_path, monkeypatch):
+    ident = 'Builder <builder@example.test> 1790596800 +0200\n'
+    git = concurrent_run(monkeypatch, {'--absolute-git-dir': str(tmp_path / '.git') + '\n',
+                                       '--git-common-dir': str(tmp_path / '.git') + '\n',
+                                       'GIT_AUTHOR_IDENT': ident, 'GIT_COMMITTER_IDENT': ident})
+    result = git.commit_context(str(tmp_path), {}, {})
+    assert result.data == {'path': str(tmp_path / '.git'), 'common_dir': str(tmp_path / '.git'),
+                           'author': OWNER, 'committer': OWNER}
+
+
+def test_push_context_reads_run_together(tmp_path, monkeypatch):
+    git = concurrent_run(monkeypatch, {
+        'show': SHA + '\0Builder\0builder@example.test\0Builder\0builder@example.test\n',
+        'symbolic-ref': 'feature\n', '--get-regexp': ''})
+    monkeypatch.setattr(git, '_run', lambda repo, *args, _run=git._run, **kwargs:
+                        '' if args[0] == 'check-ref-format' else _run(repo, *args, **kwargs))
+    result = git.push_context(str(tmp_path), 'origin', ['feature'])
+    assert result.data == {'head': {'sha': SHA, 'author': OWNER, 'committer': OWNER},
+                           'updates': [{'source': SHA, 'destination': 'refs/heads/feature'}],
+                           'force': False, 'remote': 'origin'}
+
+
+def test_workspace_changes_reads_run_together(tmp_path, monkeypatch):
+    (tmp_path / '.git').mkdir()
+    git = concurrent_run(monkeypatch, {'status': ' M charters/builder.md\0',
+                                       'log': '\x1ewuwei\n\0\ncharters/old.md\0'})
+    assert git.workspace_changes(tmp_path).data == ['charters/builder.md']
+
+
+def test_new_branch_range_reads_run_together(tmp_path, monkeypatch):
+    record = SHA + '\0Builder\0builder@example.test\0Builder\0builder@example.test\0'
+    git = concurrent_run(monkeypatch, {'--verify': '', 'refs/remotes/origin/feature..' + SHA: '',
+                                       'refs/remotes/origin/main..' + SHA: record})
+    result = git.push_commits(str(tmp_path), 'origin', 'refs/heads/feature', SHA, None, 'main')
+    assert result.data == {'commits': [{'sha': SHA, 'author': OWNER, 'committer': OWNER}]}

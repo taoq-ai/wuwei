@@ -900,3 +900,49 @@ def test_unconfigured_scanner_sweep_is_quiet(case, capsys):
     config.write_text(config.read_text().replace('scanner="ziran"', 'scanner="none"'))
     assert watch_module().sweep(root, watch_health=(0, '')) == 0
     assert 'watch scanner: not configured' in capsys.readouterr().out
+
+
+def test_poll_records_complete_measurement_time(case):
+    root, host, _, monkeypatch = case
+    watch = watch_module()
+    started = workspace.now().isoformat()
+    assert watch.poll(root) == 0
+    assert watch.saved(root)['measured_at'] == started
+    advance(case, 60)
+    host.results['checks'] = Result(2, None, 'timeout')
+    assert watch.poll(root) == 2
+    assert watch.saved(root)['measured_at'] is None
+    host.results['checks'] = Result(0, [])
+    assert watch.poll(root) == 0
+    assert watch.saved(root)['measured_at']
+    def failed(*args):
+        raise ValueError('discovery failed')
+    monkeypatch.setattr(watch, 'owned', failed)
+    assert watch.poll(root) == 2
+    assert watch.saved(root)['measured_at'] is None
+
+
+def test_tick_runs_pending_seat_free_discovery_once(case):
+    root, _, _, monkeypatch = case
+    watch = watch_module()
+    from wuwei import discovery
+    calls, failing = [], []
+    def intake(root, *, trigger, found=None):
+        calls.append(trigger)
+        if failing:
+            raise ValueError('tracker down')
+        state.append_event('discovery.intake', {'trigger': trigger}, root)
+    monkeypatch.setattr(discovery, 'intake', intake)
+    watch.tick(root)
+    calls.clear()
+    state.append_event('discovery.requested', {'trigger': 'seat-free', 'queued': 0}, root)
+    assert watch.tick(root) == 0
+    assert watch.tick(root) == 0
+    assert calls == ['seat-free']
+    failing.append(1)
+    state.append_event('discovery.requested', {'trigger': 'seat-free', 'queued': 0}, root)
+    assert watch.tick(root) == 2
+    assert watch.tick(root) == 0
+    assert calls == ['seat-free', 'seat-free']
+    unmeasured, = events(root, 'discovery.unmeasured')
+    assert unmeasured['payload'] == {'reason': 'tracker down'}
