@@ -135,5 +135,8 @@ def test_reference_verdict_example_and_phase_table():
     for phrase in ('worktree add', 'stdin', 'sentinel-arch', 'watch off', 'watch dead'):
         assert phrase in reference
     configuration = (SITE / 'configuration.md').read_text()
-    assert all(phrase in configuration for phrase in ('--dry-run', 'watch off', 'watch dead'))
+    assert all(phrase in configuration for phrase in ('--dry-run', 'watch off', 'watch dead',
+                                                      'refuses `watch uninstall`'))
+    clears = 'clears at the next clock line, or after `watch uninstall` when no clock line was written today'
+    assert clears in ' '.join(configuration.split()) and clears in ' '.join(reference.split())
     assert 'wuwei worktree add' in (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()

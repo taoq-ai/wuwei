@@ -363,3 +363,31 @@ def test_future_clock_nudges_unmeasured_watch(root, monkeypatch, capsys):
     assert snapshot(day)['watch'] == 'unmeasured'
     assert main(['status', '--line']) == 0
     assert 'watch unmeasured' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('script,code', [
+    ('bin/wuwei watch uninstall', 1),
+    ('python3 -P -m wuwei watch uninstall', 1),
+    ('python3 -P -mwuwei watch uninstall', 1),
+    ('sh -c "bin/wuwei watch uninstall"', 1),
+    ('bin/wuwei watch install --dry-run', 0),
+    ('wuwei watch install --dry-run', 0),
+    ('bin/wuwei watch --once', 0),
+    ('grep uninstall docs/', 0),
+    ('python3 -m pytest -q', 0),
+    ('for x in a; do echo "$x"; done', 0),
+    ('export X=1', 0),
+])
+def test_seat_cannot_uninstall_the_watch(root, script, code):
+    from wuwei.guards.protect_state import check_bash
+    result = check_bash({'cwd': str(root), 'tool_name': 'Bash', 'tool_input': {'command': script}})
+    assert result[0] == code
+    if code:
+        assert 'owner terminal' in result[1]
+
+
+def test_watch_uninstall_outside_a_workspace_is_allowed(tmp_path, monkeypatch):
+    from wuwei.guards.protect_state import check_bash
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert check_bash({'cwd': str(tmp_path), 'tool_name': 'Bash',
+                       'tool_input': {'command': 'bin/wuwei watch uninstall'}}) == (0, '')

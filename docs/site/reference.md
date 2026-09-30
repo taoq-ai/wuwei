@@ -72,7 +72,7 @@ A worktree made with raw `git worktree add` has no anchor. Its commits and pushe
 
 `bin/wuwei status --line` and `status --json` report the watch from today's `watch: clock` events and from whether `bin/wuwei watch install` has installed its unit for this workspace:
 
-- Installed, and no clock line today or today's latest is older than `watch.dead_seconds`: `watch dead`, one `watch: health` page. This includes the morning after the watch died overnight. The page clears at the next clock line or after `bin/wuwei watch uninstall`.
+- Installed, and no clock line today or today's latest is older than `watch.dead_seconds`: `watch dead`, one `watch: health` page. This includes the morning after the watch died overnight. The page clears at the next clock line, or after `watch uninstall` when no clock line was written today.
 - Not installed, and no clock line today: `watch off`. It is not a page or a nudge.
 - Not installed, and today's clock line went stale (a watch started by hand died): `watch dead`, one page that clears at the next clock line.
 

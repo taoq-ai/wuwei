@@ -253,15 +253,17 @@ service commands without writing or loading anything. If loading the service
 fails, install removes the unit it wrote, so a retry after the fix works.
 `bin/wuwei watch uninstall` always exits 0: it prints a failed stop command as a
 warning and still removes the unit. A job that stays loaded after such a warning
-keeps running until you stop it by hand.
+keeps running until you stop it by hand. Uninstall is an owner action: the Bash
+guard refuses `watch uninstall` from agent tools inside a workspace, so a seat
+cannot turn a dead-watch page into `watch off`; run it from your own terminal.
 
 `bin/wuwei status --line`, `bin/wuwei nudges`, the cockpit, session start and
 sweeps all read watch health the same way, whatever the last sweep recorded:
 
 - Installed with `watch install`, and no clock line today or today's latest
   clock older than `watch.dead_seconds`: `watch dead`, one `watch: health` page.
-  This catches a watch that died overnight. It clears at the next clock line or
-  after `watch uninstall`.
+  This catches a watch that died overnight. It clears at the next clock line, or
+  after `watch uninstall` when no clock line was written today.
 - Not installed, and no clock line today: `watch off`, neither a page nor a
   nudge.
 - Not installed, and today's clock went stale (a watch run by hand died):

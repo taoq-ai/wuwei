@@ -25,6 +25,8 @@ Each test task is written, run and seen failing for the stated reason before its
 
 - [X] T010b [US3] Add failing tests: an installed unit (under tmp_path) with only yesterday's clock gives `watch.health` code 1, one `watch: health` page, `watch dead` in the line and one nudges row; `watch uninstall` turns it into `off` with no rows; an installed unit with a fresh clock is alive. Move the unit path into `workspace.watch_unit(root, platform)` used by install, uninstall and `watch.health`; make an installed unit without a fresh clock dead; update the Watch state docs.
 
+- [X] T010c [US3] Add failing table tests in tests/test_quiet_sweeps.py: `bin/wuwei watch uninstall`, `python3 -P -m wuwei watch uninstall`, `python3 -P -mwuwei watch uninstall` and `sh -c` form exit 1 inside a workspace; `watch install --dry-run`, `watch --once`, `grep uninstall docs/`, `python3 -m pytest -q`, a `for` loop and `export X=1` exit 0; uninstall outside a workspace exits 0. Refuse `watch uninstall` in cli/wuwei/guards/protect_state.py beside the drafts and MCP owner actions; document it and correct the uninstall clearing rule in reference.md and configuration.md.
+
 ## Phase 4: Operator reference [US4]
 
 - [X] T011 [US4] Add failing tests in tests/test_docs.py: the fenced verdict example in docs/site/reference.md passes `verdict.lint(text, quality=True, class_sweep=True)` with exit 0; every `state.PHASES` key appears as a table row with its next phases joined by `, `; reference.md mentions `worktree add`, `stdin` and `sentinel-arch`; configuration.md mentions `--dry-run` and `watch dead`; skills/wuwei-plan/SKILL.md mentions `wuwei worktree add`.
