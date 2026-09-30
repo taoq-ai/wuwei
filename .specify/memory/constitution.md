@@ -71,11 +71,14 @@ spec 4.6 and 4.7).
 - One feature is one branch in its own git worktree, merged to `main` after the tests pass
   and an adversarial review (correctness, security, and a ponytail over-engineering pass)
   has no open blocking findings.
-- Cycle budget per feature: one fix round plus one delta review.
+- Cycle budget per feature: one fix round plus one delta review. A feature that exceeds it
+  gets no further fix rounds; the next step is a design reconsideration recorded in its
+  spec (why the approach keeps leaking, what replaces it), agreed with the owner before
+  more code (example: #222, six rounds on shell parsing for owner actions).
 
 ## Governance
 
 Amendments are commits to this file with a dated line in the commit message. The design spec
 is amended only by its owner.
 
-**Version**: 1.0.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-09-28
+**Version**: 1.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-09-30

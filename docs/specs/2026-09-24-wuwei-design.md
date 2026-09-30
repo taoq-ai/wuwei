@@ -234,7 +234,7 @@ lint also applies the mechanical checks of the owner's voice for the message's a
 - `standard`: the outward-text lint warns instead of blocking. The merge policy, the
   approve refusal and the deployment ban are unchanged.
 
-### 4.5 Matching and bypass resistance (owner, 2026-09-28)
+### 4.5 Matching and bypass resistance (owner, 2026-09-28; amended 2026-09-30, #237)
 
 A guard that matches the literal command string is bypassed by wrapping the command. Every
 Bash guard therefore matches after normalising: unwrap `sh -c`, `bash -c`, `zsh -c`, `env`,
@@ -242,10 +242,25 @@ Bash guard therefore matches after normalising: unwrap `sh -c`, `bash -c`, `zsh 
 overrides; treat `gh api` calls against the merge, review, branch-protection and
 deployment endpoints as the commands they implement. An interpreter one-liner (`python -c`,
 `node -e`, `perl -e`) or a script whose text invokes `git` or `gh` with a guarded verb is
-refused as opaque. A second anchor that does not depend on parsing: worktrees created by
-WUWEI get a `pre-push` git hook that calls the same push guard, and `wuwei init` writes
-`permissions.deny` rules for approve, `--admin` merges and the deploy commands in 4.7. Each
-bypass form is a test case in the guard's table.
+refused as opaque. Each bypass form is a test case in the guard's table.
+
+What the normalisation guarantees depends on what the guard protects (9.1):
+
+- The plugin's own records (state, events, generated instructions, and the owner-only
+  commands that write them): the parser is the only local check, so normalisation and the
+  bypass table stay the defence here.
+- Publishing actions (push, merge, deploy, PR approval): the guard refuses clearly what it
+  can recognise, but the guarantee comes from the code host and the credential layout, not
+  from the parser: a protected base branch with required checks, and no token in seat
+  environments that can approve, release or deploy. `wuwei init` documents that layout and `wuwei config check` verifies
+  it for each configured repository. The `pre-push` git hook in WUWEI worktrees and the
+  `permissions.deny` rules `wuwei init` writes (approve, `--admin` merges, the deploy
+  commands in 4.7) are further local checks, not boundaries.
+
+A narrow argv allowlist may be used for privileged publish actions only (for example the
+exact `gh pr merge --squash --match-head-commit <sha>` that `wuwei merge` issues, 4.6). A
+positive allowlist for all development commands is rejected: allowing an interpreter or the
+test runner allows arbitrary code, so it would add refusals without adding a guarantee.
 
 ### 4.6 Merge policy (owner, 2026-09-28)
 
@@ -770,19 +785,24 @@ that it did nothing and returns exit 2 where a measurement was expected.
   item's recorded head and never redoes committed work.
 - A dead watch process is detected by its missing clock line, not by its pid file.
 
-### 9.1 Threat model and guard scope (owner, 2026-09-28)
+### 9.1 Threat model and guard scope (owner, 2026-09-28; amended 2026-09-30, #237)
 
 What the guards defend against: agent mistakes, corner-cutting, and actions a prompt
-injection pushes through the normal tools. Refusing at the moment of action, with the
-reason, is what turns a rule into a default.
+injection pushes through the normal tools. The Bash guards are cooperative mistake
+prevention: refusing at the moment of action, with the reason, is what turns a rule into a
+default. They are never an isolation boundary, and no hook, Claude Code or git, is a hard
+boundary against the owner's own user.
 
 What they do not defend against: a determined process running as the owner's user with a
 shell. It can forge any local file, including state, events, hook payloads and any
 approval record, so no local file is a trust anchor. Hard boundaries therefore sit outside
-the owner's user account:
+the owner's user account, and they hold when no hook runs:
 
-- the code host's server-side rules (branch protection, required reviews and checks), which
-  the merge policy never overrides (4.6);
+- the code host's server-side rules (protected refs, required checks, required reviews),
+  which the merge policy never overrides (4.6);
+- publication credentials kept out of seat environments: no seat holds a token that can
+  approve, release or deploy, and a merge lands only through the protected ref's required
+  checks and reviews (4.6, 4.5);
 - the owner sending messages that need approval: approve-tier text is delivered as a draft
   the owner sends (a chat draft, a pending review comment, or the text in the cockpit or on
   the phone), never sent by WUWEI (4.9);
@@ -791,9 +811,10 @@ the owner's user account:
 Seats on the Codex runtime run in a write sandbox limited to their worktree, so they cannot
 touch workspace state; this is a reason to route build seats there. Further hardening for
 Claude seats (Claude Code's Bash sandbox, or a separate OS user for seats) is a later option.
-Local anchors that do not depend on parsing still raise the bar cheaply: pre-commit and
+Local checks that do not depend on parsing still raise the bar cheaply: pre-commit and
 pre-push hooks in WUWEI worktrees, state files at mode 0444 outside the writer, and
-`permissions.deny` for unambiguous deploy verbs.
+`permissions.deny` for unambiguous deploy verbs. They catch mistakes like the guards do;
+none of them is a boundary.
 
 Guard scope. The plugin is installed for the owner's whole machine, so:
 
@@ -825,6 +846,12 @@ Guard scope. The plugin is installed for the owner's whole machine, so:
   benchmark p95 measured and printed every run and the 50 ms budget asserted only when
   `WUWEI_BENCH=1` or outside CI with one-minute load below half the CPU count; otherwise
   benchmarks skip with the measurements and load.
+- What a real day must prove (owner, 2026-09-30): a passing suite is not a release
+  criterion on its own. No release ships without the live rehearsal a later issue defines
+  (#239): the signed artifact, real seats, real git and a test repository on the code host
+  carry one item from plan to verified close with no operator repair, and the run reports
+  owner interventions, elapsed time and unexpected refusals. A rehearsal that could not run
+  is unmeasured, never a pass.
 
 ## 11. Packaging and release
 
