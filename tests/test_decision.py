@@ -225,7 +225,7 @@ def test_configured_repo_and_worktree(ws, tmp_path, monkeypatch):
     (ws / '.wuwei/config.toml').write_text(
         '[[repos]]\nname="org/repo"\npath="../repo"\ndefault_branch="main"\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(ws))
-    fake = Fake({'commit_context': registry.Result(0, {'common_dir': str(repo / '.git')})})
+    fake = Fake({'repo_context': registry.Result(0, {'common_dir': str(repo / '.git')})})
     monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
     for cwd in (repo, tree):
         path = cwd / 'decisions/D-3.md'

@@ -61,7 +61,7 @@ def test_decision_template_lints(workspace):
 
 @pytest.mark.parametrize('case,cue', [
     ('flags', 'trust_surface'),
-    ('stand_down', 'wuwei state transition'),
+    ('stand_down', 'wuwei build next'),
     ('reinit', '--upgrade'),
     ('mapping', 'seat_policy'),
 ])

@@ -60,7 +60,7 @@ def _protected_name(path, directories=False):
         if part != '.wuwei':
             continue
         tail = parts[index + 1:]
-        if tail in (('config.toml',), ('env',), ('security.json',), ('.gitignore',), ('merge.lock',)) or tail[:1] == ('generated',):
+        if tail in (('config.toml',), ('env',), ('security.json',), ('.gitignore',), ('merge.lock',), ('executable',)) or tail[:1] == ('generated',):
             return True
         if tail[:1] in (('integrity',), ('.git',), ('ziran',)):
             return True

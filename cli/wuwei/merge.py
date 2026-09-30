@@ -49,9 +49,9 @@ def reference(ref, root, config, cwd=None, repo=None):
                 (root / Path(r['path']).expanduser()).resolve())]
             if not candidates and any((p / '.git').exists() for p in (cwd, *cwd.parents)):
                 vcs = registry.load('vcs', config)
-                common = read(vcs.commit_context, str(cwd), {}, {}, root=root)['common_dir']
-                candidates = [r for r in config['repos'] if read(vcs.commit_context,
-                    str((root / Path(r['path']).expanduser()).resolve()), {}, {}, root=root)['common_dir'] == common]
+                common = read(vcs.repo_context, str(cwd), root=root)['common_dir']
+                candidates = [r for r in config['repos'] if read(vcs.repo_context,
+                    str((root / Path(r['path']).expanduser()).resolve()), root=root)['common_dir'] == common]
             if len(candidates) != 1:
                 raise ValueError('numeric PR requires an unambiguous configured repository')
             repo = candidates[0]['name']

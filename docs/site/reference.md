@@ -78,13 +78,17 @@ A worktree made with raw `git worktree add` has no anchor. Its commits and pushe
 
 `watch unmeasured`: the clock cannot be read or is in the future; one nudge. The same health appears in `bin/wuwei nudges`, at session start and in sweeps. A running watch adds nothing to the line.
 
-## Seat briefs
+## Seat briefs and the build loop
 
-```text
-bin/wuwei brief <charter> <item> <name> [--worktree PATH] [--gate] [--track SLICE|FULL] [--pr OWNER/REPO#N] < body.md
-```
-
-The brief body is read from stdin. The first argument is a charter name: `lead`, `builder`, `shepherd`, `sentinel-arch`, `sentinel-quality`, `sentinel-security`, `sentinel-goal` or `steward`. `dispatch next` and `dispatch receive` use the gate role instead: `arch`, `quality`, `security` or `goal`. A gate body must not ask for an inline verdict or restate the verdict path; the brief adds it. A `Paths:` line lists extra paths for the SLICE protected-path check. The command prints the brief path. Each seat name gets one brief.
+| Behaviour | Rule |
+| --- | --- |
+| Brief body | `wuwei brief ROLE ITEM NAME --body TEXT` or `--file PATH`; `--file -` reads stdin. With neither, the command exits 2 and never reads stdin. |
+| Gate role names | `arch`, `quality` and `security`, as returned by `wuwei dispatch next`, write briefs against the `sentinel-<role>` charter. |
+| Automatic phases | The first `build next` launch moves `planned` to `implement`. When checks pass, `implement` moves to `gate` and `fix` moves to `delta`. `gate` to `fix` stays a planner transition. |
+| Delta continuation | SubagentStop records the sentinel's agent ID on its seat. Agent `resume` with that ID continues the same brief at the current HEAD; any other reuse of the brief is refused. The continued seat rewrites its own verdict file. |
+| Push evidence | `wuwei build check ITEM` records fast checks through the same producer as `wuwei fast-checks`, so a passing check satisfies the push guard. |
+| Charter names | `lead`, `builder`, `shepherd`, `sentinel-arch`, `sentinel-quality`, `sentinel-security`, `sentinel-goal` or `steward`. Each seat name gets one brief. |
+| Gate body | A gate body must not ask for an inline verdict or restate the verdict path; the brief adds it. A `Paths:` line lists extra paths for the SLICE protected-path check. |
 
 ## Item phase order
 

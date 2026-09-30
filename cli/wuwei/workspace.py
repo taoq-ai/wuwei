@@ -235,11 +235,11 @@ def scope(path):
     # External worktrees share a configured repository's common directory.
     if any((parent / '.git').exists() for parent in (path, *path.parents)):
         vcs = registry.load('vcs', config)
-        actual = data(vcs.commit_context(str(path), {}, {}, root=root))
+        actual = data(vcs.repo_context(str(path), root=root))
         common = actual.get('common_dir')
         if not isinstance(common, str) or not Path(common).is_absolute():
             raise ValueError('missing worktree repository context')
-        if any(data(vcs.commit_context(str(repo), {}, {}, root=root)).get('common_dir') == common
+        if any(data(vcs.repo_context(str(repo), root=root)).get('common_dir') == common
                for repo in repos):
             return root, config
     return None

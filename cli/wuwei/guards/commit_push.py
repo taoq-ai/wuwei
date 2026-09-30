@@ -52,20 +52,24 @@ def data(result):
     return result.data
 
 
-def context(cwd, settings, env, root):
+def context(cwd, settings, env, root, identity=True):
+    """Match cwd to a configured repository; identity=False reads no commit identity."""
     from wuwei import registry, workspace
 
     if 'GIT_COMMON_DIR' in env:
         raise ValueError('GIT_COMMON_DIR overrides cannot be inspected safely')
+    if not identity and (settings or env):
+        raise ValueError('identity-free repository read takes no settings or env overrides')
     config = workspace.load_config(root)
     vcs = registry.load('vcs', config)
-    actual = data(vcs.commit_context(str(cwd), settings, env, root=root))
+    actual = data(vcs.commit_context(str(cwd), settings, env, root=root) if identity
+                  else vcs.repo_context(str(cwd), root=root))
     for key in ('path', 'common_dir'):
         if not isinstance(actual.get(key), str) or not Path(actual[key]).is_absolute():
             raise ValueError('missing repository context')
     for repo in config['repos']:
         path = (root / Path(repo['path']).expanduser()).resolve()
-        configured = data(vcs.commit_context(str(path), {}, {}, root=root))
+        configured = data(vcs.repo_context(str(path), root=root))
         if configured.get('common_dir') == actual['common_dir']:
             return repo, actual, vcs
     raise ValueError('repository is not configured in this workspace')
@@ -248,7 +252,7 @@ def check(payload):
         raw = payload['tool_input']['command']
         relevant = COMMIT_VERBS | {'push', 'config', 'wuwei-workspace', 'executable'} | IDENTITY_ENV | IDENTITY_SETTINGS
         script = shell.script_text(raw, payload['cwd'])
-        opaque_script = script and shell.mentions(script, {'git', 'gh'}) and shell.mentions(script, relevant)
+        opaque_script = script and shell.mentions(script, {'git', 'gh'}, script=True) and shell.mentions(script, relevant, script=True)
         if opaque_script:
             raw = script
         if not shell.mentions(raw, {'git', 'gh', 'rm'}) or not shell.mentions(raw, relevant):
