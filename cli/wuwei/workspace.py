@@ -427,7 +427,7 @@ def load_config(root=None):
         _CONFIGS[path] = (raw, config)
         return deepcopy(config)
     except (ConfigError, tomllib.TOMLDecodeError, UnicodeError) as exc:
-        raise ConfigError(f"{path}: {exc}") from exc
+        raise ConfigError(f"config.toml: {exc}") from exc
 
 
 def create_worktree(repo, branch, path, root, vcs, identity=None):

@@ -5,8 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from wuwei import registry, state, workspace
+from wuwei import integrity, registry, state, workspace
 from wuwei.__main__ import main
+
+REAL_CONFIRM = integrity._host_confirm
 
 
 @pytest.fixture
@@ -14,6 +16,7 @@ def root(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(integrity, '_host_confirm', lambda value, **kwargs: True)
     private = tmp_path / '.wuwei'
     private.mkdir()
     (private / 'config.toml').write_text(
@@ -137,6 +140,48 @@ def test_owner_approval_sends_original_once(root, port):
     # An owner decision never authorizes another seat call with the same text.
     queued(root)
     assert len(port[1]) == 1
+
+
+def test_approve_without_terminal_is_owner_action(root, port, monkeypatch, capsys):
+    import builtins
+    row = queued(root)
+    monkeypatch.setattr(integrity, '_host_confirm', REAL_CONFIRM)
+    real_open = builtins.open
+
+    def fake_open(name, *args, **kwargs):
+        if name == '/dev/tty':
+            raise OSError(6, 'Device not configured')
+        return real_open(name, *args, **kwargs)
+    monkeypatch.setattr(builtins, 'open', fake_open)
+    capsys.readouterr()
+    assert main(['drafts', 'approve', row['id']]) == 2
+    assert 'this is an owner action: run it in a host terminal' in capsys.readouterr().err
+    assert port[1] == []
+    assert state.read_state(root)['drafts'][row['id']]['status'] == 'pending'
+
+
+def test_approve_declined_digest_sends_nothing(root, port, monkeypatch, capsys):
+    row = queued(root)
+    monkeypatch.setattr(integrity, '_host_confirm', lambda value, **kwargs: False)
+    capsys.readouterr()
+    assert main(['drafts', 'approve', row['id']]) == 1
+    assert 'drafts: owner confirmation declined' in capsys.readouterr().err
+    assert port[1] == []
+    assert state.read_state(root)['drafts'][row['id']]['status'] == 'pending'
+
+
+def test_approve_digest_covers_id_and_final_text(root, port, monkeypatch):
+    from hashlib import sha256
+    row = queued(root)
+    final = 'I can deliver this today.'
+    edit_to(monkeypatch, final)
+    seen = []
+    monkeypatch.setattr(integrity, '_host_confirm',
+                        lambda value, **kwargs: seen.append((value, kwargs['prompt'])) or True)
+    assert main(['drafts', 'approve', row['id'], '--edit']) == 0
+    (digest, prompt), = seen
+    assert digest == sha256((row['id'] + '\n' + final).encode()).hexdigest()
+    assert row['destination'] in prompt and final in prompt
 
 
 def test_editor_trailing_newline_counts_as_unedited(root, port, monkeypatch):

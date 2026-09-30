@@ -10,8 +10,10 @@ def register(subparsers):
     actions = parser.add_subparsers(dest='action', required=True)
     run = actions.add_parser('run')
     run.add_argument('--trigger', choices=('sweep', 'close', 'tool-calls'), default='sweep')
-    ack = actions.add_parser('ack')
-    ack.add_argument('id')
+    ack = actions.add_parser('ack', help='acknowledge a steward steering note')
+    ack.add_argument('id', help='steering note id, of the form <item>-fix-3, named by the refusal '
+                     '"steward note <id> requires planner acknowledgement"; a steward.due nudge '
+                     'is not a note and clears when wuwei steward run records a run')
     parser.set_defaults(func=command)
 
 

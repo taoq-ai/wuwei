@@ -89,10 +89,19 @@ def run(args):
         if os.path.exists(staging):
             shutil.rmtree(staging)
     print(f"Created {destination.resolve()}")
-    print(json.dumps({"statusLine": {"type": "command",
-                                   "command": shlex.quote(str(executable)) + " status --line"}}))
+    _status_line(executable)
+    if (destination.parent / '.git').exists():
+        print('This project is a Git repository; add these lines to its .gitignore:')
+        print('.wuwei/\n.claude/')
     print(LAYOUT)
     return _finish(destination.parent)
+
+
+def _status_line(executable):
+    print(json.dumps({"statusLine": {"type": "command",
+                                   "command": shlex.quote(str(executable)) + " status --line"}}))
+    print('Status line: put the "statusLine" key above in .claude/settings.json (this project) '
+          'or ~/.claude/settings.json (every project).')
 
 
 def _finish(root):
@@ -233,8 +242,7 @@ def upgrade(args):
             print(f'Charter override needs review: {name} '
                   f'(local {local_version or "unversioned"}, base {base_version or "missing"})')
         if not args.dry_run:
-            print(json.dumps({'statusLine': {'type': 'command',
-                                            'command': shlex.quote(str(executable)) + ' status --line'}}))
+            _status_line(executable)
         if not added and not pointer_changed and not env_changed:
             print('No workspace changes needed')
         return CLEAN if args.dry_run else _finish(destination.parent)

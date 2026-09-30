@@ -113,7 +113,8 @@ def _edit(inputs, root):
 def approve(root, draft_id, *, edit=False):
     """Host action: claim once, then send through the original adapter implementation."""
     from difflib import SequenceMatcher
-    from wuwei import registry, security
+    from hashlib import sha256
+    from wuwei import integrity, registry, security
 
     try:
         # Pin the day before editing or transport can cross midnight.
@@ -141,6 +142,14 @@ def approve(root, draft_id, *, edit=False):
         size = sum(max(i2 - i1, j2 - j1) for tag, i1, i2, j1, j2 in
                    SequenceMatcher(None, row['text'], text, autojunk=False).get_opcodes()
                    if tag != 'equal')
+        try:
+            confirmed = integrity._host_confirm(
+                sha256((draft_id + '\n' + text).encode()).hexdigest(),
+                prompt=f"Send this draft to {row['destination']}:\n{text}\nTo confirm, type:")
+        except OSError as exc:
+            return registry.Result(2, reason=str(exc))
+        if not confirmed:
+            return registry.Result(1, reason='drafts: owner confirmation declined')
 
         def claim(data):
             current = _pending(data, draft_id)

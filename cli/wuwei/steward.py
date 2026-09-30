@@ -109,6 +109,12 @@ def run(root=None, *, trigger='sweep'):
     if trigger not in ('sweep', 'close', 'tool-calls'):
         raise ValueError('invalid steward trigger')
     day = workspace.day_dir(root)
+    if trigger == 'close':
+        prior = [row['payload'] for row in watch.records(day / 'events.jsonl')
+                 if row['kind'] == 'steward.run' and row['payload'].get('trigger') == 'close']
+        if prior:
+            print(f"steward: close review already ran today (brief {prior[0].get('brief')})")
+            return 0
     notes = review(root)
     queue = decision_queue(root)
     measured = metrics.collect(root)

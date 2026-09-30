@@ -41,6 +41,12 @@ Every seat ends with three retro note keys on separate lines: `Blocked:`, `Gap:`
 
 In a `[[repos]]` entry, `[repos.merge]` sets `merge.auto` (default `false`). Automatic merge remains subject to measured policy, review, checks, soak and path rules. Set `repos.merge_deploys` correctly; WUWEI never deploys.
 
+## Steward
+
+`bin/wuwei steward run --trigger sweep|close|tool-calls` writes a steward brief, launches the steward seat through the runtime adapter, records a `steward.run` event and prints `steward_launch`; launch that agent exactly as returned. `bin/wuwei close` runs the close review once a day. A second `--trigger close` run the same day writes no brief, launches nothing and prints `steward: close review already ran today (brief <path>)`.
+
+`bin/wuwei steward ack <id>` acknowledges a steward steering note. The id has the form `<item>-fix-3` and is named by the refusal `steward note <id> requires planner acknowledgement` from `dispatch next`. A `steward.due` nudge is not a note and takes no ack: it clears when `steward run` records a run.
+
 ## Codex companion protocol
 
 Configure `codex.command` as an argv list and `codex.timeout_seconds` in `.wuwei/config.toml`. The adapter invokes `task`, `status`, `result`, and `cancel` with `--json` in the worktree. `task --fresh --background` starts a job and returns `jobId`; continuation uses `task --resume-last --background --write`. `status JOB_ID` returns `workspaceRoot` and a `job` with its own `workspaceRoot` and status. Both roots must resolve to the requested worktree. `result JOB_ID` supplies text in `storedJob.result.rawOutput`, with companion stdout or rendered text as fallback. A root mismatch triggers `cancel JOB_ID`. Missing fields, an error body or a timeout is unmeasured and fails closed.
@@ -56,7 +62,7 @@ Approve-tier replies through the chat, code-host comment and tracker-create adap
 | `bin/wuwei drafts approve <id> --edit` | Edit with `EDITOR` (default `vi`), lint the final text, then send it. |
 | `bin/wuwei drafts drop <id>` | Close the draft without sending. |
 
-Approval and drop are owner actions on the host terminal. Agent tool hooks refuse both, including registered seats. The cockpit displays pending drafts and the approval command read-only; it accepts no POST actions. Host-only enforcement follows the existing cooperative hook threat model in spec 9.1, not an operating-system identity boundary.
+Approval and drop are owner actions on the host terminal. Approval shows the destination and final text and asks you to type a digest of them before it sends. Agent tool hooks refuse both, including registered seats. The cockpit displays pending drafts and the approval command read-only; it accepts no POST actions. Host-only enforcement follows the existing cooperative hook threat model in spec 9.1, not an operating-system identity boundary.
 
 Single-field replies edit as plain text. Multi-field tracker drafts edit as a JSON object of text fields such as `draft.title` and `draft.description`; field names and destination metadata cannot be changed through the editor. The stored record preserves original and final inputs and text. Events contain IDs and outcome metadata, not message bodies. Reply bodies remain in local day state for owner review.
 
@@ -176,7 +182,8 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei state recover` | yes |
 | `bin/wuwei integrity reconfirm` | yes |
 | `bin/wuwei mcp decide` | yes |
-| `bin/wuwei drafts approve <id>` and `drafts drop <id>` | no |
+| `bin/wuwei drafts approve <id>` | yes |
+| `bin/wuwei drafts drop <id>` | no |
 | `bin/wuwei goals edit` and `voice edit` | no |
 | `bin/wuwei watch uninstall` | no |
 

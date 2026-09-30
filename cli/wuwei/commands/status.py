@@ -64,6 +64,8 @@ def scan(directory, classified_state=None):
                     if (kind == 'pr.action' and isinstance(payload, dict)
                             and payload.get('state') in ('merged', 'closed')):
                         current.pop(('merge.policy_blocked', payload.get('pr')), None)
+                    if kind == 'steward.run':
+                        current = {key: value for key, value in current.items() if key[0] != 'steward.due'}
                     if kind in SILENT:
                         continue
                 else:
