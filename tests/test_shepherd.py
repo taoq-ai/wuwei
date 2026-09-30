@@ -544,7 +544,7 @@ def test_new_port_adapters_parse_recorded_output(tmp_path, monkeypatch):
 def test_missing_branch_protection_keeps_reason_for_fallback(monkeypatch):
     from adapters.code_host import github
     from fakes.replay import install_replay
-    install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'HTTP 404: Not Found'}])
+    install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Branch not protected (HTTP 404)'}])
     result = github.protection('acme/widget', 'feature-base')
     assert result.exit == 2
     assert 'branch protection absent' in result.reason

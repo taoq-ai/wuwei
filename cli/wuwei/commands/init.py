@@ -14,6 +14,14 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 from wuwei import env, security, workspace
 from wuwei.guards.deploy import PERMISSIONS_DENY
 
+LAYOUT = '''Recommended publishing layout (design 4.5, 9.1):
+  protect each repository's default_branch: required status checks including the test jobs,
+  at least 1 approving review (or shepherd.min_reviewers = 0 for a solo owner),
+  no force pushes, no deletions
+  keep write-scoped GH_TOKEN and GITHUB_TOKEN out of .wuwei/env and the environment seats
+  inherit; publish from the owner's own gh login
+Verify with: wuwei config check'''
+
 
 def register(subparsers):
     parser = subparsers.add_parser("init", help="create a workspace")
@@ -83,6 +91,7 @@ def run(args):
     print(f"Created {destination.resolve()}")
     print(json.dumps({"statusLine": {"type": "command",
                                    "command": shlex.quote(str(executable)) + " status --line"}}))
+    print(LAYOUT)
     return _finish(destination.parent)
 
 

@@ -119,3 +119,18 @@ def test_history_without_patches_uses_compare_messages_only(monkeypatch):
     assert result.data['commits'] == [{'sha': 'b' * 40, 'at': '2026-09-29T12:00:00Z',
                                       'message': f'This reverts commit {SHA}.'}]
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize('rule,key', [('non_fast_forward', 'allow_force_pushes'),
+                                      ('deletion', 'allow_deletions')])
+def test_rulesets_block_force_pushes_and_deletions(monkeypatch, rule, key):
+    case = protection_case()
+    body = json.loads(case['steps'][0]['stdout'])
+    body['allow_force_pushes'] = body['allow_deletions'] = {'enabled': True}
+    case['steps'][0]['stdout'] = json.dumps(body)
+    case['steps'] = case['steps'][:1] + [rules_step([{'type': rule}])]
+    install_replay(monkeypatch, 'gh', case['steps'])
+    result = adapter().protection(*case['args'])
+    assert result.exit == 0, result
+    assert result.data[key] is False
+    assert result.data[({'allow_force_pushes', 'allow_deletions'} - {key}).pop()] is True

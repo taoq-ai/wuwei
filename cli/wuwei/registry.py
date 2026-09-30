@@ -31,7 +31,7 @@ PARAMETERS = {
                   'commits': ('ref',),
                   'threads': ('ref',), 'protection': ('repo', 'branch'),
                   'files': ('ref',), 'history': ('repo', 'start', 'branch', 'patches'),
-                  'author_login': ('repo', 'email'),
+                  'author_login': ('repo', 'email'), 'token_scopes': ('variable',),
                   'create_pr': ('draft',), 'request_reviewers': ('ref', 'logins'),
                   'comment': ('ref', 'text', 'thread'), 'merge': ('ref', 'sha'),
                   'revert_pr': ('ref',)},

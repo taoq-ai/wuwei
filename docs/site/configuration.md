@@ -289,3 +289,32 @@ file before adapter calls. Restart a running watch after editing the file.
 adapter. It returns 1 for missing requirements and 2 when a check cannot run.
 See [adapter credentials](adapters.html#credentials) for every variable, syntax
 rules and authentication requirements. No new config.toml keys are needed.
+
+### Host protections and seat credentials
+
+Hooks prevent mistakes; they are not the publishing guarantee. That guarantee lives
+in the code host's branch rules and in which credentials seats can read (design 4.5
+and 9.1). `wuwei config check` verifies both through the code_host adapter.
+
+Host protections: for each `[[repos]]` entry it reads the protection of
+`default_branch` and prints one line per setting.
+
+| Line | `ok` when |
+| --- | --- |
+| protected ref | the branch has branch protection |
+| required checks | at least one required status check, including every `review_required_checks` name |
+| required reviews | at least 1 approving review, or `shepherd.min_reviewers = 0` (solo owner) |
+| force pushes | force pushes are blocked |
+| deletions | branch deletion is blocked |
+
+Seat credentials: `GH_TOKEN` and `GITHUB_TOKEN` in `.wuwei/env` or in the environment
+that seats inherit are readable by any seat. Each line reports `not set`, `read-only`
+(every classic OAuth scope starts with `read:`), a finding naming the variable, its
+source and its write scopes, or `unmeasured`. Fine-grained and app tokens report no
+scopes and are always `unmeasured`. Publish from the owner's own `gh auth login`.
+
+Every line is `ok`, `missing` with the exact setting to change, or `unmeasured`
+(no permission to read, host unreachable, or `code_host = "none"`), with the reason
+on stderr. The command returns exit 0 when everything is `ok`, exit 1 on any `missing`
+line or write-scoped token, and exit 2 when anything is `unmeasured`; exit 2 wins
+over exit 1. A branch protected only by rulesets currently reads as missing.
