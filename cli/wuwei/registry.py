@@ -49,6 +49,7 @@ PARAMETERS = {
             'authorship': ('repo', 'branch', 'paths', 'days'), 'branch': ('repo',),
             'repo_context': ('repo',), 'commit_context': ('repo', 'settings', 'env'),
             'push_context': ('repo', 'remote', 'refspecs'), 'hooks_path': ('repo', 'path'),
+            'worktree_identity': ('repo', 'name', 'email'),
             'push_commits': ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch')},
 }
 INTERFACES = {kind: tuple(operations) for kind, operations in PARAMETERS.items()}

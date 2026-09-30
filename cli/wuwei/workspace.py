@@ -430,7 +430,7 @@ def load_config(root=None):
         raise ConfigError(f"{path}: {exc}") from exc
 
 
-def create_worktree(repo, branch, path, root, vcs):
+def create_worktree(repo, branch, path, root, vcs, identity=None):
     """Create and anchor a WUWEI worktree before handing it to a seat."""
     from wuwei.commands.git_hook import install
     from wuwei.registry import data
@@ -442,4 +442,6 @@ def create_worktree(repo, branch, path, root, vcs):
         raise state.StateError('morning gate approval required before worktree creation')
     result = data(vcs.worktree_add(str(repo), branch, str(path), root=root))
     install(path, root, vcs)
+    if identity and identity['name'] and identity['email']:
+        data(vcs.worktree_identity(str(path), identity['name'], identity['email'], root=root))
     return result

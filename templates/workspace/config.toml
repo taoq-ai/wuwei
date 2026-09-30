@@ -8,7 +8,7 @@ repos = []
 # name = "owner/repo" # GitHub repository name used for merge_deploys matching.
 # path = "repos/example" # Relative to the workspace, or an absolute repository path.
 # default_branch = "main" # Required for each configured repository.
-# identity = {name = "Builder", email = "builder@example.test"} # Required by Git guards.
+# identity = {name = "Builder", email = "builder@example.test"} # Commit guards compare commits against it; wuwei worktree add writes it to each item worktree's Git config.
 # merge_deploys = false # Explicitly declare that merges do not deploy.
 # fast_checks = ["python3 -m pytest -q"] # Run and record with wuwei fast-checks <checkout>.
 # [repos.merge]

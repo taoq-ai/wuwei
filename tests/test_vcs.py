@@ -107,6 +107,16 @@ def test_fetch_port_checks_current_host_base(monkeypatch):
     assert len(calls) == 2
 
 
+def test_worktree_identity_port(monkeypatch):
+    calls = install_replay(monkeypatch, 'git', [{'stdout': ''}, {'stdout': ''}])
+    result = adapter().worktree_identity('/repo', 'Builder', 'builder@example.test')
+    assert result.exit == 0
+    assert result.data == {'name': 'Builder', 'email': 'builder@example.test'}
+    assert [call[-6:] for call in calls] == [
+        ['-C', '/repo', 'config', '--worktree', 'user.name', 'Builder'],
+        ['-C', '/repo', 'config', '--worktree', 'user.email', 'builder@example.test']]
+
+
 @pytest.mark.parametrize('operation,args', [
     ('merge_base', ['/repo', '--help']),
     ('diff_stat', ['/repo', '--output=/tmp/unwanted', 'HEAD']),
@@ -115,6 +125,10 @@ def test_fetch_port_checks_current_host_base(monkeypatch):
     ('rebase', ['/repo', '--exec=touch unwanted']),
     ('push', ['/repo', 'origin', '--force']),
     ('fetch', ['/repo', '--force', 'main', 'b' * 40]),
+    ('worktree_identity', ['/repo', '-x', 'b@example.test']),
+    ('worktree_identity', ['/repo', 'A\nB', 'b@example.test']),
+    ('worktree_identity', ['/repo', 'A', '<b@example.test>']),
+    ('worktree_identity', ['/repo', ' ', 'b@example.test']),
 ])
 def test_option_injection_never_spawns(operation, args, monkeypatch):
     def forbidden(*args, **kwargs):
@@ -139,6 +153,8 @@ def test_option_injection_never_spawns(operation, args, monkeypatch):
     ('log', '-z', '--format=%s', 'main..HEAD', '--'),
     ('log', '-z', '--format=%H%x00%an%x00%ae%x00%cn%x00%ce%x00%cI%x00%s', '--all..HEAD', '--'),
     ('worktree', 'add', '-b', '--force', '--', '/tmp/worktree'),
+    ('config', '--worktree', 'user.signingkey', 'x'),
+    ('config', '--worktree', 'user.name', '-x'),
     (),
 ])
 def test_private_runner_rejects_unsupported_commands(args, monkeypatch):
