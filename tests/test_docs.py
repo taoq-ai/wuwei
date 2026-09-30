@@ -168,3 +168,34 @@ def test_reference_states_hook_latency_budget():
     assert command in reference and command in workflow
     assert 'continue-on-error: true' in workflow
     assert 'latency budget' in (SITE / 'index.md').read_text()
+
+
+def test_guard_boundaries_are_stated_once():
+    flat = lambda text: ' '.join(text.split())
+    spec = (ROOT / 'docs/specs/2026-09-24-wuwei-design.md').read_text()
+    section = lambda number: flat(re.search(rf'^### {number} .*?(?=^##)', spec, re.S | re.M)[0])
+    matching, threat = section(r'4\.5'), section(r'9\.1')
+    testing = flat(re.search(r'^## 10\. .*?(?=^## )', spec, re.S | re.M)[0])
+    security = flat((SITE / 'security.md').read_text())
+    constitution = flat((ROOT / '.specify/memory/constitution.md').read_text())
+    for phrase in ('the parser is the only local check',
+                   'the guarantee comes from the code host and the credential layout',
+                   'no token in seat environments that can approve, release or deploy',
+                   '`wuwei config check` verifies',
+                   'further local checks, not boundaries',
+                   'narrow argv allowlist may be used for privileged publish actions only',
+                   'allowing an interpreter or the test runner allows arbitrary code'):
+        assert phrase in matching, phrase
+    for text in (threat, security):
+        for phrase in ('cooperative mistake prevention', 'isolation boundary',
+                       'protected refs, required checks, required reviews',
+                       'publication credentials kept out of seat environments'):
+            assert phrase in text, phrase
+    assert 'none of them is a boundary' in threat
+    assert ('no seat holds a token that can approve, release or deploy, and a merge lands only '
+            "through the protected ref's required checks and reviews") in threat
+    assert 'push and merge are guaranteed by the host rules' in security
+    assert not re.search(r'second anchor|local anchors', spec, re.I)
+    for phrase in ('What a real day must prove', 'live rehearsal', 'unmeasured, never a pass'):
+        assert phrase in testing, phrase
+    assert 'design reconsideration recorded in its spec' in constitution and '#222' in constitution
