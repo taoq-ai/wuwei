@@ -12,13 +12,11 @@ def build(source, output, key):
     stage = output / 'wuwei'
     stage.mkdir(parents=True)
     for name in ('.claude-plugin', 'cli', 'adapters', 'bin', 'hooks', 'charters',
-                 'skills', 'agents', 'templates', 'keys'):
+                 'skills', 'agents', 'templates', 'keys', 'docs'):
         shutil.copytree(source / name, stage / name,
                         ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-    for name in ('README.md', 'LICENSE', 'pyproject.toml'):
+    for name in ('README.md', 'LICENSE', 'NOTICE', 'pyproject.toml'):
         shutil.copyfile(source / name, stage / name)
-    (stage / 'docs').mkdir()
-    shutil.copyfile(source / 'docs/integrity.md', stage / 'docs/integrity.md')
     integrity.write_manifest(stage)
     result = integrity.signature_adapter().sign(stage / integrity.MANIFEST, key)
     if result.exit:
