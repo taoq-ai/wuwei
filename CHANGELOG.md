@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.1](https://github.com/taoq-ai/wuwei/compare/v0.6.0...v0.6.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **cli:** the morning before the first plan, owner actions on a terminal, and operator records ([#233](https://github.com/taoq-ai/wuwei/issues/233)) ([45775cb](https://github.com/taoq-ai/wuwei/commit/45775cb3ea6500c911497320fc8c75876387efc8)), closes [#227](https://github.com/taoq-ai/wuwei/issues/227)
+* **guards:** indirect owner-action forms share one rule with the direct ones ([#235](https://github.com/taoq-ai/wuwei/issues/235)) ([7c2bb20](https://github.com/taoq-ai/wuwei/commit/7c2bb20db5f4736e1f4d24f06aecde0b5734d7e1)), closes [#222](https://github.com/taoq-ai/wuwei/issues/222)
+* **guards:** ordinary seat command forms pass the commit, deploy and PR guards ([#234](https://github.com/taoq-ai/wuwei/issues/234)) ([c42df62](https://github.com/taoq-ai/wuwei/commit/c42df6216770d835910984d9847d54585aa67238)), closes [#226](https://github.com/taoq-ai/wuwei/issues/226)
+* **security:** a workspace is usable right after init ([#229](https://github.com/taoq-ai/wuwei/issues/229)) ([81ca75b](https://github.com/taoq-ai/wuwei/commit/81ca75b13ebd21905464b20349eb680507ac525d)), closes [#228](https://github.com/taoq-ai/wuwei/issues/228)
+* **team:** the loop's remaining joints: continue, gate role names, phases after raise and merge, decisions from pr act ([#241](https://github.com/taoq-ai/wuwei/issues/241)) ([e9e7fd9](https://github.com/taoq-ai/wuwei/commit/e9e7fd9762b1dc6e8b01522c00cf61da2a702862)), closes [#225](https://github.com/taoq-ai/wuwei/issues/225)
+
 ## [0.6.0](https://github.com/taoq-ai/wuwei/compare/v0.5.0...v0.6.0) (2026-09-30)
 
 
