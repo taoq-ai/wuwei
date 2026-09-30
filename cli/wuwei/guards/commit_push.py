@@ -58,6 +58,8 @@ def context(cwd, settings, env, root, identity=True):
 
     if 'GIT_COMMON_DIR' in env:
         raise ValueError('GIT_COMMON_DIR overrides cannot be inspected safely')
+    if not identity and (settings or env):
+        raise ValueError('identity-free repository read takes no settings or env overrides')
     config = workspace.load_config(root)
     vcs = registry.load('vcs', config)
     actual = data(vcs.commit_context(str(cwd), settings, env, root=root) if identity

@@ -204,6 +204,14 @@ def test_port_errors_fail_closed(workspace_case, operation, result):
     assert guard().check(payload(root, 'git push origin feature'))[0] == 2
 
 
+@pytest.mark.parametrize('settings,env', [({'user.name': 'Other'}, {}), ({}, {'GIT_DIR': 'other/.git'})])
+def test_identity_free_context_refuses_overrides(workspace_case, settings, env):
+    root, fake = workspace_case
+    with pytest.raises(ValueError, match='identity-free'):
+        guard().context(root / 'repo', settings, env, root, identity=False)
+    assert not fake.calls
+
+
 def test_unconfigured_repository_is_unmeasured(workspace_case):
     root, fake = workspace_case
     original = fake._call

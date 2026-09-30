@@ -72,8 +72,10 @@ Each test task is written and run red before its implementation task. Run tests 
   runner with no identity. Then add the identity-free `repo_context` port operation in
   `adapters/vcs/git.py`, `cli/wuwei/registry.py` and `tests/fakes/vcs.py`, build
   `commit_context` on it, and use it in `commit_push.context(identity=False)` (fast checks,
-  build, PR actions), the configured-repository match, `merge.py`, `shepherd.py` and
-  `workspace.py`. Only the commit and push guards read an identity.
+  build), the configured-repository match, `merge.py`, `shepherd.py` and `workspace.py`.
+  `context(identity=False)` refuses settings or env overrides. Paths that commit or push
+  (the guards, the git hook and the PR conflict rebase push) keep the identity read;
+  `tests/test_pr_actions.py` checks that push through the real `push_check`.
 
 ## Docs and messages
 
