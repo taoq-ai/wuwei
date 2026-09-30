@@ -5,6 +5,7 @@ import json
 import os
 import re
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -397,15 +398,17 @@ GUARDS = [Guard({event!r}, {matcher!r}, lambda p: (0, ''))]
         discover()
 
 
-@pytest.mark.parametrize('ci,bench,load,expected', [
-    (False, False, 1.0, 'assert'),
-    (False, False, 4.0, 'skip'),
-    (False, False, 8.0, 'skip'),
-    (True, False, 1.0, 'skip'),
-    (True, True, 8.0, 'assert'),
-    (False, True, 8.0, 'assert'),
+@pytest.mark.parametrize('ci,bench,load,expected,wall_budget', [
+    (False, False, 1.0, 'assert', None),
+    (False, False, 4.0, 'skip', None),
+    (False, False, 8.0, 'skip', None),
+    (True, False, 1.0, 'skip', None),
+    (True, True, 8.0, 'assert', None),
+    (False, True, 8.0, 'assert', None),
+    (False, True, 8.0, 'assert', 59),
+    (False, True, 8.0, 'pass', 61),
 ])
-def test_latency_budget_decision(monkeypatch, capsys, ci, bench, load, expected):
+def test_latency_budget_decision(monkeypatch, capsys, ci, bench, load, expected, wall_budget):
     monkeypatch.delenv('CI', raising=False)
     monkeypatch.delenv('WUWEI_BENCH', raising=False)
     if ci:
@@ -414,23 +417,28 @@ def test_latency_budget_decision(monkeypatch, capsys, ci, bench, load, expected)
         monkeypatch.setenv('WUWEI_BENCH', '1')
     monkeypatch.setattr(os, 'getloadavg', lambda: (load, 0, 0))
     monkeypatch.setattr(os, 'cpu_count', lambda: 8)
-    if expected == 'assert':
+    if expected == 'pass':
+        assert_latency_budget('hook', 51.0, 60.0, capsys, wall_budget=wall_budget)
+    elif expected == 'assert':
         with pytest.raises(AssertionError):
-            assert_latency_budget('hook', 51.0, 60.0, capsys)
+            assert_latency_budget('hook', 51.0, 60.0, capsys, wall_budget=wall_budget)
     else:
         with pytest.raises(pytest.skip.Exception, match=r'CPU 51\.00 ms.*wall 60\.00 ms.*load'):
             assert_latency_budget('hook', 51.0, 60.0, capsys)
 
 
-def assert_latency_budget(name, cpu_ms, wall_ms, capsys):
+def assert_latency_budget(name, cpu_ms, wall_ms, capsys, *, wall_budget=None, runs=60):
     load = os.getloadavg()[0]
     cpus = os.cpu_count() or 1
-    report = (f'{name} p95 over 60 runs: CPU {cpu_ms:.2f} ms, '
+    report = (f'{name} p95 over {runs} runs: CPU {cpu_ms:.2f} ms, '
               f'wall {wall_ms:.2f} ms, load {load:.2f} on {cpus} CPUs')
     with capsys.disabled():
         print('\n' + report)
     if os.environ.get('WUWEI_BENCH') == '1' or ('CI' not in os.environ and load < cpus / 2):
-        assert cpu_ms < 50, report
+        if wall_budget is None:
+            assert cpu_ms < 50, report
+        else:
+            assert wall_ms < wall_budget, report
     else:
         pytest.skip(report)
 
@@ -507,3 +515,150 @@ def test_status_line_latency(subprocess_plugin, capsys):
     cpu_ms = quantiles(cpu, n=100)[94] * 1000
     wall_ms = quantiles(wall, n=100)[94] * 1000
     assert_latency_budget('status --line', cpu_ms, wall_ms, capsys)
+
+
+DAY = '2026-09-28'
+HEAD_REF = 'acme/app#1'
+
+
+def git(*args, cwd):
+    return subprocess.run(['git', '-c', 'core.hooksPath=/dev/null', *args], cwd=cwd, check=True,
+                          capture_output=True, text=True).stdout.strip()
+
+
+@pytest.fixture
+def seeded_workspace(subprocess_plugin, tmp_path, monkeypatch):
+    """A day as the dry run left it: repo, origin, item worktree, claimed PR and live seats."""
+    from fakes.integrity import seed
+    from wuwei import state, workspace
+    root, env = subprocess_plugin
+    shutil.copytree(ROOT / 'keys', root / 'keys')
+    for key in list(os.environ):
+        if key.startswith('GIT_'):
+            monkeypatch.delenv(key)
+    env = {key: value for key, value in env.items() if not key.startswith('GIT_')}
+    (tmp_path / '.wuwei/config.toml').write_text(
+        '[owner]\nhandles = ["owner"]\n[[repos]]\nname = "acme/app"\npath = "repos/app"\n'
+        'default_branch = "main"\nfast_checks = ["unit"]\n'
+        'identity = {name = "Builder", email = "builder@example.test"}\n')
+    for name in ('spine.md', 'index.md'):
+        (tmp_path / '.wuwei/memory/notes').mkdir(parents=True, exist_ok=True)
+        (tmp_path / '.wuwei/memory' / name).write_text('Memory\n')
+    from wuwei import integrity
+    integrity.initialize(tmp_path / '.wuwei')
+    seed(tmp_path)
+    if shutil.which('ssh-keygen'):
+        # Sign the copy so SessionStart pays the full measurement a release install pays.
+        key = tmp_path / 'signing'
+        subprocess.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(key)],
+                       check=True, capture_output=True)
+        for target in (root / integrity.KEY, tmp_path / '.wuwei/integrity/pinned.pub'):
+            target.chmod(0o644)
+            shutil.copyfile(str(key) + '.pub', target)
+        integrity.write_manifest(root)
+        assert integrity.signature_adapter().sign(root / integrity.MANIFEST, key).exit == 0
+    repo = tmp_path / 'repos/app'
+    repo.mkdir(parents=True)
+    git('init', '-q', '--bare', '-b', 'main', str(tmp_path / 'origin.git'), cwd=tmp_path)
+    git('init', '-q', '-b', 'main', cwd=repo)
+    git('config', 'user.name', 'Builder', cwd=repo)
+    git('config', 'user.email', 'builder@example.test', cwd=repo)
+    (repo / 'README.md').write_text('app\n')
+    git('add', '-A', cwd=repo)
+    git('commit', '-q', '-m', 'start', cwd=repo)
+    git('remote', 'add', 'origin', str(tmp_path / 'origin.git'), cwd=repo)
+    git('push', '-q', '-u', 'origin', 'main', cwd=repo)
+    tree = tmp_path / 'worktrees/ITEM-1'
+    git('worktree', 'add', '-q', '-b', 'item-1', str(tree), cwd=repo)
+    (tree / 'change.txt').write_text('change\n')
+    git('add', '-A', cwd=tree)
+    git('commit', '-q', '-m', 'change', cwd=tree)
+    head = git('rev-parse', 'HEAD', cwd=tree)
+
+    now = DAY + 'T12:00:00+00:00'
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', now)
+    env['WUWEI_NOW'] = now
+    directory = workspace.day_dir(tmp_path)
+    brief = directory / 'briefs/builder-1.md'
+    brief.parent.mkdir(parents=True)
+    brief.write_text('Build ITEM-1.\n')
+    relative = str(brief.relative_to(tmp_path))
+    state._write_state(lambda data: data.update(
+        gate_approved=True, approved_items=['ITEM-1'], planner_session_id='planner',
+        items={'ITEM-1': {'phase': 'planned', 'status': 'running', 'worktree': 'worktrees/ITEM-1'}}),
+        tmp_path, reserved=False)
+    for phase in ('implement', 'gate', 'raised'):
+        state.transition('ITEM-1', phase, tmp_path)
+    state.record_pr(tmp_path, 'ITEM-1', HEAD_REF, raised=False)
+    state._write_state(lambda data: data.update(
+        seats={'builder-1': {'id': 'builder-1', 'role': 'builder', 'item': 'ITEM-1', 'brief': relative,
+                             'status': 'running', 'started_at': now}},
+        fast_checks={'acme/app': {'unit': {'sha': head, 'exit': 0}}},
+        watch={'clock_at': now, 'poll_at': now, 'measured_at': now, 'prs': {HEAD_REF: {}},
+               'actions': {}}), tmp_path, reserved=False)
+    rows = [{'kind': 'plan.session', 'payload': {'session_id': 'planner'}, 'ts': now},
+            {'kind': 'brief written', 'payload': {'path': relative, 'worktree': str(tree)}, 'ts': now}]
+    rows += [{'kind': 'note', 'payload': {'detail': 'x' * 200}, 'ts': now} for _ in range(1000)]
+    rows.append({'kind': 'watch: clock', 'payload': {}, 'ts': now})
+    events = directory / 'events.jsonl'
+    events.chmod(0o644)
+    with events.open('a') as stream:
+        stream.writelines(json.dumps(row) + '\n' for row in rows)
+    events.chmod(0o444)
+    transcript = tmp_path / 'builder-1.jsonl'
+    transcript.write_text(json.dumps({'type': 'user', 'message': {'content': 'WUWEI brief: ' + relative}})
+                          + '\n' + json.dumps({'type': 'assistant', 'message': {'content': 'Done.'}}) + '\n')
+    calls = tmp_path / 'gh-calls'
+    gh = tmp_path / 'path/gh'
+    gh.write_text(f'#!/bin/sh\necho "$@" >> {shlex.quote(str(calls))}\nexit 1\n')
+    gh.chmod(0o755)
+    saved = tmp_path / 'saved-day'
+    shutil.copytree(directory, saved)
+    payloads = {
+        'Stop': ('Stop', {'session_id': 'planner', 'cwd': str(tmp_path)}),
+        'SubagentStop': ('SubagentStop', {'cwd': str(tmp_path), 'agent_id': 'builder-agent',
+                                          'agent_type': 'wuwei:builder', 'last_assistant_message': 'Done.',
+                                          'agent_transcript_path': str(transcript)}),
+        'SessionStart': ('SessionStart', {'cwd': str(tmp_path)}),
+        'commit': ('PreToolUse', {'cwd': str(tree), 'tool_name': 'Bash',
+                                  'tool_input': {'command': 'git commit -m change'}}),
+        'push': ('PreToolUse', {'cwd': str(tree), 'tool_name': 'Bash',
+                                'tool_input': {'command': 'git push origin HEAD:refs/heads/item-1'}}),
+    }
+    def reset():
+        for path in (directory, saved):
+            for item in path.rglob('*'):
+                item.chmod(0o755 if item.is_dir() else 0o644)
+        shutil.rmtree(directory)
+        shutil.copytree(saved, directory)
+    return (root, env), payloads, reset, calls
+
+
+@pytest.mark.parametrize('path', ['Stop', 'SubagentStop', 'SessionStart', 'commit', 'push'])
+def test_workspace_hook_latency(seeded_workspace, capsys, path):
+    from resource import RUSAGE_CHILDREN, getrusage
+    from statistics import quantiles
+    from time import perf_counter
+
+    plugin, payloads, reset, calls = seeded_workspace
+    event, fields = payloads[path]
+    payload = json.dumps({**fixture(event), **fields})
+    runs = 60 if os.environ.get('WUWEI_BENCH') == '1' else 20
+    elapsed, cpu = [], []
+    for _ in range(runs):
+        reset()
+        before = getrusage(RUSAGE_CHILDREN)
+        start = perf_counter()
+        result = subprocess_replay(plugin, event, payload)
+        elapsed.append(perf_counter() - start)
+        after = getrusage(RUSAGE_CHILDREN)
+        cpu.append(after.ru_utime - before.ru_utime + after.ru_stime - before.ru_stime)
+        assert result.returncode == 0, result.stderr
+        if event != 'SessionStart':
+            assert result.stdout == '', result.stdout
+    assert not calls.exists(), calls.read_text()
+    cpu_ms = quantiles(cpu, n=100)[94] * 1000
+    wall_ms = quantiles(elapsed, n=100)[94] * 1000
+    assert_latency_budget(f'{path} in a workspace', cpu_ms, wall_ms, capsys,
+                          wall_budget=100, runs=runs)

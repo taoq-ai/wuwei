@@ -117,6 +117,20 @@ def test_discovery_trigger(root):
     assert events.count('discovery.requested') == 2
 
 
+def test_seat_free_discovery_only_records_the_request(root, monkeypatch):
+    from wuwei import discovery, dispatch
+
+    calls = []
+    monkeypatch.setattr(discovery, 'intake', lambda root, **kwargs: calls.append(kwargs))
+    assert dispatch.discovery('seat-free', root) == {'action': 'discover'}
+    assert calls == []
+    found = {'sources': {}, 'candidates': []}
+    assert dispatch.discovery('sweep', root, found) == {'action': 'discover'}
+    assert calls == [{'trigger': 'sweep', 'found': found}]
+    kinds = [json.loads(line)['kind'] for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+    assert kinds.count('discovery.requested') == 2
+
+
 def test_delta_nonblocking_residual_becomes_review_note(root):
     from wuwei import dispatch
 

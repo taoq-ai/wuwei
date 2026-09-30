@@ -11,7 +11,7 @@ from wuwei.workspace import worktree_workspace
 
 _STATE_HINT = ('State and config files are protected; use the wuwei CLI for state changes. '
                'The owner edits config.toml, voice.md and goals.md outside agent tools.')
-_STATE_MENTION = re.compile(r'state\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|\.wuwei', re.I)
+_STATE_MENTION = re.compile(r'state\.json|state\.snapshot\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|\.wuwei', re.I)
 _STATE_GLOB = re.compile(r'\.w[\w*?\[]', re.I)
 _DYNAMIC = re.compile(r'\$\(|[`*?\[]')
 _WRITE_CONSTRUCT = re.compile(
@@ -77,7 +77,7 @@ def _protected_name(path, directories=False):
         if directories and tail in (('memory',), ('memory', 'notes'),
                                     ('memory', 'archive'), ('charters',)):
             return True
-        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'events.jsonl', 'traces.jsonl', 'undo.jsonl', 'proposal.json', 'plan.md', 'steward-decisions.json'):
+        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'undo.jsonl', 'proposal.json', 'plan.md', 'steward-decisions.json'):
             return True
         if tail == ('memory', 'ledger.jsonl'):
             return True
@@ -282,6 +282,9 @@ def check_bash(payload):
             if guard_scope(payload) is not None:
                 return 1, 'Integrity re-confirmation is an owner action on the host, outside agent tools.'
         from wuwei.workspace import guard_scope
+        if (_names_wuwei(owner_action_text) and mentions(script, ('state',))
+                and re.search(r'\brecover\b', owner_action_text) and guard_scope(payload) is not None):
+            return 1, 'State recovery is an owner action on the host, outside agent tools.'
         mcp_relevant = (_names_wuwei(owner_action_text)
                         and mentions(script, ('mcp',)) and guard_scope(payload) is not None)
         drafts_relevant = ((re.search(r'(?i)wuwei|drafts', re.sub(r"['\"\\]", '', script))

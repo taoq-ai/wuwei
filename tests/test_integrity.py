@@ -340,10 +340,10 @@ def test_workspace_history_stub_and_allowlist(tmp_path, monkeypatch):
     (tmp_path / '.git').mkdir()
     adapter = vcs()
     assert hasattr(adapter, 'workspace_changes'), 'workspace VCS port missing'
-    outputs = iter([b' M charters/builder.md\0?? memory/new.md\0',
-                    b'\x1ewuwei\n\0\ncharters/old.md\0\x1e\0\nmemory/voice.md\0'])
-    monkeypatch.setattr(adapter.subprocess, 'run', lambda *a, **kw: Namespace(
-        returncode=0, stdout=next(outputs)))
+    outputs = {'status': b' M charters/builder.md\0?? memory/new.md\0',
+               'log': b'\x1ewuwei\n\0\ncharters/old.md\0\x1e\0\nmemory/voice.md\0'}
+    monkeypatch.setattr(adapter.subprocess, 'run', lambda argv, **kw: Namespace(
+        returncode=0, stdout=next(value for key, value in outputs.items() if key in argv)))
     result = adapter.workspace_changes(tmp_path)
     assert result.exit == 0
     assert result.data == ['charters/builder.md', 'memory/new.md', 'memory/voice.md']

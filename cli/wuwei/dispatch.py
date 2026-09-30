@@ -207,6 +207,8 @@ def discovery(trigger, root=None, found=None):
     needed = trigger == 'sweep' or queued < config['discovery']['min_queue']
     if needed:
         state.append_event('discovery.requested', {'trigger': trigger, 'queued': queued}, root)
+    if trigger == 'sweep':
+        # A seat-free request runs on the watch's next tick, off the hook path.
         from wuwei import discovery as discovery_module
         discovery_module.intake(root, trigger=trigger, found=found)
     return {'action': 'discover' if needed else 'none'}

@@ -106,18 +106,28 @@ def _validate(data, previous=None):
     return data
 
 
+SNAPSHOT = 'state.snapshot.json'
+RECOVER = 'run wuwei state recover in a host terminal'
+
+
+def _load(text):
+    data = json.loads(text)
+    json.dumps(data, allow_nan=False)
+    return _validate(data)
+
+
 def read_state(root=None, *, directory=None):
     """Read today's state; an absent file returns fresh defaults without writes."""
     directory = workspace.day_dir(root) if directory is None else Path(directory)
     path = directory / 'state.json'
     try:
-        data = json.loads(path.read_text(encoding='utf-8'))
-        json.dumps(data, allow_nan=False)
-        return _validate(data)
+        return _load(path.read_text(encoding='utf-8'))
     except FileNotFoundError:
+        if (directory / SNAPSHOT).exists():
+            raise ValueError(f'{path}: day state missing while {SNAPSHOT} exists; {RECOVER}') from None
         return deepcopy(DAY_DEFAULTS)
     except (ValueError, TypeError) as exc:
-        raise ValueError(f'{path}: {exc}') from exc
+        raise ValueError(f'{path}: {exc}; {RECOVER}') from exc
 
 
 def _event_payload(kind, payload):
@@ -209,6 +219,7 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
         data = _validate(data, previous)
         encoded = json.dumps(data, allow_nan=False) + '\n'
         workspace.atomic_write(directory / 'state.json', encoded, mode=0o444)
+        workspace.atomic_write(directory / SNAPSHOT, encoded, mode=0o444)
         changes = {name: item['phase'] for name, item in data['items'].items()
                    if previous is not None and name in previous['items']
                    and item['phase'] != previous['items'][name]['phase']}
@@ -371,3 +382,36 @@ def stop_seat(name, root=None, *, directory=None):
         data['seats'][name]['status'] = 'stopped'
     return _write_state(update, root, reserved=False, kind='seat stopped',
                         payload={'name': name}, directory=directory)
+
+
+def recover(root=None, *, confirm):
+    """Restore today's unreadable state from the writer's snapshot after host confirmation."""
+    from hashlib import sha256
+    directory = workspace.day_dir(root)
+    path = directory / 'state.json'
+
+    def measure():
+        try:
+            read_state(directory=directory)
+            reason = None if path.exists() else 'state.json missing'
+        except ValueError as exc:
+            reason = str(exc)
+        if reason is None:
+            raise StateError('state.json is readable; nothing to recover')
+        text = (directory / SNAPSHOT).read_text(encoding='utf-8')
+        try:
+            _load(text)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f'unusable state snapshot: {exc}') from None
+        return reason, sha256(text.encode('utf-8')).hexdigest(), text
+
+    reason, digest, text = measure()
+    if not confirm(digest[:12]):
+        raise StateError('state recovery declined')
+    with (directory / 'state.lock').open('a') as lock:
+        lock_ex(lock, 'state.lock')
+        if measure()[1] != digest:
+            raise ValueError('state changed during confirmation; retry')
+        workspace.atomic_write(path, text, mode=0o444)
+        _append_event('state.recovered', {'snapshot': digest, 'reason': reason}, directory)
+    return digest

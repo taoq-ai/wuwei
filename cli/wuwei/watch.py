@@ -304,6 +304,7 @@ def snapshot(host, ref, root, *, measured=None):
 
 def poll(root):
     """Preserve the baseline on failure and persist changes before announcing wake."""
+    started = workspace.now()
     try:
         config = workspace.load_config(root)
         old = saved(root).get('prs')
@@ -314,7 +315,7 @@ def poll(root):
         host, refs = owned(root, config)
     except ERRORS as exc:
         failures = saved(root).get('failures', 0) + 1
-        save(root, {'failures': failures}, kind='watch: read-failed',
+        save(root, {'failures': failures, 'measured_at': None}, kind='watch: read-failed',
              payload={'failures': failures, 'reason': str(exc)})
         print(f'watch PR read failed ({failures}): {exc}', flush=True)
         return 2
@@ -363,7 +364,8 @@ def poll(root):
             state.append_event('pr.changed', {'pr': ref, 'fields': fields}, root)
         for ref, fields in changes.items():
             print(f'planner wake: {ref}: {", ".join(fields)}', flush=True)
-    save(root, {'prs': current, 'failures': 0})
+    save(root, {'prs': current, 'failures': 0,
+                'measured_at': None if unreadable else started.isoformat()})
     return 2 if unreadable else int(bool(changes))
 
 
@@ -391,7 +393,26 @@ def tick(root):
         code, _ = activity(root)
         result = max(result, code)
         save(root, {'activity_at': now.isoformat()})
-    return result
+    return max(result, pending_discovery(root))
+
+
+def pending_discovery(root):
+    """Run a seat-free discovery request recorded by a hook; a failure is recorded once."""
+    try:
+        rows = [row for row in records(workspace.day_dir(root) / 'events.jsonl')
+                if row['kind'] in ('discovery.requested', 'discovery.intake', 'discovery.unmeasured')]
+    except ERRORS as exc:
+        print(f'watch discovery unmeasured: {exc}', flush=True)
+        return 2
+    if not rows or rows[-1]['kind'] != 'discovery.requested' or rows[-1]['payload'].get('trigger') != 'seat-free':
+        return 0
+    try:
+        discovery.intake(root, trigger='seat-free')
+        return 0
+    except (*ERRORS, RuntimeError) as exc:
+        state.append_event('discovery.unmeasured', {'reason': str(exc)}, root)
+        print(f'watch discovery unmeasured: {exc}', flush=True)
+        return 2
 
 
 def run(root=None, *, once=False, sleep=None):

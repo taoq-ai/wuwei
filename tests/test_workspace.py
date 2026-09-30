@@ -680,3 +680,25 @@ def test_nul_repo_path_is_config_finding(tmp_path):
     write_config(tmp_path, '[[repos]]\nname="app"\npath="bad\\u0000path"\ndefault_branch="main"\n')
     with pytest.raises(ConfigError, match='repos.0.path'):
         load_config(tmp_path)
+
+
+def test_config_parsed_once_per_text(tmp_path, monkeypatch):
+    from wuwei import workspace
+    (tmp_path / '.wuwei').mkdir()
+    path = tmp_path / '.wuwei/config.toml'
+    path.write_text('cap = 2\n')
+    parsed = []
+    loads = workspace.tomllib.loads
+    monkeypatch.setattr(workspace.tomllib, 'loads', lambda text: parsed.append(text) or loads(text))
+    first = workspace.load_config(tmp_path)
+    first['cap'] = 9
+    assert workspace.load_config(tmp_path)['cap'] == 2
+    assert len(parsed) == 1
+    path.write_text('cap = 3\n')
+    assert workspace.load_config(tmp_path)['cap'] == 3
+    assert len(parsed) == 2
+    path.write_text('cap = 0\n')
+    for _ in range(2):
+        with pytest.raises(workspace.ConfigError):
+            workspace.load_config(tmp_path)
+    assert len(parsed) == 4

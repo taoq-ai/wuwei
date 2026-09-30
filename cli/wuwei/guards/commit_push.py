@@ -52,19 +52,36 @@ def data(result):
     return result.data
 
 
-def context(cwd, settings, env, root):
+def context(cwd, settings, env, root, push=None):
+    """With push=(remote, refspecs), also return push_context read alongside, or None."""
+    from concurrent.futures import ThreadPoolExecutor
     from wuwei import registry, workspace
 
     if 'GIT_COMMON_DIR' in env:
         raise ValueError('GIT_COMMON_DIR overrides cannot be inspected safely')
     config = workspace.load_config(root)
     vcs = registry.load('vcs', config)
+    if push is None:
+        return _context(cwd, settings, env, root, config, vcs)
+    with ThreadPoolExecutor(1) as pool:
+        # Without repository overrides, Git discovers the same repository from cwd.
+        early = (pool.submit(vcs.push_context, str(cwd), *push, root=root)
+                 if not REPO_ENV & env.keys() else None)
+        found = _context(cwd, settings, env, root, config, vcs)
+    return *found, early and early.result()
+
+
+def _context(cwd, settings, env, root, config, vcs):
     actual = data(vcs.commit_context(str(cwd), settings, env, root=root))
     for key in ('path', 'common_dir'):
         if not isinstance(actual.get(key), str) or not Path(actual[key]).is_absolute():
             raise ValueError('missing repository context')
     for repo in config['repos']:
         path = (root / Path(repo['path']).expanduser()).resolve()
+        # A checkout whose own .git directory is the common directory Git just measured
+        # is that repository; reading it again would return the same directory.
+        if (path / '.git').is_dir() and str((path / '.git').resolve()) == actual['common_dir']:
+            return repo, actual, vcs
         configured = data(vcs.commit_context(str(path), {}, {}, root=root))
         if configured.get('common_dir') == actual['common_dir']:
             return repo, actual, vcs
@@ -370,7 +387,12 @@ def check(payload):
             allowed_env = IDENTITY_ENV | REPO_ENV | {'GIT_EDITOR', 'GIT_PAGER'}
             if any(key.startswith('GIT_') and key not in allowed_env for key in env):
                 raise ValueError('unsupported GIT_* override')
-            repo, actual, vcs = context(cwd, settings, env, root)
+            try:
+                early, remote, refs = push_options(args) if verb == 'push' else ((1, ''), None, [])
+            except ValueError:
+                early = (1, '')
+            repo, actual, vcs, *early = context(cwd, settings, env, root,
+                                                None if early[0] else (remote, refs))
             expected = repo['identity']
             _identity(expected)
             # Explicit mismatching overrides are refused even if another override wins.
@@ -393,7 +415,7 @@ def check(payload):
             result, remote, refs = push_options(args)
             if result[0]:
                 return result
-            push = data(vcs.push_context(actual['path'], remote, refs, root=root))
+            push = data(next(iter(early), None) or vcs.push_context(actual['path'], remote, refs, root=root))
             result = push_check(repo, actual, push, root, vcs)
             if result[0]:
                 return result
