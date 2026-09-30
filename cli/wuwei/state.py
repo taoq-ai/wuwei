@@ -352,6 +352,8 @@ def record_pr(root, item, ref, *, raised, head=None, reviewers=None):
             data[field].append(ref)
         if reviewers is not None:
             data.setdefault('pr_reviewers', {})[ref] = reviewers
+        if raised and data['items'][item]['phase'] in ('gate', 'delta'):
+            _move(data, item, 'raised')
     payload = {'pr': ref, 'item': item}
     if head is not None:
         payload['head'] = head
@@ -362,15 +364,19 @@ def record_pr(root, item, ref, *, raised, head=None, reviewers=None):
     return _write_state(update, root, reserved=False, kind='pr.claimed', payload=payload)
 
 
+def _move(data, item, phase):
+    current = data['items'][item]
+    _check_transition(current, phase)
+    if current['phase'] == 'delta' and phase == 'raised' and item in data.get('builds', {}):
+        data['builds'][item]['fix_rounds'] = 0
+    current['phase'] = phase
+
+
 def transition(item, phase, root=None):
     def update(data):
         if item not in data['items']:
             raise KeyError(f'no state item: {item}')
-        current = data['items'][item]
-        _check_transition(current, phase)
-        if current['phase'] == 'delta' and phase == 'raised' and item in data.get('builds', {}):
-            data['builds'][item]['fix_rounds'] = 0
-        current['phase'] = phase
+        _move(data, item, phase)
 
     return _write_state(update, root, reserved=False, kind='state.transition',
                        payload={'item': item, 'phase': phase})

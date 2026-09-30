@@ -216,6 +216,10 @@ def observe(root, host, ref, config, measured):
         if completed:
             row.update(overdue=False, deadline=None, action='')
         row['exit'] = int(bool(action) and not row['parked'] and not completed)
+        if current == 'merged':
+            for name, item in data['items'].items():
+                if item.get('pr') == ref and item['phase'] == 'raised':
+                    state._move(data, name, 'merged')
     state._write_state(update, root, reserved=False, kind='pr.action', payload=event)
     return row
 
@@ -369,7 +373,7 @@ def _thread(root, ref, item, measured, reply=None):
             fingerprint = obligations._fingerprint(latest)
             prior = state.read_state(root).get('pr_action_decisions', {}).get(ref, {}).get(key)
             if prior is None or prior.get('fingerprint') != fingerprint:
-                path = decision.write(
+                text = (
                     f'Question: How should {ref} thread {target} change scope?\n'
                     f'Context: Reviewer wrote: {json.dumps(text)}\nOptions:\n| Option | Description |\n'
                     '| --- | --- |\n| change | Make the requested scope change |\n'
@@ -380,7 +384,9 @@ def _thread(root, ref, item, measured, reply=None):
                     '| Avoid unapproved scope | 10 | 0 | 10 |\nRecommendation: defer\n'
                     'Confidence: medium\nReversibility: unsure\nBlast radius: own PR\n'
                     'Pre-mortem: Scope changes without owner review.\n'
-                    'Revisit: After owner decision.\nDecided-by: owner\nOutcome: pending\n', root)
+                    'Revisit: After owner decision.\nDecided-by: owner\nOutcome: pending\n')
+                path = decision.write(text, root)
+                decision.route_owner(path.stem, decision.evaluate(text)[0], root)
                 relative = str(path.relative_to(root))
                 state._write_state(lambda data: data.setdefault('pr_action_decisions', {})
                                    .setdefault(ref, {}).update({key: {'path': relative,

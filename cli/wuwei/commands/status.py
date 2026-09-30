@@ -5,6 +5,7 @@ import json
 import sys
 
 from wuwei import state, workspace
+from wuwei.decision import answered
 from wuwei.exits import CLEAN, UNRUN
 from wuwei.signal import SILENT, classify
 
@@ -116,6 +117,14 @@ def scan(directory, classified_state=None):
                                   classified_state)
             current[('item.escalated', name)] = {'tier': tier, 'source': 'item.escalated',
                                                  'lane': lane, 'reason': name}
+    routes = classified_state.get('decision_routes', {})
+    if not isinstance(routes, dict):
+        raise ValueError('invalid decision ledger')
+    for identifier in routes:
+        if answered(classified_state, identifier) is None:
+            current[('decision.pending', identifier)] = {
+                'tier': 'nudge', 'source': 'decision.pending', 'lane': 'Decisions',
+                'reason': f'{identifier} pending owner decision'}
     return list(current.values()), {1: 'dead', 2: 'unmeasured'}.get(code, 'alive' if clocks else 'off')
 
 

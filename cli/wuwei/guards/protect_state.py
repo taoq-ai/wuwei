@@ -312,6 +312,13 @@ def _write_targets(argv, cwd, root):
     program = Path(argv[0]).name
     if program in ('cd', 'pushd', 'popd'):
         return []
+    # The CLI is the state writer; its arguments (job JSON, prompts, paths it reads) are data.
+    # Only the real CLI: bare wuwei on PATH, the launcher, or python -P -m wuwei (the only
+    # interpreter form that reaches here naming state). Any other program named wuwei is checked.
+    if _wuwei_action(argv) is not None:
+        from wuwei.shell import _launcher
+        if program != 'wuwei' or argv[0] == 'wuwei' or _launcher(Path(cwd, argv[0]), cwd):
+            return []
     if program in ('ln', 'install', 'rsync', 'rm', 'cp', 'mv', 'tee', 'truncate', 'sed'):
         # Normalized argv has no quote metadata; conservatively check glob matches.
         argv = [argv[0], *(match for arg in argv[1:]

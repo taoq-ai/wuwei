@@ -393,3 +393,35 @@ def test_init_leaves_owner_settings_untouched(tmp_path):
 def test_draft_events_use_decisions_lane(kind, tier):
     from wuwei.signal import classify
     assert classify({'kind': 'draft.' + kind}, {}) == (tier, 'Decisions')
+
+
+ROUTED = {'D-2': {'reversibility': 'unsure', 'recommendation': 'defer'}}
+
+
+@pytest.mark.parametrize('outcomes,count', [
+    ({}, 1),
+    ({'D-2': {'decided_by': 'owner', 'option': 'A', 'outcome': 'A'}}, 0),
+])
+def test_routed_decision_nudges_until_answered(tmp_path, monkeypatch, capsys, outcomes, count):
+    from wuwei.__main__ import main
+    day(tmp_path, {'cap': 1, 'items': {'A': {'phase': 'raised'}}, 'decision_routes': ROUTED,
+                   'decision_outcomes': outcomes})
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    assert main(['nudges']) == 0
+    rows = [row for row in json.loads(capsys.readouterr().out) if row['source'] == 'decision.pending']
+    assert rows == [{'tier': 'nudge', 'source': 'decision.pending', 'lane': 'Decisions',
+                     'reason': 'D-2 pending owner decision'}][:count]
+    assert main(['status', '--line']) == 0
+    assert f'nudges {count}' in capsys.readouterr().out
+
+
+def test_invalid_decision_ledger_is_unmeasured(tmp_path, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': ['D-2']})
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    assert main(['nudges']) == 2
+    capsys.readouterr()
+    assert main(['status', '--line']) == 2
+    assert capsys.readouterr().out == 'WUWEI ? unmeasured\n'

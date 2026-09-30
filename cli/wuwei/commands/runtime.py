@@ -3,17 +3,17 @@
 import json
 import sys
 
-from wuwei import registry, workspace
+from wuwei import dispatch, registry, workspace
 
 
 def register(subparsers):
     parser = subparsers.add_parser('runtime', help='Dispatch and inspect runtime jobs')
     actions = parser.add_subparsers(dest='action', required=True)
-    dispatch = actions.add_parser('dispatch')
-    dispatch.add_argument('role')
-    dispatch.add_argument('brief')
-    dispatch.add_argument('worktree')
-    dispatch.add_argument('--write', action='store_true')
+    launch = actions.add_parser('dispatch')
+    launch.add_argument('role')
+    launch.add_argument('brief')
+    launch.add_argument('worktree')
+    launch.add_argument('--write', action='store_true')
     for name in ('status', 'result'):
         command = actions.add_parser(name)
         command.add_argument('job', help='JSON job handle from dispatch')
@@ -28,9 +28,10 @@ def run(args, *, root=None):
         root = workspace.find_workspace(root)
         config = workspace.load_config(root)
         if args.action == 'dispatch':
-            selected = registry.runtime_config(args.role, config, root)
+            role = 'sentinel-' + args.role if args.role in dispatch.ROLES else args.role
+            selected = registry.runtime_config(role, config, root)
             adapter = registry.load('runtime', selected)
-            response = adapter.dispatch(args.role, args.brief, args.worktree, args.write, root=root)
+            response = adapter.dispatch(role, args.brief, args.worktree, args.write, root=root)
         else:
             job = json.loads(args.job)
             selected_name = job.get('runtime') if isinstance(job, dict) else None
