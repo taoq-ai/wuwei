@@ -44,14 +44,13 @@ The second command installs `wuwei` from the local `wuwei` marketplace. The plug
 
 ## Quick start
 
-From the same project directory, initialize and check the signed installation:
+From the same project directory, initialize the workspace:
 
 ```sh
 ../wuwei-plugin/bin/wuwei init .
-../wuwei-plugin/bin/wuwei integrity check
 ```
 
-An intact signed release needs no reconfirmation.
+`init` ends by checking the installation. An intact signed release prints `plugin integrity: clean` and needs no reconfirmation.
 
 `init` creates `.wuwei/` and adds workspace guard denials to `.claude/settings.json`. From another project, use the installed plugin's `bin/wuwei` path. Use `bin/wuwei` or `python3 -P -m wuwei` for CLI calls; plain `python3 -m wuwei` can import a same-named directory in the current working directory.
 

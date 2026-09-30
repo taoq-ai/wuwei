@@ -376,6 +376,7 @@ def test_init_pins_key_and_initializes_workspace_vcs(tmp_path, monkeypatch):
             return Namespace(workspace_init=lambda repo, **kw: calls.append(Path(repo)) or registry.Result(0))
         return original(kind, config)
     monkeypatch.setattr(registry, 'load', load)
+    monkeypatch.setattr(core(), 'check', lambda root: registry.Result(0, 'a' * 64))
     assert init.run(Namespace(path=str(tmp_path))) == 0
     assert calls and calls[0].name.startswith('.wuwei-init-')
     assert (tmp_path / '.wuwei/integrity/pinned.pub').read_bytes() == (ROOT / core().KEY).read_bytes()
@@ -768,3 +769,94 @@ def test_signed_install_passes_without_confirmation_or_vcs(tmp_path, monkeypatch
     assert api.check(root).exit == 0
     assert api.cached(root).exit == 0
     assert not (root / '.wuwei/integrity/confirmation.json').exists()
+
+
+def test_checkout_reasons_name_reconfirm_line(checkout):
+    api, root, base, fake = checkout
+    line = 'run wuwei integrity reconfirm on the host'
+    result = api.check(root)
+    assert result.exit == 1 and result.reason.endswith(line) and '\n' not in result.reason
+    assert api.cached(root) == registry.Result(2, reason=result.reason)
+    fake.results['status'] = registry.Result(0, [{'path': 'a', 'index': ' ', 'worktree': 'M'}])
+    result = api.check(root)
+    assert result.exit == 1 and 'restore a clean commit and ' + line in result.reason
+    cached = api.cached(root)
+    assert cached.exit == 2 and cached.reason == result.reason and 'Errno' not in cached.reason
+
+
+def measured(monkeypatch, result):
+    calls = []
+    def check(root):
+        calls.append((Path(root), (Path(root) / '.wuwei/config.toml').is_file()))
+        return result
+    monkeypatch.setattr(core(), 'check', check)
+    return calls
+
+
+@pytest.mark.parametrize('result', [registry.Result(0, 'a' * 64),
+                                    registry.Result(2, reason='plugin integrity unmeasured: test')])
+def test_init_measures_integrity_last(tmp_path, monkeypatch, capsys, result):
+    from wuwei.commands import init
+    calls = measured(monkeypatch, result)
+    assert init.run(Namespace(path=str(tmp_path))) == 0
+    assert calls == [(tmp_path, True)]
+    out = capsys.readouterr().out
+    assert (result.reason or 'plugin integrity: clean') in out
+    assert ('plugin integrity: clean' in out) == (result.exit == 0)
+
+
+def test_init_upgrade_measures_unless_dry_run(tmp_path, monkeypatch, capsys):
+    from wuwei.commands import init
+    calls = measured(monkeypatch, registry.Result(0, 'a' * 64))
+    assert init.run(Namespace(path=str(tmp_path))) == 0
+    calls.clear()
+    capsys.readouterr()
+    assert init.run(Namespace(path=str(tmp_path), upgrade=True, dry_run=True)) == 0
+    assert not calls and 'plugin integrity' not in capsys.readouterr().out
+    assert init.run(Namespace(path=str(tmp_path), upgrade=True, dry_run=False)) == 0
+    assert calls == [(tmp_path, True)] and 'plugin integrity: clean' in capsys.readouterr().out
+
+
+def pre_tool_use(monkeypatch, root):
+    import io
+    from wuwei.commands import hook
+    payload = {'cwd': str(root), 'session_id': 'test', 'transcript_path': 'transcript',
+               'hook_event_name': 'PreToolUse', 'tool_name': 'Bash', 'tool_input': {'command': 'ls'}}
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
+    return hook.run(Namespace(event='PreToolUse'))
+
+
+def test_signed_install_is_usable_right_after_init(tmp_path, monkeypatch, capsys):
+    from wuwei.commands import init
+    api = core()
+    base = plugin(tmp_path)
+    api.write_manifest(base)
+    monkeypatch.setattr(api, 'PLUGIN', base)
+    monkeypatch.setattr(api, 'signature_adapter', lambda: Namespace(verify=lambda *a: registry.Result(0)))
+    root = tmp_path / 'ws'
+    assert init.run(Namespace(path=str(root))) == 0
+    assert 'plugin integrity: clean' in capsys.readouterr().out
+    assert json.loads((root / '.wuwei/integrity/verdict.json').read_text())['exit'] == 0
+    assert pre_tool_use(monkeypatch, root) == 0
+
+
+def test_development_checkout_init_says_reconfirm(tmp_path, monkeypatch, capsys):
+    from wuwei.commands import init
+    api = core()
+    base = plugin(tmp_path)
+    (base / '.git').mkdir()
+    vcs = Namespace(workspace_init=lambda *a, **kw: registry.Result(0),
+                    head=lambda *a, **kw: registry.Result(0, {'sha': 'a' * 40}),
+                    status=lambda *a, **kw: registry.Result(0, []),
+                    read_tree=lambda *a, **kw: registry.Result(0, {
+                        'charters/builder.md': 'Run tests.\n', api.KEY: 'ssh-ed25519 test-key\n'}))
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: vcs if kind == 'vcs' else load(kind, config))
+    monkeypatch.setattr(api, 'PLUGIN', base)
+    root = tmp_path / 'ws'
+    assert init.run(Namespace(path=str(root))) == 0
+    lines = [line for line in capsys.readouterr().out.splitlines() if 'wuwei integrity reconfirm' in line]
+    assert len(lines) == 1
+    assert pre_tool_use(monkeypatch, root) == 2
+    reason = json.loads(capsys.readouterr().out)['hookSpecificOutput']['permissionDecisionReason']
+    assert 'run wuwei integrity reconfirm on the host' in reason and 'Errno' not in reason

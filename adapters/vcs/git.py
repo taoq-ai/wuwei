@@ -46,7 +46,7 @@ def _operation(function):
     return call
 
 
-def _run(repo, *args, settings=None, env=None, missing=False, local=False):
+def _run(repo, *args, settings=None, env=None, missing=False, local=False, input=None):
     allowed = False
     match args:
         case ('init', '--quiet'):
@@ -118,9 +118,8 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False):
                        and bool(_revision(branch)) and paths and all(_tree_path(p) for p in paths))
         case ('log', '--format=%ae', branch, '--', *paths):
             allowed = bool(_revision(branch) and paths and all(_tree_path(p) for p in paths))
-        case ('show', object_name):
-            ref, sep, path = object_name.partition(':')
-            allowed = bool(sep and _tree_ref(ref) and _tree_path(path))
+        case ('cat-file', '--batch'):
+            allowed = True
         case ('worktree', 'add', '-b', branch, '--', path):
             allowed = (bool(_revision(branch)) and isinstance(path, str) and
                        bool(path) and '\0' not in path)
@@ -163,7 +162,7 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False):
         options['env'].update(GIT_AUTHOR_NAME='WUWEI', GIT_AUTHOR_EMAIL='wuwei@localhost',
                               GIT_COMMITTER_NAME='WUWEI', GIT_COMMITTER_EMAIL='wuwei@localhost')
     options['env']['GIT_NO_REPLACE_OBJECTS'] = '1'
-    result = subprocess.run(argv, capture_output=True, timeout=TIMEOUT, **options)
+    result = subprocess.run(argv, input=input, capture_output=True, timeout=TIMEOUT, **options)
     if missing and result.returncode == 1:
         return ''
     if result.returncode == 1 and args[:3] == ('rev-parse', '--verify', '--quiet'):
@@ -588,8 +587,24 @@ def read_tree(repo, ref, paths, root=None):
         raise ValueError('expected nonempty paths')
     paths = [path if path == '.' else _tree_path(path) for path in paths]
     _tree_ref(ref)
-    names = _records(_run(repo, 'ls-tree', '-r', '--name-only', '-z', ref, '--', *paths))
-    return {_tree_path(name): _run(repo, 'show', ref + ':' + name) for name in names}
+    names = [_tree_path(name) for name in
+             _records(_run(repo, 'ls-tree', '-r', '--name-only', '-z', ref, '--', *paths))]
+    if not names:
+        return {}
+    # _tree_path rejects control characters, so one name per stdin line is unambiguous.
+    request = ''.join(f'{ref}:{name}\n' for name in names).encode('utf-8', 'surrogateescape')
+    output = _run(repo, 'cat-file', '--batch', input=request).encode('utf-8', 'surrogateescape')
+    tree = {}
+    for name in names:
+        header, _, output = output.partition(b'\n')
+        _, kind, size = header.split(b' ')
+        if kind != b'blob' or not size.isdigit() or output[int(size):int(size) + 1] != b'\n':
+            raise ValueError(f'unreadable tree entry: {name}')
+        tree[name] = output[:int(size)].decode('utf-8', 'surrogateescape')
+        output = output[int(size) + 1:]
+    if output:
+        raise ValueError('unexpected git cat-file output')
+    return tree
 
 
 _WORKSPACE_DIRS = ('charters', 'memory', 'goals', 'voice')

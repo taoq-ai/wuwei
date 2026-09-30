@@ -165,7 +165,7 @@ def test_unreadable_state_fails_closed(tmp_path, contents):
 def test_init_prints_snippet_without_owner_settings_write(tmp_path):
     result = cli(tmp_path, 'init')
     assert result.returncode == 0, result.stderr
-    snippet = result.stdout.splitlines()[-1]
+    snippet = result.stdout.splitlines()[1]
     assert json.loads(snippet) == {'statusLine': {'type': 'command',
         'command': str(ROOT / 'bin/wuwei') + ' status --line'}}
 
@@ -367,7 +367,7 @@ def test_init_leaves_owner_settings_untouched(tmp_path):
                                  'PYTHONPATH': str(ROOT / 'cli')})
     assert result.returncode == 0, result.stderr
     assert settings.read_text() == '{"theme":"dark"}'
-    assert json.loads(result.stdout.splitlines()[-1])['statusLine']['command'] == (
+    assert json.loads(result.stdout.splitlines()[1])['statusLine']['command'] == (
         shlex.quote(str(ROOT / 'bin/wuwei')) + ' status --line')
 
 

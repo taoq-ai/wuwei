@@ -19,7 +19,11 @@ PreToolUse reads that verdict without walking the installed plugin.
 `wuwei init` copies the plugin public key into `.wuwei/integrity/pinned.pub` and
 initializes `.wuwei/` history through the VCS adapter. An existing workspace must
 have the owner copy that key and initialize its history after reviewing current
-content; automatic upgrade must not bless existing hand edits.
+content; automatic upgrade must not bless existing hand edits. `wuwei init` and
+`wuwei init --upgrade` end by measuring the plugin and caching the verdict, so the first
+tool call is gated on a real measurement. They print `plugin integrity: clean` or the
+finding; a development checkout prints the line asking for `wuwei integrity reconfirm`
+on the host.
 
 Charters, memory, goals and voice are inspected for uncommitted changes and all
 commits without a `Promoted-by: wuwei` trailer. Charter overrides and voice produce

@@ -288,12 +288,46 @@ def test_changes_on_preserves_git_output_paths(tmp_path, monkeypatch):
 def test_read_tree_recording(tmp_path, monkeypatch, ref, path):
     api = adapter()
     assert hasattr(api, 'read_tree'), 'committed tree evidence missing'
-    steps = [{'stdout': 'roles/a b.md\0'}, {'stdout': 'learned rule\n'}]
-    calls = install_replay(monkeypatch, 'git', steps)
+    steps = [{'stdout': 'roles/a b.md\0'}, {'stdout': 'f' * 40 + ' blob 13\nlearned rule\n\n'}]
+    calls, stdin = batch_replay(monkeypatch, steps)
     result = api.read_tree(str(tmp_path), ref, [path])
     assert result.exit == 0 and result.data == {'roles/a b.md': 'learned rule\n'}
-    assert calls[-1][-1] == ref + ':roles/a b.md'
+    assert calls[-1][-2:] == ['cat-file', '--batch']
+    assert stdin == [None, f'{ref}:roles/a b.md\n'.encode()]
     assert calls[0][-1] == path
+
+
+def batch_replay(monkeypatch, steps):
+    calls = install_replay(monkeypatch, 'git', steps)
+    run, stdin = subprocess.run, []
+    def record(argv, **kwargs):
+        stdin.append(kwargs.get('input'))
+        return run(argv, **kwargs)
+    monkeypatch.setattr(subprocess, 'run', record)
+    return calls, stdin
+
+
+@pytest.mark.parametrize('output', ['HEAD:roles/a b.md missing\n', 'f' * 40 + ' commit 13\nlearned rule\n\n',
+                                    'f' * 40 + ' blob 13\nlearned\n'])
+def test_read_tree_batch_rejects_missing_or_non_blob(tmp_path, monkeypatch, output):
+    batch_replay(monkeypatch, [{'stdout': 'roles/a b.md\0'}, {'stdout': output}])
+    assert adapter().read_tree(str(tmp_path), 'HEAD', ['roles']).exit == 2
+
+
+def test_read_tree_real_git_one_batch(tmp_path, monkeypatch):
+    repo = tmp_path / 'repo'
+    (repo / 'dir').mkdir(parents=True)
+    (repo / 'a b.md').write_text('rule\n')
+    (repo / 'dir/c.bin').write_bytes(b'bin\xff\n\x00')
+    git = ['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@localhost', '-c', 'commit.gpgSign=false']
+    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+    subprocess.run([*git, 'add', '.'], check=True)
+    subprocess.run([*git, 'commit', '-qm', 'init'], check=True)
+    run, calls = subprocess.run, []
+    monkeypatch.setattr(subprocess, 'run', lambda argv, **kw: calls.append(argv) or run(argv, **kw))
+    result = adapter().read_tree(str(repo), 'HEAD', ['.'])
+    assert result.exit == 0 and len(calls) == 2
+    assert result.data == {'a b.md': 'rule\n', 'dir/c.bin': b'bin\xff\n\x00'.decode('utf-8', 'surrogateescape')}
 
 
 @pytest.mark.parametrize('operation,args', [
