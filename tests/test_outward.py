@@ -510,3 +510,23 @@ def test_emoji_presentation_selector(configured, base):
     from wuwei.outward import lint
     assert lint('Ready ' + base + '\ufe0f', 'chat', configured[1]) == (1, 'outward: emoji is banned')
     assert lint('Ready ' + base, 'chat', configured[1])[0] == 0
+
+
+def test_owner_addressed_lint_skips_third_person_rules_only(tmp_path, monkeypatch):
+    from wuwei import outward, remote
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    (tmp_path / '.wuwei').mkdir()
+    path = tmp_path / '.wuwei/config.toml'
+    path.write_text('[owner]\nname = ""\n')
+    config = workspace.load_config(tmp_path)
+    assert outward.lint('Report ready.', 'chat', config)[0] == 2
+    assert outward.lint('Report ready.', 'chat', config, to_owner=True) == (0, '')
+    path.write_text('[owner]\nname = "Dry Run Operator"\npronouns = "they/them"\n')
+    config = workspace.load_config(tmp_path)
+    assert outward.lint(remote.CONFIRM, 'chat', config)[0] == 1
+    assert outward.lint(remote.CONFIRM, 'chat', config, to_owner=True) == (0, '')
+    assert outward.lint('They look done.', 'chat', config, to_owner=True) == (0, '')
+    assert outward.lint('wuwei is busy.', 'chat', config, to_owner=True)[0] == 1
+    inputs = {'text': remote.CONFIRM, 'channel': 'D1'}
+    assert outward.check_lint(inputs, tmp_path, config, {'chat'}, to_owner=True) == (0, '')
+    assert outward.check_lint(inputs, tmp_path, config, {'chat'})[0] == 1

@@ -15,3 +15,5 @@ def isolated_mcp_home(tmp_path_factory, monkeypatch):
     monkeypatch.delenv('CLAUDE_ENV_FILE', raising=False)
     # A developer's owner DM channel must never turn test inbox events into commands.
     monkeypatch.delenv('SLACK_OWNER_DM_CHANNEL', raising=False)
+    # A developer's Slack base must never redirect the recorded adapter tests.
+    monkeypatch.delenv('SLACK_API_BASE', raising=False)

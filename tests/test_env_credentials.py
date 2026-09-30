@@ -523,3 +523,32 @@ def test_fresh_init_prints_publishing_layout_once(tmp_path, monkeypatch, capsys)
     assert 'default_branch' in output and 'GH_TOKEN' in output and 'wuwei config check' in output
     assert main(['init', str(tmp_path), '--upgrade']) == 0
     assert 'wuwei config check' not in capsys.readouterr().out
+
+
+def test_owner_dm_channel_is_not_redacted(case, monkeypatch):
+    # A channel id is an identifier: stored events must keep it so the listener can match it.
+    from wuwei import env, redact
+    write_env(case, f'SLACK_BOT_TOKEN={KEY}\nSLACK_OWNER_DM_CHANNEL=D0123ABC\n'
+                    'WUWEI_TOTP_SECRET=other-private-value\n')
+    with env.session():
+        env.load(case)
+        assert redact.known_values('D0123ABC/1.000001') == 'D0123ABC/1.000001'
+        assert redact.known_values(KEY + ' other-private-value') == '[REDACTED] [REDACTED]'
+    (case / '.wuwei/env').unlink()
+    monkeypatch.setenv('SLACK_OWNER_DM_CHANNEL', 'D0123ABC')
+    monkeypatch.setenv('SLACK_BOT_TOKEN', KEY)
+    with env.session():
+        assert redact.known_values('D0123ABC ' + KEY) == 'D0123ABC [REDACTED]'
+
+
+def test_config_check_reports_owner_name(case, capsys):
+    from wuwei import outward
+    write_env(case, 'LINEAR_API_KEY=' + KEY + '\n')
+    assert main(['config', 'check']) == 0
+    output = capsys.readouterr().out
+    assert 'Owner:' in output and output.count(outward.OWNER_UNSET) == 1
+    path = case / '.wuwei/config.toml'
+    path.write_text(path.read_text() + '[owner]\nname = "Robin Example"\n')
+    assert main(['config', 'check']) == 0
+    output = capsys.readouterr().out
+    assert 'owner.name: set' in output and outward.OWNER_UNSET not in output

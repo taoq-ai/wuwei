@@ -2,7 +2,7 @@
 
 import json
 
-from wuwei import inbox, obligations, registry, remote, watch, workspace
+from wuwei import inbox, obligations, outward, registry, remote, watch, workspace
 
 CLOCK_SECONDS = 120
 
@@ -48,7 +48,6 @@ def tick(root):
             print(f'listen store unmeasured: {stored.reason}', flush=True)
             code = 2
         else:
-            code = int(bool(stored.data))
             # The cursor is an epoch watermark: every successful poll moves it to the
             # poll start, so a quiet stretch does not pin it and grow each re-read.
             start = str(int(now.timestamp()))
@@ -67,7 +66,8 @@ def tick(root):
         for index in range(data['handled'], count):
             data['handled'] = index + 1
             _save(root, data)
-            code = max(code, remote.handle(root, rows[index]))
+            if remote.handle(root, rows[index]) == 2:
+                code = 2  # a refused command is a normal poll; only an unrun one is 2
         if count > data['woken']:
             watch.mark_wake(root, inbox=count, kind='listen: wake', payload={'inbox': count})
             data['woken'] = count
@@ -78,5 +78,8 @@ def tick(root):
 def run(root=None, *, once=False, sleep=None):
     """One listener per workspace; stop cleanly on SIGTERM, SIGINT or interruption."""
     root = workspace.find_workspace(root)
-    delay = min(workspace.load_config(root)['listen']['poll_seconds'], CLOCK_SECONDS)
+    config = workspace.load_config(root)
+    if not config['owner']['name'].strip():
+        print('listen ' + outward.OWNER_UNSET, flush=True)
+    delay = min(config['listen']['poll_seconds'], CLOCK_SECONDS)
     return watch.serve(root, 'listen', lambda root: tick(root), delay, once=once, sleep=sleep)

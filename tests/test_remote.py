@@ -136,7 +136,25 @@ def test_dm_sends_through_the_undecorated_chat_operation(ws, chat):
 
 
 def test_dm_lint_finding_sends_nothing(ws, chat):
-    assert remote().dm('Robin should look.', root=ws).exit == 1
+    assert remote().dm('wuwei is busy.', root=ws).exit == 1
+    assert chat == []
+
+
+@pytest.mark.parametrize('owner', ['[control_plane]\nowner = "T1/U1"\n',
+                                   '[owner]\nname = "Dry Run Operator"\n'])
+def test_owner_dm_reply_needs_no_owner_name(ws, chat, owner):
+    # Replies in the owner DM are addressed to the owner: no third-person owner rules.
+    (ws / '.wuwei/config.toml').write_text(owner)
+    assert remote().dm(remote().CONFIRM, root=ws).exit == 0
+    assert remote().dm(remote().FAILED, root=ws).exit == 0
+    assert chat == [remote().CONFIRM, remote().FAILED]
+
+
+@pytest.mark.parametrize('channel', ['C0123ABC', 'G0123ABC'])
+def test_owner_dm_channel_that_is_not_a_dm_gets_the_full_lint(ws, chat, monkeypatch, channel):
+    (ws / '.wuwei/config.toml').write_text('[owner]\nname = "Dry Run Operator"\n')
+    monkeypatch.setenv('SLACK_OWNER_DM_CHANNEL', channel)
+    assert remote().dm('Dry Run Operator said she will look at it.', root=ws).exit == 1
     assert chat == []
 
 
@@ -195,6 +213,13 @@ def test_routines_and_cloud_are_unavailable(ws, text):
 
 def test_other_channels_are_not_commands(ws):
     assert handled(ws, 'status', channel='C9') == (0, [])
+
+
+def test_unmatched_channel_logs_and_is_not_a_command(ws, capsys):
+    assert handled(ws, 'status', channel='C9', ident='C9/1790769590.000100') == (0, [])
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 1 and 'remote.unmatched' in lines[0]
+    assert 'C9/1790769590.000100' in lines[0] and 'status' not in lines[0]
 
 
 def test_unexpected_error_is_unrun(ws, monkeypatch, capsys):
@@ -608,3 +633,65 @@ def test_unmeasured_memory_cannot_run(ws, monkeypatch, open_gate):
     runtime = Runtime()
     assert handled(ws, 'plan today', runtime=runtime) == (2, [remote().FAILED])
     assert runtime.calls == []
+
+
+class SlackReply(__import__('io').BytesIO):
+    status = 200
+
+
+def test_runbook_hello_through_real_env(tmp_path, monkeypatch, capsys):
+    # The runbook against a fake Slack: a fresh init, the real .wuwei/env, no patched module.
+    import os
+    import urllib.request
+    from urllib.parse import urlsplit
+    from wuwei import outward
+    from wuwei.__main__ import main
+    from wuwei.commands import init
+    monkeypatch.setattr(os, 'environ', os.environ.copy())
+    for name in ('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN', 'SLACK_API_BASE', 'WUWEI_TOTP_SECRET',
+                 'WUWEI_WORKSPACE'):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:00:00+00:00')
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(init, '_register_mcp', lambda root: 0)
+    assert main(['init', str(tmp_path)]) == 0
+    path = tmp_path / '.wuwei/config.toml'
+    assert 'chat = "none"' in path.read_text()
+    path.write_text(path.read_text().replace('chat = "none"', 'chat = "slack"\ninbound = "slack"'))
+    token, base = 'fake-bot-credential', 'http://127.0.0.1:9/fake/'
+    secret = tmp_path / '.wuwei/env'
+    secret.write_text(f'SLACK_BOT_TOKEN={token}\nSLACK_OWNER_DM_CHANNEL=D0123ABC\nSLACK_API_BASE={base}\n')
+    secret.chmod(0o600)
+    queued, posts = [], []
+
+    def urlopen(request, timeout=None):
+        assert request.full_url.startswith(base)
+        method = urlsplit(request.full_url).path.rsplit('/', 1)[-1]
+        if method == 'chat.postMessage':
+            posts.append(json.loads(request.data)['text'])
+            body = {'ok': True, 'channel': 'D0123ABC', 'ts': f'1790769595.00000{len(posts)}'}
+        else:
+            body = {'ok': True, 'messages': queued[:], 'response_metadata': {'next_cursor': ''}}
+            queued.clear()
+        return SlackReply(json.dumps(body).encode())
+    monkeypatch.setattr(urllib.request, 'urlopen', urlopen)
+    hello = {'user': 'U0123ABC', 'team': 'T0123ABC', 'text': 'hello'}
+    queued.append({**hello, 'ts': '1790769590.000100'})
+    assert main(['listen', '--once']) == 2
+    output = capsys.readouterr()
+    assert 'this message came from T0123ABC/U0123ABC' in output.out
+    assert output.out.count(outward.OWNER_UNSET) == 1
+    assert posts == [remote().FAILED]
+    path.write_text(path.read_text().replace('owner = ""', 'owner = "T0123ABC/U0123ABC"', 1))
+    assert workspace.load_config(tmp_path)['control_plane']['owner'] == 'T0123ABC/U0123ABC'
+    queued.append({**hello, 'ts': '1790769591.000100'})
+    assert main(['listen', '--once']) == 0
+    assert posts[-1] == remote().VOCABULARY
+    rows = [json.loads(line) for line in (tmp_path / '.wuwei/inbox/inbox.jsonl').read_text().splitlines()]
+    assert {row['channel'] for row in rows} == {'D0123ABC'}
+    assert all(row['id'].startswith('D0123ABC/') for row in rows)
+    stored = ((tmp_path / '.wuwei/inbox/inbox.jsonl').read_text()
+              + (workspace.day_dir(tmp_path) / 'events.jsonl').read_text())
+    printed = output.out + output.err + str(capsys.readouterr())
+    for value in (token, base, '127.0.0.1:9'):
+        assert value not in stored + printed

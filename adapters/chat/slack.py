@@ -4,7 +4,7 @@ import os
 import json
 import urllib.request
 from urllib.error import HTTPError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from urllib.request import Request
 
 from .._http import Failure, credential, operation, request
@@ -14,12 +14,22 @@ from wuwei.registry import outward_operation
 URL = 'https://slack.com/api/'
 
 
+def _url(method):
+    """SLACK_API_BASE points at a fake or a proxy; the token never goes out in clear."""
+    base = os.environ.get('SLACK_API_BASE') or URL
+    parts = urlsplit(base)
+    if parts.scheme != 'https' and not (
+            parts.scheme == 'http' and parts.hostname in ('127.0.0.1', 'localhost', '::1')):
+        raise Failure('SLACK_API_BASE must be https, or http to a loopback host')
+    return base.rstrip('/') + '/' + method
+
+
 def _send(payload, identity='connector'):
     if identity not in ('connector', 'custom_app'):
         raise Failure('invalid chat identity')
     token = (credential('SLACK_BOT_TOKEN') if identity == 'custom_app' else
              os.environ.get('SLACK_USER_TOKEN') or credential('SLACK_BOT_TOKEN'))
-    value = request(URL + 'chat.postMessage', token, payload)
+    value = request(_url('chat.postMessage'), token, payload)
     if value.get('ok') is not True or not isinstance(value.get('ts'), str):
         raise Failure('Slack error response')
     return {'channel': value['channel'], 'ts': value['ts']}
@@ -49,7 +59,7 @@ def history(channel, **params):
     token = os.environ.get('SLACK_USER_TOKEN') or credential('SLACK_BOT_TOKEN')
     rows, cursor = [], ''
     for _ in range(10):
-        url = URL + 'conversations.history?' + urlencode(
+        url = _url('conversations.history') + '?' + urlencode(
             {'channel': channel, 'limit': 100, 'cursor': cursor, **params})
         try:
             with urllib.request.urlopen(Request(url, headers={'Authorization': f'Bearer {token}'}),

@@ -11,7 +11,8 @@ from wuwei import redact, workspace
 
 CREDENTIALS = ('LINEAR_API_KEY', 'SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN',
                'SLACK_OWNER_DM_CHANNEL', 'GREPTILE_API_KEY', 'WUWEI_CALENDAR_URL',
-               'GH_TOKEN', 'GITHUB_TOKEN', 'WUWEI_TOTP_SECRET')
+               'GH_TOKEN', 'GITHUB_TOKEN', 'WUWEI_TOTP_SECRET', 'SLACK_API_BASE')
+PUBLIC = ('SLACK_OWNER_DM_CHANNEL',)  # identifiers: kept from seats, never redacted
 _loaded = set()
 _shadowed = set()  # .wuwei/env names whose value the process environment overrides
 
@@ -30,7 +31,8 @@ def session():
     loaded = _loaded.copy()
     shadowed = _shadowed.copy()
     try:
-        redact.VALUES.update(previous[name] for name in CREDENTIALS if previous.get(name))
+        redact.VALUES.update(previous[name] for name in CREDENTIALS
+                             if previous.get(name) and name not in PUBLIC)
         yield
     finally:
         for name in _loaded - loaded:
@@ -76,12 +78,12 @@ def load(root):
                     raise ValueError(f'.wuwei/env: unmatched quote at line {number}')
                 value = value[1:-1]
             values[name] = value
-        redact.VALUES.update(value for value in values.values() if value)
+        redact.VALUES.update(value for name, value in values.items() if value and name not in PUBLIC)
         for name, value in values.items():
             if os.environ.setdefault(name, value) != value:
                 _shadowed.add(name)
             _loaded.add(name)
-            if os.environ[name]:
+            if os.environ[name] and name not in PUBLIC:
                 redact.VALUES.add(os.environ[name])
     except (OSError, UnicodeError):
         raise ValueError('.wuwei/env: cannot read credentials file') from None

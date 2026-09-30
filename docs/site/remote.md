@@ -77,6 +77,11 @@ SLACK_BOT_TOKEN=<bot token>
 SLACK_OWNER_DM_CHANNEL=D0123ABC
 ```
 
+For a fake Slack or a proxy, add `SLACK_API_BASE=<base URL>` (default
+`https://slack.com/api/`). It must be `https`, or `http` to `127.0.0.1`, `localhost` or
+`::1`, so the token never crosses the network in clear. It is treated as a credential and
+never printed.
+
 Leave `SLACK_USER_TOKEN` unset on this host. When it is set, the adapters read and reply
 with it instead of the bot token, so replies appear as you.
 
@@ -96,6 +101,11 @@ It checks presence only, not whether the token works.
 Only the sender pinned in `control_plane.owner = "T0123ABC/U0123ABC"` (your Slack team id,
 a slash, your user id) can command. There is one owner per workspace.
 
+Set `owner.name` in `.wuwei/config.toml` too. The outward lint uses it for messages to
+other people; replies in the owner DM are addressed to you and send without it. Until it
+is set, `bin/wuwei config check` and the listener log print
+`owner.name: not set; the outward lint refuses every outward message except replies in the owner DM`.
+
 Find both ids without pasting a token anywhere: leave the pin empty, send any message
 in the owner DM, and run `bin/wuwei listen --once` on the host after section 5's setup
 (the listener need not be installed). The output contains:
@@ -105,6 +115,7 @@ listen remote unmeasured: control_plane.owner must pin <team>/<user>; this messa
 ```
 
 and the DM answers "That command could not run; see the listener log on the host."
+This run exits 2.
 Under launchd the same line lands in `.wuwei/listen.stdout.log`. Copy the pair into the
 pin. Cross-check the user id with "Copy member ID" on your Slack profile.
 
@@ -169,6 +180,11 @@ The listener reads `.wuwei/env` once at start: after editing it, run
 `bin/wuwei listen uninstall` and `bin/wuwei listen install` again. Edits to `config.toml`
 apply at the next poll. More detail is in
 [running the listener](configuration.html#running-the-listener).
+
+`bin/wuwei listen --once` runs one poll: exit 0 when it polled, with or without new
+messages, and exit 2 when it could not run (configuration, credentials, the pin, the
+Slack API), with the reason printed. A message in any channel other than the owner DM
+logs a `listen remote.unmatched` line with its id and is never a command.
 
 The listener writes a `listen: clock` line every two minutes. Session start reports
 `listen dead` when today's latest clock line is older than `listen.dead_seconds`, or when
