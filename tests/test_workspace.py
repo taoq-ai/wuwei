@@ -256,12 +256,19 @@ def test_unknown_key_without_known_line(tmp_path, monkeypatch):
     ('[boundary]\napi = {}', 'boundary.api'),
     ('[environments]\nprod = 1', 'environments.prod'),
     ('[adapters]\nscanner = false', 'adapters.scanner'),
+    ('[shepherd]\nmin_reviewers = -1', 'shepherd.min_reviewers'),
 ])
 def test_invalid_config_values(tmp_path, text, key):
     write_config(tmp_path, text)
     result = cli(tmp_path, 'config', 'check')
     assert result.returncode == 1, result.stderr
     assert key in result.stderr and 'expected' in result.stderr
+
+
+def test_solo_owner_min_reviewers_zero(tmp_path):
+    from wuwei.workspace import load_config
+    write_config(tmp_path, '[shepherd]\nmin_reviewers = 0')
+    assert load_config(tmp_path)['shepherd']['min_reviewers'] == 0
 
 
 @pytest.mark.parametrize('content', [b'cap = [', b'\xff'])

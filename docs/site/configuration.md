@@ -74,11 +74,11 @@ fast_checks = ["python3 -m pytest -q"]
 | `shepherd.lead_login` | `""` | Lead code host login. Counts as a reviewer when different from the author. |
 | `shepherd.review_channel` | `""` | Chat channel ID for review requests. |
 | `shepherd.review_gate_check` | `"Review Gate"` | Check excluded during review requests. |
-| `shepherd.min_reviewers` | `1` | Minimum eligible reviewers required to raise or request review. |
+| `shepherd.min_reviewers` | `1` | Minimum eligible reviewers required to raise or request review. `0` is a solo owner: `wuwei pr raise` and `gh pr create` need no reviewer, the owner merges, and the reviewer and channel-post obligations are not applicable. |
 | `shepherd.author_windows_days` | `[90, 180]` | Authorship lookback windows, then all history. |
 | `shepherd.tie_commits` | `2` | Include a third author within this many commits of second place. |
 | `shepherd.source_exclude` | `specs/*`, lock files and generated files | Changed paths excluded from reviewer selection. |
-| `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity. |
+| `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity. An unmapped email is resolved to the code host login for that email before reviewer selection refuses. |
 | `watch.clock_seconds` | `600` | Interval between watch clock events. |
 | `watch.dead_seconds` | `1200` | Clock age after which the watch is reported dead. |
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
@@ -90,7 +90,7 @@ fast_checks = ["python3 -m pytest -q"]
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `adapters.tracker` | `"none"` | Tracker implementation: none or linear. |
-| `adapters.chat` | `"none"` | Chat implementation: none or slack. |
+| `adapters.chat` | `"none"` | Chat implementation: none or slack. With none, the channel-post obligation is not applicable. |
 | `adapters.review_bot` | `"none"` | Review bot: none or greptile. |
 | `adapters.runtime` | `"claude"` | Seat runtime: claude, codex or none. |
 | `adapters.scanner` | `"none"` | Scanner: none or ziran. S4 requires the compatible JSON CLI described below. |
