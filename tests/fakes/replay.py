@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import threading
 
 
 FIXTURES = Path(__file__).resolve().parents[1] / 'fixtures'
@@ -13,18 +14,32 @@ def recordings(port):
     return json.loads((FIXTURES / port / 'recordings.json').read_text())
 
 
+def pick(steps, used, argv):
+    """Concurrent reads take the step whose 'when' tokens their argv names, else the next plain step."""
+    matches = [index for index, step in enumerate(steps) if index not in used and (
+        all(token in argv for token in step['when']) if 'when' in step else False)]
+    plain = [index for index, step in enumerate(steps) if index not in used and 'when' not in step]
+    index = (matches or plain or [None])[0]
+    assert index is not None, f'no replay step for {argv}'
+    used.add(index)
+    return steps[index]
+
+
 def replay(steps, tool):
     calls = []
+    used = set()
+    lock = threading.Lock()
 
     def run(argv, *, input=None, text=False, **kwargs):
         assert argv[0] == tool
-        assert len(calls) < len(steps), 'unexpected extra call'
-        step = steps[len(calls)]
+        with lock:
+            assert len(calls) < len(steps), 'unexpected extra call'
+            step = pick(steps, used, argv)
+            calls.append(argv)
         if 'argv' in step:
             assert argv[1:] == step['argv']
         if 'input' in step:
             assert json.loads(input) == step['input']
-        calls.append(argv)
         stdout, stderr = step.get('stdout', ''), step.get('stderr', '')
         if not text:
             stdout, stderr = stdout.encode(), stderr.encode()
@@ -50,15 +65,22 @@ def install_stub(tmp_path, monkeypatch, tool, steps):
         calls.unlink()
     stub = directory / tool
     stub.write_text(f'#!{sys.executable}\n' + '''
-import json, os, pathlib, sys, time
+import fcntl, json, os, pathlib, sys, time
+sys.path.insert(0, os.environ['REPLAY_FAKES'])
+from replay import pick
 calls = pathlib.Path(os.environ['REPLAY_CALLS'])
-index = len(calls.read_text().splitlines()) if calls.exists() else 0
-with calls.open('a') as stream:
-    stream.write(json.dumps(sys.argv[1:]) + '\\n')
 steps = json.loads(pathlib.Path(os.environ['REPLAY_CASSETTE']).read_text())
-if index >= len(steps):
-    sys.exit(98)
-step = steps[index]
+with open(str(calls) + '.lock', 'a') as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    seen = [json.loads(line) for line in calls.read_text().splitlines()] if calls.exists() else []
+    if len(seen) >= len(steps):
+        sys.exit(98)
+    used = set()
+    for argv in seen:
+        pick(steps, used, argv)
+    step = pick(steps, used, sys.argv[1:])
+    with calls.open('a') as stream:
+        stream.write(json.dumps(sys.argv[1:]) + '\\n')
 if 'argv' in step and sys.argv[1:] != step['argv']:
     print('unexpected argv', file=sys.stderr)
     sys.exit(99)
@@ -73,6 +95,7 @@ sys.exit(step.get('exit', 0))
     monkeypatch.setenv('PATH', str(directory))
     monkeypatch.setenv('REPLAY_CALLS', str(calls))
     monkeypatch.setenv('REPLAY_CASSETTE', str(cassette))
+    monkeypatch.setenv('REPLAY_FAKES', str(Path(__file__).parent))
     return calls
 
 

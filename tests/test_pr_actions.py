@@ -1,6 +1,8 @@
 """PR actions use recorded host evidence and fake ports."""
 
 import json
+
+import pytest
 from types import SimpleNamespace
 
 import pytest
@@ -360,3 +362,40 @@ def test_existing_codex_job_gets_fix_feedback(case):
     action = build.open_fix('A', 'tests failed', root=root)
     assert action['action'] == 'continue'
     assert action['feedback'] == 'tests failed'
+
+
+def watched(root, **changes):
+    from test_stop import own
+    own(root)
+    now = workspace.now()
+    record = {'measured_at': now.isoformat(), 'prs': {REF: {}}, 'actions': {REF: {
+        'state': 'approved', 'action': pr_actions.ACTIONS['approved'][0],
+        'created_at': now.isoformat(), 'deadline': now.replace(hour=13).isoformat()}}}
+    record.update(changes)
+    state._write_state(lambda data: data.update(watch=record), root, reserved=False)
+
+
+def test_stop_trusts_fresh_clean_watch_record(case, monkeypatch):
+    root, _, _ = case
+    watched(root)
+    monkeypatch.setattr(pr_actions, 'evaluate', lambda *args: (_ for _ in ()).throw(AssertionError('live read')))
+    assert pr_actions.check(root) == (0, '')
+
+
+@pytest.mark.parametrize('change', [
+    {'measured_at': None}, {'measured_at': '2026-09-28T11:55:59+00:00'},
+    {'measured_at': '2026-09-28T12:00:01+00:00'}, {'prs': {}},
+    {'actions': {REF: {'deadline': '2026-09-28T11:59:59+00:00'}}},
+    'no_prs', 'closing',
+])
+def test_stop_reads_live_unless_watch_proves_clean(case, monkeypatch, change):
+    root, _, _ = case
+    if change == 'no_prs':
+        state._write_state(lambda data: data.update(watch={'measured_at': workspace.now().isoformat(),
+                                                             'prs': {}}), root, reserved=False)
+    else:
+        watched(root, **({} if change == 'closing' else change))
+    called = []
+    monkeypatch.setattr(pr_actions, 'evaluate', lambda *args: called.append(1) or (0, []))
+    pr_actions.check(root, closing=change == 'closing')
+    assert called == [1]

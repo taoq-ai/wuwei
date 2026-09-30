@@ -50,8 +50,27 @@ def record_disposition(root, ref, kind, identifier, comment_id):
     return 0
 
 
+def _watched(root):
+    """True only when the watch read every owned PR recently and no episode is overdue."""
+    try:
+        data = state.read_state(root)
+        refs = {pull_request(ref) for ref in data['raised_prs'] + data['claimed_prs']}
+        record = data.get('watch', {})
+        age = (workspace.now() - obligations._time(record['measured_at'])).total_seconds()
+        limit = 2 * workspace.load_config(root)['pr']['poll_seconds']
+        actions = record.get('actions', {})
+        return (bool(refs) and 0 <= age <= limit and refs <= record['prs'].keys()
+                and all(ref not in actions
+                        or obligations._time(actions[ref]['deadline']) >= workspace.now()
+                        for ref in refs))
+    except watch.ERRORS:
+        return False
+
+
 def check(root, *, closing=False, rows=None):
     """Stop checks fresh states, enforcing only overdue actions and day close."""
+    if rows is None and not closing and _watched(root):
+        return 0, ''
     if rows is None:
         _, rows = evaluate(root)
     findings, code = [], 0

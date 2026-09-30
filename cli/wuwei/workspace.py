@@ -370,11 +370,18 @@ def _default(schema):
     return schema[1]
 
 
+# ponytail: per-process memo keyed on the config text; adapter and path checks rerun only
+# when the text changes.
+_CONFIGS = {}
+
+
 def load_config(root=None):
     """Read .wuwei/config.toml, reject invalid fields, and return fresh defaults."""
     path = (find_workspace() if root is None else Path(root)) / ".wuwei/config.toml"
     try:
         raw = path.read_text(encoding="utf-8")
+        if _CONFIGS.get(path, (None,))[0] == raw:
+            return deepcopy(_CONFIGS[path][1])
         parsed = tomllib.loads(raw)
         config = _validate(parsed, SCHEMA, (), raw)
         for pattern in config['deploy']['deny']:
@@ -407,7 +414,8 @@ def load_config(root=None):
                 line = _key_line(raw, ('adapters', kind))
                 location = f' at line {line}' if line is not None else ''
                 raise ConfigError(f'{exc}{location}') from exc
-        return config
+        _CONFIGS[path] = (raw, config)
+        return deepcopy(config)
     except (ConfigError, tomllib.TOMLDecodeError, UnicodeError) as exc:
         raise ConfigError(f"{path}: {exc}") from exc
 

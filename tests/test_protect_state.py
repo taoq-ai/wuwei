@@ -606,3 +606,29 @@ def test_recorded_executable_is_protected(workspace, tool, fields):
     from wuwei.guards.protect_state import check_bash, check_file
     check = check_bash if tool == 'Bash' else check_file
     assert check(payload(workspace, tool, **fields))[0] == 1
+
+
+@pytest.mark.parametrize('command', ['bin/wuwei state recover', 'python3 -P -m wuwei state recover',
+                                     "bin/wuwei 'state' recover > out"])
+def test_seat_cannot_recover_state(workspace, tmp_path, command):
+    from wuwei.guards.protect_state import check_bash
+    assert check_bash(payload(workspace, 'Bash', command=command)) == (
+        1, 'State recovery is an owner action on the host, outside agent tools.')
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    assert check_bash(payload(outside, 'Bash', command=command)) == (0, '')
+
+
+@pytest.mark.parametrize('command', ['python3 -m pytest -q -k recover', 'grep -rn recover cli/',
+                                     'bin/wuwei state get'])
+def test_unrelated_recover_mentions_are_allowed(workspace, command):
+    from wuwei.guards.protect_state import check_bash
+    assert check_bash(payload(workspace, 'Bash', command=command)) == (0, '')
+
+
+@pytest.mark.parametrize('tool', ['Write', 'Edit'])
+def test_state_snapshot_is_protected(workspace, tool):
+    from wuwei.guards.protect_state import check_bash, check_file
+    path = '.wuwei/days/2026-09-28/state.snapshot.json'
+    assert check_file(payload(workspace, tool, file_path=path))[0] == 1
+    assert check_bash(payload(workspace, 'Bash', command='echo {} > ' + path))[0] == 1
