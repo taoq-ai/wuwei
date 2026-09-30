@@ -244,7 +244,8 @@ RECOVERY = ('state transition', 'runtime dispatch', 'runtime continue', 'integri
 def test_daily_path_and_recovery_pages():
     daily = (SITE / 'daily.md').read_text()
     for phrase in ('/wuwei plan', 'wuwei.tar.gz', 'plan approve', 'build next', 'dispatch next',
-                   'pr raise', 'pr state', 'decision outcome', 'close'):
+                   'pr raise', 'pr state', 'decision outcome', 'close',
+                   'Remote Control', 'Push when actions required'):
         assert phrase in daily, phrase
     for command in RECOVERY:
         assert command not in daily, command

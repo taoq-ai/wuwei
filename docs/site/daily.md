@@ -95,6 +95,12 @@ Some commands are yours alone and run in a host terminal, never through an agent
 `bin/wuwei decision outcome <id> <option>`, `bin/wuwei drafts approve` or `drafts drop`,
 and `bin/wuwei mcp decide`. Nudges and the report name each pending decision.
 
+To answer from your phone, run the planner session with Claude Code Remote Control
+(`claude --remote-control`, or `/remote-control` inside the session) and turn on
+"Push when actions required" in `/config`. Each decision question then reaches the Claude
+mobile app and stays open until you answer. A phone answer is not yet your outcome: run
+`bin/wuwei decision outcome` in a host terminal to record it.
+
 ## 6. Close
 
 The planner runs `wuwei retro` and `wuwei close --check retro`, writes the report with
