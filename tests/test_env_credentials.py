@@ -231,7 +231,7 @@ def test_entry_paths(case, entry, monkeypatch):
         from wuwei.commands import watch
         monkeypatch.setattr(watch, 'service_platform', lambda: 'darwin')
         monkeypatch.setattr(registry, 'watch_service', lambda: SimpleNamespace(call=lambda args: None))
-        assert watch.run(Namespace(watch_action='install', once=False)) == 0
+        assert watch.run(Namespace(watch_action='install', once=False, dry_run=False)) == 0
         path = next((Path.home() / 'Library/LaunchAgents').glob('*.plist'))
         data = plistlib.loads(path.read_bytes())
         assert data['ProgramArguments'][1:] == ['watch']

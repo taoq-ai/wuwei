@@ -285,6 +285,16 @@ def day_dir(root=None):
     return root / ".wuwei/days" / now().date().isoformat()
 
 
+def watch_unit(root, platform=sys.platform):
+    """Service label and the unit file `watch install` writes for this workspace."""
+    import hashlib
+    label = "wuwei-" + hashlib.sha256(str(Path(root).resolve()).encode()).hexdigest()[:12]
+    home = Path.home()
+    if platform == "darwin":
+        return label, home / "Library/LaunchAgents" / f"{label}.plist"
+    return label, Path(os.environ.get("XDG_CONFIG_HOME", home / ".config")) / "systemd/user" / f"{label}.service"
+
+
 def _key_line(raw, path):
     # ponytail: heuristic locations for ordinary TOML; use a source-aware parser
     # if multiline strings or exotic quoted keys need exact diagnostics.

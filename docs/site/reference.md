@@ -62,6 +62,22 @@ A successful send closes the draft. Repeated or competing approvals cannot send 
 
 `bin/wuwei metrics` includes `voice_drafts`, grouped by the draft's voice audience: `sent`, `share_sent_unedited`, and `edit_sizes` for edited successful sends. Edit size counts changed characters using matched spans, with a replacement counted as the larger removed or inserted span. Dropped, pending, failed and interrupted drafts are excluded. No successful sends reports `unmeasured`. No new configuration keys are needed.
 
+## Item worktrees
+
+After the morning gate, create each code item's worktree with `bin/wuwei worktree add <item>`. Pass `--repo <name>` when `.wuwei/config.toml` configures more than one `[[repos]]` entry. The command creates `worktrees/<item>` in the workspace on a new branch named after the item in lower case, starting from the repository's current HEAD. It installs the managed pre-commit and pre-push hooks and the workspace anchor, then prints JSON with `branch` and `path`. Pass that `path` to `bin/wuwei brief ... --worktree`. Without gate approval it exits 1 and creates nothing.
+
+A worktree made with raw `git worktree add` has no anchor. Its commits and pushes outside the Claude Bash hook skip the WUWEI guards.
+
+## Watch state
+
+`bin/wuwei status --line` and `status --json` report the watch from today's `watch: clock` events and from whether `bin/wuwei watch install` has installed its unit for this workspace:
+
+- Installed, and no clock line today or today's latest is older than `watch.dead_seconds`: `watch dead`, one `watch: health` page. This includes the morning after the watch died overnight. The page clears at the next clock line, or after `watch uninstall` when no clock line was written today.
+- Not installed, and no clock line today: `watch off`. It is not a page or a nudge.
+- Not installed, and today's clock line went stale (a watch started by hand died): `watch dead`, one page that clears at the next clock line.
+
+`watch unmeasured`: the clock cannot be read or is in the future; one nudge. The same health appears in `bin/wuwei nudges`, at session start and in sweeps. A running watch adds nothing to the line.
+
 ## Seat briefs and the build loop
 
 | Behaviour | Rule |
@@ -71,6 +87,62 @@ A successful send closes the draft. Repeated or competing approvals cannot send 
 | Automatic phases | The first `build next` launch moves `planned` to `implement`. When checks pass, `implement` moves to `gate` and `fix` moves to `delta`. `gate` to `fix` stays a planner transition. |
 | Delta continuation | SubagentStop records the sentinel's agent ID on its seat. Agent `resume` with that ID continues the same brief at the current HEAD; any other reuse of the brief is refused. The continued seat rewrites its own verdict file. |
 | Push evidence | `wuwei build check ITEM` records fast checks through the same producer as `wuwei fast-checks`, so a passing check satisfies the push guard. |
+| Charter names | `lead`, `builder`, `shepherd`, `sentinel-arch`, `sentinel-quality`, `sentinel-security`, `sentinel-goal` or `steward`. Each seat name gets one brief. |
+| Gate body | A gate body must not ask for an inline verdict or restate the verdict path; the brief adds it. A `Paths:` line lists extra paths for the SLICE protected-path check. |
+
+## Item phase order
+
+`bin/wuwei state transition` accepts only these moves. `parked` and `escalated` resume only to the recorded prior phase.
+
+| Phase | Legal next phases |
+| --- | --- |
+| `planned` | spec, implement, parked, escalated |
+| `spec` | implement, parked, escalated |
+| `implement` | gate, parked, escalated |
+| `gate` | raised, fix, parked, escalated |
+| `fix` | delta, parked, escalated |
+| `delta` | raised, fix, parked, escalated |
+| `raised` | fix, merged, parked, escalated |
+| `parked` | planned, spec, implement, gate, raised, fix, delta |
+| `escalated` | planned, spec, implement, gate, raised, fix, delta |
+| `merged` | none |
+
+## Gate verdict layout
+
+A quality verdict with one finding that `bin/wuwei verdict lint FILE --role sentinel-quality` accepts:
+
+```text
+# Quality verdict ITEM-1
+
+Verdict: FIX
+Head: 3f1c2ab9e0d4
+
+- Q1 medium src/calc.py:19: the test accepts any ValueError, so a regression that raises one from a different cause would still pass. blocks: yes
+Probe: mutation changed the guard message; the test still passed.
+
+Simplicity: none, one guard and one division.
+Design: none, a single pure function.
+
+VAL: FINDING Q1
+TEST: FINDING Q1
+BUD: N.A. no external calls
+
+Blocked: none
+Gap: none
+Change: none
+```
+
+The lint rules:
+
+- Exactly one `Verdict: PASS|FIX|PARK|ESCALATE` line and one `Head: <7 to 40 hex>` row.
+- A `Probe:` or `Mutation:` line; write `not run` when the seat could not run one.
+- `Blocked:`, `Gap:` and `Change:` once each.
+- Quality adds exactly one `Simplicity:` and one `Design:` row.
+- Arch, quality and security add class-sweep lines such as `VAL: PASS`, `TEST: N.A.` or `AUTH: FINDING <id>`.
+- A non-PASS verdict needs at least one finding. A PASS verdict carries no `blocks: yes` finding.
+- A finding starts on a bullet or table row, a line beginning with its severity, a `Severity:` line, or a numbered or `F1` line.
+- Each finding carries a severity (P0 to P3, critical, high, medium, low or info), a `file:line` (or `Lnn` for docs), `blocks: yes|no`, and a failure scenario (for example "fails when", "would" or "impact").
+- Fenced blocks, quoted lines and HTML comments are ignored.
 
 ## State recovery
 

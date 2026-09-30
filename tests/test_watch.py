@@ -69,7 +69,7 @@ def advance(case, seconds):
 def test_health_clock_boundary(case, seconds, expected):
     root, _, _, _ = case
     watch = watch_module()
-    assert watch.health(root)[0] == 1
+    assert watch.health(root)== (0, 'watch off: no clock line today')
     state.append_event('watch: clock', {}, root)
     advance(case, seconds)
     code, reason = watch.health(root)
@@ -102,6 +102,8 @@ def test_heartbeat_persists_and_staleness_uses_commit_or_report(case):
 def test_sweep_one_summary_with_counts_and_dead_watch(case, scanner, expected, capsys):
     root, _, _, monkeypatch = case
     watch = watch_module()
+    state.append_event('watch: clock', {}, root)
+    advance(case, 1200)
     (workspace.day_dir(root) / 'traces.jsonl').write_text('{}\n')
     with (root / '.wuwei/config.toml').open('a') as stream:
         stream.write('\n[adapters]\nchat="slack"\n' + ('scanner="ziran"\n' if scanner != 'none' else ''))
@@ -291,12 +293,14 @@ def lifecycle_module():
     return importlib.import_module('wuwei.guards.lifecycle')
 
 
-@pytest.mark.parametrize('condition,expected', [('clean', 0), ('dead', 1), ('corrupt', 2)])
+@pytest.mark.parametrize('condition,expected', [('clean', 0), ('off', 0), ('dead', 1), ('corrupt', 2)])
 def test_session_start_table(case, condition, expected):
     root, _, _, _ = case
     lifecycle = lifecycle_module()
-    if condition != 'dead':
+    if condition != 'off':
         state.append_event('watch: clock', {}, root)
+    if condition == 'dead':
+        advance(case, 1200)
     if condition == 'corrupt':
         path = workspace.day_dir(root) / 'state.json'
         path.chmod(0o600)
@@ -305,8 +309,8 @@ def test_session_start_table(case, condition, expected):
     assert code == expected
     if condition != 'corrupt':
         assert 'Memory spine' in message and 'Size:' in message
-    if condition == 'dead':
-        assert 'watch dead' in message
+    assert ('watch dead' in message) == (condition == 'dead')
+    assert ('watch off' in message) == (condition == 'off')
 
 
 def test_session_orphans_and_wake(case):
@@ -365,6 +369,8 @@ def test_compact_table(case, condition, expected):
 def test_hook_payload_survives_health_findings(case, monkeypatch, capsys):
     root, _, _, _ = case
     lifecycle_module()
+    state.append_event('watch: clock', {}, root)
+    advance(case, 1200)
     from wuwei.commands import hook
     payload = {'session_id': 'test', 'transcript_path': str(root / 'trace'),
                'cwd': str(root), 'hook_event_name': 'SessionStart'}
@@ -377,6 +383,8 @@ def test_hook_payload_survives_health_findings(case, monkeypatch, capsys):
 
 
 def test_explicit_watch_sweep(case):
+    state.append_event('watch: clock', {}, case[0])
+    advance(case, 1200)
     assert main(['sweep', 'watch']) == 2
     row, = events(case[0], 'watch: sweep')
     assert row['payload']['watch_dead'] == 1
@@ -480,7 +488,7 @@ def test_session_real_cli_boundary(case):
         input=json.dumps(payload), text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
     context = json.loads(result.stdout)['hookSpecificOutput']['additionalContext']
-    assert 'Memory spine' in context and 'Size:' in context and 'watch dead' in context
+    assert 'Memory spine' in context and 'Size:' in context and 'watch off' in context
 
 
 def test_activity_baseline_survives_midnight(case):

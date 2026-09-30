@@ -120,8 +120,10 @@ def test_status_line_and_json_share_snapshot(tmp_path):
                   'reply_obligations': [{'due': '2026-09-28T14:00:00+02:00'},
                                         {'due': '2026-09-28T13:00:00+02:00'}],
                   'meetings': [{'start': '2026-09-28T16:00:00+02:00'}]}
-    directory = day(tmp_path, state_data, [{'kind': 'security.finding'},
-                                           {'kind': 'decision.one_way'}])
+    directory = day(tmp_path, state_data, [
+        {'kind': kind, 'payload': {}, 'ts': NOW}
+        for kind in ('security.finding', 'decision.one_way', 'watch: clock')])
+    (tmp_path / '.wuwei/config.toml').write_text('')
     before = {p.name: p.read_bytes() for p in directory.iterdir()}
     line = cli(tmp_path, 'status', '--line')
     structured = cli(tmp_path, 'status', '--json')
@@ -324,7 +326,9 @@ def test_seat_event_cannot_clear_day_page(tmp_path, page, spoof, exit_code):
 
 def test_status_counts_escalation_from_current_state(tmp_path):
     directory = day(tmp_path, {'items': {'A': {'phase': 'escalated', 'resume_phase': 'implement'}},
-                               'cap': 1, 'seats': {'builder': {'item': 'A', 'status': 'running'}}})
+                               'cap': 1, 'seats': {'builder': {'item': 'A', 'status': 'running'}}},
+                    [{'kind': 'watch: clock', 'payload': {}, 'ts': NOW}])
+    (tmp_path / '.wuwei/config.toml').write_text('')
     result = cli(tmp_path, 'status', '--json')
     assert json.loads(result.stdout)['pages'] == 1
     (directory / 'state.json').write_text(json.dumps({'items': {'A': {'phase': 'implement'}},

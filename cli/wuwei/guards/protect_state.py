@@ -292,11 +292,15 @@ def check_bash(payload):
                            and _names_wuwei(owner_action_text)
                            and mentions(script, ('drafts',))
                            and guard_scope(payload) is not None)
+        # An uninstalled watch reads as off, so a seat could silence a dead-watch page.
+        watch_relevant = (_names_wuwei(owner_action_text) and mentions(script, ('uninstall',))
+                          and guard_scope(payload) is not None)
         from wuwei.shell import NonliteralPathError, ParseError, normalize
         try:
             commands = normalize(script)
         except ParseError as exc:
             if (owner_edit_relevant or owner_outcome_relevant or mcp_relevant or drafts_relevant
+                    or watch_relevant
                     or _STATE_MENTION.search(script) or _STATE_GLOB.search(script)
                     or (root is not None and _protected_name(cwd, directories=True)
                         and (isinstance(exc, NonliteralPathError)
@@ -331,7 +335,7 @@ def check_bash(payload):
                 if action[:2] in (['goals', 'edit'], ['voice', 'edit']):
                     if guard_scope(payload) is not None:
                         return 1, 'Owner memory edits are an owner action on the host, outside agent tools.'
-        if mcp_relevant or drafts_relevant:
+        if mcp_relevant or drafts_relevant or watch_relevant:
             from wuwei.shell import is_opaque
             for command in commands:
                 argv = command.argv
@@ -343,6 +347,12 @@ def check_bash(payload):
                         r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua', Path(argv[0]).name)):
                     return 2, 'Opaque owner action; use the host terminal.'
                 if cli:
+                    if watch_relevant and 'watch' in argv:
+                        action = argv[argv.index('watch') + 1:]
+                        if 'uninstall' in action:
+                            return 1, 'Watch uninstall requires the owner terminal, outside agent tools.'
+                        if action not in ([], ['install'], ['install', '--dry-run'], ['--once'], ['--help']):
+                            return 2, 'Not a literal watch action; use the host terminal.'
                     if drafts_relevant and 'drafts' in argv:
                         action = argv[argv.index('drafts') + 1:]
                         if action[:1] in (['approve'], ['drop']):

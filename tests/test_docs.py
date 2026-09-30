@@ -123,3 +123,20 @@ def test_hero_files_match_their_generator():
     spec.loader.exec_module(module)
     for name, palette in module.PAL.items():
         assert (ROOT / f'docs/assets/hero-{name}.svg').read_text() == module.svg(palette), name
+
+
+def test_reference_verdict_example_and_phase_table():
+    from wuwei import state, verdict
+    reference = (SITE / 'reference.md').read_text()
+    example = re.search(r'## Gate verdict layout\n.*?```text\n(.*?)```', reference, re.S)[1]
+    assert verdict.lint(example, quality=True, class_sweep=True)[0] == 0
+    for phase, following in state.PHASES.items():
+        assert f'| `{phase}` | {", ".join(following) or "none"} |' in reference
+    for phrase in ('worktree add', 'stdin', 'sentinel-arch', 'watch off', 'watch dead'):
+        assert phrase in reference
+    configuration = (SITE / 'configuration.md').read_text()
+    assert all(phrase in configuration for phrase in ('--dry-run', 'watch off', 'watch dead',
+                                                      'refuses `watch uninstall`'))
+    clears = 'clears at the next clock line, or after `watch uninstall` when no clock line was written today'
+    assert clears in ' '.join(configuration.split()) and clears in ' '.join(reference.split())
+    assert 'wuwei worktree add' in (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
