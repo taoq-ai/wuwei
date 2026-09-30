@@ -3,7 +3,7 @@
 import os
 import sys
 
-from wuwei import env, registry
+from wuwei import env, outward, registry
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
 from wuwei.workspace import ConfigError, load_config
@@ -58,6 +58,8 @@ def run(args):
                 status = max(status, CLEAN if present else FINDINGS)
         else:
             print(f'  {label}: no credential variables required')
+    # Reported, not a finding: the outward lint already fails closed without a name.
+    print('Owner:\n  ' + ('owner.name: set' if config['owner']['name'].strip() else outward.OWNER_UNSET))
     # Design 4.5 and 9.1: the publishing guarantee lives in host rules and the credential layout.
     host = registry.load('code_host', config)
     print('Host protections:')

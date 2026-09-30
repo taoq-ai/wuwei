@@ -27,8 +27,15 @@ def _normalize(text):
                    if unicodedata.category(c) not in {'Mn', 'Me', 'Cf'}).casefold()
 
 
-def lint(text, channel, config, *, root=None):
-    """Return a redacted (0|1|2, reason); callers decide how to present findings."""
+OWNER_UNSET = ('owner.name: not set; the outward lint refuses every outward message '
+               'except replies in the owner DM')
+
+
+def lint(text, channel, config, *, root=None, to_owner=False):
+    """Return a redacted (0|1|2, reason); callers decide how to present findings.
+
+    to_owner: the text is addressed to the owner, so the third-person rules do not apply.
+    """
     if not isinstance(text, str) or not text.strip():
         return UNRUN, 'outward: nonempty text required'
     if not isinstance(channel, str) or not channel.strip():
@@ -36,7 +43,7 @@ def lint(text, channel, config, *, root=None):
     try:
         owner = config['owner']
         names = _normalize(owner['name']).split()
-        if not names:
+        if not names and not to_owner:
             return UNRUN, 'outward: owner name must be configured'
         names.extend(_normalize(handle) for handle in owner.get('handles', []))
         pronouns = set(re.split(r'[/,\s]+', _normalize(owner['pronouns']))) - {''}
@@ -56,7 +63,7 @@ def lint(text, channel, config, *, root=None):
         return UNRUN, 'outward: invalid lint configuration'
     normalized = _normalize(text)
     views = (normalized, normalized.replace('_', ' '))
-    for label, words in (('owner', names), ('pronoun', pronouns)):
+    for label, words in () if to_owner else (('owner', names), ('pronoun', pronouns)):
         if any(re.search(r'(?<!\w)' + re.escape(word) + r'(?!\w)', view)
                for word in words for view in views):
             return FINDINGS, f'outward: third-person {label} reference'
@@ -356,7 +363,7 @@ def check_tier(inputs, root, config, channels):
         return UNRUN, 'outward: cannot read or validate policy or payload'
 
 
-def check_lint(inputs, root, config, channels):
+def check_lint(inputs, root, config, channels, *, to_owner=False):
     """Return raw lint results so the dispatcher can apply the profile."""
     try:
         texts, destinations = _text(inputs)
@@ -364,7 +371,7 @@ def check_lint(inputs, root, config, channels):
         if len(channels) != 1:
             return UNRUN, 'outward: ambiguous tool channel configuration'
         for channel in sorted(channels.union(destinations)):
-            code, reason = lint(text, channel, config, root=root)
+            code, reason = lint(text, channel, config, root=root, to_owner=to_owner)
             if code:
                 return code, reason
         return CLEAN, ''

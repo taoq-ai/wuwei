@@ -296,7 +296,8 @@ new events arrive the listener sets the planner wake, shown at session start as
 
 `bin/wuwei listen install [--dry-run]` and `bin/wuwei listen uninstall` work like the
 watch's: one launchd agent or systemd user unit per workspace, labelled
-`wuwei-listen-<hash>`. `bin/wuwei listen --once` runs one poll. With
+`wuwei-listen-<hash>`. `bin/wuwei listen --once` runs one poll: exit 0 when it polled,
+with or without new events, and exit 2 when it could not run, with the reason printed. With
 `adapters.inbound = "none"`, `listen`, `listen --once` and `listen install` exit 2.
 Uninstall is an owner action, refused from agent tools inside a workspace.
 

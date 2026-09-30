@@ -274,8 +274,13 @@ def test_remote_runbook_matches_the_code():
         assert method in slack and f'`{method}`' in page, method
     for scope in ('channels:history', 'groups:history', 'im:history', 'chat:write'):
         assert f'`{scope}`' in page, scope
-    for key in ('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL', 'WUWEI_TOTP_SECRET'):
+    for key in ('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL', 'WUWEI_TOTP_SECRET',
+                'SLACK_API_BASE'):
         assert key in env.CREDENTIALS and key in page, key
+    pin = page[page.index('## 3. Pin'):page.index('## 4. ')]
+    listener = ' '.join(page[page.index('## 5. '):page.index('## 6. ')].split())
+    assert 'owner.name: not set' in page and '`owner.name`' in pin
+    assert 'listen --once' in listener and 'exit 0' in listener and 'exit 2' in listener
     for section, key in re.findall(r'`([a-z_]+)\.([a-z_]+)(?: = [^`]*)?`', page):
         assert (key in workspace.SCHEMA.get(section, {}) or f'{section}.{key}' in EVENT_PRODUCERS
                 or f'{section}.{key}' in ('conversations.history', 'config.toml')), f'{section}.{key}'
@@ -309,6 +314,8 @@ def test_implemented_protections_are_not_planned():
     skill = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
     assert 'transition the item to `fix`' not in skill
     assert '`seats`' in skill and '`receive`' in skill
+    adapters = (SITE / 'adapters.md').read_text()
+    assert 'including control planes' not in adapters and '[control_plane]' in adapters
 
 def test_config_check_host_and_credential_layout_are_documented():
     page = (SITE / 'configuration.md').read_text()

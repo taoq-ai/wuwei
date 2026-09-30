@@ -99,7 +99,7 @@ def test_config_defaults(case):
 def test_cursor_moves_after_each_stored_batch(case):
     root, source = case
     source.results = [Result(0, [event('a', '1'), event('b', '2')]), Result(0, [])]
-    assert listen().tick(root) == 1
+    assert listen().tick(root) == 0
     assert listen().tick(root) == 0
     # A successful poll moves the cursor to the poll start, events or not.
     assert source.since == ['', NOW]
@@ -108,7 +108,7 @@ def test_cursor_moves_after_each_stored_batch(case):
     assert listen().tick(root) == 0
     assert source.since[-1] == NOW and ids(root) == ['a', 'b']
     source.results = [Result(0, [event('c', '1790769700.000100')])]
-    assert listen().tick(root) == 1
+    assert listen().tick(root) == 0
     assert listen().cursor(root)['cursors'] == {'fake': '1790769700.000100'}
 
 
@@ -150,7 +150,7 @@ def test_restart_mid_batch_loses_nothing_and_stores_nothing_twice(case, monkeypa
     monkeypatch.setattr(state, 'append_jsonl', real)
     assert ids(root) == ['a'] and listen().cursor(root)['cursors'] == {}
     source.results = [Result(0, batch)]
-    assert listen().tick(root) == 1
+    assert listen().tick(root) == 0
     assert ids(root) == ['a', 'b', 'c']
     assert source.since == ['', '']
     assert listen().cursor(root)['cursors'] == {'fake': NOW}
@@ -190,7 +190,7 @@ def test_pr_only_marker_is_unchanged(case):
 def test_new_events_wake_the_planner_once(case, capsys):
     root, source = case
     source.results = [Result(0, [event('a', '1'), event('b', '2')])]
-    assert listen().tick(root) == 1
+    assert listen().tick(root) == 0
     assert len(kinds(root, 'listen: wake')) == 1
     assert watch.saved(root)['wake']['inbox'] == 2
     code, message = lifecycle.session_start({'cwd': str(root)})
@@ -206,7 +206,7 @@ def test_kill_switch_stores_but_does_not_wake(case):
     root, source = case
     config(root, '[responder]\nenabled = false\n')
     source.results = [Result(0, [event('a', '1')])]
-    assert listen().tick(root) == 1
+    assert listen().tick(root) == 0
     assert ids(root) == ['a']
     assert not kinds(root, 'listen: wake')
     assert watch.wake(root) == ''
@@ -340,8 +340,29 @@ def test_install_and_uninstall(case, monkeypatch):
 def test_once_returns_the_tick_code(case):
     _, source = case
     source.results = [Result(0, [event('a', '1')])]
-    assert main(['listen', '--once']) == 1
     assert main(['listen', '--once']) == 0
+    assert main(['listen', '--once']) == 0
+
+
+def test_refused_command_is_a_normal_poll_and_unrun_is_2(case, handler, monkeypatch):
+    from wuwei import remote
+    root, source = case
+    codes = [1, 2]
+    monkeypatch.setattr(remote, 'handle', lambda root, row: codes.pop(0))
+    source.results = [Result(0, [event('a', '1')]), Result(0, [event('b', '2')])]
+    assert listen().tick(root) == 0
+    assert listen().tick(root) == 2
+
+
+def test_unset_owner_name_is_logged_once(case, capsys):
+    from wuwei import outward
+    root, source = case
+    source.results = [Result(0, [event('a', '1'), event('b', '2')])]
+    assert main(['listen', '--once']) == 0
+    assert capsys.readouterr().out.count(outward.OWNER_UNSET) == 1
+    config(root, '[owner]\nname = "Robin Example"\n')
+    assert main(['listen', '--once']) == 0
+    assert outward.OWNER_UNSET not in capsys.readouterr().out
 
 
 def test_no_inbound_source_refuses_to_run(case, capsys):
@@ -376,7 +397,7 @@ def handler(case, monkeypatch):
 def test_new_lines_are_handed_to_the_command_handler_once(case, handler):
     root, source = case
     source.results = [Result(0, [event('a', '1'), event('b', '2')])]
-    assert listen().tick(root) == 1
+    assert listen().tick(root) == 0
     assert listen().tick(root) == 0
     assert handler == ['a', 'b'] and listen().cursor(root)['handled'] == 2
 
@@ -401,7 +422,7 @@ def test_kill_switch_holds_commands_until_it_is_back_on(case, handler):
     root, source = case
     config(root, '[responder]\nenabled = false\n')
     source.results = [Result(0, [event('a', '1')])]
-    assert listen().tick(root) == 1
+    assert listen().tick(root) == 0
     assert handler == [] and 'handled' not in listen().cursor(root)
     config(root, '')
     listen().tick(root)

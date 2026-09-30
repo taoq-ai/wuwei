@@ -114,6 +114,30 @@ def test_slack_replay(monkeypatch):
     assert calls[0][1]['Authorization'] == 'Bearer private-slack-token'
 
 
+def test_slack_api_base_override(monkeypatch):
+    slack = importlib.import_module('adapters.chat.slack')
+    monkeypatch.setenv('SLACK_BOT_TOKEN', 'private-slack-token')
+    monkeypatch.setenv('SLACK_API_BASE', 'http://127.0.0.1:9/fake')
+    calls = replay(monkeypatch, {'ok': True, 'channel': 'C1', 'ts': '1'}, history_page())
+    assert slack._send({'channel': 'C1', 'text': 'fixed in abcdef0.'})['ts'] == '1'
+    assert slack.history('C1') == []
+    assert calls[0][0] == 'http://127.0.0.1:9/fake/chat.postMessage'
+    assert calls[1][0].startswith('http://127.0.0.1:9/fake/conversations.history?')
+
+
+@pytest.mark.parametrize('base', ['http://example.test/api/', 'ftp://example.test/api/'])
+def test_slack_api_base_must_be_https_or_loopback(monkeypatch, capsys, base):
+    slack = importlib.import_module('adapters.chat.slack')
+    monkeypatch.setenv('SLACK_BOT_TOKEN', 'private-slack-token')
+    monkeypatch.setenv('SLACK_OWNER_DM_CHANNEL', 'D1')
+    monkeypatch.setenv('SLACK_API_BASE', base)
+    calls = replay(monkeypatch)
+    result = slack.dm.__wrapped__('x')
+    assert result.exit == 2 and base not in result.reason and 'example.test' not in result.reason
+    assert base not in str(capsys.readouterr())
+    assert calls == []
+
+
 def history_page(*rows, next_cursor=''):
     return {'ok': True, 'messages': list(rows), 'response_metadata': {'next_cursor': next_cursor}}
 
@@ -344,7 +368,7 @@ def query(call):
 def test_slack_inbound_two_mentions_once(slack_case, monkeypatch):
     from wuwei import inbox, listen
     calls = replay(monkeypatch, *RECORDINGS['slack_history'], *RECORDINGS['slack_history'])
-    assert listen.tick(slack_case) == 1
+    assert listen.tick(slack_case) == 0
     rows = inbox.read(slack_case)
     assert [row['id'] for row in rows] == ['C1/1790769580.000200', 'C1/1790769590.000300']
     assert '7946' not in rows[0]['text'] and rows[0]['text'].startswith('ping <@U0OWNER|pat>')
@@ -356,7 +380,7 @@ def test_slack_inbound_two_mentions_once(slack_case, monkeypatch):
 def test_slack_inbound_quiet_week_moves_the_cursor(slack_case, monkeypatch):
     from wuwei import listen
     calls = replay(monkeypatch, *RECORDINGS['slack_history'], *[history_page()] * 4)
-    assert listen.tick(slack_case) == 1
+    assert listen.tick(slack_case) == 0
     week = SLACK_NOW + 7 * 86400
     monkeypatch.setenv('WUWEI_NOW', '2026-10-07T12:00:00+00:00')
     assert listen.tick(slack_case) == 0

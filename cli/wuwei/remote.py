@@ -13,7 +13,8 @@ from wuwei import (control_plane, decision, inbox, obligations, outward, registr
 from wuwei.registry import Result
 
 
-# Every fixed line passes the default outward lint: messages to the owner DM are linted.
+# Every fixed line passes the default outward lint: messages to the owner DM are linted,
+# without the third-person owner rules, since they are addressed to the owner.
 VOCABULARY = ('Commands: plan, status, report, ask <question>, stop <session>, stop all. '
               'Decisions: approve D-n, option X on D-n, drop it.')
 UNAVAILABLE = 'Not available in this version. ' + VOCABULARY
@@ -150,9 +151,10 @@ def dm(text, *, root=None):
     config = workspace.load_config(root)
     code, reason = security.outbound({'text': text}, root)
     if not code:
-        code, reason = outward.check_lint(
-            {'text': text, 'channel': os.environ.get('SLACK_OWNER_DM_CHANNEL', 'owner DM')},
-            root, config, {'chat'})
+        # Only a Slack DM id (D...) is the owner alone; a C or G id gets the full lint.
+        channel = os.environ.get('SLACK_OWNER_DM_CHANNEL', '')
+        code, reason = outward.check_lint({'text': text, 'channel': channel}, root, config,
+                                          {'chat'}, to_owner=channel.startswith('D'))
     if code:
         return Result(code, None, reason)
     send = registry.load('chat', config).dm
@@ -198,6 +200,7 @@ def _say(transport, root, text, code):
 def handle(root, event, *, transport=TRANSPORT, runtime=None):
     """Answer one inbox line from the owner DM; 0 done, 1 refused or not run, 2 unrun."""
     if event.get('channel') != os.environ.get('SLACK_OWNER_DM_CHANNEL'):
+        print(f'listen remote.unmatched: {event.get("id")} is not in the owner DM channel', flush=True)
         return 0
     try:
         if event['id'] in sent(root):
