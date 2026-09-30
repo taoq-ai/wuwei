@@ -7,6 +7,7 @@ import re
 
 from wuwei import shell
 from wuwei.guards import Guard
+from wuwei.registry import data
 
 
 def _identity(value):
@@ -40,16 +41,6 @@ IDENTITY_ENV = {f'GIT_{kind}_{field}' for kind in ('AUTHOR', 'COMMITTER')
                 for field in ('NAME', 'EMAIL', 'DATE')}
 COMMIT_VERBS = {'commit', 'merge', 'revert', 'cherry-pick', 'rebase', 'am', 'commit-tree', 'notes'}
 REPO_ENV = {'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'}
-
-
-def data(result):
-    from wuwei import registry
-
-    if not isinstance(result, registry.Result) or type(result.exit) is not int or result.exit != 0:
-        raise ValueError(getattr(result, 'reason', '') or 'VCS operation unavailable')
-    if not isinstance(result.data, dict):
-        raise ValueError('malformed VCS data')
-    return result.data
 
 
 def context(cwd, settings, env, root, push=None, identity=True):

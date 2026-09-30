@@ -6,7 +6,7 @@ import re
 import sys
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
-from wuwei.guards import EVENTS, discover, profile_result
+from wuwei.guards import EVENTS, SELECTION, discover, profile_result
 
 
 def register(subparsers):
@@ -38,7 +38,11 @@ def run(args):
             root = workspace.guard_scope(payload)
         if root is not None:
             env.load(root)
-        guards = discover()
+        token = SELECTION.set((args.event, payload.get('tool_name', '')))
+        try:
+            guards = discover()
+        finally:
+            SELECTION.reset(token)
     except BaseException as exc:
         reason = (f'{type(exc).__name__}: could not discover guards' if args.event == 'PostToolUse'
                   else f'wuwei hook: {type(exc).__name__}: {exc}')

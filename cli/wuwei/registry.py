@@ -107,6 +107,14 @@ class Result:
     reason: str = ''
 
 
+def data(result):
+    if not isinstance(result, Result) or type(result.exit) is not int or result.exit != 0:
+        raise ValueError(getattr(result, 'reason', '') or 'VCS operation unavailable')
+    if not isinstance(result.data, dict):
+        raise ValueError('malformed VCS data')
+    return result.data
+
+
 def record_none(kind, call, root=None, *, measurement=True):
     """Record an unavailable operation without logging its arguments."""
     reason = 'tracker adapter is none' if kind == 'tracker' else ('unmeasured' if measurement else 'no adapter configured')
