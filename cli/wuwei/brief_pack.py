@@ -7,7 +7,7 @@ import os
 import re
 from pathlib import Path
 
-from wuwei import metrics, registry, state, watch, workspace
+from wuwei import metrics, registry, state, workspace
 
 
 SECTIONS = ('Headline', 'Changed', 'Decided', 'At risk', 'You will be asked')
@@ -27,26 +27,22 @@ def _clean(value, secret):
 
 
 def _evidence(root, secret):
-    directory = workspace.day_dir(root)
-    rows = watch.records(directory / 'events.jsonl')
-    changed = []
-    decided = []
-    risk = []
-    for row in rows:
-        payload = row['payload']
-        if row['kind'] == 'brief.pack' or row['kind'] == 'brief.answer':
-            continue
-        value = payload.get('text') or payload.get('summary') or payload.get('outcome') or payload.get('reason')
-        if not isinstance(value, str) or not value:
-            continue
-        value = _clean(value, secret)
-        if row['kind'].startswith('decision.'):
-            decided.append(value)
-        elif 'risk' in value.lower() or 'fail' in value.lower() or row['kind'].endswith('rejected'):
-            risk.append(value)
-            changed.append(value)
-        else:
-            changed.append(value)
+    from wuwei import report
+    data = state.read_state(root)
+    items = sorted(data['items'].items(), key=lambda row: (row[1]['phase'] != 'merged', row[0]))
+    changed = [_clean(f"{name}: {item['phase']}" + (f" ({item['pr']})" if item.get('pr') else ''), secret)
+               for name, item in items if item['phase'] != 'planned']
+    outcomes = report.decisions(workspace.day_dir(root), data)
+    decided = [_clean(f'{ident}: {outcome}', secret) for ident, outcome in sorted(outcomes.items())
+               if outcome.lower() != 'pending']
+    risk = [_clean(f"{name}: {item['phase']}", secret) for name, item in sorted(data['items'].items())
+            if item['phase'] in ('parked', 'escalated')]
+    risk += [_clean(f'{ident}: pending owner decision', secret)
+             for ident, outcome in sorted(outcomes.items()) if outcome.lower() == 'pending']
+    actions = data.get('watch', {}).get('actions', {})
+    risk += [_clean(f"{ref}: {actions[ref]['state']}: {actions[ref]['action']}", secret)
+             for ref in sorted(set(data.get('raised_prs', []) + data.get('claimed_prs', [])))
+             if ref in actions]
     return changed, decided, risk
 
 

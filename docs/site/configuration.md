@@ -114,7 +114,8 @@ fast_checks = ["python3 -m pytest -q"]
 Run `bin/wuwei brief pack` once for a daily text pack, or `bin/wuwei brief pack --meeting`
 inside the lead window for the next attendee meeting. The returned path contains the
 five fixed sections, a what-changed visual, a three-bullet card and a three-question
-drill. Answer with `bin/wuwei brief answer 1 "your answer"`; the command prints feedback
+drill. The sections come from the day's items, decision records and owned PRs, never
+from adapter or guard messages. Answer with `bin/wuwei brief answer 1 "your answer"`; the command prints feedback
 and records the score and streak. The existing `bin/wuwei brief ROLE ITEM NAME` command
 continues to write seat briefs.
 
@@ -249,6 +250,9 @@ latest clock is older than `watch.dead_seconds`.
 
 Run `bin/wuwei nudges` to list current nudges and pages with their sources. Its
 entry count matches the page and nudge counts in `bin/wuwei status --line`.
+Routine progress such as plan approval, build starts and checks, and a skipped call to a
+tracker set to `none` is silent. A nudge clears when its cause clears: a draft nudge when
+the draft is sent or dropped, a merge policy nudge when the PR merges or closes.
 
 ## Private workspace environment
 
