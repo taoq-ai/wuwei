@@ -189,3 +189,15 @@ def test_close_retry_uses_existing_steward_run(root, monkeypatch):
     monkeypatch.setattr(steward, 'run', lambda *args, **kwargs: pytest.fail('duplicate steward run'))
     monkeypatch.setattr(close.closing, 'check', lambda _root: (1, 'pending'))
     assert close.run(SimpleNamespace(check=None)) == 1
+
+
+def test_decision_queue_skips_owner_answered(root):
+    from wuwei import steward
+
+    day = workspace.day_dir(root)
+    (day / 'decisions').mkdir()
+    for name in ('D-1', 'D-2'):
+        (day / 'decisions' / (name + '.md')).write_text('Question: Proceed?\nOutcome: pending\n')
+    state._write_state(lambda data: data.update(
+        decision_outcomes={'D-1': {'option': 'A', 'decided_by': 'owner'}}), root, reserved=False)
+    assert [row['id'] for row in steward.decision_queue(root)] == ['D-2']

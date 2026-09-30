@@ -16,8 +16,9 @@ def _verify(root, host, ref, record, config):
         raise ValueError('invalid PR disposition')
     text = decision.today_path(identifier, root).read_text(encoding='utf-8')
     fields, _ = decision.evaluate(text)
+    data = state.read_state(root)
     if (decision.route(fields) != 'owner' or fields['Decided-by'] != 'owner'
-            or identifier in state.read_state(root).get('decision_outcomes', {})):
+            or identifier in data.get('decision_outcomes', {}) and not decision.answered(data, identifier)):
         raise ValueError('disposition needs an owner-routed decision without a seat outcome')
     if obligations._fingerprint(text) != record['decision_fingerprint']:
         raise ValueError('disposition decision changed; verify again')
@@ -344,41 +345,46 @@ def _thread(root, ref, item, measured, reply=None):
         latest = (thread['comments'][-1] if thread else next(row for row in
                   (measured['reviews'] if surface == 'review' else measured['threads']['comments'])
                   if str(row['id']) == target))
-        text = latest['body']
+        text, answer = latest['body'], {}
         if re.search(r'\b(scope|out of scope|disagree|instead)\b', text, re.I):
             fingerprint = obligations._fingerprint(latest)
             prior = state.read_state(root).get('pr_action_decisions', {}).get(ref, {}).get(key)
-            if prior is not None and prior.get('fingerprint') == fingerprint:
-                path = root / prior['path']
-                if not path.is_file():
-                    raise ValueError('recorded scope decision is missing')
+            if prior is None or prior.get('fingerprint') != fingerprint:
+                path = decision.write(
+                    f'Question: How should {ref} thread {target} change scope?\n'
+                    f'Context: Reviewer wrote: {json.dumps(text)}\nOptions:\n| Option | Description |\n'
+                    '| --- | --- |\n| change | Make the requested scope change |\n'
+                    '| defer | Defer until the owner decides |\nMusts:\n'
+                    '| Criterion | change | defer |\n| --- | --- | --- |\n'
+                    '| Owner scope decision | fail | pass |\nWants:\n'
+                    '| Criterion | Weight | change | defer |\n| --- | --- | --- | --- |\n'
+                    '| Avoid unapproved scope | 10 | 0 | 10 |\nRecommendation: defer\n'
+                    'Confidence: medium\nReversibility: unsure\nBlast radius: own PR\n'
+                    'Pre-mortem: Scope changes without owner review.\n'
+                    'Revisit: After owner decision.\nDecided-by: owner\nOutcome: pending\n', root)
+                relative = str(path.relative_to(root))
+                state._write_state(lambda data: data.setdefault('pr_action_decisions', {})
+                                   .setdefault(ref, {}).update({key: {'path': relative,
+                                                                        'fingerprint': fingerprint}}),
+                                   root, reserved=False, kind='pr.action.decision',
+                                   payload={'pr': ref, 'surface': surface, 'target': target})
+                print(json.dumps({'action': 'owner_decision', 'decision': str(path.relative_to(root))}))
+                return 1
+            path = root / prior['path']
+            if not path.is_file():
+                raise ValueError('recorded scope decision is missing')
+            option = decision.answered(state.read_state(root), path.stem)
+            if option is None:
                 pending = pending or ({'action': 'owner_decision', 'decision': prior['path']}, 1)
                 continue
-            path = decision.write(
-                f'Question: How should {ref} thread {target} change scope?\n'
-                f'Context: Reviewer wrote: {json.dumps(text)}\nOptions:\n| Option | Description |\n'
-                '| --- | --- |\n| change | Make the requested scope change |\n'
-                '| defer | Defer until the owner decides |\nMusts:\n'
-                '| Criterion | change | defer |\n| --- | --- | --- |\n'
-                '| Owner scope decision | fail | pass |\nWants:\n'
-                '| Criterion | Weight | change | defer |\n| --- | --- | --- | --- |\n'
-                '| Avoid unapproved scope | 10 | 0 | 10 |\nRecommendation: defer\n'
-                'Confidence: medium\nReversibility: unsure\nBlast radius: own PR\n'
-                'Pre-mortem: Scope changes without owner review.\n'
-                'Revisit: After owner decision.\nDecided-by: owner\nOutcome: pending\n', root)
-            relative = str(path.relative_to(root))
-            state._write_state(lambda data: data.setdefault('pr_action_decisions', {})
-                               .setdefault(ref, {}).update({key: {'path': relative,
-                                                                    'fingerprint': fingerprint}}),
-                               root, reserved=False, kind='pr.action.decision',
-                               payload={'pr': ref, 'surface': surface, 'target': target})
-            print(json.dumps({'action': 'owner_decision', 'decision': str(path.relative_to(root))}))
-            return 1
-        if re.search(r'\b(fix|change|update|correct)\b', text, re.I):
+            if option == 'change':
+                return _fix(root, ref, item, measured, feedback=text)
+            answer = {'decision': prior['path'], 'option': option}
+        elif re.search(r'\b(fix|change|update|correct)\b', text, re.I):
             return _fix(root, ref, item, measured, feedback=text)
         if reply is None:
             print(json.dumps({'action': 'reply', 'pr': ref, 'surface': surface,
-                              'thread': target, 'question': text}))
+                              'thread': target, 'question': text, **answer}))
             return 1
         if not reply.strip():
             raise ValueError('reply needs a nonempty body')

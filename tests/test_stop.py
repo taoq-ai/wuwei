@@ -214,6 +214,25 @@ def test_disposition_requires_owner_routed_decision(case, change):
     assert not state.read_state(root).get('pr_dispositions')
 
 
+def test_disposition_accepts_owner_answered_decision(case, monkeypatch):
+    from test_decision import VALID
+    root, host, _ = case
+    own(root)
+    monkeypatch.chdir(root)
+    path = workspace.day_dir(root) / 'decisions/D-1.md'
+    path.write_text(VALID.replace('Reversibility: two-way', 'Reversibility: one-way').replace(
+        'Decided-by: seat', 'Decided-by: owner'))
+    assert main(['decision', 'route', 'D-1']) == 0
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+    assert main(['decision', 'outcome', 'D-1', 'B']) == 0
+    host.results['threads'].data['comments'] = [{
+        'id': 10, 'author': 'builder', 'is_bot': False,
+        'body': f'WUWEI parked {REF} D-1 {DAY} ' + obligations._fingerprint(path.read_text()),
+        'created_at': DAY + 'T12:00:00Z'}]
+    assert module('pr_actions').record_disposition(root, REF, 'parked', 'D-1', 10) == 0
+    assert state.read_state(root)['pr_dispositions'][REF]['decision'] == 'D-1'
+
+
 @pytest.mark.parametrize('kind', ['parked', 'carried'])
 @pytest.mark.parametrize('tool', ['comment', 'api', 'Write', 'Edit'])
 def test_native_tools_cannot_produce_disposition_markers(case, monkeypatch, capsys, kind, tool):
@@ -364,7 +383,7 @@ def payload(root, **extra):
 
 @pytest.mark.parametrize('change,expected', [
     ('clean', 0), ('owed_thread', 1), ('visibility', 1), ('retro', 1),
-    ('error', 2), ('active_retry', 1), ('unknown_session', 0), ('no_planner', 0),
+    ('error', 2), ('active_retry', 0), ('unknown_session', 0), ('no_planner', 0),
     ('malformed_state', 2), ('bad_retry', 2),
 ])
 def test_stop_table(case, monkeypatch, change, expected):
@@ -440,9 +459,13 @@ def test_close_command_and_hook_retry(case, monkeypatch, capsys):
     assert main(['close']) == 1
     assert state.read_state(root)['close_requested'] is True
     capsys.readouterr()
-    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload(root, stop_hook_active=True))))
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload(root, stop_hook_active=False))))
     assert main(['hook', 'Stop']) == 2
-    assert json.loads(capsys.readouterr().out)['decision'] == 'block'
+    block = json.loads(capsys.readouterr().out)
+    assert block['decision'] == 'block' and REF in block['reason']
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload(root, stop_hook_active=True))))
+    assert main(['hook', 'Stop']) == 0
+    assert capsys.readouterr().out == ''
     host.results['pr'].data.update(state='closed', merged=True)
     assert main(['close']) == 0
 
@@ -611,6 +634,7 @@ def test_close_approved_item_table(case, monkeypatch, capsys, mode, expected):
 @pytest.mark.parametrize('mode,expected', [
     ('pending', 1), ('forged_outcome', 1), ('forged_route', 1),
     ('malformed', 2), ('symlink', 2), ('missing', 2), ('seat', 0),
+    ('answered', 0), ('legacy_answered', 0), ('seat_ledger', 1),
 ])
 def test_close_owner_decision_table(case, monkeypatch, retry, mode, expected):
     from test_decision import VALID
@@ -633,12 +657,24 @@ def test_close_owner_decision_table(case, monkeypatch, retry, mode, expected):
             target = root / 'decision.md'
             target.write_text(owner_text)
             path.symlink_to(target)
+    elif mode == 'answered':
+        monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+        assert main(['decision', 'outcome', 'D-1', 'A']) == 0
+    elif mode in ('legacy_answered', 'seat_ledger'):
+        record = {'option': 'A', 'decided_by': 'owner' if mode == 'legacy_answered' else 'seat'}
+        state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update({'D-1': record}),
+                           root, reserved=False)
     state._write_state(lambda data: data.update(close_requested=True,
                        planner_session_id='planner'), root, reserved=False)
     code, reason = module('guards/stop').check(payload(root, stop_hook_active=retry))
-    assert code == expected, reason
-    if expected:
+    assert code == (0 if retry else expected), reason
+    if code:
         assert 'D-1' in reason
+    if mode == 'answered':
+        from wuwei import report
+        assert '- D-1: A' in report.build(root)
+        assert 'D-1' not in reason
+        assert 'D-1' not in module('closing').unresolved(root, [])[1]
 
 
 @pytest.mark.parametrize('mode,expected', [

@@ -210,13 +210,7 @@ def test_build_phases_are_state_phases():
     assert BUILD_PHASES == ('spec', 'implement', 'fix')
 
 
-def test_cockpit_snapshot_reads_pending_records_and_optional_lanes(workspace, monkeypatch):
-    from wuwei.commands.dashboard import cockpit_snapshot
-
-    day = workspace / '.wuwei/days/2026-09-28'
-    decision = day / 'decisions'
-    decision.mkdir()
-    (decision / 'D-3.md').write_text('''Question: Choose <fix>?
+D3 = '''Question: Choose <fix>?
 Context: Tests fail.
 Options:
 | Option | Description |
@@ -239,7 +233,16 @@ Pre-mortem: Regression.
 Revisit: Tomorrow.
 Decided-by: owner
 Outcome: pending
-''')
+'''
+
+
+def test_cockpit_snapshot_reads_pending_records_and_optional_lanes(workspace, monkeypatch):
+    from wuwei.commands.dashboard import cockpit_snapshot
+
+    day = workspace / '.wuwei/days/2026-09-28'
+    decision = day / 'decisions'
+    decision.mkdir()
+    (decision / 'D-3.md').write_text(D3)
     (decision / 'C-2.md').write_text('Question: Which scope?\nContext: owner needs to choose.\nOptions:\n- Keep\n- Defer\n')
     (day / 'briefs/pack-daily.md').write_text('Today <important>')
     (day / 'state.json').write_text(json.dumps({'items': {}, 'cap': 3,
@@ -270,6 +273,18 @@ Outcome: pending
     assert data['status']['pages'] == 1
     assert data['signals'] == [{'tier': 'page', 'lane': 'Work', 'kind': 'security.finding'}]
     assert data['briefing'] == 'Today <important>'
+
+
+def test_cockpit_skips_owner_answered_decision_with_pending_line(workspace, monkeypatch):
+    from wuwei.commands.dashboard import cockpit_snapshot
+    day = workspace / '.wuwei/days/2026-09-28'
+    (day / 'decisions').mkdir()
+    (day / 'decisions/D-3.md').write_text(D3)
+    (day / 'decisions/C-2.md').write_text('Question: Which scope?\nContext: owner needs to choose.\nOptions:\n- Keep\n- Defer\n')
+    (day / 'state.json').write_text(json.dumps({'items': {}, 'cap': 3, 'claimed_prs': [], 'raised_prs': [],
+        'decision_outcomes': {'D-3': {'option': 'A', 'decided_by': 'owner'}}}))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    assert [row['id'] for row in cockpit_snapshot(day)['decisions']] == ['C-2']
 
 
 def test_cockpit_two_owned_prs_keep_measured_actions_and_failures(workspace, monkeypatch):

@@ -88,7 +88,9 @@ approved item remains open or blocked without a park or carry decision, an owner
 decision remains pending, or a pushed item branch lacks a raised or claimed PR.
 The refusal names each item, decision or branch. Unreadable evidence returns exit
 2 with a reason; unresolved work returns exit 1. Existing PR, reply, visibility
-and retro requirements still apply. Stop retry flags do not bypass these checks.
+and retro requirements still apply. The Stop hook blocks once per stop attempt and
+exits 0 on Claude Code's retry, so it never traps the session; `bin/wuwei close`
+still reports every finding.
 
 A seat may park or carry its own item with a valid two-way decision whose blast
 radius is `own branch` or `own PR`. Use `Outcome: parked ITEM` or
@@ -100,9 +102,10 @@ fast-check failures or exhausted iterations. Its `D-<n>.md` file passes
 `bin/wuwei decision lint` and does not overwrite earlier decisions.
 
 A linked PR's externally verified owner park or carry also accounts for its item.
-Editing an owner decision's Outcome does not prove an owner action. Owner-routed
-decisions remain pending until existing PR disposition verification supplies that
-proof; a general authenticated owner-completion command is not yet available.
+Editing an owner decision's Outcome does not prove an owner action. An owner
+decision answered with `bin/wuwei decision outcome D-<n> OPTION` counts as
+resolved, and the command writes the chosen option into the record's `Outcome:`
+line.
 Pushed branch checks read remote-tracking refs in recorded item worktrees through
 the VCS port, without fetching. A parked item still needs a raised or claimed PR
 when its branch has been pushed.
