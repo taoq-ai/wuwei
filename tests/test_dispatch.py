@@ -82,6 +82,7 @@ def test_fix_pass_then_only_quality_delta(root):
     record(root, 'security', 'security-1', PASS)
     assert dispatch.next_step('A', root) == {
         'action': 'fix', 'roles': ['quality'], 'command': 'wuwei build next A'}
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
     state.transition('A', 'delta', root)
     assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality'], 'seats': []}
     record(root, 'quality', 'quality-2', PASS + 'Simplicity: none\nDesign: none\n', 'delta')
@@ -333,6 +334,7 @@ def test_agent_surface_delta_rescans_and_keeps_manual_findings(root, monkeypatch
     payload, calls, _ = agent_gate(root, monkeypatch)
     dispatch.receive('A', 'security', 'security', root=root)
     assert dispatch.next_step('A', root)['action'] == 'fix'
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
     state.transition('A', 'delta', root)
     path = workspace.day_dir(root) / 'decisions/gate-security.md'
     path.write_text(FIX)
@@ -641,3 +643,41 @@ def test_delta_offers_one_continuation_of_the_stopped_seat(root):
                        root, reserved=False)
     state._write_state(lambda data: data['seats']['quality-1'].pop('agent_id'), root, reserved=False)
     assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality'], 'seats': []}
+
+
+def test_last_initial_fix_leaves_the_fix_move_to_dispatch_next(root):
+    from wuwei import dispatch
+
+    built(root)
+    record(root, 'arch', 'arch-1', PASS)
+    record(root, 'security', 'security-1', PASS)
+    record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
+    assert state.read_state(root)['items']['A']['phase'] == 'gate'
+    events = [json.loads(line) for line in
+              (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+    last = [row for row in events if row['kind'] == 'gate.received'][-1]
+    assert not last['payload'].get('phase_changes')
+    assert dispatch.next_step('A', root) == {
+        'action': 'fix', 'roles': ['quality'], 'command': 'wuwei build next A'}
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
+
+
+def test_gate_stays_without_complete_fix_round(root):
+    from wuwei import dispatch
+
+    for role in ('arch', 'quality', 'security'):
+        record(root, role, role + '-1', PASS + ('Simplicity: none\nDesign: none\n' if role == 'quality' else ''))
+    assert state.read_state(root)['items']['A']['phase'] == 'gate'
+    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
+
+
+def test_fix_with_park_or_missing_gate_stays_in_gate(root):
+    from wuwei import dispatch
+
+    record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
+    record(root, 'arch', 'arch-1', PASS)
+    assert state.read_state(root)['items']['A']['phase'] == 'gate'
+    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['security'], 'seats': []}
+    record(root, 'security', 'security-1', FIX.replace('Verdict: FIX', 'Verdict: PARK'))
+    assert state.read_state(root)['items']['A']['phase'] == 'gate'
+    assert dispatch.next_step('A', root)['action'] == 'escalate'

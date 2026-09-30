@@ -31,6 +31,7 @@ def test_scripted_day(day):
         day.gate(role, 'FIX' if role == 'quality' else 'PASS')
     assert day.next() == {'action': 'fix', 'roles': ['quality'], 'command': 'wuwei build next A'}
     day.raise_pr(expected=1)
+    assert day.data['items']['A']['phase'] == 'fix'
     day.fix()
     assert day.head != initial_head
     delta = day.next()
