@@ -260,7 +260,7 @@ def check(payload):
             raise
         protected = (*PROGRAMS, *(pattern.split()[0] for pattern in config['deploy']['deny']))
         script = script_text(raw, payload['cwd'])
-        if script and mentions(script, protected) and mentions(script, DEPLOY_ACTIONS):
+        if script and mentions(script, protected, script=True) and mentions(script, DEPLOY_ACTIONS, script=True):
             unknown('opaque script deployment command; use a plain command')
         if not mentions(raw, protected):
             return 0, ''

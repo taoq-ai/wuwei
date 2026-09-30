@@ -82,15 +82,23 @@ def _reject_mentions(text):
         raise ParseError('unaccounted git/gh mention')
 
 
-def mentions(raw, names) -> bool:
-    """Conservative relevance check, including obfuscated and constructed names."""
+def mentions(raw, names, *, script=False) -> bool:
+    """Conservative relevance check, including obfuscated and constructed names.
+
+    With script=True the text is a script file and only literal tokens count.
+    """
     pattern = re.compile(r'(?<![.\w])(?:' + '|'.join(map(re.escape, names)) + r')\b')
     # ANSI-C quoting can hide every character of a name.
-    if "$'" in raw:
+    if "$'" in raw and not script:
         return True
     unquoted = re.sub(r'''['"\\]''', '', raw)
     if pattern.search(raw) or pattern.search(unquoted):
         return True
+    if script:
+        # ponytail: names constructed inside a script (${g}t push, $'\x67it') are not
+        # seen here; the worktree pre-push hook (pushes) and server-side branch
+        # protection (gh merges) are the anchors.
+        return False
     substitutions = r'\$\(([^()]*)\)|`([^`]*)`'
     for match in re.finditer(substitutions, unquoted):
         if mentions(match[1] if match[1] is not None else match[2], names):
@@ -106,8 +114,27 @@ def mentions(raw, names) -> bool:
         r'(?:^|[;&|(\n])\s*([^\s;&|()]+)', unquoted))
 
 
+def _launcher(path, cwd):
+    """The plugin's own bin/wuwei or the workspace's recorded executable."""
+    from wuwei import workspace
+    path = path.resolve()
+    if path == Path(__file__).resolve().parents[2] / 'bin/wuwei':
+        return True
+    try:
+        try:
+            root = workspace.find_workspace(cwd)
+        except FileNotFoundError:
+            root = workspace.worktree_workspace(Path(cwd).resolve())
+        if root is None:
+            return False
+        recorded = (root / '.wuwei/executable').read_text(encoding='utf-8').splitlines()
+        return bool(recorded and recorded[0]) and path == Path(recorded[0]).resolve()
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+
 def script_path(raw, cwd):
-    """Identify a locally invoked script without reading it."""
+    """Identify a locally invoked script without reading it; the wuwei launcher is the CLI."""
     if not isinstance(raw, str):
         return None
     try:
@@ -125,7 +152,8 @@ def script_path(raw, cwd):
         target = argv[0]
     else:
         return None
-    return Path(cwd) / target
+    path = Path(cwd) / target
+    return None if _launcher(path, cwd) else path
 
 
 def script_text(raw, cwd):
