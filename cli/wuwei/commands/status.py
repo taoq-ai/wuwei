@@ -86,6 +86,13 @@ def attention(directory, classified_state=None):
                 else:
                     current[key] = {'tier': tier, 'source': kind, 'lane': lane,
                                     'reason': payload.get('reason', kind) if isinstance(payload, dict) else kind}
+    from wuwei import watch
+    # Live health, not the last sweep's count: a partial sweep event must not hide a dead watch.
+    current = {key: value for key, value in current.items() if key[:2] != ('watch: sweep', 'watch')}
+    code, message = watch.health(directory.parents[2])
+    if code:
+        current[('watch: health',)] = {'tier': 'page' if code == 1 else 'nudge',
+                                       'source': 'watch: health', 'lane': 'Work', 'reason': message}
     for name, item in classified_state['items'].items():
         if item['phase'] == 'escalated':
             tier, lane = classify({'kind': 'item.escalated', 'payload': {'item': name}},
@@ -110,6 +117,8 @@ def snapshot(directory):
     active = attention(directory, classified_state)
     result['pages'] = sum(row['tier'] == 'page' for row in active)
     result['nudges'] = sum(row['tier'] == 'nudge' for row in active)
+    health = [row['tier'] for row in active if row['source'] == 'watch: health']
+    result['watch'] = {'page': 'dead', 'nudge': 'unmeasured'}.get(next(iter(health), ''), 'alive')
     for key, field, destination in (('reply_obligations', 'due', 'next_reply_due'),
                                      ('meetings', 'start', 'next_meeting')):
         rows = data.get(key, [])
@@ -164,6 +173,8 @@ def run(args):
         print(json.dumps(data))
     else:
         parts = [f'WUWEI pages {data["pages"]}', f'nudges {data["nudges"]}']
+        if data['watch'] != 'alive':
+            parts.append(f'watch {data["watch"]}')
         parts.extend(f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items())
         if data['next_reply_due']:
             parts.append(f'reply {data["next_reply_due"]}')

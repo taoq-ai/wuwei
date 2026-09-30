@@ -105,3 +105,17 @@ def test_shepherd_settings_are_visible_in_template_and_site():
         assert key in settings
         assert f'`shepherd.{key}`' in page
     assert settings['min_reviewers'] == 1
+
+
+def test_reference_verdict_example_and_phase_table():
+    from wuwei import state, verdict
+    reference = (SITE / 'reference.md').read_text()
+    example = re.search(r'## Gate verdict layout\n.*?```text\n(.*?)```', reference, re.S)[1]
+    assert verdict.lint(example, quality=True, class_sweep=True)[0] == 0
+    for phase, following in state.PHASES.items():
+        assert f'| `{phase}` | {", ".join(following) or "none"} |' in reference
+    for phrase in ('worktree add', 'stdin', 'sentinel-arch'):
+        assert phrase in reference
+    configuration = (SITE / 'configuration.md').read_text()
+    assert '--dry-run' in configuration and 'watch dead' in configuration
+    assert 'wuwei worktree add' in (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()

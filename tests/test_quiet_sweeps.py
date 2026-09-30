@@ -39,6 +39,7 @@ def test_watch_dead_seconds_is_configurable(root, monkeypatch):
 
 
 def test_nudges_show_current_conditions(root, capsys):
+    state.append_event('watch: clock', {}, root)
     state.append_event('watch: sweep', {'owed': 1, 'unreadable': 0, 'exit': 1}, root)
     state.append_event('decision.one_way', {'blocking': False}, root)
     state.append_event('work.outside_goals', {}, root)
@@ -111,6 +112,7 @@ def test_watch_install_uninstall_renders_and_loads(root, tmp_path, monkeypatch):
 def test_nudges_clear_pr_action_and_mcp_finding(root):
     from wuwei.commands.status import attention
     day = workspace.day_dir(root)
+    state.append_event('watch: clock', {}, root)
     state.append_event('pr.action', {'pr': 'x/y#1', 'tier': 'nudge'}, root)
     state.append_event('mcp.finding', {'severity': 'medium'}, root)
     assert len(attention(day)) == 2
@@ -122,6 +124,7 @@ def test_nudges_clear_pr_action_and_mcp_finding(root):
 def test_three_sweep_obligations_make_three_nudges(root):
     from wuwei.commands.status import attention, snapshot
     day = workspace.day_dir(root)
+    state.append_event('watch: clock', {}, root)
     state.append_event('watch: sweep', {'reply_owed': 3, 'visibility_owed': 0,
         'stale_owed': 0, 'watch_dead': 0, 'scanner_owed': 0,
         'integrity_owed': 0, 'unreadable': 0, 'owed': 3, 'exit': 1}, root)
@@ -144,9 +147,52 @@ def test_mac_watch_installer_escapes_values_and_reports_service_failure(root, mo
     assert calls[0][:2] == ['launchctl', 'bootstrap']
     monkeypatch.setattr(registry, 'watch_service', lambda: SimpleNamespace(
         call=lambda argv: (_ for _ in ()).throw(OSError('service denied'))))
-    assert main(['watch', 'uninstall']) == 2
-    assert 'service denied' in capsys.readouterr().err
-    assert unit.exists()
+    capsys.readouterr()
+    assert main(['watch', 'uninstall']) == 0
+    assert 'warning: service denied' in capsys.readouterr().err
+    assert not unit.exists()
+    assert main(['watch', 'uninstall']) == 0
+
+
+def service(monkeypatch, tmp_path, platform, fail=None):
+    from wuwei.commands import watch as watch_command
+    from types import SimpleNamespace
+    calls = []
+
+    def call(argv):
+        calls.append(argv)
+        if fail and argv[:len(fail)] == fail:
+            raise OSError('load refused')
+    monkeypatch.setattr(registry, 'watch_service', lambda: SimpleNamespace(call=call))
+    monkeypatch.setattr(watch_command, 'service_platform', lambda: platform)
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'config'))
+    folder = (Path.home() / 'Library/LaunchAgents' if platform == 'darwin'
+              else tmp_path / 'config/systemd/user')
+    return calls, folder
+
+
+@pytest.mark.parametrize('platform,argv', [('darwin', 'launchctl bootstrap'),
+                                           ('linux', 'systemctl --user enable --now')])
+def test_watch_install_dry_run_writes_and_calls_nothing(root, tmp_path, monkeypatch, capsys,
+                                                        platform, argv):
+    calls, folder = service(monkeypatch, tmp_path, platform)
+    assert main(['watch', 'install', '--dry-run']) == 0
+    out = capsys.readouterr().out
+    assert f'unit: {folder}' in out and str(root) in out and f'$ {argv}' in out
+    assert not calls and not folder.exists()
+
+
+@pytest.mark.parametrize('platform,fail', [('darwin', ['launchctl', 'bootstrap']),
+                                           ('linux', ['systemctl', '--user', 'enable'])])
+def test_failed_watch_load_removes_unit_so_retry_works(root, tmp_path, monkeypatch, capsys,
+                                                       platform, fail):
+    calls, folder = service(monkeypatch, tmp_path, platform, fail)
+    assert main(['watch', 'install']) == 2
+    assert 'load refused' in capsys.readouterr().err
+    assert not list(folder.glob('wuwei-*'))
+    service(monkeypatch, tmp_path, platform)
+    assert main(['watch', 'install']) == 0
+    assert len(list(folder.glob('wuwei-*'))) == 1
 
 
 def test_mac_watch_reinstall_refuses_before_overwriting_plist(root, monkeypatch, capsys):
@@ -206,3 +252,36 @@ def test_nudges_on_a_workspace_without_day_state_lists_nothing(tmp_path, monkeyp
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     assert main(['nudges']) == 0
     assert json.loads(capsys.readouterr().out) == []
+
+
+def test_dead_watch_pages_until_a_fresh_clock(root, capsys):
+    from wuwei.commands.status import attention, snapshot
+    day = workspace.day_dir(root)
+    assert [row['source'] for row in attention(day)] == ['watch: health']
+    assert attention(day)[0]['tier'] == 'page' and snapshot(day)['watch'] == 'dead'
+    assert main(['status', '--line']) == 0
+    assert 'watch dead' in capsys.readouterr().out
+    assert main(['nudges']) == 0
+    assert [row['source'] for row in json.loads(capsys.readouterr().out)] == ['watch: health']
+    state.append_event('watch: sweep', {'reply_owed': 0, 'visibility_owed': 0, 'unreadable': 0,
+                                        'owed': 0, 'exit': 0, 'integrity_owed': 0}, root)
+    assert [row['source'] for row in attention(day)] == ['watch: health']
+    state.append_event('watch: sweep', {'reply_owed': 0, 'visibility_owed': 0,
+        'stale_owed': 0, 'watch_dead': 1, 'scanner_owed': 0,
+        'integrity_owed': 0, 'unreadable': 0, 'owed': 1, 'exit': 1}, root)
+    state.append_event('watch: clock', {}, root)
+    assert attention(day) == [] and snapshot(day)['watch'] == 'alive'
+    assert main(['status', '--line']) == 0
+    assert 'watch' not in capsys.readouterr().out
+
+
+def test_future_clock_nudges_unmeasured_watch(root, monkeypatch, capsys):
+    from wuwei.commands.status import attention, snapshot
+    day = workspace.day_dir(root)
+    state.append_event('watch: clock', {}, root)
+    monkeypatch.setenv('WUWEI_NOW', (workspace.now() - timedelta(minutes=5)).isoformat())
+    rows = attention(day)
+    assert [(row['source'], row['tier']) for row in rows] == [('watch: health', 'nudge')]
+    assert snapshot(day)['watch'] == 'unmeasured'
+    assert main(['status', '--line']) == 0
+    assert 'watch unmeasured' in capsys.readouterr().out

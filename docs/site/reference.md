@@ -61,3 +61,71 @@ Single-field replies edit as plain text. Multi-field tracker drafts edit as a JS
 A successful send closes the draft. Repeated or competing approvals cannot send it again. Lint or editor failure leaves it pending. A send attempt with a failed or interrupted outcome remains `failed` or `sending` and cannot be retried through approval; inspect the destination before taking further action. Changing the configured adapter or DM destination also refuses replay. Cross-day browsing and transport reconciliation are deferred.
 
 `bin/wuwei metrics` includes `voice_drafts`, grouped by the draft's voice audience: `sent`, `share_sent_unedited`, and `edit_sizes` for edited successful sends. Edit size counts changed characters using matched spans, with a replacement counted as the larger removed or inserted span. Dropped, pending, failed and interrupted drafts are excluded. No successful sends reports `unmeasured`. No new configuration keys are needed.
+
+## Item worktrees
+
+After the morning gate, create each code item's worktree with `bin/wuwei worktree add <item>`. Pass `--repo <name>` when `.wuwei/config.toml` configures more than one `[[repos]]` entry. The command creates `worktrees/<item>` in the workspace on a new branch named after the item in lower case, starting from the repository's current HEAD. It installs the managed pre-commit and pre-push hooks and the workspace anchor, then prints JSON with `branch` and `path`. Pass that `path` to `bin/wuwei brief ... --worktree`. Without gate approval it exits 1 and creates nothing.
+
+A worktree made with raw `git worktree add` has no anchor. Its commits and pushes outside the Claude Bash hook skip the WUWEI guards.
+
+## Seat briefs
+
+```text
+bin/wuwei brief <charter> <item> <name> [--worktree PATH] [--gate] [--track SLICE|FULL] [--pr OWNER/REPO#N] < body.md
+```
+
+The brief body is read from stdin. The first argument is a charter name: `lead`, `builder`, `shepherd`, `sentinel-arch`, `sentinel-quality`, `sentinel-security`, `sentinel-goal` or `steward`. `dispatch next` and `dispatch receive` use the gate role instead: `arch`, `quality`, `security` or `goal`. A gate body must not ask for an inline verdict or restate the verdict path; the brief adds it. A `Paths:` line lists extra paths for the SLICE protected-path check. The command prints the brief path. Each seat name gets one brief.
+
+## Item phase order
+
+`bin/wuwei state transition` accepts only these moves. `parked` and `escalated` resume only to the recorded prior phase.
+
+| Phase | Legal next phases |
+| --- | --- |
+| `planned` | spec, implement, parked, escalated |
+| `spec` | implement, parked, escalated |
+| `implement` | gate, parked, escalated |
+| `gate` | raised, fix, parked, escalated |
+| `fix` | delta, parked, escalated |
+| `delta` | raised, fix, parked, escalated |
+| `raised` | fix, merged, parked, escalated |
+| `parked` | planned, spec, implement, gate, raised, fix, delta |
+| `escalated` | planned, spec, implement, gate, raised, fix, delta |
+| `merged` | none |
+
+## Gate verdict layout
+
+A quality verdict with one finding that `bin/wuwei verdict lint FILE --role sentinel-quality` accepts:
+
+```text
+# Quality verdict ITEM-1
+
+Verdict: FIX
+Head: 3f1c2ab9e0d4
+
+- Q1 medium src/calc.py:19: the test accepts any ValueError, so a regression that raises one from a different cause would still pass. blocks: yes
+Probe: mutation changed the guard message; the test still passed.
+
+Simplicity: none, one guard and one division.
+Design: none, a single pure function.
+
+VAL: FINDING Q1
+TEST: FINDING Q1
+BUD: N.A. no external calls
+
+Blocked: none
+Gap: none
+Change: none
+```
+
+The lint rules:
+
+- Exactly one `Verdict: PASS|FIX|PARK|ESCALATE` line and one `Head: <7 to 40 hex>` row.
+- A `Probe:` or `Mutation:` line; write `not run` when the seat could not run one.
+- `Blocked:`, `Gap:` and `Change:` once each.
+- Quality adds exactly one `Simplicity:` and one `Design:` row.
+- Arch, quality and security add class-sweep lines such as `VAL: PASS`, `TEST: N.A.` or `AUTH: FINDING <id>`.
+- A non-PASS verdict needs at least one finding. A PASS verdict carries no `blocks: yes` finding.
+- A finding starts on a bullet or table row, a line beginning with its severity, a `Severity:` line, or a numbered or `F1` line.
+- Each finding carries a severity (P0 to P3, critical, high, medium, low or info), a `file:line` (or `Lnn` for docs), `blocks: yes|no`, and a failure scenario (for example "fails when", "would" or "impact").
+- Fenced blocks, quoted lines and HTML comments are ignored.

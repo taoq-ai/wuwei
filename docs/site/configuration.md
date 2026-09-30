@@ -247,6 +247,18 @@ one due cycle without installing a service. The watch writes clock events at
 `watch.clock_seconds` intervals, and the next sweep reports a dead watch when the
 latest clock is older than `watch.dead_seconds`.
 
+`bin/wuwei watch install --dry-run` prints the unit path, the rendered unit and the
+service commands without writing or loading anything. If loading the service
+fails, install removes the unit it wrote, so a retry after the fix works.
+`bin/wuwei watch uninstall` always exits 0: it prints a failed stop command as a
+warning and still removes the unit. A job that stays loaded after such a warning
+keeps running until you stop it by hand.
+
+`bin/wuwei status --line` shows `watch dead` when the latest clock is missing or
+older than `watch.dead_seconds`, and `watch unmeasured` when watch health cannot
+be read. The same condition is a `watch: health` page or nudge in
+`bin/wuwei nudges` and the cockpit, whatever the last sweep recorded.
+
 Run `bin/wuwei nudges` to list current nudges and pages with their sources. Its
 entry count matches the page and nudge counts in `bin/wuwei status --line`.
 
