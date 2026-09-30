@@ -533,3 +533,53 @@ def test_script_text_skips_unreadable_or_non_script_files(tmp_path, monkeypatch,
             raise PermissionError('unreadable script')
         monkeypatch.setattr(Path, 'open', denied)
     assert script_text('./run.sh', tmp_path) is None
+
+
+LAUNCHER = __import__('pathlib').Path(__file__).resolve().parents[1] / 'bin/wuwei'
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('x=$(pwd)\n', False), (LAUNCHER.read_text(), False),
+    ('git push --force origin main\n', True), ('g"i"t push', True), ('\\git push', True),
+    ('echo `git push`', True), ("$'\\x67it' push", False),
+])
+def test_script_mentions_judges_literal_tokens(text, expected):
+    from wuwei.shell import mentions
+    assert mentions(text, {'git', 'gh'}, script=True) is expected
+
+
+def test_command_mentions_still_counts_substitutions():
+    from wuwei.shell import mentions
+    assert mentions('x=$(pwd)', {'git', 'gh'}) is True
+
+
+def _launcher_workspace(tmp_path, monkeypatch, record=True):
+    import shutil
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    root = tmp_path / 'workspace'
+    (root / '.wuwei').mkdir(parents=True)
+    (root / 'worktrees/ITEM-1').mkdir(parents=True)
+    recorded = tmp_path / 'previous-plugin/bin/wuwei'
+    other = tmp_path / 'other/bin/wuwei'
+    for copy in (recorded, other):
+        copy.parent.mkdir(parents=True)
+        shutil.copy(LAUNCHER, copy)
+    if record:
+        (root / '.wuwei/executable').write_text(f'{recorded}\n')
+    return root, recorded, other
+
+
+@pytest.mark.parametrize('where', ['.', 'worktrees/ITEM-1'])
+def test_script_path_treats_launcher_as_cli(tmp_path, monkeypatch, where):
+    from wuwei.shell import script_path
+    root, recorded, other = _launcher_workspace(tmp_path, monkeypatch)
+    cwd = root / where
+    for raw in (f'{LAUNCHER} state get', f'sh {LAUNCHER} state get', f'{recorded} build check ITEM-1'):
+        assert script_path(raw, cwd) is None, raw
+    assert script_path(f'{other} state get', cwd) == other
+
+
+def test_script_path_without_pointer_reads_copy(tmp_path, monkeypatch):
+    from wuwei.shell import script_path
+    root, recorded, _ = _launcher_workspace(tmp_path, monkeypatch, record=False)
+    assert script_path(f'{recorded} state get', root) == recorded
