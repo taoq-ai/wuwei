@@ -548,9 +548,38 @@ def test_script_mentions_judges_literal_tokens(text, expected):
     assert mentions(text, {'git', 'gh'}, script=True) is expected
 
 
-def test_command_mentions_still_counts_substitutions():
+@pytest.mark.parametrize('text, expected', [
+    ('x=$(pwd)', False),
+    ('x=$(pwd); echo $x', False),
+    ('x="$(pwd)"; echo "$x"', False),
+    ('x=$y', False),
+    ('X=$(pwd) make test', False),
+    ('x=$(pwd); $x push', True),
+    ('x=$(pwd) $cmd', True),
+    ('a=gi; x=$(pwd) ${a}t push', True),
+    ('x=$(git rev-parse HEAD)', True),
+    ('x=$(pwd) && git push', True),
+    ('$DEST push', True),
+])
+def test_command_mentions_skips_assignment_words(text, expected):
     from wuwei.shell import mentions
-    assert mentions('x=$(pwd)', {'git', 'gh'}) is True
+    assert mentions(text, {'git', 'gh'}) is expected
+
+
+def test_command_mentions_skips_assignment_for_any_names():
+    from wuwei.shell import mentions
+    assert mentions('x=$(pwd); echo $x', {'push', 'commit'}) is False
+
+
+def test_is_opaque_stdin():
+    from wuwei.shell import is_opaque
+    assert is_opaque(['python3', '-m', 'pytest', '-q']) is True
+    assert is_opaque(['python3']) is True
+    assert is_opaque(['python3', '-m', 'pytest', '-q'], stdin=False) is False
+    assert is_opaque(['python3'], stdin=False) is False
+    assert is_opaque(['python3', '-c', 'import os; os.system("git push")'], stdin=False)
+    assert is_opaque(['xargs', 'git', 'push'], stdin=False)
+    assert is_opaque(['node', '-e', 'run("gh pr merge 1")'], stdin=False)
 
 
 def _launcher_workspace(tmp_path, monkeypatch, record=True):

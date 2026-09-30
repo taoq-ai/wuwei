@@ -163,6 +163,14 @@ def test_git_exit_is_explained(tmp_path, monkeypatch, capsys):
     assert 'private' not in result.reason
 
 
+def test_not_a_repository_is_named(monkeypatch):
+    install_replay(monkeypatch, 'git', [{'exit': 128, 'stderr': 'fatal: not a git repository '
+                                         '(or any of the parent directories): .git'}])
+    result = adapter().head('/repo')
+    assert result.exit == 2 and 'not a git repository' in result.reason
+    assert 'git exited' not in result.reason
+
+
 def test_inherited_git_dir_cannot_select_another_repository(tmp_path, monkeypatch):
     from pathlib import Path
     import os

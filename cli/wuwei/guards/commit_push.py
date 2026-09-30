@@ -202,9 +202,9 @@ def commit_options(args, actual):
     while index < len(args):
         arg = args[index]
         index += 1
-        if arg.startswith('-a') and len(arg) > 2:
+        if len(arg) > 2 and arg[0] == '-' and arg[1] in 'aenqsv':
             args.insert(index, '-' + arg[2:])
-            arg = '-a'
+            arg = arg[:2]
         if arg == '--':
             break
         if arg in ('--no-verify', '-n'):
@@ -364,7 +364,7 @@ def check(payload):
                         or '/' in command.argv[0]
                         or re.fullmatch(r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua',
                                         Path(command.argv[0]).name)):
-                    raise ValueError('opaque interpreter command; run git directly, for example git push origin HEAD:refs/heads/<branch>')
+                    raise ValueError(f'opaque interpreter command: {" ".join(command.argv)}; run git directly, for example git push origin HEAD:refs/heads/<branch>')
                 continue
             cwd, settings, env, verb, args = parsed
             if verb == 'push' and creates_commit:

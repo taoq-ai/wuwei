@@ -158,6 +158,15 @@ def check(root, command):
     ('./push.sh', 2, 'opaque'), ('sh push.sh', 2, 'opaque'),
     ('bash push.sh', 2, 'opaque'),
     ('./run.sh', 0, ''), ('sh run.sh', 0, ''), ('bash run.sh', 0, ''),
+    ('python3 -m pytest -q && git status', 0, ''),
+    ('python3 -m pytest -q; git status', 0, ''),
+    ('git status | python3', 2, 'python3'),
+    ('git show HEAD:d.py | python3', 2, 'python3'),
+    ('python3 < d.py && git status', 2, 'python3'),
+    ('x=$(pwd); echo $x', 0, ''),
+    ('cd $(git rev-parse --show-toplevel) && ls', 0, ''),
+    ('git push $(cat remote) main', 2, 'substitution'),
+    ('echo $(git push origin main)', 2, 'substitution'),
 ])
 def test_decisions(workspace, profile, command, code, reason):
     (workspace / 'push.sh').write_text('terraform apply\n')

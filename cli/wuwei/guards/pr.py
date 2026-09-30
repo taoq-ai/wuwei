@@ -369,12 +369,13 @@ def check(payload):
             return 0, ''
         if script_relevant:
             raise ValueError('opaque script command; run gh as a plain command')
-        for command in commands:
+        for index, command in enumerate(commands):
             if not command.argv:
                 continue
             program = Path(command.argv[0]).name
-            if shell.is_opaque(command.argv):
-                raise ValueError('opaque command; run gh as a plain command')
+            fed = bool(command.reads) or index > 0 and commands[index - 1].separator == '|'
+            if shell.is_opaque(command.argv, fed):
+                raise ValueError(f'opaque command: {" ".join(command.argv)}; run gh as a plain command')
             if program == 'popd':
                 raise ValueError('opaque directory stack; use an explicit directory')
             if program == 'gh':

@@ -58,6 +58,14 @@ def test_opaque_interpreter_names_direct_push_command(workspace_case):
     assert 'git push origin HEAD:refs/heads/<branch>' in reason
 
 
+def test_list_refusal_names_the_command(workspace_case):
+    root, _ = workspace_case
+    code, reason = guard().check(payload(root, 'python3 -m pytest -q && git commit -m x'))
+    assert code == 2
+    assert 'python3 -m pytest -q' in reason
+    assert 'git push origin HEAD:refs/heads/<branch>' in reason
+
+
 @pytest.fixture
 def workspace_case(tmp_path, monkeypatch):
     from wuwei import registry, state
@@ -135,6 +143,11 @@ def payload(root, command):
     ('npm test', 0), ('git status', 0),
     ('./push.sh', 2), ('sh push.sh', 2), ('bash push.sh', 2),
     ('./run.sh', 0), ('sh run.sh', 0), ('bash run.sh', 0),
+    ('git commit -qn -m x', 1), ('git commit -nm x', 1),
+    ('git commit -qC HEAD', 2), ('git commit -qZ', 2),
+    ('x=$(pwd); echo $x', 0), ('cd $(git rev-parse --show-toplevel) && ls', 0),
+    ('git push $(cat remote) main', 2), ('echo $(git push origin main)', 2),
+    ('x=$(pwd); $x push', 2),
 ])
 def test_bash_table(workspace_case, command, code):
     root, fake = workspace_case
@@ -300,6 +313,8 @@ def test_missing_config_in_existing_workspace_blocks(workspace_case):
     'git add . && git commit -m x', 'git commit -am x',
     'git commit --fixup HEAD', 'git commit --fixup=HEAD',
     'git commit --trailer "Reviewed-by: Someone" -m x',
+    'git commit -qm "wip"', 'git commit -sm wip', 'git commit -qam wip',
+    'git commit -vqm wip', 'git commit -qmmsg', 'git add -A && git commit -qm wip',
 ])
 def test_ordinary_commit_options(workspace_case, command):
     root, _ = workspace_case
