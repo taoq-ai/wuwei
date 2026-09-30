@@ -308,7 +308,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'listen: clock': 'silent', 'listen: wake': 'silent',
                 'remote.pending': 'silent', 'remote.started': 'silent',
                 'remote.resumed': 'silent', 'remote.stopped': 'silent',
-                'remote.ignored': 'silent', 'remote.refused': 'page',
+                'remote.ignored': 'silent', 'remote.refused': 'page', 'remote.acknowledged': 'silent',
                 'remote.confirmed': 'silent'}
     assert emitted == set(expected)
     for kind, tier in expected.items():
@@ -451,6 +451,28 @@ def test_issue_acceptance_a_phone_answer_shows_on_the_host(tmp_path, monkeypatch
                      'reason': reason}][:len(expected)]
     assert main(['status', '--line']) == 0
     text = capsys.readouterr().out
-    assert (reason in text) == bool(expected) and f'nudges {len(expected)}' in text
+    assert ('phone answers 1' in text) == bool(expected) and reason not in text
+    assert f'nudges {len(expected)}' in text
     assert main(['status', '--json']) == 0
     assert json.loads(capsys.readouterr().out)['answered'] == expected
+
+
+def test_issue_acceptance_four_phone_answers_are_one_status_segment(tmp_path, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    ids = [f'D-{n}' for n in range(1, 5)]
+    replies = [{'kind': 'decision.replied', 'ts': '2026-09-28T11:00:00+02:00',
+                'payload': {'id': identifier, 'option': option}} for identifier, option in zip(ids, 'ABAA')]
+    routes = {identifier: {'reversibility': 'two-way', 'recommendation': 'A'} for identifier in ids}
+    day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': routes}, replies)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    reasons = [f'{identifier} answered from the phone: option {option}, '
+               f'confirm with decision outcome {identifier} {option}' for identifier, option in zip(ids, 'ABAA')]
+    assert main(['status', '--line']) == 0
+    text = capsys.readouterr().out.strip()
+    assert 'phone answers 4' in text and 'answered from the phone' not in text and len(text) < 160
+    assert main(['nudges']) == 0
+    rows = [row['reason'] for row in json.loads(capsys.readouterr().out) if row['source'] == 'decision.answered']
+    assert rows == reasons
+    assert main(['status', '--json']) == 0
+    assert json.loads(capsys.readouterr().out)['answered'] == reasons

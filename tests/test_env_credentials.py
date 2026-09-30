@@ -15,6 +15,7 @@ import pytest
 
 from wuwei import registry, state, workspace
 from wuwei.__main__ import main
+from wuwei.commands.config import PIN_MISSING
 
 ROOT = Path(__file__).resolve().parents[1]
 KEY = 'opaque-example-credential'
@@ -556,7 +557,7 @@ def test_config_check_reports_owner_name(case, capsys):
 
 
 @pytest.mark.parametrize('pin, line, expected', [
-    ('', 'control_plane.owner: missing', 1),
+    ('', PIN_MISSING, 1),
     ('U1', 'control_plane.owner: invalid', 1),
     ('T1/U1', 'control_plane.owner: set', 0),
 ])

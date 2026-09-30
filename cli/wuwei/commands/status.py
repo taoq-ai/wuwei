@@ -68,6 +68,10 @@ def scan(directory, classified_state=None):
                         current.pop(('merge.policy_blocked', payload.get('pr')), None)
                     if kind == 'steward.run':
                         current = {key: value for key, value in current.items() if key[0] != 'steward.due'}
+                    if kind == 'remote.acknowledged' and isinstance(payload, dict):
+                        for identifier in payload.get('ids', []):
+                            current.pop(('remote.refused', identifier), None)
+                        continue
                     if kind in SILENT:
                         continue
                     if kind == 'remote.refused' and isinstance(payload, dict) and 'pin' in payload:
@@ -101,7 +105,7 @@ def scan(directory, classified_state=None):
                     key = (kind, '')
                 elif kind in ('pr.action', 'merge.policy_blocked') and isinstance(payload, dict):
                     key = (kind, payload.get('pr'))
-                elif kind in ('decision.one_way', 'draft.created') and isinstance(payload, dict):
+                elif kind in ('decision.one_way', 'draft.created', 'remote.refused') and isinstance(payload, dict):
                     key = (kind, payload.get('id', number))
                 else:
                     key = (kind, number)
@@ -238,7 +242,8 @@ def line(data):
     parts.extend(f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items())
     if data['sessions']:
         parts.append(f'sessions {data["sessions"]}')
-    parts.extend(data['answered'])
+    if data['answered']:
+        parts.append(f'phone answers {len(data["answered"])}')
     if data['next_reply_due']:
         parts.append(f'reply {data["next_reply_due"]}')
     parts.append(f'meeting {data["next_meeting"] or "unmeasured"}')

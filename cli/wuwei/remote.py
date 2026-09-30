@@ -112,6 +112,25 @@ def _today(root):
     return watch.records(workspace.day_dir(root) / 'events.jsonl')
 
 
+def acknowledge(root):
+    """Owner action: clear today's refused-sender pages after host confirmation; (code, message)."""
+    from hashlib import sha256
+    from wuwei import integrity
+    rows = _today(root)
+    done = {identifier for row in rows if row['kind'] == 'remote.acknowledged'
+            for identifier in row['payload'].get('ids', [])}
+    ids = [row['payload']['id'] for row in rows if row['kind'] == 'remote.refused'
+           and row['payload'].get('id') and row['payload']['id'] not in done]
+    if not ids:
+        return 0, 'remote ack: no refused sender message today'
+    token = sha256('\n'.join(ids).encode()).hexdigest()[:12]
+    if not integrity._host_confirm(token, prompt=f'Acknowledge the refused sender messages '
+                                   f'{", ".join(ids)} on this host. To confirm, type:'):
+        return 1, 'remote ack: owner confirmation declined'
+    state.append_event('remote.acknowledged', {'ids': ids}, root=root)
+    return 0, f'remote ack: acknowledged {len(ids)} refused sender messages'
+
+
 def replied(root, identifier):
     """The option of today's first decision.replied for this id, else None."""
     return next((row['payload'].get('option') for row in _today(root)

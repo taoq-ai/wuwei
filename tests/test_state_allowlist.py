@@ -120,6 +120,7 @@ def test_approved_settings_stay_frozen_under_writer_lock(root, field, value):
     ('steward.due', 'wuwei hook PostToolUse'),
     ('steward.acknowledged', 'wuwei steward ack'),
     ('day.close_requested', 'wuwei close'),
+    ('remote.acknowledged', 'wuwei remote ack'),
 ])
 def test_nonfree_events_refuse_without_append(root, capsys, kind, producer):
     before = stored(root)

@@ -29,7 +29,7 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are the owner's alone: `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei goals edit` and `voice edit`, `wuwei watch uninstall` and `wuwei listen uninstall`. Agent tool hooks refuse them, so run them in a host terminal. The ones that ask you to type a digest exit 2 without a terminal. See [host terminal actions](reference.html#host-terminal-actions).
+Some commands are the owner's alone: `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei goals edit` and `voice edit`, `wuwei watch uninstall`, `wuwei listen uninstall` and `wuwei remote ack`. Agent tool hooks refuse them, so run them in a host terminal. The ones that ask you to type a digest exit 2 without a terminal. See [host terminal actions](reference.html#host-terminal-actions).
 
 ## Memory
 

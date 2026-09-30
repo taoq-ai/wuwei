@@ -799,3 +799,60 @@ def test_refused_page_clears_when_the_pin_is_edited(ws, capsys):
     assert json.loads(capsys.readouterr().out)['pages'] == 0
     state.append_event('remote.refused', {'id': 'D1/2.000001'}, ws)
     assert len(refused_pages(capsys)) == 1
+
+
+def test_acknowledged_kind_is_reserved_and_silent(ws, capsys):
+    from wuwei.__main__ import main
+    from wuwei import signal
+    assert main(['event', 'remote.acknowledged']) == 1
+    assert 'wuwei remote ack' in capsys.readouterr().err
+    assert signal.classify({'kind': 'remote.acknowledged', 'payload': {}}, {})[0] == 'silent'
+
+
+def test_issue_acceptance_remote_ack_clears_a_refused_page(ws, capsys, monkeypatch):
+    from hashlib import sha256
+    from wuwei.__main__ import main
+    from wuwei import integrity
+    calls = []
+    monkeypatch.setattr(integrity, '_host_confirm', lambda token, prompt: calls.append((token, prompt)) or True)
+    capsys.readouterr()
+    assert main(['remote', 'ack']) == 0
+    assert capsys.readouterr().out == 'remote ack: no refused sender message today\n'
+    assert calls == [] and payloads(ws, 'remote.') == []
+    remote().handle(ws, event('D1/1.000001', 'status', sender='T9/U1'), transport=Transport())
+    assert len(refused_pages(capsys)) == 1
+    assert main(['remote', 'ack']) == 0
+    assert calls[0][0] == sha256(b'D1/1.000001').hexdigest()[:12] and 'D1/1.000001' in calls[0][1]
+    assert payloads(ws, 'remote.acknowledged') == [{'ids': ['D1/1.000001']}]
+    assert refused_pages(capsys) == []
+    assert main(['status', '--json']) == 0
+    assert json.loads(capsys.readouterr().out)['pages'] == 0
+    remote().handle(ws, event('D1/2.000001', 'status', sender='T9/U1'), transport=Transport())
+    assert len(refused_pages(capsys)) == 1
+    monkeypatch.setattr(integrity, '_host_confirm', lambda token, prompt: calls.append((token, prompt)) and False)
+    assert main(['remote', 'ack']) == 1
+    assert capsys.readouterr().err == 'remote ack: owner confirmation declined\n'
+    assert len(refused_pages(capsys)) == 1
+    assert payloads(ws, 'remote.acknowledged') == [{'ids': ['D1/1.000001']}]
+    monkeypatch.setattr(integrity, '_host_confirm', lambda token, prompt: calls.append((token, prompt)) or True)
+    assert main(['remote', 'ack']) == 0
+    assert calls[-1][0] == sha256(b'D1/2.000001').hexdigest()[:12]
+    assert payloads(ws, 'remote.acknowledged')[-1] == {'ids': ['D1/2.000001']}
+    assert refused_pages(capsys) == []
+
+
+def test_issue_acceptance_remote_ack_without_a_terminal_is_an_owner_action(ws, capsys, monkeypatch):
+    import builtins
+    from wuwei.__main__ import main
+    remote().handle(ws, event('D1/1.000001', 'status', sender='T9/U1'), transport=Transport())
+    real_open = builtins.open
+    def fake_open(name, *args, **kwargs):
+        if name == '/dev/tty':
+            raise OSError(6, 'Device not configured')
+        return real_open(name, *args, **kwargs)
+    monkeypatch.setattr(builtins, 'open', fake_open)
+    capsys.readouterr()
+    assert main(['remote', 'ack']) == 2
+    assert capsys.readouterr().err == 'wuwei remote: this is an owner action: run it in a host terminal\n'
+    assert payloads(ws, 'remote.acknowledged') == []
+    assert len(refused_pages(capsys)) == 1
