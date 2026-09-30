@@ -24,11 +24,11 @@ def attention(directory, classified_state=None):
 
 
 def scan(directory, classified_state=None):
-    """Attention rows and watch state (alive, off, dead, unmeasured) from one read of the day."""
+    """Attention rows, watch and listen state (alive, off, dead, unmeasured) from one read of the day."""
     classified_state = classified_state or {**state.read_state(directory=directory),
                                               'now': workspace.now().isoformat()}
     today = workspace.now().date()
-    current, clocks = {}, []
+    current, clocks, replied, pin = {}, {'watch': [], 'listen': []}, {}, None
     path = directory / 'events.jsonl'
     if path.exists():
         with path.open(encoding='utf-8') as stream:
@@ -45,8 +45,10 @@ def scan(directory, classified_state=None):
                     stamp = event.get('ts')
                     if isinstance(stamp, str) and datetime.fromisoformat(stamp).date() != today:
                         continue
-                    if kind == 'watch: clock':
-                        clocks.append(stamp)
+                    if kind in ('watch: clock', 'listen: clock'):
+                        clocks[kind.split(':')[0]].append(stamp)
+                    if kind == 'decision.replied' and isinstance(payload, dict):
+                        replied.setdefault(payload.get('id'), payload.get('option'))
                     if kind in ('state.transition', 'item.escalated'):
                         continue
                     if kind == 'mcp.checked' and isinstance(payload, dict) and payload.get('exit') == 0:
@@ -68,6 +70,11 @@ def scan(directory, classified_state=None):
                         current = {key: value for key, value in current.items() if key[0] != 'steward.due'}
                     if kind in SILENT:
                         continue
+                    if kind == 'remote.refused' and isinstance(payload, dict) and 'pin' in payload:
+                        if pin is None:
+                            pin = workspace.load_config(directory.parents[2])['control_plane']['owner']
+                        if payload['pin'] != pin:
+                            continue
                 else:
                     kind, payload = 'unreadable event', {}
                 if kind == 'watch: sweep' and isinstance(payload, dict):
@@ -105,14 +112,17 @@ def scan(directory, classified_state=None):
                                     'reason': payload.get('reason', kind) if isinstance(payload, dict) else kind}
     # Live health, not the last sweep's count: a partial sweep event must not hide a dead watch.
     current = {key: value for key, value in current.items() if key[:2] != ('watch: sweep', 'watch')}
-    code, message = 0, ''
-    # A watch with no clock line today and no installed unit is off: skip the watch import.
-    if clocks or workspace.watch_unit(directory.parents[2])[1].exists():
-        from wuwei import watch
-        code, message = watch.health(directory.parents[2], clocks)
-    if code:
-        current[('watch: health',)] = {'tier': 'page' if code == 1 else 'nudge',
-                                       'source': 'watch: health', 'lane': 'Work', 'reason': message}
+    health = {}
+    for name, stamps in clocks.items():
+        code, message = 0, ''
+        # No clock line today and no installed unit is off: skip the watch import.
+        if stamps or workspace.watch_unit(directory.parents[2], name=name)[1].exists():
+            from wuwei import watch
+            code, message = watch.health(directory.parents[2], stamps, name=name)
+        if code:
+            current[(f'{name}: health',)] = {'tier': 'page' if code == 1 else 'nudge',
+                                             'source': f'{name}: health', 'lane': 'Work', 'reason': message}
+        health[name] = {1: 'dead', 2: 'unmeasured'}.get(code, 'alive' if stamps else 'off')
     for name, item in classified_state['items'].items():
         if item['phase'] == 'escalated':
             tier, lane = classify({'kind': 'item.escalated', 'payload': {'item': name}},
@@ -124,9 +134,13 @@ def scan(directory, classified_state=None):
         raise ValueError('invalid decision ledger')
     for identifier in routes:
         if answered(classified_state, identifier) is None:
+            source, reason = 'decision.pending', f'{identifier} pending owner decision'
+            if option := replied.get(identifier):
+                source, reason = 'decision.answered', (
+                    f'{identifier} answered from the phone: option {option}, '
+                    f'confirm with decision outcome {identifier} {option}')
             current[('decision.pending', identifier)] = {
-                'tier': 'nudge', 'source': 'decision.pending', 'lane': 'Decisions',
-                'reason': f'{identifier} pending owner decision'}
+                'tier': 'nudge', 'source': source, 'lane': 'Decisions', 'reason': reason}
     planner = classified_state.get('planner_session_id')
     if planner and planner in classified_state.get('sessions', {}):
         for row in sessions.rows(classified_state, datetime.fromisoformat(classified_state['now']),
@@ -137,7 +151,7 @@ def scan(directory, classified_state=None):
                     'reason': f'planner session {planner} stale: no hook activity for '
                               f'{row["idle_seconds"]}s; take over from the live session with: '
                               'wuwei plan session <session id> --take-over'}
-    return list(current.values()), {1: 'dead', 2: 'unmeasured'}.get(code, 'alive' if clocks else 'off')
+    return list(current.values()), health['watch'], health['listen']
 
 
 def snapshot(directory):
@@ -146,12 +160,13 @@ def snapshot(directory):
               'phases': {phase: count for phase in state.PHASES
                          if (count := sum(item['phase'] == phase for item in data['items'].values()))},
               'next_reply_due': None, 'next_meeting': None,
-              'sessions': sum(not row['stale'] for row in sessions.rows(
+              'sessions': sum(not row['stale'] and 'stopped' not in row for row in sessions.rows(
                   data, workspace.now(), sessions.stale_seconds(directory.parents[2])))
               if data.get('sessions') else 0}
     classified_state = {**data, 'now': workspace.now().isoformat()}
-    active, result['watch'] = scan(directory, classified_state)
+    active, result['watch'], result['listen'] = scan(directory, classified_state)
     result['pages'] = sum(row['tier'] == 'page' for row in active)
+    result['answered'] = [row['reason'] for row in active if row['source'] == 'decision.answered']
     result['nudges'] = sum(row['tier'] == 'nudge' for row in active)
     for key, field, destination in (('reply_obligations', 'due', 'next_reply_due'),
                                      ('meetings', 'start', 'next_meeting')):
@@ -167,6 +182,8 @@ def snapshot(directory):
             result[destination] = min(parsed, key=lambda row: row[0])[1]
     config_path = directory.parents[1] / 'config.toml'
     config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
+    if result['listen'] == 'off' and (config is None or config['adapters']['inbound'] == 'none'):
+        result['listen'] = 'none'
     if config is not None and config['adapters']['calendar'] != 'none':
         from wuwei import registry
         root = directory.parents[2]
@@ -216,9 +233,12 @@ def line(data):
         parts[0] = 'WUWEI no plan yet | ' + parts[0][6:]
     if data['watch'] != 'alive':
         parts.append(f'watch {data["watch"]}')
+    if data['listen'] not in ('alive', 'none'):
+        parts.append(f'listen {data["listen"]}')
     parts.extend(f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items())
     if data['sessions']:
         parts.append(f'sessions {data["sessions"]}')
+    parts.extend(data['answered'])
     if data['next_reply_due']:
         parts.append(f'reply {data["next_reply_due"]}')
     parts.append(f'meeting {data["next_meeting"] or "unmeasured"}')

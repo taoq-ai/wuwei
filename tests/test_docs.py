@@ -293,8 +293,12 @@ def test_remote_runbook_matches_the_code():
                  'responder.enabled = false', 'stop all', 'loginctl enable-linger', 'resets at midnight',
                  'otpauth://totp/', 'algorithm=SHA1&digits=6&period=30', 'App Home', 'Messages Tab',
                  'Allow users to send Slash commands and messages from the messages tab',
-                 'OAuth & Permissions', 'Bot Token Scopes', 'Agent tools are refused these commands'):
+                 'OAuth & Permissions', 'Bot Token Scopes', 'Agent tools are refused these commands',
+                 'answered from the phone', remote.ANSWERED.format(identifier='D-3', option='B'),
+                 'control_plane.owner: missing', 'WUWEI_TOTP_SECRET: set', 'status --line` shows `listen dead`'):
         assert text in flat, text
+    decisions = ' '.join(page[page.index('## 7. '):page.index('## 8. ')].split())
+    assert 'for decisions a `plan` session raises' not in decisions
     output = io.StringIO()
     with contextlib.redirect_stdout(output):
         exec(re.search(r'python3 -c "([^"]+)"', page)[1], {})

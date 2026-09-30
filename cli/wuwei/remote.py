@@ -23,8 +23,11 @@ CHANGED = 'Refused: this sender does not match the pinned identity. Confirm it o
 CONFIRM = 'Reply confirm within 2 minutes to run it, or send it again ending with a current code.'
 LOW_MEMORY = 'Not started: free memory on the host is below the floor.'
 NOTHING = 'Nothing to confirm from the last 2 minutes.'
+ANSWERED = ('Not recorded: {identifier} already has option {option} from this DM. '
+            'Record the outcome on the host to change it.')
 FACTOR = frozenset({'plan', 'ask'})  # commands that need a code or a confirm reply
 WINDOW = 120  # seconds a code or a confirmation counts
+PIN = r'[A-Z0-9]+/[UW][A-Z0-9]+'  # control_plane.owner: <team id>/<user id>
 ASK_TOOLS = ('Read', 'Glob', 'Grep')
 PLAN_PROMPT = ('Invoke Skill wuwei:wuwei-plan. This run is headless, started from the '
                'control plane: nobody can answer AskUserQuestion. For each question, write '
@@ -98,7 +101,7 @@ def totp(key, step):
 def sender(config, event):
     """owner, changed (same user id, other or no team) or other, against control_plane.owner."""
     pin = config['control_plane']['owner']
-    if not re.fullmatch(r'[A-Z0-9]+/[UW][A-Z0-9]+', pin):
+    if not re.fullmatch(PIN, pin):
         raise ValueError(f'control_plane.owner must pin <team>/<user>; this message came from {event["sender"]}')
     if event['sender'] == pin:
         return 'owner'
@@ -107,6 +110,12 @@ def sender(config, event):
 
 def _today(root):
     return watch.records(workspace.day_dir(root) / 'events.jsonl')
+
+
+def replied(root, identifier):
+    """The option of today's first decision.replied for this id, else None."""
+    return next((row['payload'].get('option') for row in _today(root)
+                 if row['kind'] == 'decision.replied' and row['payload'].get('id') == identifier), None)
 
 
 def confirmation(root):
@@ -207,14 +216,17 @@ def handle(root, event, *, transport=TRANSPORT, runtime=None):
             return 0
         text, code = split(event['text'])
         command = parse(text)
-        who = sender(workspace.load_config(root), event)
+        config = workspace.load_config(root)
+        who = sender(config, event)
         if who == 'other':
             if not any(row['kind'] == 'remote.ignored' and row['payload'].get('sender') == event['sender']
                        for row in _today(root)):
                 state.append_event('remote.ignored', {'sender': event['sender']}, root=root)
             return 0
         if who == 'changed' and command != ('stop', 'all'):
-            state.append_event('remote.refused', {'id': event['id']}, root=root)
+            # The pin it was checked against: editing the pin (the re-confirmation) clears the page.
+            state.append_event('remote.refused', {'id': event['id'], 'pin': config['control_plane']['owner']},
+                               root=root)
             return _say(transport, root, CHANGED, 1)
         if command == ('confirm', ''):
             line = confirmation(root)
@@ -234,6 +246,13 @@ def handle(root, event, *, transport=TRANSPORT, runtime=None):
             if answer is None:
                 return _say(transport, root, VOCABULARY, 1)
             identifier, option = answer
+            # The first DM answer stands; the owner changes it with the outcome on the host.
+            first = replied(root, identifier)
+            if first is not None:
+                if first != option:
+                    return _say(transport, root, ANSWERED.format(identifier=identifier, option=first), 1)
+                return _say(transport, root, f'Recorded {identifier} option {option}. '
+                            'Confirm it on the host.', 0)
             state.append_event('decision.replied', {'id': identifier, 'option': option}, root=root)
             session = owner_session(state.read_state(root), identifier)
             if session is None:
@@ -336,18 +355,29 @@ def _turn(root, command, thread, prompt, session, transport, runtime):
     state._write_state(update, root, reserved=False,
                        kind='remote.resumed' if session else 'remote.started',
                        payload={'session': sid, **({} if session else {'command': command})})
-    code = result.exit
-    for identifier in new:
-        sent = control_plane.escalate(identifier, root=root, transport=transport)
-        if sent.exit == 1:
-            sent = transport.dm(f'{identifier} is waiting in the workspace.', root=root)
-        code = max(code, sent.exit)
+    code = max(result.exit, escalate_new(root, transport))
     if command == 'ask' and result.data['result'].strip():
         sent = control_plane.notify(result.data['result'], root=root, transport=transport)
         if sent.exit == 1:
             sent = transport.dm(f'The answer is held in session {sid[:8]}; open it on the host.', root=root)
         code = max(code, sent.exit)
     return _say(transport, root, f'Session {sid[:8]}: turn ended, {len(new)} decisions waiting.', code)
+
+
+def escalate_new(root, transport):
+    """Send each owner-pending decision the DM has not had today; record each send."""
+    done = {row['payload'].get('id') for row in _today(root) if row['kind'] == 'decision.escalated'}
+    code = 0
+    for identifier in control_plane.pending(root):
+        if identifier in done:
+            continue
+        sent = control_plane.escalate(identifier, root=root, transport=transport)
+        if sent.exit == 1:
+            sent = transport.dm(f'{identifier} is waiting in the workspace.', root=root)
+        if sent.exit == 0:
+            state.append_event('decision.escalated', {'id': identifier}, root=root)
+        code = max(code, sent.exit)
+    return code
 
 
 def stop(root, target, *, transport=TRANSPORT):

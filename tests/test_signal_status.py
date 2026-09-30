@@ -286,7 +286,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'hook.warning': 'nudge',
                 'verdict.rejected': 'silent', 'decision.rejected': 'nudge',
                     'decision.decided': 'silent', 'decision.routed': 'silent',
-                    'decision.digest': 'silent', 'decision.replied': 'silent',
+                    'decision.digest': 'silent', 'decision.replied': 'silent', 'decision.escalated': 'silent',
                 'adapter: none': 'nudge', 'reply: acknowledged': 'silent',
                 'reply: thread_posted': 'silent', 'pr.raised': 'silent',
                 'pr.claimed': 'silent',
@@ -432,3 +432,25 @@ def test_invalid_decision_ledger_is_unmeasured(tmp_path, monkeypatch, capsys):
     capsys.readouterr()
     assert main(['status', '--line']) == 2
     assert capsys.readouterr().out == 'WUWEI ? unmeasured\n'
+
+
+@pytest.mark.parametrize('outcomes', [{}, {'D-2': {'decided_by': 'owner', 'option': 'A', 'outcome': 'A'}}])
+def test_issue_acceptance_a_phone_answer_shows_on_the_host(tmp_path, monkeypatch, capsys, outcomes):
+    from wuwei.__main__ import main
+    replies = [{'kind': 'decision.replied', 'ts': '2026-09-28T11:00:00+02:00',
+                'payload': {'id': 'D-2', 'option': option}} for option in 'AB']
+    day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': ROUTED, 'decision_outcomes': outcomes},
+        replies)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    reason = 'D-2 answered from the phone: option A, confirm with decision outcome D-2 A'
+    expected = [] if outcomes else [reason]
+    assert main(['nudges']) == 0
+    rows = [row for row in json.loads(capsys.readouterr().out) if 'D-2' in row['reason']]
+    assert rows == [{'tier': 'nudge', 'source': 'decision.answered', 'lane': 'Decisions',
+                     'reason': reason}][:len(expected)]
+    assert main(['status', '--line']) == 0
+    text = capsys.readouterr().out
+    assert (reason in text) == bool(expected) and f'nudges {len(expected)}' in text
+    assert main(['status', '--json']) == 0
+    assert json.loads(capsys.readouterr().out)['answered'] == expected

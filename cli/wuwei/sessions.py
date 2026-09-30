@@ -65,7 +65,7 @@ def rows(data, now, stale):
                        'idle_seconds': idle, 'stale': idle >= stale,
                        'last_hook': row.get('last_hook'),
                        'items': sorted(item for item, holder in claims.items() if holder == session_id),
-                       'cwd': row.get('cwd'), **({'thread': row['thread']} if 'thread' in row else {})})
+                       'cwd': row.get('cwd'), **{key: row[key] for key in ('thread', 'stopped') if key in row}})
     return sorted(result, key=lambda row: row['started'])
 
 

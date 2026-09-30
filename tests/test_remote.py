@@ -106,7 +106,8 @@ def test_fixed_lines_pass_the_outward_lint(ws):
     from wuwei import outward
     module, config = remote(), workspace.load_config(ws)
     for text in (module.VOCABULARY, module.UNAVAILABLE, module.FAILED, module.CONFIRM,
-                 module.NOTHING, module.CHANGED, module.LOW_MEMORY):
+                 module.NOTHING, module.CHANGED, module.LOW_MEMORY,
+                 module.ANSWERED.format(identifier='D-1', option='A')):
         assert outward.lint(text, 'D1', config) == (0, ''), text
 
 
@@ -482,7 +483,7 @@ def test_issue_acceptance_changed_identity_is_refused_and_alerted(ws, text):
                            transport=transport, runtime=runtime) == 1
     assert runtime.calls == [] and transport.sent == [remote().CHANGED]
     assert [(row['kind'], row['payload']) for row in events(ws, 'remote.')] == [
-        ('remote.refused', {'id': 'D1/1.000001'})]
+        ('remote.refused', {'id': 'D1/1.000001', 'pin': 'T1/U1'})]
 
 
 def test_other_senders_are_logged_once_and_never_answered(ws):
@@ -695,3 +696,106 @@ def test_runbook_hello_through_real_env(tmp_path, monkeypatch, capsys):
     printed = output.out + output.err + str(capsys.readouterr())
     for value in (token, base, '127.0.0.1:9'):
         assert value not in stored + printed
+
+
+def test_issue_acceptance_stop_all_drops_the_live_session_count(ws, capsys):
+    from wuwei.__main__ import main
+    remote_row(ws, S, [])
+    remote_row(ws, T, [])
+    state._write_state(lambda data: data['sessions'].update(A={**data['sessions'][T], 'role': 'adhoc'}),
+                       ws, reserved=False)
+    assert main(['status', '--line']) == 0
+    assert 'sessions 3' in capsys.readouterr().out
+    remote().stop(ws, 'all', transport=Transport())
+    assert main(['status', '--line']) == 0
+    assert 'sessions 1' in capsys.readouterr().out
+    assert main(['status', '--json']) == 0
+    assert json.loads(capsys.readouterr().out)['sessions'] == 1
+
+
+class Down(Transport):
+    def dm(self, text, *, root=None):
+        return Result(2, None, 'slack down')
+
+
+def test_escalate_new_sends_each_host_decision_once(ws):
+    routed(ws)
+    t = Transport()
+    assert remote().escalate_new(ws, t) == 0
+    assert t.sent == [escalation(ws, 'D-1')]
+    assert payloads(ws, 'decision.escalated') == [{'id': 'D-1'}]
+    assert remote().escalate_new(ws, t) == 0
+    assert len(t.sent) == 1 and len(events(ws, 'decision.escalated')) == 1
+
+
+def test_escalate_new_records_nothing_when_the_send_fails(ws):
+    routed(ws)
+    assert remote().escalate_new(ws, Down()) == 2
+    assert events(ws, 'decision.escalated') == []
+    t = Transport()
+    assert remote().escalate_new(ws, t) == 0
+    assert t.sent == [escalation(ws, 'D-1')]
+
+
+def test_escalate_new_falls_back_to_the_id_when_the_lint_refuses(ws):
+    routed(ws, VALID.replace('Which fix?', 'Which fix does Robin want?'))
+    t = Transport()
+    assert remote().escalate_new(ws, t) == 0
+    assert t.sent == ['D-1 is waiting in the workspace.']
+    assert payloads(ws, 'decision.escalated') == [{'id': 'D-1'}]
+
+
+def test_a_turn_escalates_once_and_sends_host_decisions_first(ws):
+    runtime = Runtime(ran(), effect=routed)
+    t = Transport()
+    assert remote().start(ws, 'plan', 'D1/1.000001', 'p', transport=t, runtime=runtime) == 0
+    assert t.sent == [escalation(ws, 'D-1'), f'Session {S[:8]}: turn ended, 1 decisions waiting.']
+    assert remote().escalate_new(ws, t) == 0 and len(t.sent) == 2
+    routed(ws)
+    t = Transport()
+    runtime = Runtime(ran(session=T))
+    assert remote().start(ws, 'plan', 'D1/2.000001', 'p', transport=t, runtime=runtime) == 0
+    assert t.sent == [escalation(ws, 'D-2'), f'Session {T[:8]}: turn ended, 0 decisions waiting.']
+
+
+def test_issue_acceptance_a_conflicting_second_answer_is_refused(ws):
+    routed(ws)
+    recorded = 'Recorded D-1 option A. Confirm it on the host.'
+    refused = remote().ANSWERED.format(identifier='D-1', option='A')
+    assert 'already has option A' in refused
+    assert handled(ws, 'option A on D-1') == (0, [recorded])
+    assert handled(ws, 'option B on D-1', ident='D1/2.000001') == (1, [refused])
+    assert handled(ws, 'drop it', ident='D1/3.000001') == (1, [refused])
+    assert handled(ws, 'option A on D-1', ident='D1/4.000001') == (0, [recorded])
+    assert payloads(ws, 'decision.replied') == [{'id': 'D-1', 'option': 'A'}]
+
+
+def test_a_second_answer_resumes_no_session(ws):
+    routed(ws)
+    remote_row(ws, S, ['D-1'])
+    runtime = Runtime(ran())
+    assert handled(ws, 'option A on D-1', runtime=runtime)[0] == 0
+    assert len(runtime.calls) == 1
+    for ident, text in (('D1/2.000001', 'option B on D-1'), ('D1/3.000001', 'option A on D-1')):
+        handled(ws, text, runtime=runtime, ident=ident)
+    assert len(runtime.calls) == 1
+
+
+def refused_pages(capsys):
+    from wuwei.__main__ import main
+    capsys.readouterr()
+    assert main(['nudges']) == 0
+    return [row for row in json.loads(capsys.readouterr().out) if row['source'] == 'remote.refused']
+
+
+def test_refused_page_clears_when_the_pin_is_edited(ws, capsys):
+    from wuwei.__main__ import main
+    remote().handle(ws, event('D1/1.000001', 'status', sender='T9/U1'), transport=Transport())
+    assert [row['tier'] for row in refused_pages(capsys)] == ['page']
+    assert len(refused_pages(capsys)) == 1
+    (ws / '.wuwei/config.toml').write_text(OWNER.replace('T1/U1', 'T9/U1'))
+    assert refused_pages(capsys) == []
+    assert main(['status', '--json']) == 0
+    assert json.loads(capsys.readouterr().out)['pages'] == 0
+    state.append_event('remote.refused', {'id': 'D1/2.000001'}, ws)
+    assert len(refused_pages(capsys)) == 1

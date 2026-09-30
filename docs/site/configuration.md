@@ -85,7 +85,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
 | `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `status --line`, its item claims lapse, and a stale planner is nudged. |
 | `listen.poll_seconds` | `60` | Interval between listener polls of the inbound source. |
-| `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start. |
+| `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start and in `status --line`. |
 | `responder.enabled` | `true` | Kill switch: when `false` the listener still stores events but does not wake the planner or handle commands. |
 | `steward.every_tool_calls` | `50` | Completed tool calls between steward reviews. |
 
@@ -117,7 +117,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `brief.full_path_patterns` | `[]` | Owner supplied regexes for paths needing full context. |
 | `chat.identity` | `"connector"` | Optional CLI default: connector or custom_app. This key is not in the template. |
 | `control_plane.content` | `"summary"` | What a messaging transport sends about a pending decision. `summary` sends the id, the one-line question and each option with its description; `none` sends only the id and option letters, and a fixed line in place of an update. The question widget in the planner session always shows the summary. |
-| `control_plane.owner` | `""` | The pinned sender of commands from the owner DM, as `<team id>/<user id>` (such as `T0123ABC/U0123ABC`). Empty handles no command. |
+| `control_plane.owner` | `""` | The pinned sender of commands from the owner DM, as `<team id>/<user id>` (such as `T0123ABC/U0123ABC`). Empty handles no command; `wuwei config check` reports it when `adapters.inbound` is set. |
 
 Run `bin/wuwei brief pack` once for a daily text pack, or `bin/wuwei brief pack --meeting`
 inside the lead window for the next attendee meeting. The returned path contains the
@@ -354,7 +354,11 @@ command is handled; stored commands are handled once it is back on.
 The listener writes a `listen: clock` line every two minutes. Session start reports
 `listen dead` when today's latest clock line is older than `listen.dead_seconds`, or
 when the listener is installed and wrote none today. A listener that is off or alive
-adds nothing to session start.
+adds nothing to session start. `wuwei status --line` shows `listen dead`,
+`listen unmeasured` or `listen off` (nothing while alive, and nothing without an inbound
+adapter), and `wuwei nudges` pages a dead listener as `listen: health`. A DM answer to a
+decision shows in `wuwei nudges`, the status line and session start as
+"D-n answered from the phone" until the owner records the outcome.
 
 ## Private workspace environment
 
@@ -366,6 +370,9 @@ file before adapter calls. Restart a running watch after editing the file.
 
 `wuwei config check` reports credential names and set/missing status per effective
 adapter. It returns 1 for missing requirements and 2 when a check cannot run.
+With an inbound adapter it adds a `Control plane:` section: `control_plane.owner` is
+set, missing or invalid (the last two return 1; the pin is never printed), and
+`WUWEI_TOTP_SECRET` is set or missing, which is information only.
 See [adapter credentials](adapters.html#credentials) for every variable, syntax
 rules and authentication requirements. No new config.toml keys are needed.
 

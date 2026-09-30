@@ -60,6 +60,9 @@ def session_start(payload):
         notice = watch.wake(root)
         if notice:
             lines.append(notice)
+        from wuwei.commands.status import attention
+        lines.extend(row['reason'] for row in attention(workspace.day_dir(root))
+                     if row['source'] == 'decision.answered')
         for directory in watch.days(root):
             if directory == workspace.day_dir(root):
                 continue

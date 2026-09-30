@@ -1,6 +1,7 @@
 """The listener: poll the inbound source into the inbox and wake the planner."""
 
 import json
+import os
 
 from wuwei import inbox, obligations, outward, registry, remote, watch, workspace
 
@@ -68,6 +69,14 @@ def tick(root):
             _save(root, data)
             if remote.handle(root, rows[index]) == 2:
                 code = 2  # a refused command is a normal poll; only an unrun one is 2
+        # Decisions routed on the host reach the DM here; the listener is the only DM sender.
+        if os.environ.get('SLACK_OWNER_DM_CHANNEL'):
+            try:
+                if remote.escalate_new(root, remote.TRANSPORT) == 2:
+                    code = 2
+            except (OSError, UnicodeError, ValueError, KeyError, TypeError, RuntimeError) as exc:
+                print(f'listen escalate unmeasured: {exc}', flush=True)
+                code = 2
         if count > data['woken']:
             watch.mark_wake(root, inbox=count, kind='listen: wake', payload={'inbox': count})
             data['woken'] = count
