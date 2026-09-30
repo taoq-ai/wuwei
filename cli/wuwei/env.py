@@ -13,6 +13,7 @@ CREDENTIALS = ('LINEAR_API_KEY', 'SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN',
                'SLACK_OWNER_DM_CHANNEL', 'GREPTILE_API_KEY', 'WUWEI_CALENDAR_URL',
                'GH_TOKEN', 'GITHUB_TOKEN')
 _loaded = set()
+_shadowed = set()  # .wuwei/env names whose value the process environment overrides
 
 
 def child_environment():
@@ -27,6 +28,7 @@ def session():
     previous = dict(os.environ)
     known = redact.VALUES.copy()
     loaded = _loaded.copy()
+    shadowed = _shadowed.copy()
     try:
         redact.VALUES.update(previous[name] for name in CREDENTIALS if previous.get(name))
         yield
@@ -38,6 +40,8 @@ def session():
                 os.environ.pop(name, None)
         _loaded.clear()
         _loaded.update(loaded)
+        _shadowed.clear()
+        _shadowed.update(shadowed)
         redact.VALUES.clear()
         redact.VALUES.update(known)
 
@@ -74,7 +78,8 @@ def load(root):
             values[name] = value
         redact.VALUES.update(value for value in values.values() if value)
         for name, value in values.items():
-            os.environ.setdefault(name, value)
+            if os.environ.setdefault(name, value) != value:
+                _shadowed.add(name)
             _loaded.add(name)
             if os.environ[name]:
                 redact.VALUES.add(os.environ[name])

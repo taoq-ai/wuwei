@@ -60,5 +60,9 @@ def author_login(repo, email, root=None):
     return record_none('code_host', 'author_login', root, measurement=True)
 
 
+def token_scopes(variable, root=None):
+    return record_none('code_host', 'token_scopes', root, measurement=True)
+
+
 def auth_status(root=None):
     return record_none('code_host', 'auth_status', root, measurement=True)

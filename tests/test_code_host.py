@@ -266,3 +266,68 @@ def test_pr_exposes_verified_merge_bit(monkeypatch, merged):
         assert result.exit == 0 and result.data.get('merged') is merged
     else:
         assert result.exit == 2
+
+
+SCOPE_TOKEN = 'opaque-scope-token'
+
+
+def scope_run(monkeypatch, stdout='', exit=0):
+    seen = []
+    def run(argv, **kwargs):
+        seen.append((argv, kwargs.get('env')))
+        return subprocess.CompletedProcess(argv, exit, stdout, 'error ' + SCOPE_TOKEN)
+    monkeypatch.setattr(subprocess, 'run', run)
+    return seen
+
+
+@pytest.mark.parametrize('variable', ['GH_TOKEN', 'GITHUB_TOKEN'])
+def test_token_scopes_measures_only_that_token(variable, monkeypatch):
+    monkeypatch.setenv(variable, SCOPE_TOKEN)
+    other = 'GITHUB_TOKEN' if variable == 'GH_TOKEN' else 'GH_TOKEN'
+    monkeypatch.setenv(other, 'other-token')
+    seen = scope_run(monkeypatch, 'HTTP/2.0 200 OK\nX-Oauth-Scopes: repo, read:org\n\n{"login": "x"}')
+    result = adapter().token_scopes(variable)
+    assert (result.exit, result.data) == (0, {'scopes': ['repo', 'read:org']})
+    [(argv, env)] = seen
+    assert argv == ['gh', 'api', '--include', 'user', '--hostname', 'github.com']
+    assert env['GH_TOKEN'] == SCOPE_TOKEN and 'GITHUB_TOKEN' not in env
+
+
+@pytest.mark.parametrize('stdout,exit,variable', [
+    ('HTTP/2.0 200 OK\n\n{"X-OAuth-Scopes": "repo"}', 0, 'GH_TOKEN'),
+    ('HTTP/2.0 200 OK\nX-OAuth-Scopes: \n\n{}', 0, 'GH_TOKEN'),
+    ('HTTP/2.0 401\nX-OAuth-Scopes: repo\n\n{}', 1, 'GH_TOKEN'),
+    ('HTTP/2.0 200 OK\nX-OAuth-Scopes: repo\n\n{}', 0, 'LINEAR_API_KEY'),
+    ('HTTP/2.0 200 OK\nX-OAuth-Scopes: repo\n\n{}', 0, 'GITHUB_TOKEN'),
+])
+def test_token_scopes_unmeasured(stdout, exit, variable, monkeypatch, capsys):
+    monkeypatch.setenv('GH_TOKEN', SCOPE_TOKEN)
+    monkeypatch.setenv('LINEAR_API_KEY', SCOPE_TOKEN)
+    scope_run(monkeypatch, stdout, exit)
+    result = adapter().token_scopes(variable)
+    assert result.exit == 2 and result.data is None
+    assert SCOPE_TOKEN not in result.reason + str(capsys.readouterr())
+
+
+def test_run_rejects_user_scope_read_with_payload(monkeypatch):
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **k: pytest.fail('spawned'))
+    with pytest.raises(ValueError):
+        adapter()._run(['api', '--include', 'user'], {'x': 1}, json_output=False)
+    with pytest.raises(ValueError):
+        adapter()._run(['api', '--include', 'user'])
+
+
+def test_protection_requires_deletion_setting(monkeypatch):
+    case = deepcopy(next(c for c in CASES if c['operation'] == 'protection'))
+    body = json.loads(case['steps'][0]['stdout'])
+    del body['allow_deletions']
+    case['steps'][0]['stdout'] = json.dumps(body)
+    install_replay(monkeypatch, 'gh', case['steps'])
+    assert adapter().protection(*case['args']).exit == 2
+
+
+def test_unreadable_protection_is_not_absent(monkeypatch):
+    # A repository the token cannot see is also a 404; only gh's own message means unprotected.
+    install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Not Found (HTTP 404)'}])
+    result = adapter().protection('acme/widget', 'main')
+    assert result.exit == 2 and 'branch protection absent' not in result.reason

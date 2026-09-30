@@ -377,3 +377,148 @@ def test_hook_resolves_credentials_despite_legacy_override(case, monkeypatch):
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
     assert main(['hook', 'PreToolUse']) == 0
     assert observed == [KEY]
+
+
+REPO = '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n'
+
+
+@pytest.fixture
+def host(case, monkeypatch):
+    from fakes.code_host import Fake
+    fake = Fake()
+    real = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake if kind == 'code_host'
+                        else real(kind, config))
+    (case / '.wuwei/config.toml').write_text('[adapters]\ncode_host="none"\n' + REPO)
+    return fake
+
+
+def protected(**changes):
+    from fakes.replay import recordings
+    data = next(c for c in recordings('code_host') if c['operation'] == 'protection')['data']
+    return registry.Result(0, {**data, **changes})
+
+
+def test_unprotected_branch_is_a_finding(host, capsys):
+    host.results['protection'] = registry.Result(2, None, 'github.protection: could not run: branch protection absent')
+    assert main(['config', 'check']) == 1
+    output = capsys.readouterr().out
+    assert 'acme/widget main: protected ref: missing' in output
+    assert host.calls[0][:2] == ('protection', ('acme/widget', 'main'))
+
+
+def test_unreadable_protection_is_unmeasured(host, capsys):
+    host.results['protection'] = registry.Result(2, None, 'github.protection: could not run: gh exited 1')
+    assert main(['config', 'check']) == 2
+    output = capsys.readouterr()
+    assert 'acme/widget main: protection: unmeasured' in output.out
+    assert 'gh exited 1' in output.err
+
+
+def test_fully_protected_branch_is_clean(host, capsys):
+    host.results['protection'] = protected()
+    assert main(['config', 'check']) == 0
+    output = capsys.readouterr().out
+    for name in ('protected ref', 'required checks', 'required reviews', 'force pushes', 'deletions'):
+        assert f'acme/widget main: {name}: ok' in output
+
+
+@pytest.mark.parametrize('changes,extra,line', [
+    ({'required_checks': []}, '', 'required checks: missing'),
+    ({}, 'review_required_checks = ["unit"]\n', 'required checks: missing (require status checks on main: unit)'),
+    ({'approvals': 0}, '', 'required reviews: missing'),
+    ({'allow_force_pushes': True}, '', 'force pushes: missing (block force pushes on main)'),
+    ({'allow_deletions': True}, '', 'deletions: missing (block deletions of main)'),
+])
+def test_each_protection_gap_is_a_finding(host, case, capsys, changes, extra, line):
+    (case / '.wuwei/config.toml').write_text('[adapters]\ncode_host="none"\n' + REPO + extra)
+    host.results['protection'] = protected(**changes)
+    assert main(['config', 'check']) == 1
+    assert f'acme/widget main: {line}' in capsys.readouterr().out
+
+
+def test_solo_owner_exemption(host, case, capsys):
+    (case / '.wuwei/config.toml').write_text(
+        '[adapters]\ncode_host="none"\n[shepherd]\nmin_reviewers = 0\n' + REPO)
+    host.results['protection'] = protected(approvals=0)
+    assert main(['config', 'check']) == 0
+    assert 'required reviews: ok (solo owner: shepherd.min_reviewers = 0)' in capsys.readouterr().out
+
+
+def test_malformed_protection_is_unmeasured(host, capsys):
+    data = protected().data
+    del data['allow_deletions']
+    host.results['protection'] = registry.Result(0, data)
+    assert main(['config', 'check']) == 2
+    assert 'protection: unmeasured' in capsys.readouterr().out
+
+
+def test_unmeasured_outranks_missing_across_repositories(host, case, capsys):
+    (case / '.wuwei/config.toml').write_text('[adapters]\ncode_host="none"\n' + REPO +
+                                             REPO.replace('acme/widget', 'acme/other').replace('"repo"', '"other"'))
+    results = iter([registry.Result(2, None, 'branch protection absent'),
+                    registry.Result(2, None, 'gh exited 1')])
+    host.protection = lambda repo, branch, root=None: next(results)
+    assert main(['config', 'check']) == 2
+
+
+def test_write_token_in_env_file_is_a_finding(host, case, capsys):
+    host.results['protection'] = protected()
+    host.results['token_scopes'] = registry.Result(0, {'scopes': ['repo']})
+    write_env(case, 'GH_TOKEN=' + KEY + '\n')
+    assert main(['config', 'check']) == 1
+    output = str(capsys.readouterr())
+    assert 'GH_TOKEN (.wuwei/env): write scopes repo' in output and KEY not in output
+    assert ('token_scopes', ('GH_TOKEN',), None) in host.calls
+
+
+def test_env_file_token_shadowed_by_environment_is_unmeasured(host, case, monkeypatch, capsys):
+    host.results['protection'] = protected()
+    host.results['token_scopes'] = registry.Result(0, {'scopes': ['read:org']})
+    write_env(case, 'GH_TOKEN=' + KEY + '\n')
+    monkeypatch.setenv('GH_TOKEN', 'shellreadonly')
+    assert main(['config', 'check']) == 2
+    captured = capsys.readouterr()
+    assert 'GH_TOKEN (.wuwei/env): unmeasured' in captured.out
+    assert 'shadows' in captured.err
+    assert KEY not in str(captured) and 'shellreadonly' not in str(captured)
+
+
+def test_write_token_in_environment_is_a_finding(host, monkeypatch, capsys):
+    host.results['protection'] = protected()
+    host.results['token_scopes'] = registry.Result(0, {'scopes': ['repo', 'workflow']})
+    monkeypatch.setenv('GITHUB_TOKEN', KEY)
+    assert main(['config', 'check']) == 1
+    output = str(capsys.readouterr())
+    assert 'GITHUB_TOKEN (the environment): write scopes repo, workflow' in output
+    assert KEY not in output
+
+
+@pytest.mark.parametrize('result,expected,text', [
+    (registry.Result(0, {'scopes': ['read:org']}), 0, 'GH_TOKEN (the environment): read-only'),
+    (registry.Result(2, None, 'token scopes unmeasured'), 2, 'GH_TOKEN (the environment): unmeasured'),
+])
+def test_token_scope_outcomes(host, monkeypatch, capsys, result, expected, text):
+    host.results['protection'] = protected()
+    host.results['token_scopes'] = result
+    monkeypatch.setenv('GH_TOKEN', KEY)
+    assert main(['config', 'check']) == expected
+    assert text in capsys.readouterr().out
+
+
+def test_no_tokens_is_clean_without_a_scope_read(host, capsys):
+    host.results['protection'] = protected()
+    assert main(['config', 'check']) == 0
+    output = capsys.readouterr().out
+    assert 'GH_TOKEN: not set' in output and 'GITHUB_TOKEN: not set' in output
+    assert all(call[0] != 'token_scopes' for call in host.calls)
+
+
+def test_fresh_init_prints_publishing_layout_once(tmp_path, monkeypatch, capsys):
+    from wuwei.commands import init
+    monkeypatch.setattr(init, '_register_mcp', lambda root: 0)
+    assert main(['init', str(tmp_path)]) == 0
+    output = capsys.readouterr().out
+    assert 'default_branch' in output and 'GH_TOKEN' in output and 'wuwei config check' in output
+    assert main(['init', str(tmp_path), '--upgrade']) == 0
+    assert 'wuwei config check' not in capsys.readouterr().out

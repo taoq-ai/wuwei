@@ -199,3 +199,11 @@ def test_guard_boundaries_are_stated_once():
     for phrase in ('What a real day must prove', 'live rehearsal', 'unmeasured, never a pass'):
         assert phrase in testing, phrase
     assert 'design reconsideration recorded in its spec' in constitution and '#222' in constitution
+
+
+def test_config_check_host_and_credential_layout_are_documented():
+    page = (SITE / 'configuration.md').read_text()
+    section = page[page.index('### Host protections and seat credentials'):]
+    for text in ('Host protections', 'Seat credentials', '`ok`', '`missing`', '`unmeasured`',
+                 'exit 0', 'exit 1', 'exit 2', 'design 4.5', '9.1'):
+        assert text in section, text

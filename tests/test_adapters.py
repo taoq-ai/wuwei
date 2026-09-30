@@ -29,6 +29,7 @@ CALLS = [
     ('code_host', 'files', ('ref',), True),
     ('code_host', 'history', ('repo', 'start', 'branch', 'patches'), True),
     ('code_host', 'author_login', ('repo', 'email'), True),
+    ('code_host', 'token_scopes', ('variable',), True),
     ('code_host', 'create_pr', ('draft',), False),
     ('code_host', 'request_reviewers', ('ref', 'logins'), False),
     ('code_host', 'comment', ('ref', 'text', 'thread'), False),
