@@ -71,7 +71,7 @@ def test_fix_pass_then_only_quality_delta(root):
     assert dispatch.next_step('A', root)['roles'] == ['security']
     record(root, 'security', 'security-1', PASS)
     assert dispatch.next_step('A', root) == {'action': 'fix', 'roles': ['quality']}
-    state.transition('A', 'fix', root)
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
     state.transition('A', 'delta', root)
     assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality']}
     record(root, 'quality', 'quality-2', PASS + 'Simplicity: none\nDesign: none\n', 'delta')
@@ -89,7 +89,7 @@ def test_blocking_delta_escalates_and_bad_verdict_is_unmeasured(root):
         if role == 'quality':
             text += 'Simplicity: none\nDesign: none\n'
         record(root, role, role + '-1', text)
-    state.transition('A', 'fix', root)
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
     state.transition('A', 'delta', root)
     record(root, 'security', 'security-2', FIX, 'delta')
     assert dispatch.next_step('A', root)['action'] == 'escalate'
@@ -137,7 +137,7 @@ def test_delta_nonblocking_residual_becomes_review_note(root):
     record(root, 'arch', 'arch-1', PASS)
     record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
     record(root, 'security', 'security-1', PASS)
-    state.transition('A', 'fix', root)
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
     state.transition('A', 'delta', root)
     residual = FIX.replace('blocks: yes', 'blocks: no')
     record(root, 'quality', 'quality-2', residual + 'Simplicity: none\nDesign: none\n', 'delta')
@@ -155,7 +155,7 @@ def test_delta_refuses_role_that_already_passed(root):
     record(root, 'arch', 'arch-1', PASS)
     record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
     record(root, 'security', 'security-1', PASS)
-    state.transition('A', 'fix', root)
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
     state.transition('A', 'delta', root)
     with pytest.raises(dispatch.Refused, match='did not need a delta'):
         record(root, 'arch', 'arch-2', PASS, 'delta')
@@ -322,7 +322,7 @@ def test_agent_surface_delta_rescans_and_keeps_manual_findings(root, monkeypatch
     payload, calls, _ = agent_gate(root, monkeypatch)
     dispatch.receive('A', 'security', 'security', root=root)
     assert dispatch.next_step('A', root)['action'] == 'fix'
-    state.transition('A', 'fix', root)
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
     state.transition('A', 'delta', root)
     path = workspace.day_dir(root) / 'decisions/gate-security.md'
     path.write_text(FIX)
@@ -511,7 +511,7 @@ def test_continued_sentinel_delta_head_matches_seat_head(root):
     record(root, 'arch', 'arch-1', PASS)
     record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
     record(root, 'security', 'security-1', PASS)
-    state.transition('A', 'fix', root)
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
     state.transition('A', 'delta', root)
     state._write_state(lambda data: data['seats']['quality-1'].update(head='def5678' + '0' * 33),
                        root, reserved=False)
@@ -522,3 +522,38 @@ def test_continued_sentinel_delta_head_matches_seat_head(root):
         dispatch.receive('A', 'quality', 'quality-1', 'delta', root)
     verdict.write_text(delta.replace('abc1234', 'def5678'))
     assert dispatch.receive('A', 'quality', 'quality-1', 'delta', root)['head'] == 'def5678'
+
+
+def test_last_initial_fix_moves_gate_to_fix(root):
+    from wuwei import dispatch
+
+    record(root, 'arch', 'arch-1', PASS)
+    record(root, 'security', 'security-1', PASS)
+    record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
+    events = [json.loads(line) for line in
+              (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+    last = [row for row in events if row['kind'] == 'gate.received'][-1]
+    assert last['payload']['phase_changes'] == {'A': 'fix'}
+    assert dispatch.next_step('A', root) == {'action': 'fix', 'roles': ['quality']}
+
+
+def test_gate_stays_without_complete_fix_round(root):
+    from wuwei import dispatch
+
+    for role in ('arch', 'quality', 'security'):
+        record(root, role, role + '-1', PASS + ('Simplicity: none\nDesign: none\n' if role == 'quality' else ''))
+    assert state.read_state(root)['items']['A']['phase'] == 'gate'
+    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
+
+
+def test_fix_with_park_or_missing_gate_stays_in_gate(root):
+    from wuwei import dispatch
+
+    record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
+    record(root, 'arch', 'arch-1', PASS)
+    assert state.read_state(root)['items']['A']['phase'] == 'gate'
+    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['security']}
+    record(root, 'security', 'security-1', FIX.replace('Verdict: FIX', 'Verdict: PARK'))
+    assert state.read_state(root)['items']['A']['phase'] == 'gate'
+    assert dispatch.next_step('A', root)['action'] == 'escalate'

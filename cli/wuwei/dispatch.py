@@ -188,6 +188,11 @@ def receive(item, role, name, round_name='initial', root=None):
         if fresh['items'][item]['phase'] != data['items'][item]['phase'] or key in fresh['gate_verdicts']:
             raise Refused('gate state changed during receive')
         fresh['gate_verdicts'][key] = value
+        records = [_record(fresh, item, gate, round_name) for gate in ROLES]
+        if (round_name == 'initial' and all(records)
+                and any(record['verdict'] == 'FIX' for record in records)
+                and not any(record['verdict'] in ('PARK', 'ESCALATE') for record in records)):
+            state._move(fresh, item, 'fix')
 
     state._write_state(update, root, reserved=False, kind='gate.received',
                        payload={'item': item, 'role': role, 'round': round_name, 'verdict': result})

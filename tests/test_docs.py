@@ -34,7 +34,8 @@ def test_hero_variants_share_geometry_and_motion():
 
 
 def test_site_pages_and_links():
-    pages = ('index', 'concepts', 'configuration', 'adapters', 'charter-overrides', 'security', 'reference')
+    pages = ('index', 'concepts', 'configuration', 'adapters', 'charter-overrides', 'security', 'reference',
+             'rehearsal')
     index = (SITE / 'index.md').read_text()
     assert index.startswith('---\nlayout: default\n---\n')
     for page in pages[1:]:
@@ -45,6 +46,15 @@ def test_site_pages_and_links():
     assert '9.1' in (SITE / 'security.md').read_text()
     assert (ROOT / 'skills/wuwei-plan/SKILL.md').is_file()
     assert 'docs/site' in (ROOT / '.github/workflows/docs.yml').read_text()
+
+
+def test_release_rehearsal_page_is_runnable_alone():
+    page = (SITE / 'rehearsal.md').read_text()
+    for phrase in ('python3 scripts/headless_e2e.py --rehearsal', 'WUWEI_REHEARSAL_REPO', 'GH_TOKEN',
+                   'ANTHROPIC_API_KEY', '--local-login', 'decision outcome', 'unmeasured',
+                   'exit 2', 'before a release'):
+        assert phrase in page
+    assert 'credential skip' not in (ROOT / 'docs/headless-e2e.md').read_text()
 
 
 def test_operator_reference_covers_schema_and_companion():

@@ -164,6 +164,7 @@ lead_login = "lead"
         self.chat.post = lambda *args, root=None: self.chat._call('post', args, root)
         self.chat.sent = lambda *args, root=None: self.chat._call('sent', args, root)
         self.runtime = Runtime(self)
+        self.jobs = {}
 
         def check(path, command, root=None):
             assert Path(path) == self.repo and command == 'demo-check'
@@ -252,9 +253,6 @@ lead_login = "lead"
     def approve(self):
         self.run('plan', 'approve', '--items', 'A', '--goals-confirmed')
 
-    def transition(self, phase):
-        self.run('state', 'transition', 'A', phase)
-
     def next(self):
         return json.loads(self.run('dispatch', 'next', 'A'))
 
@@ -276,11 +274,11 @@ lead_login = "lead"
         if round_name == 'delta':
             # The delta round continues the same sentinel seat.
             name = f'{role}-initial'
-            self.run('runtime', 'continue', json.dumps({'id': name}), 'Check the delta')
+            self.run('runtime', 'continue', self.jobs[name], 'Check the delta')
         else:
             name = f'{role}-{round_name}'
             path = self.brief('sentinel-' + role, name)
-            self.run('runtime', 'dispatch', 'sentinel-' + role, self.root / path, self.repo)
+            self.jobs[name] = self.run('runtime', 'dispatch', 'sentinel-' + role, self.root / path, self.repo).strip()
         return self.run('dispatch', 'receive', 'A', role, name, '--round', round_name, expected=expected)
 
     def raise_pr(self, expected=0):

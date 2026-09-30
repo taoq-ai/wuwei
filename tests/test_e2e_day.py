@@ -31,7 +31,7 @@ def test_scripted_day(day):
         day.gate(role, 'FIX' if role == 'quality' else 'PASS')
     assert day.next() == {'action': 'fix', 'roles': ['quality']}
     day.raise_pr(expected=1)
-    day.transition('fix')
+    assert day.data['items']['A']['phase'] == 'fix'
     day.build('builder-fix')
     assert day.head != initial_head
     assert day.next() == {'action': 'gates', 'roles': ['quality']}

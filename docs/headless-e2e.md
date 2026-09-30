@@ -12,7 +12,8 @@ PATH, run:
 python3 scripts/headless_e2e.py
 ```
 
-This uses the exported API key or skips. To use your existing Claude login:
+This uses the exported API key; without one it prints
+`headless e2e unmeasured: ANTHROPIC_API_KEY is not set` and exits 2. To use your existing Claude login:
 
 ```sh
 claude auth login
@@ -51,7 +52,8 @@ refusal, then uses the real builder step loop and three real sentinel seats. It
 parks the unpublished item with a valid seat decision, requests close before the
 retro to exercise a blocking Stop, then compiles the retro and closes cleanly.
 No remote PR, tracker or chat action occurs. PR creation, a fix round and merge
-remain covered by `tests/test_e2e_day.py` with recorded adapters.
+remain covered by `tests/test_e2e_day.py` with recorded adapters, and live by the
+release rehearsal in `docs/site/rehearsal.md`.
 
 A temporary python3 shim observes the unmodified signed `bin/wuwei`: hook input,
 exit codes and CLI calls go into `headless-hooks.jsonl` in the scratch workspace.
@@ -59,8 +61,7 @@ The runner checks that log plus producer-written day events and state. Assistant
 prose is never completion evidence. This telemetry is a test oracle, not a new
 production trust record or an owner authorization mechanism.
 
-Exit 0 means measured success or an explicitly printed credential skip. Exit 1
-means recorded lifecycle evidence failed assertions. Exit 2 means unmeasured:
-missing tools, unreadable evidence, runtime errors, exhausted bounds or expired
-OAuth. An expired session prints `expired OAuth session; run claude auth login
+Exit 0 means measured success only. Exit 1 means recorded lifecycle evidence
+failed assertions. Exit 2 means unmeasured: a missing credential, missing tools,
+unreadable evidence, runtime errors, exhausted bounds or expired OAuth. An expired session prints `expired OAuth session; run claude auth login
 and retry`; it is never reported as a generic failed assertion or a clean run.

@@ -4,15 +4,24 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shlex
+import secrets
 import shutil
 import sys
 import tempfile
+import time
+import tomllib
 
 import headless_adapter as adapter
 
 ROOT = Path(__file__).resolve().parents[1]
 DAY = '2026-09-29'
+ERRORS = (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError)
+# ponytail: initial bounds (turns, USD, seconds) per rehearsal session; the owner
+# tunes them after measured runs.
+REHEARSAL = {'first': (150, 15, 1800), 'second': (40, 5, 600)}
+PLANNED = 'decision outcome D-1 (planned, host terminal)'
 
 
 def check_result(result):
@@ -31,6 +40,7 @@ def check_result(result):
         if 'invalid api key' in diagnostic or 'not logged in' in diagnostic:
             subtype = 'authentication failed; run claude auth login or set ANTHROPIC_API_KEY'
         raise RuntimeError(f'unmeasured: Claude {subtype}')
+    return data
 
 
 def validate(data, events, hooks):
@@ -103,15 +113,24 @@ def checked(argv, *, cwd, env, input=None):
     return result.stdout
 
 
-def prepare(scratch, *, local_login=False):
+def prepare(scratch, *, local_login=False, repo=None, url=None):
     home, root = scratch / 'home', scratch / 'workspace'
     home.mkdir(mode=0o700)
     root.mkdir()
     # Keep only tool lookup and credentials; inherited workspace, Git and Claude
     # settings must never pull the owner's projects into the fixture.
-    env = {key: os.environ[key] for key in ('PATH', 'ANTHROPIC_API_KEY') if key in os.environ}
+    env = {key: os.environ[key] for key in ('PATH', 'ANTHROPIC_API_KEY', 'GH_TOKEN')
+           if key in os.environ and (repo or key != 'GH_TOKEN')}
     env.update(HOME=str(home), WUWEI_WORKSPACE=str(root), WUWEI_NOW=DAY + 'T12:00:00Z',
                GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull)
+    if repo:
+        # The merge soak and code host timestamps need the real clock. Pushes and
+        # the code host authenticate through gh with GH_TOKEN only.
+        del env['WUWEI_NOW']
+        env['GIT_CONFIG_GLOBAL'] = str(home / '.gitconfig')
+        Path(env['GIT_CONFIG_GLOBAL']).write_text(
+            '[credential "https://github.com"]\n\thelper =\n\thelper = !gh auth git-credential\n'
+            '[user]\n\tname = WUWEI Rehearsal\n\temail = rehearsal@example.invalid\n')
     (home / '.claude').mkdir(mode=0o700)
     (home / '.claude.json').write_text(json.dumps({'hasCompletedOnboarding': True}))
     if local_login and not env.get('ANTHROPIC_API_KEY'):
@@ -146,6 +165,8 @@ def prepare(scratch, *, local_login=False):
     env['PATH'] = str(shim) + os.pathsep + env.get('PATH', os.defpath)
     cli = plugin / 'bin/wuwei'
     checked([cli, 'init', root], cwd=root, env=env)
+    if repo:
+        return rehearsal_fixture(root, plugin, env, repo, url or f'https://github.com/{repo}.git')
     # A local clone gives real HEAD/status evidence without creating a commit or
     # using a network service. No remote remains available to the model.
     checked(['git', 'clone', '--quiet', '--local', '--no-hardlinks', ROOT, root / 'repo'], cwd=root, env=env)
@@ -163,6 +184,13 @@ remote = "refs/heads"
 [adapters]
 code_host = "none"
 ''')
+    fixture_plan(root, 'repo/README.md', 'Verify README exists; no tracked edits')
+    decision = checked([cli, 'decision', 'template'], cwd=root, env=env)
+    (root / 'park.md').write_text(decision.replace('Outcome: pending', 'Outcome: parked A'))
+    return root, plugin, env
+
+
+def fixture_plan(root, evidence, scope):
     (root / '.wuwei/memory/goals.md').write_text('''# Goals
 ## G-1
 outcome: Verify the headless fixture
@@ -175,15 +203,45 @@ priority: 1
                 'seat_policy': {'builder': {'runtime': 'claude', 'model': 'sonnet'}},
                 'envelope': {'start': '09:00', 'end': '17:00', 'net_build_hours': 1},
                 'sweep': {'tracker': 'unmeasured: no remote fixture', 'processes': 'fixture only'},
-                'candidates': [{'id': 'A', 'goal': 'G-1', 'evidence': 'repo/README.md',
-                    'scope': 'Verify README exists; no tracked edits', 'overlap': 'none', 'track': 'SLICE',
+                'candidates': [{'id': 'A', 'goal': 'G-1', 'evidence': evidence,
+                    'scope': scope, 'overlap': 'none', 'track': 'SLICE',
                     'flags': {'trust_surface': False, 'boundary_relevant': False, 'agent_surface': False},
                     'score': {'value': 1, 'time_criticality': 1, 'risk_reduction': 1, 'job_size': 1},
                     'evidence_lines': {k: 'headless fixture' for k in
                                        ('value', 'time_criticality', 'risk_reduction', 'job_size')}}]}
     (root / 'proposal.json').write_text(json.dumps(proposal))
-    decision = checked([cli, 'decision', 'template'], cwd=root, env=env)
-    (root / 'park.md').write_text(decision.replace('Outcome: pending', 'Outcome: parked A'))
+
+
+def rehearsal_fixture(root, plugin, env, repo, url):
+    login = checked(['gh', 'api', 'user', '--jq', '.login'], cwd=root, env=env).strip()
+    checked(['git', 'clone', '--quiet', url, root / 'repo'], cwd=root, env=env)
+    base = checked(['git', '-C', root / 'repo', 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+                   cwd=root, env=env).strip().removeprefix('origin/')
+    # The builder brief never names this per-run line, so the first check fails
+    # and only the loop's continue feedback can carry it to the builder.
+    line = 'checked: ' + secrets.token_hex(4)
+    check = (f"grep -qx '{line}' REHEARSAL.md 2>/dev/null || "
+             f"{{ echo 'REHEARSAL.md must contain the line: {line}'; exit 1; }}")
+    (root / '.wuwei/config.toml').write_text(f'''[owner]
+handles = [{json.dumps(login)}]
+[host]
+free_memory_mb = 0
+[[repos]]
+name = {json.dumps(repo)}
+path = "repo"
+default_branch = {json.dumps(base)}
+merge_deploys = false
+fast_checks = [{json.dumps(check)}]
+[repos.merge]
+auto = true
+soak_minutes = 0
+[shepherd]
+min_reviewers = 0
+[adapters]
+code_host = "github"
+chat = "none"
+''')
+    fixture_plan(root, repo, 'Add REHEARSAL.md through one PR')
     return root, plugin, env
 
 
@@ -252,16 +310,211 @@ def exercise(*, local_login=False):
         return int(bool(findings))
 
 
+def rehearsal_prompt(plugin, stage, *, repo=None, base=None, pr=None):
+    cli = shlex.quote(str(plugin / 'bin/wuwei'))
+    if stage == 'second':
+        return f"""The owner has answered D-1 on the host terminal. Continue the same day.
+Use {cli} for every wuwei command, from the workspace root. Run merge {pr}. Then
+run pr state until it reports {pr} as merged, polling at most once a minute. Then
+run report, retro, close --check retro and close. Finish only after close
+succeeds. Never run state transition, state set or state recover, and never edit
+files under .wuwei directly. If a command refuses or fails, report it and stop.
+"""
+    return f"""Run this WUWEI release rehearsal day. Invoke Skill wuwei:wuwei-plan first.
+The fixture owner explicitly approves proposal.json, goals G-1, queue A, CAP 1,
+seat policy and envelope as supplied. Reuse the supplied proposal; do not launch
+discovery or ask interactive questions. Use {cli} for every wuwei command, always
+from the workspace root. Never run state transition, state set or state recover,
+and never edit files under .wuwei directly: the product moves every phase. If a
+command refuses unexpectedly, report it and stop. Follow these steps:
+1. Register your planner session as the skill says. Run mcp check, plan propose
+proposal.json and plan approve --items A --goals-confirmed.
+2. Run worktree add A. Write brief builder A builder --worktree <that worktree>
+--body "Add REHEARSAL.md with the line status: draft and commit it on the item
+branch. Follow any fast check feedback exactly and commit again."
+3. Run the build next A step loop exactly as the skill says until done: pass each
+launch prompt unchanged to Agent with its agent_type, execute each returned
+check, and continue the builder when build next says continue.
+4. Run dispatch next A and dispatch the three gates as the skill says, through
+runtime dispatch and Agent. The sentinel-quality brief body must carry this
+rehearsal rule: return FIX with one finding marked blocks: yes when REHEARSAL.md
+lacks the line reviewed: quality, else PASS. Receive each verdict with dispatch
+receive. Follow action fix and the delta round exactly as the skill says.
+5. When dispatch next A says raise, push the item branch to origin with git, write
+a short PR body file and run pr raise {repo} --base {base} --title "WUWEI
+rehearsal" --body-file <file> --item A.
+6. Write today's decisions/D-1.md from decision template: Question "Merge the
+rehearsal PR today or defer?", option A merge today, option B defer, Recommendation
+A, Reversibility: one-way, Decided-by: owner. Run decision route D-1. Then end your
+turn; if the Stop hook blocks for the pending decision, end your turn again.
+"""
+
+
+def session(plugin, root, env, stage, text, resume=None):
+    turns, budget, seconds = REHEARSAL[stage]
+    print(f'Rehearsal: Claude session {stage} ({turns} turns, USD {budget}, {seconds} seconds)', flush=True)
+    return check_result(adapter.run(adapter.claude_command(plugin, turns=turns, budget=budget, resume=resume),
+                                    cwd=root, env=env, input=text, timeout=seconds))
+
+
+def day_evidence(root):
+    day = max((root / '.wuwei/days').iterdir())
+    data = json.loads((day / 'state.json').read_text())
+    events = [json.loads(line) for line in (day / 'events.jsonl').read_text().splitlines()]
+    hooks = [json.loads(line) for line in (root / 'headless-hooks.jsonl').read_text().splitlines()]
+    return data, events, hooks
+
+
+def owner_decision(root, plugin, env, planned):
+    """The owner answers D-1 through the product's host terminal digest; no bypass."""
+    path = max((root / '.wuwei/days').iterdir()) / 'decisions/D-1.md'
+    if not path.is_file():
+        return 'decision D-1 was not written'
+    option = re.search(r'^Recommendation:\s*(\S+)', path.read_text(), re.M)
+    if not option:
+        return 'decision D-1 has no recommendation'
+    print(f'Rehearsal: confirm decision D-1 option {option[1]} on this terminal', flush=True)
+    planned.append(PLANNED)
+    # own_group=False keeps the controlling terminal that _host_confirm opens. PATH drops the
+    # observer shim: its 30s bound would kill the digest prompt; decision.decided records the answer.
+    result = adapter.run([plugin / 'bin/wuwei', 'decision', 'outcome', 'D-1', option[1]],
+                         cwd=root, env={**env, 'PATH': env['PATH'].split(os.pathsep, 1)[1]},
+                         timeout=600, own_group=False)
+    if result.returncode:
+        return f'decision outcome D-1 exited {result.returncode}: {result.stderr.strip()}'
+    return None
+
+
+def manual_repairs(hooks):
+    return ['manual repair: ' + ' '.join(map(str, h['args'])) for h in hooks
+            if h['event'] == 'cli' and h.get('args', [])[:2] in (
+                ['state', 'transition'], ['state', 'set'], ['state', 'recover'])]
+
+
+def rehearsal_findings(data, events, hooks):
+    """One finding per journey step the product did not record."""
+    findings = []
+    def require(condition, message):
+        if not condition:
+            findings.append(message)
+    require(any(h.get('args') == ['build', 'next', 'A'] and h['exit'] == 0
+                and (h.get('result') or {}).get('action') == 'continue' for h in hooks),
+            'failing check did not continue the builder')
+    gates = [(e['payload'].get('role'), e['payload'].get('round'), e['payload'].get('verdict'))
+             for e in events if e['kind'] == 'gate.received' and e['payload'].get('item') == 'A']
+    fixed = {role for role, round_name, result in gates if round_name == 'initial' and result == 'FIX'}
+    require(bool(fixed), 'no initial gate FIX')
+    require(any(role in fixed and round_name == 'delta' and result == 'PASS'
+                for role, round_name, result in gates), 'no delta PASS for the FIX gate')
+    kinds = [e['kind'] for e in events]
+    require('pr.raised' in kinds and len(data.get('raised_prs', [])) == 1, 'pr was not raised once')
+    require(any(e['kind'] == 'decision.decided' and e['payload'].get('id') == 'D-1' for e in events),
+            'owner decision D-1 was not recorded')
+    require('merge.auto' in kinds, 'merge policy did not merge')
+    require(data.get('items', {}).get('A', {}).get('phase') == 'merged', 'item A is not merged')
+    phases = [e['payload']['phase_changes']['A'] for e in events
+              if 'A' in e['payload'].get('phase_changes', {})]
+    require(phases == ['implement', 'gate', 'fix', 'delta', 'raised', 'merged'],
+            f'phase sequence was {phases}')
+    require(data.get('close_requested') is True, 'close was not requested')
+    seats = data.get('seats', {})
+    require(bool(seats) and all(s.get('status') == 'stopped' for s in seats.values()),
+            'seats are missing or still running')
+    return findings + manual_repairs(hooks)
+
+
+def measure(events, hooks, results, planned):
+    costs = [result.get('total_cost_usd') for result in results]
+    return {'interventions': [*planned, *manual_repairs(hooks)],
+            'refusals': [e['payload'].get('reason', '') for e in events if e['kind'] == 'hook.refusal']
+            + [f"wuwei {' '.join(map(str, h['args'][:2]))}: exit 2" for h in hooks
+               if h['event'] == 'cli' and h['exit'] == 2],
+            'cost_usd': None if not costs or None in costs else round(sum(costs), 4)}
+
+
+def host_terminal():
+    try:
+        with open('/dev/tty'):
+            return True
+    except OSError:
+        return False
+
+
+def preconditions(local_login):
+    """Return the first missing input as a reason, before any external call."""
+    if not os.environ.get('ANTHROPIC_API_KEY') and not local_login:
+        return 'ANTHROPIC_API_KEY is not set (or pass --local-login)'
+    if not re.fullmatch(r'[\w.-]+/[\w.-]+', os.environ.get('WUWEI_REHEARSAL_REPO', '')):
+        return 'WUWEI_REHEARSAL_REPO must name the test repository as owner/name'
+    if not os.environ.get('GH_TOKEN'):
+        return 'GH_TOKEN is not set'
+    if not host_terminal():
+        return 'no host terminal for the owner decision'
+    return None
+
+
+def report(verdict, fields, reason=None):
+    """Print the verdict line, findings and a last-line JSON result; return the exit code."""
+    cost = fields['cost_usd']
+    if reason:
+        fields['findings'] = [*fields['findings'], reason]
+    print(f"rehearsal {verdict}: " + (reason + '; ' if reason else '') + f"interventions {len(fields['interventions'])}, "
+          f"elapsed {fields['elapsed_seconds']}s, "
+          + ('cost unmeasured' if cost is None else f'cost USD {cost}')
+          + f", refusals {len(fields['refusals'])}")
+    for finding in fields['findings']:
+        print('rehearsal finding: ' + finding)
+    print(json.dumps({**fields, 'verdict': verdict}, sort_keys=True))
+    return {'pass': 0, 'fail': 1}.get(verdict, 2)
+
+
+def rehearse(*, local_login=False):
+    started = time.monotonic()
+    fields = {'interventions': [], 'cost_usd': None, 'refusals': [], 'findings': [], 'pr': None}
+    reason = preconditions(local_login)
+    if reason:
+        fields['elapsed_seconds'] = round(time.monotonic() - started)
+        return report('unmeasured', fields, reason)
+    repo = os.environ['WUWEI_REHEARSAL_REPO']
+    results, planned, findings = [], [], []
+    try:
+        with tempfile.TemporaryDirectory(prefix='wuwei-rehearsal-') as temporary:
+            root, plugin, env = prepare(Path(temporary), local_login=local_login, repo=repo)
+            config = tomllib.loads((root / '.wuwei/config.toml').read_text())
+            text = rehearsal_prompt(plugin, 'first', repo=repo, base=config['repos'][0]['default_branch'])
+            results.append(session(plugin, root, env, 'first', text))
+            failure = owner_decision(root, plugin, env, planned)
+            pr = (day_evidence(root)[0].get('raised_prs') or [None])[0]
+            if failure:
+                findings.append(failure)
+            elif pr:
+                results.append(session(plugin, root, env, 'second', rehearsal_prompt(plugin, 'second', pr=pr),
+                                       resume=results[0]['session_id']))
+            data, events, hooks = day_evidence(root)
+            fields.update(measure(events, hooks, results, planned), pr=pr,
+                          findings=findings + rehearsal_findings(data, events, hooks))
+    except ERRORS as exc:
+        fields.update(interventions=planned, findings=findings,
+                      elapsed_seconds=round(time.monotonic() - started))
+        return report('unmeasured', fields, str(exc).removeprefix('unmeasured: '))
+    fields['elapsed_seconds'] = round(time.monotonic() - started)
+    return report('fail' if fields['findings'] else 'pass', fields)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--local-login', action='store_true', help='Use local Claude login without an API key')
+    parser.add_argument('--rehearsal', action='store_true',
+                        help='Bounded live release rehearsal against WUWEI_REHEARSAL_REPO')
     args = parser.parse_args(argv)
+    if args.rehearsal:
+        return rehearse(local_login=args.local_login)
     if not os.environ.get('ANTHROPIC_API_KEY') and not args.local_login:
-        print('ANTHROPIC_API_KEY is not set; skipping headless e2e')
-        return 0
+        print('headless e2e unmeasured: ANTHROPIC_API_KEY is not set')
+        return 2
     try:
         return exercise(local_login=args.local_login)
-    except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError) as exc:
+    except ERRORS as exc:
         print('headless e2e unmeasured: ' + str(exc).removeprefix('unmeasured: '))
         return 2
 

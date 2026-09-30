@@ -30,12 +30,13 @@ def run(argv, *, cwd, env=None, input=None, timeout=30, own_group=True):
         raise RuntimeError(f'unmeasured: {Path(executable).name} could not run: {exc.strerror}') from exc
 
 
-def claude_command(plugin):
+def claude_command(plugin, *, turns=48, budget=3, resume=None):
     return ['claude', '-p', '--plugin-dir', str(plugin), '--model', 'sonnet',
-            '--max-turns', '48', '--max-budget-usd', '3', '--output-format', 'json',
+            '--max-turns', str(turns), '--max-budget-usd', str(budget), '--output-format', 'json',
             '--setting-sources', 'project', '--strict-mcp-config', '--mcp-config',
             '{"mcpServers":{}}', '--tools', 'Bash,Read,Write,Edit,Glob,Grep,Agent,Skill',
-            '--allowedTools', 'Bash,Read,Write,Edit,Glob,Grep,Agent,Skill']
+            '--allowedTools', 'Bash,Read,Write,Edit,Glob,Grep,Agent,Skill',
+            *(['--resume', resume] if resume else [])]
 
 
 def observe(python, log, argv):
