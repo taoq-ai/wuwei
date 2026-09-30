@@ -32,12 +32,13 @@ def poll(since, *, root=None):
             if row.get('bot_id') or row.get('app_id') or row.get('subtype'):
                 continue
             user, text, ts, thread = row.get('user'), row.get('text'), row.get('ts'), row.get('thread_ts', '')
-            if not (all(isinstance(value, str) for value in (user, text, ts, thread))
+            team = row.get('team', '')
+            if not (all(isinstance(value, str) for value in (user, text, ts, thread, team))
                     and user and TS.fullmatch(ts)):
                 raise Failure('invalid history message')
             if channel != dm and (user in owners or not any(
                     f'<@{owner}>' in text or f'<@{owner}|' in text for owner in owners)):
                 continue
             events.append({'id': f'{channel}/{ts}', 'source': 'slack', 'channel': channel,
-                           'thread': thread, 'sender': user, 'text': text, 'ts': ts})
+                           'thread': thread, 'sender': f'{team}/{user}', 'text': text, 'ts': ts})
     return sorted(events, key=lambda event: tuple(map(int, event['ts'].split('.'))))

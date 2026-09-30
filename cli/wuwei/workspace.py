@@ -128,7 +128,7 @@ SCHEMA = {
         ]],
     },
     "chat": {"identity": (str, "connector", ("connector", "custom_app"))},
-    "control_plane": {"content": (str, "summary", ("summary", "none"))},
+    "control_plane": {"content": (str, "summary", ("summary", "none")), "owner": (str, "")},
     "adapters": {"tracker": (str, "none"), "chat": (str, "none"),
                  "review_bot": (str, "none"), "runtime": (str, "claude"),
                  "scanner": (str, "none"), "code_host": (str, "github"),

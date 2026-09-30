@@ -77,9 +77,11 @@ def headless(prompt, session, tools, *, root=None):
     # Flags checked against the Claude Code CLI reference on 2026-09-30. The prompt goes on
     # stdin so the variadic --allowedTools cannot swallow it (scripts/headless_adapter.py).
     # --tools removes every other built-in tool, so a permissions.allow rule in user or
-    # project settings cannot widen the role. MCP tools are not built-ins: #66 scopes them.
+    # project settings cannot widen the role. MCP tools are not built-ins:
+    # --strict-mcp-config without --mcp-config loads no MCP server.
     argv = ['claude', '-p', '--output-format', 'json', '--permission-mode', 'dontAsk',
-            '--tools', ','.join(tools), '--allowedTools', ','.join(tools), *(['--resume', session] if session else [])]
+            '--tools', ','.join(tools), '--allowedTools', ','.join(tools), '--strict-mcp-config',
+            *(['--resume', session] if session else [])]
     try:
         process = subprocess.run(argv, input=prompt, cwd=str(workspace.find_workspace(root)),
                                  capture_output=True, text=True, env=env.child_environment(),

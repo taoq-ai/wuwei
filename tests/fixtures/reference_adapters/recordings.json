@@ -126,6 +126,7 @@
         {
           "type": "message",
           "user": "U1",
+          "team": "T1",
           "text": "<@U0OWNER> can you look at this",
           "ts": "1790769590.000300"
         },

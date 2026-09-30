@@ -425,3 +425,22 @@ def test_invalid_handled_count_fails(case, value):
     path.write_text('{"cursors": {}, "woken": 0, "handled": ' + value + '}\n')
     with pytest.raises(ValueError):
         listen().cursor(root)
+
+
+def test_issue_acceptance_stop_all_stops_every_session_in_one_tick(case, monkeypatch):
+    from wuwei import remote
+    root, source = case
+    config(root, '[control_plane]\nowner = "T1/U1"\n')
+    monkeypatch.setenv('SLACK_OWNER_DM_CHANNEL', 'D1')
+    sent = []
+    monkeypatch.setattr(remote.TRANSPORT, 'dm', lambda text, *, root=None: sent.append(text) or Result(0, {}))
+
+    def rows(data):
+        for session in ('S1', 'S2'):
+            data.setdefault('sessions', {})[session] = {'role': 'remote', 'thread': 'D1/0.1', 'command': 'plan'}
+    state._write_state(rows, root, reserved=False)
+    source.results.append(Result(0, [{**event('D1/1790769590.000100', '1790769590.000100', 'stop all'),
+                                      'sender': 'T1/U1'}]))
+    listen().tick(root)
+    assert all('stopped' in row for row in state.read_state(root)['sessions'].values())
+    assert sent == ['Stopped 2 sessions.'] and kinds(root, 'remote.pending') == []

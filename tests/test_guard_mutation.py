@@ -1,5 +1,7 @@
 """A registered guard must fail its own assertion when its check is disabled."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from wuwei.guards import discover
@@ -43,6 +45,8 @@ SPECIAL_TESTS = {
     ('wuwei.decision', 'lint'): 'test_disabling_decision_lint_makes_its_probe_red',
     ('wuwei.guards.deploy', 'check'): 'test_disabling_guard_makes_its_probe_red',
     ('wuwei.guards.protect_state', '_owner_action'): 'test_disabling_owner_rule_makes_its_probe_red',
+    **{('wuwei.remote', name): f'test_disabling_remote_{name}_makes_its_probe_red'
+       for name in ('sender', 'code_step', 'confirmation', 'memory_floor')},
 }
 
 
@@ -83,7 +87,8 @@ def test_special_policies_have_mutation_probes():
     required = {(merge.check.__module__, merge.check.__name__),
                 (decision.lint.__module__, decision.lint.__name__),
                 ('wuwei.guards.deploy', 'check'),
-                ('wuwei.guards.protect_state', '_owner_action')}
+                ('wuwei.guards.protect_state', '_owner_action'),
+                *(('wuwei.remote', name) for name in ('sender', 'code_step', 'confirmation', 'memory_floor'))}
     covered = {name for name, test in SPECIAL_TESTS.items() if callable(globals().get(test))}
     assert not missing_guards(required, covered), 'special policy lacks a mutation test'
     assert ('deploy', 'PreToolUse', 'Bash', 'check') in PROBES
@@ -181,3 +186,92 @@ def test_disabling_guard_makes_its_probe_red(tmp_path, monkeypatch, guard):
     disabled = guard._replace(check=lambda _: (0, ''))
     with pytest.raises(AssertionError):
         assert_probe(disabled.check, row, tmp_path, monkeypatch)
+
+
+@pytest.fixture
+def remote_case(tmp_path, monkeypatch):
+    from wuwei import remote, state
+    from wuwei.guards import agent_launch
+    from wuwei.registry import Result
+    (tmp_path / '.wuwei/memory/notes').mkdir(parents=True)
+    (tmp_path / '.wuwei/memory/spine.md').write_text('Memory spine\n')
+    (tmp_path / '.wuwei/memory/index.md').write_text('Index\n')
+    (tmp_path / '.wuwei/config.toml').write_text('[control_plane]\nowner = "T1/U1"\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:00:00+00:00')
+    monkeypatch.setenv('SLACK_OWNER_DM_CHANNEL', 'D1')
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda config, root: 2**40)
+    state._write_state(lambda data: None, tmp_path, reserved=False)
+    sent, calls = [], []
+    transport = SimpleNamespace(dm=lambda text, *, root=None: sent.append(text) or Result(0, {}))
+
+    def headless(prompt, session, tools, *, root=None):
+        calls.append(prompt)
+        return Result(0, {'session_id': '0f8fad5b-d9cb-469f-a165-70867728950e', 'result': '',
+                          'denials': []})
+    runtime = SimpleNamespace(headless=headless)
+
+    def handle(text, ident='D1/1790769590.000100', sender='T1/U1'):
+        sent.clear()
+        return remote.handle(tmp_path, {'id': ident, 'source': 'slack', 'channel': 'D1', 'thread': '',
+                                        'sender': sender, 'text': text, 'ts': ident[3:]},
+                             transport=transport, runtime=runtime)
+    return SimpleNamespace(root=tmp_path, handle=handle, sent=sent, calls=calls, transport=transport,
+                           runtime=runtime, remote=remote)
+
+
+def test_disabling_remote_sender_makes_its_probe_red(remote_case, monkeypatch):
+    case = remote_case
+
+    def assert_refused():
+        assert case.handle('plan today', sender='T9/U1') == 1 and case.sent == [case.remote.CHANGED]
+
+    assert_refused()
+    monkeypatch.setattr(case.remote, 'sender', lambda *args: 'owner')
+    with pytest.raises(AssertionError):
+        assert_refused()
+
+
+def test_disabling_remote_code_step_makes_its_probe_red(remote_case, monkeypatch):
+    case = remote_case
+
+    def assert_refused():
+        assert case.handle('plan today') == 1 and case.calls == []
+
+    assert_refused()
+    monkeypatch.setattr(case.remote, 'code_step', lambda *args: 1)
+    with pytest.raises(AssertionError):
+        assert_refused()
+
+
+def test_disabling_remote_confirmation_makes_its_probe_red(remote_case, monkeypatch):
+    from wuwei import inbox, workspace
+    case = remote_case
+    line = {'id': 'D1/1790769590.000100', 'source': 'slack', 'channel': 'D1', 'thread': '',
+            'sender': 'T1/U1', 'text': 'plan today', 'ts': '1790769590.000100'}
+    inbox.store(case.root, workspace.load_config(case.root), [line])
+    case.handle('plan today')
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:02:01+00:00')
+
+    def assert_refused():
+        assert case.handle('confirm', 'D1/1790769720.000100') == 1 and case.sent == [case.remote.NOTHING]
+
+    assert_refused()
+    monkeypatch.setattr(case.remote, 'confirmation', lambda *args: line)
+    with pytest.raises(AssertionError):
+        assert_refused()
+
+
+def test_disabling_remote_memory_floor_makes_its_probe_red(remote_case, monkeypatch):
+    from wuwei.guards import agent_launch
+    case = remote_case
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda config, root: 1)
+
+    def assert_refused():
+        assert case.remote.start(case.root, 'plan', 'D1/1.000001', 'p', transport=case.transport,
+                                 runtime=case.runtime) == 1 and case.calls == []
+
+    assert_refused()
+    monkeypatch.setattr(case.remote, 'memory_floor', lambda *args: True)
+    with pytest.raises(AssertionError):
+        assert_refused()

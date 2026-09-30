@@ -11,7 +11,7 @@ from wuwei import redact, workspace
 
 CREDENTIALS = ('LINEAR_API_KEY', 'SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN',
                'SLACK_OWNER_DM_CHANNEL', 'GREPTILE_API_KEY', 'WUWEI_CALENDAR_URL',
-               'GH_TOKEN', 'GITHUB_TOKEN')
+               'GH_TOKEN', 'GITHUB_TOKEN', 'WUWEI_TOTP_SECRET')
 _loaded = set()
 _shadowed = set()  # .wuwei/env names whose value the process environment overrides
 

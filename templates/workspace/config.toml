@@ -67,6 +67,7 @@ timeout_seconds = 300
 
 [control_plane]
 content = "summary" # summary or none; what a messaging transport sends about decisions.
+owner = "" # <team id>/<user id> pinned for commands from the owner DM; empty handles none.
 
 [adapters]
 tracker = "none"

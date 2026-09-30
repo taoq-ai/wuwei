@@ -307,7 +307,9 @@ def test_emitted_kinds_have_intended_tiers():
                 'steward.acknowledged': 'silent', 'inbox.redacted': 'silent',
                 'listen: clock': 'silent', 'listen: wake': 'silent',
                 'remote.pending': 'silent', 'remote.started': 'silent',
-                'remote.resumed': 'silent', 'remote.stopped': 'silent'}
+                'remote.resumed': 'silent', 'remote.stopped': 'silent',
+                'remote.ignored': 'silent', 'remote.refused': 'page',
+                'remote.confirmed': 'silent'}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier

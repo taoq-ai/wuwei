@@ -15,7 +15,8 @@ SILENT = ('item.progress', 'state.write', 'state.set', 'state.transition',
           'seat.usage', 'build.iteration', 'build.fix_opened', 'pr.action.done',
           'pr.reply.drafted', 'pr.action.decision',
           'watch: clock', 'listen: clock', 'listen: wake', 'remote.pending', 'remote.started',
-          'remote.resumed', 'remote.stopped', 'watch: heartbeat', 'watch: observation', 'session: compact',
+          'remote.resumed', 'remote.stopped', 'remote.ignored',
+          'remote.confirmed', 'watch: heartbeat', 'watch: observation', 'session: compact',
           'session: wake-seen', 'plan.session', 'pr.disposition', 'day.close_requested',
           'gate.received', 'discovery.requested', 'discovery.intake',
           'plan.added', 'steward.run', 'steward.acknowledged', 'plan.approved', 'state.import',
@@ -53,7 +54,7 @@ def classify(event, state):
         blocking = any(isinstance(seat, dict) and seat.get('item') == payload.get('item')
                        and seat.get('status') == 'running' for seat in seats.values())
         return ('page' if blocking else 'nudge'), lane
-    if kind in ('day.blocked', 'security.finding', 'security.canary', 'security.honeytoken', 'scanner.finding', 'base.red', 'merge.breaker', 'dead_man.hit', 'budget.cap'):
+    if kind in ('day.blocked', 'security.finding', 'security.canary', 'security.honeytoken', 'scanner.finding', 'base.red', 'merge.breaker', 'dead_man.hit', 'budget.cap', 'remote.refused'):
         return 'page', lane
     if kind == 'decision.one_way':
         return ('page' if payload.get('blocking') is True else 'nudge'), lane
