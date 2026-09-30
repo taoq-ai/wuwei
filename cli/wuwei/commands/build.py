@@ -101,8 +101,7 @@ def _save(item, record, root, kind, expected):
 
 def next_action(item, brief=None, worktree=None, *, root=None):
     """Return one stable action. Executing it belongs to the caller."""
-    from wuwei.brief import identifier, launch_prompt
-    from wuwei.security import agent_path
+    from wuwei.brief import events, identifier, seat_action
     root = workspace.find_workspace(root)
     identifier(item)
     data = state.read_state(root)
@@ -113,11 +112,7 @@ def next_action(item, brief=None, worktree=None, *, root=None):
         raise ValueError('builder is still running; call build next after its stop hook')
     config = workspace.load_config(root)
     if brief is None:
-        rows = [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
-        if any(not isinstance(row, dict) or not isinstance(row.get('payload'), dict)
-               or not isinstance(row.get('kind'), str) for row in rows):
-            raise ValueError('invalid build event record')
-        matches = [row['payload'] for row in rows if row['kind'] == 'brief written'
+        matches = [row['payload'] for row in events(root) if row['kind'] == 'brief written'
                    and row['payload'].get('item') == item and row['payload'].get('role') == 'builder']
         if not matches:
             raise ValueError('no logged builder brief for item')
@@ -135,14 +130,10 @@ def next_action(item, brief=None, worktree=None, *, root=None):
         if data['items'][item]['phase'] in ('parked', 'escalated'):
             raise ValueError('resume the parked item before starting a new build')
     repo = _repo(root, tree, config)
-    runtime_name = registry.runtime_config('builder', config, root)['adapters']['runtime']
-    action = {'action': 'launch', 'brief': str(path), 'worktree': str(tree),
-              'runtime': runtime_name,
-              'agent_type': 'wuwei:builder',
-              'prompt': launch_prompt(path, agent_path(root, 'builder'), root=root)}
+    action = seat_action('builder', path, tree, root)
     previous = record
     record = {'brief': str(path.relative_to(root)), 'worktree': str(tree),
-              'runtime': runtime_name, 'repo': repo['name'],
+              'runtime': action['runtime'], 'repo': repo['name'],
               'commands': repo['fast_checks'], 'iteration': 0, 'repeats': 0,
               'signature': None, 'status': 'ready', 'action': action}
     _save(item, record, root, 'build.started', previous)
@@ -155,7 +146,7 @@ def next_action(item, brief=None, worktree=None, *, root=None):
 
 
 def open_fix(item, feedback, *, root):
-    """Resume the linked builder once with measured PR feedback."""
+    """Resume the linked builder once with measured gate or PR feedback."""
     from wuwei.brief import launch_prompt
     from wuwei.security import agent_path
     if not isinstance(feedback, str) or not feedback.strip():
@@ -177,16 +168,17 @@ def open_fix(item, feedback, *, root):
         raise ValueError('fix round needs a completed or ready build')
     if record.get('fix_rounds', 0) >= 1:
         raise ValueError('fix round budget exhausted')
-    if data['items'][item]['phase'] != 'raised':
-        raise ValueError('fix round needs a raised item')
+    phase = data['items'][item]['phase']
+    if phase not in ('gate', 'raised'):
+        raise ValueError('fix round needs a gated or raised item')
     brief = root / record['brief']
     resume = record.get('agent_id') or record.get('job')
     if not resume and (record['status'] == 'done' or record['runtime'] == 'codex'):
         from wuwei import brief as brief_writer
-        body = f'Read the original builder brief {record["brief"]}.\n\nPR fix feedback:\n{feedback}'
-        relative = brief_writer.write('builder', item, f'{item}-pr-fix', body,
+        body = f'Read the original builder brief {record["brief"]}.\n\nFix feedback:\n{feedback}'
+        relative = brief_writer.write('builder', item, f'{item}-{"gate" if phase == "gate" else "pr"}-fix', body,
                                       worktree=record['worktree'],
-                                      pr=data['items'][item]['pr'], root=root)
+                                      pr=data['items'][item].get('pr'), root=root)
         brief = root / relative
     prompt = launch_prompt(brief, agent_path(root, 'builder'), root=root) + '\n\n' + feedback
     action = {'action': 'continue' if resume else 'launch',

@@ -8,7 +8,7 @@ layout: default
 
 ## Roles
 
-The shipped charters define planner, lead, builder, shepherd, steward, and four sentinels: goal, architecture, quality and security. Generated agent files in `agents/` carry the charters and tool allowlists. The planner owns the day, the lead shapes work, builders implement, sentinels check, the shepherd follows pull requests and the steward maintains procedure. **Planned:** `/wuwei plan` orchestration and its morning gate.
+The shipped charters define planner, lead, builder, shepherd, steward, and four sentinels: goal, architecture, quality and security. Generated agent files in `agents/` carry the charters and tool allowlists. The planner owns the day, the lead shapes work, builders implement, sentinels check, the shepherd follows pull requests and the steward maintains procedure. `/wuwei plan` runs the day, starting with the owner's morning gate; see the [daily path](daily.html).
 
 ## Guards
 
@@ -16,25 +16,7 @@ Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse 
 
 ## Seat launch contract
 
-Write and log a brief with `wuwei brief <role> <item> <name> --body TEXT` (or
-`--file PATH`, where `--file -` reads stdin), then obtain launch
-instructions with `wuwei runtime dispatch <role> <brief> <worktree>`. With the Claude
-runtime, pass the returned `prompt` unchanged to Agent and use its `agent_type`
-(`wuwei:<role>`) as Agent's `subagent_type`. Supply an Agent description and launch
-from the workspace root, which is the hook payload's `cwd`.
-
-The exact first line is `WUWEI brief: <relative brief path>`. The path is relative
-to the workspace root, for example `.wuwei/days/2026-09-29/briefs/builder-1.md`,
-not relative to the item's worktree. Do not prepend instructions to the prompt.
-The guard still requires the logged, unchanged brief and matching role, fresh
-evidence and available capacity; a missing first line is refused with the required format.
-
-The core function `wuwei.brief.launch_prompt` generates these instructions for all
-Claude roles. `wuwei runtime continue <job-json> <feedback>` preserves the reference
-and includes feedback for the same seat. It does not authorize a second launch
-with a consumed brief. `wuwei steward run --trigger close` returns the same contract
-inside `steward_launch`, through the configured runtime adapter. Use these generated
-instructions for lead, builder, sentinel, shepherd and steward seats.
+The planner launches every seat from the actions `build next` and `dispatch next` return; see the [daily path](daily.html). The low-level launch contract is on the [recovery](recovery.html#seat-launch-contract) page.
 
 Commit and push guards follow the target repository even when the session starts
 elsewhere. This includes `git -C`, `--git-dir`, `--work-tree`, repository environment
@@ -55,7 +37,7 @@ Some commands are the owner's alone: `wuwei decision outcome`, `wuwei state reco
 
 ## Day flow
 
-Plan, Build, Review, Close is the intended flow. Today's CLI supports individual guard, state and memory operations. **Planned:** the skill that runs the full day from `/wuwei plan`.
+Plan, Build, Review, Close. `/wuwei plan` runs the morning gate, then the planner loops `build next` and `dispatch next` for each approved item, raises the PR and closes the day; phases move by themselves. The [daily path](daily.html) is the owner's walkthrough and the [recovery](recovery.html) page covers the rest.
 
 ## PR ownership
 

@@ -18,6 +18,24 @@ def launch_prompt(brief_path, charter, *, root=None):
     return f'{REFERENCE_PREFIX}{relative}\nRead instructions {charter} and brief {relative}.'
 
 
+def seat_action(role, brief_path, worktree, root):
+    """The launch action every Claude seat caller hands to the planner."""
+    config = workspace.load_config(root)
+    return {'action': 'launch', 'brief': str(brief_path), 'worktree': str(worktree),
+            'runtime': registry.runtime_config(role, config, root)['adapters']['runtime'],
+            'agent_type': 'wuwei:' + role,
+            'prompt': launch_prompt(brief_path, security.agent_path(root, role), root=root)}
+
+
+def events(root):
+    """Today's event rows, refused when any row is malformed."""
+    rows = [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+    if any(not isinstance(row, dict) or not isinstance(row.get('payload'), dict)
+           or not isinstance(row.get('kind'), str) for row in rows):
+        raise ValueError('invalid build event record')
+    return rows
+
+
 class Refused(ValueError):
     """A measured policy finding, exit 1."""
 

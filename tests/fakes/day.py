@@ -58,8 +58,10 @@ class Runtime:
         else:
             assert role == 'steward'
         transcript = day.root / (path.stem + '.jsonl')
-        transcript.write_text(json.dumps({'type': 'user', 'message': {'content': prompt}}) + '\n'
-                              + json.dumps({'type': 'assistant', 'message': {'content': RETRO}}) + '\n')
+        # A resumed Agent appends its new turn to the same transcript.
+        with transcript.open('a' if resume else 'w') as lines:
+            lines.write(json.dumps({'type': 'user', 'message': {'content': prompt}}) + '\n'
+                        + json.dumps({'type': 'assistant', 'message': {'content': RETRO}}) + '\n')
         day.hook('SubagentStop', agent_type=role, agent_id=path.stem,
                  agent_transcript_path=str(transcript), last_assistant_message=RETRO)
         assert day.data['seats'][path.stem]['status'] == 'stopped'
@@ -82,6 +84,7 @@ class Day:
 
     def __init__(self, root, monkeypatch, solo=False):
         self.root, self.patch = root, monkeypatch
+        self.calls = []
         root.mkdir()
         monkeypatch.chdir(root)
         monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
@@ -208,6 +211,7 @@ lead_login = "lead"
 
     def bash(self, args, expected=0):
         # The planner's call as a PreToolUse Bash payload through the plugin's own launcher.
+        self.calls.append(tuple(map(str, args)))
         command = shlex.join([str(LAUNCHER), *map(str, args)])
         return self.hook('PreToolUse', expected, tool_name='Bash', tool_input={'command': command})
 
@@ -252,9 +256,6 @@ lead_login = "lead"
     def approve(self):
         self.run('plan', 'approve', '--items', 'A', '--goals-confirmed')
 
-    def transition(self, phase):
-        self.run('state', 'transition', 'A', phase)
-
     def next(self):
         return json.loads(self.run('dispatch', 'next', 'A'))
 
@@ -262,26 +263,40 @@ lead_login = "lead"
         return self.run('brief', role, 'A', name, '--worktree', self.repo, '--file', '-',
                         stdin='Implement or review the demo value.').strip()
 
+    def execute(self, action):
+        # The planner hands a returned launch or continue action to Agent unchanged.
+        assert action['action'] in ('launch', 'continue'), action
+        self.runtime.dispatch(action['agent_type'].removeprefix('wuwei:'), action['brief'],
+                              action['worktree'], False, root=self.root, resume=action.get('resume'))
+
     def build(self, name):
-        path = self.brief('builder', name)
+        self.brief('builder', name)
         action = json.loads(self.run('build', 'next', 'A'))
         assert action['action'] == 'launch'
-        self.runtime.dispatch('builder', action['brief'], action['worktree'], True, root=self.root)
+        self.steps(action)
+
+    def fix(self):
+        result = self.next()
+        assert result['action'] == 'fix' and self.data['items']['A']['phase'] == 'fix', result
+        action = json.loads(self.run(*shlex.split(result['command'])[1:]))
+        assert action['action'] == 'continue'
+        self.steps(action)
+
+    def steps(self, action):
+        self.execute(action)
         assert json.loads(self.run('build', 'next', 'A'))['action'] == 'check'
         self.run('build', 'check', 'A')
         assert json.loads(self.run('build', 'next', 'A'))['action'] == 'done'
 
     def gate(self, role, verdict, round_name='initial', expected=0):
         self.runtime.verdict = verdict
-        if round_name == 'delta':
-            # The delta round continues the same sentinel seat.
-            name = f'{role}-initial'
-            self.run('runtime', 'continue', json.dumps({'id': name}), 'Check the delta')
-        else:
-            name = f'{role}-{round_name}'
-            path = self.brief('sentinel-' + role, name)
-            self.run('runtime', 'dispatch', 'sentinel-' + role, self.root / path, self.repo)
-        return self.run('dispatch', 'receive', 'A', role, name, '--round', round_name, expected=expected)
+        if round_name == 'initial':
+            self.brief(role, f'{role}-initial')
+        # The delta round continues the same sentinel seat from its `continue` action.
+        [action] = [row for row in self.next()['seats'] if row['agent_type'] == 'wuwei:sentinel-' + role]
+        assert action['action'] == ('launch' if round_name == 'initial' else 'continue'), action
+        self.execute(action)
+        return self.run(*shlex.split(action['receive'])[1:], expected=expected)
 
     def raise_pr(self, expected=0):
         self.host.results['pr'].data.update(head=self.head, requested_reviewers=['reviewer', 'lead'])

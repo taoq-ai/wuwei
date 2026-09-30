@@ -122,8 +122,11 @@ def test_thread_fix_request_opens_fix_round(case, capsys):
     assert 'Please fix the parser' in json.loads(capsys.readouterr().out)['prompt']
 
 
-def test_observed_merge_moves_raised_to_merged(case, monkeypatch, capsys):
+@pytest.mark.parametrize('phase', ['raised', 'fix', 'delta'])
+def test_observed_merge_moves_raised_to_merged(case, monkeypatch, capsys, phase):
     root, host, _, _ = linked(case)
+    for step in ('fix', 'delta')[:('raised', 'fix', 'delta').index(phase)]:
+        state.transition('A', step, root)
     keys = ('escaped_defects', 'review_rework', 'owner_intervention', 'lead_time')
     monkeypatch.setattr('wuwei.metrics.collect', lambda root: {
         **dict.fromkeys(keys, 0), 'baseline': dict.fromkeys(keys, 0)})
@@ -135,17 +138,25 @@ def test_observed_merge_moves_raised_to_merged(case, monkeypatch, capsys):
     assert event['payload']['phase_changes'] == {'A': 'merged'}
     capsys.readouterr()
     monkeypatch.chdir(root)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     assert main(['report']) == 0
     merged = capsys.readouterr().out.split('## Merged\n', 1)[1].split('\n\n', 1)[0]
     assert merged == f'- A ({REF})'
+    assert main(['status', '--line']) == 0
+    line = capsys.readouterr().out
+    assert 'merged 1/' in line and phase not in line
 
 
-def test_observed_merge_leaves_other_phases(case, capsys):
+@pytest.mark.parametrize('phase', ['delta', 'parked'])
+def test_unmerged_or_paused_items_keep_their_phase(case, capsys, phase):
     root, host, _, _ = linked(case)
-    state.transition('A', 'fix', root)
-    host.results['pr'].data.update(state='closed', merged=True)
+    state.transition('A', 'fix' if phase == 'delta' else phase, root)
+    if phase == 'delta':
+        state.transition('A', 'delta', root)
+    else:
+        host.results['pr'].data.update(state='closed', merged=True)
     assert main(['pr', 'state']) != 2
-    assert state.read_state(root)['items']['A']['phase'] == 'fix'
+    assert state.read_state(root)['items']['A']['phase'] == phase
 
 
 def test_scope_disagreement_creates_decision(case, capsys):

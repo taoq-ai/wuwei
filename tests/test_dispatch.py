@@ -31,7 +31,7 @@ def root(tmp_path, monkeypatch):
 def test_gate_dispatch_and_live_builder_refusal(root):
     from wuwei import dispatch
 
-    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['arch', 'quality', 'security']}
+    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': []}
     state._write_state(lambda data: data['seats'].update(builder={
         'item': 'A', 'role': 'builder', 'status': 'running'}), root, reserved=False)
     with pytest.raises(dispatch.Refused, match='builder'):
@@ -61,19 +61,29 @@ def record(root, role, name, text, round_name='initial'):
     dispatch.receive('A', role, name, round_name, root)
 
 
+def built(root):
+    from test_pr_actions import completed_build
+    tree = root / 'tree'
+    tree.mkdir(exist_ok=True)
+    completed_build(root, tree)
+    state._write_state(lambda data: data['items']['A'].update(worktree=str(tree)), root, reserved=False)
+    return tree
+
+
 def test_fix_pass_then_only_quality_delta(root):
     from wuwei import dispatch
 
+    built(root)
     record(root, 'arch', 'arch-1', PASS)
     record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
     with pytest.raises(dispatch.Refused, match='already received'):
         record(root, 'quality', 'quality-again', FIX + 'Simplicity: none\nDesign: none\n')
     assert dispatch.next_step('A', root)['roles'] == ['security']
     record(root, 'security', 'security-1', PASS)
-    assert dispatch.next_step('A', root) == {'action': 'fix', 'roles': ['quality']}
-    state.transition('A', 'fix', root)
+    assert dispatch.next_step('A', root) == {
+        'action': 'fix', 'roles': ['quality'], 'command': 'wuwei build next A'}
     state.transition('A', 'delta', root)
-    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality']}
+    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality'], 'seats': []}
     record(root, 'quality', 'quality-2', PASS + 'Simplicity: none\nDesign: none\n', 'delta')
     assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
     state.transition('A', 'fix', root)
@@ -317,12 +327,12 @@ def test_agent_surface_scanner_verdict(root, monkeypatch, findings, threshold, t
 def test_agent_surface_delta_rescans_and_keeps_manual_findings(root, monkeypatch):
     from wuwei import dispatch
 
+    built(root)
     record(root, 'arch', 'arch', PASS)
     record(root, 'quality', 'quality', PASS + 'Simplicity: none\nDesign: none\n')
     payload, calls, _ = agent_gate(root, monkeypatch)
     dispatch.receive('A', 'security', 'security', root=root)
     assert dispatch.next_step('A', root)['action'] == 'fix'
-    state.transition('A', 'fix', root)
     state.transition('A', 'delta', root)
     path = workspace.day_dir(root) / 'decisions/gate-security.md'
     path.write_text(FIX)
@@ -522,3 +532,112 @@ def test_continued_sentinel_delta_head_matches_seat_head(root):
         dispatch.receive('A', 'quality', 'quality-1', 'delta', root)
     verdict.write_text(delta.replace('abc1234', 'def5678'))
     assert dispatch.receive('A', 'quality', 'quality-1', 'delta', root)['head'] == 'def5678'
+
+
+def gate_fix(root):
+    record(root, 'arch', 'arch-1', PASS)
+    record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
+    record(root, 'security', 'security-1', PASS)
+
+
+def test_gate_fix_opens_the_builder_round(root):
+    from wuwei import dispatch
+
+    built(root)
+    gate_fix(root)
+    expected = {'action': 'fix', 'roles': ['quality'], 'command': 'wuwei build next A'}
+    assert dispatch.next_step('A', root) == expected
+    data = state.read_state(root)
+    assert data['items']['A']['phase'] == 'fix'
+    action = data['builds']['A']['action']
+    assert action['action'] == 'continue' and action['resume'] == 'old-builder'
+    verdict = str((workspace.day_dir(root) / 'decisions/gate-quality-1.md').relative_to(root))
+    assert verdict in action['feedback'] and action['prompt'].endswith(action['feedback'])
+    event = json.loads((workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()[-1])
+    assert event['kind'] == 'build.fix_opened' and event['payload']['phase_changes'] == {'A': 'fix'}
+    size = len((workspace.day_dir(root) / 'events.jsonl').read_text().splitlines())
+    assert dispatch.next_step('A', root) == expected
+    assert len((workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()) == size
+
+
+def test_gate_fix_without_build_fails_closed(root, monkeypatch, capsys):
+    from wuwei.__main__ import main
+
+    gate_fix(root)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    assert main(['dispatch', 'next', 'A']) == 2
+    assert capsys.readouterr().err
+    assert state.read_state(root)['items']['A']['phase'] == 'gate'
+
+
+def test_gate_fix_without_agent_id_launches_gate_fix_brief(root, monkeypatch):
+    from wuwei import dispatch
+
+    built(root)
+    gate_fix(root)
+    state._write_state(lambda data: data['builds']['A'].pop('agent_id'), root, reserved=False)
+    names = []
+
+    def write(role, item, name, body, **kwargs):
+        names.append(name)
+        path = workspace.day_dir(root) / 'briefs' / (name + '.md')
+        path.write_text(body)
+        return str(path.relative_to(root))
+    monkeypatch.setattr('wuwei.brief.write', write)
+    assert dispatch.next_step('A', root)['action'] == 'fix'
+    assert names == ['A-gate-fix']
+    assert state.read_state(root)['builds']['A']['action']['action'] == 'launch'
+
+
+def logged_gate_brief(root, role, name, tree):
+    directory = workspace.day_dir(root)
+    (directory / 'briefs').mkdir(exist_ok=True)
+    path = directory / 'briefs' / f'{name}.md'
+    path.write_text('Head: abc1234\n')
+    state._write_state(lambda data: None, root, reserved=False, kind='brief written', payload={
+        'name': name, 'item': 'A', 'role': 'sentinel-' + role, 'path': str(path.relative_to(root)),
+        'gate': True, 'worktree': str(tree)})
+    return path
+
+
+def test_logged_gate_brief_becomes_launch_action(root):
+    from wuwei import brief, dispatch
+
+    tree = built(root)
+    path = logged_gate_brief(root, 'arch', 'arch-1', tree)
+    action = {**brief.seat_action('sentinel-arch', path, tree, root),
+              'receive': 'wuwei dispatch receive A arch arch-1'}
+    assert action['agent_type'] == 'wuwei:sentinel-arch'
+    assert dispatch.next_step('A', root) == {
+        'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': [action]}
+    state._write_state(lambda data: data['seats'].update({'arch-1': {
+        'item': 'A', 'role': 'sentinel-arch', 'status': 'running'}}), root, reserved=False)
+    assert dispatch.next_step('A', root)['seats'] == []
+
+
+def test_delta_offers_one_continuation_of_the_stopped_seat(root):
+    from wuwei import brief, dispatch
+
+    tree = built(root)
+    gate_fix(root)
+    state._write_state(lambda data: data['seats']['quality-1'].update(
+        agent_id='agent-quality-1', head='abc1234' + '0' * 33), root, reserved=False)
+    dispatch.next_step('A', root)
+    state.transition('A', 'delta', root)
+    outcome = dispatch.next_step('A', root)
+    assert outcome['roles'] == ['quality']
+    [action] = outcome['seats']
+    seat_brief = workspace.day_dir(root) / 'briefs/quality-1.md'
+    launch = brief.seat_action('sentinel-quality', seat_brief, tree, root)
+    assert action['action'] == 'continue' and action['resume'] == 'agent-quality-1'
+    assert action['agent_type'] == 'wuwei:sentinel-quality'
+    assert action['prompt'] == launch['prompt'] + '\n\n' + action['feedback']
+    assert 'abc1234' in action['feedback'] and 'gate-quality-1.md' in action['feedback']
+    assert action['receive'] == 'wuwei dispatch receive A quality quality-1 --round delta'
+    state._write_state(lambda data: data['seats']['quality-1'].update(head='def5678'),
+                       root, reserved=False)
+    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality'], 'seats': []}
+    state._write_state(lambda data: data['seats']['quality-1'].update(head='abc1234'),
+                       root, reserved=False)
+    state._write_state(lambda data: data['seats']['quality-1'].pop('agent_id'), root, reserved=False)
+    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality'], 'seats': []}

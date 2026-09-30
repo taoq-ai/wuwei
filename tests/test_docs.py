@@ -34,7 +34,8 @@ def test_hero_variants_share_geometry_and_motion():
 
 
 def test_site_pages_and_links():
-    pages = ('index', 'concepts', 'configuration', 'adapters', 'charter-overrides', 'security', 'reference')
+    pages = ('index', 'daily', 'recovery', 'concepts', 'configuration', 'adapters', 'charter-overrides',
+             'security', 'reference')
     index = (SITE / 'index.md').read_text()
     assert index.startswith('---\nlayout: default\n---\n')
     for page in pages[1:]:
@@ -199,3 +200,30 @@ def test_guard_boundaries_are_stated_once():
     for phrase in ('What a real day must prove', 'live rehearsal', 'unmeasured, never a pass'):
         assert phrase in testing, phrase
     assert 'design reconsideration recorded in its spec' in constitution and '#222' in constitution
+
+
+RECOVERY = ('state transition', 'runtime dispatch', 'runtime continue', 'integrity reconfirm')
+
+
+def test_daily_path_and_recovery_pages():
+    daily = (SITE / 'daily.md').read_text()
+    for phrase in ('/wuwei plan', 'wuwei.tar.gz', 'plan approve', 'build next', 'dispatch next',
+                   'pr raise', 'pr state', 'decision outcome', 'close'):
+        assert phrase in daily, phrase
+    for command in RECOVERY:
+        assert command not in daily, command
+    recovery = (SITE / 'recovery.md').read_text()
+    for command in RECOVERY:
+        section = recovery.split(command, 1)[1].split('\n## ', 1)[0]
+        assert 'recovery' in section.lower(), command
+
+
+def test_implemented_protections_are_not_planned():
+    for path in [*SITE.glob('*.md'), ROOT / 'README.md', *(ROOT / 'docs').glob('*.md')]:
+        for line in path.read_text().splitlines():
+            if re.search(r'\bplanned\b', line, re.I):
+                assert not re.search('manifest|canar|honeytoken', line, re.I), (path.name, line)
+    assert 'Planned:' not in (SITE / 'concepts.md').read_text()
+    skill = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+    assert 'transition the item to `fix`' not in skill
+    assert '`seats`' in skill and '`receive`' in skill

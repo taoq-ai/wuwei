@@ -218,7 +218,7 @@ def observe(root, host, ref, config, measured):
         row['exit'] = int(bool(action) and not row['parked'] and not completed)
         if current == 'merged':
             for name, item in data['items'].items():
-                if item.get('pr') == ref and item['phase'] == 'raised':
+                if item.get('pr') == ref and item['phase'] in ('raised', 'fix', 'delta'):
                     state._move(data, name, 'merged')
     state._write_state(update, root, reserved=False, kind='pr.action', payload=event)
     return row

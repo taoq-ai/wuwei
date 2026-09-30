@@ -202,8 +202,8 @@ def test_all_transition_edges(workspace, start):
     from wuwei import state
     edges = {
         'planned': ['spec', 'implement'], 'spec': ['implement'],
-        'implement': ['gate'], 'gate': ['raised', 'fix'], 'fix': ['delta'],
-        'delta': ['raised', 'fix'], 'raised': ['fix', 'merged'], 'merged': [],
+        'implement': ['gate'], 'gate': ['raised', 'fix'], 'fix': ['delta', 'merged'],
+        'delta': ['raised', 'fix', 'merged'], 'raised': ['fix', 'merged'], 'merged': [],
     }
     targets = ACTIVE + ['parked', 'escalated', 'merged', 'done', 'invalid']
     state._write_state(lambda data: data.update(items={f'item_{target}': {'phase': start} for target in targets}), reserved=False)

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import re
+import shlex
 import sys
 
 from wuwei import brief, registry, state, verdict, workspace
@@ -54,6 +55,7 @@ def _record(data, item, role, round_name):
 def next_step(item, root=None):
     """Return the next planner action without launching a seat."""
     from wuwei import steward
+    root = workspace.find_workspace(root)
     steward.review(root)
     data = state.read_state(root)
     row = _item(data, item)
@@ -78,7 +80,7 @@ def next_step(item, root=None):
             raise Refused('fix phase requires all initial verdicts')
         roles = [role for role in ROLES
                  if _record(data, item, role, 'initial')['verdict'] == 'FIX']
-        return {'action': 'fix', 'roles': roles}
+        return _fix(item, roles)
     if phase == 'gate':
         roles = list(ROLES)
         round_name = 'initial'
@@ -94,17 +96,63 @@ def next_step(item, root=None):
         return {'action': 'escalate', 'reason': 'gate parked or escalated'}
     missing = [role for role in roles if _record(data, item, role, round_name) is None]
     if missing:
-        return {'action': 'gates', 'roles': missing}
+        return {'action': 'gates', 'roles': missing,
+                'seats': _seats(root, data, item, missing, round_name)}
     results = [_record(data, item, role, round_name) for role in roles]
     if any(result['verdict'] in ('PARK', 'ESCALATE') for result in results):
         return {'action': 'escalate', 'reason': 'gate parked or escalated'}
     if phase == 'gate':
         failures = [role for role in roles if _record(data, item, role, 'initial')['verdict'] == 'FIX']
-        return {'action': 'fix', 'roles': failures} if failures else {'action': 'raise', 'notes': []}
+        if not failures:
+            return {'action': 'raise', 'notes': []}
+        from wuwei.commands import build
+        feedback = '\n'.join(f'Gate {role} FIX: fix only the blocking findings (blocks: yes) in '
+                             f'{_record(data, item, role, "initial")["file"]}.' for role in failures)
+        build.open_fix(item, feedback, root=root)
+        return _fix(item, failures)
     if any(result['blocks'] for result in results):
         return {'action': 'escalate', 'reason': 'blocking finding remains after delta'}
     notes = [note for result in results for note in result['notes']]
     return {'action': 'raise', 'notes': notes}
+
+
+def _seats(root, data, item, roles, round_name):
+    """Ready launch or continue actions for gate seats the planner has not started."""
+    actions = []
+    rows = brief.events(root) if round_name == 'initial' else []
+    for role in roles:
+        if round_name == 'initial':
+            logged = [row['payload'] for row in rows if row['kind'] == 'brief written'
+                      and row['payload'].get('item') == item
+                      and row['payload'].get('role') == 'sentinel-' + role
+                      and row['payload'].get('gate') is True]
+            if not logged or logged[-1].get('name') in data['seats']:
+                continue
+            name = logged[-1]['name']
+            action = brief.seat_action('sentinel-' + role, root / logged[-1]['path'],
+                                       logged[-1]['worktree'], root)
+            extra = {}
+        else:
+            first = _record(data, item, role, 'initial')
+            name = Path(first['file']).stem.removeprefix('gate-')
+            seat = data['seats'].get(name)
+            if (not seat or seat['status'] != 'stopped' or not seat.get('agent_id')
+                    or not str(seat.get('head') or '').lower().startswith(first['head'].lower())):
+                continue
+            action = brief.seat_action('sentinel-' + role, root / seat['brief'],
+                                       data['items'][item]['worktree'], root)
+            feedback = (f'Delta review: the fix round changed {first["head"]}..HEAD. Re-check your '
+                        f'findings at the current HEAD and rewrite {first["file"]}.')
+            extra = {'action': 'continue', 'resume': seat['agent_id'], 'feedback': feedback,
+                     'prompt': action['prompt'] + '\n\n' + feedback}
+        receive = 'wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, name)))
+        actions.append({**action, **extra,
+                        'receive': receive + (' --round delta' if round_name == 'delta' else '')})
+    return actions
+
+
+def _fix(item, roles):
+    return {'action': 'fix', 'roles': roles, 'command': 'wuwei build next ' + shlex.quote(item)}
 
 
 def receive(item, role, name, round_name='initial', root=None):

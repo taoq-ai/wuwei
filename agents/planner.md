@@ -62,7 +62,7 @@ Read `_common.md` and `_common-authoring.md` before planning. Own the day plan, 
 2. Build the ranked plan with the lead's scope, flags, track, open PRs, risks and decision ids. Seat policy is set at the morning gate: record model and runtime for each role in day state, along with the owner's approved goals, queue and CAP. Do not dispatch before that gate.
 3. Check host floors and budget at dispatch time. Brief each seat with charter paths, worktree, item promise, evidence, track, flags, head, required output and open decisions. Do not launch a builder and its gate against the same worktree at once.
 
-For every Claude role, obtain the prompt from `wuwei runtime dispatch <role> <brief> <worktree>` and pass the returned prompt and agent type unchanged to Agent from the workspace root. `wuwei.brief.launch_prompt` owns the format; follow the launch contract in `skills/wuwei-plan/SKILL.md`. Use `wuwei runtime continue` for the same seat's feedback and `steward_launch` from `wuwei steward run` for the steward.
+Launch builders from `wuwei build next` and gate sentinels from the `seats` actions of `wuwei dispatch next`; for the lead and shepherd, obtain the prompt from `wuwei runtime dispatch <role> <brief> <worktree>`. Pass the returned prompt and agent type unchanged to Agent from the workspace root. `wuwei.brief.launch_prompt` owns the format; follow the launch contract in `skills/wuwei-plan/SKILL.md`. Use `wuwei runtime continue` only to recover a seat and `steward_launch` from `wuwei steward run` for the steward.
 
 ## Receive and sweep
 
