@@ -2,7 +2,7 @@
 
 import json
 
-from wuwei import inbox, obligations, registry, watch, workspace
+from wuwei import inbox, obligations, registry, remote, watch, workspace
 
 CLOCK_SECONDS = 120
 
@@ -12,14 +12,15 @@ def _path(root):
 
 
 def cursor(root):
-    """Cursor per source and the inbox line count the last wake covered."""
+    """Cursor per source, the inbox line count the last wake covered and the count handled."""
     try:
         data = json.loads(_path(root).read_text(encoding='utf-8'))
     except FileNotFoundError:
         return {'cursors': {}, 'woken': 0}
     if not (isinstance(data, dict) and isinstance(data.get('cursors'), dict)
             and all(isinstance(k, str) and isinstance(v, str) for k, v in data['cursors'].items())
-            and type(data.get('woken')) is int and data['woken'] >= 0):
+            and type(data.get('woken')) is int and data['woken'] >= 0
+            and type(data.get('handled', 0)) is int and data.get('handled', 0) >= 0):
         raise ValueError('invalid listen cursor')
     return data
 
@@ -59,7 +60,14 @@ def tick(root):
             _save(root, data)
     if config['responder']['enabled']:
         # ponytail: reads the whole inbox per tick; keep a line count when it grows large.
-        count = len(inbox.read(root))
+        rows = inbox.read(root)
+        count = len(rows)
+        # Saved before acting: a crash drops a command, it never runs one twice.
+        data.setdefault('handled', data['woken'])
+        for index in range(data['handled'], count):
+            data['handled'] = index + 1
+            _save(root, data)
+            code = max(code, remote.handle(root, rows[index]))
         if count > data['woken']:
             watch.mark_wake(root, inbox=count, kind='listen: wake', payload={'inbox': count})
             data['woken'] = count

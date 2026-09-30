@@ -3,7 +3,10 @@
 import importlib
 import json
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
+
+import pytest
 
 
 def setup(tmp_path, monkeypatch, runtime='codex'):
@@ -147,3 +150,80 @@ def test_codex_rejects_role_path_traversal(tmp_path, monkeypatch):
     adapter = importlib.import_module('adapters.runtime.codex')
     result = adapter.dispatch('../README', str(brief), str(root), True, root=root)
     assert result.exit == 1
+
+
+SID = '0f8fad5b-d9cb-469f-a165-70867728950e'
+
+
+def headless_case(tmp_path, monkeypatch, payload=None, returncode=0, raises=None):
+    root = setup(tmp_path, monkeypatch, 'claude')
+    adapter = importlib.import_module('adapters.runtime.claude')
+    calls = []
+    payload = {'session_id': SID, 'result': 'done', 'is_error': False,
+               'permission_denials': [{'tool_name': 'Bash', 'tool_use_id': 'x', 'tool_input': {}}]
+               } if payload is None else payload
+
+    def run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        if raises:
+            raise raises
+        return SimpleNamespace(returncode=returncode, stderr='boom secret',
+                               stdout=payload if isinstance(payload, str) else json.dumps(payload))
+    monkeypatch.setattr(adapter.subprocess, 'run', run)
+    return root, adapter, calls
+
+
+def test_claude_headless_starts_a_session(tmp_path, monkeypatch):
+    monkeypatch.setenv('SLACK_BOT_TOKEN', 'xoxb-secret')
+    root, adapter, calls = headless_case(tmp_path, monkeypatch)
+    result = adapter.headless('plan the day', None, ['Read', 'Glob'], root=root)
+    assert result.exit == 0
+    assert result.data == {'session_id': SID, 'result': 'done', 'denials': ['Bash']}
+    [(argv, kwargs)] = calls
+    assert argv == ['claude', '-p', '--output-format', 'json', '--permission-mode', 'dontAsk',
+                    '--tools', 'Read,Glob', '--allowedTools', 'Read,Glob']
+    assert kwargs['input'] == 'plan the day'
+    assert kwargs['cwd'] == str(root)
+    assert 'SLACK_BOT_TOKEN' not in kwargs['env']
+
+
+def test_claude_headless_resumes_the_same_session(tmp_path, monkeypatch):
+    root, adapter, calls = headless_case(tmp_path, monkeypatch)
+    assert adapter.headless('Decision D-1: option B.', SID, ['Read'], root=root).exit == 0
+    assert calls[0][0][-2:] == ['--resume', SID]
+    other = SID.replace('0f8f', '1f8f')
+    assert adapter.headless('Decision D-1: option B.', other, ['Read'], root=root).exit == 2
+
+
+@pytest.mark.parametrize('payload, returncode', [
+    ({'session_id': SID, 'result': 'x', 'is_error': True, 'permission_denials': []}, 0),
+    ({'session_id': SID, 'result': 'x', 'is_error': False, 'permission_denials': []}, 1),
+])
+def test_claude_headless_error_run_keeps_data(tmp_path, monkeypatch, payload, returncode):
+    root, adapter, _ = headless_case(tmp_path, monkeypatch, payload, returncode)
+    result = adapter.headless('p', None, ['Read'], root=root)
+    assert result.exit == 1 and result.data['session_id'] == SID
+
+
+@pytest.mark.parametrize('payload, raises', [
+    ('not json secret', None),
+    ({'result': 'x', 'is_error': False, 'permission_denials': []}, None),
+    ({'session_id': 'abc', 'result': 'x', 'is_error': False, 'permission_denials': []}, None),
+    ({'session_id': SID, 'result': 'x', 'is_error': False, 'permission_denials': [{'tool_name': 3}]}, None),
+    (None, subprocess.TimeoutExpired('claude', 1800)),
+    (None, FileNotFoundError('claude')),
+])
+def test_claude_headless_fails_closed(tmp_path, monkeypatch, payload, raises):
+    root, adapter, _ = headless_case(tmp_path, monkeypatch, payload, raises=raises)
+    result = adapter.headless('p', None, ['Read'], root=root)
+    assert result.exit == 2 and 'secret' not in result.reason and result.reason
+
+
+@pytest.mark.parametrize('prompt, session, tools', [
+    ('', None, ['Read']), ('p', 'not-a-uuid', ['Read']), ('p', None, ['Read Write']),
+    ('p', None, ['Read,Bash']), ('p', None, []),
+])
+def test_claude_headless_refuses_invalid_calls(tmp_path, monkeypatch, prompt, session, tools):
+    root, adapter, calls = headless_case(tmp_path, monkeypatch)
+    assert adapter.headless(prompt, session, tools, root=root).exit == 2
+    assert calls == []

@@ -358,3 +358,70 @@ def test_listener_kinds_are_reserved_and_silent(case, kind):
     from wuwei import signal
     assert main(['event', kind]) == 1
     assert kind in signal.SILENT
+
+
+@pytest.fixture
+def handler(case, monkeypatch):
+    from wuwei import remote
+    monkeypatch.setenv('SLACK_OWNER_DM_CHANNEL', 'D1')
+    seen = []
+
+    def handle(root, row):
+        seen.append(row['id'])
+        return 0
+    monkeypatch.setattr(remote, 'handle', handle)
+    return seen
+
+
+def test_new_lines_are_handed_to_the_command_handler_once(case, handler):
+    root, source = case
+    source.results = [Result(0, [event('a', '1'), event('b', '2')])]
+    assert listen().tick(root) == 1
+    assert listen().tick(root) == 0
+    assert handler == ['a', 'b'] and listen().cursor(root)['handled'] == 2
+
+
+def test_handler_crash_never_runs_a_command_twice(case, handler, monkeypatch):
+    from wuwei import remote
+    root, source = case
+
+    def crash(root, row):
+        raise OSError('disk full')
+    monkeypatch.setattr(remote, 'handle', crash)
+    source.results = [Result(0, [event('a', '1'), event('b', '2')])]
+    with pytest.raises(OSError):
+        listen().tick(root)
+    assert listen().cursor(root)['handled'] == 1
+    monkeypatch.setattr(remote, 'handle', lambda root, row: handler.append(row['id']) or 0)
+    assert listen().tick(root) == 0
+    assert handler == ['b']
+
+
+def test_kill_switch_holds_commands_until_it_is_back_on(case, handler):
+    root, source = case
+    config(root, '[responder]\nenabled = false\n')
+    source.results = [Result(0, [event('a', '1')])]
+    assert listen().tick(root) == 1
+    assert handler == [] and 'handled' not in listen().cursor(root)
+    config(root, '')
+    listen().tick(root)
+    assert handler == ['a']
+
+
+def test_lines_the_last_wake_covered_are_not_replayed(case, handler):
+    root, source = case
+    inbox.store(root, workspace.load_config(root), [event(n, str(i)) for i, n in enumerate('abcd', 1)])
+    path = root / '.wuwei/inbox/cursor.json'
+    path.write_text('{"cursors": {}, "woken": 3}\n')
+    listen().tick(root)
+    assert handler == ['d']
+
+
+@pytest.mark.parametrize('value', ['-1', '"1"'])
+def test_invalid_handled_count_fails(case, value):
+    root, _ = case
+    path = root / '.wuwei/inbox/cursor.json'
+    path.parent.mkdir(parents=True)
+    path.write_text('{"cursors": {}, "woken": 0, "handled": ' + value + '}\n')
+    with pytest.raises(ValueError):
+        listen().cursor(root)

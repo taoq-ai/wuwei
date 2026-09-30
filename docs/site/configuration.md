@@ -86,7 +86,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `status --line`, its item claims lapse, and a stale planner is nudged. |
 | `listen.poll_seconds` | `60` | Interval between listener polls of the inbound source. |
 | `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start. |
-| `responder.enabled` | `true` | Kill switch: when `false` the listener still stores events but does not wake the planner. |
+| `responder.enabled` | `true` | Kill switch: when `false` the listener still stores events but does not wake the planner or handle commands. |
 | `steward.every_tool_calls` | `50` | Completed tool calls between steward reviews. |
 
 ## Adapters and brief
@@ -307,6 +307,31 @@ in a thread. Bot and app posts are skipped. Each poll re-reads five minutes behi
 previous successful poll, and the first poll starts five minutes back. A Slack rate limit fails that poll
 and the next poll retries. The reading token needs the `channels:history`,
 `groups:history` and `im:history` scopes and membership of the polled channels.
+
+### Commands from the owner DM
+
+Each new message in `SLACK_OWNER_DM_CHANNEL` is handled once, in order, by the
+listener: `plan`, `status`, `report`, `ask <question>`, `stop <session>` (a unique prefix
+of at least eight characters) and `stop all`. Decision replies use the control-plane
+forms: `approve D-n`, `option X on D-n` or `drop it`. `run <routine>` and
+`cloud <repo> <task>` answer "Not available in this version." with the command list, and
+anything else gets the command list. Messages in other channels are never commands.
+
+Until the remote-command guards land, only `status` and `report` run from a message.
+Every other command, and a reply that would resume a remote session, is recorded as a
+`remote.pending` event and answered that it needs the remote-command guards. A reply to
+a decision is recorded as `decision.replied` evidence and confirmed on the host.
+
+`plan` and `ask` start one headless Claude Code session per command message
+(`claude -p --output-format json --permission-mode dontAsk`, with the role's tools in
+`--allowedTools`); a reply to one of its decisions resumes it with `--resume`. The
+session is listed in `wuwei sessions` with role `remote`. A tool outside the role's
+tools is refused and arrives as a decision; granting it stays a host change.
+
+Messages to the owner DM are sent, not drafted: they pass the security check and the
+outward lint first, and a decision the lint refuses arrives as "D-n is waiting in the
+workspace." Every other DM still becomes a draft. With `responder.enabled = false` no
+command is handled; stored commands are handled once it is back on.
 
 The listener writes a `listen: clock` line every two minutes. Session start reports
 `listen dead` when today's latest clock line is older than `listen.dead_seconds`, or
