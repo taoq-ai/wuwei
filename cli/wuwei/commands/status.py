@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import json
 import sys
 
-from wuwei import state, workspace
+from wuwei import sessions, state, workspace
 from wuwei.decision import answered
 from wuwei.exits import CLEAN, UNRUN
 from wuwei.signal import SILENT, classify
@@ -127,6 +127,16 @@ def scan(directory, classified_state=None):
             current[('decision.pending', identifier)] = {
                 'tier': 'nudge', 'source': 'decision.pending', 'lane': 'Decisions',
                 'reason': f'{identifier} pending owner decision'}
+    planner = classified_state.get('planner_session_id')
+    if planner and planner in classified_state.get('sessions', {}):
+        for row in sessions.rows(classified_state, datetime.fromisoformat(classified_state['now']),
+                                 sessions.stale_seconds(directory.parents[2])):
+            if row['role'] == 'planner' and row['stale']:
+                current[('session.planner_stale',)] = {
+                    'tier': 'nudge', 'source': 'session.planner_stale', 'lane': 'Work',
+                    'reason': f'planner session {planner} stale: no hook activity for '
+                              f'{row["idle_seconds"]}s; take over from the live session with: '
+                              'wuwei plan session <session id> --take-over'}
     return list(current.values()), {1: 'dead', 2: 'unmeasured'}.get(code, 'alive' if clocks else 'off')
 
 
@@ -135,7 +145,10 @@ def snapshot(directory):
     result = {'pages': 0, 'nudges': 0, 'cap': data['cap'], 'gate_approved': data['gate_approved'],
               'phases': {phase: count for phase in state.PHASES
                          if (count := sum(item['phase'] == phase for item in data['items'].values()))},
-              'next_reply_due': None, 'next_meeting': None}
+              'next_reply_due': None, 'next_meeting': None,
+              'sessions': sum(not row['stale'] for row in sessions.rows(
+                  data, workspace.now(), sessions.stale_seconds(directory.parents[2])))
+              if data.get('sessions') else 0}
     classified_state = {**data, 'now': workspace.now().isoformat()}
     active, result['watch'] = scan(directory, classified_state)
     result['pages'] = sum(row['tier'] == 'page' for row in active)
@@ -199,6 +212,8 @@ def run(args):
         if data['watch'] != 'alive':
             parts.append(f'watch {data["watch"]}')
         parts.extend(f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items())
+        if data['sessions']:
+            parts.append(f'sessions {data["sessions"]}')
         if data['next_reply_due']:
             parts.append(f'reply {data["next_reply_due"]}')
         parts.append(f'meeting {data["next_meeting"] or "unmeasured"}')

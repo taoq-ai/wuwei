@@ -10,3 +10,6 @@ def isolated_mcp_home(tmp_path_factory, monkeypatch):
     # A developer's gh token must never reach the config check's scope read.
     monkeypatch.delenv('GH_TOKEN', raising=False)
     monkeypatch.delenv('GITHUB_TOKEN', raising=False)
+    # A developer's Claude Code session must never leak into claims or the env export.
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    monkeypatch.delenv('CLAUDE_ENV_FILE', raising=False)

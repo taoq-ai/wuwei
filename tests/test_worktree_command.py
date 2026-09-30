@@ -194,3 +194,36 @@ def test_template_identity_lets_a_seat_commit(tmp_path, monkeypatch, capsys):
     code, reason = commit_through_hook(tree, monkeypatch, capsys)
     assert code == 2
     assert 'wuwei worktree add' in reason and 'git config user.email builder@example.test' in reason
+
+
+def claimed_events(root):
+    path = workspace.day_dir(root) / 'events.jsonl'
+    return [row for row in map(json.loads, path.read_text().splitlines())
+            if row['kind'] == 'item.claimed']
+
+
+def test_worktree_add_refuses_item_claimed_by_live_session(fake, monkeypatch, capsys):
+    root, vcs = fake
+    repos(root, 'app')
+    stamp = workspace.now().isoformat()
+    state._write_state(lambda data: data.update(
+        claims={'ITEM-1': 'A'}, sessions={'A': {'role': 'adhoc', 'started': stamp,
+                                                'last_seen': stamp, 'cwd': str(root)}}),
+        root, reserved=False)
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'B')
+    assert main(['worktree', 'add', 'ITEM-1']) == 2
+    assert 'claimed by live session A' in capsys.readouterr().err and adds(vcs) == []
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'A')
+    assert main(['worktree', 'add', 'ITEM-1']) == 0
+    assert len(adds(vcs)) == 1
+    assert claimed_events(root)[-1]['payload'] == {'item': 'ITEM-1', 'session': 'A',
+                                                   'prs_seen': False}
+
+
+def test_gate_refusal_makes_no_claim(fake, monkeypatch):
+    root, vcs = fake
+    repos(root, 'app')
+    state._write_state(lambda data: data.update(gate_approved=False), root, reserved=False)
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'A')
+    assert main(['worktree', 'add', 'X']) == 1
+    assert claimed_events(root) == []

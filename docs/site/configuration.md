@@ -83,6 +83,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `watch.dead_seconds` | `1200` | Clock age after which the watch is reported dead. |
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
+| `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `status --line`, its item claims lapse, and a stale planner is nudged. |
 | `steward.every_tool_calls` | `50` | Completed tool calls between steward reviews. |
 
 ## Adapters and brief

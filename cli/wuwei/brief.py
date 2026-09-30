@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import re
 
-from wuwei import registry, security, state, workspace
+from wuwei import registry, security, sessions, state, workspace
 
 
 REFERENCE_PREFIX = 'WUWEI brief: '
@@ -239,6 +239,9 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                    'worktree': str(tree) if tree else None, 'pr': pr,
                    'head': head if tree else None,
                    'sha256': hashlib.sha256(text.encode()).hexdigest()}
+        session = sessions.current()
+        if role == 'builder' and session:
+            payload['session'] = session
         created = False
         try:
             def update(fresh):
@@ -257,6 +260,9 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                     fresh['items'][item]['track'] = track
                     if tree:
                         fresh['items'][item]['worktree'] = str(tree)
+                if role == 'builder':
+                    sessions.claim(fresh, item, session, workspace.now(),
+                                   config['sessions']['stale_seconds'], cwd=str(Path.cwd()))
                 workspace.atomic_write(output, text, replace=False)
                 created = True
             state._write_state(update, root, reserved=False, kind='brief written', payload=payload)

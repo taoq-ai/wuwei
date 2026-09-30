@@ -255,6 +255,8 @@ STATE_PRODUCERS = {
     'steward_notes': 'wuwei steward run', 'steward_acks': 'wuwei steward ack',
     'discovery_candidates': 'wuwei dispatch discovery',
     'intraday_proposals': 'wuwei plan add',
+    'sessions': 'wuwei hook SessionStart, Stop and SubagentStop or wuwei plan session',
+    'claims': 'wuwei brief builder or wuwei worktree add',
 }
 
 

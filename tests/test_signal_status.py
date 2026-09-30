@@ -275,6 +275,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'state.transition': 'silent', 'seat stopped': 'silent',
                 'seat launched': 'silent', 'brief written': 'silent',
                 'brief.pack': 'silent', 'brief.answer': 'silent',
+                'session.seen': 'silent', 'item.claimed': 'silent',
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
                 'seat.usage': 'silent', 'build.parked': 'nudge',
                 'build.fix_opened': 'silent', 'pr.action.done': 'silent',

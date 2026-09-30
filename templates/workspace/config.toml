@@ -166,6 +166,9 @@ dead_seconds = 1200
 stale_seconds = 900
 sweep_seconds = 7200
 
+[sessions]
+stale_seconds = 3600
+
 [steward]
 every_tool_calls = 50
 

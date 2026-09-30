@@ -14,6 +14,8 @@ def register(subparsers):
     session = actions.add_parser('session', help='Register the planner session for wake delivery')
     actions.add_parser('template', help='Print valid lead JSON for this workspace')
     session.add_argument('session_id')
+    session.add_argument('--take-over', action='store_true',
+                         help='Hand the planner role over from the registered session')
     propose = actions.add_parser('propose')
     propose.add_argument('input', type=Path, help='Lead discovery JSON')
     approve = actions.add_parser('approve')
@@ -40,7 +42,7 @@ def run(args):
                 'sweep': {'manual': 'unmeasured: replace with discovery evidence'},
                 'candidates': [candidate_template(identifiers[0], framework)]}, indent=2))
         elif args.action == 'session':
-            plan.session(args.session_id)
+            plan.session(args.session_id, take_over=args.take_over)
         elif args.action == 'propose':
             source = sys.stdin.read() if str(args.input) == '-' else args.input.read_text(encoding='utf-8')
             print(plan.propose(json.loads(source)))

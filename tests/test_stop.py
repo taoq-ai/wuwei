@@ -545,7 +545,7 @@ def test_planner_handoff_does_not_exempt_original_session(case, monkeypatch):
     action(case)
     watch.poll(root)
     assert main(['plan', 'session', 'planner']) == 0
-    assert main(['plan', 'session', 'replacement']) == 0
+    assert main(['plan', 'session', 'replacement', '--take-over']) == 0
     advance(monkeypatch, 1801)
     stop = module('guards/stop')
     assert stop.check(payload(root))[0] == 1

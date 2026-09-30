@@ -70,6 +70,7 @@ SCHEMA = {
     "codex": {"command": [(str, None)], "timeout_seconds": (int, 300, 1)},
     "watch": {"clock_seconds": (int, 600, 1), "dead_seconds": (int, 1200, 1),
               "stale_seconds": (int, 900, 1), "sweep_seconds": (int, 7200, 1)},
+    "sessions": {"stale_seconds": (int, 3600, 1)},
     "steward": {"every_tool_calls": (int, 50, 1)},
     "pr": {"poll_seconds": (int, 120, 1), "action_minutes": (int, 30, 1),
            "review_window": (int, 120, 1)},
@@ -440,6 +441,8 @@ def create_worktree(repo, branch, path, root, vcs, identity=None):
         raise ValueError('worktree creation requires a workspace')
     if not state.read_state(root).get('gate_approved'):
         raise state.StateError('morning gate approval required before worktree creation')
+    from wuwei import sessions
+    sessions.claim_item(Path(root), Path(path).name)
     result = data(vcs.worktree_add(str(repo), branch, str(path), root=root))
     install(path, root, vcs)
     if identity and identity['name'] and identity['email']:
