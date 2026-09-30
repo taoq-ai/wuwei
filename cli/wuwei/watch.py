@@ -42,27 +42,27 @@ def days(root):
                    and p.name <= today), reverse=True)
 
 
-def health(root, clocks=None):
-    """Dead when today's clock went stale, or when the installed watch wrote none today.
+def health(root, clocks=None, name='watch'):
+    """Dead when today's clock went stale, or when the installed service wrote none today.
 
     No clock line today and no installed unit means off, not a finding.
     """
     try:
         if clocks is None:
             clocks = [row['ts'] for row in records(workspace.day_dir(root) / 'events.jsonl')
-                      if row['kind'] == 'watch: clock']
+                      if row['kind'] == f'{name}: clock']
         if clocks:
             age = (workspace.now() - max(map(obligations._time, clocks))).total_seconds()
             if age < 0:
                 raise ValueError('clock line is in the future')
-            if age < workspace.load_config(root)['watch']['dead_seconds']:
+            if age < workspace.load_config(root)[name]['dead_seconds']:
                 return 0, ''
-            return 1, 'watch dead: no clock line within deadline'
-        if workspace.watch_unit(root)[1].exists():
-            return 1, 'watch dead: installed but no clock line today'
-        return 0, 'watch off: no clock line today'
+            return 1, f'{name} dead: no clock line within deadline'
+        if workspace.watch_unit(root, name=name)[1].exists():
+            return 1, f'{name} dead: installed but no clock line today'
+        return 0, f'{name} off: no clock line today'
     except ERRORS as exc:
-        return 2, f'watch health unmeasured: {exc}'
+        return 2, f'{name} health unmeasured: {exc}'
 
 
 def saved(root):
@@ -353,21 +353,8 @@ def poll(root):
                                       if old[ref].get(key) != current[ref][key])
     # Save the wake before the baseline so interruption cannot lose a change.
     if changes:
-        def mark(data):
-            value = data.setdefault('watch', {})
-            prior = previous(root) if 'wake' not in value else {}
-            pending = value.get('wake', prior.get('wake'))
-            seen = value.get('wake_seen_at', prior.get('wake_seen_at'))
-            at = workspace.now()
-            refs = set(changes)
-            if pending:
-                at = max(at, obligations._time(pending['at']) + timedelta(microseconds=1))
-                if seen != pending['at']:
-                    refs.update(pending['prs'])
-            value['wake'] = {'at': at.isoformat(), 'prs': sorted(refs)}
         (ref, fields), *rest = changes.items()
-        state._write_state(mark, root, reserved=False, kind='pr.changed',
-                           payload={'pr': ref, 'fields': fields})
+        mark_wake(root, prs=changes, kind='pr.changed', payload={'pr': ref, 'fields': fields})
         for ref, fields in rest:
             state.append_event('pr.changed', {'pr': ref, 'fields': fields}, root)
         for ref, fields in changes.items():
@@ -375,6 +362,26 @@ def poll(root):
     save(root, {'prs': current, 'failures': 0,
                 'measured_at': None if unreadable else started.isoformat()})
     return 2 if unreadable else int(bool(changes))
+
+
+def mark_wake(root, *, prs=(), inbox=0, kind, payload):
+    """Merge into the planner wake; an unseen marker keeps its PRs and inbox count."""
+    def mark(data):
+        value = data.setdefault('watch', {})
+        prior = previous(root) if 'wake' not in value else {}
+        pending = value.get('wake', prior.get('wake'))
+        seen = value.get('wake_seen_at', prior.get('wake_seen_at'))
+        if pending and not prs and inbox <= pending.get('inbox', 0):
+            return  # already covered: a listener restart must not wake twice
+        at, refs, count = workspace.now(), set(prs), inbox
+        if pending:
+            at = max(at, obligations._time(pending['at']) + timedelta(microseconds=1))
+            if seen != pending['at']:
+                refs.update(pending['prs'])
+                count = max(count, pending.get('inbox', 0))
+        value['wake'] = {'at': at.isoformat(), 'prs': sorted(refs),
+                         **({'inbox': count} if count else {})}
+    state._write_state(mark, root, reserved=False, kind=kind, payload=payload)
 
 
 def tick(root):
@@ -423,21 +430,19 @@ def pending_discovery(root):
         return 2
 
 
-def run(root=None, *, once=False, sleep=None):
-    """One watch per workspace; stop cleanly on SIGTERM, SIGINT or interruption."""
+def serve(root, name, tick, delay, *, once=False, sleep=None, blind=lambda: False):
+    """One named loop per workspace; stop cleanly on SIGTERM, SIGINT or interruption."""
     import fcntl
     import signal
     import threading
 
-    root = workspace.find_workspace(root)
-    config = workspace.load_config(root)
     stopping = threading.Event()
     sleep = stopping.wait if sleep is None else sleep
-    with (root / '.wuwei/watch.lock').open('a') as lock:
+    with (root / f'.wuwei/{name}.lock').open('a') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            print('watch could not run: another watch holds the workspace lock', flush=True)
+            print(f'{name} could not run: another {name} holds the workspace lock', flush=True)
             return 2
         handlers = {}
         def stop(signum, frame):
@@ -447,23 +452,35 @@ def run(root=None, *, once=False, sleep=None):
                 handlers[signum] = signal.signal(signum, stop)
             while not stopping.is_set():
                 code = tick(root)
-                value = saved(root)
                 if once:
                     return code
                 if stopping.is_set():
                     break
-                if value.get('failures', 0) and (
-                        'prs' not in value or value['failures'] >= MAX_READ_FAILURES):
-                    print('watch blind: PR read failure limit reached', flush=True)
+                if blind():
                     return 2
-                sleep(min(60, config['pr']['poll_seconds'], config['watch']['clock_seconds'],
-                          ACTIVITY_SECONDS, config['watch']['sweep_seconds']))
+                sleep(delay)
             return 0
         except KeyboardInterrupt:
             return 0
         finally:
             for signum, handler in handlers.items():
                 signal.signal(signum, handler)
+
+
+def run(root=None, *, once=False, sleep=None):
+    """One watch per workspace; stop cleanly on SIGTERM, SIGINT or interruption."""
+    root = workspace.find_workspace(root)
+    config = workspace.load_config(root)
+    def blind():
+        value = saved(root)
+        if value.get('failures', 0) and ('prs' not in value or value['failures'] >= MAX_READ_FAILURES):
+            print('watch blind: PR read failure limit reached', flush=True)
+            return True
+        return False
+    return serve(root, 'watch', lambda root: tick(root),
+                 min(60, config['pr']['poll_seconds'], config['watch']['clock_seconds'],
+                     ACTIVITY_SECONDS, config['watch']['sweep_seconds']),
+                 once=once, sleep=sleep, blind=blind)
 
 
 def wake(root, *, consume=False):
@@ -475,9 +492,13 @@ def wake(root, *, consume=False):
         return ''
     obligations._time(value['at'])
     refs = [pull_request(ref) for ref in obligations._list(value['prs'])]
-    if not refs:
+    count = value.get('inbox', 0)
+    if type(count) is not int or count < 0:
+        raise ValueError('invalid inbox wake')
+    if not refs and not count:
         raise ValueError('empty planner wake marker')
-    message = f'planner wake ({value["at"]}): ' + ', '.join(refs)
+    message = f'planner wake ({value["at"]}): ' + ', '.join(
+        refs + ([f'inbox to line {count}'] if count else []))
     if consume:
         def acknowledge(data):
             nonlocal message

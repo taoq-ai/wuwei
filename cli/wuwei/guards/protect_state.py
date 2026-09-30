@@ -50,6 +50,8 @@ _OWNER_ACTIONS = {
     ('state', 'recover'): 'State recovery is an owner action on the host, outside agent tools.',
     # An uninstalled watch reads as off, so a seat could silence a dead-watch page.
     ('watch', 'uninstall'): 'Watch uninstall requires the owner terminal, outside agent tools.',
+    # An uninstalled listener reads as off, so a seat could silence a dead-listener report.
+    ('listen', 'uninstall'): 'Listener uninstall requires the owner terminal, outside agent tools.',
     ('goals', 'edit'): 'Owner memory edits are an owner action on the host, outside agent tools.',
     ('voice', 'edit'): 'Owner memory edits are an owner action on the host, outside agent tools.',
 }

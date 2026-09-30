@@ -52,6 +52,10 @@ def session_start(payload):
     code = max(code, health_code)
     if message:
         lines.append(message)
+    listen_code, message = watch.health(root, name='listen')
+    if listen_code:
+        code = max(code, listen_code)
+        lines.append(message)
     try:
         notice = watch.wake(root)
         if notice:

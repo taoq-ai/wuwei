@@ -71,6 +71,8 @@ SCHEMA = {
     "watch": {"clock_seconds": (int, 600, 1), "dead_seconds": (int, 1200, 1),
               "stale_seconds": (int, 900, 1), "sweep_seconds": (int, 7200, 1)},
     "sessions": {"stale_seconds": (int, 3600, 1)},
+    "listen": {"poll_seconds": (int, 60, 1), "dead_seconds": (int, 300, 1)},
+    "responder": {"enabled": (bool, True)},
     "steward": {"every_tool_calls": (int, 50, 1)},
     "pr": {"poll_seconds": (int, 120, 1), "action_minutes": (int, 30, 1),
            "review_window": (int, 120, 1)},
@@ -288,10 +290,10 @@ def day_dir(root=None):
     return root / ".wuwei/days" / now().date().isoformat()
 
 
-def watch_unit(root, platform=sys.platform):
-    """Service label and the unit file `watch install` writes for this workspace."""
+def watch_unit(root, platform=sys.platform, name="watch"):
+    """Service label and the unit file `<name> install` writes for this workspace."""
     import hashlib
-    label = "wuwei-" + hashlib.sha256(str(Path(root).resolve()).encode()).hexdigest()[:12]
+    label = "wuwei-" + ("" if name == "watch" else f"{name}-") + hashlib.sha256(str(Path(root).resolve()).encode()).hexdigest()[:12]
     home = Path.home()
     if platform == "darwin":
         return label, home / "Library/LaunchAgents" / f"{label}.plist"

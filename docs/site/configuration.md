@@ -84,6 +84,9 @@ fast_checks = ["python3 -m pytest -q"]
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
 | `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `status --line`, its item claims lapse, and a stale planner is nudged. |
+| `listen.poll_seconds` | `60` | Interval between listener polls of the inbound source. |
+| `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start. |
+| `responder.enabled` | `true` | Kill switch: when `false` the listener still stores events but does not wake the planner. |
 | `steward.every_tool_calls` | `50` | Completed tool calls between steward reviews. |
 
 ## Adapters and brief
@@ -280,6 +283,26 @@ entry count matches the page and nudge counts in `bin/wuwei status --line`.
 Routine progress such as plan approval, build starts and checks, and a skipped call to a
 tracker set to `none` is silent. A nudge clears when its cause clears: a draft nudge when
 the draft is sent or dropped, a merge policy nudge when the PR merges or closes.
+
+## Running the listener
+
+`bin/wuwei listen` polls the inbound source named by `adapters.inbound` every
+`listen.poll_seconds` and appends new events, redacted, to `.wuwei/inbox/inbox.jsonl`.
+Events are deduplicated by source and id, and the cursor per source is kept in
+`.wuwei/inbox/cursor.json`, so a restart loses nothing and stores nothing twice. When
+new events arrive the listener sets the planner wake, shown at session start as
+`inbox to line N`; with `responder.enabled = false` it stores events and wakes nobody.
+
+`bin/wuwei listen install [--dry-run]` and `bin/wuwei listen uninstall` work like the
+watch's: one launchd agent or systemd user unit per workspace, labelled
+`wuwei-listen-<hash>`. `bin/wuwei listen --once` runs one poll. With
+`adapters.inbound = "none"`, `listen`, `listen --once` and `listen install` exit 2.
+Uninstall is an owner action, refused from agent tools inside a workspace.
+
+The listener writes a `listen: clock` line every two minutes. Session start reports
+`listen dead` when today's latest clock line is older than `listen.dead_seconds`, or
+when the listener is installed and wrote none today. A listener that is off or alive
+adds nothing to session start.
 
 ## Private workspace environment
 

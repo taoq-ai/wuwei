@@ -246,7 +246,7 @@ STATE_PRODUCERS = {
     'channel_posts': 'wuwei pr ping',
     'pr_reviewers': 'wuwei pr raise or ping',
     'scanner_decisions': 'wuwei sweep',
-    'watch': 'wuwei watch', 'pr_dispositions': 'wuwei pr disposition',
+    'watch': 'wuwei watch or wuwei listen', 'pr_dispositions': 'wuwei pr disposition',
     'pr_action_done': 'wuwei pr act', 'pr_reply_drafts': 'wuwei pr act',
     'pr_action_decisions': 'wuwei pr act',
     'close_requested': 'wuwei close', 'merges': 'wuwei merge',

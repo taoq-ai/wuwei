@@ -1,5 +1,5 @@
 [Unit]
-Description=WUWEI workspace watch
+Description=WUWEI workspace @COMMAND@
 After=network-online.target
 
 [Service]
@@ -7,7 +7,7 @@ Type=simple
 WorkingDirectory=@WORKSPACE@
 Environment="WUWEI_WORKSPACE=@WORKSPACE@"
 Environment="PATH=@PATH@"
-ExecStart="@PLUGIN_ROOT@/bin/wuwei" watch
+ExecStart="@PLUGIN_ROOT@/bin/wuwei" @COMMAND@
 Restart=on-failure
 RestartSec=30
 StandardOutput=journal

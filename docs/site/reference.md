@@ -196,6 +196,7 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei drafts drop <id>` | no |
 | `bin/wuwei goals edit` and `voice edit` | no |
 | `bin/wuwei watch uninstall` | no |
+| `bin/wuwei listen uninstall` | no |
 
 A command that asks for a digest reads it from `/dev/tty`. Without a terminal it changes nothing and exits 2 with `this is an owner action: run it in a host terminal`. `drafts approve --edit`, `goals edit` and `voice edit` open `EDITOR`. As with other host-only actions, this follows the cooperative hook threat model in spec 9.1.
 

@@ -39,7 +39,7 @@ EVENT_PRODUCERS = {
     'decision.reversed': 'wuwei decision outcome',
     'decision.digest': 'wuwei sweep',
     'scanner.finding': 'wuwei scanner or security recorder',
-    'watch: clock': 'wuwei watch', 'pr.disposition': 'wuwei pr disposition',
+    'watch: clock': 'wuwei watch', 'listen: clock': 'wuwei listen', 'listen: wake': 'wuwei listen', 'pr.disposition': 'wuwei pr disposition',
     'pr.action': 'wuwei pr state', 'pr.action.done': 'wuwei pr act',
     'pr.reply.drafted': 'wuwei pr act', 'pr.action.decision': 'wuwei pr act',
     'pr.review_posted': 'wuwei pr ping', 'pr.raised': 'wuwei pr raise',
