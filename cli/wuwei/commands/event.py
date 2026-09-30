@@ -20,6 +20,7 @@ EVENT_PRODUCERS = {
     'mcp.finding': 'wuwei mcp check', 'mcp.checked': 'wuwei mcp check',
     'mcp.decided': 'owner host MCP decision',
     'decision.replied': 'wuwei control plane poll_replies or wuwei listen',
+    'decision.escalated': 'wuwei listen',
     **{f'remote.{action}': 'wuwei listen' for action in ('pending', 'started', 'resumed', 'stopped', 'ignored', 'refused', 'confirmed')},
     'integrity': 'wuwei integrity check', 'integrity_failed': 'wuwei integrity check',
     'integrity_confirmation': 'owner host re-confirmation',

@@ -374,10 +374,11 @@ def test_no_inbound_source_refuses_to_run(case, capsys):
     assert main(['listen', 'uninstall']) == 0
 
 
-@pytest.mark.parametrize('kind', ['listen: clock', 'listen: wake'])
-def test_listener_kinds_are_reserved_and_silent(case, kind):
+@pytest.mark.parametrize('kind', ['listen: clock', 'listen: wake', 'decision.escalated'])
+def test_listener_kinds_are_reserved_and_silent(case, kind, capsys):
     from wuwei import signal
     assert main(['event', kind]) == 1
+    assert 'wuwei listen' in capsys.readouterr().err
     assert kind in signal.SILENT
 
 
@@ -465,3 +466,110 @@ def test_issue_acceptance_stop_all_stops_every_session_in_one_tick(case, monkeyp
     listen().tick(root)
     assert all('stopped' in row for row in state.read_state(root)['sessions'].values())
     assert sent == ['Stopped 2 sessions.'] and kinds(root, 'remote.pending') == []
+
+
+def status_of(capsys):
+    capsys.readouterr()
+    assert main(['status', '--line']) == 0
+    text = capsys.readouterr().out
+    assert main(['status', '--json']) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert main(['nudges']) == 0
+    rows = [row for row in json.loads(capsys.readouterr().out) if row['source'] == 'listen: health']
+    return text, data['listen'], rows
+
+
+def test_issue_acceptance_dead_listener_shows_in_the_status_line(case, monkeypatch, capsys):
+    root, _ = case
+    state.append_event('listen: clock', {}, root)
+    later(monkeypatch, 300)
+    text, listening, rows = status_of(capsys)
+    assert 'listen dead' in text and listening == 'dead'
+    assert rows == [{'tier': 'page', 'source': 'listen: health', 'lane': 'Work',
+                     'reason': 'listen dead: no clock line within deadline'}]
+
+
+@pytest.mark.parametrize('setup, part, listening, tier', [
+    ('fresh', None, 'alive', None),
+    ('unit', 'listen dead', 'dead', 'page'),
+    ('nothing', 'listen off', 'off', None),
+    ('no inbound', None, 'none', None),
+    ('future', 'listen unmeasured', 'unmeasured', 'nudge'),
+])
+def test_listener_states_in_the_status_line(case, monkeypatch, capsys, setup, part, listening, tier):
+    root, _ = case
+    state._write_state(lambda data: None, root, reserved=False)
+    if setup in ('fresh', 'future'):
+        state.append_event('listen: clock', {}, root)
+    if setup == 'future':
+        later(monkeypatch, -60)
+    if setup == 'unit':
+        unit = workspace.watch_unit(root, name='listen')[1]
+        unit.parent.mkdir(parents=True)
+        unit.write_text('')
+    if setup == 'no inbound':
+        (root / '.wuwei/config.toml').write_text('')
+    text, measured, rows = status_of(capsys)
+    assert measured == listening
+    assert (part in text) if part else ('listen' not in text)
+    assert [row['tier'] for row in rows] == ([tier] if tier else [])
+
+
+def host_decision(root):
+    from wuwei import decision, remote
+    text = remote.DENIAL.format(session='1a2b3c4d', tool='Bash')
+    path = decision.write(text, root)
+    decision.route_owner(path.stem, decision.evaluate(text)[0], root)
+
+
+@pytest.fixture
+def dm(case, monkeypatch):
+    from wuwei import remote
+    root, _ = case
+    config(root, '[owner]\nname = "Robin Example"\n[control_plane]\nowner = "T1/U1"\n')
+    monkeypatch.setenv('SLACK_OWNER_DM_CHANNEL', 'D1')
+    sent = []
+    monkeypatch.setattr(remote.TRANSPORT, 'dm', lambda text, *, root=None: sent.append(text) or Result(0, {}))
+    host_decision(root)
+    return sent
+
+
+def test_issue_acceptance_host_decision_reaches_the_dm(case, dm):
+    root, _ = case
+    assert listen().tick(root) == 0
+    assert listen().tick(root) == 0
+    assert len(dm) == 1 and dm[0].startswith('D-1: ')
+    assert [row['payload'] for row in kinds(root, 'decision.escalated')] == [{'id': 'D-1'}]
+
+
+@pytest.mark.parametrize('off', ['kill switch', 'no channel'])
+def test_no_escalation_without_the_responder_or_the_channel(case, dm, monkeypatch, off):
+    root, _ = case
+    if off == 'kill switch':
+        config(root, '[control_plane]\nowner = "T1/U1"\n[responder]\nenabled = false\n')
+    else:
+        monkeypatch.delenv('SLACK_OWNER_DM_CHANNEL')
+    assert listen().tick(root) == 0
+    assert dm == [] and kinds(root, 'decision.escalated') == []
+
+
+def test_an_escalation_that_cannot_run_fails_the_tick(case, dm, monkeypatch, capsys):
+    from wuwei import remote
+    root, _ = case
+    monkeypatch.setattr(remote.TRANSPORT, 'dm', lambda text, *, root=None: Result(2, None, 'down'))
+    assert listen().tick(root) == 2
+    assert kinds(root, 'decision.escalated') == []
+    (workspace.day_dir(root) / 'decisions/D-1.md').write_text('garbage\n')
+    assert listen().tick(root) == 2
+    assert 'listen escalate unmeasured:' in capsys.readouterr().out
+
+
+def test_session_start_shows_a_phone_answer_without_changing_its_code(case):
+    root, _ = case
+    assert lifecycle.session_start({'cwd': str(root)})[0] == 0
+    host_decision(root)
+    code, message = lifecycle.session_start({'cwd': str(root)})
+    assert 'answered from the phone' not in message
+    state.append_event('decision.replied', {'id': 'D-1', 'option': 'A'}, root)
+    assert lifecycle.session_start({'cwd': str(root)}) == (
+        code, message + '\nD-1 answered from the phone: option A, confirm with decision outcome D-1 A')

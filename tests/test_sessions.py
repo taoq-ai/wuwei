@@ -276,3 +276,11 @@ def test_registry_fault_keeps_session_start_code_two(root, monkeypatch):
     code, text = lifecycle.session_start({'cwd': str(root), 'session_id': 'A'})
     assert code == 2
     assert 'session registry unmeasured: registry broken' in text
+
+
+def test_rows_carry_stopped(root, monkeypatch, capsys):
+    sessions.touch(root, 'R', hook='remote start', cwd=str(root), role='remote', thread='slack:D1/1')
+    sessions.touch(root, 'A', hook='SessionStart', cwd=str(root))
+    state._write_state(lambda data: data['sessions']['R'].update(stopped=NOW), root, reserved=False)
+    rows = listed(capsys)
+    assert rows['R']['stopped'] == NOW and 'stopped' not in rows['A']

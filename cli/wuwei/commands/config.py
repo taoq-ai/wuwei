@@ -1,6 +1,7 @@
 """Validate workspace configuration."""
 
 import os
+import re
 import sys
 
 from wuwei import env, outward, registry
@@ -60,6 +61,17 @@ def run(args):
             print(f'  {label}: no credential variables required')
     # Reported, not a finding: the outward lint already fails closed without a name.
     print('Owner:\n  ' + ('owner.name: set' if config['owner']['name'].strip() else outward.OWNER_UNSET))
+    if config['adapters']['inbound'] != 'none':
+        from wuwei.remote import PIN
+        pin = config['control_plane']['owner']
+        valid = bool(re.fullmatch(PIN, pin))
+        print('Control plane:\n  control_plane.owner: ' + (
+            'set' if valid else 'invalid (expected <team id>/<user id>)' if pin else
+            'missing (<team id>/<user id>; see remote operation section 3)'))
+        status = max(status, CLEAN if valid else FINDINGS)
+        # Reported, not a finding: without it a confirm reply is the second factor.
+        print('  WUWEI_TOTP_SECRET: ' + ('set' if os.environ.get('WUWEI_TOTP_SECRET') else
+                                        'missing (confirm replies are the only second factor)'))
     # Design 4.5 and 9.1: the publishing guarantee lives in host rules and the credential layout.
     host = registry.load('code_host', config)
     print('Host protections:')

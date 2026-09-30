@@ -99,7 +99,9 @@ It checks presence only, not whether the token works.
 ## 3. Pin your identity
 
 Only the sender pinned in `control_plane.owner = "T0123ABC/U0123ABC"` (your Slack team id,
-a slash, your user id) can command. There is one owner per workspace.
+a slash, your user id) can command. There is one owner per workspace. Until it is set,
+`bin/wuwei config check` prints `control_plane.owner: missing` and exits 1; a malformed
+pin prints `control_plane.owner: invalid`. It never prints the pin.
 
 Set `owner.name` in `.wuwei/config.toml` too. The outward lint uses it for messages to
 other people; replies in the owner DM are addressed to you and send without it. Until it
@@ -126,7 +128,9 @@ With the pin set:
 - Your user id with a different or missing team id is refused. The DM answers
   "Refused: this sender does not match the pinned identity. Confirm it on the host." and
   a `remote.refused` event pages on the host. Editing the pin on the host is the
-  re-confirmation. `stop all` is still accepted.
+  re-confirmation: the event records the pin it was checked against, and the page clears
+  once `control_plane.owner` holds a different value. A refusal while the pin is right
+  stays paged until the day ends. `stop all` is still accepted.
 
 ## 4. The second factor
 
@@ -150,7 +154,9 @@ Never paste the secret or the URI into a website.
 The code must reach the listener within 2 minutes of the message, and each code works
 once. The secret is readable by any process running as you on the host (design 9.1): it
 guards against a stranger in the DM or a stolen Slack session, not against your own
-user. Without `WUWEI_TOTP_SECRET`, `confirm` is the only factor.
+user. Without `WUWEI_TOTP_SECRET`, `confirm` is the only factor. `bin/wuwei config check`
+prints `WUWEI_TOTP_SECRET: set` or `WUWEI_TOTP_SECRET: missing (confirm replies are the
+only second factor)`; neither changes its exit code, and it never prints the value.
 
 ## 5. Install the listener
 
@@ -188,7 +194,10 @@ logs a `listen remote.unmatched` line with its id and is never a command.
 
 The listener writes a `listen: clock` line every two minutes. Session start reports
 `listen dead` when today's latest clock line is older than `listen.dead_seconds`, or when
-the listener is installed and wrote none today.
+the listener is installed and wrote none today. The same rule drives the status line:
+`status --line` shows `listen dead` (and `bin/wuwei nudges` a page), `listen unmeasured`
+when the clock cannot be read, `listen off` when the listener has not run today, and
+nothing while it is alive.
 
 Kill switches, strongest last:
 
@@ -252,14 +261,19 @@ With `control_plane.content = "none"`, `status`, `report` and the answer to `ask
 `plan` and `ask` start headless `claude -p` sessions with the role's tools only (`ask`
 is read-only). A refused tool arrives as a decision; granting it stays a host change. No
 session starts while free memory is below `host.free_memory_mb`. `bin/wuwei sessions`
-on the host lists them with role `remote`.
+on the host lists them with role `remote` and a `stopped` field once stopped; the
+`sessions` count in `status --line` counts live sessions only.
 
 ## 7. Decisions on the phone
 
 Remote Control path: the planner asks each decision as a question. With "Push when
 actions required" it reaches the phone and stays open until you answer.
 
-DM path, for decisions a `plan` session raises. With `control_plane.content = "summary"`:
+DM path, for every decision routed to you: raised by a `plan` session, by
+`bin/wuwei decision route` or `bin/wuwei pr act` on the host, or by a refused tool. A
+turn's decisions arrive before its `Session` line; host decisions arrive at the next
+listener poll. Each is sent once a day, recorded as a `decision.escalated` event. With
+`control_plane.content = "summary"`:
 
 ```text
 D-3: <one-line question>
@@ -289,8 +303,16 @@ otherwise the DM answers:
 Recorded D-3 option B. Confirm it on the host.
 ```
 
-Either way, record the outcome in a host terminal with `bin/wuwei decision outcome D-3 B`;
-until then nudges and the report list it as pending. Drafts are the same:
+The first answer stands. A second, different answer is not recorded:
+
+```text
+Not recorded: D-3 already has option B from this DM. Record the outcome on the host to change it.
+```
+
+Either way, record the outcome in a host terminal with `bin/wuwei decision outcome D-3 B`.
+Until then `bin/wuwei nudges`, `status --line` and session start show
+`D-3 answered from the phone: option B, confirm with decision outcome D-3 B`, and the
+report lists it as pending. Drafts are the same:
 `bin/wuwei drafts approve <id>` or `bin/wuwei drafts drop <id>`. Agent tools are refused
 these commands, and `decision outcome` and `drafts approve` also read a typed digest from
 the terminal, so they run neither through Remote Control nor the DM; from a phone,
@@ -308,5 +330,6 @@ use your own remote shell to the host, for example SSH. See
   Commands: plan, status, report, ask <question>, stop <session>, stop all. Decisions:
   approve D-n, option X on D-n, drop it." There are no routines, no cloud sessions, no
   budget governor, no owner quiet hours and no external dead-man ping. `listen dead` at
-  session start is the only liveness signal, and it is seen only on the host.
+  session start and in `status --line` are the only liveness signals, and both are seen
+  only on the host.
 - Thread replies are not read, and a turn blocks the listener poll while it runs.
