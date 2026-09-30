@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.6.0](https://github.com/taoq-ai/wuwei/compare/v0.5.0...v0.6.0) (2026-09-30)
+
+
+### Features
+
+* **team:** worktree command, watch install safety and operator docs ([#216](https://github.com/taoq-ai/wuwei/issues/216)) ([01959e1](https://github.com/taoq-ai/wuwei/commit/01959e1b8a6408e60265f5ed2483af65e1c28d25)), closes [#210](https://github.com/taoq-ai/wuwei/issues/210)
+
+
+### Bug Fixes
+
+* **core:** hook latency budget and recovery from a corrupt state file ([#221](https://github.com/taoq-ai/wuwei/issues/221)) ([e212b9d](https://github.com/taoq-ai/wuwei/commit/e212b9dd4649c9dd157168da68fbb0a76d5f3fe9)), closes [#211](https://github.com/taoq-ai/wuwei/issues/211)
+* **guards:** the plugin's own launcher and irrelevant scripts are never refused as opaque ([#213](https://github.com/taoq-ai/wuwei/issues/213)) ([31a36cc](https://github.com/taoq-ai/wuwei/commit/31a36cc44c60994e6612a87e766551288e20adf0)), closes [#205](https://github.com/taoq-ai/wuwei/issues/205)
+* **team:** a solo owner can raise, push and close without reviewers or chat ([#218](https://github.com/taoq-ai/wuwei/issues/218)) ([e40e332](https://github.com/taoq-ai/wuwei/commit/e40e3320b035a03202fc6cb6dc2e07b5f8fb8741)), closes [#207](https://github.com/taoq-ai/wuwei/issues/207)
+* **team:** an answered owner decision clears close, and the Stop hook never traps the session ([#214](https://github.com/taoq-ai/wuwei/issues/214)) ([7b35aad](https://github.com/taoq-ai/wuwei/commit/7b35aade9b316615e56efd8459e472d5d0aee4d1)), closes [#206](https://github.com/taoq-ai/wuwei/issues/206)
+* **team:** records the operator reads are correct ([#219](https://github.com/taoq-ai/wuwei/issues/219)) ([55d9133](https://github.com/taoq-ai/wuwei/commit/55d913312e3a015c0e96a326afce04fbe99ad831)), closes [#209](https://github.com/taoq-ai/wuwei/issues/209)
+* **team:** the loop's joints between build, gates, delta and push ([#217](https://github.com/taoq-ai/wuwei/issues/217)) ([11921c5](https://github.com/taoq-ai/wuwei/commit/11921c5565af004720ec821423c7f53db2276c59)), closes [#208](https://github.com/taoq-ai/wuwei/issues/208)
+
 ## [0.5.0](https://github.com/taoq-ai/wuwei/compare/v0.4.0...v0.5.0) (2026-09-29)
 
 
