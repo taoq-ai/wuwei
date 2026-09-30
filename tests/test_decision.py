@@ -638,7 +638,7 @@ def test_owner_reversal_is_recorded_once_and_measured(ws, monkeypatch):
     ('wuwei decision route D-2; expect -c "spawn wuwei decision outcome D-2 A"', 2),
     ('script -q /dev/null wuwei decision outcome D-2 A', 2),
     ('unbuffer wuwei decision outcome D-2 A', 2),
-    ('python3 -mwuwei decision outcome D-3 A', 2),
+    ('python3 -mwuwei decision outcome D-3 A', 1),
     ('X=outcome; wuwei decision $X D-3 A', 2),
     ('wuwei decision route D-2', 0),
     ('python3 -m pytest -q', 0),

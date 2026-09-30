@@ -41,6 +41,7 @@ SPECIAL_TESTS = {
     ('wuwei.merge', 'check'): 'test_disabling_merge_policy_makes_its_probe_red',
     ('wuwei.decision', 'lint'): 'test_disabling_decision_lint_makes_its_probe_red',
     ('wuwei.guards.deploy', 'check'): 'test_disabling_guard_makes_its_probe_red',
+    ('wuwei.guards.protect_state', '_owner_action'): 'test_disabling_owner_rule_makes_its_probe_red',
 }
 
 
@@ -80,7 +81,8 @@ def test_special_policies_have_mutation_probes():
 
     required = {(merge.check.__module__, merge.check.__name__),
                 (decision.lint.__module__, decision.lint.__name__),
-                ('wuwei.guards.deploy', 'check')}
+                ('wuwei.guards.deploy', 'check'),
+                ('wuwei.guards.protect_state', '_owner_action')}
     covered = {name for name, test in SPECIAL_TESTS.items() if callable(globals().get(test))}
     assert not missing_guards(required, covered), 'special policy lacks a mutation test'
     assert ('deploy', 'PreToolUse', 'Bash', 'check') in PROBES
@@ -109,6 +111,24 @@ def test_disabling_decision_lint_makes_its_probe_red():
     assert_refused(decision.lint)
     with pytest.raises(AssertionError):
         assert_refused(lambda text: (0, ''))
+
+
+def test_disabling_owner_rule_makes_its_probe_red(tmp_path, monkeypatch):
+    from wuwei.guards import protect_state
+
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    payload = {'cwd': str(tmp_path), 'tool_name': 'Bash',
+               'tool_input': {'command': 'W=watch; bin/wuwei $W uninstall'}}
+
+    def assert_refused():
+        assert protect_state.check_bash(payload)[0] == 2
+
+    assert_refused()
+    monkeypatch.setattr(protect_state, '_owner_action', lambda *args, **kwargs: None)
+    with pytest.raises(AssertionError):
+        assert_refused()
 
 
 def assert_probe(check, row, root, monkeypatch):
