@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from wuwei import closing, state, steward, watch, workspace
+from wuwei import closing, state, steward, workspace
 
 
 def register(subparsers):
@@ -20,9 +20,7 @@ def run(args):
     else:
         if not (workspace.day_dir(root) / 'state.json').is_file():
             raise ValueError('day state missing; close cannot infer empty ownership')
-        if not any(row['kind'] == 'steward.run' and row['payload'].get('trigger') == 'close'
-                   for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
-            steward.run(root, trigger='close')
+        steward.run(root, trigger='close')
         state._write_state(lambda data: data.update(close_requested=True), root, reserved=False,
                            kind='day.close_requested')
         code, reason = closing.check(root)

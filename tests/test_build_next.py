@@ -127,6 +127,8 @@ def test_claude_launch_check_continue_done_idempotent(seat, monkeypatch, capsys)
     assert 'failure' in err and 'test_one' in err
     action = build.next_action('A', root=root)
     assert action['action'] == 'continue' and 'test_one' in action['feedback']
+    assert json.loads(action['feedback'].split(': ', 1)[1]) == {'test_ids': ['test_one'], 'error': 'failure'}
+    assert '"test_ids"' in err
     assert action['resume'] == 'agent-builder'
     assert build.next_action('A', root=root) == action
     # A consumed brief alone never authorizes another launch.

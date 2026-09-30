@@ -30,11 +30,17 @@ def build(root=None):
     data = state.read_state(root)
     measured = metrics.collect(root)
     baseline = measured['baseline']
+
+    def shown(key):
+        measured_value, baseline_value = (
+            json.dumps(value, sort_keys=True, allow_nan=False) if isinstance(value, dict) else value
+            for value in (measured[key], baseline[key]))
+        return f'{measured_value}; baseline: {baseline_value}'
     lines = ['# WUWEI report ' + day.name, '', '## Outcome',
-             f'- Escaped defects: {measured["escaped_defects"]}; baseline: {baseline["escaped_defects"]}',
-             f'- Review rework: {measured["review_rework"]}; baseline: {baseline["review_rework"]}',
-             f'- Owner intervention: {measured["owner_intervention"]}; baseline: {baseline["owner_intervention"]}',
-             f'- Lead time: {measured["lead_time"]}; baseline: {baseline["lead_time"]}',
+             f'- Escaped defects: {shown("escaped_defects")}',
+             f'- Review rework: {shown("review_rework")}',
+             f'- Owner intervention: {shown("owner_intervention")}',
+             f'- Lead time: {shown("lead_time")}',
              '', '## Merged']
     items = data['items']
     lines.extend(f"- {name} ({item['pr']})" if item.get('pr') else f'- {name}'

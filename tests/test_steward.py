@@ -182,13 +182,14 @@ def test_concurrent_reviews_record_one_note(root, monkeypatch):
 
 def test_close_retry_uses_existing_steward_run(root, monkeypatch):
     from wuwei.commands import close
-    from wuwei import steward
+    from wuwei import registry
 
     state.append_event('steward.run', {'trigger': 'close', 'tool_calls': 0}, root)
     monkeypatch.setattr(workspace, 'guard_scope', lambda payload: root)
-    monkeypatch.setattr(steward, 'run', lambda *args, **kwargs: pytest.fail('duplicate steward run'))
+    monkeypatch.setattr(registry, 'load', lambda *args: pytest.fail('duplicate steward dispatch'))
     monkeypatch.setattr(close.closing, 'check', lambda _root: (1, 'pending'))
     assert close.run(SimpleNamespace(check=None)) == 1
+    assert not list((workspace.day_dir(root) / 'briefs').glob('steward-*.md'))
 
 
 def test_decision_queue_skips_owner_answered(root):

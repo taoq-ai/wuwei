@@ -349,7 +349,7 @@ def complete_checks(item, results, *, root, expected=None):
             return 1
         from wuwei.brief import launch_prompt
         from wuwei.security import agent_path
-        feedback = '\n'.join(f'{name}: {data}' for name, data in failures)
+        feedback = '\n'.join(f'{name}: {json.dumps(data)}' for name, data in failures)
         action = {'action': 'continue', 'feedback': feedback, 'resume': record.get('agent_id'),
                   'agent_type': 'wuwei:builder',
                   'prompt': launch_prompt(root / record['brief'], agent_path(root, 'builder'), root=root) + '\n\n' + feedback}

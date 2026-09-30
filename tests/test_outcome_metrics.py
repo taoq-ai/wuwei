@@ -206,7 +206,7 @@ def test_report_shows_measured_outcome_beside_workspace_baseline(root, monkeypat
         'status': 'merged', 'merged_at': '2026-09-29T10:00:00Z',
         'outcome': {'escaped': True, 'reverts': [], 'fixes': ['f']}}}), root, reserved=False)
     text = report.build(root)
-    assert "'rate': 1.0" in text
+    assert '"rate": 1.0' in text
     assert 'baseline: 0.25' in text
 
 

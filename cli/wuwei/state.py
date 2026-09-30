@@ -370,6 +370,8 @@ def _move(data, item, phase):
     if current['phase'] == 'delta' and phase == 'raised' and item in data.get('builds', {}):
         data['builds'][item]['fix_rounds'] = 0
     current['phase'] = phase
+    if phase == 'merged':
+        current['status'] = 'done'
 
 
 def transition(item, phase, root=None):
