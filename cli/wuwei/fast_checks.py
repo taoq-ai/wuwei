@@ -10,7 +10,7 @@ from wuwei.guards.commit_push import context, data
 def record(path):
     path = Path(path).resolve()
     root = workspace.find_workspace(path)
-    repo, actual, vcs = context(path, {}, {}, root)
+    repo, actual, vcs = context(path, {}, {}, root, identity=False)
     records = {}
     from wuwei.commands.build import check_binding
     builds = [check_binding(item, build) for item, build in state.read_state(root).get('builds', {}).items()

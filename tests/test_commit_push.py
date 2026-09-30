@@ -85,6 +85,7 @@ identity = {name = "Builder", email = "builder@example.test"}
     push = {'head': {'sha': SHA, 'author': dict(OWNER), 'committer': dict(OWNER)},
             'updates': [{'source': SHA, 'destination': 'refs/heads/feature'}], 'force': False, 'remote': 'origin'}
     fake = Fake({'commit_context': Result(0, context), 'push_context': Result(0, push),
+                 'repo_context': Result(0, {key: context[key] for key in ('path', 'common_dir')}),
                  'head': Result(0, push['head']),
                  'push_commits': Result(0, {'commits': [push['head']]}),
                  'merge_base': Result(0, {'sha': OLD})})
@@ -201,6 +202,14 @@ def test_port_errors_fail_closed(workspace_case, operation, result):
     root, fake = workspace_case
     fake.results[operation] = result
     assert guard().check(payload(root, 'git push origin feature'))[0] == 2
+
+
+@pytest.mark.parametrize('settings,env', [({'user.name': 'Other'}, {}), ({}, {'GIT_DIR': 'other/.git'})])
+def test_identity_free_context_refuses_overrides(workspace_case, settings, env):
+    root, fake = workspace_case
+    with pytest.raises(ValueError, match='identity-free'):
+        guard().context(root / 'repo', settings, env, root, identity=False)
+    assert not fake.calls
 
 
 def test_unconfigured_repository_is_unmeasured(workspace_case):

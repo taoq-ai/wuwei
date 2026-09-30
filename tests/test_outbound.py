@@ -388,13 +388,13 @@ def test_outward_worktree_common_directory(configured, monkeypatch, tmp_path, ev
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     common = str(root / 'repos/app/.git')
 
-    def commit_context(path, settings, env, root=None):
+    def repo_context(path, root=None):
         if evidence == 'unavailable':
             return Result(2, None, 'unavailable')
         return Result(0, {'common_dir': str(tree / '.git')
                          if evidence == 'different' and path == str(tree) else common})
 
-    monkeypatch.setattr(vcs, 'commit_context', commit_context)
+    monkeypatch.setattr(vcs, 'repo_context', repo_context)
     assert check(call(tree, {'text': 'Thanks', 'channel': 'Cclient'}))[0] == expected
 
 

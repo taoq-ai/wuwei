@@ -16,7 +16,8 @@ Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse 
 
 ## Seat launch contract
 
-Write and log a brief with `wuwei brief <role> <item> <name>`, then obtain launch
+Write and log a brief with `wuwei brief <role> <item> <name> --body TEXT` (or
+`--file PATH`, where `--file -` reads stdin), then obtain launch
 instructions with `wuwei runtime dispatch <role> <brief> <worktree>`. With the Claude
 runtime, pass the returned `prompt` unchanged to Agent and use its `agent_type`
 (`wuwei:<role>`) as Agent's `subagent_type`. Supply an Agent description and launch
@@ -116,7 +117,8 @@ Claude Code builders run as subagents in the planner session. After writing a bu
 brief with its worktree, call `wuwei build next <item>`. It returns one JSON action:
 `launch` supplies the Agent prompt, `continue` supplies the same agent's resume ID and
 feedback, `check` supplies a command to run through Bash, `park` supplies a reason and
-numbered decision path, and `done` means checks passed. Call next again after executing
+numbered decision path, and `done` means checks passed and the item moved to `gate`
+(or to `delta` after a fix build). Call next again after executing
 the action. Hooks register the seat and record its result; unchanged state returns the
 same action, so execute each action once. Never poll a Claude seat through the CLI.
 

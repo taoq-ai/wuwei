@@ -250,8 +250,8 @@ def raise_pr(root, repo_name, base, title, body, item):
         vcs = registry.load('vcs', config)
         configured_path = (root / settings['path']).resolve()
         if repo_path != configured_path:
-            common = merge.read(vcs.commit_context, str(repo_path), {}, {}, root=root).get('common_dir')
-            configured_common = merge.read(vcs.commit_context, str(configured_path), {}, {}, root=root).get('common_dir')
+            common = merge.read(vcs.repo_context, str(repo_path), root=root).get('common_dir')
+            configured_common = merge.read(vcs.repo_context, str(configured_path), root=root).get('common_dir')
             merge.require(isinstance(common, str) and bool(common) and common == configured_common,
                           'item worktree does not belong to the raised repository')
         head = merge.read(vcs.head, str(repo_path), root=root)['sha']
