@@ -103,5 +103,69 @@
         ]
       }
     }
+  ],
+  "slack_history": [
+    {
+      "ok": true,
+      "messages": [
+        {
+          "type": "message",
+          "subtype": "bot_message",
+          "bot_id": "B1",
+          "text": "Draft D-3 for review",
+          "ts": "1790769550.000100"
+        }
+      ],
+      "response_metadata": {
+        "next_cursor": ""
+      }
+    },
+    {
+      "ok": true,
+      "messages": [
+        {
+          "type": "message",
+          "user": "U1",
+          "text": "<@U0OWNER> can you look at this",
+          "ts": "1790769590.000300"
+        },
+        {
+          "type": "message",
+          "user": "U2",
+          "text": "ping <@U0OWNER|pat>, call +44 20 7946 0958",
+          "ts": "1790769580.000200",
+          "thread_ts": "1790769000.000100"
+        },
+        {
+          "type": "message",
+          "user": "U3",
+          "text": "lunch anyone",
+          "ts": "1790769570.000100"
+        },
+        {
+          "type": "message",
+          "user": "U0OWNER",
+          "text": "<@U0OWNER> note to self",
+          "ts": "1790769560.000100"
+        },
+        {
+          "type": "message",
+          "subtype": "channel_join",
+          "user": "U4",
+          "text": "<@U4> has joined the channel",
+          "ts": "1790769555.000100"
+        },
+        {
+          "type": "message",
+          "user": "U5",
+          "app_id": "A1",
+          "text": "<@U0OWNER> build passed",
+          "ts": "1790769552.000100"
+        }
+      ],
+      "response_metadata": {
+        "next_cursor": ""
+      }
+    }
   ]
 }

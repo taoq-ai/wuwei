@@ -19,7 +19,7 @@ The CLI core asks named ports for plain data. Modules under `adapters/` implemen
 | vcs | git | git |
 | host | none, local | local |
 | checks | none, local | local |
-| inbound | none | none |
+| inbound | none, slack | none |
 | redactor | builtin | builtin |
 
 The `vcs` port calls git; `code_host.github` calls `gh`. Tracker and chat integrations require their external access and credentials. The Codex runtime uses the configured companion command and timeout. The ZIRAN scanner requires **ZIRAN 0.39.0 or newer** and checks `ziran --version` before each measurement. Older or unavailable versions report unmeasured (exit 2). It supports S4 audit and S2 live traces through the [JSON CLI contract](configuration.html). S3 MCP registry checks run at init, upgrade and morning planning; they preserve snapshots and block launches on findings or incomplete measurement. Inbound text passes through the redactor port, which replaces phone numbers, email addresses and secrets, before it is stored in `.wuwei/inbox/inbox.jsonl`. Other ports in the design, including control planes, are **planned** and have no config keys in the shipped template.
@@ -58,6 +58,7 @@ means a check could not run. Presence checks do not verify remote token validity
 | code_host.github | `gh auth status --hostname github.com` must succeed. Authenticate gh separately or supply `GH_TOKEN` or `GITHUB_TOKEN`. WUWEI captures and discards gh's account output. A write-scoped `GH_TOKEN` or `GITHUB_TOKEN` in `.wuwei/env` or the environment is readable by seats, and `wuwei config check` reports it. |
 | tracker.linear | `LINEAR_API_KEY` |
 | chat.slack | `SLACK_BOT_TOKEN` or `SLACK_USER_TOKEN`, plus `SLACK_OWNER_DM_CHANNEL`. With `chat.identity = "custom_app"`, `SLACK_BOT_TOKEN` is required. |
+| inbound.slack | `SLACK_BOT_TOKEN` or `SLACK_USER_TOKEN`, plus `SLACK_OWNER_DM_CHANNEL`. Mentions in work and external channels need your Slack user id in `owner.handles`. |
 | review_bot.greptile | `GREPTILE_API_KEY` |
 | calendar.ics | `WUWEI_CALENDAR_URL`, a private HTTPS feed URL |
 | runtime.codex | `codex.command`, a nonempty command array in config.toml; credentials for the companion are managed by that tool |
