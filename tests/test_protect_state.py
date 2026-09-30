@@ -4,6 +4,7 @@ import io
 import json
 import shlex
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -640,3 +641,45 @@ def test_unresolvable_cd_refusal_names_the_workspace_guard(workspace):
                                       command='cd $(git rev-parse --show-toplevel) && ls'))
     assert code == 2 and 'workspace guard' in reason and 'cd' in reason
     assert 'git or gh' not in reason
+
+
+def _continue_job(root):
+    agents = root / '.wuwei/generated/agents'
+    agents.mkdir(parents=True, exist_ok=True)
+    (agents / 'sentinel-quality.md').write_text('charter\n')
+    job = {'agent_type': 'wuwei:sentinel-quality',
+           'prompt': (f'WUWEI brief: A\nRead instructions {agents}/sentinel-quality.md '
+                      'and brief .wuwei/briefs/A.md')}
+    return shlex.quote(json.dumps(job))
+
+
+def test_runtime_continue_passes_through_hook(workspace, monkeypatch, capsys):
+    from wuwei.commands.hook import run
+    command = f"wuwei runtime continue {_continue_job(workspace)} 'Recheck Q1.'"
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload(workspace, 'Bash', command=command))))
+    assert run(SimpleNamespace(event='PreToolUse')) == 0
+    assert not capsys.readouterr().out
+
+
+@pytest.mark.parametrize('command', [
+    'wuwei verdict lint .wuwei/generated/agents/x.md',
+    '{plugin}/bin/wuwei verdict lint .wuwei/generated/agents/x.md',
+    'python3 -P -m wuwei runtime continue {job} x',
+])
+def test_wuwei_cli_arguments_are_data(workspace, command):
+    from wuwei.guards.protect_state import check_bash
+    plugin = shlex.quote(str(Path(__file__).resolve().parents[1]))
+    command = command.format(job=_continue_job(workspace), plugin=plugin)
+    assert check_bash(payload(workspace, 'Bash', command=command)) == (0, '')
+
+
+@pytest.mark.parametrize('command', [
+    'bin/wuwei state get > .wuwei/config.toml',
+    'cp /dev/null .wuwei/generated/agents/a.md',
+    'echo x | tee .wuwei/config.toml',
+    './wuwei .wuwei/config.toml',
+    'x/wuwei .wuwei/generated/agents/a.md',
+])
+def test_writes_beside_the_cli_stay_refused(workspace, command):
+    from wuwei.guards.protect_state import check_bash
+    assert check_bash(payload(workspace, 'Bash', command=command))[0] != 0

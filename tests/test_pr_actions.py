@@ -122,6 +122,32 @@ def test_thread_fix_request_opens_fix_round(case, capsys):
     assert 'Please fix the parser' in json.loads(capsys.readouterr().out)['prompt']
 
 
+def test_observed_merge_moves_raised_to_merged(case, monkeypatch, capsys):
+    root, host, _, _ = linked(case)
+    keys = ('escaped_defects', 'review_rework', 'owner_intervention', 'lead_time')
+    monkeypatch.setattr('wuwei.metrics.collect', lambda root: {
+        **dict.fromkeys(keys, 0), 'baseline': dict.fromkeys(keys, 0)})
+    host.results['pr'].data.update(state='closed', merged=True)
+    assert main(['pr', 'state']) == 0
+    assert state.read_state(root)['items']['A']['phase'] == 'merged'
+    lines = (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()
+    event = [json.loads(line) for line in lines if json.loads(line)['kind'] == 'pr.action'][-1]
+    assert event['payload']['phase_changes'] == {'A': 'merged'}
+    capsys.readouterr()
+    monkeypatch.chdir(root)
+    assert main(['report']) == 0
+    merged = capsys.readouterr().out.split('## Merged\n', 1)[1].split('\n\n', 1)[0]
+    assert merged == f'- A ({REF})'
+
+
+def test_observed_merge_leaves_other_phases(case, capsys):
+    root, host, _, _ = linked(case)
+    state.transition('A', 'fix', root)
+    host.results['pr'].data.update(state='closed', merged=True)
+    assert main(['pr', 'state']) != 2
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
+
+
 def test_scope_disagreement_creates_decision(case, capsys):
     root, host, _, _ = linked(case)
     host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
@@ -134,6 +160,32 @@ def test_scope_disagreement_creates_decision(case, capsys):
     assert (root / action['decision']).is_file()
     assert main(['pr', 'act', REF]) == 1
     assert json.loads(capsys.readouterr().out.splitlines()[-1])['decision'] == action['decision']
+
+
+def test_pr_act_decision_is_routed_and_nudges(case, monkeypatch, capsys):
+    root, host, _, _ = linked(case)
+    monkeypatch.chdir(root)
+    host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
+        'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
+            'body': 'This is out of scope; add a new API instead',
+            'created_at': workspace.now().isoformat()}]}]
+    assert main(['pr', 'act', REF]) == 1
+    identifier = json.loads(capsys.readouterr().out)['decision'].rsplit('/', 1)[-1].removesuffix('.md')
+    assert identifier in state.read_state(root)['decision_routes']
+    lines = (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()
+    assert any(json.loads(line)['kind'] == 'decision.routed' for line in lines)
+
+    def pending():
+        assert main(['nudges']) == 0
+        return [row for row in json.loads(capsys.readouterr().out)
+                if row['source'] == 'decision.pending' and identifier in row['reason']]
+    assert [(row['tier'], row['lane']) for row in pending()] == [('nudge', 'Decisions')]
+    assert main(['status', '--line']) == 0
+    assert 'nudges 0' not in capsys.readouterr().out
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+    assert main(['decision', 'outcome', identifier, 'defer']) == 0
+    capsys.readouterr()
+    assert pending() == []
 
 
 @pytest.mark.parametrize('option', ['defer', 'change'])

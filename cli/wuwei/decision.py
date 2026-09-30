@@ -180,6 +180,17 @@ def route(fields):
             and fields['Blast radius'] in ('own branch', 'own PR') else 'owner')
 
 
+def route_owner(identifier, fields, root):
+    """Record an owner route once; a repeat route is a no-op."""
+    def mark(data):
+        data.setdefault('decision_routes', {}).setdefault(identifier, {
+            'reversibility': fields['Reversibility'], 'recommendation': fields['Recommendation']})
+
+    if identifier not in state.read_state(root).get('decision_routes', {}):
+        state._write_state(mark, root, reserved=False, kind='decision.routed',
+                           payload={'id': identifier, 'reversibility': fields['Reversibility']})
+
+
 def answered(data, identifier):
     """Return the owner's recorded option for a decision, or None while it is unanswered."""
     record = data.get('decision_outcomes', {}).get(identifier)

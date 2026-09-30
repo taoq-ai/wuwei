@@ -697,3 +697,31 @@ def test_recovered_event_names_the_recovery(workspace):
     assert 'state.json' in payload['error']
     row, = [row for row in attention(day(workspace)) if row['source'] == 'state.recovered']
     assert 'Unterminated' not in row['reason'] and 'recover in a host terminal' not in row['reason']
+
+
+def _approved(root, phase):
+    from wuwei import state
+    state._write_state(lambda data: data.update(
+        items={'A': {'phase': phase}}, approved_items=['A'], builds={'A': {'fix_rounds': 2}}),
+        root, reserved=False)
+
+
+@pytest.mark.parametrize('phase', ['gate', 'delta'])
+def test_raise_moves_the_phase(workspace, phase):
+    from wuwei import state
+    _approved(workspace, phase)
+    state.record_pr(workspace, 'A', 'owner/repo#1', raised=True)
+    data = state.read_state(workspace)
+    assert data['items']['A']['phase'] == 'raised'
+    assert data['builds']['A']['fix_rounds'] == (0 if phase == 'delta' else 2)
+    assert events(workspace)[-1]['kind'] == 'pr.raised'
+    assert events(workspace)[-1]['payload']['phase_changes'] == {'A': 'raised'}
+
+
+@pytest.mark.parametrize('phase,raised', [('fix', True), ('delta', False)])
+def test_link_without_raise_keeps_the_phase(workspace, phase, raised):
+    from wuwei import state
+    _approved(workspace, phase)
+    state.record_pr(workspace, 'A', 'owner/repo#1', raised=raised)
+    data = state.read_state(workspace)
+    assert data['items']['A'] == {**data['items']['A'], 'phase': phase, 'pr': 'owner/repo#1'}

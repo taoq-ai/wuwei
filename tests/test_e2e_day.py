@@ -40,7 +40,7 @@ def test_scripted_day(day):
     assert day.data['seats']['quality-initial']['status'] == 'stopped'
     assert day.next() == {'action': 'raise', 'notes': []}
     day.raise_pr()
-    day.transition('raised')
+    assert day.data['items']['A']['phase'] == 'raised'
     assert day.data['raised_prs'] == [day.ref]
     assert day.data['items']['A']['pr'] == day.ref
     from wuwei import merge
@@ -78,7 +78,7 @@ def test_scripted_day(day):
     day.host.results['pr'].data.update(state='closed', merged=True,
         merged_at='2026-09-29T12:00:00Z', merge_commit=day.head)
     assert json.loads(day.run('pr', 'state'))[0]['state'] == 'merged'
-    day.transition('merged')
+    assert day.data['items']['A']['phase'] == 'merged'
     day.run('report')
     assert '- D-1: A' in (day.directory / 'report.md').read_text()
     day.run('close')
@@ -86,7 +86,8 @@ def test_scripted_day(day):
     assert day.data['close_requested'] is True
     assert all(seat['status'] == 'stopped' for seat in day.data['seats'].values())
     events = day.events
-    transitions = [row['payload']['phase'] for row in events if row['kind'] == 'state.transition']
+    transitions = [row['payload']['phase_changes']['A'] for row in events
+                   if 'A' in row['payload'].get('phase_changes', {})]
     assert transitions == ['implement', 'gate', 'fix', 'delta', 'raised', 'merged']
     gates = [row['payload'] for row in events if row['kind'] == 'gate.received']
     assert [(row['role'], row['round'], row['verdict']) for row in gates] == [

@@ -69,12 +69,14 @@ def instruction(data):
 
 def agent_path(root, role):
     """Return private instructions when this workspace has security enabled."""
+    charter = Path(__file__).resolve().parents[2] / 'charters' / (role + '.md')
     if root is not None and load(root) is not None:
         path = Path(root) / '.wuwei/generated/agents' / (role + '.md')
-        if not path.is_file():
+        # An unknown role falls through to the adapter's unknown role refusal.
+        if not path.is_file() and charter.is_file():
             raise ValueError('workspace instructions unavailable; run wuwei agents build')
         return path
-    return Path(__file__).resolve().parents[2] / 'charters' / (role + '.md')
+    return charter
 
 
 def matches(value, data):

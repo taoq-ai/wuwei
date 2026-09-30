@@ -65,6 +65,17 @@ def test_runtime_prompt_passes_guard(workspace, monkeypatch, capsys, role, conti
     assert_registered(root, job, capsys, monkeypatch)
 
 
+@pytest.mark.parametrize('gate', ['arch', 'quality', 'security'])
+def test_runtime_dispatch_accepts_gate_names(workspace, monkeypatch, capsys, gate):
+    root, _ = workspace
+    relative = brief.write('sentinel-' + gate, 'X', 'seat', 'Review the change',
+                           worktree='tree', root=root)
+    assert main(['runtime', 'dispatch', gate, relative, 'tree']) == 0
+    job = json.loads(capsys.readouterr().out)
+    assert job['agent_type'] == 'wuwei:sentinel-' + gate
+    assert_registered(root, job, capsys, monkeypatch)
+
+
 def test_steward_close_prompt_passes_guard(workspace, monkeypatch, capsys):
     root, _ = workspace
     assert main(['steward', 'run', '--trigger', 'close']) == 0

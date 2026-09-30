@@ -235,7 +235,10 @@ def test_raise_checks_gates_then_requests_recent_authors(case, monkeypatch, appr
         assert not any(name == 'create_pr' for name, _, _ in host.calls)
         assert tracker_calls == []
         return
+    for phase in ('implement', 'gate', 'fix', 'delta'):
+        state.transition('ITEM-1', phase, root)
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
+    assert state.read_state(root)['items']['ITEM-1']['phase'] == 'raised'
     assert tracker_calls == [('ITEM-1', 'in_review', root)]
     expected_reviewers = ['lead'] if solo else ['alice', 'bob', 'lead']
     assert state.read_state(root)['pr_reviewers'][REF] == expected_reviewers
