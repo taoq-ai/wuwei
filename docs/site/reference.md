@@ -181,3 +181,36 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei watch uninstall` | no |
 
 A command that asks for a digest reads it from `/dev/tty`. Without a terminal it changes nothing and exits 2 with `this is an owner action: run it in a host terminal`. `drafts approve --edit`, `goals edit` and `voice edit` open `EDITOR`. As with other host-only actions, this follows the cooperative hook threat model in spec 9.1.
+
+## Hook latency budget
+
+Every tool call waits for `bin/wuwei hook <event>`, so the hook path carries a budget (spec 10.6). The budget is 50 ms CPU p95 on developer hardware (M-series class); about 2x on 2-CPU CI runners. It applies to PreToolUse, PostToolUse and `bin/wuwei status --line`. Inside a workspace, Stop, SubagentStop, SessionStart and the PreToolUse `git commit` and `git push` checks are held to 100 ms wall p95.
+
+The hardware class matters because every hook first pays for an interpreter start. `python3 -I -c pass` takes about 20 ms on an M-series Mac and about twice that on a GitHub-hosted 2-CPU runner. PreToolUse, PostToolUse and `status --line` measure 40 to 50 ms CPU p95 on an M-series Mac.
+
+CPU p95 on a 2-CPU runner, three `main` runs of 2026-09-30:
+
+| Path | CPU p95 |
+| --- | --- |
+| PreToolUse | about 100 ms |
+| PostToolUse | 90 ms |
+| `status --line` | 110 ms |
+| Stop | 90 ms |
+| SubagentStop | 85 to 106 ms |
+| SessionStart | 140 to 157 ms |
+| `git commit` check | 115 ms |
+| `git push` check | 135 to 148 ms |
+
+### The latency CI job
+
+The `latency` job in `.github/workflows/tests.yml` runs `python -m pytest -q tests/test_hooks.py -k latency` with `WUWEI_BENCH=1` on every push and pull request. It is `continue-on-error`: a trend line, not a gate. On a 2-CPU runner it is red on every push, because the runner is about 2x slower than the hardware the budget is set for. A red job never blocks a merge.
+
+Each benchmark prints one report line:
+
+```text
+<path> p95 over <runs> runs: CPU <ms> ms, wall <ms> ms, python3 -I startup floor CPU <ms> ms, wall <ms> ms, load <load> on <n> CPUs
+```
+
+Read the hook figure against the startup floor on the same line. A hook that keeps its usual distance above the floor is the runner; a hook whose distance above the floor grows from one run to the next got slower.
+
+In a source checkout, `WUWEI_BENCH=1 python -m pytest -q tests/test_hooks.py -k latency` asserts the budgets. Without `WUWEI_BENCH=1` the benchmarks print the same lines and skip, because wall time on a busy host is load-bound.

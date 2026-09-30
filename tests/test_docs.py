@@ -154,3 +154,17 @@ def test_host_terminal_actions_and_morning_references():
                    '--base', '--title', '--body-file', '--item'):
         assert phrase in reference
     assert 'wuwei rank .wuwei/days/' in (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+
+
+def test_reference_states_hook_latency_budget():
+    reference = ' '.join((SITE / 'reference.md').read_text().split())
+    workflow = (ROOT / '.github/workflows/tests.yml').read_text()
+    for phrase in ('Hook latency budget', '50 ms CPU p95 on developer hardware (M-series class)',
+                   'about 2x on 2-CPU CI runners', '100 ms wall p95', 'python3 -I -c pass',
+                   'a trend line, not a gate', 'continue-on-error', 'WUWEI_BENCH=1',
+                   'startup floor'):
+        assert phrase in reference, phrase
+    command = 'python -m pytest -q tests/test_hooks.py -k latency'
+    assert command in reference and command in workflow
+    assert 'continue-on-error: true' in workflow
+    assert 'latency budget' in (SITE / 'index.md').read_text()

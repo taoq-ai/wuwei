@@ -1,5 +1,6 @@
 """Hook tables run in-process; fixture replays exercise the executable shim."""
 
+from functools import cache
 import io
 import json
 import os
@@ -417,21 +418,42 @@ def test_latency_budget_decision(monkeypatch, capsys, ci, bench, load, expected,
         monkeypatch.setenv('WUWEI_BENCH', '1')
     monkeypatch.setattr(os, 'getloadavg', lambda: (load, 0, 0))
     monkeypatch.setattr(os, 'cpu_count', lambda: 8)
+    monkeypatch.setitem(globals(), 'startup_floor', lambda runs: (20.0, 22.0))
     if expected == 'pass':
         assert_latency_budget('hook', 51.0, 60.0, capsys, wall_budget=wall_budget)
     elif expected == 'assert':
-        with pytest.raises(AssertionError):
+        with pytest.raises(AssertionError, match=r'startup floor CPU 20\.00 ms, wall 22\.00 ms'):
             assert_latency_budget('hook', 51.0, 60.0, capsys, wall_budget=wall_budget)
     else:
-        with pytest.raises(pytest.skip.Exception, match=r'CPU 51\.00 ms.*wall 60\.00 ms.*load'):
+        with pytest.raises(pytest.skip.Exception, match=r'CPU 51\.00 ms.*wall 60\.00 ms.*python3 -I startup floor CPU 20\.00 ms, wall 22\.00 ms.*load'):
             assert_latency_budget('hook', 51.0, 60.0, capsys)
+
+
+@cache
+def startup_floor(runs):
+    """p95 CPU and wall ms of a bare interpreter start, the floor under every hook figure."""
+    from resource import RUSAGE_CHILDREN, getrusage
+    from statistics import quantiles
+    from time import perf_counter
+
+    cpu, wall = [], []
+    for _ in range(runs):
+        before = getrusage(RUSAGE_CHILDREN)
+        start = perf_counter()
+        subprocess.run([sys.executable, '-I', '-c', 'pass'], check=True)
+        wall.append(perf_counter() - start)
+        after = getrusage(RUSAGE_CHILDREN)
+        cpu.append(after.ru_utime - before.ru_utime + after.ru_stime - before.ru_stime)
+    return quantiles(cpu, n=100)[94] * 1000, quantiles(wall, n=100)[94] * 1000
 
 
 def assert_latency_budget(name, cpu_ms, wall_ms, capsys, *, wall_budget=None, runs=60):
     load = os.getloadavg()[0]
     cpus = os.cpu_count() or 1
-    report = (f'{name} p95 over {runs} runs: CPU {cpu_ms:.2f} ms, '
-              f'wall {wall_ms:.2f} ms, load {load:.2f} on {cpus} CPUs')
+    floor_cpu, floor_wall = startup_floor(runs)
+    report = (f'{name} p95 over {runs} runs: CPU {cpu_ms:.2f} ms, wall {wall_ms:.2f} ms, '
+              f'python3 -I startup floor CPU {floor_cpu:.2f} ms, wall {floor_wall:.2f} ms, '
+              f'load {load:.2f} on {cpus} CPUs')
     with capsys.disabled():
         print('\n' + report)
     # Budgets are enforced only when asked (WUWEI_BENCH=1): wall time on a working host is
