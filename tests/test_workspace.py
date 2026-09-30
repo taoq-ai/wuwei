@@ -208,7 +208,9 @@ scanner = "none"
     assert config['repos'][1]['fast_checks'] == []
     assert config['outward']['max_length']['team.chat'] == 500
     assert config['adapters']['tracker'] == 'none'
-    assert cli(tmp_path, 'config', 'check').returncode == 0
+    # Repository names that are not owner/repo cannot be read from the host: unmeasured.
+    result = cli(tmp_path, 'config', 'check')
+    assert result.returncode == 2 and 'protection: unmeasured' in result.stdout
 
 
 @pytest.mark.parametrize('text,key,line', [

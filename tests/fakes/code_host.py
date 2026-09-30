@@ -47,3 +47,6 @@ class Fake(Recorder):
 
     def author_login(self, repo, email, root=None):
         return self._call('author_login', (repo, email), root)
+
+    def token_scopes(self, variable, root=None):
+        return self._call('token_scopes', (variable,), root)

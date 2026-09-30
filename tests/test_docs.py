@@ -227,3 +227,10 @@ def test_implemented_protections_are_not_planned():
     skill = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
     assert 'transition the item to `fix`' not in skill
     assert '`seats`' in skill and '`receive`' in skill
+
+def test_config_check_host_and_credential_layout_are_documented():
+    page = (SITE / 'configuration.md').read_text()
+    section = page[page.index('### Host protections and seat credentials'):]
+    for text in ('Host protections', 'Seat credentials', '`ok`', '`missing`', '`unmeasured`',
+                 'exit 0', 'exit 1', 'exit 2', 'design 4.5', '9.1'):
+        assert text in section, text

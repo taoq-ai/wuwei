@@ -2,6 +2,7 @@
 
 from functools import wraps
 import json
+import os
 import re
 import subprocess
 import sys
@@ -47,7 +48,7 @@ def _errors(value):
             _errors(child)
 
 
-def _run(args, payload=None, *, json_output=True):
+def _run(args, payload=None, *, json_output=True, env=None):
     allowed = False
     match args:
         case ['auth', 'status', '--hostname', 'github.com']:
@@ -56,6 +57,8 @@ def _run(args, payload=None, *, json_output=True):
             repo, number = _ref(url)
             allowed = (url == f'https://github.com/{repo}/pull/{number}' and
                        bool(_sha(sha)) and payload is None)
+        case ['api', '--include', 'user']:
+            allowed = payload is None and not json_output
         case ['api', 'graphql', '--input', '-']:
             allowed = isinstance(payload, dict) and payload.get('query') in (_THREADS, _REVERT)
         case ['api', endpoint, *options]:
@@ -79,13 +82,13 @@ def _run(args, payload=None, *, json_output=True):
     if args[0] == 'api':
         args = [*args, '--hostname', 'github.com']
     result = subprocess.run(['gh', *args], input=json.dumps(payload) if payload is not None else None,
-                            capture_output=True, text=True, timeout=TIMEOUT)
+                            capture_output=True, text=True, timeout=TIMEOUT, env=env)
     if args[0] == 'auth':
         return result.returncode
     if result.returncode:
         if (args[:1] == ['api'] and len(args) > 1 and
                 re.fullmatch(r'repos/[^/]+/[^/]+/branches/.+/protection', args[1]) and
-                re.search(r'HTTP 404\b', result.stderr)):
+                re.search(r'Branch not protected \(HTTP 404\)', result.stderr)):
             raise ValueError('branch protection absent')
         raise ValueError(f'gh exited {result.returncode}')
     if json_output:
@@ -95,7 +98,7 @@ def _run(args, payload=None, *, json_output=True):
     # gh pr merge prints prose or nothing, but an error JSON body is still a failure.
     if result.stdout.lstrip().startswith(('{', '[')):
         _errors(json.loads(result.stdout))
-    return None
+    return result.stdout
 
 
 def _api(endpoint, *, pages=False, payload=None):
@@ -271,6 +274,8 @@ def protection(repo, branch, root=None):
             **{key: _field(reviews, key, bool) if reviews is not None else False for key in
                ('dismiss_stale_reviews', 'require_code_owner_reviews', 'require_last_push_approval')},
             'enforce_admins': admins,
+            'allow_force_pushes': _field(value['allow_force_pushes'], 'enabled', bool),
+            'allow_deletions': _field(value['allow_deletions'], 'enabled', bool),
             'conversation_resolution': _field(value.get('required_conversation_resolution',
                                                          {'enabled': False}), 'enabled', bool)}
 
@@ -280,6 +285,10 @@ def protection(repo, branch, root=None):
         kind = _field(rule, 'type', str)
         if kind == 'merge_queue':
             result['merge_queue'] = True
+        elif kind == 'non_fast_forward':
+            result['allow_force_pushes'] = False
+        elif kind == 'deletion':
+            result['allow_deletions'] = False
         elif kind == 'required_status_checks':
             params = rule['parameters']
             result['strict'] |= _field(params, 'strict_required_status_checks_policy', bool)
@@ -426,6 +435,22 @@ def revert_pr(ref, root=None):
                  {'query': _REVERT, 'variables': {'id': _field(original, 'node_id', str)}})
     created = value['data']['revertPullRequest']['revertPullRequest']
     return {'number': _field(created, 'number', int), 'url': _field(created, 'url', str)}
+
+
+@_operation
+def token_scopes(variable, root=None):
+    if variable not in ('GH_TOKEN', 'GITHUB_TOKEN') or not os.environ.get(variable):
+        raise ValueError('expected a set GH_TOKEN or GITHUB_TOKEN')
+    # The child sees only the measured token, as GH_TOKEN, so gh reports exactly its scopes.
+    child = {k: v for k, v in os.environ.items() if k not in ('GH_TOKEN', 'GITHUB_TOKEN')}
+    child['GH_TOKEN'] = os.environ[variable]
+    output = _run(['api', '--include', 'user'], json_output=False, env=child)
+    headers = re.split(r'\r?\n\r?\n', output, maxsplit=1)[0]
+    match = re.search(r'^x-oauth-scopes:(.*)$', headers, re.IGNORECASE | re.MULTILINE)
+    scopes = [s.strip() for s in match[1].split(',') if s.strip()] if match else []
+    if not scopes:
+        raise ValueError('token scopes unmeasured')
+    return {'scopes': scopes}
 
 
 def auth_status(root=None):
