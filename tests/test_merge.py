@@ -206,7 +206,10 @@ def test_policy_preconditions(case, change, hint):
     elif change == 'bot-approval': host.results['reviews'].data[0]['is_bot'] = True
     elif change == 'stale-approval': host.results['reviews'].data[0]['sha'] = BASE
     elif change == 'changes-requested': host.results['reviews'].data[0]['state'] = 'changes_requested'
-    elif change == 'visibility': state._write_state(lambda d: d.update(channel_posts=[]), root, reserved=False)
+    elif change == 'visibility':
+        state._write_state(lambda d: d.update(channel_posts=[]), root, reserved=False)
+        with (root / '.wuwei/config.toml').open('a') as f:
+            f.write('\n[adapters]\nchat = "slack"\n')
     elif change == 'reply': host.results['threads'].data['comments'] = [
         {'id': 2, 'author': 'reviewer', 'is_bot': False, 'body': 'Please explain',
          'created_at': '2026-09-29T10:00:00Z'}]

@@ -235,8 +235,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                         or fresh['gate_verdicts'] != data['gate_verdicts']
                         or fresh.get('gate_policy') != data.get('gate_policy')):
                     raise ValueError('state changed while collecting brief evidence; retry')
-                if role != 'steward':
-                    fresh['items'].setdefault(item, {})['track'] = track
+                if role != 'steward' and item in fresh['items']:
+                    fresh['items'][item]['track'] = track
                     if tree:
                         fresh['items'][item]['worktree'] = str(tree)
                 workspace.atomic_write(output, text, replace=False)

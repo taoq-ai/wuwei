@@ -104,6 +104,21 @@ def test_incomplete_discovery_candidate_goes_to_owner(root, monkeypatch):
     assert 'PARTIAL' not in state.read_state(root)['items']
 
 
+def test_intake_skips_candidates_the_steward_cannot_lint(root, monkeypatch):
+    from wuwei import steward
+    unsafe = 'org/repo#1:thread:PRRT_1'
+    monkeypatch.setattr(discovery, 'discover', lambda path: {
+        'sources': {'tracker': 'measured: 1'},
+        'candidates': [{'id': unsafe, 'title': 'Reply'}, {'id': 'PARTIAL', 'title': 'Needs triage'}]})
+    assert discovery.intake(root, trigger='sweep')['owner'] == ['PARTIAL']
+    assert list(state.read_state(root)['intraday_proposals']) == ['PARTIAL']
+    events = [json.loads(line) for line in
+              (root / '.wuwei/days/2026-09-29/events.jsonl').read_text().splitlines()]
+    assert not any(row['kind'] == 'plan.proposed' and row['payload']['item'] == unsafe
+                   for row in events)
+    assert [row['id'] for row in steward.decision_queue(root)] == ['PARTIAL']
+
+
 def test_intake_does_not_repeat_owner_proposals(root, monkeypatch):
     monkeypatch.setattr(discovery, 'discover', lambda path: {
         'sources': {'tracker': 'measured: 1'},

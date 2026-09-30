@@ -138,6 +138,18 @@ def test_status_line_and_json_share_snapshot(tmp_path):
     assert {p.name: p.read_bytes() for p in directory.iterdir()} == before
 
 
+def test_status_counts_every_nonzero_phase(tmp_path, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    day(tmp_path, {'cap': 2, 'items': {'A': {'phase': 'delta'}, 'B': {'phase': 'merged'}}})
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    assert main(['status', '--line']) == 0
+    line = capsys.readouterr().out
+    assert 'delta 1/2' in line and 'merged 1/2' in line and 'spec' not in line
+    assert main(['status', '--json']) == 0
+    assert json.loads(capsys.readouterr().out)['phases'] == {'delta': 1, 'merged': 1}
+
+
 @pytest.mark.parametrize('contents', [None, '{broken'])
 def test_unreadable_state_fails_closed(tmp_path, contents):
     directory = day(tmp_path)
@@ -213,10 +225,20 @@ def test_status_calendar_failure_is_unmeasured(tmp_path, monkeypatch):
     assert 'meeting unmeasured' in line.stdout
 
 
-@pytest.mark.parametrize('kind', ['state.set', 'state.transition', 'seat started', 'seat stopped'])
+@pytest.mark.parametrize('kind', ['state.set', 'state.transition', 'seat started', 'seat stopped',
+                                  'plan.approved', 'state.import', 'build.started',
+                                  'build.launched', 'build.checked', 'verdict.rejected'])
 def test_routine_progress_is_silent(kind):
     from wuwei.signal import classify
     assert classify({'kind': kind}, {}) == ('silent', 'Work')
+
+
+def test_tracker_none_is_silent_but_tracker_failure_nudges():
+    from wuwei.signal import classify
+    event = {'kind': 'tracker.call', 'payload': {'exit': 2, 'reason': 'tracker adapter is none'}}
+    assert classify(event, {})[0] == 'silent'
+    event['payload']['reason'] = 'tracker call unmeasured: OSError'
+    assert classify(event, {})[0] == 'nudge'
 
 
 def test_emitted_kinds_have_intended_tiers():
@@ -237,11 +259,11 @@ def test_emitted_kinds_have_intended_tiers():
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
                 'seat.usage': 'silent', 'build.parked': 'nudge',
                 'build.fix_opened': 'silent', 'pr.action.done': 'silent',
-                'pr.reply.drafted': 'silent', 'pr.action.decision': 'silent',
+                'pr.action.decision': 'silent',
                 'retro.gap': 'nudge', 'seat stop unmatched': 'nudge',
                 'hook.post_tool_use_error': 'nudge', 'hook.refusal': 'silent',
                 'hook.warning': 'nudge',
-                'verdict.rejected': 'nudge', 'decision.rejected': 'nudge',
+                'verdict.rejected': 'silent', 'decision.rejected': 'nudge',
                     'decision.decided': 'silent', 'decision.routed': 'silent',
                     'decision.digest': 'silent',
                 'adapter: none': 'nudge', 'reply: acknowledged': 'silent',

@@ -57,6 +57,14 @@ def test_brief_records_item_worktree(day, monkeypatch):
     assert state.read_state(day[0])['items']['X']['worktree'] == str((day[0] / 'tree').resolve())
 
 
+def test_lead_and_steward_briefs_create_no_item(day, monkeypatch):
+    from wuwei import brief as brief_module
+    assert brief(monkeypatch, 'body', 'lead', 'DISCOVERY', 'lead-1') == 0
+    brief_module.write('steward', 'day', 'steward-1', 'body', root=day[0])
+    assert (day[1] / 'briefs/lead-1.md').is_file() and (day[1] / 'briefs/steward-1.md').is_file()
+    assert set(state.read_state(day[0])['items']) == {'X'}
+
+
 def test_declared_full_and_persisted(day, monkeypatch):
     args = ('builder', 'X')
     assert brief(monkeypatch, 'Paths: core/x.py, infrastructure/db.ts', *args, 'n3') == 1
