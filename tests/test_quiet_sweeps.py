@@ -121,6 +121,32 @@ def test_nudges_clear_pr_action_and_mcp_finding(root):
     assert attention(day) == []
 
 
+def test_draft_nudges_clear_when_draft_is_decided(root):
+    from wuwei.commands.status import attention
+    day = workspace.day_dir(root)
+    for ident in ('d1', 'd2'):
+        state.append_event('draft.created', {'id': ident, 'channel': 'chat'}, root)
+    assert len(attention(day)) == 2
+    state.append_event('draft.sent', {'id': 'd1'}, root)
+    state.append_event('draft.dropped', {'id': 'd2'}, root)
+    assert attention(day) == []
+    state.append_event('draft.created', {'id': 'd3', 'channel': 'chat'}, root)
+    state.append_event('draft.failed', {'id': 'd3'}, root)
+    assert [row['source'] for row in attention(day)] == ['draft.failed']
+
+
+def test_merge_policy_nudge_is_per_pr_and_clears_on_merge(root):
+    from wuwei.commands.status import attention
+    day = workspace.day_dir(root)
+    for _ in range(2):
+        state.append_event('merge.policy_blocked', {'pr': 'x/y#1'}, root)
+    assert len(attention(day)) == 1
+    state.append_event('pr.action', {'pr': 'x/y#1', 'tier': 'silent', 'state': 'approved'}, root)
+    assert len(attention(day)) == 1
+    state.append_event('pr.action', {'pr': 'x/y#1', 'tier': 'silent', 'state': 'merged'}, root)
+    assert attention(day) == []
+
+
 def test_three_sweep_obligations_make_three_nudges(root):
     from wuwei.commands.status import attention, snapshot
     day = workspace.day_dir(root)

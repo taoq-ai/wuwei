@@ -178,13 +178,14 @@ review_window = 120
 lead_login = "" # Code host login of the lead; eligible when different from the PR author.
 review_channel = "" # Chat channel ID for review requests.
 review_gate_check = "Review Gate" # Check excluded while requesting reviewers.
-min_reviewers = 1 # Minimum eligible reviewers, including the lead.
+min_reviewers = 1 # Minimum eligible reviewers, including the lead; 0 is a solo owner who merges without a reviewer.
 author_windows_days = [90, 180] # Authorship lookback windows before all history.
 tie_commits = 2 # Include a third author within this commit count of second place.
 source_exclude = ["specs/*", "*.lock", "*lock.json", "*.generated.*", "generated/*"] # Paths excluded from reviewer selection.
 
 [shepherd.authors]
 # Map each author email to a verified code host login and chat mention.
+# An unmapped email is resolved through the code host before reviewer selection refuses.
 # "reviewer@example.test" = {login = "reviewer", mention = "UREVIEWER"}
 
 [security]

@@ -103,12 +103,12 @@ def test_sweep_one_summary_with_counts_and_dead_watch(case, scanner, expected, c
     root, _, _, monkeypatch = case
     watch = watch_module()
     (workspace.day_dir(root) / 'traces.jsonl').write_text('{}\n')
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('\n[adapters]\nchat="slack"\n' + ('scanner="ziran"\n' if scanner != 'none' else ''))
     if scanner != 'none':
         known = registry.known
         monkeypatch.setattr(registry, 'known', lambda kind: ['none', 'ziran']
                             if kind == 'scanner' else known(kind))
-        with (root / '.wuwei/config.toml').open('a') as stream:
-            stream.write('\n[adapters]\nscanner="ziran"\n')
         (workspace.day_dir(root) / 'traces.jsonl').write_text('{}\n')
     if scanner == 'failed':
         original = registry.load

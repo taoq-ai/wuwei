@@ -170,3 +170,21 @@ def test_report_and_retro_outside_workspace_are_clean(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert main(['report']) == 0
     assert main(['retro']) == 0
+
+
+def test_report_lists_merged_items(tmp_path, monkeypatch):
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('[adapters]\ncode_host = "none"\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    state._write_state(lambda data: data.update(items={
+        'A': {**state.ITEM_DEFAULTS, 'phase': 'merged', 'pr': 'org/repo#1'},
+        'B': {**state.ITEM_DEFAULTS, 'phase': 'delta'}}), root, reserved=False)
+    from wuwei import report
+    text = report.build(root)
+    merged = text.split('## Merged\n')[1].split('\n\n')[0]
+    assert merged == '- A (org/repo#1)'
+    for section in ('## Open at close\n', '## Carry\n'):
+        body = text.split(section)[1].split('\n\n')[0]
+        assert 'B' in body and 'A' not in body

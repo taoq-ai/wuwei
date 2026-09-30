@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from wuwei import pr_actions, registry, state, workspace
+from wuwei import drafts, pr_actions, registry, state, workspace
 from wuwei.__main__ import main
 from wuwei.registry import Result
 from test_stop import case, own, REF
@@ -85,7 +85,7 @@ def test_unanswered_thread_needs_composed_reply(case, capsys):
     assert main(['pr', 'act', REF]) == 1
     action = json.loads(capsys.readouterr().out)
     assert action['action'] == 'reply' and action['question'] == 'Please explain'
-    assert not state.read_state(root).get('pr_reply_drafts')
+    assert not drafts.read(state.read_state(root))
 
 
 def test_review_fix_request_opens_fix_round(case, capsys):
@@ -182,7 +182,7 @@ def test_unmeasured_outward_tier_keeps_draft_and_exits_two(case, monkeypatch, ca
             'body': 'Please explain', 'created_at': workspace.now().isoformat()}]}]
     monkeypatch.setattr('wuwei.outward.classify', lambda *args, **kwargs: (2, 'draft'))
     assert main(['pr', 'act', REF, '--reply', 'The change removes a race.']) == 2
-    assert state.read_state(root)['pr_reply_drafts'][REF]
+    assert [row['status'] for row in drafts.read(state.read_state(root)).values()] == ['pending']
     assert 'unmeasured' in capsys.readouterr().out
 
 
@@ -194,7 +194,24 @@ def test_draft_is_stable_and_not_duplicated(case, capsys):
     assert main(['pr', 'act', REF, '--reply', 'The change removes a race.']) == 1
     capsys.readouterr()
     assert main(['pr', 'act', REF, '--reply', 'The change removes a race.']) == 1
-    assert len(state.read_state(root)['pr_reply_drafts'][REF]) == 1
+    assert len(drafts.read(state.read_state(root))) == 1
+
+
+def test_reply_draft_reaches_owner_queue(case, capsys):
+    root, host, _, _ = linked(case)
+    host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
+        'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
+            'body': 'Please explain', 'created_at': workspace.now().isoformat()}]}]
+    text = 'The change removes a race.'
+    assert main(['pr', 'act', REF, '--reply', text]) == 1
+    action = json.loads(capsys.readouterr().out)
+    assert action['action'] == 'draft_reply' and action['draft'].startswith('draft-')
+    assert main(['drafts']) == 0
+    row, = json.loads(capsys.readouterr().out)
+    assert row['id'] == action['draft'] and row['status'] == 'pending'
+    assert (row['channel'], row['operation'], row['destination']) == ('code_host', 'comment', REF)
+    assert row['inputs'] == {'ref': REF, 'text': text, 'thread': 3} and row['item'] == 'A'
+    assert 'pr_reply_drafts' not in state.read_state(root)
 
 
 def test_repeated_act_keeps_first_unanswered_thread(case, capsys):

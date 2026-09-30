@@ -26,6 +26,13 @@ def test_readme_install_and_hero():
         assert all(word in art.read_text() for word in ('Plan', 'Build', 'Review', 'Close'))
 
 
+def test_hero_variants_share_geometry_and_motion():
+    dark, light = ((ROOT / f'docs/assets/hero-{v}.svg').read_text() for v in ('dark', 'light'))
+    mask = lambda text: re.sub(r'#[0-9A-Fa-f]{3,8}', '#', text)
+    assert mask(dark) == mask(light)
+    assert 'prefers-reduced-motion' in dark and 'animateMotion' in dark
+
+
 def test_site_pages_and_links():
     pages = ('index', 'concepts', 'configuration', 'adapters', 'charter-overrides', 'security', 'reference')
     index = (SITE / 'index.md').read_text()
@@ -105,6 +112,17 @@ def test_shepherd_settings_are_visible_in_template_and_site():
         assert key in settings
         assert f'`shepherd.{key}`' in page
     assert settings['min_reviewers'] == 1
+    row = next(line for line in page.splitlines() if line.startswith('| `shepherd.min_reviewers`'))
+    assert '`0`' in row.split('|')[3]
+
+
+def test_hero_files_match_their_generator():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('build_hero', ROOT / 'scripts/build-hero.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    for name, palette in module.PAL.items():
+        assert (ROOT / f'docs/assets/hero-{name}.svg').read_text() == module.svg(palette), name
 
 
 def test_reference_verdict_example_and_phase_table():
