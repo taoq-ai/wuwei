@@ -65,6 +65,9 @@ poll_timeout_seconds = 3600
 command = [] # Set to the companion command, for example ["node", "path/to/codex-companion.mjs"].
 timeout_seconds = 300
 
+[control_plane]
+content = "summary" # summary or none; what a messaging transport sends about decisions.
+
 [adapters]
 tracker = "none"
 chat = "none"

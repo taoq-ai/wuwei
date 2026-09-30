@@ -428,13 +428,16 @@ def test_reserved_outcomes_inside_tuple_callback(ws):
             metadata=({'decision_outcomes': {'D-3': {}}},)), ws)
 
 
-@pytest.mark.parametrize('kind', ['decision.decided', 'decision.rejected', 'decision.future'])
-def test_generic_event_reserves_all_decision_kinds(ws, monkeypatch, kind):
+@pytest.mark.parametrize('kind', ['decision.decided', 'decision.rejected', 'decision.future',
+                                  'decision.replied'])
+def test_generic_event_reserves_all_decision_kinds(ws, monkeypatch, capsys, kind):
     from wuwei.__main__ import main
     from wuwei.workspace import day_dir
     monkeypatch.chdir(ws)
     assert main(['event', kind, '{}']) == 1
     assert not (day_dir(ws) / 'events.jsonl').exists()
+    if kind == 'decision.replied':
+        assert 'wuwei control plane poll_replies' in capsys.readouterr().err
 
 
 @pytest.mark.parametrize('field', ['Context', 'Blast radius', 'Pre-mortem', 'Revisit', 'Outcome'])

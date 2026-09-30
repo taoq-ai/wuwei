@@ -284,7 +284,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'hook.warning': 'nudge',
                 'verdict.rejected': 'silent', 'decision.rejected': 'nudge',
                     'decision.decided': 'silent', 'decision.routed': 'silent',
-                    'decision.digest': 'silent',
+                    'decision.digest': 'silent', 'decision.replied': 'silent',
                 'adapter: none': 'nudge', 'reply: acknowledged': 'silent',
                 'reply: thread_posted': 'silent', 'pr.raised': 'silent',
                 'pr.claimed': 'silent',

@@ -110,6 +110,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `brief.prior_branch_pattern` | `"*{item}*"` | Branch match, with lowercased item substituted. |
 | `brief.full_path_patterns` | `[]` | Owner supplied regexes for paths needing full context. |
 | `chat.identity` | `"connector"` | Optional CLI default: connector or custom_app. This key is not in the template. |
+| `control_plane.content` | `"summary"` | What a messaging transport sends about a pending decision. `summary` sends the id, the one-line question and each option with its description; `none` sends only the id and option letters, and a fixed line in place of an update. The question widget in the planner session always shows the summary. |
 
 Run `bin/wuwei brief pack` once for a daily text pack, or `bin/wuwei brief pack --meeting`
 inside the lead window for the next attendee meeting. The returned path contains the
