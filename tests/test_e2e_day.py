@@ -36,6 +36,8 @@ def test_scripted_day(day):
     assert day.head != initial_head
     assert day.next() == {'action': 'gates', 'roles': ['quality']}
     day.gate('quality', 'PASS', round_name='delta')
+    assert 'quality-delta' not in day.data['seats']
+    assert day.data['seats']['quality-initial']['status'] == 'stopped'
     assert day.next() == {'action': 'raise', 'notes': []}
     day.raise_pr()
     day.transition('raised')
@@ -52,11 +54,25 @@ def test_scripted_day(day):
     day.run('pr', 'ping', day.ref)
     assert day.data['channel_posts'][0]['status'] == 'posted'
     assert len(day.chat.calls) == 1
-    day.run('close', expected=1)
+    from wuwei import state
+    state.append_event('watch: clock', {}, day.root)
+    day.patch.setenv('WUWEI_NOW', '2026-09-29T12:30:00Z')
+    pages = [row for row in json.loads(day.run('nudges')) if row['source'] == 'watch: health']
+    assert [row['tier'] for row in pages] == ['page']
+    state.append_event('watch: clock', {}, day.root)
+    assert not [row for row in json.loads(day.run('nudges')) if row['source'] == 'watch: health']
+    from test_decision import VALID
+    (day.directory / 'decisions/D-1.md').write_text(VALID.replace(
+        'Reversibility: two-way', 'Reversibility: one-way').replace('Decided-by: seat', 'Decided-by: owner'))
+    day.run('decision', 'route', 'D-1')
+    assert 'D-1: pending owner decision' in day.run('close', expected=1)
     assert json.loads(day.hook('Stop', expected=2))['decision'] == 'block'
+    day.hook('Stop', stop_hook_active=True)
     day.run('retro')
     day.run('close', '--check', 'retro')
-    day.run('close', expected=1)
+    day.patch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+    day.owner('decision', 'outcome', 'D-1', 'A')
+    assert 'D-1' not in day.run('close', expected=1)
     assert json.loads(day.hook('Stop', expected=2))['decision'] == 'block'
     # A replayed server-side merge is external evidence, not a forged local outcome.
     day.host.results['pr'].data.update(state='closed', merged=True,
@@ -64,7 +80,7 @@ def test_scripted_day(day):
     assert json.loads(day.run('pr', 'state'))[0]['state'] == 'merged'
     day.transition('merged')
     day.run('report')
-    assert (day.directory / 'report.md').is_file()
+    assert '- D-1: A' in (day.directory / 'report.md').read_text()
     day.run('close')
     day.hook('Stop')
     assert day.data['close_requested'] is True
@@ -83,6 +99,45 @@ def test_scripted_day(day):
     assert 'seat stop unmatched' not in kinds
     assert json.loads(day.run('metrics'))['fix_rounds_per_item'] == {'A': 1}
     assert time.monotonic() - started < 20
+
+
+def test_solo_owner_raise(tmp_path, monkeypatch):
+    from fakes.day import Day
+    day = Day(tmp_path / 'workspace', monkeypatch, solo=True)
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    day.build('builder-initial')
+    for role in ('arch', 'quality', 'security'):
+        day.gate(role, 'PASS')
+    assert day.next() == {'action': 'raise', 'notes': []}
+    day.raise_pr()
+    assert day.data['pr_reviewers'][day.ref] == []
+    assert len([call for call in day.host.calls if call[0] == 'create_pr']) == 1
+    assert not any(call[0] == 'request_reviewers' for call in day.host.calls)
+    assert day.chat.calls == []
+
+
+def refuse_launcher(payload):
+    from fakes.day import LAUNCHER
+    return (2, 'opaque script command') if str(LAUNCHER) in payload['tool_input']['command'] else (0, '')
+
+
+def close_trap(payload):
+    from wuwei.guards import stop
+    return stop.check({**payload, 'stop_hook_active': False})
+
+
+@pytest.mark.parametrize('mutation,match', [('launcher', 'wuwei rank'),
+                                            ('close_trap', "'stop_hook_active': True")])
+def test_day_names_the_reintroduced_bug(day, monkeypatch, mutation, match):
+    from wuwei.guards import Guard, deploy, stop
+    if mutation == 'launcher':
+        monkeypatch.setattr(deploy, 'GUARDS', [*deploy.GUARDS, Guard('PreToolUse', 'Bash', refuse_launcher)])
+    else:
+        monkeypatch.setattr(stop, 'GUARDS', [Guard('Stop', None, close_trap)])
+    with pytest.raises(AssertionError, match=match):
+        test_scripted_day(day)
 
 
 def test_agent_surface_without_scanner_is_unmeasured(day):

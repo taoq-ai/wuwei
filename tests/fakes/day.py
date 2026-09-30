@@ -3,6 +3,7 @@
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
+import shlex
 from pathlib import Path
 import socket
 import subprocess
@@ -20,6 +21,7 @@ from wuwei.__main__ import main
 from wuwei.registry import Result
 
 
+LAUNCHER = Path(__file__).resolve().parents[2] / 'bin/wuwei'
 RETRO = 'Blocked: none\nGap: none\nChange: none\n'
 
 
@@ -29,13 +31,15 @@ class Runtime:
         self.verdict = 'PASS'
         self.builds = 0
 
-    def dispatch(self, role, brief_path, worktree, write, *, root=None):
+    def dispatch(self, role, brief_path, worktree, write, *, root=None, resume=None):
         day = self.day
         path = Path(brief_path)
         relative = path.relative_to(day.root).as_posix()
         prompt = 'WUWEI brief: ' + relative
-        day.hook('PreToolUse', tool_name='Agent', tool_input={
-            'subagent_type': role, 'description': 'Scripted seat', 'prompt': prompt})
+        tool_input = {'subagent_type': role, 'description': 'Scripted seat', 'prompt': prompt}
+        if resume:
+            tool_input['resume'] = resume
+        day.hook('PreToolUse', tool_name='Agent', tool_input=tool_input)
         if role == 'builder':
             self.builds += 1
             (day.repo / 'memory/demo.py').write_text(f'VALUE = {self.builds}\n')
@@ -61,6 +65,11 @@ class Runtime:
         assert day.data['seats'][path.stem]['status'] == 'stopped'
         return Result(0, {'id': path.stem})
 
+    def continue_job(self, job, feedback, *, root=None):
+        seat = self.day.data['seats'][job['id']]
+        return self.dispatch(seat['role'], self.day.root / seat['brief'], self.day.repo, False,
+                             root=root, resume=job['id'])
+
     def status(self, job, *, root=None):
         return Result(0, {'status': 'completed'})
 
@@ -71,7 +80,7 @@ class Runtime:
 class Day:
     ref = 'acme/widget#7'
 
-    def __init__(self, root, monkeypatch):
+    def __init__(self, root, monkeypatch, solo=False):
         self.root, self.patch = root, monkeypatch
         root.mkdir()
         monkeypatch.chdir(root)
@@ -109,13 +118,17 @@ name = "acme/widget"
 path = "repo"
 default_branch = "main"
 fast_checks = ["demo-check"]
-[shepherd]
+''' + ('''[shepherd]
+min_reviewers = 0
+[adapters]
+chat = "none"
+''' if solo else '''[shepherd]
 review_channel = "CREVIEW"
 lead_login = "lead"
 [shepherd.authors]
 "reviewer@example.test" = { login = "reviewer", mention = "UREVIEWER" }
 "lead@example.test" = { login = "lead", mention = "ULEAD" }
-''')
+'''))
         seed(root)
         self.plugin = root / 'plugin'
         (self.plugin / 'charters').mkdir(parents=True)
@@ -138,7 +151,7 @@ lead_login = "lead"
         identity = {'name': 'Builder', 'email': 'builder@example.test'}
         vcs.results['identity'] = Result(0, {**identity, 'author': identity, 'committer': identity})
         vcs.results['merge_base'] = Result(0, {'sha': initial})
-        vcs.results['authorship'] = Result(0, [{'email': 'reviewer@example.test', 'commits': 2}])
+        vcs.results['authorship'] = Result(0, [{'email': ('builder' if solo else 'reviewer') + '@example.test', 'commits': 2}])
         self.host = CodeHost()
         self.host.results['reviews'] = Result(0, [])
         self.host.results['threads'] = Result(0, {'comments': [], 'threads': []})
@@ -185,19 +198,33 @@ lead_login = "lead"
     def events(self):
         return [json.loads(line) for line in (self.directory / 'events.jsonl').read_text().splitlines()]
 
-    def run(self, *args, expected=0, stdin=''):
+    def _main(self, args, expected, stdin, step):
         out, err = io.StringIO(), io.StringIO()
         with self.patch.context() as patch, redirect_stdout(out), redirect_stderr(err):
             patch.setattr(sys, 'stdin', io.StringIO(stdin))
             code = main(list(map(str, args)))
-        assert code == expected, (args, code, out.getvalue(), err.getvalue())
+        assert code == expected, (step, code, out.getvalue(), err.getvalue())
         return out.getvalue() or err.getvalue()
+
+    def bash(self, args, expected=0):
+        # The planner's call as a PreToolUse Bash payload through the plugin's own launcher.
+        command = shlex.join([str(LAUNCHER), *map(str, args)])
+        return self.hook('PreToolUse', expected, tool_name='Bash', tool_input={'command': command})
+
+    def run(self, *args, expected=0, stdin=''):
+        self.bash(args)
+        return self._main(args, expected, stdin, args)
+
+    def owner(self, *args, expected=0):
+        # Owner-only calls are refused to agent tools and run by the owner on the host.
+        self.bash(args, expected=2)
+        return self._main(args, expected, '', args)
 
     def hook(self, event, expected=0, **fields):
         payload = {'session_id': 'planner', 'cwd': str(self.root),
                    'transcript_path': str(self.root / 'planner.jsonl'),
                    'hook_event_name': event, 'stop_hook_active': False, **fields}
-        return self.run('hook', event, expected=expected, stdin=json.dumps(payload))
+        return self._main(('hook', event), expected, json.dumps(payload), ('hook', event, fields))
 
     def plan(self, *, agent_surface=False):
         from copy import deepcopy
@@ -245,10 +272,15 @@ lead_login = "lead"
         assert json.loads(self.run('build', 'next', 'A'))['action'] == 'done'
 
     def gate(self, role, verdict, round_name='initial', expected=0):
-        name = f'{role}-{round_name}'
-        path = self.brief('sentinel-' + role, name)
         self.runtime.verdict = verdict
-        self.run('runtime', 'dispatch', 'sentinel-' + role, self.root / path, self.repo)
+        if round_name == 'delta':
+            # The delta round continues the same sentinel seat.
+            name = f'{role}-initial'
+            self.run('runtime', 'continue', json.dumps({'id': name}), 'Check the delta')
+        else:
+            name = f'{role}-{round_name}'
+            path = self.brief('sentinel-' + role, name)
+            self.run('runtime', 'dispatch', 'sentinel-' + role, self.root / path, self.repo)
         return self.run('dispatch', 'receive', 'A', role, name, '--round', round_name, expected=expected)
 
     def raise_pr(self, expected=0):
