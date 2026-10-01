@@ -774,3 +774,60 @@ def test_workspace_hook_latency(seeded_workspace, capsys, path):
     wall_ms = quantiles(elapsed, n=100)[94] * 1000
     assert_latency_budget(f'{path} in a workspace', cpu_ms, wall_ms, capsys,
                           wall_budget=100, runs=runs)
+
+
+@pytest.mark.parametrize('session_id, recorded', [('wuwei-heartbeat', 0), ('a-session', 1)])
+def test_heartbeat_refusals_are_not_recorded(plugin, session_id, recorded):
+    install(plugin, '''
+from wuwei.guards import Guard
+GUARDS = [Guard('PreToolUse', None, lambda payload: (1, 'guard reason'))]
+''')
+    payload = {**fixture('PreToolUse'), 'session_id': session_id, 'cwd': str(plugin[0])}
+    result = replay(plugin, 'PreToolUse', json.dumps(payload))
+    assert_refusal(result, 'PreToolUse', 'guard reason')
+    from wuwei import workspace
+    events = workspace.day_dir(plugin[0]) / 'events.jsonl'
+    rows = events.read_text().splitlines() if events.exists() else []
+    assert sum(json.loads(row)['kind'] == 'hook.refusal' for row in rows) == recorded
+
+
+def test_no_hook_path_imports_heartbeat():
+    import ast
+    paths = [*(ROOT / 'cli/wuwei/guards').glob('*.py'), ROOT / 'cli/wuwei/commands/hook.py']
+    for path in paths:
+        for node in ast.walk(ast.parse(path.read_text())):
+            names = ([alias.name for alias in node.names] if isinstance(node, (ast.Import, ast.ImportFrom)) else [])
+            if isinstance(node, ast.ImportFrom):
+                names.append(node.module or '')
+            assert not any('heartbeat' in name for name in names), path
+
+
+def test_heartbeat_latency(seeded_workspace, capsys, monkeypatch, quiet_heartbeat):
+    from resource import RUSAGE_CHILDREN, RUSAGE_SELF, getrusage
+    from statistics import quantiles
+    from time import perf_counter
+    from wuwei import heartbeat, integrity, registry
+
+    from fakes.integrity import seed
+    (root, env), _, reset, calls = seeded_workspace
+    seed(root.parent)  # after the fixture signed the copy, so the verdict is fresh
+    monkeypatch.setenv('PATH', env['PATH'])
+    monkeypatch.setattr(integrity, 'PLUGIN', root)
+    module = registry.watch_service()
+    module.LAUNCHER = root / 'bin/wuwei'
+    monkeypatch.setattr(registry, 'watch_service', lambda: module)
+    monkeypatch.setattr(heartbeat, 'beat', quiet_heartbeat)  # the real beat, ping off
+    runs = 60 if os.environ.get('WUWEI_BENCH') == '1' else 20
+    elapsed, cpu = [], []
+    for _ in range(runs):
+        reset()
+        before = [getrusage(who) for who in (RUSAGE_SELF, RUSAGE_CHILDREN)]
+        start = perf_counter()
+        heartbeat.beat(root.parent)
+        elapsed.append(perf_counter() - start)
+        after = [getrusage(who) for who in (RUSAGE_SELF, RUSAGE_CHILDREN)]
+        cpu.append(sum(a.ru_utime - b.ru_utime + a.ru_stime - b.ru_stime for a, b in zip(after, before)))
+    assert not calls.exists(), calls.read_text()
+    cpu_ms = quantiles(cpu, n=100)[94] * 1000
+    wall_ms = quantiles(elapsed, n=100)[94] * 1000
+    assert_latency_budget('heartbeat tick', cpu_ms, wall_ms, capsys, wall_budget=200, runs=runs)

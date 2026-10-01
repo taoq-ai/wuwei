@@ -194,7 +194,34 @@ def cached(root):
         return Result(2, reason=f'plugin integrity unmeasured: {exc}; run wuwei integrity check on the host')
 
 
-HOST_TERMINAL = 'this is an owner action: run it in a host terminal'
+def fresh(root):
+    """The cached verdict, also stale when an installed file changed after it (release installs).
+
+    Mtimes are tamper evidence, not a boundary (spec 7.1, 9.1); a checkout is covered by cached.
+    """
+    result = cached(root)
+    if result.exit:
+        return result
+    try:
+        path = _path(root, 'verdict.json')
+        if json.loads(path.read_text()).get('checkout') is not None:
+            return result
+        since = path.stat().st_mtime
+        def failed(error):
+            raise error
+        for directory, dirs, names in os.walk(PLUGIN, onerror=failed):
+            dirs[:] = sorted(d for d in dirs if d not in ('.git', '__pycache__'))
+            for name in sorted(names):
+                file = Path(directory) / name
+                if not name.endswith('.pyc') and file.lstat().st_mtime > since:
+                    return Result(1, reason=f'page: plugin integrity: {file.relative_to(PLUGIN).as_posix()} '
+                                  'changed after the cached verdict; run wuwei integrity check on the host')
+        return result
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        return Result(2, reason=f'plugin integrity unmeasured: {exc}')
+
+
+HOST_TERMINAL ='this is an owner action: run it in a host terminal'
 
 
 def _host_confirm(fingerprint, *, prompt='Review the installation on this host. To confirm its exact content, type:'):

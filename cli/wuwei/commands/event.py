@@ -39,6 +39,7 @@ EVENT_PRODUCERS = {
     'fast_checks.record': 'wuwei fast-checks', 'reply: acknowledged': 'wuwei reply',
     'reply: thread_posted': 'wuwei reply',
     'decision.decided': 'wuwei decision outcome', 'watch: sweep': 'wuwei sweep',
+    'heartbeat: clock': 'wuwei watch',
     'decision.routed': 'wuwei decision route',
     'decision.reversed': 'wuwei decision outcome',
     'decision.digest': 'wuwei sweep',

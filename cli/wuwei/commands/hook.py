@@ -8,6 +8,9 @@ import sys
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
 from wuwei.guards import EVENTS, SELECTION, discover, profile_result
 
+# The watch heartbeat's probe calls; their refusals are measurements, not seat refusals.
+HEARTBEAT_SESSION = 'wuwei-heartbeat'
+
 
 def register(subparsers):
     parser = subparsers.add_parser('hook', help='Run guards for a Claude Code hook')
@@ -80,7 +83,8 @@ def run(args):
             print('\n'.join(reasons), file=sys.stderr)
         return CLEAN
     if reasons:
-        return refuse(args.event, '\n'.join(reasons), cwd=payload.get('cwd'))
+        return refuse(args.event, '\n'.join(reasons), cwd=payload.get('cwd'),
+                      record=payload.get('session_id') != HEARTBEAT_SESSION)
     if args.event == 'Stop' and context:
         print('\n'.join(context), file=sys.stderr)
     return CLEAN
@@ -100,13 +104,13 @@ def validate(payload, event):
         raise ValueError('hook_event_name does not match command event')
 
 
-def refuse(event, reason, *, malformed=False, cwd=None):
+def refuse(event, reason, *, malformed=False, cwd=None, record=True):
     print(reason, file=sys.stderr)
     if event == 'SessionStart':
         print(json.dumps({'hookSpecificOutput': {
             'hookEventName': event, 'additionalContext': f'session unmeasured: {reason}'}}))
         return CLEAN
-    if event == 'PreToolUse' and not malformed:
+    if event == 'PreToolUse' and not malformed and record:
         from wuwei import state, workspace
         try:
             root = workspace.find_workspace(cwd)

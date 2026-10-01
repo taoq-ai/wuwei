@@ -88,6 +88,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `watch.dead_seconds` | `1200` | Clock age after which the watch is reported dead. |
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
+| `watch.ping_url` | `""` | https check URL of a hosted cron monitor; each healthy watch heartbeat pings it (see the heartbeat reference). Keep it private. |
 | `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `status --line`, its item claims lapse, and a stale planner is nudged. |
 | `sessions.rotate_after` | `{ turns = 0, compactions = 0, clock = "" }` | Planned planner rotation, off by default. `turns` (Stop hooks since the session started today), `compactions` (compactions seen) or `clock` (`"HH:MM"` in `owner.timezone`): when one is reached, the Stop hook asks the planner once, at a turn with no running seat and no unanswered owner decision, to end the session and run `wuwei plan session "$WUWEI_SESSION_ID" --take-over` in a fresh one. |
 | `listen.poll_seconds` | `60` | Interval between listener polls of the inbound source. |
@@ -307,7 +308,8 @@ user unit. The service uses the active workspace and current `PATH`. Run
 `bin/wuwei watch uninstall` to stop and remove it. `bin/wuwei watch --once` runs
 one due cycle without installing a service. The watch writes clock events at
 `watch.clock_seconds` intervals, and the next sweep reports a dead watch when it
-has no fresh clock line (see below).
+has no fresh clock line (see below). Each loop iteration also runs the heartbeat probes
+and can ping an external monitor; see [Heartbeat](reference.html#heartbeat).
 
 `bin/wuwei watch install --dry-run` prints the unit path, the rendered unit and the
 service commands without writing or loading anything. If loading the service

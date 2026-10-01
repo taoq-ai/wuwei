@@ -397,6 +397,8 @@ def tick(root):
         save(root, {'clock_at': now.isoformat()}, kind='watch: clock')
         if 'clock_at' not in before:
             old_health = health(root)
+    from wuwei import heartbeat
+    result = max(result, heartbeat.beat(root))
     if due('poll_at', config['pr']['poll_seconds']):
         from wuwei import merge
         result = max(result, poll(root), merge.poll(root))
