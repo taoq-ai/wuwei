@@ -9,11 +9,13 @@ import shutil
 import uuid
 
 from wuwei import decision, registry, state, workspace
+from wuwei.integrity import PLUGIN
 
 
 DEFAULTS = {'project_file': '.mcp.json',
             'plugins_file': '~/.claude/plugins/installed_plugins.json',
             'user_file': '~/.claude.json'}
+COVERED = 'WUWEI plugin.json servers covered by plugin integrity (signed manifest), not scanned'
 
 
 def _json(path):
@@ -23,12 +25,12 @@ def _json(path):
     return value
 
 
-def discover(root, config):
+def discover(root, config, covered=None, plugins=None):
     settings = config['scanner']['mcp']
     repos = {root, *((root / Path(repo['path']).expanduser()).resolve() for repo in config['repos'])}
     files = []
 
-    def add(path, *, user=False, required=False):
+    def add(path, *, user=False, required=False, key=None):
         try:
             data = _json(path)
         except FileNotFoundError:
@@ -38,8 +40,9 @@ def discover(root, config):
         entries = data.get('mcpServers', {} if user else data)
         if not isinstance(entries, dict) or any(not isinstance(v, dict) for v in entries.values()):
             raise ValueError('invalid MCP server map')
-        if entries and path.resolve() not in files:
-            files.append(path.resolve())
+        key = key or path.resolve()
+        if entries and key not in files:
+            files.append(key)
 
     for repo in sorted(repos):
         add(repo / settings['project_file'])
@@ -73,6 +76,18 @@ def discover(root, config):
             if not directory.is_dir():
                 raise OSError('installed plugin directory unavailable')
             add(directory / '.mcp.json')
+            manifest = directory / '.claude-plugin/plugin.json'
+            if directory.resolve() == PLUGIN:
+                # Signed manifest (7.1): integrity measures WUWEI's own servers, not the registry.
+                if covered is not None:
+                    covered.append(manifest)
+            else:
+                # Inline servers under top-level mcpServers, keyed by install directory:
+                # ${CLAUDE_PLUGIN_ROOT} is that directory even when plugin.json is a symlink.
+                key = directory.resolve() / '.claude-plugin/plugin.json'
+                add(manifest, user=True, key=key)
+                if plugins is not None:
+                    plugins.add(key)
     return files
 
 
@@ -112,6 +127,16 @@ def _read(root):
 
 def _write(root, record):
     workspace.atomic_write(_path(root, 'status.json'), json.dumps(record) + '\n', mode=0o444)
+
+
+def _expanded(root, path):
+    """A plugin's inline servers as Claude Code starts them, at a path stable per plugin."""
+    text = json.dumps({'mcpServers': _json(path)['mcpServers']}).replace(
+        '${CLAUDE_PLUGIN_ROOT}', json.dumps(str(path.parents[1]))[1:-1])
+    target = _path(root, 'plugins') / (hashlib.sha256(str(path).encode()).hexdigest() + '.json')
+    target.parent.mkdir(exist_ok=True)
+    workspace.atomic_write(target, text + '\n')
+    return target
 
 
 def _failure(exc):
@@ -192,8 +217,9 @@ def _backup(root):
 def check(root):
     try:
         root = Path(root).resolve()
-        if _read(root) is None and not discover(root, workspace.load_config(root)):
-            return registry.Result(0)
+        covered, plugins = [], set()
+        if _read(root) is None and not discover(root, workspace.load_config(root), covered):
+            return registry.Result(0, reason=COVERED if covered else '')
         with _lock(root):
             old = _read(root)
             _recover(root, old)
@@ -203,7 +229,8 @@ def check(root):
                       'reason': 'MCP registry unmeasured: check incomplete'}
             _write(root, record)
             config = workspace.load_config(root)
-            files = discover(root, config)
+            files = [_expanded(root, path) if path in plugins else path
+                     for path in discover(root, config, covered, plugins)]
             _backup(root)
             result = registry.load('scanner', config).mcp(files, root=root) if files else registry.Result(
                 0, {'findings': [], 'reports': []})
@@ -222,9 +249,10 @@ def check(root):
                 record['reports'] = list(dict.fromkeys([*record['reports'], *reports]))
                 record['pending'] = _queue(root, record['reports'])
             state.append_event('mcp.checked', {'exit': result.exit}, root)
-            record.update(exit=result.exit, reason=('MCP registry unmeasured: ' +
-                          (result.reason or 'scanner check incomplete')) if result.exit == 2 else
-                          f"MCP registry measured: {len(data['findings'])} findings; reports in .wuwei/ziran")
+            reason = ('MCP registry unmeasured: ' + (result.reason or 'scanner check incomplete')
+                      if result.exit == 2 else
+                      f"MCP registry measured: {len(data['findings'])} findings; reports in .wuwei/ziran")
+            record.update(exit=result.exit, reason=reason + ('; ' + COVERED if covered else ''))
             _write(root, record)
             _recover(root, record)
             return _result(record)

@@ -266,14 +266,20 @@ register them through `scanner.mcp`. Set `adapters.scanner = "ziran"` to use ZIR
 0.39.0 or newer. Missing tools or the `none` adapter are unmeasured when servers
 are attached. No attached servers is a clean empty registry.
 WUWEI declares its own read-only board server in the signed
-`.claude-plugin/plugin.json`, which the integrity check covers, so it is not a
-registry file. A `.mcp.json` added to the install, or one in a workspace or repo,
-is discovered and checked like any other.
+`.claude-plugin/plugin.json`; the integrity check covers it, so the registry does
+not scan it and `bin/wuwei mcp check` reports it as covered by plugin integrity.
+A `.mcp.json` added to the install, one in a workspace or repo, and any other
+plugin's servers, including one named like the cockpit, are discovered and
+checked like any other. Coverage goes by install directory, so another plugin
+whose plugin.json links to WUWEI's is still checked.
 
 `scanner.mcp.project_file` defaults to `.mcp.json` in the workspace and each
 configured repo. `scanner.mcp.plugins_file` defaults to
 `~/.claude/plugins/installed_plugins.json`; registry v2 user installations and
-project/local installations matching those repos contribute their `.mcp.json`.
+project/local installations matching those repos contribute their `.mcp.json`
+and the `mcpServers` object of their `.claude-plugin/plugin.json`.
+`${CLAUDE_PLUGIN_ROOT}` in plugin.json servers is expanded to the install path in
+a copy under `.wuwei/ziran/plugins` that the scanner measures.
 `scanner.mcp.user_file` defaults to `~/.claude.json` with top-level `mcpServers`.
 Relative overrides resolve against the workspace. Missing default user/plugin
 files and absent project/plugin MCP files are optional; explicit user/plugin
