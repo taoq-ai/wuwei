@@ -3,7 +3,7 @@
 from pathlib import Path
 import re
 
-from wuwei import state, workspace
+from wuwei import outward, state, workspace
 from wuwei.verdict import active_text
 
 
@@ -38,6 +38,30 @@ def number(value, minimum, name):
     return int(value)
 
 
+def _scored(fields):
+    """Options, the ids passing every must, the Wants rows and the weighted scores."""
+    options = table(fields['Options'], ['Option', 'Description'], 'Options')
+    if len(options) < 2:
+        raise ValueError('Options: expected at least two options')
+    if any(not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', row[0]) for row in options):
+        raise ValueError('Options: invalid option id')
+    if not any(re.match(r'(?i)(?:Do nothing|Defer)\b', row[1]) for row in options):
+        raise ValueError('Options: include Do nothing or Defer')
+    ids = [row[0] for row in options]
+    musts = table(fields['Musts'], ['Criterion', *ids], 'Musts')
+    if any(cell.lower() not in ('pass', 'fail') for row in musts for cell in row[1:]):
+        raise ValueError('Musts: expected pass/fail for each option')
+    passing = [option for index, option in enumerate(ids, 1)
+               if all(row[index].lower() == 'pass' for row in musts)]
+    wants = table(fields['Wants'], ['Criterion', 'Weight', *ids], 'Wants')
+    scores = dict.fromkeys(ids, 0)
+    for row in wants:
+        weight = number(row[1], 1, 'Wants weight')
+        for option, value in zip(ids, row[2:]):
+            scores[option] += weight * number(value, 0, f'Wants score for {option}')
+    return options, passing, wants, scores
+
+
 def evaluate(text):
     """Return validated fields and recomputed scores, or a content finding."""
     fields, current = {}, None
@@ -63,25 +87,8 @@ def evaluate(text):
                          ('Decided-by', ('seat', 'owner'))):
         if fields[key] not in allowed:
             raise ValueError(f'{key}: expected {"|".join(allowed)}')
-    options = table(fields['Options'], ['Option', 'Description'], 'Options')
-    if len(options) < 2:
-        raise ValueError('Options: expected at least two options')
-    if any(not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', row[0]) for row in options):
-        raise ValueError('Options: invalid option id')
-    if not any(re.match(r'(?i)(?:Do nothing|Defer)\b', row[1]) for row in options):
-        raise ValueError('Options: include Do nothing or Defer')
+    options, passing, _, scores = _scored(fields)
     ids = [row[0] for row in options]
-    musts = table(fields['Musts'], ['Criterion', *ids], 'Musts')
-    if any(cell.lower() not in ('pass', 'fail') for row in musts for cell in row[1:]):
-        raise ValueError('Musts: expected pass/fail for each option')
-    passing = [option for index, option in enumerate(ids, 1)
-               if all(row[index].lower() == 'pass' for row in musts)]
-    wants = table(fields['Wants'], ['Criterion', 'Weight', *ids], 'Wants')
-    scores = dict.fromkeys(ids, 0)
-    for row in wants:
-        weight = number(row[1], 1, 'Wants weight')
-        for option, value in zip(ids, row[2:]):
-            scores[option] += weight * number(value, 0, f'Wants score for {option}')
     recommendation = fields['Recommendation']
     if recommendation not in ids:
         raise ValueError('Recommendation: must name an option id')
@@ -95,11 +102,40 @@ def evaluate(text):
     return fields, scores
 
 
+def present(identifier, fields, level):
+    """The owner's view of validated fields at brief or standard; full is the record text."""
+    options, passing, wants, scores = _scored(fields)
+    ids = [row[0] for row in options]
+    chosen = fields['Recommendation']
+    others = [option for option in passing if option != chosen]
+    if not others:
+        reason = 'the only option that passes every must'
+    else:
+        other = max(others, key=scores.get)
+        if scores[other] == scores[chosen]:
+            reason = f'tied with {other} on score'
+        else:
+            lead = max(wants, key=lambda row: int(row[1]) * (
+                int(row[2 + ids.index(chosen)]) - int(row[2 + ids.index(other)])))
+            reason = f'ahead of {other} on {lead[0]}'
+    lines = [f'{identifier}: {fields["Question"]}',
+             *(f'{option}: {text} (score {scores[option]}'
+               + ('' if option in passing else ', fails a must') + ')' for option, text in options),
+             f'Recommended: {chosen}, {reason}.']
+    if level == 'standard':
+        first = {name: next(line.strip() for line in fields[name].splitlines() if line.strip())
+                 for name in ('Context', 'Blast radius', 'Pre-mortem', 'Revisit')}
+        lines += [f'Context: {first["Context"]}',
+                  f'Confidence: {fields["Confidence"]}. Reversibility: {fields["Reversibility"]}.',
+                  *(f'{name}: {first[name]}' for name in ('Blast radius', 'Pre-mortem', 'Revisit'))]
+    return '\n'.join(lines)
+
 def lint(text):
     try:
         fields, scores = evaluate(text)
         option = fields['Recommendation']
-        return 0, f'OK: {option} ({scores[option]})'
+        found = outward.tells(text)
+        return 0, f'OK: {option} ({scores[option]})' + ('\nstyle: ' + ', '.join(found) if found else '')
     except ValueError as exc:
         return 1, f'{exc}\nREJECT: send back to the seat'
 

@@ -501,11 +501,16 @@ def collect(root=None, *, day=None):
     config = workspace.load_config(root)
     directory = workspace.day_dir(root) if day is None else Path(day)
     events, data = _events(directory), _state(directory)
-    from wuwei import drafts
-    voice = defaultdict(list)
+    from wuwei import drafts, outward
+    voice, ai_tells = defaultdict(list), {}
     for row in drafts.read(data if data is not None else {}).values():
         if row['status'] == 'sent':
             voice[row['audience']].append(row)
+        if isinstance(row.get('style'), list):
+            ai_tells[row['id']] = len(row['style'])
+    for path in sorted((directory / 'decisions').glob('D-*.md')):
+        if not path.is_symlink():
+            ai_tells[path.stem] = len(outward.tells(path.read_text(encoding='utf-8')))
     traces = _traces(directory)
     now = workspace.now()
     if events is None:
@@ -573,4 +578,5 @@ def collect(root=None, *, day=None):
                    'share_sent_unedited': sum(row['sent_unedited'] for row in rows) / len(rows),
                    'edit_sizes': [row['edit_size'] for row in rows if not row['sent_unedited']]}
         for audience, rows in voice.items()} if voice else UNMEASURED
+    event_metrics['ai_tells'] = ai_tells
     return event_metrics

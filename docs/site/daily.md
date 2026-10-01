@@ -121,6 +121,10 @@ Some commands are yours alone and run in a host terminal, never through an agent
 `bin/wuwei decision outcome <id> <option>`, `bin/wuwei drafts approve` or `drafts drop`,
 and `bin/wuwei mcp decide`. Nudges and the report name each pending decision.
 
+`bin/wuwei decision show D-<n>` prints a decision at your `owner.verbosity` level: by default
+the question, each option with its score, and the recommendation with one reason.
+`bin/wuwei decision show D-<n> --full` prints every field.
+
 To answer from your phone, run the planner session with Claude Code Remote Control
 (`claude --remote-control`, or `/remote-control` inside the session) and turn on
 "Push when actions required" in `/config`. Each decision question then reaches the Claude

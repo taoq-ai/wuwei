@@ -67,15 +67,20 @@ def parse(text, decisions):
     return None
 
 
-def render(identifier, fields, content):
-    rows = options(fields)
+def render(identifier, fields, content, level, root):
     if content == 'none':
-        return f'{identifier} options: ' + ', '.join(row[0] for row in rows)
-    return '\n'.join([f'{identifier}: {fields["Question"]}', *(f'{option}: {text}' for option, text in rows)])
+        return f'{identifier} options: ' + ', '.join(row[0] for row in options(fields))
+    if level == 'full':  # pending() has checked the record is a regular file of today.
+        return decision.today_path(identifier, root).read_text(encoding='utf-8').rstrip()
+    return decision.present(identifier, fields, level)
 
 
 def _content(root):
     return workspace.load_config(root)['control_plane']['content']
+
+
+def _level(root):
+    return workspace.verbosity(workspace.load_config(root), 'dm')
 
 
 @_fail_closed
@@ -85,9 +90,12 @@ def escalate(decision_id, *, root=None, transport=None):
     if decision_id not in decisions:
         return Result(1, None, f'control plane: {decision_id} is not pending')
     if transport is None:
-        return Result(0, render(decision_id, decisions[decision_id], 'summary'),
+        return Result(0, render(decision_id, decisions[decision_id], 'summary', _level(root), root),
                       'ask as a question widget; Remote Control pushes it')
-    text = render(decision_id, decisions[decision_id], _content(root))
+    content, level = _content(root), _level(root)
+    text = render(decision_id, decisions[decision_id], content, level, root)
+    if content != 'none' and level != 'full':
+        text += f'\nReply more {decision_id} for the full record.'
     return transport.dm(text + '\n' + HELP, root=root)
 
 
@@ -112,8 +120,8 @@ def poll_replies(since, *, root=None, transport=None):
     if not isinstance(polled.data, list) or not all(
             isinstance(reply, dict) and isinstance(reply.get('text'), str) for reply in polled.data):
         return Result(2, None, 'control plane: invalid poll result')
-    decisions, content = pending(root), _content(root)
-    lines = [render(identifier, fields, content) for identifier, fields in decisions.items()]
+    decisions, content, level = pending(root), _content(root), _level(root)
+    lines = [render(identifier, fields, content, level, root) for identifier, fields in decisions.items()]
     echo = '\n'.join([HELP, *(lines or ['No pending decisions.'])])
     answers, echoed = [], False
     for reply in polled.data:

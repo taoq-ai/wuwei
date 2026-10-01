@@ -125,6 +125,10 @@ tier below the computed one is refused and recorded as a reason, and the returne
 carries the `tier`. See [configuration](configuration.html#workspace-and-repositories) and
 the [lead plan JSON](reference.html#lead-plan-json).
 
+## Writing for the owner
+
+`owner.verbosity` sets how much decisions, the digest, PR nudges, the DM and the report say to you: `brief` (the default), `standard` or `full`, with one key per surface (see [configuration](configuration.html)). Anything left out is one command away: `bin/wuwei decision show D-<n> --full` on the host or `more D-n` in the DM. Seats rewrite text written for a person with the humanizer skill, version 3.1.0, MIT license, when it is installed, and otherwise follow the ten-line checklist under Writing for a person in `charters/_common-authoring.md`. The CLI counts the mechanical tells as a `style` finding on drafts and decision records and as the `ai_tells` metric in the retro and, at standard or full, the report; a tell never blocks a send. Only an em dash or an emoji is refused.
+
 ## Decision classes and cruise levels
 
 Cruise mode is designed in

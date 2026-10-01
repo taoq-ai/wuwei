@@ -157,6 +157,15 @@ QUESTIONS = (
          ('Package publishing', 'Add npm publish, twine upload, cargo publish and gem push to deploy.deny.',
           {'deploy.deny': ['npm publish*', 'twine upload*', 'cargo publish*', 'gem push*']})),
      'free': (_commands, 'comma-separated commands, each starting with an executable')},
+    {'id': 'verbosity', 'scope': 'workspace', 'header': 'Verbosity',
+     'question': 'How much should decisions and messages to you say?',
+     'choices': (
+         ('Brief', 'The question, scored options and the recommendation; the rest on request.',
+          {'owner.verbosity.default': 'brief'}),
+         ('Standard', 'Also the context, reversibility, blast radius and pre-mortem.',
+          {'owner.verbosity.default': 'standard'}),
+         ('Full', 'Every field of each record.', {'owner.verbosity.default': 'full'})),
+     'free': None},
 )
 
 

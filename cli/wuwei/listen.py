@@ -43,10 +43,14 @@ def notify(root, config, waiting):
     rows = watch.records(workspace.day_dir(root) / 'events.jsonl')
     sent = {(row['payload'].get('pr'), row['payload'].get('at')) for row in rows if row['kind'] == 'pr.notified'}
     states = {ref: episode['state'] for ref, episode in waiting}
+    full = workspace.verbosity(config, 'nudges') == 'full'
     for row in rows:
         ref, text = row['payload'].get('pr'), row['payload'].get('summary')
         if row['kind'] != 'pr.changed' or not isinstance(text, str) or (ref, row['ts']) in sent:
             continue
+        fields = row['payload'].get('fields')
+        if full and isinstance(fields, list) and fields and all(isinstance(name, str) for name in fields):
+            text += f' (fields: {", ".join(fields)})'
         if ref in states:
             text += '. ' + (f'Shepherd starts: {ACTIONS[states[ref]][0]}.' if config['shepherd']['autostart']
                             else AUTOSTART_OFF)

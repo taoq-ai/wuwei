@@ -548,3 +548,46 @@ def test_shepherd_seat_drafts_what_would_send(configured, monkeypatch):
     result = post('C1', 'fixed in abc1234', root=root)
     assert result.exit == 1 and 'stored draft' in result.reason
     assert not calls
+
+
+@pytest.mark.parametrize('name,hit,miss', [
+    ('not-x-but-y', 'It is not just a fix but a rewrite.', 'It is a fix, but small.'),
+    ('closer', 'We shipped. Let that sink in.', 'We shipped on Monday.'),
+    ('run-up', "Here's the thing: tests fail.", 'Tests fail on main.'),
+    ('saying', 'At its core, this is a cache.', 'This is a cache.'),
+    ('dash', 'Two options \u2013 A or B.', 'Two options: A or B.'),
+    ('inflation', 'It plays a key role in releases.', 'It runs before releases.'),
+    ('sales', 'A stunning new parser.', 'A new parser.'),
+    ('stock-word', 'We delve into the logs.', 'We read the logs.'),
+    ('bold-label', '- **Speed**: faster', '- Speed: faster'),
+    ('chat-leftover', 'Let me know if you want more.', 'The rest is in the record.'),
+])
+def test_tells_table(name, hit, miss):
+    from wuwei import outward
+    assert [row[0] for row in outward.TELLS].count(name) == 1
+    assert outward.tells(hit) == [name]
+    assert outward.tells(miss) == []
+
+
+def test_tells_never_change_the_lint(configured):
+    from wuwei import outward
+    _, config = configured
+    text = 'This is not just a fix but a rewrite. We delve into it.'
+    assert outward.tells(text) == ['not-x-but-y', 'stock-word']
+    assert outward.tells('Plain text.') == []
+    assert outward.tells('Run `git checkout -- file` on the first underscore-separated word.') == []
+    assert outward.tells('Two options -- A or B.') == ['dash']
+    assert outward.lint(text, 'C1', config) == (0, '')
+    assert outward.lint('A fix \u2014 now.', 'C1', config) == (1, 'outward: banned character')
+
+
+def test_owner_facing_templates_are_plain():
+    import ast
+    from pathlib import Path
+    from wuwei import outward
+    cli = Path(__file__).resolve().parents[1] / 'cli/wuwei'
+    for name in ('control_plane.py', 'remote.py', 'listen.py', 'report.py', 'decision.py', 'retro.py',
+                 'interview.py', 'watch.py', 'commands/decision.py', 'commands/status.py'):
+        for node in ast.walk(ast.parse((cli / name).read_text(encoding='utf-8'))):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                assert '\u2014' not in node.value and outward.tells(node.value) == [], (name, node.value)

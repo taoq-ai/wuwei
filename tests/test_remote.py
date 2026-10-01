@@ -97,6 +97,7 @@ def test_config_and_credential(bare):
     ('cloud repo fix it', ('cloud', '')),
     ('run rm -rf', None), ('planet', None), ('plan: x', None), ('ask', None),
     ('stop 1a2b', None), ('status please', None), ('rm -rf /', None), ('approve D-1', None),
+    ('more d-3', ('more', 'D-3')), ('More D-3.', ('more', 'D-3')), ('more D-0', None),
 ])
 def test_parse_vocabulary(text, parsed):
     assert remote().parse(text) == parsed
@@ -107,7 +108,8 @@ def test_fixed_lines_pass_the_outward_lint(ws):
     module, config = remote(), workspace.load_config(ws)
     for text in (module.VOCABULARY, module.UNAVAILABLE, module.FAILED, module.CONFIRM,
                  module.NOTHING, module.CHANGED, module.LOW_MEMORY,
-                 module.ANSWERED.format(identifier='D-1', option='A')):
+                 module.ANSWERED.format(identifier='D-1', option='A'),
+                 module.NOT_PENDING.format(identifier='D-1'), module.ON_HOST.format(identifier='D-1')):
         assert outward.lint(text, 'D1', config) == (0, ''), text
 
 
@@ -332,7 +334,8 @@ def planner_tools():
 def escalation(root, identifier):
     from wuwei import control_plane
     fields = control_plane.pending(root)[identifier]
-    return control_plane.render(identifier, fields, 'summary') + '\n' + control_plane.HELP
+    return (control_plane.render(identifier, fields, 'summary', 'brief', root)
+            + f'\nReply more {identifier} for the full record.\n' + control_plane.HELP)
 
 
 @pytest.fixture
@@ -856,3 +859,22 @@ def test_issue_acceptance_remote_ack_without_a_terminal_is_an_owner_action(ws, c
     assert capsys.readouterr().err == 'wuwei remote: this is an owner action: run it in a host terminal\n'
     assert payloads(ws, 'remote.acknowledged') == []
     assert len(refused_pages(capsys)) == 1
+
+
+def test_more_returns_the_full_record_of_a_pending_decision(ws):
+    from wuwei import decision
+    assert 'more D-n' in remote().VOCABULARY
+    text = (VALID.replace('test_example', 'test_fix')  # 'example' is the owner's name here.
+            + '## Notes\nEvidence: probe.log\n')
+    routed(ws, text)
+    assert handled(ws, 'more D-1') == (0, [text.rstrip()])
+    assert handled(ws, 'more D-9') == (1, ['D-9 is not waiting on you.'])
+    assert events(ws, 'remote.') == []
+    (ws / '.wuwei/config.toml').write_text(OWNER + 'content = "none"\n')
+    assert handled(ws, 'more d-1.') == (0, ['D-1 options: A, B'])
+
+
+def test_more_that_the_lint_refuses_points_to_the_host(ws):
+    routed(ws, VALID.replace('Pre-mortem: Regression returns.', 'Pre-mortem: Robin rejects it.'))
+    assert remote().escalate_new(ws, (t := Transport())) == 0 and 'Robin' not in t.sent[0]
+    assert handled(ws, 'more D-1') == (0, ['The full record of D-1 is on the host.'])

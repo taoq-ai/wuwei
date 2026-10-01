@@ -16,7 +16,7 @@ from wuwei.registry import Result
 # Every fixed line passes the default outward lint: messages to the owner DM are linted,
 # without the third-person owner rules, since they are addressed to the owner.
 VOCABULARY = ('Commands: plan, status, report, ask <question>, stop <session>, stop all. '
-              'Decisions: approve D-n, option X on D-n, drop it.')
+              'Decisions: approve D-n, option X on D-n, more D-n, drop it.')
 UNAVAILABLE = 'Not available in this version. ' + VOCABULARY
 FAILED = 'That command could not run; see the listener log on the host.'
 CHANGED = 'Refused: this sender does not match the pinned identity. Confirm it on the host.'
@@ -25,6 +25,8 @@ LOW_MEMORY = 'Not started: free memory on the host is below the floor.'
 NOTHING = 'Nothing to confirm from the last 2 minutes.'
 ANSWERED = ('Not recorded: {identifier} already has option {option} from this DM. '
             'Record the outcome on the host to change it.')
+NOT_PENDING = '{identifier} is not waiting on you.'
+ON_HOST = 'The full record of {identifier} is on the host.'
 FACTOR = frozenset({'plan', 'ask'})  # commands that need a code or a confirm reply
 WINDOW = 120  # seconds a code or a confirmation counts
 PIN = r'[A-Z0-9]+/[UW][A-Z0-9]+'  # control_plane.owner: <team id>/<user id>
@@ -82,6 +84,8 @@ def parse(text):
         return 'cloud', ''
     if match := re.fullmatch(r'stop ([0-9a-f][0-9a-f-]{7,35})', lower):
         return 'stop', match[1]
+    if match := re.fullmatch(r'more (d-[1-9][0-9]*)', lower):
+        return 'more', match[1].upper()
     return None
 
 
@@ -279,6 +283,8 @@ def handle(root, event, *, transport=TRANSPORT, runtime=None):
                             'Confirm it on the host.', 0)
             command = ('reply', session)
         verb, argument = command
+        if verb == 'more':
+            return more(root, argument, transport=transport)
         if verb in ('run', 'cloud'):
             return _say(transport, root, UNAVAILABLE, 1)
         if verb == 'status':
@@ -381,6 +387,18 @@ def _turn(root, command, thread, prompt, session, transport, runtime):
             sent = transport.dm(f'The answer is held in session {sid[:8]}; open it on the host.', root=root)
         code = max(code, sent.exit)
     return _say(transport, root, f'Session {sid[:8]}: turn ended, {len(new)} decisions waiting.', code)
+
+
+def more(root, identifier, *, transport=TRANSPORT):
+    """Send the full record of one owner-pending decision; read-only, so no second factor."""
+    decisions = control_plane.pending(root)
+    if identifier not in decisions:
+        return _say(transport, root, NOT_PENDING.format(identifier=identifier), 1)
+    text = control_plane.render(identifier, decisions[identifier], control_plane._content(root), 'full', root)
+    sent = transport.dm(text, root=root)
+    if sent.exit == 1:
+        sent = transport.dm(ON_HOST.format(identifier=identifier), root=root)
+    return sent.exit
 
 
 def escalate_new(root, transport):

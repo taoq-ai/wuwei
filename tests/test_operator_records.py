@@ -8,7 +8,7 @@ from test_intraday_intake import candidate
 
 
 def section(text, heading):
-    return text.split(heading + '\n')[1].split('\n\n')[0]
+    return text.split(heading + '\n')[1].split('\n\n')[0].rstrip('\n')
 
 
 def test_merged_item_and_answered_decision_read_the_same_everywhere(tmp_path, monkeypatch, capsys):

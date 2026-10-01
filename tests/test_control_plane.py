@@ -262,3 +262,21 @@ def test_notify_default_sends_nothing(ws):
     from wuwei import control_plane
     result = control_plane.notify('PR 12 merged.', root=ws)
     assert (result.exit, result.data) == (0, 'PR 12 merged.')
+
+
+def test_escalate_follows_the_dm_verbosity(ws):
+    from wuwei import control_plane, decision
+    routed(ws)
+    fields, _ = decision.evaluate(VALID)
+    fake = Fake()
+    assert control_plane.escalate('D-3', root=ws, transport=fake).exit == 0
+    assert fake.sent == [decision.present('D-3', fields, 'brief')
+                         + '\nReply more D-3 for the full record.\n' + control_plane.HELP]
+    assert 'score 86' in fake.sent[0]
+    assert control_plane.escalate('D-3', root=ws).data == decision.present('D-3', fields, 'brief')
+    config(ws, '[owner.verbosity]\ndm = "full"\n')
+    fake = Fake(['hello'])
+    assert control_plane.escalate('D-3', root=ws, transport=fake).exit == 0
+    assert fake.sent == [VALID.rstrip() + '\n' + control_plane.HELP]
+    assert control_plane.poll_replies(None, root=ws, transport=fake).exit == 1
+    assert fake.sent[-1] == control_plane.HELP + '\n' + VALID.rstrip()

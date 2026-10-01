@@ -14,7 +14,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 
 | Sections | Keys under |
 | --- | --- |
-| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[security]` | [Workspace and repositories](#workspace-and-repositories) |
+| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]` | [Workspace and repositories](#workspace-and-repositories) |
 | `[host]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[brief.style]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
@@ -50,6 +50,12 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `owner.pronouns` | `""` | Owner pronouns for outward text checks. |
 | `owner.handles` | `[]` | Bare chat IDs and code host handles. |
 | `owner.timezone` | `""` | IANA time zone, for example `"Europe/Amsterdam"`, for the quality hour bands and `sessions.rotate_after.clock`. Empty uses this machine's zone. |
+| `owner.verbosity.default` | `"brief"` | How much the CLI tells you: `brief`, `standard` or `full`. At `brief` a decision is its question, one line per option with its score, and the recommendation with one reason; the report leads with up to three outcome numbers that changed. `standard` adds the context, confidence, reversibility, blast radius, pre-mortem and revisit lines to a decision and keeps the earlier report. `full` adds every field and the record paths. Seat briefs keep `brief.style.length`. |
+| `owner.verbosity.decisions` | `""` | Level for `bin/wuwei decision show`. Empty uses `owner.verbosity.default`. |
+| `owner.verbosity.digest` | `""` | Level for the two-way decision digest; `full` adds each record path. Empty uses the default. |
+| `owner.verbosity.nudges` | `""` | Level for PR change messages in the owner DM; `full` adds the changed fields. Empty uses the default. |
+| `owner.verbosity.dm` | `""` | Level for decisions sent to the owner DM. Empty uses the default. |
+| `owner.verbosity.report` | `""` | Level for `bin/wuwei report`. Empty uses the default. |
 
 A minimal repository entry after initialization looks like this. Replace the example values with your own:
 
@@ -138,7 +144,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `brief.prior_branch_pattern` | `"*{item}*"` | Branch match, with lowercased item substituted. |
 | `brief.full_path_patterns` | `[]` | Owner supplied regexes for paths needing full context. |
 | `chat.identity` | `"connector"` | Optional CLI default: connector or custom_app. This key is not in the template. |
-| `control_plane.content` | `"summary"` | What a messaging transport sends about a pending decision. `summary` sends the id, the one-line question and each option with its description; `none` sends only the id and option letters, and a fixed line in place of an update. The question widget in the planner session always shows the summary. |
+| `control_plane.content` | `"summary"` | What a messaging transport sends about a pending decision. `summary` sends the decision at the `owner.verbosity.dm` level (at `brief`: the id, the question, each option with its score and the reason for the recommendation; at `standard` or `full`: more of the record, up to all of it, including context, blast radius and evidence paths) and the whole record on a `more D-n` reply; `none` sends only the id and option letters, and a fixed line in place of an update. The question widget in the planner session always shows the summary. |
 | `control_plane.owner` | `""` | The pinned sender of commands from the owner DM, as `<team id>/<user id>` (such as `T0123ABC/U0123ABC`). Empty handles no command; `wuwei config check` reports it when `adapters.inbound` is set. |
 
 Run `bin/wuwei brief pack` once for a daily text pack, or `bin/wuwei brief pack --meeting`
@@ -238,6 +244,7 @@ The interview asks a short, fixed set of questions about your own preferences. E
 | `formality`, `signature` | a line in `.wuwei/charters/shepherd.md` |
 | `risk` | a line in `.wuwei/charters/lead.md`: what else sets `trust_surface` |
 | `manual` | `deploy.deny` patterns for commands you always run yourself |
+| `verbosity` | `owner.verbosity.default` |
 
 Run `bin/wuwei calibrate --interview` in a host terminal to answer every question, or `bin/wuwei calibrate --interview merge` to answer one again; `--repo <name>` limits the per-repository questions to one repository. Without a terminal it exits 2. On the first day the plan skill asks the same questions as `Morning gate` widgets from `bin/wuwei calibrate --questions` and records each answer with `bin/wuwei calibrate --answer <id>=<choice or text>`. Free text is checked against the calibration character set and the instruction-like scan.
 

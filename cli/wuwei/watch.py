@@ -107,7 +107,9 @@ def digest(root, config):
         for ident, option in pending:
             if not re.fullmatch(decision.DECISION_ID, ident) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', option):
                 raise ValueError('invalid two-way decision evidence')
-        text = 'Two-way decisions taken:\n' + '\n'.join(f'- {ident}: {option}' for ident, option in pending) + '\n'
+        path = ' (decisions/{}.md)' if workspace.verbosity(config, 'digest') == 'full' else ''
+        text = 'Two-way decisions taken:\n' + '\n'.join(
+            f'- {ident}: {option}' + path.format(ident) for ident, option in pending) + '\n'
         result = registry.load('chat', config).dm(text, root=root)
         draft = (result.exit == 1 and result.reason.startswith('outward: deliver as a draft')
                  or result.reason == 'no adapter configured')

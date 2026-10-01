@@ -239,7 +239,7 @@ as a new message, not in a thread. Every reply passes the security check and the
 lint and is sent, not drafted. The command list the DM sends back:
 
 ```text
-Commands: plan, status, report, ask <question>, stop <session>, stop all. Decisions: approve D-n, option X on D-n, drop it.
+Commands: plan, status, report, ask <question>, stop <session>, stop all. Decisions: approve D-n, option X on D-n, more D-n, drop it.
 ```
 
 One exchange per command (you, then the DM):
@@ -273,7 +273,7 @@ confirm
 Nothing to confirm from the last 2 minutes.
 
 deploy now
-Commands: plan, status, report, ask <question>, stop <session>, stop all. Decisions: approve D-n, option X on D-n, drop it.
+Commands: plan, status, report, ask <question>, stop <session>, stop all. Decisions: approve D-n, option X on D-n, more D-n, drop it.
 ```
 
 With `control_plane.content = "none"`, `status`, `report` and the answer to `ask` arrive as
@@ -298,14 +298,21 @@ DM path, for every decision routed to you: raised by a `plan` session, by
 `bin/wuwei decision route` or `bin/wuwei pr act` on the host, or by a refused tool. A
 turn's decisions arrive before its `Session` line; host decisions arrive at the next
 listener poll. Each is sent once a day, recorded as a `decision.escalated` event. With
-`control_plane.content = "summary"`:
+`control_plane.content = "summary"` and the default `owner.verbosity.dm = "brief"`, it is
+the same text `bin/wuwei decision show D-3` prints on the host:
 
 ```text
 D-3: <one-line question>
-A: <option>
-B: <option>
+A: <option> (score 80)
+B: <option> (score 20)
+Recommended: A, ahead of B on <criterion>.
+Reply more D-3 for the full record.
 Not recorded. Reply approve D-n, option X on D-n, or drop it.
 ```
+
+At `standard` the context, confidence, reversibility, blast radius, pre-mortem and revisit
+lines follow the recommendation; at `full` every field is sent and the `Reply more` line is
+left out.
 
 With `control_plane.content = "none"`:
 
@@ -315,6 +322,11 @@ Not recorded. Reply approve D-n, option X on D-n, or drop it.
 ```
 
 A question the outward lint refuses arrives as "D-3 is waiting in the workspace."
+
+`more D-3` sends every field of a decision that is waiting on you, needs no factor and
+records nothing. With `control_plane.content = "none"` it sends `D-3 options: A, B`. A
+record the outward lint refuses gets "The full record of D-3 is on the host." and a
+decision that is not waiting gets "D-3 is not waiting on you."
 
 Reply with `approve D-3` (takes the recommendation), `option B on D-3`, or `drop it`
 (only when exactly one decision is pending; takes its Do nothing or Defer option).
@@ -354,7 +366,7 @@ use your own remote shell to the host, for example SSH. See
 - Slack DM only: no Signal, no WhatsApp, and no responder drafting replies to people.
 - `run <routine>` and `cloud <repo> <task>` answer "Not available in this version.
   Commands: plan, status, report, ask <question>, stop <session>, stop all. Decisions:
-  approve D-n, option X on D-n, drop it." There are no routines, no cloud sessions, no
+  approve D-n, option X on D-n, more D-n, drop it." There are no routines, no cloud sessions, no
   budget governor and no owner quiet hours. `listen dead` at session start and in
   `status --line` are the listener's liveness signals, seen only on the host; the off-host
   signal is the watch heartbeat's dead-man ping (`watch.ping_url`, see the reference).

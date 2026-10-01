@@ -77,7 +77,8 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
 
     table = interview().QUESTIONS
     assert [row['id'] for row in table] == ['merge', 'gates', 'quiet', 'interrupt', 'decisions', 'phone',
-                                            'hours', 'avoid', 'formality', 'signature', 'risk', 'manual']
+                                            'hours', 'avoid', 'formality', 'signature', 'risk', 'manual',
+                                            'verbosity']
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / 'widget').mkdir()
     config = {'repos': [{'name': 'acme/widget'}]}
@@ -286,14 +287,14 @@ def test_interview_needs_a_host_terminal(offline, capsys, monkeypatch):
 
 def test_interview_on_the_terminal(offline, capsys, monkeypatch):
     raw = (offline / '.wuwei/config.toml').read_text()
-    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2']
+    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1']
     terminal(monkeypatch, replies)
     assert main('calibrate', '--interview', '--repo', 'acme/widget') == 0, capsys.readouterr().err
     out = capsys.readouterr().out
     answers = json.loads((offline / DAY / 'interview.json').read_text())
     assert answers['merge'] == {'acme/widget': 'Auto, 30 min soak'} and answers['gates'] == {
         'acme/widget': 'Standard'} and answers['phone'] == 'Summary' and answers['manual'] == 'Package publishing'
-    assert len(answers) == 12 and (offline / '.wuwei/config.toml').read_text() == raw
+    assert len(answers) == 13 and (offline / '.wuwei/config.toml').read_text() == raw
     for line in interview().describe(answers, config(offline)):
         assert line in out
     assert 'gates: answer one of' in out and 'hours: answer one of' in out and 'bin/wuwei config promote' in out
@@ -363,7 +364,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     raw = (f'[[repos]]\nname = "acme/widget"\npath = {json.dumps(str(FIXTURES / "python"))}\n'
            'default_branch = "main"\n\n' + PLANE + '\n[deploy]\nworkflows = []\ndeny = []\n')
     (root / '.wuwei/config.toml').write_text(raw)
-    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2'])
+    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3'])
     assert main('calibrate', '--interview') == 0, capsys.readouterr().err
     lines = interview().describe(json.loads((root / DAY / 'interview.json').read_text()), config(root))
     capsys.readouterr()
@@ -385,6 +386,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     assert repo['merge']['auto'] is True and repo['merge']['soak_minutes'] == 30
     assert repo['merge']['quiet_hours'] == ['20:00-08:00'] and repo['gates']['floor'] == 'full'
     assert parsed['control_plane'] == {'content': 'none', 'owner': ''}
+    assert parsed['owner']['verbosity'] == {'default': 'full'}
     assert parsed['deploy']['deny'] == ['npm publish*', 'twine upload*', 'cargo publish*', 'gem push*']
     assert [r['status'] for r in promotion.promote(root)] == ['landed'] * 4
     assert main('config', 'check') == 0, capsys.readouterr()
@@ -488,3 +490,19 @@ def test_unreadable_day_state_is_unmeasured(root):
 def test_shepherd_names_the_merge_decision_shape():
     assert 'Question: Merge <owner>/<repo>#<number>?' in (ROOT / 'charters/shepherd.md').read_text()
     assert interview().MERGE_QUESTION.fullmatch('Merge acme/widget#12?')['repo'] == 'acme/widget'
+
+
+def test_verbosity_question_sets_the_owner_default(tmp_path):
+    from wuwei import workspace
+    module = interview()
+    for label in ('Brief', 'standard', 'Full'):
+        assert module.effects('verbosity', label) == {'owner.verbosity.default': label.lower()}
+    settings = module.settings({'verbosity': 'Full'}, {'repos': []})
+    assert settings == [(('owner', 'verbosity'), 'default', 'full')]
+    assert module.describe({'verbosity': 'Full'}, {'repos': []}) == [
+        '- verbosity: Full -> owner.verbosity.default = "full"']
+    text, edits = placed((ROOT / 'templates/workspace/config.toml').read_text(), settings)
+    assert edits == []
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text(text)
+    assert workspace.load_config(tmp_path)['owner']['verbosity']['default'] == 'full'

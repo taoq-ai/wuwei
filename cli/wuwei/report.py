@@ -36,12 +36,17 @@ def build(root=None):
             json.dumps(value, sort_keys=True, allow_nan=False) if isinstance(value, dict) else value
             for value in (measured[key], baseline[key]))
         return f'{measured_value}; baseline: {baseline_value}'
-    lines = ['# WUWEI report ' + day.name, '', '## Outcome',
-             f'- Escaped defects: {shown("escaped_defects")}',
-             f'- Review rework: {shown("review_rework")}',
-             f'- Owner intervention: {shown("owner_intervention")}',
-             f'- Lead time: {shown("lead_time")}',
-             '', '## Merged']
+    level = workspace.verbosity(workspace.load_config(root), 'report')
+    headline = (('Escaped defects', 'escaped_defects'), ('Review rework', 'review_rework'),
+               ('Owner intervention', 'owner_intervention'), ('Lead time', 'lead_time'))
+    if level == 'brief':
+        changed = [f'- {title}: {shown(key)}' for title, key in headline
+                   if measured[key] != baseline[key]][:3]
+        lines = ['# WUWEI report ' + day.name, '', '## Changed', *(changed or ['none'])]
+    else:
+        lines = ['# WUWEI report ' + day.name, '', '## Outcome',
+                 *(f'- {title}: {shown(key)}' for title, key in headline)]
+    lines += ['', '## Merged']
     items = data['items']
     lines.extend(f"- {name} ({item['pr']})" if item.get('pr') else f'- {name}'
                  for name, item in sorted(items.items()) if item['phase'] == 'merged')
@@ -66,7 +71,8 @@ def build(root=None):
     lines += ['', '## Decisions answered']
     outcomes = {ident: outcome for ident, outcome in decisions(day, data).items()
                 if outcome.lower() != 'pending'}
-    lines.extend(f'- {ident}: {outcome}' for ident, outcome in sorted(outcomes.items()))
+    path = ' (decisions/{}.md)' if level == 'full' else ''
+    lines.extend(f'- {ident}: {outcome}' + path.format(ident) for ident, outcome in sorted(outcomes.items()))
     if not outcomes:
         lines.append('none')
     lines += ['', '## Carry']
@@ -74,6 +80,8 @@ def build(root=None):
     lines.extend(f"- {name}: {item['phase']}" for name, item in carry)
     if not carry:
         lines.append('none')
+    if level == 'brief':
+        return '\n'.join([*lines, ''])
     quality = measured['quality_by_band']
     lines += ['', '## Quality by band', *(
         ['unmeasured'] if quality == metrics.UNMEASURED else

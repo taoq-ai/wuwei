@@ -32,6 +32,9 @@ MERGE_SCHEMA = {
     ]],
 }
 
+LEVELS = ("brief", "standard", "full")
+SURFACES = ("decisions", "digest", "nudges", "dm", "report")
+
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
                 "mcp": {"project_file": (str, ".mcp.json"),
@@ -39,7 +42,9 @@ SCHEMA = {
                         "user_file": (str, "~/.claude.json")}},
     "security": {"required": (bool, False)},
     "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)],
-              "timezone": (str, "")},
+              "timezone": (str, ""),
+              "verbosity": {"default": (str, "brief", LEVELS),
+                            **{name: (str, "", ("", *LEVELS)) for name in SURFACES}}},
     "repos": [{"name": (str, None), "path": (str, None),
                "default_branch": (str, None), "fast_checks": [(str, "")],
                "review_required_checks": [(str, None)],
@@ -289,6 +294,12 @@ def zone(config):
         return ZoneInfo(name)
     except (KeyError, ValueError):
         raise ValueError(f'owner.timezone: unknown zone {name!r}') from None
+
+
+def verbosity(config, surface):
+    """The owner's level for one surface: its own setting, else owner.verbosity.default."""
+    levels = config['owner']['verbosity']
+    return levels[surface] or levels['default']
 
 
 def now():

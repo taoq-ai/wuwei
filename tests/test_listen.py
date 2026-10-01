@@ -729,6 +729,17 @@ def test_pr_change_reaches_the_owner_dm_once(owner_dm, monkeypatch):
     assert host.chat.sent == [summary]
 
 
+def test_full_nudges_name_the_changed_fields(owner_dm, monkeypatch):
+    root, host = owner_dm
+    config(root, PR_CONFIG + '[owner.verbosity]\nnudges = "full"\n')
+    change(host, monkeypatch, head='b' * 40)
+    assert listen().tick(root, {}) == 0
+    assert host.chat.sent == [f'PR {REF}: new commits pushed (head bbbbbbb) (fields: head)']
+    later(monkeypatch, 30)
+    state.append_event('pr.changed', {'pr': REF, 'fields': 'head', 'summary': 'PR x: y'}, root)
+    assert listen().notify(root, workspace.load_config(root), []) == 0
+    assert host.chat.sent[-1] == 'PR x: y'
+
 def test_dm_says_autostart_is_off_for_a_mechanical_action(owner_dm, monkeypatch):
     root, host = owner_dm
     change(host, monkeypatch, mergeable=False)

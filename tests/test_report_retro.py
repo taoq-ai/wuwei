@@ -70,7 +70,7 @@ def test_hard_rule_change_is_decision_only(tmp_path, monkeypatch):
 def test_report_sections_and_baseline(tmp_path, monkeypatch, capsys):
     root = tmp_path
     (root / '.wuwei/memory/notes').mkdir(parents=True)
-    (root / '.wuwei/config.toml').write_text('')
+    (root / '.wuwei/config.toml').write_text('[owner.verbosity]\nreport = "standard"\n')
     (root / '.wuwei/memory/notes/baseline.md').write_text(
         'Escaped-defect-rate: 0.2\nReview-rework: 1.4\n'
         'Owner-intervention: 32 minutes\nLead-time: 3 days\n')
@@ -194,7 +194,7 @@ def test_report_lists_merged_items(tmp_path, monkeypatch):
 def test_report_metrics_are_the_metrics_json(tmp_path, monkeypatch, capsys):
     root = tmp_path
     (root / '.wuwei').mkdir()
-    (root / '.wuwei/config.toml').write_text('')
+    (root / '.wuwei/config.toml').write_text('[owner.verbosity]\nreport = "standard"\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     monkeypatch.chdir(root)
@@ -216,7 +216,7 @@ def gates(monkeypatch, root, date, rows):
 
 def banded_day(monkeypatch, root):
     (root / '.wuwei').mkdir(exist_ok=True)
-    (root / '.wuwei/config.toml').write_text('[owner]\ntimezone = "UTC"\n')
+    (root / '.wuwei/config.toml').write_text('[owner]\ntimezone = "UTC"\n[owner.verbosity]\nreport = "standard"\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T08:00:00+00:00')
     monkeypatch.chdir(root)
@@ -286,3 +286,42 @@ def test_retro_balanced_window_names_no_band(tmp_path, monkeypatch):
     text = retro.compile(root).read_text()
     assert 'Worst hour band: none' in text and 'Worst session age band: none' in text
     assert not list((workspace.day_dir(root) / 'proposals').glob('quality-*'))
+
+
+def test_report_levels(tmp_path, monkeypatch):
+    from wuwei import remote, report
+    root = tmp_path
+    (root / '.wuwei/memory/notes').mkdir(parents=True)
+    (root / '.wuwei/config.toml').write_text('')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    state._write_state(lambda data: data.update(items={
+        'A': {**state.ITEM_DEFAULTS, 'phase': 'merged'}}), root, reserved=False)
+    day = workspace.day_dir(root)
+    (day / 'decisions').mkdir()
+    (day / 'decisions/D-2.md').write_text('Question: Ship?\nOutcome: Accepted\n')
+    brief = report.build(root)
+    sections = [line for line in brief.splitlines() if line.startswith('## ')]
+    assert sections == ['## Changed', '## Merged', '## Open at close', '## Parked',
+                        '## Decisions answered', '## Carry']
+    assert brief.split('## Changed\n')[1].split('\n\n')[0] == 'none'
+    (root / '.wuwei/memory/notes/baseline.md').write_text(
+        'Escaped-defect-rate: 0.2\nReview-rework: 1.4\n'
+        'Owner-intervention: 32 minutes\nLead-time: 3 days\n')
+    changed = report.build(root).split('## Changed\n')[1].split('\n\n')[0].splitlines()
+    assert len(changed) == 3 and changed[0].startswith('- Escaped defects: ')
+    (root / '.wuwei/config.toml').write_text('[owner.verbosity]\nreport = "standard"\n')
+    standard = report.build(root)
+    assert '## Changed' not in standard and '## Outcome' in standard and '## Process metrics' in standard
+    assert '- D-2: Accepted\n' in standard
+    (root / '.wuwei/config.toml').write_text('[owner.verbosity]\nreport = "full"\n')
+    full = report.build(root)
+    assert full == standard.replace('- D-2: Accepted\n', '- D-2: Accepted (decisions/D-2.md)\n')
+    (root / '.wuwei/config.toml').write_text(
+        '[owner]\nname = "Robin Example"\n[control_plane]\nowner = "T1/U1"\n[adapters]\ncode_host = "none"\n')
+    monkeypatch.setenv('SLACK_OWNER_DM_CHANNEL', 'D1')
+    sent = []
+    transport = SimpleNamespace(dm=lambda text, root=None: sent.append(text) or registry.Result(0, {}))
+    event = {'id': 'D1/1.1', 'channel': 'D1', 'sender': 'T1/U1', 'text': 'report'}
+    assert remote.handle(root, event, transport=transport) == 0
+    assert sent == ['Report 2026-09-29: merged 1, open 0, parked 0, decisions answered 1.']

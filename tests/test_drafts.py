@@ -426,3 +426,15 @@ def test_python_entrypoint_forms_cannot_bypass_guard(root, script, code):
     from wuwei.guards.protect_state import check_bash
     assert check_bash({'cwd': str(root), 'tool_name': 'Bash',
                        'tool_input': {'command': script}})[0] == code
+
+
+def test_draft_style_finding_is_recorded_and_never_blocks(root, port, monkeypatch):
+    from wuwei import drafts
+    row = queued(root, 'I can deliver this tomorrow. This is not just a fix but a rewrite. We delve into it.')
+    assert row['style'] == ['not-x-but-y', 'stock-word']
+    data = state.read_state(root)
+    data['drafts'][row['id']].pop('style')
+    assert drafts.read(data)[row['id']]['status'] == 'pending'
+    edit_to(monkeypatch, 'I can deliver this \u2014 tomorrow.')
+    assert main(['drafts', 'approve', row['id'], '--edit']) == 1
+    assert port[1] == []

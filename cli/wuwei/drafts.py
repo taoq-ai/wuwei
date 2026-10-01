@@ -56,7 +56,7 @@ def create(root, config, channel, operation, adapter, inputs, reason):
            'adapter': adapter, 'destination': destination, 'inputs': inputs,
            'text': '\n'.join(texts), 'created': workspace.now().isoformat(),
            'tier_reason': reason, 'audience': audience, 'status': 'pending',
-           'item': inputs.get('item') or nested.get('item')}
+           'item': inputs.get('item') or nested.get('item'), 'style': outward.tells('\n'.join(texts))}
 
     def update(data):
         read(data)
