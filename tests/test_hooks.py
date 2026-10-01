@@ -648,10 +648,14 @@ def seeded_workspace(subprocess_plugin, tmp_path, monkeypatch):
     (tmp_path / '.wuwei/config.toml').write_text(
         '[owner]\nhandles = ["owner"]\n[[repos]]\nname = "acme/app"\npath = "repos/app"\n'
         'default_branch = "main"\nfast_checks = ["unit"]\n'
-        'identity = {name = "Builder", email = "builder@example.test"}\n')
+        'identity = {name = "Builder", email = "builder@example.test"}\n'
+        # The running seat keeps every turn dirty, so Stop pays the rotation check and prints nothing.
+        '[sessions]\nrotate_after = { turns = 1 }\n')
     for name in ('spine.md', 'index.md'):
         (tmp_path / '.wuwei/memory/notes').mkdir(parents=True, exist_ok=True)
         (tmp_path / '.wuwei/memory' / name).write_text('Memory\n')
+    (tmp_path / '.wuwei/memory/goals.md').write_text(
+        '# Goals\n\n## G-1\noutcome: Ship ITEM-1\nmeasure: merged\ntarget: 1\ndate: 2026-10-30\npriority: 1\n')
     from wuwei import integrity
     integrity.initialize(tmp_path / '.wuwei')
     seed(tmp_path)
@@ -693,7 +697,7 @@ def seeded_workspace(subprocess_plugin, tmp_path, monkeypatch):
     brief.write_text('Build ITEM-1.\n')
     relative = str(brief.relative_to(tmp_path))
     state._write_state(lambda data: data.update(
-        gate_approved=True, approved_items=['ITEM-1'], planner_session_id='planner',
+        gate_approved=True, approved_items=['ITEM-1'], planner_session_id='planner', goals=['G-1'],
         items={'ITEM-1': {'phase': 'planned', 'status': 'running', 'worktree': 'worktrees/ITEM-1'}}),
         tmp_path, reserved=False)
     for phase in ('implement', 'gate', 'raised'):

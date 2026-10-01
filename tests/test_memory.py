@@ -206,3 +206,46 @@ def test_index_mode_matches_template(tmp_path):
     result = cli(root, 'index')
     assert result.returncode == 0, result.stderr
     assert (root / '.wuwei/memory/index.md').stat().st_mode & 0o777 == 0o644
+
+
+GOALS = ('# Goals\n\n## G-1\noutcome: Ship checkout v2\nmeasure: orders\ntarget: 3\n'
+         'date: 2026-10-30\npriority: 1\n')
+
+
+@pytest.mark.parametrize('case', ['full', 'bad goals', 'empty'])
+def test_payload_opens_with_active_constraints(tmp_path, monkeypatch, case):
+    from wuwei import memory, state
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    root = workspace(tmp_path)
+    (root / '.wuwei/memory/index.md').write_text('')
+    (root / '.wuwei/memory/goals.md').write_text('## nope\n' if case == 'bad goals' else GOALS)
+    day = root / '.wuwei/days/2026-09-28'
+    day.mkdir(parents=True)
+    (day / 'plan.md').write_text('# Plan\n')
+    running, stopped = (f'.wuwei/days/2026-09-28/briefs/{name}.md' for name in ('b1', 'b2'))
+
+    def seed(data):
+        if case == 'empty':
+            return
+        data.update(goals=['G-1'], gate_approved=True, approved_items=['ITEM-1'],
+                    seats={'b1': {'item': 'ITEM-1', 'brief': running, 'status': 'running'},
+                           'b2': {'item': 'ITEM-2', 'brief': stopped, 'status': 'stopped'}},
+                    builds={'ITEM-3': {'status': 'check', 'runtime': 'codex', 'brief': 'c3.md'},
+                            'ITEM-4': {'status': 'merged', 'brief': 'c4.md'}},
+                    decision_routes={'D-1': {}, 'D-2': {}},
+                    decision_outcomes={'D-2': {'option': 'A', 'decided_by': 'owner'}})
+    state._write_state(seed, root, reserved=False)
+    content, size, _ = memory.session_payload(root)
+    assert content.startswith('Active constraints:\n') and 'Spine:' in content
+    assert size == len(content.encode('utf-8'))
+    if case == 'full':
+        assert 'Goals: G-1 Ship checkout v2 (target 3 by 2026-10-30)' in content
+        assert 'Plan: .wuwei/days/2026-09-28/plan.md (approved: ITEM-1)' in content
+        assert 'Open decisions: D-1\n' in content
+        assert f'Current briefs: ITEM-1 b1 {running}; ITEM-3 build c3.md\n' in content
+        assert stopped not in content.split('Spine:')[0]
+    elif case == 'bad goals':
+        assert 'Goals: unmeasured: goals line 1' in content
+    else:
+        assert 'Goals: none\n' in content and 'Plan: not approved\n' in content
+        assert 'Open decisions: none\n' in content and 'Current briefs: none\n' in content

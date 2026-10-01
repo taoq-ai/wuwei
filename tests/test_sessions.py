@@ -41,7 +41,20 @@ def test_record_inserts_then_moves_only_last_seen(root, monkeypatch):
     sessions.record(data, 'A', hook='Stop', cwd='/other')
     assert data['sessions']['A'] == {'role': 'adhoc', 'started': NOW,
                                      'last_seen': '2026-09-30T10:05:00+00:00',
-                                     'cwd': '/w', 'last_hook': 'Stop'}
+                                     'cwd': '/w', 'last_hook': 'Stop', 'turns': 1}
+
+
+def test_record_counts_turns_and_compactions(root):
+    data = {}
+    for name in ('SessionStart:startup', 'Stop', 'Stop', 'SessionStart:compact', 'plan session',
+                 'SubagentStop:Explore'):
+        sessions.record(data, 'A', hook=name, cwd='/w')
+    sessions.record(data, 'B', hook='SessionStart:startup', cwd='/w')
+    assert (data['sessions']['A']['turns'], data['sessions']['A']['compactions']) == (2, 1)
+    data['sessions']['A']['rotated'] = NOW
+    rows = {row['session_id']: row for row in sessions.rows(data, workspace.now(), 3600)}
+    assert (rows['A']['turns'], rows['A']['compactions'], rows['A']['rotated']) == (2, 1, NOW)
+    assert (rows['B']['turns'], rows['B']['compactions']) == (0, 0) and 'rotated' not in rows['B']
 
 
 @pytest.mark.parametrize('data,session_id,role', [
@@ -284,3 +297,117 @@ def test_rows_carry_stopped(root, monkeypatch, capsys):
     state._write_state(lambda data: data['sessions']['R'].update(stopped=NOW), root, reserved=False)
     rows = listed(capsys)
     assert rows['R']['stopped'] == NOW and 'stopped' not in rows['A']
+
+
+GOALS = ('# Goals\n\n## G-1\noutcome: Ship checkout v2\nmeasure: orders\ntarget: 3\n'
+         'date: 2026-10-30\npriority: 1\n')
+BRIEF = '.wuwei/days/2026-09-30/briefs/builder-1.md'
+
+
+def rotating(root, limit, *, turns=0, seat='stopped', outcome=True, started=NOW):
+    (root / '.wuwei/config.toml').write_text(f'[owner]\ntimezone = "UTC"\n[sessions]\nrotate_after = {limit}\n')
+
+    def seed(data):
+        data.update(planner_session_id='P',
+                    seats={'builder-1': {'id': 'builder-1', 'role': 'builder', 'item': 'ITEM-1',
+                                         'brief': BRIEF, 'status': seat}},
+                    decision_routes={'D-1': {'reversibility': 'unsure'}},
+                    decision_outcomes={'D-1': {'option': 'A', 'decided_by': 'owner'}} if outcome else {})
+        data['sessions'] = {'P': {'role': 'adhoc', 'started': started, 'last_seen': started,
+                                  'cwd': str(root), 'last_hook': 'Stop', 'turns': turns}}
+    state._write_state(seed, root, reserved=False)
+
+
+def constrained(root):
+    memory = root / '.wuwei/memory'
+    (memory / 'notes').mkdir(parents=True, exist_ok=True)
+    for name, text in (('spine.md', '# Spine\n'), ('index.md', ''), ('goals.md', GOALS)):
+        (memory / name).write_text(text)
+    (workspace.day_dir(root) / 'plan.md').write_text('# Plan\n')
+
+    def seed(data):
+        data.update(goals=['G-1'], gate_approved=True, approved_items=['ITEM-1'])
+        data['seats']['builder-1']['status'] = 'running'
+        data['decision_routes']['D-2'] = {'reversibility': 'unsure'}
+    state._write_state(seed, root, reserved=False)
+
+
+def test_issue_acceptance_rotation_after_turns(root, monkeypatch, capsys):
+    rotating(root, '{ turns = 200 }', turns=199, seat='running')
+    assert hook(monkeypatch, 'Stop', 'P', root) == 0
+    assert events(root, 'session.rotated') == []
+    assert state.read_state(root)['sessions']['P']['turns'] == 200
+    state._write_state(lambda data: data['seats']['builder-1'].update(status='stopped'), root,
+                       reserved=False)
+    capsys.readouterr()
+    assert hook(monkeypatch, 'Stop', 'P', root) == 2
+    reason = json.loads(capsys.readouterr().out)
+    assert reason['decision'] == 'block'
+    assert 'turns 201 >= 200' in reason['reason']
+    assert 'wuwei plan session "$WUWEI_SESSION_ID" --take-over' in reason['reason']
+    rotated, = events(root, 'session.rotated')
+    assert {key: rotated['payload'][key] for key in ('session_id', 'turns', 'compactions')} == {
+        'session_id': 'P', 'turns': 201, 'compactions': 0}
+    assert rotated['payload']['reason'] == 'turns 201 >= 200'
+    assert listed(capsys)['P']['rotated'] == NOW
+    assert hook(monkeypatch, 'Stop', 'P', root) == 0
+    assert len(events(root, 'session.rotated')) == 1
+    assert main(['plan', 'session', 'Q', '--take-over']) == 0
+    constrained(root)
+    from wuwei.guards import lifecycle
+    code, text = lifecycle.session_start({'cwd': str(root), 'session_id': 'Q'})
+    assert 'G-1 Ship checkout v2' in text and 'plan.md' in text
+    assert 'Open decisions: D-2' in text and BRIEF in text
+
+
+@pytest.mark.parametrize('case', ['off', 'unanswered', 'wake', 'other', 'active', 'running', 'check'])
+def test_rotation_not_at_dirty_boundary_or_off(root, monkeypatch, case):
+    from wuwei import watch
+    from wuwei.guards import lifecycle
+    rotating(root, '{}' if case == 'off' else '{ turns = 1 }', turns=500,
+             outcome=case != 'unanswered')
+    if case in ('running', 'check'):
+        state._write_state(lambda data: data.setdefault('builds', {}).update(
+            {'ITEM-1': {'status': case, 'job': 'j1', 'runtime': 'codex', 'brief': BRIEF}}),
+            root, reserved=False)
+    if case == 'wake':
+        monkeypatch.setattr(watch, 'wake', lambda root, consume=False: 'wake' if consume else '')
+    payload = {'cwd': str(root), 'session_id': 'X' if case == 'other' else 'P'}
+    if case == 'active':
+        payload['stop_hook_active'] = True
+    assert lifecycle.stop(payload) == ((1, 'wake') if case == 'wake' else (0, ''))
+    assert events(root, 'session.rotated') == []
+    assert state.read_state(root)['sessions']['P']['turns'] == (500 if case in ('other', 'active') else 501)
+
+
+def test_rotation_by_compactions_and_clock(root, monkeypatch):
+    from wuwei.guards import lifecycle
+    rotating(root, '{ compactions = 1 }')
+    assert lifecycle.stop({'cwd': str(root), 'session_id': 'P'}) == (0, '')
+    hook(monkeypatch, 'SessionStart', 'P', root, source='compact')
+    code, message = lifecycle.stop({'cwd': str(root), 'session_id': 'P'})
+    assert code == 1 and 'compactions 1 >= 1' in message
+    rotating(root, '{ clock = "13:00" }', started='2026-09-30T09:00:00+00:00')
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:59:00+00:00')
+    assert lifecycle.stop({'cwd': str(root), 'session_id': 'P'}) == (0, '')
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T13:00:00+00:00')
+    code, message = lifecycle.stop({'cwd': str(root), 'session_id': 'P'})
+    assert code == 1 and 'clock 13:00' in message
+    before = len(events(root, 'session.rotated'))
+    rotating(root, '{ clock = "noon" }')
+    code, message = lifecycle.stop({'cwd': str(root), 'session_id': 'P'})
+    assert code == 0 and message.startswith('planner wake unmeasured:')
+    assert len(events(root, 'session.rotated')) == before
+
+
+def test_issue_acceptance_payload_after_compaction(root, monkeypatch, capsys):
+    rotating(root, '{}')
+    constrained(root)
+    assert hook(monkeypatch, 'PreCompact', 'P', root) == 0
+    capsys.readouterr()
+    assert hook(monkeypatch, 'SessionStart', 'P', root, source='compact') == 0
+    text = json.loads(capsys.readouterr().out)['hookSpecificOutput']['additionalContext']
+    assert text.startswith('Active constraints:\n')
+    assert 'G-1 Ship checkout v2' in text and 'plan.md (approved: ITEM-1)' in text
+    assert 'Open decisions: D-2\n' in text and BRIEF in text
+    assert state.read_state(root)['sessions']['P']['compactions'] == 1

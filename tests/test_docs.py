@@ -399,3 +399,14 @@ def test_repository_gate_keys_are_documented():
     page = (SITE / 'configuration.md').read_text()
     assert all(f'`repos.gates.{key}`' in page for key in workspace.SCHEMA['repos'][0]['gates'])
     assert '`tier`' in (SITE / 'reference.md').read_text()
+
+
+def test_daily_long_sessions_section():
+    page = (SITE / 'daily.md').read_text()
+    assert '## Long sessions' in page and page.index('## Long sessions') < page.index('## 6. Close')
+    section = page[page.index('## Long sessions'):page.index('## 6. Close')]
+    for phrase in ('sessions.rotate_after', '--take-over', 'Active constraints', 'Quality by band',
+                   'owner.timezone', 'metrics.band_margin'):
+        assert phrase in section, phrase
+    template = (ROOT / 'templates/workspace/config.toml').read_text()
+    assert all(key in template for key in ('timezone', 'band_margin', 'rotate_after'))

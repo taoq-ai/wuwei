@@ -38,7 +38,8 @@ SCHEMA = {
                         "plugins_file": (str, "~/.claude/plugins/installed_plugins.json"),
                         "user_file": (str, "~/.claude.json")}},
     "security": {"required": (bool, False)},
-    "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)]},
+    "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)],
+              "timezone": (str, "")},
     "repos": [{"name": (str, None), "path": (str, None),
                "default_branch": (str, None), "fast_checks": [(str, "")],
                "review_required_checks": [(str, None)],
@@ -68,14 +69,16 @@ SCHEMA = {
                       "similarity_threshold": (float, 0.85)},
     "memory": {"max_notes": (int, 60, 1), "note_line_cap": (int, 80, 1),
                "probation_days": (int, 10, 0), "state_entry_cap": (int, 3, 1)},
-    "metrics": {"transcripts": (str, "~/.claude/projects")},
+    "metrics": {"transcripts": (str, "~/.claude/projects"), "band_margin": (float, 0.2)},
     "voice": {"sources": {"*": [(str, None)]}, "review_prs": [(str, None)]},
     "build": {"max_iterations": (int, 8, 1), "stuck_after": (int, 3, 1),
               "poll_interval_seconds": (int, 5, 0), "poll_timeout_seconds": (int, 3600, 1)},
     "codex": {"command": [(str, None)], "timeout_seconds": (int, 300, 1)},
     "watch": {"clock_seconds": (int, 600, 1), "dead_seconds": (int, 1200, 1),
               "stale_seconds": (int, 900, 1), "sweep_seconds": (int, 7200, 1)},
-    "sessions": {"stale_seconds": (int, 3600, 1)},
+    "sessions": {"stale_seconds": (int, 3600, 1),
+                 "rotate_after": {"turns": (int, 0, 0), "compactions": (int, 0, 0),
+                                  "clock": (str, "")}},
     "listen": {"poll_seconds": (int, 60, 1), "dead_seconds": (int, 300, 1)},
     "responder": {"enabled": (bool, True)},
     "steward": {"every_tool_calls": (int, 50, 1)},
@@ -273,6 +276,18 @@ def guard_scope(payload):
         if context is not None:
             return context[0]
     return None
+
+
+def zone(config):
+    """The owner's time zone, or None for this machine's zone (astimezone(None))."""
+    name = config['owner']['timezone']
+    if not name:
+        return None
+    from zoneinfo import ZoneInfo  # Local: off the hook path when unset.
+    try:
+        return ZoneInfo(name)
+    except (KeyError, ValueError):
+        raise ValueError(f'owner.timezone: unknown zone {name!r}') from None
 
 
 def now():

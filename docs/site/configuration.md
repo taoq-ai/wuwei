@@ -35,6 +35,7 @@ layout: default
 | `owner.name` | `""` | Name used by outward text checks. |
 | `owner.pronouns` | `""` | Owner pronouns for outward text checks. |
 | `owner.handles` | `[]` | Bare chat IDs and code host handles. |
+| `owner.timezone` | `""` | IANA time zone, for example `"Europe/Amsterdam"`, for the quality hour bands and `sessions.rotate_after.clock`. Empty uses this machine's zone. |
 
 A minimal repository entry after initialization looks like this. Replace the example values with your own:
 
@@ -63,6 +64,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `retro.charter_paths` | `[".wuwei/charters"]` | Paths to charter procedures reviewed during retro. |
 | `retro.changelog` | `".wuwei/memory/CHANGELOG.md"` | Retro change log path. |
 | `metrics.transcripts` | `"~/.claude/projects"` | Claude Code project transcript directory for attended time. Sessions are filtered to the workspace and its repositories. |
+| `metrics.band_margin` | `0.2` | The retro names a worst hour or session-age band only when its gate FIX rate over the last 7 days exceeds every other measured band by at least this much. |
 | `consolidation.archive_after_days` | `30` | Move older day directories into the archive. |
 | `consolidation.similarity_threshold` | `0.85` | Text similarity ratio for near-duplicate review. |
 | `build.max_iterations` | `8` | Maximum build iterations. |
@@ -87,6 +89,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
 | `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `status --line`, its item claims lapse, and a stale planner is nudged. |
+| `sessions.rotate_after` | `{ turns = 0, compactions = 0, clock = "" }` | Planned planner rotation, off by default. `turns` (Stop hooks since the session started today), `compactions` (compactions seen) or `clock` (`"HH:MM"` in `owner.timezone`): when one is reached, the Stop hook asks the planner once, at a turn with no running seat and no unanswered owner decision, to end the session and run `wuwei plan session "$WUWEI_SESSION_ID" --take-over` in a fresh one. |
 | `listen.poll_seconds` | `60` | Interval between listener polls of the inbound source. |
 | `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start and in `status --line`. |
 | `responder.enabled` | `true` | Kill switch: when `false` the listener still stores events but does not wake the planner or handle commands. |

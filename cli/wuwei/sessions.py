@@ -1,6 +1,6 @@
 """Session registry: every Claude Code session in the workspace, with one planner."""
 
-from datetime import datetime
+from datetime import datetime, time
 import os
 from pathlib import Path
 import shlex
@@ -9,6 +9,13 @@ from wuwei import state, workspace
 
 
 ROLES = ('adhoc', 'seat-host', 'remote')
+COUNTED = {'Stop': 'turns', 'SessionStart:compact': 'compactions'}
+
+
+def count(row, hook):
+    """One counting rule for the registry write and the metrics replay."""
+    if hook in COUNTED:
+        row[COUNTED[hook]] = row.get(COUNTED[hook], 0) + 1
 
 
 def current():
@@ -35,6 +42,7 @@ def record(data, session_id, *, hook, cwd, role=None, thread=None):
     now = workspace.now().isoformat()
     row = registry.setdefault(session_id, {'role': 'adhoc', 'started': now, 'cwd': cwd})
     row.update(last_seen=now, last_hook=hook)
+    count(row, hook)
     if role is not None:
         row['role'] = role
     if isinstance(thread, str) and thread.strip():
@@ -48,6 +56,46 @@ def touch(root, session_id, *, hook, cwd, role=None, thread=None):
     return state._write_state(
         lambda data: record(data, session_id, hook=hook, cwd=cwd, role=role, thread=thread),
         root, reserved=False, kind='session.seen', payload={'session_id': session_id, 'hook': hook})
+
+
+def _due(row, limits, zone):
+    """The rotate_after reason this row has reached, or None."""
+    for key in ('turns', 'compactions'):
+        if limits[key] and row.get(key, 0) >= limits[key]:
+            return f'{key} {row.get(key, 0)} >= {limits[key]}'
+    if limits['clock']:
+        clock = time.fromisoformat(limits['clock'])
+        now = workspace.now().astimezone(zone)
+        boundary = datetime.combine(now.date(), clock, now.tzinfo)
+        if datetime.fromisoformat(row['started']).astimezone(zone) < boundary <= now:
+            return f'clock {clock:%H:%M}'
+    return None
+
+
+def rotation(root, config, data, session_id):
+    """Block once with the take-over instruction when rotate_after is due at a clean boundary."""
+    row = data.get('sessions', {}).get(session_id)
+    limits = config['sessions']['rotate_after']
+    if row is None or 'rotated' in row or not any(limits.values()):
+        return ''
+    reason = _due(row, limits, workspace.zone(config))
+    if (reason is None
+            or any(seat.get('status') == 'running' for seat in data['seats'].values())
+            or any(build.get('status') in ('running', 'check')
+                   for build in data.get('builds', {}).values())):
+        return ''
+    from wuwei.decision import answered
+    if any(answered(data, ident) is None for ident in data.get('decision_routes', {})):
+        return ''
+    payload = {'session_id': session_id, 'reason': reason,
+               'turns': row.get('turns', 0), 'compactions': row.get('compactions', 0)}
+    state._write_state(lambda fresh: fresh['sessions'][session_id].update(
+        rotated=workspace.now().isoformat()), root, reserved=False, kind='session.rotated',
+        payload=payload)
+    return (f'planner rotation due ({reason}): finish this turn and end this session. Start a '
+            'fresh Claude Code session in this workspace and run there: '
+            'wuwei plan session "$WUWEI_SESSION_ID" --take-over. Goals, plan, decisions and '
+            'briefs live in .wuwei/ and load at its SessionStart.')
 
 
 def rows(data, now, stale):
@@ -65,7 +113,9 @@ def rows(data, now, stale):
                        'idle_seconds': idle, 'stale': idle >= stale,
                        'last_hook': row.get('last_hook'),
                        'items': sorted(item for item, holder in claims.items() if holder == session_id),
-                       'cwd': row.get('cwd'), **{key: row[key] for key in ('thread', 'stopped') if key in row}})
+                       'cwd': row.get('cwd'), 'turns': row.get('turns', 0),
+                       'compactions': row.get('compactions', 0),
+                       **{key: row[key] for key in ('thread', 'stopped', 'rotated') if key in row}})
     return sorted(result, key=lambda row: row['started'])
 
 
