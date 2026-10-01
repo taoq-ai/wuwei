@@ -116,3 +116,26 @@ def test_one_rejection_per_verdict_file_version(root):
     digests = [row['payload']['sha256'] for row in rows if row['kind'] == 'verdict.rejected']
     assert all(re.fullmatch('[0-9a-f]{64}', digest) for digest in digests[:-1])
     assert digests[-1] is None
+
+
+def test_escaped_defects_counted_per_computed_tier(root, monkeypatch):
+    from wuwei import metrics
+
+    def merged(computed):
+        return {'phase': 'merged', 'gates': {'tier': computed, 'computed': computed,
+                                             'reasons': [], 'roles': ['quality']}}
+    assert metrics.collect(root)['escaped_defects_per_tier'] == metrics.UNMEASURED
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00Z')
+    state._write_state(lambda data: data.update(items={'A': merged('light'), 'C': merged('standard')}),
+                       root, reserved=False)
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    briefs = workspace.day_dir(root) / 'briefs'
+    briefs.mkdir(parents=True)
+    (briefs / 'b.md').write_text('Fix the regression from A.\n')
+    (briefs / 'gate.md').write_text('Review C.\n')
+    state._write_state(lambda data: data.update(items={'B': merged('standard')}), root, reserved=False)
+    for name, role in (('b', 'builder'), ('gate', 'sentinel-quality')):
+        state.append_event('brief written', {'item': 'B', 'role': role, 'name': name,
+                                             'path': str((briefs / f'{name}.md').relative_to(root))}, root)
+    assert metrics.collect(root)['escaped_defects_per_tier'] == {
+        'light': {'merged': 1, 'escaped': 1}, 'standard': {'merged': 2, 'escaped': 0}}

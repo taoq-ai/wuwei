@@ -167,6 +167,7 @@ def snapshot(directory):
               'sessions': sum(not row['stale'] and 'stopped' not in row for row in sessions.rows(
                   data, workspace.now(), sessions.stale_seconds(directory.parents[2])))
               if data.get('sessions') else 0}
+    result['gates'] = {name: row['gates'] for name, row in data['items'].items() if row['gates']}
     classified_state = {**data, 'now': workspace.now().isoformat()}
     active, result['watch'], result['listen'] = scan(directory, classified_state)
     result['pages'] = sum(row['tier'] == 'page' for row in active)

@@ -24,7 +24,10 @@ def test_scripted_day(day):
     day.build('builder-initial')
     initial_head = day.head
     assert day.data['seats']['builder-initial']['status'] == 'stopped'
-    assert day.next() == {'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': []}
+    action = day.next()
+    tier = action.pop('tier')
+    assert action == {'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': []}
+    assert tier['tier'] == 'standard' and tier['roles'] == ['arch', 'quality', 'security']
     day.raise_pr(expected=1)
     assert not any(call[0] == 'create_pr' for call in day.host.calls)
     for role in ('arch', 'quality', 'security'):
@@ -178,7 +181,10 @@ def test_agent_surface_without_scanner_is_unmeasured(day):
     output = day.gate('security', 'PASS', expected=2)
     assert 'unmeasured' in output
     assert 'A:security:initial' not in day.data['gate_verdicts']
-    assert day.next() == {'action': 'gates', 'roles': ['security'], 'seats': []}
+    action = day.next()
+    tier = action.pop('tier')
+    assert action == {'action': 'gates', 'roles': ['security'], 'seats': []}
+    assert tier['tier'] == 'standard' and tier['roles'] == ['arch', 'quality', 'security']
     day.raise_pr(expected=1)
     assert not any(call[0] == 'create_pr' for call in day.host.calls)
     assert not any(row['kind'] == 'gate.received' and row['payload']['role'] == 'security'

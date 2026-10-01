@@ -644,3 +644,17 @@ def test_stacked_base_uses_default_branch_required_checks(case):
     host.protection = protection
     assert shepherd.ping_gate(root, REF).exit == 0
     assert calls == ['feature-base', 'main']
+
+
+@pytest.mark.parametrize('gates,body', [
+    ({'tier': 'light', 'computed': 'light', 'reasons': ['docs/guide.md'], 'roles': ['quality']},
+     'Body\n\nReview tier: light (quality)'),
+    ({}, 'Body'),
+])
+def test_raise_body_names_the_review_tier(case, monkeypatch, gates, body):
+    from wuwei import shepherd
+    root, host = solo_raise(case, monkeypatch)
+    state._write_state(lambda data: data['items']['ITEM-1'].update(gates=gates), root, reserved=False)
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
+    [args] = [args for name, args, _ in host.calls if name == 'create_pr']
+    assert args[0]['body'] == body

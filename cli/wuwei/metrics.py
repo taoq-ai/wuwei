@@ -281,6 +281,35 @@ def _lead_time(root, config, items, prs):
             'pr_open_to_merge_hours': median(opened)}
 
 
+def _escaped_by_tier(root):
+    """Merged items per computed tier, and how many a later builder brief names."""
+    merged, briefs = {}, []
+    for directory in watch.days(root):
+        data = _state(directory)
+        for name, row in (data['items'] if data else {}).items():
+            if row['phase'] == 'merged' and row['gates']:
+                merged.setdefault(name, row['gates']['computed'])
+        briefs += [row['payload'] for row in _events(directory) or []
+                   if row['kind'] == 'brief written' and row['payload'].get('role') == 'builder']
+    if not merged:
+        return UNMEASURED
+    escaped = set()
+    for payload in briefs:
+        path = root / payload['path']
+        # ponytail: an archived or missing brief is not read; its fix goes uncounted.
+        if payload.get('item') not in merged or not path.is_file():
+            continue
+        text = path.read_text(encoding='utf-8')
+        escaped |= {name for name in merged if name != payload['item']
+                    and re.search(r'(?<![\w-])' + re.escape(name) + r'(?![\w-])', text)}
+    result = {}
+    for name, computed in merged.items():
+        row = result.setdefault(computed, {'merged': 0, 'escaped': 0})
+        row['merged'] += 1
+        row['escaped'] += name in escaped
+    return result
+
+
 def _events(day):
     path = day / 'events.jsonl'
     if not path.exists():
@@ -451,6 +480,7 @@ def collect(root=None, *, day=None):
     refs, items = _references(root)
     prs = _host_prs(root, config, refs)
     event_metrics['escaped_defects'] = _escaped_defects(root, config, now, refs, prs)
+    event_metrics['escaped_defects_per_tier'] = _escaped_by_tier(root)
     event_metrics['review_rework'] = _review_rework(root, config, refs, prs)
     event_metrics['lead_time'] = _lead_time(root, config, items, prs)
     event_metrics['brief_drill_score'] = (data.get('brief_drill', UNMEASURED)

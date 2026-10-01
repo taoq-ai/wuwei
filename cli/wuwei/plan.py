@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import re
 
-from wuwei import discovery, goals, rank, sessions, state, workspace
+from wuwei import discovery, dispatch, goals, rank, sessions, state, workspace
 
 
 FLAGS = ('trust_surface', 'boundary_relevant', 'agent_surface')
@@ -77,6 +77,8 @@ def _proposal(data, goals_text, framework="wsjf"):
         rank.validate(item, framework, goal_list)
         if item.get('track') not in ('SLICE', 'FULL'):
             raise ValueError(f'{name}: track must be SLICE or FULL')
+        if 'tier' in item and item['tier'] not in dispatch.TIERS:
+            raise ValueError(f'{name}: tier must be light, standard or full')
         flags = item.get('flags')
         if not isinstance(flags, dict) or set(flags) != set(FLAGS) or any(type(v) is not bool for v in flags.values()):
             raise ValueError(f'{name}: flags must contain boolean trust_surface, boundary_relevant, agent_surface')
@@ -184,7 +186,9 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
                                        'track': candidates[name]['track'],
                                        'flags': candidates[name]['flags'],
                                        'budget_size': candidates[name]['score'][
-                                           'job_size' if framework == 'wsjf' else 'effort']}
+                                           'job_size' if framework == 'wsjf' else 'effort'],
+                                       **{key: candidates[name][key] for key in ('tier',)
+                                          if key in candidates[name]}}
                                  for name in items})
         current.update(cap=data['cap'], seat_policy=data['seat_policy'],
                        envelope=data['envelope'], goals=data['goals'],
@@ -249,7 +253,8 @@ def add(item, root=None):
         if item in current['items']:
             raise state.StateError(f'item {item} is already in the plan')
         current['items'][item] = {'goal': candidate['goal'], 'track': candidate['track'],
-                                  'flags': candidate['flags'], 'budget_size': size}
+                                  'flags': candidate['flags'], 'budget_size': size,
+                                  **{key: candidate[key] for key in ('tier',) if key in candidate}}
         current['approved_items'].append(item)
     state._write_state(admit, root, reserved=False, kind='plan.added',
                        payload={'item': item})

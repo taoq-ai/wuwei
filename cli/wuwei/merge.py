@@ -180,6 +180,13 @@ def bot_evidence(config, policy, discussion, ref, head, root):
     return {'score': score, 'head': head, 'summary': latest['id']}
 
 
+def matched(path, patterns):
+    """The first glob matching the path or one of its suffixes, else None."""
+    parts = path.split('/')
+    return next((pattern for pattern in patterns for i in range(len(parts))
+                 if fnmatchcase('/'.join(parts[i:]), pattern)), None)
+
+
 def check(ref, root=None, *, cwd=None, repo=None):
     """Return 0 and evidence, 1 findings, or 2 unmeasured; never authorize overrides."""
     try:
@@ -238,15 +245,13 @@ def check(ref, root=None, *, cwd=None, repo=None):
                     continue
                 if not isinstance(path, str) or not path or path.startswith('/') or '..' in Path(path).parts:
                     raise ValueError('invalid changed file path')
-                parts = path.split('/')
-                require(not any(fnmatchcase('/'.join(parts[i:]), pattern)
-                        for i in range(len(parts)) for pattern in policy['never_auto_paths']),
-                        f'never-auto path: {path}')
-        from wuwei.guards.pr import gate_check, GATES
+                require(matched(path, policy['never_auto_paths']) is None, f'never-auto path: {path}')
+        from wuwei.dispatch import gate_set
+        from wuwei.guards.pr import gate_check
         code, reason = gate_check(root, root / settings['path'], config, sha=head, item=item)
         require(code == 0, reason)
         verdicts = []
-        for gate in GATES:
+        for gate in gate_set(data['items'][item]):
             first = data['gate_verdicts'].get(f'{item}:{gate}:initial')
             selected = (data['gate_verdicts'].get(f'{item}:{gate}:delta')
                         if first and first['verdict'] == 'FIX' else first)

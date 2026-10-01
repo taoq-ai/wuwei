@@ -9,6 +9,78 @@ from wuwei import brief, registry, state, verdict, workspace
 
 
 ROLES = ('arch', 'quality', 'security')
+TIERS = ('light', 'standard', 'full')
+
+
+def gate_set(row):
+    """The item's recorded gate roles; all three until a tier is recorded."""
+    roles = (row.get('gates') or {}).get('roles')
+    if roles is None:
+        return ROLES
+    if not isinstance(roles, list) or 'quality' not in roles or not set(roles) <= set(ROLES):
+        raise ValueError('invalid recorded gate set')
+    return tuple(role for role in ROLES if role in roles)
+
+
+def tier(root, config, row):
+    """Compute the item's gate tier from its diff, flags, track, floor and lead tier."""
+    from wuwei import merge
+    from wuwei.guards import commit_push
+    computed, reasons = 'light', []
+
+    def rise(level, reason):
+        nonlocal computed
+        computed = max(computed, level, key=TIERS.index)
+        reasons.append(reason)
+    if row.get('track') == 'FULL':
+        rise('full', 'track FULL')
+    for name, value in row['flags'].items():
+        if value:
+            rise('standard', f'lead flag {name}')
+    try:
+        if not row.get('worktree'):
+            raise ValueError('no worktree')
+        tree = (root / row['worktree']).resolve()
+        repo, _, vcs = commit_push.context(tree, {}, {}, root, identity=False)
+        head = brief.read(vcs.head, str(tree), root=root)['sha']
+        base = brief.read(vcs.merge_base, str(tree), config['brief']['remote'] + '/'
+                          + repo['default_branch'], root=root)['sha']
+        changes = brief.read(vcs.diff_stat, str(tree), base, head, root=root)
+        total = sum(change['additions'] or 0 for change in changes) + sum(
+            change['deletions'] or 0 for change in changes)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        repo = None
+        rise('standard', f'diff unmeasured: {str(exc) or type(exc).__name__}')
+    else:
+        gates = repo['gates']
+        for change in changes:
+            path = change['path']
+            for kind, patterns in (('trust path', gates['trust_paths']),
+                                   ('never-auto path', repo['merge']['never_auto_paths'])):
+                pattern = merge.matched(path, patterns)
+                if pattern is not None:
+                    rise('standard', f'{path} matches {kind} {pattern}')
+            pattern = next((p for p in config['brief']['full_path_patterns'] if re.search(p, path, re.I)), None)
+            if pattern is not None:
+                rise('standard', f'{path} matches FULL-track pattern {pattern}')
+            if change['additions'] is None or change['deletions'] is None:
+                rise('standard', f'{path} binary change')
+        if total > gates['light_max_lines']:
+            rise('standard', f'{total} changed lines over light_max_lines {gates["light_max_lines"]}')
+        elif computed == 'light':
+            reasons.append(f'{total} changed lines within light_max_lines {gates["light_max_lines"]}')
+    floor = repo['gates']['floor'] if repo else 'standard'
+    effective = max(computed, floor, key=TIERS.index)
+    if TIERS.index(floor) > TIERS.index(computed):
+        reasons.append(f'floor {floor}')
+    lead = row.get('tier')
+    if lead and TIERS.index(lead) > TIERS.index(effective):
+        effective = lead
+        reasons.append(f'lead tier {lead}')
+    elif lead and TIERS.index(lead) < TIERS.index(effective):
+        reasons.append(f'lead tier {lead} refused: below {effective}')
+    return {'tier': effective, 'computed': computed, 'reasons': reasons,
+            'roles': ['quality'] if effective == 'light' else list(ROLES)}
 
 
 def tracker_call(item, action, root=None):
@@ -73,21 +145,33 @@ def next_step(item, root=None):
         if not any(seat['item'] == item and seat['role'] == 'builder'
                    and seat['status'] == 'stopped' for seat in brief.seats(data).values()):
             raise Refused('builder must stand down before gates')
+    if phase == 'gate' and not row['gates'] and all(
+            _record(data, item, role, 'initial') is None for role in ROLES):
+        record = tier(root, workspace.load_config(root), row)
+
+        def update(fresh):
+            if _item(fresh, item)['gates']:
+                raise Refused('gate tier changed during dispatch')
+            fresh['items'][item]['gates'] = record
+        state._write_state(update, root, reserved=False, kind='gate.tiered',
+                           payload={'item': item, **record})
+        row = {**row, 'gates': record}
+    gates = gate_set(row)
     if phase == 'fix':
-        if any(_record(data, item, role, 'delta') is not None for role in ROLES):
+        if any(_record(data, item, role, 'delta') is not None for role in gates):
             return {'action': 'escalate', 'reason': 'fix round already used'}
-        if any(_record(data, item, role, 'initial') is None for role in ROLES):
+        if any(_record(data, item, role, 'initial') is None for role in gates):
             raise Refused('fix phase requires all initial verdicts')
-        roles = [role for role in ROLES
+        roles = [role for role in gates
                  if _record(data, item, role, 'initial')['verdict'] == 'FIX']
         return _fix(item, roles)
     if phase == 'gate':
-        roles = list(ROLES)
+        roles = list(gates)
         round_name = 'initial'
     else:
-        if any(_record(data, item, role, 'initial') is None for role in ROLES):
+        if any(_record(data, item, role, 'initial') is None for role in gates):
             raise Refused('delta phase requires all initial verdicts')
-        roles = [role for role in ROLES
+        roles = [role for role in gates
                  if _record(data, item, role, 'initial')['verdict'] == 'FIX']
         round_name = 'delta'
     if any(_record(data, item, role, round_name) and
@@ -96,8 +180,9 @@ def next_step(item, root=None):
         return {'action': 'escalate', 'reason': 'gate parked or escalated'}
     missing = [role for role in roles if _record(data, item, role, round_name) is None]
     if missing:
-        return {'action': 'gates', 'roles': missing,
-                'seats': _seats(root, data, item, missing, round_name)}
+        action = {'action': 'gates', 'roles': missing,
+                  'seats': _seats(root, data, item, missing, round_name)}
+        return {**action, 'tier': row['gates']} if phase == 'gate' and row['gates'] else action
     results = [_record(data, item, role, round_name) for role in roles]
     if any(result['verdict'] in ('PARK', 'ESCALATE') for result in results):
         return {'action': 'escalate', 'reason': 'gate parked or escalated'}
@@ -162,6 +247,8 @@ def receive(item, role, name, round_name='initial', root=None):
     _item(data, item)
     if role not in ROLES or round_name not in ('initial', 'delta'):
         raise Refused('unknown gate role or round')
+    if role not in gate_set(data['items'][item]):
+        raise Refused(f'gate role {role} is not in the item gate set')
     if data['items'][item]['phase'] != ('gate' if round_name == 'initial' else 'delta'):
         raise Refused('gate round does not match item phase')
     if round_name == 'delta':

@@ -43,6 +43,11 @@ SCHEMA = {
                "default_branch": (str, None), "fast_checks": [(str, "")],
                "review_required_checks": [(str, None)],
                "merge_deploys": (bool, True), "merge": MERGE_SCHEMA,
+               "gates": {"floor": (str, "standard", ("light", "standard", "full")),
+                         "light_max_lines": (int, 100, 0),
+                         "trust_paths": [(str, None), [
+                             "guards/*", "state.py", "adapters/*", ".claude-plugin/*", ".github/*",
+                             "ci/*", "workflows/*", "deploy/*", "infra/*"]]},
                "identity": {"name": (str, ""), "email": (str, "")}}],
     "cap": (int, 1, 1),
     "prioritisation": {"framework": (str, "wsjf", ("wsjf", "rice"))},
