@@ -1,0 +1,426 @@
+"""The owner interview: one question table mapped to config keys, charter overrides and voice rules."""
+
+from datetime import date, datetime
+import json
+import re
+import zoneinfo
+
+from wuwei import calibrate, workspace
+from wuwei.merge import quiet
+from wuwei.promotion import safe_path
+
+
+BLOCK = '## Owner preferences (interview)\n'
+ROLES = ('planner', 'shepherd', 'lead')
+EXECUTABLE = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]*')
+SOAK = 'needs merge_deploys = false declared for the repository'
+# The retro offers the merge question again after this many owner merges within this many days.
+REASK_AFTER, REASK_DAYS = 3, 7
+MERGE_QUESTION = re.compile(r'Merge (?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#[0-9]+\?')
+
+
+def _items(text):
+    """Comma-separated free text: 1 to 20 items, each in the calibrate charset and not instruction-like."""
+    items = [item.strip() for item in text.split(',') if item.strip()]
+    if not 1 <= len(items) <= 20 or any(
+            not calibrate.SAFE.fullmatch(item) or calibrate.instruction_like(item) for item in items):
+        raise ValueError('expected 1 to 20 comma-separated items of letters, digits, spaces and ._/()*@+-')
+    return items
+
+
+def _windows(text):
+    windows = [item.strip() for item in text.split(',') if item.strip()]
+    if not 1 <= len(windows) <= 20:
+        raise ValueError('expected 1 to 20 comma-separated HH:MM-HH:MM windows')
+    for window in windows:
+        quiet({'quiet_hours': [window]}, datetime(2000, 1, 1))
+    return windows
+
+
+def _hours(text):
+    window, _, zone = text.strip().partition(' ')
+    if len(_windows(window)) != 1:
+        raise ValueError('expected one HH:MM-HH:MM window and a time zone')
+    if zone.strip() not in zoneinfo.available_timezones():
+        raise ValueError(f'unknown time zone {zone.strip()!r}')
+    return {'planner': f'The owner works {window} in {zone.strip()}; '
+                       'outside those hours only pages interrupt.'}
+
+
+def _signature(text):
+    items = _items(text)
+    if len(items) != 1:
+        raise ValueError('expected one signature without commas')
+    return {'shepherd': f'Sign messages sent as the owner with: {items[0]}.'}
+
+
+def _commands(text):
+    items = _items(text)
+    if any(not EXECUTABLE.fullmatch(item.split()[0]) for item in items):
+        raise ValueError('start each command with a literal executable name')
+    return {'deploy.deny': [item if item.endswith('*') else item + '*' for item in items]}
+
+
+# The only definition of the interview. Effects: a dotted config key (`repos.` means each
+# answered repository), a charter override role with one fixed sentence, or voice never phrases.
+QUESTIONS = (
+    {'id': 'merge', 'scope': 'repo', 'header': 'Merges', 'question': 'How much merge autonomy for {repo}?',
+     'choices': (
+         ('Owner merges', 'Every pull request waits for you to merge it.', {'repos.merge.auto': False}),
+         ('Auto, 30 min soak', f'Merge when every precondition holds, after 30 minutes; {SOAK}.',
+          {'repos.merge.auto': True, 'repos.merge.soak_minutes': 30}),
+         ('Auto, 2 hour soak', f'Merge when every precondition holds, after 2 hours; {SOAK}.',
+          {'repos.merge.auto': True, 'repos.merge.soak_minutes': 120})),
+     'free': None},
+    {'id': 'gates', 'scope': 'repo', 'header': 'Gate floor',
+     'question': 'Lowest review tier for every change in {repo}?',
+     'choices': (
+         ('Standard', 'Small changes may still get the standard gate set.', {'repos.gates.floor': 'standard'}),
+         ('Full', 'Every change gets every gate.', {'repos.gates.floor': 'full'}),
+         ('Light', 'Small low-risk changes may get the light gate set.', {'repos.gates.floor': 'light'})),
+     'free': None},
+    {'id': 'quiet', 'scope': 'repo', 'header': 'Quiet hours', 'question': 'When must {repo} never auto-merge?',
+     'choices': (
+         ('No quiet hours', 'Auto-merge may run at any hour.', {'repos.merge.quiet_hours': []}),
+         ('Nights', 'No auto-merge from 20:00 to 08:00.', {'repos.merge.quiet_hours': ['20:00-08:00']})),
+     'free': (lambda text: {'repos.merge.quiet_hours': _windows(text)}, 'HH:MM-HH:MM, comma-separated')},
+    {'id': 'interrupt', 'scope': 'workspace', 'header': 'Interrupts',
+     'question': 'When should a pending decision interrupt you?',
+     'choices': (
+         ('Batch', 'Batch decisions into the two-hourly digest.', {'planner': (
+             'Batch pending owner decisions into the two-hourly digest; '
+             'ask at once only when a decision blocks a running item.')}),
+         ('At once', 'Ask each one-way-door decision when it is ready.', {'planner': (
+             'Ask each one-way-door decision as soon as its record passes the lint.')}),
+         ('Morning only', 'Hold decisions that block nothing for the morning gate.', {'planner': (
+             'Hold decisions that block nothing for the next morning gate; pages still interrupt.')})),
+     'free': None},
+    {'id': 'decisions', 'scope': 'workspace', 'header': 'Decisions',
+     'question': 'How should decisions be presented to you?',
+     'choices': (
+         ('Recommended first', 'Two or three options, the recommendation first.', {'planner': (
+             'Present two or three options with the recommended option first.')}),
+         ('Options only', 'The options without the recommendation marked.', {'planner': (
+             'Present the options without marking the recommendation; the record keeps it.')}),
+         ('Yes or no', 'Only the recommendation, as a yes or no question.', {'planner': (
+             'Ask the recommendation as a yes or no question; the other options stay in the record.')})),
+     'free': None},
+    {'id': 'phone', 'scope': 'workspace', 'header': 'Phone',
+     'question': 'What may control-plane messages carry?',
+     'choices': (
+         ('Summary', 'A one-line summary of each decision.', {'control_plane.content': 'summary'}),
+         ('Nothing', 'Only that a decision is waiting.', {'control_plane.content': 'none'})),
+     'free': None},
+    {'id': 'hours', 'scope': 'workspace', 'header': 'Hours',
+     'question': 'When do you work, and in which time zone?',
+     'choices': (
+         ('Office hours', '09:00 to 17:00 in this host time zone.', {'planner': (
+             "The owner works 09:00-17:00 in this host's time zone; outside those hours only pages interrupt.")}),
+         ('Any time', 'No working-hours rule.', {})),
+     'free': (_hours, 'HH:MM-HH:MM Area/City')},
+    {'id': 'avoid', 'scope': 'workspace', 'header': 'Avoid words',
+     'question': 'Which words should messages sent as you never use?',
+     'choices': (
+         ('Defaults only', 'Keep the voice profile as it is.', {}),
+         ('Corporate filler', 'Never: synergy, circle back, touch base, leverage.',
+          {'voice': ['synergy', 'circle back', 'touch base', 'leverage']})),
+     'free': (lambda text: {'voice': _items(text)}, 'comma-separated phrases')},
+    {'id': 'formality', 'scope': 'workspace', 'header': 'Formality', 'question': 'How formal is your writing?',
+     'choices': (
+         ('Plain', 'First names, no pleasantries.', {'shepherd': (
+             'Write plainly and directly: first names, no pleasantries.')}),
+         ('Neutral', 'A neutral professional register.', {'shepherd': (
+             'Write in a neutral professional register.')}),
+         ('Formal', 'Full sentences, a greeting and a sign-off.', {'shepherd': (
+             'Write formally: full sentences, a greeting and a sign-off.')})),
+     'free': None},
+    {'id': 'signature', 'scope': 'workspace', 'header': 'Signature',
+     'question': 'How do you sign messages sent as you?',
+     'choices': (
+         ('No signature', 'Messages end without a signature.', {'shepherd': (
+             'Add no signature to messages sent as the owner.')}),
+         ('First name', 'Messages end with the first name in owner.name.', {'shepherd': (
+             'Sign messages sent as the owner with the first name in owner.name.')})),
+     'free': (_signature, 'the signature, without commas')},
+    {'id': 'risk', 'scope': 'workspace', 'header': 'Risk words',
+     'question': 'What else counts as trust surface in your project?',
+     'choices': (
+         ('Lead defaults', 'Keep the lead charter as it is.', {}),
+         ('Money and data', 'Billing, payments and exports of personal data.', {'lead': (
+             'Also set trust_surface for changes touching billing, payments or exports of personal data.')})),
+     'free': (lambda text: {'lead': f"Also set trust_surface for changes touching: {', '.join(_items(text))}."},
+              'comma-separated areas')},
+    {'id': 'manual', 'scope': 'workspace', 'header': 'By hand',
+     'question': 'Which commands do you always run yourself?',
+     'choices': (
+         ('Deployment ban only', 'Keep deploy.deny as it is.', {}),
+         ('Package publishing', 'Add npm publish, twine upload, cargo publish and gem push to deploy.deny.',
+          {'deploy.deny': ['npm publish*', 'twine upload*', 'cargo publish*', 'gem push*']})),
+     'free': (_commands, 'comma-separated commands, each starting with an executable')},
+)
+
+
+def question(qid):
+    row = next((row for row in QUESTIONS if row['id'] == qid), None)
+    if row is None:
+        raise ValueError(f"unknown interview question {qid!r}; use one of: "
+                         + ', '.join(row['id'] for row in QUESTIONS))
+    return row
+
+
+def effects(qid, answer):
+    """The effects of one answer: a choice label (any case), else valid free text."""
+    row = question(qid)
+    if not isinstance(answer, str):
+        raise ValueError(f'{qid}: expected text')
+    for label, _, result in row['choices']:
+        if label.casefold() == answer.strip().casefold():
+            return result
+    labels = ', '.join(label for label, _, _ in row['choices'])
+    if row['free']:
+        try:
+            return row['free'][0](answer)
+        except ValueError as exc:
+            raise ValueError(f"{qid}: answer one of: {labels}, or {row['free'][1]} ({exc})") from None
+    raise ValueError(f'{qid}: answer one of: {labels}')
+
+
+def _answered(answers):
+    """(row, repository or None, answer, effects) for each recorded answer, in table order."""
+    for row in QUESTIONS:
+        if row['id'] in answers:
+            picked = answers[row['id']]
+            for repo, answer in (sorted(picked.items()) if row['scope'] == 'repo' else [(None, picked)]):
+                yield row, repo, answer, effects(row['id'], answer)
+
+
+def _path(name, repo, config):
+    parts = name.split('.')
+    if parts[0] == 'repos':
+        index = [r['name'] for r in config['repos']].index(repo)
+        return ('repos', index, *parts[1:-1]), parts[-1]
+    return tuple(parts[:-1]), parts[-1]
+
+
+def settings(answers, config):
+    """Config effects as calibrate (path, key, value) settings."""
+    return [(*_path(name, repo, config), value) for _, repo, _, result in _answered(answers)
+            for name, value in result.items() if '.' in name]
+
+
+def _role(row):
+    """The charter override a workspace question writes to, if any."""
+    return next((key for _, _, result in row['choices'] for key in result if key in ROLES), None)
+
+
+def describe(answers, config):
+    """One line per answer naming the config keys or the override it maps to."""
+    lines = []
+    for row, repo, answer, result in _answered(answers):
+        parts = []
+        for name, value in result.items():
+            if '.' in name:
+                path, key = _path(name, repo, config)
+                parts.append(f"{'.'.join(map(str, (*path, key)))} = {json.dumps(value)}")
+            elif name == 'voice':
+                parts.append('.wuwei/memory/voice.md never: ' + ', '.join(value))
+            else:
+                parts.append(f'.wuwei/charters/{name}.md')
+        if not parts and _role(row):
+            parts.append(f'.wuwei/charters/{_role(row)}.md (no rule)')
+        lines.append(f"- {row['id']}{f' ({repo})' if repo else ''}: {answer} -> "
+                     + (', '.join(parts) or 'no change'))
+    return lines
+
+
+def load(root, config):
+    """Today's answers, re-validated against the table and the configured repositories."""
+    path = workspace.day_dir(root) / 'interview.json'
+    if path.is_symlink():
+        raise ValueError('interview.json must not be a symlink')
+    if not path.exists():
+        return {}
+    try:
+        answers = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(answers, dict):
+            raise ValueError('expected an object')
+        names = {repo['name'] for repo in config['repos']}
+        for qid, value in answers.items():
+            if question(qid)['scope'] == 'repo':
+                if not isinstance(value, dict) or not value or not set(value) <= names:
+                    raise ValueError(f'{qid}: expected answers keyed by configured repositories')
+            elif not isinstance(value, str):
+                raise ValueError(f'{qid}: expected one answer')
+        list(_answered(answers))
+    except ValueError as exc:
+        raise ValueError(f'interview.json: {exc}') from None
+    return answers
+
+
+def _read(root, relative):
+    path = safe_path(root, relative, label='interview target')
+    return path.read_text(encoding='utf-8') if path.exists() else ''
+
+
+def _proposals(root, answers):
+    """Charter and voice proposals from today's answers: {target name: proposal}."""
+    evidence = f'.wuwei/days/{workspace.day_dir(root).name}/interview.json'
+    ids = '|'.join(row['id'] for row in QUESTIONS)
+    proposals = {}
+    for role in ROLES:
+        today = {row['id']: result.get(role) for row, _, _, result in _answered(answers) if _role(row) == role}
+        if not today:
+            continue
+        target = f'.wuwei/charters/{role}.md'
+        found = re.search(rf'^{re.escape(BLOCK)}(?:- (?:{ids}): .*\n)*', _read(root, target), re.M)
+        lines = dict(re.findall(r'^- (\w+): (.*)$', found[0], re.M)) if found else {}
+        lines.update(today)
+        text = BLOCK + ''.join(f"- {row['id']}: {lines[row['id']]}\n" for row in QUESTIONS
+                               if lines.get(row['id']))
+        if found and found[0] != text:
+            proposals[role] = {'target': target, 'action': 'patch', 'old_text': found[0], 'text': text}
+        elif not found and text != BLOCK:
+            proposals[role] = {'target': target, 'action': 'add', 'text': text}
+        else:
+            continue
+        proposals[role].update(reason='owner interview: ' + ', '.join(today), evidence=evidence)
+    phrases = [phrase for _, _, _, result in _answered(answers) for phrase in result.get('voice', [])]
+    if phrases:
+        from wuwei.voice import parse_profile
+        voice = _read(root, '.wuwei/memory/voice.md')
+        known = {phrase.casefold() for phrase in parse_profile(voice).get('shared', {}).get('never', [])}
+        lines = ''.join(f'- never: {p}\n' for p in dict.fromkeys(phrases) if p.casefold() not in known)
+        if lines:
+            heading = '## shared\n'
+            proposals['voice'] = {'target': '.wuwei/memory/voice.md', **(
+                {'action': 'patch', 'old_text': heading, 'text': heading + lines}
+                if voice.count(heading) == 1 else {'action': 'add', 'text': heading + lines}),
+                'reason': 'owner interview: avoid', 'evidence': evidence}
+    return proposals
+
+
+def record(root, config, picked):
+    """Merge validated answers into today's interview.json and rewrite the interview proposals."""
+    answers = load(root, config)
+    for qid, value in picked.items():
+        if question(qid)['scope'] == 'repo':
+            answers.setdefault(qid, {}).update(value)
+        else:
+            answers[qid] = value
+    names = {repo['name'] for repo in config['repos']}
+    if any(not set(answers[row['id']]) <= names for row in QUESTIONS
+           if row['scope'] == 'repo' and row['id'] in answers):
+        raise ValueError('answers must name configured repositories')
+    proposals = _proposals(root, answers)
+    day = workspace.day_dir(root)
+    (day / 'proposals').mkdir(parents=True, exist_ok=True)
+    workspace.atomic_write(day / 'interview.json', json.dumps(answers, indent=2, sort_keys=True) + '\n')
+    for target in (*ROLES, 'voice'):
+        path = day / 'proposals' / f'interview-{target}.json'
+        if target in proposals:
+            workspace.atomic_write(path, json.dumps(proposals[target], indent=2) + '\n')
+        elif path.exists() or path.is_symlink():
+            path.unlink()
+    return answers
+
+
+def _selected(ids, repos):
+    """Rows for the given ids (all when empty) in table order, each with its repositories."""
+    wanted = {question(qid)['id'] for qid in ids}
+    rows = [row for row in QUESTIONS if not wanted or row['id'] in wanted]
+    if any(row['scope'] == 'repo' for row in rows) and not repos:
+        raise ValueError(calibrate.NO_REPOS)
+    return [(row, repo) for row in rows for repo in (repos if row['scope'] == 'repo' else [None])]
+
+
+def _put(picked, row, repo, answer):
+    if repo:
+        picked.setdefault(row['id'], {})[repo] = answer
+    else:
+        picked[row['id']] = answer
+
+
+def ask(ids, repos):
+    """Ask on this terminal until each answer is valid; a number picks a choice. EOFError propagates."""
+    picked = {}
+    for row, repo in _selected(ids, repos):
+        print(f"\n{row['header']}: {row['question'].format(repo=repo)}")
+        for number, (label, description, _) in enumerate(row['choices'], 1):
+            print(f'  {number}. {label}: {description}')
+        if row['free']:
+            print(f"  or type your own: {row['free'][1]}")
+        while True:
+            reply = input('> ').strip()
+            if reply.isdecimal() and 1 <= int(reply) <= len(row['choices']):
+                reply = row['choices'][int(reply) - 1][0]
+            try:
+                effects(row['id'], reply)
+                break
+            except ValueError as exc:
+                print(str(exc))
+        _put(picked, row, repo, reply)
+    return picked
+
+
+def parse(pairs, repos):
+    """ID=VALUE answers relayed from the widget path; a repository answer applies to each selected one."""
+    picked = {}
+    for pair in pairs:
+        qid, separator, answer = pair.partition('=')
+        if not separator:
+            raise ValueError(f'expected ID=VALUE, got {pair!r}')
+        answer = answer.strip()
+        effects(qid.strip(), answer)
+        for row, repo in _selected([qid.strip()], repos):
+            _put(picked, row, repo, answer)
+    return picked
+
+
+def widgets(root, repos):
+    """The table as AskUserQuestion widgets for the morning gate."""
+    prefix = f'Morning gate (days/{workspace.day_dir(root).name}/plan.md): '
+    return [{'id': row['id'], **({'repo': repo} if repo else {}), 'header': row['header'],
+             'question': prefix + row['question'].format(repo=repo), 'multiSelect': False,
+             'options': [{'label': label, 'description': description}
+                         for label, description, _ in row['choices']]}
+            for row, repo in _selected([], repos)]
+
+
+def reask(root):
+    """Retro lines proposing merge.auto where the owner merged what the policy routed to them."""
+    from wuwei import decision, state, watch
+
+    found = {}
+    try:
+        config = workspace.load_config(root)
+        today = workspace.now().date()
+        for day in watch.days(root):
+            if (today - date.fromisoformat(day.name)).days >= REASK_DAYS:
+                break
+            data = state.read_state(directory=day)
+            for identifier in sorted(data.get('decision_outcomes', {})):
+                option = decision.answered(data, identifier)
+                path = day / 'decisions' / f'{identifier}.md'
+                if option is None or path.is_symlink() or not path.is_file():
+                    continue
+                try:
+                    fields, _ = decision.evaluate(path.read_text(encoding='utf-8'))
+                    options = dict(decision.table(fields['Options'], ['Option', 'Description'], 'Options'))
+                except ValueError:
+                    continue
+                match = MERGE_QUESTION.fullmatch(fields['Question'].strip())
+                if match and options.get(option, '').casefold().startswith('merge'):
+                    found.setdefault(match['repo'], []).append(f'{day.name} {identifier}')
+    except (OSError, ValueError) as exc:
+        return [f'- unmeasured: {exc}']
+    lines = []
+    for repo in config['repos']:
+        evidence = found.get(repo['name'], [])
+        if repo['merge']['auto'] or len(evidence) < REASK_AFTER:
+            continue
+        note = '' if repo['merge_deploys'] is False else ' (it applies only with merge_deploys = false)'
+        lines.append(f"- {repo['name']}: you merged {len(evidence)} pull requests the merge policy routed "
+                     f"to you in the last {REASK_DAYS} days ({', '.join(evidence)}). Proposed: "
+                     f"repos.merge.auto = true{note}. "
+                     f"Re-ask: bin/wuwei calibrate --interview merge --repo {repo['name']}")
+    return lines

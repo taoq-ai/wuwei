@@ -111,6 +111,8 @@ Outcome: pending
     applied = sorted(proposals.glob('*.landed')) if proposals.exists() else []
     def targets(paths):
         return [json.loads(path.read_text(encoding='utf-8'))['target'] for path in paths]
+    from wuwei import interview
+    lines += ['', '## Owner preferences', *(interview.reask(root) or ['none'])]
     lines += ['', '## Metrics', json.dumps(measured, sort_keys=True), '',
               '## Applied', *(['- `' + p + '`' for p in targets(applied)] or ['none']),
               '## Proposed', *(['- `' + p + '`' for p in targets([*pending, *rejected])] or ['none']), '']

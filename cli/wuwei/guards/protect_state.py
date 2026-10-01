@@ -191,7 +191,7 @@ def _protected_name(path, directories=False):
         if directories and tail in (('memory',), ('memory', 'notes'),
                                     ('memory', 'archive'), ('charters',)):
             return True
-        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'undo.jsonl', 'proposal.json', 'plan.md', 'steward-decisions.json'):
+        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'undo.jsonl', 'proposal.json', 'plan.md', 'steward-decisions.json', 'interview.json'):
             return True
         if tail == ('memory', 'ledger.jsonl'):
             return True

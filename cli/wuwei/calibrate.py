@@ -410,6 +410,16 @@ def _empty_list(key, line):
     return re.fullmatch(rf'{key}\s*=\s*\[\]\s*(#.*)?', line.strip())
 
 
+def _assignment(key, line):
+    """A complete one-line `key = value` assignment of exactly this key."""
+    if not re.match(rf'\s*{re.escape(key)}\s*=', line):
+        return False
+    try:
+        return list(tomllib.loads(line)) == [key]
+    except tomllib.TOMLDecodeError:
+        return False
+
+
 def proposal(raw, targets):
     """Additive config proposal for [(repo index, facts)]: (additions, hand edits).
 
@@ -467,10 +477,10 @@ def apply(raw, additions):
             else:
                 raise ValueError(LAYOUT)
             lines = next(lines for p, lines in sections if p == path)
-        match = next((i for i, old in enumerate(lines) if path == ('deploy',) and _empty_list(key, old)), None)
+        match = next((i for i, old in enumerate(lines) if _assignment(key, old)), None)
         if match is not None:
             lines[match] = line
-            replaced.append(key)
+            replaced.append((path, key))
             continue
         end = len(lines)
         while end > 1 and not lines[end - 1].strip():
@@ -485,8 +495,8 @@ def apply(raw, additions):
     except tomllib.TOMLDecodeError:
         raise ValueError(LAYOUT) from None
     before = tomllib.loads(raw)
-    for key in replaced:
-        before['deploy'].pop(key)
+    for path, key in replaced:
+        _table(before, path).pop(key)
     if not _preserves_values(before, parsed) or any(
             (_table(parsed, path) or {}).get(key) != value for path, key, value in additions):
         raise ValueError(LAYOUT)
@@ -547,10 +557,36 @@ def survey(root, config, selected, *, style=True):
     return results
 
 
-def propose(raw, results):
-    """Return the proposed config text, its diff and the hand edits."""
+def settle(raw, settings):
+    """Owner answers as (additions, hand edits): absent keys added, one-line assignments replaced.
+
+    A deploy list keeps every present item, so an answer never removes a deploy-ban pattern.
+    """
+    present, sections = tomllib.loads(raw), _labelled(raw)
+    additions, edits = [], []
+    for path, key, value in settings:
+        table = _table(present, path)
+        if table is None or key not in table:
+            additions.append((path, key, value))
+            continue
+        current = table[key]
+        if path == ('deploy',) and isinstance(current, list):
+            value = [*current, *(item for item in value if item not in current)]
+        if current == value:
+            continue
+        if any(_assignment(key, line) for p, lines in sections if p == path for line in lines):
+            additions.append((path, key, value))
+        else:
+            edits.append(('.'.join(map(str, (*path, key))), current, value))
+    return additions, edits
+
+
+def propose(raw, results, settings=()):
+    """Return the proposed config text, its diff and the hand edits; owner settings apply last."""
     additions, edits = proposal(raw, [(r['index'], r['facts']) for r in results])
     text = apply(raw, additions)
+    extra, more = settle(text, settings)
+    text, edits = apply(text, extra), edits + more
     diff = ''.join(difflib.unified_diff(raw.splitlines(keepends=True), text.splitlines(keepends=True),
                                         'config.toml', 'config.toml (proposed)'))
     return text, diff, edits

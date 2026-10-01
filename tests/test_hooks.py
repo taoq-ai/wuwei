@@ -223,7 +223,7 @@ def test_calibrate_is_off_every_hook_path(tmp_path):
               'from wuwei.__main__ import main\n'
               'for event, payload in json.loads(sys.argv[2]):\n'
               '    sys.stdin = io.StringIO(json.dumps(payload))\n    main(["hook", event])\n'
-              'sys.exit(3 if "wuwei.calibrate" in sys.modules else 0)\n')
+              'sys.exit(3 if {"wuwei.calibrate", "wuwei.interview"} & set(sys.modules) else 0)\n')
     result = subprocess.run([sys.executable, '-I', '-P', '-c', script, str(ROOT / 'cli'), json.dumps(calls)],
                             text=True, capture_output=True, cwd=tmp_path,
                             env={**os.environ, 'WUWEI_WORKSPACE': str(tmp_path), 'WUWEI_BENCH': '1'})

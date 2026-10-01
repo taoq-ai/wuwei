@@ -36,6 +36,7 @@ def test_retro_compiles_role_evidence_and_cycle(tmp_path, monkeypatch):
     assert '| A | merged | done |' in text
     assert '| gate-a.md | PASS |' in text
     assert '## Applied\nnone' in text and '.wuwei/charters/builder.md' in text
+    assert '## Owner preferences\nnone\n' in text
     proposals = list((day / 'proposals').glob('*.json'))
     assert len(proposals) == 1
     assert json.loads(proposals[0].read_text())['evidence'] == evidence.relative_to(root).as_posix()

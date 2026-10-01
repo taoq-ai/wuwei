@@ -729,3 +729,14 @@ def test_reader_mentions_are_not_writes(workspace, monkeypatch, capsys, command,
         payload(workspace, 'Bash', command=command.format(root=workspace)))))
     assert run(SimpleNamespace(event='PreToolUse')) == expected, capsys.readouterr().err
     capsys.readouterr()
+
+
+@pytest.mark.parametrize('tool', ['Write', 'Bash'])
+def test_interview_answers_are_protected(workspace, tool):
+    from wuwei.guards.protect_state import check_bash, check_file
+    target = '.wuwei/days/2026-10-01/interview.json'
+    if tool == 'Bash':
+        code, reason = check_bash(payload(workspace, tool, command='echo {} | tee ' + target))
+    else:
+        code, reason = check_file(payload(workspace, tool, file_path=target))
+    assert code == 1 and 'outside agent tools' in reason
