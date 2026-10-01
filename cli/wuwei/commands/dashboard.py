@@ -14,6 +14,16 @@ from wuwei.signal import classify
 from wuwei.exits import CLEAN
 
 
+TEMPLATE = Path(__file__).resolve().parents[3] / 'templates/dashboard.html'
+
+
+def board_snapshot(directory):
+    """Phase columns, build phases and cap the template draws the work board from."""
+    return {'phases': [phase for phase in state.PHASES if phase not in ('parked', 'escalated')],
+            'build_phases': state.BUILD_PHASES,
+            'cap': state.read_state(directory=directory)['cap']}
+
+
 def cockpit_snapshot(directory):
     """Read today's owner surfaces without recording any outcome."""
     directory = Path(directory)
@@ -156,14 +166,8 @@ def register(subparsers):
 
 def run(args):
     directory = workspace.day_dir()
-    snapshot = state.read_state(directory=directory)
-    template = Path(__file__).resolve().parents[3] / 'templates/dashboard.html'
-    page = template.read_bytes()
-    phases = [phase for phase in state.PHASES if phase not in ('parked', 'escalated')]
-    board = {'phases': phases, 'build_phases': state.BUILD_PHASES,
-             'cap': snapshot['cap']}
-    handler = partial(DayHandler, directory=directory, page=page,
-                      board=json.dumps(board).encode())
+    handler = partial(DayHandler, directory=directory, page=TEMPLATE.read_bytes(),
+                      board=json.dumps(board_snapshot(directory)).encode())
     with ThreadingHTTPServer(('127.0.0.1', 0), handler) as server:
         print(f'Serving on http://127.0.0.1:{server.server_port}/', flush=True)
         try:

@@ -512,3 +512,60 @@ def test_interrupted_backup_cleanup_never_replays_partial_backup(configured, mon
 def test_mcp_mentions_in_unrelated_commands_do_not_block(configured, command):
     from wuwei.guards.protect_state import check_bash
     assert check_bash({'cwd': str(configured), 'tool_input': {'command': command}})[0] == 0
+
+
+COCKPIT = {'command': '${CLAUDE_PLUGIN_ROOT}/bin/wuwei', 'args': ['board'],
+           'env': {'CLAUDE_PROJECT_DIR': '${CLAUDE_PROJECT_DIR}'}}
+
+
+def own_workspace(tmp_path, monkeypatch, plugin, repo=None):
+    root = tmp_path / 'root'
+    (root / '.wuwei').mkdir(parents=True)
+    (root / '.wuwei/config.toml').write_text(
+        f'repos=[{{name="taoq-ai/wuwei",path={json.dumps(str(repo))},default_branch="main"}}]\n'
+        if repo else '')
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T08:00:00+02:00')
+    installed = Path.home() / '.claude/plugins/installed_plugins.json'
+    installed.parent.mkdir(parents=True)
+    installed.write_text(json.dumps({'version': 2, 'plugins': {'wuwei@market': [
+        {'scope': 'user', 'installPath': str(plugin)}]}}))
+    return root
+
+
+@pytest.mark.parametrize('scanner', ['none', 'ziran'])
+def test_own_server_and_source_checkout_attach_no_discoverable_file(tmp_path, monkeypatch, scanner):
+    # The cockpit is declared in the signed plugin.json, so neither the install nor a
+    # managed checkout of the WUWEI source carries a project .mcp.json for S3 to measure.
+    plugin = Path(__file__).resolve().parents[1]
+    repo = tmp_path / 'repo'
+    repo.mkdir()
+    for path in plugin.iterdir():
+        if path.is_file():
+            (repo / path.name).write_bytes(path.read_bytes())
+    root = own_workspace(tmp_path, monkeypatch, plugin, repo)
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write(f'[adapters]\nscanner="{scanner}"\n')
+    assert core().discover(root, workspace.load_config(root)) == []
+    assert core().cached(root).exit == 0
+    assert core().check(root).exit == 0
+
+
+@pytest.mark.parametrize('where,server', [
+    ('install', {**COCKPIT, 'args': ['board', '--evil']}),
+    ('install', {**COCKPIT, 'command': '/bin/sh'}),
+    ('install', COCKPIT),
+    ('project', COCKPIT),
+    ('project', {**COCKPIT, 'args': ['dashboard']}),
+])
+def test_cockpit_lookalike_file_stays_unmeasured_and_refused(tmp_path, monkeypatch, where, server):
+    plugin = tmp_path / 'plugin'
+    plugin.mkdir()
+    root = own_workspace(tmp_path, monkeypatch, plugin)
+    monkeypatch.setattr(core(), 'PLUGIN', plugin, raising=False)
+    path = (plugin if where == 'install' else root) / '.mcp.json'
+    path.write_text(json.dumps({'mcpServers': {'cockpit': server}}))
+    assert core().discover(root, workspace.load_config(root)) == [path]
+    assert core().cached(root).exit == 2
+    result = core().check(root)
+    assert result.exit == 2 and 'unmeasured' in result.reason
+    assert core().launch(root).exit == 2
