@@ -77,6 +77,34 @@ def test_codex_matches_then_polls_and_validates_result(tmp_path, monkeypatch):
     assert 'usage' not in result.data
 
 
+def test_codex_prompt_carries_the_mandate(tmp_path, monkeypatch):
+    from wuwei import brief as briefs
+    root = setup(tmp_path, monkeypatch)
+    brief = root / 'brief.md'
+    brief.write_text('Do task')
+    adapter = importlib.import_module('adapters.runtime.codex')
+    payloads = companion_payloads(root)
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return SimpleNamespace(returncode=0, stdout=json.dumps(payloads[argv[1]]), stderr='')
+    monkeypatch.setattr(adapter.subprocess, 'run', run)
+    assert adapter.dispatch('builder', str(brief), str(root), True, root=root).exit == 0
+    assert calls[0][-2].endswith(briefs.mandate(root))
+
+
+def test_codex_result_flags_an_unrecorded_question(tmp_path, monkeypatch):
+    root = setup(tmp_path, monkeypatch)
+    adapter = importlib.import_module('adapters.runtime.codex')
+    payloads = companion_payloads(root)
+    payloads['result']['storedJob']['result']['rawOutput'] = (
+        'Which option do you want?\nBlocked: none\nGap: none\nChange: none')
+    monkeypatch.setattr(adapter, '_call', lambda *args, **kwargs: adapter.registry.Result(
+        0, payloads['result']))
+    result = adapter.result({'id': 'j1', 'worktree': str(root), 'role': 'builder'}, root=root)
+    assert result.exit == 1 and 'Cite a decision D-n' in result.reason
+
+
 def test_codex_result_preserves_stored_usage(tmp_path, monkeypatch):
     root = setup(tmp_path, monkeypatch)
     adapter = importlib.import_module('adapters.runtime.codex')

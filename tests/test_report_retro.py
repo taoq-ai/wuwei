@@ -37,6 +37,7 @@ def test_retro_compiles_role_evidence_and_cycle(tmp_path, monkeypatch):
     assert '| gate-a.md | PASS |' in text
     assert '## Applied\nnone' in text and '.wuwei/charters/builder.md' in text
     assert '## Owner preferences\nnone\n' in text
+    assert '"asks_per_item"' in text and '"unnecessary_asks"' in text
     proposals = list((day / 'proposals').glob('*.json'))
     assert len(proposals) == 1
     assert json.loads(proposals[0].read_text())['evidence'] == evidence.relative_to(root).as_posix()
@@ -203,6 +204,7 @@ def test_report_metrics_are_the_metrics_json(tmp_path, monkeypatch, capsys):
     assert main(['report']) == 0
     lines = capsys.readouterr().out.splitlines()
     measured = json.loads(lines[lines.index('## Process metrics') + 1])
+    assert {'asks_per_item', 'unnecessary_asks'} <= set(measured)
     assert main(['metrics']) == 0
     assert measured == json.loads(capsys.readouterr().out)
 

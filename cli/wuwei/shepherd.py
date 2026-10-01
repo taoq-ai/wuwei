@@ -403,6 +403,10 @@ def headless(root, ref, episode, *, runtime=None):
             return finish(2, f'turn failed: {reason}', reason=reason)
         sid = result.data['session_id']
         sessions.touch(root, sid, hook=f'shepherd {record["state"]}', cwd=str(root), role='shepherd')
+        from wuwei.guards.decision import unrecorded
+        code, reason = unrecorded(str(result.data.get('result', '')), root)
+        if code:
+            return finish(code, f'asked without a decision record: {reason}', reason=reason, session=sid)
         return finish(result.exit, f'turn ended (exit {result.exit}, session {sid[:8]})', session=sid)
     except brief.Refused as exc:
         return finish(1, f'not started: {exc}', reason=str(exc))

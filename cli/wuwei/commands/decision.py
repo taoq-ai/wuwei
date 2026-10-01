@@ -18,6 +18,8 @@ def register(subparsers):
     lint.set_defaults(func=run)
     command = commands.add_parser('route', help='Route a decision today')
     command.add_argument('id')
+    command.add_argument('--external', metavar='ITEM',
+                         help='a confirmation from a person outside the loop; continue reversible work')
     command.set_defaults(func=run)
     outcome = commands.add_parser('outcome', help='Record an owner choice from the host terminal')
     outcome.add_argument('id')
@@ -40,6 +42,13 @@ def decide(args):
         fields, scores = evaluate(text)
     except ValueError as exc:
         return record_rejection(path, 1, str(exc), root=root)
+    if args.external:
+        from wuwei.brief import identifier
+        try:
+            route_owner(args.id, fields, root, item=identifier(args.external))
+        except ValueError as exc:
+            return 1, f'decision: {exc}'
+        return 0, 'owner'
     target = route(fields)
     if target == 'owner':
         route_owner(args.id, fields, root)

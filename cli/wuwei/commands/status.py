@@ -24,11 +24,11 @@ def attention(directory, classified_state=None):
 
 
 def scan(directory, classified_state=None):
-    """Attention rows, watch and listen state (alive, off, dead, unmeasured) and heartbeat health from one read of the day."""
+    """Attention rows, watch and listen state (alive, off, dead, unmeasured), heartbeat health and negotiation loops from one read of the day."""
     classified_state = classified_state or {**state.read_state(directory=directory),
                                               'now': workspace.now().isoformat()}
     today = workspace.now().date()
-    current, clocks, replied, pin, beat = {}, {'watch': [], 'listen': []}, {}, None, None
+    current, clocks, replied, pin, beat, loops = {}, {'watch': [], 'listen': []}, {}, None, None, 0
     path = directory / 'events.jsonl'
     if path.exists():
         with path.open(encoding='utf-8') as stream:
@@ -45,6 +45,7 @@ def scan(directory, classified_state=None):
                     stamp = event.get('ts')
                     if isinstance(stamp, str) and datetime.fromisoformat(stamp).date() != today:
                         continue
+                    loops += kind == 'negotiation.loop'
                     if kind in ('watch: clock', 'listen: clock'):
                         clocks[kind.split(':')[0]].append(stamp)
                     if kind == 'heartbeat: clock':
@@ -171,7 +172,7 @@ def scan(directory, classified_state=None):
                               f'{row["idle_seconds"]}s; take over from the live session with: '
                               'wuwei plan session <session id> --take-over'}
     rows = sorted(current.values(), key=lambda row: row['source'] != 'pr.changed')
-    return rows, health['watch'], health['listen'], beat_health
+    return rows, health['watch'], health['listen'], beat_health, loops
 
 
 def snapshot(directory):
@@ -185,7 +186,8 @@ def snapshot(directory):
               if data.get('sessions') else 0}
     result['gates'] = {name: row['gates'] for name, row in data['items'].items() if row['gates']}
     classified_state = {**data, 'now': workspace.now().isoformat()}
-    active, result['watch'], result['listen'], result['health'] = scan(directory, classified_state)
+    active, result['watch'], result['listen'], result['health'], result['loops'] = scan(
+        directory, classified_state)
     result['pages'] = sum(row['tier'] == 'page' for row in active)
     result['answered'] = [row['reason'] for row in active if row['source'] == 'decision.answered']
     result['nudges'] = sum(row['tier'] == 'nudge' for row in active)
@@ -251,6 +253,8 @@ def run(args):
 
 def line(data):
     parts = [f'WUWEI pages {data["pages"]}', f'nudges {data["nudges"]}']
+    if data.get('loops'):
+        parts.append(f'loops {data["loops"]}')
     if not data['gate_approved']:
         parts[0] = 'WUWEI no plan yet | ' + parts[0][6:]
     if data.get('prs_changed'):

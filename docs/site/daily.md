@@ -134,6 +134,13 @@ answer decisions from Slack as well, follow [remote operation](remote.html). A d
 answered in the Slack DM is recorded as evidence, and `status --line` counts it as
 `phone answers 1` until you record it with `bin/wuwei decision outcome`.
 
+Seats do not ask what their mandate lets them decide. You see two more things here. An item
+that goes back and forth shows as `loops N` on the status line and a `negotiation.loop`
+nudge (a page when its goal date has passed), with the counts and the last two exchanges in
+your DM when the listener runs. An external confirmation a seat routed with `--external`
+waits `decisions.wait_hours` weekday hours for your answer; then the sweep confirms the
+recommendation on a two-way door or parks the item for your `decision outcome`.
+
 ## Long sessions
 
 The planner session is the one long-lived context of the day; seats are fresh per item.

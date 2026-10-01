@@ -148,7 +148,8 @@ def test_config_defaults_and_independence(tmp_path):
         'sessions': {'stale_seconds': 3600,
                      'rotate_after': {'turns': 0, 'compactions': 0, 'clock': ''}},
         'listen': {'poll_seconds': 60, 'dead_seconds': 300}, 'responder': {'enabled': True},
-        'steward': {'every_tool_calls': 50},
+        'steward': {'every_tool_calls': 50, 'loop_window_hours': 4, 'loop_threshold': 9},
+        'decisions': {'wait_hours': 24, 'cruise': {'enabled': True, 'levels': {}}},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
             'shepherd': {'review_channel': '', 'lead_login': '', 'review_gate_check': 'Review Gate',
                          'min_reviewers': 1,
@@ -782,3 +783,16 @@ def test_shepherd_autostart_defaults_off(tmp_path):
     assert load_config(tmp_path)['shepherd']['autostart'] is False
     write_config(tmp_path, '[shepherd]\nautostart = true')
     assert load_config(tmp_path)['shepherd']['autostart'] is True
+
+
+def test_decisions_config(tmp_path):
+    from wuwei.workspace import ConfigError, load_config
+    write_config(tmp_path, '[decisions.cruise.levels]\napproach = 1\n')
+    assert load_config(tmp_path)['decisions']['cruise']['levels'] == {'approach': 1}
+    for text, key in (('[decisions.cruise.levels]\nmerge = 4', 'decisions.cruise.levels.merge'),
+                      ('[decisions.cruise.levels]\nmessage = 2', 'decisions.cruise.levels.message'),
+                      ('[decisions.cruise.levels]\nunknown = 1', 'decisions.cruise.levels.unknown'),
+                      ('[decisions.cruise]\nmargin = 0.2', 'decisions.cruise.margin')):
+        write_config(tmp_path, text + '\n')
+        with pytest.raises(ConfigError, match=key):
+            load_config(tmp_path)

@@ -19,7 +19,7 @@ MODULES = {
     'agent_launch': {'PreToolUse': 'Agent', 'SubagentStop': None},
     'commit_push': {'PreToolUse': 'Bash'},
     'decision': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash',
-                 'PreToolUse': 'AskUserQuestion'},
+                 'PreToolUse': 'AskUserQuestion', 'SubagentStop': None},
     'deploy': {'PreToolUse': 'Bash'},
     'integrity': {'PreToolUse': None, 'SessionStart': None},
     'lifecycle': {'SessionStart': None, 'PreCompact': None, 'Stop': None,

@@ -26,6 +26,90 @@ def review(root=None):
     notes = [{'id': f'{item}-fix-3', 'item': item,
               'text': f'{item}: third fix round; reassess scope and escalation before dispatch'}
              for item, count in rounds.items() if count >= 3 and SAFE_ID.fullmatch(item)]
+    add_notes(root, notes)
+    negotiation(root)
+    return notes
+
+
+class _Raised(Exception):
+    """A concurrent review already recorded this item's loop."""
+
+
+def negotiation(root):
+    """Design 5.8.2: one negotiation.loop per item per day when exchanges exceed the budget."""
+    from collections import Counter
+    from datetime import datetime, timedelta
+    from wuwei import decision, goals
+    config = workspace.load_config(root)['steward']
+    day = workspace.day_dir(root)
+    data = state.read_state(root)
+    items = [name for name in data['items']
+             if SAFE_ID.fullmatch(name) and name not in data.get('negotiation_loops', {})]
+    if not items:
+        return []
+    now = workspace.now()
+    start = now - timedelta(hours=config['loop_window_hours'])
+    exchanges = {name: [] for name in items}
+    fix_rounds, briefed = Counter(), set()
+    for record, named in decision.naming(day, items).items():
+        # ponytail: the file mtime is the record time; records carry no timestamp field.
+        when = datetime.fromtimestamp((day / 'decisions' / f'{record}.md').stat().st_mtime).astimezone()
+        for name in named:
+            if when >= start:
+                exchanges[name].append((when, 'records', f'{record} recorded'))
+    for row in watch.records(day / 'events.jsonl'):
+        payload, kind = row['payload'], row['kind']
+        name, role = payload.get('item'), str(payload.get('role', ''))
+        if name not in exchanges:
+            continue
+        when = datetime.fromisoformat(row['ts'])
+        entry = None
+        if kind == 'gate.received':
+            entry = ('verdicts', f'{role.removeprefix("sentinel-")} review {payload.get("verdict")}')
+        elif kind == 'brief written' and role != 'steward':
+            if (name, role) in briefed:
+                entry = ('redispatches', f'{role.removeprefix("sentinel-")} restarted')
+            briefed.add((name, role))
+        elif kind == 'build.fix_opened':
+            fix_rounds[name] += 1
+            entry = ('continuations', 'fix requested')
+        if entry and when >= start:
+            exchanges[name].append((when, *entry))
+    raised = []
+    for name in items:
+        counts = Counter({key: 0 for key in ('records', 'verdicts', 'redispatches', 'continuations')})
+        counts.update(key for _, key, _ in exchanges[name])
+        if sum(counts.values()) <= config['loop_threshold'] and fix_rounds[name] < 2:
+            continue
+        last = [f'{when.astimezone(now.tzinfo):%H:%M} {text}'
+                for when, _, text in sorted(exchanges[name], key=lambda row: row[0])[-2:]]
+        try:
+            goal = goals.parse((root / '.wuwei/memory/goals.md').read_text(encoding='utf-8'))
+            past_goal = goal[data['items'][name]['goal']]['date'] < now.date().isoformat()
+        except (OSError, ValueError, KeyError, TypeError):
+            past_goal = False
+        reason = (f'{name} is going back and forth: {counts["records"]} records, '
+                  f'{counts["verdicts"]} reviews, {counts["redispatches"]} restarts and '
+                  f'{counts["continuations"]} fix requests in {config["loop_window_hours"]} hours, '
+                  f'{fix_rounds[name]} fix rounds today' + ('; last: ' + '; '.join(last) if last else ''))
+        payload = {'item': name, 'counts': dict(counts), 'fix_rounds': fix_rounds[name],
+                   'last': last, 'past_goal': past_goal, 'reason': reason}
+
+        def update(fresh, name=name, payload=payload):
+            if name in fresh.get('negotiation_loops', {}):
+                raise _Raised
+            fresh.setdefault('negotiation_loops', {})[name] = payload
+
+        try:
+            state._write_state(update, root, reserved=False, kind='negotiation.loop', payload=payload)
+            raised.append(payload)
+        except _Raised:
+            pass
+    return raised
+
+
+def add_notes(root, notes):
+    """Record each note once; a repeat id is a no-op."""
     existing = {note['id'] for note in state.read_state(root).get('steward_notes', [])}
     fresh = [note for note in notes if note['id'] not in existing]
     if fresh:
@@ -34,7 +118,6 @@ def review(root=None):
             {row['id'] for row in data['steward_notes']}),
                            root, reserved=False, kind='steward.notes',
                            payload={'notes': fresh})
-    return notes
 
 
 def acknowledge(note_id, root=None):

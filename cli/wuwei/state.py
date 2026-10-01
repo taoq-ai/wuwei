@@ -252,7 +252,9 @@ STATE_PRODUCERS = {
     'close_requested': 'wuwei close', 'merges': 'wuwei merge',
     'merge_breakers': 'wuwei merge', 'gate_verdicts': 'wuwei dispatch receive',
     'brief_packs': 'wuwei brief pack', 'brief_drill': 'wuwei brief answer',
-    'steward_notes': 'wuwei steward run', 'steward_acks': 'wuwei steward ack',
+    'steward_notes': 'wuwei steward run or wuwei hook SubagentStop',
+    'steward_acks': 'wuwei steward ack',
+    'negotiation_loops': 'wuwei steward run or wuwei dispatch next',
     'discovery_candidates': 'wuwei dispatch discovery',
     'intraday_proposals': 'wuwei plan add',
     'sessions': 'wuwei hook SessionStart, Stop and SubagentStop, wuwei plan session or wuwei listen (remote sessions)',
@@ -270,7 +272,9 @@ def _producer_error(parts):
                     'worktree': 'wuwei brief',
                     'pr': 'wuwei pr raise or wuwei pr claim',
                     'goal': 'wuwei plan approve', 'tier': 'wuwei plan approve',
-                    'gates': 'wuwei dispatch next'}.get(parts[2], 'its dedicated command')
+                    'gates': 'wuwei dispatch next',
+                    'assumption': 'wuwei decision route --external or wuwei sweep'}.get(
+                        parts[2], 'its dedicated command')
     return StateError(f'{".".join(parts)}: reserved; written by {producer}')
 
 

@@ -35,10 +35,11 @@ def _save(root, data):
 
 AUTOSTART_OFF = 'Shepherd autostart is off; nothing started.'
 FALLBACK = 'PR #{number} changed; details are on the host.'
+LOOP_FALLBACK = 'Item {item} is going back and forth; details are on the host.'
 
 
 def notify(root, config, waiting):
-    """Send each new summarised pr.changed to the owner DM once, with what the shepherd does."""
+    """Send each new summarised pr.changed and negotiation.loop to the owner DM once."""
     from wuwei.pr_actions import ACTIONS
     rows = watch.records(workspace.day_dir(root) / 'events.jsonl')
     sent = {(row['payload'].get('pr'), row['payload'].get('at')) for row in rows if row['kind'] == 'pr.notified'}
@@ -61,6 +62,19 @@ def notify(root, config, waiting):
             print(f'listen PR notify unmeasured: {result.reason}', flush=True)
             return 2
         state.append_event('pr.notified', {'pr': ref, 'at': row['ts']}, root)
+    notified = {row['payload'].get('item') for row in rows if row['kind'] == 'negotiation.notified'}
+    for row in rows:
+        item, text = row['payload'].get('item'), row['payload'].get('reason')
+        if row['kind'] != 'negotiation.loop' or not isinstance(text, str) or item in notified:
+            continue
+        result = control_plane.notify(text, root=root, transport=remote.TRANSPORT)
+        if result.exit == 1:
+            result = remote.TRANSPORT.dm(LOOP_FALLBACK.format(item=item), root=root)
+        if result.exit:
+            print(f'listen loop notify unmeasured: {result.reason}', flush=True)
+            return 2
+        notified.add(item)
+        state.append_event('negotiation.notified', {'item': item}, root)
     return 0
 
 

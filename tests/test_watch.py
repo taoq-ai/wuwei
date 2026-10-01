@@ -137,6 +137,20 @@ def test_sweep_failed_discovery_never_clean(case):
     assert row['payload']['unreadable'] > 0
 
 
+def test_sweep_runs_the_external_wait_time_box(case, capsys):
+    from wuwei import decision
+    root, _, _, monkeypatch = case
+    watch = watch_module()
+    monkeypatch.setattr(decision, 'waits', lambda root: 1)
+    watch.sweep(root)
+    assert events(root, 'watch: sweep')[-1]['payload']['external_waits'] == 1
+    monkeypatch.setattr(decision, 'waits', lambda root: (_ for _ in ()).throw(ValueError('bad record')))
+    assert watch.sweep(root) == 2
+    row = events(root, 'watch: sweep')[-1]['payload']
+    assert row['unreadable'] > 0 and 'external_waits' not in row
+    assert 'watch external waits unmeasured: bad record' in capsys.readouterr().out
+
+
 @pytest.mark.parametrize('field', ['head', 'mergeable', 'updated_at', 'checks', 'reviews', 'threads'])
 def test_pr_poll_persisted_diff_wakes_once(case, field, capsys):
     root, host, _, _ = case

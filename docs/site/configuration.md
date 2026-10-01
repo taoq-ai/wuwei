@@ -20,7 +20,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outbound]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
-| `[decisions.cruise]` | Cruise mode is designed in design spec 5.8.1 and not built; `bin/wuwei config check` refuses it today as an unknown key. |
+| `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]` | [Decisions](#decisions); cruise answering is not built |
 
 ## Workspace and repositories
 
@@ -116,6 +116,18 @@ fast_checks = ["python3 -m pytest -q"]
 | `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start and in `status --line`. |
 | `responder.enabled` | `true` | Kill switch: when `false` the listener still stores events but does not wake the planner or handle commands. |
 | `steward.every_tool_calls` | `50` | Completed tool calls between steward reviews. |
+| `steward.loop_window_hours` | `4` | Window, in hours, over which a steward review counts an item's exchanges for a negotiation loop. |
+| `steward.loop_threshold` | `9` | Exchanges in the window above which an item raises one `negotiation.loop` nudge a day; a second fix round today raises it too. |
+
+## Decisions
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `decisions.wait_hours` | `24` | Weekday hours in `owner.timezone` an external confirmation (`decision route D-n --external <item>`) waits for your answer before the sweep confirms it on a two-way door or parks the item. |
+| `decisions.cruise.enabled` | `true` | When false, every decision class is listed as going to you in the seat mandate (cruise answering is not built). |
+| `decisions.cruise.levels` | `{}` | Per-class level (0 to 3) that lowers a 5.8.1 class default in the seat mandate; a level above the class ceiling or an unknown class is refused. |
+
+These keys feed the mandate block in every seat prompt. Cruise mode itself, where the CLI answers some classes at levels L0 to L3, is designed in design spec 5.8.1 and not built: every routed decision still goes to you.
 
 ## Adapters and brief
 

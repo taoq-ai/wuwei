@@ -18,6 +18,7 @@ PROBES = {
         ('Write', {}, 2),
     ('decision', 'PreToolUse', 'AskUserQuestion', 'check_question'):
         ('AskUserQuestion', {'questions': [{}]}, 2),
+    ('decision', 'SubagentStop', None, 'check_stop'): ('SubagentStop', {}, 1),
     ('deploy', 'PreToolUse', 'Bash', 'check'): ('Bash', {'command': 'terraform apply'}, 1),
     ('integrity', 'PreToolUse', None, 'check'): ('Bash', {'command': 'echo hi'}, 2),
     ('integrity', 'SessionStart', None, 'session_start'): ('Bash', {}, 1),
@@ -156,6 +157,8 @@ def assert_probe(check, row, root, monkeypatch):
         payload['cwd'] = 'relative'
     elif check.__module__.endswith('.traces'):
         monkeypatch.setattr(workspace, 'guard_scope', lambda _: (_ for _ in ()).throw(ValueError('scope')))
+    elif check.__name__ == 'check_stop':
+        payload.update(agent_type='wuwei:builder', last_assistant_message='Add a cache?')
     elif check.__module__.endswith('.verdict') and check.__name__ == 'check_retro':
         payload.update(agent_type='wuwei:builder', last_assistant_message='')
     result = check(payload)

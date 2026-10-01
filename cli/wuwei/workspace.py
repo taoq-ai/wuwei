@@ -87,7 +87,10 @@ SCHEMA = {
                                   "clock": (str, "")}},
     "listen": {"poll_seconds": (int, 60, 1), "dead_seconds": (int, 300, 1)},
     "responder": {"enabled": (bool, True)},
-    "steward": {"every_tool_calls": (int, 50, 1)},
+    "steward": {"every_tool_calls": (int, 50, 1), "loop_window_hours": (int, 4, 1),
+                "loop_threshold": (int, 9, 1)},
+    "decisions": {"wait_hours": (int, 24, 1),
+                  "cruise": {"enabled": (bool, True), "levels": {"*": (int, None, 0, 3)}}},
     "pr": {"poll_seconds": (int, 120, 1), "action_minutes": (int, 30, 1),
            "review_window": (int, 120, 1)},
     "shepherd": {"review_channel": (str, ""), "lead_login": (str, ""),
@@ -435,6 +438,13 @@ def load_config(root=None):
             program = pattern.split()[0]
             if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]*', program):
                 raise ConfigError('deploy.deny: start each pattern with a literal executable name')
+        from wuwei.decision import CLASSES
+        for name, value in config['decisions']['cruise']['levels'].items():
+            if name not in CLASSES:
+                raise ConfigError(f'decisions.cruise.levels.{name}: unknown class; use one of '
+                                  + ', '.join(CLASSES))
+            if value > CLASSES[name][1]:
+                raise ConfigError(f'decisions.cruise.levels.{name}: above its ceiling L{CLASSES[name][1]}')
         repo_names = set()
         repo_paths = set()
         for index, repo in enumerate(config['repos']):

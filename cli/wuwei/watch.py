@@ -238,6 +238,12 @@ def sweep(root=None, *, watch_health=None):
     counts['integrity_owed'] = int(measured.exit == 1)
     counts['unreadable'] += int(measured.exit == 2)
     counts['unreadable'] += int(digest(root, config) == 2)
+    from wuwei import decision
+    try:
+        counts['external_waits'] = decision.waits(root)
+    except ERRORS as exc:
+        counts['unreadable'] += 1
+        print(f'watch external waits unmeasured: {exc}', flush=True)
     counts['owed'] = sum(counts[key] for key in (
         'reply_owed', 'visibility_owed', 'stale_owed', 'watch_dead', 'scanner_owed', 'unreadable', 'integrity_owed'))
     counts['exit'] = 2 if counts['unreadable'] else int(counts['owed'] > 0)

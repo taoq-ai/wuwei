@@ -59,7 +59,7 @@ def finding_blocks(text):
     for line in text.splitlines():
         start = re.match(r'^\s*(?:#{1,6}\s+|[-*+]\s+|\|\s*)?\[?'
                          + SEVERITY, line, re.I)
-        explicit = re.match(r'^\s*Severity:\s*' + SEVERITY, line, re.I)
+        explicit = re.match(r'^\s*(?:Severity:\s*' + SEVERITY + r'|(?:[-*+]\s+)?Assumption:)', line, re.I)
         numbered = re.match(r'^\s*(?:\d+[.)]\s+|\[?F\d+\]?(?:[\s(:.]|$))', line, re.I)
         # Table rows can put a finding ID before the severity. Evidence-bearing
         # bullets also start a finding when their severity was accidentally omitted.

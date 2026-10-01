@@ -624,3 +624,17 @@ def test_stop_lints_only_registered_seat(registered_stop, tmp_path, monkeypatch,
         assert rejected == [str(path)]
     elif not code:
         assert rejected == []
+
+
+ASSUMPTION = ('Assumption: medium specs/x/spec.md:12 assumed one process; '
+              'would break when two processes share it; blocks: no\n')
+ASSUMED = 'Verdict: FIX\nHead: abc1234\n' + ASSUMPTION + 'Probe: not run\nVAL: PASS\n' + RETRO
+
+
+def test_assumption_is_a_finding_kind():
+    from wuwei.verdict import lint
+    assert lint(ASSUMED) == (0, 'OK: FIX')
+    code, message = lint(ASSUMED.replace('would break when two processes share it; ', ''))
+    assert code == 1 and 'finding 1: missing failure scenario' in message
+    code, message = lint('Verdict: FIX\nHead: abc1234\nAssumptions: reviewed\nProbe: not run\n' + RETRO)
+    assert code == 1 and 'no finding with severity' in message

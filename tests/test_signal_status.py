@@ -311,7 +311,9 @@ def test_emitted_kinds_have_intended_tiers():
                 'remote.resumed': 'silent', 'remote.stopped': 'silent',
                 'remote.ignored': 'silent', 'remote.refused': 'page', 'remote.acknowledged': 'silent',
                 'remote.confirmed': 'silent', 'calibration.drift': 'nudge',
-                'shepherd.dispatched': 'silent', 'shepherd.finished': 'nudge', 'pr.notified': 'silent'}
+                'shepherd.dispatched': 'silent', 'shepherd.finished': 'nudge', 'pr.notified': 'silent',
+                'negotiation.loop': 'nudge', 'negotiation.notified': 'silent',
+                'decision.waited': 'nudge'}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier
@@ -573,3 +575,27 @@ def test_pr_changed_nudge_is_first_carries_the_summary_and_clears_at_wake_seen(t
 def test_old_pr_changed_without_summary_names_the_fields(tmp_path, monkeypatch):
     _, _, rows = status_of(tmp_path, monkeypatch, [CLOCK, changed()])
     assert rows[0]['reason'] == 'example/project#7 changed: checks'
+
+
+def test_negotiation_loop_tiers():
+    from wuwei.signal import classify
+    loop = {'kind': 'negotiation.loop', 'payload': {'item': 'alpha', 'past_goal': False}}
+    assert classify(loop, {}) == ('nudge', 'Work')
+    loop['payload']['past_goal'] = True
+    assert classify(loop, {}) == ('page', 'Work')
+    assert classify({'kind': 'negotiation.notified'}, {})[0] == 'silent'
+    assert classify({'kind': 'decision.waited'}, {}) == ('nudge', 'Decisions')
+
+
+def test_status_line_counts_loops(tmp_path, monkeypatch):
+    reason = 'alpha is going back and forth: 2 records'
+    loop = {'kind': 'negotiation.loop', 'ts': NOW,
+            'payload': {'item': 'alpha', 'past_goal': False, 'reason': reason}}
+    data, line, rows = status_of(tmp_path, monkeypatch, [loop])
+    assert data['loops'] == 1 and ' | loops 1' in line
+    assert [row['reason'] for row in rows if row['source'] == 'negotiation.loop'] == [reason]
+
+
+def test_status_line_without_loops(tmp_path, monkeypatch):
+    data, line, _ = status_of(tmp_path, monkeypatch, [])
+    assert data['loops'] == 0 and 'loops' not in line
