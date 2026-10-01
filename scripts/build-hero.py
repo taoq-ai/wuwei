@@ -195,11 +195,15 @@ def shield(x, y):
 
 O = (600, 432)          # owner
 OW = 128
+K, KW = (266, 463), 124  # calibrate station on the memory path, just before Plan
+PH, PW = (545, 362), 96  # phone, above the owner
 links = {   # owner touchpoints: path, label, label position
     'gate':   (f'M {O[0]-OW/2:g} {O[1]} C 450 {O[1]+4}, 330 {P[1]+22}, {P[0]+60} {P[1]+26}', 'morning gate', (392, 452)),
     'review': (f'M {O[0]+20} {O[1]-24} C 640 330, {R[0]} 300, {R[0]} {R[1]+28}', 'decision', (756, 318)),
     'merge':  (f'M {O[0]+OW/2:g} {O[1]-8} C 830 {O[1]-12}, 960 410, {OC[0]-14} {OC[1]+33}', 'merge', (872, 440)),
     'close':  (f'M {O[0]+30} {O[1]+24} C 680 500, 820 {CL[1]+6}, {CL[0]-68} {CL[1]+6}', 'draft to send', (760, 520)),
+    'interview': (f'M {O[0]-OW/2+14:g} {O[1]+20} C 470 480, 380 {K[1]}, {K[0]+KW/2:g} {K[1]}', 'interview', (430, 494)),
+    'dm':     (f'M {PH[0]+PW/2:g} {PH[1]-6} C 640 300, 690 270, 700 {R[1]+28}', 'DM', (628, 300)),
 }
 
 def svg(p):
@@ -211,14 +215,19 @@ def svg(p):
         'Review fans out to architecture, quality and security gates; a FIX verdict sends the item back to Build for one fix round and a delta check. '
         'A shepherd moves each pull request through CI, review threads and rebases until it merges, then Close runs the retro. '
         'Memory folds the learnings back into charters and notes so tomorrow\'s Plan starts from them. A sweep adds new work during the day. '
-        'The owner is touched only at the morning gate, decisions, drafts to send and merges. Guards act at action time around every step.</desc>',
+        'The owner is touched only at the morning gate, decisions, drafts to send and merges. Guards act at action time around every step. '
+        'Before the first plan, Calibrate profiles the repositories and an owner interview turns preferences into configuration. '
+        'Each item\'s review tier picks one gate or three. The owner can answer a decision from the phone through the Slack DM. '
+        'A heartbeat on the guard ring proves the guards still behave.</desc>',
         '<style><![CDATA[',
         '.flow{stroke-dasharray:2 14;animation:flow 2.4s linear infinite}',
         '.slow{animation-duration:4s}',
         '@keyframes flow{to{stroke-dashoffset:-32}}',
         '.ring{animation:breathe 9s ease-in-out infinite}',
         '@keyframes breathe{0%,100%{opacity:.35}50%{opacity:.8}}',
-        '@media (prefers-reduced-motion:reduce){.tok,.pulse{display:none}.flow,.ring{animation:none}}',
+        '.beat{animation:beat 6s ease-out infinite}',
+        '@keyframes beat{0%,12%,100%{opacity:0}2%,7%{opacity:.9}4.5%{opacity:.1}}',
+        '@media (prefers-reduced-motion:reduce){.tok,.pulse,.beat{display:none}.flow,.ring{animation:none}}',
         ']]></style>',
         '<defs>',
         '<radialGradient id="halo" cx="50%" cy="58%" r="60%"><stop offset="0" stop-color="{accent}" stop-opacity="0.10"/><stop offset="1" stop-color="{accent}" stop-opacity="0"/></radialGradient>',
@@ -231,10 +240,13 @@ def svg(p):
         '<rect width="1200" height="620" rx="28" fill="{bg}"/>',
         '<rect width="1200" height="620" rx="28" fill="url(#halo)"/>',
         ring,
+        '<rect class="beat" x="22" y="22" width="1156" height="576" rx="22" fill="none" stroke="{accent}" stroke-width="2.5" opacity="0"/>',
         # guard ring label, cut into the ring
         '<rect x="930" y="12" width="232" height="22" fill="{bg}"/>',
         shield(952, 23),
         f'<text x="970" y="29" fill="{{muted}}" {FONT} font-size="16">Guards at action time</text>',
+        '<rect x="48" y="587" width="96" height="22" fill="{bg}"/>',
+        f'<text x="58" y="604" fill="{{muted}}" {FONT} font-size="16">heartbeat</text>',
         # title
         f'<text x="56" y="80" fill="{{text}}" {FONT} font-size="40" font-weight="700">无为 <tspan fill="{{atext}}">WUWEI</tspan></text>',
         f'<text x="57" y="112" fill="{{muted}}" {FONT} font-size="18">A chartered team of agents, one calm day</text>',
@@ -270,6 +282,8 @@ def svg(p):
         pulse(links['close'][0], A_, A_.events['close']),
         pulse(links['review'][0], B_, B_.events['review']),
         pulse(links['merge'][0], D_, D_.events['merge']),
+        pulse(links['interview'][0], MEM, MEM.t * 0.8),
+        pulse(links['dm'][0], B_, B_.events['review'] + 1.2),
         # tokens, under the nodes so they pass behind them
         token(MEM).replace('r="7"', 'r="5"'),
         token(A_), token(B_), ghost(lane_top, B_, b_rj0, b_rj1), ghost(lane_bot, B_, b_rj0, b_rj1),
@@ -280,7 +294,7 @@ def svg(p):
         + ''.join(f'<circle cx="{GX}" cy="{R[1]+dy}" r="8"/>' for dy in (-LANE, 0, LANE)) + '</g>',
         f'<g fill="{{muted}}" {FONT} font-size="16" text-anchor="middle">'
         f'<text x="{GX}" y="{R[1]-LANE-16}">architecture</text><text x="{GX}" y="{R[1]-16}">quality</text>'
-        f'<text x="{GX}" y="{R[1]+LANE-16}">security</text></g>',
+        f'<text x="{GX}" y="{R[1]+LANE-16}">security</text><text x="{GX+20}" y="{R[1]+LANE+30}">tier: one gate or three</text></g>',
         # main nodes
         f'<g {FONT} font-size="24" font-weight="600" text-anchor="middle">',
         *[f'<g><rect x="{c[0]-w/2:g}" y="{c[1]-25}" width="{w}" height="56" rx="18" fill="{{shadow}}" opacity="0.22"/>'
@@ -293,6 +307,12 @@ def svg(p):
         f'<rect x="{O[0]-OW/2:g}" y="{O[1]-21}" width="{OW}" height="48" rx="24" fill="{{shadow}}" opacity="0.22"/>',
         f'<rect x="{O[0]-OW/2:g}" y="{O[1]-24}" width="{OW}" height="48" rx="24" fill="{{panel}}" stroke="{{warm}}" stroke-width="2"/>',
         f'<text x="{O[0]}" y="{O[1]+7}" fill="{{warm}}" {FONT} font-size="20" font-weight="600" text-anchor="middle">Owner</text>',
+        # calibrate station and phone
+        f'<rect x="{K[0]-KW/2:g}" y="{K[1]-20}" width="{KW}" height="40" rx="20" fill="{{panel}}" stroke="{{accent}}" stroke-width="2"/>',
+        f'<text x="{K[0]}" y="{K[1]+6}" fill="{{text}}" {FONT} font-size="18" font-weight="600" text-anchor="middle">Calibrate</text>',
+        f'<path d="M {PH[0]+15} {PH[1]+18} L {PH[0]+25} {O[1]-24}" fill="none" stroke="{{warm}}" stroke-width="1.6" stroke-dasharray="3 6" opacity="0.8"/>',
+        f'<rect x="{PH[0]-PW/2:g}" y="{PH[1]-18}" width="{PW}" height="36" rx="18" fill="{{panel}}" stroke="{{warm}}" stroke-width="2"/>',
+        f'<text x="{PH[0]}" y="{PH[1]+6}" fill="{{warm}}" {FONT} font-size="17" font-weight="600" text-anchor="middle">Phone</text>',
         # captions
         f'<g fill="{{muted}}" {FONT} font-size="16">',
         f'<text x="{KC[0]}" y="{KC[1]+6}" text-anchor="middle">check</text>',

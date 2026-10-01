@@ -6,6 +6,63 @@ layout: default
 
 Use `bin/wuwei` from the installed checkout, or `python3 -P -m wuwei` with the package on `PYTHONPATH`. The `-P` option keeps a local `wuwei/` directory from shadowing the CLI.
 
+## Commands
+
+Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its options. Commands marked plumbing are called by hooks, seats or the plugin, not by the owner.
+
+| Command | What it does | More |
+| --- | --- | --- |
+| `bin/wuwei agents` | Builds or checks the generated role agents. | [Concepts](concepts.html#roles) |
+| `bin/wuwei board` | Plumbing: serves the day board to Claude Code over MCP stdio. | [Cockpit and board](concepts.html#cockpit-and-board) |
+| `bin/wuwei brief` | Writes and logs a seat brief. | [Seat briefs](#seat-briefs-and-the-build-loop) |
+| `bin/wuwei build` | Selects the next builder action. | [Seat briefs](#seat-briefs-and-the-build-loop) |
+| `bin/wuwei calibrate` | Profiles the repositories and proposes config; `--interview` asks the owner. | [Calibration](configuration.html#calibration) |
+| `bin/wuwei close` | Refuses day close until every obligation lands. | [Day close](concepts.html#day-close) |
+| `bin/wuwei config` | Inspects workspace configuration (`check`, `promote`). | [Configuration](configuration.html) |
+| `bin/wuwei consolidate` | Reviews and archives workspace memory. | [Configuration](configuration.html#host-build-and-memory) |
+| `bin/wuwei dashboard` | Serves the read-only day board on loopback. | [Cockpit and board](concepts.html#cockpit-and-board) |
+| `bin/wuwei decision` | Checks and routes decision records; `outcome` records the owner's answer. | [Decision record](#decision-record) |
+| `bin/wuwei discover` | Discovers candidate work. | [Goals and discovery](configuration.html#goals-and-discovery) |
+| `bin/wuwei dispatch` | Decides planner gate and discovery work. | [Review tiers](concepts.html#review-tiers) |
+| `bin/wuwei drafts` | Lists outward drafts awaiting owner approval. | [Outward draft queue](#outward-draft-queue) |
+| `bin/wuwei event` | Plumbing: appends a timestamped day event. | |
+| `bin/wuwei fast-checks` | Runs and records the configured fast checks. | [Seat briefs](#seat-briefs-and-the-build-loop) |
+| `bin/wuwei git-hook` | Plumbing: runs a native Git identity or push guard. | [Item worktrees](#item-worktrees) |
+| `bin/wuwei goals` | Shows or edits the owner goals. | [Goals and discovery](configuration.html#goals-and-discovery) |
+| `bin/wuwei heartbeat` | Probes that hooks refuse, allow and answer in budget. | [Heartbeat](#heartbeat) |
+| `bin/wuwei hook` | Plumbing: runs the guards for a Claude Code hook. | [Hook latency budget](#hook-latency-budget) |
+| `bin/wuwei index` | Generates the memory index. | [Concepts](concepts.html#memory) |
+| `bin/wuwei init` | Creates or upgrades a workspace. | [Daily path](daily.html) |
+| `bin/wuwei integrity` | Checks signed plugin integrity; `reconfirm` pins a development checkout. | [Recovery](recovery.html#integrity-reconfirm) |
+| `bin/wuwei listen` | Polls the inbound source into the workspace inbox. | [Remote](remote.html) |
+| `bin/wuwei mcp` | Checks the attached MCP servers; `decide` records the owner's answer. | [MCP registry checks](configuration.html#mcp-registry-checks-s3) |
+| `bin/wuwei memory` | Checks workspace memory. | [Concepts](concepts.html#memory) |
+| `bin/wuwei merge` | Checks or merges an eligible PR. | [Retro and merge](#retro-and-merge-configuration) |
+| `bin/wuwei metrics` | Shows the recorded process metrics. | [Long sessions](daily.html#long-sessions) |
+| `bin/wuwei note` | Manages workspace notes. | [Concepts](concepts.html#memory) |
+| `bin/wuwei nudges` | Lists open nudges and pages. | [Watch state](#watch-state) |
+| `bin/wuwei outbound` | Inspects the outbound approval policy. | [Outbound tiers](configuration.html#outward-text-and-outbound-tiers) |
+| `bin/wuwei payload` | Plumbing: prints the session memory payload. | |
+| `bin/wuwei plan` | Proposes or approves the morning plan; `session` names the planner. | [Lead plan JSON](#lead-plan-json) |
+| `bin/wuwei pr` | Measures owned PRs, raises one, or records a verified disposition. | [Raising a PR](#raising-a-pr) |
+| `bin/wuwei promote` | Promotes memory and charter proposals. | [Charter overrides](charter-overrides.html) |
+| `bin/wuwei rank` | Ranks candidate JSON using the workspace goals. | [Lead plan JSON](#lead-plan-json) |
+| `bin/wuwei remote` | Owner actions for the remote control plane. | [Remote](remote.html) |
+| `bin/wuwei reply` | Replies to one unthreaded human obligation. | [Outward draft queue](#outward-draft-queue) |
+| `bin/wuwei report` | Shows the owner report. | [Day close](concepts.html#day-close) |
+| `bin/wuwei retro` | Compiles the steward retro. | [Retro and merge](#retro-and-merge-configuration) |
+| `bin/wuwei runtime` | Dispatches and inspects runtime jobs. | [Recovery](recovery.html#runtime-dispatch) |
+| `bin/wuwei sessions` | Lists registered sessions, roles and claims. | [Sessions](#sessions) |
+| `bin/wuwei signal` | Classifies attention. | |
+| `bin/wuwei state` | Reads or updates day state; `recover` restores it. | [State recovery](#state-recovery) |
+| `bin/wuwei status` | Shows day status; `--line` is the status line. | [Watch state](#watch-state) |
+| `bin/wuwei steward` | Runs a steward review or acknowledges steering. | [Steward](#steward) |
+| `bin/wuwei sweep` | Checks day obligations. | [Concepts](concepts.html#day-flow) |
+| `bin/wuwei verdict` | Checks a gate verdict. | [Gate verdict layout](#gate-verdict-layout) |
+| `bin/wuwei voice` | Shows or edits the owner voice profile. | [Owner voice](configuration.html#owner-voice) |
+| `bin/wuwei watch` | Supervises workspace activity and owned PRs. | [Running the watch](configuration.html#running-the-watch) |
+| `bin/wuwei worktree` | Creates an anchored item worktree. | [Item worktrees](#item-worktrees) |
+
 ## Lead plan JSON
 
 Run `bin/wuwei plan template` in a workspace for a complete lead JSON skeleton. `bin/wuwei plan template | bin/wuwei plan propose -` creates today's proposal. Replace sample evidence before approval. The top-level keys are:
@@ -125,7 +182,7 @@ Dead-man ping: set `watch.ping_url` to the https check URL of a hosted cron moni
 
 Several Claude Code sessions can work in one workspace. Once today's `state.json` exists, the SessionStart, Stop and SubagentStop hooks record each session in the `sessions` registry of day state (role, start, last hook, working directory). No hook creates day state. SessionStart also exports `WUWEI_SESSION_ID` through Claude Code's `CLAUDE_ENV_FILE`, so CLI calls from that session know which session called them. A session with no hook activity for `sessions.stale_seconds` is stale. The registry and claims are written only by these hooks, `plan session`, `brief builder` and `worktree add`.
 
-- `bin/wuwei sessions` prints the registry as JSON: id, role (`planner`, `adhoc`, `seat-host` or `remote`), age, idle seconds, stale, last hook and claimed items. Only `planner` and `adhoc` are set today: the control plane (#65) will set `remote`, and nothing sets `seat-host` yet.
+- `bin/wuwei sessions` prints the registry as JSON: id, role (`planner`, `adhoc`, `seat-host` or `remote`), age, idle seconds, stale, last hook and claimed items. `planner`, `adhoc` and `remote` (a session the control plane started for a Slack command) are set today; nothing sets `seat-host` yet.
 - `bin/wuwei plan session <id>` still names exactly one planner. A second session is refused with exit 2 naming the current planner; `bin/wuwei plan session <id> --take-over` hands the role over and records `previous` on the `plan.session` event. Wakes then go to the new planner. When the planner is stale, `nudges` names the take-over command.
 - `bin/wuwei brief builder <item> ...` and `bin/wuwei worktree add <item>` claim the item for the calling session. The same commands from another session, or from a host terminal without `WUWEI_SESSION_ID`, exit 2 naming the claimant while it is live. Once the claimant is stale, the next session takes the claim. Gate, sentinel and other briefs are never refused by a claim.
 

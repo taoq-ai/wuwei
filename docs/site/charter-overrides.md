@@ -12,4 +12,4 @@ A seat or steward writes a JSON proposal in today's `.wuwei/days/YYYY-MM-DD/prop
 
 Run the installed CLI's `bin/wuwei promote` from the workspace. It validates proposals, writes accepted changes atomically and records landed or rejected outcomes in `.wuwei/memory/ledger.jsonl` and the changelog. Rejections return exit 1. `bin/wuwei init --upgrade --dry-run` previews template changes and flags overrides whose charter versions need review; `bin/wuwei init --upgrade` applies config additions.
 
-**Planned:** the full steward-led daily proposal cycle through `/wuwei plan`.
+The steward runs at sweeps, at close and every `steward.every_tool_calls` tool calls through `/wuwei plan`; its proposals land through `bin/wuwei promote` like any other.
