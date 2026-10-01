@@ -1,0 +1,8 @@
+{
+  "name": "sample",
+  "scripts": {
+    "test": "vitest run",
+    "lint": "eslint .",
+    "deploy": "wrangler deploy"
+  }
+}

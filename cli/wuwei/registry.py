@@ -36,7 +36,7 @@ PARAMETERS = {
                   'author_login': ('repo', 'email'), 'token_scopes': ('variable',),
                   'create_pr': ('draft',), 'request_reviewers': ('ref', 'logins'),
                   'comment': ('ref', 'text', 'thread'), 'merge': ('ref', 'sha'),
-                  'revert_pr': ('ref',)},
+                  'revert_pr': ('ref',), 'merged_prs': ('repo',)},
     'vcs': {'workspace_init': ('repo',),
             'workspace_changes': ('repo',),
             'workspace_commit': ('repo', 'paths'), 'workspace_owner_commit': ('repo', 'paths'),
@@ -52,7 +52,8 @@ PARAMETERS = {
             'repo_context': ('repo',), 'commit_context': ('repo', 'settings', 'env'),
             'push_context': ('repo', 'remote', 'refspecs'), 'hooks_path': ('repo', 'path'),
             'worktree_identity': ('repo', 'name', 'email'),
-            'push_commits': ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch')},
+            'push_commits': ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'),
+            'recent_commits': ('repo',)},
 }
 INTERFACES = {kind: tuple(operations) for kind, operations in PARAMETERS.items()}
 

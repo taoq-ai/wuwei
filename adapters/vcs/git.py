@@ -14,6 +14,7 @@ from wuwei.registry import Result
 TIMEOUT = 30
 _LOG_FORMAT = '--format=%H%x00%an%x00%ae%x00%cn%x00%ce%x00%cI%x00%s'
 _HEAD_FORMAT = '--format=%H%x00%an%x00%ae%x00%cn%x00%ce'
+_RECENT_FORMAT = '--format=%s%x1f%(trailers:key=Signed-off-by,valueonly,separator=%x2c)'
 _REPOSITORY_ENV = {
     'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR',
     'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE',
@@ -120,6 +121,8 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
                        and bool(_revision(branch)) and paths and all(_tree_path(p) for p in paths))
         case ('log', '--format=%ae', branch, '--', *paths):
             allowed = bool(_revision(branch) and paths and all(_tree_path(p) for p in paths))
+        case ('log', '-z', '--max-count=100', format_arg, 'HEAD', '--'):
+            allowed = format_arg == _RECENT_FORMAT
         case ('cat-file', '--batch'):
             allowed = True
         case ('worktree', 'add', '-b', branch, '--', path):
@@ -322,6 +325,15 @@ def log_since(repo, sha, root=None):
              'committer': fields[i+3], 'committer_email': fields[i+4],
              'committed_at': fields[i+5], 'subject': fields[i+6]}
             for i in range(0, len(fields), 7)]
+
+
+@_operation
+def recent_commits(repo, root=None):
+    commits = []
+    for record in _records(_run(repo, 'log', '-z', '--max-count=100', _RECENT_FORMAT, 'HEAD', '--')):
+        subject, trailer = record.split('\x1f')
+        commits.append({'subject': subject, 'signed_off': bool(trailer.strip())})
+    return commits
 
 
 @_operation

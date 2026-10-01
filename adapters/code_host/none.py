@@ -66,3 +66,7 @@ def token_scopes(variable, root=None):
 
 def auth_status(root=None):
     return record_none('code_host', 'auth_status', root, measurement=True)
+
+
+def merged_prs(repo, root=None):
+    return record_none('code_host', 'merged_prs', root, measurement=True)

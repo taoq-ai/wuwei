@@ -118,10 +118,20 @@ def run(root=None, *, trigger='sweep'):
     notes = review(root)
     queue = decision_queue(root)
     measured = metrics.collect(root)
+    calibration = ''
+    if trigger == 'sweep':
+        from wuwei import calibrate  # Local: calibrate stays off every hook path.
+        try:
+            found = {'drift': calibrate.drift(root), 'baseline': {
+                name: entry.get('baseline') for name, entry in calibrate.approved(root).items()}}
+        except (OSError, ValueError) as exc:
+            found = {'drift': f'unmeasured: {exc}'}
+        calibration = 'Calibration: ' + json.dumps(found, sort_keys=True) + '\n'
     body = ('# Steward review\n\nTrigger: ' + trigger + '\n'
             + 'Metrics: ' + json.dumps(measured, sort_keys=True) + '\n'
             + 'Notes: ' + json.dumps(notes) + '\n'
             + 'Decision queue: ' + json.dumps(queue) + '\n'
+            + calibration
             + 'Propose charter and note changes in the day proposals directory. '
               'Never dispatch or change item state.\n')
     brief_relative = brief.write('steward', 'day',

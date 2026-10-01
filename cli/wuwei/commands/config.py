@@ -18,6 +18,8 @@ def register(subparsers):
     actions = parser.add_subparsers(dest="action", required=True)
     check = actions.add_parser("check", help="validate config.toml")
     check.set_defaults(func=run)
+    actions.add_parser('promote', help='apply the calibration proposal (owner, host terminal)'
+                       ).set_defaults(func=promote)
 
 
 def run(args):
@@ -83,6 +85,54 @@ def run(args):
     for name in ('GH_TOKEN', 'GITHUB_TOKEN'):
         status = max(status, _token(host, name))
     return status
+
+
+def promote(args, confirm=None):
+    """Owner action: recompute the calibration, show it, and apply it after a terminal digest."""
+    import hashlib
+    import json
+    from wuwei import calibrate, integrity, workspace
+
+    try:
+        root = workspace.find_workspace()
+        config = load_config(root)
+        path, snapshot_path = root / '.wuwei/config.toml', root / '.wuwei/calibration.json'
+        if path.is_symlink() or snapshot_path.is_symlink():
+            raise ValueError('config.toml and calibration.json must not be symlinks')
+        raw = path.read_text(encoding='utf-8')
+        if not config['repos']:
+            raise ValueError(calibrate.NO_REPOS)
+        results = calibrate.survey(root, config, list(enumerate(config['repos'])), style=False)
+        text, diff, edits = calibrate.propose(raw, results)
+        today = workspace.now().date().isoformat()
+        snapshot = {r['repo']['name']: {**calibrate.drift_facts(r['facts']),
+                                        'baseline': r['baseline'] or 'unmeasured', 'date': today}
+                    for r in results}
+        summary = (diff or 'No config.toml changes\n') + ''.join(
+            f'Config differs; edit by hand: {key}\n' for key, _, _ in edits) + ''.join(
+            f"Flagged {f['kind']}: {f['source']} ({f['value']})\n" for r in results
+            for f in r['findings'] if f['kind'] in ('instruction_like', 'unsafe')) + (
+            'Approved calibration for .wuwei/calibration.json:\n'
+            + json.dumps(snapshot, indent=2, sort_keys=True) + '\n')
+        print(summary, end='')
+        digest = hashlib.sha256(summary.encode()).hexdigest()[:12]
+        if not (confirm or integrity._host_confirm)(
+                digest, prompt='Review the calibration above. To apply it, type:'):
+            print('wuwei config promote: declined; nothing written', file=sys.stderr)
+            return FINDINGS
+        if path.read_text(encoding='utf-8') != raw:
+            raise ValueError('config.toml changed during confirmation; nothing written, run it again')
+        if text != raw:
+            workspace.atomic_write(path, text)
+        workspace.atomic_write(snapshot_path, json.dumps(snapshot, indent=2, sort_keys=True) + '\n')
+        print('Applied the calibration and recorded .wuwei/calibration.json')
+        return CLEAN
+    except ConfigError as exc:
+        print(f'wuwei config promote: {exc}', file=sys.stderr)
+        return FINDINGS
+    except (OSError, ValueError, UnicodeError) as exc:
+        print(f'wuwei config promote: {exc}', file=sys.stderr)
+        return UNRUN
 
 
 def _protection(host, repo, solo):

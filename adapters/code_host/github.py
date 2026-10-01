@@ -21,6 +21,9 @@ _THREADS = ('query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){'
 _REVERT = ('mutation($id:ID!){revertPullRequest(input:{pullRequestId:$id})'
            '{revertPullRequest{number url}}}')
 
+_MERGED = ('query($o:String!,$r:String!){repository(owner:$o,name:$r){pullRequests(states:MERGED,'
+           'first:30,orderBy:{field:CREATED_AT,direction:DESC}){nodes{additions deletions createdAt mergedAt}}}}')
+
 
 def _operation(function):
     @wraps(function)
@@ -60,7 +63,7 @@ def _run(args, payload=None, *, json_output=True, env=None):
         case ['api', '--include', 'user']:
             allowed = payload is None and not json_output
         case ['api', 'graphql', '--input', '-']:
-            allowed = isinstance(payload, dict) and payload.get('query') in (_THREADS, _REVERT)
+            allowed = isinstance(payload, dict) and payload.get('query') in (_THREADS, _REVERT, _MERGED)
         case ['api', endpoint, *options]:
             if re.fullmatch(r'search/commits\?q=author-email%3A[A-Za-z0-9._%+-]+'
                             r'%20repo%3A[A-Za-z0-9._%-]+&per_page=1', endpoint):
@@ -247,6 +250,16 @@ def threads(ref, root=None):
                        'is_bot': _bot(c['author'], '__typename'),
                        'body': _field(c, 'body', str), 'created_at': _field(c, 'createdAt', str)}
                       for c in _nodes(v['comments'])]} for v in _nodes(connection)]}
+
+
+@_operation
+def merged_prs(repo, root=None):
+    owner, name = _repo(repo).split('/')
+    value = _run(['api', 'graphql', '--input', '-'],
+                 {'query': _MERGED, 'variables': {'o': owner, 'r': name}})
+    return [{'additions': _field(v, 'additions', int), 'deletions': _field(v, 'deletions', int),
+             'created_at': _field(v, 'createdAt', str), 'merged_at': _field(v, 'mergedAt', str)}
+            for v in _list(value['data']['repository']['pullRequests']['nodes'])]
 
 
 @_operation

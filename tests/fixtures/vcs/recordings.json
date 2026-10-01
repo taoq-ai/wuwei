@@ -211,6 +211,37 @@
     ]
   },
   {
+    "operation": "recent_commits",
+    "args": [
+      "/repo with spaces"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "-C",
+          "/repo with spaces",
+          "log",
+          "-z",
+          "--max-count=100",
+          "--format=%s%x1f%(trailers:key=Signed-off-by,valueonly,separator=%x2c)",
+          "HEAD",
+          "--"
+        ],
+        "stdout": "feat(cli): add calibrate\u001fBuilder <builder@example.test>\u0000fix: keep order\u001f\u0000"
+      }
+    ],
+    "data": [
+      {
+        "subject": "feat(cli): add calibrate",
+        "signed_off": true
+      },
+      {
+        "subject": "fix: keep order",
+        "signed_off": false
+      }
+    ]
+  },
+  {
     "operation": "worktree_add",
     "args": [
       "/repo with spaces",

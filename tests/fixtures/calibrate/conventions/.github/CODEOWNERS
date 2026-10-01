@@ -1,0 +1,4 @@
+# Owners
+* @acme/everyone
+/api/ @acme/api-team
+docs/*.md @writer

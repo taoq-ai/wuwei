@@ -202,3 +202,20 @@ def test_decision_queue_skips_owner_answered(root):
     state._write_state(lambda data: data.update(
         decision_outcomes={'D-1': {'option': 'A', 'decided_by': 'owner'}}), root, reserved=False)
     assert [row['id'] for row in steward.decision_queue(root)] == ['D-2']
+
+
+def test_sweep_brief_carries_calibration_and_close_skips_it(root, monkeypatch):
+    from wuwei import calibrate, registry, steward
+
+    briefs = []
+    adapter = SimpleNamespace(dispatch=lambda role, path, *args, **kwargs:
+                              briefs.append(open(path).read()) or registry.Result(0, {'id': 'one'}))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: adapter)
+    monkeypatch.setattr(calibrate, 'drift', lambda _root: [{'repo': 'acme/widget', 'changed': ['ci_checks']}])
+    (root / '.wuwei/calibration.json').write_text(json.dumps({'acme/widget': {'baseline': {'prs': 3}}}))
+    assert steward.run(root, trigger='sweep') == 0
+    assert ('Calibration: {"baseline": {"acme/widget": {"prs": 3}}, "drift": '
+            '[{"changed": ["ci_checks"], "repo": "acme/widget"}]}') in briefs[0]
+    monkeypatch.setattr(calibrate, 'drift', lambda _root: pytest.fail('close ran drift'))
+    assert steward.run(root, trigger='close') == 0
+    assert 'Calibration:' not in briefs[1]

@@ -70,6 +70,7 @@ NUDGE = [
     ({'kind': 'watch: sweep', 'payload': {'owed': 0}}, 'Work'),
     ({'kind': 'watch: sweep', 'payload': {'unreadable': 0}}, 'Work'),
     ({'kind': 'steward.due', 'payload': {'tool_calls': 50}}, 'Work'),
+    ({'kind': 'calibration.drift', 'payload': {'repo': 'acme/widget', 'changed': ['ci_checks']}}, 'Work'),
     (None, 'Work'),
 ]
 SILENT = [
@@ -309,7 +310,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'remote.pending': 'silent', 'remote.started': 'silent',
                 'remote.resumed': 'silent', 'remote.stopped': 'silent',
                 'remote.ignored': 'silent', 'remote.refused': 'page', 'remote.acknowledged': 'silent',
-                'remote.confirmed': 'silent'}
+                'remote.confirmed': 'silent', 'calibration.drift': 'nudge'}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier
