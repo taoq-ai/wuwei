@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.9.0](https://github.com/taoq-ai/wuwei/compare/v0.8.0...v0.9.0) (2026-10-01)
+
+
+### Features
+
+* **calibrate:** an owner interview that turns personal preferences into configuration and charter overrides ([#292](https://github.com/taoq-ai/wuwei/issues/292)) ([7a23b2d](https://github.com/taoq-ai/wuwei/commit/7a23b2d7b9425ceb59f40dd188ab07b899e27bac)), closes [#279](https://github.com/taoq-ai/wuwei/issues/279)
+* **calibrate:** profile the project and host and propose the workspace configuration ([#285](https://github.com/taoq-ai/wuwei/issues/285)) ([2a63396](https://github.com/taoq-ai/wuwei/commit/2a6339628d23cdbaed98501a9583a6e74aa9f698)), closes [#278](https://github.com/taoq-ai/wuwei/issues/278)
+* **cockpit:** the day board as an inline widget in the Claude Code conversation through a plugin MCP server ([#290](https://github.com/taoq-ai/wuwei/issues/290)) ([8084fe9](https://github.com/taoq-ai/wuwei/commit/8084fe99c7c390382cadd784c4856ded1db288e3)), closes [#281](https://github.com/taoq-ai/wuwei/issues/281)
+* **gates:** risk-tiered gates computed from the diff, with per-repository floors and escaped-defect measurement ([#284](https://github.com/taoq-ai/wuwei/issues/284)) ([e4b3da0](https://github.com/taoq-ai/wuwei/commit/e4b3da051495b8dfae3509aa5647042c487e0fd9)), closes [#280](https://github.com/taoq-ai/wuwei/issues/280)
+* **metrics:** quality by hour and by session age, and planned planner-session rotation ([#293](https://github.com/taoq-ai/wuwei/issues/293)) ([89a7f65](https://github.com/taoq-ai/wuwei/commit/89a7f65037058846cd110da8cdecc9c84c15130e)), closes [#288](https://github.com/taoq-ai/wuwei/issues/288)
+* **ops:** heartbeat: the watch proves the system is alive and behaving, not only running ([#295](https://github.com/taoq-ai/wuwei/issues/295)) ([ddc9495](https://github.com/taoq-ai/wuwei/commit/ddc94958af661ba18f0bb4ad49d176afb5f92faa)), closes [#287](https://github.com/taoq-ai/wuwei/issues/287)
+
+
+### Bug Fixes
+
+* **mcp:** the registry gate measures servers declared inline in a plugin's plugin.json, not only .mcp.json files ([#296](https://github.com/taoq-ai/wuwei/issues/296)) ([eec27a6](https://github.com/taoq-ai/wuwei/commit/eec27a60704ea6811ce3b7da094a9a16b9cd6bca)), closes [#291](https://github.com/taoq-ai/wuwei/issues/291)
+
 ## [0.8.0](https://github.com/taoq-ai/wuwei/compare/v0.7.0...v0.8.0) (2026-09-30)
 
 
