@@ -175,7 +175,7 @@ WUWEI is built as ports and adapters (hexagonal).
 | PreToolUse | top-level `cd` out of the workspace | always; use `git -C` or a subshell |
 | PostToolUse | any tool | never refuses; appends the call to `traces.jsonl` in OTel JSONL shape |
 | PostToolUse | write to `decisions/gate-*.md` | verdict lint fails; the verdict is returned to the seat |
-| SubagentStop | a seat finishes | its three-line retro note is missing; otherwise records it |
+| SubagentStop | a seat finishes | its three-line retro note is missing; otherwise records it, flagging a last message that asks the owner a question without a decision id (5.8) |
 | SessionStart | new session | never refuses; prints the memory payload and its size, flags a dead watch process and orphans from the last close |
 | PreCompact | before summarising | never refuses; flushes pending state and events |
 | Stop | every planner turn end (4.2.1), and day close | any owned PR has an overdue action; at day close also reply or visibility obligations owed, or the retro did not land |
@@ -280,7 +280,7 @@ Eligibility, per repository in `config.toml` (default off):
   dependency manifests and lockfiles, migrations and schemas, infrastructure code,
   `CODEOWNERS`, anything under a `deploy` or `infra` directory).
 - The diff is at most `merge.max_changed_lines` (default 400) and the item went through at
-  most the cycle budget (one fix round plus one delta).
+  most the negotiation budget (5.3).
 
 Preconditions, all read fresh at the current head sha, never from cache or from
 `state.json`:
@@ -401,6 +401,16 @@ message, before the outward-text lint and the voice checks (4.3, 4.8) run.
 /wuwei report -> steward retro -> planner report -> Stop guard
 ```
 
+Briefs (amended 2026-10-01, #301). Every seat brief carries a mandate block generated from
+the item's class levels (5.8.1) and the owner's calibration interview answers: what the
+seat decides alone (what the brief, its charter and the engineering standards already
+answer), what it decides and records (two-way open questions inside the item, as
+assumptions, 5.3; records of classes running at L2 or L3, which cruise mode answers under
+5.8.1's conditions or routes to the owner), and what goes to the owner
+(one-way doors, the 5.8.1 ceilings, the interview's trust-surface areas and owner-run
+commands, records of classes at L0 or L1). It closes with: nothing else is a question. A
+seat does not ask what it may decide.
+
 ### 5.3 Rules
 
 - Tracks. SLICE (default): no contract, boundary, schema or infrastructure change and under
@@ -409,8 +419,20 @@ message, before the outward-text lint and the voice checks (4.3, 4.8) run.
 - Flags set by the lead: `trust_surface`, `boundary_relevant`, `agent_surface`.
 - Pre-PR gate set: arch, quality and security in parallel on every code item. After the PR is
   open, fix rounds and deltas are arch-only.
-- Cycle budget: one fix round plus one delta check per gate. Residual non-blocking findings
-  become review notes in the PR body. A trust-boundary security finding always blocks.
+- Assume and record (amended 2026-10-01, #301). "When unsure, it is one-way" (5.8) still
+  decides reversibility. An open question on a two-way door inside the item (the `approach`
+  class while it runs at L2 or L3, 5.8.1; below that, an `approach` record) is not asked:
+  the seat takes its recommendation, records it under `Assumptions:` in the item's spec or
+  PR body (what was assumed, why, what would overturn it) and continues. Gates review
+  assumptions as findings. Only a one-way door, a 5.8.1 ceiling or trust-surface area, or a question outside the item (its agreed
+  scope, the queue, a person), becomes a decision record (5.8).
+- Negotiation budget (amended 2026-10-01, #301): one fix round plus one delta check per
+  gate. Residual non-blocking findings become review notes in the PR body. A trust-boundary
+  security finding always blocks. The verdict lint refuses a finding without a failure
+  scenario and a verdict without a probe or mutation row. Exceeding the budget is a design
+  reconsideration, never another round: the item parks with a decision record stating why
+  the approach keeps leaking and what replaces it, agreed with the owner before more code,
+  and the reconsideration is recorded in its spec (constitution, Cycle budget).
 - A re-gate continues the same sentinel with the delta; a fresh seat only for a lost agent.
 - CAP counts running build seats. Host floors (free memory, seat count) come from config.
 - Seat policy (model and runtime per role) is set at the morning gate and stored in state.
@@ -460,7 +482,8 @@ message, before the outward-text lint and the voice checks (4.3, 4.8) run.
 At the morning gate (goals, ranked queue, seat policy); for decisions cruise mode routes to
 the owner (5.8.1), one question per decision, recommended option first, pending decisions
 batched, pre-triaged by the steward; for work outside the goals or above the auto-start bar
-(5.7); for merges the merge policy does not clear. Otherwise the session is silent, with a
+(5.7); for merges the merge policy does not clear. Never for what a seat's mandate lets it
+decide (5.2). Otherwise the session is silent, with a
 digest at most every two hours that lists the decisions cruise mode answered.
 
 ### 5.5 The steward
@@ -548,10 +571,11 @@ flag, touching never-auto paths (4.6), or not fitting CAP and the budget goes to
 
 Anything that does not start joins the next decision batch as a proposed item.
 
-### 5.8 Decision framework (owner, 2026-09-28; amended 2026-10-01, #282)
+### 5.8 Decision framework (owner, 2026-09-28; amended 2026-10-01, #282 and #301)
 
-Every decision, whoever takes it, is a record `days/<date>/decisions/D-<n>.md` in one shape
-(MADR with a Kepner-Tregoe evaluation):
+Every decision that the owner or cruise mode answers is a record
+`days/<date>/decisions/D-<n>.md` in one shape (MADR with a Kepner-Tregoe evaluation); a
+two-way open question inside the item is an assumption instead (5.3):
 
 - `Question:` one line; `Context:` what forces the decision, with evidence paths
 - `Class:` one of the decision classes in 5.8.1
@@ -573,10 +597,14 @@ When unsure, it is one-way.
 Enforcement. A PostToolUse decision lint on writes to `decisions/D-*.md` refuses a record
 missing any field, with an unknown class, with fewer than two options, or whose
 recommendation is not the top passing option by the stated weights (the CLI recomputes the
-score). A PreToolUse guard refuses `AskUserQuestion` and every control-plane escalation that
-does not cite a decision id whose record passes the lint. The steward's metrics add:
-decisions per day by class and reversibility, share answered by cruise mode, and cruise
-answers the owner later reversed (each one demotes its class, 5.8.1).
+score). A seat question that is not a decision record is refused, in every runtime: a
+PreToolUse guard refuses `AskUserQuestion` and every control-plane escalation that does not
+cite a decision id whose record passes the lint, and SubagentStop flags a seat whose last
+message asks the owner a question without one (Codex and headless runs). The steward's
+metrics add: decisions per day by class and reversibility, share answered by cruise mode,
+cruise answers the owner later reversed (each one demotes its class, 5.8.1), owner asks per
+item, and unnecessary asks (an owner answer equal to the recommendation: the agreements
+5.8.1 promotes from).
 
 #### 5.8.1 Cruise mode (owner, 2026-10-01, #282)
 
@@ -594,7 +622,7 @@ Classes are a fixed list; a new class is an amendment to this section, not confi
 
 | Class | Decides | Default | Ceiling |
 |---|---|---|---|
-| `approach` | an implementation choice inside the item's agreed scope | L2 | L3 |
+| `approach` | an implementation choice inside the item's agreed scope; an assumption, not a record, at L2 or L3 (5.3) | L2 | L3 |
 | `retry` | re-running a failing check | L2 | L3 |
 | `park` | parking an item, such as a stuck build loop (5.3) | L2 | L3 |
 | `accept-residual` | keeping a non-blocking residual finding as a review note (5.3) | L2 | L3 |
@@ -603,7 +631,7 @@ Classes are a fixed list; a new class is an amendment to this section, not confi
 | `re-plan` | changing the approved queue | L0 | L3 |
 | `dependency-bump` | changing a dependency manifest or lockfile | L0 | L3 |
 | `merge` | merging a pull request (4.6) | L3 | L3 |
-| `message` | sending or replying to a person; the 4.9 tiers are unchanged | L0 | L1 |
+| `message` | sending or replying to a person; the 4.9 tiers are unchanged; an external confirmation holds no reversible work (5.8.2) | L0 | L1 |
 | `other` | anything no class above covers | L0 | L1 |
 
 The L2 defaults are the two-way, inside-the-item decisions seats took on their own before
@@ -655,6 +683,30 @@ running or configured level, so turning it back on restores them. The status lin
 shows `cruise off | L<max>`, the highest level a class would run at, and `cruise L<max>`
 while it is on.
 
+#### 5.8.2 External waits and negotiation loops (owner, 2026-10-01, #301)
+
+External confirmation. A confirmation from a person outside the loop (anyone but the owner
+and the seats: a client, a stakeholder) is never a precondition a seat may impose. The
+question becomes a `message` record (a draft the owner sends, 4.9; ceiling L1); the item
+carries `assumption: external` with the recommended reading, and reversible work on it
+continues. Time box: when `decisions.wait_hours` pass without an answer (default 24,
+counting weekday hours in `owner.timezone`, one working day), the watch sweep (4.2) confirms
+the item's `assumption: external` reading (the draft stays unsent with the owner, 4.9) only
+when that reading is two-way and no other 5.8.1 ceiling applies (scope agreed with other
+people, trust boundary, outside the goals); otherwise it parks the item with a decision
+record; either way the CLI writes an event.
+
+Negotiation loops. At each steward run (5.5) the CLI counts, per item over the last
+`steward.loop_window_hours` (default 4): decision and clarification records naming the
+item, gate verdicts on it, re-dispatches of a role already dispatched on it, and fix-round
+continuations (gate or PR feedback, not the build loop's fast-check backpressure, which 5.3
+bounds). A sum above `steward.loop_threshold` (default 9), or a second fix round at any
+gate, is a negotiation loop: one `negotiation.loop` event per item per day, written only by
+the CLI, naming the counts and the last two exchanges. It is a nudge, and a page when the
+item is past the date of the goal it serves (5.7); the control plane sends the owner's DM
+the same summary within `control_plane.content` (15.4); the status line shows `loops N`.
+The signal reports; the negotiation budget (5.3) is what stops the rounds.
+
 ### 5.9 Cockpit, signals and briefings (owner, 2026-09-28)
 
 The owner should not need to ask for status. State is pushed to three surfaces, and
@@ -663,9 +715,10 @@ attention is demanded only for what matters.
 Signals. Every event is classified once by `wuwei signal classify` into a delivery tier and
 an owner lane. Tiers: `page` (interrupt now, even in quiet hours: the day is blocked, a
 security finding fired, a base branch went red after an auto-merge, an owner decision
-blocks a running item, the dead-man switch or the budget cap hit), `nudge` (shown at the next
-glance, batched to the phone at most every two hours: an owner decision not yet blocking, an
-L2 cruise answer (5.8.1), a merge the policy does not clear, work outside the goals, budget
+blocks a running item, a negotiation loop on an item past its goal date, the dead-man switch
+or the budget cap hit), `nudge` (shown at the next glance, batched to the phone at most every
+two hours: an owner decision not yet blocking, an L2 cruise answer (5.8.1), a negotiation
+loop (5.8.2), a merge the policy does not clear, work outside the goals, budget
 at 80 percent, a person's ask nearing its reply window), `silent` (visible, never pushed:
 normal progress, L3 cruise answers, auto-merges that went well). Lanes: Work (items by phase),
 Decisions (waiting on the owner), People (asks owed by the owner, 15.10). An event the
@@ -674,9 +727,9 @@ classifier cannot read is a `nudge`, never `silent`.
 Surfaces, all reading the same classification:
 
 - Status line. `wuwei status --line` for the Claude Code status line: one line with pages,
-  nudges, items per phase against CAP, the next person reply due, the next meeting and the
-  cruise level (5.8.1). It shares the hook latency budget (10.6) and shows
-  `WUWEI ? unmeasured` rather than a false green when it cannot read state.
+  nudges, items per phase against CAP, the next person reply due, the next meeting, the
+  cruise level (5.8.1) and the day's negotiation loops (5.8.2). It shares the hook latency
+  budget (10.6) and shows `WUWEI ? unmeasured` rather than a false green when it cannot read state.
 - Cockpit. The dashboard (#28) grows into the three lanes plus the briefing pack, served on
   127.0.0.1 and opened in the desktop app's browser pane or any browser. Approving a
   decision or a draft from the cockpit calls the CLI, so every guard applies. Passive
