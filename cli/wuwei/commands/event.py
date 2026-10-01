@@ -31,6 +31,7 @@ EVENT_PRODUCERS = {
     'plan.added': 'wuwei plan add', 'plan.proposed': 'wuwei plan add',
     'plan.session': 'wuwei plan session', 'brief written': 'wuwei brief',
     'session.seen': 'wuwei hook SessionStart, Stop and SubagentStop',
+    'session.rotated': 'wuwei hook Stop',
     'item.claimed': 'wuwei worktree add',
     'seat launched': 'wuwei hook PreToolUse',
     'seat stopped': 'wuwei hook SubagentStop',

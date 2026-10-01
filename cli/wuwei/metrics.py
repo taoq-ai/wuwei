@@ -7,10 +7,13 @@ from pathlib import Path
 import re
 from statistics import mean, median
 
-from wuwei import registry, state, watch, workspace
+from wuwei import registry, sessions, state, watch, workspace
 
 
 UNMEASURED = 'unmeasured'
+HOURS = ((5, 'morning'), (11, 'midday'), (14, 'afternoon'), (18, 'evening'))
+AGES = ('0-49 turns', '50-199 turns', '200+ turns', 'compacted', 'no planner')
+COUNTERS = ('gates', 'fix_verdicts', 'fix_rounds', 'lint_rejections', 'interventions')
 
 
 def _percentile(values, fraction):
@@ -120,8 +123,7 @@ def _attended(turns, cut, now):
     return per_day
 
 
-def _owner_intervention(root, config, now):
-    turns = _human_times(root, config)
+def _owner_intervention(turns, now):
     headline = _attended(turns, 10, now)
     if headline == UNMEASURED or not headline:
         return UNMEASURED
@@ -130,6 +132,84 @@ def _owner_intervention(root, config, now):
             'p75_minutes': _percentile(values, .75), 'per_weekday_minutes': headline,
             'sensitivity_minutes': {str(cut): median(_attended(turns, cut, now).values())
                                     for cut in (5, 15)}}
+
+
+def _hour_band(at):
+    return next((name for start, name in reversed(HOURS) if at.hour >= start), 'evening')
+
+
+def _age_band(row):
+    if row is None:
+        return 'no planner'
+    if row.get('compactions'):
+        return 'compacted'
+    turns = row.get('turns', 0)
+    return AGES[0] if turns < 50 else AGES[1] if turns < 200 else AGES[2]
+
+
+def _bands(days, turns, zone):
+    """Quality counters per owner hour band and per planner session-age band."""
+    table = {'hour': {name: dict.fromkeys(COUNTERS, 0) for _, name in HOURS},
+             'session_age': {name: dict.fromkeys(COUNTERS, 0) for name in AGES}}
+    seen = set()
+    for name, events in days:
+        # The registry is day state, so session ages restart every day.
+        ages, planner = {}, None
+        owner = [{'kind': 'owner.turn', 'ts': at.isoformat(), 'payload': {}} for at in turns
+                 if at.astimezone(zone).date().isoformat() == name]
+        for row in sorted([*events, *owner], key=lambda row: datetime.fromisoformat(row['ts'])):
+            kind, payload = row['kind'], row['payload']
+            if kind == 'plan.session':
+                planner = payload.get('session_id')
+                continue
+            if kind == 'session.seen':
+                sessions.count(ages.setdefault(payload.get('session_id'), {}), payload.get('hook'))
+                continue
+            hits = {'gates': kind == 'gate.received',
+                    'fix_verdicts': kind == 'gate.received' and payload.get('verdict') == 'FIX',
+                    'fix_rounds': sum(phase == 'fix' for phase in payload.get('phase_changes', {}).values()),
+                    'interventions': kind == 'owner.turn', 'lint_rejections': False}
+            if kind == 'verdict.rejected':
+                key = (str(payload.get('file')), payload.get('sha256'))
+                hits['lint_rejections'] = key not in seen
+                seen.add(key)
+            at = datetime.fromisoformat(row['ts']).astimezone(zone)
+            for cell in (table['hour'][_hour_band(at)],
+                         table['session_age'][_age_band(ages.get(planner, {}) if planner else None)]):
+                for key, value in hits.items():
+                    cell[key] += value
+    for cell in (cell for cells in table.values() for cell in cells.values()):
+        cell['fix_rate'] = cell['fix_verdicts'] / cell['gates'] if cell['gates'] else UNMEASURED
+        if not turns:
+            cell['interventions'] = UNMEASURED
+    return table
+
+
+def bands(root, days):
+    """Quality by band over several day directories (the retro window)."""
+    config = workspace.load_config(root)
+    return _bands([(day.name, _events(day) or []) for day in days], _human_times(root, config),
+                  workspace.zone(config))
+
+
+def worst(table, margin):
+    """(band, FIX rate, highest other rate) when one measured band beats all others by margin."""
+    rates = sorted(((cell['fix_rate'], band) for band, cell in table.items() if cell['gates']),
+                   reverse=True)
+    if len(rates) < 2 or rates[0][0] - rates[1][0] < margin:
+        return None
+    return rates[0][1], rates[0][0], rates[1][0]
+
+
+def band_lines(title, table):
+    """A markdown table of one band dimension, for report and retro."""
+    if table == UNMEASURED:
+        return [f'{title}: unmeasured']
+    rate = lambda value: value if value == UNMEASURED else f'{value:.2f}'
+    return [f'| {title} | Gates | FIX rate | Fix rounds | Lint rejections | Interventions |',
+            '| --- | ---: | ---: | ---: | ---: | ---: |',
+            *(f'| {band} | {cell["gates"]} | {rate(cell["fix_rate"])} | {cell["fix_rounds"]} | '
+              f'{cell["lint_rejections"]} | {cell["interventions"]} |' for band, cell in table.items())]
 
 
 def _references(root):
@@ -476,7 +556,10 @@ def collect(root=None, *, day=None):
     event_metrics['size_calibration'] = _calibration(directory, data, event_metrics['time_in_phase_seconds'])
     event_metrics['tool_calls'] = len(traces) if traces is not None else UNMEASURED
     event_metrics['baseline'] = _baseline(root)
-    event_metrics['owner_intervention'] = _owner_intervention(root, config, now)
+    turns = _human_times(root, config)
+    event_metrics['owner_intervention'] = _owner_intervention(turns, now)
+    event_metrics['quality_by_band'] = (UNMEASURED if events is None else _bands(
+        [(directory.name, events)], turns, workspace.zone(config)))
     refs, items = _references(root)
     prs = _host_prs(root, config, refs)
     event_metrics['escaped_defects'] = _escaped_defects(root, config, now, refs, prs)

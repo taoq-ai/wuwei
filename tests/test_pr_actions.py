@@ -129,7 +129,7 @@ def test_observed_merge_moves_raised_to_merged(case, monkeypatch, capsys, phase)
         state.transition('A', step, root)
     keys = ('escaped_defects', 'review_rework', 'owner_intervention', 'lead_time')
     monkeypatch.setattr('wuwei.metrics.collect', lambda root: {
-        **dict.fromkeys(keys, 0), 'baseline': dict.fromkeys(keys, 0)})
+        **dict.fromkeys(keys, 0), 'baseline': dict.fromkeys(keys, 0), 'quality_by_band': 'unmeasured'})
     host.results['pr'].data.update(state='closed', merged=True)
     assert main(['pr', 'state']) == 0
     assert state.read_state(root)['items']['A']['phase'] == 'merged'

@@ -204,3 +204,84 @@ def test_report_metrics_are_the_metrics_json(tmp_path, monkeypatch, capsys):
     measured = json.loads(lines[lines.index('## Process metrics') + 1])
     assert main(['metrics']) == 0
     assert measured == json.loads(capsys.readouterr().out)
+
+
+def gates(monkeypatch, root, date, rows):
+    """Record gate verdicts at UTC hours on one day: rows are (hour, verdict)."""
+    for hour, verdict in rows:
+        monkeypatch.setenv('WUWEI_NOW', f'{date}T{hour:02}:00:00+00:00')
+        state.append_event('gate.received', {'item': 'A', 'verdict': verdict}, root)
+
+
+def banded_day(monkeypatch, root):
+    (root / '.wuwei').mkdir(exist_ok=True)
+    (root / '.wuwei/config.toml').write_text('[owner]\ntimezone = "UTC"\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T08:00:00+00:00')
+    monkeypatch.chdir(root)
+    state._write_state(lambda data: None, root, reserved=False)
+    gates(monkeypatch, root, '2026-09-29', [(9, 'PASS'), (12, 'FIX')])
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T23:00:00+00:00')
+
+
+def test_issue_acceptance_report_shows_quality_bands(tmp_path, monkeypatch, capsys):
+    banded_day(monkeypatch, tmp_path)
+    assert main(['report']) == 0
+    text = capsys.readouterr().out
+    assert '## Quality by band' in text and '| Hour |' in text and '| Session age |' in text
+    assert '| midday | 1 | 1.00 |' in text and '| morning | 1 | 0.00 |' in text
+    assert text.index('## Quality by band') < text.index('## Process metrics')
+
+
+def captured(root):
+    day = workspace.day_dir(root)
+    (day / 'retro').mkdir(parents=True, exist_ok=True)
+    fields = {'Blocked': 'none', 'Gap': 'Review lag', 'Change': 'none'}
+    record = {'agent_id': 'builder-1', 'agent_type': 'builder', 'fields': fields,
+              'missing': [], 'invalid': []}
+    (day / 'retro/role.json').write_text(json.dumps(record))
+    state.append_event('retro.captured', {**record, 'evidence': f'.wuwei/days/{day.name}/retro/role.json'}, root)
+
+
+def test_issue_acceptance_retro_names_worst_band(tmp_path, monkeypatch):
+    from wuwei import retro
+    root = tmp_path
+    banded_day(monkeypatch, root)
+    gates(monkeypatch, root, '2026-09-27', [(19, 'FIX'), (19, 'FIX'), (9, 'PASS'), (12, 'PASS')])
+    gates(monkeypatch, root, '2026-09-28', [(20, 'FIX'), (21, 'PASS'), (9, 'PASS'), (15, 'PASS')])
+    gates(monkeypatch, root, '2026-09-29', [(15, 'PASS')])
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T23:00:00+00:00')
+    captured(root)
+    day = workspace.day_dir(root)
+    path = retro.compile(root)
+    text = path.read_text()
+    assert '## Quality by band (last 7 days)' in text
+    assert 'Worst hour band: evening (FIX rate 0.75; others at most 0.50)' in text
+    assert 'Worst session age band: none' in text
+    proposal = day / 'proposals/quality-hour-evening.json'
+    record = json.loads(proposal.read_text())
+    assert (record['target'], record['action']) == ('.wuwei/charters/planner.md', 'add')
+    assert 'sessions.rotate_after' in record['text']
+    assert record['evidence'] == path.relative_to(root).as_posix()
+    assert '## Proposed\n- `.wuwei/charters/planner.md`' in text
+    retro.compile(root)
+    assert sorted(path.name for path in (day / 'proposals').iterdir()) == ['quality-hour-evening.json']
+    proposal.unlink()
+    earlier = root / '.wuwei/days/2026-09-27/proposals'
+    earlier.mkdir()
+    (earlier / 'quality-hour-evening.rejected').write_text('{}')
+    retro.compile(root)
+    assert not proposal.exists()
+
+
+def test_retro_balanced_window_names_no_band(tmp_path, monkeypatch):
+    from wuwei import retro
+    root = tmp_path
+    banded_day(monkeypatch, root)
+    gates(monkeypatch, root, '2026-09-29', [(9, 'FIX'), (12, 'PASS'), (15, 'FIX'), (15, 'PASS'),
+                                            (19, 'FIX'), (19, 'PASS')])
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T23:00:00+00:00')
+    captured(root)
+    text = retro.compile(root).read_text()
+    assert 'Worst hour band: none' in text and 'Worst session age band: none' in text
+    assert not list((workspace.day_dir(root) / 'proposals').glob('quality-*'))

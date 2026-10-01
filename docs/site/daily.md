@@ -109,6 +109,33 @@ mobile app and stays open until you answer. A phone answer is not yet your outco
 `bin/wuwei decision outcome` in a host terminal to record it. To command the workspace and
 answer decisions from Slack as well, follow [remote operation](remote.html).
 
+## Long sessions
+
+The planner session is the one long-lived context of the day; seats are fresh per item.
+Quality can drift as that context grows, so WUWEI measures it and lets you rotate the
+planner on a schedule.
+
+- Measured: `bin/wuwei report` has a `## Quality by band` section with gates, FIX rate,
+  fix rounds, verdict lint rejections and your interventions per hour band (morning
+  05-11, midday 11-14, afternoon 14-18, evening 18-05, in `owner.timezone`) and per
+  planner session-age band (turns since it started today, or compacted). `bin/wuwei retro`
+  compares the last 7 days, names the worst band when its FIX rate leads every other band
+  by `metrics.band_margin`, and proposes a planner charter line for you to promote or
+  reject.
+- Rotation: set `sessions.rotate_after` (`turns`, `compactions` or a `clock` time; off by
+  default). At the first turn past the limit with no running seat and no unanswered owner
+  decision, the Stop hook tells the planner to end the session once. Start a fresh Claude
+  Code session in the workspace and run
+  `wuwei plan session "$WUWEI_SESSION_ID" --take-over` there. `bin/wuwei sessions` shows
+  the old session as `rotated`, and the events record `session.rotated`. Nothing is lost:
+  the day lives in `.wuwei/`, not in the transcript.
+- Re-anchoring: every SessionStart payload, after a compaction or a rotation too, opens
+  with `Active constraints:`, the day's goals, the approved plan, open decisions and the
+  briefs of running seats.
+
+You can set `owner.timezone`, `metrics.band_margin` and `sessions.rotate_after` in
+`.wuwei/config.toml` ([configuration](configuration.html)).
+
 ## 6. Close
 
 The planner runs `wuwei retro` and `wuwei close --check retro`, writes the report with

@@ -106,6 +106,30 @@ Outcome: pending
         lines.append(f'| {path.name} | {results[0]} |')
     if not gates:
         lines.append('| none | unmeasured |')
+    path = day / 'retro' / (day.name + '.md')
+    window = watch.days(root)[:7]
+    quality = metrics.bands(root, window)
+    margin = workspace.load_config(root)['metrics']['band_margin']
+    lines += ['', '## Quality by band (last 7 days)']
+    for key, title in (('hour', 'Hour'), ('session_age', 'Session age')):
+        lines += [*metrics.band_lines(title, quality[key]), '']
+        found = metrics.worst(quality[key], margin)
+        lines.append(f'Worst {title.lower()} band: ' + (
+            f'{found[0]} (FIX rate {found[1]:.2f}; others at most {found[2]:.2f})' if found else 'none'))
+        if not found:
+            continue
+        name = f"quality-{key.replace('_', '-')}-{re.sub(r'[^a-z0-9]+', '-', found[0]).strip('-')}"
+        # ponytail: the dedupe looks back seven days only; a band that stays worst re-proposes weekly.
+        if any((directory / 'proposals' / f'{name}{suffix}').exists()
+               for directory in window for suffix in ('.json', '.landed', '.rejected')):
+            continue
+        workspace.atomic_write(proposals / f'{name}.json', json.dumps({
+            'target': '.wuwei/charters/planner.md', 'action': 'add',
+            'text': (f'- Gate FIX rate is highest in the {found[0]} {title.lower()} band over the last '
+                     f'7 days ({found[1]:.2f}, others at most {found[2]:.2f}): set '
+                     'sessions.rotate_after so the planner session rotates before it.'),
+            'reason': 'quality by band', 'evidence': path.relative_to(root).as_posix()},
+            allow_nan=False) + '\n')
     pending = sorted(proposals.glob('*.json')) if proposals.exists() else []
     rejected = sorted(proposals.glob('*.rejected')) if proposals.exists() else []
     applied = sorted(proposals.glob('*.landed')) if proposals.exists() else []
@@ -114,6 +138,5 @@ Outcome: pending
     lines += ['', '## Metrics', json.dumps(measured, sort_keys=True), '',
               '## Applied', *(['- `' + p + '`' for p in targets(applied)] or ['none']),
               '## Proposed', *(['- `' + p + '`' for p in targets([*pending, *rejected])] or ['none']), '']
-    path = day / 'retro' / (day.name + '.md')
     workspace.atomic_write(path, '\n'.join(lines))
     return path

@@ -81,6 +81,32 @@ def write_index(root=None):
     return findings
 
 
+def constraints(root, data):
+    """The day's goals, plan, open decisions and running briefs, restated at every SessionStart."""
+    goals = 'none'
+    if data['goals']:
+        from wuwei import goals as goal_file
+        try:
+            parsed = goal_file.parse((root / '.wuwei/memory/goals.md').read_text(encoding='utf-8'))
+            goals = '; '.join(
+                f'{ident} {parsed[ident]["outcome"]} (target {parsed[ident]["target"]} by '
+                f'{parsed[ident]["date"]})' if ident in parsed else ident for ident in data['goals'])
+        except (OSError, ValueError) as exc:
+            goals = f'unmeasured: {exc}'
+    plan = (f'{(workspace.day_dir(root) / "plan.md").relative_to(root).as_posix()} '
+            f'(approved: {", ".join(data["approved_items"]) or "none"})'
+            if data['gate_approved'] else 'not approved')
+    from wuwei.decision import answered
+    open_ids = sorted(ident for ident in data.get('decision_routes', {}) if answered(data, ident) is None)
+    briefs = [f'{seat.get("item")} {name} {seat.get("brief")}' for name, seat in data['seats'].items()
+              if seat.get('status') == 'running']
+    briefs += [f'{item} build {build.get("brief")}' for item, build in data.get('builds', {}).items()
+               if build.get('status') in ('running', 'check')]
+    return (f'Active constraints:\nGoals: {goals}\nPlan: {plan}\n'
+            f'Open decisions: {", ".join(open_ids) or "none"}\n'
+            f'Current briefs: {"; ".join(briefs) or "none"}\n')
+
+
 def session_payload(root=None):
     """Return payload text, UTF-8 byte count and estimated token count."""
     root = workspace.find_workspace() if root is None else Path(root)
@@ -88,13 +114,14 @@ def session_payload(root=None):
     spine = (memory / 'spine.md').read_text(encoding='utf-8')
     index = (memory / 'index.md').read_text(encoding='utf-8')
     data = state.read_state(root)
+    active = constraints(root, data)
     data.pop('watch', None)
     from wuwei import drafts
     data['drafts'] = {key: row['destination'] for key, row in drafts.read(data).items()}
     state_text = json.dumps(data, ensure_ascii=False, sort_keys=True)
     from wuwei.promotion import last_run
     promote_line = last_run(root)
-    content = (f'Spine:\n{spine.rstrip()}\n\nIndex:\n{index.rstrip()}\n\n'
+    content = (f'{active}\nSpine:\n{spine.rstrip()}\n\nIndex:\n{index.rstrip()}\n\n'
                f'Today state:\n{state_text}\n{promote_line}\n')
     return content, len(content.encode('utf-8')), estimated_tokens(content)
 

@@ -127,7 +127,7 @@ def test_config_defaults_and_independence(tmp_path):
             'project_file': '.mcp.json', 'plugins_file': '~/.claude/plugins/installed_plugins.json',
             'user_file': '~/.claude.json'}},
         'security': {'required': False},
-        'owner': {'name': '', 'pronouns': '', 'handles': []}, 'repos': [], 'cap': 1,
+        'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': ''}, 'repos': [], 'cap': 1,
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'}},
@@ -135,7 +135,7 @@ def test_config_defaults_and_independence(tmp_path):
         'control_plane': {'content': 'summary', 'owner': ''},
         'host': {'free_memory_mb': 1024, 'seats': 4, 'reservation_timeout_seconds': 14400}, 'profile': 'strict',
             'memory': {'max_notes': 60, 'note_line_cap': 80, 'probation_days': 10, 'state_entry_cap': 3},
-            'metrics': {'transcripts': '~/.claude/projects'},
+            'metrics': {'transcripts': '~/.claude/projects', 'band_margin': 0.2},
             'consolidation': {'archive_after_days': 30, 'similarity_threshold': 0.85},
             'voice': {'sources': {}, 'review_prs': []},
         'build': {'max_iterations': 8, 'stuck_after': 3,
@@ -143,7 +143,8 @@ def test_config_defaults_and_independence(tmp_path):
         'codex': {'command': [], 'timeout_seconds': 300},
             'watch': {'clock_seconds': 600, 'dead_seconds': 1200, 'stale_seconds': 900,
                       'sweep_seconds': 7200},
-        'sessions': {'stale_seconds': 3600},
+        'sessions': {'stale_seconds': 3600,
+                     'rotate_after': {'turns': 0, 'compactions': 0, 'clock': ''}},
         'listen': {'poll_seconds': 60, 'dead_seconds': 300}, 'responder': {'enabled': True},
         'steward': {'every_tool_calls': 50},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
@@ -262,12 +263,25 @@ def test_unknown_key_without_known_line(tmp_path, monkeypatch):
     ('[environments]\nprod = 1', 'environments.prod'),
     ('[adapters]\nscanner = false', 'adapters.scanner'),
     ('[shepherd]\nmin_reviewers = -1', 'shepherd.min_reviewers'),
+    ('[sessions]\nrotate_after = { turns = -1 }', 'sessions.rotate_after.turns'),
 ])
 def test_invalid_config_values(tmp_path, text, key):
     write_config(tmp_path, text)
     result = cli(tmp_path, 'config', 'check')
     assert result.returncode == 1, result.stderr
     assert key in result.stderr and 'expected' in result.stderr
+
+
+def test_owner_zone(tmp_path):
+    from zoneinfo import ZoneInfo
+    from wuwei.workspace import load_config, zone
+    write_config(tmp_path, '')
+    assert zone(load_config(tmp_path)) is None
+    write_config(tmp_path, '[owner]\ntimezone = "Europe/Amsterdam"\n')
+    assert zone(load_config(tmp_path)) == ZoneInfo('Europe/Amsterdam')
+    write_config(tmp_path, '[owner]\ntimezone = "Mars/Base"\n')
+    with pytest.raises(ValueError, match='owner.timezone'):
+        zone(load_config(tmp_path))
 
 
 def test_solo_owner_min_reviewers_zero(tmp_path):

@@ -74,6 +74,11 @@ def build(root=None):
     lines.extend(f"- {name}: {item['phase']}" for name, item in carry)
     if not carry:
         lines.append('none')
+    quality = measured['quality_by_band']
+    lines += ['', '## Quality by band', *(
+        ['unmeasured'] if quality == metrics.UNMEASURED else
+        [*metrics.band_lines('Hour', quality['hour']), '',
+         *metrics.band_lines('Session age', quality['session_age'])])]
     lines += ['', '## Process metrics', json.dumps(measured, sort_keys=True, allow_nan=False), '']
     return '\n'.join(lines)
 
