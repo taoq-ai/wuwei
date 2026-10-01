@@ -535,3 +535,18 @@ def test_pr_events_are_documented():
     remote = ' '.join((SITE / 'remote.md').read_text().split())
     for text in ('If-None-Match', '`shepherd.autostart`', 'details are on the host', 'no webhooks'):
         assert text in remote, text
+
+
+def test_owner_verbosity_and_voice_are_documented():
+    from wuwei import remote, workspace
+    configuration = (SITE / 'configuration.md').read_text()
+    for key in ('default', *workspace.SURFACES):
+        assert f'`owner.verbosity.{key}`' in configuration, key
+    assert '`verbosity`' in configuration
+    for name in ('daily.md', 'reference.md'):
+        page = (SITE / name).read_text()
+        assert 'decision show' in page and '--full' in page, name
+    page = (SITE / 'remote.md').read_text()
+    assert remote.VOCABULARY in ' '.join(page.split()) and 'more D-n' in page
+    concepts = (SITE / 'concepts.md').read_text()
+    assert all(word in concepts for word in ('humanizer', '3.1.0', 'MIT', '`ai_tells`', '`style`'))

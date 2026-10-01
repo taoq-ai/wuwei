@@ -5,8 +5,8 @@ import re
 import sys
 
 from wuwei import state, workspace
-from wuwei.decision import (evaluate, lint_file, record_rejection, route, route_owner, seat_outcome,
-                            table, today_path)
+from wuwei.decision import (evaluate, lint_file, present, record_rejection, route, route_owner,
+                            seat_outcome, table, today_path)
 
 
 def register(subparsers):
@@ -23,6 +23,10 @@ def register(subparsers):
     outcome.add_argument('id')
     outcome.add_argument('option')
     outcome.set_defaults(func=run)
+    show = commands.add_parser('show', help='Print a decision at the owner verbosity level')
+    show.add_argument('id')
+    show.add_argument('--full', action='store_true', help='Print every field')
+    show.set_defaults(func=run)
 
 
 def decide(args):
@@ -51,6 +55,22 @@ def decide(args):
     state._write_state(update, root, reserved=False, kind='decision.decided',
                        payload={'id': args.id, **record})
     return 0, target
+
+
+def show(args):
+    root = workspace.find_workspace()
+    path = today_path(args.id, root)  # A symlinked record raises: it must belong to today.
+    try:
+        text = path.read_text(encoding='utf-8')
+        fields, _ = evaluate(text)
+    except (OSError, UnicodeError) as exc:
+        return 2, f'decision show: could not read {path}: {exc}'
+    except ValueError as exc:
+        return 1, f'decision show: {exc}'
+    level = 'full' if args.full else workspace.verbosity(workspace.load_config(root), 'decisions')
+    if level == 'full':
+        return 0, text.rstrip()
+    return 0, present(args.id, fields, level) + f'\nFull record: wuwei decision show {args.id} --full'
 
 
 def owner_outcome(args):
@@ -136,6 +156,7 @@ Decided-by: seat
 Outcome: pending''')
         return 0
     code, message = (lint_file(args.file) if args.action == 'lint' else
-                     owner_outcome(args) if args.action == 'outcome' else decide(args))
+                     owner_outcome(args) if args.action == 'outcome' else
+                     show(args) if args.action == 'show' else decide(args))
     print(message, file=sys.stderr if code else sys.stdout)
     return code

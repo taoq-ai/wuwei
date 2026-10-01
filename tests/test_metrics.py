@@ -238,3 +238,35 @@ def test_band_lines():
     assert lines[2:] == ['| morning | 2 | 0.50 | 0 | 0 | unmeasured |',
                          '| evening | 0 | unmeasured | 0 | 0 | unmeasured |']
     assert metrics.band_lines('Hour', 'unmeasured') == ['Hour: unmeasured']
+
+
+def test_ai_tells_per_text(root, monkeypatch):
+    from test_decision import VALID
+    from wuwei import metrics, report, retro
+    text = 'This is not just a fix but a rewrite. We delve into it.'
+
+    def row(ident, **extra):
+        return {'id': ident, 'channel': 'chat', 'operation': 'post', 'adapter': 'slack',
+                'destination': 'C1', 'inputs': {'channel': 'C1', 'text': text}, 'text': text,
+                'created': '2026-09-29T12:00:00Z', 'tier_reason': 'external', 'audience': 'work',
+                'status': 'pending', **extra}
+    state._write_state(lambda data: data.update(drafts={
+        'draft-1': row('draft-1', style=['not-x-but-y', 'stock-word']), 'draft-2': row('draft-2')}),
+        root, reserved=False)
+    decisions = workspace.day_dir(root) / 'decisions'
+    decisions.mkdir()
+    (decisions / 'D-1.md').write_text(VALID.replace('records the failure.', text))
+    (decisions / 'D-2.md').symlink_to(decisions / 'D-1.md')
+    assert metrics.collect(root)['ai_tells'] == {'draft-1': 2, 'D-1': 2}
+    (decisions / 'D-2.md').unlink()
+    evidence = workspace.day_dir(root) / 'retro/role.json'
+    evidence.parent.mkdir()
+    note = {'agent_id': 'builder-1', 'agent_type': 'builder', 'missing': [], 'invalid': [],
+            'fields': {'Blocked': 'none', 'Gap': 'none', 'Change': 'none'}}
+    evidence.write_text(json.dumps(note))
+    state.append_event('retro.captured', {**note, 'evidence': evidence.relative_to(root).as_posix()}, root)
+    retro_text = retro.compile(root).read_text()
+    assert json.loads(retro_text.split('## Metrics\n')[1].splitlines()[0])['ai_tells'] == {'draft-1': 2, 'D-1': 2}
+    (root / '.wuwei/config.toml').write_text('[owner.verbosity]\nreport = "standard"\n')
+    lines = report.build(root).splitlines()
+    assert json.loads(lines[lines.index('## Process metrics') + 1])['ai_tells'] == {'draft-1': 2, 'D-1': 2}

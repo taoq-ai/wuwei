@@ -32,6 +32,9 @@ name = ""
 pronouns = ""
 handles = [] # Bare chat IDs and code-host handles, e.g. "U12345", "pat-dev".
 # timezone = "Europe/Amsterdam" # IANA zone for quality hour bands and rotate_after.clock; empty is this machine's zone.
+[owner.verbosity]
+default = "brief" # brief, standard or full: how much decisions, the digest, nudges, the DM and the report say to you.
+# dm = "" # Per surface: decisions, digest, nudges, dm or report. Empty uses default.
 
 [host]
 free_memory_mb = 1024 # Nonnegative free-memory floor in MiB.

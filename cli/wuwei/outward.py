@@ -22,6 +22,27 @@ REVIEW_REQUEST = re.compile(
     r'((?:<@[A-Z0-9]+>(?: |$))+)')
 
 
+# Structural tells from the humanizer skill (MIT, 3.1.0). A hit is a style finding, never a refusal.
+TELLS = tuple((name, re.compile(pattern, re.IGNORECASE)) for name, pattern in (
+    ('not-x-but-y', r"\bnot (?:just|only|merely) [^.\n]{1,80}?\bbut\b|\bit['\u2019]?s not [^.\n]{1,60}?[,;] it['\u2019]?s\b"),
+    ('closer', r"\b(?:that is the real win|that distinction matters|read that again|let that sink in|the message was clear)\b"),
+    ('run-up', r"\b(?:let['\u2019]?s dive in|let['\u2019]?s break (?:this|it) down|here['\u2019]?s what you need to know|here['\u2019]?s the thing|without further ado)\b"),
+    ('saying', r"\b(?:at its core|the real question is|what really matters|the heart of the matter)\b"),
+    ('dash', r"\u2013| -- "),
+    ('inflation', r"\b(?:plays? an? (?:key|crucial|vital) role|evolving landscape|setting the stage for|lasting legacy|the future looks bright)\b"),
+    ('sales', r"\b(?:groundbreaking|breathtaking|nestled|renowned|must-visit|stunning|diverse array)\b"),
+    ('stock-word', r"\b(?:delv(?:e|es|ed|ing)|tapestry|testament|showcas(?:e|es|ed|ing)|pivotal|meticulous(?:ly)?|intricate|intricacies|vibrant|garner(?:s|ed)?|bolstered|interplay)\b"),
+    ('bold-label', r"(?m)^\s*(?:[-*]|\d+\.)\s+\*\*[^*\n]+\*\*"),
+    ('chat-leftover', r"\b(?:i hope this helps|great question|you['\u2019]?re absolutely right|let me know if|would you like me to)\b|\b(?:certainly|of course)!"),
+))
+
+
+def tells(text):
+    """Names of the tells in text, each kind once, in table order; inline code is not prose."""
+    text = re.sub(r'`[^`\n]*`', '', text)
+    return [name for name, pattern in TELLS if pattern.search(text)]
+
+
 # ponytail: cross-script confusables remain distinct; add a Unicode confusable table if needed.
 def _normalize(text):
     return ''.join(c for c in unicodedata.normalize('NFKD', text)

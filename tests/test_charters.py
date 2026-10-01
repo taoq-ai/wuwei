@@ -169,3 +169,17 @@ def test_never_auto_path_flag_scope():
     assert "Infrastructure, secret, schema and migration paths force FULL and set `trust_surface`" in lead
     assert "Other never-auto paths route to the owner" in lead
     assert "A diff on a configured never-auto path forces FULL" not in lead
+
+
+def test_writing_for_a_person_names_the_humanizer_and_carries_the_checklist():
+    from wuwei import outward
+    body = (CHARTERS / "_common-authoring.md").read_text(encoding="utf-8")
+    section = "## Writing for a person" + body.split("## Writing for a person", 1)[1].split("\n## ", 1)[0]
+    assert "`humanizer`" in section and "embedded mode" in section
+    assert [int(line.split(".")[0]) for line in section.splitlines() if re.match(r"\d+\. ", line)] == list(range(1, 11))
+    assert "\u2014" not in section and outward.tells(section) == []
+    for role in ("planner", "lead", "builder", "sentinel-arch", "sentinel-quality", "sentinel-security",
+                 "sentinel-goal", "shepherd", "steward"):
+        assert section.strip() in (ROOT / "agents" / f"{role}.md").read_text(encoding="utf-8"), role
+    skill = (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
+    assert all(phrase in skill for phrase in ("humanizer", "decision show", "Writing for a person"))

@@ -107,3 +107,25 @@ def test_digest_cooldown_crosses_midnight(tmp_path, monkeypatch):
     assert watch.digest(root, workspace.load_config(root)) == 0
     assert len(calls) == 2
 
+
+
+def test_digest_lines_follow_the_digest_verbosity(tmp_path, monkeypatch):
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00+00:00')
+    sent = []
+
+    class Chat:
+        def dm(self, text, *, root=None):
+            sent.append(text)
+            return Result(0, {})
+
+    monkeypatch.setattr(registry, 'load', lambda kind, config: Chat())
+    for level in ('', '[owner.verbosity]\ndigest = "full"\n'):
+        (root / '.wuwei/config.toml').write_text(level)
+        state._write_state(lambda data: data.update(watch={}, decision_outcomes={
+            'D-1': {'option': 'A', 'decided_by': 'seat', 'reversibility': 'two-way'},
+            'D-2': {'option': 'B', 'decided_by': 'seat', 'reversibility': 'two-way'}}), root, reserved=False)
+        assert watch.digest(root, workspace.load_config(root)) == 0
+    assert sent == ['Two-way decisions taken:\n- D-1: A\n- D-2: B\n',
+                    'Two-way decisions taken:\n- D-1: A (decisions/D-1.md)\n- D-2: B (decisions/D-2.md)\n']

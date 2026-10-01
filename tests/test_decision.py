@@ -665,3 +665,95 @@ def test_agent_tool_cannot_invoke_owner_outcome(ws, command, expected):
 def test_answered_reads_only_owner_outcomes(data, expected):
     from wuwei import decision
     assert decision.answered(data, 'D-1') == expected
+
+
+def template():
+    from contextlib import redirect_stdout
+    from argparse import Namespace
+    from wuwei.commands.decision import run
+    out = io.StringIO()
+    with redirect_stdout(out):
+        run(Namespace(action='template'))
+    return out.getvalue()
+
+
+THREE = VALID.replace('| B | Defer until tomorrow |', '| B | Defer until tomorrow |\n| C | Rewrite it |').replace(
+    '| Criterion | A | B |\n| --- | --- | --- |\n| Safe | pass | pass |',
+    '| Criterion | A | B | C |\n| --- | --- | --- | --- |\n| Safe | pass | pass | fail |').replace(
+    '| Criterion | Weight | A | B |\n| --- | --- | --- | --- |\n| Correctness | 10 | 8 | 2 |\n| Speed | 2 | 3 | 5 |',
+    '| Criterion | Weight | A | B | C |\n| --- | --- | --- | --- | --- |\n'
+    '| Correctness | 10 | 8 | 2 | 9 |\n| Speed | 2 | 3 | 5 | 1 |')
+
+
+def test_present_brief():
+    from wuwei import decision
+    fields, _ = decision.evaluate(template())
+    assert decision.present('D-3', fields, 'brief').splitlines() == [
+        'D-3: Which option should we take?', 'A: Make the scoped change (score 80)',
+        'B: Defer until more evidence exists (score 20)', 'Recommended: A, ahead of B on Outcome.']
+    fields, _ = decision.evaluate(THREE)
+    assert decision.present('D-3', fields, 'brief').splitlines() == [
+        'D-3: Which fix?', 'A: Implement fix (score 86)', 'B: Defer until tomorrow (score 30)',
+        'C: Rewrite it (score 92, fails a must)', 'Recommended: A, ahead of B on Correctness.']
+    only = VALID.replace('| Safe | pass | pass |', '| Safe | pass | fail |')
+    assert decision.present('D-3', decision.evaluate(only)[0], 'brief').splitlines()[-1] == (
+        'Recommended: A, the only option that passes every must.')
+    tied = VALID.replace('| 8 | 2 |', '| 2 | 2 |').replace('| 3 | 5 |', '| 5 | 5 |')
+    assert decision.present('D-3', decision.evaluate(tied)[0], 'brief').splitlines()[-1] == (
+        'Recommended: A, tied with B on score.')
+
+
+def test_present_standard():
+    from wuwei import decision
+    fields, _ = decision.evaluate(VALID.replace('Context: tests', 'Context:\n\ntests')
+                                  + '\n## Notes\nOnly here.')
+    brief = decision.present('D-3', fields, 'brief').splitlines()
+    standard = decision.present('D-3', fields, 'standard').splitlines()
+    assert standard == brief + [
+        'Context: tests/test_example.py records the failure.',
+        'Confidence: high. Reversibility: two-way.', 'Blast radius: own branch',
+        'Pre-mortem: Regression returns.', 'Revisit: Regression returns.']
+
+
+def test_decision_show(ws, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    from wuwei import decision
+    from wuwei.workspace import day_dir
+    monkeypatch.chdir(ws)
+    path = save(ws)
+    fields, _ = decision.evaluate(VALID)
+    assert main(['decision', 'show', 'D-3']) == 0
+    out = capsys.readouterr().out
+    assert out == decision.present('D-3', fields, 'brief') + '\nFull record: wuwei decision show D-3 --full\n'
+    assert len(out.splitlines()) < 12
+    assert main(['decision', 'show', 'D-3', '--full']) == 0
+    assert capsys.readouterr().out == VALID
+    rich = VALID.replace('records the failure.', 'records the failure.\n```\nFAILED test_x\n```\n'
+                         '> Reviewer said: **do not merge**') + '## Notes\nEvidence: probe.log\n'
+    path.write_text(rich)
+    assert main(['decision', 'show', 'D-3', '--full']) == 0
+    assert capsys.readouterr().out == rich
+    path.write_text(VALID)
+    (ws / '.wuwei/config.toml').write_text('[owner.verbosity]\ndecisions = "standard"\n')
+    assert main(['decision', 'show', 'D-3']) == 0
+    assert capsys.readouterr().out.startswith(decision.present('D-3', fields, 'standard') + '\nFull record:')
+    path.write_text('Question: bad')
+    assert main(['decision', 'show', 'D-3']) == 1
+    assert 'missing fields' in capsys.readouterr().err
+    path.unlink()
+    assert main(['decision', 'show', 'D-3']) == 2
+    assert 'could not read' in capsys.readouterr().err
+    path.symlink_to(save(ws, name='D-4.md'))
+    assert main(['decision', 'show', 'D-3']) == 2
+    assert 'must belong to today' in capsys.readouterr().err
+    assert not (day_dir(ws) / 'events.jsonl').exists()
+
+
+def test_lint_reports_style_without_rejecting(ws):
+    from wuwei.decision import lint, lint_file
+    text = VALID.replace('records the failure.', 'records the failure. It is not just a fix but a rewrite; we delve into it.')
+    assert lint(text) == (0, 'OK: A (86)\nstyle: not-x-but-y, stock-word')
+    assert lint_file(save(ws, text)) == (0, 'OK: A (86)\nstyle: not-x-but-y, stock-word')
+    from wuwei.workspace import day_dir
+    assert not (day_dir(ws) / 'events.jsonl').exists()
+    assert lint(template()) == (0, 'OK: A (80)')

@@ -127,7 +127,9 @@ def test_config_defaults_and_independence(tmp_path):
             'project_file': '.mcp.json', 'plugins_file': '~/.claude/plugins/installed_plugins.json',
             'user_file': '~/.claude.json'}},
         'security': {'required': False},
-        'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': ''}, 'repos': [], 'cap': 1,
+        'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
+            'default': 'brief', 'decisions': '', 'digest': '', 'nudges': '', 'dm': '', 'report': ''}},
+        'repos': [], 'cap': 1,
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'}},
@@ -282,6 +284,25 @@ def test_owner_zone(tmp_path):
     write_config(tmp_path, '[owner]\ntimezone = "Mars/Base"\n')
     with pytest.raises(ValueError, match='owner.timezone'):
         zone(load_config(tmp_path))
+
+
+def test_owner_verbosity(tmp_path):
+    from wuwei import workspace
+    write_config(tmp_path, '')
+    config = workspace.load_config(tmp_path)
+    assert config['owner']['verbosity'] == {'default': 'brief', 'decisions': '', 'digest': '',
+                                            'nudges': '', 'dm': '', 'report': ''}
+    write_config(tmp_path, '[owner.verbosity]\ndefault = "full"\ndm = "brief"\n')
+    config = workspace.load_config(tmp_path)
+    assert workspace.verbosity(config, 'dm') == 'brief'
+    assert workspace.verbosity(config, 'report') == 'full'
+    for text in ('default = "short"', 'dm = "loud"', 'retro = "full"'):
+        write_config(tmp_path, f'[owner.verbosity]\n{text}\n')
+        with pytest.raises(workspace.ConfigError):
+            workspace.load_config(tmp_path)
+    (tmp_path / '.wuwei/config.toml').write_text(
+        (ROOT / 'templates/workspace/config.toml').read_text(encoding='utf-8'), encoding='utf-8')
+    assert workspace.load_config(tmp_path)['owner']['verbosity']['default'] == 'brief'
 
 
 def test_solo_owner_min_reviewers_zero(tmp_path):

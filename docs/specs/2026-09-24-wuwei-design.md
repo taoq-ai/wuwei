@@ -1081,10 +1081,13 @@ code host.
   replies when the owner is outside the Claude app. The listener parses replies such as
   "approve D-3", "option B on D-5" or "drop it" into decision answers; an unparseable reply is
   echoed back with the options, never guessed.
-- Escalations over a messaging adapter carry a one-line summary, the decision id and the
-  options only. Detail stays in the workspace. Whether workspace content may leave the
-  approved tools at all is the workspace owner's policy call, recorded in `config.toml`
-  (`control_plane.content = "summary" | "none"`), default `summary`.
+- Escalations over a messaging adapter carry the decision at the owner's `owner.verbosity.dm`
+  level: the id, the question, the options with scores and the reason for the recommendation
+  at `brief`, more fields at `standard`, the whole record at `full`. A `more D-n` reply sends
+  the whole record. Whether workspace content may leave the approved tools at all is the
+  workspace owner's policy call, recorded in `config.toml`
+  (`control_plane.content = "summary" | "none"`), default `summary`. `summary` permits the
+  `dm` level text and the `more D-n` reply; `none` sends only the id and the option letters.
 - Responder default for remote operation: every non-mechanical reply and every proactive post
   is a draft delivered to the control plane for approve, edit or drop. Auto-send is limited
   to acknowledgements in channels marked internal; channels marked external (client-facing)
