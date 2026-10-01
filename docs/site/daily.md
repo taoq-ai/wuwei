@@ -117,4 +117,9 @@ The planner runs `wuwei retro` and `wuwei close --check retro`, writes the repor
 holds the session until close is clean. Check the day at any time with
 `bin/wuwei status --line`.
 
+Inside a session, ask Claude for the board, or call the plugin's `wuwei_board` tool. It
+shows items by phase with gate verdicts, owned PRs and what they wait on, pending decisions
+and pages and nudges as tables, and renders the cockpit inline where the host renders MCP
+Apps. It is read-only: answering a decision or approving a draft stays a CLI owner action.
+
 Anything not on this page is recovery, not daily use: see [recovery](recovery.html).

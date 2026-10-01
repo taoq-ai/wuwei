@@ -69,6 +69,15 @@ def test_dashboard_serves_in_memory_without_writing_day(workspace, monkeypatch, 
     assert {p.relative_to(day): p.read_bytes() for p in day.rglob('*') if p.is_file()} == before
 
 
+def test_board_snapshot_and_template_are_shared(workspace):
+    from wuwei.commands import dashboard
+    day = workspace / '.wuwei/days/2026-09-28'
+    assert dashboard.board_snapshot(day) == {
+        'phases': ['planned', 'spec', 'implement', 'gate', 'fix', 'delta', 'raised', 'merged'],
+        'build_phases': ('spec', 'implement', 'fix'), 'cap': 3}
+    assert dashboard.TEMPLATE == ROOT / 'templates/dashboard.html'
+
+
 def test_http_allows_only_board_resources_and_loopback_host(workspace):
     from io import BytesIO
     from wuwei.commands.dashboard import DayHandler

@@ -63,7 +63,14 @@ const STALE_MS = 15 * 60 * 1000, POLL_MS = 5000;
 const esc = value => String(value ?? "").replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 
+// Set by an MCP Apps host: the tool result's structuredContent, keyed by fetch path.
+let embedded = null;
+
 async function get(path) {
+  if (embedded) {
+    if (typeof embedded[path] !== "string") throw new Error(path + " missing");
+    return embedded[path];
+  }
   const response = await fetch(path + "?t=" + Date.now());
   if (!response.ok) throw new Error(path + " " + response.status);
   return response.text();
@@ -193,7 +200,26 @@ async function tick() {
     document.getElementById("error").textContent = "Load failed: " + error.message;
   }
 }
-tick(); setInterval(tick, POLL_MS);
+if (globalThis.window && window.parent !== window) {
+  // MCP Apps bridge: render from the wuwei_board tool result, only from the host frame.
+  window.addEventListener("message", event => {
+    const message = event.data;
+    if (event.source !== window.parent || message?.jsonrpc !== "2.0") return;
+    if (message.id === 1 && message.result)
+      window.parent.postMessage({jsonrpc: "2.0", method: "ui/notifications/initialized", params: {}}, "*");
+    const content = message.params?.structuredContent;
+    if (message.method === "ui/notifications/tool-result" && content && typeof content === "object") {
+      embedded = content;
+      tick();
+    }
+  });
+  window.parent.postMessage({jsonrpc: "2.0", id: 1, method: "ui/initialize", params: {
+    protocolVersion: "2026-01-26", appInfo: {name: "wuwei-board", version: "1"},
+    appCapabilities: {availableDisplayModes: ["inline"]}}}, "*");
+} else {
+  tick();
+}
+setInterval(tick, POLL_MS);
 </script>
 </body>
 </html>

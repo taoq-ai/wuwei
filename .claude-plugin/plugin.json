@@ -5,5 +5,16 @@
   "author": {
     "name": "TaoQ AI Labs"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "mcpServers": {
+    "cockpit": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/wuwei",
+      "args": [
+        "board"
+      ],
+      "env": {
+        "CLAUDE_PROJECT_DIR": "${CLAUDE_PROJECT_DIR}"
+      }
+    }
+  }
 }

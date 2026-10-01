@@ -240,6 +240,10 @@ After the morning gate, sweeps and qualifying seat-free events save new discover
 register them through `scanner.mcp`. Set `adapters.scanner = "ziran"` to use ZIRAN
 0.39.0 or newer. Missing tools or the `none` adapter are unmeasured when servers
 are attached. No attached servers is a clean empty registry.
+WUWEI declares its own read-only board server in the signed
+`.claude-plugin/plugin.json`, which the integrity check covers, so it is not a
+registry file. A `.mcp.json` added to the install, or one in a workspace or repo,
+is discovered and checked like any other.
 
 `scanner.mcp.project_file` defaults to `.mcp.json` in the workspace and each
 configured repo. `scanner.mcp.plugins_file` defaults to

@@ -427,6 +427,8 @@ def test_release_package_covers_every_shipped_file(tmp_path, monkeypatch):
     assert archive.is_file() and calls
     stage = tmp_path / 'release/wuwei'
     names = set(api.inventory(stage))
+    assert {'.claude-plugin/plugin.json', 'cli/wuwei/commands/board.py'} <= names
+    assert '.mcp.json' not in names
     for directory in ('cli', 'adapters', 'hooks', 'charters', 'skills', 'agents', 'templates', 'keys', 'bin', '.claude-plugin'):
         assert any(n.startswith(directory + '/') for n in names)
     lines = (stage / api.MANIFEST).read_text().splitlines()
