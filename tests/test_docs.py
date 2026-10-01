@@ -185,7 +185,7 @@ def test_host_terminal_actions_and_morning_references():
     for text in (reference, concepts):
         assert 'Host terminal actions' in text
         for command in ('decision outcome', 'state recover', 'integrity reconfirm', 'mcp decide',
-                        'drafts approve', 'watch uninstall', 'listen uninstall'):
+                        'drafts approve', 'watch uninstall', 'listen uninstall', 'config promote'):
             assert command in text
     for phrase in ('run it in a host terminal', 'no plan yet', 'proposal.json', 'pr raise',
                    '--base', '--title', '--body-file', '--item'):
@@ -236,6 +236,18 @@ def test_guard_boundaries_are_stated_once():
     for phrase in ('What a real day must prove', 'live rehearsal', 'unmeasured, never a pass'):
         assert phrase in testing, phrase
     assert 'design reconsideration recorded in its spec' in constitution and '#222' in constitution
+
+
+def test_calibration_is_documented_between_configure_and_plan():
+    daily = (SITE / 'daily.md').read_text()
+    for phrase in ('bin/wuwei calibrate', 'bin/wuwei config promote', 'calibration.md'):
+        assert phrase in daily, phrase
+    assert daily.index('bin/wuwei calibrate') < daily.index('/wuwei plan')
+    configuration = (SITE / 'configuration.md').read_text()
+    section = configuration.split('\n## Calibration\n', 1)[1].split('\n## ', 1)[0]
+    for phrase in ('.wuwei/calibration.json', 'calibration.drift', 'config promote',
+                   'instruction-like', 'edit by hand'):
+        assert phrase in section, phrase
 
 
 RECOVERY = ('state transition', 'runtime dispatch', 'runtime continue', 'integrity reconfirm')

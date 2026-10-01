@@ -449,5 +449,45 @@
       "number": 8,
       "url": "https://github.com/acme/widget/pull/8"
     }
+  },
+  {
+    "operation": "merged_prs",
+    "args": [
+      "acme/widget"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "api",
+          "graphql",
+          "--input",
+          "-",
+          "--hostname",
+          "github.com"
+        ],
+        "input": {
+          "query": "query($o:String!,$r:String!){repository(owner:$o,name:$r){pullRequests(states:MERGED,first:30,orderBy:{field:CREATED_AT,direction:DESC}){nodes{additions deletions createdAt mergedAt}}}}",
+          "variables": {
+            "o": "acme",
+            "r": "widget"
+          }
+        },
+        "stdout": "{\"data\": {\"repository\": {\"pullRequests\": {\"nodes\": [{\"additions\": 10, \"deletions\": 2, \"createdAt\": \"2026-09-28T10:00:00Z\", \"mergedAt\": \"2026-09-28T14:00:00Z\"}, {\"additions\": 200, \"deletions\": 40, \"createdAt\": \"2026-09-27T09:00:00Z\", \"mergedAt\": \"2026-09-28T09:00:00Z\"}]}}}}"
+      }
+    ],
+    "data": [
+      {
+        "additions": 10,
+        "deletions": 2,
+        "created_at": "2026-09-28T10:00:00Z",
+        "merged_at": "2026-09-28T14:00:00Z"
+      },
+      {
+        "additions": 200,
+        "deletions": 40,
+        "created_at": "2026-09-27T09:00:00Z",
+        "merged_at": "2026-09-28T09:00:00Z"
+      }
+    ]
   }
 ]

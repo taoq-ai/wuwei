@@ -50,3 +50,6 @@ class Fake(Recorder):
 
     def token_scopes(self, variable, root=None):
         return self._call('token_scopes', (variable,), root)
+
+    def merged_prs(self, repo, root=None):
+        return self._call('merged_prs', (repo,), root)

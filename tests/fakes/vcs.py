@@ -77,3 +77,6 @@ class Fake(Recorder):
 
     def workspace_changes(self, repo, root=None):
         return self._call('workspace_changes', (repo,), root)
+
+    def recent_commits(self, repo, root=None):
+        return self._call('recent_commits', (repo,), root)

@@ -56,6 +56,7 @@ EVENT_PRODUCERS = {
     'steward.notes': 'wuwei steward run', 'steward.run': 'wuwei steward run',
     'steward.due': 'wuwei hook PostToolUse',
     'steward.acknowledged': 'wuwei steward ack',
+    'calibration.drift': 'wuwei steward run',
 }
 
 

@@ -56,6 +56,8 @@ _OWNER_ACTIONS = {
     ('voice', 'edit'): 'Owner memory edits are an owner action on the host, outside agent tools.',
     # An acknowledged refusal stops paging, so a seat could silence an impostor alert.
     ('remote', 'ack'): 'Remote acknowledgements require the owner terminal, outside agent tools.',
+    # config.toml holds executed commands and merge eligibility; seats run wuwei promote.
+    ('config', 'promote'): 'Calibration promotion is an owner action on the host, outside agent tools.',
 }
 _OWNER_GROUPS = {group for group, _ in _OWNER_ACTIONS}
 _OWNER_VERBS = tuple(sorted({verb for _, verb in _OWNER_ACTIONS}))
@@ -172,7 +174,7 @@ def _protected_name(path, directories=False):
         if part != '.wuwei':
             continue
         tail = parts[index + 1:]
-        if tail in (('config.toml',), ('env',), ('security.json',), ('.gitignore',), ('merge.lock',), ('executable',)) or tail[:1] == ('generated',):
+        if tail in (('config.toml',), ('env',), ('security.json',), ('.gitignore',), ('merge.lock',), ('executable',), ('calibration.json',)) or tail[:1] == ('generated',):
             return True
         if tail[:1] in (('integrity',), ('.git',), ('ziran',), ('inbox',)):
             return True

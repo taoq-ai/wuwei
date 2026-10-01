@@ -181,6 +181,27 @@ audits (#36) remain deferred.
 
 The template also shows a `"release/*"` environment example. Add any actual environment register entries before using rules that depend on them. WUWEI does not deploy.
 
+## Calibration
+
+Run `bin/wuwei calibrate [--repo <name>]` after `init` and the basic `[[repos]]` entry (`name`, `path`, `default_branch`), and before the first plan. It reads each checkout and writes `.wuwei/days/<date>/calibration.md`; it never changes the checkout or `config.toml`. It exits 0 clean, 1 when it flagged text and 2 when it could not run or a read was unmeasured.
+
+| Detector | Reads | Proposes |
+| --- | --- | --- |
+| Toolchain | `pyproject.toml`, `pytest.ini`, `package.json`, `Cargo.toml`, `go.mod`, `Makefile` | `repos.fast_checks` from a fixed command table, never a command copied from the repository |
+| CI checks | `.github/workflows/*.yml` run on `pull_request` | `repos.review_required_checks`: job names, one per leg of a single inline matrix, without `continue-on-error: true` jobs |
+| Conventions | `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `.specify/memory/constitution.md`, `CODEOWNERS`, PR and issue templates | charter blocks for the builder and the quality sentinel; `[boundary]` candidates from `CODEOWNERS` |
+| Deploy signals | workflows run on a push to the default branch, tags or a release that use an environment, a deploy or release action, or a deploy command; deploy `Makefile` targets and `package.json` scripts; infrastructure directories | `deploy.workflows`, `[environments]`, `deploy.deny`, `repos.merge_deploys = true`, `repos.merge.never_auto_paths` |
+
+It also reads the last 100 commit subjects for the commit style and the last 30 merged pull requests for a size and cycle time baseline, which the steward gets as advisory input.
+
+The proposal is additive. A key absent from `config.toml` is added, and `deploy.workflows` or `deploy.deny` still at a one-line `[]` is replaced. A key you already set is never changed: the report lists it under "config differs; edit by hand". Calibration never proposes `merge_deploys = false` or `merge.auto`.
+
+Repository text is data. A file with instruction-like text, such as a line telling an agent to ignore its instructions, contributes nothing; the report names its file, line and rule without quoting it. Job, environment and owner names outside a safe character set are reported as unsafe and dropped.
+
+`bin/wuwei config promote` is a host terminal action. It recomputes the proposal, prints the diff and the calibration it will record, asks you to type a digest, then writes `config.toml` and `.wuwei/calibration.json`. Agent tools are refused both. The charter blocks land through `bin/wuwei promote`.
+
+On each sweep the steward compares the fast checks, CI check names and deploy signals with `.wuwei/calibration.json` and records one `calibration.drift` nudge per change per day. Run `bin/wuwei calibrate` and `bin/wuwei config promote` again to approve the new state.
+
 ## Outward text and outbound tiers
 
 | Key | Default | Meaning |
