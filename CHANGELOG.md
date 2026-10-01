@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.10.0](https://github.com/taoq-ai/wuwei/compare/v0.9.0...v0.10.0) (2026-10-01)
+
+
+### Features
+
+* **listener:** GitHub events reach the planner and the owner without the owner relaying them: faster PR polling, precise wakes, headless shepherd on change, DM nudges ([#299](https://github.com/taoq-ai/wuwei/issues/299)) ([56e9107](https://github.com/taoq-ai/wuwei/commit/56e9107368c34c430804140daa91b78b29dfb05c)), closes [#297](https://github.com/taoq-ai/wuwei/issues/297)
+* **owner:** verbosity levels for everything the owner reads, and humanizer-checked text from seats and the CLI ([#305](https://github.com/taoq-ai/wuwei/issues/305)) ([cb459ce](https://github.com/taoq-ai/wuwei/commit/cb459ce7a4c59f5e1a7d415605f14ed526390c23)), closes [#303](https://github.com/taoq-ai/wuwei/issues/303)
+* **team:** mandate block in briefs, assume-and-record, time-boxed external waits, ask metrics, and a negotiation-loop nudge per work item ([#306](https://github.com/taoq-ai/wuwei/issues/306)) ([671f32a](https://github.com/taoq-ai/wuwei/commit/671f32a6202ec5c0e6534968711d017dd8d9643b)), closes [#302](https://github.com/taoq-ai/wuwei/issues/302)
+
 ## [0.9.0](https://github.com/taoq-ai/wuwei/compare/v0.8.0...v0.9.0) (2026-10-01)
 
 
