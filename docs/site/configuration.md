@@ -205,6 +205,28 @@ Repository text is data. A file with instruction-like text, such as a line telli
 
 On each sweep the steward compares the fast checks, CI check names and deploy signals with `.wuwei/calibration.json` and records one `calibration.drift` nudge per change per day. Run `bin/wuwei calibrate` and `bin/wuwei config promote` again to approve the new state.
 
+## Owner interview
+
+The interview asks a short, fixed set of questions about your own preferences. Each answer maps to a config key, a line in a charter override or a voice rule that already exists; nothing applies until you promote it. The questions live in one table, `cli/wuwei/interview.py`.
+
+| Question | Maps to |
+| --- | --- |
+| `merge` (per repository) | `repos.merge.auto` and `repos.merge.soak_minutes`; auto merge still needs `merge_deploys = false` declared |
+| `gates` (per repository) | `repos.gates.floor` |
+| `quiet` (per repository) | `repos.merge.quiet_hours` |
+| `interrupt`, `decisions`, `hours` | a line in `.wuwei/charters/planner.md`: when decisions interrupt you, how they are presented, your working hours and time zone |
+| `phone` | `control_plane.content` |
+| `avoid` | `- never:` phrases under `## shared` in `.wuwei/memory/voice.md`, which the outward lint enforces |
+| `formality`, `signature` | a line in `.wuwei/charters/shepherd.md` |
+| `risk` | a line in `.wuwei/charters/lead.md`: what else sets `trust_surface` |
+| `manual` | `deploy.deny` patterns for commands you always run yourself |
+
+Run `bin/wuwei calibrate --interview` in a host terminal to answer every question, or `bin/wuwei calibrate --interview merge` to answer one again; `--repo <name>` limits the per-repository questions to one repository. Without a terminal it exits 2. On the first day the plan skill asks the same questions as `Morning gate` widgets from `bin/wuwei calibrate --questions` and records each answer with `bin/wuwei calibrate --answer <id>=<choice or text>`. Free text is checked against the calibration character set and the instruction-like scan.
+
+Answers are recorded in `.wuwei/days/<date>/interview.json`, which only the CLI writes; answers not promoted that day are asked again. The charter and voice changes are written as proposals (`proposals/interview-<target>.json`): one `## Owner preferences (interview)` block per override, patched in place when you answer again. `bin/wuwei config promote` folds the config answers into the calibration proposal and lists them in the digest you confirm: an absent key is added, a one-line assignment is replaced, any other form is listed as "config differs; edit by hand". `deploy.deny` only grows. `bin/wuwei promote` lands the charter and voice proposals.
+
+When you merge three or more pull requests the merge policy routed to you within seven days and `merge.auto` is false for that repository, the steward retro proposes `repos.merge.auto = true` under `## Owner preferences` with the decisions as evidence and the command to ask again: `bin/wuwei calibrate --interview merge --repo <name>`. It never records an answer for you.
+
 ## Outward text and outbound tiers
 
 | Key | Default | Meaning |

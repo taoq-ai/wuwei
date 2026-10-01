@@ -91,7 +91,7 @@ def promote(args, confirm=None):
     """Owner action: recompute the calibration, show it, and apply it after a terminal digest."""
     import hashlib
     import json
-    from wuwei import calibrate, integrity, workspace
+    from wuwei import calibrate, integrity, interview, workspace
 
     try:
         root = workspace.find_workspace()
@@ -103,13 +103,16 @@ def promote(args, confirm=None):
         if not config['repos']:
             raise ValueError(calibrate.NO_REPOS)
         results = calibrate.survey(root, config, list(enumerate(config['repos'])), style=False)
-        text, diff, edits = calibrate.propose(raw, results)
+        answers = interview.load(root, config)
+        text, diff, edits = calibrate.propose(raw, results, interview.settings(answers, config))
         today = workspace.now().date().isoformat()
         snapshot = {r['repo']['name']: {**calibrate.drift_facts(r['facts']),
                                         'baseline': r['baseline'] or 'unmeasured', 'date': today}
                     for r in results}
         summary = (diff or 'No config.toml changes\n') + ''.join(
-            f'Config differs; edit by hand: {key}\n' for key, _, _ in edits) + ''.join(
+            f'Config differs; edit by hand: {key}\n' for key, _, _ in edits) + (
+            'Interview answers:\n' + ''.join(line + '\n' for line in interview.describe(answers, config))
+            if answers else '') + ''.join(
             f"Flagged {f['kind']}: {f['source']} ({f['value']})\n" for r in results
             for f in r['findings'] if f['kind'] in ('instruction_like', 'unsafe')) + (
             'Approved calibration for .wuwei/calibration.json:\n'

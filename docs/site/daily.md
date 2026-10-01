@@ -52,6 +52,12 @@ then run `bin/wuwei config promote` in a host terminal to apply the proposed `co
 additions, and `bin/wuwei promote` to land the proposed charter blocks. See
 [calibration](configuration.html#calibration).
 
+Then answer the owner interview once: `bin/wuwei calibrate --interview` in a host terminal
+asks how much merge autonomy you want, your gate floor, quiet and working hours, how
+decisions reach you, words to avoid and which commands you run by hand. Promote the answers
+the same way. If you skip it, `/wuwei plan` asks the same questions on the first day. See
+[owner interview](configuration.html#owner-interview).
+
 ## 3. Plan and the morning gate
 
 Run `/wuwei plan` in Claude Code. The planner registers its session

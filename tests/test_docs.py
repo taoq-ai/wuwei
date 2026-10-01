@@ -250,6 +250,21 @@ def test_calibration_is_documented_between_configure_and_plan():
         assert phrase in section, phrase
 
 
+
+def test_owner_interview_is_documented_next_to_calibration():
+    daily = (SITE / 'daily.md').read_text()
+    interview = daily.index('bin/wuwei calibrate --interview')
+    assert daily.index('bin/wuwei calibrate') < interview < daily.index('/wuwei plan')
+    configuration = (SITE / 'configuration.md').read_text()
+    assert configuration.split('\n## Calibration\n', 1)[1].split('\n## ', 1)[1].startswith('Owner interview\n')
+    section = configuration.split('\n## Owner interview\n', 1)[1].split('\n## ', 1)[0]
+    for phrase in ('calibrate --interview', '--questions', '--answer', 'interview.json', 'config promote',
+                   'wuwei promote', '--interview merge'):
+        assert phrase in section, phrase
+    skill = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+    for phrase in ('calibrate --questions', 'calibrate --answer', '.wuwei/charters/planner.md'):
+        assert phrase in skill, phrase
+
 RECOVERY = ('state transition', 'runtime dispatch', 'runtime continue', 'integrity reconfirm')
 
 
