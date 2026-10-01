@@ -148,10 +148,11 @@ def test_shepherd_settings_are_visible_in_template_and_site():
     page = (SITE / 'configuration.md').read_text()
     settings = tomllib.loads(template)['shepherd']
     for key in ('lead_login', 'authors', 'review_channel', 'review_gate_check',
-                'tie_commits', 'source_exclude', 'min_reviewers'):
+                'tie_commits', 'source_exclude', 'min_reviewers', 'autostart'):
         assert key in settings
         assert f'`shepherd.{key}`' in page
     assert settings['min_reviewers'] == 1
+    assert settings['autostart'] is False
     row = next(line for line in page.splitlines() if line.startswith('| `shepherd.min_reviewers`'))
     assert '`0`' in row.split('|')[3]
 
@@ -522,3 +523,15 @@ def test_hero_shows_the_current_day():
         classes = {name for attr in re.findall(r'class="([^"]+)"', text) for name in attr.split()}
         for name in classes - {'slow'}:
             assert f'.{name}' in reduced, (variant, name)
+
+
+def test_pr_events_are_documented():
+    configuration = (SITE / 'configuration.md').read_text()
+    row = next(line for line in configuration.splitlines() if line.startswith('| `pr.poll_seconds`'))
+    assert '30 s' in row
+    daily = ' '.join((SITE / 'daily.md').read_text().split())
+    for text in ('prs <n> changed', 'next turn', 'PR monitor'):
+        assert text in daily, text
+    remote = ' '.join((SITE / 'remote.md').read_text().split())
+    for text in ('If-None-Match', '`shepherd.autostart`', 'details are on the host', 'no webhooks'):
+        assert text in remote, text

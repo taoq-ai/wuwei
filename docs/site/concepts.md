@@ -144,7 +144,10 @@ See [sessions](reference.html#sessions) and [long sessions](daily.html#long-sess
 
 `bin/wuwei listen` polls the inbound source, such as a Slack DM, into the workspace inbox.
 The responder wakes the planner and handles commands only from the pinned owner, with a
-second factor where a command needs one. See [remote operation](remote.html) and
+second factor where a command needs one. While running it also probes raised and claimed
+PRs with conditional requests, sends each `pr.changed` summary to the DM and, with
+`shepherd.autostart = true`, starts a headless shepherd seat that never merges. See
+[remote operation](remote.html) and
 [running the listener](configuration.html#running-the-listener).
 
 ## Heartbeat

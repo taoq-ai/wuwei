@@ -1,5 +1,6 @@
 """Continuous supervision through ports and the shared synchronous writer."""
 
+from collections import Counter
 from datetime import timedelta
 import json
 import re
@@ -310,6 +311,66 @@ def snapshot(host, ref, root, *, measured=None):
     return {key: fingerprint(value) for key, value in fields.items()}
 
 
+def facts(measured):
+    """Body-free PR facts a summary can name: ids, authors, thread paths, check results."""
+    pr = measured['pr']
+    seen = {f'comment:{row["id"]}': [row.get('author') or '', '']
+            for row in measured['threads']['comments']}
+    for item in measured['threads']['threads']:
+        seen.update({f'thread:{row["id"]}': [row.get('author') or '', item.get('path') or '']
+                     for row in item['comments']})
+    seen.update({f'review:{row["id"]}': [row.get('author') or '', row['state']]
+                 for row in measured['reviews']})
+    return {'head': pr['head'], 'mergeable': pr['mergeable'], 'state': pr['state'],
+            'merged': pr.get('merged') is True,
+            'requested': sorted(pr['requested_reviewers'] + pr['requested_teams']),
+            'seen': seen,
+            'checks': {row['name']: row['conclusion'] if row['state'] == 'completed' else row['state']
+                       for row in measured['checks']}}
+
+
+PASSING = ('success', 'neutral', 'skipped', 'queued', 'in_progress', 'pending', 'waiting', 'requested')
+
+
+def summary(ref, before, after, fields):
+    """One line naming what changed; never a bare 'changed'."""
+    if fields == ['new'] or fields == ['gone']:
+        return f'PR {ref}: ' + ('now watched' if fields == ['new'] else 'no longer owned')
+    parts = []
+    if before is not None and after is not None:
+        if after['merged'] and not before['merged']:
+            parts.append('merged')
+        elif after['state'] == 'closed' and before['state'] != 'closed':
+            parts.append('closed')
+        if after['head'] != before['head']:
+            parts.append(f'new commits pushed (head {after["head"][:7]})')
+        if after['mergeable'] is False and before['mergeable'] is not False:
+            parts.append('conflicts with its base')
+        elif after['mergeable'] is True and before['mergeable'] is False:
+            parts.append('conflicts resolved')
+        new = [(key.split(':')[0], *value) for key, value in after['seen'].items()
+               if key not in before['seen']]
+        groups = Counter(row for row in new if row[0] != 'review')
+        for (surface, author, path), count in sorted(groups.items(), key=lambda pair: pair[0][0] != 'thread'):
+            noun = 'review comment' if surface == 'thread' else 'comment'
+            parts.append(f'{count} new {noun}{"s" if count > 1 else ""} by {author}'
+                         + (f' on {path}' if path else ''))
+        reviews = {'approved': 'approved by', 'changes_requested': 'changes requested by',
+                   'commented': 'review by'}
+        parts += [f'{reviews[state]} {author}' for surface, author, state in new
+                  if surface == 'review' and state in reviews]
+        for name, value in after['checks'].items():
+            old = before['checks'].get(name)
+            if value != old and value not in PASSING and value is not None:
+                parts.append(f'check {name} failed')
+            elif value == 'success' and old is not None and old not in PASSING:
+                parts.append(f'check {name} passed')
+        added = [login for login in after['requested'] if login not in before['requested']]
+        if added:
+            parts.append(f'review requested from {", ".join(added)}')
+    return f'PR {ref}: ' + ('; '.join(parts) or f'updated ({", ".join(fields)})')
+
+
 def poll(root):
     """Preserve the baseline on failure and persist changes before announcing wake."""
     started = workspace.now()
@@ -320,6 +381,11 @@ def poll(root):
             old = previous(root).get('prs')
         if old is not None and not isinstance(old, dict):
             raise ValueError('invalid PR baseline')
+        old_facts = saved(root).get('facts')
+        if old_facts is None:
+            old_facts = previous(root).get('facts', {})
+        if not isinstance(old_facts, dict):
+            raise ValueError('invalid PR facts')
         host, refs = owned(root, config)
     except ERRORS as exc:
         failures = saved(root).get('failures', 0) + 1
@@ -328,17 +394,20 @@ def poll(root):
         print(f'watch PR read failed ({failures}): {exc}', flush=True)
         return 2
 
-    current, unreadable = {}, False
+    current, new_facts, unreadable = {}, {}, False
     for ref in refs:
         try:
             from wuwei import pr_actions
             measured = evidence(host, ref, root)
             current[ref] = snapshot(host, ref, root, measured=measured)
+            new_facts[ref] = facts(measured)
             pr_actions.observe(root, host, ref, config, measured)
         except ERRORS as exc:
             unreadable = True
             if ref not in current and old is not None and ref in old:
                 current[ref] = old[ref]
+            if ref not in new_facts and ref in old_facts:
+                new_facts[ref] = old_facts[ref]
             state.append_event('watch: read-failed', {'pr': ref, 'reason': str(exc)}, root)
             print(f'watch PR read failed: {ref}: {exc}', flush=True)
     changes = {}
@@ -353,35 +422,54 @@ def poll(root):
                                       if old[ref].get(key) != current[ref][key])
     # Save the wake before the baseline so interruption cannot lose a change.
     if changes:
+        summaries = {ref: summary(ref, old_facts.get(ref), new_facts.get(ref), fields)
+                     for ref, fields in changes.items()}
         (ref, fields), *rest = changes.items()
-        mark_wake(root, prs=changes, kind='pr.changed', payload={'pr': ref, 'fields': fields})
+        mark_wake(root, prs=changes, summaries=list(summaries.values()), kind='pr.changed',
+                  payload={'pr': ref, 'fields': fields, 'summary': summaries[ref]})
         for ref, fields in rest:
-            state.append_event('pr.changed', {'pr': ref, 'fields': fields}, root)
-        for ref, fields in changes.items():
-            print(f'planner wake: {ref}: {", ".join(fields)}', flush=True)
-    save(root, {'prs': current, 'failures': 0,
+            state.append_event('pr.changed', {'pr': ref, 'fields': fields, 'summary': summaries[ref]}, root)
+        for text in summaries.values():
+            print(f'planner wake: {text}', flush=True)
+    save(root, {'prs': current, 'facts': new_facts, 'failures': 0,
                 'measured_at': None if unreadable else started.isoformat()})
     return 2 if unreadable else int(bool(changes))
 
 
-def mark_wake(root, *, prs=(), inbox=0, kind, payload):
-    """Merge into the planner wake; an unseen marker keeps its PRs and inbox count."""
+def mark_wake(root, *, prs=(), inbox=0, summaries=(), kind, payload):
+    """Merge into the planner wake; an unseen marker keeps its PRs, inbox count and summaries."""
     def mark(data):
         value = data.setdefault('watch', {})
         prior = previous(root) if 'wake' not in value else {}
         pending = value.get('wake', prior.get('wake'))
         seen = value.get('wake_seen_at', prior.get('wake_seen_at'))
-        if pending and not prs and inbox <= pending.get('inbox', 0):
+        if pending and not prs and not summaries and inbox <= pending.get('inbox', 0):
             return  # already covered: a listener restart must not wake twice
-        at, refs, count = workspace.now(), set(prs), inbox
+        at, refs, count, lines = workspace.now(), set(prs), inbox, list(summaries)
         if pending:
             at = max(at, obligations._time(pending['at']) + timedelta(microseconds=1))
             if seen != pending['at']:
                 refs.update(pending['prs'])
                 count = max(count, pending.get('inbox', 0))
+                lines = pending.get('summaries', []) + lines
+        # ponytail: last 20 summaries while unseen; a day-long idle planner reads the rest in nudges.
         value['wake'] = {'at': at.isoformat(), 'prs': sorted(refs),
-                         **({'inbox': count} if count else {})}
+                         **({'inbox': count} if count else {}),
+                         **({'summaries': lines[-20:]} if lines else {})}
     state._write_state(mark, root, reserved=False, kind=kind, payload=payload)
+
+
+def poll_prs(root):
+    """One full PR read and merge reconcile: the shared step of the watch and the listener."""
+    from wuwei import merge
+    result = max(poll(root), merge.poll(root))
+    save(root, {'poll_at': workspace.now().isoformat()})
+    return result
+
+
+def listening(root):
+    """A live listener owns PR polling; the watch polls only without one."""
+    return health(root, name='listen') == (0, '')
 
 
 def tick(root):
@@ -399,10 +487,8 @@ def tick(root):
             old_health = health(root)
     from wuwei import heartbeat
     result = max(result, heartbeat.beat(root))
-    if due('poll_at', config['pr']['poll_seconds']):
-        from wuwei import merge
-        result = max(result, poll(root), merge.poll(root))
-        save(root, {'poll_at': now.isoformat()})
+    if due('poll_at', config['pr']['poll_seconds']) and not listening(root):
+        result = max(result, poll_prs(root))
     if old_health[0] == 1 or due('sweep_at', config['watch']['sweep_seconds']):
         result = max(result, sweep(root, watch_health=old_health))
         save(root, {'sweep_at': now.isoformat(), 'activity_at': now.isoformat()})
@@ -497,10 +583,13 @@ def wake(root, *, consume=False):
     count = value.get('inbox', 0)
     if type(count) is not int or count < 0:
         raise ValueError('invalid inbox wake')
-    if not refs and not count:
+    lines = obligations._list(value.get('summaries', []))
+    if not all(isinstance(line, str) and line for line in lines):
+        raise ValueError('invalid wake summaries')
+    if not refs and not count and not lines:
         raise ValueError('empty planner wake marker')
-    message = f'planner wake ({value["at"]}): ' + ', '.join(
-        refs + ([f'inbox to line {count}'] if count else []))
+    message = '\n'.join([*lines, f'planner wake ({value["at"]}): ' + ', '.join(
+        refs + ([f'inbox to line {count}'] if count else []))])
     if consume:
         def acknowledge(data):
             nonlocal message

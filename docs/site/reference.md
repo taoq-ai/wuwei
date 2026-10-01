@@ -34,7 +34,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei index` | Generates the memory index. | [Concepts](concepts.html#memory) |
 | `bin/wuwei init` | Creates or upgrades a workspace. | [Daily path](daily.html) |
 | `bin/wuwei integrity` | Checks signed plugin integrity; `reconfirm` pins a development checkout. | [Recovery](recovery.html#integrity-reconfirm) |
-| `bin/wuwei listen` | Polls the inbound source into the workspace inbox. | [Remote](remote.html) |
+| `bin/wuwei listen` | Polls the inbound source into the workspace inbox and probes raised and claimed PRs. | [Remote](remote.html) |
 | `bin/wuwei mcp` | Checks the attached MCP servers; `decide` records the owner's answer. | [MCP registry checks](configuration.html#mcp-registry-checks-s3) |
 | `bin/wuwei memory` | Checks workspace memory. | [Concepts](concepts.html#memory) |
 | `bin/wuwei merge` | Checks or merges an eligible PR. | [Retro and merge](#retro-and-merge-configuration) |
@@ -150,6 +150,8 @@ Before the morning gate is approved, including before today's `state.json` exist
 `watch unmeasured`: the clock cannot be read or is in the future; one nudge. The same health appears in `bin/wuwei nudges`, at session start and in sweeps. A running watch adds nothing to the line.
 
 When one or more registered sessions are live, the line adds `sessions N` before the reply and meeting parts, and `status --json` carries `sessions`.
+
+When raised or claimed PRs changed since the planner last saw a wake, the line adds `prs N changed`, cleared by the next `session: wake-seen`, and `status --json` carries `prs_changed`.
 
 ## Heartbeat
 

@@ -205,12 +205,31 @@ the listener is installed and wrote none today. The same rule drives the status 
 when the clock cannot be read, `listen off` when the listener has not run today, and
 nothing while it is alive.
 
+While it runs, the listener also takes over PR polling from the watch. Every tick (at most
+30 s apart) it sends conditional requests (`If-None-Match` with the last ETag) for each
+raised or claimed PR, its check runs and its statuses. An unchanged PR costs no event and
+no rate limit; a change, a failed probe or a full read older than `pr.poll_seconds` runs
+the full read at once. Each `pr.changed` reaches your DM once with its summary, for example
+`PR owner/repo#12: check test (3.11) failed.`, followed by what the shepherd starts or
+`Shepherd autostart is off; nothing started.` With `control_plane.content = "none"` the DM
+is the fixed update line. A summary the outward lint refuses becomes
+`PR #12 changed; details are on the host.`
+
+With `shepherd.autostart` set to `true`, the listener tries one headless shepherd
+seat per mechanical PR state (a launch the guard refuses is not retried until the state
+changes): a logged brief, the seat launch guard (memory floor,
+`host.seats`, MCP gate) and one headless Claude Code turn registered with role `shepherd`.
+It rebases a conflicted PR and runs the fast checks, opens the fix round brief for red CI,
+answers review threads with drafts and re-requests a stale review. It never merges, and
+every post it makes is a draft. The PreToolUse hook enforces the role: under a shepherd seat
+it refuses any command that mentions `merge` or changes a `WUWEI_` variable. The planner's next turn names the result.
+
 Kill switches, strongest last:
 
 1. `stop all` from the DM (section 6) stops remote sessions.
 2. `responder.enabled = false` in `config.toml` takes effect at the next poll: messages
-   are still stored, no command is handled and the planner is not woken. Stored commands
-   are handled once it is back on.
+   are still stored, no command is handled, no PR change reaches the DM, no shepherd
+   starts and the planner is not woken. Stored commands are handled once it is back on.
 3. `bin/wuwei listen uninstall` in a host terminal stops polling. Agent tools cannot run it.
 
 ## 6. Commands from the DM
@@ -339,4 +358,8 @@ use your own remote shell to the host, for example SSH. See
   budget governor and no owner quiet hours. `listen dead` at session start and in
   `status --line` are the listener's liveness signals, seen only on the host; the off-host
   signal is the watch heartbeat's dead-man ping (`watch.ping_url`, see the reference).
-- Thread replies are not read, and a turn blocks the listener poll while it runs.
+- Thread replies are not read, and a turn blocks the listener poll while it runs; so does
+  a shepherd turn, one per tick.
+- PR events arrive by polling with conditional requests: no webhooks or tunnels in this
+  version. An idle interactive planner learns of a PR change at its next turn; the DM and
+  the shepherd seat cover the gap.

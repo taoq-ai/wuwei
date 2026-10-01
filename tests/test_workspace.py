@@ -150,7 +150,7 @@ def test_config_defaults_and_independence(tmp_path):
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
             'shepherd': {'review_channel': '', 'lead_login': '', 'review_gate_check': 'Review Gate',
                          'min_reviewers': 1,
-                         'author_windows_days': [90, 180], 'tie_commits': 2,
+                         'author_windows_days': [90, 180], 'tie_commits': 2, 'autostart': False,
                      'source_exclude': ['specs/*', '*.lock', '*lock.json', '*.generated.*', 'generated/*'],
                      'authors': {}},
         'retro': {'repo': '.', 'charter_paths': ['.wuwei/charters'],
@@ -753,3 +753,11 @@ def test_config_missing_is_the_offline_check(tmp_path, monkeypatch, text, expect
         monkeypatch.delenv(name, raising=False)
     write_config(tmp_path, text)
     assert missing(load_config(tmp_path)) == expected
+
+
+def test_shepherd_autostart_defaults_off(tmp_path):
+    from wuwei.workspace import load_config
+    write_config(tmp_path, '')
+    assert load_config(tmp_path)['shepherd']['autostart'] is False
+    write_config(tmp_path, '[shepherd]\nautostart = true')
+    assert load_config(tmp_path)['shepherd']['autostart'] is True

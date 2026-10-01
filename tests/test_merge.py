@@ -799,3 +799,18 @@ def test_light_item_merge_evidence_lists_quality_only(case):
     result = check(case)
     assert result.exit == 0, result
     assert [row['path'] for row in result.data['verdicts']] == [record['file']]
+
+
+def test_shepherd_seat_never_merges(case, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    root, host = case
+    monkeypatch.setenv('WUWEI_SEAT_ROLE', 'shepherd')
+    before = len(events(root))
+    result = policy().execute(REF, root)
+    assert result.exit == 1 and result.reason.startswith('merge refused: a shepherd seat never merges')
+    assert len(events(root)) == before
+    monkeypatch.chdir(root / 'repo')
+    assert main(['merge', '7']) == 1
+    assert not any(c[0] == 'merge' for c in host.calls)
+    monkeypatch.delenv('WUWEI_SEAT_ROLE')
+    assert policy().execute(REF, root).exit == 0

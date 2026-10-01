@@ -328,3 +328,83 @@ def claim_pr(root, ref, item):
     except ERRORS as exc:
         print(f'PR claim unmeasured: {exc}')
         return 2
+
+
+_STOP = ' Never run wuwei merge. Stop after this action and report what ran.'
+_TRIAGE = ('Run wuwei pr act {ref}. For a reply action run wuwei pr act {ref} --reply '
+           '"<one-line acknowledgement>", which is stored as a draft; for owner_decision or '
+           'fix_round stop.')
+# The headless shepherd's brief per mechanical PR state; approved never starts a seat.
+HEADLESS = {
+    'conflicted': ('Run wuwei pr act {ref} --run. If it stops on a conflict, resolve the conflict '
+                   'in the item worktree named in this brief and run wuwei pr act {ref} --complete.'),
+    'ci_red': ('Run wuwei pr act {ref}; it opens the fix round brief with the failed checks as '
+               'feedback. Do not build the fix.'),
+    'changes_requested': _TRIAGE,
+    'threads_unanswered': _TRIAGE,
+    'review_stale': 'Run wuwei pr act {ref}; it re-requests review and drafts the channel post.',
+}
+
+
+def pending(root):
+    """(ref, episode) pairs a headless shepherd would act on, oldest first, each episode once."""
+    from wuwei import watch
+    actions = watch.saved(root).get('actions', {})
+    parked = {ref for ref, row in state.read_state(root).get('pr_dispositions', {}).items()
+              if row.get('kind') == 'parked'}
+    done = {(row['payload'].get('pr'), row['payload'].get('episode'))
+            for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
+            if row['kind'] == 'shepherd.dispatched'}
+    return sorted(((ref, episode) for ref, episode in actions.items()
+                   if episode['state'] in HEADLESS and ref not in parked
+                   and (ref, episode['created_at']) not in done),
+                  key=lambda pair: pair[1]['created_at'])
+
+
+def headless(root, ref, episode, *, runtime=None):
+    """One headless shepherd seat for one PR action episode: 0 ran, 1 refused, 2 could not run."""
+    import json
+    import uuid
+    from wuwei import brief, pr_actions, sessions, watch
+    from wuwei.guards import agent_launch
+    record = {'pr': ref, 'state': episode['state'], 'episode': episode['created_at']}
+    # Recorded before any side effect: a crash drops an episode, it never runs one twice.
+    state.append_event('shepherd.dispatched', record, root)
+
+    def finish(code, text, **extra):
+        watch.mark_wake(root, prs=[ref], summaries=[f'PR {ref}: shepherd {record["state"]}: {text}'],
+                        kind='shepherd.finished', payload={**record, 'exit': code, **extra})
+        return code
+
+    try:
+        item, tree = pr_actions._item(root, ref)
+        name = 'shepherd-' + uuid.uuid4().hex[:12]
+        relative = brief.write('shepherd', item, name, HEADLESS[record['state']].format(ref=ref) + _STOP,
+                               pr=ref, root=root)
+        # Fixed selection, as remote commands: headless sessions exist only in the Claude adapter.
+        runtime = runtime or registry.load('runtime', {'adapters': {'runtime': 'claude'}})
+        job = runtime.dispatch('shepherd', str(root / relative), str(tree), True, root=root)
+        if job.exit or not isinstance(job.data, dict):
+            reason = job.reason or 'invalid dispatch result'
+            return finish(job.exit or 2, f'not started: {reason}', reason=reason)
+        code, reason = agent_launch.check({'cwd': str(root), 'tool_input': {
+            'subagent_type': 'wuwei:shepherd', 'name': name, 'description': f'shepherd {ref}',
+            'prompt': job.data['prompt']}})
+        if code:
+            return finish(code, f'not started: {reason}', reason=reason)
+        tools = json.loads((registry.ADAPTERS.parent / 'agents/allowlist.json').read_text(encoding='utf-8'))['shepherd']
+        try:
+            result = runtime.headless(job.data['prompt'], None, tools, root=root,
+                                      variables={'WUWEI_SEAT_ROLE': 'shepherd'})
+        finally:
+            state.stop_seat(name, root)
+        if result.exit == 2 or not isinstance(result.data, dict):
+            reason = result.reason or 'invalid headless result'
+            return finish(2, f'turn failed: {reason}', reason=reason)
+        sid = result.data['session_id']
+        sessions.touch(root, sid, hook=f'shepherd {record["state"]}', cwd=str(root), role='shepherd')
+        return finish(result.exit, f'turn ended (exit {result.exit}, session {sid[:8]})', session=sid)
+    except brief.Refused as exc:
+        return finish(1, f'not started: {exc}', reason=str(exc))
+    except watch.ERRORS as exc:
+        return finish(2, f'not started: {exc}', reason=str(exc))

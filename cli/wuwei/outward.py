@@ -1,5 +1,6 @@
 """Shared outward approval tiers and mechanical text lint."""
 
+import os
 import re
 from pathlib import Path
 import unicodedata
@@ -229,6 +230,8 @@ def _pr_context(context, root, config):
 def classify(text, root, config, context=None, *, kind='chat'):
     """Return (0|1|2, send|draft); missing destination or uncertain meaning drafts."""
     try:
+        if os.environ.get('WUWEI_SEAT_ROLE') == 'shepherd':
+            return FINDINGS, 'draft'  # A headless shepherd seat posts drafts only.
         if not isinstance(text, str) or not text.strip() or not isinstance(kind, str):
             return UNRUN, 'draft'
         context = {} if context is None else context

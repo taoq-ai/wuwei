@@ -170,6 +170,30 @@ def test_wake_marker_merges_prs_and_inbox(case):
     assert watch.wake(root).endswith('example/project#7, example/project#8, inbox to line 3')
 
 
+def test_wake_marker_keeps_summaries_while_unseen(case):
+    root, _ = case
+    ref = 'example/project#7'
+    watch.mark_wake(root, prs=[ref], summaries=['PR a: x'], kind='pr.changed', payload={})
+    watch.mark_wake(root, prs=[ref], summaries=['PR a: y'], kind='pr.changed', payload={})
+    assert watch.saved(root)['wake']['summaries'] == ['PR a: x', 'PR a: y']
+    message = watch.wake(root)
+    assert message.split('\n')[:2] == ['PR a: x', 'PR a: y']
+    assert message.split('\n')[2] == f'planner wake ({watch.saved(root)["wake"]["at"]}): {ref}'
+    assert watch.wake(root, consume=True)
+    watch.mark_wake(root, prs=[ref], summaries=['PR a: z'], kind='pr.changed', payload={})
+    assert watch.saved(root)['wake']['summaries'] == ['PR a: z']
+    watch.mark_wake(root, prs=[ref], summaries=[f'PR a: {n}' for n in range(25)],
+                    kind='pr.changed', payload={})
+    assert watch.saved(root)['wake']['summaries'] == [f'PR a: {n}' for n in range(5, 25)]
+
+
+def test_summary_only_mark_is_not_already_covered(case):
+    root, _ = case
+    watch.mark_wake(root, inbox=2, kind='listen: wake', payload={})
+    watch.mark_wake(root, summaries=['PR a: shepherd done'], kind='pr.changed', payload={})
+    assert watch.wake(root).startswith('PR a: shepherd done\nplanner wake (')
+
+
 def test_wake_renders_inbox_only_and_rejects_bad_counts(case):
     root, _ = case
     watch.mark_wake(root, inbox=2, kind='listen: wake', payload={})
@@ -300,7 +324,7 @@ def test_sigterm_finishes_tick_before_stopping(case, monkeypatch):
     handlers, finished = {}, []
     monkeypatch.setattr(signal, 'signal', lambda number, handler: handlers.setdefault(number, handler))
     original = module.tick
-    def tick(root):
+    def tick(root, tags=None):
         handlers[signal.SIGTERM](signal.SIGTERM, None)
         result = original(root)
         finished.append(True)
@@ -573,3 +597,341 @@ def test_session_start_shows_a_phone_answer_without_changing_its_code(case):
     state.append_event('decision.replied', {'id': 'D-1', 'option': 'A'}, root)
     assert lifecycle.session_start({'cwd': str(root)}) == (
         code, message + '\nD-1 answered from the phone: option A, confirm with decision outcome D-1 A')
+
+
+REF = 'example/project#7'
+PR_CONFIG = '[owner]\nname = "Robin Example"\nhandles = ["owner"]\n[[repos]]\nname = "example/project"\npath = "repo"\ndefault_branch = "main"\n'
+TAGS = {'pr': '"p"', 'head': 'a' * 40, 'checks': '"c"', 'statuses': '"s"'}
+
+
+@pytest.fixture
+def prs(case, monkeypatch):
+    from fakes.code_host import Fake as Host
+    from fakes.vcs import Fake as VCS
+    root, source = case
+    config(root, PR_CONFIG)
+    host, vcs = Host(), VCS()
+    host.results.update(reviews=Result(0, []), threads=Result(0, {'comments': [], 'threads': []}),
+                        checks=Result(0, []), probe=Result(0, {'modified': True, 'tags': TAGS}))
+    host.results['pr'].data.update(repo='example/project', number=7)
+    load = registry.load
+    chat = SimpleNamespace(sent=[], exit=0)
+
+    def send(text, *, root=None):
+        if chat.exit:
+            return Result(chat.exit, None, 'chat failed')
+        chat.sent.append(text)
+        return Result(0, {})
+    chat.dm = lambda text, *, root=None: pytest.fail('the drafting wrapper must not run')
+    chat.dm.__wrapped__ = send
+    ports = {'code_host': host, 'vcs': vcs, 'chat': chat}
+    monkeypatch.setattr(registry, 'load', lambda kind, settings: ports[kind] if kind in ports
+                        else load(kind, settings))
+    state._write_state(lambda data: data.update(raised_prs=[REF]), root, reserved=False)
+    host.chat = chat
+    return root, host
+
+
+def files(root):
+    return {name: (workspace.day_dir(root) / name).read_bytes() for name in ('events.jsonl', 'state.json')}
+
+
+def test_listener_probes_and_reads_fully_only_on_change(prs, monkeypatch):
+    root, host = prs
+    tags = {}
+    assert listen().tick(root, tags) == 0
+    assert tags == {REF: TAGS}
+    assert watch.saved(root)['poll_at'] == workspace.now().isoformat()
+    assert host.calls[0][:2] == ('probe', (REF, {}))
+    host.results['probe'] = Result(0, {'modified': False, 'tags': TAGS})
+    later(monkeypatch, 30)
+    before = files(root)
+    monkeypatch.setattr(watch, 'poll', lambda root: pytest.fail('full read without a change'))
+    assert listen().tick(root, tags) == 0
+    assert files(root) == before
+    assert ('probe', (REF, TAGS), root) in host.calls
+
+
+@pytest.mark.parametrize('probe', [Result(2, None, 'gh failed'), Result(0, {'modified': 'yes', 'tags': {}}),
+                                   Result(0, {'modified': False})])
+def test_failed_or_malformed_probe_reads_fully(prs, monkeypatch, probe):
+    root, host = prs
+    tags = {}
+    assert listen().tick(root, tags) == 0
+    host.results['probe'] = probe
+    later(monkeypatch, 30)
+    polled = []
+    monkeypatch.setattr(watch, 'poll_prs', lambda root: polled.append(root) or 0)
+    assert listen().tick(root, tags) == 0
+    assert polled == [root] and REF not in tags
+
+
+def test_backstop_reads_fully_when_poll_at_is_old(prs, monkeypatch):
+    root, host = prs
+    tags = {}
+    listen().tick(root, tags)
+    host.results['probe'] = Result(0, {'modified': False, 'tags': TAGS})
+    later(monkeypatch, 120)
+    polled = []
+    monkeypatch.setattr(watch, 'poll_prs', lambda root: polled.append(root) or 0)
+    listen().tick(root, tags)
+    assert polled == [root]
+
+
+def test_failed_full_read_forgets_the_tags(prs, monkeypatch):
+    root, host = prs
+    tags = {'other/repo#1': TAGS}
+    monkeypatch.setattr(watch, 'poll_prs', lambda root: 2)
+    assert listen().tick(root, tags) == 2
+    assert tags == {}
+
+
+def test_new_review_comment_reaches_wake_and_nudges_in_one_tick(prs, monkeypatch):
+    from wuwei.commands import status
+    root, host = prs
+    tags = {}
+    listen().tick(root, tags)
+    assert main(['plan', 'session', 'planner']) == 0
+    host.results['threads'].data['comments'] = [{'id': 5, 'author': 'alice', 'is_bot': False,
+        'body': 'private text', 'created_at': workspace.now().isoformat()}]
+    later(monkeypatch, 30)
+    assert listen().tick(root, tags) == 0
+    summary = f'PR {REF}: 1 new comment by alice'
+    assert kinds(root, 'pr.changed')[-1]['payload']['summary'] == summary
+    assert status.attention(workspace.day_dir(root))[0]['reason'] == summary
+    code, message = lifecycle.stop({'cwd': str(root), 'session_id': 'planner'})
+    assert code == 1 and message.split('\n')[0] == summary
+
+
+def change(host, monkeypatch, **pr):
+    host.results['pr'].data.update(pr)
+    later(monkeypatch, 30)
+
+
+@pytest.fixture
+def owner_dm(prs, monkeypatch):
+    monkeypatch.setenv('SLACK_OWNER_DM_CHANNEL', 'D1')
+    root, host = prs
+    listen().tick(root, {})
+    return root, host
+
+
+def test_pr_change_reaches_the_owner_dm_once(owner_dm, monkeypatch):
+    root, host = owner_dm
+    change(host, monkeypatch, head='b' * 40)
+    assert listen().tick(root, {}) == 0
+    summary = f'PR {REF}: new commits pushed (head bbbbbbb)'
+    assert host.chat.sent == [summary]
+    row, = kinds(root, 'pr.notified')
+    assert row['payload']['pr'] == REF and row['payload']['at'] == kinds(root, 'pr.changed')[-1]['ts']
+    later(monkeypatch, 30)
+    assert listen().tick(root, {}) == 0
+    assert host.chat.sent == [summary]
+
+
+def test_dm_says_autostart_is_off_for_a_mechanical_action(owner_dm, monkeypatch):
+    root, host = owner_dm
+    change(host, monkeypatch, mergeable=False)
+    assert listen().tick(root, {}) == 0
+    assert host.chat.sent == [f'PR {REF}: conflicts with its base. Shepherd autostart is off; nothing started.']
+
+
+def test_content_none_sends_the_fixed_line(owner_dm, monkeypatch):
+    root, host = owner_dm
+    config(root, PR_CONFIG + '[control_plane]\ncontent = "none"\n')
+    change(host, monkeypatch, head='b' * 40)
+    listen().tick(root, {})
+    assert host.chat.sent == ['An update is waiting in the workspace.']
+
+
+def test_lint_refusal_sends_the_fallback_line(owner_dm, monkeypatch):
+    root, host = owner_dm
+    host.results['threads'].data['threads'] = [{'id': 'T', 'resolved': False, 'outdated': False,
+        'path': 'cli/wuwei/guards/deploy.py', 'comments': [{'id': 3, 'author': 'alice', 'is_bot': False,
+        'body': 'x', 'created_at': workspace.now().isoformat()}]}]
+    change(host, monkeypatch)
+    listen().tick(root, {})
+    assert host.chat.sent == ['PR #7 changed; details are on the host.']
+    assert len(kinds(root, 'pr.notified')) == 1
+
+
+def test_failed_transport_records_nothing_and_retries(owner_dm, monkeypatch):
+    root, host = owner_dm
+    host.chat.exit = 2
+    change(host, monkeypatch, head='b' * 40)
+    assert listen().tick(root, {}) == 2
+    assert not kinds(root, 'pr.notified')
+    host.chat.exit = 0
+    later(monkeypatch, 30)
+    assert listen().tick(root, {}) == 0
+    assert len(host.chat.sent) == 1
+
+
+@pytest.mark.parametrize('setting', ['no channel', 'kill switch'])
+def test_no_dm_without_channel_or_with_the_kill_switch(owner_dm, monkeypatch, setting):
+    root, host = owner_dm
+    if setting == 'no channel':
+        monkeypatch.delenv('SLACK_OWNER_DM_CHANNEL')
+    else:
+        config(root, PR_CONFIG + '[responder]\nenabled = false\n')
+    change(host, monkeypatch, head='b' * 40)
+    listen().tick(root, {})
+    assert host.chat.sent == [] and not kinds(root, 'pr.notified')
+
+
+def test_fixed_dm_lines_pass_the_owner_lint(case):
+    from wuwei import outward
+    root, _ = case
+    module = listen()
+    settings = workspace.load_config(root)
+    from wuwei import shepherd
+    from wuwei.pr_actions import ACTIONS
+    starts = [f'Shepherd starts: {ACTIONS[name][0]}.' for name in shepherd.HEADLESS]
+    for text in (module.AUTOSTART_OFF, module.FALLBACK.format(number=7), *starts):
+        assert outward.lint(text, 'D1', settings, to_owner=True)[0] == 0, text
+
+
+SID = '0f8f5c1e-1111-4222-8333-444455556666'
+
+
+class Seat:
+    """A fake Claude runtime: the real launch prompt, a recorded headless turn."""
+
+    def __init__(self, result=None):
+        self.calls, self.result = [], result or Result(0, {'session_id': SID, 'result': 'done', 'denials': []})
+
+    def dispatch(self, role, brief_path, worktree, write, *, root=None):
+        from wuwei import brief, security
+        self.calls.append(('dispatch', role))
+        return Result(0, {'prompt': brief.launch_prompt(brief_path, security.agent_path(root, role), root=root)})
+
+    def headless(self, prompt, session, tools, *, root=None, variables=None):
+        self.calls.append(('headless', prompt, session, tools, variables))
+        return self.result
+
+
+@pytest.fixture
+def seat(prs, monkeypatch):
+    from wuwei import mcp
+    from wuwei.guards import agent_launch
+    root, host = prs
+    monkeypatch.setattr(mcp, 'cached', lambda root: Result(0))
+    monkeypatch.setattr(mcp, 'launch', lambda root=None, path=None: Result(0))
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda config, root: 2**40)
+    tree = root / 'repo'
+    tree.mkdir()
+    def link(data):
+        data['items']['A'] = {**state.ITEM_DEFAULTS, 'worktree': str(tree), 'pr': REF}
+        data['approved_items'] = ['A']
+    state._write_state(link, root, reserved=False)
+    registry.load('vcs', None).results['branches'] = Result(0, [])
+    host.results['pr'].data['mergeable'] = False
+    watch.poll(root)
+    return root, host, Seat()
+
+
+def briefs(root):
+    return [row['payload'] for row in kinds(root, 'brief written') if row['payload']['role'] == 'shepherd']
+
+
+def test_pending_lists_mechanical_episodes_once(seat):
+    from wuwei import shepherd
+    root, host, runtime = seat
+    (ref, episode), = shepherd.pending(root)
+    assert ref == REF and episode['state'] == 'conflicted'
+    state.append_event('shepherd.dispatched', {'pr': REF, 'state': 'conflicted',
+                                               'episode': episode['created_at']}, root)
+    assert shepherd.pending(root) == []
+
+
+@pytest.mark.parametrize('mergeable,parked', [(True, False), (False, True)])
+def test_pending_skips_waiting_and_parked(seat, mergeable, parked):
+    from wuwei import shepherd
+    root, host, _ = seat
+    host.results['pr'].data['mergeable'] = mergeable
+    watch.poll(root)
+    if parked:
+        state._write_state(lambda data: data.update(pr_dispositions={REF: {'kind': 'parked'}}),
+                           root, reserved=False)
+    assert shepherd.pending(root) == []
+
+
+def test_headless_shepherd_runs_one_logged_seat(seat):
+    from wuwei import shepherd
+    root, host, runtime = seat
+    (ref, episode), = shepherd.pending(root)
+    assert shepherd.headless(root, ref, episode, runtime=runtime) == 0
+    logged, = briefs(root)
+    text = (root / logged['path']).read_text()
+    assert f'wuwei pr act {REF} --run' in text and '--complete' in text and 'Never run wuwei merge' in text
+    assert [call[0] for call in runtime.calls] == ['dispatch', 'headless']
+    _, prompt, session, tools, variables = runtime.calls[1]
+    assert prompt.startswith('WUWEI brief: ') and session is None
+    assert tools == ['Read', 'Glob', 'Grep', 'Bash', 'Write']
+    assert variables == {'WUWEI_SEAT_ROLE': 'shepherd'}
+    data = state.read_state(root)
+    assert data['seats'][logged['name']]['status'] == 'stopped'
+    assert data['sessions'][SID]['role'] == 'shepherd'
+    order = [row['kind'] for row in watch.records(workspace.day_dir(root) / 'events.jsonl')]
+    assert order.index('shepherd.dispatched') < order.index('brief written') < order.index('shepherd.finished')
+    finished, = kinds(root, 'shepherd.finished')
+    assert finished['payload']['exit'] == 0 and finished['payload']['session'] == SID
+    assert f'PR {REF}: shepherd conflicted: turn ended (exit 0, session {SID[:8]})' in watch.wake(root)
+
+
+def test_low_memory_refuses_before_the_turn(seat, monkeypatch):
+    from wuwei import shepherd
+    from wuwei.guards import agent_launch
+    root, host, runtime = seat
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda config, root: 1024)
+    (ref, episode), = shepherd.pending(root)
+    assert shepherd.headless(root, ref, episode, runtime=runtime) == 1
+    assert [call[0] for call in runtime.calls] == ['dispatch']
+    finished, = kinds(root, 'shepherd.finished')
+    assert finished['payload']['exit'] == 1 and 'below floor' in finished['payload']['reason']
+    assert shepherd.pending(root) == []
+
+
+def test_unlinked_pr_is_not_started(seat):
+    from wuwei import shepherd
+    root, host, runtime = seat
+    state._write_state(lambda data: data['items']['A'].update(pr=None), root, reserved=False)
+    (ref, episode), = shepherd.pending(root)
+    assert shepherd.headless(root, ref, episode, runtime=runtime) == 2
+    assert not briefs(root) and not runtime.calls
+    assert 'exactly one linked item' in kinds(root, 'shepherd.finished')[0]['payload']['reason']
+
+
+@pytest.mark.parametrize('name,command', [('ci_red', 'wuwei pr act {ref};'),
+                                          ('threads_unanswered', '--reply'),
+                                          ('review_stale', 're-requests review')])
+def test_headless_briefs_name_their_commands(name, command):
+    from wuwei import shepherd
+    assert command.format(ref=REF) in shepherd.HEADLESS[name].format(ref=REF)
+    assert 'approved' not in shepherd.HEADLESS
+
+
+def test_listener_dispatches_once_and_the_planner_sees_it(seat, monkeypatch):
+    root, host, runtime = seat
+    config(root, PR_CONFIG + '[shepherd]\nautostart = true\n')
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, settings: runtime if kind == 'runtime' else load(kind, settings))
+    assert main(['plan', 'session', 'planner']) == 0
+    assert listen().tick(root, {}) == 0
+    later(monkeypatch, 30)
+    assert listen().tick(root, {}) == 0
+    assert len(kinds(root, 'shepherd.dispatched')) == 1
+    assert [call[0] for call in runtime.calls] == ['dispatch', 'headless']
+    assert state.read_state(root)['sessions'][SID]['role'] == 'shepherd'
+    code, message = lifecycle.stop({'cwd': str(root), 'session_id': 'planner'})
+    assert code == 1 and f'PR {REF}: shepherd conflicted: turn ended' in message
+
+
+@pytest.mark.parametrize('text', ['', '[shepherd]\nautostart = true\n[responder]\nenabled = false\n'])
+def test_listener_dispatches_nothing_when_off(seat, monkeypatch, text):
+    root, host, runtime = seat
+    config(root, PR_CONFIG + text)
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, settings: runtime if kind == 'runtime' else load(kind, settings))
+    assert listen().tick(root, {}) == 0
+    assert not runtime.calls and not briefs(root) and not kinds(root, 'shepherd.dispatched')

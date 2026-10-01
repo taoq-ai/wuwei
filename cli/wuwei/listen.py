@@ -3,9 +3,11 @@
 import json
 import os
 
-from wuwei import inbox, obligations, outward, registry, remote, watch, workspace
+from wuwei import control_plane, inbox, obligations, outward, registry, remote, shepherd, state, watch, workspace
 
 CLOCK_SECONDS = 120
+# ponytail: fixed probe interval; a 304 is free, so no config.
+PROBE_SECONDS = 30
 
 
 def _path(root):
@@ -31,8 +33,63 @@ def _save(root, data):
     workspace.atomic_write(_path(root), json.dumps(data, sort_keys=True) + '\n', mode=0o600)
 
 
-def tick(root):
-    """Clock, poll, store, cursor, wake, in that order: each step is safe to repeat."""
+AUTOSTART_OFF = 'Shepherd autostart is off; nothing started.'
+FALLBACK = 'PR #{number} changed; details are on the host.'
+
+
+def notify(root, config, waiting):
+    """Send each new summarised pr.changed to the owner DM once, with what the shepherd does."""
+    from wuwei.pr_actions import ACTIONS
+    rows = watch.records(workspace.day_dir(root) / 'events.jsonl')
+    sent = {(row['payload'].get('pr'), row['payload'].get('at')) for row in rows if row['kind'] == 'pr.notified'}
+    states = {ref: episode['state'] for ref, episode in waiting}
+    for row in rows:
+        ref, text = row['payload'].get('pr'), row['payload'].get('summary')
+        if row['kind'] != 'pr.changed' or not isinstance(text, str) or (ref, row['ts']) in sent:
+            continue
+        if ref in states:
+            text += '. ' + (f'Shepherd starts: {ACTIONS[states[ref]][0]}.' if config['shepherd']['autostart']
+                            else AUTOSTART_OFF)
+        result = control_plane.notify(text, root=root, transport=remote.TRANSPORT)
+        if result.exit == 1:
+            result = remote.TRANSPORT.dm(FALLBACK.format(number=ref.split('#')[-1]), root=root)
+        if result.exit:
+            print(f'listen PR notify unmeasured: {result.reason}', flush=True)
+            return 2
+        state.append_event('pr.notified', {'pr': ref, 'at': row['ts']}, root)
+    return 0
+
+
+def prs(root, config, tags):
+    """Probe owned PRs; run the shared full read only on a change, a failed probe or the backstop."""
+    try:
+        host, refs = watch.owned(root, config)
+        modified = False
+        for ref in refs:
+            result = host.probe(ref, tags.get(ref, {}), root=root)
+            data = result.data if result.exit == 0 and isinstance(result.data, dict) else {}
+            if type(data.get('modified')) is bool and isinstance(data.get('tags'), dict):
+                modified |= data['modified']
+                tags[ref] = data['tags']
+            else:
+                modified = True
+                tags.pop(ref, None)
+        last = watch.saved(root).get('poll_at')
+        if not modified and last is not None and (
+                workspace.now() - obligations._time(last)).total_seconds() < config['pr']['poll_seconds']:
+            return 0
+        if watch.poll_prs(root) == 2:
+            tags.clear()
+            return 2
+        return 0
+    except watch.ERRORS as exc:
+        print(f'listen PR poll unmeasured: {exc}', flush=True)
+        return 2
+
+
+def tick(root, tags=None):
+    """Clock, poll, store, cursor, PRs, responder, wake, in that order: each step is safe to repeat."""
+    tags = {} if tags is None else tags
     config = workspace.load_config(root)
     now = workspace.now()
     last = watch.saved(root).get('listen_clock_at')
@@ -58,6 +115,7 @@ def tick(root):
             except ValueError:
                 data['cursors'][source] = last
             _save(root, data)
+    code = max(code, prs(root, config, tags))
     if config['responder']['enabled']:
         # ponytail: reads the whole inbox per tick; keep a line count when it grows large.
         rows = inbox.read(root)
@@ -77,10 +135,26 @@ def tick(root):
             except (OSError, UnicodeError, ValueError, KeyError, TypeError, RuntimeError) as exc:
                 print(f'listen escalate unmeasured: {exc}', flush=True)
                 code = 2
+            try:
+                if notify(root, config, shepherd.pending(root)) == 2:
+                    code = 2
+            except watch.ERRORS as exc:
+                print(f'listen PR notify unmeasured: {exc}', flush=True)
+                code = 2
         if count > data['woken']:
             watch.mark_wake(root, inbox=count, kind='listen: wake', payload={'inbox': count})
             data['woken'] = count
             _save(root, data)
+        if config['shepherd']['autostart']:
+            # ponytail: one blocking shepherd turn per tick, like a command turn; a background
+            # process when turns outgrow the poll interval.
+            try:
+                waiting = shepherd.pending(root)
+                if waiting and shepherd.headless(root, *waiting[0]) == 2:
+                    code = 2
+            except watch.ERRORS as exc:
+                print(f'listen shepherd unmeasured: {exc}', flush=True)
+                code = 2
     return code
 
 
@@ -90,5 +164,6 @@ def run(root=None, *, once=False, sleep=None):
     config = workspace.load_config(root)
     if not config['owner']['name'].strip():
         print('listen ' + outward.OWNER_UNSET, flush=True)
-    delay = min(config['listen']['poll_seconds'], CLOCK_SECONDS)
-    return watch.serve(root, 'listen', lambda root: tick(root), delay, once=once, sleep=sleep)
+    delay = min(config['listen']['poll_seconds'], CLOCK_SECONDS, PROBE_SECONDS, config['pr']['poll_seconds'])
+    tags = {}  # ETags live in memory only: a restart costs one full read.
+    return watch.serve(root, 'listen', lambda root: tick(root, tags), delay, once=once, sleep=sleep)

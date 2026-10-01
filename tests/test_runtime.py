@@ -228,3 +228,12 @@ def test_claude_headless_refuses_invalid_calls(tmp_path, monkeypatch, prompt, se
     root, adapter, calls = headless_case(tmp_path, monkeypatch)
     assert adapter.headless(prompt, session, tools, root=root).exit == 2
     assert calls == []
+
+
+def test_claude_headless_passes_seat_variables(tmp_path, monkeypatch):
+    root, adapter, calls = headless_case(tmp_path, monkeypatch)
+    assert adapter.headless('p', None, ['Read'], root=root, variables={'WUWEI_SEAT_ROLE': 'shepherd'}).exit == 0
+    assert calls[0][1]['env']['WUWEI_SEAT_ROLE'] == 'shepherd'
+    for bad in ({'PATH': 'x'}, {'WUWEI_SEAT_ROLE': 1}, ['WUWEI_SEAT_ROLE']):
+        assert adapter.headless('p', None, ['Read'], root=root, variables=bad).exit == 2
+    assert len(calls) == 1

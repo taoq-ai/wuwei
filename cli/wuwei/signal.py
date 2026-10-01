@@ -21,7 +21,7 @@ SILENT = ('item.progress', 'remote.acknowledged', 'state.write', 'state.set', 's
           'gate.received', 'gate.tiered', 'discovery.requested', 'discovery.intake',
           'plan.added', 'steward.run', 'steward.acknowledged', 'plan.approved', 'state.import',
           'build.started', 'build.launched', 'build.checked', 'verdict.rejected',
-          'inbox.redacted')
+          'inbox.redacted', 'shepherd.dispatched', 'pr.notified')
 
 
 def classify(event, state):
@@ -39,6 +39,8 @@ def classify(event, state):
             'item.escalated', 'merge.policy_blocked', 'work.outside_goals') else 'Work')
     if kind == 'mcp.finding':
         return ('page' if payload.get('severity') in ('high', 'critical') else 'nudge'), lane
+    if kind == 'shepherd.finished':
+        return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'nudge'), lane
     if kind == 'mcp.checked':
         return ('silent' if type(payload.get('exit')) is int and payload['exit'] == 0 else 'nudge'), lane
     if kind == 'tracker.call':

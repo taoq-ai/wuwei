@@ -3,6 +3,7 @@
 from datetime import timedelta
 from fnmatch import fnmatchcase
 import hashlib
+import os
 from pathlib import Path
 import re
 
@@ -331,6 +332,9 @@ def undo(root, directory, ref, entry):
 
 def execute(ref, root=None, *, cwd=None):
     """Check and merge under one lock; persist intent before any external write."""
+    if os.environ.get('WUWEI_SEAT_ROLE') == 'shepherd':
+        return Result(1, None, 'merge refused: a shepherd seat never merges; '
+                               'the planner or the owner runs wuwei merge')
     try:
         root = workspace.find_workspace(root)
         with locked(root):

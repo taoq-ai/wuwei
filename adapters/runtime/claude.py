@@ -67,9 +67,15 @@ TIMEOUT = 1800
 
 # ponytail: not a runtime port operation; only Claude Code has headless sessions. Add it to
 # registry.PARAMETERS when a second runtime does.
-def headless(prompt, session, tools, *, root=None):
-    """One headless turn: start a session, or resume one by id; the prompt goes on stdin."""
+def headless(prompt, session, tools, *, root=None, variables=None):
+    """One headless turn: start a session, or resume one by id; the prompt goes on stdin.
+
+    variables adds WUWEI_ markers (the seat role) to the child environment, nothing else.
+    """
     if (not isinstance(prompt, str) or not prompt.strip()
+            or not (variables is None or isinstance(variables, dict) and all(
+                isinstance(key, str) and re.fullmatch(r'WUWEI_[A-Z_]+', key) and isinstance(value, str)
+                for key, value in variables.items()))
             or not (session is None or isinstance(session, str) and SESSION.fullmatch(session))
             or not isinstance(tools, list) or not tools
             or not all(isinstance(tool, str) and re.fullmatch(r'[A-Za-z]+', tool) for tool in tools)):
@@ -84,7 +90,7 @@ def headless(prompt, session, tools, *, root=None):
             *(['--resume', session] if session else [])]
     try:
         process = subprocess.run(argv, input=prompt, cwd=str(workspace.find_workspace(root)),
-                                 capture_output=True, text=True, env=env.child_environment(),
+                                 capture_output=True, text=True, env={**env.child_environment(), **(variables or {})},
                                  timeout=TIMEOUT)
         data = json.loads(process.stdout)
     except (OSError, ValueError, subprocess.SubprocessError) as exc:

@@ -230,7 +230,8 @@ def test_midnight_without_day_state_keeps_polling(case, capsys):
 
 
 @pytest.mark.parametrize('kind', ['pr.changed', 'watch: clock', 'watch: heartbeat', 'heartbeat: clock',
-                                  'watch: read-failed', 'session: compact', 'session: wake-seen'])
+                                  'watch: read-failed', 'session: compact', 'session: wake-seen',
+                                  'shepherd.dispatched', 'shepherd.finished', 'pr.notified'])
 def test_producer_events_reserved(case, kind):
     assert main(['event', kind]) == 1
 
@@ -585,7 +586,7 @@ def test_unmeasured_health_keeps_sweep_schedule(case):
     root, _, _, monkeypatch = case
     watch = watch_module()
     watch.tick(root)
-    monkeypatch.setattr(watch, 'health', lambda root: (2, 'watch health unmeasured'))
+    monkeypatch.setattr(watch, 'health', lambda root, name='watch': (2, 'watch health unmeasured'))
     advance(case, 120)
     watch.tick(root)
     assert len(events(root, 'watch: sweep')) == 1
@@ -977,3 +978,138 @@ def test_tick_runs_pending_seat_free_discovery_once(case):
     assert calls == ['seat-free', 'seat-free']
     unmeasured, = events(root, 'discovery.unmeasured')
     assert unmeasured['payload'] == {'reason': 'tracker down'}
+
+
+def measured_pr(**changes):
+    pr = {'head': 'a' * 40, 'mergeable': True, 'state': 'open', 'merged': False,
+          'requested_reviewers': [], 'requested_teams': []}
+    measured = {'pr': pr, 'reviews': [], 'threads': {'comments': [], 'threads': []}, 'checks': []}
+    for key, value in changes.items():
+        (pr if key in pr else measured)[key] = value
+    return measured
+
+
+def thread(ident, path, *comments):
+    return {'id': ident, 'resolved': False, 'outdated': False, 'path': path,
+            'comments': [{'id': number, 'author': author, 'body': 'secret body', 'is_bot': False,
+                          'created_at': '2026-09-28T11:00:00+00:00'} for number, author in comments]}
+
+
+def check(name, conclusion, state='completed'):
+    return {'name': name, 'state': state, 'conclusion': conclusion, 'sha': 'a' * 40}
+
+
+def test_summary_names_comments_files_and_failed_checks():
+    watch = watch_module()
+    before = watch.facts(measured_pr(checks=[check('test (3.11)', None, 'in_progress')]))
+    after = watch.facts(measured_pr(
+        threads={'comments': [], 'threads': [thread('T1', 'cli/x.py', (31, 'alice'), (32, 'alice'))]},
+        checks=[check('test (3.11)', 'failure')]))
+    assert 'secret body' not in json.dumps(after)
+    assert watch.summary(REF, before, after, ['checks', 'threads']) == (
+        'PR example/project#7: 2 new review comments by alice on cli/x.py; check test (3.11) failed')
+
+
+@pytest.mark.parametrize('before,after,fields,expected', [
+    ({}, None, ['gone'], 'no longer owned'),
+    (None, {}, ['new'], 'now watched'),
+    ({}, {'state': 'closed', 'merged': True}, ['state'], 'merged'),
+    ({}, {'head': 'b' * 40}, ['head'], 'new commits pushed (head bbbbbbb)'),
+    ({}, {'mergeable': False}, ['mergeable'], 'conflicts with its base'),
+    ({'mergeable': False}, {}, ['mergeable'], 'conflicts resolved'),
+    ({}, {'threads': {'comments': [{'id': 5, 'author': 'bob', 'body': 'x'}], 'threads': []}},
+     ['threads'], '1 new comment by bob'),
+    ({}, {'reviews': [{'id': 9, 'author': 'carol', 'state': 'approved'}]}, ['reviews'], 'approved by carol'),
+    ({}, {'reviews': [{'id': 9, 'author': 'carol', 'state': 'changes_requested'}]},
+     ['reviews'], 'changes requested by carol'),
+    ({'checks': [check('ci', 'failure')]}, {'checks': [check('ci', 'success')]}, ['checks'], 'check ci passed'),
+    ({}, {'requested_reviewers': ['dave']}, ['requested_reviewers'], 'review requested from dave'),
+    ({}, {}, ['updated_at'], 'updated (updated_at)'),
+    ({}, {'threads': {'comments': [], 'threads': [thread('T1', None, (40, 'erin'))]}},
+     ['threads'], '1 new review comment by erin'),
+])
+def test_summary_rules(before, after, fields, expected):
+    watch = watch_module()
+    old = None if before is None else watch.facts(measured_pr(**before))
+    new = None if after is None else watch.facts(measured_pr(**after))
+    assert watch.summary(REF, old, new, fields) == f'PR {REF}: {expected}'
+
+
+def test_summary_without_prior_facts_names_fields():
+    watch = watch_module()
+    assert watch.summary(REF, None, watch.facts(measured_pr()), ['checks', 'head']) == (
+        f'PR {REF}: updated (checks, head)')
+
+
+def test_poll_writes_summary_and_body_free_facts(case, capsys):
+    root, host, _, _ = case
+    watch = watch_module()
+    assert watch.poll(root) == 0
+    host.results['threads'].data['threads'] = [thread('T1', 'cli/x.py', (31, 'alice'), (32, 'alice'))]
+    host.results['checks'] = Result(0, [{**check('test (3.11)', 'failure'), 'url': None}])
+    assert watch.poll(root) == 1
+    row, = events(root, 'pr.changed')
+    expected = f'PR {REF}: 2 new review comments by alice on cli/x.py; check test (3.11) failed'
+    assert row['payload']['fields'] == ['checks', 'threads']
+    assert row['payload']['summary'] == expected
+    assert f'planner wake: {expected}' in capsys.readouterr().out
+    saved = watch.saved(root)
+    assert saved['facts'][REF]['seen']['thread:31'] == ['alice', 'cli/x.py']
+    assert 'secret body' not in json.dumps(state.read_state(root))
+    assert watch.poll(root) == 0
+    assert len(events(root, 'pr.changed')) == 1
+
+
+def test_classification_failure_keeps_facts_with_snapshot(case):
+    root, host, _, _ = case
+    watch = watch_module()
+    host.results['pr'].data['mergeable'] = False
+    assert watch.poll(root) == 0
+    host.results['pr'].data.update(head='b' * 40, mergeable=None)
+    assert watch.poll(root) == 2
+    assert watch.saved(root)['facts'][REF]['head'] == 'b' * 40
+    row, = events(root, 'pr.changed')
+    assert row['payload']['summary'].startswith(f'PR {REF}: new commits pushed (head bbbbbbb)')
+
+
+def test_stop_and_session_start_lead_with_the_summary(case):
+    root, host, _, _ = case
+    watch, lifecycle = watch_module(), lifecycle_module()
+    state._write_state(lambda data: data.update(planner_session_id='planner'), root, reserved=False)
+    watch.poll(root)
+    host.results['pr'].data['head'] = 'b' * 40
+    watch.poll(root)
+    expected = f'PR {REF}: new commits pushed (head bbbbbbb)'
+    assert expected in lifecycle.session_start({'cwd': str(root)})[1]
+    code, message = lifecycle.stop({'cwd': str(root), 'session_id': 'planner'})
+    assert code == 1
+    first, second = message.split('\n')
+    assert first == expected and second.startswith('planner wake (') and second.endswith(REF)
+
+
+def test_poll_prs_reads_then_reconciles_and_marks_poll_at(case, monkeypatch):
+    root, _, _, _ = case
+    watch = watch_module()
+    from wuwei import merge
+    order = []
+    monkeypatch.setattr(watch, 'poll', lambda root: order.append('poll') or 1)
+    monkeypatch.setattr(merge, 'poll', lambda root: order.append('merge') or 0)
+    assert watch.poll_prs(root) == 1
+    assert order == ['poll', 'merge']
+    assert watch.saved(root)['poll_at'] == workspace.now().isoformat()
+
+
+def test_watch_skips_pr_poll_while_the_listener_lives(case, monkeypatch):
+    root, _, _, _ = case
+    watch = watch_module()
+    assert not watch.listening(root)
+    state.append_event('listen: clock', {}, root)
+    assert watch.listening(root)
+    monkeypatch.setattr(watch, 'poll_prs', lambda root: pytest.fail('watch polled PRs'))
+    watch.tick(root)
+    advance(case, 1200)
+    assert not watch.listening(root)
+    polled = []
+    monkeypatch.setattr(watch, 'poll_prs', lambda root: polled.append(root) or 0)
+    watch.tick(root)
+    assert polled == [root]
