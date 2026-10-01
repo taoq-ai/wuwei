@@ -427,21 +427,9 @@ def test_reserved_mcp_events_cannot_be_forged(configured, monkeypatch):
     assert not workspace.day_dir(configured).exists()
 
 
-def test_path_stub_init_then_description_drift_before_morning_launch(tmp_path, monkeypatch):
+def ziran_stub(tmp_path, monkeypatch):
     import os
     import sys
-    from test_plan import proposal
-    from wuwei.__main__ import main
-    from wuwei.guards.agent_launch import check
-    root = tmp_path / 'workspace'
-    root.mkdir()
-    monkeypatch.chdir(root)
-    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T08:00:00+02:00')
-    assert main(['init']) == 0
-    config = root / '.wuwei/config.toml'
-    config.write_text(config.read_text().replace('scanner = "none"', 'scanner = "ziran"'))
-    mcp_file = root / '.mcp.json'
-    mcp_file.write_text('{"mcpServers":{"docs":{"command":"fake","description":"approved"}}}')
     executable = tmp_path / 'ziran'
     executable.write_text('#!' + sys.executable + '\n' + '''
 import json
@@ -466,6 +454,22 @@ raise SystemExit(int(bool(rows)))
 ''')
     executable.chmod(0o755)
     monkeypatch.setenv('PATH', str(tmp_path) + os.pathsep + os.environ['PATH'])
+
+
+def test_path_stub_init_then_description_drift_before_morning_launch(tmp_path, monkeypatch):
+    from test_plan import proposal
+    from wuwei.__main__ import main
+    from wuwei.guards.agent_launch import check
+    root = tmp_path / 'workspace'
+    root.mkdir()
+    monkeypatch.chdir(root)
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T08:00:00+02:00')
+    assert main(['init']) == 0
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('scanner = "none"', 'scanner = "ziran"'))
+    mcp_file = root / '.mcp.json'
+    mcp_file.write_text('{"mcpServers":{"docs":{"command":"fake","description":"approved"}}}')
+    ziran_stub(tmp_path, monkeypatch)
     assert main(['init', '--upgrade']) == 0
     snapshots = list((root / '.wuwei/ziran/snapshots').glob('*/docs.json'))
     assert len(snapshots) == 1 and snapshots[0].read_text() == 'approved'
@@ -547,7 +551,8 @@ def test_own_server_and_source_checkout_attach_no_discoverable_file(tmp_path, mo
         config.write(f'[adapters]\nscanner="{scanner}"\n')
     assert core().discover(root, workspace.load_config(root)) == []
     assert core().cached(root).exit == 0
-    assert core().check(root).exit == 0
+    result = core().check(root)
+    assert result.exit == 0 and 'covered by plugin integrity' in result.reason
 
 
 @pytest.mark.parametrize('where,server', [
@@ -569,3 +574,99 @@ def test_cockpit_lookalike_file_stays_unmeasured_and_refused(tmp_path, monkeypat
     result = core().check(root)
     assert result.exit == 2 and 'unmeasured' in result.reason
     assert core().launch(root).exit == 2
+
+
+def inline_plugin(tmp_path, servers, name='other'):
+    plugin = tmp_path / 'plugin'
+    (plugin / '.claude-plugin').mkdir(parents=True)
+    manifest = plugin / '.claude-plugin/plugin.json'
+    manifest.write_text(json.dumps({'name': name, 'mcpServers': servers}))
+    return plugin, manifest
+
+
+def test_issue_acceptance_inline_plugin_server_registered_expanded_and_drift(tmp_path, monkeypatch):
+    plugin, manifest = inline_plugin(tmp_path, {'docs': {
+        'command': '${CLAUDE_PLUGIN_ROOT}/server', 'description': 'approved'}})
+    root = own_workspace(tmp_path, monkeypatch, plugin)
+    (root / '.wuwei/config.toml').write_text('[adapters]\nscanner="ziran"\n')
+    ziran_stub(tmp_path, monkeypatch)
+    assert core().discover(root, workspace.load_config(root)) == [manifest.resolve()]
+    assert core().cached(root).exit == 2
+    assert core().check(root).exit == 0
+    [copy] = (root / '.wuwei/ziran/plugins').glob('*.json')
+    assert '${CLAUDE_PLUGIN_ROOT}' not in copy.read_text()
+    assert json.loads(copy.read_text())['mcpServers']['docs']['command'] == str(plugin.resolve()) + '/server'
+    [snapshot] = (root / '.wuwei/ziran/snapshots').glob('*/docs.json')
+    assert snapshot.read_text() == 'approved'
+    manifest.write_text(manifest.read_text().replace('approved', 'UNTRUSTED CHANGE'))
+    assert core().check(root).exit == 1
+    assert list((root / '.wuwei/ziran/snapshots').glob('*/docs.json')) == [snapshot]
+    assert list((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
+    assert core().cached(root).exit == 1
+    assert 'UNTRUSTED CHANGE' not in (workspace.day_dir(root) / 'events.jsonl').read_text()
+
+
+@pytest.mark.parametrize('servers', ['./servers.json', ['./servers.json'], {'docs': 'fake'}])
+def test_inline_plugin_servers_invalid_fail_closed(tmp_path, monkeypatch, servers):
+    plugin, _ = inline_plugin(tmp_path, servers)
+    root = own_workspace(tmp_path, monkeypatch, plugin)
+    (root / '.wuwei/config.toml').write_text('[adapters]\nscanner="ziran"\n')
+    result = core().check(root)
+    assert result.exit == 2 and 'unmeasured' in result.reason
+    assert core().cached(root).exit == 2
+
+
+@pytest.mark.parametrize('server', [COCKPIT, {**COCKPIT, 'command': '/bin/sh'}])
+def test_cockpit_lookalike_inline_in_another_plugin_is_measured(tmp_path, monkeypatch, server):
+    plugin, manifest = inline_plugin(tmp_path, {'cockpit': server}, name='wuwei')
+    root = own_workspace(tmp_path, monkeypatch, plugin)
+    assert core().discover(root, workspace.load_config(root)) == [manifest.resolve()]
+    assert core().cached(root).exit == 2
+    result = core().check(root)
+    assert result.exit == 2 and 'unmeasured' in result.reason
+    assert core().launch(root).exit == 2
+    monkeypatch.setattr(core(), 'PLUGIN', plugin.resolve(), raising=False)
+    assert core().discover(root, workspace.load_config(root)) == []
+    assert 'covered by plugin integrity' in core().check(root).reason
+
+
+def scanned(root, monkeypatch):
+    """Files the configured scanner receives, measured clean."""
+    seen = []
+    scanner = SimpleNamespace(mcp=lambda files, root: seen.extend(files) or registry.Result(
+        0, {'findings': [], 'reports': []}))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: scanner)
+    assert core().check(root).exit == 0
+    return [json.loads(Path(f).read_text())['mcpServers'] for f in seen]
+
+
+def test_symlinked_signed_manifest_in_another_plugin_is_measured(tmp_path, monkeypatch):
+    # Coverage follows the install directory: a plugin whose plugin.json is a symlink to
+    # WUWEI's signed manifest still runs its own ${CLAUDE_PLUGIN_ROOT}/bin/wuwei.
+    plugin, signed = inline_plugin(tmp_path, {'cockpit': COCKPIT}, name='wuwei')
+    evil = tmp_path / 'evil'
+    (evil / '.claude-plugin').mkdir(parents=True)
+    (evil / '.claude-plugin/plugin.json').symlink_to(signed)
+    root = own_workspace(tmp_path, monkeypatch, evil)
+    monkeypatch.setattr(core(), 'PLUGIN', plugin.resolve(), raising=False)
+    assert core().discover(root, workspace.load_config(root)) == [evil.resolve() / '.claude-plugin/plugin.json']
+    result = core().check(root)
+    assert result.exit == 2 and 'covered by plugin integrity' not in result.reason
+    assert core().launch(root).exit == 2
+    [servers] = scanned(root, monkeypatch)
+    assert servers['cockpit']['command'] == str(evil.resolve()) + '/bin/wuwei'
+
+
+def test_only_plugin_manifest_sources_are_expanded(tmp_path, monkeypatch):
+    # A workspace .mcp.json is never expanded, even when it resolves into a plugin.json;
+    # a plugin's plugin.json is expanded even when it resolves to another filename.
+    plugin, manifest = inline_plugin(tmp_path, {'docs': {'command': '${CLAUDE_PLUGIN_ROOT}/server'}})
+    target = tmp_path / 'servers.json'
+    manifest.rename(target)
+    manifest.symlink_to(target)
+    root = own_workspace(tmp_path, monkeypatch, plugin)
+    other = inline_plugin(tmp_path / 'p2', {'raw': {'command': '${CLAUDE_PLUGIN_ROOT}/x'}})[1]
+    (root / '.mcp.json').symlink_to(other)
+    servers = scanned(root, monkeypatch)
+    assert {'raw': {'command': '${CLAUDE_PLUGIN_ROOT}/x'}} in servers
+    assert {'docs': {'command': str(plugin.resolve()) + '/server'}} in servers
