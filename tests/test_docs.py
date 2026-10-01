@@ -377,3 +377,10 @@ def test_release_asset_ships_every_linked_doc(tmp_path, monkeypatch):
     assert expected <= listed and expected <= archived
     assert signed == [stage / integrity.MANIFEST]
     assert integrity.measure(stage).exit == 0
+
+
+def test_repository_gate_keys_are_documented():
+    from wuwei import workspace
+    page = (SITE / 'configuration.md').read_text()
+    assert all(f'`repos.gates.{key}`' in page for key in workspace.SCHEMA['repos'][0]['gates'])
+    assert '`tier`' in (SITE / 'reference.md').read_text()

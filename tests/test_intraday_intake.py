@@ -217,3 +217,9 @@ def test_sweep_reports_intake_failure_as_unmeasured(root, monkeypatch, capsys):
     monkeypatch.setattr(watch, 'health', lambda path: (0, ''))
     assert watch.sweep(root) == 2
     assert 'intake failed' in capsys.readouterr().out
+
+
+def test_plan_add_copies_candidate_tier(root):
+    save_candidate(root, {**candidate(), 'tier': 'full'})
+    assert plan.add('NEW', root)['action'] == 'build next'
+    assert state.read_state(root)['items']['NEW']['tier'] == 'full'

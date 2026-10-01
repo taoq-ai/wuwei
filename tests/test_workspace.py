@@ -707,3 +707,18 @@ def test_config_parsed_once_per_text(tmp_path, monkeypatch):
         with pytest.raises(workspace.ConfigError):
             workspace.load_config(tmp_path)
     assert len(parsed) == 4
+
+
+def test_repository_gate_defaults_and_floor_choices(tmp_path):
+    from wuwei.workspace import ConfigError, load_config
+    repo = '[[repos]]\nname="a"\npath="/a"\ndefault_branch="main"\n'
+    write_config(tmp_path, repo)
+    assert load_config(tmp_path)['repos'][0]['gates'] == {
+        'floor': 'standard', 'light_max_lines': 100,
+        'trust_paths': ['guards/*', 'state.py', 'adapters/*', '.claude-plugin/*', '.github/*',
+                        'ci/*', 'workflows/*', 'deploy/*', 'infra/*']}
+    for text, key in (('floor = "lowest"', 'repos.0.gates.floor'),
+                      ('light_max_lines = -1', 'repos.0.gates.light_max_lines')):
+        write_config(tmp_path, repo + '[repos.gates]\n' + text + '\n')
+        with pytest.raises(ConfigError, match=key):
+            load_config(tmp_path)

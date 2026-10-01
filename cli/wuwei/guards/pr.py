@@ -79,14 +79,16 @@ def values(found, *keys):
     return [found[key] for key in keys if key in found]
 
 
-def _recorded_gates(root, sha, records, item):
+def _recorded_gates(root, sha, records, item, items=None):
     """Check the bounded fix and delta path recorded by the receive producer."""
+    from wuwei.dispatch import gate_set
     candidates = [item] if item is not None else sorted({
         key.split(':', 1)[0] for key in records if isinstance(key, str) and ':' in key})
     failures = []
     for candidate in candidates:
-        initial = [records.get(f'{candidate}:{role}:initial') for role in GATES]
-        missing = [role for role, row in zip(GATES, initial) if row is None]
+        roles = gate_set((items or {}).get(candidate, {}))
+        initial = [records.get(f'{candidate}:{role}:initial') for role in roles]
+        missing = [role for role, row in zip(roles, initial) if row is None]
         if missing:
             failures.append((candidate, missing))
             continue
@@ -94,7 +96,7 @@ def _recorded_gates(root, sha, records, item):
             raise ValueError('initial gate verdicts disagree on HEAD')
         complete = True
         missing = []
-        for role, first in zip(GATES, initial):
+        for role, first in zip(roles, initial):
             row = records.get(f'{candidate}:{role}:delta') if first['verdict'] == 'FIX' else first
             if row is None or (row['verdict'] != 'PASS' and not (
                     first['verdict'] == 'FIX' and row['verdict'] == 'FIX'
@@ -139,9 +141,10 @@ def gate_check(root, cwd, config, *, sha=None, item=None):
     if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', sha):
         raise ValueError('invalid current HEAD')
     from wuwei import state
-    recorded = state.read_state(root)['gate_verdicts']
+    current = state.read_state(root)
+    recorded = current['gate_verdicts']
     if recorded:
-        return _recorded_gates(root, sha, recorded, item)
+        return _recorded_gates(root, sha, recorded, item, current['items'])
     groups = {}
     for path in sorted((workspace.day_dir(root) / 'decisions').glob('gate-*.md')):
         match = re.fullmatch(r'gate-(.+)-(arch|quality|security)\.md', path.name)

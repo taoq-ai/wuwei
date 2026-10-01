@@ -773,3 +773,29 @@ def test_generic_promotion_cannot_change_owner_baseline(case, action):
                      'reason': 'Improve', 'evidence': proof, 'old_text': '0.1', 'text': '1',
                      'survivor': proof})
     assert target.read_text() == original
+
+
+def test_matched_checks_every_path_suffix():
+    merge = importlib.import_module('wuwei.merge')
+    assert merge.matched('cli/wuwei/guards/pr.py', ['guards/*']) == 'guards/*'
+    assert merge.matched('uv.lock', ['*.lock']) == '*.lock'
+    assert merge.matched('docs/guide.md', ['guards/*', '*.lock']) is None
+
+
+def test_light_item_merge_evidence_lists_quality_only(case):
+    root, _ = case
+    directory = workspace.day_dir(root) / 'decisions'
+    for role in ('arch', 'security'):
+        (directory / f'gate-item-7-{role}.md').unlink()
+    path = directory / 'gate-item-7-quality.md'
+    record = {'item': 'item-7', 'role': 'quality', 'round': 'initial', 'verdict': 'PASS',
+              'head': SHA, 'file': str(path.relative_to(root)), 'blocks': False, 'notes': []}
+    light = {'tier': 'light', 'computed': 'light', 'reasons': [], 'roles': ['quality']}
+
+    def update(data):
+        data['gate_verdicts']['item-7:quality:initial'] = record
+        data['items']['item-7']['gates'] = light
+    state._write_state(update, root, reserved=False)
+    result = check(case)
+    assert result.exit == 0, result
+    assert [row['path'] for row in result.data['verdicts']] == [record['file']]

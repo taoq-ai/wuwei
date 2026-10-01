@@ -299,7 +299,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'plan.session': 'silent', 'pr.disposition': 'silent', 'pr.action': 'nudge',
                 'day.close_requested': 'silent', 'merge.unmeasured': 'nudge',
                 'merge.metric': 'silent', 'merge.policy_blocked': 'nudge', 'base.red': 'page',
-                'gate.received': 'silent', 'discovery.requested': 'silent',
+                'gate.received': 'silent', 'gate.tiered': 'silent', 'discovery.requested': 'silent',
                 'discovery.intake': 'silent', 'plan.added': 'silent',
                 'plan.proposed': 'nudge', 'build.requested': 'nudge',
                 'tracker.call': 'nudge',
@@ -477,3 +477,14 @@ def test_issue_acceptance_four_phone_answers_are_one_status_segment(tmp_path, mo
     assert rows == reasons
     assert main(['status', '--json']) == 0
     assert json.loads(capsys.readouterr().out)['answered'] == reasons
+
+
+def test_status_json_shows_recorded_tiers(tmp_path, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    light = {'tier': 'light', 'computed': 'light', 'reasons': ['3 changed lines within light_max_lines 100'],
+             'roles': ['quality']}
+    day(tmp_path, {'cap': 1, 'items': {'A': {'phase': 'gate', 'gates': light}, 'B': {'phase': 'gate'}}})
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    assert main(['status', '--json']) == 0
+    assert json.loads(capsys.readouterr().out)['gates'] == {'A': light}

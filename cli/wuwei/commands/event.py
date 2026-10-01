@@ -11,7 +11,7 @@ FREE_KINDS = frozenset({'note'})
 EVENT_PRODUCERS = {
     **{f'draft.{action}': 'wuwei drafts and outward adapters'
        for action in ('created', 'sending', 'sent', 'failed', 'dropped')},
-    'build.started': 'wuwei build next', 'build.launched': 'wuwei build',
+    'build.started': 'wuwei build next', 'gate.tiered': 'wuwei dispatch next', 'build.launched': 'wuwei build',
     'build.fix_opened': 'wuwei pr act or wuwei dispatch next',
     'build.checked': 'wuwei build check',
     'inbox.redacted': 'the inbox store',

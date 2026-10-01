@@ -636,3 +636,24 @@ def test_global_information_flags(case, command):
 ])
 def test_api_endpoint_parsing_matches_gh(case, endpoint, code):
     assert guard().check(payload(case[0], f'gh api "{endpoint}" -X POST'))[0] == code
+
+
+LIGHT = {'tier': 'light', 'computed': 'light', 'reasons': [], 'roles': ['quality']}
+
+
+def test_pr_gate_accepts_quality_only_for_a_light_item(case):
+    from wuwei import state
+    root, _, decisions = case
+    path = decisions / 'gate-9-quality.md'
+    state._write_state(lambda data: data.update(gate_verdicts={'9:quality:initial': {
+        'item': '9', 'role': 'quality', 'round': 'initial', 'verdict': 'PASS', 'head': SHA,
+        'file': str(path.relative_to(root)), 'blocks': False, 'notes': []}}), root, reserved=False)
+    config = workspace.load_config(root)
+    code, reason = guard().gate_check(root, root / 'repo', config, item='9')
+    assert code == 1 and 'arch, security' in reason
+    state._write_state(lambda data: data['items'].update({'9': {'gates': LIGHT}}), root, reserved=False)
+    assert guard().gate_check(root, root / 'repo', config, item='9') == (0, '')
+    state._write_state(lambda data: data['items']['9'].update(gates={**LIGHT, 'roles': ['arch']}),
+                       root, reserved=False)
+    with pytest.raises(ValueError, match='invalid recorded gate set'):
+        guard().gate_check(root, root / 'repo', config, item='9')

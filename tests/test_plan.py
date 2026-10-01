@@ -133,3 +133,21 @@ def test_worktree_creation_refuses_before_gate(root):
 
     with pytest.raises(state.StateError, match='morning gate'):
         workspace.create_worktree(root / 'repo', 'item', root / 'tree', root, Fake())
+
+
+def test_candidate_tier_is_optional_validated_and_copied(root):
+    bad = proposal()
+    bad['candidates'][0]['tier'] = 'medium'
+    with pytest.raises(ValueError, match='tier must be light, standard or full'):
+        plan.propose(bad, root)
+    plan.propose(proposal(), root)
+    plan.approve(['A'], root, goals_confirmed=True)
+    assert 'tier' not in state.read_state(root)['items']['A']
+
+
+def test_candidate_tier_is_copied_at_approve(root):
+    good = proposal()
+    good['candidates'][0]['tier'] = 'full'
+    plan.propose(good, root)
+    plan.approve(['A'], root, goals_confirmed=True)
+    assert state.read_state(root)['items']['A']['tier'] == 'full'

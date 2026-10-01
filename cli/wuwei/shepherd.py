@@ -260,7 +260,10 @@ def raise_pr(root, repo_name, base, title, body, item):
         if code:
             print(reason)
             return code
-        from wuwei import outward
+        from wuwei import dispatch, outward
+        row = data['items'][item]
+        if row['gates']:
+            body += f'\n\nReview tier: {row["gates"]["tier"]} ({", ".join(dispatch.gate_set(row))})'
         code, reason = outward.lint(title + '\n' + body, 'code_host', config, root=root)
         if code:
             print(reason)
@@ -291,7 +294,6 @@ def raise_pr(root, repo_name, base, title, body, item):
         if pr['head'] != head or pr['url'] != created['url']:
             raise ValueError('created PR does not match checked head and URL')
         state.record_pr(root, item, ref, raised=True, head=head, reviewers=reviewers)
-        from wuwei import dispatch
         dispatch.tracker_call(item, 'in_review', root)
         if reviewers:
             requested = merge.read(host.request_reviewers, ref, reviewers, root=root)

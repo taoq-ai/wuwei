@@ -31,7 +31,10 @@ def root(tmp_path, monkeypatch):
 def test_gate_dispatch_and_live_builder_refusal(root):
     from wuwei import dispatch
 
-    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': []}
+    action = dispatch.next_step('A', root)
+    tier = action.pop('tier')
+    assert action == {'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': []}
+    assert tier['tier'] == 'standard' and tier['roles'] == ['arch', 'quality', 'security']
     state._write_state(lambda data: data['seats'].update(builder={
         'item': 'A', 'role': 'builder', 'status': 'running'}), root, reserved=False)
     with pytest.raises(dispatch.Refused, match='builder'):
@@ -610,8 +613,10 @@ def test_logged_gate_brief_becomes_launch_action(root):
     action = {**brief.seat_action('sentinel-arch', path, tree, root),
               'receive': 'wuwei dispatch receive A arch arch-1'}
     assert action['agent_type'] == 'wuwei:sentinel-arch'
-    assert dispatch.next_step('A', root) == {
-        'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': [action]}
+    outcome = dispatch.next_step('A', root)
+    tier = outcome.pop('tier')
+    assert outcome == {'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': [action]}
+    assert tier['tier'] == 'standard' and tier['roles'] == ['arch', 'quality', 'security']
     state._write_state(lambda data: data['seats'].update({'arch-1': {
         'item': 'A', 'role': 'sentinel-arch', 'status': 'running'}}), root, reserved=False)
     assert dispatch.next_step('A', root)['seats'] == []
@@ -681,3 +686,183 @@ def test_fix_with_park_or_missing_gate_stays_in_gate(root):
     record(root, 'security', 'security-1', FIX.replace('Verdict: FIX', 'Verdict: PARK'))
     assert state.read_state(root)['items']['A']['phase'] == 'gate'
     assert dispatch.next_step('A', root)['action'] == 'escalate'
+
+
+LIGHT = {'tier': 'light', 'computed': 'light', 'reasons': [], 'roles': ['quality']}
+ALL = ['arch', 'quality', 'security']
+
+
+def tiered(root, monkeypatch, paths, floor='light', flags=(), track='SLICE', lead=None, extra=''):
+    from fakes.vcs import Fake
+    from wuwei import registry
+    from wuwei.registry import Result
+
+    repo = root / 'repo'
+    repo.mkdir(exist_ok=True)
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n'
+        f'[repos.gates]\nfloor = "{floor}"\n' + extra)
+    fake = Fake(results={
+        'head': Result(0, {'sha': 'a' * 40}), 'merge_base': Result(0, {'sha': 'b' * 40}),
+        'repo_context': Result(0, {'path': str(repo), 'common_dir': str(repo / '.git')}),
+        'diff_stat': Result(0, [{'path': p, 'additions': a, 'deletions': d} for p, a, d in paths])})
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake if kind == 'vcs' else load(kind, config))
+
+    def update(data):
+        row = data['items']['A']
+        row.update(worktree=str(repo), track=track)
+        row['flags'].update({name: True for name in flags})
+        if lead:
+            row['tier'] = lead
+    state._write_state(update, root, reserved=False)
+    return fake
+
+
+def tier_events(root):
+    return [row for row in map(json.loads, (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines())
+            if row['kind'] == 'gate.tiered']
+
+
+def test_issue_acceptance_docs_only_light_floor_runs_quality_only(root, monkeypatch):
+    from wuwei import dispatch
+
+    fake = tiered(root, monkeypatch, [('docs/guide.md', 3, 1)])
+    record = {'tier': 'light', 'computed': 'light', 'roles': ['quality'],
+              'reasons': ['4 changed lines within light_max_lines 100']}
+    action = {'action': 'gates', 'roles': ['quality'], 'seats': [], 'tier': record}
+    assert dispatch.next_step('A', root) == action
+    assert state.read_state(root)['items']['A']['gates'] == record
+    assert [{k: v for k, v in row['payload'].items() if k != 'prs_seen'}
+            for row in tier_events(root)] == [{'item': 'A', **record}]
+    calls = len([call for call in fake.calls if call[0] == 'diff_stat'])
+    assert dispatch.next_step('A', root) == action
+    assert len([call for call in fake.calls if call[0] == 'diff_stat']) == calls == 1
+    assert len(tier_events(root)) == 1
+
+
+def test_light_item_receives_and_raises_on_quality_only(root):
+    from wuwei import dispatch
+
+    state._write_state(lambda data: data['items']['A'].update(gates=LIGHT), root, reserved=False)
+    with pytest.raises(dispatch.Refused, match='not in the item gate set'):
+        record(root, 'arch', 'arch-1', PASS)
+    record(root, 'quality', 'quality-1', PASS + 'Simplicity: none\nDesign: none\n')
+    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
+
+
+def test_light_item_fixes_and_deltas_quality_only(root):
+    from wuwei import dispatch
+
+    built(root)
+    state._write_state(lambda data: data['items']['A'].update(gates=LIGHT), root, reserved=False)
+    record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
+    assert dispatch.next_step('A', root) == {
+        'action': 'fix', 'roles': ['quality'], 'command': 'wuwei build next A'}
+    state.transition('A', 'delta', root)
+    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality'], 'seats': []}
+
+
+def test_malformed_recorded_gate_set_fails_closed(root):
+    from wuwei import dispatch
+
+    state._write_state(lambda data: data['items']['A'].update(gates={**LIGHT, 'roles': ['arch']}),
+                       root, reserved=False)
+    with pytest.raises(ValueError, match='invalid recorded gate set'):
+        dispatch.next_step('A', root)
+
+
+def tier_of(root):
+    from wuwei import dispatch
+    return dispatch.next_step('A', root)['tier']
+
+
+def test_issue_acceptance_trust_path_is_standard_regardless_of_floor(root, monkeypatch):
+    tiered(root, monkeypatch, [('docs/guide.md', 3, 1), ('cli/wuwei/guards/pr.py', 2, 0)])
+    record = tier_of(root)
+    assert record['tier'] == 'standard' and record['roles'] == ALL
+    assert 'cli/wuwei/guards/pr.py matches trust path guards/*' in record['reasons']
+
+
+@pytest.mark.parametrize('floor', ['light', 'standard', 'full'])
+@pytest.mark.parametrize('track', ['SLICE', 'FULL'])
+def test_issue_acceptance_lockfile_includes_security_at_any_tier(root, monkeypatch, floor, track):
+    tiered(root, monkeypatch, [('uv.lock', 10, 2)], floor=floor, track=track)
+    record = tier_of(root)
+    assert 'security' in record['roles']
+    assert any(reason.startswith('uv.lock matches never-auto path') for reason in record['reasons'])
+
+
+def test_full_track_pattern_forces_arch(root, monkeypatch):
+    tiered(root, monkeypatch, [('api/schema.json', 1, 0)], extra='[brief]\nfull_path_patterns = ["^api/"]\n')
+    record = tier_of(root)
+    assert 'arch' in record['roles']
+    assert 'api/schema.json matches FULL-track pattern ^api/' in record['reasons']
+
+
+@pytest.mark.parametrize('flag', ['trust_surface', 'boundary_relevant', 'agent_surface'])
+def test_issue_acceptance_lead_flag_raises_a_light_diff(root, monkeypatch, flag):
+    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], flags=[flag])
+    record = tier_of(root)
+    assert record['tier'] == 'standard' and record['roles'] == ALL
+    assert f'lead flag {flag}' in record['reasons']
+
+
+def test_issue_acceptance_lead_tier_raises_and_cannot_lower(root, monkeypatch):
+    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], lead='full')
+    record = tier_of(root)
+    assert record['tier'] == 'full' and 'lead tier full' in record['reasons']
+
+
+def test_issue_acceptance_lead_cannot_lower_a_standard_diff(root, monkeypatch):
+    tiered(root, monkeypatch, [('cli/wuwei/guards/pr.py', 2, 0)], lead='light')
+    record = tier_of(root)
+    assert record['tier'] == 'standard' and record['roles'] == ALL
+    assert 'lead tier light refused: below standard' in record['reasons']
+
+
+def test_full_track_is_full_with_three_gates(root, monkeypatch):
+    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], track='FULL')
+    record = tier_of(root)
+    assert (record['tier'], record['computed'], record['roles']) == ('full', 'full', ALL)
+
+
+@pytest.mark.parametrize('paths,reason', [
+    ([('src/app.py', 90, 11)], '101 changed lines over light_max_lines 100'),
+    ([('logo.png', None, None)], 'logo.png binary change'),
+])
+def test_size_and_binary_diffs_stay_standard(root, monkeypatch, paths, reason):
+    tiered(root, monkeypatch, paths)
+    record = tier_of(root)
+    assert record['tier'] == 'standard' and reason in record['reasons']
+
+
+def test_empty_diff_is_light(root, monkeypatch):
+    tiered(root, monkeypatch, [])
+    assert tier_of(root)['tier'] == 'light'
+
+
+def test_unmeasured_diff_stays_standard(root, monkeypatch):
+    from wuwei.registry import Result
+
+    fake = tiered(root, monkeypatch, [])
+    fake.results['diff_stat'] = Result(2, None, 'git failed')
+    record = tier_of(root)
+    assert record['tier'] == record['computed'] == 'standard'
+    assert any(reason.startswith('diff unmeasured:') for reason in record['reasons'])
+
+
+def test_item_without_worktree_is_unmeasured_standard(root):
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n'
+        '[repos.gates]\nfloor = "light"\n')
+    record = tier_of(root)
+    assert record['tier'] == 'standard' and record['reasons'] == ['diff unmeasured: no worktree']
+
+
+def test_item_with_initial_verdicts_before_dispatch_gets_no_tier(root):
+    from wuwei import dispatch
+
+    record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
+    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['arch', 'security'], 'seats': []}
+    assert state.read_state(root)['items']['A']['gates'] == {}
