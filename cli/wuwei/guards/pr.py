@@ -335,6 +335,14 @@ def check(payload):
         raw = payload['tool_input']['command']
         if not isinstance(raw, str):
             raise ValueError('command must be text')
+        # The hook inherits Claude Code's environment, which the seat's commands cannot change.
+        if os.environ.get('WUWEI_SEAT_ROLE') == 'shepherd':
+            texts = [(raw, False), (shell.script_text(raw, payload['cwd']) or '', True)]
+            if any(shell.mentions(text, {'merge', 'WUWEI_SEAT_ROLE'}, script=script)
+                   or (shell.mentions(text, {'env', 'unset'}, script=script) and 'WUWEI_' in text)
+                   for text, script in texts):
+                return 1, ('a shepherd seat never merges and cannot change WUWEI_ variables; '
+                           'the planner or the owner runs wuwei merge')
         if not shell.mentions(raw, {'gh'}) and shell.script_path(raw, payload['cwd']) is None:
             return 0, ''
         cwd = _cwd(payload)

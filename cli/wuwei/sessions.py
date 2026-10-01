@@ -8,7 +8,7 @@ import shlex
 from wuwei import state, workspace
 
 
-ROLES = ('adhoc', 'seat-host', 'remote')
+ROLES = ('adhoc', 'seat-host', 'remote', 'shepherd')
 COUNTED = {'Stop': 'turns', 'SessionStart:compact': 'compactions'}
 
 

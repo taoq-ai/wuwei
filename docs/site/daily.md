@@ -104,6 +104,17 @@ executes each returned action unchanged:
 Phases move by themselves: `planned`, `implement`, `gate`, `fix`, `delta`, `raised`,
 `merged`. You never move one by hand on this path.
 
+PR changes reach the planner without you. Every change on a raised or claimed PR is one
+`pr.changed` event with a summary, for example
+`PR owner/repo#12: 2 new review comments by alice on cli/x.py; check test (3.11) failed`.
+The Stop hook message and `bin/wuwei nudges` list that summary first, and the status line
+shows `prs <n> changed` until the planner has seen the wake. An idle interactive planner
+learns of a change at its next turn (its next Stop or session start): Claude Code cannot
+put input into an idle session. The listener covers the gap: it sends the summary to your
+DM and, with `shepherd.autostart = true`, starts a headless shepherd seat for the
+mechanical PR actions ([remote](remote.html), section 5). For CI events in your own
+session, the Claude Code desktop PR monitor is the complement.
+
 ## 5. Owner decisions
 
 Some commands are yours alone and run in a host terminal, never through an agent:

@@ -411,3 +411,10 @@ def test_issue_acceptance_payload_after_compaction(root, monkeypatch, capsys):
     assert 'G-1 Ship checkout v2' in text and 'plan.md (approved: ITEM-1)' in text
     assert 'Open decisions: D-2\n' in text and BRIEF in text
     assert state.read_state(root)['sessions']['P']['compactions'] == 1
+
+
+def test_shepherd_role_is_recorded(root):
+    data = {}
+    sessions.record(data, 'S', hook='shepherd conflicted', cwd='/w', role='shepherd')
+    row, = sessions.rows(data, workspace.now(), 3600)
+    assert row['role'] == 'shepherd'

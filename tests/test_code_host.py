@@ -331,3 +331,76 @@ def test_unreadable_protection_is_not_absent(monkeypatch):
     install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Not Found (HTTP 404)'}])
     result = adapter().protection('acme/widget', 'main')
     assert result.exit == 2 and 'branch protection absent' not in result.reason
+
+
+HEAD = 'a' * 40
+PR_URL = 'repos/acme/widget/pulls/7'
+CHECKS_URL = f'repos/acme/widget/commits/{HEAD}/check-runs?per_page=100'
+STATUSES_URL = f'repos/acme/widget/commits/{HEAD}/statuses?per_page=100'
+
+
+def answer(endpoint, status, etag='', body='', exit=0, tag=None):
+    argv = ['api', endpoint, '--include'] + (['-H', f'If-None-Match: {tag}'] if tag else [])
+    headers = f'HTTP/2.0 {status}\r\nContent-Type: application/json\r\n' + (f'Etag: {etag}\r\n' if etag else '')
+    return {'argv': argv + ['--hostname', 'github.com'], 'stdout': headers + '\r\n' + body, 'exit': exit}
+
+
+FRESH = [answer(PR_URL, '200 OK', 'W/"p1"', json.dumps({'head': {'sha': HEAD}})),
+         answer(CHECKS_URL, '200 OK', 'W/"c1"', '{"total_count": 0, "check_runs": []}'),
+         answer(STATUSES_URL, '200 OK', '"s1"', '[]')]
+TAGS = {'pr': 'W/"p1"', 'head': HEAD, 'checks': 'W/"c1"', 'statuses': '"s1"'}
+
+
+def test_probe_reads_tags_then_answers_not_modified(monkeypatch):
+    install_replay(monkeypatch, 'gh', FRESH)
+    result = adapter().probe('acme/widget#7', {})
+    assert (result.exit, result.data) == (0, {'modified': True, 'tags': TAGS})
+    calls = install_replay(monkeypatch, 'gh', [
+        answer(PR_URL, '304 Not Modified', 'W/"p1"', exit=1, tag='W/"p1"'),
+        answer(CHECKS_URL, '304 Not Modified', exit=1, tag='W/"c1"'),
+        answer(STATUSES_URL, '304 Not Modified', exit=1, tag='"s1"')])
+    result = adapter().probe('acme/widget#7', TAGS)
+    assert (result.exit, result.data) == (0, {'modified': False, 'tags': TAGS})
+    assert len(calls) == 3
+
+
+def test_probe_check_change_is_modified(monkeypatch):
+    install_replay(monkeypatch, 'gh', [
+        answer(PR_URL, '304 Not Modified', exit=1, tag='W/"p1"'),
+        answer(CHECKS_URL, '200 OK', 'W/"c2"', '{"check_runs": []}', tag='W/"c1"'),
+        answer(STATUSES_URL, '304 Not Modified', exit=1, tag='"s1"')])
+    result = adapter().probe('acme/widget#7', TAGS)
+    assert result.exit == 0 and result.data == {'modified': True, 'tags': {**TAGS, 'checks': 'W/"c2"'}}
+
+
+@pytest.mark.parametrize('tags,steps', [
+    ({'pr': 'W/"p1"'}, [answer(PR_URL, '304 Not Modified', exit=1, tag='W/"p1"')]),
+    ({}, [{'stdout': 'HTTP/2.0 404 Not Found\r\n\r\nprivate body', 'exit': 1}]),
+    ({}, [{'stdout': '', 'exit': 1}]),
+    ({}, [answer(PR_URL, '200 OK', '', '{}')]),
+    ('tags', []),
+])
+def test_probe_fails_closed(tags, steps, monkeypatch, capsys):
+    install_replay(monkeypatch, 'gh', steps)
+    result = adapter().probe('acme/widget#7', tags)
+    assert result.exit == 2 and result.data is None
+    assert 'private body' not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('header', ['If-None-Match: "a"\nX: y', 'If-None-Match: a', 'X-Other: "a"'])
+def test_conditional_header_is_allowlisted(header, monkeypatch):
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **k: pytest.fail('spawned'))
+    with pytest.raises(ValueError, match='unsupported gh command'):
+        adapter()._run(['api', 'repos/o/r/pulls/1', '--include', '-H', header], json_output=False)
+
+
+def test_threads_carry_the_file_path(monkeypatch):
+    case = deepcopy(next(c for c in CASES if c['operation'] == 'threads'))
+    step = case['steps'][1]
+    value = json.loads(step['stdout'])
+    nodes = value['data']['repository']['pullRequest']['reviewThreads']['nodes']
+    nodes.append({**nodes[0], 'id': 'THREAD_2', 'path': 'cli/x.py'})
+    step['stdout'] = json.dumps(value)
+    install_replay(monkeypatch, 'gh', case['steps'])
+    result = adapter().threads('acme/widget#7')
+    assert [thread['path'] for thread in result.data['threads']] == [None, 'cli/x.py']

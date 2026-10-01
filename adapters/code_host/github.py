@@ -15,11 +15,13 @@ from wuwei.references import pull_request, repository as _repo
 TIMEOUT = 30
 _THREADS = ('query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){'
             'pullRequest(number:$n){reviewThreads(first:100){pageInfo{hasNextPage} '
-            'nodes{id isResolved isOutdated comments(first:100){pageInfo{hasNextPage} '
+            'nodes{id isResolved isOutdated path comments(first:100){pageInfo{hasNextPage} '
             'nodes{databaseId author{login __typename} body createdAt}}}}}}}')
 
 _REVERT = ('mutation($id:ID!){revertPullRequest(input:{pullRequestId:$id})'
            '{revertPullRequest{number url}}}')
+
+_ETAG = r'(?:W/)?"[\x21\x23-\x7e]*"'
 
 _MERGED = ('query($o:String!,$r:String!){repository(owner:$o,name:$r){pullRequests(states:MERGED,'
            'first:30,orderBy:{field:CREATED_AT,direction:DESC}){nodes{additions deletions createdAt mergedAt}}}}')
@@ -74,6 +76,10 @@ def _run(args, payload=None, *, json_output=True, env=None):
                 if payload is None:
                     allowed = options in ([], ['-H', 'Cache-Control: no-cache'],
                                           ['-H', 'Cache-Control: no-cache', '--paginate', '--slurp'])
+                    # Conditional reads: one If-None-Match header holding one quoted ETag.
+                    allowed |= not json_output and (options == ['--include'] or (
+                        options[:2] == ['--include', '-H'] and len(options) == 3 and isinstance(options[2], str)
+                        and re.fullmatch('If-None-Match: ' + _ETAG, options[2]) is not None))
                 else:
                     allowed = (options == ['--method', 'POST', '--input', '-'] and
                                re.fullmatch(r'pulls|pulls/[1-9][0-9]*/requested_reviewers|'
@@ -88,6 +94,8 @@ def _run(args, payload=None, *, json_output=True, env=None):
                             capture_output=True, text=True, timeout=TIMEOUT, env=env)
     if args[0] == 'auth':
         return result.returncode
+    if '--include' in args and re.match(r'HTTP/\S+ 304\b', result.stdout):
+        return result.stdout  # gh exits nonzero on 304 Not Modified; the status line decides.
     if result.returncode:
         if (args[:1] == ['api'] and len(args) > 1 and
                 re.fullmatch(r'repos/[^/]+/[^/]+/branches/.+/protection', args[1]) and
@@ -246,10 +254,44 @@ def threads(ref, root=None):
     return {'comments': comments, 'threads': [
         {'id': _field(v, 'id', str), 'resolved': _field(v, 'isResolved', bool),
          'outdated': _field(v, 'isOutdated', bool),
+         'path': _field({'path': v.get('path')}, 'path', str, nullable=True),
          'comments': [{'id': _field(c, 'databaseId', int), 'author': _login(c['author']),
                        'is_bot': _bot(c['author'], '__typename'),
                        'body': _field(c, 'body', str), 'created_at': _field(c, 'createdAt', str)}
                       for c in _nodes(v['comments'])]} for v in _nodes(connection)]}
+
+
+def _conditional(endpoint, etag):
+    """One conditional read: (modified, etag, body); anything but 200 or 304 fails."""
+    text = _run(['api', endpoint, '--include', *(['-H', f'If-None-Match: {etag}'] if etag else [])],
+                json_output=False)
+    head, _, body = text.replace('\r\n', '\n').partition('\n\n')
+    lines = head.split('\n')
+    status = re.match(r'HTTP/\S+ (\d{3})\b', lines[0])
+    if status and status[1] == '304' and etag:
+        return False, etag, None
+    tags = [line.split(':', 1)[1].strip() for line in lines[1:] if line.lower().startswith('etag:')]
+    if status and status[1] == '200' and len(tags) == 1 and re.fullmatch(_ETAG, tags[0]):
+        value = json.loads(body)
+        _errors(value)
+        return True, tags[0], value
+    raise ValueError('conditional read unavailable')
+
+
+@_operation
+def probe(ref, tags, root=None):
+    """Conditional reads of the PR record, check runs and statuses; a 304 costs no rate limit."""
+    if not isinstance(tags, dict):
+        raise ValueError('invalid probe tags')
+    repo, number = _ref(ref)
+    changed, tag, value = _conditional(f'repos/{repo}/pulls/{number}', tags.get('pr'))
+    head = _sha(value['head']['sha'] if changed else tags['head'])
+    result = {'pr': tag, 'head': head}
+    for key, path in (('checks', 'check-runs'), ('statuses', 'statuses')):
+        modified, result[key], _ = _conditional(f'repos/{repo}/commits/{head}/{path}?per_page=100',
+                                                tags.get(key) if head == tags.get('head') else None)
+        changed |= modified
+    return {'modified': changed, 'tags': result}
 
 
 @_operation

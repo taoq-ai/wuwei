@@ -530,3 +530,21 @@ def test_owner_addressed_lint_skips_third_person_rules_only(tmp_path, monkeypatc
     inputs = {'text': remote.CONFIRM, 'channel': 'D1'}
     assert outward.check_lint(inputs, tmp_path, config, {'chat'}, to_owner=True) == (0, '')
     assert outward.check_lint(inputs, tmp_path, config, {'chat'})[0] == 1
+
+
+def test_shepherd_seat_drafts_what_would_send(configured, monkeypatch):
+    from wuwei import outward, registry
+    root, config = configured
+    assert outward.classify('fixed in abc1234', root, config, {'channel': 'chat'}) == (0, 'send')
+    monkeypatch.setenv('WUWEI_SEAT_ROLE', 'shepherd')
+    assert outward.classify('fixed in abc1234', root, config, {'channel': 'chat'}) == (1, 'draft')
+    calls = []
+
+    @registry.outward_operation('chat')
+    def post(channel, text, root=None):
+        calls.append(text)
+        return registry.Result(0)
+
+    result = post('C1', 'fixed in abc1234', root=root)
+    assert result.exit == 1 and 'stored draft' in result.reason
+    assert not calls

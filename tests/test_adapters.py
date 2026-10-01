@@ -38,6 +38,7 @@ CALLS = [
     ('code_host', 'merge', ('ref', 'sha'), False),
     ('code_host', 'revert_pr', ('ref',), False),
     ('code_host', 'merged_prs', ('repo',), True),
+    ('code_host', 'probe', ('ref', 'tags'), True),
     ('vcs', 'workspace_init', ('repo',), False),
     ('vcs', 'workspace_changes', ('repo',), True),
     ('vcs', 'workspace_commit', ('repo', 'paths'), False),

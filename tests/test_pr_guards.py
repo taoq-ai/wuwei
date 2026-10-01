@@ -657,3 +657,30 @@ def test_pr_gate_accepts_quality_only_for_a_light_item(case):
                        root, reserved=False)
     with pytest.raises(ValueError, match='invalid recorded gate set'):
         guard().gate_check(root, root / 'repo', config, item='9')
+
+
+@pytest.mark.parametrize('command,code', [
+    ('WUWEI_SEAT_ROLE= bin/wuwei merge x#1', 2),
+    ('env -u WUWEI_SEAT_ROLE bin/wuwei merge x#1', 2),
+    ('unset WUWEI_SEAT_ROLE; bin/wuwei pr act x#1', 2),
+    ('git merge origin/main', 2),
+    ('git rebase origin/main', 0),
+])
+def test_shepherd_seat_cannot_merge_or_strip_its_role(case, monkeypatch, capsys, command, code):
+    import io
+    import sys
+    from argparse import Namespace
+    import wuwei.commands.hook
+    from wuwei.commands.hook import run
+    from wuwei.guards import Guard
+    monkeypatch.setenv('WUWEI_SEAT_ROLE', 'shepherd')
+    data = payload(case[0], command)
+    data.update(session_id='test', transcript_path='transcript.jsonl',
+                hook_event_name='PreToolUse', tool_use_id='test-tool')
+    monkeypatch.setattr(wuwei.commands.hook, 'discover', lambda: [Guard('PreToolUse', 'Bash', guard().check)])
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(data)))
+    assert run(Namespace(event='PreToolUse')) == code
+    if code:
+        output = json.loads(capsys.readouterr().out)['hookSpecificOutput']
+        assert output['permissionDecision'] == 'deny'
+        assert 'shepherd seat' in output['permissionDecisionReason']

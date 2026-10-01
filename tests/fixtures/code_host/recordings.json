@@ -159,7 +159,7 @@
           "github.com"
         ],
         "input": {
-          "query": "query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated comments(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename} body createdAt}}}}}}}",
+          "query": "query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){pageInfo{hasNextPage} nodes{id isResolved isOutdated path comments(first:100){pageInfo{hasNextPage} nodes{databaseId author{login __typename} body createdAt}}}}}}}",
           "variables": {
             "o": "acme",
             "r": "widget",
@@ -193,7 +193,8 @@
               "created_at": "2026-09-28T10:00:00Z",
               "is_bot": false
             }
-          ]
+          ],
+          "path": null
         }
       ]
     }

@@ -310,11 +310,14 @@ def test_emitted_kinds_have_intended_tiers():
                 'remote.pending': 'silent', 'remote.started': 'silent',
                 'remote.resumed': 'silent', 'remote.stopped': 'silent',
                 'remote.ignored': 'silent', 'remote.refused': 'page', 'remote.acknowledged': 'silent',
-                'remote.confirmed': 'silent', 'calibration.drift': 'nudge'}
+                'remote.confirmed': 'silent', 'calibration.drift': 'nudge',
+                'shepherd.dispatched': 'silent', 'shepherd.finished': 'nudge', 'pr.notified': 'silent'}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier
     assert classify({'kind': 'build.iteration'}, {})[0] == 'silent'
+    assert classify({'kind': 'shepherd.finished', 'payload': {'exit': 0}}, {})[0] == 'silent'
+    assert classify({'kind': 'shepherd.finished', 'payload': {'exit': 1}}, {})[0] == 'nudge'
 
 
 def test_emitted_kinds_scan_both_writer_forms_in_nested_files(tmp_path):
@@ -544,3 +547,29 @@ def test_unmeasured_heartbeat_has_no_page(tmp_path, monkeypatch, events):
 def test_no_heartbeat_line_has_no_health_part(tmp_path, monkeypatch):
     data, line, _ = status_of(tmp_path, monkeypatch, [CLOCK])
     assert data['health'] is None and 'health' not in line
+
+
+def changed(summary=None, pr='example/project#7'):
+    payload = {'pr': pr, 'fields': ['checks']}
+    if summary:
+        payload['summary'] = summary
+    return {'kind': 'pr.changed', 'payload': payload, 'ts': NOW}
+
+
+def test_pr_changed_nudge_is_first_carries_the_summary_and_clears_at_wake_seen(tmp_path, monkeypatch):
+    events = [CLOCK, {'kind': 'build.parked', 'payload': {'reason': 'older'}, 'ts': NOW},
+              changed('PR example/project#7: check ci failed'),
+              changed('PR example/project#7: check ci passed')]
+    data, line, rows = status_of(tmp_path, monkeypatch, events)
+    assert (rows[0]['source'], rows[0]['reason']) == ('pr.changed', 'PR example/project#7: check ci passed')
+    assert sum(row['source'] == 'pr.changed' for row in rows) == 1
+    assert 'prs 1 changed' in line and 'nudges 2' in line
+    seen = {'kind': 'session: wake-seen', 'payload': {'at': NOW}, 'ts': NOW}
+    data, line, rows = status_of(tmp_path / 'b', monkeypatch, [*events, seen])
+    assert [row['source'] for row in rows] == ['build.parked']
+    assert 'prs' not in line
+
+
+def test_old_pr_changed_without_summary_names_the_fields(tmp_path, monkeypatch):
+    _, _, rows = status_of(tmp_path, monkeypatch, [CLOCK, changed()])
+    assert rows[0]['reason'] == 'example/project#7 changed: checks'

@@ -68,6 +68,8 @@ def scan(directory, classified_state=None):
                     if (kind == 'pr.action' and isinstance(payload, dict)
                             and payload.get('state') in ('merged', 'closed')):
                         current.pop(('merge.policy_blocked', payload.get('pr')), None)
+                    if kind == 'session: wake-seen':
+                        current = {key: value for key, value in current.items() if key[0] != 'pr.changed'}
                     if kind == 'steward.run':
                         current = {key: value for key, value in current.items() if key[0] != 'steward.due'}
                     if kind == 'remote.acknowledged' and isinstance(payload, dict):
@@ -105,7 +107,7 @@ def scan(directory, classified_state=None):
                 tier, lane = classify(event, classified_state)
                 if kind == 'watch: sweep':
                     key = (kind, '')
-                elif kind in ('pr.action', 'merge.policy_blocked') and isinstance(payload, dict):
+                elif kind in ('pr.action', 'merge.policy_blocked', 'pr.changed') and isinstance(payload, dict):
                     key = (kind, payload.get('pr'))
                 elif kind in ('decision.one_way', 'draft.created', 'remote.refused') and isinstance(payload, dict):
                     key = (kind, payload.get('id', number))
@@ -114,8 +116,11 @@ def scan(directory, classified_state=None):
                 if tier == 'silent':
                     current.pop(key, None)
                 else:
-                    current[key] = {'tier': tier, 'source': kind, 'lane': lane,
-                                    'reason': payload.get('reason', kind) if isinstance(payload, dict) else kind}
+                    reason = payload.get('reason', kind) if isinstance(payload, dict) else kind
+                    if kind == 'pr.changed' and isinstance(payload, dict):
+                        reason = payload.get('summary') or (
+                            f'{payload.get("pr")} changed: {", ".join(map(str, payload.get("fields") or []))}')
+                    current[key] = {'tier': tier, 'source': kind, 'lane': lane, 'reason': reason}
     # Live health, not the last sweep's count: a partial sweep event must not hide a dead watch.
     current = {key: value for key, value in current.items() if key[:2] != ('watch: sweep', 'watch')}
     health = {}
@@ -165,7 +170,8 @@ def scan(directory, classified_state=None):
                     'reason': f'planner session {planner} stale: no hook activity for '
                               f'{row["idle_seconds"]}s; take over from the live session with: '
                               'wuwei plan session <session id> --take-over'}
-    return list(current.values()), health['watch'], health['listen'], beat_health
+    rows = sorted(current.values(), key=lambda row: row['source'] != 'pr.changed')
+    return rows, health['watch'], health['listen'], beat_health
 
 
 def snapshot(directory):
@@ -183,6 +189,7 @@ def snapshot(directory):
     result['pages'] = sum(row['tier'] == 'page' for row in active)
     result['answered'] = [row['reason'] for row in active if row['source'] == 'decision.answered']
     result['nudges'] = sum(row['tier'] == 'nudge' for row in active)
+    result['prs_changed'] = sum(row['source'] == 'pr.changed' for row in active)
     for key, field, destination in (('reply_obligations', 'due', 'next_reply_due'),
                                      ('meetings', 'start', 'next_meeting')):
         rows = data.get(key, [])
@@ -246,6 +253,8 @@ def line(data):
     parts = [f'WUWEI pages {data["pages"]}', f'nudges {data["nudges"]}']
     if not data['gate_approved']:
         parts[0] = 'WUWEI no plan yet | ' + parts[0][6:]
+    if data.get('prs_changed'):
+        parts.append(f'prs {data["prs_changed"]} changed')
     if data['watch'] != 'alive':
         parts.append(f'watch {data["watch"]}')
     if data['listen'] not in ('alive', 'none'):
