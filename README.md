@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/assets/hero-light.svg">
-    <img src="docs/assets/hero-light.svg" alt="WUWEI day loop: Plan, Build, Review and Close, with a build and check loop, three parallel review gates, one FIX round, a pull request shepherd, owner touchpoints, guards at action time and memory that carries each day into the next." width="100%">
+    <img src="docs/assets/hero-light.svg" alt="WUWEI day loop: Plan, Build, Review and Close, with a build and check loop, three parallel review gates, one FIX round, a pull request shepherd, owner touchpoints, guards at action time with a heartbeat, memory that carries each day into the next, a calibrate station with the owner interview before Plan, a review tier of one gate or three, and decisions answered from the phone through the DM." width="100%">
   </picture>
 </p>
 
@@ -18,7 +18,20 @@
 
 WUWEI is a Claude Code plugin for a chartered team of agents. It gives each role a bounded job, keeps workspace memory, and checks actions through guards. The brand accent is `#00C9A7`.
 
-WUWEI is not a hosted service, a tracker, a chat system, or a replacement for repository rules. It does not deploy, approve pull requests, or bypass branch protection. The current release includes the CLI, role charters and interactive day planner.
+WUWEI is not a hosted service, a tracker, a chat system, or a replacement for repository rules. It does not deploy, approve pull requests, or bypass branch protection.
+
+## What ships today
+
+- The day loop: `/wuwei plan`, the morning gate, builders, gates, PR and close ([daily path](docs/site/daily.md)).
+- Guards at action time, a signed release and integrity checks ([security](docs/site/security.md)).
+- Review tiers: one quality gate for a small change, three gates otherwise ([review tiers](docs/site/concepts.md#review-tiers)).
+- Remote operation from the phone through Remote Control and a Slack owner DM ([remote operation](docs/site/remote.md)).
+- The cockpit: a day board on loopback and inline in Claude Code ([cockpit and board](docs/site/concepts.md#cockpit-and-board)).
+- Calibration and the owner interview ([calibration](docs/site/configuration.md#calibration)).
+- The heartbeat: probes that prove the system behaves, with a dead-man ping ([heartbeat](docs/site/reference.md#heartbeat)).
+
+Designed, not built: cruise mode, graduated autonomy per decision class
+([design spec](docs/specs/2026-09-24-wuwei-design.md), section 5.8.1).
 
 ## How WUWEI compares
 
@@ -39,7 +52,7 @@ them.
 | WUWEI | Chartered roles run a working day | Runtime (Claude Code hooks and a CLI) | A day across repositories: plan, seats, gates, PR, decisions, retro | Shipped hooks refuse at the moment of action and give the reason | Producer-only state and events under `.wuwei/`, written only by the CLI |
 
 WUWEI ships the roles and the day loop: planner, lead, builder, shepherd, steward and four
-sentinels, with three parallel review gates and one fix round ([concepts](docs/site/concepts.md)).
+sentinels, with one or three review gates by tier and one fix round ([concepts](docs/site/concepts.md)).
 It works through `gh` for the code host, with tracker and chat as optional adapters. Releases
 carry a signed manifest and an integrity check, and ZIRAN audits the role tool grants
 ([security](docs/site/security.md)). Retros feed the charters: seats propose changes,
@@ -58,8 +71,8 @@ plugins are what WUWEI is made of.
   terminal.
 - Runs only in Claude Code (Codex is an optional seat runtime).
 - It supports one owner per workspace.
-- Hooks add 40 to 100 ms per tool call depending on hardware
-  ([hook latency budget](docs/site/reference.md#hook-latency-budget)).
+- Hooks add 40 to 100 ms per tool call depending on hardware (40 to 50 ms CPU p95 on an
+  M-series Mac; [hook latency budget](docs/site/reference.md#hook-latency-budget)).
 - The guards are cooperative mistake prevention, not an isolation boundary
   ([security](docs/site/security.md)).
 - It is proven only by its author's own use so far; the live rehearsal is the release
@@ -100,6 +113,11 @@ From the same project directory, initialize the workspace:
 `init` creates `.wuwei/` and adds workspace guard denials to `.claude/settings.json`. From another project, use the installed plugin's `bin/wuwei` path. Use `bin/wuwei` or `python3 -P -m wuwei` for CLI calls; plain `python3 -m wuwei` can import a same-named directory in the current working directory.
 
 Edit `.wuwei/config.toml` to name repositories and choose adapters. See [configuration](docs/site/configuration.md) for every setting and default. To update an existing workspace after a plugin upgrade, run `bin/wuwei init --upgrade --dry-run` and then `bin/wuwei init --upgrade`.
+
+Calibrate once: `bin/wuwei calibrate` profiles each configured repository and writes a report
+with proposed config. Read it, then run `bin/wuwei config promote` and `bin/wuwei promote` in a
+host terminal. Then answer the owner interview with `bin/wuwei calibrate --interview` in a
+host terminal and promote the answers the same way ([calibration](docs/site/configuration.md#calibration)).
 
 Run `/wuwei plan` to start the planner and morning gate. See [concepts](docs/site/concepts.md) for roles, guards and the day flow.
 

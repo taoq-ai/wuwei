@@ -6,6 +6,8 @@ signature. Git source archives are unsigned and report a page. A source checkout
 is pinned by `wuwei integrity reconfirm` at a clean commit and passes until HEAD or
 the tracked tree changes; ignored development artifacts do not affect its fingerprint.
 The manifest inventories every packaged file except itself and its signature.
+That includes `.claude-plugin/plugin.json` and the board MCP server it declares, so
+`bin/wuwei mcp check` reports that server as covered by integrity instead of scanning it.
 Git metadata and generated Python bytecode are not shipped or measured.
 
 Run `bin/wuwei integrity check` from a WUWEI workspace. Exit 0 means the release

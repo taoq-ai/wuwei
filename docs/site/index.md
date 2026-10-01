@@ -9,9 +9,9 @@ WUWEI 无为 means "effortless action." It is a Claude Code plugin for a charter
 - [Daily path](daily.html): one solo-owner path from install to close
 - [Remote operation](remote.html): run a day from the phone with Remote Control and the Slack owner DM
 - [Recovery](recovery.html): low-level commands for when evidence and state disagree
-- [Concepts](concepts.html): roles, guards, memory and the day flow
-- [Configuration](configuration.html): every shipped workspace setting
-- [Operator reference](reference.html): JSON, decisions, retro, companion protocol and hook latency budget
+- [Concepts](concepts.html): roles, guards, memory, the day flow, review tiers, sessions, the listener, the heartbeat and the board
+- [Configuration](configuration.html): every section and key of the workspace config
+- [Operator reference](reference.html): every CLI command, JSON, decisions, heartbeat, sessions and hook latency budget
 - [Adapters and ports](adapters.html): integrations and three-state results
 - [Charter overrides](charter-overrides.html): local rules and promote
 - [Security integration](security.html): scanner status and threat model 9.1
@@ -46,6 +46,10 @@ In your project directory, initialize the workspace:
 `init` ends by checking the installation. An intact signed release prints
 `plugin integrity: clean` and needs no reconfirmation. Edit `.wuwei/config.toml` for your
 repositories and adapters. Use `bin/wuwei` or `python3 -P -m wuwei` for CLI calls.
+Calibrate once with `bin/wuwei calibrate`, read its report, then run
+`bin/wuwei config promote` and `bin/wuwei promote` in a host terminal. Answer the owner
+interview with `bin/wuwei calibrate --interview` in a host terminal and promote the answers
+the same way ([daily path](daily.html)).
 Run `/wuwei plan` to start the planner and owner morning gate, followed by builders,
 review and close. The [daily path](daily.html) walks through the whole day; the linked pages describe the CLI and configuration.
 

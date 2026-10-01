@@ -8,6 +8,20 @@ layout: default
 
 `bin/wuwei init .` creates `.wuwei/config.toml`. Edit it in the workspace root. Values below are the shipped template defaults. Omitted keys use CLI defaults, and unknown keys are errors. The optional commented examples are inactive until uncommented. Paths in repository entries are relative to the workspace unless absolute.
 
+## Sections
+
+Every table `config.toml` accepts, and the heading below that documents its keys.
+
+| Sections | Keys under |
+| --- | --- |
+| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[security]` | [Workspace and repositories](#workspace-and-repositories) |
+| `[host]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
+| `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[brief.style]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
+| `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
+| `[boundary]`, `[environments]`, `[deploy]` | [Boundaries and deployment](#boundaries-and-deployment) |
+| `[outward]`, `[outward.max_length]`, `[outbound]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
+| `[decisions.cruise]` | Cruise mode is designed in design spec 5.8.1 and not built; `bin/wuwei config check` refuses it today as an unknown key. |
+
 ## Workspace and repositories
 
 | Key | Default | Meaning |
@@ -90,7 +104,7 @@ fast_checks = ["python3 -m pytest -q"]
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
 | `watch.ping_url` | `""` | https check URL of a hosted cron monitor; each healthy watch heartbeat pings it (see the heartbeat reference). Keep it private. |
 | `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `status --line`, its item claims lapse, and a stale planner is nudged. |
-| `sessions.rotate_after` | `{ turns = 0, compactions = 0, clock = "" }` | Planned planner rotation, off by default. `turns` (Stop hooks since the session started today), `compactions` (compactions seen) or `clock` (`"HH:MM"` in `owner.timezone`): when one is reached, the Stop hook asks the planner once, at a turn with no running seat and no unanswered owner decision, to end the session and run `wuwei plan session "$WUWEI_SESSION_ID" --take-over` in a fresh one. |
+| `sessions.rotate_after` | `{ turns = 0, compactions = 0, clock = "" }` | Scheduled planner rotation, off by default. `turns` (Stop hooks since the session started today), `compactions` (compactions seen) or `clock` (`"HH:MM"` in `owner.timezone`): when one is reached, the Stop hook asks the planner once, at a turn with no running seat and no unanswered owner decision, to end the session and run `wuwei plan session "$WUWEI_SESSION_ID" --take-over` in a fresh one. |
 | `listen.poll_seconds` | `60` | Interval between listener polls of the inbound source. |
 | `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start and in `status --line`. |
 | `responder.enabled` | `true` | Kill switch: when `false` the listener still stores events but does not wake the planner or handle commands. |
@@ -167,8 +181,7 @@ affected active items park and valid pending owner decisions appear in the exist
 Unknown sessions still page and queue a decision. Repeated sweeps
 remeasure without duplicating a session/chain decision. Commands and argument values
 never enter finding events or decisions. A session identity changed by secret redaction
-uses a stable digest to keep different sessions distinct. MCP scanning (#35) and role
-audits (#36) remain deferred.
+uses a stable digest to keep different sessions distinct.
 
 ## Owner voice
 

@@ -84,7 +84,9 @@ executes each returned action unchanged:
    `wuwei brief quality <item> quality-1 --gate --worktree <path> --file -`, and calls
    `dispatch next` again. Its `seats` list holds one ready action per brief: `launch`
    with `prompt` and `agent_type`, and `receive`, the exact
-   `wuwei dispatch receive <item> <role> <seat>` call to run after the seat stops.
+   `wuwei dispatch receive <item> <role> <seat>` call to run after the seat stops. At the
+   first gate the action also carries the item's `tier`: `light` asks for the quality gate
+   only, `standard` and `full` for all three.
 4. Fix round: when a gate says FIX, `dispatch next` returns `fix` with `command`
    (`wuwei build next <item>`). The item is already in `fix` and the stopped builder has a
    `continue` action with the FIX verdict files as feedback. The planner runs the build
@@ -113,7 +115,9 @@ To answer from your phone, run the planner session with Claude Code Remote Contr
 "Push when actions required" in `/config`. Each decision question then reaches the Claude
 mobile app and stays open until you answer. A phone answer is not yet your outcome: run
 `bin/wuwei decision outcome` in a host terminal to record it. To command the workspace and
-answer decisions from Slack as well, follow [remote operation](remote.html).
+answer decisions from Slack as well, follow [remote operation](remote.html). A decision
+answered in the Slack DM is recorded as evidence, and `status --line` counts it as
+`phone answers 1` until you record it with `bin/wuwei decision outcome`.
 
 ## Long sessions
 

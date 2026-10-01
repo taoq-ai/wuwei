@@ -1,13 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
 <title id="title">WUWEI day loop</title>
-<desc id="desc">The WUWEI day is a loop. Plan, the owner's morning gate, leads to Build, where each item is built and checked until its checks pass. Review fans out to architecture, quality and security gates; a FIX verdict sends the item back to Build for one fix round and a delta check. A shepherd moves each pull request through CI, review threads and rebases until it merges, then Close runs the retro. Memory folds the learnings back into charters and notes so tomorrow's Plan starts from them. A sweep adds new work during the day. The owner is touched only at the morning gate, decisions, drafts to send and merges. Guards act at action time around every step.</desc>
+<desc id="desc">The WUWEI day is a loop. Plan, the owner's morning gate, leads to Build, where each item is built and checked until its checks pass. Review fans out to architecture, quality and security gates; a FIX verdict sends the item back to Build for one fix round and a delta check. A shepherd moves each pull request through CI, review threads and rebases until it merges, then Close runs the retro. Memory folds the learnings back into charters and notes so tomorrow's Plan starts from them. A sweep adds new work during the day. The owner is touched only at the morning gate, decisions, drafts to send and merges. Guards act at action time around every step. Before the first plan, Calibrate profiles the repositories and an owner interview turns preferences into configuration. Each item's review tier picks one gate or three. The owner can answer a decision from the phone through the Slack DM. A heartbeat on the guard ring proves the guards still behave.</desc>
 <style><![CDATA[
 .flow{stroke-dasharray:2 14;animation:flow 2.4s linear infinite}
 .slow{animation-duration:4s}
 @keyframes flow{to{stroke-dashoffset:-32}}
 .ring{animation:breathe 9s ease-in-out infinite}
 @keyframes breathe{0%,100%{opacity:.35}50%{opacity:.8}}
-@media (prefers-reduced-motion:reduce){.tok,.pulse{display:none}.flow,.ring{animation:none}}
+.beat{animation:beat 6s ease-out infinite}
+@keyframes beat{0%,12%,100%{opacity:0}2%,7%{opacity:.9}4.5%{opacity:.1}}
+@media (prefers-reduced-motion:reduce){.tok,.pulse,.beat{display:none}.flow,.ring{animation:none}}
 ]]></style>
 <defs>
 <radialGradient id="halo" cx="50%" cy="58%" r="60%"><stop offset="0" stop-color="#00C9A7" stop-opacity="0.10"/><stop offset="1" stop-color="#00C9A7" stop-opacity="0"/></radialGradient>
@@ -19,9 +21,12 @@
 <rect width="1200" height="620" rx="28" fill="#102622"/>
 <rect width="1200" height="620" rx="28" fill="url(#halo)"/>
 <rect class="ring" x="22" y="22" width="1156" height="576" rx="22" fill="none" stroke="#00C9A7" stroke-width="1.5" stroke-dasharray="2 7"/>
+<rect class="beat" x="22" y="22" width="1156" height="576" rx="22" fill="none" stroke="#00C9A7" stroke-width="2.5" opacity="0"/>
 <rect x="930" y="12" width="232" height="22" fill="#102622"/>
 <use href="#shield" x="952" y="23"/>
 <text x="970" y="29" fill="#B1CBC4" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16">Guards at action time</text>
+<rect x="48" y="587" width="96" height="22" fill="#102622"/>
+<text x="58" y="604" fill="#B1CBC4" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16">heartbeat</text>
 <text x="56" y="80" fill="#ECF8F5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="40" font-weight="700">无为 <tspan fill="#00C9A7">WUWEI</tspan></text>
 <text x="57" y="112" fill="#B1CBC4" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18">A chartered team of agents, one calm day</text>
 <g fill="none" stroke="#F2B65E" stroke-width="1.6" stroke-dasharray="3 6" opacity="0.8">
@@ -29,6 +34,8 @@
 <path d="M 620 408 C 640 330, 730 300, 730 238"/>
 <path d="M 664 424 C 830 420, 960 410, 1038 378"/>
 <path d="M 630 456 C 680 500, 820 494, 922 494"/>
+<path d="M 550 452 C 470 480, 380 463, 328 463"/>
+<path d="M 593 356 C 640 300, 690 270, 700 238"/>
 </g>
 <g fill="none" stroke-linecap="round">
 <path d="M 990 488 C 905 585, 310 590, 180 385" stroke="#00C9A7" stroke-opacity="0.28" stroke-width="3"/>
@@ -55,6 +62,8 @@
 <path class="pulse" d="M 630 456 C 680 500, 820 494, 922 494" fill="none" stroke="#F2B65E" stroke-width="3" opacity="0"><animate attributeName="opacity" dur="18s" begin="-0s" repeatCount="indefinite" calcMode="linear" keyTimes="0;0.736;0.7638;0.8082;0.8749;1" values="0;0;0.9;0.9;0;0"/></path>
 <path class="pulse" d="M 620 408 C 640 330, 730 300, 730 238" fill="none" stroke="#F2B65E" stroke-width="3" opacity="0"><animate attributeName="opacity" dur="18s" begin="-13.5s" repeatCount="indefinite" calcMode="linear" keyTimes="0;0.2777;0.3054;0.3499;0.4165;1" values="0;0;0.9;0.9;0;0"/></path>
 <path class="pulse" d="M 664 424 C 830 420, 960 410, 1038 378" fill="none" stroke="#F2B65E" stroke-width="3" opacity="0"><animate attributeName="opacity" dur="18s" begin="-9s" repeatCount="indefinite" calcMode="linear" keyTimes="0;0.5723;0.6001;0.6445;0.7112;1" values="0;0;0.9;0.9;0;0"/></path>
+<path class="pulse" d="M 550 452 C 470 480, 380 463, 328 463" fill="none" stroke="#F2B65E" stroke-width="3" opacity="0"><animate attributeName="opacity" dur="18s" begin="-10.7688s" repeatCount="indefinite" calcMode="linear" keyTimes="0;0.3158;0.3436;0.3881;0.4547;1" values="0;0;0.9;0.9;0;0"/></path>
+<path class="pulse" d="M 593 356 C 640 300, 690 270, 700 238" fill="none" stroke="#F2B65E" stroke-width="3" opacity="0"><animate attributeName="opacity" dur="18s" begin="-13.5s" repeatCount="indefinite" calcMode="linear" keyTimes="0;0.3443;0.3721;0.4165;0.4832;1" values="0;0;0.9;0.9;0;0"/></path>
 <g class="tok" opacity="0"><animate attributeName="opacity" dur="18s" begin="-10.7688s" repeatCount="indefinite" calcMode="linear" keyTimes="0;0.0278;0.374;0.4017;1" values="0;1;1;0;0"/><animateMotion dur="18s" begin="-10.7688s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.4017;1" keyPoints="0;1;1" keySplines="0.3 0 0.7 1;0 0 1 1" path="M 990 488 C 905 585, 310 590, 180 385"/><circle r="22" fill="url(#glow)"/><circle r="5" fill="#ECF8F5" stroke="#00C9A7" stroke-width="3"></circle></g>
 <g class="tok" opacity="0"><animate attributeName="opacity" dur="18s" begin="-0s" repeatCount="indefinite" calcMode="linear" keyTimes="0;0.0278;0.7582;0.786;1" values="0;1;1;0;0"/><animateMotion dur="18s" begin="-0s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.0444;0.1758;0.1925;0.3483;0.3649;0.4668;0.489;0.5761;0.5927;0.7416;0.786;1" keyPoints="0;0;0.2252;0.2252;0.421;0.421;0.5956;0.5956;0.7448;0.7448;1;1;1" keySplines="0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0 0 1 1" path="M 180 385 C 180 285, 330 210, 455 210 L 455 270 A 30 30 0 0 1 455 330 A 30 30 0 0 1 455 270 L 455 210 L 730 210 L 965 210 C 1022 210, 1052 255, 1052 309 A 36 36 0 0 1 1052 381 C 1052 445, 1040 488, 990 488"/><circle r="22" fill="url(#glow)"/><circle r="7" fill="#ECF8F5" stroke="#00C9A7" stroke-width="3"></circle></g>
 <g class="tok" opacity="0"><animate attributeName="opacity" dur="18s" begin="-13.5s" repeatCount="indefinite" calcMode="linear" keyTimes="0;0.0278;0.6203;0.6481;1" values="0;1;1;0;0"/><animateMotion dur="18s" begin="-13.5s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.0333;0.1647;0.1814;0.2832;0.3165;0.4326;0.4548;0.6037;0.6481;1" keyPoints="0;0;0.28;0.28;0.4972;0.4972;0.6827;0.6827;1;1;1" keySplines="0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0 0 1 1" path="M 180 385 C 180 285, 330 210, 455 210 L 730 210 L 965 210 C 1022 210, 1052 255, 1052 309 A 36 36 0 0 1 1052 381 C 1052 445, 1040 488, 990 488"/><circle r="22" fill="url(#glow)"/><circle r="7" fill="#ECF8F5" stroke="#00C9A7" stroke-width="3"></circle></g>
@@ -63,7 +72,7 @@
 <g class="tok" opacity="0"><animate attributeName="opacity" dur="18s" begin="-5s" repeatCount="indefinite" calcMode="linear" keyTimes="0;0.0278;0.8922;0.92;1" values="0;1;1;0;0"/><animateMotion dur="18s" begin="-5s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.0278;0.1296;0.1463;0.2333;0.2556;0.51;0.5267;0.6285;0.6396;0.7267;0.7433;0.8922;0.92;1" keyPoints="0;0;0.1304;0.1304;0.2418;0.2418;0.5676;0.5676;0.698;0.698;0.8094;0.8094;1;1;1" keySplines="0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0 0 1 1" path="M 455 210 L 730 210 L 965 210 C 1009 140, 979 96, 895 96 L 565 96 C 522 96, 505 132, 505 182 L 455 210 L 730 210 L 965 210 C 1022 210, 1052 255, 1052 309 A 36 36 0 0 1 1052 381 C 1052 445, 1040 488, 990 488"/><circle r="22" fill="url(#glow)"/><circle r="7" fill="#ECF8F5" stroke="#00C9A7" stroke-width="3"><animate attributeName="stroke" dur="18s" begin="-5s" repeatCount="indefinite" calcMode="linear" keyTimes="0;0.25;0.2778;0.5044;0.5267;1" values="#00C9A7;#00C9A7;#FF8C7A;#FF8C7A;#00C9A7;#00C9A7"/></circle></g>
 <g class="tok" opacity="0"><animate attributeName="opacity" dur="18s" begin="-9s" repeatCount="indefinite" calcMode="linear" keyTimes="0;0.0278;0.6799;0.7077;1" values="0;1;1;0;0"/><animateMotion dur="18s" begin="-9s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.0222;0.1025;0.1192;0.221;0.2377;0.3247;0.3414;0.3963;0.5359;0.5778;0.6112;0.6632;0.7077;1" keyPoints="0;0;0.16;0.16;0.363;0.363;0.5364;0.5364;0.6459;0.8128;0.8963;0.8963;1;1;1" keySplines="0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0.3 0 0.7 1;0.3 0 0.7 1;0 0 1 1;0.3 0 0.7 1;0 0 1 1;0 0 1 1" path="M 262 172 C 305 172, 330 192, 347.962 226.542 C 383.04 215.88, 420 210, 455 210 L 730 210 L 965 210 C 1022 210, 1052 255, 1052 309 A 36 36 0 0 1 1052 381 A 36 36 0 0 1 1052 309 A 36 36 0 0 1 1052 381 C 1052 445, 1040 488, 990 488"/><circle r="22" fill="url(#glow)"/><circle r="7" fill="#ECF8F5" stroke="#00C9A7" stroke-width="3"></circle></g>
 <g fill="#193B35" stroke="#00C9A7" stroke-width="2"><circle cx="882" cy="148" r="8"/><circle cx="882" cy="210" r="8"/><circle cx="882" cy="272" r="8"/></g>
-<g fill="#B1CBC4" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" text-anchor="middle"><text x="882" y="132">architecture</text><text x="882" y="194">quality</text><text x="882" y="256">security</text></g>
+<g fill="#B1CBC4" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" text-anchor="middle"><text x="882" y="132">architecture</text><text x="882" y="194">quality</text><text x="882" y="256">security</text><text x="902" y="302">tier: one gate or three</text></g>
 <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="600" text-anchor="middle">
 <g><rect x="112" y="360" width="136" height="56" rx="18" fill="#000000" opacity="0.22"/><rect x="112" y="357" width="136" height="56" rx="18" fill="#193B35" stroke="#00C9A7" stroke-width="2"/><text x="180" y="393" fill="#ECF8F5">Plan</text></g>
 <g><rect x="387" y="185" width="136" height="56" rx="18" fill="#000000" opacity="0.22"/><rect x="387" y="182" width="136" height="56" rx="18" fill="#193B35" stroke="#00C9A7" stroke-width="2"/><text x="455" y="218" fill="#ECF8F5">Build</text></g>
@@ -77,6 +86,11 @@
 <rect x="536" y="411" width="128" height="48" rx="24" fill="#000000" opacity="0.22"/>
 <rect x="536" y="408" width="128" height="48" rx="24" fill="#193B35" stroke="#F2B65E" stroke-width="2"/>
 <text x="600" y="439" fill="#F2B65E" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="600" text-anchor="middle">Owner</text>
+<rect x="204" y="443" width="124" height="40" rx="20" fill="#193B35" stroke="#00C9A7" stroke-width="2"/>
+<text x="266" y="469" fill="#ECF8F5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="600" text-anchor="middle">Calibrate</text>
+<path d="M 560 380 L 570 408" fill="none" stroke="#F2B65E" stroke-width="1.6" stroke-dasharray="3 6" opacity="0.8"/>
+<rect x="497" y="344" width="96" height="36" rx="18" fill="#193B35" stroke="#F2B65E" stroke-width="2"/>
+<text x="545" y="368" fill="#F2B65E" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="17" font-weight="600" text-anchor="middle">Phone</text>
 <g fill="#B1CBC4" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16">
 <text x="455" y="306" text-anchor="middle">check</text>
 <text x="497" y="306">test first</text>
@@ -87,5 +101,5 @@
 </g>
 <text x="742" y="84" fill="#FF8C7A" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" text-anchor="middle">FIX: one fix round, then a delta check</text>
 <text x="585" y="584" fill="#00C9A7" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="600" text-anchor="middle">Memory across days</text>
-<g fill="#F2B65E" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" text-anchor="middle"><text x="392" y="452">morning gate</text><text x="756" y="318">decision</text><text x="872" y="440">merge</text><text x="760" y="520">draft to send</text></g>
+<g fill="#F2B65E" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" text-anchor="middle"><text x="392" y="452">morning gate</text><text x="756" y="318">decision</text><text x="872" y="440">merge</text><text x="760" y="520">draft to send</text><text x="430" y="494">interview</text><text x="628" y="300">DM</text></g>
 </svg>

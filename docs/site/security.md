@@ -12,7 +12,7 @@ Hooks invoke the CLI for relevant actions. Guard scope is a WUWEI workspace, its
 
 ## ZIRAN integration
 
-The ZIRAN scanner adapter provides runtime trace analysis, MCP registry checks and agent-surface gates. Init and upgrade register attached MCP configurations; morning planning checks for drift before any seat launches. High/critical findings require an owner decision on the host. Incomplete checks block with exit 2. Snapshots and accepted decisions are protected producer records, and raw descriptions stay in report files. See [configuration](configuration.html) for discovery paths and the owner decision flow. Do not treat an unavailable scanner as a clean audit.
+The ZIRAN scanner adapter provides runtime trace analysis, MCP registry checks and agent-surface gates. Init and upgrade register attached MCP configurations; morning planning checks for drift before any seat launches. High/critical findings require an owner decision on the host. Incomplete checks block with exit 2. Snapshots and accepted decisions are protected producer records, and raw descriptions stay in report files. See [configuration](configuration.html) for discovery paths and the owner decision flow. Do not treat an unavailable scanner as a clean audit. WUWEI's own board MCP server is declared in the signed `.claude-plugin/plugin.json`, so plugin integrity covers it and the registry gate (`bin/wuwei mcp check`) reports it as covered rather than scanning it; every other server, including one declared inline in another plugin's `plugin.json`, is measured.
 
 ## S1: Reviewed role grants in CI
 

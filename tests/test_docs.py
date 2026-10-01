@@ -2,10 +2,13 @@
 
 from argparse import Namespace
 import json
+import os
 from pathlib import Path
 import posixpath
 import re
 import runpy
+import subprocess
+import sys
 import tarfile
 import tomllib
 from xml.etree import ElementTree
@@ -15,6 +18,7 @@ from wuwei import integrity, registry
 
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / 'docs/site'
+TABLE = re.compile(r'^\s*#?\s*\[\[?([\w.]+)\]\]?\s*$')
 
 
 def test_readme_install_and_hero():
@@ -61,11 +65,10 @@ def test_hero_variants_share_geometry_and_motion():
 
 
 def test_site_pages_and_links():
-    pages = ('index', 'daily', 'recovery', 'concepts', 'configuration', 'adapters', 'charter-overrides',
-             'security', 'reference', 'rehearsal', 'remote')
+    pages = sorted(p.stem for p in SITE.glob('*.md') if p.stem != 'index')
     index = (SITE / 'index.md').read_text()
     assert index.startswith('---\nlayout: default\n---\n')
-    for page in pages[1:]:
+    for page in pages:
         assert (SITE / f'{page}.md').is_file()
         assert (SITE / f'{page}.md').read_text().startswith('---\nlayout: default\n---\n')
         assert f'({page}.html)' in index
@@ -109,7 +112,7 @@ def test_every_template_config_key_is_documented():
     section = ''
     keys = set()
     for line in template.splitlines():
-        table = re.match(r'^\s*#?\s*\[\[?([\w.]+)\]\]?\s*$', line)
+        table = TABLE.match(line)
         if table:
             section = table.group(1)
             continue
@@ -422,3 +425,100 @@ def test_heartbeat_is_documented():
         assert phrase in section, phrase
     assert '`watch.ping_url`' in (SITE / 'configuration.md').read_text()
     assert 'no external dead-man ping' not in (SITE / 'remote.md').read_text()
+
+
+def test_reference_lists_every_cli_command(tmp_path):
+    result = subprocess.run([sys.executable, '-P', '-m', 'wuwei', '--help'], capture_output=True,
+                            text=True, cwd=tmp_path, env={**os.environ, 'PYTHONPATH': str(ROOT / 'cli')})
+    assert result.returncode == 0, result.stderr
+    commands = set(re.search(r'\{([a-z,-]+)\}', result.stdout)[1].split(','))
+    section = (SITE / 'reference.md').read_text().split('\n## Commands\n', 1)[1].split('\n## ', 1)[0]
+    listed = set(re.findall(r'^\| `bin/wuwei ([a-z-]+)`', section, re.M))
+    assert listed == commands, (sorted(commands - listed), sorted(listed - commands))
+
+
+def test_configuration_names_every_config_section():
+    from wuwei import workspace
+    template = (ROOT / 'templates/workspace/config.toml').read_text()
+    sections = {match[1] for line in template.splitlines() if (match := TABLE.match(line))}
+    sections |= {name for name, rule in workspace.SCHEMA.items() if isinstance(rule, (dict, list))}
+    page = (SITE / 'configuration.md').read_text()
+    page = page.split('\n## Sections\n', 1)[1].split('\n## ', 1)[0]
+    missing = sorted(name for name in sections if f'`[{name}]`' not in page and f'`[[{name}]]`' not in page)
+    assert not missing, missing
+
+
+def test_readme_first_day_and_shipped_areas():
+    readme = (ROOT / 'README.md').read_text()
+    index = (SITE / 'index.md').read_text()
+    for text, heading in ((readme, '## Quick start'), (index, '## Start here')):
+        section = text.split(f'\n{heading}\n', 1)[1].split('\n## ', 1)[0]
+        steps = [section.index(step) for step in ('init .', 'bin/wuwei calibrate',
+                                                  'calibrate --interview', '/wuwei plan')]
+        assert steps == sorted(steps), heading
+        assert 'config promote' in section, heading
+    assert (readme.index('## What WUWEI is and is not') < readme.index('## What ships today')
+            < readme.index('## How WUWEI compares'))
+    ships = readme.split('\n## What ships today\n', 1)[1].split('\n## ', 1)[0]
+    for link in ('docs/site/daily.md', 'docs/site/security.md', 'docs/site/concepts.md#review-tiers',
+                 'docs/site/remote.md', 'docs/site/concepts.md#cockpit-and-board',
+                 'docs/site/configuration.md#calibration', 'docs/site/reference.md#heartbeat',
+                 'docs/specs/2026-09-24-wuwei-design.md'):
+        assert f'({link})' in ships, link
+
+
+def test_cruise_mode_is_designed_not_built():
+    readme = (ROOT / 'README.md').read_text()
+    for path in [ROOT / 'README.md', *SITE.glob('*.md')]:
+        for paragraph in re.split(r'\n\s*\n', path.read_text()):
+            if re.search('cruise', paragraph, re.I) and not paragraph.startswith('#'):
+                assert 'not built' in ' '.join(paragraph.split()), (path.name, paragraph)
+    assert 'cruise' in readme.split('\n## What ships today\n', 1)[1].split('\n## ', 1)[0]
+    assert all('cruise' in (SITE / f'{page}.md').read_text() for page in ('concepts', 'configuration'))
+
+
+def test_concepts_and_daily_cover_shipped_mechanisms():
+    concepts = (SITE / 'concepts.md').read_text()
+    for heading in ('Review tiers', 'Decision classes and cruise levels', 'Sessions', 'Listener',
+                    'Heartbeat', 'Cockpit and board'):
+        assert f'\n## {heading}\n' in concepts, heading
+    daily = (SITE / 'daily.md').read_text()
+    assert '`tier`' in daily.split('3. Gates:', 1)[1].split('4. Fix round:', 1)[0]
+    assert 'phone answers' in daily.split('\n## 5. ', 1)[1].split('\n## ', 1)[0]
+
+
+def test_security_integrity_and_cross_links():
+    for path in (SITE / 'security.md', ROOT / 'docs/integrity.md'):
+        text = path.read_text()
+        assert 'plugin.json' in text and 'mcp check' in text, path.name
+    assert '(rehearsal.html)' in (SITE / 'recovery.md').read_text()
+    assert '(recovery.html)' in (SITE / 'rehearsal.md').read_text()
+
+
+def test_shipped_things_are_not_called_planned():
+    for path, stale in ((SITE / 'configuration.md', 'MCP scanning (#35)'),
+                        (SITE / 'configuration.md', 'Planned planner rotation'),
+                        (SITE / 'reference.md', 'will set `remote`'),
+                        (SITE / 'reference.md', 'nothing sets `remote`'),
+                        (ROOT / 'README.md', 'with three parallel review gates'),
+                        (SITE / 'charter-overrides.md', '**Planned:**'),
+                        (ROOT / 'README.md', 'interactive day planner')):
+        assert stale not in path.read_text(), (path.name, stale)
+
+
+def test_hero_shows_the_current_day():
+    readme = (ROOT / 'README.md').read_text()
+    alt = re.search(r'alt="([^"]+)"', readme)[1].lower()
+    for variant in ('light', 'dark'):
+        art = ROOT / f'docs/assets/hero-{variant}.svg'
+        text = art.read_text()
+        assert len(art.read_bytes()) < 20000, variant
+        for word in ('Calibrate', 'interview', 'tier', 'Phone', 'DM', 'heartbeat'):
+            assert word in text, (variant, word)
+        desc = re.search(r'<desc[^>]*>(.*?)</desc>', text, re.S)[1].lower()
+        for word in ('calibrat', 'tier', 'phone', 'heartbeat'):
+            assert word in desc and word in alt, (variant, word)
+        reduced = re.search(r'@media \(prefers-reduced-motion:\s*reduce\)\s*\{(.*?)\}\s*\}', text, re.S)[1]
+        classes = {name for attr in re.findall(r'class="([^"]+)"', text) for name in attr.split()}
+        for name in classes - {'slow'}:
+            assert f'.{name}' in reduced, (variant, name)

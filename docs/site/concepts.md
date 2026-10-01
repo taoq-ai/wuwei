@@ -114,3 +114,50 @@ Claude build form exits 2 and directs you to build next. Codex retains
 `wuwei build <item> <brief> <worktree>` and executes the same action loop with polling.
 Default `host.seats` is four: one builder plus three parallel gates. Increase the host
 ceiling when increasing cap.
+
+## Review tiers
+
+At an item's first gate, `dispatch next` computes its review tier, `light`, `standard` or
+`full`, from the diff size against `repos.gates.light_max_lines`, trust and never-auto
+paths, the lead flags, the track, `repos.gates.floor` and an optional lead `tier`. A light
+item gets the quality gate only; standard and full get arch, quality and security. A lead
+tier below the computed one is refused and recorded as a reason, and the returned action
+carries the `tier`. See [configuration](configuration.html#workspace-and-repositories) and
+the [lead plan JSON](reference.html#lead-plan-json).
+
+## Decision classes and cruise levels
+
+Cruise mode is designed in
+[design spec 5.8.1](https://github.com/taoq-ai/wuwei/blob/main/docs/specs/2026-09-24-wuwei-design.md)
+and not built: decisions would carry a class, and the CLI would answer some classes itself
+at levels L0 to L3. Today every owner decision goes to the owner.
+
+## Sessions
+
+Several Claude Code sessions can share a workspace. Hooks register each one in day state
+with its role, last hook and claimed items; a session idle past `sessions.stale_seconds` is
+stale and its claims lapse. One session is the planner, a second takes over with
+`plan session --take-over`, and `sessions.rotate_after` rotates the planner on a schedule.
+See [sessions](reference.html#sessions) and [long sessions](daily.html#long-sessions).
+
+## Listener
+
+`bin/wuwei listen` polls the inbound source, such as a Slack DM, into the workspace inbox.
+The responder wakes the planner and handles commands only from the pinned owner, with a
+second factor where a command needs one. See [remote operation](remote.html) and
+[running the listener](configuration.html#running-the-listener).
+
+## Heartbeat
+
+On every tick the watch runs a fixed table of probes: a refused and an allowed hook call,
+state, integrity, config, clocks, the status line, the planner and memory. Health shows on
+the status line, a failed probe raises one page, a probe that turns from ok to failed is
+behaviour drift, and a healthy heartbeat pings an external dead-man monitor. See the
+[heartbeat reference](reference.html#heartbeat).
+
+## Cockpit and board
+
+`bin/wuwei dashboard` serves the read-only day board on loopback. The plugin's MCP server
+runs `bin/wuwei board` and offers the `wuwei_board` tool inside Claude Code; it is declared
+in the signed `plugin.json`, so integrity covers it. Answering a decision or approving a
+draft stays a host terminal action. See the [daily path](daily.html#6-close).
