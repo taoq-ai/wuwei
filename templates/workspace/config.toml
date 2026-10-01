@@ -171,6 +171,8 @@ clock_seconds = 600
 dead_seconds = 1200
 stale_seconds = 900
 sweep_seconds = 7200
+# https check URL of a hosted cron monitor, pinged by each healthy heartbeat; keep it private.
+# ping_url = ""
 
 [sessions]
 stale_seconds = 3600

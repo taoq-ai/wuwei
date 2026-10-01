@@ -292,7 +292,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'reply: thread_posted': 'silent', 'pr.raised': 'silent',
                 'pr.claimed': 'silent',
                 'pr.reviewers_selected': 'silent', 'pr.review_posted': 'silent',
-                'watch: sweep': 'nudge', 'watch: clock': 'silent',
+                'watch: sweep': 'nudge', 'watch: clock': 'silent', 'heartbeat: clock': 'silent',
                 'watch: heartbeat': 'silent', 'watch: observation': 'silent',
                 'watch: read-failed': 'nudge', 'pr.changed': 'nudge',
                 'session: compact': 'silent', 'session: wake-seen': 'silent',
@@ -488,3 +488,59 @@ def test_status_json_shows_recorded_tiers(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv('WUWEI_NOW', NOW)
     assert main(['status', '--json']) == 0
     assert json.loads(capsys.readouterr().out)['gates'] == {'A': light}
+
+
+def beat_line(health, page='', ts=NOW):
+    return {'kind': 'heartbeat: clock', 'ts': ts,
+            'payload': {'health': health, 'probes': {}, 'drift': [], 'page': page, 'ping': 'off'}}
+
+
+def status_of(tmp_path, monkeypatch, events):
+    from wuwei.commands import status
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    directory = day(tmp_path, {'items': {}, 'cap': 1, 'gate_approved': True}, events)
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    data = status.snapshot(directory)
+    return data, status.line(data), status.attention(directory)
+
+
+CLOCK = {'kind': 'watch: clock', 'payload': {}, 'ts': NOW}
+PAGE_TEXT = 'heartbeat integrity failed: page: plugin integrity: cli/x.py changed after the cached verdict'
+
+
+def test_heartbeat_health_on_the_status_line(tmp_path, monkeypatch):
+    data, line, rows = status_of(tmp_path, monkeypatch, [CLOCK, beat_line('ok')])
+    assert data['health'] == 'ok' and 'health ok' in line and 'pages 0' in line
+    assert not [row for row in rows if row['source'] == 'heartbeat']
+
+
+def test_degraded_heartbeat_pages_once_and_clears(tmp_path, monkeypatch):
+    data, line, rows = status_of(tmp_path, monkeypatch, [CLOCK, beat_line('degraded', PAGE_TEXT),
+                                                         beat_line('degraded', PAGE_TEXT)])
+    assert 'health degraded' in line and 'pages 1' in line
+    assert [(row['tier'], row['reason']) for row in rows if row['source'] == 'heartbeat'] == [
+        ('page', PAGE_TEXT)]
+
+
+def test_ok_heartbeat_clears_the_page(tmp_path, monkeypatch):
+    data, line, rows = status_of(tmp_path, monkeypatch, [CLOCK, beat_line('degraded', PAGE_TEXT),
+                                                         beat_line('ok')])
+    assert 'health ok' in line and 'pages 0' in line
+
+
+@pytest.mark.parametrize('events', [
+    [beat_line('degraded', PAGE_TEXT, ts='2026-09-28T09:00:00+02:00'),
+     {'kind': 'watch: clock', 'payload': {}, 'ts': '2026-09-28T09:00:00+02:00'}],
+    [CLOCK, beat_line('fine')],
+    [CLOCK, {'kind': 'heartbeat: clock', 'payload': 'broken', 'ts': NOW}],
+])
+def test_unmeasured_heartbeat_has_no_page(tmp_path, monkeypatch, events):
+    data, line, rows = status_of(tmp_path, monkeypatch, events)
+    assert data['health'] == 'unmeasured' and 'health unmeasured' in line
+    assert not [row for row in rows if row['source'] == 'heartbeat']
+
+
+def test_no_heartbeat_line_has_no_health_part(tmp_path, monkeypatch):
+    data, line, _ = status_of(tmp_path, monkeypatch, [CLOCK])
+    assert data['health'] is None and 'health' not in line

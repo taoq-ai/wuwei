@@ -94,6 +94,33 @@ Before the morning gate is approved, including before today's `state.json` exist
 
 When one or more registered sessions are live, the line adds `sessions N` before the reply and meeting parts, and `status --json` carries `sessions`.
 
+## Heartbeat
+
+A clock line proves the watch runs, not that the system behaves. On every watch loop iteration the watch also runs a fixed table of synthetic probes and writes one `heartbeat: clock` event. `bin/wuwei heartbeat` runs the same probes on demand and prints one `<probe>: <result> <value>` line each. It exits 0 when every probe is ok, 1 when one failed, and 2 when one is unmeasured or the probes could not run. The on-demand command writes no state, appends no event and sends no ping.
+
+| Probe | ok when | Value |
+| --- | --- | --- |
+| `refused` | `hook PreToolUse` with Bash `git push --force origin main` exits 2 | `exit N`, plus the first stderr line when not ok |
+| `allowed` | `hook PreToolUse` with Bash `ls -la` exits 0 | `exit N`, plus the first stderr line when not ok |
+| `state_write` | `hook PreToolUse` with a Write to today's `.wuwei/days/<day>/state.json` exits 2 | `exit N` |
+| `state` | `state.lock` is taken within 1 s and today's state reads | milliseconds waited, or the error |
+| `integrity` | the cached verdict is clean and no installed plugin file is newer than it | the integrity reason |
+| `config` | `config.toml` loads and every selected adapter has its credential variables (the offline part of `config check`) | the missing names |
+| `clocks` | the watch and listener clocks are alive or off | the dead or unmeasured message |
+| `status_line` | `status --line` exits 0 within 200 ms wall | milliseconds |
+| `planner` | today has no planner, or the planner session is registered and not stale | idle seconds |
+| `memory` | free memory is at or above `host.free_memory_mb` (unmeasured with `adapters.host = "none"`) | MiB free |
+
+The hook probes run through the real `bin/wuwei hook PreToolUse` with session id `wuwei-heartbeat` and cwd `.wuwei`, started together with `status --line`. Their refusals are not recorded as `hook.refusal` events. Probes never write outside `.wuwei/`, never touch a configured repository, make no code-host or model call and spend no tokens.
+
+Each probe is `ok`, `failed` or `unmeasured` with its value. The `heartbeat: clock` record, also kept under `watch.heartbeat` in day state, carries `health`, every probe's `result` and `value`, `drift`, `page` and `ping`. Health is `degraded` when any probe failed, else `unmeasured` when any probe is unmeasured, else `ok`.
+
+- `status --line` adds `health ok`, `health degraded` or `health unmeasured` after the watch and listen parts once today has a heartbeat line. With no heartbeat line today there is no `health` part; with a heartbeat line while the watch is not alive, health is `unmeasured`.
+- While health is degraded there is exactly one `heartbeat` page naming the first failed probe and its value, for example `heartbeat integrity failed: ...`. The next heartbeat with every probe ok clears it.
+- A probe that was ok in the previous heartbeat and failed now is `behaviour drift`: the record lists it under `drift`, the watch log prints `heartbeat: behaviour drift: <probe>`, and the page reason starts `behaviour drift: `.
+
+Dead-man ping: set `watch.ping_url` to the https check URL of a hosted cron monitor such as Healthchecks.io or Cronitor. Each heartbeat whose health is ok sends one GET to it (5 s timeout); any failed or unmeasured probe withholds it, so the monitor alerts your phone when the host stops or stops behaving. The record says `sent`, `withheld`, `failed` or `off`. A failed ping is logged as `heartbeat ping failed: <host>: <error>` and never stops the watch. Keep the URL private: it is never written to logs, events or state.
+
 ## Sessions
 
 Several Claude Code sessions can work in one workspace. Once today's `state.json` exists, the SessionStart, Stop and SubagentStop hooks record each session in the `sessions` registry of day state (role, start, last hook, working directory). No hook creates day state. SessionStart also exports `WUWEI_SESSION_ID` through Claude Code's `CLAUDE_ENV_FILE`, so CLI calls from that session know which session called them. A session with no hook activity for `sessions.stale_seconds` is stale. The registry and claims are written only by these hooks, `plan session`, `brief builder` and `worktree add`.

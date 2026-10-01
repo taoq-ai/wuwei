@@ -899,3 +899,55 @@ def test_reconfirm_without_a_terminal_cannot_run(tmp_path, monkeypatch):
     result = api.reconfirm(root)
     assert result.exit == 2
     assert 'run it in a host terminal' in result.reason and 'Errno' not in result.reason
+
+
+@pytest.fixture
+def fresh_plugin(tmp_path, monkeypatch):
+    import os
+    from fakes.integrity import seed
+    api = core()
+    base = tmp_path / 'installed'
+    (base / 'cli/__pycache__').mkdir(parents=True)
+    (base / 'cli/x.py').write_text('x = 1\n')
+    (base / 'cli/__pycache__/x.pyc').write_text('compiled')
+    for path in (base / 'cli/x.py', base / 'cli/__pycache__/x.pyc'):
+        os.utime(path, (1_000_000, 1_000_000))
+    monkeypatch.setattr(api, 'PLUGIN', base)
+    seed(tmp_path)
+    return api, base, tmp_path
+
+
+def test_fresh_is_clean_when_every_file_is_older(fresh_plugin):
+    api, _, root = fresh_plugin
+    assert api.fresh(root) == registry.Result(0)
+
+
+def test_fresh_names_a_file_changed_after_the_verdict(fresh_plugin):
+    import os
+    api, base, root = fresh_plugin
+    later = (root / '.wuwei/integrity/verdict.json').stat().st_mtime + 10
+    os.utime(base / 'cli/__pycache__/x.pyc', (later, later))
+    assert api.fresh(root).exit == 0
+    os.utime(base / 'cli/x.py', (later, later))
+    result = api.fresh(root)
+    assert result.exit == 1
+    assert 'cli/x.py' in result.reason and 'changed after the cached verdict' in result.reason
+
+
+def test_fresh_returns_a_failed_cache_unchanged(fresh_plugin):
+    api, _, root = fresh_plugin
+    (root / '.wuwei/integrity/verdict.json').write_text(json.dumps(
+        {'exit': 1, 'fingerprint': None, 'reason': 'page: plugin integrity: x'}))
+    assert api.fresh(root) == api.cached(root)
+    assert api.fresh(root).exit == 2
+
+
+def test_fresh_skips_the_walk_for_a_checkout(fresh_plugin, monkeypatch):
+    import os
+    api, _, root = fresh_plugin
+    checkout = {'head': 'b' * 40, 'clean': True}
+    (root / '.wuwei/integrity/verdict.json').write_text(json.dumps(
+        {'exit': 0, 'fingerprint': 'a' * 64, 'reason': '', 'checkout': checkout}))
+    monkeypatch.setattr(api, '_checkout', lambda root: checkout)
+    monkeypatch.setattr(os, 'walk', lambda *a, **k: (_ for _ in ()).throw(AssertionError('walked')))
+    assert api.fresh(root) == registry.Result(0)

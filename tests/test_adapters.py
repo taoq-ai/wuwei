@@ -433,3 +433,41 @@ def test_fixture_replay_never_spawns(tool, port, tmp_path, monkeypatch):
     module = importlib.import_module(f'adapters.{port}.{"github" if tool == "gh" else "git"}')
     result = getattr(module, case['operation'])(*case['args'])
     assert result.exit == 0 and result.data == case['data']
+
+
+def test_watch_probe_refuses_unlisted_commands(tmp_path, monkeypatch):
+    import subprocess
+    from wuwei.registry import watch_service
+    module = watch_service()
+    monkeypatch.setattr(subprocess, 'Popen', lambda *a, **k: pytest.fail('started a process'))
+    with pytest.raises(ValueError, match='unsupported probe command'):
+        module.probe([(('hook', 'PreToolUse'), '{}'), (('state', 'set'), '')], tmp_path)
+
+
+def test_watch_probe_runs_calls_together_and_times_out(tmp_path):
+    import time
+    from wuwei.registry import watch_service
+    module = watch_service()
+    script = tmp_path / 'wuwei'
+    script.write_text('#!/bin/sh\ncat > /dev/null\n[ "$1" = status ] && exec sleep 5\n'
+                      'echo "first line" >&2\necho second >&2\nexit 3\n')
+    script.chmod(0o755)
+    module.LAUNCHER = script
+    ran = []
+    start = time.monotonic()
+    results, during = module.probe([(('status', '--line'), ''), (('hook', 'PreToolUse'), '{}')],
+                                   tmp_path, during=lambda: ran.append(1) or 'measured', timeout=1)
+    assert time.monotonic() - start < 3
+    assert ran == [1] and during == 'measured'
+    (timed, reason, _), (code, line, ms) = results
+    assert (timed, reason) == (None, 'timeout')
+    assert (code, line) == (3, 'first line') and ms >= 0
+
+
+def test_watch_ping_requires_https(monkeypatch):
+    import urllib.request
+    from wuwei.registry import watch_service
+    module = watch_service()
+    monkeypatch.setattr(urllib.request, 'urlopen', lambda *a, **k: pytest.fail('opened a connection'))
+    with pytest.raises(ValueError, match='ping URL must be https'):
+        module.ping('http://example.test/x')

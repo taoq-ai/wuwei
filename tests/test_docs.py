@@ -410,3 +410,15 @@ def test_daily_long_sessions_section():
         assert phrase in section, phrase
     template = (ROOT / 'templates/workspace/config.toml').read_text()
     assert all(key in template for key in ('timezone', 'band_margin', 'rotate_after'))
+
+
+def test_heartbeat_is_documented():
+    from wuwei import heartbeat
+    reference = (SITE / 'reference.md').read_text()
+    section = reference.split('## Heartbeat\n', 1)[1].split('\n## ', 1)[0]
+    for name, _ in heartbeat.PROBES:
+        assert f'`{name}`' in section, name
+    for phrase in ('heartbeat: clock', 'health degraded', 'behaviour drift', 'watch.ping_url'):
+        assert phrase in section, phrase
+    assert '`watch.ping_url`' in (SITE / 'configuration.md').read_text()
+    assert 'no external dead-man ping' not in (SITE / 'remote.md').read_text()

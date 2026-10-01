@@ -229,7 +229,7 @@ def test_midnight_without_day_state_keeps_polling(case, capsys):
     assert 'watch blind' not in capsys.readouterr().out
 
 
-@pytest.mark.parametrize('kind', ['pr.changed', 'watch: clock', 'watch: heartbeat',
+@pytest.mark.parametrize('kind', ['pr.changed', 'watch: clock', 'watch: heartbeat', 'heartbeat: clock',
                                   'watch: read-failed', 'session: compact', 'session: wake-seen'])
 def test_producer_events_reserved(case, kind):
     assert main(['event', kind]) == 1

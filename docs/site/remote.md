@@ -336,7 +336,7 @@ use your own remote shell to the host, for example SSH. See
 - `run <routine>` and `cloud <repo> <task>` answer "Not available in this version.
   Commands: plan, status, report, ask <question>, stop <session>, stop all. Decisions:
   approve D-n, option X on D-n, drop it." There are no routines, no cloud sessions, no
-  budget governor, no owner quiet hours and no external dead-man ping. `listen dead` at
-  session start and in `status --line` are the only liveness signals, and both are seen
-  only on the host.
+  budget governor and no owner quiet hours. `listen dead` at session start and in
+  `status --line` are the listener's liveness signals, seen only on the host; the off-host
+  signal is the watch heartbeat's dead-man ping (`watch.ping_url`, see the reference).
 - Thread replies are not read, and a turn blocks the listener poll while it runs.

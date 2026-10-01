@@ -14,7 +14,7 @@ SILENT = ('item.progress', 'remote.acknowledged', 'state.write', 'state.set', 's
           'decision.routed', 'decision.digest', 'decision.replied', 'mcp.decided',
           'seat.usage', 'build.iteration', 'build.fix_opened', 'pr.action.done',
           'pr.reply.drafted', 'pr.action.decision',
-          'watch: clock', 'listen: clock', 'listen: wake', 'remote.pending', 'remote.started',
+          'watch: clock', 'listen: clock', 'heartbeat: clock', 'listen: wake', 'remote.pending', 'remote.started',
           'decision.escalated', 'remote.resumed', 'remote.stopped', 'remote.ignored',
           'remote.confirmed', 'watch: heartbeat', 'watch: observation', 'session: compact',
           'session: wake-seen', 'plan.session', 'pr.disposition', 'day.close_requested',

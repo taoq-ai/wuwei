@@ -142,7 +142,7 @@ def test_config_defaults_and_independence(tmp_path):
                   'poll_interval_seconds': 5, 'poll_timeout_seconds': 3600},
         'codex': {'command': [], 'timeout_seconds': 300},
             'watch': {'clock_seconds': 600, 'dead_seconds': 1200, 'stale_seconds': 900,
-                      'sweep_seconds': 7200},
+                      'sweep_seconds': 7200, 'ping_url': ''},
         'sessions': {'stale_seconds': 3600,
                      'rotate_after': {'turns': 0, 'compactions': 0, 'clock': ''}},
         'listen': {'poll_seconds': 60, 'dead_seconds': 300}, 'responder': {'enabled': True},
@@ -736,3 +736,20 @@ def test_repository_gate_defaults_and_floor_choices(tmp_path):
         write_config(tmp_path, repo + '[repos.gates]\n' + text + '\n')
         with pytest.raises(ConfigError, match=key):
             load_config(tmp_path)
+
+
+@pytest.mark.parametrize('text, expected', [
+    ('', []),
+    ('[adapters]\ntracker = "linear"\n', ['LINEAR_API_KEY']),
+    ('[adapters]\nchat = "slack"\n', ['SLACK_BOT_TOKEN or SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL']),
+    ('[adapters]\nruntime = "codex"\n', ['codex.command']),
+    ('[adapters]\ninbound = "slack"\n',
+     ['SLACK_BOT_TOKEN or SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL', 'control_plane.owner']),
+])
+def test_config_missing_is_the_offline_check(tmp_path, monkeypatch, text, expected):
+    from wuwei.commands.config import missing
+    from wuwei.workspace import load_config
+    for name in ('LINEAR_API_KEY', 'SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN', 'SLACK_OWNER_DM_CHANNEL'):
+        monkeypatch.delenv(name, raising=False)
+    write_config(tmp_path, text)
+    assert missing(load_config(tmp_path)) == expected

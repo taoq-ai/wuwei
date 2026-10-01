@@ -24,11 +24,11 @@ def attention(directory, classified_state=None):
 
 
 def scan(directory, classified_state=None):
-    """Attention rows, watch and listen state (alive, off, dead, unmeasured) from one read of the day."""
+    """Attention rows, watch and listen state (alive, off, dead, unmeasured) and heartbeat health from one read of the day."""
     classified_state = classified_state or {**state.read_state(directory=directory),
                                               'now': workspace.now().isoformat()}
     today = workspace.now().date()
-    current, clocks, replied, pin = {}, {'watch': [], 'listen': []}, {}, None
+    current, clocks, replied, pin, beat = {}, {'watch': [], 'listen': []}, {}, None, None
     path = directory / 'events.jsonl'
     if path.exists():
         with path.open(encoding='utf-8') as stream:
@@ -47,6 +47,8 @@ def scan(directory, classified_state=None):
                         continue
                     if kind in ('watch: clock', 'listen: clock'):
                         clocks[kind.split(':')[0]].append(stamp)
+                    if kind == 'heartbeat: clock':
+                        beat = payload
                     if kind == 'decision.replied' and isinstance(payload, dict):
                         replied.setdefault(payload.get('id'), payload.get('option'))
                     if kind in ('state.transition', 'item.escalated'):
@@ -127,6 +129,14 @@ def scan(directory, classified_state=None):
             current[(f'{name}: health',)] = {'tier': 'page' if code == 1 else 'nudge',
                                              'source': f'{name}: health', 'lane': 'Work', 'reason': message}
         health[name] = {1: 'dead', 2: 'unmeasured'}.get(code, 'alive' if stamps else 'off')
+    beat_health = None
+    if beat is not None:
+        beat_health = (beat['health'] if health['watch'] == 'alive' and isinstance(beat, dict)
+                       and beat.get('health') in ('ok', 'degraded', 'unmeasured')
+                       and isinstance(beat.get('page'), str) else 'unmeasured')
+        if beat_health == 'degraded' and beat['page']:
+            current[('heartbeat',)] = {'tier': 'page', 'source': 'heartbeat', 'lane': 'Work',
+                                       'reason': beat['page']}
     for name, item in classified_state['items'].items():
         if item['phase'] == 'escalated':
             tier, lane = classify({'kind': 'item.escalated', 'payload': {'item': name}},
@@ -155,7 +165,7 @@ def scan(directory, classified_state=None):
                     'reason': f'planner session {planner} stale: no hook activity for '
                               f'{row["idle_seconds"]}s; take over from the live session with: '
                               'wuwei plan session <session id> --take-over'}
-    return list(current.values()), health['watch'], health['listen']
+    return list(current.values()), health['watch'], health['listen'], beat_health
 
 
 def snapshot(directory):
@@ -169,7 +179,7 @@ def snapshot(directory):
               if data.get('sessions') else 0}
     result['gates'] = {name: row['gates'] for name, row in data['items'].items() if row['gates']}
     classified_state = {**data, 'now': workspace.now().isoformat()}
-    active, result['watch'], result['listen'] = scan(directory, classified_state)
+    active, result['watch'], result['listen'], result['health'] = scan(directory, classified_state)
     result['pages'] = sum(row['tier'] == 'page' for row in active)
     result['answered'] = [row['reason'] for row in active if row['source'] == 'decision.answered']
     result['nudges'] = sum(row['tier'] == 'nudge' for row in active)
@@ -240,6 +250,8 @@ def line(data):
         parts.append(f'watch {data["watch"]}')
     if data['listen'] not in ('alive', 'none'):
         parts.append(f'listen {data["listen"]}')
+    if data.get('health'):
+        parts.append(f'health {data["health"]}')
     parts.extend(f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items())
     if data['sessions']:
         parts.append(f'sessions {data["sessions"]}')

@@ -17,3 +17,13 @@ def isolated_mcp_home(tmp_path_factory, monkeypatch):
     monkeypatch.delenv('SLACK_OWNER_DM_CHANNEL', raising=False)
     # A developer's Slack base must never redirect the recorded adapter tests.
     monkeypatch.delenv('SLACK_API_BASE', raising=False)
+
+
+@pytest.fixture(autouse=True)
+def quiet_heartbeat(monkeypatch):
+    # The watch tick runs the heartbeat through the real launcher; a test that drives it
+    # requests this fixture, whose value is the real beat, and restores it.
+    from wuwei import heartbeat
+    real = heartbeat.beat
+    monkeypatch.setattr(heartbeat, 'beat', lambda root: 0)
+    return real

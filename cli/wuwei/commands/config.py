@@ -30,15 +30,7 @@ def run(args):
         return FINDINGS
     print('Credentials:')
     status = CLEAN
-    requirements = {
-        ('tracker', 'linear'): [('LINEAR_API_KEY',)],
-        ('chat', 'slack'): [('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN'), ('SLACK_OWNER_DM_CHANNEL',)],
-        ('inbound', 'slack'): [('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN'), ('SLACK_OWNER_DM_CHANNEL',)],
-        ('review_bot', 'greptile'): [('GREPTILE_API_KEY',)],
-        ('calendar', 'ics'): [('WUWEI_CALENDAR_URL',)],
-    }
-    if config['chat']['identity'] == 'custom_app':
-        requirements['chat', 'slack'][0] = ('SLACK_BOT_TOKEN',)
+    needed = requirements(config)
     for kind, name in config['adapters'].items():
         if name == 'none':
             continue
@@ -54,8 +46,8 @@ def run(args):
             present = bool(config['codex']['command'])
             print(f'  {label}: codex.command: {"set" if present else "missing"}')
             status = max(status, CLEAN if present else FINDINGS)
-        elif (kind, name) in requirements:
-            for alternatives in requirements[kind, name]:
+        elif (kind, name) in needed:
+            for alternatives in needed[kind, name]:
                 present = any(os.environ.get(key) for key in alternatives)
                 fields = ', '.join(f'{key}: {"set" if os.environ.get(key) else "missing"}'
                                    for key in alternatives)
@@ -85,6 +77,35 @@ def run(args):
     for name in ('GH_TOKEN', 'GITHUB_TOKEN'):
         status = max(status, _token(host, name))
     return status
+
+
+def requirements(config):
+    """Credential variables per selected adapter; each tuple needs one of its names."""
+    needed = {
+        ('tracker', 'linear'): [('LINEAR_API_KEY',)],
+        ('chat', 'slack'): [('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN'), ('SLACK_OWNER_DM_CHANNEL',)],
+        ('inbound', 'slack'): [('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN'), ('SLACK_OWNER_DM_CHANNEL',)],
+        ('review_bot', 'greptile'): [('GREPTILE_API_KEY',)],
+        ('calendar', 'ics'): [('WUWEI_CALENDAR_URL',)],
+    }
+    if config['chat']['identity'] == 'custom_app':
+        needed['chat', 'slack'][0] = ('SLACK_BOT_TOKEN',)
+    return needed
+
+
+def missing(config):
+    """Offline findings of config check: credential variables, codex.command, owner pin."""
+    from wuwei.remote import PIN
+    needed = requirements(config)
+    names = [' or '.join(alternatives) for kind, name in config['adapters'].items()
+             for alternatives in needed.get((kind, name), ())
+             if not any(os.environ.get(key) for key in alternatives)]
+    if config['adapters']['runtime'] == 'codex' and not config['codex']['command']:
+        names.append('codex.command')
+    if (config['adapters']['inbound'] != 'none'
+            and not re.fullmatch(PIN, config['control_plane']['owner'])):
+        names.append('control_plane.owner')
+    return names
 
 
 def promote(args, confirm=None):
