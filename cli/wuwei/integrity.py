@@ -221,7 +221,7 @@ def fresh(root):
         return Result(2, reason=f'plugin integrity unmeasured: {exc}')
 
 
-HOST_TERMINAL ='this is an owner action: run it in a host terminal'
+HOST_TERMINAL = 'this is an owner action: run it in a host terminal'
 
 
 def _host_confirm(fingerprint, *, prompt='Review the installation on this host. To confirm its exact content, type:'):
