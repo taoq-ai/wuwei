@@ -11,6 +11,17 @@ FIELDS = ('Question', 'Context', 'Options', 'Musts', 'Wants', 'Recommendation',
           'Confidence', 'Reversibility', 'Blast radius', 'Pre-mortem', 'Revisit',
           'Decided-by', 'Outcome')
 DECISION_ID = r'D-[1-9][0-9]*'
+# Design 5.8.1: class -> (default cruise level, ceiling). A new class is a design amendment.
+CLASSES = {'approach': (2, 3), 'retry': (2, 3), 'park': (2, 3), 'accept-residual': (2, 3),
+           'defer': (0, 3), 'scope-cut': (0, 3), 're-plan': (0, 3), 'dependency-bump': (0, 3),
+           'merge': (3, 3), 'message': (0, 1), 'other': (0, 1)}
+
+
+def level(config, name):
+    """The cruise level a class runs at; config only lowers the default."""
+    # ponytail: memory/cruise.json (running level, #283) does not exist yet; the default stands in.
+    cruise = config['decisions']['cruise']
+    return min(CLASSES[name][0], cruise['levels'].get(name, 3)) if cruise['enabled'] else 0
 
 
 def table(text, columns, name):
@@ -216,15 +227,85 @@ def route(fields):
             and fields['Blast radius'] in ('own branch', 'own PR') else 'owner')
 
 
-def route_owner(identifier, fields, root):
-    """Record an owner route once; a repeat route is a no-op."""
+def route_owner(identifier, fields, root, item=None):
+    """Record an owner route once; a repeat route is a no-op. An item marks an external wait."""
     def mark(data):
         data.setdefault('decision_routes', {}).setdefault(identifier, {
             'reversibility': fields['Reversibility'], 'recommendation': fields['Recommendation']})
+        if item is not None:
+            if item not in data['items']:
+                raise state.StateError(f'unknown item: {item}')
+            data['items'][item]['assumption'] = {
+                'kind': 'external', 'decision': identifier, 'day': workspace.day_dir(root).name,
+                'since': workspace.now().isoformat(), 'status': 'waiting'}
 
-    if identifier not in state.read_state(root).get('decision_routes', {}):
-        state._write_state(mark, root, reserved=False, kind='decision.routed',
-                           payload={'id': identifier, 'reversibility': fields['Reversibility']})
+    data = state.read_state(root)
+    if identifier in data.get('decision_routes', {}) and (
+            item is None or data['items'].get(item, {}).get('assumption', {}).get('decision') == identifier):
+        return
+    payload = {'id': identifier, 'reversibility': fields['Reversibility']}
+    state._write_state(mark, root, reserved=False, kind='decision.routed',
+                       payload=payload if item is None else {**payload, 'item': item})
+
+
+def weekday_hours(start, end, zone):
+    """Whole hours from start to end that begin Monday to Friday in zone."""
+    # ponytail: hourly steps; a wait spanning months walks a few thousand hours.
+    from datetime import timedelta, timezone
+    hour, end, count = start.astimezone(timezone.utc), end.astimezone(timezone.utc), 0
+    while hour + timedelta(hours=1) <= end:
+        count += hour.astimezone(zone).weekday() < 5
+        hour += timedelta(hours=1)
+    return count
+
+
+def waits(root):
+    """Design 5.8.2 time box: past wait_hours, confirm a two-way door or park the item."""
+    from datetime import datetime
+    config = workspace.load_config(root)
+    now, changed = workspace.now(), 0
+    for name, item in state.read_state(root)['items'].items():
+        wait = item.get('assumption')
+        if not isinstance(wait, dict) or wait.get('status') != 'waiting':
+            continue
+        directory = Path(root) / '.wuwei/days' / wait['day']
+        path = directory / 'decisions' / f'{wait["decision"]}.md'
+        if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', wait['day']) or path.is_symlink():
+            raise ValueError(f'{name}: invalid external wait record')
+        if (answered(state.read_state(directory=directory), wait['decision']) is not None
+                or weekday_hours(datetime.fromisoformat(wait['since']), now, workspace.zone(config))
+                < config['decisions']['wait_hours']):
+            continue
+        fields, _ = evaluate(path.read_text(encoding='utf-8'))
+        confirm = (fields['Reversibility'] == 'two-way' and item.get('goal') != 'unplanned'
+                   and not item['flags']['trust_surface'])
+        outcome = 'confirmed' if confirm else 'parked'
+
+        def update(data, name=name, outcome=outcome):
+            current = data['items'][name]
+            current['assumption']['status'] = outcome
+            if outcome == 'parked' and current['phase'] not in ('parked', 'escalated', 'merged'):
+                current.update(phase='parked', status='blocked', decision=wait['decision'])
+
+        payload = {'item': name, 'id': wait['decision'], 'outcome': outcome}
+        if confirm:
+            payload['recommendation'] = fields['Recommendation']
+        state._write_state(update, root, reserved=False, kind='decision.waited', payload=payload)
+        changed += 1
+    return changed
+
+
+def naming(directory, items):
+    """Map each D-n and C-n record of a day to the items its Question: or Context: line names."""
+    found = {}
+    for path in sorted((Path(directory) / 'decisions').glob('[DC]-*.md')):
+        if path.is_symlink() or not re.fullmatch(r'[DC]-[1-9][0-9]*', path.stem):
+            continue
+        lines = [line for line in active_text(path.read_text(encoding='utf-8')).splitlines()
+                 if re.match(r'(?:#{1,6} )?(?:Question|Context):', line)]
+        found[path.stem] = [item for item in items if any(
+            re.search(r'(?<![\w-])' + re.escape(item) + r'(?![\w-])', line) for line in lines)]
+    return found
 
 
 def answered(data, identifier):

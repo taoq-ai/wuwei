@@ -757,3 +757,171 @@ def test_lint_reports_style_without_rejecting(ws):
     from wuwei.workspace import day_dir
     assert not (day_dir(ws) / 'events.jsonl').exists()
     assert lint(template()) == (0, 'OK: A (80)')
+
+
+@pytest.mark.parametrize('config,expected', [
+    ({}, {'approach': 2, 'retry': 2, 'park': 2, 'accept-residual': 2, 'defer': 0,
+          'scope-cut': 0, 're-plan': 0, 'dependency-bump': 0, 'merge': 3, 'message': 0,
+          'other': 0}),
+    ({'approach': 1}, {'approach': 1}),
+    ({'defer': 3}, {'defer': 0}),
+])
+def test_class_levels(config, expected):
+    from wuwei import decision
+    settings = {'decisions': {'cruise': {'enabled': True, 'levels': config}}}
+    assert {name: decision.level(settings, name) for name in expected} == expected
+    settings['decisions']['cruise']['enabled'] = False
+    assert {decision.level(settings, name) for name in decision.CLASSES} == {0}
+
+
+@pytest.mark.parametrize('text,record,code', [
+    ('Done.\nBlocked: none', VALID, 0),
+    ('Should I add a cache?', VALID, 1),
+    ('Should I take D-3?', VALID, 0),
+    ('Should I take D-9?', VALID, 2),
+    ('```\nWhy?\n```\n> Really?\nDone.', VALID, 0),
+])
+def test_unrecorded_question(ws, text, record, code):
+    from wuwei.guards.decision import unrecorded
+    save(ws, record)
+    result, message = unrecorded(text, ws)
+    assert result == code
+    if code:
+        assert 'Cite a decision D-n' in message
+
+
+def stop_payload(cwd, **changes):
+    return {'cwd': str(cwd), 'agent_id': 'a1', 'agent_type': 'wuwei:builder',
+            'stop_hook_active': False, 'agent_transcript_path': str(cwd / 'none.jsonl'),
+            'last_assistant_message': 'Should I add a cache?', **changes}
+
+
+@pytest.mark.parametrize('changes,code', [
+    ({}, 1), ({'stop_hook_active': True}, 0), ({'agent_type': 'general-purpose'}, 0),
+    ({'last_assistant_message': 'Done.'}, 0)])
+def test_check_stop(ws, changes, code):
+    from wuwei import state
+    from wuwei.guards.decision import check_stop
+    result, message = check_stop(stop_payload(ws, **changes))
+    assert result == code
+    assert not state.read_state(ws).get('steward_notes')
+
+
+def test_check_stop_outside_workspace(ws, tmp_path):
+    from wuwei.guards.decision import check_stop
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    assert check_stop(stop_payload(outside)) == (0, '')
+
+
+def external(ws, monkeypatch, *, reversibility='two-way', goal='G-1', trust=False, when='09:00'):
+    from wuwei import state
+    from wuwei.__main__ import main
+    monkeypatch.chdir(ws)
+    monkeypatch.setenv('WUWEI_NOW', f'2026-09-28T{when}:00+00:00')
+    (ws / '.wuwei/config.toml').write_text(
+        '[owner]\ntimezone = "UTC"\n[decisions]\nwait_hours = 2\n')
+    state._write_state(lambda data: data['items'].update(alpha={
+        'goal': goal, 'flags': {'trust_surface': trust, 'boundary_relevant': False,
+                                'agent_surface': False}}), ws, reserved=False)
+    save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: ' + reversibility),
+         name='D-1.md')
+    return main(['decision', 'route', 'D-1', '--external', 'alpha'])
+
+
+def test_route_external_marks_the_item(ws, monkeypatch, capsys):
+    from wuwei import dispatch, state
+    from wuwei.__main__ import main
+    assert external(ws, monkeypatch) == 0
+    assert capsys.readouterr().out.strip() == 'owner'
+    data = state.read_state(ws)
+    assert 'D-1' in data['decision_routes'] and 'D-1' not in data.get('decision_outcomes', {})
+    assert data['items']['alpha']['assumption'] == {
+        'kind': 'external', 'decision': 'D-1', 'day': '2026-09-28',
+        'since': '2026-09-28T09:00:00+00:00', 'status': 'waiting'}
+    routed = [row for row in events(ws) if row['kind'] == 'decision.routed']
+    assert routed[-1]['payload']['item'] == 'alpha'
+    count = len(events(ws))
+    assert main(['decision', 'route', 'D-1', '--external', 'alpha']) == 0
+    assert len(events(ws)) == count
+    with pytest.raises(dispatch.Refused) as refused:
+        dispatch.next_step('alpha', ws)
+    assert 'D-1' not in str(refused.value) and 'steward' not in str(refused.value)
+    assert main(['decision', 'route', 'D-1', '--external', 'beta']) == 1
+    assert len(events(ws)) == count
+
+
+@pytest.mark.parametrize('start,end,zone,hours', [
+    ('2026-09-25T12:00:00+02:00', '2026-09-28T12:00:00+02:00', 'Europe/Amsterdam', 24),
+    ('2026-09-28T09:00:00+02:00', '2026-09-29T08:00:00+02:00', 'Europe/Amsterdam', 23),
+    ('2026-10-23T12:00:00+02:00', '2026-10-26T12:00:00+01:00', 'Europe/Amsterdam', 24),
+])
+def test_weekday_hours(start, end, zone, hours):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from wuwei import decision
+    assert decision.weekday_hours(datetime.fromisoformat(start), datetime.fromisoformat(end),
+                                  ZoneInfo(zone)) == hours
+
+
+def waited(ws):
+    return [{key: value for key, value in row['payload'].items() if key != 'prs_seen'}
+            for row in events(ws) if row['kind'] == 'decision.waited']
+
+
+def test_two_way_external_wait_confirms(ws, monkeypatch):
+    from wuwei import decision, state
+    assert external(ws, monkeypatch) == 0
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
+    assert decision.waits(ws) == 1
+    item = state.read_state(ws)['items']['alpha']
+    assert item['assumption']['status'] == 'confirmed' and item['phase'] == 'planned'
+    assert waited(ws) == [{'item': 'alpha', 'id': 'D-1', 'outcome': 'confirmed',
+                           'recommendation': 'A'}]
+    assert decision.answered(state.read_state(ws), 'D-1') is None
+    assert decision.waits(ws) == 0 and len(waited(ws)) == 1
+
+
+@pytest.mark.parametrize('options', [{'reversibility': 'one-way'}, {'reversibility': 'unsure'},
+                                     {'goal': 'unplanned'}, {'trust': True}])
+def test_one_way_external_wait_parks(ws, monkeypatch, options):
+    from wuwei import decision, state
+    assert external(ws, monkeypatch, **options) == 0
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
+    assert decision.waits(ws) == 1
+    item = state.read_state(ws)['items']['alpha']
+    assert (item['phase'], item['status'], item['decision']) == ('parked', 'blocked', 'D-1')
+    assert item['assumption']['status'] == 'parked'
+    assert waited(ws)[0]['outcome'] == 'parked'
+    assert decision.waits(ws) == 0
+
+
+def test_owner_answer_resumes_a_parked_wait(ws, monkeypatch):
+    from wuwei import decision, state
+    from wuwei.__main__ import main
+    assert external(ws, monkeypatch, reversibility='one-way') == 0
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
+    decision.waits(ws)
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda *args, **kwargs: True)
+    assert main(['decision', 'outcome', 'D-1', 'A']) == 0
+    assert state.read_state(ws)['items']['alpha']['phase'] == 'planned'
+
+
+def test_external_wait_holds_before_the_time_box_or_after_an_answer(ws, monkeypatch):
+    from wuwei import decision, state
+    assert external(ws, monkeypatch, when='11:00') == 0
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
+    assert decision.waits(ws) == 0
+    state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update(
+        {'D-1': {'option': 'B', 'decided_by': 'owner'}}), ws, reserved=False)
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T15:00:00+00:00')
+    assert decision.waits(ws) == 0 and not waited(ws)
+
+
+def test_unreadable_external_record_fails_closed(ws, monkeypatch):
+    from wuwei import decision
+    assert external(ws, monkeypatch) == 0
+    save(ws, 'bad', name='D-1.md')
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
+    with pytest.raises(ValueError):
+        decision.waits(ws)

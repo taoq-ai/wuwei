@@ -46,6 +46,8 @@ def dispatch(role, brief_path, worktree, write, *, root=None):
             return registry.Result(1, reason='unknown role, brief or worktree')
         prompt = f'Read charter {charter} and brief {brief}. Work in {tree}. '
         prompt += 'Do not ask questions or reach external services. Report decisions and finish available work.'
+        from wuwei.brief import mandate
+        prompt += ' ' + mandate(root)
         options = ['--fresh', '--background']
         if write:
             options.append('--write')
@@ -134,6 +136,10 @@ def result(job, *, root=None):
         for code, reason in verdicts:
             if code:
                 return registry.Result(code, output, reason)
+        from wuwei.guards.decision import unrecorded
+        code, reason = unrecorded(text, root)
+        if code:
+            return registry.Result(code, output, reason)
         if retro_code:
             return registry.Result(retro_code, output, retro_reason)
         return registry.Result(0, output)

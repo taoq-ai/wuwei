@@ -183,6 +183,15 @@ stale_seconds = 3600
 
 [steward]
 every_tool_calls = 50
+loop_window_hours = 4
+loop_threshold = 9
+
+[decisions]
+wait_hours = 24 # Weekday hours an external confirmation waits before the sweep acts.
+# The levels feed the seat mandate; cruise answering (design 5.8.1) is not built.
+# [decisions.cruise]
+# enabled = true
+# levels = { approach = 2 }
 
 [pr]
 poll_seconds = 120

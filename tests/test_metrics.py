@@ -270,3 +270,23 @@ def test_ai_tells_per_text(root, monkeypatch):
     (root / '.wuwei/config.toml').write_text('[owner.verbosity]\nreport = "standard"\n')
     lines = report.build(root).splitlines()
     assert json.loads(lines[lines.index('## Process metrics') + 1])['ai_tells'] == {'draft-1': 2, 'D-1': 2}
+
+
+def test_ask_metrics(root):
+    from wuwei import metrics
+
+    assert metrics.collect(root)['asks_per_item'] == metrics.UNMEASURED
+    assert metrics.collect(root)['unnecessary_asks'] == metrics.UNMEASURED
+    directory = workspace.day_dir(root) / 'decisions'
+    directory.mkdir(parents=True)
+    (directory / 'D-1.md').write_text('Question: Cache alpha results?\n')
+    (directory / 'D-2.md').write_text('Question: Which store?\nContext: alpha and beta share it\n')
+    (directory / 'D-3.md').write_text('Question: Shift the day?\n')
+    routes = {f'D-{n}': {'reversibility': 'one-way', 'recommendation': 'A'} for n in (1, 2, 3)}
+    state._write_state(lambda data: data.update(
+        items={'alpha': {}, 'beta': {}}, decision_routes=routes, decision_outcomes={
+            'D-1': {'option': 'A', 'decided_by': 'owner'},
+            'D-2': {'option': 'B', 'decided_by': 'owner'}}), root, reserved=False)
+    value = metrics.collect(root)
+    assert value['asks_per_item'] == {'alpha': 2, 'beta': 1, 'day': 1}
+    assert value['unnecessary_asks'] == 1

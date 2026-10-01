@@ -133,7 +133,8 @@ def next_step(item, root=None):
     row = _item(data, item)
     notes = steward.pending(data, item)
     if notes:
-        raise Refused(f'steward note {notes[0]["id"]} requires planner acknowledgement')
+        raise Refused(f'steward note {notes[0]["id"]} requires planner acknowledgement: '
+                      f'{notes[0]["text"]}')
     phase = row['phase']
     if phase not in ('gate', 'fix', 'delta'):
         raise Refused(f'item phase {phase} is not dispatchable')

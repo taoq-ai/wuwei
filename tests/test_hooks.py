@@ -831,3 +831,14 @@ def test_heartbeat_latency(seeded_workspace, capsys, monkeypatch, quiet_heartbea
     cpu_ms = quantiles(cpu, n=100)[94] * 1000
     wall_ms = quantiles(elapsed, n=100)[94] * 1000
     assert_latency_budget('heartbeat tick', cpu_ms, wall_ms, capsys, wall_budget=200, runs=runs)
+
+
+def test_seat_question_without_record_blocks_subagent_stop(subprocess_plugin, tmp_path):
+    payload = json.loads((ROOT / 'tests/payloads/SubagentStop/example.json').read_text())
+    payload.update(cwd=str(tmp_path), agent_type='wuwei:builder',
+                   agent_transcript_path=str(tmp_path / 'missing.jsonl'),
+                   last_assistant_message='Should I add a cache?\nBlocked: none\nGap: none\nChange: none')
+    result = subprocess_replay(subprocess_plugin, 'SubagentStop', json.dumps(payload))
+    assert result.returncode == 2, result.stderr
+    output = json.loads(result.stdout)
+    assert output['decision'] == 'block' and 'Cite a decision D-n' in output['reason']

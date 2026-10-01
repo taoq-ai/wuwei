@@ -146,5 +146,49 @@ def check_question(payload):
         return 2, f'decision question: {exc}\n{hint}'
 
 
+# ponytail: a line ending in '?' is a question; tighten if retro gaps show false positives.
+QUESTION = re.compile(r'\?\s*$', re.M)
+
+
+def unrecorded(text, root):
+    """A seat's final text asking the owner something must cite a valid record."""
+    from wuwei.verdict import active_text
+    if not QUESTION.search(active_text(text)):
+        return 0, ''
+    return check_question({'cwd': str(root), 'tool_name': 'SubagentStop',
+                           'tool_input': {'question': text}})
+
+
+def check_stop(payload):
+    """SubagentStop: flag a WUWEI seat that stops on an unrecorded owner question."""
+    from wuwei.guards.agent_launch import stopping_seat, wuwei_role
+    if payload.get('stop_hook_active') is True or not wuwei_role(payload.get('agent_type')):
+        return 0, ''
+    try:
+        root = workspace.guard_scope(payload)
+        if root is None:
+            return 0, ''
+        code, message = unrecorded(required_text(payload, 'last_assistant_message', blank=True), root)
+        if code != 1:
+            return code, message
+        from wuwei import brief, state, steward
+        try:
+            directory, name, role = stopping_seat(payload, root)
+            item = brief.seats(state.read_state(directory=directory))[name]['item']
+        except (OSError, ValueError, KeyError, TypeError):
+            return code, message  # No seat binding: flagged, but no item to note.
+        agent = re.sub(r'[^A-Za-z0-9_.-]', '-', str(payload.get('agent_id', '')))
+        note_id = f'{item}-question-{agent}'
+        if steward.SAFE_ID.fullmatch(item) and steward.SAFE_ID.fullmatch(note_id):
+            steward.add_notes(root, [{'id': note_id, 'item': item, 'text': (
+                f'{item}: a {role} seat asked the owner a question without a decision record; '
+                'write it (wuwei decision template), route it and cite D-n, or record the '
+                'assumption under Assumptions:')}])
+        return code, message
+    except (OSError, ValueError, RuntimeError, TypeError) as exc:
+        return 2, f'decision question: {exc}'
+
+
 GUARDS = [Guard('PostToolUse', 'Write|Edit|MultiEdit|NotebookEdit|Bash', check_write),
-          Guard('PreToolUse', 'AskUserQuestion', check_question)]
+          Guard('PreToolUse', 'AskUserQuestion', check_question),
+          Guard('SubagentStop', None, check_stop)]

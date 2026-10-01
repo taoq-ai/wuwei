@@ -61,6 +61,8 @@ EVENT_PRODUCERS = {
     'steward.due': 'wuwei hook PostToolUse',
     'steward.acknowledged': 'wuwei steward ack',
     'calibration.drift': 'wuwei steward run',
+    'negotiation.loop': 'wuwei steward run or wuwei dispatch next',
+    'negotiation.notified': 'wuwei listen', 'decision.waited': 'wuwei sweep',
 }
 
 

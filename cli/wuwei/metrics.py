@@ -558,6 +558,17 @@ def collect(root=None, *, day=None):
     else:
         event_metrics['share_unplanned_work'] = sum(
             item.get('goal') == 'unplanned' for item in data['items'].values()) / len(data['items'])
+    if data is None:
+        event_metrics['asks_per_item'] = event_metrics['unnecessary_asks'] = UNMEASURED
+    else:
+        from wuwei import decision
+        routes = data.get('decision_routes', {})
+        named = decision.naming(directory, list(data['items']))
+        event_metrics['asks_per_item'] = dict(Counter(
+            item for identifier in routes for item in (named.get(identifier) or ['day'])))
+        event_metrics['unnecessary_asks'] = sum(
+            decision.answered(data, identifier) == route.get('recommendation')
+            for identifier, route in routes.items())
     event_metrics['size_calibration'] = _calibration(directory, data, event_metrics['time_in_phase_seconds'])
     event_metrics['tool_calls'] = len(traces) if traces is not None else UNMEASURED
     event_metrics['baseline'] = _baseline(root)

@@ -550,3 +550,16 @@ def test_owner_verbosity_and_voice_are_documented():
     assert remote.VOCABULARY in ' '.join(page.split()) and 'more D-n' in page
     concepts = (SITE / 'concepts.md').read_text()
     assert all(word in concepts for word in ('humanizer', '3.1.0', 'MIT', '`ai_tells`', '`style`'))
+
+
+def test_mandate_waits_and_loops_are_documented():
+    configuration = (SITE / 'configuration.md').read_text()
+    for key in ('decisions.wait_hours', 'decisions.cruise.enabled', 'decisions.cruise.levels',
+                'steward.loop_window_hours', 'steward.loop_threshold'):
+        assert f'`{key}`' in configuration, key
+    concepts = (SITE / 'concepts.md').read_text()
+    for phrase in ('mandate block', 'Assumptions:', '--external', 'negotiation.loop'):
+        assert phrase in concepts, phrase
+    assert 'loops N' in (SITE / 'daily.md').read_text()
+    reference = (SITE / 'reference.md').read_text()
+    assert 'decision route D-n --external' in reference and '`Assumption:`' in reference

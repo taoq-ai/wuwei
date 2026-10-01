@@ -21,7 +21,7 @@ SILENT = ('item.progress', 'remote.acknowledged', 'state.write', 'state.set', 's
           'gate.received', 'gate.tiered', 'discovery.requested', 'discovery.intake',
           'plan.added', 'steward.run', 'steward.acknowledged', 'plan.approved', 'state.import',
           'build.started', 'build.launched', 'build.checked', 'verdict.rejected',
-          'inbox.redacted', 'shepherd.dispatched', 'pr.notified')
+          'inbox.redacted', 'shepherd.dispatched', 'pr.notified', 'negotiation.notified')
 
 
 def classify(event, state):
@@ -37,6 +37,8 @@ def classify(event, state):
     lane = 'People' if kind.startswith('person.') else (
         'Decisions' if kind.startswith(('decision.', 'draft.')) or kind in (
             'item.escalated', 'merge.policy_blocked', 'work.outside_goals') else 'Work')
+    if kind == 'negotiation.loop':
+        return ('page' if payload.get('past_goal') is True else 'nudge'), lane
     if kind == 'mcp.finding':
         return ('page' if payload.get('severity') in ('high', 'critical') else 'nudge'), lane
     if kind == 'shepherd.finished':

@@ -136,6 +136,29 @@ Cruise mode is designed in
 and not built: decisions would carry a class, and the CLI would answer some classes itself
 at levels L0 to L3. Today every owner decision goes to the owner.
 
+Every seat prompt ends with a mandate block built from those class levels
+(`decisions.cruise.levels`, the 5.8.1 defaults otherwise), the interview's trust-surface
+line and `deploy.deny`: what the seat decides alone, what it decides and records, and what
+goes to the owner, closing with "Nothing else is a question." The levels only shape this
+text; cruise answering is not built. Assume and record: a two-way
+open question inside the item is not asked; the seat takes its recommendation and records
+it under `Assumptions:` in the spec or PR body, and gates review it as an `Assumption:`
+finding. A seat that stops on a question to the owner without a valid decision id is
+flagged by the SubagentStop guard (and by the Codex and headless paths), and `dispatch
+next` refuses until the planner acknowledges the note.
+
+A confirmation from someone outside the loop never holds reversible work: the seat routes
+the record with `decision route D-n --external <item>` and continues. After
+`decisions.wait_hours` weekday hours without your answer, the sweep confirms the
+recommendation on a two-way door or parks the item on a one-way door, and records
+`decision.waited`.
+
+Negotiation loops: when an item goes back and forth (records, verdicts, restarts and fix
+requests above `steward.loop_threshold` in `steward.loop_window_hours`, or a second fix
+round), the steward raises one `negotiation.loop` nudge per item per day, a page when the
+goal date has passed, and the listener sends the summary to your DM. It reports; the
+negotiation budget in the charters is what stops the rounds.
+
 ## Sessions
 
 Several Claude Code sessions can share a workspace. Hooks register each one in day state

@@ -15,7 +15,49 @@ def launch_prompt(brief_path, charter, *, root=None):
     """Format every Claude seat's instructions with a workspace-relative reference."""
     root = workspace.find_workspace(root)
     relative = Path(brief_path).resolve(strict=True).relative_to(root)
-    return f'{REFERENCE_PREFIX}{relative}\nRead instructions {charter} and brief {relative}.'
+    return (f'{REFERENCE_PREFIX}{relative}\nRead instructions {charter} and brief {relative}.'
+            + '\n\n' + mandate(root))
+
+
+def mandate(root):
+    """Design 5.2: what a seat decides alone, records, or sends to the owner."""
+    from wuwei import decision
+    from wuwei.interview import BLOCK
+    from wuwei.promotion import safe_path
+    config = workspace.load_config(root)
+    levels = {name: decision.level(config, name) for name in decision.CLASSES}
+    assumed = levels.pop('approach') >= 2
+    recorded = [name for name, value in levels.items() if value >= 2]
+    owner = ([] if assumed else ['approach']) + [name for name, value in levels.items() if value < 2]
+    record = []
+    if assumed:
+        record.append('two-way open questions inside the item: take your recommendation and record it '
+                      'under Assumptions: in the spec or PR body (what was assumed, why, what would '
+                      'overturn it).')
+    if recorded:
+        record.append(f'Decision records of class {", ".join(recorded)}: write the record and run '
+                      'wuwei decision route D-n.')
+    lead = safe_path(root, '.wuwei/charters/lead.md', label='lead charter')
+    risk = None
+    if lead.is_file():
+        text = lead.read_text(encoding='utf-8')
+        found = re.search(r'^- risk: (.+)$', text[text.find(BLOCK):], re.M) if BLOCK in text else None
+        risk = found and found.group(1)
+    to_owner = ('Go to the owner, as a decision record you cite by id: one-way doors (when unsure, it '
+                'is one-way), messages to people, scope agreed with other people, deploys, '
+                "trust-boundary findings, anything outside the item's goals"
+                + (f', decision records of class {", ".join(owner)}.' if owner else '.'))
+    if risk:
+        to_owner += f' Trust surface: {risk}'
+    if config['deploy']['deny']:
+        to_owner += f' Commands the owner runs: {", ".join(config["deploy"]["deny"])}.'
+    to_owner += (' A confirmation from a person outside the loop is never a precondition: write the '
+                 'record, run wuwei decision route D-n --external <item> and continue reversible work.')
+    return '\n'.join(['Mandate (design 5.2):',
+                      'Decide alone: what the brief, your charter and the engineering standards '
+                      'already answer.',
+                      'Decide and record: ' + (' '.join(record) or 'none.'),
+                      to_owner, 'Nothing else is a question.'])
 
 
 def seat_action(role, brief_path, worktree, root):
@@ -227,6 +269,9 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         if gate:
             verdict = (directory / 'decisions' / ('gate-' + name + '.md')).relative_to(root)
             header.append(f'Verdict file: {verdict} (your only write). Include the retro note here.')
+            header.append("Assumptions: review the item's Assumptions: in its spec and PR body as "
+                          'findings of kind Assumption: (severity, file:line, failure scenario, '
+                          'blocks yes or no).')
         header += rulings(body, directory, tree, data)
         for repo in config['repos']:
             for other in sorted(set(re.findall(re.escape(repo['name']) + r'#[0-9]+', body))):

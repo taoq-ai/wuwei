@@ -335,3 +335,54 @@ def test_unclaimed_builder_brief_without_session_records_no_claim(day, monkeypat
     root, _, _, _ = day
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b1') == 0
     assert 'claims' not in state.read_state(root)
+
+
+def mandate_prompt(day, monkeypatch, config=''):
+    from wuwei import brief as briefs
+    (day[0] / '.wuwei/config.toml').write_text('cap = 3\n' + config)
+    if not (day[1] / 'briefs/mandate.md').exists():
+        assert brief(monkeypatch, 'body', 'builder', 'X', 'mandate') == 0
+    action = briefs.seat_action('builder', day[1] / 'briefs/mandate.md', day[0], day[0])
+    return action['prompt']
+
+
+def section(prompt, start):
+    return next(line for line in prompt.splitlines() if line.startswith(start))
+
+
+def test_builder_prompt_carries_the_mandate(day, monkeypatch):
+    prompt = mandate_prompt(day, monkeypatch)
+    assert prompt.splitlines()[0] == 'WUWEI brief: .wuwei/days/2026-09-28/briefs/mandate.md'
+    for text in ('Mandate (design 5.2):', 'Decide alone:', 'Decide and record:',
+                 'Go to the owner', 'Nothing else is a question.'):
+        assert text in prompt
+    record, owner = section(prompt, 'Decide and record:'), section(prompt, 'Go to the owner')
+    assert 'under Assumptions:' in record and 'retry, park, accept-residual, merge' in record
+    assert 'defer, scope-cut, re-plan, dependency-bump, message, other' in owner
+    assert '\u2014' not in prompt
+
+
+def test_mandate_follows_class_levels(day, monkeypatch):
+    prompt = mandate_prompt(day, monkeypatch, '[decisions.cruise.levels]\napproach = 1\n')
+    assert 'Assumptions:' not in section(prompt, 'Decide and record:')
+    assert 'approach, defer' in section(prompt, 'Go to the owner')
+    prompt = mandate_prompt(day, monkeypatch, '[decisions.cruise]\nenabled = false\n')
+    assert section(prompt, 'Decide and record:') == 'Decide and record: none.'
+
+
+def test_mandate_names_interview_risk_and_deploy_deny(day, monkeypatch):
+    (day[0] / '.wuwei/charters').mkdir()
+    (day[0] / '.wuwei/charters/lead.md').write_text(
+        '# Lead\n\n## Owner preferences (interview)\n'
+        '- risk: Also set trust_surface for changes touching: billing.\n')
+    owner = section(mandate_prompt(day, monkeypatch, '[deploy]\ndeny = ["npm publish*"]\n'),
+                    'Go to the owner')
+    assert 'billing' in owner and 'npm publish*' in owner
+
+
+def test_gate_brief_asks_for_assumption_review(day, monkeypatch):
+    line = "Assumptions: review the item's Assumptions:"
+    assert brief(monkeypatch, 'body', 'sentinel-arch', 'X', 'gate', '--worktree', 'tree') == 0
+    assert line in (day[1] / 'briefs/gate.md').read_text()
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'plain') == 0
+    assert line not in (day[1] / 'briefs/plain.md').read_text()

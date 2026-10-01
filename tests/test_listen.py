@@ -778,6 +778,46 @@ def test_failed_transport_records_nothing_and_retries(owner_dm, monkeypatch):
     assert len(host.chat.sent) == 1
 
 
+LOOP_REASON = ('alpha is going back and forth: 2 records, 3 reviews, 1 restarts and 1 fix requests '
+               'in 4 hours, 1 fix rounds today; last: 11:00 arch review FIX; 11:00 fix requested')
+
+
+def loop_event(root, reason=LOOP_REASON):
+    state.append_event('negotiation.loop', {'item': 'alpha', 'reason': reason, 'past_goal': False}, root)
+
+
+def test_negotiation_loop_reaches_the_owner_dm_once(owner_dm, monkeypatch):
+    root, host = owner_dm
+    loop_event(root)
+    assert listen().tick(root, {}) == 0
+    assert host.chat.sent == [LOOP_REASON]
+    row, = kinds(root, 'negotiation.notified')
+    assert row['payload']['item'] == 'alpha'
+    later(monkeypatch, 30)
+    assert listen().tick(root, {}) == 0
+    assert host.chat.sent == [LOOP_REASON]
+
+
+@pytest.mark.parametrize('content,reason,expected', [
+    ('none', LOOP_REASON, 'An update is waiting in the workspace.'),
+    ('summary', 'the seat keeps asking', 'Item alpha is going back and forth; details are on the host.')])
+def test_negotiation_loop_dm_fallbacks(owner_dm, content, reason, expected):
+    root, host = owner_dm
+    config(root, PR_CONFIG + f'[control_plane]\ncontent = "{content}"\n')
+    loop_event(root, reason)
+    listen().tick(root, {})
+    assert host.chat.sent == [expected]
+    assert len(kinds(root, 'negotiation.notified')) == 1
+
+
+def test_negotiation_loop_failed_transport_records_nothing(owner_dm):
+    root, host = owner_dm
+    host.chat.exit = 2
+    loop_event(root)
+    assert listen().tick(root, {}) == 2
+    assert not kinds(root, 'negotiation.notified')
+
+
 @pytest.mark.parametrize('setting', ['no channel', 'kill switch'])
 def test_no_dm_without_channel_or_with_the_kill_switch(owner_dm, monkeypatch, setting):
     root, host = owner_dm
@@ -798,7 +838,8 @@ def test_fixed_dm_lines_pass_the_owner_lint(case):
     from wuwei import shepherd
     from wuwei.pr_actions import ACTIONS
     starts = [f'Shepherd starts: {ACTIONS[name][0]}.' for name in shepherd.HEADLESS]
-    for text in (module.AUTOSTART_OFF, module.FALLBACK.format(number=7), *starts):
+    for text in (module.AUTOSTART_OFF, module.FALLBACK.format(number=7),
+                 module.LOOP_FALLBACK.format(item='alpha'), LOOP_REASON, *starts):
         assert outward.lint(text, 'D1', settings, to_owner=True)[0] == 0, text
 
 
@@ -888,6 +929,17 @@ def test_headless_shepherd_runs_one_logged_seat(seat):
     finished, = kinds(root, 'shepherd.finished')
     assert finished['payload']['exit'] == 0 and finished['payload']['session'] == SID
     assert f'PR {REF}: shepherd conflicted: turn ended (exit 0, session {SID[:8]})' in watch.wake(root)
+
+
+def test_headless_question_without_record_is_flagged(seat):
+    from wuwei import shepherd
+    root, host, _ = seat
+    runtime = Seat(Result(0, {'session_id': SID, 'result': 'Shall I reply to the reviewer?',
+                              'denials': []}))
+    (ref, episode), = shepherd.pending(root)
+    assert shepherd.headless(root, ref, episode, runtime=runtime) == 1
+    finished, = kinds(root, 'shepherd.finished')
+    assert finished['payload']['exit'] == 1 and 'Cite a decision D-n' in finished['payload']['reason']
 
 
 def test_low_memory_refuses_before_the_turn(seat, monkeypatch):

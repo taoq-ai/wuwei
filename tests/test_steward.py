@@ -219,3 +219,160 @@ def test_sweep_brief_carries_calibration_and_close_skips_it(root, monkeypatch):
     monkeypatch.setattr(calibrate, 'drift', lambda _root: pytest.fail('close ran drift'))
     assert steward.run(root, trigger='close') == 0
     assert 'Calibration:' not in briefs[1]
+
+
+def test_seat_question_without_record_names_the_missing_record(root):
+    from wuwei import dispatch
+    from wuwei.guards.decision import check_stop
+
+    day = workspace.day_dir(root)
+    relative = '.wuwei/days/2026-09-29/briefs/b1.md'
+    (day / 'briefs').mkdir()
+    (root / relative).write_text('brief')
+    transcript = root / 'agent.jsonl'
+    transcript.write_text(json.dumps({'type': 'user', 'message': {
+        'content': 'WUWEI brief: ' + relative + '\nRead instructions.'}}) + '\n')
+    data = state.read_state(root)
+    data['items']['alpha'] = {'phase': 'gate', 'status': 'running', 'gates': {}}
+    data['approved_items'].append('alpha')
+    data['seats'] = {'b1': {'role': 'builder', 'item': 'alpha', 'status': 'stopped',
+                            'brief': relative}}
+    (day / 'state.json').chmod(0o600)
+    (day / 'state.json').write_text(json.dumps(data))
+    payload = {'cwd': str(root), 'agent_id': 'agent7', 'agent_type': 'wuwei:builder',
+               'stop_hook_active': False, 'agent_transcript_path': str(transcript),
+               'last_assistant_message': 'Should I use a cache here?'}
+    assert check_stop(payload)[0] == 1
+    notes = state.read_state(root)['steward_notes']
+    assert [note['id'] for note in notes] == ['alpha-question-agent7']
+    assert 'decision record' in notes[0]['text']
+    with pytest.raises(dispatch.Refused, match='alpha-question-agent7.*decision record'):
+        dispatch.next_step('alpha', root)
+    assert check_stop(payload)[0] == 1
+    assert len(state.read_state(root)['steward_notes']) == 1
+
+
+def at(monkeypatch, hour, minute=0):
+    monkeypatch.setenv('WUWEI_NOW', f'2026-09-29T{hour:02d}:{minute:02d}:00+00:00')
+
+
+def exchange(root, monkeypatch, hour, kind, **payload):
+    at(monkeypatch, hour)
+    state.append_event(kind, {'item': 'alpha', **payload}, root)
+    at(monkeypatch, 12)
+
+
+def record(root, name, text, hour=10):
+    import os
+    from datetime import datetime
+    path = workspace.day_dir(root) / 'decisions' / name
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(text)
+    stamp = datetime.fromisoformat(f'2026-09-29T{hour:02d}:30:00+00:00').timestamp()
+    os.utime(path, (stamp, stamp))
+
+
+@pytest.fixture
+def loop(root, monkeypatch):
+    state._write_state(lambda data: data['items'].update(alpha={'goal': 'G-1'}), root,
+                       reserved=False)
+    return root, monkeypatch
+
+
+def loops(root):
+    return [row['payload'] for row in
+            (json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines())
+            if row['kind'] == 'negotiation.loop']
+
+
+def seven_exchanges(root, monkeypatch):
+    record(root, 'D-1.md', 'Question: Cache alpha results?\nContext: none\n')
+    record(root, 'C-1.md', 'Question: Which store?\nContext: alpha needs one\nOptions:\nA\nB\n')
+    record(root, 'D-2.md', 'Question: Unrelated?\nOptions:\n| alpha | x |\n')
+    record(root, 'D-3.md', 'Question: Old alpha one?\n', hour=6)
+    exchange(root, monkeypatch, 6, 'gate.received', role='sentinel-arch', verdict='FIX')
+    exchange(root, monkeypatch, 6, 'brief written', role='builder')
+    for hour in (9, 10, 11):
+        exchange(root, monkeypatch, hour, 'gate.received', role='sentinel-arch', verdict='FIX')
+    exchange(root, monkeypatch, 10, 'brief written', role='builder')
+    exchange(root, monkeypatch, 10, 'brief written', role='sentinel-arch')
+    exchange(root, monkeypatch, 10, 'build.checked')
+    exchange(root, monkeypatch, 11, 'build.fix_opened')
+
+
+def test_seven_exchanges_raise_one_loop(loop):
+    from wuwei import outward, steward
+    root, monkeypatch = loop
+    (root / '.wuwei/config.toml').write_text('[steward]\nloop_threshold = 6\n')
+    seven_exchanges(root, monkeypatch)
+    steward.review(root)
+    raised, = loops(root)
+    assert raised['item'] == 'alpha'
+    assert raised['counts'] == {'records': 2, 'verdicts': 3, 'redispatches': 1, 'continuations': 1}
+    assert raised['past_goal'] is False and len(raised['last']) == 2
+    assert raised['last'] == ['11:00 arch review FIX', '11:00 fix requested']
+    assert raised['reason'].startswith('alpha is going back and forth:')
+    assert outward.lint(raised['reason'], 'D1', workspace.load_config(root), to_owner=True)[0] == 0
+    assert state.read_state(root)['negotiation_loops']['alpha'] == {
+        key: value for key, value in raised.items() if key != 'prs_seen'}
+    steward.review(root)
+    exchange(root, monkeypatch, 11, 'build.fix_opened')
+    steward.review(root)
+    assert len(loops(root)) == 1
+
+
+def test_second_fix_round_raises_alone(loop):
+    from wuwei import steward
+    root, monkeypatch = loop
+    exchange(root, monkeypatch, 1, 'build.fix_opened')
+    steward.review(root)
+    assert not loops(root)
+    exchange(root, monkeypatch, 2, 'build.fix_opened')
+    steward.review(root)
+    raised, = loops(root)
+    assert raised['fix_rounds'] == 2 and raised['counts']['continuations'] == 0
+
+
+@pytest.mark.parametrize('count,raised', [(9, 0), (10, 1)])
+def test_default_threshold(loop, count, raised):
+    from wuwei import steward
+    root, monkeypatch = loop
+    for _ in range(count):
+        exchange(root, monkeypatch, 11, 'gate.received', role='sentinel-goal', verdict='FIX')
+    steward.review(root)
+    assert len(loops(root)) == raised
+
+
+@pytest.mark.parametrize('goals,past', [
+    ('## G-1\noutcome: o\nmeasure: m\ntarget: t\ndate: 2026-09-01\npriority: 1\n', True),
+    ('## G-1\noutcome: o\nmeasure: m\ntarget: t\ndate: 2026-12-01\npriority: 1\n', False),
+    (None, False)])
+def test_loop_past_goal(loop, goals, past):
+    from wuwei import steward
+    root, monkeypatch = loop
+    if goals:
+        (root / '.wuwei/memory').mkdir(parents=True)
+        (root / '.wuwei/memory/goals.md').write_text('# Goals\n\n' + goals)
+    exchange(root, monkeypatch, 1, 'build.fix_opened')
+    exchange(root, monkeypatch, 2, 'build.fix_opened')
+    steward.review(root)
+    assert loops(root)[0]['past_goal'] is past
+
+
+def test_concurrent_reviews_record_one_loop(loop):
+    from wuwei import steward
+    root, monkeypatch = loop
+    exchange(root, monkeypatch, 1, 'build.fix_opened')
+    exchange(root, monkeypatch, 2, 'build.fix_opened')
+    original = state._write_state
+    barrier = Barrier(2)
+
+    def delayed(*args, **kwargs):
+        if kwargs.get('kind') == 'negotiation.loop':
+            barrier.wait(timeout=5)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(state, '_write_state', delayed)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda _: steward.review(root), range(2)))
+    assert len(loops(root)) == 1

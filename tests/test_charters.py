@@ -81,7 +81,7 @@ RULES = (
     ("tracks", "_common.md", "fewer than about twenty tasks"),
     ("flags", "lead.md", "LLM output used as instructions"),
     ("pre-pr gates", "_common.md", "arch, quality and security run in parallel"),
-    ("cycle budget", "_common.md", "Blocking residue after the delta is an owner decision"),
+    ("negotiation budget", "_common.md", "Exceeding the budget is a design reconsideration, never another round"),
     ("re-gate", "_common.md", "Launch a fresh seat only if the original seat is lost"),
     ("cap", "lead.md", "a slot frees at builder handoff"),
     ("seat policy", "planner.md", "model and runtime for each role"),
@@ -126,6 +126,8 @@ def test_amended_role_rules():
     assert "never write either" in texts["_common-authoring.md"]
     assert "never load the changelog" in texts["_common-authoring.md"]
     assert "never dispatch" in texts["steward.md"]
+    for anchor in ("Assumptions:", "mandate", "design reconsideration"):
+        assert texts["_common.md"].count(anchor) == 1, anchor
 
 
 def test_gate_and_merge_safety_contract():
