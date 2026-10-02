@@ -158,4 +158,34 @@ main when the key is configured. The repository owner must add
 `ANTHROPIC_API_KEY` as a GitHub Actions secret; until then the job prints a
 skip message.
 
-See the [design](docs/specs/2026-09-24-wuwei-design.md) and [NOTICE](NOTICE).
+See the [design](docs/specs/2026-09-24-wuwei-design.md) and [NOTICE](NOTICE). The
+[contributing guide](https://github.com/taoq-ai/wuwei/blob/main/CONTRIBUTING.md) covers
+how changes are made; report vulnerabilities as described in [SECURITY.md](SECURITY.md).
+
+## Acknowledgements
+
+WUWEI builds on the work below. [NOTICE](NOTICE) has the licence of each.
+
+- [GitHub Spec Kit](https://github.com/github/spec-kit): the vendored `.specify/` files and
+  `speckit-*` skills behind this repository's workflow (MIT).
+- [autoharness](https://github.com/tigerless-labs/autoharness): propose then promote, the
+  ledger and the adherence lifecycle (MIT, ideas only).
+- [ralph-starter](https://github.com/rubenmarcus/ralph-starter): the builder loop with
+  backpressure and stuck detection (MIT, ideas only).
+- [humanizer](https://github.com/blader/humanizer): the writing checklist in the charters
+  (MIT, paraphrased).
+- [Wikipedia: Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing):
+  the source humanizer is based on.
+- [Model Context Protocol](https://modelcontextprotocol.io): the protocol the board server
+  implements (Apache-2.0, MIT and CC-BY-4.0).
+- [MCP Apps](https://github.com/modelcontextprotocol/ext-apps): the `ui://` resource
+  convention the board serves (Apache-2.0, MIT and CC-BY-4.0).
+- [release-please](https://github.com/googleapis/release-please): release automation in CI
+  (Apache-2.0).
+- [ZIRAN](https://github.com/taoq-ai/ziran): the role grant audit in CI (Apache-2.0).
+- [WSJF](https://framework.scaledagile.com/wsjf): Donald Reinertsen, as popularised by
+  SAFe; the `wsjf` ranking.
+- [RICE](https://www.intercom.com/blog/rice-simple-prioritization-for-product-managers/):
+  Sean McBride, Intercom; the `rice` ranking.
+- [One-way and two-way doors](https://s2.q4cdn.com/299287126/files/doc_financials/annual/2015-Letter-to-Shareholders.PDF):
+  Jeff Bezos, Amazon 2015 letter to shareholders; the decision framework.
