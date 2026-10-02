@@ -48,13 +48,36 @@ def test_readme_compares_with_other_tools():
                    'github.com/obra/superpowers', 'github.com/bmad-code-org/BMAD-METHOD',
                    'kiro.dev', 'code.claude.com/docs', '### How they compose'):
         assert phrase in section
-    assert '### Where WUWEI is worse' in section
-    worse = ' '.join(section.split('### Where WUWEI is worse', 1)[1].split())
-    for phrase in ('only in Claude Code', 'one owner per workspace', '40 to 100 ms',
-                   'not an isolation boundary', 'proven only by', 'live rehearsal'):
-        assert phrase in worse
+    rows = [line for line in section.splitlines() if line.startswith('|')]
+    for header in ('Who plans the day', 'Who reviews the work', 'What stops a bad merge',
+                   'What is learned afterwards', 'Where it runs'):
+        assert header in rows[0], header
+    assert rows[0].count('|') <= 7
+    assert 'WUWEI' in rows[2].split('|')[1]
+    assert 'Where WUWEI is worse' not in readme
+    for word in ('professional', 'enterprise', 'best-in-class'):
+        assert word not in readme.lower(), word
     assert len(section.splitlines()) < 70
     assert '\N{EM DASH}' not in section
+
+
+def test_readme_lead_and_limits():
+    readme = (ROOT / 'README.md').read_text()
+    lead = readme.split('Apache 2.0</a></p>', 1)[1].split('## What WUWEI is and is not', 1)[0]
+    for phrase in ('careful engineering team', 'ranked', 'did not write', 'retro'):
+        assert phrase in lead, phrase
+    alt = re.search(r'alt="([^"]+)"', readme)[1]
+    intro = (SITE / 'index.md').read_text().split('# WUWEI documentation', 1)[1].strip().split('\n\n', 1)[0]
+    for word in ('ranked', 'retro'):
+        assert word in alt and word in intro, word
+    assert (readme.index('## Quick start') < readme.index('## Limits')
+            < readme.index('## Development installs'))
+    section = readme.split('## Limits', 1)[1].split('\n## ', 1)[0]
+    flat = ' '.join(section.split()).lower()
+    for phrase in ('needs claude code', 'one owner per workspace', '40 to 100 ms', 'its author',
+                   'live rehearsal', 'docs/site/reference.md#hook-latency-budget',
+                   'docs/site/rehearsal.md', 'docs/site/security.md'):
+        assert phrase in flat, phrase
 
 
 def test_hero_variants_share_geometry_and_motion():
