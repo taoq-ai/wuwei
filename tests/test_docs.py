@@ -13,7 +13,7 @@ import tarfile
 import tomllib
 from xml.etree import ElementTree
 
-from wuwei import integrity, registry
+from wuwei import calibrate, integrity, registry
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -375,6 +375,7 @@ def test_release_asset_ships_every_linked_doc(tmp_path, monkeypatch):
     archive = build(ROOT, tmp_path / 'release', tmp_path / 'key')
     stage = tmp_path / 'release/wuwei'
     listed = {line[66:] for line in (stage / integrity.MANIFEST).read_text().splitlines()}
+    assert {'LICENSE', 'NOTICE', 'SECURITY.md'} <= listed
     resolved, missing = set(), []
     for path in [ROOT / 'README.md', *sorted((ROOT / 'skills').rglob('*.md')),
                  *sorted((ROOT / 'agents').rglob('*.md'))]:
@@ -563,3 +564,45 @@ def test_mandate_waits_and_loops_are_documented():
     assert 'loops N' in (SITE / 'daily.md').read_text()
     reference = (SITE / 'reference.md').read_text()
     assert 'decision route D-n --external' in reference and '`Assumption:`' in reference
+
+
+def _plain(name):
+    text = (ROOT / name).read_text()
+    assert '\N{EM DASH}' not in text and not any(ord(c) >= 0x1F000 for c in text), name
+    return text
+
+
+def test_security_policy_scope_and_channel():
+    text = ' '.join(_plain('SECURITY.md').split())
+    for phrase in ('cooperative mistake prevention', 'isolation boundary',
+                   "a determined process running as the owner's user with a shell",
+                   'private vulnerability reporting', 'latest release', 'docs/site/security.md',
+                   'injected instruction', 'forge', 'manifest', 'credential'):
+        assert phrase in text, phrase
+    assert re.search(r'[\w.+-]+@[\w-]+\.[\w.]+', text) is None
+
+
+def test_contributing_points_at_the_rules():
+    text = _plain('CONTRIBUTING.md')
+    for phrase in ('AGENTS.md', '.specify/memory/constitution.md', 'python3 -m pytest -q',
+                   'scripts/build-hero.py', 'SECURITY.md', 'stdlib'):
+        assert phrase in text, phrase
+    assert 'test first' in text.lower()
+    assert calibrate.instruction_like(text) == []
+
+
+def test_notice_credits_match_readme_acknowledgements():
+    notice, readme = _plain('NOTICE'), (ROOT / 'README.md').read_text()
+    assert '\n## Acknowledgements\n' in readme
+    section = readme.split('\n## Acknowledgements\n', 1)[1]
+    assert '\n## ' not in section
+    urls = re.findall(r'https://[^\s)]+', notice)
+    missing = [u for u in urls if u not in section]
+    assert urls and not missing, missing
+    spec_kit = _plain('.specify/LICENSE')
+    assert 'Copyright GitHub, Inc.' in spec_kit and 'Permission is hereby granted' in spec_kit
+    for text in ('.specify/', '.agents/skills/speckit-', '.specify/LICENSE'):
+        assert text in notice, text
+    for name in ('Spec Kit', 'autoharness', 'ralph-starter', 'humanizer', 'Model Context Protocol',
+                 'MCP Apps', 'release-please', 'ZIRAN', 'WSJF', 'RICE', 'two-way door'):
+        assert name.lower() in notice.lower(), name

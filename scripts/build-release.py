@@ -15,7 +15,7 @@ def build(source, output, key):
                  'skills', 'agents', 'templates', 'keys', 'docs'):
         shutil.copytree(source / name, stage / name,
                         ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-    for name in ('README.md', 'LICENSE', 'NOTICE', 'pyproject.toml'):
+    for name in ('README.md', 'LICENSE', 'NOTICE', 'SECURITY.md', 'pyproject.toml'):
         shutil.copyfile(source / name, stage / name)
     integrity.write_manifest(stage)
     result = integrity.signature_adapter().sign(stage / integrity.MANIFEST, key)
