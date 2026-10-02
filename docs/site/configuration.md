@@ -270,6 +270,20 @@ Answers are recorded in `.wuwei/days/<date>/interview.json`, which only the CLI 
 
 When you merge three or more pull requests the merge policy routed to you within seven days and `merge.auto` is false for that repository, the steward retro proposes `repos.merge.auto = true` under `## Owner preferences` with the decisions as evidence and the command to ask again: `bin/wuwei calibrate --interview merge --repo <name>`. It never records an answer for you.
 
+## Calibration profiles
+
+A profile carries a promoted calibration to another workspace of the same kind. `bin/wuwei calibrate export <name>` writes `<name>.json` in the current directory and refuses to replace one. It holds the config keys that differ from the shipped template (the `repos` part comes from the first repository, or from `--repo <name>`, and applies to every repository on import), the lines your charter overrides add to the shipped charters, and the ledger reasons that landed them. Anything personal stays out: owner, people, channel and repository identity keys, workspace paths and `guards`, plus any key, value, charter line or reason that names one of those values, holds an absolute path or trips the redactor. The `dropped` list names each one and why, never the value. If the redactor cannot run, the export exits 2.
+
+`bin/wuwei calibrate import <source>` reads a starter name, an `https` URL (30 seconds, 1 MiB) or a file. It is a proposal like any calibration:
+
+- A profile that sets `repos.merge.auto = true` or `shepherd.autostart = true`, raises a `decisions.cruise` level above the level the class runs at, turns `decisions.cruise.enabled` on (cruise answering is not built; the levels still bound the mandate), lowers `repos.gates.floor`, turns on `gates.second_opinion`, sets any `adapters` key, `calendar.url`, `watch.ping_url` or `codex.command`, or carries a personal key is refused: exit 1, each key named, nothing written.
+- Instruction-like text in a config value, a charter line or a reason is flagged by line and rule and that key or role block is not proposed; the rest is (exit 1).
+- `--skip <key>` (a dotted config key or `charters.<role>`) leaves a change out; `--repo <name>` limits the `repos` part to one repository.
+
+Import prints the `config.toml` diff, writes the accepted part to `.wuwei/days/<date>/profile.json` (only the CLI writes it) and one `proposals/profile-<role>.json` per role, without lines the charter already has. `bin/wuwei config promote` re-checks `profile.json`, lists each change as `Profile <name>: <key> = <value>` in the digest you confirm, and lets an interview answer for the same key win. `bin/wuwei promote` lands the charter blocks. Lists replace yours, except `deploy.deny`, which only grows.
+
+Two starters ship in `templates/profiles/`, derived from WUWEI's own setup: `python-library` (pytest fast check, packaging and CI on the trust surface, package publishing denied, short builder and quality rules) and `cli-tool` (the same, plus `bin/*` and rules on exit codes and reference docs). Try one with `bin/wuwei calibrate import python-library`.
+
 ## Outward text and outbound tiers
 
 | Key | Default | Meaning |
