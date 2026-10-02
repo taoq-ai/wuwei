@@ -62,6 +62,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei verdict` | Checks a gate verdict. | [Gate verdict layout](#gate-verdict-layout) |
 | `bin/wuwei voice` | Shows or edits the owner voice profile. | [Owner voice](configuration.html#owner-voice) |
 | `bin/wuwei watch` | Supervises workspace activity and owned PRs. | [Running the watch](configuration.html#running-the-watch) |
+| `bin/wuwei why` | Explains from recorded events why an item, a decision or a refusal is where it is. | [Why](#why) |
 | `bin/wuwei worktree` | Creates an anchored item worktree. | [Item worktrees](#item-worktrees) |
 
 ## Lead plan JSON
@@ -276,6 +277,22 @@ Recovery is an owner action. Agent tool hooks refuse `wuwei state recover` insid
 `bin/wuwei init --shadow` writes `guards.mode = "shadow"` and today's date as `guards.shadow_since` into a new workspace; with `--upgrade` it exits 2. In shadow mode a refusal from any guard module except `protect_state`, `integrity`, `deploy`, `outward` and `pr` is recorded as a `guard.would_refuse` event and the hook exits 0. The event payload is `{guard, reason, target, session, item}`: `target` is the normalised Bash command, else the file path, else the tool name, with credentials, the canary and the honeytoken redacted; `item` is the item the session claims, or null. Only the hook writes it; `bin/wuwei event` refuses the kind. If the event cannot be written, or the config cannot be read, the refusal is enforced. Refusals in the heartbeat session `wuwei-heartbeat` are always enforced.
 
 `status --line` adds a `shadow` part after the nudges while the mode is on, and `status --json` carries `shadow`. Once `guards.shadow_days` calendar days have passed since `guards.shadow_since`, `bin/wuwei nudges` and the status line count one `guards.shadow` nudge asking you to switch to enforce or raise `guards.shadow_days`. With an empty `shadow_since` there is no nudge.
+
+## Why
+
+`bin/wuwei why <target>` reads the day records and prints why something is where it is. It writes nothing. The target is, in this order: `last refusal`, an event id, a decision id `D-<n>`, a PR ref `owner/repo#<n>`, or an item name.
+
+An event id is `<YYYY-MM-DD>:<line>`: the day directory and the 1-based line of that day's append-only `events.jsonl`.
+
+For an item, `why` reads every day whose `state.json` holds it, oldest first, and prints one line per step in this order: how it entered the queue (goal and score), its gate tier and the rules that set it, each gate verdict with its blocking findings, each decision with who decided it, each phase change with the command that made it, the merge with the policy evidence that cleared it, and what it waits on now. A PR ref reads the item that links it. A step with no record prints `not recorded`, never a guess. The queue entry, the tier and the gate verdicts are always listed; the merge is listed for a merged item.
+
+For a refusal, `why` prints the guard, the rule, the normalised command and the fix. The `hook.refusal` payload is `{reason, refusals, target}`: `refusals` holds one `{guard, reason}` per enforced guard, and `target` is redacted as in shadow mode. The rule is the message before its first `; ` and the fix is the text after it. Refusals recorded before this field existed print `not recorded` for the guard and the command. In shadow mode a `guard.would_refuse` event is explained the same way, from its `guard`, `reason` and `target`, under `would have refused (shadow) at <ts>`; `last refusal` is the newest of either kind.
+
+For a decision, `why D-<n>` reads today's record and prints the options with their scores, the recommendation, the weights, the margin (the recommended score minus the best other score, over 10 times the sum of the weights), the class, the cruise level and who decided. Cruise mode is not built yet, so the class and level print `not recorded` unless the record or its event names them. An owner answer records `decided_by: owner` in its `decision.decided` or `decision.reversed` event.
+
+Lines follow `owner.verbosity.report`. At `full`, or with `--full`, each line ends with its event id and evidence paths. Every line is redacted as refusal targets are, so a credential in a record never reaches the output. The `wuwei_board` tool returns the same item chains in `./why.json`, or `{"unmeasured": <reason>}` when a record cannot be read.
+
+Exit 0 prints the view, 1 means the target has no record, 2 means a record could not be read or there is no workspace.
 
 ## Host terminal actions
 

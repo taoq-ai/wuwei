@@ -966,3 +966,42 @@ def test_never_shadowed_guards_refuse_in_shadow_mode(plugin):
         assert [row['guard'] for row in events_of(plugin, 'guard.would_refuse')] == ['fake']
     finally:
         forget_guards()
+
+
+FORCE = 'force-push is refused; push a branch instead'
+
+
+def test_refusal_records_guard_and_target_for_why(plugin):
+    from wuwei.__main__ import main
+    install(plugin, refusing('PreToolUse', FORCE))
+    payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
+    assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', FORCE)
+    assert events_of(plugin, 'hook.refusal') == [
+        {'reason': FORCE, 'refusals': [{'guard': 'fake', 'reason': FORCE}], 'target': 'npm test'}]
+    (plugin[0] / '.wuwei/config.toml').write_text('')
+    assert main(['why', 'last refusal']) == 0
+    lines = plugin[2].readouterr().out.splitlines()
+    for line in ('command: npm test', 'guard: fake', 'rule: force-push is refused',
+                 'fix: push a branch instead'):
+        assert line in lines
+
+
+def test_refusal_without_a_target_is_still_recorded_and_enforced(plugin):
+    from wuwei.commands import hook
+    install(plugin, refusing('PreToolUse', FORCE))
+    plugin[1].setattr(hook, 'redacted_target', lambda payload, root: 1 / 0)
+    payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
+    assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', FORCE)
+    assert events_of(plugin, 'hook.refusal') == [
+        {'reason': FORCE, 'refusals': [{'guard': 'fake', 'reason': FORCE}]}]
+
+
+def test_refusal_from_two_guards_lists_both_in_order(plugin):
+    install(plugin, refusing('PreToolUse', 'first; a'), 'first')
+    install(plugin, refusing('PreToolUse', 'second'), 'second')
+    payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
+    assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', 'first; a\nsecond')
+    recorded, = events_of(plugin, 'hook.refusal')
+    assert recorded['reason'] == 'first; a\nsecond'
+    assert recorded['refusals'] == [{'guard': 'first', 'reason': 'first; a'},
+                                    {'guard': 'second', 'reason': 'second'}]

@@ -129,7 +129,7 @@ def owner_outcome(args):
 
     state._write_state(update, root, reserved=False,
                        kind='decision.reversed' if reversed_choice else 'decision.decided',
-                       payload={'id': args.id, 'option': args.option,
+                       payload={'id': args.id, 'option': args.option, 'decided_by': 'owner',
                                 'reversibility': fields['Reversibility']})
     # ponytail: rewrites the first Outcome: line; a record with an inactive example
     # Outcome: above the real field needs the active line from verdict.active_text.
