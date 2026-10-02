@@ -519,3 +519,18 @@ def test_delta_continues_the_stopped_sentinel_by_agent_id(launch, monkeypatch):
     assert check(payload) == (0, '')
     seat = state.read_state(day[0])['seats']['gate']
     assert seat['status'] == 'running' and seat['head'] == 'b' * 40
+
+
+def test_second_opinion_brief_is_never_an_agent_launch(launch, monkeypatch):
+    from wuwei import brief as writer
+    from wuwei.guards import agent_launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    (root, directory, _, _), payload = launch
+    writer.write('sentinel-arch', 'X', 'gate-codex', 'body', worktree='tree', root=root,
+                 second_opinion={'role': 'arch', 'runtime': 'codex', 'model': 'm1'})
+    second = {**payload, 'tool_input': {**payload['tool_input'], 'name': 'gate-codex',
+              'prompt': 'WUWEI brief: ' + str((directory / 'briefs/gate-codex.md').relative_to(root))}}
+    code, message = check(second)
+    assert code == 1 and message == 'second-opinion brief runs through wuwei dispatch opinion, not Agent'
+    assert state.read_state(root)['seats'] == {}
+    assert check(payload) == (0, '')

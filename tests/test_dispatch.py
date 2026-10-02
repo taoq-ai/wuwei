@@ -49,7 +49,7 @@ def test_gate_dispatch_requires_builder_stand_down(root):
         dispatch.next_step('A', root)
 
 
-def record(root, role, name, text, round_name='initial'):
+def record(root, role, name, text, round_name='initial', **seat):
     from wuwei import dispatch
 
     directory = workspace.day_dir(root)
@@ -58,10 +58,10 @@ def record(root, role, name, text, round_name='initial'):
     (directory / 'briefs' / f'{name}.md').write_text('Head: abc1234\n')
     (directory / 'decisions' / f'gate-{name}.md').write_text(text)
     state._write_state(lambda data: data['seats'].update({
-        name: {'item': 'A', 'role': 'sentinel-' + role, 'status': 'stopped',
-               'brief': str((directory / 'briefs' / f'{name}.md').relative_to(root))}}),
+        name: {'item': 'A', 'role': 'sentinel-' + role.partition('@')[0], 'status': 'stopped',
+               'brief': str((directory / 'briefs' / f'{name}.md').relative_to(root)), **seat}}),
         root, reserved=False)
-    dispatch.receive('A', role, name, round_name, root)
+    return dispatch.receive('A', role, name, round_name, root)
 
 
 def built(root):
@@ -866,3 +866,421 @@ def test_item_with_initial_verdicts_before_dispatch_gets_no_tier(root):
     record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n')
     assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['arch', 'security'], 'seats': []}
     assert state.read_state(root)['items']['A']['gates'] == {}
+
+
+SECOND = '[gates]\nsecond_opinion = "codex:m1"\n'
+OPINION = {'role': 'quality', 'runtime': 'codex', 'model': 'm1'}
+
+
+@pytest.mark.parametrize('track,lead', [('SLICE', None), ('FULL', None), ('SLICE', 'full')])
+def test_second_opinion_is_recorded_at_standard_and_full(root, monkeypatch, track, lead):
+    from wuwei import dispatch
+
+    tiered(root, monkeypatch, [('src/app.py', 200, 0)], track=track, lead=lead, extra=SECOND)
+    record = tier_of(root)
+    assert record['second_opinion'] == OPINION
+    row = state.read_state(root)['items']['A']
+    assert dispatch.gate_set(row) == ('arch', 'quality', 'security', 'quality@codex')
+    assert dispatch.base('quality@codex') == 'quality' and dispatch.base('arch') == 'arch'
+
+
+def test_second_opinion_role_is_configurable(root, monkeypatch):
+    from wuwei import dispatch
+
+    tiered(root, monkeypatch, [('src/app.py', 200, 0)],
+           extra=SECOND + 'second_opinion_role = "security"\n')
+    tier_of(root)
+    assert dispatch.gate_set(state.read_state(root)['items']['A'])[-1] == 'security@codex'
+
+
+def test_light_item_and_option_off_have_no_second_opinion(root, monkeypatch):
+    from wuwei import dispatch
+
+    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], extra=SECOND)
+    assert 'second_opinion' not in tier_of(root)
+    assert dispatch.gate_set(state.read_state(root)['items']['A']) == ('quality',)
+
+
+def test_option_off_records_no_second_opinion(root, monkeypatch):
+    tiered(root, monkeypatch, [('src/app.py', 200, 0)])
+    assert 'second_opinion' not in tier_of(root)
+
+
+@pytest.mark.parametrize('second', [
+    {**OPINION, 'role': 'arch'}, 'codex:m1', {**OPINION, 'model': 'bad model'},
+    {**OPINION, 'runtime': 'Codex'}, {'role': 'quality'}])
+def test_malformed_second_opinion_fails_closed(root, second):
+    from wuwei import dispatch
+
+    row = {'gates': {**LIGHT, 'second_opinion': second}}
+    with pytest.raises(ValueError, match='invalid recorded gate set'):
+        dispatch.gate_set(row)
+
+
+def opinion_item(root, monkeypatch):
+    fake = tiered(root, monkeypatch, [('src/app.py', 200, 0)], extra=SECOND)
+    from test_pr_actions import completed_build
+    completed_build(root, root / 'repo')
+    return fake
+
+
+RUN = {'action': 'run', 'gate': 'quality@codex', 'runtime': 'codex', 'model': 'm1',
+       'command': 'wuwei dispatch opinion A'}
+
+
+def test_dispatch_next_offers_the_second_opinion_run(root, monkeypatch):
+    from wuwei import dispatch
+
+    opinion_item(root, monkeypatch)
+    outcome = dispatch.next_step('A', root)
+    assert outcome['roles'] == ['arch', 'quality', 'security', 'quality@codex']
+    assert outcome['seats'] == []
+    for role in ALL:
+        logged_gate_brief(root, role, role[0] + '-1', root / 'repo')
+    seats = dispatch.next_step('A', root)['seats']
+    assert [seat['action'] for seat in seats] == ['launch'] * 3 + ['run']
+    assert seats[-1] == RUN
+    path = workspace.day_dir(root) / 'briefs/q-1-codex.md'
+    path.write_text('Head: abc1234\n')
+    state._write_state(lambda data: None, root, reserved=False, kind='brief written', payload={
+        'name': 'q-1-codex', 'item': 'A', 'role': 'sentinel-quality', 'gate': True,
+        'path': str(path.relative_to(root)), 'worktree': str(root / 'repo'),
+        'second_opinion': 'codex:m1'})
+    seats = dispatch.next_step('A', root)['seats']
+    assert [seat.get('brief', '').endswith('q-1.md') for seat in seats if seat['action'] == 'launch'] == [
+        False, True, False]
+    state._write_state(lambda data: data['seats'].update({'q-1-codex': {
+        'item': 'A', 'role': 'sentinel-quality', 'status': 'running'}}), root, reserved=False)
+    assert RUN not in dispatch.next_step('A', root)['seats']
+
+
+QUALITY_FIX = FIX + 'Simplicity: none\nDesign: none\n'
+QUALITY_PASS = PASS + 'Simplicity: none\nDesign: none\n'
+STANDARD = {'tier': 'standard', 'computed': 'standard', 'reasons': [], 'roles': ALL,
+            'second_opinion': OPINION}
+
+
+def standard(root, gates=STANDARD):
+    state._write_state(lambda data: data['items']['A'].update(gates=gates), root, reserved=False)
+
+
+def test_receive_records_the_second_opinion_with_usage_and_findings(root):
+    standard(root)
+    usage = {'input_tokens': 5, 'output_tokens': 3, 'cost': 0.42, 'model': 'm1', 'duration': 9}
+    value = record(root, 'quality@codex', 'q-1-codex', QUALITY_FIX, usage=usage, runtime='codex',
+                   model='m1')
+    assert value['role'] == 'quality@codex' and (value['runtime'], value['model']) == ('codex', 'm1')
+    [finding] = value['findings']
+    assert finding.startswith('- P1 | cli/example.py:12 | fails when empty | blocks: yes')
+    assert value['usage'] == usage and value['blocks'] is True
+    assert state.read_state(root)['gate_verdicts']['A:quality@codex:initial'] == value
+
+
+def test_claude_sentinel_record_measures_duration_from_its_seat(root):
+    state._write_state(lambda data: data.update(seat_policy={
+        'sentinel-arch': {'runtime': 'claude', 'model': 'opus'}}), root, reserved=False)
+    value = record(root, 'arch', 'arch-1', PASS, started_at='2026-09-29T11:59:00+00:00',
+                   stopped_at='2026-09-29T12:06:00+00:00')
+    assert value['usage'] == {'input_tokens': 'unmeasured', 'output_tokens': 'unmeasured',
+                              'cost': 'unmeasured', 'model': 'opus', 'duration': 420.0}
+    assert 'runtime' not in value and value['findings'] == []
+    assert record(root, 'security', 'security-1', PASS)['usage']['duration'] == 'unmeasured'
+
+
+def test_receive_refuses_a_second_opinion_outside_the_gate_set(root):
+    from wuwei import dispatch
+
+    with pytest.raises(dispatch.Refused, match='not in the item gate set'):
+        record(root, 'quality@codex', 'q-1-codex', QUALITY_PASS)
+    standard(root)
+    with pytest.raises(dispatch.Refused, match='not in the item gate set'):
+        record(root, 'arch@codex', 'a-1-codex', PASS)
+
+
+def test_second_opinion_is_linted_as_quality_and_checked_against_sibling_heads(root):
+    from wuwei import dispatch
+
+    standard(root)
+    with pytest.raises(dispatch.Refused, match='REJECT'):
+        record(root, 'quality@codex', 'q-1-codex', PASS, runtime='codex', model='m1')
+    record(root, 'arch', 'arch-1', PASS)
+    with pytest.raises(dispatch.Refused, match='sibling'):
+        record(root, 'quality@codex', 'q-2-codex', QUALITY_PASS.replace('abc1234', 'def5678'),
+               head='def5678', runtime='codex', model='m1')
+    state._write_state(lambda data: data['gate_verdicts'].clear(), root, reserved=False)
+    record(root, 'quality@codex', 'q-3-codex', QUALITY_PASS.replace('abc1234', 'def5678'),
+           head='def5678', runtime='codex', model='m1')
+    with pytest.raises(dispatch.Refused, match='sibling'):
+        record(root, 'arch', 'arch-2', PASS)
+
+
+def test_receive_binds_the_seat_runtime_to_the_gate(root):
+    from wuwei import dispatch
+
+    standard(root)
+    record(root, 'quality', 'q-1', QUALITY_PASS)
+    with pytest.raises(dispatch.Refused, match='runtime seat'):
+        dispatch.receive('A', 'quality@codex', 'q-1', root=root)
+    with pytest.raises(dispatch.Refused, match='runtime seat'):
+        record(root, 'quality@codex', 'q-2', QUALITY_PASS, runtime='codex', model='m1')
+    state._write_state(lambda data: data['gate_verdicts'].clear(), root, reserved=False)
+    with pytest.raises(dispatch.Refused, match='runtime seat'):
+        record(root, 'quality', 'q-1-codex', QUALITY_PASS, runtime='codex', model='m1')
+    value = dispatch.receive('A', 'quality@codex', 'q-1-codex', root=root)
+    assert (value['runtime'], value['model']) == ('codex', 'm1')
+
+
+OPINION_TEXT = QUALITY_FIX.replace('abc1234', 'aaaaaaa')
+
+
+class FakeRuntime:
+    def __init__(self, text=OPINION_TEXT, statuses=('completed',), usage=None):
+        from wuwei.registry import Result
+        self.calls, self.text, self.statuses = [], text, list(statuses)
+        self.usage = {'cost': 0.42} if usage is None else usage
+        self.dispatched = Result(0, {'id': 'j1', 'started_at': 0})
+
+    def dispatch(self, role, brief, worktree, write, *, root=None):
+        self.calls.append(('dispatch', role, brief, worktree, write))
+        return self.dispatched
+
+    def continue_job(self, job, feedback, *, root=None):
+        from wuwei.registry import Result
+        self.calls.append(('continue', job['id'], feedback))
+        return Result(0, {'id': 'j2', 'started_at': 4102444800})
+
+    def status(self, job, *, root=None):
+        from wuwei.registry import Result
+        self.calls.append(('status', job['id']))
+        return Result(0, {'status': self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0],
+                          'model': 'm1'})
+
+    def result(self, job, *, root=None):
+        from wuwei.registry import Result
+        self.calls.append(('result', job['id']))
+        return Result(0, {'text': self.text, 'usage': self.usage})
+
+
+def opinion_ready(root, monkeypatch, runtime=None):
+    from wuwei import registry
+    from wuwei.registry import Result
+
+    fake = opinion_item(root, monkeypatch)
+    fake.results.update(status=Result(0, []), branches=Result(0, []))
+    runtime = runtime or FakeRuntime()
+    vcs_load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: runtime if kind == 'runtime'
+                        else vcs_load(kind, config))
+    from wuwei import dispatch
+    dispatch.next_step('A', root)
+    for role in ALL:
+        logged_gate_brief(root, role, role[0] + '-1', root / 'repo').write_text(
+            'Item: A\nHEAD: ' + 'a' * 40 + '\n\nReview the item.\n')
+    return runtime
+
+
+def events_of(root, kind):
+    return [row['payload'] for row in map(json.loads, (workspace.day_dir(root) / 'events.jsonl')
+                                          .read_text().splitlines()) if row['kind'] == kind]
+
+
+def test_opinion_runs_the_second_gate_and_receives_it(root, monkeypatch):
+    from wuwei import dispatch
+
+    runtime = opinion_ready(root, monkeypatch)
+    value = dispatch.opinion('A', root)
+    directory = workspace.day_dir(root)
+    brief_path = directory / 'briefs/q-1-codex.md'
+    header, body = brief_path.read_text().split('\n\n', 1)
+    assert 'Model: m1' in header.splitlines() and body == 'Review the item.\n'
+    assert runtime.calls[0] == ('dispatch', 'sentinel-quality', str(brief_path), str(root / 'repo'), True)
+    assert (directory / 'decisions/gate-q-1-codex.md').read_text() == OPINION_TEXT + '\n'
+    seat = state.read_state(root)['seats']['q-1-codex']
+    assert seat['status'] == 'stopped' and seat['job']['id'] == 'j1'
+    assert (seat['runtime'], seat['model'], seat['usage']['cost']) == ('codex', 'm1', 0.42)
+    [usage] = events_of(root, 'seat.usage')
+    assert usage['gate'] == 'quality@codex' and usage['role'] == 'sentinel-quality'
+    assert value['role'] == 'quality@codex' and (value['runtime'], value['model']) == ('codex', 'm1')
+    assert value == state.read_state(root)['gate_verdicts']['A:quality@codex:initial']
+    calls = len(runtime.calls)
+    assert dispatch.opinion('A', root) == value and len(runtime.calls) == calls
+    for role, name in (('arch', 'a-1'), ('quality', 'q-1'), ('security', 's-1')):
+        text = PASS + ('Simplicity: none\nDesign: none\n' if role == 'quality' else '')
+        record(root, role, name, text.replace('abc1234', 'aaaaaaa'), head='a' * 40)
+    assert len(state.read_state(root)['gate_verdicts']) == 4
+    assert dispatch.next_step('A', root)['action'] == 'fix'
+
+
+def test_passing_opinion_lets_the_item_raise(root, monkeypatch):
+    from wuwei import dispatch
+
+    opinion_ready(root, monkeypatch, FakeRuntime(QUALITY_PASS.replace('abc1234', 'aaaaaaa')))
+    assert dispatch.opinion('A', root)['verdict'] == 'PASS'
+    for role, name in (('arch', 'a-1'), ('quality', 'q-1'), ('security', 's-1')):
+        text = PASS + ('Simplicity: none\nDesign: none\n' if role == 'quality' else '')
+        record(root, role, name, text.replace('abc1234', 'aaaaaaa'), head='a' * 40)
+    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
+
+
+def test_opinion_rerun_polls_the_running_job(root, monkeypatch):
+    from wuwei import dispatch
+
+    runtime = opinion_ready(root, monkeypatch, FakeRuntime(statuses=('failed',)))
+    with pytest.raises(RuntimeError, match='failed'):
+        dispatch.opinion('A', root)
+    assert state.read_state(root)['gate_verdicts'] == {}
+    runtime.statuses = ['completed']
+    runtime.calls.clear()
+    assert dispatch.opinion('A', root)['verdict'] == 'FIX'
+    assert [call[0] for call in runtime.calls] == ['status', 'result']
+
+
+def test_opinion_keeps_a_verdict_the_seat_wrote(root, monkeypatch):
+    from wuwei import dispatch
+
+    opinion_ready(root, monkeypatch, FakeRuntime(text='Done.'))
+    verdict = workspace.day_dir(root) / 'decisions/gate-q-1-codex.md'
+    verdict.parent.mkdir(exist_ok=True)
+    verdict.write_text(QUALITY_PASS.replace('abc1234', 'aaaaaaa'))
+    assert dispatch.opinion('A', root)['verdict'] == 'PASS'
+    assert verdict.read_text() == QUALITY_PASS.replace('abc1234', 'aaaaaaa')
+
+
+def test_rejected_opinion_continues_the_same_job(root, monkeypatch):
+    from wuwei import dispatch
+
+    runtime = opinion_ready(root, monkeypatch, FakeRuntime(text='Verdict: PASS\n'))
+    with pytest.raises(dispatch.Refused, match='REJECT'):
+        dispatch.opinion('A', root)
+    runtime.text = OPINION_TEXT
+    assert dispatch.opinion('A', root)['verdict'] == 'FIX'
+    continued = [call for call in runtime.calls if call[0] == 'continue']
+    assert continued == [('continue', 'j1', 'Your verdict file was rejected by the verdict lint; '
+                          'rewrite .wuwei/days/2026-09-29/decisions/gate-q-1-codex.md to the verdict '
+                          'contract in your brief.')]
+    assert [call[0] for call in runtime.calls].count('dispatch') == 1
+
+
+@pytest.mark.parametrize('failure', ['dispatch', 'timeout'])
+def test_opinion_failures_record_no_verdict(root, monkeypatch, failure):
+    from wuwei import dispatch
+    from wuwei.commands import build
+    from wuwei.registry import Result
+
+    runtime = FakeRuntime(statuses=('running',))
+    if failure == 'dispatch':
+        runtime.dispatched = Result(2, reason='codex down')
+    opinion_ready(root, monkeypatch, runtime)
+    (root / '.wuwei/config.toml').write_text((root / '.wuwei/config.toml').read_text()
+                                            + '[build]\npoll_interval_seconds = 0\npoll_timeout_seconds = 1\n')
+    from types import SimpleNamespace
+    monkeypatch.setattr(build, 'time', SimpleNamespace(monotonic=iter(range(0, 100, 5)).__next__,
+                                                       sleep=lambda seconds: None))
+    with pytest.raises(build.PortExit if failure == 'dispatch' else TimeoutError):
+        dispatch.opinion('A', root)
+    assert state.read_state(root)['gate_verdicts'] == {}
+
+
+def test_opinion_refusals(root, monkeypatch):
+    from wuwei import dispatch
+
+    with pytest.raises(dispatch.Refused, match='no second opinion'):
+        dispatch.opinion('A', root)
+    runtime = FakeRuntime()
+    opinion_item(root, monkeypatch)
+    from wuwei import registry
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: runtime if kind == 'runtime' else load(kind, config))
+    dispatch.next_step('A', root)
+    with pytest.raises(dispatch.Refused, match='write the quality gate brief first'):
+        dispatch.opinion('A', root)
+    for role in ALL:
+        logged_gate_brief(root, role, role[0] + '-1', root / 'repo')
+    state._write_state(lambda data: data['seats'].update({f's{n}': {
+        'item': 'B', 'role': 'builder', 'status': 'running'} for n in range(4)}), root, reserved=False)
+    with pytest.raises(dispatch.Refused, match='host seat ceiling'):
+        dispatch.opinion('A', root)
+    assert runtime.calls == []
+
+
+def test_opinion_delta_refuses_to_resume_on_the_builder_runtime(root, monkeypatch):
+    from wuwei import dispatch
+
+    runtime = opinion_ready(root, monkeypatch)
+    dispatch.opinion('A', root)
+    for role, name in (('arch', 'a-1'), ('quality', 'q-1'), ('security', 's-1')):
+        text = PASS + ('Simplicity: none\nDesign: none\n' if role == 'quality' else '')
+        record(root, role, name, text.replace('abc1234', 'aaaaaaa'), head='a' * 40)
+    dispatch.next_step('A', root)
+    state.transition('A', 'delta', root)
+    state._write_state(lambda data: data['seat_policy'].update(
+        builder={'runtime': 'codex', 'model': 'm2'}), root, reserved=False)
+    with pytest.raises(dispatch.Refused, match='builder runtime'):
+        dispatch.opinion('A', root)
+    assert [call[0] for call in runtime.calls].count('continue') == 0
+
+
+def test_cli_opinion_contract(root, monkeypatch, capsys):
+    from wuwei import dispatch
+    from wuwei.__main__ import main
+    from wuwei.commands import build
+
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    outcomes = iter([{'verdict': 'PASS'}, dispatch.Refused('write the quality gate brief first'),
+                     build.PortExit(2, 'codex down'), RuntimeError('runtime seat failed')])
+
+    def opinion(item, root=None):
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+    monkeypatch.setattr(dispatch, 'opinion', opinion)
+    assert main(['dispatch', 'opinion', 'A']) == 0
+    assert json.loads(capsys.readouterr().out) == {'verdict': 'PASS'}
+    assert main(['dispatch', 'opinion', 'A']) == 1
+    assert main(['dispatch', 'opinion', 'A']) == 2
+    assert main(['dispatch', 'opinion', 'A']) == 2
+    assert 'runtime seat failed' in capsys.readouterr().err
+
+
+def opinion_fix_round(root, monkeypatch, delta_text):
+    from wuwei import dispatch
+
+    runtime = opinion_ready(root, monkeypatch)
+    dispatch.opinion('A', root)
+    for role, name in (('arch', 'a-1'), ('quality', 'q-1'), ('security', 's-1')):
+        text = PASS + ('Simplicity: none\nDesign: none\n' if role == 'quality' else '')
+        record(root, role, name, text.replace('abc1234', 'aaaaaaa'), head='a' * 40)
+    outcome = dispatch.next_step('A', root)
+    assert outcome == {'action': 'fix', 'roles': ['quality@codex'], 'command': 'wuwei build next A'}
+    assert 'gate-q-1-codex.md' in state.read_state(root)['builds']['A']['action']['feedback']
+    state.transition('A', 'delta', root)
+    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality@codex'], 'seats': [RUN]}
+    runtime.text = delta_text
+    value = dispatch.opinion('A', root)
+    [continued] = [call for call in runtime.calls if call[0] == 'continue']
+    assert continued[1] == 'j1' and continued[2].startswith('Delta review:')
+    assert 'gate-q-1-codex.md' in continued[2]
+    assert value['round'] == 'delta' and (value['runtime'], value['model']) == ('codex', 'm1')
+    return dispatch.next_step('A', root)
+
+
+def test_second_opinion_fix_opens_the_fix_round_and_its_delta_escalates(root, monkeypatch):
+    assert opinion_fix_round(root, monkeypatch, OPINION_TEXT) == {
+        'action': 'escalate', 'reason': 'blocking finding remains after delta'}
+
+
+def test_second_opinion_delta_residual_becomes_a_review_note(root, monkeypatch):
+    text = QUALITY_PASS.replace('abc1234', 'aaaaaaa').replace(
+        'Probe:', '- P3 | cli/example.py:12 | naming fails when read | blocks: no\nProbe:')
+    outcome = opinion_fix_round(root, monkeypatch, text)
+    assert outcome['action'] == 'raise' and 'naming' in outcome['notes'][0]
+
+
+def test_light_item_with_second_opinion_on_offers_no_run(root, monkeypatch):
+    from wuwei import dispatch
+
+    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], extra=SECOND)
+    logged_gate_brief(root, 'quality', 'q-1', root / 'repo')
+    outcome = dispatch.next_step('A', root)
+    assert outcome['roles'] == ['quality'] and [seat['action'] for seat in outcome['seats']] == ['launch']

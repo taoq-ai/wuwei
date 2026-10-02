@@ -106,6 +106,7 @@ Outcome: pending
         lines.append(f'| {path.name} | {results[0]} |')
     if not gates:
         lines.append('| none | unmeasured |')
+    lines += _second_opinion(data['gate_verdicts'])
     path = day / 'retro' / (day.name + '.md')
     window = watch.days(root)[:7]
     quality = metrics.bands(root, window)
@@ -142,3 +143,33 @@ Outcome: pending
               '## Proposed', *(['- `' + p + '`' for p in targets([*pending, *rejected])] or ['none']), '']
     workspace.atomic_write(path, '\n'.join(lines))
     return path
+
+
+def _second_opinion(records):
+    """Findings each model raised alone in the initial round, and what each verdict cost."""
+    seconds = sorted((record for record in records.values()
+                      if record.get('runtime') and record.get('round') == 'initial'),
+                     key=lambda record: record['item'])
+    if not seconds:
+        return []
+
+    def keyed(record):
+        # ponytail: matched on the first file:line citation, so one defect cited on two lines
+        # counts twice; compare finding text if that misleads the owner.
+        return {(found[0].lower() if (found := re.search(verdict.CITATION, text))
+                 else ' '.join(text.lower().split())): text for text in record.get('findings', [])}
+    lines = ['', '## Second opinion', '| Item | Found only by | Finding |', '| --- | --- | --- |']
+    costs = ['', '| Item | Gate | Model | Cost | Duration |', '| --- | --- | --- | --- | --- |']
+    for second in seconds:
+        item, role = second['item'], second['role'].partition('@')[0]
+        first = records.get(f'{item}:{role}:initial', {})
+        mine, theirs = keyed(second), keyed(first)
+        for label, own, other in ((f"{second['role']} {second['model']}", mine, theirs),
+                                  (role, theirs, mine)):
+            lines += [f"| {item} | {label} | {text.splitlines()[0].replace('|', '/')} |"
+                      for key, text in own.items() if key not in other] or [f'| {item} | {label} | none |']
+        for gate, record in ((role, first), (second['role'], second)):
+            usage = record.get('usage', {})
+            costs.append(f"| {item} | {gate} | " + ' | '.join(
+                str(usage.get(key, 'unmeasured')) for key in ('model', 'cost', 'duration')) + ' |')
+    return lines + costs

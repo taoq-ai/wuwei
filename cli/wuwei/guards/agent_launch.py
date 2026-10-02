@@ -100,6 +100,8 @@ def _check(payload):
         raise brief.Refused('Agent name does not match logged brief name')
     if hashlib.sha256(path.read_bytes()).hexdigest() != logged.get('sha256'):
         raise brief.Refused('brief modified since it was logged')
+    if logged.get('second_opinion'):
+        raise brief.Refused('second-opinion brief runs through wuwei dispatch opinion, not Agent')
     config = workspace.load_config(root)
     runtime = registry.runtime_config(role, config, root)['adapters']['runtime']
     registry.validate('runtime', runtime)

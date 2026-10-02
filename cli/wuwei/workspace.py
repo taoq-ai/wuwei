@@ -79,6 +79,8 @@ SCHEMA = {
     "build": {"max_iterations": (int, 8, 1), "stuck_after": (int, 3, 1),
               "poll_interval_seconds": (int, 5, 0), "poll_timeout_seconds": (int, 3600, 1)},
     "codex": {"command": [(str, None)], "timeout_seconds": (int, 300, 1)},
+    "gates": {"second_opinion": (str, "off"),
+              "second_opinion_role": (str, "quality", ("arch", "quality", "security"))},
     "watch": {"clock_seconds": (int, 600, 1), "dead_seconds": (int, 1200, 1),
               "stale_seconds": (int, 900, 1), "sweep_seconds": (int, 7200, 1),
               "ping_url": (str, "")},
@@ -455,6 +457,14 @@ def load_config(root=None):
                                   + ', '.join(CLASSES))
             if value > CLASSES[name][1]:
                 raise ConfigError(f'decisions.cruise.levels.{name}: above its ceiling L{CLASSES[name][1]}')
+        from wuwei import registry
+        second = config['gates']['second_opinion']
+        found = re.fullmatch(r'([a-z]+):([A-Za-z0-9][A-Za-z0-9._-]*)', second)
+        if second != 'off' and (not found or found[1] not in registry.known('runtime')
+                                or found[1] in ('claude', 'none')):
+            raise ConfigError('gates.second_opinion: use "off" or "<runtime>:<model>" with a polling '
+                              'runtime (' + ', '.join(name for name in registry.known('runtime')
+                                                      if name not in ('claude', 'none')) + ')')
         repo_names = set()
         repo_paths = set()
         for index, repo in enumerate(config['repos']):
@@ -472,7 +482,6 @@ def load_config(root=None):
                 location = f' at line {line}' if line is not None else ''
                 raise ConfigError(f'repos.{index}.path: duplicate {repo["path"]!r}{location}')
             repo_paths.add(resolved)
-        from wuwei import registry
 
         for kind, name in config['adapters'].items():
             try:

@@ -23,7 +23,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei dashboard` | Serves the read-only day board on loopback. | [Cockpit and board](concepts.html#cockpit-and-board) |
 | `bin/wuwei decision` | Checks and routes decision records; `outcome` records the owner's answer. | [Decision record](#decision-record) |
 | `bin/wuwei discover` | Discovers candidate work. | [Goals and discovery](configuration.html#goals-and-discovery) |
-| `bin/wuwei dispatch` | Decides planner gate and discovery work. | [Review tiers](concepts.html#review-tiers) |
+| `bin/wuwei dispatch` | Decides planner gate and discovery work; `dispatch opinion <item>` runs the second-opinion gate. | [Review tiers](concepts.html#review-tiers) |
 | `bin/wuwei drafts` | Lists outward drafts awaiting owner approval. | [Outward draft queue](#outward-draft-queue) |
 | `bin/wuwei event` | Plumbing: appends a timestamped day event. | |
 | `bin/wuwei fast-checks` | Runs and records the configured fast checks. | [Seat briefs](#seat-briefs-and-the-build-loop) |
@@ -109,7 +109,7 @@ Every steward review (on the sweep, at close and on each `dispatch next`) also c
 
 ## Codex companion protocol
 
-Configure `codex.command` as an argv list and `codex.timeout_seconds` in `.wuwei/config.toml`. The adapter invokes `task`, `status`, `result`, and `cancel` with `--json` in the worktree. `task --fresh --background` starts a job and returns `jobId`; continuation uses `task --resume-last --background --write`. `status JOB_ID` returns `workspaceRoot` and a `job` with its own `workspaceRoot` and status. Both roots must resolve to the requested worktree. `result JOB_ID` supplies text in `storedJob.result.rawOutput`, with companion stdout or rendered text as fallback. A root mismatch triggers `cancel JOB_ID`. Missing fields, an error body or a timeout is unmeasured and fails closed.
+Configure `codex.command` as an argv list and `codex.timeout_seconds` in `.wuwei/config.toml`. The adapter invokes `task`, `status`, `result`, and `cancel` with `--json` in the worktree. `task --fresh --background` starts a job and returns `jobId`; continuation uses `task --resume-last --background --write`. `status JOB_ID` returns `workspaceRoot` and a `job` with its own `workspaceRoot` and status. Both roots must resolve to the requested worktree. `result JOB_ID` supplies text in `storedJob.result.rawOutput`, with companion stdout or rendered text as fallback. A brief header line `Model: <model>` adds `--model <model>` to `task`. A job's result lints only its own verdict file, `gate-<brief name>.md`. A root mismatch triggers `cancel JOB_ID`. Missing fields, an error body or a timeout is unmeasured and fails closed.
 
 ## Outward draft queue
 
@@ -196,7 +196,7 @@ Several Claude Code sessions can work in one workspace. Once today's `state.json
 | Behaviour | Rule |
 | --- | --- |
 | Brief body | `wuwei brief ROLE ITEM NAME --body TEXT` or `--file PATH`; `--file -` reads stdin. With neither, the command exits 2 and never reads stdin. |
-| Gate role names | `arch`, `quality` and `security`, as returned by `wuwei dispatch next`, write briefs against the `sentinel-<role>` charter. |
+| Gate role names | `arch`, `quality` and `security`, as returned by `wuwei dispatch next`, write briefs against the `sentinel-<role>` charter. A second opinion is named `<role>@<runtime>`; `wuwei dispatch opinion` writes its brief from the first-model brief and receives it as one more gate. |
 | Automatic phases | The first `build next` launch moves `planned` to `implement`. When checks pass, `implement` moves to `gate` and `fix` moves to `delta`. `dispatch next` moves `gate` to `fix` when it returns `fix`, and opens the builder's fix round. `bin/wuwei pr raise` moves `gate` or `delta` to `raised`; an observed merge (`pr state`, `pr act`, the watch) moves `raised`, `fix` or `delta` to `merged`. |
 | Delta continuation | SubagentStop records the sentinel's agent ID on its seat. `dispatch next` returns a `continue` action in `seats` with that ID as `resume`. Agent `resume` with that ID continues the same brief at the current HEAD; any other reuse of the brief is refused. The continued seat rewrites its own verdict file. |
 | Push evidence | `wuwei build check ITEM` records fast checks through the same producer as `wuwei fast-checks`, so a passing check satisfies the push guard. |
