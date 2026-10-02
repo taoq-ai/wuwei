@@ -4,7 +4,7 @@ layout: default
 
 # WUWEI documentation
 
-WUWEI 无为 means "effortless action." It is a Claude Code plugin for a chartered team, workspace memory and action-time guards.
+WUWEI 无为 means "effortless action." It is a Claude Code plugin that runs your coding agents the way a careful engineering team works: the day is planned and ranked, each change is reviewed by an agent that did not write it, merges follow a policy, and a retro at the end of the day proposes changes to the rules.
 
 - [Daily path](daily.html): one solo-owner path from install to close
 - [Remote operation](remote.html): run a day from the phone with Remote Control and the Slack owner DM
