@@ -78,7 +78,7 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
     table = interview().QUESTIONS
     assert [row['id'] for row in table] == ['merge', 'gates', 'quiet', 'interrupt', 'decisions', 'phone',
                                             'hours', 'avoid', 'formality', 'signature', 'risk', 'manual',
-                                            'verbosity']
+                                            'verbosity', 'guards']
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / 'widget').mkdir()
     config = {'repos': [{'name': 'acme/widget'}]}
@@ -96,6 +96,16 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
             additions, edits = calibrate.settle(ONE + PLANE, interview().settings(answers, config))
             (tmp_path / '.wuwei/config.toml').write_text(calibrate.apply(ONE + PLANE, additions))
             assert edits == [] and load_config(tmp_path)
+
+
+def test_shadow_answer_sets_the_start_day(monkeypatch):
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    assert interview().settings({'guards': 'Shadow first week'}, {}) == [
+        (('guards',), 'mode', 'shadow'), (('guards',), 'shadow_since', '2026-09-29')]
+    assert interview().settings({'guards': 'Enforce'}, {}) == [(('guards',), 'mode', 'enforce')]
+    started = {'guards': {'mode': 'shadow', 'shadow_since': '2026-09-24'}}
+    assert interview().settings({'guards': 'Shadow first week'}, started) == [
+        (('guards',), 'mode', 'shadow')]
 
 
 @pytest.mark.parametrize('qid,good,effects,bad', [
@@ -287,14 +297,14 @@ def test_interview_needs_a_host_terminal(offline, capsys, monkeypatch):
 
 def test_interview_on_the_terminal(offline, capsys, monkeypatch):
     raw = (offline / '.wuwei/config.toml').read_text()
-    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1']
+    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1']
     terminal(monkeypatch, replies)
     assert main('calibrate', '--interview', '--repo', 'acme/widget') == 0, capsys.readouterr().err
     out = capsys.readouterr().out
     answers = json.loads((offline / DAY / 'interview.json').read_text())
     assert answers['merge'] == {'acme/widget': 'Auto, 30 min soak'} and answers['gates'] == {
         'acme/widget': 'Standard'} and answers['phone'] == 'Summary' and answers['manual'] == 'Package publishing'
-    assert len(answers) == 13 and (offline / '.wuwei/config.toml').read_text() == raw
+    assert len(answers) == 14 and (offline / '.wuwei/config.toml').read_text() == raw
     for line in interview().describe(answers, config(offline)):
         assert line in out
     assert 'gates: answer one of' in out and 'hours: answer one of' in out and 'bin/wuwei config promote' in out
@@ -364,7 +374,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     raw = (f'[[repos]]\nname = "acme/widget"\npath = {json.dumps(str(FIXTURES / "python"))}\n'
            'default_branch = "main"\n\n' + PLANE + '\n[deploy]\nworkflows = []\ndeny = []\n')
     (root / '.wuwei/config.toml').write_text(raw)
-    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3'])
+    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '2'])
     assert main('calibrate', '--interview') == 0, capsys.readouterr().err
     lines = interview().describe(json.loads((root / DAY / 'interview.json').read_text()), config(root))
     capsys.readouterr()
@@ -387,6 +397,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     assert repo['merge']['quiet_hours'] == ['20:00-08:00'] and repo['gates']['floor'] == 'full'
     assert parsed['control_plane'] == {'content': 'none', 'owner': ''}
     assert parsed['owner']['verbosity'] == {'default': 'full'}
+    assert parsed['guards'] == {'mode': 'shadow', 'shadow_since': '2026-10-01'}
     assert parsed['deploy']['deny'] == ['npm publish*', 'twine upload*', 'cargo publish*', 'gem push*']
     assert [r['status'] for r in promotion.promote(root)] == ['landed'] * 4
     assert main('config', 'check') == 0, capsys.readouterr()

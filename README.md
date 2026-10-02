@@ -96,6 +96,8 @@ From the same project directory, initialize the workspace:
 ../wuwei-plugin/bin/wuwei init .
 ```
 
+For your first week on a project, `../wuwei-plugin/bin/wuwei init --shadow .` starts the guards in shadow mode: they record what they would refuse and let the call through, and `bin/wuwei shadow report` lists it. See [shadow mode](docs/site/concepts.md#shadow-mode).
+
 `init` ends by checking the installation. An intact signed release prints `plugin integrity: clean` and needs no reconfirmation.
 
 `init` creates `.wuwei/` and adds workspace guard denials to `.claude/settings.json`. From another project, use the installed plugin's `bin/wuwei` path. Use `bin/wuwei` or `python3 -P -m wuwei` for CLI calls; plain `python3 -m wuwei` can import a same-named directory in the current working directory.

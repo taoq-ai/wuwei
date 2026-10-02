@@ -32,7 +32,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei heartbeat` | Probes that hooks refuse, allow and answer in budget. | [Heartbeat](#heartbeat) |
 | `bin/wuwei hook` | Plumbing: runs the guards for a Claude Code hook. | [Hook latency budget](#hook-latency-budget) |
 | `bin/wuwei index` | Generates the memory index. | [Concepts](concepts.html#memory) |
-| `bin/wuwei init` | Creates or upgrades a workspace. | [Daily path](daily.html) |
+| `bin/wuwei init` | Creates or upgrades a workspace; `--shadow` starts the guards in [shadow mode](#shadow-mode). | [Daily path](daily.html) |
 | `bin/wuwei integrity` | Checks signed plugin integrity; `reconfirm` pins a development checkout. | [Recovery](recovery.html#integrity-reconfirm) |
 | `bin/wuwei listen` | Polls the inbound source into the workspace inbox and probes raised and claimed PRs. | [Remote](remote.html) |
 | `bin/wuwei mcp` | Checks the attached MCP servers; `decide` records the owner's answer. | [MCP registry checks](configuration.html#mcp-registry-checks-s3) |
@@ -50,6 +50,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei remote` | Owner actions for the remote control plane. | [Remote](remote.html) |
 | `bin/wuwei reply` | Replies to one unthreaded human obligation. | [Outward draft queue](#outward-draft-queue) |
 | `bin/wuwei report` | Shows the owner report. | [Day close](concepts.html#day-close) |
+| `bin/wuwei shadow` | `report` lists what the guards would have refused since `guards.shadow_since`, grouped by guard, and names likely false positives. | [Shadow mode](concepts.html#shadow-mode) |
 | `bin/wuwei retro` | Compiles the steward retro. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei runtime` | Dispatches and inspects runtime jobs. | [Recovery](recovery.html#runtime-dispatch) |
 | `bin/wuwei sessions` | Lists registered sessions, roles and claims. | [Sessions](#sessions) |
@@ -269,6 +270,12 @@ Run `bin/wuwei state recover` in a host terminal. It prints a short snapshot dig
 | `2` | No usable snapshot, the snapshot changed during confirmation, or no terminal could ask you. |
 
 Recovery is an owner action. Agent tool hooks refuse `wuwei state recover` inside a workspace and refuse writes to the snapshot. As with other host-only actions, this follows the cooperative hook threat model in spec 9.1.
+
+## Shadow mode
+
+`bin/wuwei init --shadow` writes `guards.mode = "shadow"` and today's date as `guards.shadow_since` into a new workspace; with `--upgrade` it exits 2. In shadow mode a refusal from any guard module except `protect_state`, `integrity`, `deploy`, `outward` and `pr` is recorded as a `guard.would_refuse` event and the hook exits 0. The event payload is `{guard, reason, target, session, item}`: `target` is the normalised Bash command, else the file path, else the tool name, with credentials, the canary and the honeytoken redacted; `item` is the item the session claims, or null. Only the hook writes it; `bin/wuwei event` refuses the kind. If the event cannot be written, or the config cannot be read, the refusal is enforced. Refusals in the heartbeat session `wuwei-heartbeat` are always enforced.
+
+`status --line` adds a `shadow` part after the nudges while the mode is on, and `status --json` carries `shadow`. Once `guards.shadow_days` calendar days have passed since `guards.shadow_since`, `bin/wuwei nudges` and the status line count one `guards.shadow` nudge asking you to switch to enforce or raise `guards.shadow_days`. With an empty `shadow_since` there is no nudge.
 
 ## Host terminal actions
 

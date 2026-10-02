@@ -58,6 +58,13 @@ decisions reach you, words to avoid and which commands you run by hand. Promote 
 the same way. If you skip it, `/wuwei plan` asks the same questions on the first day. See
 [owner interview](configuration.html#owner-interview).
 
+For a first week on a project you can start in shadow mode: `bin/wuwei init --shadow .`, or
+the `Shadow first week` answer in the interview. The guards then record what they would
+refuse and let the call through; records, integrity, owner actions, deploys, outbound and merge-policy refusals still refuse.
+Read `bin/wuwei shadow report` or the `## Shadow` section of the day report. When the nudge
+comes after `guards.shadow_days`, set `guards.mode = "enforce"` in `config.toml`, or raise
+`guards.shadow_days` to keep watching. See [shadow mode](concepts.html#shadow-mode).
+
 ## 3. Plan and the morning gate
 
 Run `/wuwei plan` in Claude Code. The planner registers its session

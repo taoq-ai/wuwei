@@ -14,7 +14,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 
 | Sections | Keys under |
 | --- | --- |
-| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]` | [Workspace and repositories](#workspace-and-repositories) |
+| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[guards]` | [Workspace and repositories](#workspace-and-repositories) |
 | `[host]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[brief.style]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
@@ -34,6 +34,9 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `tracker.states.in_review` | `"In Review"` | Linear workflow state name after a PR is raised. |
 | `tracker.states.done` | `"Done"` | Linear workflow state name after a confirmed merge. |
 | `profile` | `"strict"` | Guard profile: `strict` or `standard`. Standard warns for outward text lint. |
+| `guards.mode` | `"enforce"` | `enforce` refuses as usual. `shadow` lets a refused call through and records it as `guard.would_refuse` for `bin/wuwei shadow report`. Writes to state, events and config, the integrity gate, owner-only actions, deploys, outbound and merge-policy refusals still refuse. |
+| `guards.shadow_days` | `7` | Days in shadow mode before one status nudge asks you to switch to `enforce` or raise this number. |
+| `guards.shadow_since` | `""` | Day shadow mode started, as `YYYY-MM-DD`. `init --shadow` and the interview set it. Empty means no nudge. |
 | `security.required` | `true` | When true, a missing `.wuwei/security.json` makes guards fail closed instead of treating security as disabled. |
 | `repos` | `[]` | Configured repositories. Each `[[repos]]` entry has the fields below. |
 | `repos.name` | Required per entry | Code host name, such as `owner/repo`. |
@@ -257,6 +260,7 @@ The interview asks a short, fixed set of questions about your own preferences. E
 | `risk` | a line in `.wuwei/charters/lead.md`: what else sets `trust_surface` |
 | `manual` | `deploy.deny` patterns for commands you always run yourself |
 | `verbosity` | `owner.verbosity.default` |
+| `guards` | `guards.mode`; `Shadow first week` also sets `guards.shadow_since` to today |
 
 Run `bin/wuwei calibrate --interview` in a host terminal to answer every question, or `bin/wuwei calibrate --interview merge` to answer one again; `--repo <name>` limits the per-repository questions to one repository. Without a terminal it exits 2. On the first day the plan skill asks the same questions as `Morning gate` widgets from `bin/wuwei calibrate --questions` and records each answer with `bin/wuwei calibrate --answer <id>=<choice or text>`. Free text is checked against the calibration character set and the instruction-like scan.
 

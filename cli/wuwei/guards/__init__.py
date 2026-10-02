@@ -31,6 +31,10 @@ MODULES = {
     'traces': {'PostToolUse': None},
     'verdict': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'SubagentStop': None},
 }
+# Shadow mode (#308) never relaxes these modules: WUWEI's own records, config and owner
+# actions (protect_state), the integrity gate, the deployment ban (constitution VII),
+# canary and honeytoken egress (outward) and the merge policy and owner markers (pr).
+NEVER_SHADOWED = frozenset({'protect_state', 'integrity', 'deploy', 'outward', 'pr'})
 # ponytail: the hook's (event, tool_name) travels in context, not as discover()
 # arguments, because tests replace hook.discover with zero-argument stubs; make it a
 # parameter when those stubs take arguments.

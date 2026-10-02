@@ -206,3 +206,35 @@ def test_unconfirmed_plugin_change_denies_pretooluse(day):
     outside.mkdir()
     day.hook('PreToolUse', cwd=str(outside), tool_name='Read',
              tool_input={'file_path': str(outside / 'note.md')})
+
+
+def test_shadow_mode_records_force_push_and_keeps_records_refused(day):
+    from adapters.vcs import git
+    from wuwei import registry
+    from wuwei.registry import Result
+    config = day.root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace(
+        'fast_checks', 'identity = {name = "Builder", email = "builder@example.test"}\nfast_checks')
+        + '[guards]\nmode = "shadow"\nshadow_since = "2026-09-29"\n')
+    # The day fixture has no Git identity (git var exits 128); report the configured one.
+    identity = {'name': 'Builder', 'email': 'builder@example.test'}
+    day.patch.setattr(registry.load('vcs', None), 'commit_context', lambda repo, *args, root=None: Result(
+        0, {**git.repo_context(repo).data, 'author': identity, 'committer': identity}))
+    assert day.hook('PreToolUse', cwd=str(day.repo), tool_name='Bash',
+                    tool_input={'command': 'git push --force origin main'}) == ''
+    event = day.events[-1]
+    assert event['kind'] == 'guard.would_refuse' and event['payload']['guard'] == 'commit_push'
+    assert 'force' in event['payload']['reason'].lower()
+    assert event['payload']['target'] == 'git push --force origin main'
+    output = day.hook('PreToolUse', expected=2, tool_name='Write', tool_input={
+        'file_path': str(day.directory / 'state.json'), 'content': '{}'})
+    assert json.loads(output)['hookSpecificOutput']['permissionDecision'] == 'deny'
+    day.bash(['decision', 'outcome', 'D-1', 'A'], expected=2)
+    report = day.run('shadow', 'report')
+    assert 'commit_push: 1' in report
+    day.run('integrity', 'check')
+    (day.plugin / 'charters/builder.md').write_text('Changed without owner confirmation.\n')
+    day.run('integrity', 'check', expected=1)
+    output = day.hook('PreToolUse', expected=2, tool_name='Read',
+                      tool_input={'file_path': str(day.repo / 'memory/demo.py')})
+    assert json.loads(output)['hookSpecificOutput']['permissionDecision'] == 'deny'

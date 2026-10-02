@@ -1,7 +1,7 @@
 """Shared workspace paths and validated configuration."""
 
 from copy import deepcopy
-from datetime import datetime
+from datetime import date, datetime
 import os
 from pathlib import Path
 import re
@@ -105,6 +105,8 @@ SCHEMA = {
               "charter_paths": [(str, None), [".wuwei/charters"]],
               "changelog": (str, ".wuwei/memory/CHANGELOG.md")},
     "profile": (str, "strict", ("strict", "standard")),
+    "guards": {"mode": (str, "enforce", ("enforce", "shadow")), "shadow_days": (int, 7, 1),
+               "shadow_since": (str, "")},
     "boundary": {"*": (str, "")},
     "environments": {"*": (str, "")},
     "deploy": {"workflows": [(str, None)], "deny": [(str, None)]},
@@ -438,6 +440,14 @@ def load_config(root=None):
             program = pattern.split()[0]
             if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]*', program):
                 raise ConfigError('deploy.deny: start each pattern with a literal executable name')
+        since = config['guards']['shadow_since']
+        if since:
+            try:
+                if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', since):
+                    raise ValueError
+                date.fromisoformat(since)
+            except ValueError:
+                raise ConfigError('guards.shadow_since: expected YYYY-MM-DD or ""') from None
         from wuwei.decision import CLASSES
         for name, value in config['decisions']['cruise']['levels'].items():
             if name not in CLASSES:

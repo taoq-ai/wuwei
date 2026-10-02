@@ -327,3 +327,22 @@ def test_report_levels(tmp_path, monkeypatch):
     event = {'id': 'D1/1.1', 'channel': 'D1', 'sender': 'T1/U1', 'text': 'report'}
     assert remote.handle(root, event, transport=transport) == 0
     assert sent == ['Report 2026-09-29: merged 1, open 0, parked 0, decisions answered 1.']
+
+
+def test_report_shadow_section(tmp_path, monkeypatch):
+    from wuwei import report
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    state._write_state(lambda data: data.update(items={}), root, reserved=False)
+    before = report.build(root)
+    assert '## Shadow' not in before
+    state.append_event('hook.warning', {'reason': 'x', 'tool': 'Bash'}, root)
+    assert report.build(root) == before
+    state.append_event('guard.would_refuse', {'guard': 'pr', 'reason': 'r', 'target': 'gh pr merge 1',
+                                              'session': 's', 'item': None}, root)
+    for level in ('brief', 'full'):
+        (root / '.wuwei/config.toml').write_text(f'[owner.verbosity]\nreport = "{level}"\n')
+        assert '\n## Shadow\n- pr: 1 (gh pr merge: 1)\n' in report.build(root)

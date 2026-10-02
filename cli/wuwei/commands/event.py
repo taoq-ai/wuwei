@@ -14,6 +14,7 @@ EVENT_PRODUCERS = {
     'build.started': 'wuwei build next', 'gate.tiered': 'wuwei dispatch next', 'build.launched': 'wuwei build',
     'build.fix_opened': 'wuwei pr act or wuwei dispatch next',
     'build.checked': 'wuwei build check',
+    'guard.would_refuse': 'wuwei hook (shadow mode)',
     'inbox.redacted': 'the inbox store',
     'build.requested': 'wuwei dispatch discovery',
     'seat.usage': 'wuwei build or SubagentStop',
