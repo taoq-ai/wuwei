@@ -1,6 +1,7 @@
 """Profile the configured repositories and propose the workspace configuration."""
 
 import json
+from pathlib import Path
 import re
 import sys
 
@@ -10,7 +11,13 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 def register(subparsers):
     parser = subparsers.add_parser('calibrate', help='profile repositories and propose config')
+    parser.add_argument('action', nargs='?', choices=('export', 'import'),
+                        help='export a shareable profile, or import one as a proposal')
+    parser.add_argument('target', nargs='?', metavar='NAME|SOURCE',
+                        help='profile name to export; starter name, https URL or file to import')
     parser.add_argument('--repo', help='calibrate only this configured repository')
+    parser.add_argument('--skip', action='append', default=[], metavar='KEY',
+                        help='leave this profile key or charters.<role> out of the import')
     interview = parser.add_mutually_exclusive_group()
     interview.add_argument('--interview', nargs='*', metavar='QUESTION',
                            help='ask the owner interview on this host terminal (all questions, or these)')
@@ -22,6 +29,8 @@ def register(subparsers):
 
 
 def run(args):
+    if args.action:
+        return _profile(args)
     if args.interview is not None or args.questions or args.answer:
         return _interview(args)
     try:
@@ -102,3 +111,49 @@ def _interview(args):
     print('Next: run bin/wuwei config promote in a host terminal for the config keys, '
           'then bin/wuwei promote for the charter and voice proposals.')
     return CLEAN
+
+
+def _profile(args):
+    from wuwei import profiles
+
+    try:
+        if not args.target:
+            raise ValueError(f'calibrate {args.action} needs a NAME or SOURCE')
+        if args.interview is not None or args.questions or args.answer or (args.skip and args.action == 'export'):
+            raise ValueError(f'calibrate {args.action} takes only --repo' + (' and --skip' if args.action == 'import' else ''))
+        root = workspace.find_workspace()
+        config = workspace.load_config(root)
+        names = [repo['name'] for repo in config['repos'] if args.repo in (None, repo['name'])]
+        if args.repo and not names:
+            raise ValueError(f'unknown repository {args.repo!r}; use a configured repos.name')
+        if args.action == 'export':
+            profile = profiles.export(root, config, args.target, args.repo)
+            workspace.atomic_write(Path(f'{args.target}.json'),
+                                   json.dumps(profile, indent=2, sort_keys=True) + '\n', replace=False)
+            print(f'Wrote {args.target}.json')
+            for drop in profile['dropped']:
+                print(f"Dropped {drop['where']}: {drop['why']}")
+            return CLEAN
+        profile = profiles.read(args.target)
+        accepted, refused, flagged = profiles.review(profile, config, names)
+        if refused:
+            for key, why in refused:
+                print(f'wuwei calibrate: refused: {key} ({why}); nothing written', file=sys.stderr)
+            return FINDINGS
+        accepted = profiles.skip(profile, accepted, args.skip)
+        raw = (root / '.wuwei/config.toml').read_text(encoding='utf-8')
+        _, diff, edits = calibrate.propose(raw, [], profiles.settings(accepted, config, names))
+        written = profiles.record(root, accepted, names)
+    except (OSError, ValueError) as exc:
+        print(f'wuwei calibrate: {exc}', file=sys.stderr)
+        return UNRUN
+    print(diff or 'No config.toml changes')
+    for key, _, _ in edits:
+        print(f'Config differs; edit by hand: {key}')
+    for path in written:
+        print(f'Proposed {path}')
+    for where, rule in flagged:
+        print(f'Flagged {where} ({rule}), not proposed')
+    print('Next: run bin/wuwei config promote in a host terminal for the config keys, '
+          'then bin/wuwei promote for the charter proposals.')
+    return FINDINGS if flagged else CLEAN

@@ -292,6 +292,20 @@ def test_owner_interview_is_documented_next_to_calibration():
     for phrase in ('calibrate --questions', 'calibrate --answer', '.wuwei/charters/planner.md'):
         assert phrase in skill, phrase
 
+def test_calibration_profiles_are_documented_after_the_interview():
+    configuration = (SITE / 'configuration.md').read_text()
+    assert configuration.split('\n## Owner interview\n', 1)[1].split('\n## ', 1)[1].startswith(
+        'Calibration profiles\n')
+    section = configuration.split('\n## Calibration profiles\n', 1)[1].split('\n## ', 1)[0]
+    for phrase in ('calibrate export', 'calibrate import', '--skip', 'profile.json', 'templates/profiles/',
+                   'python-library', 'cli-tool', 'merge.auto', 'gates.floor', 'shepherd.autostart',
+                   'decisions.cruise', 'adapters', 'calendar.url', 'watch.ping_url', 'codex.command'):
+        assert phrase in section, phrase
+    row = next(line for line in (SITE / 'reference.md').read_text().splitlines()
+               if line.startswith('| `bin/wuwei calibrate`'))
+    assert 'export' in row and 'import' in row
+
+
 RECOVERY = ('state transition', 'runtime dispatch', 'runtime continue', 'integrity reconfirm')
 
 

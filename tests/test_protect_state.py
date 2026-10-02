@@ -732,9 +732,10 @@ def test_reader_mentions_are_not_writes(workspace, monkeypatch, capsys, command,
 
 
 @pytest.mark.parametrize('tool', ['Write', 'Bash'])
-def test_interview_answers_are_protected(workspace, tool):
+@pytest.mark.parametrize('name', ['interview.json', 'profile.json'])
+def test_interview_answers_are_protected(workspace, tool, name):
     from wuwei.guards.protect_state import check_bash, check_file
-    target = '.wuwei/days/2026-10-01/interview.json'
+    target = f'.wuwei/days/2026-10-01/{name}'
     if tool == 'Bash':
         code, reason = check_bash(payload(workspace, tool, command='echo {} | tee ' + target))
     else:

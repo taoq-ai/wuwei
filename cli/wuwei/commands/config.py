@@ -112,7 +112,7 @@ def promote(args, confirm=None):
     """Owner action: recompute the calibration, show it, and apply it after a terminal digest."""
     import hashlib
     import json
-    from wuwei import calibrate, integrity, interview, workspace
+    from wuwei import calibrate, integrity, interview, profiles, workspace
 
     try:
         root = workspace.find_workspace()
@@ -125,7 +125,11 @@ def promote(args, confirm=None):
             raise ValueError(calibrate.NO_REPOS)
         results = calibrate.survey(root, config, list(enumerate(config['repos'])), style=False)
         answers = interview.load(root, config)
-        text, diff, edits = calibrate.propose(raw, results, interview.settings(answers, config))
+        name, imported = profiles.load(root, config)
+        asked = interview.settings(answers, config)
+        # An interview answer wins over the profile for the same key.
+        imported = [s for s in imported if s[:2] not in {a[:2] for a in asked}]
+        text, diff, edits = calibrate.propose(raw, results, imported + asked)
         today = workspace.now().date().isoformat()
         snapshot = {r['repo']['name']: {**calibrate.drift_facts(r['facts']),
                                         'baseline': r['baseline'] or 'unmeasured', 'date': today}
@@ -134,6 +138,8 @@ def promote(args, confirm=None):
             f'Config differs; edit by hand: {key}\n' for key, _, _ in edits) + (
             'Interview answers:\n' + ''.join(line + '\n' for line in interview.describe(answers, config))
             if answers else '') + ''.join(
+            f"Profile {name}: {'.'.join(map(str, (*path, key)))} = {json.dumps(value)}\n"
+            for path, key, value in imported) + ''.join(
             f"Flagged {f['kind']}: {f['source']} ({f['value']})\n" for r in results
             for f in r['findings'] if f['kind'] in ('instruction_like', 'unsafe')) + (
             'Approved calibration for .wuwei/calibration.json:\n'

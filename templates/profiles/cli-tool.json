@@ -1,0 +1,47 @@
+{
+  "charters": {
+    "builder": {
+      "reasons": [
+        "starter profile cli-tool"
+      ],
+      "text": "## Profile: CLI tool\n- Every command exits 0 when clean, 1 on findings and 2 when it could not run, and says why on 2.\n- Tests run the installed entry point, so a file in the working directory cannot shadow it.\n"
+    },
+    "sentinel-quality": {
+      "reasons": [
+        "starter profile cli-tool"
+      ],
+      "text": "## Profile: CLI tool\n- A changed command, flag or exit code updates its reference docs in the same change.\n"
+    }
+  },
+  "config": {
+    "deploy": {
+      "deny": [
+        "twine upload*",
+        "uv publish*",
+        "poetry publish*",
+        "flit publish*"
+      ]
+    },
+    "repos": {
+      "fast_checks": [
+        "python3 -m pytest -q"
+      ],
+      "gates": {
+        "trust_paths": [
+          ".github/*",
+          "ci/*",
+          "workflows/*",
+          "deploy/*",
+          "infra/*",
+          "bin/*",
+          "pyproject.toml",
+          "setup.py",
+          "setup.cfg"
+        ]
+      }
+    }
+  },
+  "dropped": [],
+  "name": "cli-tool",
+  "wuwei_profile": 1
+}
