@@ -265,3 +265,48 @@ def test_claude_headless_passes_seat_variables(tmp_path, monkeypatch):
     for bad in ({'PATH': 'x'}, {'WUWEI_SEAT_ROLE': 1}, ['WUWEI_SEAT_ROLE']):
         assert adapter.headless('p', None, ['Read'], root=root, variables=bad).exit == 2
     assert len(calls) == 1
+
+
+def codex_task(tmp_path, monkeypatch, text):
+    root = setup(tmp_path, monkeypatch)
+    brief = root / 'q-1-codex.md'
+    brief.write_text(text)
+    adapter = importlib.import_module('adapters.runtime.codex')
+    payloads = companion_payloads(root)
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return SimpleNamespace(returncode=0, stdout=json.dumps(payloads[argv[1]]), stderr='')
+    monkeypatch.setattr(adapter.subprocess, 'run', run)
+    return root, adapter, adapter.dispatch('builder', str(brief), str(root), True, root=root), calls
+
+
+@pytest.mark.parametrize('text,model', [
+    ('Item: A\nModel: m1\n\nReview it.', ['--model', 'm1']),
+    ('Item: A\n\nReview it.', []),
+    ('Item: A\n\nModel: m1\n', []),
+])
+def test_codex_takes_the_model_from_the_brief_header(tmp_path, monkeypatch, text, model):
+    root, _, job, calls = codex_task(tmp_path, monkeypatch, text)
+    assert job.exit == 0 and job.data['brief'] == str(root / 'q-1-codex.md')
+    task = calls[0]
+    assert task[1] == 'task' and (task[task.index('--model'):task.index('--model') + 2]
+                                  if '--model' in task else []) == model
+
+
+QUALITY = ('Verdict: PASS\nHead: abc1234\nProbe: not run\nVAL: PASS\nBlocked: none\nGap: none\n'
+           'Change: none\nSimplicity: none\nDesign: none\n')
+
+
+def test_codex_result_lints_only_its_own_verdict(tmp_path, monkeypatch):
+    root, adapter, job, _ = codex_task(tmp_path, monkeypatch, 'Item: A\n\nReview it.')
+    decisions = root / '.wuwei/days/2026-09-28/decisions'
+    decisions.mkdir(parents=True)
+    (decisions / 'gate-a-1.md').write_text(QUALITY.replace('Simplicity: none\nDesign: none\n', ''))
+    own = decisions / 'gate-q-1-codex.md'
+    own.write_text(QUALITY)
+    job = {**job.data, 'role': 'sentinel-quality', 'started_at': 0}
+    assert adapter.result(job, root=root).exit == 0
+    own.write_text('Verdict: PASS\n')
+    assert adapter.result(job, root=root).exit == 1

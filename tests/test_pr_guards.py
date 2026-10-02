@@ -684,3 +684,44 @@ def test_shepherd_seat_cannot_merge_or_strip_its_role(case, monkeypatch, capsys,
         output = json.loads(capsys.readouterr().out)['hookSpecificOutput']
         assert output['permissionDecision'] == 'deny'
         assert 'shepherd seat' in output['permissionDecisionReason']
+
+
+def second_opinion_records(root, decisions, text=None):
+    items = {'9': {'gates': {'tier': 'standard', 'roles': ['arch', 'quality', 'security'],
+                             'second_opinion': {'role': 'quality', 'runtime': 'codex', 'model': 'm1'}}}}
+    records = {}
+    for gate in ('arch', 'quality', 'security', 'quality@codex'):
+        path = decisions / f'gate-9-{gate.replace("@", "-")}.md'
+        if gate == 'quality@codex':
+            path.write_text(text or evidence())
+        records[f'9:{gate}:initial'] = {
+            'item': '9', 'role': gate, 'round': 'initial', 'verdict': 'PASS', 'head': SHA,
+            'file': str(path.relative_to(root)), 'blocks': False, 'notes': []}
+    return records, items
+
+
+def test_recorded_second_opinion_is_a_required_gate(case):
+    root, _, decisions = case
+    records, items = second_opinion_records(root, decisions)
+    assert guard()._recorded_gates(root, SHA, records, '9', items) == (0, '')
+    missing = {key: value for key, value in records.items() if '@' not in key}
+    code, reason = guard()._recorded_gates(root, SHA, missing, '9', items)
+    assert code == 1 and 'quality@codex' in reason
+    fix = evidence(SHA, 'FIX') + '- P1 | cli/example.py:12 | fails when empty | blocks: yes\n'
+    (decisions / 'gate-9-quality-codex-delta.md').write_text(fix)
+    records, items = second_opinion_records(root, decisions, fix)
+    records['9:quality@codex:initial'].update(verdict='FIX', blocks=True)
+    records['9:quality@codex:delta'] = {
+        'item': '9', 'role': 'quality@codex', 'round': 'delta', 'verdict': 'FIX', 'head': SHA,
+        'file': str((decisions / 'gate-9-quality-codex-delta.md').relative_to(root)),
+        'blocks': True, 'notes': []}
+    code, reason = guard()._recorded_gates(root, SHA, records, '9', items)
+    assert code == 1 and 'quality@codex' in reason
+
+
+def test_second_opinion_verdict_is_linted_as_quality(case):
+    root, _, decisions = case
+    records, items = second_opinion_records(
+        root, decisions, evidence().replace('Simplicity: checked\nDesign: checked\n', ''))
+    with pytest.raises(ValueError, match='quality@codex verdict'):
+        guard()._recorded_gates(root, SHA, records, '9', items)

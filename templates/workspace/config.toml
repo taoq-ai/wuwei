@@ -70,6 +70,11 @@ poll_timeout_seconds = 3600
 command = [] # Set to the companion command, for example ["node", "path/to/codex-companion.mjs"].
 timeout_seconds = 300
 
+[gates]
+# For STANDARD and FULL items, run one gate again on another runtime, for example "codex:<model>".
+# second_opinion = "off"
+# second_opinion_role = "quality"
+
 [control_plane]
 content = "summary" # summary or none; what a messaging transport sends about decisions.
 owner = "" # <team id>/<user id> pinned for commands from the owner DM; empty handles none.

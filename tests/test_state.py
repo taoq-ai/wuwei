@@ -725,3 +725,13 @@ def test_link_without_raise_keeps_the_phase(workspace, phase, raised):
     state.record_pr(workspace, 'A', 'owner/repo#1', raised=raised)
     data = state.read_state(workspace)
     assert data['items']['A'] == {**data['items']['A'], 'phase': phase, 'pr': 'owner/repo#1'}
+
+
+def test_stop_seat_records_when_it_stopped(workspace, monkeypatch):
+    from wuwei import state
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:05:00+00:00')
+    state._write_state(lambda data: data['seats'].update(s1={
+        'item': 'A', 'role': 'sentinel-quality', 'status': 'running'}), workspace, reserved=False)
+    state.stop_seat('s1', workspace)
+    seat = state.read_state(workspace)['seats']['s1']
+    assert seat['status'] == 'stopped' and seat['stopped_at'] == '2026-09-28T12:05:00+00:00'

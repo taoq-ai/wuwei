@@ -51,8 +51,12 @@ def dispatch(role, brief_path, worktree, write, *, root=None):
         options = ['--fresh', '--background']
         if write:
             options.append('--write')
+        model = re.search(r'^Model: ([A-Za-z0-9][A-Za-z0-9._-]*)$', brief.read_text().split('\n\n', 1)[0], re.M)
+        if model:
+            options += ['--model', model[1]]
         started_at = time.time()
-        return _started(_call('task', tree, *options, prompt, root=root), tree, role, started_at, root)
+        return _started(_call('task', tree, *options, prompt, root=root), tree, role, started_at, root,
+                        brief)
     except (OSError, ValueError) as exc:
         return registry.Result(2, reason=f'Codex dispatch could not run: {exc}')
 
@@ -66,7 +70,7 @@ def _job(job):
     return job['id'], tree
 
 
-def _started(started, tree, role, started_at, root):
+def _started(started, tree, role, started_at, root, brief):
     if started.exit:
         return started
     job_id = started.data.get('jobId')
@@ -87,8 +91,10 @@ def _started(started, tree, role, started_at, root):
         if cancelled.exit:
             return registry.Result(2, reason=f'Codex workspace mismatch; cancellation failed: {cancelled.reason}')
         return registry.Result(1, reason='Codex workspace root differs from worktree; job cancelled')
-    return registry.Result(0, {'id': job_id, 'worktree': str(tree), 'role': role,
-                               'started_at': started_at})
+    job = {'id': job_id, 'worktree': str(tree), 'role': role, 'started_at': started_at}
+    if brief:
+        job['brief'] = str(brief)
+    return registry.Result(0, job)
 
 
 def status(job, *, root=None):
@@ -130,8 +136,10 @@ def result(job, *, root=None):
                                                 'agent_type': role, 'last_assistant_message': text}, root=root)
         from wuwei.verdict import lint_file
         decisions = workspace.day_dir(root) / 'decisions'
+        # A job lints only its own verdict, so a parallel gate's file never fails it.
+        own = f"gate-{Path(job['brief']).stem}.md" if job.get('brief') else 'gate-*.md'
         verdicts = [lint_file(verdict, role=role, root=root)
-                    for verdict in decisions.glob('gate-*.md')
+                    for verdict in decisions.glob(own)
                     if verdict.stat().st_mtime >= job.get('started_at', float('inf'))]
         for code, reason in verdicts:
             if code:
@@ -158,6 +166,6 @@ def continue_job(job, feedback, *, root=None):
             raise ValueError('empty Codex feedback')
         started_at = time.time()
         started = _call('task', tree, '--resume-last', '--background', '--write', feedback, root=root)
-        return _started(started, tree, job.get('role', 'builder'), started_at, root)
+        return _started(started, tree, job.get('role', 'builder'), started_at, root, job.get('brief'))
     except (OSError, ValueError, KeyError) as exc:
         return registry.Result(2, reason=f'Codex continuation could not run: {exc}')

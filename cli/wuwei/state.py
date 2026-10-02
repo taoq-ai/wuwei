@@ -240,7 +240,7 @@ STATE_PRODUCERS = {
     'gate_approved': 'wuwei plan approve', 'approved_items': 'wuwei plan approve',
     'goals': 'wuwei plan approve', 'planner_session_id': 'wuwei plan session',
     'builds': 'wuwei build and seat hooks',
-    'seats': 'wuwei hook PreToolUse', 'fast_checks': 'wuwei fast-checks',
+    'seats': 'wuwei hook PreToolUse or wuwei dispatch opinion', 'fast_checks': 'wuwei fast-checks',
     'reply_acks': 'wuwei reply', 'decision_outcomes': 'wuwei decision route or wuwei build',
     'decision_routes': 'wuwei decision route',
     'channel_posts': 'wuwei pr ping',
@@ -394,7 +394,7 @@ def transition(item, phase, root=None):
 def stop_seat(name, root=None, *, directory=None, agent_id=None):
     """Release a reservation while preserving the used brief and seat identity."""
     def update(data):
-        data['seats'][name]['status'] = 'stopped'
+        data['seats'][name].update(status='stopped', stopped_at=workspace.now().isoformat())
         if isinstance(agent_id, str) and agent_id.strip():
             data['seats'][name]['agent_id'] = agent_id
     return _write_state(update, root, reserved=False, kind='seat stopped',
