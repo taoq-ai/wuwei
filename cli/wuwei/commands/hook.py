@@ -77,10 +77,11 @@ def run(args):
             refusals.append((guard.check.__module__.rsplit('.', 1)[-1], message))
         elif message:
             context.append(message)
-    reasons = [message for _, message in refusals]
+    enforced = refusals
     if (refusals and args.event != 'SessionStart'
             and payload.get('session_id') != HEARTBEAT_SESSION):
-        reasons = shadow(payload, refusals, root)
+        enforced = shadow(payload, refusals, root)
+    reasons = [message for _, message in enforced]
     if args.event == 'SessionStart' and (context or reasons):
         print(json.dumps({'hookSpecificOutput': {
             'hookEventName': args.event, 'additionalContext': '\n'.join(context + reasons)}}))
@@ -89,36 +90,42 @@ def run(args):
         return CLEAN
     if reasons:
         return refuse(args.event, '\n'.join(reasons), cwd=payload.get('cwd'),
-                      record=payload.get('session_id') != HEARTBEAT_SESSION)
+                      record=payload.get('session_id') != HEARTBEAT_SESSION,
+                      refusals=enforced, payload=payload)
     if args.event == 'Stop' and context:
         print('\n'.join(context), file=sys.stderr)
     return CLEAN
 
 
 def shadow(payload, refusals, root):
-    """Shadow mode (#308): record refusals outside NEVER_SHADOWED; return the enforced reasons."""
+    """Shadow mode (#308): record refusals outside NEVER_SHADOWED; return the enforced refusals."""
     from wuwei import state, workspace
     try:
         shadowing = root is not None and workspace.load_config(root)['guards']['mode'] == 'shadow'
     except BaseException:
         shadowing = False  # An unreadable config enforces, exactly as before shadow mode.
-    reasons, shown = [], None
+    enforced, shown = [], None
     for guard, reason in refusals:
         if not shadowing or guard in NEVER_SHADOWED:
-            reasons.append(reason)
+            enforced.append((guard, reason))
             continue
         try:
             if shown is None:
-                from wuwei import security
-                from wuwei.redact import redact
-                shown = security.redact(redact(target(payload)), security.load(root))
+                shown = redacted_target(payload, root)
             state.append_event('guard.would_refuse', {
                 'guard': guard, 'reason': reason, 'target': shown,
                 'session': payload['session_id'], 'item': claimed(root, payload['session_id'])}, root)
         except BaseException as exc:
             print(f'wuwei hook: could not record shadow refusal: {exc}', file=sys.stderr)
-            reasons.append(reason)
-    return reasons
+            enforced.append((guard, reason))
+    return enforced
+
+
+def redacted_target(payload, root):
+    """The normalised target as refusal records store it, credentials and canaries redacted."""
+    from wuwei import security
+    from wuwei.redact import redact
+    return security.redact(redact(target(payload)), security.load(root))
 
 
 def target(payload):
@@ -160,7 +167,7 @@ def validate(payload, event):
         raise ValueError('hook_event_name does not match command event')
 
 
-def refuse(event, reason, *, malformed=False, cwd=None, record=True):
+def refuse(event, reason, *, malformed=False, cwd=None, record=True, refusals=(), payload=None):
     print(reason, file=sys.stderr)
     if event == 'SessionStart':
         print(json.dumps({'hookSpecificOutput': {
@@ -173,8 +180,15 @@ def refuse(event, reason, *, malformed=False, cwd=None, record=True):
         except FileNotFoundError:
             root = None
         if root is not None:
+            details = {'reason': reason}
+            if refusals:
+                details['refusals'] = [{'guard': guard, 'reason': message} for guard, message in refusals]
+                try:
+                    details['target'] = redacted_target(payload, root)
+                except Exception:
+                    pass  # wuwei why prints "not recorded"; never lose the refusal over its target.
             try:
-                state.append_event('hook.refusal', {'reason': reason}, root)
+                state.append_event('hook.refusal', details, root)
             except BaseException as exc:
                 print(f'wuwei hook: could not record refusal: {exc}', file=sys.stderr)
     if event == 'PreToolUse':

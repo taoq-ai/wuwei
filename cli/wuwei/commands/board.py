@@ -16,7 +16,8 @@ MIME = 'text/html;profile=mcp-app'
 TOOL = {'name': 'wuwei_board', 'title': 'WUWEI day board',
         'description': ("Read-only view of today's WUWEI board: items by phase with status and "
                         'gate verdicts, owned PRs and what they wait on, pending decisions, pages '
-                        'and nudges, and the status line. Takes no arguments and writes nothing.'),
+                        'and nudges, the status line, and why each item is where it is (why.json). '
+                        'Takes no arguments and writes nothing.'),
         'inputSchema': {'type': 'object', 'properties': {}, 'additionalProperties': False},
         'annotations': {'readOnlyHint': True, 'destructiveHint': False,
                         'idempotentHint': True, 'openWorldHint': False},
@@ -137,4 +138,10 @@ def read(root):
     files = {'./board.json': json.dumps(dashboard.board_snapshot(directory)),
              './state.json': json.dumps(data), './events.jsonl': events,
              './cockpit.json': json.dumps(cockpit)}
+    from wuwei.commands import why
+    try:
+        chains = {name: why.render(why.item(root, name), why.level(root, False), root) for name in data['items']}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, UnicodeError, why.Missing) as exc:
+        chains = {'unmeasured': str(exc)}
+    files['./why.json'] = json.dumps(chains)
     return '\n'.join(lines), files

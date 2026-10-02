@@ -221,3 +221,18 @@ def test_plugin_json_declares_one_stdio_server():
     assert plugin['mcpServers'] == {'cockpit': {
         'command': '${CLAUDE_PLUGIN_ROOT}/bin/wuwei', 'args': ['board'],
         'env': {'CLAUDE_PROJECT_DIR': '${CLAUDE_PROJECT_DIR}'}}}
+
+
+def test_board_exposes_the_why_chain_per_item(day):
+    from wuwei.commands import why
+    root = day.parents[2]
+    (day / 'events.jsonl').write_text(json.dumps({'kind': 'note', 'payload': {}, 'ts': NOW}) + '\n')
+    chains = json.loads(board_call()['structuredContent']['./why.json'])
+    assert chains == {name: why.render(why.item(root, name), 'brief', root) for name in ('a', 'b')}
+    assert chains['b'][-1] == 'now: planned (queued)'
+
+
+def test_board_why_chain_unmeasured_never_fails_the_board(day):
+    result = board_call()
+    assert result['isError'] is False
+    assert list(json.loads(result['structuredContent']['./why.json'])) == ['unmeasured']
