@@ -15,7 +15,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | Sections | Keys under |
 | --- | --- |
 | `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]` | [Workspace and repositories](#workspace-and-repositories) |
-| `[host]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
+| `[host]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[brief.style]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]` | [Boundaries and deployment](#boundaries-and-deployment) |
@@ -93,6 +93,8 @@ fast_checks = ["python3 -m pytest -q"]
 | `build.poll_timeout_seconds` | `3600` | Runtime job poll timeout. |
 | `codex.command` | `[]` | Companion command; fill in to use Codex runtime. |
 | `codex.timeout_seconds` | `300` | Codex command timeout. |
+| `gates.second_opinion` | `"off"` | `"<runtime>:<model>"`, for example `"codex:gpt-6-astra"`, runs one gate of every STANDARD and FULL item a second time on that runtime and model. Its verdict is one more gate record named `<role>@<runtime>`; a blocking finding from either model blocks. `claude` and `none` are refused. |
+| `gates.second_opinion_role` | `"quality"` | The gate role the second opinion repeats: `arch`, `quality` or `security`. |
 | `pr.poll_seconds` | `120` | Interval between full reads of raised and claimed PRs. With the listener running, conditional probes every 30 s trigger a full read at once on a change. |
 | `pr.action_minutes` | `30` | Positive minutes to act on a measured PR finding. Nudge after this deadline, page at twice the interval. |
 | `pr.review_window` | `120` | Positive minutes to await review before re-requesting it. Starts at first observation of the head; comments do not reset it. |

@@ -386,3 +386,17 @@ def test_gate_brief_asks_for_assumption_review(day, monkeypatch):
     assert line in (day[1] / 'briefs/gate.md').read_text()
     assert brief(monkeypatch, 'body', 'builder', 'X', 'plain') == 0
     assert line not in (day[1] / 'briefs/plain.md').read_text()
+
+
+def test_second_opinion_brief_names_its_model(day, monkeypatch):
+    from wuwei import brief as writer
+
+    second = {'role': 'quality', 'runtime': 'codex', 'model': 'm1'}
+    writer.write('sentinel-quality', 'X', 'q-1-codex', 'Review it.', worktree='tree',
+                 second_opinion=second, root=day[0])
+    header = (day[1] / 'briefs/q-1-codex.md').read_text().split('\n\n', 1)[0]
+    assert 'Model: m1' in header.splitlines()
+    writer.write('sentinel-quality', 'X', 'q-1', 'Review it.', worktree='tree', root=day[0])
+    assert 'Model:' not in (day[1] / 'briefs/q-1.md').read_text()
+    written = [e['payload'] for e in events(day[1]) if e['kind'] == 'brief written']
+    assert written[-2]['second_opinion'] == 'codex:m1' and 'second_opinion' not in written[-1]

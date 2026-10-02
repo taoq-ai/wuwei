@@ -185,7 +185,8 @@ def rulings(body, directory, tree, data):
     return result
 
 
-def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=None, root=None):
+def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=None, second_opinion=None,
+          root=None):
     root = workspace.find_workspace(root)
     directory, data = read_day(root)
     for value in (role, item, name):
@@ -231,6 +232,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                 raise ValueError(f'unknown charter: {charter}')
             header.append(f'Charter: {path}')
         header += [f'Written: {now}', f'Item: {item}', f'Seat policy: {json.dumps(data["seat_policy"])}']
+        if second_opinion:
+            header.append(f'Model: {second_opinion["model"]}')
         changed = []
         if tree:
             changed = status(vcs, tree, root)
@@ -284,6 +287,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                    'worktree': str(tree) if tree else None, 'pr': pr,
                    'head': head if tree else None,
                    'sha256': hashlib.sha256(text.encode()).hexdigest()}
+        if second_opinion:
+            payload['second_opinion'] = f'{second_opinion["runtime"]}:{second_opinion["model"]}'
         session = sessions.current()
         if role == 'builder' and session:
             payload['session'] = session

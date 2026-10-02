@@ -17,15 +17,19 @@ def register(subparsers):
     receive.add_argument('role')
     receive.add_argument('name')
     receive.add_argument('--round', choices=('initial', 'delta'), default='initial')
+    actions.add_parser('opinion').add_argument('item')
     discovery = actions.add_parser('discovery')
     discovery.add_argument('trigger', choices=('sweep', 'seat-free'))
     parser.set_defaults(func=run)
 
 
 def run(args):
+    from wuwei.commands.build import PortExit
     try:
         if args.action == 'next':
             value = dispatch.next_step(args.item)
+        elif args.action == 'opinion':
+            value = dispatch.opinion(args.item)
         elif args.action == 'receive':
             value = dispatch.receive(args.item, args.role, args.name, args.round)
         else:
@@ -35,6 +39,9 @@ def run(args):
     except dispatch.Refused as exc:
         print(f'wuwei dispatch: {exc}', file=sys.stderr)
         return FINDINGS
-    except (OSError, UnicodeError, ValueError, TypeError, KeyError) as exc:
+    except PortExit as exc:
+        print(f'wuwei dispatch: {exc}', file=sys.stderr)
+        return exc.code
+    except (OSError, UnicodeError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         print(f'wuwei dispatch: {exc}', file=sys.stderr)
         return UNRUN

@@ -327,3 +327,37 @@ def test_report_levels(tmp_path, monkeypatch):
     event = {'id': 'D1/1.1', 'channel': 'D1', 'sender': 'T1/U1', 'text': 'report'}
     assert remote.handle(root, event, transport=transport) == 0
     assert sent == ['Report 2026-09-29: merged 1, open 0, parked 0, decisions answered 1.']
+
+
+def finding(path, text):
+    return f'- P2 | {path} | {text} fails when empty | blocks: no\nProbe: not run'
+
+
+def test_retro_lists_findings_unique_to_each_model(tmp_path, monkeypatch):
+    from wuwei import retro
+    root = tmp_path
+    banded_day(monkeypatch, root)
+    captured(root)
+    assert '## Second opinion' not in retro.compile(root).read_text()
+    first = {'item': 'A', 'role': 'quality', 'round': 'initial', 'verdict': 'FIX',
+             'findings': [finding('cli/a.py:1', 'parse'), finding('cli/b.py:2', 'only|first')],
+             'usage': {'cost': 'unmeasured', 'model': 'opus', 'duration': 412.0}}
+    second = {'item': 'A', 'role': 'quality@codex', 'round': 'initial', 'verdict': 'FIX',
+              'runtime': 'codex', 'model': 'm1',
+              'findings': [finding('CLI/a.py:1', 'parse again'), finding('cli/c.py:3', 'only second')],
+              'usage': {'cost': 0.42, 'model': 'm1', 'duration': 380}}
+    old = {'item': 'B', 'role': 'quality', 'round': 'initial', 'verdict': 'PASS'}
+    other = {'item': 'B', 'role': 'quality@codex', 'round': 'initial', 'verdict': 'PASS',
+             'runtime': 'codex', 'model': 'm1'}
+    state._write_state(lambda data: data['gate_verdicts'].update({
+        'A:quality:initial': first, 'A:quality@codex:initial': second,
+        'B:quality:initial': old, 'B:quality@codex:initial': other}), root, reserved=False)
+    text = retro.compile(root).read_text()
+    section = text[text.index('## Second opinion'):]
+    assert '| A | quality@codex m1 | - P2 / cli/c.py:3 / only second fails when empty / blocks: no |' in section
+    assert '| A | quality | - P2 / cli/b.py:2 / only/first fails when empty / blocks: no |' in section
+    assert 'cli/a.py:1' not in section
+    assert '| B | quality@codex m1 | none |' in section and '| B | quality | none |' in section
+    assert '| A | quality | opus | unmeasured | 412.0 |' in section
+    assert '| A | quality@codex | m1 | 0.42 | 380 |' in section
+    assert '| B | quality | unmeasured | unmeasured | unmeasured |' in section

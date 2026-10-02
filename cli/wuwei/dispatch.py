@@ -13,13 +13,28 @@ TIERS = ('light', 'standard', 'full')
 
 
 def gate_set(row):
-    """The item's recorded gate roles; all three until a tier is recorded."""
+    """The item's recorded gates; all three roles until a tier is recorded.
+
+    A recorded second opinion adds one gate named <role>@<runtime>."""
     roles = (row.get('gates') or {}).get('roles')
     if roles is None:
         return ROLES
     if not isinstance(roles, list) or 'quality' not in roles or not set(roles) <= set(ROLES):
         raise ValueError('invalid recorded gate set')
-    return tuple(role for role in ROLES if role in roles)
+    roles = tuple(role for role in ROLES if role in roles)
+    second = row['gates'].get('second_opinion')
+    if second is None:
+        return roles
+    if (not isinstance(second, dict) or second.get('role') not in roles
+            or not re.fullmatch(r'[a-z]+', str(second.get('runtime')))
+            or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', str(second.get('model')))):
+        raise ValueError('invalid recorded gate set')
+    return (*roles, f"{second['role']}@{second['runtime']}")
+
+
+def base(gate):
+    """The sentinel role a gate runs as; a second opinion runs as its base role."""
+    return gate.partition('@')[0]
 
 
 def tier(root, config, row):
@@ -79,8 +94,14 @@ def tier(root, config, row):
         reasons.append(f'lead tier {lead}')
     elif lead and TIERS.index(lead) < TIERS.index(effective):
         reasons.append(f'lead tier {lead} refused: below {effective}')
-    return {'tier': effective, 'computed': computed, 'reasons': reasons,
-            'roles': ['quality'] if effective == 'light' else list(ROLES)}
+    record = {'tier': effective, 'computed': computed, 'reasons': reasons,
+              'roles': ['quality'] if effective == 'light' else list(ROLES)}
+    second = config['gates']['second_opinion']
+    if effective != 'light' and second != 'off':
+        runtime, _, model = second.partition(':')
+        record['second_opinion'] = {'role': config['gates']['second_opinion_role'],
+                                    'runtime': runtime, 'model': model}
+    return record
 
 
 def tracker_call(item, action, root=None):
@@ -156,7 +177,7 @@ def next_step(item, root=None):
             fresh['items'][item]['gates'] = record
         state._write_state(update, root, reserved=False, kind='gate.tiered',
                            payload={'item': item, **record})
-        row = {**row, 'gates': record}
+        row = data['items'][item] = {**row, 'gates': record}
     gates = gate_set(row)
     if phase == 'fix':
         if any(_record(data, item, role, 'delta') is not None for role in gates):
@@ -207,11 +228,17 @@ def _seats(root, data, item, roles, round_name):
     actions = []
     rows = brief.events(root) if round_name == 'initial' else []
     for role in roles:
+        if '@' in role:
+            second = data['items'][item]['gates']['second_opinion']
+            name = _opinion_name(data, rows, item, role, round_name)
+            seat = data['seats'].get(name) if name else None
+            if name and not (seat and seat['status'] == 'running'):
+                actions.append({'action': 'run', 'gate': role, 'runtime': second['runtime'],
+                                'model': second['model'],
+                                'command': 'wuwei dispatch opinion ' + shlex.quote(item)})
+            continue
         if round_name == 'initial':
-            logged = [row['payload'] for row in rows if row['kind'] == 'brief written'
-                      and row['payload'].get('item') == item
-                      and row['payload'].get('role') == 'sentinel-' + role
-                      and row['payload'].get('gate') is True]
+            logged = _first_briefs(rows, item, role)
             if not logged or logged[-1].get('name') in data['seats']:
                 continue
             name = logged[-1]['name']
@@ -227,14 +254,34 @@ def _seats(root, data, item, roles, round_name):
                 continue
             action = brief.seat_action('sentinel-' + role, root / seat['brief'],
                                        data['items'][item]['worktree'], root)
-            feedback = (f'Delta review: the fix round changed {first["head"]}..HEAD. Re-check your '
-                        f'findings at the current HEAD and rewrite {first["file"]}.')
+            feedback = _delta_feedback(first)
             extra = {'action': 'continue', 'resume': seat['agent_id'], 'feedback': feedback,
                      'prompt': action['prompt'] + '\n\n' + feedback}
         receive = 'wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, name)))
         actions.append({**action, **extra,
                         'receive': receive + (' --round delta' if round_name == 'delta' else '')})
     return actions
+
+
+def _first_briefs(rows, item, role):
+    """Logged first-model gate briefs of one role; a second-opinion brief never launches as Agent."""
+    return [row['payload'] for row in rows if row['kind'] == 'brief written'
+            and row['payload'].get('item') == item
+            and row['payload'].get('role') == 'sentinel-' + role
+            and row['payload'].get('gate') is True and not row['payload'].get('second_opinion')]
+
+
+def _opinion_name(data, rows, item, gate, round_name):
+    """The second-opinion seat name once its round can run, else None."""
+    if round_name == 'delta':
+        return Path(_record(data, item, gate, 'initial')['file']).stem.removeprefix('gate-')
+    logged = _first_briefs(rows, item, base(gate))
+    return logged[-1]['name'] + '-' + gate.partition('@')[2] if logged else None
+
+
+def _delta_feedback(first):
+    return (f'Delta review: the fix round changed {first["head"]}..HEAD. Re-check your '
+            f'findings at the current HEAD and rewrite {first["file"]}.')
 
 
 def _fix(item, roles):
@@ -246,10 +293,12 @@ def receive(item, role, name, round_name='initial', root=None):
     root = workspace.find_workspace() if root is None else Path(root)
     data = state.read_state(root)
     _item(data, item)
-    if role not in ROLES or round_name not in ('initial', 'delta'):
-        raise Refused('unknown gate role or round')
-    if role not in gate_set(data['items'][item]):
+    if round_name not in ('initial', 'delta'):
+        raise Refused('unknown gate round')
+    gates = gate_set(data['items'][item])
+    if role not in gates:
         raise Refused(f'gate role {role} is not in the item gate set')
+    sentinel = 'sentinel-' + base(role)
     if data['items'][item]['phase'] != ('gate' if round_name == 'initial' else 'delta'):
         raise Refused('gate round does not match item phase')
     if round_name == 'delta':
@@ -259,8 +308,11 @@ def receive(item, role, name, round_name='initial', root=None):
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name):
         raise Refused('unsafe seat name')
     seat = brief.seats(data).get(name)
-    if not seat or seat['item'] != item or seat['role'] != 'sentinel-' + role or seat['status'] != 'stopped':
+    if not seat or seat['item'] != item or seat['role'] != sentinel or seat['status'] != 'stopped':
         raise Refused('matching sentinel must stand down before receive')
+    runtime = role.partition('@')[2] or None
+    if seat.get('runtime') != runtime or (runtime and not name.endswith('-' + runtime)):
+        raise Refused(f'gate role {role} needs its own runtime seat')
     key = f'{item}:{role}:{round_name}'
     if key in data['gate_verdicts']:
         raise Refused('gate already received')
@@ -268,7 +320,7 @@ def receive(item, role, name, round_name='initial', root=None):
     path = directory / 'decisions' / f'gate-{name}.md'
     if path.is_symlink():
         raise Refused('gate verdict must be a regular day file')
-    code, message = verdict.lint_file(path, role='sentinel-' + role, root=root)
+    code, message = verdict.lint_file(path, role=sentinel, root=root)
     if code == 2:
         raise OSError(message)
     if code:
@@ -292,10 +344,10 @@ def receive(item, role, name, round_name='initial', root=None):
                                   str(tree), root=root)['sha']
         if not isinstance(current_head, str) or not current_head.lower().startswith(head.lower()):
             raise Refused('verdict HEAD differs from current worktree HEAD')
-    current = [_record(data, item, gate, round_name) for gate in ROLES]
+    current = [_record(data, item, gate, round_name) for gate in gates]
     if any(record and record['head'] != head for record in current):
         raise Refused('gate HEAD differs from sibling verdict')
-    if role == 'security' and data['items'][item]['flags']['agent_surface']:
+    if sentinel == 'sentinel-security' and data['items'][item]['flags']['agent_surface']:
         from wuwei import scanner
         if not trees or trees[0] == 'none':
             raise OSError('scanner: unmeasured: missing reviewed worktree')
@@ -315,7 +367,10 @@ def receive(item, role, name, round_name='initial', root=None):
     value = {'item': item, 'role': role, 'round': round_name, 'verdict': result,
              'head': head, 'file': str(path.relative_to(root)),
              'blocks': any(re.search(verdict.BLOCKS_YES, block, re.I) for block in blocks),
-             'notes': notes}
+             'notes': notes, 'findings': [block.strip() for block in blocks],
+             'usage': seat.get('usage') or _seat_usage(seat, data['seat_policy'].get(sentinel, {}))}
+    if runtime:
+        value.update(runtime=seat['runtime'], model=seat.get('model'))
 
     def update(fresh):
         _item(fresh, item)
@@ -327,9 +382,101 @@ def receive(item, role, name, round_name='initial', root=None):
 
     state._write_state(update, root, reserved=False, kind='gate.received',
                        payload={'item': item, 'role': role, 'round': round_name, 'verdict': result})
-    if role == 'security' and data['items'][item]['flags']['agent_surface']:
+    if sentinel == 'sentinel-security' and data['items'][item]['flags']['agent_surface']:
         workspace.atomic_write(path, text + '\n')
     return value
+
+
+def opinion(item, root=None):
+    """Run the item's second-opinion gate through its runtime adapter and receive its verdict."""
+    from wuwei.commands import build
+    root = workspace.find_workspace(root)
+    config = workspace.load_config(root)
+    data = state.read_state(root)
+    row = _item(data, item)
+    second = (row.get('gates') or {}).get('second_opinion')
+    if not second:
+        raise Refused('item has no second opinion')
+    gate = gate_set(row)[-1]
+    sentinel = 'sentinel-' + base(gate)
+    round_name = {'gate': 'initial', 'delta': 'delta'}.get(row['phase'])
+    if round_name is None:
+        raise Refused(f'item phase {row["phase"]} has no second-opinion round')
+    if _record(data, item, gate, round_name):
+        return _record(data, item, gate, round_name)
+    first = _record(data, item, gate, 'initial')
+    if round_name == 'delta' and (not first or first['verdict'] != 'FIX'):
+        raise Refused('gate did not need a delta')
+    name = _opinion_name(data, brief.events(root) if round_name == 'initial' else [], item, gate, round_name)
+    if name is None:
+        raise Refused(f'write the {base(gate)} gate brief first')
+    directory = workspace.day_dir(root)
+    relative = str((directory / 'briefs' / f'{name}.md').relative_to(root))
+    runtime = registry.load('runtime', {**config, 'adapters': {**config['adapters'], 'runtime': second['runtime']}})
+    seat = data['seats'].get(name)
+    if seat is None or seat['status'] == 'stopped':
+        if sum(other['status'] == 'running' for other in brief.seats(data).values()) >= config['host']['seats']:
+            raise Refused(f'running seats at host seat ceiling host.seats={config["host"]["seats"]}')
+        if seat is None:
+            if round_name == 'delta':
+                raise Refused('second-opinion seat is missing')
+            if not (root / relative).exists():
+                text = (directory / 'briefs' / f'{name.rpartition("-")[0]}.md').read_text(encoding='utf-8')
+                try:
+                    brief.write(sentinel, item, name, text.split('\n\n', 1)[1].removesuffix('\n'),
+                                gate=True, second_opinion=second, root=root)
+                except brief.Refused as exc:
+                    raise Refused(str(exc)) from exc
+            job = build._data(runtime.dispatch(sentinel, str(root / relative), row['worktree'], True,
+                                               root=root), 'dispatch')
+        else:
+            # continue_job resumes the latest thread of this runtime in the worktree, which is
+            # the builder's own thread when the builder runs on the same runtime.
+            if data['seat_policy'].get('builder', {}).get('runtime') == second['runtime']:
+                raise Refused('second opinion cannot resume on the builder runtime')
+            feedback = (_delta_feedback(first) if round_name == 'delta' else
+                        'Your verdict file was rejected by the verdict lint; rewrite '
+                        f'{directory.relative_to(root)}/decisions/gate-{name}.md to the verdict '
+                        'contract in your brief.')
+            job = build._data(runtime.continue_job(seat['job'], feedback, root=root), 'continuation')
+        head = brief.read(registry.load('vcs', config).head, row['worktree'], root=root)['sha']
+        seat = {'id': name, 'role': sentinel, 'item': item, 'brief': relative, 'head': head,
+                'status': 'running', 'started_at': workspace.now().isoformat(),
+                'runtime': second['runtime'], 'model': second['model'], 'job': job}
+        state._write_state(lambda fresh: fresh['seats'].update({name: seat}), root, reserved=False,
+                           kind='seat launched', payload={'name': name, 'item': item})
+    status = build.wait(runtime, seat['job'], config, root)
+    result = build._data(runtime.result(seat['job'], root=root), 'result')
+    if not isinstance(result, dict) or not isinstance(result.get('text'), str):
+        raise ValueError('invalid runtime result')
+    path = directory / 'decisions' / f'gate-{name}.md'
+    if path.is_symlink():
+        raise Refused('gate verdict must be a regular day file')
+    if not path.is_file() or path.stat().st_mtime < seat['job'].get('started_at', float('inf')):
+        path.parent.mkdir(exist_ok=True)
+        workspace.atomic_write(path, result['text'] + '\n')
+    from datetime import datetime
+    usage = {'duration': (workspace.now() - datetime.fromisoformat(seat['started_at'])).total_seconds(),
+             **result.get('usage', {})}
+    usage = build.normalize_usage(usage, status.get('model') or second['model'])
+
+    def stop(fresh):
+        fresh['seats'][name].update(status='stopped', stopped_at=workspace.now().isoformat(), usage=usage)
+    state._write_state(stop, root, reserved=False, kind='seat.usage',
+                       payload={'item': item, 'role': sentinel, 'gate': gate, 'usage': usage})
+    state.append_event('seat stopped', {'name': name}, root)
+    return receive(item, gate, name, round_name, root)
+
+
+def _seat_usage(seat, policy):
+    """A Claude seat's usage: duration from its start and stop, model from its policy."""
+    from datetime import datetime
+    from wuwei.commands import build
+    measured = {}
+    if seat.get('started_at') and seat.get('stopped_at'):
+        measured['duration'] = (datetime.fromisoformat(seat['stopped_at'])
+                                - datetime.fromisoformat(seat['started_at'])).total_seconds()
+    return build.normalize_usage(measured, policy.get('model'))
 
 
 def discovery(trigger, root=None, found=None):

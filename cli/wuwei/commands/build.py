@@ -212,13 +212,8 @@ def started(data, item, name):
     record.update(status='running', seat=name, started_at=workspace.now().isoformat())
 
 
-def record_result(item, result, *, root, agent_id=None, model=None, completion=None, expected=None):
-    record = expected if expected is not None else state.read_state(root)['builds'][item]
-    if record['status'] != 'running':
-        return
-    if not isinstance(result, dict):
-        raise ValueError('invalid runtime result')
-    reported = result.get('usage', {})
+def normalize_usage(reported, model):
+    """Validate reported seat usage into the five measured keys."""
     if not isinstance(reported, dict):
         raise ValueError('malformed runtime usage')
     for key in ('input_tokens', 'output_tokens'):
@@ -230,11 +225,21 @@ def record_result(item, result, *, root, agent_id=None, model=None, completion=N
             raise ValueError('malformed runtime usage')
     if 'model' in reported and (not isinstance(reported['model'], str) or not reported['model']):
         raise ValueError('malformed runtime usage')
-    iteration = record['iteration'] + 1
     usage = {key: reported.get(key, 'unmeasured')
              for key in ('input_tokens', 'output_tokens', 'cost', 'model', 'duration')}
     if usage['model'] == 'unmeasured':
-        usage['model'] = result.get('model') or model or 'unmeasured'
+        usage['model'] = model or 'unmeasured'
+    return usage
+
+
+def record_result(item, result, *, root, agent_id=None, model=None, completion=None, expected=None):
+    record = expected if expected is not None else state.read_state(root)['builds'][item]
+    if record['status'] != 'running':
+        return
+    if not isinstance(result, dict):
+        raise ValueError('invalid runtime result')
+    usage = normalize_usage(result.get('usage', {}), result.get('model') or model)
+    iteration = record['iteration'] + 1
     # The result and usage share the writer lock, so duplicate hooks cannot charge twice.
     def update(data):
         current = data['builds'][item]
@@ -404,6 +409,22 @@ def _park(root, item, record, reason, expected):
                        payload={'item': item, 'iteration': record['iteration'], 'reason': reason})
 
 
+def wait(runtime, job, config, root):
+    """Poll a runtime job until it completes; return its last status."""
+    deadline = time.monotonic() + config['build']['poll_timeout_seconds']
+    while True:
+        status = _data(runtime.status(job, root=root), 'status')
+        if not isinstance(status, dict) or status.get('status') not in ('queued', 'running', 'completed', 'failed', 'cancelled'):
+            raise ValueError('invalid runtime status')
+        if status['status'] == 'completed':
+            return status
+        if status['status'] in ('failed', 'cancelled'):
+            raise RuntimeError(f'runtime seat {status["status"]}')
+        if time.monotonic() >= deadline:
+            raise TimeoutError('runtime seat timed out')
+        time.sleep(config['build']['poll_interval_seconds'])
+
+
 def run_loop(item, brief, worktree, *, root=None):
     try:
         root = workspace.find_workspace(root)
@@ -436,18 +457,7 @@ def run_loop(item, brief, worktree, *, root=None):
                 previous = dict(record)
                 record.update(status='running', job=job, started_at=workspace.now().isoformat())
                 _save(item, record, root, 'build.launched', previous)
-            deadline = time.monotonic() + config['build']['poll_timeout_seconds']
-            while True:
-                status = _data(runtime.status(job, root=root), 'status')
-                if not isinstance(status, dict) or status.get('status') not in ('queued', 'running', 'completed', 'failed', 'cancelled'):
-                    raise ValueError('invalid runtime status')
-                if status['status'] == 'completed':
-                    break
-                if status['status'] in ('failed', 'cancelled'):
-                    raise RuntimeError(f'runtime seat {status["status"]}')
-                if time.monotonic() >= deadline:
-                    raise TimeoutError('runtime seat timed out')
-                time.sleep(config['build']['poll_interval_seconds'])
+            status = wait(runtime, job, config, root)
             record_result(item, _data(runtime.result(job, root=root), 'result'),
                           root=root, model=status.get('model'))
     except PortExit as exc:

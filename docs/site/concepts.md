@@ -125,6 +125,14 @@ tier below the computed one is refused and recorded as a reason, and the returne
 carries the `tier`. See [configuration](configuration.html#workspace-and-repositories) and
 the [lead plan JSON](reference.html#lead-plan-json).
 
+With `gates.second_opinion = "<runtime>:<model>"`, standard and full items get one more gate:
+the role in `gates.second_opinion_role` (quality by default) runs again on that runtime and
+model, named `<role>@<runtime>`. Its verdict goes through the same lint and receive. A blocking
+finding from either model blocks, a FIX from only the second opinion opens the same single fix
+round, and the model that raised it does the delta. Each verdict records its cost and duration,
+and the retro's `## Second opinion` section lists the findings each model raised alone, so you
+can turn it off when it stops paying.
+
 ## Writing for the owner
 
 `owner.verbosity` sets how much decisions, the digest, PR nudges, the DM and the report say to you: `brief` (the default), `standard` or `full`, with one key per surface (see [configuration](configuration.html)). Anything left out is one command away: `bin/wuwei decision show D-<n> --full` on the host or `more D-n` in the DM. Seats rewrite text written for a person with the humanizer skill, version 3.1.0, MIT license, when it is installed, and otherwise follow the ten-line checklist under Writing for a person in `charters/_common-authoring.md`. The CLI counts the mechanical tells as a `style` finding on drafts and decision records and as the `ai_tells` metric in the retro and, at standard or full, the report; a tell never blocks a send. Only an em dash or an emoji is refused.
