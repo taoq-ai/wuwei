@@ -14,6 +14,14 @@ The shipped charters define planner, lead, builder, shepherd, steward, and four 
 
 Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse relevant unsafe actions inside a WUWEI workspace or configured repository. Outside that scope they return clean. The three outcomes are 0 clean, 1 findings and 2 could not run. A relevant parse or measurement failure returns 2 with a reason. The CLI also records traces and events. See [security](security.html) for the trust boundary.
 
+## Shadow mode
+
+With `guards.mode = "shadow"` every guard still runs, but a refusal is recorded as a `guard.would_refuse` event and the call goes through. Use it for the first week on a project, to see what the guards would stop in your own habits before they stop anything.
+
+Some refusals never shadow, whatever the mode: writes to state, events, config and generated instructions, owner-only actions, the integrity gate, the deployment ban, canary and honeytoken egress (`outward`) and the merge policy and owner disposition markers (`pr`). Shadowing those would corrupt the records the report is built from or let a seat leak a decoy or act as the owner. The heartbeat probe session is never shadowed either.
+
+`bin/wuwei shadow report` and the day report group the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows `shadow`, each session starts with a line saying so, and after `guards.shadow_days` one nudge asks you to switch to enforce or extend.
+
 ## Seat launch contract
 
 The planner launches every seat from the actions `build next` and `dispatch next` return; see the [daily path](daily.html). The low-level launch contract is on the [recovery](recovery.html#seat-launch-contract) page.

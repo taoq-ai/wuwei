@@ -1,6 +1,6 @@
 """Read-only status snapshots for the owner surfaces."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import json
 import sys
 
@@ -8,6 +8,11 @@ from wuwei import sessions, state, workspace
 from wuwei.decision import answered
 from wuwei.exits import CLEAN, UNRUN
 from wuwei.signal import SILENT, classify
+
+
+SHADOW_NUDGE = ('Shadow mode has run {days} days. To enforce the guards, set '
+                'guards.mode = "enforce" in config.toml; to keep shadowing, raise guards.shadow_days. '
+                'bin/wuwei shadow report lists what would have been refused.')
 
 
 def register(subparsers):
@@ -171,6 +176,13 @@ def scan(directory, classified_state=None):
                     'reason': f'planner session {planner} stale: no hook activity for '
                               f'{row["idle_seconds"]}s; take over from the live session with: '
                               'wuwei plan session <session id> --take-over'}
+    if (directory.parents[1] / 'config.toml').is_file():
+        guards = workspace.load_config(directory.parents[2])['guards']
+        if guards['mode'] == 'shadow' and guards['shadow_since']:
+            days = (today - date.fromisoformat(guards['shadow_since'])).days
+            if days >= guards['shadow_days']:
+                current[('guards.shadow',)] = {'tier': 'nudge', 'source': 'guards.shadow', 'lane': 'Work',
+                                               'reason': SHADOW_NUDGE.format(days=days)}
     rows = sorted(current.values(), key=lambda row: row['source'] != 'pr.changed')
     return rows, health['watch'], health['listen'], beat_health, loops
 
@@ -206,6 +218,7 @@ def snapshot(directory):
             result[destination] = min(parsed, key=lambda row: row[0])[1]
     config_path = directory.parents[1] / 'config.toml'
     config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
+    result['shadow'] = config is not None and config['guards']['mode'] == 'shadow'
     if result['listen'] == 'off' and (config is None or config['adapters']['inbound'] == 'none'):
         result['listen'] = 'none'
     if config is not None and config['adapters']['calendar'] != 'none':
@@ -253,6 +266,8 @@ def run(args):
 
 def line(data):
     parts = [f'WUWEI pages {data["pages"]}', f'nudges {data["nudges"]}']
+    if data.get('shadow'):
+        parts.append('shadow')
     if data.get('loops'):
         parts.append(f'loops {data["loops"]}')
     if not data['gate_approved']:

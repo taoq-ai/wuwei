@@ -45,6 +45,16 @@ def test_init_layout(tmp_path, explicit):
     assert (workspace / 'config.toml').read_bytes() == (ROOT / 'templates/workspace/config.toml').read_bytes()
 
 
+def test_init_shadow(tmp_path):
+    from wuwei import workspace
+    result = cli(tmp_path, 'init', '--shadow', WUWEI_NOW='2026-09-29T12:00:00Z')
+    assert result.returncode == 0, result.stderr
+    assert workspace.load_config(tmp_path)['guards'] == {
+        'mode': 'shadow', 'shadow_days': 7, 'shadow_since': '2026-09-29'}
+    result = cli(tmp_path, 'init', '--upgrade', '--shadow')
+    assert result.returncode == 2 and '--shadow' in result.stderr
+
+
 @pytest.mark.parametrize('kind', ['directory', 'file', 'symlink'])
 def test_init_never_overwrites(tmp_path, kind):
     target = tmp_path / '.wuwei'
@@ -165,6 +175,7 @@ def test_config_defaults_and_independence(tmp_path):
                   'full_path_patterns': []},
         'boundary': {}, 'environments': {},
         'deploy': {'workflows': [], 'deny': []},
+        'guards': {'mode': 'enforce', 'shadow_days': 7, 'shadow_since': ''},
         'adapters': {'tracker': 'none', 'chat': 'none', 'review_bot': 'none',
                      'runtime': 'claude', 'scanner': 'none',
                      'code_host': 'github', 'vcs': 'git', 'host': 'local',
@@ -304,6 +315,21 @@ def test_owner_verbosity(tmp_path):
     (tmp_path / '.wuwei/config.toml').write_text(
         (ROOT / 'templates/workspace/config.toml').read_text(encoding='utf-8'), encoding='utf-8')
     assert workspace.load_config(tmp_path)['owner']['verbosity']['default'] == 'brief'
+
+
+def test_guards_mode(tmp_path):
+    from wuwei import workspace
+    write_config(tmp_path, '')
+    assert workspace.load_config(tmp_path)['guards'] == {
+        'mode': 'enforce', 'shadow_days': 7, 'shadow_since': ''}
+    write_config(tmp_path, '[guards]\nmode = "shadow"\nshadow_since = "2026-09-25"\n')
+    assert workspace.load_config(tmp_path)['guards']['mode'] == 'shadow'
+    for text, key in (('mode = "off"', 'guards.mode'), ('shadow_days = 0', 'guards.shadow_days'),
+                      ('shadow_since = "next week"', 'guards.shadow_since'),
+                      ('shadow_since = "20260925"', 'guards.shadow_since')):
+        write_config(tmp_path, f'[guards]\n{text}\n')
+        with pytest.raises(workspace.ConfigError, match=key):
+            workspace.load_config(tmp_path)
 
 
 def test_solo_owner_min_reviewers_zero(tmp_path):

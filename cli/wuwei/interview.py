@@ -166,6 +166,14 @@ QUESTIONS = (
           {'owner.verbosity.default': 'standard'}),
          ('Full', 'Every field of each record.', {'owner.verbosity.default': 'full'})),
      'free': None},
+    {'id': 'guards', 'scope': 'workspace', 'header': 'Guards',
+     'question': 'How should the guards start on this project?',
+     'choices': (
+         ('Enforce', 'Every guard refuses from the first command.', {'guards.mode': 'enforce'}),
+         ('Shadow first week', 'Guards record what they would refuse for guards.shadow_days days; '
+          'state, integrity, owner actions, deploys, outbound and merge-policy refusals '
+          'still refuse.', {'guards.mode': 'shadow'})),
+     'free': None},
 )
 
 
@@ -213,8 +221,11 @@ def _path(name, repo, config):
 
 def settings(answers, config):
     """Config effects as calibrate (path, key, value) settings."""
-    return [(*_path(name, repo, config), value) for _, repo, _, result in _answered(answers)
+    rows = [(*_path(name, repo, config), value) for _, repo, _, result in _answered(answers)
             for name, value in result.items() if '.' in name]
+    if (('guards',), 'mode', 'shadow') in rows and not config.get('guards', {}).get('shadow_since'):
+        rows.append((('guards',), 'shadow_since', workspace.now().date().isoformat()))
+    return rows
 
 
 def _role(row):

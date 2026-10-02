@@ -1,9 +1,12 @@
 """Build the local owner report from recorded day evidence."""
 
+from collections import Counter
 import json
 import re
 
-from wuwei import metrics, state, workspace
+from wuwei import metrics, signal, state, watch, workspace
+
+FALSE_POSITIVE_AFTER = 3  # A form refused more often than this with no later page is a candidate.
 
 
 def decisions(day, data):
@@ -20,6 +23,33 @@ def decisions(day, data):
     outcomes.update({ident: record.get('outcome', 'unmeasured')
                      for ident, record in data.get('decision_outcomes', {}).items()})
     return outcomes
+
+
+def shadow_lines(directories):
+    """Shadow refusals in day directories, oldest first: per guard its count and three most
+    frequent forms, then the forms refused more than FALSE_POSITIVE_AFTER times with no
+    page-tier event after their first refusal. [] when there are none."""
+    guards, forms, first, last_page = Counter(), {}, {}, -1
+    events = [event for directory in directories for event in watch.records(directory / 'events.jsonl')]
+    for position, event in enumerate(events):
+        if event['kind'] != 'guard.would_refuse':
+            if signal.classify(event, {})[0] == 'page':
+                last_page = position
+            continue
+        guard = str(event['payload'].get('guard'))
+        form = ' '.join(str(event['payload'].get('target', '')).split()[:3])
+        guards[guard] += 1
+        forms.setdefault(guard, Counter())[form] += 1
+        first.setdefault((guard, form), position)
+    if not guards:
+        return []
+    lines = [f'- {guard}: {count} (' + ', '.join(f'{form}: {times}' for form, times
+                                               in forms[guard].most_common(3)) + ')'
+             for guard, count in guards.most_common()]
+    candidates = [f'- {guard}: {form} ({forms[guard][form]} times, no later incident)'
+                  for (guard, form), position in first.items()
+                  if forms[guard][form] > FALSE_POSITIVE_AFTER and last_page < position]
+    return [*lines, '', 'Candidates for a guard fix or a calibration proposal:', *(candidates or ['none'])]
 
 
 def build(root=None):
@@ -80,6 +110,9 @@ def build(root=None):
     lines.extend(f"- {name}: {item['phase']}" for name, item in carry)
     if not carry:
         lines.append('none')
+    shadow = shadow_lines([day])
+    if shadow:
+        lines += ['', '## Shadow', *shadow]
     if level == 'brief':
         return '\n'.join([*lines, ''])
     quality = measured['quality_by_band']

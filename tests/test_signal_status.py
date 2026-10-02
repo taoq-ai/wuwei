@@ -284,6 +284,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'pr.action.decision': 'silent',
                 'retro.gap': 'nudge', 'seat stop unmatched': 'nudge',
                 'hook.post_tool_use_error': 'nudge', 'hook.refusal': 'silent',
+                'guard.would_refuse': 'silent',
                 'hook.warning': 'nudge',
                 'verdict.rejected': 'silent', 'decision.rejected': 'nudge',
                     'decision.decided': 'silent', 'decision.routed': 'silent',

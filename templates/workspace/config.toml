@@ -215,3 +215,8 @@ autostart = false # Start a headless shepherd seat for mechanical PR actions whe
 
 [security]
 required = true
+
+[guards]
+mode = "enforce" # enforce, or shadow: guards record what they would refuse; see bin/wuwei shadow report.
+shadow_days = 7 # Days in shadow before one nudge asks to switch to enforce.
+shadow_since = "" # YYYY-MM-DD the shadow week started; wuwei init --shadow sets it.

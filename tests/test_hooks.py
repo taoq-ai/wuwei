@@ -842,3 +842,127 @@ def test_seat_question_without_record_blocks_subagent_stop(subprocess_plugin, tm
     assert result.returncode == 2, result.stderr
     output = json.loads(result.stdout)
     assert output['decision'] == 'block' and 'Cite a decision D-n' in output['reason']
+
+
+def shadow_mode(plugin, mode='shadow'):
+    (plugin[0] / '.wuwei/config.toml').write_text(f'[guards]\nmode = "{mode}"\n')
+
+
+def events_of(plugin, kind):
+    from wuwei import workspace
+    path = workspace.day_dir(plugin[0]) / 'events.jsonl'
+    rows = [json.loads(row) for row in path.read_text().splitlines()] if path.exists() else []
+    return [row['payload'] for row in rows if row['kind'] == kind]
+
+
+def refusing(event, reason='guard reason'):
+    return f'''
+from wuwei.guards import Guard
+GUARDS = [Guard({event!r}, None, lambda payload: (1, {reason!r}))]
+'''
+
+
+@pytest.mark.parametrize('event', ['PreToolUse', 'PostToolUse', 'Stop'])
+def test_shadow_mode_records_and_allows(plugin, event):
+    shadow_mode(plugin)
+    install(plugin, refusing(event))
+    payload = (json.loads((ROOT / 'tests/payloads/PreToolUse/bash.json').read_text())
+               if event == 'PreToolUse' else fixture(event))
+    result = replay(plugin, event, json.dumps(payload))
+    assert (result.returncode, result.stdout) == (0, ''), result.stderr
+    recorded, = events_of(plugin, 'guard.would_refuse')
+    assert recorded['guard'] == 'fake' and recorded['reason'] == 'guard reason'
+    assert recorded['session'] == payload['session_id'] and recorded['item'] is None
+    if event == 'PreToolUse':
+        assert recorded['target'] == 'npm test'
+    assert events_of(plugin, 'hook.refusal') == []
+
+
+def test_shadow_mode_does_not_shadow_the_heartbeat(plugin):
+    shadow_mode(plugin)
+    install(plugin, refusing('PreToolUse'))
+    payload = {**fixture('PreToolUse'), 'session_id': 'wuwei-heartbeat'}
+    assert_refusal(replay(plugin, 'PreToolUse', json.dumps(payload)), 'PreToolUse', 'guard reason')
+    assert events_of(plugin, 'guard.would_refuse') == []
+
+
+def test_shadow_mode_enforces_when_it_cannot_record(plugin):
+    from wuwei import state
+    shadow_mode(plugin)
+    install(plugin, refusing('PreToolUse'))
+    plugin[1].setattr(state, 'append_event', lambda *a, **k: (_ for _ in ()).throw(OSError('disk')))
+    result = replay(plugin, 'PreToolUse', json.dumps(fixture('PreToolUse')))
+    assert result.returncode == 2
+    assert json.loads(result.stdout)['hookSpecificOutput']['permissionDecision'] == 'deny'
+    assert 'could not record shadow refusal' in result.stderr
+
+
+@pytest.mark.parametrize('mode', [None, 'enforce'])
+def test_enforce_mode_refuses_as_before(plugin, mode):
+    if mode:
+        shadow_mode(plugin, mode)
+    install(plugin, refusing('PreToolUse'))
+    assert_refusal(replay(plugin, 'PreToolUse', json.dumps(fixture('PreToolUse'))),
+                   'PreToolUse', 'guard reason')
+    assert events_of(plugin, 'guard.would_refuse') == []
+
+
+@pytest.mark.parametrize('command,target', [
+    ("sh -c 'git push --force origin main'", 'git push --force origin main'),
+    ('echo $(', 'echo $('),
+])
+def test_shadow_target_is_the_normalised_command(plugin, command, target):
+    shadow_mode(plugin)
+    install(plugin, refusing('PreToolUse'))
+    payload = {**fixture('PreToolUse'), 'tool_name': 'Bash', 'tool_input': {'command': command}}
+    assert replay(plugin, 'PreToolUse', json.dumps(payload)).returncode == 0
+    assert events_of(plugin, 'guard.would_refuse')[0]['target'] == target
+
+
+def test_shadow_target_is_redacted(plugin):
+    from wuwei import report, security, workspace
+    security.initialize(plugin[0] / '.wuwei')
+    canary = json.loads((plugin[0] / '.wuwei/security.json').read_text())['canary']
+    shadow_mode(plugin)
+    install(plugin, refusing('PreToolUse'))
+    token = 'ghp_' + 'a' * 36
+    for command in (f'echo {canary} https://x', f'git push --force https://x:{token}@github.com/o/r'):
+        payload = {**fixture('PreToolUse'), 'tool_name': 'Bash', 'tool_input': {'command': command}}
+        assert replay(plugin, 'PreToolUse', json.dumps(payload)).returncode == 0
+    recorded = json.dumps(events_of(plugin, 'guard.would_refuse'))
+    shown = '\n'.join(report.shadow_lines([workspace.day_dir(plugin[0])]))
+    for secret in (canary, token):
+        assert secret not in recorded and secret not in shown
+
+
+def forget_guards():
+    """Drop loaded guard modules and their package attributes so stubs and real modules reload."""
+    import wuwei.guards
+    for name in [key for key in sys.modules if key.startswith('wuwei.guards.')]:
+        del sys.modules[name]
+        vars(wuwei.guards).pop(name.rsplit('.', 1)[-1], None)
+
+
+def test_never_shadowed_guards_refuse_in_shadow_mode(plugin):
+    import wuwei.guards
+    assert wuwei.guards.NEVER_SHADOWED == {'protect_state', 'integrity', 'deploy', 'outward', 'pr'}
+    assert wuwei.guards.NEVER_SHADOWED <= set(wuwei.guards.MODULES)
+    # A new guard module fails here until it is placed in one set or the other.
+    assert set(wuwei.guards.MODULES) - wuwei.guards.NEVER_SHADOWED == {
+        'agent_launch', 'commit_push', 'decision', 'lifecycle', 'stop', 'traces', 'verdict'}
+    shadow_mode(plugin)
+    payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
+    try:
+        for name in sorted(wuwei.guards.NEVER_SHADOWED):
+            forget_guards()
+            install(plugin, refusing('PreToolUse', 'kept'), name)
+            assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', 'kept')
+            assert events_of(plugin, 'guard.would_refuse') == []
+            (plugin[0] / f'cli/wuwei/guards/{name}.py').unlink()
+        forget_guards()
+        install(plugin, refusing('PreToolUse', 'kept'), 'integrity')
+        install(plugin, refusing('PreToolUse'))
+        assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', 'kept')
+        assert [row['guard'] for row in events_of(plugin, 'guard.would_refuse')] == ['fake']
+    finally:
+        forget_guards()
