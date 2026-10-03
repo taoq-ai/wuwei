@@ -16,6 +16,8 @@ EXECUTABLE = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]*')
 SOAK = 'only where the repository declares merge_deploys = false'
 # The retro offers the merge question again after this many owner merges within this many days.
 REASK_AFTER, REASK_DAYS = 3, 7
+BACKLOG = 'https://github.com/taoq-ai/wuwei/issues/370'
+LATER = f'Not supported yet, so WUWEI sets the adapter to none. Integrations backlog: {BACKLOG}'
 MERGE_QUESTION = re.compile(r'Merge (?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#[0-9]+\?')
 
 
@@ -61,11 +63,14 @@ def _commands(text):
     return {'deploy.deny': [item if item.endswith('*') else item + '*' for item in items]}
 
 
-def _channel(text):
+def _chat(text):
+    """A Slack review channel ID, or the name of another tool, which is not supported yet."""
     text = text.strip()
-    if not re.fullmatch(r'[A-Z0-9]+', text):
-        raise ValueError('expected a Slack channel ID such as C0123ABCD')
-    return {'adapters.chat': 'slack', 'shepherd.review_channel': text}
+    if re.fullmatch(r'[CG][A-Z0-9]*[0-9][A-Z0-9]*', text):
+        return {'adapters.chat': 'slack', 'shepherd.review_channel': text}
+    if re.fullmatch(r'[A-Za-z][A-Za-z0-9 .+-]{0,39}', text) and not calibrate.instruction_like(text):
+        return {'adapters.chat': 'none'}
+    raise ValueError('expected a Slack channel ID such as C0123ABCD, or the name of another tool such as Email')
 
 
 def _login(text):
@@ -200,14 +205,20 @@ QUESTIONS = (
      'choices': (
          ('None', 'Discovery reads no tracker backlog.', {'adapters.tracker': 'none'}),
          ('Linear', 'Discovery reads the Linear backlog; set LINEAR_API_KEY in .wuwei/env.',
-          {'adapters.tracker': 'linear'})),
+          {'adapters.tracker': 'linear'}),
+         ('GitHub Issues', LATER, {'adapters.tracker': 'none'}),
+         ('Jira', LATER, {'adapters.tracker': 'none'})),
      'free': None},
-    {'id': 'chat', 'scope': 'workspace', 'header': 'Chat', 'question': 'Where should review pings go?',
+    {'id': 'chat', 'scope': 'workspace', 'header': 'Chat',
+     'question': 'Which tool does your team use for messages? Your DM and review pings go there.',
      'choices': (
-         ('None', 'Reviewers are requested on the code host only.', {'adapters.chat': 'none'}),
-         ('Slack', 'Set SLACK_BOT_TOKEN and SLACK_OWNER_DM_CHANNEL in .wuwei/env; '
-          'type the review channel ID to set it too.', {'adapters.chat': 'slack'})),
-     'free': (_channel, 'the Slack review channel ID, for example C0123ABCD')},
+         ('Slack', 'Setup connects your DM next (bin/wuwei setup slack); type the review channel ID '
+          'to set it too.', {'adapters.chat': 'slack'}),
+         ('Microsoft Teams', LATER, {'adapters.chat': 'none'}),
+         ('Discord', LATER, {'adapters.chat': 'none'}),
+         ('None', 'Reviewers are requested on the code host only.', {'adapters.chat': 'none'})),
+     'free': (_chat, 'a Slack review channel ID such as C0123ABCD, or another tool such as Email '
+                     '(not supported yet: ' + BACKLOG + ')')},
     {'id': 'review_bot', 'scope': 'workspace', 'header': 'Review bot',
      'question': 'Which review bot reads your pull requests?',
      'choices': (

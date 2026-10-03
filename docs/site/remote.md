@@ -2,7 +2,30 @@
 
 This page sets up running a day from your phone: Claude Code Remote Control first, then
 optionally the Slack listener and the owner DM. Every step runs on the always-on host
-that holds the workspace.
+that holds the workspace. `bin/wuwei setup slack` does the Slack part in one command.
+
+## Connect Slack in one command
+
+Create the Slack app first (section 2: the four scopes and the Messages Tab). Then run
+`bin/wuwei setup slack` in a host terminal. Each step prints one line saying what it did:
+
+1. It asks for the bot token (hidden as you type; the Bot User OAuth Token on the app's
+   OAuth & Permissions page) and the owner DM channel id (starts with `D`, shown in the
+   conversation's details or link), and saves both to `.wuwei/env` with mode `0600`.
+2. It asks you to send any message to the app in the DM and waits up to 5 minutes. It
+   shows the sender, for example `T0123ABC/U0123ABC`, and proposes the pin
+   `control_plane.owner` together with `adapters.chat = "slack"` and
+   `adapters.inbound = "slack"`. One confirmation applies all three.
+3. It generates `WUWEI_TOTP_SECRET`, saves it to `.wuwei/env` and prints the
+   `otpauth://` URI for your authenticator app (section 4).
+4. It installs the listener, or restarts it when it is already installed (section 5).
+5. It ends with `bin/wuwei config check`.
+
+A value that is already set is kept and named, so run it again after editing
+`.wuwei/env` to restart the listener. When a step stops, the line says what to check in
+the Slack app settings, and running the command again picks up where it stopped.
+`bin/wuwei setup` leads into the same steps when you answer Slack to the chat question.
+Sections 2 to 5 are the same steps by hand, for reference.
 
 ## 1. Remote Control, no setup
 
@@ -28,11 +51,12 @@ Not relied on: a guaranteed proactive push, and Remote Control for headless `cla
 runs. Sessions started from the Slack DM (section 6) are headless, so they are not
 reachable through Remote Control; their questions come to the DM as decisions.
 
-A phone answer is not yet your outcome; see section 7.
+How a phone answer becomes your outcome: section 7.
 
 ## 2. The Slack app
 
-The rest of this page is optional. Set both Slack adapters in `.wuwei/config.toml`; the
+The rest of this page is optional, and `bin/wuwei setup slack` does the config and
+`.wuwei/env` steps of sections 2 to 5 for you. Set both Slack adapters in `.wuwei/config.toml`; the
 listener answers through the chat adapter, so remote operation replaces the
 `chat = "none"` the [daily path](daily.md) suggests for a solo owner. With
 `shepherd.min_reviewers = 0` the channel-post obligation stays not applicable.
@@ -92,7 +116,8 @@ It checks presence only, not whether the token works.
 
 ## 3. Pin your identity
 
-Only the sender pinned in `control_plane.owner = "T0123ABC/U0123ABC"` (your Slack team id,
+`bin/wuwei setup slack` shows the sender of your first DM message and pins it on your
+confirmation. Only the sender pinned in `control_plane.owner = "T0123ABC/U0123ABC"` (your Slack team id,
 a slash, your user id) can command. There is one owner per workspace. Until it is set,
 `bin/wuwei config check` prints
 `control_plane.owner: missing (<team id>/<user id>; see remote operation section 3)` and
@@ -135,7 +160,8 @@ With the pin set:
 ## 4. The second factor
 
 `plan` and `ask` need a second factor: a current TOTP code at the end of the message, or
-a `confirm` reply within 2 minutes. Generate a secret on the host:
+a `confirm` reply within 2 minutes. `bin/wuwei setup slack` generates the secret and
+prints the URI below. By hand, generate a secret on the host:
 
 ```sh
 python3 -c "import base64, secrets; print(base64.b32encode(secrets.token_bytes(20)).decode())"
@@ -160,6 +186,7 @@ only second factor)`; neither changes its exit code, and it never prints the val
 
 ## 5. Install the listener
 
+`bin/wuwei setup slack` installs the listener, or restarts it when it is installed.
 Optional settings in `.wuwei/config.toml`, defaults shown:
 
 ```toml
@@ -326,21 +353,35 @@ Reply with `approve D-3` (takes the recommendation), `option B on D-3`, or `drop
 (only when exactly one decision is pending; takes its Do nothing or Defer option).
 Anything else gets the command list. Replies need no factor.
 
-The reply is recorded as a `decision.replied` event: evidence, not your outcome. If the
-`plan` session that raised the decision is live, it resumes with "Decision D-3: option B.";
-otherwise the DM answers:
+Each reply is kept as a `decision.replied` event. What happens next depends on the
+decision's `Reversibility:`.
+
+A two-way decision can be undone, so your reply is your outcome: it is recorded at once,
+as `bin/wuwei decide` records it, with the Notes line `Decided at <time> in the owner DM.`,
+and items parked on it resume. Nothing is needed on the host. The DM answers:
 
 ```text
-Recorded D-3 option B. Confirm it on the host.
+Recorded D-3 option B as your outcome; it can be undone, so no host step is needed.
 ```
 
-The first answer stands. A second, different answer is not recorded:
+A one-way or `unsure` decision cannot be undone, so your reply is evidence, not your
+outcome, and the DM answers:
+
+```text
+Noted D-3 option B. D-3 cannot be undone, so confirm it on the host: decide D-3 B.
+```
+
+If the `plan` session that raised the decision is live, it resumes with
+"Decision D-3: option B." either way, after the recorded line for a two-way decision.
+
+For a one-way decision the first answer stands. A second, different answer is not
+recorded:
 
 ```text
 Not recorded: D-3 already has option B from this DM. Record the outcome on the host to change it.
 ```
 
-Either way, record the outcome with `bin/wuwei decide D-3 B`.
+Record a one-way outcome in a host terminal with `bin/wuwei decide D-3 B`.
 Until then `bin/wuwei nudges` and session start show
 `D-3 answered from the phone: option B, confirm with wuwei decide D-3 B`,
 `status --line` and the DM `status` reply count it as `phone answers 1`, and the report

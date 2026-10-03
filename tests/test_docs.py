@@ -480,11 +480,14 @@ def test_remote_runbook_matches_the_code():
     page = (SITE / 'remote.md').read_text()
     flat = ' '.join(page.split())
     assert '(remote.md)' in (SITE / 'daily.md').read_text()
-    headings = ['## 1. Remote Control, no setup', '## 2. The Slack app', '## 3. Pin your identity',
+    headings = ['## Connect Slack in one command', '## 1. Remote Control, no setup', '## 2. The Slack app', '## 3. Pin your identity',
                 '## 4. The second factor', '## 5. Install the listener', '## 6. Commands from the DM',
                 '## 7. Decisions on the phone', '## 8. Limits']
     positions = [page.index(f'\n{heading}\n') for heading in headings]
     assert positions == sorted(positions)
+    assert 'bin/wuwei setup slack' in page[positions[0]:positions[1]]
+    for name in ('remote.md', 'daily.md'):
+        assert 'A phone answer is not yet your outcome' not in (SITE / name).read_text(), name
     slack = (ROOT / 'adapters/chat/slack.py').read_text()
     for method in ('conversations.history', 'chat.postMessage'):
         assert method in slack and f'`{method}`' in page, method
@@ -504,7 +507,8 @@ def test_remote_runbook_matches_the_code():
         assert (ROOT / f'cli/wuwei/commands/{command}.py').is_file(), command
     for text in (remote.VOCABULARY, remote.CONFIRM, remote.CHANGED, remote.NOTHING, remote.UNAVAILABLE,
                  control_plane.HELP, 'Push when actions required', 'organisation Owner',
-                 'Recorded D-3 option B. Confirm it on the host.', 'decision.replied', 'wuwei decide',
+                 remote.RECORDED.format(identifier='D-3', option='B'),
+                 remote.NOTED.format(identifier='D-3', option='B'), 'decision.replied', 'wuwei decide',
                  'drafts approve', 'listen install', 'listen uninstall', 'listen dead',
                  'responder.enabled = false', 'stop all', 'loginctl enable-linger', 'resets at midnight',
                  'otpauth://totp/', 'algorithm=SHA1&digits=6&period=30', 'App Home', 'Messages Tab',

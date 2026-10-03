@@ -8,6 +8,7 @@ import re
 import shlex
 import shutil
 import sys
+import time
 import tomllib
 
 from wuwei import calibrate, references, registry, workspace
@@ -21,6 +22,12 @@ IDENTITY = re.compile(r'(.+?) <([^<>\s]+@[^<>\s]+)>')
 GITHUB = re.compile(r'(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)'
                     r'([^/\s]+/[^/\s]+?)(?:\.git)?/?')
 TOOLS = ('claude', 'gh', 'ziran')
+# ponytail: a fixed wait for the first DM message; a flag if owners need longer.
+WAIT_SECONDS, POLL_SECONDS = 300, 3
+TOKEN_HINT = ("copy the Bot User OAuth Token from your Slack app's OAuth & Permissions page "
+              '(remote operation section 2), then run bin/wuwei setup slack again')
+DM_HINT = ('in the Slack app settings turn on App Home, Messages Tab, and add the im:history bot scope '
+           'under OAuth & Permissions; then run bin/wuwei setup slack again')
 
 
 def register(subparsers):
@@ -32,6 +39,8 @@ def register(subparsers):
     parser.add_argument('--posture', metavar='PROFILE', help='starter profile name or local file')
     parser.add_argument('--repos', nargs='+', metavar='DIR',
                         help='directories whose child git repositories to add (default: the workspace)')
+    parser.add_argument('target', nargs='?', choices=('slack',),
+                        help='slack: connect the owner DM: token, pin, second factor, listener')
     parser.set_defaults(func=run)
 
 
@@ -62,6 +71,17 @@ def _edit(label, what, confirm, change):
         return UNRUN
 
 
+def _settle(raw, settings):
+    """raw with the settings applied; a key that is not a one-line assignment raises naming it."""
+    additions, edits = calibrate.settle(raw, settings)
+    for dotted, current, _ in edits:
+        if isinstance(current, dict):
+            raise ValueError(f'{dotted}: a table; set one of its keys'
+                             + (f', for example {dotted}.default' if 'default' in current else ''))
+        raise ValueError(f'{dotted}: not a one-line assignment; edit config.toml by hand')
+    return calibrate.apply(raw, additions)
+
+
 def set_value(args, confirm=None):
     """Owner action: set one config value after a host-terminal digest."""
     def change(root, raw):
@@ -73,13 +93,7 @@ def set_value(args, confirm=None):
         parsed = tomllib.loads(f'value = {args.value}\n')
         if list(parsed) != ['value']:
             raise ValueError(f'{args.value!r}: expected one TOML value')
-        additions, edits = calibrate.settle(raw, [(tuple(parts[:-1]), parts[-1], parsed['value'])])
-        for dotted, current, _ in edits:
-            if isinstance(current, dict):
-                raise ValueError(f'{dotted}: a table; set one of its keys'
-                                 + (f', for example {dotted}.default' if 'default' in current else ''))
-            raise ValueError(f'{dotted}: not a one-line assignment; edit config.toml by hand')
-        return calibrate.apply(raw, additions)
+        return _settle(raw, [(tuple(parts[:-1]), parts[-1], parsed['value'])])
 
     return _edit('config set', 'change', confirm, change)
 
@@ -159,6 +173,11 @@ def discover(root, dirs, config):
         remote = vcs.remote_url(resolved)
         url = remote.data['url'] if remote.exit == 0 else None
         found = GITHUB.fullmatch(url) if url else None
+        if url and not found:  # The host only: a remote URL can carry credentials.
+            from wuwei.interview import BACKLOG
+            host = re.match(r'(?:[A-Za-z][A-Za-z0-9+.-]*://)?(?:[^@/]*@)?([A-Za-z0-9.-]+)', url)
+            lines.append(f'{path}: {host[1] if host else "its origin"} is not GitHub; WUWEI reads GitHub '
+                         f'only today (other code hosts: {BACKLOG})')
         try:  # No origin: where gh repo create would put it, under the measured login.
             name = references.repository(found[1] if found else f'{login}/{candidate.name}' if url == '' and login
                                          else '')
@@ -221,7 +240,7 @@ def run(args, confirm=None):
     """Owner action: init, discover, one proposal and one digest, then doctor and one Ready or Next line."""
     from wuwei import integrity
     try:
-        return _setup(args, confirm)
+        return slack(confirm) if getattr(args, 'target', None) == 'slack' else _setup(args, confirm)
     except EOFError:
         print('wuwei setup: interview interrupted; nothing written', file=sys.stderr)
         return UNRUN
@@ -284,6 +303,7 @@ def _setup(args, confirm):
             print(f'Flagged {where} ({rule}), not proposed')
         profiles.record(root, accepted, names)
     snapshot_path = root / '.wuwei/calibration.json'
+    picked = {}
     if found['repos'] or not snapshot_path.exists():
         picked = interview.ask(
             [row['id'] for row in interview.QUESTIONS if not (args.shadow and row['id'] == 'posture')], names)
@@ -310,6 +330,11 @@ def _setup(args, confirm):
             return FINDINGS
         calibrate_command.record(root, results, diff, edits, None)
     optional = []
+    if 'chat' in picked and interview.effects('chat', picked['chat']).get('adapters.chat') == 'slack' \
+            and load_config(root)['adapters']['inbound'] == 'none':
+        print('Slack: connecting your DM now (bin/wuwei setup slack)')
+        if connect(root, confirm):
+            optional.append('bin/wuwei setup slack')
     try:
         if 'statusLine' not in init.settings(root)[1] and _yes(
                 'Show the WUWEI status line in Claude Code for this project?', True):
@@ -345,6 +370,111 @@ def _setup(args, confirm):
     text, code = ending(doctor.diagnose(), required, optional, gate.exit)
     print(text)
     return code
+
+
+def slack(confirm=None):
+    """Owner action: connect the owner DM, then the config check; the highest exit of both."""
+    from types import SimpleNamespace
+    from wuwei import integrity
+
+    if not sys.stdin.isatty():
+        raise OSError(integrity.HOST_TERMINAL)
+    code = connect(workspace.find_workspace(), confirm)
+    return max(code, config.run(SimpleNamespace()))
+
+
+def connect(root, confirm=None):
+    """Token, DM channel, pin and both adapters, TOTP secret, listener; a value already set is kept."""
+    import base64
+    import getpass
+    import secrets
+    from types import SimpleNamespace
+    from wuwei import env, remote
+    from wuwei.commands import watch
+
+    env.load(root)
+    new = {}
+    for name in ('SLACK_BOT_TOKEN', 'SLACK_OWNER_DM_CHANNEL'):
+        if os.environ.get(name):
+            print(f'{name}: already set, kept')
+    if not os.environ.get('SLACK_BOT_TOKEN'):
+        token = getpass.getpass('Slack bot token (hidden; Enter to skip): ').strip()
+        if not re.fullmatch(r'xoxb-[A-Za-z0-9-]+', token):
+            print('wuwei setup slack: ' + ('no bot token' if not token else 'that is not a bot token')
+                  + f'; {TOKEN_HINT}', file=sys.stderr)
+            return FINDINGS
+        new['SLACK_BOT_TOKEN'] = token
+    if not os.environ.get('SLACK_OWNER_DM_CHANNEL'):
+        channel = input('Owner DM channel ID (open your direct message with the app; the ID starts with D '
+                        'and is in the conversation details or link): ').strip()
+        if not re.fullmatch(r'D[A-Z0-9]+', channel):
+            print('wuwei setup slack: ' + ('no DM channel ID' if not channel else 'that is not a DM channel ID')
+                  + '; it starts with D and is in the details or link of your direct message with the app. '
+                  'Then run bin/wuwei setup slack again', file=sys.stderr)
+            return FINDINGS
+        new['SLACK_OWNER_DM_CHANNEL'] = channel
+    if new:
+        env.write(root, new)
+        env.load(root)
+        print(f'Saved {" and ".join(new)} to .wuwei/env (mode 0600)')
+    settings = [(('adapters',), 'chat', 'slack'), (('adapters',), 'inbound', 'slack')]
+    if re.fullmatch(remote.PIN, load_config(root)['control_plane']['owner']):
+        print('control_plane.owner: already set, kept')
+    else:
+        found = _first_dm(root, os.environ['SLACK_OWNER_DM_CHANNEL'])
+        if found.exit:
+            print('wuwei setup slack: ' + (f'{found.reason}; ' if found.reason else
+                                           'no message from the DM in 5 minutes; ') + DM_HINT, file=sys.stderr)
+            return found.exit
+        print(f'Message from {found.data}: pin it as control_plane.owner so only this sender '
+              'can command WUWEI from the DM.')
+        settings.append((('control_plane',), 'owner', found.data))
+    code = _edit('setup slack', 'Slack settings', confirm, lambda root, raw: _settle(raw, settings))
+    if code:
+        return code
+    if os.environ.get('WUWEI_TOTP_SECRET'):
+        print('WUWEI_TOTP_SECRET: already set, kept')
+    else:
+        secret = base64.b32encode(secrets.token_bytes(20)).decode()
+        env.write(root, {'WUWEI_TOTP_SECRET': secret})
+        env.load(root)
+        print('Saved WUWEI_TOTP_SECRET to .wuwei/env, the second factor for plan and ask. Add it to an '
+              'authenticator app by manual key entry (time based, SHA1, 6 digits, 30 seconds) or as a QR '
+              'code of this URI made on this host:\n'
+              f'otpauth://totp/WUWEI:owner?secret={secret}&issuer=WUWEI&algorithm=SHA1&digits=6&period=30')
+        print('Never paste the secret or the URI into a website.')
+    platform = watch.service_platform()
+    if platform not in ('darwin', 'linux'):
+        print('Listener: run bin/wuwei listen in a terminal that stays open')
+        return CLEAN
+    try:  # The listener reads .wuwei/env once at start: an installed one is restarted.
+        for action in (('uninstall',) if workspace.watch_unit(root, platform, name='listen')[1].exists()
+                       else ()) + ('install',):
+            watch.service(SimpleNamespace(listen_action=action, once=False, dry_run=False), 'listen', None)
+    except (OSError, ValueError) as exc:
+        print(f'wuwei setup slack: listener: {exc}; run bin/wuwei listen install', file=sys.stderr)
+        return FINDINGS
+    return CLEAN
+
+
+def _first_dm(root, channel):
+    """Result with the sender of the first DM message after now; exit 1 when none came in time."""
+    from wuwei.registry import Result
+
+    inbound = registry.load('inbound', {'adapters': {'inbound': 'slack'}})
+    start = int(workspace.now().timestamp())
+    print('Send any message to the app in Slack now; waiting up to 5 minutes.', flush=True)
+    for _ in range(WAIT_SECONDS // POLL_SECONDS):
+        result = inbound.poll(str(start), root=root)
+        if result.exit:
+            return result
+        # The poll reads 300 s back, so older messages are filtered here.
+        sender = next((event['sender'] for event in result.data
+                       if event['channel'] == channel and float(event['ts']) >= start), None)
+        if sender:
+            return Result(0, sender)
+        time.sleep(POLL_SECONDS)
+    return Result(1, None)
 
 
 def ending(rows, required, optional, gate=0):
