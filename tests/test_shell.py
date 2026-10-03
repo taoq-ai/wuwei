@@ -571,6 +571,36 @@ def test_command_mentions_skips_assignment_for_any_names():
     assert mentions('x=$(pwd); echo $x', {'push', 'commit'}) is False
 
 
+@pytest.mark.parametrize('text, expected', [
+    ('for r in a b; do git -C $r remote get-url origin; done', False),
+    ('git -C "$r" status', False),
+    ('git -C$r status', False),
+    ('gh -R $r issue list', False),
+    ('gh --repo $r issue list', False),
+    ('gh --repo=$r issue list', False),
+    ('git --git-dir $d log -1', False),
+    ('git --work-tree=$w status', False),
+    ('git -C "$(cat repo.txt)" log -1 | head -5', False),
+    ('git "$VERB" origin main', True),
+    ('git -C $r $VERB', True),
+    ('git -C "a b" "$VERB" origin main', True),
+    ('git -c "x.y=a;b" "$VERB" origin main', True),
+    ('git -c $cfg status', True),
+    ('git log $ref', True),
+    ('git p* -f origin main', True),
+    ("sh -c 'git $VERB origin main'", True),
+    ('git status; sh -c "$CMD"', True),
+    ('for r in */; do git -C $r status; done', True),
+    ('read v < f; git -C -C $v origin main', True),
+    ('read v < f; git --work-tree -C $v origin main', True),
+    ('read v < f; git --git-dir -C $v origin main', True),
+    ('git -C a -C $r status', False),
+])
+def test_command_mentions_ignores_directory_values(text, expected):
+    from wuwei.shell import mentions
+    assert mentions(text, {'push', 'commit'}) is expected
+
+
 def test_is_opaque_stdin():
     from wuwei.shell import is_opaque
     assert is_opaque(['python3', '-m', 'pytest', '-q']) is True

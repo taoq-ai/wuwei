@@ -167,6 +167,17 @@ def check(root, command):
     ('cd $(git rev-parse --show-toplevel) && ls', 0, ''),
     ('git push $(cat remote) main', 2, 'substitution'),
     ('echo $(git push origin main)', 2, 'substitution'),
+    ('git -C repo symbolic-ref refs/remotes/origin/HEAD', 0, ''),
+    ('git describe --tags', 0, ''),
+    ('git show-ref', 0, ''),
+    ('git rev-parse HEAD', 0, ''),
+    ('git config --get remote.origin.url', 0, ''),
+    ('git ls-remote origin', 0, ''),
+    ('git remote get-url origin', 0, ''),
+    ('for r in a b; do git -C $r remote get-url origin; done', 0, ''),
+    ('git -C "$(cat repo.txt)" log -1 | head -5', 0, ''),
+    ('for r in a b; do git -C $r push origin main; done', 2, 'control flow'),
+    ('x=$(cat f); gh pr merge $x', 2, 'substitution'),
 ])
 def test_decisions(workspace, profile, command, code, reason):
     (workspace / 'push.sh').write_text('terraform apply\n')

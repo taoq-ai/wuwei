@@ -280,6 +280,12 @@ def test_policy_actions(case, profile, command, code, hint):
     ('python3 -m pytest -q && gh pr view 1', 0), ('gh pr view 1 | python3', 2),
     ('x=$(pwd); echo $x', 0), ('cd $(git rev-parse --show-toplevel) && ls', 0),
     ('gh pr create $(echo x)', 2),
+    ('for r in a b; do gh -R $r issue list; done', 0),
+    ('for r in a b; do gh -R $r pr list; done', 2),
+    ('for r in a b; do gh api -X POST repos/$r/x; done', 2),
+    ('for a in x; do gh alias set $a "pr merge"; done', 2),
+    ('for i in 1; do gh issue comment 1 --body-file body.txt; done', 2),
+    ('if true; then gh issue comment 1 -F body.txt; fi', 2),
 ])
 def test_bypasses_and_relevance(case, command, code):
     root, _, _ = case

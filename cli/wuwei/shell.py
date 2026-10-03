@@ -68,6 +68,8 @@ _TOKEN = re.compile(r'(?P<space>[ \t\r]+)|(?P<comment>\#[^\n]*)|'
 _ASSIGNMENT = re.compile(r'[A-Za-z_][A-Za-z_0-9]*=')
 _PATH_COMMANDS = ('cd', 'pushd', 'popd', 'tee', 'cp', 'mv', 'sed', 'dd', 'truncate')
 _GUARDED = re.compile(r'(?<![.\w])(?:git|gh)\b')
+# git and gh options whose value is a directory or repository, never a verb.
+_VALUES = ('-C', '-R', '--repo', '--git-dir', '--work-tree')
 _QUOTED_PART = re.compile(r''' '[^']*'|"(?:\\[\s\S]|[^"\\])*"|\\[\s\S]|[^'"\\]+ ''', re.VERBOSE)
 
 
@@ -108,7 +110,16 @@ def mentions(raw, names, *, script=False) -> bool:
         return True
     # Redirect targets do not construct a Git verb. Their bodies were checked above.
     unquoted = re.sub(r'(?:[0-9]*[<>]+[!&|]?|&>>?)\s*[^\s;&|]+', '', unquoted)
-    if _GUARDED.search(unquoted) and not _literal(unquoted):
+    # A word built at run time can be a git or gh verb; a directory or repository value cannot.
+    # ponytail: an unquoted value can still word-split into a verb (r='. push'; git -C $r
+    # origin main); the worktree pre-push hook and protected refs anchor that (spec 4.5).
+    words = unquoted.split()
+    if _GUARDED.search(unquoted) and any(
+            # A flag whose value is itself a value flag (-C -C $v) leaves $v in the verb slot.
+            not _literal(word) and not (index and words[index - 1] in _VALUES
+                                        and (index < 2 or words[index - 2] not in _VALUES))
+            and not re.match(r'-[CR]|--(?:repo|git-dir|work-tree)=', word)
+            for index, word in enumerate(words)):
         return True
     # An assignment prefix is not a command name; the word after it is.
     return any(not _literal(word) for word in re.findall(
