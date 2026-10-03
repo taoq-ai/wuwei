@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import statistics
+from time import monotonic
 import tomllib
 
 from wuwei import registry, workspace
@@ -126,6 +127,33 @@ def toolchain(checkout, repo):
             if match:
                 found.append(_finding('fast_check', f'make {match[1]}', 'Makefile', number))
     return found
+
+
+LINT = ('ruff check .', 'black --check .', 'npm run lint', 'make lint')
+UNMEASURED = 'test runner, unmeasured; run bin/wuwei calibrate --measure'
+
+
+def classify(checkout, commands, runner, seconds, root=None):
+    """{command: (fast, note)}: lint and format are fast; a test runner only when measured fast."""
+    checks = {}
+    for command in commands:
+        if command in LINT:
+            checks[command] = (True, 'lint or format')
+        elif runner is None:
+            checks[command] = (False, UNMEASURED)
+        else:
+            # ponytail: one full timed run, capped by the checks port's 300 s timeout; add a
+            # collect-only command or a port timeout if --measure proves too slow.
+            start = monotonic()
+            result = runner.run(str(checkout), command, root=root)
+            took = monotonic() - start
+            ok = isinstance(result, registry.Result) and result.exit == 0
+            note = f'test runner, measured {took:.1f} s, threshold {seconds} s'
+            if not ok:
+                note += f", exit {getattr(result, 'exit', 2)}" + (
+                    f': {result.reason}' if getattr(result, 'reason', '') else '')
+            checks[command] = (ok and took <= seconds, note)
+    return checks
 
 
 def _workflows(checkout, found):
@@ -423,7 +451,8 @@ def _assignment(key, line):
 def proposal(raw, targets):
     """Additive config proposal for [(repo index, facts)]: (additions, hand edits).
 
-    Only keys absent from the raw TOML are added, plus deploy lists still at a one-line [];
+    Only keys absent from the raw TOML are added, plus deploy lists and fast_checks still at a
+    one-line [];
     any other present key that differs is listed for a hand edit. Never proposes a weakening.
     """
     present = tomllib.loads(raw)
@@ -445,7 +474,7 @@ def proposal(raw, targets):
         registers['boundary'].update(facts['boundary'])
     wanted += [(('deploy',), key, sorted(values)) for key, values in deploy.items() if values]
     wanted += [((table,), name, text) for table, names in registers.items() for name, text in names.items()]
-    deploy_lines = [line for path, lines in _labelled(raw) if path == ('deploy',) for line in lines]
+    sections = _labelled(raw)
     additions, edits = [], []
     for path, key, value in wanted:
         table = _table(present, path)
@@ -453,7 +482,8 @@ def proposal(raw, targets):
             additions.append((path, key, value))
         elif path[0] in registers:
             continue
-        elif path == ('deploy',) and table[key] == [] and any(_empty_list(key, l) for l in deploy_lines):
+        elif ((path == ('deploy',) or key == 'fast_checks') and table[key] == []
+              and any(_empty_list(key, l) for p, lines in sections if p == path for l in lines)):
             additions.append((path, key, value))
         elif (not set(value) <= set(table[key]) if isinstance(value, list) else table[key] != value):
             edits.append(('.'.join(map(str, (*path, key))), table[key], value))
@@ -540,14 +570,21 @@ def _port(result, reader):
         return None
 
 
-def survey(root, config, selected, *, style=True):
-    """Profile each selected (index, repo), then read commit style and the PR baseline."""
+def survey(root, config, selected, *, style=True, measure=False):
+    """Profile and classify each selected (index, repo), then read commit style and the PR baseline.
+
+    Test runners run only with measure, through the checks port.
+    """
     results = []
+    runner = registry.load('checks', config) if measure else None
     for index, repo in selected:
         checkout = (Path(root) / Path(repo['path']).expanduser()).resolve()
         if not checkout.is_dir():
             raise OSError(f"{repo['name']}: checkout {repo['path']} is not a directory")
-        results.append({'index': index, 'repo': repo, 'checkout': checkout, **profile(checkout, repo)})
+        result = {'index': index, 'repo': repo, 'checkout': checkout, **profile(checkout, repo)}
+        result['checks'] = classify(checkout, result['facts']['fast_checks'], runner,
+                                    config['calibrate']['fast_check_seconds'], root)
+        results.append(result)
     vcs = registry.load('vcs', config) if style else None
     host = registry.load('code_host', config)
     for result in results:
@@ -555,6 +592,17 @@ def survey(root, config, selected, *, style=True):
                            if style else None)
         result['baseline'] = _port(host.merged_prs(result['repo']['name'], root=root), baseline)
     return results
+
+
+def proposed(result):
+    """The facts to propose: only the fast checks; result['facts'] stays raw for drift."""
+    return {**result['facts'], 'fast_checks': [c for c, (fast, _) in result['checks'].items() if fast]}
+
+
+def ci_only(results):
+    """(repo name, command, note) for every check not proposed as a fast check."""
+    return [(r['repo']['name'], c, note) for r in results for c, (fast, note) in r['checks'].items()
+            if not fast]
 
 
 def settle(raw, settings):
@@ -583,7 +631,7 @@ def settle(raw, settings):
 
 def propose(raw, results, settings=()):
     """Return the proposed config text, its diff and the hand edits; owner settings apply last."""
-    additions, edits = proposal(raw, [(r['index'], r['facts']) for r in results])
+    additions, edits = proposal(raw, [(r['index'], proposed(r)) for r in results])
     text = apply(raw, additions)
     extra, more = settle(text, settings)
     text, edits = apply(text, extra), edits + more
@@ -606,6 +654,13 @@ LABELS = {'language': 'language', 'fast_check': 'fast check', 'ci_check': 'CI ch
           'skipped': 'skipped'}
 
 
+def _label(result, finding):
+    if finding['kind'] != 'fast_check':
+        return LABELS[finding['kind']]
+    fast, note = result['checks'][finding['value']]
+    return f"{'fast check' if fast else 'CI only'} ({note})"
+
+
 def report(results, diff, edits, written, error=None):
     """Markdown report: every finding with its file and line, then the proposal and next step."""
     lines = ['# Calibration', '']
@@ -616,7 +671,7 @@ def report(results, diff, edits, written, error=None):
             if rows or title in ('Toolchain', 'CI checks', 'Conventions', 'Deploy signals'):
                 lines.append(f'### {title}')
                 lines += [f"- {': '.join(f['value']) if isinstance(f['value'], tuple) else f['value']} "
-                          f"({f['source']}) {LABELS[f['kind']]}" for f in rows] or ['- none found']
+                          f"({f['source']}) {_label(result, f)}" for f in rows] or ['- none found']
                 lines.append('')
         style = result['style']
         lines += ['### Commit style', '- unmeasured' if style is None else
@@ -632,6 +687,9 @@ def report(results, diff, edits, written, error=None):
         lines += ['## Config differs; edit by hand', '']
         lines += [f'- {key}: config has {json.dumps(current)}, detected {json.dumps(detected)}'
                   for key, current, detected in edits] + ['']
+    if ci_only(results):
+        lines += ['## CI only (not proposed as fast checks)', '']
+        lines += [f'- {name}: {command} ({note})' for name, command, note in ci_only(results)] + ['']
     lines += ['## Charter proposals', ''] + [f'- {path}' for path in written] + (
         [] if written else ['- none']) + ['']
     lines += ['## Next step', '',

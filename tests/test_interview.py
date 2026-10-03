@@ -58,7 +58,8 @@ def test_settle_only_grows_the_deploy_deny_list():
 
 def test_propose_keeps_calibrate_and_interview_deny_patterns():
     raw = TWO + '[deploy]\nworkflows = []\ndeny = []\n'
-    results = [{'index': 0, 'facts': calibrate.profile(FIXTURES / 'node', {'name': 'acme/one'})['facts']}]
+    results = [{'index': 0, 'facts': calibrate.profile(FIXTURES / 'node', {'name': 'acme/one'})['facts'],
+                'checks': {}}]
     text, diff, edits = calibrate.propose(raw, results, [(('deploy',), 'deny', ['twine upload*'])])
     assert tomllib.loads(text)['deploy']['deny'] == ['npm run deploy*', 'twine upload*']
     assert '+deny = ' in diff

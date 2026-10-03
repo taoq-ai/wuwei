@@ -16,6 +16,8 @@ def register(subparsers):
     parser.add_argument('target', nargs='?', metavar='NAME|SOURCE',
                         help='profile name to export; starter name, https URL or file to import')
     parser.add_argument('--repo', help='calibrate only this configured repository')
+    parser.add_argument('--measure', action='store_true',
+                        help='time each test runner once through the checks port (runs repository commands)')
     parser.add_argument('--skip', action='append', default=[], metavar='KEY',
                         help='leave this profile key or charters.<role> out of the import')
     interview = parser.add_mutually_exclusive_group()
@@ -43,7 +45,7 @@ def run(args):
             raise ValueError(calibrate.NO_REPOS)
         if not selected:
             raise ValueError(f'unknown repository {args.repo!r}; use a configured repos.name')
-        results = calibrate.survey(root, config, selected)
+        results = calibrate.survey(root, config, selected, measure=args.measure)
     except (OSError, ValueError) as exc:
         print(f'wuwei calibrate: {exc}', file=sys.stderr)
         return UNRUN
@@ -59,7 +61,7 @@ def run(args):
     for result in results:
         name = result['repo']['name']
         slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
-        for role, text in calibrate.charter_proposals(result['repo'], result['facts'],
+        for role, text in calibrate.charter_proposals(result['repo'], calibrate.proposed(result),
                                                       result['style']).items():
             path = day / 'proposals' / f'calibration-{slug}-{role}.json'
             workspace.atomic_write(path, json.dumps({
@@ -72,8 +74,10 @@ def run(args):
     print(diff or ('Could not place the proposal: ' + error if error else 'No config.toml changes'))
     for key, current, detected in edits:
         print(f'Config differs; edit by hand: {key}')
-    print('Next: review the report, run bin/wuwei config promote in a host terminal, '
-          'then bin/wuwei promote for the charter proposals.')
+    for name, command, note in calibrate.ci_only(results):
+        print(f'CI only, not proposed as a fast check: {name}: {command} ({note})')
+    print(f"Next: review the report, run bin/wuwei config promote{' --measure' if args.measure else ''} "
+          'in a host terminal, then bin/wuwei promote for the charter proposals.')
     if error or any(r['style'] is None or r['baseline'] is None for r in results):
         print('wuwei calibrate: ' + (error or 'commit style or PR baseline unmeasured'), file=sys.stderr)
         return UNRUN
