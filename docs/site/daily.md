@@ -63,7 +63,8 @@ exact command for each: a repository it could not measure, a credential variable
 any time; with nothing new it proposes nothing. For a solo owner then run
 `bin/wuwei config set shepherd.min_reviewers 0`. Then run `bin/wuwei doctor`; it checks the
 install, host, workspace, gates and guards in one pass and prints the fix for anything that
-is not ok. Edit your goals in a host terminal with
+is not ok. You do not write goals by hand: the lead proposes them at the first morning plan
+and the planner records the ones you approve. You can change them later with
 `bin/wuwei goals edit`. [Configuration](configuration.html) lists every key.
 
 `--shadow` starts a first week in the observe posture (on an existing workspace it proposes
@@ -80,7 +81,11 @@ Run `/wuwei plan` in Claude Code. The planner registers its session
 (`wuwei plan session`), sweeps live work, asks the lead for candidates, orders them with
 `wuwei rank` and writes the proposal with `wuwei plan propose`. It then asks you one
 `Morning gate` question per decision: goals, queue, seat policy, CAP, envelope and
-carry-over. Nothing is dispatched before your answers. On approval it records them with
+carry-over. Nothing is dispatched before your answers. While `memory/goals.md` has no goals,
+the lead proposes them, `plan.md` shows them as provisional and the goals question shows the
+blocks. On approval the planner records them with
+`wuwei goals edit --file .wuwei/days/<date>/goals.md`; under the strict posture the hook
+refuses that call and prints the command for a host terminal. It then records the gate with
 `wuwei plan approve --items <ids> --goals-confirmed`.
 
 ## 4. Through the day

@@ -31,16 +31,19 @@ def run(args):
     try:
         if args.action == 'template':
             root = workspace.find_workspace()
-            identifiers = list(goals.parse((root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')))
-            if not identifiers:
-                raise ValueError('memory/goals.md needs at least one G-n goal for plan template')
+            text = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
+            goal = (next(iter(goals.parse(text))) if goals.defined(text) else
+                    {'id': 'G-1', 'outcome': 'Replace with the outcome',
+                     'measure': 'Replace with the measure', 'target': 'Replace with the target',
+                     'date': workspace.now().date().isoformat(), 'priority': 1})
             from wuwei.commands.rank import candidate_template
             framework = workspace.load_config(root)['prioritisation']['framework']
-            print(json.dumps({'goals': [identifiers[0]], 'cap': 1,
+            print(json.dumps({'goals': [goal], 'cap': 1,
                 'seat_policy': {'builder': {'runtime': 'claude', 'model': 'sonnet'}},
                 'envelope': {'start': '09:00', 'end': '17:00', 'net_build_hours': 6},
                 'sweep': {'manual': 'unmeasured: replace with discovery evidence'},
-                'candidates': [candidate_template(identifiers[0], framework)]}, indent=2))
+                'candidates': [candidate_template(goal if isinstance(goal, str) else goal['id'],
+                                                  framework)]}, indent=2))
         elif args.action == 'session':
             plan.session(args.session_id, take_over=args.take_over)
         elif args.action == 'propose':

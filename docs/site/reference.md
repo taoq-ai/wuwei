@@ -73,7 +73,7 @@ Run `bin/wuwei plan template` in a workspace for a complete lead JSON skeleton. 
 
 | Key | Content |
 | --- | --- |
-| `goals` | Nonempty list of `G-n` identifiers in `.wuwei/memory/goals.md`. |
+| `goals` | Nonempty list of `G-n` identifiers in `.wuwei/memory/goals.md`; while it has no goals, a list of goal objects with `id`, `outcome`, `measure`, `target`, `date` and `priority`. |
 | `candidates` | List of candidate objects described below. |
 | `seat_policy` | Role to `{ "runtime": "claude", "model": "sonnet" }` mapping. |
 | `envelope` | `start`, `end`, and nonnegative `net_build_hours`. |
@@ -353,7 +353,7 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei mcp decide` | yes |
 | `bin/wuwei drafts approve <id>` | yes |
 | `bin/wuwei drafts drop <id>` | no |
-| `bin/wuwei goals edit` and `voice edit` | no |
+| `bin/wuwei goals edit` and `voice edit` (the planner may record what the morning gate approved with `--file`, outside strict) | no |
 | `bin/wuwei watch uninstall` | no |
 | `bin/wuwei listen uninstall` | no |
 | `bin/wuwei remote ack` | yes |

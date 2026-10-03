@@ -1,6 +1,7 @@
 # Goals
 
-Owner: replace this guide with one block per goal before the morning plan.
+The lead proposes goals at the morning plan, you confirm them in the gate question, and the
+planner records them here. You can edit them later with `bin/wuwei goals edit`.
 Each block uses this shape:
 
     ## G-1
@@ -10,4 +11,4 @@ Each block uses this shape:
     date: 2026-10-30
     priority: 1
 
-Priority 1 is highest. Seats propose changes; only the owner edits this file.
+Priority 1 is highest.

@@ -411,6 +411,12 @@ assumptions, 5.3; records of classes running at L2 or L3, which cruise mode answ
 commands, records of classes at L0 or L1). It closes with: nothing else is a question. A
 seat does not ask what it may decide.
 
+Records (owner, 2026-10-03, #357). The records under `.wuwei/` are written by the workflow
+from the owner's answers; no step asks the owner to create or edit a file by hand. The owner
+answers questions (in the session, in the DM, or y/N at a terminal) and may edit any record
+afterwards; the planner records. The host terminal remains for the strict posture and for
+credentials.
+
 ### 5.3 Rules
 
 - Tracks. SLICE (default): no contract, boundary, schema or infrastructure change and under
@@ -531,8 +537,9 @@ cannot be computed reports "unmeasured", never zero.
 ### 5.7 Goals, discovery and prioritisation (owner, 2026-09-28)
 
 Goals. `memory/goals.md` holds the owner's goals, one block each: id (`G-n`), outcome, measure,
-target, date, priority. Only the owner edits it; seats and the steward may propose changes
-(6.8) but `wuwei promote` refuses a goal change that the owner has not approved at the
+target, date, priority. While it has none, the lead proposes goals in its JSON, the morning
+gate shows them and the planner records the approved blocks with `wuwei goals edit --file`
+(5.2); later, seats and the steward may propose changes (6.8) but `wuwei promote` refuses a goal change that the owner has not approved at the
 morning gate. The morning gate confirms the day's goals.
 
 Discovery, all day. The lead runs discovery at the morning plan, at each sweep, and whenever
