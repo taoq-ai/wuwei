@@ -187,7 +187,7 @@ def test_pr_act_decision_is_routed_and_nudges(case, monkeypatch, capsys):
     assert any(json.loads(line)['kind'] == 'decision.routed' for line in lines)
 
     def pending():
-        assert main(['nudges']) == 0
+        assert main(['nudges', '--json']) == 0
         return [row for row in json.loads(capsys.readouterr().out)
                 if row['source'] == 'decision.pending' and identifier in row['reason']]
     assert [(row['tier'], row['lane']) for row in pending()] == [('nudge', 'Decisions')]

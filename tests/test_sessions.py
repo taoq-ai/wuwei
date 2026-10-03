@@ -238,7 +238,7 @@ def test_wake_goes_to_the_new_planner(root, monkeypatch):
 
 def nudges(capsys, source=None):
     capsys.readouterr()
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--json']) == 0
     rows = json.loads(capsys.readouterr().out)
     return [row for row in rows if source is None or row['source'] == source]
 

@@ -43,14 +43,14 @@ def test_nudges_show_current_conditions(root, capsys):
     state.append_event('watch: sweep', {'owed': 1, 'unreadable': 0, 'exit': 1}, root)
     state.append_event('decision.one_way', {'blocking': False}, root)
     state.append_event('work.outside_goals', {}, root)
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--json']) == 0
     rows = json.loads(capsys.readouterr().out)
     assert len(rows) == 3
     assert {row['source'] for row in rows} == {'watch: sweep', 'decision.one_way', 'work.outside_goals'}
     from wuwei.commands.status import snapshot
     assert snapshot(workspace.day_dir(root))['nudges'] == len(rows)
     state.append_event('watch: sweep', {'owed': 0, 'unreadable': 0, 'exit': 0}, root)
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--json']) == 0
     assert len(json.loads(capsys.readouterr().out)) == 2
 
 
@@ -290,7 +290,7 @@ def test_nudges_on_a_workspace_without_day_state_lists_nothing(tmp_path, monkeyp
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--json']) == 0
     assert json.loads(capsys.readouterr().out) == []
 
 
@@ -305,7 +305,7 @@ def test_watch_not_started_today_is_off(root, monkeypatch, capsys):
     assert attention(day) == [] and snapshot(day)['watch'] == 'off'
     assert main(['status', '--line']) == 0
     assert 'pages 0 | nudges 0 | watch off' in capsys.readouterr().out
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--json']) == 0
     assert json.loads(capsys.readouterr().out) == []
 
 
@@ -326,7 +326,7 @@ def test_installed_watch_without_clock_today_is_dead_until_uninstalled(root, tmp
     capsys.readouterr()
     assert main(['status', '--line']) == 0
     assert 'pages 1 | nudges 0 | watch dead' in capsys.readouterr().out
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--json']) == 0
     assert [row['source'] for row in json.loads(capsys.readouterr().out)] == ['watch: health']
     assert main(['watch', 'uninstall']) == 0
     assert watch.health(root) == (0, 'watch off: no clock line today')
@@ -353,7 +353,7 @@ def test_dead_watch_pages_until_a_fresh_clock(root, monkeypatch, capsys):
     assert attention(day)[0]['tier'] == 'page' and snapshot(day)['watch'] == 'dead'
     assert main(['status', '--line']) == 0
     assert 'pages 1 | nudges 0 | watch dead' in capsys.readouterr().out
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--json']) == 0
     assert [row['source'] for row in json.loads(capsys.readouterr().out)] == ['watch: health']
     state.append_event('watch: sweep', {'reply_owed': 0, 'visibility_owed': 0, 'unreadable': 0,
                                         'owed': 0, 'exit': 0, 'integrity_owed': 0}, root)

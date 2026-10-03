@@ -472,10 +472,12 @@ sweeps all read watch health the same way, whatever the last sweep recorded:
 
 `watch unmeasured` means watch health cannot be read; it is one nudge.
 
-Run `bin/wuwei nudges` to list current nudges and pages with their sources. Its
-entry count matches the page and nudge counts in `bin/wuwei status --line`.
-Routine progress such as plan approval, build starts and checks, and a skipped call to a
-tracker set to `none` is silent. A nudge clears when its cause clears: a draft nudge when
+Run `bin/wuwei nudges` to list current nudges and pages, one line per cause with the
+command to run next; identical causes are merged with a count. `bin/wuwei nudges --json`
+lists every entry with its source, and its entry count matches the page and nudge counts
+in `bin/wuwei status --line`.
+Routine progress such as plan approval, build starts and checks, and a call to any
+adapter set to `none` is silent. A nudge clears when its cause clears: a draft nudge when
 the draft is sent or dropped, a merge policy nudge when the PR merges or closes.
 
 ## Running the listener

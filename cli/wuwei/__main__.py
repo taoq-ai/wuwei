@@ -6,6 +6,20 @@ import sys
 from wuwei import env, redact
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
+# Top-level help groups, in the order printed; plumbing shows only with --all.
+GROUPS = (
+    ('Daily: the session runs these through the day',
+     'next status nudges plan decision worktree brief build dispatch pr merge reply discover '
+     'note metrics report retro close steward'),
+    ('Owner: run these in your own host terminal',
+     'setup init config calibrate goals voice drafts remote mcp outbound watch listen '
+     'dashboard promote consolidate'),
+    ('Recovery: when something is stuck',
+     'doctor why state shadow heartbeat integrity runtime sessions'),
+    ('Plumbing: hooks, seats and the plugin call these',
+     'agents board event fast-checks git-hook hook index memory payload rank signal sweep verdict'),
+)
+
 
 def main(argv=None):
     output, errors = redact.Output(sys.stdout), redact.Output(sys.stderr)
@@ -54,7 +68,7 @@ def _main(argv=None):
     from pathlib import Path
     from wuwei import commands
     parser = argparse.ArgumentParser(prog="wuwei")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command", required=True, metavar="<command>")
     try:
         manifest = Path(__file__).resolve().parents[2] / ".claude-plugin/plugin.json"
         version = json.loads(manifest.read_text())["version"]
@@ -75,6 +89,9 @@ def _main(argv=None):
         print(f"wuwei: {str(exc) or type(exc).__name__}", file=sys.stderr)
         return UNRUN
 
+    if argv and set(argv) <= {"-h", "--help", "--all"}:
+        print(_help(parser, subparsers, "--all" in argv))
+        return CLEAN
     try:
         args = parser.parse_args(argv)
     except SystemExit:
@@ -94,6 +111,24 @@ def _call(func, args):
     except BaseException as exc:
         print(f"wuwei {args.command}: {str(exc) or type(exc).__name__}", file=sys.stderr)
         return UNRUN
+
+
+def _help(parser, subparsers, everything):
+    """Top-level help grouped by who runs each command."""
+    # argparse keeps the one-line command help only on _choices_actions (3.11 to 3.14).
+    helps = {action.dest: action.help or "" for action in subparsers._choices_actions}
+    grouped = {name for _, names in GROUPS for name in names.split()}
+    groups = [group for group in GROUPS if everything or not group[0].startswith("Plumbing")]
+    groups.append(("Other", " ".join(sorted(set(helps) - grouped))))
+    lines = [parser.format_usage().rstrip()]
+    for heading, names in groups:
+        listed = [name for name in names.split() if name in helps]
+        if listed:
+            lines += ["", heading, *(f"  {name:<13} {helps[name]}" for name in listed)]
+    lines += ["", "bin/wuwei <command> --help shows its options."]
+    if not everything:
+        lines.append("bin/wuwei --help --all also lists the plumbing commands.")
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

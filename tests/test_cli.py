@@ -107,6 +107,7 @@ def test_help(plugin):
     assert result.returncode == 0, result.stderr
     assert "probe" in result.stdout
     assert "Exercise the exit contract" in result.stdout
+    assert result.stdout.index("\nOther") < result.stdout.index("  probe ")
     assert result.stderr == ""
 
 
@@ -281,3 +282,24 @@ def test_dispatch_falls_back_to_discovery(plugin, candidate_exists):
     result = run_cli(plugin, 'scan-probe', 'findings')
     assert result.returncode == 1, result.stderr
     assert result.stdout == result.stderr == ''
+
+
+def test_issue_acceptance_grouped_help(capsys):
+    import re
+    from wuwei.__main__ import main
+    names = lambda text: re.findall(r'^  ([a-z-]+) ', text, re.M)
+    assert main(['--help']) == 0
+    out = capsys.readouterr().out
+    daily, owner, recovery = (out.index(f'\n{name}') for name in ('Daily', 'Owner', 'Recovery'))
+    assert daily < out.index('\n  next ') < owner < out.index('\n  setup ') < recovery < out.index('\n  doctor ')
+    assert '\nPlumbing' not in out and '\nOther' not in out and '{agents,' not in out
+    assert not {'hook', 'event', 'git-hook', 'payload', 'signal', 'board'} & set(names(out))
+    assert 'bin/wuwei --help --all' in out
+    assert main(['-h']) == 0 and capsys.readouterr().out == out
+    modules = {path.stem.replace('_', '-') for path in (ROOT / 'cli/wuwei/commands').glob('*.py')
+               if not path.stem.startswith('_')}
+    for argv in (['--help', '--all'], ['--all', '--help'], ['--all']):
+        assert main(argv) == 0
+        out = capsys.readouterr().out
+        assert '\nPlumbing' in out
+        assert sorted(names(out)) == sorted(modules)

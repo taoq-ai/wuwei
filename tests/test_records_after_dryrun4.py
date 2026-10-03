@@ -25,7 +25,7 @@ def test_steward_run_clears_earlier_due_nudge(tmp_path, monkeypatch, capsys, eve
     (tmp_path / '.wuwei/config.toml').write_text('')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--json']) == 0
     rows = [row for row in json.loads(capsys.readouterr().out) if row['source'] == 'steward.due']
     assert len(rows) == count
     assert main(['status', '--json']) == 0

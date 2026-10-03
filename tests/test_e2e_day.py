@@ -62,10 +62,10 @@ def test_scripted_day(day):
     from wuwei import state
     state.append_event('watch: clock', {}, day.root)
     day.patch.setenv('WUWEI_NOW', '2026-09-29T12:30:00Z')
-    pages = [row for row in json.loads(day.run('nudges')) if row['source'] == 'watch: health']
+    pages = [row for row in json.loads(day.run('nudges', '--json')) if row['source'] == 'watch: health']
     assert [row['tier'] for row in pages] == ['page']
     state.append_event('watch: clock', {}, day.root)
-    assert not [row for row in json.loads(day.run('nudges')) if row['source'] == 'watch: health']
+    assert not [row for row in json.loads(day.run('nudges', '--json')) if row['source'] == 'watch: health']
     from test_decision import VALID
     (day.directory / 'decisions/D-1.md').write_text(VALID.replace(
         'Reversibility: two-way', 'Reversibility: one-way').replace('Decided-by: seat', 'Decided-by: owner'))
