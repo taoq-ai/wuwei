@@ -65,6 +65,21 @@ def test_config_check_floor_finding(checked, capsys):
     assert 'security.areas.records' in out.err and 'floor' in out.err
 
 
+def test_config_check_mcp_block_line(checked, capsys):
+    # #351: a non-empty scanner.mcp.block is named against the posture default; reported only.
+    plain, _ = checked('[security]\nposture = "observe"\n', capsys)
+    code, out = checked('[security]\nposture = "observe"\n[scanner.mcp]\nblock = ["critical"]\n', capsys)
+    [line] = [line for line in out.out.splitlines() if 'scanner.mcp.block' in line]
+    assert code == plain and 'scanner.mcp.block (critical)' in line and 'no effect under observe' in line
+    _, out = checked('[scanner.mcp]\nblock = ["critical"]\n', capsys)
+    [line] = [line for line in out.out.splitlines() if 'scanner.mcp.block' in line]
+    assert 'on top of the guarded default' in line and 'no effect' not in line
+    _, out = checked('[security.areas]\nmcp = "off"\n[scanner.mcp]\nblock = ["critical"]\n', capsys)
+    assert 'no effect under guarded (mcp: off)' in out.out
+    _, out = checked('', capsys)
+    assert 'scanner.mcp.block' not in out.out
+
+
 def test_config_check_prints_posture(checked, capsys):
     plain, _ = checked('', capsys)
     code, out = checked('[security.areas]\nmcp = "off"\n', capsys)

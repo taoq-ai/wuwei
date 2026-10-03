@@ -131,6 +131,12 @@ def scan(directory, classified_state=None):
                     if kind == 'guard.would_refuse' and isinstance(payload, dict):
                         reason = (f'{payload.get("guard")}: {payload.get("reason")} '
                                   f'(warn: security.areas.{payload.get("area")})')
+                    if kind == 'mcp.finding' and isinstance(payload, dict):
+                        from wuwei.mcp import DECIDE, NAME  # #351: scanner text only if it is a name.
+                        shown = [value if isinstance(value, str) and NAME.fullmatch(value) else 'unnamed'
+                                 for value in (payload.get('severity'), payload.get('drift_type'),
+                                               payload.get('server_name'))]
+                        reason = 'MCP {} {} finding on {}: run '.format(*shown) + DECIDE
                     current[key] = {'tier': tier, 'source': kind, 'lane': lane, 'reason': reason}
     # Live health, not the last sweep's count: a partial sweep event must not hide a dead watch.
     current = {key: value for key, value in current.items() if key[:2] != ('watch: sweep', 'watch')}

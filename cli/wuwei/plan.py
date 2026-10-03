@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import re
+import sys
 
 from wuwei import discovery, dispatch, goals, rank, sessions, state, workspace
 
@@ -115,6 +116,8 @@ def propose(data, root=None):
     gate = mcp.cached(root)  # The posture decides refusal; the sweep shows the measurement.
     if gate.exit:
         raise (state.StateError if gate.exit == 1 else OSError)(gate.reason)
+    if measured.exit:  # #351: a finding the posture warns on is printed, not only filed.
+        print(measured.reason, file=sys.stderr)
     data['sweep']['mcp'] = measured.reason or 'MCP registry: no attached servers'
     data['candidates'] = rank.rank(data['candidates'], framework, goal_list)
     directory = workspace.day_dir(root)

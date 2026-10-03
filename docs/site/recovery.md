@@ -50,6 +50,14 @@ it records.
 [state recovery](reference.html#state-recovery). Owner-only commands are listed under
 [host terminal actions](reference.html#host-terminal-actions).
 
+### An MCP finding on a server you installed yourself
+
+Under `guarded` the day proceeds and the finding stays on the board until
+`bin/wuwei mcp decide`. Under `strict` review the report and decide. A `tool_redirect`
+hit on a description that points to a sibling tool of the same server is a known
+scanner heuristic issue, https://github.com/taoq-ai/ziran/issues/447. WUWEI reports
+the severity the scanner gives.
+
 ## Seat launch contract
 
 Write and log a brief with `wuwei brief <role> <item> <name> --body TEXT` (or
