@@ -106,6 +106,10 @@ plugins_file = "~/.claude/plugins/installed_plugins.json"
 user_file = "~/.claude.json"
 # Missing defaults and absent project/plugin MCP files mean no attachment.
 # Explicit user_file/plugins_file overrides must exist. Invalid inputs fail closed.
+# Launch gate posture: critical, high, medium, low, unmeasured. A check that could not run always blocks.
+block = ["critical"]
+# Seconds for each server's watch-registry call.
+timeout_seconds = 60
 
 [voice]
 # Owner identifiers in [owner].handles match sent chat users and PR authors exactly.

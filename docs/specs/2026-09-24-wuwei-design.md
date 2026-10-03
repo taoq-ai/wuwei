@@ -853,7 +853,11 @@ MCP appears only as a scan target), so the CLI is the sole integration surface.
 - S3. MCP audit and drift. `/wuwei init` runs ZIRAN's MCP metadata analysis over the MCP
   servers attached to the session and registers them with `ziran watch-registry`; each
   morning plan runs the registry check, so a server whose tools changed after approval is
-  flagged before any seat uses it.
+  flagged before any seat uses it. Amendment (owner, 2026-10-03, #325): the check scans only
+  servers Claude Code would attach (project servers need approval), one server per scanner
+  call, never runs an unpinned `uvx`, `npx` or `pipx run` launcher, and warns by default:
+  `scanner.mcp.block` (default `["critical"]`) sets what blocks launches, while a check that
+  could not run always blocks.
 - S4. Agent-surface gate. When `agent_surface` is set, the security sentinel runs
   `ziran audit` and `ziran ci --severity-threshold <config>` at pre-PR; each finding becomes a
   verdict row.
