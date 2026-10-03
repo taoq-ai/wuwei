@@ -238,6 +238,19 @@ def _workspace(root, config, error, found):
                          apply='init-upgrade', detail=upgrades))
     else:
         rows.append(_row('workspace', 'template', 'ok', 'current'))
+    launcher = integrity.PLUGIN / 'bin/wuwei'
+    try:
+        recorded = (root / '.wuwei/executable').read_text(encoding='utf-8').splitlines()[0]
+    except (OSError, UnicodeError, IndexError):
+        recorded = ''
+    if recorded and Path(recorded).resolve() == launcher.resolve():
+        rows.append(_row('workspace', 'executable', 'ok', recorded))
+    else:
+        rows.append(_row('workspace', 'executable', 'fail',
+                         f'{recorded} is missing' if recorded and not Path(recorded).exists()
+                         else f'{recorded} is not {launcher}' if recorded
+                         else '.wuwei/executable is missing or empty',
+                         'wuwei init --upgrade', apply='init-upgrade'))
     if charters and not code:
         rows.append(_row('workspace', 'charter overrides', 'warn', f'{len(charters)} to review',
                          "update each override's version line after reviewing the plugin charter",

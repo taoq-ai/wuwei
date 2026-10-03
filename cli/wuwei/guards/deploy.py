@@ -269,10 +269,10 @@ def check(payload):
         except ParseError:
             if not mentions(raw, (*DEPLOY_ACTIONS, *protected[len(PROGRAMS):])):
                 return 0, ''
-            if (found := unread(raw, protected[2:])) is None:
+            if (found := unread(raw, protected[2:], cwd=payload['cwd'])) is None:
                 raise
             return found
-        if (found := unread(raw, protected[2:])) is not None:
+        if (found := unread(raw, protected[2:], cwd=payload['cwd'])) is not None:
             return found
         for index, command in enumerate(commands):
             argv, env = command.argv, command.env
