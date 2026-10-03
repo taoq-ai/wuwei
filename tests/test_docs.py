@@ -147,6 +147,28 @@ def test_every_template_config_key_is_documented():
     tomllib.loads(template)
 
 
+def test_template_security_starts_with_posture_and_has_no_guards_mode():
+    template = (ROOT / 'templates/workspace/config.toml').read_text()
+    assert 'guards.mode' not in template
+    assert not re.search(r'^\s*mode\s*=', template, re.MULTILINE)
+    assert 'mode' not in tomllib.loads(template)['guards']
+    block = template.split('\n[security]\n', 1)[1].splitlines()
+    first = next(i for i, line in enumerate(block) if line.strip() and not line.startswith('#'))
+    assert block[first].startswith('posture =')
+    for profile in ('observe', 'guarded', 'strict'):
+        assert sum(line.startswith(f'# {profile}:') for line in block[:first]) == 1
+
+
+def test_docs_retire_guards_mode():
+    rows = {line.split('|')[1].strip(): line for line in (SITE / 'configuration.md').read_text().splitlines()
+            if line.startswith('| `')}
+    assert 'doctor --fix' in rows['`guards.mode`'] and 'init --upgrade' in rows['`guards.mode`']
+    assert '--shadow' in rows['`security.posture`'] and 'guards.shadow_days' in rows['`security.posture`']
+    page = (SITE / 'security.md').read_text()
+    assert 'setup --shadow' in page
+    assert '`guards.mode = "shadow"` (`init --shadow`) counts as `observe`' not in page
+
+
 def test_entry_guides_install_signed_release_and_explain_development_checkout():
     integrity = (ROOT / 'docs/integrity.md').read_text()
     assert 'source checkouts are unsigned and report a page' not in integrity

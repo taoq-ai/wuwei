@@ -84,17 +84,26 @@ def test_config_check_prints_posture(checked, capsys):
     plain, _ = checked('', capsys)
     code, out = checked('[security.areas]\nmcp = "off"\n', capsys)
     assert code == plain
-    assert 'Posture: guarded\n' in out.out
+    assert 'Posture: guarded (from security.posture)\n' in out.out
     assert '  mcp: off (security.areas)\n' in out.out
     assert '  records: block (floor)\n' in out.out
     assert '  seats: warn\n' in out.out
     assert 'owner-only actions block in every posture' in out.out
     assert 'deprecated' not in out.out
-    code, out = checked('[guards]\nmode = "shadow"\n', capsys)
+    code, out = checked('[security]\nposture = "guarded"\n[guards]\nmode = "shadow"\n', capsys)
     assert code == plain
-    assert 'Posture: observe\n' in out.out
-    lines = [line for line in out.out.splitlines() if 'deprecated' in line]
-    assert len(lines) == 1 and 'security.posture = "observe"' in lines[0]
+    assert ('Posture: observe (from guards.mode = "shadow", deprecated; run doctor --fix)\n'
+            in out.out)
+    assert len([line for line in out.out.splitlines() if 'deprecated' in line]) == 1
+    assert not [line for line in out.out.splitlines() if 'guarded' in line]
+    code, out = checked('[security]\nposture = "observe"\n', capsys)
+    assert 'Posture: observe (from security.posture)\n' in out.out and 'deprecated' not in out.out
+
+
+def test_posture_source():
+    assert workspace.posture_source(load('')) == 'security.posture'
+    assert (workspace.posture_source(load('[guards]\nmode = "shadow"\n'))
+            == 'guards.mode = "shadow", deprecated; run doctor --fix')
 
 
 def stub(module, name='check'):

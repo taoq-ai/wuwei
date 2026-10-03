@@ -16,6 +16,8 @@ from wuwei.__main__ import main
 from wuwei.commands import doctor, init
 from wuwei.registry import Result
 
+UPGRADE = init.upgrade  # the real one; the ws fixture replaces init.upgrade
+
 NOW = '2026-10-03T12:00:00+00:00'
 TODAY = '2026-10-03'
 REPO = ('[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n'
@@ -283,7 +285,7 @@ def test_workspace_rows_healthy(ws):
         'workspace', 'config', 'template', 'acme/widget path', 'acme/widget git', 'acme/widget branch',
         'acme/widget identity', 'acme/widget fast_checks', 'calibration', 'drift', 'interview',
         'profile', 'posture']
-    assert row(rows, 'posture')['value'] == 'guarded'
+    assert row(rows, 'posture')['value'] == 'guarded (from security.posture)'
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'workspace'), rows
 
 
@@ -349,18 +351,34 @@ def test_workspace_calibration_and_shadow(ws, monkeypatch):
     observe = '[security]\nposture = "observe"\n[guards]\nshadow_since = "{}"\n[adapters]'
     config(ws.root, CONFIG.replace('[adapters]', observe.format('2026-09-30')))
     found = row(doctor.diagnose(), 'posture')
-    assert (found['status'], found['value']) == ('ok', 'observe, 4 days left')
+    assert (found['status'], found['value']) == ('ok', 'observe (from security.posture), 4 days left')
     config(ws.root, CONFIG.replace('[adapters]', observe.format('2026-09-25')))
     found = row(doctor.diagnose(), 'posture')
     assert found['status'] == 'warn' and 'apply' not in found and '8 days' in found['value']
+    assert found['value'].startswith('observe (from security.posture)')
     assert found['fix'] == ('set security.posture = "guarded" in .wuwei/config.toml, '
                             'or raise guards.shadow_days')
     # guards.mode = "shadow" is the deprecated alias for observe (#308).
     config(ws.root, CONFIG.replace('[adapters]', '[guards]\nmode = "shadow"\nshadow_since = "2026-09-25"\n'
                                                  '[adapters]'))
-    assert row(doctor.diagnose(), 'posture')['status'] == 'warn'
+    found = row(doctor.diagnose(), 'posture')
+    assert found['status'] == 'warn' and found['apply'] == 'init-upgrade'
     config(ws.root, CONFIG.replace('[adapters]', '[security]\nposture = "strict"\n[adapters]'))
-    assert row(doctor.diagnose(), 'posture')['value'] == 'strict'
+    assert row(doctor.diagnose(), 'posture')['value'] == 'strict (from security.posture)'
+
+
+def test_workspace_retired_shadow_mode(ws, monkeypatch):
+    config(ws.root, CONFIG.replace('[adapters]', '[security]\nposture = "guarded"\n[guards]\nmode = "shadow"\n'
+                                                 'shadow_since = "2026-09-30"\n[adapters]'))
+    found = row(doctor.diagnose(), 'posture')
+    assert (found['status'], found['value'], found['fix'], found['apply']) == (
+        'warn', 'observe (from guards.mode = "shadow", deprecated; run doctor --fix)',
+        'wuwei init --upgrade', 'init-upgrade')
+    monkeypatch.setattr(init, 'upgrade', UPGRADE)
+    found = row(doctor.diagnose(), 'template')
+    assert found['status'] == 'warn' and found['apply'] == 'init-upgrade'
+    assert ('Would upgrade config.toml: guards.mode = "shadow" becomes security.posture = "observe"'
+            in found['detail'])
 
 
 def test_gates_rows(ws):

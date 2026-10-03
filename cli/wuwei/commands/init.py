@@ -1,5 +1,6 @@
 """Create a workspace from the shipped skeleton."""
 
+import copy
 import json
 import os
 import re
@@ -180,6 +181,33 @@ def _without_empty_repos(raw):
     return ''.join(''.join(lines) for _, lines in sections)
 
 
+def _retired_mode(raw):
+    """guards.mode = "shadow" becomes security.posture = "observe"; "enforce" is dropped (#355)."""
+    present = tomllib.loads(raw)
+    mode = present.get('guards', {}).get('mode')
+    if mode is None:
+        return raw, []
+    sections = _sections(raw)
+    for label, lines in sections:
+        if label == 'guards':
+            lines[:] = [line for line in lines if not re.match(r'\s*mode\s*=', line)]
+        elif label == 'security' and mode == 'shadow':
+            for index, line in enumerate(lines):
+                if re.match(r'\s*posture\s*=', line):
+                    lines[index] = re.sub(r'=\s*("[^"\n]*"|\'[^\'\n]*\')', '= "observe"', line, count=1)
+                    break
+    result = ''.join(''.join(lines) for _, lines in sections)
+    expected = copy.deepcopy(present)
+    expected['guards'].pop('mode')
+    if mode == 'shadow':
+        expected.setdefault('security', {})['posture'] = 'observe'
+    if tomllib.loads(result) != expected:
+        raise ValueError('cannot safely retire guards.mode in this TOML layout; '
+                         'set security.posture = "observe" and delete guards.mode')
+    return result, ['guards.mode = "shadow" becomes security.posture = "observe"' if mode == 'shadow'
+                    else f'remove guards.mode = "{mode}" (the default)']
+
+
 def _migrated_config(raw, template):
     present = tomllib.loads(raw)
     source = _sections(template)
@@ -256,6 +284,7 @@ def upgrade(args):
         plugin = Path(__file__).resolve().parents[3]
         template = (plugin / 'templates/workspace/config.toml').read_text(encoding='utf-8')
         migrated, added = _migrated_config(text, template)
+        migrated, retired = _retired_mode(migrated)
         stamped = _stamp(migrated)
         stamp_changed, migrated = stamped != migrated, stamped
         executable = plugin / 'bin/wuwei'
@@ -289,6 +318,8 @@ def upgrade(args):
             print(f'{prefix} config.toml: remove repos = []; the [[repos]] tables define the repositories')
         for key in added:
             print(f'{prefix} config.toml: add {key}')
+        for line in retired:
+            print(f'{prefix} config.toml: {line}')
         if stamp_changed:
             from wuwei import integrity
             print(f'{prefix} config.toml: template_version {integrity.version()}')
@@ -299,7 +330,7 @@ def upgrade(args):
                   f'(local {local_version or "unversioned"}, base {base_version or "missing"})')
         if not args.dry_run:
             _status_line(executable)
-        if not added and not stamp_changed and not pointer_changed and not env_changed and text == raw:
+        if not added and not retired and not stamp_changed and not pointer_changed and not env_changed and text == raw:
             print('No workspace changes needed')
         if args.dry_run:
             return CLEAN

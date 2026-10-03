@@ -58,7 +58,9 @@ def test_init_posture(tmp_path, flags, posture, since):
     config = workspace.load_config(tmp_path)
     assert config['guards'] == {'mode': 'enforce', 'shadow_days': 7, 'shadow_since': since}
     assert workspace.posture(config)[0] == posture
-    assert f'posture = "{posture}"' in (tmp_path / '.wuwei/config.toml').read_text()
+    import tomllib
+    raw = tomllib.loads((tmp_path / '.wuwei/config.toml').read_text())
+    assert (raw['security']['posture'], raw['guards']['shadow_since']) == (posture, since)
     for upgrade in (('--shadow',), ('--posture', 'strict')):
         result = cli(tmp_path, 'init', '--upgrade', *upgrade)
         assert result.returncode == 2 and upgrade[0] in result.stderr
@@ -922,3 +924,73 @@ def test_upgrade_warns_about_unknown_keys(tmp_path):
     result = cli(tmp_path, 'init', '--upgrade')
     assert result.returncode == 0, result.stderr
     assert 'wuwei init: warning: config.toml: unknown key host.seatz at line 11; did you mean host.seats?' in result.stderr
+
+
+def trial(root, monkeypatch, mode='shadow'):
+    from types import SimpleNamespace
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(root), upgrade=False, dry_run=False)) == 0
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('[guards]\n', f'[guards]\nmode = "{mode}"\n', 1)
+                    .replace('shadow_since = ""', 'shadow_since = "2026-09-29"', 1))
+    return path
+
+
+def upgraded(root, capsys, dry_run=False):
+    from types import SimpleNamespace
+    from wuwei.commands import init
+    capsys.readouterr()
+    code = init.run(SimpleNamespace(path=str(root), upgrade=True, dry_run=dry_run))
+    return code, capsys.readouterr()
+
+
+def test_upgrade_retires_shadow_mode(tmp_path, monkeypatch, capsys):
+    import tomllib
+    path = trial(tmp_path, monkeypatch)
+    before = path.read_text()
+    code, out = upgraded(tmp_path, capsys, dry_run=True)
+    assert code == 0 and path.read_text() == before
+    assert out.out.splitlines() == [
+        'Would upgrade config.toml: guards.mode = "shadow" becomes security.posture = "observe"']
+    code, out = upgraded(tmp_path, capsys)
+    assert code == 0, out.err
+    raw = path.read_text()
+    config = tomllib.loads(raw)
+    assert config['security']['posture'] == 'observe' and 'mode' not in config['guards']
+    assert config['guards']['shadow_since'] == '2026-09-29' and config['guards']['shadow_days'] == 7
+    assert raw == before.replace('mode = "shadow"\n', '', 1).replace(
+        'posture = "guarded"', 'posture = "observe"', 1)
+    assert 'No workspace changes needed' in upgraded(tmp_path, capsys)[1].out
+
+
+def test_upgrade_removes_enforce_mode(tmp_path, monkeypatch, capsys):
+    import tomllib
+    path = trial(tmp_path, monkeypatch, 'enforce')
+    code, out = upgraded(tmp_path, capsys, dry_run=True)
+    assert out.out.splitlines() == [
+        'Would upgrade config.toml: remove guards.mode = "enforce" (the default)']
+    assert upgraded(tmp_path, capsys)[0] == 0
+    config = tomllib.loads(path.read_text())
+    assert 'mode' not in config['guards'] and config['security']['posture'] == 'guarded'
+
+
+@pytest.mark.parametrize('security', ['', '[security]\nposture = "strict"\n'])
+def test_upgrade_shadow_keeps_observe(tmp_path, monkeypatch, capsys, security):
+    import tomllib
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    path = previous_workspace(tmp_path) / 'config.toml'
+    path.write_text(path.read_text() + security + '[guards]\nmode = "shadow"\n')
+    code, out = upgraded(tmp_path, capsys)
+    assert code == 0, out.err
+    config = tomllib.loads(path.read_text())
+    assert config['security']['posture'] == 'observe' and 'mode' not in config['guards']
+
+
+def test_upgrade_refuses_unreachable_mode(tmp_path, monkeypatch, capsys):
+    path = trial(tmp_path, monkeypatch)
+    path.write_text(path.read_text().replace('mode = "shadow"', '"mode" = "shadow"', 1))
+    before = {p: p.read_bytes() for p in (tmp_path / '.wuwei').rglob('*') if p.is_file()}
+    code, out = upgraded(tmp_path, capsys)
+    assert code == 2 and 'cannot safely retire guards.mode' in out.err
+    assert before == {p: p.read_bytes() for p in (tmp_path / '.wuwei').rglob('*') if p.is_file()}

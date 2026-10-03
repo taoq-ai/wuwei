@@ -316,15 +316,18 @@ def _calibration(root, config):
     except (OSError, ValueError) as exc:
         rows.append(_row('workspace', 'profile', 'unmeasured', str(exc), 'wuwei calibrate import <profile>'))
     guards, name = config['guards'], workspace.posture(config)[0]
-    if name != 'observe':
-        rows.append(_row('workspace', 'posture', 'ok', name))
+    shown = f'{name} (from {workspace.posture_source(config)})'
+    if guards['mode'] == 'shadow':
+        rows.append(_row('workspace', 'posture', 'warn', shown, 'wuwei init --upgrade', apply='init-upgrade'))
+    elif name != 'observe':
+        rows.append(_row('workspace', 'posture', 'ok', shown))
     else:
         from datetime import date
         since = guards['shadow_since']
         days = (workspace.now().date() - date.fromisoformat(since)).days if since else 0
         left = guards['shadow_days'] - days
-        rows.append(_row('workspace', 'posture', 'ok', f'observe, {left} days left') if left > 0 else
-                    _row('workspace', 'posture', 'warn', SHADOW_NUDGE.format(days=days),
+        rows.append(_row('workspace', 'posture', 'ok', f'{shown}, {left} days left') if left > 0 else
+                    _row('workspace', 'posture', 'warn', f'{shown}: ' + SHADOW_NUDGE.format(days=days),
                          'set security.posture = "guarded" in .wuwei/config.toml, or raise guards.shadow_days'))
     return rows
 
