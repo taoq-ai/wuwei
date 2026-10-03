@@ -10,7 +10,7 @@
 
 <p align="center"><strong>Autonomous delivery where the safe path is the default one.</strong></p>
 
-<p align="center">无为 (wuwei) means "effortless action": work gets done without forcing it.</p>
+<p align="center">无为 (wuwei, said woo-way) means "effortless action": work gets done without forcing it.</p>
 
 <p align="center"><a href="docs/site/index.md">Documentation</a> · <a href="docs/site/concepts.md">Concepts</a> · <a href="docs/site/configuration.md">Configuration</a> · <a href="LICENSE">Apache 2.0</a></p>
 
