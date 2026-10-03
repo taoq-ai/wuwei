@@ -8,6 +8,7 @@ import re
 from statistics import mean, median
 
 from wuwei import registry, sessions, state, watch, workspace
+from wuwei.exits import DAMAGED, SYMLINK, ADAPTER_DATA
 
 
 UNMEASURED = 'unmeasured'
@@ -28,7 +29,7 @@ def _baseline(root):
     labels = {'escaped_defects': 'Escaped-defect-rate', 'review_rework': 'Review-rework',
               'owner_intervention': 'Owner-intervention', 'lead_time': 'Lead-time'}
     if path.is_symlink():
-        raise ValueError('baseline must not be a symlink')
+        raise ValueError(f'baseline must not be a symlink; {SYMLINK}')
     if not path.exists():
         return {key: UNMEASURED for key in labels}
     content = path.read_text(encoding='utf-8')
@@ -36,7 +37,7 @@ def _baseline(root):
     for key, label in labels.items():
         matches = re.findall(r'^' + re.escape(label) + r':[ \t]*([^\n]*)$', content, re.M)
         if len(matches) > 1:
-            raise ValueError(f'duplicate {label} baseline')
+            raise ValueError(f'duplicate {label} baseline; {DAMAGED}')
         result[key] = matches[0].strip() if matches and matches[0].strip() else UNMEASURED
     if result['escaped_defects'] != UNMEASURED:
         from wuwei import merge
@@ -60,14 +61,14 @@ def _human_times(root, config):
         folders = [directory]
     for path in (path for folder in folders for path in folder.rglob('*.jsonl')):
         if path.is_symlink():
-            raise ValueError('transcript symlink')
+            raise ValueError(f'transcript symlink; {SYMLINK}')
         try:
             with path.open(encoding='utf-8') as source:
                 cwd = None
                 for line in source:
                     row = json.loads(line)
                     if not isinstance(row, dict):
-                        raise ValueError('invalid transcript record')
+                        raise ValueError(f'invalid transcript record; {ADAPTER_DATA}')
                     cwd = row.get('cwd', cwd)
                     if row.get('type') != 'user' or row.get('isSidechain') or row.get('isMeta'):
                         continue
@@ -94,9 +95,9 @@ def _human_times(root, config):
                     turns.append(datetime.fromisoformat(row['timestamp']))
         except (OSError, UnicodeError, ValueError, TypeError, KeyError) as exc:
             # Transcript errors must never echo message bodies or session filenames.
-            raise ValueError('transcript unreadable or invalid') from None
+            raise ValueError(f'transcript unreadable or invalid; {ADAPTER_DATA}') from None
     if any(at.tzinfo is None for at in turns):
-        raise ValueError('transcript timestamp needs timezone')
+        raise ValueError(f'transcript timestamp needs timezone; {ADAPTER_DATA}')
     return sorted(set(turns))
 
 
@@ -232,7 +233,7 @@ def _port(operation, *args, root):
     result = operation(*args, root=root)
     if result.exit != 0 or isinstance(result.data, dict) and (
             'message' in result.data or 'errors' in result.data):
-        raise ValueError('outcome evidence unavailable from adapter')
+        raise ValueError(f'outcome evidence unavailable from adapter; {ADAPTER_DATA}')
     return result.data
 
 
@@ -264,7 +265,7 @@ def _escaped_defects(root, config, now, refs, prs):
                 continue
             at = datetime.fromisoformat(pr['merged_at'])
         if at.tzinfo is None:
-            raise ValueError('merge timestamp needs timezone')
+            raise ValueError(f'merge timestamp needs timezone; {ADAPTER_DATA}')
         if now - at < timedelta(days=14):
             continue
         if entry is not None:
@@ -284,7 +285,7 @@ def _escaped_defects(root, config, now, refs, prs):
             return UNMEASURED
         if type(outcome.get('escaped')) is not bool or not all(
                 isinstance(outcome.get(key), list) for key in ('reverts', 'fixes')):
-            raise ValueError('invalid merge outcome')
+            raise ValueError(f'invalid merge outcome; {DAMAGED}')
         observed.append({**outcome, 'reverts': [revert for revert in outcome['reverts']
                                                  if datetime.fromisoformat(revert['at']) <= at + timedelta(days=14)]})
     if not observed:
@@ -312,7 +313,7 @@ def _review_rework(root, config, refs, prs):
         for thread in threads:
             comments = thread['comments']
             if not comments:
-                raise ValueError('empty review thread')
+                raise ValueError(f'empty review thread; {ADAPTER_DATA}')
             first = comments[0]
             if first['is_bot'] or first['author'] == pr['author']:
                 continue
@@ -345,12 +346,12 @@ def _lead_time(root, config, items, prs):
             return UNMEASURED
         start = min(starts)
         if at < start:
-            raise ValueError('merge predates In Progress')
+            raise ValueError(f'merge predates In Progress; {ADAPTER_DATA}')
         leads.append((at - start).total_seconds() / 3600)
         creation = datetime.fromisoformat(_port(tracker.created, item, root=root))
         opened_at = datetime.fromisoformat(pr['created_at'])
         if at < creation or at < opened_at:
-            raise ValueError('merge predates creation')
+            raise ValueError(f'merge predates creation; {ADAPTER_DATA}')
         created.append((at - creation).total_seconds() / 3600)
         opened.append((at - opened_at).total_seconds() / 3600)
     if not leads:
@@ -411,12 +412,12 @@ def _traces(day):
     rows = []
     raw = path.read_text(encoding='utf-8')
     if raw and not raw.endswith('\n'):
-        raise ValueError('incomplete trace line')
+        raise ValueError(f'incomplete trace line; {DAMAGED}')
     for line in raw.splitlines():
         row = json.loads(line)
         spans = row['resourceSpans']
         if not isinstance(spans, list):
-            raise ValueError('invalid trace spans')
+            raise ValueError(f'invalid trace spans; {DAMAGED}')
         rows.append(row)
     return rows
 
@@ -428,33 +429,33 @@ def _phase_time(events, now):
         if event['kind'] in ('plan.approved', 'state.import'):
             planned = event['payload'].get('items', [])
             if not isinstance(planned, list):
-                raise ValueError('invalid planned items')
+                raise ValueError(f'invalid planned items; {DAMAGED}')
             if event['kind'] == 'state.import':
                 approved = event['payload'].get('approved_items', [])
                 if not isinstance(approved, list):
-                    raise ValueError('invalid approved items')
+                    raise ValueError(f'invalid approved items; {DAMAGED}')
                 planned += approved
             if any(not isinstance(item, str) for item in planned):
-                raise ValueError('invalid planned items')
+                raise ValueError(f'invalid planned items; {DAMAGED}')
             for item in planned:
                 entered.setdefault(item, ('planned', at))
         changes = event['payload'].get('phase_changes', {})
         if not isinstance(changes, dict):
-            raise ValueError('invalid phase changes')
+            raise ValueError(f'invalid phase changes; {DAMAGED}')
         for item, phase in changes.items():
             if not isinstance(item, str) or not isinstance(phase, str):
-                raise ValueError('invalid phase change')
+                raise ValueError(f'invalid phase change; {DAMAGED}')
             if item in entered:
                 old_phase, start = entered[item]
                 seconds = (at - start).total_seconds()
                 if seconds < 0:
-                    raise ValueError('phase timestamps out of order')
+                    raise ValueError(f'phase timestamps out of order; {DAMAGED}')
                 elapsed[item][old_phase] += seconds
             entered[item] = (phase, at)
     for item, (phase, start) in entered.items():
         seconds = (now - start).total_seconds()
         if seconds < 0:
-            raise ValueError('phase timestamp in the future')
+            raise ValueError(f'phase timestamp in the future; {DAMAGED}')
         elapsed[item][phase] += seconds
     return {item: dict(phases) for item, phases in elapsed.items()}
 
@@ -468,15 +469,15 @@ def _costs(events, key):
         payload = row['payload']
         usage = payload.get('usage')
         if not isinstance(usage, dict):
-            raise ValueError('invalid seat usage')
+            raise ValueError(f'invalid seat usage; {DAMAGED}')
         cost = usage.get('cost')
         if cost is None or cost == UNMEASURED:
             continue
         if type(cost) not in (int, float) or cost < 0:
-            raise ValueError('invalid seat cost')
+            raise ValueError(f'invalid seat cost; {DAMAGED}')
         target = payload.get(key)
         if not isinstance(target, str) or not target:
-            raise ValueError(f'missing usage {key}')
+            raise ValueError(f'missing usage {key}; {ADAPTER_DATA}')
         totals[target] += cost
         seen = True
     return dict(totals) if seen else UNMEASURED
@@ -488,7 +489,7 @@ def _calibration(day, data, elapsed):
         return UNMEASURED
     proposal = json.loads(path.read_text(encoding='utf-8'))
     if not isinstance(proposal, dict) or not isinstance(proposal.get('candidates'), list):
-        raise ValueError('invalid proposal for size calibration')
+        raise ValueError(f'invalid proposal for size calibration; {DAMAGED}')
     sizes = {row['id']: row.get('score', {}).get('job_size') for row in proposal['candidates']}
     return {item: {'predicted_size': sizes[item],
                    'actual_cycle_seconds': sum(phases.values())}

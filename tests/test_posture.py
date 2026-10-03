@@ -162,3 +162,93 @@ def test_warnings_outside_observe_nudge_once_per_guard(tmp_path, monkeypatch):
     assert [row['tier'] for row in rows] == ['nudge', 'nudge']
     assert {row['reason'] for row in rows} == {'outward: r (warn: security.areas.outward)',
                                                'agent_launch: r (warn: security.areas.seats)'}
+
+
+def fixed(module, code, reason):
+    def check(payload):
+        return code, reason
+    check.__module__ = f'wuwei.guards.{module}'
+    return check
+
+
+@pytest.fixture
+def guarded(tmp_path, monkeypatch):
+    from fakes.integrity import seed
+    root = tmp_path / 'workspace'
+    (root / '.wuwei').mkdir(parents=True)
+    (root / '.wuwei/config.toml').write_text('')
+    seed(root)
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-03T12:00:00Z')
+    return root
+
+
+def hook_call(root, monkeypatch, capsys, event='PreToolUse', command='git push', guards=None):
+    import io
+    import json
+    import sys
+    from types import SimpleNamespace
+    from wuwei.commands import hook
+    from wuwei.guards import Guard
+    if guards is not None:
+        monkeypatch.setattr(hook, 'discover', lambda: [Guard(event, None, check) for check in guards])
+    payload = {'hook_event_name': event, 'session_id': 'fixture', 'cwd': str(root),
+               'transcript_path': str(root / 'transcript.jsonl'), 'tool_name': 'Bash',
+               'tool_input': {'command': command}}
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload)))
+    code = hook.run(SimpleNamespace(event=event))
+    return code, capsys.readouterr()
+
+
+def events(root, kind):
+    import json
+    return [json.loads(line)['payload'] for path in root.glob('.wuwei/days/*/events.jsonl')
+            for line in path.read_text().splitlines() if json.loads(line)['kind'] == kind]
+
+
+def test_one_reason_most_specific(guarded, monkeypatch, capsys):
+    import json
+    code, out = hook_call(guarded, monkeypatch, capsys, guards=[
+        fixed('commit_push', 1, 'commit_push specific'), fixed('deploy', 2, 'deploy generic'),
+        fixed('integrity', 2, 'integrity gate')])
+    text = 'commit_push specific\nposture: publish = block (set security.areas.publish)'
+    assert code == 2 and out.err == text + '\n'
+    assert json.loads(out.out)['hookSpecificOutput']['permissionDecisionReason'] == text
+    [event] = events(guarded, 'hook.refusal')
+    assert event['reason'] == text
+    assert [row['guard'] for row in event['refusals']] == ['commit_push', 'deploy', 'integrity']
+
+
+def test_one_reason_integrity_last(guarded, monkeypatch, capsys):
+    code, out = hook_call(guarded, monkeypatch, capsys, guards=[
+        fixed('integrity', 2, 'integrity gate'), fixed('deploy', 2, 'deploy generic')])
+    assert out.err.splitlines() == [
+        'deploy generic', 'posture: publish = block (owner-only action; no setting lowers it)']
+    code, out = hook_call(guarded, monkeypatch, capsys, guards=[fixed('integrity', 2, 'integrity gate')])
+    assert out.err.splitlines()[0] == 'integrity gate'
+
+
+def test_one_reason_observe_keeps_floor(guarded, monkeypatch, capsys):
+    (guarded / '.wuwei/config.toml').write_text('[security]\nposture = "observe"\n')
+    code, out = hook_call(guarded, monkeypatch, capsys, guards=[
+        fixed('commit_push', 1, 'commit_push specific'), fixed('deploy', 2, 'deploy generic')])
+    assert code == 2 and out.err.splitlines() == [
+        'deploy generic', 'posture: publish = block (owner-only action; no setting lowers it)']
+    [event] = events(guarded, 'guard.would_refuse')
+    assert event['reason'] == 'commit_push specific'
+
+
+def test_one_reason_session_start_unchanged(guarded, monkeypatch, capsys):
+    import json
+    code, out = hook_call(guarded, monkeypatch, capsys, event='SessionStart', guards=[
+        fixed('deploy', 2, 'first'), fixed('integrity', 2, 'second')])
+    context = json.loads(out.out)['hookSpecificOutput']['additionalContext']
+    assert code == 0 and 'first' in context and 'second' in context
+    assert out.err.splitlines() == ['first', 'second']
+
+
+@pytest.mark.parametrize('command', ['git config --get-all core.hooksPath', 'ls ~/'])
+def test_reads_pass(guarded, monkeypatch, capsys, command):
+    code, out = hook_call(guarded, monkeypatch, capsys, command=command)
+    assert code == 0, out.err
+    assert not events(guarded, 'hook.refusal') and not events(guarded, 'guard.would_refuse')

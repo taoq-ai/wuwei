@@ -7,6 +7,7 @@ import re
 
 from wuwei import brief, discovery, obligations, registry, state, workspace
 from wuwei.references import pull_request
+from wuwei.exits import DAMAGED
 
 
 ACTIVITY_SECONDS = 60
@@ -27,7 +28,7 @@ def records(path):
 
 def _rows(text):
     if text and not text.endswith('\n'):
-        raise ValueError('incomplete event line')
+        raise ValueError(f'incomplete event line; {DAMAGED}')
     rows = []
     for line in text.splitlines():
         # The decoder refuses what json.dumps(allow_nan=False) would (NaN, Infinity and
@@ -35,7 +36,7 @@ def _rows(text):
         row = json.loads(line, parse_constant=_not_json, parse_float=_finite)
         if (not isinstance(row, dict) or not isinstance(row.get('kind'), str)
                 or not isinstance(row.get('payload'), dict)):
-            raise ValueError('invalid event record')
+            raise ValueError(f'invalid event record; {DAMAGED}')
         obligations._time(row['ts'])
         rows.append(row)
     return rows
@@ -71,12 +72,12 @@ def health(root, clocks=None, name='watch'):
         if clocks:
             age = (workspace.now() - max(map(obligations._time, clocks))).total_seconds()
             if age < 0:
-                raise ValueError('clock line is in the future')
+                raise ValueError(f'clock line is in the future; {DAMAGED}')
             if age < workspace.load_config(root)[name]['dead_seconds']:
                 return 0, ''
-            return 1, f'{name} dead: no clock line within deadline'
+            return 1, f'{name} dead: no clock line within deadline; the owner restarts it with bin/wuwei {name} install in a host terminal'
         if workspace.unit_installed(root, name=name):
-            return 1, f'{name} dead: installed but no clock line today'
+            return 1, f'{name} dead: installed but no clock line today; the owner restarts it with bin/wuwei {name} install in a host terminal'
         return 0, f'{name} off: no clock line today'
     except ERRORS as exc:
         return 2, f'{name} health unmeasured: {exc}'
@@ -102,7 +103,7 @@ def _day_rows(path):
 def saved(root):
     value = state.read_state(root).get('watch', {})
     if not isinstance(value, dict):
-        raise ValueError('invalid watch state')
+        raise ValueError(f'invalid watch state; {DAMAGED}')
     return value
 
 
@@ -126,7 +127,7 @@ def digest(root, config):
         if last is not None:
             age = (workspace.now() - obligations._time(last)).total_seconds()
             if age < 0:
-                raise ValueError('digest timestamp is in the future')
+                raise ValueError(f'digest timestamp is in the future; {DAMAGED}')
             if age < DIGEST_SECONDS:
                 return 0
         sent = set(prior.get('digest_ids', []))
@@ -139,7 +140,7 @@ def digest(root, config):
         from wuwei import decision
         for ident, option in pending:
             if not re.fullmatch(decision.DECISION_ID, ident) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', option):
-                raise ValueError('invalid two-way decision evidence')
+                raise ValueError(f'invalid two-way decision evidence; {DAMAGED}')
         path = ' (decisions/{}.md)' if workspace.verbosity(config, 'digest') == 'full' else ''
         text = 'Two-way decisions taken:\n' + '\n'.join(
             f'- {ident}: {option}' + path.format(ident) for ident, option in pending) + '\n'
@@ -184,13 +185,13 @@ def activity(root):
                 matches = [row['payload'] for row in logged if row['kind'] == 'brief written'
                            and row['payload'].get('path') == seat.get('brief')]
                 if len(matches) != 1:
-                    raise ValueError('running seat needs one logged brief')
+                    raise ValueError(f'running seat needs one logged brief; {DAMAGED}')
                 tree = matches[0].get('worktree')
                 if tree:
                     name = seat['item']
                     if name in active and active[name]['worktree'] != tree:
                         if (root / active[name]['worktree']).resolve() != (root / tree).resolve():
-                            raise ValueError('running seat and item disagree on worktree')
+                            raise ValueError(f'running seat and item disagree on worktree; {DAMAGED}')
                     active[name] = {**data['items'][name], 'worktree': tree}
         old_trees = saved(root).get('trees')
         if old_trees is None:
@@ -202,7 +203,7 @@ def activity(root):
                 path = str((root / item['worktree']).resolve())
                 head = obligations._read(vcs.head, path, root=root)['sha']
                 if not isinstance(head, str) or not re.fullmatch(r'[0-9a-fA-F]{40}|[0-9a-fA-F]{64}', head):
-                    raise ValueError('invalid HEAD')
+                    raise ValueError(f'invalid HEAD; {DAMAGED}')
                 old = old_trees.get(name)
                 changed = old is not None and old['path'] == path and old['head'] != head
                 at = workspace.now().isoformat()
@@ -216,7 +217,7 @@ def activity(root):
                     last = max(last, obligations._time(item['report_at']))
                 age = (workspace.now() - last).total_seconds()
                 if age < 0:
-                    raise ValueError('activity timestamp is in the future')
+                    raise ValueError(f'activity timestamp is in the future; {DAMAGED}')
                 if age >= config['watch']['stale_seconds']:
                     stale.append(name)
             except ERRORS as exc:
@@ -309,7 +310,7 @@ def previous(root):
         if directory != workspace.day_dir(root):
             value = state.read_state(directory=directory).get('watch', {})
             if not isinstance(value, dict):
-                raise ValueError('invalid prior watch state')
+                raise ValueError(f'invalid prior watch state; {DAMAGED}')
             return value
     return {}
 
@@ -330,7 +331,7 @@ def evidence(host, ref, root):
             not isinstance(pr['head'], str) or
             not re.fullmatch(r'[0-9a-fA-F]{40}|[0-9a-fA-F]{64}', pr['head']) or
             (pr['mergeable'] is not None and type(pr['mergeable']) is not bool)):
-        raise ValueError('invalid PR evidence')
+        raise ValueError(f'invalid PR evidence; {DAMAGED}')
     obligations._time(pr['updated_at'])
     reviews, threads = obligations._evidence(host, ref, root)
     checks = obligations._list(obligations._read(host.checks, ref, pr['head'], root=root))
@@ -339,7 +340,7 @@ def evidence(host, ref, root):
                 or not isinstance(check.get('name'), str) or not check['name']
                 or not isinstance(check.get('state'), str) or not check['state']
                 or 'conclusion' not in check):
-            raise ValueError('invalid checks evidence')
+            raise ValueError(f'invalid checks evidence; {DAMAGED}')
     return dict(pr=pr, reviews=reviews, threads=threads, checks=checks)
 
 
@@ -421,12 +422,12 @@ def poll(root):
         if old is None:
             old = previous(root).get('prs')
         if old is not None and not isinstance(old, dict):
-            raise ValueError('invalid PR baseline')
+            raise ValueError(f'invalid PR baseline; {DAMAGED}')
         old_facts = saved(root).get('facts')
         if old_facts is None:
             old_facts = previous(root).get('facts', {})
         if not isinstance(old_facts, dict):
-            raise ValueError('invalid PR facts')
+            raise ValueError(f'invalid PR facts; {DAMAGED}')
         host, refs = owned(root, config)
     except ERRORS as exc:
         failures = saved(root).get('failures', 0) + 1
@@ -623,12 +624,12 @@ def wake(root, *, consume=False):
     refs = [pull_request(ref) for ref in obligations._list(value['prs'])]
     count = value.get('inbox', 0)
     if type(count) is not int or count < 0:
-        raise ValueError('invalid inbox wake')
+        raise ValueError(f'invalid inbox wake; {DAMAGED}')
     lines = obligations._list(value.get('summaries', []))
     if not all(isinstance(line, str) and line for line in lines):
-        raise ValueError('invalid wake summaries')
+        raise ValueError(f'invalid wake summaries; {DAMAGED}')
     if not refs and not count and not lines:
-        raise ValueError('empty planner wake marker')
+        raise ValueError('empty planner wake marker; pass at least one PR ref, count or summary')
     message = '\n'.join([*lines, f'planner wake ({value["at"]}): ' + ', '.join(
         refs + ([f'inbox to line {count}'] if count else []))])
     if consume:
@@ -657,7 +658,7 @@ def flush(root):
         state.read_state(root)
         rows = records(directory / 'events.jsonl')
         if (directory / 'state.json').exists() and not rows:
-            raise ValueError('state has no event history')
+            raise ValueError(f'state has no event history; {DAMAGED}')
         state._append_event('session: compact', {'events_checked': len(rows)}, directory)
         for name in ('state.json', 'events.jsonl'):
             path = directory / name

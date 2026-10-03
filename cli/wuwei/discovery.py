@@ -4,6 +4,7 @@ from fnmatch import fnmatchcase
 import re
 
 from wuwei import obligations, registry, state, workspace
+from wuwei.exits import ADAPTER_DATA, DAMAGED
 
 
 SOURCES = ('tracker', 'base_checks', 'review_bot', 'scanner', 'follow_up_threads',
@@ -24,11 +25,11 @@ def dedupe(sources, *, tracker_ids=(), day_ids=()):
             measured[name] = 'unmeasured: source unavailable'
             continue
         if not isinstance(rows, list):
-            raise ValueError(f'{name}: expected candidate list')
+            raise ValueError(f'{name}: expected candidate list; {ADAPTER_DATA}')
         measured[name] = f'measured: {len(rows)}'
         for row in rows:
             if not isinstance(row, dict) or not isinstance(row.get('id'), str) or not row['id']:
-                raise ValueError(f'{name}: candidate id required')
+                raise ValueError(f'{name}: candidate id required; {ADAPTER_DATA}')
             if row['id'] not in seen:
                 candidates.append({**row, 'source': name})
                 seen.add(row['id'])
@@ -39,15 +40,15 @@ def start_decision(item, config, confirmed_goals, *, within_budget, above_cut):
     """Return start or owner; dispatch is the planner's responsibility."""
     mode = config['discovery']['autostart']
     if mode not in ('off', 'strict', 'goal'):
-        raise ValueError('invalid discovery.autostart')
+        raise ValueError(f'invalid discovery.autostart; {DAMAGED}')
     paths = item.get('paths')
     flags = item.get('flags')
     if paths is None or flags is None:
         return 'owner'
     if not isinstance(flags, dict) or any(type(value) is not bool for value in flags.values()):
-        raise ValueError('invalid candidate risk flags')
+        raise ValueError(f'invalid candidate risk flags; {DAMAGED}')
     if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
-        raise ValueError('invalid candidate paths')
+        raise ValueError(f'invalid candidate paths; {DAMAGED}')
     never_auto = [pattern for repo in config['repos'] for pattern in repo['merge']['never_auto_paths']]
     if (item.get('goal') not in confirmed_goals or
             any(flags.values()) or not within_budget or
@@ -55,7 +56,7 @@ def start_decision(item, config, confirmed_goals, *, within_budget, above_cut):
                 for path in paths for i in range(len(path.split('/'))) for pattern in never_auto)):
         return 'owner'
     if item.get('track') not in ('SLICE', 'FULL'):
-        raise ValueError('invalid candidate track')
+        raise ValueError(f'invalid candidate track; {DAMAGED}')
     if mode == 'off':
         return 'tomorrow'
     if item.get('track') != 'SLICE' or mode == 'strict' and not above_cut:
@@ -88,7 +89,7 @@ def discover(root=None, *, ports=None):
             sources['tracker'] = 'unmeasured: invalid tracker backlog data'
     refs = day.get('raised_prs', []) + day.get('claimed_prs', [])
     if not isinstance(refs, list) or any(not isinstance(ref, str) for ref in refs):
-        raise ValueError('invalid day PR references')
+        raise ValueError(f'invalid day PR references; {DAMAGED}')
     if refs:
         if config['adapters']['review_bot'] == 'none':
             sources['review_bot'] = 'not configured: review bot adapter'
@@ -103,15 +104,15 @@ def discover(root=None, *, ports=None):
             for ref in sorted(set(refs)):
                 result = bot.open_findings(ref, root=root)
                 if not isinstance(result, registry.Result) or result.exit not in (0, 1, 2):
-                    raise ValueError('invalid review-bot result')
+                    raise ValueError(f'invalid review-bot result; {DAMAGED}')
                 if result.exit == 2:
                     complete = False
                     continue
                 if not isinstance(result.data, list):
-                    raise ValueError('invalid review-bot findings')
+                    raise ValueError(f'invalid review-bot findings; {DAMAGED}')
                 for row in result.data:
                     if not isinstance(row, dict) or 'id' not in row or not isinstance(row.get('body'), str):
-                        raise ValueError('invalid review-bot finding')
+                        raise ValueError(f'invalid review-bot finding; {DAMAGED}')
                     findings.append({'id': f'{ref}:bot:{row["id"]}', 'evidence': row['body']})
             if complete:
                 sources['review_bot'] = findings
@@ -130,30 +131,30 @@ def discover(root=None, *, ports=None):
             for ref in sorted(set(refs)):
                 result = host.threads(ref, root=root)
                 if not isinstance(result, registry.Result) or result.exit not in (0, 1, 2):
-                    raise ValueError('invalid code-host result')
+                    raise ValueError(f'invalid code-host result; {ADAPTER_DATA}')
                 if result.exit == 2:
                     complete = False
                     continue
                 data = result.data
                 if not isinstance(data, dict) or not isinstance(data.get('threads'), list):
-                    raise ValueError('invalid follow-up threads')
+                    raise ValueError(f'invalid follow-up threads; {DAMAGED}')
                 if not isinstance(data.get('comments'), list):
                     comments_complete = False
                 else:
                     for comment in data['comments']:
                         if (not isinstance(comment, dict) or type(comment.get('id')) is not int
                                 or not isinstance(comment.get('body'), str)):
-                            raise ValueError('invalid PR follow-up comment')
+                            raise ValueError(f'invalid PR follow-up comment; {DAMAGED}')
                         if re.search(r'follow[ -]?up', comment['body'], re.I):
                             pr_followups.append({'id': f'{ref}:followup:{comment["id"]}',
                                                  'evidence': comment['body']})
                 for row in data['threads']:
                     if not isinstance(row, dict) or type(row.get('resolved')) is not bool or not isinstance(row.get('id'), str):
-                        raise ValueError('invalid follow-up thread')
+                        raise ValueError(f'invalid follow-up thread; {DAMAGED}')
                     try:
                         owner_answered = me is not None and obligations.answered(row, me)
                     except (KeyError, TypeError, AttributeError) as exc:
-                        raise ValueError('invalid follow-up thread comment') from exc
+                        raise ValueError(f'invalid follow-up thread comment; {DAMAGED}') from exc
                     if not row['resolved'] and not owner_answered:
                         followups.append({'id': f'{ref}:thread:{row["id"]}', 'evidence': 'open review thread'})
             if complete:
@@ -166,24 +167,24 @@ def discover(root=None, *, ports=None):
                 for ref in sorted(set(refs)):
                     pr = host.pr(ref, root=root)
                     if not isinstance(pr, registry.Result) or pr.exit not in (0, 1, 2):
-                        raise ValueError('invalid PR result')
+                        raise ValueError(f'invalid PR result; {DAMAGED}')
                     if pr.exit == 2:
                         complete = False
                         continue
                     if not isinstance(pr.data, dict) or not isinstance(pr.data.get('base_sha'), str):
-                        raise ValueError('invalid base SHA')
+                        raise ValueError(f'invalid base SHA; {DAMAGED}')
                     checks = host.checks(ref, pr.data['base_sha'], root=root)
                     if not isinstance(checks, registry.Result) or checks.exit not in (0, 1, 2):
-                        raise ValueError('invalid base-check result')
+                        raise ValueError(f'invalid base-check result; {ADAPTER_DATA}')
                     if checks.exit == 2:
                         complete = False
                         continue
                     if not isinstance(checks.data, list):
-                        raise ValueError('invalid base checks')
+                        raise ValueError(f'invalid base checks; {DAMAGED}')
                     for check in checks.data:
                         if (not isinstance(check, dict) or not isinstance(check.get('name'), str)
                                 or not isinstance(check.get('conclusion'), (str, type(None)))):
-                            raise ValueError('invalid base check')
+                            raise ValueError(f'invalid base check; {DAMAGED}')
                         if check['conclusion'] in ('failure', 'timed_out', 'action_required'):
                             red.append({'id': f'{ref}:base:{check["name"]}',
                                         'evidence': check.get('url') or 'red base check'})
@@ -220,15 +221,15 @@ def when_seat_frees(root=None, *, queue_size):
 def intake(root=None, *, trigger, found=None):
     """Persist discovery evidence, then apply the same gate as plan add."""
     if trigger not in ('sweep', 'seat-free'):
-        raise ValueError('unknown discovery trigger')
+        raise ValueError('unknown discovery trigger; use sweep or seat-free')
     root = workspace.find_workspace(root)
     found = discover(root) if found is None else found
     if not isinstance(found, dict) or not isinstance(found.get('candidates'), list):
-        raise ValueError('invalid discovery result')
+        raise ValueError(f'invalid discovery result; {DAMAGED}')
     candidates = {}
     for row in found['candidates']:
         if not isinstance(row, dict) or not isinstance(row.get('id'), str):
-            raise ValueError('invalid discovery candidate')
+            raise ValueError(f'invalid discovery candidate; {DAMAGED}')
         candidates[row['id']] = row
 
     def save(data):
@@ -259,7 +260,7 @@ def intake(root=None, *, trigger, found=None):
             try:
                 build.next_action(item, root=root)
             except ValueError as exc:
-                if str(exc) != 'no logged builder brief for item':
+                if not str(exc).startswith('no logged builder brief for '):
                     raise
                 state.append_event('build.requested', {'item': item}, root)
         result['started' if action == 'build next' else action].append(item)

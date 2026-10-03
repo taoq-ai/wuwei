@@ -10,7 +10,11 @@ def register(subparsers):
 
 
 def run(args):
-    if workspace.guard_scope({'cwd': str(Path.cwd())}) is None:
+    root = workspace.guard_scope({'cwd': str(Path.cwd())})
+    if root is None:
+        return 0
+    if not (workspace.day_dir(root) / 'state.json').is_file():
+        print('No report today: no day has started. Start one with /wuwei:wuwei-plan.')
         return 0
     print(report.write().read_text(encoding='utf-8'), end='')
     return 0

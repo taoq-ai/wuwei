@@ -37,11 +37,11 @@ def service(args, name, loop):
         return loop(once=args.once)
     watch_service = registry.watch_service()
     if args.once:
-        raise ValueError('--once cannot be combined with install or uninstall')
+        raise ValueError('--once cannot be combined with install or uninstall; run bin/wuwei watch --once on its own')
     root = workspace.find_workspace()
     platform = service_platform()
     if platform not in ('darwin', 'linux'):
-        raise ValueError(f'{name} service installation supports macOS and Linux')
+        raise ValueError(f'{name} service installation supports macOS and Linux; run the service by hand on this platform')
     label, path = workspace.watch_unit(root, platform, name=name)
     if action == 'uninstall':
         if not path.exists():
@@ -94,7 +94,7 @@ def _remove(path, platform, watch_service, name):
         try:
             watch_service.call(argv)
         except (OSError, ValueError) as exc:
-            print(f'wuwei {name}: warning: {exc}', file=sys.stderr)
+            print(f'wuwei {name}: warning: {exc}; run bin/wuwei doctor', file=sys.stderr)
     if platform == 'darwin':
         call(['launchctl', 'bootout', f'gui/{os.getuid()}', str(path)])
     else:

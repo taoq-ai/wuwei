@@ -384,6 +384,11 @@ def test_owner_handles(configured, text):
     assert lint(text, 'chat', config)[0] == 1
 
 
+def head(result):
+    """(code, reason before its #362 next step)."""
+    return result[0], result[1].split(';')[0]
+
+
 @pytest.mark.parametrize('text', ['the agents are ready', 'an agent checked it',
     'sentinel finished', 'two seats are ready', 'a seat finished', 'WUWEI checked it',
     'queued for tomorrow', 'the owner approved', 'Claude checked it', 'CODEX checked it',
@@ -391,7 +396,7 @@ def test_owner_handles(configured, text):
     'gate verdict is ready', 'gate verdicts are ready'])
 def test_internal_state_defaults(configured, text):
     from wuwei.outward import lint
-    assert lint(text, 'chat', configured[1]) == (1, 'outward: internal state pattern')
+    assert head(lint(text, 'chat', configured[1])) == (1, 'outward: internal state pattern')
 
 
 @pytest.mark.parametrize('char,code', [('\u2015', 1), ('\u2e3a', 1), ('\u2e3b', 1),
@@ -508,7 +513,7 @@ def test_invalid_numeric_metadata(configured, value):
 @pytest.mark.parametrize('base', ['\u00a9', '\u00ae', '\u2192', 'A'])
 def test_emoji_presentation_selector(configured, base):
     from wuwei.outward import lint
-    assert lint('Ready ' + base + '\ufe0f', 'chat', configured[1]) == (1, 'outward: emoji is banned')
+    assert head(lint('Ready ' + base + '\ufe0f', 'chat', configured[1])) == (1, 'outward: emoji is banned')
     assert lint('Ready ' + base, 'chat', configured[1])[0] == 0
 
 
@@ -579,7 +584,7 @@ def test_tells_never_change_the_lint(configured):
     assert outward.tells('Run `git checkout -- file` on the first underscore-separated word.') == []
     assert outward.tells('Two options -- A or B.') == ['dash']
     assert outward.lint(text, 'C1', config) == (0, '')
-    assert outward.lint('A fix \u2014 now.', 'C1', config) == (1, 'outward: banned character')
+    assert head(outward.lint('A fix \u2014 now.', 'C1', config)) == (1, 'outward: banned character')
 
 
 TELL_TEXT = 'This is not just a fix but a rewrite. We delve into it.'

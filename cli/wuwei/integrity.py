@@ -8,6 +8,7 @@ import stat
 
 from wuwei import registry, workspace
 from wuwei.registry import Result
+from wuwei.exits import DAMAGED, SYMLINK
 
 PLUGIN = Path(__file__).resolve().parents[2]
 KEY = 'keys/manifest-signing-key.pub'
@@ -92,7 +93,7 @@ def _prune(plugin, directory, dirs):
 def inventory(plugin):
     plugin = Path(plugin)
     if not plugin.is_dir():
-        raise OSError('installed plugin directory missing')
+        raise OSError('installed plugin directory missing; reinstall the plugin, then run bin/wuwei doctor')
     import hashlib  # Here, not at module level: PreToolUse reads only the cached verdict.
     files = {}
     def failed(error):
@@ -143,10 +144,10 @@ def measure(plugin=None, pinned=None, *, checkout=None, root=None):
             vcs = registry.load('vcs', workspace.load_config(root))
             tree = vcs.read_tree(plugin, checkout['head'], ['.'], root=root)
             if tree.exit:
-                return Result(2, reason='checkout tracked files unmeasured: ' + tree.reason)
+                return Result(2, reason='checkout tracked files unmeasured: ' + tree.reason + '; run bin/wuwei doctor')
             if (not isinstance(tree.data, dict) or not tree.data
                     or not all(isinstance(name, str) for name in tree.data)):
-                return Result(2, reason='invalid checkout tracked files evidence')
+                return Result(2, reason=f'invalid checkout tracked files evidence; {DAMAGED}')
             actual = {}
             for name in tree.data:
                 relative = Path(_name(name))
@@ -166,7 +167,7 @@ def measure(plugin=None, pinned=None, *, checkout=None, root=None):
             for line in manifest.read_text(encoding='utf-8').splitlines():
                 match = re.fullmatch(r'([0-9a-f]{64})  (.+)', line)
                 if not match:
-                    raise ValueError('malformed MANIFEST.sha256')
+                    raise ValueError(f'malformed MANIFEST.sha256; {DAMAGED}')
                 name = _name(match[2])
                 if name in expected or name in EXCLUDED:
                     raise ValueError(f'duplicate or reserved inventory path: {name}')
@@ -185,13 +186,13 @@ def measure(plugin=None, pinned=None, *, checkout=None, root=None):
     except (OSError, UnicodeError) as exc:
         return Result(2, reason=f'plugin integrity unmeasured: {exc}')
     except ValueError as exc:
-        return Result(1, reason=f'page: plugin integrity: {exc}')
+        return Result(1, reason=f'page: plugin integrity: {exc}; reinstall the signed release, or run bin/wuwei integrity reconfirm in a host terminal')
 
 
 def _path(root, name):
     path = Path(root) / '.wuwei/integrity' / name
     if any(p.is_symlink() for p in (path, path.parent, path.parent.parent)):
-        raise ValueError('integrity records must not use symlinks')
+        raise ValueError(f'integrity records must not use symlinks; {SYMLINK}')
     return path
 
 
@@ -207,24 +208,24 @@ def _checkout(root):
         return None
     git = PLUGIN / '.git'
     if git.is_symlink():
-        raise ValueError('checkout .git must not be a symlink')
+        raise ValueError(f'checkout .git must not be a symlink; {SYMLINK}')
     if not git.exists():
         return None
     vcs = registry.load('vcs', workspace.load_config(root))
     head = vcs.head(PLUGIN, root=root)
     if head.exit:
-        raise ValueError('checkout HEAD unmeasured: ' + head.reason)
+        raise ValueError('checkout HEAD unmeasured: ' + head.reason + '; run bin/wuwei doctor')
     if (not isinstance(head.data, dict) or not isinstance(head.data.get('sha'), str)
             or not re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})', head.data['sha'])):
-        raise ValueError('invalid checkout HEAD evidence')
+        raise ValueError(f'invalid checkout HEAD evidence; {DAMAGED}')
     status = vcs.status(PLUGIN, root=root)
     if status.exit:
-        raise ValueError('checkout tree unmeasured: ' + status.reason)
+        raise ValueError('checkout tree unmeasured: ' + status.reason + '; run bin/wuwei doctor')
     if (not isinstance(status.data, list) or not all(
             isinstance(entry, dict) and all(isinstance(entry.get(key), str)
                                           for key in ('path', 'index', 'worktree'))
             for entry in status.data)):
-        raise ValueError('invalid checkout status evidence')
+        raise ValueError(f'invalid checkout status evidence; {DAMAGED}')
     return {'head': head.data['sha'], 'clean': not status.data}
 
 
@@ -243,11 +244,20 @@ def check(root):
             if (isinstance(record, dict) and record.get('fingerprint') == result.data
                     and record.get('checkout') == checkout):
                 result = Result(0, result.data, 'plugin integrity: owner-confirmed content (local evidence)')
+            elif isinstance(record, dict) and isinstance(record.get('plugin'), str) and record['plugin'] != str(PLUGIN):
+                result = Result(1, result.data, confirmed(record['plugin']))
         _record(root, 'verdict.json', {'exit': result.exit, 'fingerprint': result.data,
-                                     'reason': result.reason, 'checkout': checkout})
+                                     'reason': result.reason, 'checkout': checkout, 'plugin': str(PLUGIN)})
         return result
     except (OSError, ValueError, TypeError) as exc:
         return Result(2, reason=f'plugin integrity unmeasured: {exc}')
+
+
+def confirmed(other):
+    """#362: the refusal when this workspace confirmed another plugin copy than the running one."""
+    return (f'plugin integrity: this workspace confirmed the plugin at {other}, but this session runs '
+            f'{PLUGIN}; start Claude Code with that copy (claude --plugin-dir {other}), or run bin/wuwei '
+            'integrity reconfirm in a host terminal to confirm this one')
 
 
 def cached(root):
@@ -256,7 +266,11 @@ def cached(root):
         if (not isinstance(record, dict) or type(record.get('exit')) is not int
                 or record['exit'] not in (0, 1, 2) or not isinstance(record.get('reason'), str)
                 or (record['exit'] == 0 and not re.fullmatch(r'[0-9a-f]{64}', record.get('fingerprint') or ''))):
-            raise ValueError('invalid cached integrity verdict')
+            raise ValueError(f'invalid cached integrity verdict; {DAMAGED}')
+        # A signed release verifies anywhere; a checkout or a failure names both copies (#362).
+        if ((record['exit'] or record.get('checkout') is not None)
+                and isinstance(record.get('plugin'), str) and record['plugin'] != str(PLUGIN)):
+            return Result(2, reason=confirmed(record['plugin']))
         if record['exit']:
             return Result(2, reason=record['reason'] or 'plugin integrity unmeasured')
         if record.get('checkout') is not None:
@@ -326,14 +340,14 @@ def reconfirm(root, *, confirm=None):
         if result.exit == 2 or not result.data:
             return result
         if not (confirm or _host_confirm)(result.data):
-            return Result(1, reason='integrity re-confirmation declined')
+            return Result(1, reason='integrity re-confirmation declined; rerun bin/wuwei integrity reconfirm in a host terminal and answer y')
         # Re-measure after the terminal interaction to avoid confirming a changed tree.
         current = check(root)
         if current.exit == 2 or current.data != result.data:
             return Result(2, reason='integrity changed during confirmation; retry on the host')
         verdict = json.loads(_path(root, 'verdict.json').read_text())
         _record(root, 'confirmation.json', {'fingerprint': result.data,
-                                          'checkout': verdict.get('checkout')})
+                                          'checkout': verdict.get('checkout'), 'plugin': str(PLUGIN)})
         return check(root)
     except (OSError, ValueError) as exc:
         return Result(2, reason=f'host confirmation unmeasured: {exc}')
@@ -354,9 +368,9 @@ def workspace_check(root):
         vcs = registry.load('vcs', workspace.load_config(root))
         result = vcs.workspace_changes(Path(root) / '.wuwei', root=root)
         if result.exit:
-            return Result(2, reason='workspace integrity unmeasured: ' + result.reason)
+            return Result(2, reason='workspace integrity unmeasured: ' + result.reason + '; run bin/wuwei doctor')
         if not isinstance(result.data, list) or not all(isinstance(p, str) for p in result.data):
-            raise ValueError('invalid workspace history evidence')
+            raise ValueError(f'invalid workspace history evidence; {DAMAGED}')
         lines = []
         for path in result.data:
             severity = 'page' if path.startswith(('charters/', 'voice/')) or path in (

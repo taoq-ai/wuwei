@@ -857,7 +857,7 @@ def test_item_without_worktree_is_unmeasured_standard(root):
         '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n'
         '[repos.gates]\nfloor = "light"\n')
     record = tier_of(root)
-    assert record['tier'] == 'standard' and record['reasons'] == ['diff unmeasured: no worktree']
+    assert record['tier'] == 'standard' and record['reasons'] == ['diff unmeasured: no worktree; create one with bin/wuwei worktree add <item> before dispatching gates']
 
 
 def test_item_with_initial_verdicts_before_dispatch_gets_no_tier(root):

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from wuwei import sessions, state, workspace
 from wuwei.guards import Guard
+from wuwei.exits import PAYLOAD
 
 # watch.ERRORS; watch and memory import on the events that use them, not on SubagentStop.
 ERRORS = (OSError, ValueError, TypeError, KeyError, AttributeError)
@@ -12,7 +13,7 @@ ERRORS = (OSError, ValueError, TypeError, KeyError, AttributeError)
 def scoped(payload):
     cwd = Path(payload['cwd'])
     if not cwd.is_absolute():
-        raise ValueError('cwd must be absolute')
+        raise ValueError(f'cwd must be absolute; {PAYLOAD}')
     return workspace.scope(cwd.resolve())
 
 

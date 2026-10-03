@@ -11,7 +11,7 @@ from wuwei import brief_pack, drafts, mcp, state, workspace
 from wuwei.decision import answered, clarification_fields, evaluate, lint_clarification, route
 from wuwei.commands.status import snapshot as status_snapshot
 from wuwei.signal import classify
-from wuwei.exits import CLEAN
+from wuwei.exits import CLEAN, DAMAGED
 
 
 TEMPLATE = Path(__file__).resolve().parents[3] / 'templates/dashboard.html'
@@ -75,20 +75,20 @@ def cockpit_snapshot(directory):
     pack = None
     packs = data.get('brief_packs', {})
     if not isinstance(packs, dict):
-        raise ValueError('brief packs: expected records')
+        raise ValueError(f'brief packs: expected records; {DAMAGED}')
     if packs:
         key = next(reversed(packs))
         entry = packs[key]
         if (not isinstance(key, str) or not re.fullmatch(r'daily|meeting-[0-9a-f]{16}', key)
                 or not isinstance(entry, dict) or not isinstance(entry.get('path'), str)):
-            raise ValueError('briefing pack path is invalid')
+            raise ValueError('briefing pack path is invalid; run bin/wuwei brief pack again')
         relative = entry['path']
         expected = brief_pack.relative_path(directory.name, key)
         if relative != str(expected):
-            raise ValueError('briefing pack path is invalid')
+            raise ValueError('briefing pack path is invalid; run bin/wuwei brief pack again')
         pack = workspace.find_workspace(directory, use_environment=False) / relative
         if pack.parent.resolve() != pack.parent or pack.is_symlink() or not pack.is_file():
-            raise ValueError('briefing pack must be a regular file')
+            raise ValueError(f'briefing pack must be a regular file; {DAMAGED}')
     signals = []
     events = directory / 'events.jsonl'
     if events.exists():

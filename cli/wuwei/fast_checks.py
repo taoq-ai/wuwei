@@ -5,6 +5,7 @@ import re
 
 from wuwei import registry, state, workspace
 from wuwei.guards.commit_push import context, data
+from wuwei.exits import ADAPTER_DATA, DAMAGED
 
 
 def record(path):
@@ -16,7 +17,7 @@ def record(path):
     builds = [check_binding(item, build) for item, build in state.read_state(root).get('builds', {}).items()
               if build['status'] == 'running' and Path(build['worktree']) == path]
     if len(builds) > 1:
-        raise ValueError('multiple running builds share the check worktree')
+        raise ValueError('multiple running builds share the check worktree; wait for one build to finish, or run each build in its own worktree (bin/wuwei worktree add <item>)')
     binding = builds[0] if builds else None
 
     def save():
@@ -29,7 +30,7 @@ def record(path):
     runner = registry.load('checks', workspace.load_config(root))
     sha = data(vcs.head(actual['path'], root=root))['sha']
     if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', sha):
-        raise ValueError('invalid HEAD for fast checks')
+        raise ValueError(f'invalid HEAD for fast checks; {DAMAGED}')
     from wuwei.brief import status
     clean = not status(vcs, str(path), root) if binding else False
     code = 0
@@ -37,7 +38,7 @@ def record(path):
         result = runner.run(str(path), command, root=root)
         if (not isinstance(result, registry.Result) or type(result.exit) is not int
                 or result.exit not in (0, 1, 2)):
-            raise ValueError('invalid fast-check result')
+            raise ValueError(f'invalid fast-check result; {ADAPTER_DATA}')
         if data(vcs.head(actual['path'], root=root))['sha'] != sha:
             raise ValueError('HEAD changed during fast checks; rerun checks')
         records[command] = {'sha': sha, 'exit': result.exit, 'data': result.data,

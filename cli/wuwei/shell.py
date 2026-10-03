@@ -7,6 +7,8 @@ from pathlib import Path, PurePosixPath
 import re
 import shlex
 
+from wuwei.exits import DAMAGED
+
 
 class ParseError(ValueError):
     """The command cannot be inspected safely; guards must return exit 2."""
@@ -47,7 +49,7 @@ def operands(args, valued=(), flags=()):
             value, sep = arg[len(key):], '='
         if not sep:
             if index == len(args):
-                raise ValueError('missing option value')
+                raise ValueError('missing option value; add the value after it (for example -R owner/repo) or remove the option')
             value = args[index]
             index += 1
         for aliases in (('-X', '--method'), ('-R', '--repo')):
@@ -78,7 +80,7 @@ def _expands(raw):
 
 def _reject_mentions(text):
     if _GUARDED.search(text) or _GUARDED.search(re.sub(r'''['"\\]''', '', text)):
-        raise ParseError('unaccounted git/gh mention')
+        raise ParseError('unaccounted git/gh mention; remove the mention, or run git or gh as its own plain command')
 
 
 def mentions(raw, names, *, script=False) -> bool:
@@ -197,7 +199,7 @@ def _word(raw):
     parts = list(_QUOTED_PART.finditer(raw))
     for first, second in zip(parts, parts[1:]):
         if not first[0].startswith(("'", '"', '\\')) and first[0].endswith('$') and second[0].startswith("'"):
-            raise ParseError('ANSI-C quoting is unsupported')
+            raise ParseError('ANSI-C quoting is unsupported; use plain \'single\' or "double" quotes instead of $\'...\'')
     return ''.join(shlex.split(part[0])[0].replace('\\$', '$')
                    if part[0].startswith('"') else shlex.split(part[0])[0]
                    for part in parts)
@@ -228,7 +230,7 @@ def _heredoc(script, position, delimiter, strip_tabs=False):
                         re.escape(delimiter) + r'(?:\n|$)', re.MULTILINE)
     match = ending.search(script, position)
     if not match:
-        raise ParseError('unterminated here-doc')
+        raise ParseError('unterminated here-doc; write the delimiter alone on its own line after the body')
     body = script[position:match.start()]
     if strip_tabs:
         body = re.sub(r'^\t+', '', body, flags=re.MULTILINE)
@@ -243,7 +245,7 @@ def _read_word(script, position):
             break
         if char == '\\' and quote != "'":
             if position + 1 == len(script):
-                raise ParseError('trailing backslash')
+                raise ParseError('trailing backslash; remove the backslash or finish the line')
             raw.append(script[position:position + 2])
             position += 2
             continue
@@ -252,16 +254,16 @@ def _read_word(script, position):
             header = re.match(r"""\$\(cat[ \t]+<<(-?)[ \t]*(['"])([\w-]+)\2[ \t]*\n""",
                               script[position:])
             if quote != '"' or not header:
-                raise ParseError('command substitution is unsupported')
+                raise ParseError('command substitution is unsupported; run that command first and write its result as a literal, or use a quoted cat here-doc ($(cat <<\'EOF\' ... EOF))')
             body, position = _heredoc(script, position + header.end(), header[3], bool(header[1]))
             end = re.match(r'\s*\)', script[position:])
             if not end:
-                raise ParseError('command substitution contains more than a literal here-doc')
+                raise ParseError('command substitution contains more than a literal here-doc; close the $( right after the here-doc delimiter line, or pass the text with --body-file')
             position += end.end()
             raw.append('"' + shlex.quote(body.rstrip('\n')) + '"')
             continue
         if char == '`' and quote != "'":
-            raise ParseError('command substitution is unsupported')
+            raise ParseError('command substitution is unsupported; run that command first and write its result as a literal, or use a quoted cat here-doc ($(cat <<\'EOF\' ... EOF))')
         if char in ("'", '"'):
             if quote is None:
                 quote = char
@@ -270,13 +272,13 @@ def _read_word(script, position):
         raw.append(char)
         position += 1
     if quote or not raw:
-        raise ParseError('unbalanced quotes or missing word')
+        raise ParseError('unbalanced quotes or missing word; close the quote or add the missing word so the guard can read the command')
     return ''.join(raw), position
 
 
 def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, scope=(), scope_ids):
     if not isinstance(script, str) or '\0' in script:
-        raise ParseError('command must be text without NUL')
+        raise ParseError(f'command must be text without NUL; {DAMAGED}')
     tokens, raw_tokens, heredocs = [], [], []
     writes_at, reads_at = {}, {}
     command_start = 0
@@ -296,10 +298,10 @@ def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, scope=
                 target, position = _read_word(script, position)
                 if '<<' in raw:
                     if not re.fullmatch(r"""(['"])[\w-]+\1""", target):
-                        raise ParseError('only quoted here-doc delimiters are supported')
+                        raise ParseError('only quoted here-doc delimiters are supported; write <<\'EOF\' instead of <<EOF so the body stays literal')
                     heredocs.append((_word(target), raw.endswith('-'), command_start))
                 elif not _literal(target):
-                    raise NonliteralPathError('nonliteral redirection is unsupported')
+                    raise NonliteralPathError('nonliteral redirection is unsupported; use a literal path')
                 elif '>' in raw and not ('&' in raw and re.fullmatch(r'[0-9]+-?|-', _word(target))):
                     writes_at[len(tokens)] = _word(target)
                     tokens.append(('', False))
@@ -329,7 +331,7 @@ def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, scope=
         raw = _QUOTED_PART.sub(
             lambda m: m[0] if m[0].startswith("'") else m[0].replace('\\\n', ''), raw)
         if not operator and len(_GUARDED.findall(script[start:position])) > len(_GUARDED.findall(raw)):
-            raise ParseError('normalization hides a git/gh mention')
+            raise ParseError('normalization hides a git/gh mention; write git or gh as one plain unbroken word')
         if not raw:
             continue
         tokens.append((raw if operator else _word(raw), operator))
@@ -339,7 +341,7 @@ def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, scope=
         if operator:
             command_start = len(tokens)
     if heredocs:
-        raise ParseError('missing here-doc body')
+        raise ParseError('missing here-doc body; add the body and the delimiter line, or drop the here-doc')
 
     position = 0
 
@@ -356,12 +358,12 @@ def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, scope=
                 position += 1
                 continue
             if operator and token != '(':
-                raise ParseError('unexpected shell separator')
+                raise ParseError('unexpected shell separator; remove the empty slot or split the line into separate commands')
             if operator:
                 position += 1
                 current = group(True, current_scope)
                 if position == len(tokens) or tokens[position] != (')', True) or not current:
-                    raise ParseError('unbalanced or empty subshell')
+                    raise ParseError('unbalanced or empty subshell; add the missing parenthesis and a command inside, or remove the parentheses')
                 position += 1
             else:
                 argv = []
@@ -401,16 +403,16 @@ def _parse(script, subshell, env=None, protected=('git', 'gh'), *, words, scope=
             if next_token is None or next_token == (')', True):
                 break
             if not next_token[1] or next_token[0] not in (';', '&', '&&', '||', '|', '\n'):
-                raise ParseError('expected shell separator')
+                raise ParseError('expected shell separator; separate the commands with ;, && or a newline, or run each in its own call')
             pending = next_token[0]
             position += 1
         if pending in ('&&', '||', '|'):
-            raise ParseError('missing command after separator')
+            raise ParseError('missing command after separator; add the next command or remove the trailing operator')
         return commands
 
     result = group(subshell, scope)
     if position != len(tokens):
-        raise ParseError('unmatched closing parenthesis')
+        raise ParseError('unmatched closing parenthesis; remove the ) or add the opening parenthesis')
     return result
 
 
@@ -420,7 +422,7 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
         if _ASSIGNMENT.match(argv[0]):
             _reject_mentions(raw_argv[0])
             if _expands(raw_argv[0]):
-                raise ParseError('expanding environment assignment is unsupported')
+                raise ParseError('expanding environment assignment is unsupported; assign a literal value, or set it in an earlier separate command')
             key, value = argv[0].split('=', 1)
             env[key] = value
             argv = argv[1:]
@@ -428,10 +430,10 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
             continue
         program = PurePosixPath(argv[0]).name or argv[0]
         if not _literal(raw_argv[0]):
-            raise ParseError('nonliteral command name is unsupported')
+            raise ParseError('nonliteral command name is unsupported; write the command name literally instead of building it from a variable')
         if program in _PATH_COMMANDS and not all(
                 _literal(raw, allow_globs=program not in ('cd', 'pushd', 'popd')) for raw in raw_argv):
-            raise NonliteralPathError('nonliteral file or directory arguments are unsupported')
+            raise NonliteralPathError('nonliteral file or directory arguments are unsupported; write the literal path')
         if program not in ('git', 'gh'):
             _reject_mentions(raw_argv[0])
         if any(char in argv[0] for char in '$`*?[]') or program in (
@@ -439,10 +441,10 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
                 'case', 'esac', 'function', '{', '}', '!', 'trap',
                 'alias', 'unalias', '.', 'source', 'shopt', 'enable',
                 'export', 'readonly', 'unset', 'declare', 'typeset'):
-            raise ParseError('dynamic command or shell control flow is unsupported')
+            raise ParseError('dynamic command or shell control flow is unsupported; run plain simple commands, one per call, or write the commands to a file and run bash <file>')
         if program == 'eval':
             if any(_expands(raw) for raw in raw_argv[1:]):
-                raise ParseError('expanding eval is unsupported')
+                raise ParseError('expanding eval is unsupported; run the command directly, or give eval a literal string')
             for raw in raw_argv[1:]:
                 if len(list(_QUOTED_PART.finditer(raw))) > 1:
                     _reject_mentions(raw)
@@ -453,7 +455,7 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
                     for item in expanded]
         if program == 'busybox':
             if len(argv) < 2 or argv[1] != 'sh':
-                raise ParseError('unsupported busybox applet')
+                raise ParseError('unsupported busybox applet; run the command directly or use busybox sh -c \'...\'')
             argv, raw_argv = argv[1:], raw_argv[1:]
             program = 'sh'
         if program in ('sh', 'bash', 'zsh', 'dash', 'ksh'):
@@ -464,26 +466,26 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
                 if option == '--':
                     break
                 if not re.fullmatch(r'[-+][a-zA-Z]+', option) or 'o' in option:
-                    raise ParseError('unsupported shell option')
+                    raise ParseError('unsupported shell option; use bash -c \'...\' with plain letter flags such as -c, -e and -u')
                 has_script |= option.startswith('-') and 'c' in option
             if not has_script or index == len(argv):
-                raise ParseError('missing shell -c script')
+                raise ParseError('missing shell -c script; use bash -c \'command\' or run the command directly')
             if _expands(raw_argv[index]):
-                raise ParseError('expanding shell script is unsupported')
+                raise ParseError('expanding shell script is unsupported; put the script in single quotes or write the values literally')
             if index + 1 < len(argv) and re.search(r'\$[@*0-9{]', argv[index]):
-                raise ParseError('shell positional expansion is unsupported')
+                raise ParseError('shell positional expansion is unsupported; write the real values into the script text and drop the extra arguments')
             _reject_mentions(' '.join(raw_argv[:index] + raw_argv[index + 1:]))
             if len(list(_QUOTED_PART.finditer(raw_argv[index]))) > 1:
                 _reject_mentions(raw_argv[index])
             if len(_GUARDED.findall(re.sub(r'''['"\\]''', '', argv[index]))) > len(_GUARDED.findall(argv[index])):
-                raise ParseError('obfuscated git/gh mention in shell script')
+                raise ParseError('obfuscated git/gh mention in shell script; write git or gh plainly')
             return _parse(argv[index], True, env, protected,
                           words=words, scope=scope, scope_ids=scope_ids)
         if program not in ('env', 'command', 'exec', 'nohup', 'time', 'xargs',
                            'nice', 'timeout', 'sudo', 'stdbuf', 'setsid'):
             if program in protected:
                 if not all(_literal(raw) for raw in raw_argv):
-                    raise ParseError('nonliteral guarded arguments are unsupported')
+                    raise ParseError('nonliteral guarded arguments are unsupported; write the literal arguments')
                 return [Command(argv, subshell, env, scope=scope)]
             _reject_mentions(' '.join(raw_argv))
             _reject_mentions(' '.join(argv))
@@ -516,19 +518,19 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
             value_options = with_value.get(program, ())
             if option in value_options:
                 if index == len(argv):
-                    raise ParseError(f'missing {program} option value')
+                    raise ParseError(f'missing {program} option value; add the value after it, or remove the option')
                 if program == 'env':
                     env.pop(argv[index], None)
                 index += 1
             elif not any(option.startswith(flag + '=') if flag.startswith('--')
                          else option.startswith(flag) and len(option) > len(flag)
                          for flag in value_options):
-                raise ParseError(f'unsupported {program} option')
+                raise ParseError(f'unsupported {program} option; drop it, or run the inner command without the wrapper')
             elif program == 'env':
                 env.pop(option.partition('=')[2] if option.startswith('--') else option[2:], None)
         if program == 'timeout':
             if index == len(argv) or not re.fullmatch(r'[0-9]+(?:\.[0-9]+)?[smhd]?', argv[index]):
-                raise ParseError('unsupported timeout duration')
+                raise ParseError('unsupported timeout duration; write a literal duration such as 30, 5m or 1.5h before the command')
             index += 1
         _reject_mentions(' '.join(raw_argv[:index]))
         argv = argv[index:]
@@ -541,12 +543,12 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
                                words=words, scope=scope, scope_ids=scope_ids)
             if any(item.writes or (item.argv and PurePosixPath(item.argv[0]).name in
                                   (*protected, *_PATH_COMMANDS)) for item in expanded):
-                raise ParseError('input-driven guarded arguments are unsupported')
+                raise ParseError('input-driven guarded arguments are unsupported; run the command directly with literal arguments instead of piping into xargs')
             return expanded
         elif not argv:
-            raise ParseError(f'missing command after {program}')
+            raise ParseError(f'missing command after {program}; add the command to run, or drop the prefix')
     if any(key in env for key in ('HOME', 'OLDPWD', 'CDPATH')):
-        raise ParseError('standalone directory environment assignments are unsupported')
+        raise ParseError('standalone directory environment assignments are unsupported; set HOME, OLDPWD or CDPATH inline on the one command that needs it, or drop it')
     return []
 
 
@@ -648,7 +650,7 @@ def _close(text, position):
             if not depth:
                 return position
         position += 1
-    raise ValueError('unbalanced command substitution')
+    raise ValueError('unbalanced command substitution; add the missing ) for each $( so the guard can read the command')
 
 
 def _tick(text, position):
@@ -657,7 +659,7 @@ def _tick(text, position):
     while position < len(text) and text[position] != '`':
         position += 2 if text[position] == '\\' else 1
     if position >= len(text):
-        raise ValueError('unbalanced backticks')
+        raise ValueError('unbalanced backticks; close each backtick, or use a literal value instead of the substitution')
     return position
 
 
@@ -695,7 +697,7 @@ def _cut(text, bodies):
             match = re.match(r'''<<(-?)[ \t]*(?:'([^'\n]*)'|"([^"\n]*)"|(\\?)([^\s;&|()<>]+))''',
                              text[position:])
             if not match:
-                raise ValueError('unreadable here-doc')
+                raise ValueError('unreadable here-doc; end the here-doc with its delimiter alone on a line, or write the text to a file first')
             quoted = match[2] is not None or match[3] is not None or bool(match[4])
             pending.append((match[2] or match[3] or match[5], bool(match[1]), quoted))
             out.append(' << - ')
@@ -708,16 +710,16 @@ def _cut(text, bodies):
                 end = re.compile('^' + ('\t*' if tabs else '') + re.escape(delimiter) + '$',
                                  re.M).search(text, position)
                 if not end:
-                    raise ValueError('unterminated here-doc')
+                    raise ValueError('unterminated here-doc; write the delimiter alone on its own line after the body')
                 if not quoted and re.search(r'\$\(|`', text[position:end.start()]):
-                    raise ValueError('expanding here-doc')
+                    raise ValueError('expanding here-doc; write the delimiter quoted (<<\'EOF\') so the body stays literal')
                 position = end.end()
             pending.clear()
             continue
         out.append(char)
         position += 1
     if quote or pending:
-        raise ValueError('unbalanced quotes or unterminated here-doc')
+        raise ValueError('unbalanced quotes or unterminated here-doc; add the closing quote, or write the here-doc delimiter alone on its own line')
     return ''.join(out)
 
 
@@ -738,7 +740,7 @@ def _simple(text):
             continue
         operators = _OPERATOR.findall(token)
         if ''.join(operators) != token:
-            raise ValueError('unreadable operator')
+            raise ValueError('unreadable operator; split the line into plain commands joined by ;, && or ||')
         for operator in operators:
             if '<' in operator or '>' in operator:
                 redirect = operator
@@ -751,7 +753,7 @@ def _simple(text):
                 commands.append((argv, writes, fed))
             argv, writes, fed = [], [], 'pipe' if operator in ('|', '|&') else ''
     if redirect is not None:
-        raise ValueError('missing redirect target')
+        raise ValueError('missing redirect target; write the file name after the redirect')
     if argv or writes:
         commands.append((argv, writes, fed))
     return commands

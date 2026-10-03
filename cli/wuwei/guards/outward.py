@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import re
 
-from wuwei.exits import CLEAN, FINDINGS, UNRUN
+from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, PAYLOAD
 from wuwei.guards import Guard
 from wuwei import outward
 
@@ -75,7 +75,7 @@ def _check(payload, policy):
             policy_root = workspace.find_workspace(cwd)
         except FileNotFoundError:
             if 'WUWEI_WORKSPACE' in os.environ:
-                raise ValueError('invalid WUWEI_WORKSPACE override')
+                raise ValueError(f'invalid WUWEI_WORKSPACE override; {DAMAGED}')
             policy_root = workspace.worktree_workspace(cwd)
         config = workspace.load_config(policy_root) if policy_root else None
         patterns = (config['outward']['tool_patterns'] if config else
@@ -98,7 +98,7 @@ def _check(payload, policy):
         if root is None:
             return CLEAN, ''
         if not isinstance(tool, str) or not tool.strip():
-            return UNRUN, 'outward: tool name required'
+            return UNRUN, f'outward: tool name required; {PAYLOAD}'
         if root != policy_root:
             config = workspace.load_config(root)
             channels = {rule['channel'] for rule in config['outward']['tool_patterns']
@@ -106,13 +106,13 @@ def _check(payload, policy):
         if not channels:
             return UNRUN, 'outward: configure outward.tool_patterns for this write tool'
         if len(channels) != 1:
-            return UNRUN, 'outward: ambiguous tool channel configuration'
+            return UNRUN, 'outward: ambiguous tool channel configuration; pass one channel per call'
         inputs = payload['tool_input']
         if re.search(r'(?:^|_)(?:dm|direct_message)(?:_|$)', tool, re.IGNORECASE):
             inputs = {**inputs, 'is_dm': True}
         return policy(inputs, root, config, channels)
     except (OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError, re.error):
-        return UNRUN, 'outward: cannot read or validate policy or payload'
+        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'
 
 
 GUARDS = [Guard('PreToolUse', None, check_tier),

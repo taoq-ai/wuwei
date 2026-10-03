@@ -6,7 +6,7 @@ import sys
 
 from wuwei import env, outward, registry, workspace
 
-from wuwei.exits import CLEAN, FINDINGS, UNRUN
+from wuwei.exits import CLEAN, FINDINGS, UNRUN, SYMLINK
 from wuwei.workspace import ConfigError, load_config
 
 
@@ -144,7 +144,7 @@ def read(root):
     """(path, raw text) of config.toml, refusing a symlinked config or calibration snapshot."""
     path = root / '.wuwei/config.toml'
     if path.is_symlink() or (root / '.wuwei/calibration.json').is_symlink():
-        raise ValueError('config.toml and calibration.json must not be symlinks')
+        raise ValueError(f'config.toml and calibration.json must not be symlinks; {SYMLINK}')
     return path, path.read_text(encoding='utf-8')
 
 
@@ -194,7 +194,7 @@ def offer(root, raw, text, summary, *, label, what, confirm=None, snapshot=None)
     digest = hashlib.sha256(summary.encode()).hexdigest()[:12]
     if not (confirm or integrity._host_confirm)(
             digest, prompt=f'Apply the {what} above.'):
-        print(f'wuwei {label}: declined; nothing written', file=sys.stderr)
+        print(f'wuwei {label}: declined; nothing written; rerun it in a host terminal and answer y', file=sys.stderr)
         return FINDINGS
     path = root / '.wuwei/config.toml'
     if path.read_text(encoding='utf-8') != raw:
@@ -292,7 +292,7 @@ def _token(host, name):
     source = '.wuwei/env' if name in env._loaded else 'the environment'
     if name in env._shadowed:
         print(f'  {name} ({source}): unmeasured')
-        print(f'{name}: the environment value shadows the .wuwei/env value, which was not measured',
+        print(f'{name}: the environment value shadows the .wuwei/env value, which was not measured; unset it in the environment, or remove it from .wuwei/env',
               file=sys.stderr)
         return UNRUN
     result = host.token_scopes(name)

@@ -40,7 +40,7 @@ def register(subparsers):
     parser.add_argument('--repos', nargs='+', metavar='DIR',
                         help='directories whose child git repositories to add (default: the workspace)')
     parser.add_argument('target', nargs='?', choices=('slack',),
-                        help='slack: connect the owner DM: token, pin, second factor, listener')
+                        help='slack: connect your owner DM: token, pin, second factor, listener')
     parser.set_defaults(func=run)
 
 
@@ -78,7 +78,7 @@ def _settle(raw, settings):
         if isinstance(current, dict):
             raise ValueError(f'{dotted}: a table; set one of its keys'
                              + (f', for example {dotted}.default' if 'default' in current else ''))
-        raise ValueError(f'{dotted}: not a one-line assignment; edit config.toml by hand')
+        raise ValueError(f'{dotted}: not a one-line assignment; edit config.toml by hand, then run bin/wuwei config check')
     return calibrate.apply(raw, additions)
 
 
@@ -86,13 +86,13 @@ def set_value(args, confirm=None):
     """Owner action: set one config value after a host-terminal digest."""
     def change(root, raw):
         if not KEY.fullmatch(args.key):
-            raise ValueError(f'{args.key}: expected a dotted key such as owner.name or repos.0.merge_deploys')
+            raise ValueError(f'{args.key}: expected a dotted key such as owner.name or repos.0.merge_deploys; use a dotted key such as owner.name')
         parts = [int(p) if p.isdigit() else p for p in args.key.split('.')]
         if isinstance(parts[-1], int):
-            raise ValueError(f'{args.key}: name a key, not a list index')
+            raise ValueError(f'{args.key}: name a key, not a list index; use the key itself, for example repos.0.merge_deploys')
         parsed = tomllib.loads(f'value = {args.value}\n')
         if list(parsed) != ['value']:
-            raise ValueError(f'{args.value!r}: expected one TOML value')
+            raise ValueError(f'{args.value!r}: expected one TOML value; pass one TOML value, for example \'"standard"\' or false')
         return _settle(raw, [(tuple(parts[:-1]), parts[-1], parsed['value'])])
 
     return _edit('config set', 'change', confirm, change)
@@ -117,7 +117,7 @@ def add_repo(args, confirm=None):
         if args.identity is not None:
             found = IDENTITY.fullmatch(args.identity)
             if not found:
-                raise ValueError('--identity: expected "Name <email>"')
+                raise ValueError('--identity: expected "Name <email>"; pass --identity "Name <email>"')
             repo['identity'] = {'name': found[1], 'email': found[2]}
         return repo_tables(raw, [repo])
 
@@ -242,7 +242,7 @@ def run(args, confirm=None):
     try:
         return slack(confirm) if getattr(args, 'target', None) == 'slack' else _setup(args, confirm)
     except EOFError:
-        print('wuwei setup: interview interrupted; nothing written', file=sys.stderr)
+        print('wuwei setup: interview interrupted; nothing written; run bin/wuwei setup again to start over', file=sys.stderr)
         return UNRUN
     except ConfigError as exc:
         print(f'wuwei setup: {exc}', file=sys.stderr)
@@ -297,7 +297,7 @@ def _setup(args, confirm):
         accepted, refused, flagged = profiles.review(profiles.read(args.posture), staged_cfg, names)
         if refused:
             for key, why in refused:
-                print(f'wuwei setup: refused: {key} ({why}); nothing written', file=sys.stderr)
+                print(f'wuwei setup: refused: {key} ({why}); nothing written; run bin/wuwei setup again with a value config check accepts', file=sys.stderr)
             return FINDINGS
         for where, rule in flagged:
             print(f'Flagged {where} ({rule}), not proposed')
@@ -341,7 +341,7 @@ def _setup(args, confirm):
             init.status_line(root)
             print('Status line: added to .claude/settings.json')
     except (OSError, ValueError) as exc:
-        print(f'wuwei setup: status line not written: {exc}', file=sys.stderr)
+        print(f'wuwei setup: status line not written: {exc}; run bin/wuwei setup again to add it', file=sys.stderr)
         optional.append('put the statusLine from bin/wuwei init into .claude/settings.json')
     platform = watch.service_platform()
     if platform in ('darwin', 'linux') and not workspace.watch_unit(root, platform)[1].exists() and _yes(
@@ -349,7 +349,7 @@ def _setup(args, confirm):
         try:
             watch.service(SimpleNamespace(watch_action='install', once=False, dry_run=False), 'watch', None)
         except (OSError, ValueError) as exc:
-            print(f'wuwei setup: watch install: {exc}', file=sys.stderr)
+            print(f'wuwei setup: watch install: {exc}; run bin/wuwei watch install in a host terminal', file=sys.stderr)
     gate = mcp.check(root)
     if gate.reason:
         print(gate.reason, file=sys.stderr)

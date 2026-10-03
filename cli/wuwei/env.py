@@ -7,6 +7,7 @@ import re
 import stat
 
 from wuwei import redact
+from wuwei.exits import SYMLINK
 
 
 CREDENTIALS = ('LINEAR_API_KEY', 'SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN',
@@ -55,15 +56,15 @@ def load(root):
     except FileNotFoundError:
         return
     except OSError:
-        raise ValueError('.wuwei/env: cannot open private credentials file') from None
+        raise ValueError('.wuwei/env: cannot open private credentials file; create .wuwei/env as a regular file with mode 0600 (chmod 600 .wuwei/env)') from None
     try:
         with os.fdopen(fd, encoding='utf-8') as stream:
             info = os.fstat(stream.fileno())
             if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o600:
-                raise ValueError('.wuwei/env: expected a regular file with mode 0600')
+                raise ValueError('.wuwei/env: expected a regular file with mode 0600; replace it with a regular file and run chmod 600 .wuwei/env')
             raw = stream.read(65537)
         if len(raw) > 65536 or '\0' in raw:
-            raise ValueError('.wuwei/env: invalid or oversized credentials file')
+            raise ValueError('.wuwei/env: invalid or oversized credentials file; write one NAME=value per line, under 64 KiB')
         values = {}
         for number, line in enumerate(raw.splitlines(), 1):
             line = line.strip()
@@ -72,10 +73,10 @@ def load(root):
             name, separator, value = line.partition('=')
             name, value = name.strip(), value.strip()
             if not separator or not re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*', name):
-                raise ValueError(f'.wuwei/env: invalid assignment at line {number}')
+                raise ValueError(f'.wuwei/env: invalid assignment at line {number}; write it as NAME=value')
             if value.startswith(('"', "'")):
                 if len(value) < 2 or value[-1] != value[0]:
-                    raise ValueError(f'.wuwei/env: unmatched quote at line {number}')
+                    raise ValueError(f'.wuwei/env: unmatched quote at line {number}; add the closing quote')
                 value = value[1:-1]
             values[name] = value
         redact.VALUES.update(value for name, value in values.items() if value and name not in PUBLIC)
@@ -86,7 +87,7 @@ def load(root):
             if os.environ[name] and name not in PUBLIC:
                 redact.VALUES.add(os.environ[name])
     except (OSError, UnicodeError):
-        raise ValueError('.wuwei/env: cannot read credentials file') from None
+        raise ValueError('.wuwei/env: cannot read credentials file; check its permissions (chmod 600 .wuwei/env), then retry') from None
 
 
 def write(root, values):
@@ -94,10 +95,11 @@ def write(root, values):
     from wuwei import workspace
     path = Path(root) / '.wuwei/env'
     if path.is_symlink():
-        raise ValueError('.wuwei/env must not be a symlink')
+        raise ValueError(f'.wuwei/env must not be a symlink; {SYMLINK}')
     for name, value in values.items():
         if name not in CREDENTIALS or not re.fullmatch(r'[^\s"\'#\\]+', value):
-            raise ValueError(f'.wuwei/env: refused to write {name}')
+            raise ValueError(f'.wuwei/env: refused to write {name}; add it to .wuwei/env by hand as '
+                             'NAME=value, with no spaces, quotes, # or backslashes')
     lines = path.read_text(encoding='utf-8').splitlines() if path.exists() else []
     lines = [line for line in lines if line.partition('=')[0].strip() not in values]
     lines += [f'{name}={value}' for name, value in values.items()]
@@ -110,7 +112,7 @@ def initialize(directory, *, dry_run=False):
     directory = Path(directory)
     path, ignore = directory / 'env', directory / '.gitignore'
     if path.is_symlink() or ignore.is_symlink():
-        raise ValueError('.wuwei/env and .gitignore must not be symlinks')
+        raise ValueError(f'.wuwei/env and .gitignore must not be symlinks; {SYMLINK}')
     previous = ignore.read_text() if ignore.exists() else ''
     missing = not path.exists()
     ignored = '/env' in previous.splitlines()

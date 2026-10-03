@@ -1112,3 +1112,54 @@ def test_release_asset_through_the_launcher_with_a_marker(tmp_path, monkeypatch)
     check = wuwei('integrity', 'check', cwd=ws)
     assert check.returncode == 0, check.stdout + check.stderr
     assert wuwei('hook', 'PreToolUse', stdin=payload).returncode == 0
+
+
+def test_both_paths_cached(tmp_path, monkeypatch):
+    api = core()
+    root = workspace_root(tmp_path)
+    copy_a, copy_b = (tmp_path / 'a/plugin').resolve(), (tmp_path / 'b/plugin').resolve()
+    (root / '.wuwei/integrity/verdict.json').write_text(json.dumps(
+        {'exit': 0, 'fingerprint': 'a' * 64, 'reason': '', 'plugin': str(copy_a),
+         'checkout': {'head': 'b' * 40, 'clean': True}}))
+    monkeypatch.setattr(api, 'PLUGIN', copy_b)
+    result = api.cached(root)
+    assert result.exit == 2
+    for text in (f'confirmed the plugin at {copy_a}', f'runs {copy_b}', f'claude --plugin-dir {copy_a}',
+                 'bin/wuwei integrity reconfirm in a host terminal'):
+        assert text in result.reason, text
+    monkeypatch.setattr(api, 'PLUGIN', copy_a)
+    assert 'confirmed the plugin at' not in api.cached(root).reason
+
+
+def test_both_paths_check(tmp_path, monkeypatch):
+    api = core()
+    root = workspace_root(tmp_path)
+    base = plugin(tmp_path)
+    monkeypatch.setattr(api, 'PLUGIN', base)
+    monkeypatch.setattr(api, 'signature_adapter', lambda: Namespace(verify=lambda *a: registry.Result(0)))
+    api.write_manifest(base)
+    shutil.copyfile(base / api.KEY, root / '.wuwei/integrity/pinned.pub')
+    (base / 'charters/builder.md').write_text('Changed\n')
+    assert api.reconfirm(root, confirm=lambda digest: True).exit == 0
+    assert json.loads((root / '.wuwei/integrity/confirmation.json').read_text())['plugin'] == str(base)
+    assert json.loads((root / '.wuwei/integrity/verdict.json').read_text())['plugin'] == str(base)
+    other = tmp_path / 'other'
+    shutil.copytree(base, other)
+    (other / 'charters/builder.md').write_text('Other\n')
+    monkeypatch.setattr(api, 'PLUGIN', other)
+    result = api.check(root)
+    assert result.exit == 1 and f'confirmed the plugin at {base}' in result.reason
+    assert f'runs {other}' in result.reason
+
+
+def test_both_paths_old_records(tmp_path, monkeypatch):
+    api = core()
+    root = workspace_root(tmp_path)
+    (root / '.wuwei/integrity/verdict.json').write_text(json.dumps(
+        {'exit': 0, 'fingerprint': 'a' * 64, 'reason': ''}))
+    monkeypatch.setattr(api, 'PLUGIN', tmp_path / 'anywhere')
+    assert api.cached(root).exit == 0
+    # A signed release verifies wherever it runs: another copy's clean verdict still holds.
+    (root / '.wuwei/integrity/verdict.json').write_text(json.dumps(
+        {'exit': 0, 'fingerprint': 'a' * 64, 'reason': '', 'plugin': str(tmp_path / 'other')}))
+    assert api.cached(root).exit == 0

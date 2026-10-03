@@ -447,3 +447,19 @@ def test_threads_carry_the_file_path(monkeypatch):
 def test_default_branch_refuses_an_unusable_name(branch, monkeypatch):
     install_replay(monkeypatch, 'gh', [{'stdout': json.dumps({'default_branch': branch})}])
     assert adapter().default_branch('acme/widget').exit == 2
+
+
+def test_stderr_line_and_auth_hint(monkeypatch):
+    install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr':
+                                        'To get started with GitHub CLI, please run:  gh auth login'}])
+    result = adapter().pr('acme/widget#7')
+    assert result.exit == 2
+    for text in ('gh exited 1', 'acme/widget', 'please run:  gh auth login', 'run gh auth login'):
+        assert text in result.reason, text
+
+
+def test_stderr_line_search_has_no_email(monkeypatch):
+    install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'HTTP 422: q=author-email:dev@example.test'}])
+    result = adapter().author_login('acme/widget', 'dev@example.test')
+    assert result.exit == 2 and 'gh exited 1' in result.reason and 'search' in result.reason
+    assert 'example.test' not in result.reason

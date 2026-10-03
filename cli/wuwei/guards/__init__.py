@@ -7,7 +7,7 @@ import os
 import re
 import sys
 
-from wuwei.exits import CLEAN, FINDINGS
+from wuwei.exits import CLEAN, FINDINGS, PAYLOAD
 
 
 EVENTS = ('PreToolUse', 'PostToolUse', 'SubagentStop', 'SessionStart', 'PreCompact', 'Stop')
@@ -126,16 +126,16 @@ def discover():
             module = f'{__name__}.{name}'
             records = import_module(module).GUARDS
             if not isinstance(records, list):
-                raise ValueError(f'{module}: GUARDS must be a list')
+                raise ValueError(f'{module}: GUARDS must be a list; reinstall the plugin, then run bin/wuwei doctor')
             for guard in records:
                 if not isinstance(guard, Guard) or not callable(guard.check):
-                    raise ValueError(f'{module}: invalid guard record')
+                    raise ValueError(f'{module}: invalid guard record; reinstall the plugin, then run bin/wuwei doctor')
                 if type(guard.profile_relaxable) is not bool:
-                    raise ValueError(f'{module}: invalid profile_relaxable flag')
+                    raise ValueError(f'{module}: invalid profile_relaxable flag; reinstall the plugin, then run bin/wuwei doctor')
                 if guard.matcher is not None and not isinstance(guard.matcher, str):
-                    raise ValueError(f'{module}: invalid guard matcher')
+                    raise ValueError(f'{module}: invalid guard matcher; reinstall the plugin, then run bin/wuwei doctor')
                 if guard.event not in EVENTS:
-                    raise ValueError('unknown guard event')
+                    raise ValueError(f'unknown guard event; {PAYLOAD}')
                 if guard.matcher is not None:
                     re.compile(guard.matcher)
             guards.extend(records)

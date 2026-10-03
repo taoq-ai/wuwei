@@ -65,7 +65,7 @@ def test_strict_refuses_the_unknown_key(ws):
     write(ws, STRICT)
     with pytest.raises(workspace.ConfigError) as caught:
         workspace.load_config(ws)
-    assert str(caught.value) == 'config.toml: ' + WARNING.format(typo_line(STRICT))
+    assert str(caught.value) == 'config.toml: ' + WARNING.format(typo_line(STRICT)) + '; run bin/wuwei config check after the fix'
 
 
 def test_strict_without_a_near_key_says_remove_it(ws):

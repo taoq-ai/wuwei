@@ -5,6 +5,7 @@ from pathlib import Path
 
 from wuwei import registry, state
 from wuwei.registry import Result
+from wuwei.exits import ADAPTER_DATA
 
 FIELDS = ('id', 'source', 'channel', 'thread', 'sender', 'text', 'ts')
 REQUIRED = ('id', 'source', 'channel', 'sender', 'ts')
@@ -33,12 +34,12 @@ def store(root, config, events):
             isinstance(event, dict) and tuple(sorted(event)) == tuple(sorted(FIELDS))
             and all(isinstance(value, str) for value in event.values())
             and all(event[key] for key in REQUIRED) for event in events):
-        return Result(2, None, 'inbox: malformed event')
+        return Result(2, None, f'inbox: malformed event; {ADAPTER_DATA}')
     # ponytail: reads the whole inbox per store; index ids when the inbox grows large.
     try:
         seen = {(row['source'], row['id']) for row in read(root)}
     except (OSError, ValueError, TypeError, KeyError) as exc:
-        return Result(2, None, f'inbox: unreadable: {exc}')
+        return Result(2, None, f'inbox: unreadable: {exc}; run bin/wuwei doctor')
     fresh = []
     for event in events:
         if (event['source'], event['id']) not in seen:
@@ -62,5 +63,5 @@ def store(root, config, events):
                     'id': event['id'], 'source': event['source'],
                     'findings': [item['kind'] for item in data['findings']]}, root)
     except (OSError, ValueError) as exc:
-        return Result(2, None, f'inbox: could not store: {exc}')
+        return Result(2, None, f'inbox: could not store: {exc}; run bin/wuwei doctor')
     return Result(1 if any(data['findings'] for _, data in batch) else 0, len(events))

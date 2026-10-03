@@ -6,6 +6,7 @@ import re
 
 from wuwei import decision, obligations, registry, state, watch, workspace
 from wuwei.references import pull_request
+from wuwei.exits import ADAPTER_DATA, DAMAGED, RACE
 
 
 def _verify(root, host, ref, record, config):
@@ -13,22 +14,22 @@ def _verify(root, host, ref, record, config):
     day = workspace.day_dir(root).name
     if (kind not in ('parked', 'carried') or record['day'] != day
             or type(comment_id) is not int or comment_id <= 0):
-        raise ValueError('invalid PR disposition')
+        raise ValueError(f'invalid PR disposition; {DAMAGED}')
     text = decision.today_path(identifier, root).read_text(encoding='utf-8')
     fields, _ = decision.evaluate(text)
     data = state.read_state(root)
     if (decision.route(fields) != 'owner' or fields['Decided-by'] != 'owner'
             or identifier in data.get('decision_outcomes', {}) and not decision.answered(data, identifier)):
-        raise ValueError('disposition needs an owner-routed decision without a seat outcome')
+        raise ValueError('disposition needs an owner-routed decision without a seat outcome; route it with bin/wuwei decision route D-n, wait for the owner answer, then rerun bin/wuwei pr disposition')
     if obligations._fingerprint(text) != record['decision_fingerprint']:
-        raise ValueError('disposition decision changed; verify again')
+        raise ValueError('disposition decision changed; verify again; the owner posts a fresh marker comment, then rerun bin/wuwei pr disposition with its --comment id')
     discussion = obligations._read(host.threads, ref, root=root)
     comments = obligations._records(discussion['comments'])
     expected = f'WUWEI {kind} {ref} {identifier} {day} {record["decision_fingerprint"]}'
     owner = obligations._owner_login(config)
     if not any(row['id'] == comment_id and row['author'] == owner and not row['is_bot']
                and row['body'].strip() == expected for row in comments):
-        raise ValueError('disposition needs a fresh owner-authored comment: ' + expected)
+        raise ValueError(f'disposition needs a fresh owner-authored comment: {expected}; the owner posts it on the PR, then rerun bin/wuwei pr disposition with its --comment id')
     return kind
 
 
@@ -37,7 +38,7 @@ def record_disposition(root, ref, kind, identifier, comment_id):
     config = workspace.load_config(root)
     host, refs = watch.owned(root, config)
     if ref not in refs:
-        raise ValueError('PR must be raised or claimed today')
+        raise ValueError('PR must be raised or claimed today; check the ref (owner/repo#n), or claim it with bin/wuwei pr claim, then retry')
     text = decision.today_path(identifier, root).read_text(encoding='utf-8')
     record = {'kind': kind, 'decision': identifier, 'comment_id': comment_id,
               'day': workspace.day_dir(root).name,
@@ -110,23 +111,23 @@ def classify(measured, me, acks):
     """Classify current evidence only; waiting becomes stale in the timed producer."""
     pr, reviews, discussion, checks = (measured[key] for key in ('pr', 'reviews', 'threads', 'checks'))
     if type(pr['merged']) is not bool or pr['merged'] and pr['state'] != 'closed':
-        raise ValueError('invalid merged evidence')
+        raise ValueError(f'invalid merged evidence; {DAMAGED}')
     if pr['merged']:
         return 'merged'
     if pr['state'] == 'closed':
         return 'closed'
     if pr['mergeable'] is None:
-        raise ValueError('mergeability unmeasured')
+        raise ValueError('mergeability unmeasured; wait a minute and rerun bin/wuwei pr state; if it persists, run bin/wuwei doctor')
     if pr['mergeable'] is False:
         return 'conflicted'
     red = False
     for check in checks:
         if check['state'] not in ('queued', 'in_progress', 'pending', 'waiting', 'requested', 'completed'):
-            raise ValueError('unknown check state')
+            raise ValueError('unknown check state; read the checks on the PR by hand; if it persists, run bin/wuwei doctor and report the state name')
         if check['state'] == 'completed':
             if check['conclusion'] not in ('success', 'neutral', 'skipped', 'failure', 'error',
                     'cancelled', 'timed_out', 'action_required', 'stale', 'startup_failure'):
-                raise ValueError('unknown check conclusion')
+                raise ValueError('unknown check conclusion; read the checks on the PR by hand; if it persists, run bin/wuwei doctor and report the result name')
             red |= check['conclusion'] not in ('success', 'neutral', 'skipped')
     if red:
         return 'ci_red'
@@ -150,7 +151,7 @@ def observe(root, host, ref, config, measured):
     current = classify(measured, obligations._owner_login(config), obligations._ledger(data).get(ref, {}))
     dispositions = data.get('pr_dispositions', {})
     if not isinstance(dispositions, dict):
-        raise ValueError('invalid PR disposition ledger')
+        raise ValueError(f'invalid PR disposition ledger; {DAMAGED}')
     disposition = (_verify(root, host, ref, dispositions[ref], config)
                    if ref in dispositions else None)
     row = {'pr': ref, 'state': current, 'disposition': disposition, 'parked': disposition == 'parked'}
@@ -160,14 +161,14 @@ def observe(root, host, ref, config, measured):
         value = data.setdefault('watch', {})
         actions, reviews = value.setdefault('actions', {}), value.setdefault('reviews', {})
         if not isinstance(actions, dict) or not isinstance(reviews, dict):
-            raise ValueError('invalid PR action or review ledger')
+            raise ValueError(f'invalid PR action or review ledger; {DAMAGED}')
         episode = actions.get(ref)
         if episode is not None:
             created, deadline = (obligations._time(episode[key]) for key in ('created_at', 'deadline'))
             if (created > now or deadline <= created or episode['state'] not in ACTIONS
                     or episode['action'] != ACTIONS[episode['state']][0]
                     or episode.get('tier', 'silent') not in ('silent', 'nudge', 'page')):
-                raise ValueError('invalid action record')
+                raise ValueError('invalid action record; run bin/wuwei pr state for a fresh action')
         head = measured['pr']['head']
         waiting = reviews.get(ref)
         if waiting is None or waiting['head'] != head:
@@ -177,12 +178,12 @@ def observe(root, host, ref, config, measured):
             if post.get('pr') == ref and post.get('status') == 'posted' and post.get('head') == head:
                 posted_at = obligations._time(post['posted_at'])
                 if posted_at > now:
-                    raise ValueError('review post is in the future')
+                    raise ValueError('review post is in the future; check the system clock and unset WUWEI_NOW, then run bin/wuwei doctor')
                 if posted_at > since:
                     since = posted_at
                     waiting = {'head': head, 'since': since.isoformat()}
         if since > now:
-            raise ValueError('review observation is in the future')
+            raise ValueError('review observation is in the future; check the system clock and unset WUWEI_NOW, then run bin/wuwei doctor')
         reviews[ref] = waiting
         if current == 'waiting' and now - since >= timedelta(minutes=config['pr']['review_window']):
             row['state'] = 'review_stale'
@@ -195,14 +196,14 @@ def observe(root, host, ref, config, measured):
                            'deadline': (now + timedelta(minutes=config['pr']['action_minutes'])).isoformat()}
             created, deadline = (obligations._time(episode[key]) for key in ('created_at', 'deadline'))
             if created > now or deadline <= created:
-                raise ValueError('invalid action deadline')
+                raise ValueError(f'invalid action deadline; {DAMAGED}')
             actions[ref] = episode
             row.update(deadline=episode['deadline'], overdue=now > deadline)
             done = data.get('pr_action_done', {}).get(ref)
             if done is not None and (not isinstance(done, dict) or not isinstance(done.get('head'), str)
                     or not isinstance(done.get('from_head'), str)
                     or not isinstance(done.get('created_at'), str)):
-                raise ValueError('invalid PR action completion')
+                raise ValueError(f'invalid PR action completion; {DAMAGED}')
             completed = (done is not None and done['created_at'] == episode['created_at']
                          and done['state'] == row['state']
                          and done['from_head'] == measured['pr']['head'])
@@ -229,7 +230,7 @@ def evaluate(root, refs=None):
     rows = []
     try:
         if not (workspace.day_dir(root) / 'state.json').is_file():
-            raise ValueError('day state missing')
+            raise ValueError('day state missing; start the day with /wuwei:wuwei-plan (bin/wuwei plan propose, then bin/wuwei plan approve)')
         config = workspace.load_config(root)
         host, owned = watch.owned(root, config)
         if not owned:
@@ -238,7 +239,7 @@ def evaluate(root, refs=None):
         for ref in refs:
             try:
                 if ref not in owned:
-                    raise ValueError('PR must be raised or claimed today')
+                    raise ValueError('PR must be raised or claimed today; check the ref (owner/repo#n), or claim it with bin/wuwei pr claim, then retry')
                 measured = watch.evidence(host, ref, root)
                 rows.append(observe(root, host, ref, config, measured))
             except watch.ERRORS as exc:
@@ -252,14 +253,14 @@ def _item(root, ref):
     matches = [(name, row) for name, row in state.read_state(root)['items'].items()
                if row.get('pr') == ref]
     if len(matches) != 1:
-        raise ValueError('owned PR needs exactly one linked item')
+        raise ValueError('owned PR needs exactly one linked item; link exactly one item with bin/wuwei pr claim (bin/wuwei why shows duplicates)')
     name, item = matches[0]
     tree = item.get('worktree')
     if not isinstance(tree, str) or not tree:
-        raise ValueError('linked item has no worktree')
+        raise ValueError('linked item has no worktree; create one with bin/wuwei worktree add <item> and write the builder brief with --worktree')
     path = (root / tree).resolve(strict=True)
     if not path.is_dir():
-        raise ValueError('linked item worktree is missing')
+        raise ValueError('linked item worktree is missing; create it again with bin/wuwei worktree add <item>, then retry')
     return name, path
 
 
@@ -271,30 +272,30 @@ def _rebase(root, ref, item, tree, *, resume=False):
     measured = watch.evidence(host, ref, root)
     pr = measured['pr']
     if pr['mergeable'] is not False:
-        raise ValueError('PR is no longer conflicted; refresh its action')
+        raise ValueError('PR is no longer conflicted; refresh its action; run bin/wuwei pr state and follow the new action')
     if (not re.fullmatch(r'[A-Za-z0-9_./-]+', pr['branch'])
             or pr['branch'].startswith('-') or '..' in pr['branch']):
-        raise ValueError('invalid PR branch')
+        raise ValueError(f'invalid PR branch; {DAMAGED}')
     vcs = registry.load('vcs', config)
     repo, actual, _ = commit_push.context(tree, {}, {}, root)
     if repo['name'] != pr['repo']:
-        raise ValueError('item worktree belongs to another PR repository')
+        raise ValueError('item worktree belongs to another PR repository; use the worktree made for this PR item (bin/wuwei worktree add <item>), then retry')
     local = commit_push.data(vcs.head(str(tree), root=root))['sha']
     if not resume and local != pr['head']:
-        raise ValueError('item worktree HEAD differs from PR head')
+        raise ValueError('item worktree HEAD differs from PR head; bring the worktree to the PR head first, then rerun bin/wuwei pr act --run')
     if resume and local == pr['head']:
-        raise ValueError('resolved rebase has not changed the PR head')
+        raise ValueError('resolved rebase has not changed the PR head; add the rebased commits to the worktree branch, then rerun bin/wuwei pr act --run')
     branch = commit_push.data(vcs.branch(str(tree), root=root))['name']
     if branch != pr['branch']:
-        raise ValueError('item worktree branch differs from PR branch')
+        raise ValueError('item worktree branch differs from PR branch; switch it to the PR branch, then rerun bin/wuwei pr act --run')
     base_sha = pr['base_sha']
     if not isinstance(base_sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', base_sha):
-        raise ValueError('invalid PR base SHA')
+        raise ValueError(f'invalid PR base SHA; {DAMAGED}')
     if not resume:
         fetched = commit_push.data(vcs.fetch(str(tree), config['brief']['remote'],
                                              pr['base'], base_sha, root=root))
         if fetched.get('sha') != base_sha:
-            raise ValueError('fetched base differs from current PR base')
+            raise ValueError('fetched base differs from current PR base; rerun bin/wuwei pr act --run; if it repeats, the owner checks brief.remote with bin/wuwei config set in a host terminal')
         result = vcs.rebase(str(tree), base_sha, root=root)
         if isinstance(result, registry.Result) and result.exit == 1:
             print(result.reason or 'rebase did not complete')
@@ -306,10 +307,10 @@ def _rebase(root, ref, item, tree, *, resume=False):
         return checked
     head = commit_push.data(vcs.head(str(tree), root=root))['sha']
     if head == pr['head']:
-        raise ValueError('rebase did not change PR head')
+        raise ValueError('rebase did not change PR head; run bin/wuwei pr state; the PR may already be on its base')
     base = commit_push.data(vcs.merge_base(str(tree), base_sha, root=root))['sha']
     if base != base_sha:
-        raise ValueError('resolved rebase does not contain the current PR base')
+        raise ValueError('resolved rebase does not contain the current PR base; run bin/wuwei pr act --run again so the rebase starts from the current base')
     push = commit_push.data(vcs.push_context(str(tree), config['brief']['remote'],
         ['HEAD:refs/heads/' + pr['branch']], root=root))
     # The push context has no force refspec; the expected PR head is the lease guard.
@@ -323,7 +324,7 @@ def _rebase(root, ref, item, tree, *, resume=False):
         return result.exit
     episode = state.read_state(root).get('watch', {}).get('actions', {}).get(ref)
     if not isinstance(episode, dict) or episode.get('state') != 'conflicted':
-        raise ValueError('conflict action changed before completion')
+        raise ValueError(f'conflict action changed before completion; {RACE}')
     record = {'state': 'conflicted', 'head': head, 'from_head': pr['head'],
               'created_at': episode['created_at'],
               'item': item}
@@ -346,7 +347,7 @@ def _fix(root, ref, item, measured, feedback=None):
         feedback = '\n'.join(row['body'] for row in measured['reviews']
                              if row['state'] == 'changes_requested' and row['body'].strip())
         if not feedback:
-            raise ValueError('review fix request has no feedback')
+            raise ValueError('review fix request has no feedback; pass the review findings to the fix round, or run bin/wuwei pr state for a fresh action')
     action = build.open_fix(item, feedback, root=root)
     print(json.dumps(action, sort_keys=True))
     return 1
@@ -397,7 +398,7 @@ def _thread(root, ref, item, measured, reply=None):
                 return 1
             path = root / prior['path']
             if not path.is_file():
-                raise ValueError('recorded scope decision is missing')
+                raise ValueError('recorded scope decision is missing; restore the decision file named in the day state; bin/wuwei doctor shows what is missing')
             option = decision.answered(state.read_state(root), path.stem)
             if option is None:
                 pending = pending or ({'action': 'owner_decision', 'decision': prior['path']}, 1)
@@ -412,12 +413,12 @@ def _thread(root, ref, item, measured, reply=None):
                               'thread': target, 'question': text, **answer}))
             return 1
         if not reply.strip():
-            raise ValueError('reply needs a nonempty body')
+            raise ValueError('reply needs a nonempty body; pass a one-line answer: bin/wuwei pr act --reply "<answer>"')
         context = {'ref': ref, 'thread': target} if thread else {'ref': ref}
         channel_kind = 'code_host'
         code, tier = outward.classify(reply, root, config, context, kind=channel_kind)
         if type(code) is not int or code not in (0, 1, 2) or tier not in ('send', 'draft'):
-            raise ValueError('invalid outward tier result')
+            raise ValueError(f'invalid outward tier result; {ADAPTER_DATA}')
         if code == 0 and tier == 'send':
             return obligations.reply(ref, surface,
                 thread['comments'][0]['id'] if thread else latest['id'], reply, root)
@@ -448,7 +449,7 @@ def _thread(root, ref, item, measured, reply=None):
         if code == 2:
             print('outward tier unmeasured; reply kept as a draft')
         return code
-    raise ValueError('no unanswered review thread found')
+    raise ValueError('no unanswered review thread found; drop --reply, or check the PR with bin/wuwei pr state')
 
 
 def act(root, ref, *, run=False, complete=False, reply=None):
@@ -490,7 +491,7 @@ def act(root, ref, *, run=False, complete=False, reply=None):
                                   'after_conflict': f'wuwei pr act {ref} --complete'}))
                 return 1
             if run or complete:
-                raise ValueError('--run and --complete apply only to a conflicted PR')
+                raise ValueError(f'--run and --complete apply only to a conflicted PR; run bin/wuwei pr act {ref} without them')
             config = workspace.load_config(root)
             measured = watch.evidence(registry.load('code_host', config), ref, root)
             if row['state'] == 'ci_red':

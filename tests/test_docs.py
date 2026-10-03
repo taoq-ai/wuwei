@@ -1097,3 +1097,17 @@ def test_scanner_none_turns_the_gate_off():
     assert 'The `none` scanner reports unmeasured rather than clean' not in security
     assert 'turns the registry gate off' in configuration and 'tool drift or poisoning' in configuration
     assert 'the `none` adapter are unmeasured' not in configuration
+
+
+def test_pages_address_the_reader():
+    # #362: the pages speak to their reader ("you"); agent.md speaks to the agent, the
+    # charter page and the glossary entry define the role.
+    found = []
+    for path in sorted(SITE.glob('*.md')):
+        if path.name in ('agent.md', 'charter-overrides.md'):
+            continue
+        text = path.read_text()
+        if path.name == 'concepts.md':
+            text = re.sub(r'\n## Glossary\n.*?(?=\n## )', '\n', text, flags=re.S)
+        found += [f'{path.name}: {line}' for line in text.splitlines() if re.search(r'\bthe owner\b', line, re.I)]
+    assert not found, f'{len(found)} lines:\n' + '\n'.join(found)

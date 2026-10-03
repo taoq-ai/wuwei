@@ -53,7 +53,7 @@ checked-out branch, and the line says which. A repository with no remote is prop
   `.wuwei/days/<date>/calibration.md` with its checks, CI check names, conventions and deploy
   signals, each with the file and line it came from
   ([calibration](configuration.md#calibration));
-- the owner interview is what `bin/wuwei calibrate --interview` asks: how much merge autonomy
+- your interview is what `bin/wuwei calibrate --interview` asks: how much merge autonomy
   you want, your gate floor, quiet and working hours, how decisions reach you, words to avoid,
   which commands you run by hand, which tracker, chat and review bot you use, and who reviews
   your pull requests (`Owner only` for a solo owner) ([owner interview](configuration.md#owner-interview)); `config check` then names each
@@ -311,7 +311,7 @@ host terminal, the planner shows you the line to run.
 Away from the session, the same question reaches your phone through Remote Control, or as a
 DM from the listener when the planner runs headless.
 
-Use the host terminal for what a hook sends there: today the owner commands listed at the top
+Use the host terminal for what a hook sends there: today your commands listed at the top
 of this section, and under `strict` posture everything owner-only.
 
 ## Long sessions

@@ -10,6 +10,7 @@ from wuwei import registry, state, verdict, workspace
 from wuwei.commands.event import FREE_KINDS
 from wuwei.references import pull_request
 from wuwei.verdict import VERDICTS
+from wuwei.exits import DAMAGED, ADAPTER_DATA
 
 SOLO = 'reviewers: none (solo)'
 
@@ -23,16 +24,16 @@ def _read(operation, *args, root):
 
 def _list(value):
     if not isinstance(value, list):
-        raise ValueError('expected complete evidence list')
+        raise ValueError(f'expected complete evidence list; {DAMAGED}')
     return value
 
 
 def _time(value):
     if not isinstance(value, str):
-        raise ValueError('missing evidence timestamp')
+        raise ValueError(f'missing evidence timestamp; {DAMAGED}')
     parsed = datetime.fromisoformat(value)
     if parsed.tzinfo is None:
-        raise ValueError('evidence timestamp needs timezone')
+        raise ValueError(f'evidence timestamp needs timezone; {DAMAGED}')
     return parsed
 
 
@@ -41,12 +42,12 @@ def _records(records, *, reviews=False):
         if (not isinstance(row, dict) or type(row.get('id')) is not int or row['id'] <= 0
                 or not isinstance(row.get('author'), str) or not row['author'].strip()
                 or type(row.get('is_bot')) is not bool or not isinstance(row.get('body'), str)):
-            raise ValueError('incomplete comment evidence')
+            raise ValueError(f'incomplete comment evidence; {DAMAGED}')
         _time(row['submitted_at'] if reviews else row['created_at'])
         if 'updated_at' in row:
             _time(row['updated_at'])
         if reviews and row['state'] not in ('approved', 'commented', 'changes_requested', 'dismissed'):
-            raise ValueError('unknown review state')
+            raise ValueError(f'unknown review state; {ADAPTER_DATA}')
     return records
 
 
@@ -58,9 +59,9 @@ def _evidence(host, ref, root):
         if (not isinstance(thread.get('id'), str) or not thread['id']
                 or type(thread.get('resolved')) is not bool
                 or type(thread.get('outdated')) is not bool):
-            raise ValueError('incomplete thread evidence')
+            raise ValueError(f'incomplete thread evidence; {DAMAGED}')
         if not _records(thread['comments']):
-            raise ValueError('empty thread evidence')
+            raise ValueError(f'empty thread evidence; {DAMAGED}')
     return reviews, discussion
 
 
@@ -71,11 +72,11 @@ def _fingerprint(row):
 def _ledger(data):
     ledger = data.get('reply_acks', {})
     if not isinstance(ledger, dict):
-        raise ValueError('invalid acknowledgement ledger')
+        raise ValueError(f'invalid acknowledgement ledger; {DAMAGED}')
     for ref, entries in ledger.items():
         pull_request(ref)
         if not isinstance(entries, dict):
-            raise ValueError('invalid acknowledgement entries')
+            raise ValueError(f'invalid acknowledgement entries; {DAMAGED}')
         for key, entry in entries.items():
             if (not re.fullmatch(r'(comment|review):[1-9][0-9]*', key)
                     or not isinstance(entry, dict)
@@ -85,7 +86,7 @@ def _ledger(data):
                     or not re.fullmatch('[0-9a-f]{64}', entry['reply_fingerprint'])
                     or type(entry.get('reply_id')) is not int or entry['reply_id'] <= 0
                     or not isinstance(entry.get('me'), str) or not entry['me'].strip()):
-                raise ValueError('invalid acknowledgement record')
+                raise ValueError(f'invalid acknowledgement record; {DAMAGED}')
     return ledger
 
 
@@ -125,7 +126,7 @@ def answered(thread, me):
 
 def _gate_recorded(directory, head):
     if not isinstance(head, str) or not re.fullmatch(r'[0-9a-fA-F]{40}|[0-9a-fA-F]{64}', head):
-        raise ValueError('invalid PR head')
+        raise ValueError(f'invalid PR head; {DAMAGED}')
     for path in sorted((directory / 'decisions').glob('gate-*.md')):
         text = path.read_text(encoding='utf-8')
         code, _ = verdict.lint(text,
@@ -160,7 +161,7 @@ def _visibility(ref, pr, reviews, data, me, directory, config):
     for field in ('requested_reviewers', 'requested_teams'):
         for name in _list(pr[field]):
             if not isinstance(name, str) or not name.strip():
-                raise ValueError('invalid requested reviewer')
+                raise ValueError(f'invalid requested reviewer; {DAMAGED}')
             if name != me:
                 reviewers.append(name)
     if not reviewers:
@@ -195,7 +196,7 @@ def _check_empty_day(directory):
         row = json.loads(line)
         if (not isinstance(row, dict) or not isinstance(row.get('kind'), str)
                 or not isinstance(row.get('payload'), dict)):
-            raise ValueError('invalid event record')
+            raise ValueError(f'invalid event record; {DAMAGED}')
         kind, payload = row['kind'], row['payload']
         recorded_state |= kind not in FREE_KINDS and type(payload.get('prs_seen')) is bool
         if kind.startswith('state.'):
@@ -205,16 +206,16 @@ def _check_empty_day(directory):
             seen = (kind == 'watch: sweep' and payload.get('sweep') == 'obligations'
                     and payload.get('prs')) or kind == 'reply: acknowledged'
         if seen or payload.get('prs_seen'):
-            raise ValueError('empty PR set contradicts today\'s events')
+            raise ValueError(f"empty PR set contradicts today's events; {DAMAGED}")
     if written and not recorded_state:
-        raise ValueError('no recorded PR state for today')
+        raise ValueError('no recorded PR state for today; run bin/wuwei pr state first')
 
 
 def _owner_login(config):
     handles = [handle for handle in config['owner']['handles']
                if not re.fullmatch(r'[UW][A-Z0-9]+', handle)]
     if len(handles) != 1 or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', handles[0]):
-        raise ValueError('owner.handles needs one unambiguous code-host login (excluding chat IDs)')
+        raise ValueError('owner.handles needs one unambiguous code-host login (excluding chat IDs); the owner sets owner.handles to one code-host login with bin/wuwei config set in a host terminal')
     return handles[0]
 
 
@@ -247,7 +248,7 @@ def evaluate(root=None):
                 if pr['state'] == 'closed':
                     continue
                 if pr['state'] != 'open':
-                    raise ValueError('unknown PR state')
+                    raise ValueError(f'unknown PR state; {ADAPTER_DATA}')
                 reviews, discussion = _evidence(host, ref, root)
                 replies = _replies(reviews, discussion, me, ledger.get(ref, {}))
                 visibility = _visibility(ref, pr, reviews, data, me, directory, config)
@@ -293,44 +294,44 @@ def reply(ref, surface, target_id, text, root=None):
     ref = pull_request(ref)
     if (surface not in ('comment', 'review', 'thread') or type(target_id) is not int or target_id <= 0
             or not isinstance(text, str) or not text.strip()):
-        raise ValueError('reply needs a surface, positive ID and nonempty body')
+        raise ValueError('reply needs a surface, positive ID and nonempty body; pass the surface, a positive ID and the reply text')
     if not (directory / 'state.json').is_file():
-        raise ValueError('day state missing')
+        raise ValueError('day state missing; start the day with /wuwei:wuwei-plan')
     data = state.read_state(directory=directory)
     _ledger(data)
     if ref not in data['raised_prs'] + data['claimed_prs']:
-        raise ValueError('PR is not raised or claimed today')
+        raise ValueError('PR is not raised or claimed today; claim it with bin/wuwei pr claim first')
     config = workspace.load_config(root)
     me = _owner_login(config)
     host = registry.load('code_host', config)
     if _read(host.pr, ref, root=root)['state'] != 'open':
-        raise ValueError('PR is not open')
+        raise ValueError('PR is not open; run bin/wuwei pr state for its current state')
     if surface == 'thread':
         return _thread_reply(host, ref, target_id, text, me, root)
     reviews, discussion = _evidence(host, ref, root)
     rows = discussion['comments'] if surface == 'comment' else reviews
     target = next((row for row in rows if row['id'] == target_id), None)
     if target is None or target['author'] == me or target['is_bot'] or not target['body'].strip():
-        raise ValueError('no human obligation with that surface and ID')
+        raise ValueError('no human obligation with that surface and ID; run bin/wuwei nudges for the open obligations and their ids')
     fingerprint = _fingerprint(target)
     prior_replies = {row['id'] for row in discussion['comments']}
     result = host.comment(ref, text, None, root=root)
     if type(result.exit) is not int or result.exit not in (0, 1, 2):
-        raise ValueError('invalid reply result')
+        raise ValueError(f'invalid reply result; {DAMAGED}')
     if result.exit:
         print(result.reason or 'reply was not posted')
         return result.exit
     reply_id = result.data['id']
     if type(reply_id) is not int or reply_id <= 0 or reply_id in prior_replies:
-        raise ValueError('invalid posted reply ID')
+        raise ValueError(f'invalid posted reply ID; {DAMAGED}')
     reviews, discussion = _evidence(host, ref, root)
     rows = discussion['comments'] if surface == 'comment' else reviews
     if not any(row['id'] == target_id and _fingerprint(row) == fingerprint for row in rows):
-        raise ValueError('target changed while replying; acknowledgement not recorded')
+        raise ValueError('target changed while replying; acknowledgement not recorded; read the thread again and rerun the reply')
     posted = next((row for row in discussion['comments'] if row['id'] == reply_id
                    and row['author'] == me and not row['is_bot'] and row['body'] == text), None)
     if posted is None:
-        raise ValueError('posted reply could not be verified; acknowledgement not recorded')
+        raise ValueError('posted reply could not be verified; acknowledgement not recorded; check the PR by hand; rerun the reply if it is missing')
     key = f'{surface}:{target_id}'
 
     def acknowledge(fresh):
@@ -359,7 +360,7 @@ def _thread_reply(host, ref, target_id, text, me, root):
 
     first = target()
     if first is None or first['author'] == me:
-        raise ValueError('thread is resolved, missing or already answered')
+        raise ValueError('thread is resolved, missing or already answered; run bin/wuwei nudges for the threads still waiting')
     latest = target()
     if latest is None or latest['id'] != first['id'] or _fingerprint(latest) != _fingerprint(first):
         print('thread last word changed; reread before replying')
@@ -372,7 +373,7 @@ def _thread_reply(host, ref, target_id, text, me, root):
     posted = target()
     if (posted is None or posted['id'] != reply_id or posted['author'] != me
             or posted['body'] != text or posted['is_bot']):
-        raise ValueError('posted thread reply could not be verified')
+        raise ValueError('posted thread reply could not be verified; check the PR by hand; rerun the reply if it is missing')
     state.append_event('reply: thread_posted', {'pr': ref, 'root_id': target_id,
                                                 'reply_id': reply_id}, root=root)
     return 0

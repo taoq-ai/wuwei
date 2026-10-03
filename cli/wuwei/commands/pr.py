@@ -3,6 +3,7 @@
 import json
 
 from wuwei import merge, obligations, pr_actions, shepherd, workspace
+from wuwei.exits import DAMAGED
 
 
 def register(subparsers):
@@ -62,7 +63,7 @@ def run_raise(args):
     from pathlib import Path
     path = Path(args.body_file)
     if path.is_symlink() or not path.is_file():
-        raise ValueError('body file must be a regular file')
+        raise ValueError(f'body file must be a regular file; {DAMAGED}')
     return shepherd.raise_pr(workspace.find_workspace(), args.repo, args.base,
                              args.title, path.read_text(encoding='utf-8'), args.item)
 

@@ -6,6 +6,7 @@ import re
 from uuid import uuid4
 
 from wuwei import brief, metrics, registry, state, watch, workspace
+from wuwei.exits import ADAPTER_DATA, DAMAGED, SYMLINK
 
 
 SAFE_ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]*\Z')
@@ -124,13 +125,13 @@ def acknowledge(note_id, root=None):
     """Only the planner acknowledgement command writes acknowledgement state."""
     root = workspace.find_workspace(root)
     if not SAFE_ID.fullmatch(note_id):
-        raise state.StateError('invalid steward note id')
+        raise state.StateError(f'invalid steward note id; {DAMAGED}')
 
     def update(data):
         if note_id not in {note['id'] for note in data.get('steward_notes', [])}:
-            raise state.StateError('unknown steward note')
+            raise state.StateError('unknown steward note; run bin/wuwei status for the open steward notes')
         if note_id in data.get('steward_acks', []):
-            raise state.StateError('steward note already acknowledged')
+            raise state.StateError('steward note already acknowledged; nothing to do; run bin/wuwei status for the open ones')
         data.setdefault('steward_acks', []).append(note_id)
 
     return state._write_state(update, root, reserved=False, kind='steward.acknowledged',
@@ -146,7 +147,7 @@ def decision_queue(root=None):
     queue = []
     for path in sorted((day / 'decisions').glob('D-*.md')):
         if path.is_symlink():
-            raise ValueError('decision record must be a regular file')
+            raise ValueError(f'decision record must be a regular file; {SYMLINK}')
         ident = path.stem
         if ident in decided:
             continue
@@ -190,7 +191,7 @@ def run(root=None, *, trigger='sweep'):
     """Launch one fresh steward seat through the runtime adapter and record observations."""
     root = workspace.find_workspace(root)
     if trigger not in ('sweep', 'close', 'tool-calls'):
-        raise ValueError('invalid steward trigger')
+        raise ValueError(f'invalid steward trigger; {DAMAGED}')
     day = workspace.day_dir(root)
     if trigger == 'close':
         prior = [row['payload'] for row in watch.records(day / 'events.jsonl')
@@ -224,11 +225,11 @@ def run(root=None, *, trigger='sweep'):
             'steward', workspace.load_config(root), root))
         result = adapter.dispatch('steward', str(root / brief_relative), str(root), True, root=root)
         if not isinstance(result, registry.Result) or type(result.exit) is not int or result.exit not in (0, 1, 2):
-            raise ValueError('invalid runtime result')
+            raise ValueError(f'invalid runtime result; {ADAPTER_DATA}')
         if result.exit:
             raise ValueError(result.reason or 'steward runtime could not launch')
         if not isinstance(result.data, dict) or result.data.get('error'):
-            raise ValueError('steward runtime returned invalid or error data')
+            raise ValueError(f'steward runtime returned invalid or error data; {ADAPTER_DATA}')
     except Exception:
         (root / brief_relative).unlink(missing_ok=True)
         raise
@@ -247,7 +248,7 @@ def maybe_run_for_tool_calls(count, root=None):
     runs = [row['payload'].get('tool_calls') for row in events if row['kind'] == 'steward.run']
     last = runs[-1] if runs else 0
     if type(last) is not int or last < 0 or last > count:
-        raise ValueError('invalid steward trace checkpoint')
+        raise ValueError(f'invalid steward trace checkpoint; {DAMAGED}')
     due = any(row['kind'] == 'steward.due' and row['payload'].get('tool_calls', 0) > last
               for row in events)
     if count - last >= interval and not due:

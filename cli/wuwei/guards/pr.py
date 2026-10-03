@@ -12,6 +12,7 @@ from wuwei import registry, shell, verdict, workspace
 from wuwei.guards import NO_REVIEWER, Guard
 from wuwei.guards.commit_push import data
 from wuwei.guards.protect_state import _cd_target, _cwd
+from wuwei.exits import DAMAGED
 
 
 GATES = ('arch', 'quality', 'security')
@@ -93,7 +94,7 @@ def _recorded_gates(root, sha, records, item, items=None):
             failures.append((candidate, missing))
             continue
         if len({row['head'] for row in initial}) != 1:
-            raise ValueError('initial gate verdicts disagree on HEAD')
+            raise ValueError('initial gate verdicts disagree on HEAD; run bin/wuwei dispatch next <item> to rerun the odd gate on the current HEAD')
         complete = True
         missing = []
         for role, first in zip(roles, initial):
@@ -107,7 +108,7 @@ def _recorded_gates(root, sha, records, item, items=None):
             path = root / row['file']
             expected = workspace.day_dir(root) / 'decisions'
             if path.parent != expected or path.is_symlink() or not path.name.startswith('gate-'):
-                raise ValueError('gate verdict path is outside the day decisions')
+                raise ValueError('gate verdict path is outside the day decisions; receive the verdict again with bin/wuwei dispatch receive')
             text = path.read_text(encoding='utf-8')
             code, reason = verdict.lint(text, quality=base(role) == 'quality', class_sweep=True)
             if code:
@@ -116,11 +117,11 @@ def _recorded_gates(root, sha, records, item, items=None):
             heads = verdict.rows(active, 'Head')
             decisions = re.findall(verdict.VERDICT_ROW, active, re.M)
             if heads != [row['head']] or decisions != [row['verdict']]:
-                raise ValueError(f'{role} recorded verdict differs from file')
+                raise ValueError(f'{role} recorded verdict differs from file; receive the verdict again with bin/wuwei dispatch receive')
             actual_blocks = any(re.search(verdict.BLOCKS_YES, block, re.I)
                                 for block in verdict.finding_blocks(active))
             if row['blocks'] is not actual_blocks:
-                raise ValueError(f'{role} recorded blocking status differs from file')
+                raise ValueError(f'{role} recorded blocking status differs from file; receive the verdict again with bin/wuwei dispatch receive')
             if not sha.lower().startswith(row['head'].lower()) and (
                     first['verdict'] == 'FIX' or not any(
                         initial_row['verdict'] == 'FIX' for initial_row in initial)):
@@ -139,7 +140,7 @@ def gate_check(root, cwd, config, *, sha=None, item=None):
     if sha is None:
         sha = data(vcs.head(str(cwd), root=root)).get('sha')
     if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', sha):
-        raise ValueError('invalid current HEAD')
+        raise ValueError(f'invalid current HEAD; {DAMAGED}')
     from wuwei import state
     current = state.read_state(root)
     recorded = current['gate_verdicts']
@@ -159,14 +160,14 @@ def gate_check(root, cwd, config, *, sha=None, item=None):
             active = verdict.active_text(text)
             heads = verdict.rows(active, 'Head')
             if len(heads) != 1 or not re.fullmatch(r'[0-9a-fA-F]{7,64}', heads[0].strip()):
-                raise ValueError('expected exactly one valid Head row')
+                raise ValueError(f'expected exactly one valid Head row; {DAMAGED}')
             head = heads[0].strip().lower()
             if len(head) < len(sha):
                 resolved = data(vcs.resolve(str(cwd), head, root=root)).get('sha')
                 if (not isinstance(resolved, str)
                         or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', resolved)
                         or not resolved.startswith(head)):
-                    raise ValueError('invalid resolved Head')
+                    raise ValueError(f'invalid resolved Head; {DAMAGED}')
                 head = resolved
             if head != sha:
                 continue
@@ -194,13 +195,13 @@ def create_check(args, command, cwd, root, config):
         '--label', '-l', '--milestone', '-m', '--project', '-p', '--template', '-T', '--recover',
     }, {'--draft', '-d', '--fill', '--fill-first', '--fill-verbose', '--web', '-w', '--editor', '-e'})
     if values(found, '--repo', '-R'):
-        raise ValueError('repository override cannot be tied to the checked local HEAD')
+        raise ValueError('repository override cannot be tied to the checked local HEAD; run gh pr create from the item worktree without --repo')
     if values(found, '--head', '-H'):
-        raise ValueError('explicit head cannot be tied to the checked local HEAD')
+        raise ValueError('explicit head cannot be tied to the checked local HEAD; run gh pr create from the item worktree without --head')
     if any(key.startswith('GIT_CONFIG') or key in (
             'GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_NAMESPACE',
             'GH_REPO', 'GH_HOST', 'GH_CONFIG_DIR') for key in command.env.keys() | os.environ.keys()):
-        raise ValueError('repository environment override cannot be verified')
+        raise ValueError('repository environment override cannot be verified; remove the GIT_* and GH_* overrides and run gh pr create from the item worktree')
     if operands or values(found, '--web', '-w'):
         raise ValueError('opaque PR create; use explicit CLI options')
     reviewers = values(found, '--reviewer', '-r')
@@ -218,7 +219,7 @@ def api_check(args, cwd, root, config):
                                     '--template', '-t', '--cache', '--preview', '-p'},
                               {'--silent', '--include', '-i', '--paginate', '--slurp', '--verbose'})
     if len(operands) != 1:
-        raise ValueError('expected one API endpoint')
+        raise ValueError(f'expected one API endpoint; {DAMAGED}')
     endpoint = operands[0]
     if '://' in endpoint:
         endpoint = urlsplit(endpoint).path
@@ -240,7 +241,7 @@ def api_check(args, cwd, root, config):
         return 0, ''
     if (re.fullmatch(r'repos/[^/]+/[^/]+/(?:branches/.+/protection(?:/.*)?|rulesets(?:/.*)?)', endpoint, re.I)
             or re.fullmatch(r'orgs/[^/]+/rulesets(?:/.*)?', endpoint, re.I)):
-        return 1, 'branch protection changes are refused'
+        return 1, 'branch protection changes are refused; branch protection is the owner\'s; ask the owner to change it'
     match = re.fullmatch(r'repos/([^/]+/[^/]+)/pulls/(\d+)/merge', endpoint, re.I)
     if match:
         return merge_check(match[1], match[2], cwd, root, config)
@@ -250,18 +251,18 @@ def api_check(args, cwd, root, config):
     match = re.fullmatch(r'repos/([^/]+/[^/]+)/git/refs/heads/(.+)', endpoint, re.I)
     if match and method in ('PATCH', 'POST'):
         if any(fnmatchcase(match[2], pattern) for pattern in config['environments']):
-            return 1, 'push to an environment branch is refused'
+            return 1, 'push to an environment branch is refused; deploying is an owner action; run git push origin HEAD:refs/heads/<branch>'
         repo = next((repo for repo in config['repos'] if repo['name'].casefold() == match[1].casefold()), None)
         if repo is None:
-            raise ValueError('API repository default branch is unmeasured')
+            raise ValueError('API repository default branch is unmeasured; the owner adds the repository with bin/wuwei config add-repo in a host terminal')
         if match[2] == repo['default_branch']:
-            return 1, 'push to the default branch is refused'
+            return 1, 'push to the default branch is refused; use git push origin HEAD:refs/heads/<branch> for the item branch'
     if re.fullmatch(r'repos/[^/]+/[^/]+/pulls/\d+/reviews(?:/.*)?', endpoint, re.I):
         events = [field.partition('=')[2] for field in fields if field.partition('=')[0] == 'event']
         if 'APPROVE' in events:
-            return 1, 'PR approval is refused'
+            return 1, 'PR approval is refused; approval is the owner\'s; post a COMMENT review, or ask the owner to approve'
         if '--input' in found or not events or any(event not in ('COMMENT', 'REQUEST_CHANGES') for event in events):
-            raise ValueError('opaque review body; cannot rule out approval')
+            raise ValueError('opaque review body; cannot rule out approval; pass event=COMMENT or event=REQUEST_CHANGES as a literal field')
     if re.fullmatch(r'repos/[^/]+/[^/]+/pulls', endpoint, re.I):
         raise ValueError('API PR create cannot request a reviewer in the same action; use gh pr create')
     return 0, ''
@@ -288,10 +289,10 @@ def action(command, cwd, root, config, isolated):
         prefix.append(option)
         if option in ('-R', '--repo'):
             if not args:
-                raise ValueError('missing repository value')
+                raise ValueError('missing repository value; add the value after --repo (owner/repo)')
             prefix.append(args.pop(0))
         elif not option.startswith(('--repo=', '-R')):
-            raise ValueError('unsupported gh global option')
+            raise ValueError('unsupported gh global option; remove it and run gh with plain subcommand options')
     if family == 'api':
         return api_check(args + prefix, cwd, root, config)
     text_write = ((family == 'pr' and args and args[0] in ('comment', 'create', 'edit', 'review', 'merge'))
@@ -304,7 +305,7 @@ def action(command, cwd, root, config, isolated):
         if args[0] not in GH_BUILTINS:
             raise ValueError('opaque gh alias or extension; use a built-in command')
         if args[0] == 'alias' and any(arg in ('set', 'import', 'delete') for arg in args[1:]):
-            return 1, 'gh alias changes are refused'
+            return 1, 'gh alias changes are refused; aliases are the owner\'s; run the full gh command instead'
     if not args or family != 'pr':
         return 0, ''
     verb, args = args[0], prefix + args[1:]
@@ -318,7 +319,7 @@ def action(command, cwd, root, config, isolated):
                                   {'--admin', '--auto', '--disable-auto', '--delete-branch', '-d',
                                    '--merge', '-m', '--rebase', '-r', '--squash', '-s'})
         if 'true' in values(found, '--admin'):
-            return 1, 'admin merge is refused'
+            return 1, 'admin merge is refused; merge without --admin, or ask the owner to merge'
         repos = values(found, '--repo', '-R')
         return merge_check(repos[0] if repos else None, operands[0] if operands else None,
                            cwd, root, config)
@@ -326,7 +327,7 @@ def action(command, cwd, root, config, isolated):
         _, found = shell.operands(args, {'--repo', '-R', '--body', '-b', '--body-file', '-F'},
                            {'--approve', '-a', '--comment', '-c', '--request-changes', '-r'})
         if 'true' in values(found, '--approve', '-a'):
-            return 1, 'PR approval is refused'
+            return 1, 'PR approval is refused; approval is the owner\'s; post a comment review, or ask the owner to approve'
     return 0, ''
 
 
@@ -334,7 +335,7 @@ def check(payload):
     try:
         raw = payload['tool_input']['command']
         if not isinstance(raw, str):
-            raise ValueError('command must be text')
+            raise ValueError(f'command must be text; {DAMAGED}')
         # The hook inherits Claude Code's environment, which the seat's commands cannot change.
         if os.environ.get('WUWEI_SEAT_ROLE') == 'shepherd':
             texts = [(raw, False), (shell.script_text(raw, payload['cwd']) or '', True)]

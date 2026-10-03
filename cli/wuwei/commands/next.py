@@ -6,7 +6,7 @@ import sys
 
 from wuwei import brief, integrity, state, workspace
 from wuwei.decision import answered
-from wuwei.exits import CLEAN, UNRUN
+from wuwei.exits import CLEAN, UNRUN, DAMAGED
 
 HEADER = 'WUWEI orientation'
 TERMINAL = ('merged', 'parked', 'escalated')
@@ -38,15 +38,15 @@ def step(root):
     """The first due step; root None means no workspace here.
     ponytail: one row, not a list; the first due item wins and status --line shows the rest."""
     if root is None:
-        return _row('no-workspace', 'No WUWEI workspace here; the owner runs this in a host '
-                    'terminal in the project directory to create one in observe posture.',
+        return _row('no-workspace', 'No WUWEI workspace here; run this in a host terminal in the '
+                    'project directory to create one in observe posture.',
                     'bin/wuwei setup --shadow')
     config = workspace.load_config(root)
     # Not calibrate.approved: hook paths must not import calibrate (test_hooks pins it).
     calibration = root / '.wuwei/calibration.json'
     if (not config['repos'] or not calibration.is_file()
             or not json.loads(calibration.read_text(encoding='utf-8'))):
-        return _row('setup', 'Setup is incomplete; the owner runs this in a host terminal to complete '
+        return _row('setup', 'Setup is incomplete; run this in a host terminal to complete '
                     'the repositories, calibration and interview.', 'bin/wuwei setup')
     directory = workspace.day_dir(root)
     if not (directory / 'plan.md').is_file():
@@ -54,17 +54,17 @@ def step(root):
                     '/wuwei:wuwei-plan')
     data = state.read_state(directory=directory)
     if not data['gate_approved']:
-        return _row('gate', 'Morning gate open: ask the owner the one Morning gate question, '
-                    f'"Approve today\'s plan as proposed?", citing days/{directory.name}/plan.md, '
-                    'and approve only on the owner\'s answer.',
+        return _row('gate', 'Morning gate open: answer the one Morning gate question, '
+                    f'"Approve today\'s plan as proposed?", in days/{directory.name}/plan.md; '
+                    'the plan is approved only on your answer.',
                     '/wuwei:wuwei-plan')
     routes = data.get('decision_routes', {})
     if not isinstance(routes, dict):
-        raise ValueError('invalid decision ledger')
+        raise ValueError(f'invalid decision ledger; {DAMAGED}')
     for identifier in routes:
         if answered(data, identifier) is None:
-            return _row('decision', f'Decision {identifier} waits for the owner; show it and ask '
-                        'the owner to pick an option.', f'wuwei decision show {identifier}')
+            return _row('decision', f'Decision {identifier} waits for your answer; read it and '
+                        'pick an option.', f'wuwei decision show {identifier}')
     seats = brief.seats(data)
     running = {seat['item'] for seat in seats.values() if seat['status'] == 'running'}
     disposed = {str(record.get('item_disposition')).split(' ', 1)[-1]

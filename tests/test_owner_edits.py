@@ -97,7 +97,7 @@ def test_seat_cannot_edit_goals(tmp_path, monkeypatch):
         'trace_sessions': ['seat-session']}}), tmp_path, reserved=False)
     payload = {'cwd': str(tmp_path), 'session_id': 'seat-session',
                'tool_input': {'command': f'bin/wuwei goals edit --file {tmp_path / "goals.md"}'}}
-    denial = (1, 'Owner memory edits are an owner action on the host, outside agent tools.')
+    denial = (1, OLD)
     assert check_bash(payload) == denial
     assert check_bash({**payload, 'session_id': 'unregistered-session'}) == denial
     opaque = {'cwd': str(tmp_path), 'session_id': 'seat-session',
@@ -130,9 +130,9 @@ def test_first_seat_tool_uses_transcript_registration(tmp_path, monkeypatch):
     payload = {'cwd': str(tmp_path), 'session_id': 'new-seat-session',
                'transcript_path': str(transcript),
                'tool_input': {'command': f'bin/wuwei goals edit --file {tmp_path / "goals.md"}'}}
-    assert check_bash(payload) == (1, 'Owner memory edits are an owner action on the host, outside agent tools.')
+    assert check_bash(payload) == (1, OLD)
     assert check_bash({**payload, 'session_id': 'new-seat-session', 'agent_id': 'A'}) == (
-        1, 'Owner memory edits are an owner action on the host, outside agent tools.')
+        1, OLD)
 
 
 def test_voice_edit_commits_owner_history_and_clears_integrity(tmp_path):
@@ -173,7 +173,8 @@ def edit(tmp_path, command, **extra):
                        'tool_input': {'command': command}, **extra})
 
 
-OLD = 'Owner memory edits are an owner action on the host, outside agent tools.'
+OLD = ('Owner memory edits are an owner action on the host, outside agent tools: propose the '
+       'change, and the owner runs bin/wuwei goals edit in a host terminal.')
 
 
 @pytest.mark.parametrize('posture', ['observe', 'guarded'])
@@ -231,7 +232,8 @@ def test_voice_edit_after_voice_gate(tmp_path, monkeypatch):
     assert edit(tmp_path, 'bin/wuwei voice edit --file voice-draft.md') == (0, '')
 
 
-DECIDE = 'Decisions require the owner terminal, outside agent tools.'
+DECIDE = ("Decisions are the owner's answer, outside agent tools: show it with bin/wuwei decision "
+          'show <id> --widget, and the owner runs bin/wuwei decide <id> <option> in a host terminal.')
 
 
 def asked_decision(tmp_path, monkeypatch, posture='guarded', ask=True):
@@ -252,7 +254,8 @@ def test_planner_records_asked_decision(tmp_path, monkeypatch, posture):
     assert edit(tmp_path, 'bin/wuwei mcp decide D-3 B') == (0, '')
     for command, reason in (('bin/wuwei decide D-3 B --note D-4', DECIDE), ('bin/wuwei decide D-4 B', DECIDE),
                             ('bin/wuwei mcp decide proceed-unmeasured aws',
-                             'MCP decisions require the owner terminal, outside agent tools.')):
+                             "MCP decisions are the owner's, outside agent tools: show the request, and the owner "
+                             'runs bin/wuwei mcp decide <id> <option> in a host terminal.')):
         assert edit(tmp_path, command) == (1, f'{reason} Run it in a host terminal: {command}')
     assert edit(tmp_path, 'bin/wuwei decide D-3 B', agent_id='a1') == (1, DECIDE)
 

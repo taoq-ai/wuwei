@@ -147,7 +147,7 @@ def test_owner_actions_keep_the_host_terminal_rule(workspace, posture, form, mon
     configure(workspace.root, posture)
     code, out = hook(workspace.root, form.format(exe=workspace.exe), monkeypatch, capsys)
     assert code == 2
-    assert 'MCP decisions require the owner terminal' in out['permissionDecisionReason']
+    assert 'bin/wuwei mcp decide' in out['permissionDecisionReason']
 
 
 @pytest.mark.parametrize('posture', ('guarded', 'strict'))
@@ -158,7 +158,7 @@ def test_workspace_value_is_not_the_command(workspace, posture, form, monkeypatc
     configure(workspace.root, posture)
     code, out = hook(workspace.root, form.format(exe=workspace.exe), monkeypatch, capsys)
     assert code == 2
-    assert 'Decisions require the owner terminal' in out['permissionDecisionReason']
+    assert "Decisions are the owner's answer" in out['permissionDecisionReason']
 
 
 @pytest.mark.parametrize('posture', POSTURES)
