@@ -190,20 +190,23 @@ def discover(root=None, *, ports=None):
                 if complete:
                     sources['base_checks'] = red
     if config['repos'] and config['adapters']['scanner'] != 'none':
-        sources['scanner'] = 'unmeasured: scanner read failed'
         scanner = ports.get('scanner') or registry.load('scanner', config)
         found = []
-        complete = True
         for repo in config['repos']:
             result = scanner.audit(str((root / repo['path']).resolve()), root=root)
-            if result.exit == 2:
-                complete = False
+            valid = isinstance(result, registry.Result) and result.exit in (0, 1, 2)
+            rows = (result.data.get('findings') if valid and result.exit != 2 and isinstance(result.data, dict)
+                    else None)
+            if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+                reason = (result.reason or 'scanner audit failed') if valid and result.exit == 2 \
+                    else 'invalid scanner result'
+                found = f'unmeasured: {repo["name"]}: {reason}'
                 break
-            if not isinstance(result.data, list):
-                raise ValueError('invalid scanner findings')
-            found.extend(result.data)
-        if complete:
-            sources['scanner'] = found
+            # Rows are already validated by the adapter (ziran._report).
+            found += [{'id': f'{repo["name"]}:scanner:{row["rule"]}:{row["file"]}:{row["line"]}',
+                       'evidence': f'{row["severity"]} {row["rule"]} {row["file"]}:{row["line"]}: '
+                                   f'{row["message"]}'} for row in rows]
+        sources['scanner'] = found
     return dedupe(sources, day_ids=day['items'])
 
 

@@ -271,6 +271,57 @@ def test_repo_default_branch(day, monkeypatch):
     assert any(call[0] == 'merge_base' and call[1][1] == 'origin/trunk' for call in day[2].calls)
 
 
+def test_item_worktree_uses_repository_default_branch(tmp_path, monkeypatch):
+    import subprocess
+
+    def git(*args, cwd=tmp_path):
+        return subprocess.run(['git', *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
+
+    git('init', '-q', '--bare', '-b', 'master', 'origin.git')
+    git('init', '-q', '-b', 'master', 'widget')
+    widget = tmp_path / 'widget'
+    git('-c', 'user.name=Example', '-c', 'user.email=dev@example.test', 'commit', '-q', '--allow-empty',
+        '-m', 'start', cwd=widget)
+    git('remote', 'add', 'origin', str(tmp_path / 'origin.git'), cwd=widget)
+    git('push', '-q', 'origin', 'master', cwd=widget)
+    git('fetch', '-q', 'origin', cwd=widget)
+    git('worktree', 'add', '-q', '-b', 'x-work', str(tmp_path / 'worktrees/X'), cwd=widget)
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "acme/widget"\npath = "widget"\ndefault_branch = "master"\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
+    workspace.day_dir(tmp_path).mkdir(parents=True)
+    state._write_state(lambda data: data.update(items={'X': {'phase': 'implement'}}, seats={}), tmp_path, reserved=False)
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'b1', '--worktree', 'worktrees/X') == 0
+    sha = git('rev-parse', 'origin/master', cwd=widget)
+    assert f'Merge-base: {sha} (origin/master)' in (workspace.day_dir(tmp_path) / 'briefs/b1.md').read_text()
+
+
+def test_missing_remote_branch_says_fetch(day, monkeypatch, capsys):
+    (day[0] / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "example"\npath = "tree"\ndefault_branch = "master"\n')
+    day[2].results['merge_base'] = registry.Result(2, None, 'git.merge_base: could not run: git exited 128')
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'nomerge', '--worktree', 'tree') == 2
+    err = capsys.readouterr().err
+    assert 'no merge base with origin/master in example' in err
+    assert 'git.merge_base: could not run: git exited 128' in err
+    assert f'git -C {(day[0] / "tree").resolve()} fetch origin, then write the brief again' in err
+    assert not (day[1] / 'briefs/nomerge.md').exists()
+    assert not any(e['kind'] == 'brief written' for e in events(day[1]))
+
+
+def test_worktree_of_unconfigured_repository_is_refused(day, monkeypatch, capsys):
+    (day[0] / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "example"\npath = "widget"\ndefault_branch = "master"\n')
+    monkeypatch.setattr(day[2], 'repo_context', lambda repo, root=None: registry.Result(
+        0, {'path': f'{repo}/.git', 'common_dir': f'{repo}/.git'}))
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'stray', '--worktree', 'tree') == 2
+    assert 'repository is not configured in this workspace' in capsys.readouterr().err
+    assert not (day[1] / 'briefs/stray.md').exists()
+    assert not any(call[0] == 'merge_base' for call in day[2].calls)
+
+
 def set_seats(seats, root):
     state._write_state(lambda data: data.update(seats=seats), root, reserved=False)
 
