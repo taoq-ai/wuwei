@@ -19,7 +19,7 @@ TRIAL = [
     "print(subprocess.run(['gh', 'pr', 'view', '7'], capture_output=True))\n"
     "print(subprocess.run(['git', 'status'], capture_output=True))\n"
     "PYEOF",
-    'ls ~/.claude/plugins/cache/wuwei/wuwei/',
+    'ls ~/x/wuwei/',
 ]
 
 SHAPES = [
