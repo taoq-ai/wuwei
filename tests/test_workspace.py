@@ -135,7 +135,7 @@ def test_config_defaults_and_independence(tmp_path):
     assert config == {
         'scanner': {'severity_threshold': 'high', 'mcp': {
             'project_file': '.mcp.json', 'plugins_file': '~/.claude/plugins/installed_plugins.json',
-            'user_file': '~/.claude.json'}},
+            'user_file': '~/.claude.json', 'timeout_seconds': 60, 'block': ['critical']}},
         'security': {'required': False},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'digest': '', 'nudges': '', 'dm': '', 'report': ''}},
@@ -279,6 +279,8 @@ def test_unknown_key_without_known_line(tmp_path, monkeypatch):
     ('[adapters]\nscanner = false', 'adapters.scanner'),
     ('[shepherd]\nmin_reviewers = -1', 'shepherd.min_reviewers'),
     ('[sessions]\nrotate_after = { turns = -1 }', 'sessions.rotate_after.turns'),
+    ('[scanner.mcp]\nblock = ["severe"]', 'scanner.mcp.block'),
+    ('[scanner.mcp]\ntimeout_seconds = 0', 'scanner.mcp.timeout_seconds'),
 ])
 def test_invalid_config_values(tmp_path, text, key):
     write_config(tmp_path, text)

@@ -16,6 +16,10 @@ DEFAULTS = {'project_file': '.mcp.json',
             'plugins_file': '~/.claude/plugins/installed_plugins.json',
             'user_file': '~/.claude.json'}
 COVERED = 'WUWEI plugin.json servers covered by plugin integrity (signed manifest), not scanned'
+NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}')
+SEVERITIES = workspace.SCHEMA['scanner']['severity_threshold'][2]
+# An exact version only: @latest, ranges and 1.x are unpinned.
+PINNED = re.compile(r'(?:@[^/@\s]+/)?[^@=\s]+(?:@|==)\d+(?:\.\d+)+(?:[-+][0-9A-Za-z.]+)?')
 
 
 def _json(path):
@@ -25,12 +29,12 @@ def _json(path):
     return value
 
 
-def discover(root, config, covered=None, plugins=None):
+def discover(root, config, covered=None, plugins=None, projects=None):
     settings = config['scanner']['mcp']
     repos = {root, *((root / Path(repo['path']).expanduser()).resolve() for repo in config['repos'])}
     files = []
 
-    def add(path, *, user=False, required=False, key=None):
+    def add(path, *, user=False, required=False, key=None, repo=None):
         try:
             data = _json(path)
         except FileNotFoundError:
@@ -43,9 +47,11 @@ def discover(root, config, covered=None, plugins=None):
         key = key or path.resolve()
         if entries and key not in files:
             files.append(key)
+            if repo is not None and projects is not None:
+                projects[key] = repo
 
     for repo in sorted(repos):
-        add(repo / settings['project_file'])
+        add(repo / settings['project_file'], repo=repo)
     add(root / Path(settings['user_file']).expanduser(), user=True,
         required=settings['user_file'] != DEFAULTS['user_file'])
     installed = root / Path(settings['plugins_file']).expanduser()
@@ -91,6 +97,56 @@ def discover(root, config, covered=None, plugins=None):
     return files
 
 
+def _worktree_of(path, repo):
+    """A git worktree of repo: its .git file points into repo's git directory."""
+    try:
+        text = (path / '.git').read_text(encoding='utf-8')
+    except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
+        return False
+    if not text.startswith('gitdir:'):
+        return False
+    return (path / text[len('gitdir:'):].strip()).resolve().is_relative_to((repo / '.git').resolve())
+
+
+def _approval(root, settings, repo):
+    """Whether Claude Code would attach a project server at the repo or any item worktree."""
+    def read(path):
+        try:
+            return _json(path)
+        except FileNotFoundError:
+            if path.is_symlink():
+                raise
+            return {}
+
+    user = read(root / Path(settings['user_file']).expanduser())
+    projects = user.get('projects', {})
+    if not isinstance(projects, dict) or any(not isinstance(v, dict) for v in projects.values()):
+        raise ValueError('invalid MCP approval state')
+    worktrees = root / 'worktrees'
+    keys = {repo, *(path.resolve() for path in (worktrees.iterdir() if worktrees.is_dir() else ())
+                    if _worktree_of(path, repo))}
+    common = read((root / Path(settings['user_file']).expanduser()).parent / '.claude/settings.json')
+    projects = [(Path(name).resolve(), value) for name, value in projects.items()]
+    states = []
+    for key in keys:
+        sources = [common, read(key / '.claude/settings.json'), read(key / '.claude/settings.local.json'),
+                   *(value for path, value in projects if path == key)]
+        enabled, disabled, everything = set(), set(), False
+        for source in sources:
+            for field in ('enabledMcpjsonServers', 'disabledMcpjsonServers'):
+                names = source.get(field, [])
+                if not isinstance(names, list) or any(not isinstance(n, str) for n in names):
+                    raise ValueError('invalid MCP approval state')
+            if source.get('enableAllProjectMcpServers') not in (None, True, False):
+                raise ValueError('invalid MCP approval state')
+            enabled.update(source.get('enabledMcpjsonServers', []))
+            disabled.update(source.get('disabledMcpjsonServers', []))
+            everything = everything or source.get('enableAllProjectMcpServers') is True
+        states.append((enabled, disabled, everything))
+    return lambda name: any(name not in disabled and (everything or name in enabled)
+                            for enabled, disabled, everything in states)
+
+
 def _path(root, name):
     path = root / '.wuwei/ziran' / name
     if path.resolve() != path:
@@ -122,21 +178,86 @@ def _read(root):
             or data.get('pending') is not None and (not isinstance(data['pending'], str)
                 or not re.fullmatch(r'\.wuwei/days/\d{4}-\d{2}-\d{2}/decisions/D-[1-9][0-9]*\.md', data['pending']))):
         raise ValueError('invalid registry status')
+    # A v0.11.0 record has no posture fields: its pending decision keeps blocking.
+    data.setdefault('severities', list(SEVERITIES))
+    if not isinstance(data['severities'], list) or any(s not in SEVERITIES for s in data['severities']):
+        raise ValueError('invalid registry status')
+    _pairs(data.setdefault('unmeasured', []))
+    _pairs(data.setdefault('decided', []))
     return data
+
+
+def _pairs(value):
+    """[server name, definition digest] pairs."""
+    if not isinstance(value, list) or any(
+            not isinstance(pair, list) or len(pair) != 2 or not isinstance(pair[0], str)
+            or not NAME.fullmatch(pair[0]) or not isinstance(pair[1], str)
+            or not re.fullmatch(r'[0-9a-f]{64}', pair[1]) for pair in value):
+        raise ValueError('invalid registry server pairs')
+    return value
 
 
 def _write(root, record):
     workspace.atomic_write(_path(root, 'status.json'), json.dumps(record) + '\n', mode=0o444)
 
 
-def _expanded(root, path):
-    """A plugin's inline servers as Claude Code starts them, at a path stable per plugin."""
-    text = json.dumps({'mcpServers': _json(path)['mcpServers']}).replace(
-        '${CLAUDE_PLUGIN_ROOT}', json.dumps(str(path.parents[1]))[1:-1])
-    target = _path(root, 'plugins') / (hashlib.sha256(str(path).encode()).hexdigest() + '.json')
+def _servers(path, plugin):
+    """Each server as a one-server config, plugin roots expanded as Claude Code starts them."""
+    data = _json(path)
+    entries = data.get('mcpServers', data)
+    if not isinstance(entries, dict) or any(not isinstance(v, dict) for v in entries.values()):
+        raise ValueError('invalid MCP server map')
+    servers = []
+    for name, entry in entries.items():
+        if not NAME.fullmatch(name):
+            raise ValueError('invalid MCP server name')
+        body = json.dumps({'mcpServers': {name: entry}}, sort_keys=True)
+        if plugin:
+            body = body.replace('${CLAUDE_PLUGIN_ROOT}', json.dumps(str(path.parents[1]))[1:-1])
+        body += '\n'
+        servers.append((name, entry, body, hashlib.sha256(body.encode()).hexdigest()))
+    return servers
+
+
+def _server_file(root, path, name, body):
+    """Stable per (source, name), so the scanner's snapshot baseline carries between checks."""
+    target = _path(root, 'servers') / (hashlib.sha256(f'{path}\0{name}'.encode()).hexdigest() + '.json')
     target.parent.mkdir(exist_ok=True)
-    workspace.atomic_write(target, text + '\n')
+    workspace.atomic_write(target, body, mode=0o600)
     return target
+
+
+def _unpinned(entry):
+    """A uvx, npx or pipx run launcher without an exact package version."""
+    command, args = entry.get('command'), entry.get('args', [])
+    if not isinstance(args, list) or any(not isinstance(arg, str) for arg in args):
+        raise ValueError('invalid MCP server entry')
+    tokens = [*command.split(), *args] if isinstance(command, str) else []
+    if tokens and Path(tokens[0]).name == 'env':
+        tokens = tokens[1:]
+        while tokens and '=' in tokens[0] and not tokens[0].startswith('-'):
+            tokens = tokens[1:]
+    if not tokens:
+        return False
+    rest = tokens[1:]
+    launcher = Path(tokens[0]).name
+    if launcher == 'pipx' and rest[:1] == ['run']:
+        rest = rest[1:]
+    elif launcher not in ('uvx', 'npx'):
+        return False
+    flag = next((flag for flag in ('--from', '--spec', '-p', '--package') if flag in rest[:-1]), None)
+    spec = rest[rest.index(flag) + 1] if flag else next((t for t in rest if not t.startswith('-')), '')
+    return not PINNED.fullmatch(spec)
+
+
+def _accepted(root):
+    """Owner-decided (name, digest) pairs from proceed-unmeasured records."""
+    pairs = []
+    for path in sorted(_path(root, '.').glob('accepted-*.json')):
+        if path.is_symlink():
+            raise ValueError('registry storage must not use symlinks')
+        pairs.extend(_pairs(_json(path).get('servers', [])))
+    return pairs
 
 
 def _failure(exc):
@@ -150,6 +271,15 @@ def _result(record):
     return registry.Result(code, reason=reason)
 
 
+def _gate(record, block):
+    """The launch posture: a check that could not run always blocks; the rest per block."""
+    if record['exit'] == 2 and not record['unmeasured'] or record['unmeasured'] and 'unmeasured' in block:
+        return registry.Result(2, reason=record['reason'])
+    if record['pending'] and set(record['severities']) & set(block):
+        return registry.Result(1, reason='MCP registry findings: owner decision required in ' + record['pending'])
+    return registry.Result(0, reason=record['reason'])
+
+
 def cached(root):
     try:
         root = Path(root).resolve()
@@ -160,9 +290,17 @@ def cached(root):
             return registry.Result(0)
         if data['day'] != workspace.now().date().isoformat():
             return registry.Result(2, reason='MCP registry unmeasured: morning check is stale')
-        return _result(data)
+        return _gate(data, workspace.load_config(root)['scanner']['mcp']['block'])
     except (OSError, ValueError, TypeError, KeyError) as exc:
         return _failure(exc)
+
+
+def unmeasured(root):
+    """Today's in-scope servers the registry did not measure, decided or not."""
+    data = _read(Path(root).resolve())
+    if data is None or data['day'] != workspace.now().date().isoformat():
+        return []
+    return sorted({name for name, _ in data['unmeasured'] + data['decided']})
 
 
 def launch(root=None, path=None):
@@ -195,7 +333,9 @@ def _recover(root, record):
     backup = _path(root, 'snapshot-backup')
     snapshots = _path(root, 'snapshots')
     if backup.exists():
-        if (backup / 'ready').is_file() and record and record['exit'] == 2:
+        # Only a check that could not run rolls back every baseline; the adapter rolls back
+        # a single server's snapshot when that server stays unmeasured.
+        if (backup / 'ready').is_file() and record and record['exit'] == 2 and not record['unmeasured']:
             if snapshots.exists():
                 shutil.rmtree(snapshots)
             if (backup / 'snapshots').exists():
@@ -226,33 +366,67 @@ def check(root):
             record = {'exit': 2, 'day': workspace.now().date().isoformat(),
                       'generation': uuid.uuid4().hex, 'pending': old['pending'] if old else None,
                       'reports': old['reports'] if old and old['pending'] else [],
+                      'severities': old['severities'] if old and old['pending'] else [],
+                      'unmeasured': [], 'decided': [],
                       'reason': 'MCP registry unmeasured: check incomplete'}
             _write(root, record)
             config = workspace.load_config(root)
-            files = [_expanded(root, path) if path in plugins else path
-                     for path in discover(root, config, covered, plugins)]
+            block = config['scanner']['mcp']['block']
+            projects = {}
+            files = discover(root, config, covered, plugins, projects)
             _backup(root)
-            result = registry.load('scanner', config).mcp(files, root=root) if files else registry.Result(
-                0, {'findings': [], 'reports': []})
-            if not isinstance(result, registry.Result) or type(result.exit) is not int or result.exit not in (0, 1, 2):
-                raise ValueError('invalid scanner result')
-            data = result.data or {'findings': [], 'reports': []}
-            for row in data['findings']:
+            scanner = registry.load('scanner', config) if files else None
+            accepted = _accepted(root)
+            findings, reports, notes = [], [], []
+            for path in files:
+                attached = _approval(root, config['scanner']['mcp'], projects[path]) if path in projects else None
+                for name, entry, body, digest in _servers(path, path in plugins):
+                    if attached is not None and not attached(name):
+                        # Claude Code never starts it here, so neither does the check.
+                        notes.append(f'{name}: not attached (unapproved)')
+                        continue
+                    if _unpinned(entry):
+                        # The scanner would start it, fetching code nobody reviewed.
+                        reason = 'unpinned launcher'
+                    else:
+                        # One server per call: an unreachable server never hides another's findings.
+                        result = scanner.mcp([_server_file(root, path, name, body)], root=root)
+                        if (not isinstance(result, registry.Result) or type(result.exit) is not int
+                                or result.exit not in (0, 1, 2)):
+                            raise ValueError('invalid scanner result')
+                        data = result.data or {'findings': [], 'reports': []}
+                        findings.extend(data['findings'])
+                        reports.extend(data['reports'])
+                        if result.exit != 2:
+                            continue
+                        reason = result.reason or 'scanner check incomplete'
+                    pair = [name, digest]
+                    notes.append(f'{name}: {reason}')
+                    if pair in accepted:
+                        record['decided'].append(pair)
+                        notes.append(f'{name}: proceeding unmeasured by owner decision')
+                    else:
+                        record['unmeasured'].append(pair)
+            for row in findings:
                 safe = {key: row[key] for key in ('server_name', 'drift_type', 'severity', 'tool_name')}
                 state.append_event('mcp.finding', safe, root)
-            if any(row['severity'] in ('high', 'critical') for row in data['findings']):
+            queued = {row['severity'] for row in findings if row['severity'] in ('high', 'critical', *block)}
+            if queued:
                 # A new finding batch needs its own review even when an older decision is open.
-                reports = data['reports']
                 if any(not isinstance(p, str) or not p.startswith('.wuwei/ziran/')
                        or '..' in Path(p).parts for p in reports):
                     raise ValueError('invalid report path')
                 record['reports'] = list(dict.fromkeys([*record['reports'], *reports]))
                 record['pending'] = _queue(root, record['reports'])
-            state.append_event('mcp.checked', {'exit': result.exit}, root)
-            reason = ('MCP registry unmeasured: ' + (result.reason or 'scanner check incomplete')
-                      if result.exit == 2 else
-                      f"MCP registry measured: {len(data['findings'])} findings; reports in .wuwei/ziran")
-            record.update(exit=result.exit, reason=reason + ('; ' + COVERED if covered else ''))
+                record['severities'] = sorted({*record['severities'], *queued})
+            code = 2 if record['unmeasured'] else int(any(
+                row['severity'] in ('high', 'critical') for row in findings))
+            state.append_event('mcp.checked', {'exit': code}, root)
+            head = ('MCP registry unmeasured' if code == 2 else
+                    f'MCP registry measured: {len(findings)} findings; reports in .wuwei/ziran')
+            reason = '; '.join([head, *notes, *(['owner decision open in ' + record['pending']]
+                                                if record['pending'] else []), *([COVERED] if covered else [])])
+            record.update(exit=code, reason=reason)
             _write(root, record)
             _recover(root, record)
             return _result(record)
@@ -260,16 +434,62 @@ def check(root):
         return _failure(exc)
 
 
-def decide(root, *, confirm=None):
+def _proceed_unmeasured(root, record, servers, confirm):
+    pairs = [pair for pair in record['unmeasured'] if pair[0] in servers]
+    missing = sorted(set(servers) - {name for name, _ in pairs})
+    if missing:
+        return registry.Result(1, reason='MCP registry servers not unmeasured today: ' + ', '.join(missing))
+    names = sorted({name for name, _ in pairs})
+    digest = hashlib.sha256(json.dumps([record, pairs], sort_keys=True).encode()).hexdigest()
+    if confirm is None:
+        from wuwei.integrity import _host_confirm
+        confirm = lambda value: _host_confirm(value, prompt=f"Seats will use {', '.join(names)} "
+            'without a registry measurement. To proceed unmeasured, type:')
+    if not confirm(digest):
+        return registry.Result(1, reason='MCP registry owner confirmation declined')
+    text = (
+        'Question: May seats proceed with MCP servers the registry could not measure?\n'
+        f"Context: Unmeasured servers: {', '.join(names)}. Their tool output is untrusted data.\n"
+        'Options:\n| Option | Description |\n| --- | --- |\n'
+        '| defer | Defer launches until the servers can be measured |\n'
+        '| proceed-unmeasured | Permit launches with these servers unmeasured |\n'
+        'Musts:\n| Criterion | defer | proceed-unmeasured |\n| --- | --- | --- |\n'
+        '| Owner confirmed at the host terminal | pass | pass |\n'
+        'Wants:\n| Criterion | Weight | defer | proceed-unmeasured |\n| --- | --- | --- | --- |\n'
+        '| Owner accepts the unmeasured servers | 10 | 0 | 10 |\n'
+        'Recommendation: proceed-unmeasured\nConfidence: medium\nReversibility: two-way\n'
+        'Blast radius: workspace security\nPre-mortem: An unmeasured server changes its tools unnoticed.\n'
+        'Revisit: When a definition changes or the next check measures them.\n'
+        'Decided-by: owner\nOutcome: proceed-unmeasured\n')
+    path = str(decision.write(text, root).relative_to(root))
+    workspace.atomic_write(_path(root, 'accepted-' + digest + '.json'), json.dumps(
+        {'decision': path, 'text': text, 'digest': digest, 'servers': pairs}) + '\n', mode=0o444)
+    state.append_event('mcp.decided', {'decision': path, 'outcome': 'proceed-unmeasured', 'servers': names}, root)
+    record['unmeasured'] = [pair for pair in record['unmeasured'] if pair not in pairs]
+    record['decided'] += pairs
+    record['reason'] += ''.join(f'; {name}: proceeding unmeasured by owner decision' for name in names)
+    if not record['unmeasured'] and record['exit'] == 2:
+        record['exit'] = 1 if record['pending'] else 0
+    _write(root, record)
+    return registry.Result(0)
+
+
+def decide(root, servers=None, *, confirm=None):
     """Accept a decision only at the owner terminal, never from record text alone."""
     try:
         root = Path(root).resolve()
         with _lock(root):
-            status = cached(root)
-            if status.exit == 2:
-                return status
             record = _read(root)
-            if record is None or not record['pending']:
+            if (record is None or record['day'] != workspace.now().date().isoformat()
+                    or record['exit'] == 2 and not record['unmeasured']):
+                status = cached(root)
+                if status.exit == 2:
+                    return status
+                return (registry.Result(2, reason='MCP registry unmeasured: run wuwei mcp check') if servers
+                        else registry.Result(1, reason='MCP registry has no pending decision'))
+            if servers:
+                return _proceed_unmeasured(root, record, servers, confirm)
+            if not record['pending']:
                 return registry.Result(1, reason='MCP registry has no pending decision')
             path = root / record['pending']
             if path.resolve() != path:
@@ -290,7 +510,9 @@ def decide(root, *, confirm=None):
             workspace.atomic_write(_path(root, 'accepted-' + digest + '.json'),
                 json.dumps({'decision': record['pending'], 'text': text, 'digest': digest}) + '\n', mode=0o444)
             state.append_event('mcp.decided', {'decision': record['pending'], 'outcome': 'proceed'}, root)
-            record.update(pending=None, reports=[], exit=0, reason='')
+            unmeasured = bool(record['unmeasured'])
+            record.update(pending=None, reports=[], severities=[], exit=2 if unmeasured else 0,
+                          reason=record['reason'] if unmeasured else '')
             _write(root, record)
             return registry.Result(0)
     except (OSError, ValueError, TypeError, KeyError) as exc:

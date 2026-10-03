@@ -332,24 +332,58 @@ configured repo. `scanner.mcp.plugins_file` defaults to
 `~/.claude/plugins/installed_plugins.json`; registry v2 user installations and
 project/local installations matching those repos contribute their `.mcp.json`
 and the `mcpServers` object of their `.claude-plugin/plugin.json`.
-`${CLAUDE_PLUGIN_ROOT}` in plugin.json servers is expanded to the install path in
-a copy under `.wuwei/ziran/plugins` that the scanner measures.
+`${CLAUDE_PLUGIN_ROOT}` in plugin.json servers is expanded to the install path.
 `scanner.mcp.user_file` defaults to `~/.claude.json` with top-level `mcpServers`.
 Relative overrides resolve against the workspace. Missing default user/plugin
 files and absent project/plugin MCP files are optional; explicit user/plugin
 file overrides must exist. Invalid or unreadable input is exit 2.
 
-The scanner receives file paths only, once per config. It keeps independent
-snapshots under `.wuwei/ziran/snapshots` and untrusted raw reports under
-`.wuwei/ziran/report-*/registry-watch-report.json`. An incomplete measurement
-restores the prior snapshots so retries cannot silently accept drift. Events
-contain server name, drift type, severity and tool name only.
+Only servers Claude Code would attach are scanned. User-scope and plugin servers
+always attach. A project server (from a workspace or repo `project_file`) attaches
+when, for the repo path or one of that repo's git worktrees under
+`<workspace>/worktrees/`, it is not in `disabledMcpjsonServers` and is in
+`enabledMcpjsonServers` or `enableAllProjectMcpServers` is true. Those keys are read
+from `projects[<path>]` in `scanner.mcp.user_file`, `.claude/settings.json` next to
+that file (`~/.claude/settings.json` by default), and the path's
+`.claude/settings.json` and `.claude/settings.local.json`. An unapproved server is
+reported as `<name>: not attached (unapproved)` and never started. Invalid approval
+state is exit 2. Local-scope servers (`projects[<path>].mcpServers`) are not read.
+
+Each attached server is measured on its own: the check writes a one-server config
+under `.wuwei/ziran/servers` (owner-only, since it copies env and headers) and calls
+the scanner once per server, with `scanner.mcp.timeout_seconds` (default 60) per call.
+A server that cannot be measured, for example an OAuth remote server, is named in the
+reason and does not hide the others' findings. A stdio server launched by `uvx`,
+`npx` or `pipx run` without an exact package version (`pkg@1.2.3`, `pkg==1.2.3`) is
+reported as `<name>: unpinned launcher` and never started; `@latest` and ranges are
+unpinned.
+
+The scanner keeps a snapshot per server under `.wuwei/ziran/snapshots` and untrusted
+raw reports under `.wuwei/ziran/report-*/registry-watch-report.json`. A server whose
+measurement fails keeps its prior snapshot, and a check that could not run restores
+all of them, so retries cannot silently accept drift. After upgrading from v0.11.0
+the first check registers a fresh baseline per server, so drift between the last
+v0.11.0 check and the upgrade is not reported. Events contain server name, drift
+type, severity and tool name only.
 
 Run `bin/wuwei mcp check` before the first morning seat. The plan skill does this
-before the lead, and `bin/wuwei plan propose` checks again. High/critical findings
-return 1 and open an owner decision. Exit 2 means unmeasured and blocks launches
-until a successful recheck. Medium/low findings remain visible and return 0.
-Agent and runtime launches refuse stale or missing measurements and open flags.
+before the lead, and `bin/wuwei plan propose` checks again. The check exits 2 while
+any server is unmeasured, else 1 while findings await an owner decision, else 0.
+High/critical findings open an owner decision. Medium/low findings remain visible.
+
+`scanner.mcp.block` (default `["critical"]`) sets what refuses agent and runtime
+launches and `plan propose`: a pending finding with a listed severity (exit 1), or
+any unmeasured server when the list holds `"unmeasured"` (exit 2). Everything else is
+a nudge. `[]` blocks on nothing measured; the full v0.11.0 behaviour is
+`["high", "critical", "unmeasured"]`. A check that could not run (invalid input, an
+interrupted check, a stale or missing record) always refuses with exit 2.
+
+For a server that stays unmeasured, the owner may run
+`bin/wuwei mcp decide proceed-unmeasured <server>...` from the host terminal and type
+the displayed digest. It records an owner decision bound to each server's definition;
+later checks report the server as proceeding unmeasured by owner decision until its
+definition changes. Briefs list today's unmeasured servers in an `MCP unmeasured:`
+header line.
 
 An owner reviews every linked report, sets `Decided-by: owner` and
 `Outcome: proceed` in the queued decision and runs `bin/wuwei mcp decide` from a
