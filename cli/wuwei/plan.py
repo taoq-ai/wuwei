@@ -281,3 +281,49 @@ def add(item, root=None):
     state._write_state(admit, root, reserved=False, kind='plan.added',
                        payload={'item': item})
     return {'action': 'build next', 'item': item}
+
+
+def dispose(item, outcome, reason=None, root=None):
+    """plan carry|park: write and route a two-way record that carries or parks one item at
+    day close; return its D-n. Park pauses an active item, carry changes no phase."""
+    from wuwei import decision
+    root = workspace.find_workspace(root)
+    verb = {'carried': 'carry', 'parked': 'park'}[outcome]
+    reason = ' '.join((reason or '').split())  # one line, so a reason cannot start a field
+
+    def known(data):
+        if item not in data['items']:
+            raise state.StateError(f"no item {item} today; today's items: "
+                                   f"{', '.join(sorted(data['items'])) or 'none'}")
+        return data['items'][item]
+
+    current = known(state.read_state(root))
+    action = {'carry': "Carry it to tomorrow's plan",
+              'park': 'Park it until someone resumes it'}[verb]
+    text = (
+        f'Question: {verb.title()} {item} at day close?\n'
+        f'Context: {item} is {current["status"]}/{current["phase"]} at day close.'
+        f'{" Reason: " + reason if reason else ""}\n'
+        'Options:\n| Option | Description |\n| --- | --- |\n'
+        f'| {verb} | {action} |\n'
+        '| keep | Do nothing: keep it open and keep working today |\n'
+        f'Musts:\n| Criterion | {verb} | keep |\n| --- | --- | --- |\n'
+        '| Reversible | pass | pass |\n'
+        f'Wants:\n| Criterion | Weight | {verb} | keep |\n| --- | --- | --- | --- |\n'
+        '| Day can close | 10 | 10 | 0 |\n'
+        f'Recommendation: {verb}\nConfidence: high\nReversibility: two-way\n'
+        'Blast radius: own branch\nPre-mortem: The item needed attention today and waits a day.\n'
+        "Revisit: At tomorrow's morning gate.\n"
+        f'Decided-by: seat\nOutcome: {outcome} {item}\n')
+    payload = {'item': item}
+
+    def update(data):
+        record = known(data)
+        path = decision.write(text, root)
+        outcome_record = decision.seat_outcome(*decision.evaluate(text))
+        data.setdefault('decision_outcomes', {})[path.stem] = outcome_record
+        if outcome == 'parked' and record['phase'] not in ('parked', 'escalated', 'merged'):
+            record.update(phase='parked', status='blocked')
+        payload.update(id=path.stem, **outcome_record)
+    state._write_state(update, root, reserved=False, kind='decision.decided', payload=payload)
+    return payload['id']
