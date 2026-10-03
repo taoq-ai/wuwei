@@ -1029,3 +1029,48 @@ def test_issue_347_inline_snippet_still_lints_the_day(ws):
     code, message = check_write({'cwd': str(ws), 'tool_name': 'Bash', 'tool_input': {
         'command': 'python3 -c \'print(open("decisions/D-3.md").read())\''}})
     assert code == 2 and message.splitlines()[0] == UNPARSED and len(message.splitlines()) > 1
+def gate(ws, session='planner-1', header='Goals', **extra):
+    from wuwei.workspace import day_dir
+    text = f'Morning gate ({day_dir(ws).relative_to(ws / ".wuwei").as_posix()}/plan.md): confirm goals G-1 and G-2?'
+    return {'cwd': str(ws), 'session_id': session, 'tool_name': 'AskUserQuestion',
+            'tool_input': {'questions': [{'question': text, 'header': header}]}, **extra}
+
+
+@pytest.fixture
+def planner(ws):
+    from wuwei import plan
+    from wuwei.workspace import day_dir
+    day_dir(ws).mkdir(parents=True, exist_ok=True)
+    (day_dir(ws) / 'plan.md').write_text('# Morning plan\n')
+    plan.session('planner-1', ws)
+    return ws
+
+
+def test_record_gate_notes_planner_topics(planner):
+    from wuwei import state
+    from wuwei.guards.decision import record_gate
+    assert record_gate(gate(planner)) == (0, '')
+    assert state.read_state(planner)['sessions']['planner-1']['gate_asked'] == ['goals']
+    assert [e['kind'] for e in events(planner)].count('gate.asked') == 1
+
+
+def test_record_gate_ignores_seats_and_others(planner):
+    from wuwei import state
+    from wuwei.guards.decision import record_gate
+    plain = gate(planner)
+    plain['tool_input']['questions'][0]['question'] = 'Morning gate: confirm goals?'
+    other = gate(planner, header='Pick')
+    other['tool_input']['questions'][0]['question'] = 'Choose D-3 for the build?'
+    for payload in (gate(planner, agent_id='a1'), gate(planner, 'other'), plain, other):
+        assert record_gate(payload) == (0, '')
+    assert 'gate_asked' not in state.read_state(planner)['sessions']['planner-1']
+    assert 'gate.asked' not in [e['kind'] for e in events(planner)]
+
+
+def test_record_gate_voice_topic(planner):
+    from wuwei import state
+    from wuwei.guards.decision import record_gate
+    payload = gate(planner, header='Voice')
+    payload['tool_input']['questions'][0]['question'] = payload['tool_input']['questions'][0]['question'].replace('goals G-1 and G-2', 'these lines')
+    assert record_gate(payload) == (0, '')
+    assert state.read_state(planner)['sessions']['planner-1']['gate_asked'] == ['voice']
