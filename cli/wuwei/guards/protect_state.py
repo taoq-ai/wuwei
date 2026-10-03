@@ -176,6 +176,9 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
             return 2, 'Input-driven owner action; use the host terminal.'
         if re.search(r'[$`]', group) or group in _OWNER_GROUPS and re.search(r'[$`]', verb):
             return 2, 'Not a literal owner action; use the host terminal.'
+        words = action[:action.index('--')] if '--' in action else action
+        if '-h' in words or '--help' in words:
+            continue  # argparse prints help and exits before any owner command runs
         if reason := _owner_reason((group, verb)):
             if (group, verb) in _GATE_EDITS and edits[1]:
                 if group in edits[0] and any(word == '--file' or word.startswith('--file=')

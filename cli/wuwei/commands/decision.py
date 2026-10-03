@@ -2,12 +2,11 @@
 
 import hashlib
 import json
-import re
 import sys
 
 from wuwei import state, workspace
 from wuwei.decision import (evaluate, lint_file, present, record_rejection, record_widget, route,
-                            route_owner, seat_outcome, table, today_path)
+                            route_owner, seat_outcome, set_outcome, table, today_path)
 
 
 def register(subparsers):
@@ -137,10 +136,7 @@ def owner_outcome(args):
                        kind='decision.reversed' if reversed_choice else 'decision.decided',
                        payload={'id': args.id, 'option': args.option, 'decided_by': 'owner',
                                 'reversibility': fields['Reversibility']})
-    # ponytail: rewrites the first Outcome: line; a record with an inactive example
-    # Outcome: above the real field needs the active line from verdict.active_text.
-    workspace.atomic_write(path, re.sub(r'^((?:#{1,6} )?Outcome:).*$', lambda m: f'{m[1]} {args.option}',
-                                        text, count=1, flags=re.M))
+    workspace.atomic_write(path, set_outcome(text, args.option))
     return 0, args.option
 
 

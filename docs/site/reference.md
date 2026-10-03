@@ -36,7 +36,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei init` | Creates or upgrades a workspace; `--posture observe|guarded|strict` sets the [security posture](#security-posture) (`--shadow` is `--posture observe`). | [Daily path](daily.html) |
 | `bin/wuwei integrity` | Checks signed plugin integrity; `reconfirm` pins a development checkout. | [Recovery](recovery.html#integrity-reconfirm) |
 | `bin/wuwei listen` | Polls the inbound source into the workspace inbox and probes raised and claimed PRs. | [Remote](remote.html) |
-| `bin/wuwei mcp` | Checks the attached MCP servers; `decide` records the owner's answer. | [MCP registry checks](configuration.html#mcp-registry-checks-s3) |
+| `bin/wuwei mcp` | Checks the attached MCP servers; `decide D-<n> <option>` records the owner's answer. | [MCP registry checks](configuration.html#mcp-registry-checks-s3) |
 | `bin/wuwei memory` | Checks workspace memory. | [Concepts](concepts.html#memory) |
 | `bin/wuwei merge` | Checks or merges an eligible PR. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei metrics` | Shows the recorded process metrics. | [Long sessions](daily.html#long-sessions) |
@@ -231,6 +231,7 @@ and makes no network call beyond the `gh` reads `config check` makes. `--json` p
 | `watch-install` | `wuwei watch install` | the watch is not installed |
 | `listen-install` | `wuwei listen install` | an inbound source is set and the listener is not installed |
 | `trace-decisions` | `supersede pre-#352 tool-sequence decisions` | today has pending tool-sequence decisions the pre-#352 sweep wrote for a session with no item |
+| `mcp-reports` | move legacy MCP reports | `.wuwei/ziran/report-*` directories from v0.12.0 (moves readable ones to `<server>/<digest>.json`, removes empty and clean ones, keeps those a pending decision lists) |
 
 It previews every fix first (the command's own dry run, or the digest its own confirmation
 would ask for), prints them as one batch, and asks for one digest on `/dev/tty`. Without a
@@ -346,7 +347,7 @@ Recovery is an owner action. Agent tool hooks refuse `wuwei state recover` insid
 
 With `security.areas.mcp = "off"`, `bin/wuwei mcp check` exits 0 with `MCP registry: not checked (security.areas.mcp = "off")`, runs no scanner and writes no event, and the launch gate passes. A non-zero launch gate reason names the mcp level and either `floor: scanner.mcp.block` or `security.areas.mcp`.
 
-`bin/wuwei mcp check --widget` runs the check, then prints today's pending registry decision as a JSON list with one AskUserQuestion widget. The `proceed` description adds one line per server with today's finding counts by severity since the last `proceed` (server names and severities only, never scanner text). `record` names the route, the owner outcome and `wuwei mcp decide`. With nothing pending, or a pending record from an earlier day, it prints `[]`. `mcp decide --widget` is a usage error.
+`bin/wuwei mcp check --widget` runs the check, then prints today's pending registry decision as a JSON list with one AskUserQuestion widget. The `proceed` description adds one line per server with today's finding counts by severity since the last `proceed` (server names and severities only, never scanner text). `record` is `wuwei mcp decide D-<n> <label>`, the host-terminal command that records the answer. With nothing pending, or a pending record from an earlier day, it prints `[]`. `mcp decide --widget` is a usage error.
 
 ## Why
 
@@ -373,7 +374,7 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei decision outcome D-<n> <option>` | yes |
 | `bin/wuwei state recover` | yes |
 | `bin/wuwei integrity reconfirm` | yes |
-| `bin/wuwei mcp decide` | yes |
+| `bin/wuwei mcp decide D-<n> <option>` and `mcp decide proceed-unmeasured <server>...` | yes |
 | `bin/wuwei drafts approve <id>` | yes |
 | `bin/wuwei drafts drop <id>` | no |
 | `bin/wuwei goals edit` and `voice edit` (the planner may record what the morning gate approved with `--file`, outside strict) | no |

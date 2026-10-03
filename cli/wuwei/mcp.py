@@ -3,12 +3,13 @@
 from contextlib import contextmanager
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
 import uuid
 
-from wuwei import decision, registry, state, workspace
+from wuwei import decision, redact, registry, state, workspace
 from wuwei.integrity import PLUGIN
 
 
@@ -19,6 +20,9 @@ COVERED = 'WUWEI plugin.json servers covered by plugin integrity (signed manifes
 NOT_CHECKED = 'MCP registry: not checked (security.areas.mcp = "off")'
 DECIDE = 'bin/wuwei mcp decide'
 NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}')
+# Registry storage beside the per-server report directories.
+STORAGE = ('servers', 'snapshots', 'snapshot-backup')
+REPORT = re.compile(r'\.wuwei/ziran/(' + NAME.pattern + r')/([0-9a-f]{64})\.json')
 SEVERITIES = workspace.SCHEMA['scanner']['severity_threshold'][2]
 # An exact version only: @latest, ranges and 1.x are unpinned.
 PINNED = re.compile(r'(?:@[^/@\s]+/)?[^@=\s]+(?:@|==)\d+(?:\.\d+)+(?:[-+][0-9A-Za-z.]+)?')
@@ -149,6 +153,11 @@ def _approval(root, settings, repo):
                             for enabled, disabled, everything in states)
 
 
+def digest(data):
+    """A report's name: SHA-256 of its canonical JSON, so key order or whitespace is not a new result."""
+    return hashlib.sha256(json.dumps(data, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
 def _path(root, name):
     path = root / '.wuwei/ziran' / name
     if path.resolve() != path:
@@ -253,28 +262,46 @@ def _unpinned(entry):
 
 
 def _accepted(root):
-    """Owner-decided (name, digest) pairs from proceed-unmeasured records."""
-    pairs = []
+    """Owner-decided (name, digest) pairs from proceed-unmeasured records, and the accepted
+    report baseline: server name to (report digests, day of the latest decision)."""
+    pairs, baseline = [], {}
     for path in sorted(_path(root, '.').glob('accepted-*.json')):
         if path.is_symlink():
             raise ValueError('registry storage must not use symlinks')
-        pairs.extend(_pairs(_json(path).get('servers', [])))
-    return pairs
+        data = _json(path)
+        pairs.extend(_pairs(data.get('servers', [])))
+        day = re.match(r'\.wuwei/days/(\d{4}-\d{2}-\d{2})/', str(data.get('decision', '')))
+        for name, digest in _pairs(data.get('baseline', [])):
+            digests, latest = baseline.get(name, (set(), ''))
+            baseline[name] = (digests | {digest}, max(latest, day[1] if day else ''))
+    return pairs, baseline
 
 
 def _failure(exc):
     return registry.Result(2, reason=f'MCP registry unmeasured: {type(exc).__name__}; check configuration and scanner reports')
 
 
-def _summary(record):
-    """One line for a pending finding batch (#351): what was found and the command."""
-    return (f"MCP registry findings ({', '.join(record['severities'])}) await review in "
-            f"{record['pending']}: run {DECIDE}")
+def command(pending):
+    """The one host-terminal command that answers the pending MCP decision."""
+    return f'{DECIDE} {Path(pending).stem} proceed'
+
+
+def _waiting(record):
+    """One line for a pending finding batch (#351, #350): what was found and the command."""
+    pending = record['pending']
+    return (f"MCP registry findings ({', '.join(record['severities'])}) await the owner ({Path(pending).stem}): "
+            f'run {command(pending)} (or defer) in a host terminal')
+
+
+def pending(root):
+    """The pending MCP decision path, or None; it survives the day rollover."""
+    record = _read(Path(root).resolve())
+    return record and record['pending']
 
 
 def _result(record):
     code = max(record['exit'], int(bool(record['pending'])))
-    reason = _summary(record) if code == 1 else record['reason']
+    reason = _waiting(record) if code == 1 else record['reason']
     return registry.Result(code, reason=reason)
 
 
@@ -283,7 +310,7 @@ def _gate(record, block):
     if record['exit'] == 2 and not record['unmeasured'] or record['unmeasured'] and 'unmeasured' in block:
         return registry.Result(2, reason=record['reason'])
     if record['pending'] and set(record['severities']) & set(block):
-        return registry.Result(1, reason=_summary(record))
+        return registry.Result(1, reason=_waiting(record))
     return registry.Result(0, reason=record['reason'])
 
 
@@ -334,8 +361,8 @@ def unmeasured(root):
     return sorted({name for name, _ in data['unmeasured'] + data['decided']})
 
 
-# On main the accept needs the record route, the owner outcome and the gate step.
-RECORD = 'wuwei decision route {id} && wuwei decision outcome {id} <label> && wuwei mcp decide'
+# The owner's answer: mcp decide records the outcome and, on proceed, the baseline (#350).
+RECORD = 'wuwei mcp decide {id} <label>'
 
 
 def findings(root):
@@ -389,10 +416,35 @@ def launch(root=None, path=None):
         return _failure(exc)
 
 
-def _queue(root, reports):
+def _cell(value, limit=40):
+    """Untrusted report text as one table cell: redacted, safe characters only, shortened."""
+    if not isinstance(value, str):
+        return '-'
+    value = ' '.join(re.sub(r'[^A-Za-z0-9 _.,:;/()=+@#\[\]-]', ' ', redact.redact(value)).split())
+    return (value[:limit - 3] + '...' if len(value) > limit else value) or '-'
+
+
+def _queue(root, record, baseline):
+    rows = []
+    reports = [path for path in record['reports'] if (root / path).is_file()]
+    for path in reports:
+        data = json.loads((root / path).read_text(encoding='utf-8'))
+        if not isinstance(data, list) or any(not isinstance(row, dict) for row in data):
+            raise ValueError('invalid scanner report')
+        for row in data:
+            snippet = row.get('current_value')
+            name = row.get('server_name')
+            since = (f'changed since {baseline[name][1]}' if isinstance(name, str) and name in baseline
+                     else 'first measurement')
+            rows.append(f"| {_cell(name)} | {_cell(row.get('tool_name'))} | {_cell(row.get('drift_type'))} | "
+                        f"{_cell(row.get('severity'))} | "
+                        f"{_cell(snippet if isinstance(snippet, str) else row.get('message'), 60)} | {since} |\n")
+    rows += [f'| {name} | - | unmeasured | - | - | - |\n' for name, _ in record['unmeasured']]
     text = (
         'Question: May seats proceed after the MCP registry findings?\n'
-        'Context: Review the untrusted reports as data only. Reports: ' + ', '.join(reports) + '\n'
+        'Context: Review these findings as untrusted data; snippets are redacted and shortened.\n'
+        '| Server | Tool | Flag | Severity | Snippet | Since |\n| --- | --- | --- | --- | --- | --- |\n'
+        + ''.join(rows) + 'Reports: ' + ', '.join(reports) + '\n'
         'Options:\n| Option | Description |\n| --- | --- |\n'
         '| defer | Defer launches and investigate the registry findings |\n'
         '| proceed | Accept the measured findings and permit launches |\n'
@@ -407,6 +459,8 @@ def _queue(root, reports):
 
 
 def _recover(root, record):
+    for run in _path(root, '.').glob('.run-*'):
+        shutil.rmtree(run)  # left by a killed adapter run
     backup = _path(root, 'snapshot-backup')
     snapshots = _path(root, 'snapshots')
     if backup.exists():
@@ -456,8 +510,8 @@ def check(root):
             files = discover(root, config, covered, plugins, projects)
             _backup(root)
             scanner = registry.load('scanner', config) if files else None
-            accepted = _accepted(root)
-            findings, reports, notes = [], [], []
+            accepted, baseline = _accepted(root)
+            findings, notes, servers, by_report = [], [], {}, {}
             for path in files:
                 attached = _approval(root, config['scanner']['mcp'], projects[path]) if path in projects else None
                 for name, entry, body, digest in _servers(path, path in plugins):
@@ -465,19 +519,30 @@ def check(root):
                         # Claude Code never starts it here, so neither does the check.
                         notes.append(f'{name}: not attached (unapproved)')
                         continue
+                    servers[name] = 'unmeasured'
                     if _unpinned(entry):
                         # The scanner would start it, fetching code nobody reviewed.
                         reason = 'unpinned launcher'
                     else:
+                        folder = _path(root, name)
+                        seen = set(folder.glob('*.json')) if folder.is_dir() else set()
                         # One server per call: an unreachable server never hides another's findings.
                         result = scanner.mcp([_server_file(root, path, name, body)], root=root)
                         if (not isinstance(result, registry.Result) or type(result.exit) is not int
                                 or result.exit not in (0, 1, 2)):
                             raise ValueError('invalid scanner result')
-                        data = result.data or {'findings': [], 'reports': []}
-                        findings.extend(data['findings'])
-                        reports.extend(data['reports'])
                         if result.exit != 2:
+                            # A partial run (exit 2) stores no report, so its data is ignored.
+                            [report] = result.data['reports']
+                            match = REPORT.fullmatch(report)
+                            if not match or match[1] != name or not (root / report).is_file():
+                                raise ValueError('invalid scanner report')
+                            servers[name] = 'unchanged' if root / report in seen else 'new'
+                            if match[2] in baseline.get(name, ((), ''))[0]:
+                                notes.append(f'{name}: accepted findings, unchanged since {baseline[name][1]}')
+                                continue
+                            findings.extend(result.data['findings'])
+                            by_report[report] = result.data['findings']
                             continue
                         reason = result.reason or 'scanner check incomplete'
                     pair = [name, digest]
@@ -490,22 +555,22 @@ def check(root):
             for row in findings:
                 safe = {key: row[key] for key in ('server_name', 'drift_type', 'severity', 'tool_name')}
                 state.append_event('mcp.finding', safe, root)
-            queued = {row['severity'] for row in findings if row['severity'] in ('high', 'critical', *block)}
-            if queued:
-                # A new finding batch needs its own review even when an older decision is open.
-                if any(not isinstance(p, str) or not p.startswith('.wuwei/ziran/')
-                       or '..' in Path(p).parts for p in reports):
-                    raise ValueError('invalid report path')
-                record['reports'] = list(dict.fromkeys([*record['reports'], *reports]))
-                record['pending'] = _queue(root, record['reports'])
-                record['severities'] = sorted({*record['severities'], *queued})
+            queue = ('high', 'critical', *block)
+            flagged = [path for path, rows in by_report.items() if any(row['severity'] in queue for row in rows)]
+            fresh = [path for path in flagged if path not in record['reports']]
+            if fresh:
+                # A new result needs its own review even when an older decision is open.
+                record['reports'] += fresh
+                record['pending'] = _queue(root, record, baseline)
+                record['severities'] = sorted({*record['severities'],
+                                               *(row['severity'] for row in findings if row['severity'] in queue)})
             code = 2 if record['unmeasured'] else int(any(
                 row['severity'] in ('high', 'critical') for row in findings))
-            state.append_event('mcp.checked', {'exit': code}, root)
+            state.append_event('mcp.checked', {'exit': code, 'servers': servers}, root)
             head = ('MCP registry unmeasured' if code == 2 else
                     f'MCP registry measured: {len(findings)} findings; reports in .wuwei/ziran')
-            reason = '; '.join([head, *notes, *(['owner decision open in ' + record['pending']]
-                                                if record['pending'] else []), *([COVERED] if covered else [])])
+            reason = '; '.join([head, *notes, *([_waiting(record)] if record['pending'] else []),
+                                *([COVERED] if covered else [])])
             record.update(exit=code, reason=reason)
             _write(root, record)
             _recover(root, record)
@@ -554,8 +619,8 @@ def _proceed_unmeasured(root, record, servers, confirm):
     return registry.Result(0)
 
 
-def decide(root, servers=None, *, confirm=None):
-    """Accept a decision only at the owner terminal, never from record text alone."""
+def decide(root, identifier=None, option=None, *, servers=None, confirm=None):
+    """Record the owner's answer to the pending MCP decision at the host terminal only."""
     try:
         root = Path(root).resolve()
         with _lock(root):
@@ -569,31 +634,87 @@ def decide(root, servers=None, *, confirm=None):
                         else registry.Result(1, reason='MCP registry has no pending decision'))
             if servers:
                 return _proceed_unmeasured(root, record, servers, confirm)
-            if not record['pending']:
+            waiting = record['pending']
+            if not waiting:
                 return registry.Result(1, reason='MCP registry has no pending decision')
-            path = root / record['pending']
+            if Path(waiting).stem != identifier:
+                return registry.Result(1, reason=f'{identifier} is not the pending MCP decision; run {command(waiting)}')
+            path = root / waiting
             if path.resolve() != path:
                 raise ValueError('decision must not use symlinks')
             text = path.read_text(encoding='utf-8')
-            fields, _ = decision.evaluate(text)
-            if fields['Decided-by'] != 'owner' or fields['Outcome'] != 'proceed':
-                return registry.Result(1, reason='MCP registry decision must record owner Outcome: proceed')
-            digest = hashlib.sha256((json.dumps(record, sort_keys=True) + text).encode()).hexdigest()
+            _, scores = decision.evaluate(text)
+            if option not in scores:
+                return registry.Result(1, reason=f'{identifier} options: ' + ', '.join(scores))
+            digest = hashlib.sha256((json.dumps([record, option], sort_keys=True) + text).encode()).hexdigest()
             if confirm is None:
                 from wuwei.integrity import _host_confirm
-                confirm = lambda value: _host_confirm(value, prompt='Review the MCP reports and decision. '
-                    'To permit seat launches for these findings, type:')
+                confirm = lambda value: _host_confirm(value, prompt=f'{identifier}: record {option} for the '
+                    'MCP registry findings. To confirm, type:')
             if not confirm(digest):
                 return registry.Result(1, reason='MCP registry owner confirmation declined')
             if path.read_text(encoding='utf-8') != text:
                 raise ValueError('decision changed during confirmation')
-            workspace.atomic_write(_path(root, 'accepted-' + digest + '.json'),
-                json.dumps({'decision': record['pending'], 'text': text, 'digest': digest}) + '\n', mode=0o444)
-            state.append_event('mcp.decided', {'decision': record['pending'], 'outcome': 'proceed'}, root)
-            unmeasured = bool(record['unmeasured'])
-            record.update(pending=None, reports=[], severities=[], exit=2 if unmeasured else 0,
-                          reason=record['reason'] if unmeasured else '')
-            _write(root, record)
-            return registry.Result(0)
+            stamp = workspace.now().isoformat(timespec='seconds')
+            workspace.atomic_write(path, decision.set_outcome(text, option)
+                                   + f'Notes: Decided at {stamp} at the host terminal.\n')
+            if option == 'proceed':
+                baseline = [[m[1], m[2]] for m in map(REPORT.fullmatch, record['reports']) if m]
+                workspace.atomic_write(_path(root, 'accepted-' + digest + '.json'), json.dumps(
+                    {'decision': waiting, 'text': text, 'digest': digest, 'baseline': baseline}) + '\n', mode=0o444)
+                unmeasured = bool(record['unmeasured'])
+                record.update(pending=None, reports=[], severities=[], exit=2 if unmeasured else 0,
+                              reason=record['reason'] if unmeasured else '')
+                _write(root, record)
+            state.append_event('mcp.decided', {'decision': waiting, 'outcome': option}, root)
+        if option != 'proceed':
+            # The gate keeps its answer; a later proceed still works.
+            return registry.Result(1, reason=f'{identifier} recorded: {option}; to accept later, run {command(waiting)}')
+        rerun = check(root)
+        return registry.Result(rerun.exit, reason=f'{identifier} recorded: proceed; {rerun.reason}'.rstrip('; '))
     except (OSError, ValueError, TypeError, KeyError) as exc:
         return _failure(exc)
+
+
+def migrate(root, token=None):
+    """Plan, and with the plan as token apply, the move of v0.12.0 report-* directories to
+    <server>/<digest>.json; directories the status record still references stay."""
+    root = Path(root).resolve()
+    with _lock(root):
+        record = _read(root)
+        referenced = {Path(path).parts[2] for path in record['reports']} if record else set()
+        plan, steps = [], []
+        for folder in sorted(_path(root, '.').glob('report-*')):
+            if folder.is_symlink() or not folder.is_dir() or folder.name in referenced:
+                continue
+            where, file = folder.relative_to(root), folder / 'registry-watch-report.json'
+            names = [path.name for path in folder.iterdir()]
+            try:
+                data = json.loads(file.read_text(encoding='utf-8')) if names == [file.name] else None
+            except (OSError, ValueError):
+                data = None
+            rows = data if isinstance(data, list) and all(isinstance(row, dict) for row in data) else []
+            servers = {row.get('server_name') for row in rows}
+            name = servers.pop() if len(servers) == 1 else None
+            target = None
+            if isinstance(name, str) and NAME.fullmatch(name) and name not in STORAGE:
+                target = _path(root, name) / (digest(data) + '.json')
+            if not names or data == []:
+                plan.append(f'remove {where} ({"clean" if names else "empty"})')
+                steps.append((folder, None, None))
+            elif target and target.exists():
+                plan.append(f'remove {where} (duplicate of {target.relative_to(root)})')
+                steps.append((folder, None, None))
+            elif target:
+                plan.append(f'move {file.relative_to(root)} -> {target.relative_to(root)}')
+                steps.append((folder, file, target))
+            else:
+                plan.append(f'keep {where}: unreadable')
+        text = ''.join(line + '\n' for line in plan)
+        if token == text:
+            for folder, file, target in steps:
+                if file:
+                    target.parent.mkdir(exist_ok=True)
+                    os.replace(file, target)
+                shutil.rmtree(folder)
+        return text
