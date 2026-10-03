@@ -640,6 +640,40 @@ def test_scan_decodes_torn_silent_line(tmp_path, monkeypatch):
     assert any(row['source'] == 'unreadable event' for row in rows)
 
 
+def test_scan_kind_alternation_matches_exactly_the_skipped_kinds():
+    # #346: the skipped kinds as a prefix tree; the same strings as a plain alternation.
+    import re
+    from wuwei.commands import status
+    from wuwei.signal import SILENT
+    small = ['seat', 'seat launched', 'state.set', 'a.b']
+    pattern = re.compile(status._alternation(small))
+    assert all(pattern.fullmatch(word) for word in small)
+    assert not any(pattern.fullmatch(word) for word in ('sea', 'seat ', 'seat l', 'state', 'axb', '', 'a.bc'))
+    pattern = re.compile(status._alternation(sorted(status.SKIP)))
+    assert all(pattern.fullmatch(kind) for kind in status.SKIP)
+    others = ({kind[:-1] for kind in status.SKIP} | {kind + 's' for kind in status.SKIP}
+              | set(SILENT)) - status.SKIP
+    assert others and not any(pattern.fullmatch(kind) for kind in others)
+
+
+def test_scan_reads_the_day_with_universal_newlines(tmp_path, monkeypatch):
+    # #346: scan decodes the bytes itself; CR LF and a lone CR still end lines as read_text's did.
+    from wuwei.commands import status
+    warning = json.dumps({'kind': 'hook.warning', 'payload': {'reason': 'one'}, 'ts': NOW})
+    silent = json.dumps({'kind': 'state.write', 'payload': {}, 'ts': NOW})
+    directory = day(tmp_path, events=[])
+    path = directory / 'events.jsonl'
+    path.write_bytes(f'{silent}\r\n{warning}\r{warning}\n{silent}\r'.encode())
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    rows, *_ = status.scan(directory)
+    assert [row['source'] for row in rows].count('hook.warning') == 2
+    assert not any(row['source'] == 'unreadable event' for row in rows)
+    path.write_bytes(b'{"kind": "hook.warning", "payload": {"reason": "\xff"}, "ts": "' + NOW.encode() + b'"}\n')
+    with pytest.raises(UnicodeDecodeError):
+        status.scan(directory)
+
+
 def test_scan_skip_matches_decoding_every_line(tmp_path, monkeypatch):
     # The skipped runs change no row and no line number: the same day decoded line by line.
     from wuwei.commands import status

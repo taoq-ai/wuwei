@@ -201,7 +201,34 @@ def test_shim_missing_dependency(plugin, tmp_path, missing):
 
 
 def test_shim_requires_python_311():
-    assert "exec python3 -I -P -c " in (ROOT / "bin/wuwei").read_text()
+    assert "exec python3 -I -P -S -c " in (ROOT / "bin/wuwei").read_text()
+
+
+@pytest.mark.parametrize("args, fast", [(["hook", "PreToolUse"], True), (["status", "--line"], True),
+                                        (["--version"], False)])
+def test_hooks_and_status_line_skip_collector_and_teardown(tmp_path, args, fast):
+    # #346: the per-call processes run without the cyclic collector and leave through
+    # os._exit after atexit handlers and a flush; every other command exits as before.
+    script = ("import atexit, gc, os, runpy, sys\n"
+              "real = os._exit\n"
+              "def fast(code):\n"
+              "    print(f'fast exit {code} gc {gc.isenabled()}', file=sys.stderr)\n"
+              "    real(code)\n"
+              "os._exit = fast\n"
+              "atexit.register(lambda: print('atexit ran', file=sys.stderr))\n"
+              "sys.path[:0] = sys.argv[1:3]\n"
+              "del sys.argv[1:3]\n"
+              "runpy.run_module('wuwei', run_name='__main__', alter_sys=True)\n")
+    payload = {**json.loads((ROOT / "tests/payloads/PreToolUse/bash.json").read_text()), "cwd": str(tmp_path)}
+    env = {key: value for key, value in os.environ.items() if not key.startswith(("WUWEI_", "GIT_"))}
+    result = subprocess.run([sys.executable, "-I", "-P", "-S", "-c", script, str(ROOT / "cli"), str(ROOT), *args],
+                            input=json.dumps(payload), cwd=tmp_path, env=env, capture_output=True, text=True)
+    lines = result.stderr.splitlines()
+    assert "atexit ran" in lines, result.stderr
+    if fast:
+        assert lines[-1] == f"fast exit {result.returncode} gc False", result.stderr
+    else:
+        assert result.returncode == 0 and "fast exit" not in result.stderr, result.stderr
 
 
 def test_shim_ignores_python_environment(plugin, tmp_path):

@@ -994,3 +994,23 @@ def test_upgrade_refuses_unreachable_mode(tmp_path, monkeypatch, capsys):
     code, out = upgraded(tmp_path, capsys)
     assert code == 2 and 'cannot safely retire guards.mode' in out.err
     assert before == {p: p.read_bytes() for p in (tmp_path / '.wuwei').rglob('*') if p.is_file()}
+
+
+def test_load_config_returns_independent_copies(tmp_path):
+    # #346: the memo hands out copies (copy_data, not copy.deepcopy); a caller's edits stay its own.
+    from wuwei import state, workspace
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles = ["owner"]\n')
+    first = workspace.load_config(tmp_path)
+    first['owner']['handles'].append('intruder')
+    first['outbound']['sensitive_keywords'].clear()
+    first['repos'].append({})
+    second = workspace.load_config(tmp_path)
+    assert second['owner']['handles'] == ['owner'] and second['repos'] == []
+    assert second['outbound']['sensitive_keywords'] == workspace.SCHEMA['outbound']['sensitive_keywords'][1]
+    assert workspace.SCHEMA['outbound']['sensitive_keywords'][1]
+    data = state.read_state(directory=tmp_path / 'day')
+    data['items']['x'] = {}
+    data['goals'].append('G-1')
+    assert state.read_state(directory=tmp_path / 'day') == state.DAY_DEFAULTS
+    assert state.DAY_DEFAULTS['items'] == {} and state.DAY_DEFAULTS['goals'] == []

@@ -266,6 +266,18 @@ def test_observer_preserves_malformed_hook_exit(tmp_path, monkeypatch, capsys, r
     assert json.loads((tmp_path / 'hooks.jsonl').read_text())['exit'] == 2
 
 
+def test_observer_reads_the_launcher_flags(tmp_path, monkeypatch):
+    # The shim observes whatever interpreter flags bin/wuwei passes (#346 added -S).
+    import io
+    adapter = load('headless_adapter')
+    monkeypatch.setattr(sys, 'stdin', io.StringIO('{}'))
+    monkeypatch.setattr(adapter, 'run', lambda *a, **kw: SimpleNamespace(returncode=0, stdout='', stderr=''))
+    flags = (ROOT / 'bin/wuwei').read_text().split('exec python3 ', 1)[1].split(' -c ', 1)[0].split()
+    argv = [*flags, '-c', 'run_module("wuwei")', 'cli', 'plugin', 'hook', 'Stop']
+    assert adapter.observe(sys.executable, tmp_path / 'hooks.jsonl', argv) == 0
+    assert json.loads((tmp_path / 'hooks.jsonl').read_text())['args'] == ['hook', 'Stop']
+
+
 KEYS = {'verdict', 'interventions', 'elapsed_seconds', 'cost_usd', 'refusals', 'findings', 'pr'}
 
 
