@@ -1,7 +1,3 @@
----
-layout: default
----
-
 # Release rehearsal
 
 The rehearsal drives one item through a real day with real Claude Code seats, real
@@ -13,7 +9,7 @@ One item goes through the whole journey: plan and owner approval, a builder, a
 failing fast check with a continued builder, three gates with a quality FIX, the
 fix round and its delta, a raised PR, one owner decision answered on your
 terminal, a merge under the auto-merge policy, and a verified close. When a run leaves
-state and evidence disagreeing, see [recovery](recovery.html).
+state and evidence disagreeing, see [recovery](recovery.md).
 
 ## Prerequisites
 

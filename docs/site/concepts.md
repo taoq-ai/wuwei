@@ -1,10 +1,4 @@
----
-layout: default
----
-
 # Concepts
-
-[Home](index.html)
 
 ## Glossary
 
@@ -107,15 +101,15 @@ Owner commands such as `bin/wuwei config set` refuse to run anywhere else.
 
 ## Roles
 
-The shipped charters define planner, lead, builder, shepherd, steward, and four sentinels: goal, architecture, quality and security. Generated agent files in `agents/` carry the charters and tool allowlists. The planner owns the day, the lead shapes work, builders implement, sentinels check, the shepherd follows pull requests and the steward maintains procedure. `/wuwei plan` runs the day, starting with the owner's morning gate; see the [daily path](daily.html).
+The shipped charters define planner, lead, builder, shepherd, steward, and four sentinels: goal, architecture, quality and security. Generated agent files in `agents/` carry the charters and tool allowlists. The planner owns the day, the lead shapes work, builders implement, sentinels check, the shepherd follows pull requests and the steward maintains procedure. `/wuwei plan` runs the day, starting with the owner's morning gate; see the [daily path](daily.md).
 
 ## Guards
 
-Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse relevant unsafe actions inside a WUWEI workspace or configured repository. Outside that scope they return clean. The three outcomes are 0 clean, 1 findings and 2 could not run. A relevant parse or measurement failure returns 2 with a reason. The CLI also records traces and events. See [security](security.html) for the trust boundary.
+Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse relevant unsafe actions inside a WUWEI workspace or configured repository. Outside that scope they return clean. The three outcomes are 0 clean, 1 findings and 2 could not run. A relevant parse or measurement failure returns 2 with a reason. The CLI also records traces and events. See [security](security.md) for the trust boundary.
 
 ## Security posture
 
-`security.posture` sets what warns and what blocks per area: `observe`, `guarded` (the default) or `strict`, with per-area overrides under `[security.areas]`. A `warn` level still runs the guard, records the refusal as a `guard.would_refuse` event and lets the call through. Every enforced refusal ends with a `posture:` line naming the area, its level and the key that changes it. See [security posture](security.html#security-posture) for the table.
+`security.posture` sets what warns and what blocks per area: `observe`, `guarded` (the default) or `strict`, with per-area overrides under `[security.areas]`. A `warn` level still runs the guard, records the refusal as a `guard.would_refuse` event and lets the call through. Every enforced refusal ends with a `posture:` line naming the area, its level and the key that changes it. See [security posture](security.md#security-posture) for the table.
 
 `observe` is the old shadow mode (`guards.mode = "shadow"` still means it). Use it for the first week on a project, to see what the guards would stop in your own habits before they stop anything. Some refusals never relax, in any posture: writes to state, events, config and generated instructions, verdicts and decisions (`records`), and owner-only actions: the deployment ban, the merge policy, approvals and owner markers, and approve-tier messages and canary or honeytoken egress. Relaxing those would corrupt the records the report is built from or let a seat act as the owner. The heartbeat probe session is never relaxed either.
 
@@ -125,7 +119,7 @@ MCP registry findings warn by default. A finding is a heuristic over tool descri
 
 ## Seat launch contract
 
-The planner launches every seat from the actions `build next` and `dispatch next` return; see the [daily path](daily.html). The low-level launch contract is on the [recovery](recovery.html#seat-launch-contract) page.
+The planner launches every seat from the actions `build next` and `dispatch next` return; see the [daily path](daily.md). The low-level launch contract is on the [recovery](recovery.md#seat-launch-contract) page.
 
 Commit and push guards follow the target repository even when the session starts
 elsewhere. This includes `git -C`, `--git-dir`, `--work-tree`, repository environment
@@ -138,7 +132,7 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are the owner's alone: `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei goals edit` and `voice edit` (except that the planner records goals and voice you approved at the morning gate with `--file`, outside the strict posture), `wuwei watch uninstall`, `wuwei listen uninstall`, `wuwei remote ack`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei setup`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. The ones that ask you to type a digest exit 2 without a terminal. See [host terminal actions](reference.html#host-terminal-actions).
+Some commands are the owner's alone: `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei goals edit` and `voice edit` (except that the planner records goals and voice you approved at the morning gate with `--file`, outside the strict posture), `wuwei watch uninstall`, `wuwei listen uninstall`, `wuwei remote ack`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei setup`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. The ones that ask you to type a digest exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
 
 ## Memory
 
@@ -146,7 +140,7 @@ Some commands are the owner's alone: `wuwei decision outcome`, `wuwei state reco
 
 ## Day flow
 
-Plan, Build, Review, Close. `/wuwei plan` runs the morning gate, then the planner loops `build next` and `dispatch next` for each approved item, raises the PR and closes the day; phases move by themselves. The [daily path](daily.html) is the owner's walkthrough and the [recovery](recovery.html) page covers the rest.
+Plan, Build, Review, Close. `/wuwei plan` runs the morning gate, then the planner loops `build next` and `dispatch next` for each approved item, raises the PR and closes the day; phases move by themselves. The [daily path](daily.md) is the owner's walkthrough and the [recovery](recovery.md) page covers the rest.
 
 ## PR ownership
 
@@ -174,7 +168,7 @@ The watch produces the same action deadlines while polling. Repeated observation
 not postpone an unresolved action. Overdue actions produce a nudge, then a page at twice
 the action interval. The planner's Stop hook rechecks fresh evidence and refuses overdue
 actions, naming the PR, state and action. Only a verified owner parking decision exempts
-a PR; carry-forward applies to day close. See [configuration](configuration.html) for
+a PR; carry-forward applies to day close. See [configuration](configuration.md) for
 `pr.action_minutes` and `pr.review_window`.
 
 ## Day close
@@ -236,8 +230,8 @@ At an item's first gate, `dispatch next` computes its review tier, `light`, `sta
 paths, the lead flags, the track, `repos.gates.floor` and an optional lead `tier`. A light
 item gets the quality gate only; standard and full get arch, quality and security. A lead
 tier below the computed one is refused and recorded as a reason, and the returned action
-carries the `tier`. See [configuration](configuration.html#workspace-and-repositories) and
-the [lead plan JSON](reference.html#lead-plan-json).
+carries the `tier`. See [configuration](configuration.md#workspace-and-repositories) and
+the [lead plan JSON](reference.md#lead-plan-json).
 
 With `gates.second_opinion = "<runtime>:<model>"`, standard and full items get one more gate:
 the role in `gates.second_opinion_role` (quality by default) runs again on that runtime and
@@ -249,7 +243,7 @@ can turn it off when it stops paying.
 
 ## Writing for the owner
 
-`owner.verbosity` sets how much decisions, the digest, PR nudges, the DM and the report say to you: `brief` (the default), `standard` or `full`, with one key per surface (see [configuration](configuration.html)). Anything left out is one command away: `bin/wuwei decision show D-<n> --full` on the host or `more D-n` in the DM. Seats rewrite text written for a person with the humanizer skill, version 3.1.0, MIT license, when it is installed, and otherwise follow the ten-line checklist under Writing for a person in `charters/_common-authoring.md`. The CLI counts the mechanical tells as a `style` finding on drafts and decision records and as the `ai_tells` metric in the retro and, at standard or full, the report; a tell never blocks a send. Only an em dash or an emoji is refused.
+`owner.verbosity` sets how much decisions, the digest, PR nudges, the DM and the report say to you: `brief` (the default), `standard` or `full`, with one key per surface (see [configuration](configuration.md)). Anything left out is one command away: `bin/wuwei decision show D-<n> --full` on the host or `more D-n` in the DM. Seats rewrite text written for a person with the humanizer skill, version 3.1.0, MIT license, when it is installed, and otherwise follow the ten-line checklist under Writing for a person in `charters/_common-authoring.md`. The CLI counts the mechanical tells as a `style` finding on drafts and decision records and as the `ai_tells` metric in the retro and, at standard or full, the report; a tell never blocks a send. Only an em dash or an emoji is refused.
 
 ## Decision classes and cruise levels
 
@@ -287,7 +281,7 @@ Several Claude Code sessions can share a workspace. Hooks register each one in d
 with its role, last hook and claimed items; a session idle past `sessions.stale_seconds` is
 stale and its claims lapse. One session is the planner, a second takes over with
 `plan session --take-over`, and `sessions.rotate_after` rotates the planner on a schedule.
-See [sessions](reference.html#sessions) and [long sessions](daily.html#long-sessions).
+See [sessions](reference.md#sessions) and [long sessions](daily.md#long-sessions).
 
 ## Listener
 
@@ -296,8 +290,8 @@ The responder wakes the planner and handles commands only from the pinned owner,
 second factor where a command needs one. While running it also probes raised and claimed
 PRs with conditional requests, sends each `pr.changed` summary to the DM and, with
 `shepherd.autostart = true`, starts a headless shepherd seat that never merges. See
-[remote operation](remote.html) and
-[running the listener](configuration.html#running-the-listener).
+[remote operation](remote.md) and
+[running the listener](configuration.md#running-the-listener).
 
 ## Heartbeat
 
@@ -305,11 +299,11 @@ On every tick the watch runs a fixed table of probes: a refused and an allowed h
 state, integrity, config, clocks, the status line, the planner and memory. Health shows on
 the status line, a failed probe raises one page, a probe that turns from ok to failed is
 behaviour drift, and a healthy heartbeat pings an external dead-man monitor. See the
-[heartbeat reference](reference.html#heartbeat).
+[heartbeat reference](reference.md#heartbeat).
 
 ## Cockpit and board
 
 `bin/wuwei dashboard` serves the read-only day board on loopback. The plugin's MCP server
 runs `bin/wuwei board` and offers the `wuwei_board` tool inside Claude Code; it is declared
 in the signed `plugin.json`, so integrity covers it. Answering a decision or approving a
-draft stays a host terminal action. See the [daily path](daily.html#6-close).
+draft stays a host terminal action. See the [daily path](daily.md#6-close).

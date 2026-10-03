@@ -1,0 +1,75 @@
+site_name: WUWEI
+site_url: https://taoq-ai.github.io/wuwei/
+site_description: Autonomous delivery where the safe path is the default one.
+site_author: TaoQ AI
+
+repo_name: taoq-ai/wuwei
+repo_url: https://github.com/taoq-ai/wuwei
+
+docs_dir: docs/site
+
+validation:
+  omitted_files: warn
+  unrecognized_links: warn
+  anchors: warn
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.highlight
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - tables
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+    - Daily path: daily.md
+    - What the session knows: agent.md
+  - Concepts:
+    - Concepts: concepts.md
+    - Security: security.md
+  - Reference:
+    - Operator reference: reference.md
+    - Configuration: configuration.md
+    - Adapters and ports: adapters.md
+    - Charter overrides: charter-overrides.md
+  - Operations:
+    - Recovery: recovery.md
+    - Remote operation: remote.md
+    - Release rehearsal: rehearsal.md
+    - Integrity: integrity.md

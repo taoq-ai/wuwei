@@ -1,10 +1,4 @@
----
-layout: default
----
-
 # Configuration
-
-[Home](index.html)
 
 `bin/wuwei init .` creates `.wuwei/config.toml`. In a host terminal, change one value with `bin/wuwei config set <key> <value>` and add a repository with `bin/wuwei config add-repo` (see [calibration](#calibration)); edit the file by hand only for what they refuse, a table or a value that spans lines. Values below are the shipped template defaults. Omitted keys use CLI defaults. Unknown keys are a warning from `wuwei config check`, `wuwei doctor` and `wuwei init --upgrade`, with the line and the nearest documented key; under `security.posture = "strict"` they are errors, unless `template_version` is newer than the running plugin. The optional commented examples are inactive until uncommented. Paths in repository entries are relative to the workspace unless absolute.
 
@@ -40,7 +34,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `guards.shadow_days` | `7` | Days in the `observe` posture before one status nudge asks you to switch to `guarded` or raise this number. |
 | `guards.shadow_since` | `""` | Day `observe` started, as `YYYY-MM-DD`. `init --posture observe` and the interview set it. Empty means no nudge. |
 | `security.required` | `true` | When true, a missing `.wuwei/security.json` makes guards fail closed instead of treating security as disabled. |
-| `security.posture` | `"guarded"` | What warns and what blocks: `observe`, `guarded` or `strict`. `setup --shadow` and `init --shadow` set `observe` for `guards.shadow_days` days from `guards.shadow_since`, then one nudge asks you to switch to `guarded`. `config check` and `doctor` print the effective posture and the key it comes from. See [security posture](security.html#security-posture) for the table and its floors. |
+| `security.posture` | `"guarded"` | What warns and what blocks: `observe`, `guarded` or `strict`. `setup --shadow` and `init --shadow` set `observe` for `guards.shadow_days` days from `guards.shadow_since`, then one nudge asks you to switch to `guarded`. `config check` and `doctor` print the effective posture and the key it comes from. See [security posture](security.md#security-posture) for the table and its floors. |
 | `security.areas.<area>` | `""` | Override one area of the posture with `off`, `warn` or `block`; empty takes the posture's level. Areas: `integrity`, `mcp`, `publish`, `records`, `outward`, `seats`; for example `security.areas.mcp` = `"off"` skips the MCP registry check. `records` below `block` is a config finding. |
 | `repos` | `[]` | Configured repositories. Each `[[repos]]` entry has the fields below. |
 | `repos.name` | Required per entry | Code host name, such as `owner/repo`. |
@@ -448,7 +442,7 @@ user unit. The service uses the active workspace and current `PATH`. Run
 one due cycle without installing a service. The watch writes clock events at
 `watch.clock_seconds` intervals, and the next sweep reports a dead watch when it
 has no fresh clock line (see below). Each loop iteration also runs the heartbeat probes
-and can ping an external monitor; see [Heartbeat](reference.html#heartbeat).
+and can ping an external monitor; see [Heartbeat](reference.md#heartbeat).
 
 `bin/wuwei watch install --dry-run` prints the unit path, the rendered unit and the
 service commands without writing or loading anything. If loading the service
@@ -570,7 +564,7 @@ adapter. It returns 1 for missing requirements and 2 when a check cannot run.
 With an inbound adapter it adds a `Control plane:` section: `control_plane.owner` is
 set, missing or invalid (the last two return 1; the pin is never printed), and
 `WUWEI_TOTP_SECRET` is set or missing, which is information only.
-See [adapter credentials](adapters.html#credentials) for every variable, syntax
+See [adapter credentials](adapters.md#credentials) for every variable, syntax
 rules and authentication requirements. No new config.toml keys are needed.
 
 ### Host protections and seat credentials

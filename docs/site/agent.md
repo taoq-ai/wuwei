@@ -1,10 +1,4 @@
----
-layout: default
----
-
 # What the session knows
-
-[Home](index.html)
 
 This page is for a Claude Code session that starts in a WUWEI workspace with no prior
 context. Every SessionStart in the workspace points here.
@@ -96,4 +90,4 @@ host terminal in every posture: `decision outcome`, `drafts approve`, `mcp decid
 
 The owner runs `bin/wuwei setup --shadow` in a host terminal, then you run
 `/wuwei:wuwei-plan`. On the first day the plan skill also asks the calibration questions
-after the morning gate. The owner's guide to the same day is the [daily path](daily.html).
+after the morning gate. The owner's guide to the same day is the [daily path](daily.md).

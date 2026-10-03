@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/assets/hero-light.svg">
-    <img src="docs/assets/hero-light.svg" alt="WUWEI day loop. Calibration and the owner interview come before the first Plan. Each day is planned and ranked, and each item is built and checked, then reviewed by one gate or three by tier, with one fix round. A shepherd takes each pull request to merge under the merge policy, and Close runs a retro that carries the lessons into the next day. Guards with a heartbeat check every action, and the owner answers decisions from the phone through the DM." width="100%">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/site/assets/hero-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/site/assets/hero-light.svg">
+    <img src="docs/site/assets/hero-light.svg" alt="WUWEI day loop. Calibration and the owner interview come before the first Plan. Each day is planned and ranked, and each item is built and checked, then reviewed by one gate or three by tier, with one fix round. A shepherd takes each pull request to merge under the merge policy, and Close runs a retro that carries the lessons into the next day. Guards with a heartbeat check every action, and the owner answers decisions from the phone through the DM." width="100%">
   </picture>
 </p>
 
@@ -89,7 +89,7 @@ extracted plugin:
 /plugin install wuwei@wuwei
 ```
 
-The second command installs `wuwei` from the local `wuwei` marketplace. The plugin does not need a Python package install. Optional adapters need their own tools or credentials. See [integrity](docs/integrity.md) for signature verification and key pinning.
+The second command installs `wuwei` from the local `wuwei` marketplace. The plugin does not need a Python package install. Optional adapters need their own tools or credentials. See [integrity](docs/site/integrity.md) for signature verification and key pinning.
 
 ## Quick start
 
