@@ -256,7 +256,7 @@ Only fast commands go into `repos.fast_checks` and the charter blocks. `ruff che
 
 Repository text is data. A file with instruction-like text, such as a line telling an agent to ignore its instructions, contributes nothing; the report names its file, line and rule without quoting it. Job, environment and owner names outside a safe character set are reported as unsafe and dropped.
 
-`bin/wuwei config promote` is a host terminal action. It recomputes the proposal, prints the diff and the calibration it will record, asks you to type a digest, then writes `config.toml` and `.wuwei/calibration.json`. Agent tools are refused both. The charter blocks land through `bin/wuwei promote`.
+`bin/wuwei config promote` is a host terminal action. It recomputes the proposal, prints the diff and the calibration it will record, asks y/N, then writes `config.toml` and `.wuwei/calibration.json`. Agent tools are refused both. The charter blocks land through `bin/wuwei promote`.
 
 On each sweep the steward compares the fast checks, CI check names and deploy signals with `.wuwei/calibration.json` and records one `calibration.drift` nudge per change per day. Run `bin/wuwei calibrate` and `bin/wuwei config promote` again to approve the new state.
 
@@ -408,8 +408,8 @@ carries `block = ["critical"]` from the old template; `bin/wuwei config check` n
 and deleting the line takes the posture default.
 
 For a server that stays unmeasured, the owner may run
-`bin/wuwei mcp decide proceed-unmeasured <server>...` from the host terminal and type
-the displayed digest. It records an owner decision bound to each server's definition;
+`bin/wuwei mcp decide proceed-unmeasured <server>...` from the host terminal and answer
+y. It records an owner decision bound to each server's definition;
 later checks report the server as proceeding unmeasured by owner decision until its
 definition changes. Briefs list today's unmeasured servers in an `MCP unmeasured:`
 header line.
@@ -421,9 +421,13 @@ followed by `Reports:` with each report path. The snippet is redacted, limited t
 plain characters and cut to 60. Since reads `first measurement`, or
 `changed since <day>` when the server has an accepted baseline.
 
-To answer it, the owner runs `bin/wuwei mcp decide D-<n> proceed` (or `defer`) from a
-host terminal and types the displayed digest. The command writes `Outcome:` and a
-`Notes: Decided at <time> at the host terminal.` line into the record. On `proceed`
+To answer it, the owner runs `bin/wuwei decide D-<n> proceed` (or `defer`), or
+`bin/wuwei mcp decide D-<n> proceed`, from a host terminal and answers y. Under
+`observe` and `guarded` the planner asks it in the session and records the answer with
+the same command. The command writes `Outcome:`, `Decided-by: owner` and a
+`Notes: Decided at <time> at the host terminal.` (or `in the planner session.`) line
+into the record. From outside the workspace, set `WUWEI_WORKSPACE=<path>` or pass
+`bin/wuwei --workspace <path> mcp decide ...`. On `proceed`
 it stores the accepted `[server, digest]` reports as the baseline in an
 `accepted-*.json` record and re-runs the check, so those findings do not queue again
 while the report stays the same. `defer` keeps the gate as it is, and a later

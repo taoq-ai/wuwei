@@ -205,6 +205,8 @@ def test_shim_requires_python_311():
 
 
 @pytest.mark.parametrize("args, fast", [(["hook", "PreToolUse"], True), (["status", "--line"], True),
+                                        (["--workspace", "/w", "hook", "PreToolUse"], True),
+                                        (["--workspace", "/w", "status", "--line"], True),
                                         (["--version"], False)])
 def test_hooks_and_status_line_skip_collector_and_teardown(tmp_path, args, fast):
     # #346: the per-call processes run without the cyclic collector and leave through

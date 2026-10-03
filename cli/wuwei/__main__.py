@@ -5,12 +5,15 @@ import sys
 # #346: Claude Code starts a hook process on every tool call and a status line on every
 # refresh. Those processes live tens of milliseconds and free their objects by reference
 # counting, so they run without the cyclic collector and skip the interpreter teardown.
-_FAST = __name__ == "__main__" and (sys.argv[1:2] == ["hook"] or sys.argv[1:] == ["status", "--line"])
+# A leading --workspace <path> (#354) is consumed first, as _main does.
+_ARGV = sys.argv[3:] if sys.argv[1:2] == ["--workspace"] and len(sys.argv) > 2 else sys.argv[1:]
+_FAST = __name__ == "__main__" and (_ARGV[:1] == ["hook"] or _ARGV == ["status", "--line"])
 if _FAST:
     import gc
     gc.disable()
 
 from contextlib import redirect_stdout, redirect_stderr
+import os
 
 from wuwei import env, redact
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
@@ -21,7 +24,7 @@ GROUPS = (
      'next status nudges plan decision worktree brief build dispatch pr merge reply discover '
      'note metrics report retro close steward'),
     ('Owner: run these in your own host terminal',
-     'setup init config calibrate goals voice drafts remote mcp outbound watch listen '
+     'setup init config decide calibrate goals voice drafts remote mcp outbound watch listen '
      'dashboard promote consolidate'),
     ('Recovery: when something is stuck',
      'doctor why state shadow heartbeat integrity runtime sessions'),
@@ -42,6 +45,9 @@ def main(argv=None):
 
 def _main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ['--workspace'] and len(argv) > 1:
+        # ponytail: leading form only; it selects the workspace for this process (#354).
+        os.environ['WUWEI_WORKSPACE'], argv = argv[1], argv[2:]
     if len(argv) == 2 and argv[0] == 'hook':
         # Hook fast path: no parser, manifest or command listing on every tool call.
         try:

@@ -10,7 +10,7 @@ _NEEDS = {'calibrate': '--questions'}
 WRITES = frozenset({
     'agents build', 'agents check', 'brief', 'build', 'calibrate export', 'calibrate import',
     'close', 'config add-repo', 'config promote', 'config set', 'consolidate', 'dashboard',
-    'decision lint', 'decision outcome', 'decision route', 'decision show', 'decision template',
+    'decide', 'decision lint', 'decision outcome', 'decision route', 'decision show', 'decision template',
     'discover', 'dispatch discovery', 'dispatch next', 'dispatch opinion', 'dispatch receive',
     'drafts approve', 'drafts drop', 'event', 'fast-checks', 'git-hook', 'goals edit', 'hook',
     'index', 'init', 'integrity reconfirm', 'listen install', 'listen uninstall', 'mcp decide',
@@ -28,6 +28,8 @@ def read_only(args):
     """#348: True when a CLI call only prints: --help or -h before --, --version first, or a
     READ_ONLY path (the longest registered path the words start with)."""
     args = list(args)
+    if args[:1] == ['--workspace']:
+        args = args[2:]  # #354: its value is a path, never the command, --help or --
     if '--' in args:
         args = args[:args.index('--')]
     if '-h' in args or '--help' in args or args[:1] == ['--version']:

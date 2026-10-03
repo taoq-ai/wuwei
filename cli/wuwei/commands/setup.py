@@ -250,6 +250,8 @@ def _setup(args, confirm):
         init.run(SimpleNamespace(path='.', shadow=args.shadow, upgrade=False, dry_run=False, menu_bar=False,
                                  honeytoken_path=security.DEFAULT_HONEYTOKEN_PATH, status_line=False))
         root = workspace.find_workspace()
+        print('To run owner commands from any directory, add to your shell profile:\n'
+              f'export WUWEI_WORKSPACE={shlex.quote(str(root))}')
         if not args.shadow:
             print('Suggested for a first week: bin/wuwei setup --shadow (guards record instead of refusing)')
     _, raw = config.read(root)

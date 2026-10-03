@@ -299,8 +299,9 @@ def fresh(root):
 HOST_TERMINAL = 'this is an owner action: run it in a host terminal'
 
 
-def _host_confirm(fingerprint, *, prompt='Review the installation on this host. To confirm its exact content, type:'):
-    # This is a local friction boundary, not proof against a same-uid process (spec 9.1).
+def _host_confirm(fingerprint, *, prompt=None):
+    # A local friction boundary, not proof against a same-uid process (spec 9.1). The caller
+    # computes, records and compares the digest; the owner answers y/N and never types it (#354).
     try:
         reader = open('/dev/tty', 'r')
     except OSError:
@@ -313,9 +314,10 @@ def _host_confirm(fingerprint, *, prompt='Review the installation on this host. 
         with terminal:
             if not reader.isatty() or not terminal.isatty():
                 raise OSError(HOST_TERMINAL)
-            terminal.write(prompt + '\n' + fingerprint + '\n> ')
+            terminal.write((prompt or f'Plugin installation {fingerprint[:12]} on this host.')
+                           + '\nConfirm? [y/N] ')
             terminal.flush()
-            return reader.readline().strip() == fingerprint
+            return reader.readline().strip().lower() in ('y', 'yes')
 
 
 def reconfirm(root, *, confirm=None):

@@ -59,8 +59,8 @@ on exit.
 The first session ends after it raises the PR and routes decision `D-1` ("merge
 the rehearsal PR today or defer"). The runner then prints
 `Rehearsal: confirm decision D-1 option A on this terminal` and runs
-`bin/wuwei decision outcome D-1 A` for you. That is the normal owner command: it
-shows a digest on this terminal. Review the decision and type the digest to
+`bin/wuwei decision outcome D-1 A` for you. That is an owner command: it
+asks y/N on this terminal. Review the decision and answer y to
 confirm it within 10 minutes, so stay at the terminal when the first session
 ends. The rehearsal adds no bypass. If you decline, the rehearsal fails
 before the second session. The second session resumes the first, merges the PR,

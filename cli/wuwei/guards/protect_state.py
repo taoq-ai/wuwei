@@ -47,6 +47,8 @@ _OWNER_ACTIONS = {
     ('drafts', 'approve'): 'Draft decisions require the owner terminal, outside agent tools.',
     ('drafts', 'drop'): 'Draft decisions require the owner terminal, outside agent tools.',
     ('mcp', 'decide'): 'MCP decisions require the owner terminal, outside agent tools.',
+    # A whole group: decide's verb position holds the D-n (#354).
+    ('decide', ''): 'Decisions require the owner terminal, outside agent tools.',
     ('integrity', 'reconfirm'): 'Integrity re-confirmation is an owner action on the host, outside agent tools.',
     ('state', 'recover'): 'State recovery is an owner action on the host, outside agent tools.',
     # An uninstalled watch reads as off, so a seat could silence a dead-watch page.
@@ -87,7 +89,9 @@ _READERS = ('grep', 'rg', 'echo', 'printf', 'head', 'tail', 'wc', 'cut', 'tr')
 
 
 def _pair(words):
-    return tuple(([word for word in words if not word.startswith('-')] + ['', ''])[:2])
+    # The value after --workspace is a path, not the group (#354).
+    return tuple(([word for prev, word in zip(['', *words], words)
+                   if not word.startswith('-') and prev != '--workspace'] + ['', ''])[:2])
 
 
 def _owner_reason(pair):
@@ -105,23 +109,17 @@ def _owner_relevant(text, script=False):
         and (re.search(_OWNER_VERB, stripped) or mentions(text, _OWNER_VERBS, script=script))))
 
 
-# #357: records the planner may write from its own answered morning gate question.
-_GATE_EDITS = {('goals', 'edit'), ('voice', 'edit')}
+# #357, #354: records the planner may write from its own answered gate question.
+_GATE_EDITS = {('goals', 'edit'), ('voice', 'edit'), ('mcp', 'decide'), ('decide', '')}
 
 
 def _gate_edits(payload, root):
     """(topics the planner's gate asked, caller is the planner): only today's registered
     planner session, never a seat; strict records nothing, so the owner runs it."""
-    from wuwei import state, workspace
+    from wuwei import sessions
     if root is None or 'agent_id' in payload:
         return frozenset(), False
-    day = state.read_state(root)
-    session = payload.get('session_id')
-    if not session or session != day.get('planner_session_id'):
-        return frozenset(), False
-    if workspace.posture(workspace.load_config(root))[0] == 'strict':
-        return frozenset(), True
-    return frozenset(day.get('sessions', {}).get(session, {}).get('gate_asked', ())), True
+    return sessions.gate_topics(root, payload.get('session_id'))
 
 
 def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(), False)):
@@ -179,9 +177,13 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
         if read_only(action):  # #348: --help prints usage and runs nothing
             continue
         if reason := _owner_reason((group, verb)):
-            if (group, verb) in _GATE_EDITS and edits[1]:
+            if ((group, verb) in _GATE_EDITS or (group, '') in _GATE_EDITS) and edits[1]:
                 if group in edits[0] and any(word == '--file' or word.startswith('--file=')
                                              for word in action):
+                    continue
+                # Every D-n word must have been asked, so a --note D-1 cannot carry another record.
+                ids = [word for word in action if re.fullmatch(r'D-[1-9][0-9]*', word)]
+                if group in ('mcp', 'decide') and ids and set(ids) <= edits[0]:
                     continue
                 return 1, f'{reason} Run it in a host terminal: {shlex.join(argv)}'
             return 1, reason

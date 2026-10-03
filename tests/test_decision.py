@@ -981,7 +981,7 @@ def test_decision_widget_passes_the_question_guard(ws):
     assert built['question'] == 'D-3: Which fix?' and built['header'] == 'D-3'
     assert [o['label'] for o in built['options']] == ['A', 'B'] and built['multiSelect'] is False
     assert built['options'][0]['description'] == 'Recommended. Implement fix'
-    assert built['record'] == 'wuwei decision outcome D-3 <label>'
+    assert built['record'] == 'wuwei decide D-3 <label>'
     assert ask(ws, built) == (0, '')
     swapped = VALID.replace('| 10 | 8 | 2 |', '| 10 | 2 | 8 |').replace('Recommendation: A', 'Recommendation: B')
     built = decision.record_widget('D-3', decision.evaluate(swapped)[0])
@@ -1080,3 +1080,49 @@ def test_set_outcome_rewrites_first_outcome():
     from wuwei import decision
     text = 'Question: Q?\n## Outcome: pending\nNotes: kept\nOutcome: pending\n'
     assert decision.set_outcome(text, 'proceed') == 'Question: Q?\n## Outcome: proceed\nNotes: kept\nOutcome: pending\n'
+
+
+def test_owner_record_writes_outcome_owner_and_notes(ws):
+    from wuwei import decision
+    text = decision.owner_record(VALID, 'B', 'at the host terminal', 'phone answer')
+    fields, _ = decision.evaluate(text)
+    assert fields['Outcome'] == 'B' and fields['Decided-by'] == 'owner'
+    assert text.endswith('\nNotes: Decided at 2026-09-28T12:00:00+00:00 at the host terminal. phone answer\n')
+    assert decision.owner_record(VALID, 'A', 'at the host terminal').endswith(
+        '\nNotes: Decided at 2026-09-28T12:00:00+00:00 at the host terminal.\n')
+
+
+def test_decide_command_records_routed_decision(ws, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    from wuwei import decision, state
+    monkeypatch.chdir(ws)
+    path = save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
+    assert main(['decision', 'route', 'D-3']) == 0
+    before = path.read_bytes()
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+    assert main(['decide', 'D-3', 'B', '--note', 'a\nb']) == 2
+    assert path.read_bytes() == before
+    assert main(['decide', 'D-3', 'B', '--note', 'phone answer']) == 0
+    text = path.read_text()
+    fields, _ = decision.evaluate(text)
+    assert fields['Outcome'] == 'B' and fields['Decided-by'] == 'owner'
+    assert text.endswith('at the host terminal. phone answer\n')
+    assert state.read_state(ws)['decision_outcomes']['D-3']['decided_by'] == 'owner'
+    assert [row['kind'] for row in events(ws)].count('decision.decided') == 1
+
+
+def test_record_gate_notes_asked_decisions(planner):
+    from wuwei import state
+    from wuwei.guards.decision import record_gate
+    save(planner)
+
+    def asked(header, text, session='planner-1', **extra):
+        return {'cwd': str(planner), 'session_id': session, 'tool_name': 'AskUserQuestion',
+                'tool_input': {'questions': [{'question': text, 'header': header}]}, **extra}
+    for payload in (asked('D-3', 'Which option?'), asked('D-9', 'D-9: Which option?'),
+                    asked('D-3', 'D-3: Which option?', agent_id='a1'),
+                    asked('D-3', 'D-3: Which option?', 'other'), asked('D-3', 'D-30: Which option?')):
+        assert record_gate(payload) == (0, '')
+    assert 'gate_asked' not in state.read_state(planner)['sessions']['planner-1']
+    assert record_gate(asked('D-3', 'D-3: Which option?')) == (0, '')
+    assert state.read_state(planner)['sessions']['planner-1']['gate_asked'] == ['D-3']
