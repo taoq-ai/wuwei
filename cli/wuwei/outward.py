@@ -58,7 +58,7 @@ def humanize_lint(inputs, root, config, channels, *, draft=False):
     try:
         texts, _ = _text(inputs)
         if len(channels) != 1:
-            return UNRUN, 'outward: ambiguous tool channel configuration'
+            return UNRUN, 'outward: ambiguous tool channel configuration; pass one channel per call'
         kind = 'dm' if inputs.get('is_dm') is True else KINDS.get(next(iter(channels)))
         rules = config['outward']
         if not rules['humanize'] or kind not in rules['humanize_kinds']:
@@ -74,7 +74,7 @@ def humanize_lint(inputs, root, config, channels, *, draft=False):
         print(f'warning: {reason}', file=sys.stderr)
         return CLEAN, reason
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
-        return UNRUN, 'outward: cannot read or validate policy or payload'
+        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'
 
 
 # ponytail: cross-script confusables remain distinct; add a Unicode confusable table if needed.

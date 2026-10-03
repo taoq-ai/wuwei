@@ -115,7 +115,7 @@ def _rank(root, config, repo, branch, paths, author, source_path=None, explain=N
                                {'repo': repo['name'], 'author': email.split('@', 1)[0]}, root)
     if selected and len(selected) < config['shepherd']['min_reviewers']:
         from wuwei.guards import REVIEWER_WAYS_OUT
-        raise merge.Refused('fewer eligible reviewers than shepherd.min_reviewers; ' + REVIEWER_WAYS_OUT)
+        raise merge.Refused('fewer eligible reviewers than shepherd.min_reviewers; run ' + REVIEWER_WAYS_OUT)
     _logins(selected)
     # Logins named in shepherd.authors are checked against the code host; owner-named and
     # host-resolved logins are checked by the requested == selected comparison on request.
