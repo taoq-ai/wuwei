@@ -68,6 +68,13 @@ spec 4.6 and 4.7).
 
 - One GitHub issue is one spec-kit feature: `specs/<issue number, 3 digits>-<slug>/` with
   `spec.md`, `plan.md` and `tasks.md`, created with `--number <issue>`.
+- Specification mode (design 5.10; amended 2026-10-03, #411): WUWEI itself runs under
+  `engine = "speckit"` and `mode = "strict"`. Every feature runs `specify`, `clarify`,
+  `plan`, `tasks`, `analyze`, `checklist` and `implement`, in that order, then the full
+  suite and the review; none is optional. The `analyze` report is saved as `analysis.md` in
+  the feature directory, and a CRITICAL or HIGH finding is resolved before `implement`. A
+  trivial change skips the spec only as 5.10 allows (a light lead tier, or the owner's skip
+  with a recorded reason), and its pull request says why.
 - One feature is one branch in its own git worktree, merged to `main` after the tests pass
   and an adversarial review (correctness, security, and a ponytail over-engineering pass)
   has no open blocking findings.
@@ -81,4 +88,4 @@ spec 4.6 and 4.7).
 Amendments are commits to this file with a dated line in the commit message. The design spec
 is amended only by its owner.
 
-**Version**: 1.1.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-09-30
+**Version**: 1.2.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-03

@@ -115,7 +115,7 @@ Code repos receive only worktrees, branches and pull requests.
 ```
 .wuwei/
   config.toml          repos, adapters, CAP, host floors, gate profile, boundary and
-                       environment register, outward-text rules
+                       environment register, outward-text rules, spec engine (5.10)
   charters/            local overrides layered over the plugin charters
   memory/
     spine.md           the structural model, loaded in full every session
@@ -174,10 +174,12 @@ WUWEI is built as ports and adapters (hexagonal).
 | PreToolUse | any deploy action (4.7) | always |
 | PreToolUse | chat or tracker adapter call | outward-text lint fails; a technical claim, disagreement or scope statement without an approved draft |
 | PreToolUse | Write or Edit on `state.json`, `events.jsonl` | always; state changes go through the CLI |
+| PreToolUse | Write, Edit, MultiEdit or NotebookEdit in an item worktree, outside the spec engine's directories | under spec mode, a step of the configured engine before implementation is not done for the item (5.10) |
 | PreToolUse | top-level `cd` out of the workspace | always; use `git -C` or a subshell |
 | PostToolUse | any tool | never refuses; appends the call to `traces.jsonl` in OTel JSONL shape |
 | PostToolUse | write to `decisions/gate-*.md` | verdict lint fails; the verdict is returned to the seat |
-| SubagentStop | a seat finishes | its three-line retro note is missing; otherwise records it, flagging a last message that asks the owner a question without a decision id (5.8) |
+| PostToolUse | Write, Edit, MultiEdit, NotebookEdit or Bash in an item worktree | never refuses; records each spec step whose artifact appeared (5.10) |
+| SubagentStop | a seat finishes | its three-line retro note is missing, or a builder's last message does not name its spec artifacts (5.10); otherwise records it, flagging a last message that asks the owner a question without a decision id (5.8) |
 | SessionStart | new session | never refuses; prints the memory payload and its size, flags a dead watch process and orphans from the last close |
 | PreCompact | before summarising | never refuses; flushes pending state and events |
 | Stop | every planner turn end (4.2.1), and day close | any owned PR has an overdue action; at day close also reply or visibility obligations owed, or the retro did not land |
@@ -766,6 +768,115 @@ risk, what you will be asked), arrives at predictable times, and leads with the 
 interesting or contentious point. `brief.style` in config tunes length, speed, order and
 which parts are on. Sources: events, verdicts, decision records, memory, the calendar and
 meeting transcripts through their ports.
+
+### 5.10 Specification mode (owner, 2026-10-03, #411)
+
+Every item that is not trivial is specified with one configured spec engine before it is
+built, and the hooks keep the engine's steps in order. `[spec]` in `config.toml`:
+
+- `engine` (default `"speckit"`): `speckit`, `superpowers`, `openspec`, or `none`, which
+  checks nothing (the behaviour before this section).
+- `mode` (default `"strict"`): `strict` refuses at every enforcement point below;
+  `advisory` lets each call through and records the first gap per item and day as one
+  `spec.warned` event, which `wuwei next` and the report list; `off` checks nothing. The
+  spec checks are not a 9.1 posture area: `mode` is their only setting, and under the
+  `observe` posture `strict` runs as `advisory`.
+- `skip_tiers` (default `["light"]`): the lead tiers (#280) whose items need no spec.
+
+Engines. The builder runs every step, in order, with the engine's own command or skill;
+the CLI reads only the artifacts, in the item's worktree, found by the item id lowercased
+(the branch rule of `wuwei worktree add`). A step is done when its artifact is present and
+reads as stated; a missing or unreadable artifact, or two paths that match the item, is not
+done. The next step is the first one not done; artifact times are not compared. Every step
+runs under `strict`; none is optional. Every engine ends with WUWEI's own validation: the
+build loop's fast checks and the gates (5.3).
+
+spec-kit: the feature directory is the one directory under `specs/` named `<item>` or
+ending in `-<item>` (`create-new-feature.sh --short-name <item>`); each step is
+`/speckit.<step>`.
+
+| Step | Artifact in the feature directory |
+|---|---|
+| `specify` | `spec.md` |
+| `clarify` | a `## Clarifications` section in `spec.md`: each question answered with the seat's recommendation as an assumption (5.3), or none |
+| `plan` | `plan.md` |
+| `tasks` | `tasks.md` |
+| `analyze` | `analysis.md`, the saved report, with no finding of severity CRITICAL or HIGH |
+| `checklist` | every item checked in `checklists/*.md` (`specify` writes `requirements.md`) |
+| `implement` | every task in `tasks.md` checked |
+
+superpowers: the skills of the superpowers plugin; the item is the topic in the file names.
+
+| Step | Artifact |
+|---|---|
+| `brainstorming` | `docs/superpowers/specs/<date>-<item>-design.md` |
+| `writing-plans` | `docs/superpowers/plans/<date>-<item>.md` |
+| `executing-plans` with `test-driven-development` | every step in that plan checked |
+| `verification-before-completion` | the fast checks and the gates; nothing more |
+
+OpenSpec: the change is `openspec/changes/<item>/`, and after `archive` the one directory
+under `openspec/changes/archive/` ending in `-<item>`; each step is `/openspec:<step>` or
+the `openspec` command.
+
+| Step | Artifact in the change |
+|---|---|
+| `proposal` | `proposal.md` |
+| `specs` and `design` | at least one `specs/<capability>/spec.md`; `design.md` where the proposal needs one |
+| `tasks` | `tasks.md` |
+| `validate` | `validation.json`, the saved `openspec validate <item> --strict --json`, every entry valid |
+| `apply` | every task in `tasks.md` checked |
+| `archive` | the change moved under `openspec/changes/archive/`, before the gates |
+
+The steps before implementation are the rows above `implement`, `executing-plans` and
+`apply`.
+
+Trivial items. An item needs no spec when the owner ran `wuwei plan set <item>
+spec=skipped --reason <why>`, or when its lead tier (`items.<item>.tier`) is in
+`skip_tiers` and the owner did not run `wuwei plan set <item> spec=required`. `plan set` is
+an owner action, refused from agent tools like `config set`; it writes `items.<item>.spec`
+(the value and the reason) and a `spec.override` event. A skipped item passes every check
+below; the first check that sees it writes one `spec.skipped` event with the reason. A
+tier skip holds only while the diff agrees: at the move to the gates, when the tier the
+diff computes (#280, before the floor and the lead tier) is not in `skip_tiers`, the item
+needs its spec after all.
+
+Enforcement. Cooperative mistake prevention (9.1), in item worktrees only (the item whose
+recorded worktree contains the path):
+
+- PreToolUse on Write, Edit, MultiEdit and NotebookEdit refuses a path outside the
+  engine's own directories (`specs/` and `.specify/`, `docs/superpowers/`, `openspec/`)
+  while a step before implementation is not done. The reason names the next step, its
+  artifact and its command, and the engine's install line when its files are absent from
+  the repository.
+- PostToolUse on the same tools and Bash records each step whose artifact newly appears as
+  one `spec.step` event (item, engine, step, path) per item and day. It never refuses.
+- The build loop (5.3) moves an item to the gates (implement to gate, fix to delta) only
+  when every step is done, implementation included, on every runtime. A gap goes back to
+  the builder as a failing check named `spec`, under the same error signature and stuck
+  rule. `wuwei dispatch next` refuses the gates to an item at `gate` with a gap, naming
+  the step.
+- SubagentStop refuses a builder seat's stop while its last message does not name the
+  item's artifacts (the spec-kit feature directory, the OpenSpec change, or the superpowers
+  design and plan files).
+- Briefs (5.2): the builder brief carries the engine's step table with the item's paths
+  and commands, or the skip and its reason; gate briefs carry the artifact paths.
+
+`spec.step`, `spec.skipped`, `spec.warned`, `spec.override` and `items.<item>.spec` are
+written only by the CLI. The artifacts are written by the seat: they show the work was
+done, never that the owner agreed; only `plan set` lowers the requirement for one item.
+
+Engine presence. `wuwei setup` and `wuwei doctor` look for each engine in each configured
+repository: `.specify/` for spec-kit, `openspec/` for OpenSpec, and a `superpowers@` entry
+in Claude Code's installed plugins file (`scanner.mcp.plugins_file`) for superpowers.
+Setup proposes the engine it finds, spec-kit when it finds none, and the interview asks
+"Which spec engine do your repositories use?" with that answer first. A configured engine
+absent from a repository is a doctor fail carrying its install line; `none` never is.
+`wuwei calibrate` already reads `.specify/memory/constitution.md` as a convention source.
+
+Seats and owner. The builder, lead and planner charters and the plan skill name the
+configured engine's steps and the skip rule; the orientation block (`wuwei next`) shows the
+engine and mode; the docs glossary defines spec engine and strict mode, and the
+configuration page documents `[spec]`.
 
 ## 6. Memory
 
