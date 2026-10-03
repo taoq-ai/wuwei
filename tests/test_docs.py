@@ -788,3 +788,17 @@ def test_unparsed_commands_are_documented():
     security = ' '.join((SITE / 'security.md').read_text().split())
     for phrase in ('unparsed', '(cd <dir> && <command>)', 'blocks only under `strict`'):
         assert phrase in security, phrase
+
+
+def test_close_carry_skill_and_docs():
+    report = (ROOT / 'skills/wuwei-report/SKILL.md').read_text()
+    step = next(line for line in report.splitlines() if line.startswith('1. '))
+    for phrase in ('wuwei close', 'wuwei close --widget', 'record', 'steward_launch', 'plan carry'):
+        assert phrase in step, phrase
+    assert 'Outcome: carried' not in report and 'Outcome: parked' not in report
+    retro = (ROOT / 'skills/wuwei-retro/SKILL.md').read_text()
+    step = next(line for line in retro.splitlines() if line.startswith('1. '))
+    assert all(phrase in step for phrase in ('wuwei close', 'steward_launch', 'open item'))
+    concepts = (SITE / 'concepts.md').read_text()
+    assert 'bin/wuwei plan carry' in concepts and 'bin/wuwei plan park' in concepts
+    assert 'Outcome: carried ITEM' not in concepts

@@ -270,3 +270,15 @@ def test_issue_acceptance_silent_outside_workspace(tmp_path, monkeypatch, capsys
     capsys.readouterr()
     assert hook(monkeypatch, outside) == 0
     assert capsys.readouterr().out == ''
+
+
+@pytest.mark.parametrize('decided_by', ['seat', 'owner'])
+def test_carried_item_is_skipped(root, capsys, decided_by):
+    approved(root, {'A': ('implement', {})}, decision_outcomes={'D-1': {
+        'decided_by': decided_by, 'item_disposition': 'carried A', 'option': 'carry'}})
+    found = row(capsys)[1]
+    if decided_by == 'seat':
+        assert found['state'] == 'close' and 'carried' in found['step']
+        assert found['command'] != 'wuwei build next A'
+    else:
+        assert (found['state'], found['command']) == ('build', 'wuwei build next A')

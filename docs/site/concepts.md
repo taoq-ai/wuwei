@@ -83,16 +83,21 @@ a PR; carry-forward applies to day close. See [configuration](configuration.html
 `bin/wuwei close` and the planner Stop hook after a close request refuse while an
 approved item remains open or blocked without a park or carry decision, an owner
 decision remains pending, or a pushed item branch lacks a raised or claimed PR.
-The refusal names each item, decision or branch. Unreadable evidence returns exit
+For each open item the refusal asks one question: carry it to tomorrow
+(recommended), park it, or keep working, with the command for each answer. It names
+each decision or branch. `bin/wuwei close --widget` prints the same questions as
+AskUserQuestion widgets and writes nothing. `close` launches the close steward
+review only once these item obligations are clear. Unreadable evidence returns exit
 2 with a reason; unresolved work returns exit 1. Existing PR, reply, visibility
 and retro requirements still apply. The Stop hook blocks once per stop attempt and
 exits 0 on Claude Code's retry, so it never traps the session; `bin/wuwei close`
 still reports every finding.
 
-A seat may park or carry its own item with a valid two-way decision whose blast
-radius is `own branch` or `own PR`. Use `Outcome: parked ITEM` or
-`Outcome: carried ITEM`, then run `bin/wuwei decision route D-1` with its actual
-ID. The recorded outcome must match the file. A parked phase alone does not count.
+`bin/wuwei plan carry ITEM` and `bin/wuwei plan park ITEM [--reason TEXT]` write a
+valid two-way decision record with blast radius `own branch`, route it and print
+its ID, for example `D-1: carried ITEM`. Park also pauses an active item. Carried
+items come back with tomorrow's `plan approve --import-yesterday`. The recorded
+outcome must match the file. A parked phase alone does not count.
 A merged phase also needs fresh merge evidence from the linked PR.
 The build loop creates and records this decision automatically after repeated
 fast-check failures or exhausted iterations. Its `D-<n>.md` file passes

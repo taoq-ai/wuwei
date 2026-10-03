@@ -122,6 +122,8 @@ def test_sweep_and_close_trigger_steward(root, monkeypatch):
     watch.sweep(root)
     monkeypatch.setattr(workspace, 'guard_scope', lambda payload: root)
     monkeypatch.setattr(close.closing, 'check', lambda _root: (0, ''))
+    monkeypatch.setattr(close.pr_actions, 'evaluate', lambda _root: (0, []))
+    monkeypatch.setattr(close.closing, 'unresolved', lambda _root, _rows: (0, ''))
     assert close.run(SimpleNamespace(check=None)) == 0
     assert calls == ['sweep', 'close']
 
@@ -188,6 +190,8 @@ def test_close_retry_uses_existing_steward_run(root, monkeypatch):
     monkeypatch.setattr(workspace, 'guard_scope', lambda payload: root)
     monkeypatch.setattr(registry, 'load', lambda *args: pytest.fail('duplicate steward dispatch'))
     monkeypatch.setattr(close.closing, 'check', lambda _root: (1, 'pending'))
+    monkeypatch.setattr(close.pr_actions, 'evaluate', lambda _root: (0, []))
+    monkeypatch.setattr(close.closing, 'unresolved', lambda _root, _rows: (0, ''))
     assert close.run(SimpleNamespace(check=None)) == 1
     assert not list((workspace.day_dir(root) / 'briefs').glob('steward-*.md'))
 
