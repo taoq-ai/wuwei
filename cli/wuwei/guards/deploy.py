@@ -132,7 +132,7 @@ def git(args, env, config):
     if action not in ('status', 'diff', 'log', 'show', 'rev-parse', 'branch', 'tag',
                       'fetch', 'checkout', 'switch', 'add', 'commit', 'restore', 'reset',
                       'rebase', 'stash', 'ls-files', 'ls-remote', 'remote', 'config',
-                      'worktree', 'help', 'version'):
+                      'worktree', 'help', 'version', 'symbolic-ref', 'describe', 'show-ref'):
         unknown('unknown git command or alias')
     return 0, ''
 

@@ -355,7 +355,11 @@ def check(payload):
         try:
             commands = shell.normalize(raw)
         except shell.ParseError:
-            if initial is None and not possible_workspace_change(raw, {cwd}):
+            # A parse failure blocks only a call that can reach a PR effect or send a
+            # body file the outbound scan must read (#330).
+            if (not script_relevant and not shell.mentions(raw, {'pr', 'api', 'alias'})
+                    and not re.search(r'--body-file|(?<!\S)-F', raw)
+                    or initial is None and not possible_workspace_change(raw, {cwd})):
                 return 0, ''
             raise
         directories = {cwd}
