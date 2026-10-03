@@ -13,7 +13,7 @@ from wuwei.promotion import safe_path
 BLOCK = '## Owner preferences (interview)\n'
 ROLES = ('planner', 'shepherd', 'lead')
 EXECUTABLE = re.compile(r'[A-Za-z0-9_][A-Za-z0-9_.-]*')
-SOAK = 'needs merge_deploys = false declared for the repository'
+SOAK = 'only where the repository declares merge_deploys = false'
 # The retro offers the merge question again after this many owner merges within this many days.
 REASK_AFTER, REASK_DAYS = 3, 7
 MERGE_QUESTION = re.compile(r'Merge (?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#[0-9]+\?')
@@ -71,20 +71,23 @@ def _channel(text):
 # The only definition of the interview. Effects: a dotted config key (`repos.` means each
 # answered repository), a charter override role with one fixed sentence, or voice never phrases.
 QUESTIONS = (
-    {'id': 'merge', 'scope': 'repo', 'header': 'Merges', 'question': 'How much merge autonomy for {repo}?',
+    {'id': 'merge', 'scope': 'repo', 'header': 'Merges', 'question': 'Who merges pull requests in {repo}?',
      'choices': (
-         ('Owner merges', 'Every pull request waits for you to merge it.', {'repos.merge.auto': False}),
-         ('Auto, 30 min soak', f'Merge when every precondition holds, after 30 minutes; {SOAK}.',
+         ('Owner merges', 'You merge every pull request yourself.', {'repos.merge.auto': False}),
+         ('Auto, 30 min soak', (f'WUWEI merges once checks and reviews pass, 30 minutes after the last push or approval '
+           f'(soak); {SOAK}.'),
           {'repos.merge.auto': True, 'repos.merge.soak_minutes': 30}),
-         ('Auto, 2 hour soak', f'Merge when every precondition holds, after 2 hours; {SOAK}.',
+         ('Auto, 2 hour soak', (f'WUWEI merges once checks and reviews pass, 2 hours after the last push or approval '
+           f'(soak); {SOAK}.'),
           {'repos.merge.auto': True, 'repos.merge.soak_minutes': 120})),
      'free': None},
-    {'id': 'gates', 'scope': 'repo', 'header': 'Gate floor',
-     'question': 'Lowest review tier for every change in {repo}?',
+    {'id': 'gates', 'scope': 'repo', 'header': 'Reviewers',
+     'question': 'How many reviewer agents check each change in {repo}? (gate floor)',
      'choices': (
-         ('Standard', 'Small changes may still get the standard gate set.', {'repos.gates.floor': 'standard'}),
-         ('Full', 'Every change gets every gate.', {'repos.gates.floor': 'full'}),
-         ('Light', 'Small low-risk changes may get the light gate set.', {'repos.gates.floor': 'light'})),
+         ('Standard', 'Every change gets three reviewer agents: architecture, quality and security '
+                      '(standard floor).', {'repos.gates.floor': 'standard'}),
+         ('Full', 'Every change gets three reviewer agents and is recorded at the highest level (full floor).', {'repos.gates.floor': 'full'}),
+         ('Light', 'Small low-risk changes get one reviewer agent, the rest three (light floor).', {'repos.gates.floor': 'light'})),
      'free': None},
     {'id': 'quiet', 'scope': 'repo', 'header': 'Quiet hours', 'question': 'When must {repo} never auto-merge?',
      'choices': (
@@ -94,12 +97,12 @@ QUESTIONS = (
     {'id': 'interrupt', 'scope': 'workspace', 'header': 'Interrupts',
      'question': 'When should a pending decision interrupt you?',
      'choices': (
-         ('Batch', 'Batch decisions into the two-hourly digest.', {'planner': (
+         ('Batch', 'Collect decisions that can wait and send them every two hours (digest).', {'planner': (
              'Batch pending owner decisions into the two-hourly digest; '
              'ask at once only when a decision blocks a running item.')}),
-         ('At once', 'Ask each one-way-door decision when it is ready.', {'planner': (
+         ('At once', 'Ask each decision that cannot be undone as soon as it is ready (one-way door).', {'planner': (
              'Ask each one-way-door decision as soon as its record passes the lint.')}),
-         ('Morning only', 'Hold decisions that block nothing for the morning gate.', {'planner': (
+         ('Morning only', 'Hold decisions that block nothing until the next morning plan (morning gate).', {'planner': (
              'Hold decisions that block nothing for the next morning gate; pages still interrupt.')})),
      'free': None},
     {'id': 'decisions', 'scope': 'workspace', 'header': 'Decisions',
@@ -113,7 +116,7 @@ QUESTIONS = (
              'Ask the recommendation as a yes or no question; the other options stay in the record.')})),
      'free': None},
     {'id': 'phone', 'scope': 'workspace', 'header': 'Phone',
-     'question': 'What may control-plane messages carry?',
+     'question': 'What may messages to your phone say about a decision? (control plane)',
      'choices': (
          ('Summary', 'A one-line summary of each decision.', {'control_plane.content': 'summary'}),
          ('Nothing', 'Only that a decision is waiting.', {'control_plane.content': 'none'})),
@@ -128,7 +131,7 @@ QUESTIONS = (
     {'id': 'avoid', 'scope': 'workspace', 'header': 'Avoid words',
      'question': 'Which words should messages sent as you never use?',
      'choices': (
-         ('Defaults only', 'Keep the voice profile as it is.', {}),
+         ('Defaults only', 'Only the built-in list of words to avoid (voice profile).', {}),
          ('Corporate filler', 'Never: synergy, circle back, touch base, leverage.',
           {'voice': ['synergy', 'circle back', 'touch base', 'leverage']})),
      'free': (lambda text: {'voice': _items(text)}, 'comma-separated phrases')},
@@ -146,13 +149,14 @@ QUESTIONS = (
      'choices': (
          ('No signature', 'Messages end without a signature.', {'shepherd': (
              'Add no signature to messages sent as the owner.')}),
-         ('First name', 'Messages end with the first name in owner.name.', {'shepherd': (
+         ('First name', 'Messages end with your first name (owner.name).', {'shepherd': (
              'Sign messages sent as the owner with the first name in owner.name.')})),
      'free': (_signature, 'the signature, without commas')},
     {'id': 'risk', 'scope': 'workspace', 'header': 'Risk words',
-     'question': 'What else counts as trust surface in your project?',
+     'question': 'Which other areas need extra care: three reviewers and your merge? (trust surface)',
      'choices': (
-         ('Lead defaults', 'Keep the lead charter as it is.', {}),
+         ('Lead defaults', ('Only the built-in areas: auth, credentials, input parsing, scoping and permissions '
+                           '(lead charter).'), {}),
          ('Money and data', 'Billing, payments and exports of personal data.', {'lead': (
              'Also set trust_surface for changes touching billing, payments or exports of personal data.')})),
      'free': (lambda text: {'lead': f"Also set trust_surface for changes touching: {', '.join(_items(text))}."},
@@ -160,8 +164,9 @@ QUESTIONS = (
     {'id': 'manual', 'scope': 'workspace', 'header': 'By hand',
      'question': 'Which commands do you always run yourself?',
      'choices': (
-         ('Deployment ban only', 'Keep deploy.deny as it is.', {}),
-         ('Package publishing', 'Add npm publish, twine upload, cargo publish and gem push to deploy.deny.',
+         ('Deployment ban only', 'Only deploy commands, which agents never run (deploy.deny).', {}),
+         ('Package publishing', ('Agents also never run npm publish, twine upload, cargo publish or gem push '
+                                '(deploy.deny).'),
           {'deploy.deny': ['npm publish*', 'twine upload*', 'cargo publish*', 'gem push*']})),
      'free': (_commands, 'comma-separated commands, each starting with an executable')},
     {'id': 'verbosity', 'scope': 'workspace', 'header': 'Verbosity',
@@ -176,11 +181,12 @@ QUESTIONS = (
     {'id': 'posture', 'scope': 'workspace', 'header': 'Posture',
      'question': 'Where does WUWEI run here, and how hard should the guards stop it?',
      'choices': (
-         ('Observe', 'A first week or a personal sandbox: guards record what they would refuse; '
-          'records and owner-only actions still refuse.', {'security.posture': 'observe'}),
-         ('Guarded', 'A real project: records, publishing and integrity block; seats, outward '
-          'text and MCP warn.', {'security.posture': 'guarded'}),
-         ('Strict', 'A repository that deploys or shared credentials: everything blocks.',
+         ('Observe', 'Records what it would refuse and lets the call through; records and owner-only actions '
+          'still refuse. For a first week or a sandbox (observe posture).', {'security.posture': 'observe'}),
+         ('Guarded', 'Refuses changes to records, publishing and a changed plugin; warns on agents, outgoing '
+          'text and MCP tools. For a real project (guarded posture).', {'security.posture': 'guarded'}),
+         ('Strict', ('Refuses everything a guard would refuse. For a repository that deploys or shares '
+                     'credentials (strict posture).'),
           {'security.posture': 'strict'})),
      'free': None},
     {'id': 'tracker', 'scope': 'workspace', 'header': 'Tracker', 'question': 'Where does your backlog live?',

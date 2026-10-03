@@ -19,6 +19,76 @@ from wuwei import calibrate, integrity, registry
 ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / 'docs/site'
 TABLE = re.compile(r'^\s*#?\s*\[\[?([\w.]+)\]\]?\s*$')
+# Issue #366: the glossary terms in concepts.md order, each with the word forms that count as a use.
+GLOSSARY = (('Seat', r'seats?'), ('Gate', r'gates?'), ('Sentinel', r'sentinels?'),
+            ('Shepherd', r'shepherds?'), ('Steward', r'stewards?'), ('CAP', r'cap'),
+            ('Envelope', r'envelopes?'), ('Tier', r'tiers?'), ('Soak', r'soak'),
+            ('Delta', r'deltas?'), ('Park', r'park(?:s|ed|ing)?'),
+            ('Carry', r'carr(?:y|ies|ied|ying)'), ('Nudge', r'nudges?'), ('Page', r'pages?'),
+            ('Digest', r'digests?'), ('Unmeasured', r'unmeasured'), ('Mandate', r'mandates?'),
+            ('Trust surface', r'trust surfaces?'), ('Host terminal', r'host terminals?'))
+
+
+def _prose(text):
+    """text with fenced and inline code, HTML tags and link targets blanked; offsets kept."""
+    return re.sub(r'```.*?```|`[^`\n]*`|<[^>]+>|(?<=\])\([^)]*\)',
+                  lambda m: ' ' * len(m[0]), text, flags=re.S)
+
+
+def test_interview_options_lead_with_plain_words():
+    from wuwei import interview
+    words = [pattern for _, pattern in GLOSSARY] + [re.escape(word) for word in (
+        'floor', 'control plane', 'control-plane', 'deploy.deny', 'one-way')]
+    for row in interview.QUESTIONS:
+        for text in (row['header'], row['question'], *(d for _, d, _ in row['choices'])):
+            lead = text.split('(', 1)[0]
+            for word in words:
+                assert not re.search(rf'\b{word}\b', lead, re.I), (row['id'], word, text)
+    gates = {label: description for label, description, _ in interview.question('gates')['choices']}
+    assert gates['Light'].startswith('Small low-risk changes get one reviewer agent')
+    assert all('three reviewer agents' in gates[label] for label in ('Standard', 'Full'))
+
+
+def test_concepts_opens_with_the_glossary():
+    section = (SITE / 'concepts.md').read_text().split('\n## ', 2)[1]
+    assert section.startswith('Glossary\n')
+    entries = re.findall(r'^### (.+)\n\n((?:.+\n)+)', section, re.M)
+    assert [title for title, _ in entries] == [term for term, _ in GLOSSARY]
+    for title, body in entries:
+        assert len(body.splitlines()) <= 2, title
+
+
+def test_glossary_words_link_at_first_use():
+    for path in (ROOT / 'README.md', SITE / 'index.md', SITE / 'daily.md'):
+        text = path.read_text()
+        prose = _prose(text)
+        links = [(m.start(), m.end(), m[2]) for m in re.finditer(r'\[([^\]]*)\]\(([^)]*)\)', text)]
+        for term, pattern in GLOSSARY:
+            found = re.search(rf'\b{pattern}\b', prose, re.I)
+            if not found:
+                continue
+            anchor = term.lower().replace(' ', '-')
+            assert any(start <= found.start() < end
+                       and re.search(rf'concepts\.(?:html|md)#{anchor}$', target)
+                       for start, end, target in links), (
+                path.name, term, text[max(found.start() - 20, 0):found.end() + 20])
+
+
+def test_daily_shows_a_clean_first_day():
+    daily = (SITE / 'daily.md').read_text()
+    for number, markers in (('2', ('plugin integrity: clean', 'code host login:', 'Interview answers:',
+                                   '- review_bot: None -> adapters.review_bot = "none"',
+                                   'Applied the setup and recorded .wuwei/calibration.json',
+                                   'Still owed:', 'Next: /wuwei plan')),
+                            ('3', ('goals: 1 goal saved (G-1)', 'planned 1/1', 'planned item(s) queued'))):
+        section = daily.split(f'\n## {number}. ', 1)[1].split('\n## ', 1)[0]
+        blocks = re.findall(r'```text\n(.*?)```', section, re.S)
+        for marker in markers:
+            assert any(marker in block for block in blocks), (number, marker)
+    source = '\n'.join(path.read_text() for path in ROOT.glob('cli/wuwei/**/*.py'))
+    for marker in ('plugin integrity: clean', 'code host login:', 'Interview answers:', 'and recorded .wuwei/calibration.json',
+                   'Still owed:', 'Next: /wuwei plan', 'planned item(s) queued'):
+        assert marker in source, marker
 
 
 def test_readme_install_and_hero():

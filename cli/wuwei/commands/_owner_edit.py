@@ -31,7 +31,13 @@ def run(args):
                 if result.exit:
                     raise OSError(result.reason)
                 text = draft.read_text(encoding='utf-8')
-        promotion.owner_edit(root, name, text)
+        saved = 'saved' if promotion.owner_edit(root, name, text) else 'unchanged'
+        if name == 'goals':
+            from wuwei.goals import parse
+            ids = list(parse(text))
+            print(f"goals: {len(ids)} goal{'s' * (len(ids) != 1)} {saved} ({', '.join(ids)})")
+        else:
+            print(f'voice: {saved}')
         return CLEAN
     except (ValueError, PermissionError) as exc:
         print(f'wuwei {name} edit: {exc}', file=sys.stderr)

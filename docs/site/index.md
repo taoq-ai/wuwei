@@ -10,7 +10,7 @@ WUWEI 无为 means "effortless action." It is a Claude Code plugin that runs you
 - [What the session knows](agent.html): the guide every session in the workspace is pointed at on start
 - [Remote operation](remote.html): run a day from the phone with Remote Control and the Slack owner DM
 - [Recovery](recovery.html): doctor first, troubleshooting for first-day failures, and low-level commands for when evidence and state disagree
-- [Concepts](concepts.html): roles, guards, memory, the day flow, review tiers, sessions, the listener, the heartbeat and the board
+- [Concepts](concepts.html): roles, guards, memory, the day flow, review [tiers](concepts.html#tier), sessions, the listener, the heartbeat and the board
 - [Configuration](configuration.html): every section and key of the workspace config
 - [Operator reference](reference.html): every CLI command, JSON, decisions, heartbeat, sessions and hook latency budget
 - [Adapters and ports](adapters.html): integrations and three-state results
@@ -38,7 +38,7 @@ archives are unsigned. In Claude Code, run:
 /plugin install wuwei@wuwei
 ```
 
-In your project directory, in a host terminal, set up the workspace:
+In your project directory, in a [host terminal](concepts.html#host-terminal), set up the workspace:
 
 ```sh
 ../wuwei-plugin/bin/wuwei setup --shadow
@@ -46,7 +46,7 @@ In your project directory, in a host terminal, set up the workspace:
 
 `setup` runs `bin/wuwei init` when there is no workspace, finds the git repositories in the
 project directory, calibrates them and asks the owner interview, then applies the whole
-`config.toml` proposal after one digest and prints what is still owed. `--shadow` starts the
+`config.toml` proposal after one [digest](concepts.html#digest) and prints what is still owed. `--shadow` starts the
 guards in the observe posture for a first week. `init` checks the installation: an intact signed
 release prints `plugin integrity: clean` and needs no reconfirmation. Use `bin/wuwei` or
 `python3 -P -m wuwei` for CLI calls. To change one value later, use `bin/wuwei config set` or
@@ -56,8 +56,8 @@ Then run `../wuwei-plugin/bin/wuwei doctor`. It prints one row per check, with t
 anything that is not ok; `bin/wuwei doctor --fix` applies the deterministic fixes after one
 confirmation ([doctor](reference.html#doctor)).
 
-Run `/wuwei plan` to start the planner and owner morning gate, followed by builders,
-review and close. The [daily path](daily.html) walks through the whole day; the linked pages describe the CLI and configuration.
+Run `/wuwei plan` to start the planner and owner morning [gate](concepts.html#gate), followed by builders,
+review and close. The [daily path](daily.html) walks through the whole day; the other links describe the CLI and configuration.
 
 ## Development checkouts
 
