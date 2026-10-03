@@ -65,7 +65,7 @@ def check_write(payload):
                 if not any(str(target) + '/' in raw for target in targets):
                     return 0, ''
                 root = anchor
-            shape = classify(raw)
+            shape = classify(raw, cwd=cwd)
             if shape.readonly:
                 return 0, ''
             # #347: inline code is a file the lint cannot read; a write names its D- record.

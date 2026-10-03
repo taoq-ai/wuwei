@@ -745,7 +745,7 @@ def test_agent_guide_ships_and_is_linked():
     assert page.startswith('---\nlayout: default\n---\n') and len(page.splitlines()) <= 100
     for phrase in ('wuwei next', '/wuwei:wuwei-plan', '/wuwei:wuwei-report', '.wuwei/executable',
                    '-P', 'host terminal', 'posture:', 'planner', 'lead', 'builder', 'sentinel',
-                   'shepherd', 'steward'):
+                   'shepherd', 'steward', 'first word of a plain command'):
         assert phrase in page, phrase
     assert '\N{EM DASH}' not in page and not any(ord(c) >= 0x1F000 for c in page)
     for name in ('index.md', 'daily.md'):
@@ -755,6 +755,15 @@ def test_agent_guide_ships_and_is_linked():
     for skill in sorted(ROOT.glob('skills/*/SKILL.md')):
         body = skill.read_text().split('\n# ', 1)[1].split('\n\n', 2)[1]
         assert '`wuwei next`' in body, skill.parent.name
+
+
+def test_skills_use_the_recorded_executable_directly():
+    # #348: a session reads the pointer once and runs the absolute path as a plain command.
+    for name in ('wuwei-plan', 'wuwei-report', 'wuwei-retro', 'wuwei-consolidate'):
+        text = (ROOT / 'skills' / name / 'SKILL.md').read_text()
+        assert '$(' not in text and 'executable recorded in' not in text, name
+        for phrase in ('read `.wuwei/executable` once with the Read tool', 'first word of a plain command'):
+            assert phrase in text, (name, phrase)
 
 
 def test_owner_questions_use_widgets_or_the_dm():
@@ -773,5 +782,6 @@ def test_owner_questions_use_widgets_or_the_dm():
 def test_unparsed_commands_are_documented():
     # #347: the security page names the unparsed class and the cd rule's subshell form.
     security = ' '.join((SITE / 'security.md').read_text().split())
-    for phrase in ('unparsed', '(cd <dir> && <command>)', 'blocks only under `strict`'):
+    for phrase in ('unparsed', '(cd <dir> && <command>)', 'blocks only under `strict`',
+                   'read-only subcommands', '--help'):
         assert phrase in security, phrase

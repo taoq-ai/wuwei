@@ -194,7 +194,7 @@ def test_orientation_block(monkeypatch, posture, phrases):
     assert text.startswith(next_command.HEADER) and len(text.splitlines()) < 25
     for phrase in ('Next: ' + next_command.line(ROW), '/wuwei:wuwei-plan',
                    str(integrity.PLUGIN / 'docs/site/agent.md'), 'skills/wuwei-plan/SKILL.md',
-                   'docs/site/daily.md', *phrases):
+                   'docs/site/daily.md', 'first word of a plain command', *phrases):
         assert phrase in text
 
 

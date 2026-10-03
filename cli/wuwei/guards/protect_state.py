@@ -127,6 +127,7 @@ def _gate_edits(payload, root):
 
 def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(), False)):
     """One rule for every owner-only action; (code, reason) or None."""
+    from wuwei.commands import read_only
     from wuwei.shell import _launcher, is_opaque, mentions
     # normalize unwraps xargs, so a CLI command may take its group or verb from stdin.
     xargs = relevant and mentions(text, ('xargs',), script=script)
@@ -176,9 +177,8 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
             return 2, 'Input-driven owner action; use the host terminal.'
         if re.search(r'[$`]', group) or group in _OWNER_GROUPS and re.search(r'[$`]', verb):
             return 2, 'Not a literal owner action; use the host terminal.'
-        words = action[:action.index('--')] if '--' in action else action
-        if '-h' in words or '--help' in words:
-            continue  # argparse prints help and exits before any owner command runs
+        if read_only(action):  # #348: --help prints usage and runs nothing
+            continue
         if reason := _owner_reason((group, verb)):
             if (group, verb) in _GATE_EDITS and edits[1]:
                 if group in edits[0] and any(word == '--file' or word.startswith('--file=')
@@ -447,7 +447,7 @@ def check_bash(payload):
                 if ((word.endswith('.sh') or os.access(Path(cwd, word), os.X_OK))
                         and (found := owner_script(shlex.quote(word)))):
                     return found
-            shape = classify(script)
+            shape = classify(script, cwd=cwd)
             # #347: only text a write can target counts; a word the walk cannot pin may be the CLI.
             if ((owner_relevant and guard_scope(payload) is not None
                  and (shape.publishes or _owner_relevant(script, script=True)))

@@ -18,8 +18,9 @@ session can pick it up.
 
 The first rule: run `wuwei next` and do the step it names. It reads the day's files and
 prints one line, `<state>: <step> Run: <command>` (`--json` gives `state`, `step` and
-`command`). `wuwei` means the executable recorded in `.wuwei/executable`, or
-`python3 -P -m wuwei`. Never run Python without `-P`.
+`command`). `wuwei` means the absolute path in `.wuwei/executable`: read it once with
+the Read tool and use it as the first word of a plain command, never through a variable or
+a command substitution; or `python3 -P -m wuwei`. Never run Python without `-P`.
 
 ## Roles
 

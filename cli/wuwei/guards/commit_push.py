@@ -282,7 +282,7 @@ def check(payload):
         except shell.ParseError:
             # #347: rm is a publisher word here, so a hook pointer removal keeps its refusal.
             if session_root:
-                if (found := shell.unread(raw, ('rm',))) is None:
+                if (found := shell.unread(raw, ('rm',), cwd=payload['cwd'])) is None:
                     raise
                 return found
             # Literal tokens are observed by the shared parser, not reparsed here.
@@ -292,7 +292,7 @@ def check(payload):
                 for base in tuple(bases):
                     path = (base / value).resolve()
                     if workspace.scope(path):
-                        if (found := shell.unread(raw, ('rm',))) is None:
+                        if (found := shell.unread(raw, ('rm',), cwd=payload['cwd'])) is None:
                             raise
                         return found
                     if path.is_dir() and len(bases) < 64:
@@ -300,7 +300,7 @@ def check(payload):
             if re.search(r'-C|\b(?:cd|pushd|popd|git-dir|work-tree|GIT_DIR|GIT_WORK_TREE)\b',
                          re.sub(r'''['"\\]''', '', raw)):
                 # Parsing may have stopped before a target; do not guess its scope.
-                if (found := shell.unread(raw, ('rm',))) is None:
+                if (found := shell.unread(raw, ('rm',), cwd=payload['cwd'])) is None:
                     raise
                 return found
             return 0, ''
@@ -345,7 +345,7 @@ def check(payload):
                     scoped.append((command, directory, root, parsed, errors))
         if not scoped:
             return 0, ''
-        if (found := shell.unread(raw, ('rm',))) is not None:
+        if (found := shell.unread(raw, ('rm',), cwd=payload['cwd'])) is not None:
             return found
         if opaque_script:
             raise ValueError('opaque script command; run git as a plain command')
@@ -365,7 +365,7 @@ def check(payload):
                         return 1, 'removing a WUWEI hook pointer is refused'
             if Path(command.argv[0]).name != 'git':
                 if (shell.is_opaque(command.argv) or len(commands) > 1
-                        or '/' in command.argv[0]
+                        or '/' in command.argv[0] and not shell.known_cli(command.argv[0], directory)
                         or re.fullmatch(r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua',
                                         Path(command.argv[0]).name)):
                     raise ValueError(f'opaque interpreter command: {" ".join(command.argv)}; run git directly, for example git push origin HEAD:refs/heads/<branch>')

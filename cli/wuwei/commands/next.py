@@ -127,7 +127,8 @@ def orientation(row, posture):
         'planner session ranks the work, seats build and review each change in their own '
         'worktree, and merges follow a policy.',
         'The owner answers questions and decisions; the session runs the commands (wuwei is the '
-        'executable recorded in .wuwei/executable) and never asks the owner to edit a file.',
+        'absolute path in .wuwei/executable: read it once and use it as the first word of a plain '
+        'command, never through a variable) and never asks the owner to edit a file.',
         'Day loop: plan, morning gate, dispatch builders, gates verify, PR and merge, report and '
         'close.',
         POSTURES[posture],

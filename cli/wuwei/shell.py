@@ -147,6 +147,13 @@ def _launcher(path, cwd):
         return False
 
 
+def known_cli(word, cwd):
+    """#348: wuwei on PATH, the running plugin's bin/wuwei or the recorded executable."""
+    return word == 'wuwei' or (cwd is not None and '/' in word
+                               and PurePosixPath(word).name == 'wuwei'
+                               and _launcher(Path(cwd, word), cwd))
+
+
 def script_path(raw, cwd):
     """Identify a locally invoked script without reading it; the wuwei launcher is the CLI."""
     if not isinstance(raw, str):
@@ -802,7 +809,7 @@ def _shell_script(args):
 
 
 @lru_cache(maxsize=32)
-def classify(command, publishers=()):
+def classify(command, publishers=(), cwd=None):
     """#347: the one lenient walk every Bash guard shares; never executes or expands."""
     try:
         normalize(command)
@@ -810,12 +817,13 @@ def classify(command, publishers=()):
     except ParseError:
         parsed = False
     try:
-        return _classify(command, (*PUBLISHERS, *publishers))._replace(parsed=parsed)
+        return _classify(command, (*PUBLISHERS, *publishers), cwd)._replace(parsed=parsed)
     except (ValueError, RecursionError):
         return Shape(parsed, False, False, True, command)
 
 
-def _classify(command, publishers):
+def _classify(command, publishers, cwd=None):
+    from wuwei import commands
     bodies = []
     texts = [_cut(command, bodies)]
     while len(texts) <= len(bodies):
@@ -845,7 +853,7 @@ def _classify(command, publishers):
         name = PurePosixPath(argv[0]).name if argv else ''
         args = argv[1:]
         literal = not any('$' in word for word in (*args, *writes))
-        safe = name in READ_ONLY
+        safe = name in READ_ONLY or bool(literal and known_cli(argv[0], cwd) and commands.read_only(args))
         if name in ('cd', 'pushd'):
             dirs.append(expand(' '.join(argv)))  # a later write can land under its target
         if '$' in name:
@@ -859,7 +867,7 @@ def _classify(command, publishers):
             if script is None:
                 publishes = True
             else:
-                inner = _classify(script, publishers)
+                inner = _classify(script, publishers, cwd)
                 safe, inline, publishes = inner.readonly, inline or inner.inline, publishes or inner.publishes
         elif name in ('eval', 'source', '.'):
             publishes = True
@@ -892,16 +900,16 @@ def _classify(command, publishers):
     written += dirs
     for key, value in assignments:
         written.append(f'{key}=' + _SUBSTITUTED.sub(
-            lambda m: '' if int(m[1]) >= len(bodies) or _classify(bodies[int(m[1])], publishers).readonly
+            lambda m: '' if int(m[1]) >= len(bodies) or _classify(bodies[int(m[1])], publishers, cwd).readonly
             else f'$({bodies[int(m[1])]})', value))
     return Shape(False, False, inline, publishes, command if whole else '\n'.join(written))
 
 
-def unread(command, publishers=()):
+def unread(command, publishers=(), cwd=None):
     """#347 decision table for a relevant call a guard cannot read: (0, '') when every word
     is read-only; UNPARSED when the parser could not read it, or it runs inline code, and
     no publisher word appears; None when the guard decides as before."""
-    shape = classify(command, tuple(publishers))
+    shape = classify(command, tuple(publishers), cwd)
     if shape.readonly:
         return 0, ''
     if not shape.publishes and (not shape.parsed or shape.inline):

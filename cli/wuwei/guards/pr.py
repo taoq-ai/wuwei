@@ -361,7 +361,7 @@ def check(payload):
                     and not re.search(r'--body-file|(?<!\S)-F', raw)
                     or initial is None and not possible_workspace_change(raw, {cwd})):
                 return 0, ''
-            if (found := shell.unread(raw)) is None:
+            if (found := shell.unread(raw, cwd=cwd)) is None:
                 raise
             return found
         directories = {cwd}
@@ -384,7 +384,7 @@ def check(payload):
                         contexts[directory] = context
         if not contexts:
             return 0, ''
-        if (found := shell.unread(raw)) is not None:
+        if (found := shell.unread(raw, cwd=cwd)) is not None:
             return found
         if script_relevant:
             raise ValueError('opaque script command; run gh as a plain command')

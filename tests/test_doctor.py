@@ -83,6 +83,7 @@ def ws(tmp_path, monkeypatch):
     (root / 'repo/.git').mkdir(parents=True)
     (root / '.wuwei/config.toml').write_text(CONFIG)
     (root / '.wuwei/calibration.json').write_text(json.dumps({'acme/widget': {'date': TODAY}}))
+    (root / '.wuwei/executable').write_text(f"{plugin / 'bin/wuwei'}\n")
     seed(root)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', NOW)
@@ -282,7 +283,7 @@ def test_no_workspace(ws, tmp_path, monkeypatch):
 def test_workspace_rows_healthy(ws):
     rows = doctor.diagnose()
     assert names(rows, 'workspace') == [
-        'workspace', 'config', 'template', 'acme/widget path', 'acme/widget git', 'acme/widget branch',
+        'workspace', 'config', 'template', 'executable', 'acme/widget path', 'acme/widget git', 'acme/widget branch',
         'acme/widget identity', 'acme/widget fast_checks', 'calibration', 'drift', 'interview',
         'profile', 'posture']
     assert row(rows, 'posture')['value'] == 'guarded (from security.posture)'
@@ -296,7 +297,7 @@ def test_workspace_config_does_not_load(ws):
     assert found['status'] == 'fail'
     assert 'delete that line before using [[repos]] tables' in found['value']
     assert found['fix'] == 'wuwei init --upgrade' and found['apply'] == 'init-upgrade'
-    assert names(rows, 'workspace') == ['workspace', 'config', 'template']
+    assert names(rows, 'workspace') == ['workspace', 'config', 'template', 'executable']
     assert [(r['name'], r['status'], r['value']) for r in rows if r['section'] in ('gates', 'day')] == [
         ('gates', 'unmeasured', 'config.toml does not load'), ('day', 'unmeasured', 'config.toml does not load')]
 
@@ -304,6 +305,20 @@ def test_workspace_config_does_not_load(ws):
     found = row(doctor.diagnose(), 'config')
     assert found['status'] == 'fail' and found['fix'].startswith('edit .wuwei/config.toml: ')
     assert 'apply' not in found
+
+
+def test_workspace_executable_pointer(ws, tmp_path):
+    pointer = ws.root / '.wuwei/executable'
+    pointer.write_text(f"{ws.plugin / 'bin/wuwei'}\n")
+    assert row(doctor.diagnose(), 'executable')['status'] == 'ok'
+    stale = tmp_path / 'cache/0.11.0/bin/wuwei'
+    pointer.write_text(f'{stale}\n')
+    found = row(doctor.diagnose(), 'executable')
+    assert found['status'] == 'fail' and str(stale) in found['value'] and 'missing' in found['value']
+    assert found['fix'] == 'wuwei init --upgrade' and found['apply'] == 'init-upgrade'
+    pointer.unlink()
+    found = row(doctor.diagnose(), 'executable')
+    assert found['status'] == 'fail' and found['apply'] == 'init-upgrade'
 
 
 def test_workspace_template_drift(ws, monkeypatch):
