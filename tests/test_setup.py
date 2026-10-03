@@ -453,6 +453,10 @@ def test_one_command_three_repositories(project, host, terminal, capsys):
     *_, optional, last = out.rstrip().splitlines()
     assert 'Still owed:' not in out and last == 'Ready: run /wuwei:wuwei-plan'
     assert optional.startswith('Optional:') and 'bin/wuwei promote' in optional and 'owner.name' not in optional
+    exports = [line for line in out.splitlines() if line.startswith('export WUWEI_WORKSPACE=')]
+    assert exports == [f'export WUWEI_WORKSPACE={project.resolve()}']
+    run_setup(Confirm())
+    assert 'export WUWEI_WORKSPACE=' not in capsys.readouterr().out
 
 
 def test_declined_setup_keeps_what_init_wrote(project, host, terminal, capsys):

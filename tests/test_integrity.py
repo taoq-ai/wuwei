@@ -184,7 +184,10 @@ def test_cached_failure_confirmation_and_reinstall(tmp_path, monkeypatch):
     assert api.cached(root).exit == 2
     assert api.reconfirm(root, confirm=lambda digest: False).exit != 0
     assert api.cached(root).exit == 2
-    assert api.reconfirm(root, confirm=lambda digest: True).exit == 0
+    seen = []
+    assert api.reconfirm(root, confirm=lambda digest: seen.append(digest) or True).exit == 0
+    recorded = json.loads((root / '.wuwei/integrity/confirmation.json').read_text())['fingerprint']
+    assert recorded == seen[0] and len(recorded) == 64  # the owner answers y/N; the full digest is kept
     assert api.check(root).exit == 0
     (base / 'charters/builder.md').write_text('Changed again\n')
     assert api.check(root).exit == 1
@@ -548,10 +551,13 @@ def test_sweep_summary_cannot_report_clean_when_integrity_failed(tmp_path, monke
     assert records[0]['exit'] == 1 and records[0]['integrity_owed'] == 1
 
 
-def test_host_confirmation_uses_a_nonseekable_terminal(monkeypatch):
+@pytest.mark.parametrize('answer, expected', [('y', True), ('YES', True), ('n', False), ('', False),
+                                              ('ab' * 32, False)])
+def test_host_confirm_asks_yes_or_no(monkeypatch, answer, expected):
     import builtins
     import os
     import pty
+    import select
     api = core()
     master, slave = pty.openpty()
     real_open = builtins.open
@@ -560,9 +566,16 @@ def test_host_confirmation_uses_a_nonseekable_terminal(monkeypatch):
                          opener=lambda name, flags: os.open(name, flags | os.O_NOCTTY), **kwargs)
     monkeypatch.setattr(builtins, 'open', terminal_open)
     try:
-        fingerprint = 'a' * 64
-        os.write(master, (fingerprint + '\n').encode())
-        assert api._host_confirm(fingerprint) is True
+        fingerprint = 'ab' * 32
+        os.write(master, (answer + '\n').encode())
+        assert api._host_confirm(fingerprint) is expected
+        shown = b''
+        while select.select([master], [], [], 0.2)[0]:
+            shown += os.read(master, 4096)
+        shown = shown.decode()
+        assert 'Confirm? [y/N]' in shown and fingerprint[:12] in shown
+        # The terminal echoes the typed line; the prompt itself never shows the full digest.
+        assert shown.count(fingerprint) == (answer == fingerprint)
     finally:
         os.close(master)
         os.close(slave)

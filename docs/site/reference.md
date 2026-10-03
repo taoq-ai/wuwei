@@ -21,6 +21,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei config` | Inspects and changes workspace configuration: `check`; `promote`, `set <key> <value>` and `add-repo` apply after a digest. | [Configuration](configuration.html#calibration) |
 | `bin/wuwei consolidate` | Reviews and archives workspace memory. | [Configuration](configuration.html#host-build-and-memory) |
 | `bin/wuwei dashboard` | Serves the read-only day board on loopback. | [Cockpit and board](concepts.html#cockpit-and-board) |
+| `bin/wuwei decide` | Owner: `decide D-<n> <option> [--note <text>]` records the answer to today's decision, the MCP registry one included. | [Host terminal actions](#host-terminal-actions) |
 | `bin/wuwei decision` | Checks and routes decision records; `outcome` records the owner's answer. | [Decision record](#decision-record) |
 | `bin/wuwei discover` | Discovers candidate work. | [Goals and discovery](configuration.html#goals-and-discovery) |
 | `bin/wuwei dispatch` | Decides planner gate and discovery work; `dispatch opinion <item>` runs the second-opinion gate. | [Review tiers](concepts.html#review-tiers) |
@@ -38,6 +39,8 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei listen` | Polls the inbound source into the workspace inbox and probes raised and claimed PRs. | [Remote](remote.html) |
 | `bin/wuwei mcp` | Checks the attached MCP servers; `decide D-<n> <option>` records the owner's answer. | [MCP registry checks](configuration.html#mcp-registry-checks-s3) |
 | `bin/wuwei memory` | Plumbing: checks workspace memory. | [Concepts](concepts.html#memory) |
+| `bin/wuwei mcp` | Checks the attached MCP servers; `decide [D-<n>] <option>` records the owner's answer. | [MCP registry checks](configuration.html#mcp-registry-checks-s3) |
+| `bin/wuwei memory` | Checks workspace memory. | [Concepts](concepts.html#memory) |
 | `bin/wuwei merge` | Checks or merges an eligible PR. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei metrics` | Shows the recorded process metrics. | [Long sessions](daily.html#long-sessions) |
 | `bin/wuwei next` | Prints where the day stands and the one next step with its command; `--json` prints `{state, step, command}`. | [What the session knows](agent.html) |
@@ -95,7 +98,7 @@ For `prioritisation.framework = "rice"`, use `reach` (positive people or systems
 
 ## Decision record
 
-`bin/wuwei decision template` prints a record that passes `bin/wuwei decision lint FILE`. Save it as `.wuwei/days/<date>/decisions/D-<n>.md`. Include `Question:`, `Context:` with evidence paths, and an `Options:` table with at least two choices including deferral. A `Musts:` table marks pass/fail for each option. A `Wants:` table gives each criterion a weight from 1 to 10 and each option a score from 0 to 10. `Recommendation:` names the highest scoring option that passes every must. Complete `Confidence: high|medium|low`, `Reversibility: one-way|two-way`, `Blast radius:`, `Pre-mortem:`, `Revisit:`, `Decided-by: seat|owner`, and `Outcome:`. `bin/wuwei decision show D-<n>` prints a valid record at the `owner.verbosity.decisions` level (exit 1 for an invalid record, 2 for one it cannot read), and `--full` prints every field. `--widget` instead prints a JSON list with one AskUserQuestion question (`question` `D-<n>: <Question>`, `header` `D-<n>`, the recommended option first with its description prefixed `Recommended. `, at most four options, `multiSelect`) plus `record`, the command that records the answer with `<label>` as the placeholder. A valid record whose text carries tells from the writing checklist lints with an extra `style:` line and still exits 0. Route an existing record with `bin/wuwei decision route D-<n>`. For a confirmation from a person outside the loop, run `bin/wuwei decision route D-n --external <item>`: the record goes to the owner whatever its reversibility, the item records `assumption: {kind: external, decision, day, since, status: waiting}` and its reversible work continues. After `decisions.wait_hours` weekday hours in `owner.timezone` without an owner answer, the watch sweep confirms the recommendation on a two-way door (`status: confirmed`; the record stays pending) or parks the item with the record as its decision (`status: parked`); either writes a `decision.waited` event, and your `decision outcome` resumes a parked item. `bin/wuwei pr act` routes the decisions it creates, and a routed decision without an owner outcome shows in `bin/wuwei nudges` and the status line.
+`bin/wuwei decision template` prints a record that passes `bin/wuwei decision lint FILE`. Save it as `.wuwei/days/<date>/decisions/D-<n>.md`. Include `Question:`, `Context:` with evidence paths, and an `Options:` table with at least two choices including deferral. A `Musts:` table marks pass/fail for each option. A `Wants:` table gives each criterion a weight from 1 to 10 and each option a score from 0 to 10. `Recommendation:` names the highest scoring option that passes every must. Complete `Confidence: high|medium|low`, `Reversibility: one-way|two-way`, `Blast radius:`, `Pre-mortem:`, `Revisit:`, `Decided-by: seat|owner`, and `Outcome:`. `bin/wuwei decision show D-<n>` prints a valid record at the `owner.verbosity.decisions` level (exit 1 for an invalid record, 2 for one it cannot read), and `--full` prints every field. `--widget` instead prints a JSON list with one AskUserQuestion question (`question` `D-<n>: <Question>`, `header` `D-<n>`, the recommended option first with its description prefixed `Recommended. `, at most four options, `multiSelect`) plus `record`, `wuwei decide D-<n> <label>`, the command that records the answer. A valid record whose text carries tells from the writing checklist lints with an extra `style:` line and still exits 0. Route an existing record with `bin/wuwei decision route D-<n>`. For a confirmation from a person outside the loop, run `bin/wuwei decision route D-n --external <item>`: the record goes to the owner whatever its reversibility, the item records `assumption: {kind: external, decision, day, since, status: waiting}` and its reversible work continues. After `decisions.wait_hours` weekday hours in `owner.timezone` without an owner answer, the watch sweep confirms the recommendation on a two-way door (`status: confirmed`; the record stays pending) or parks the item with the record as its decision (`status: parked`); either writes a `decision.waited` event, and your `decision outcome` resumes a parked item. `bin/wuwei pr act` routes the decisions it creates, and a routed decision without an owner outcome shows in `bin/wuwei nudges` and the status line.
 
 ## Retro and merge configuration
 
@@ -126,7 +129,7 @@ Approve-tier replies through the chat, code-host comment and tracker-create adap
 | `bin/wuwei drafts approve <id> --edit` | Edit with `EDITOR` (default `vi`), lint the final text, then send it. |
 | `bin/wuwei drafts drop <id>` | Close the draft without sending. |
 
-Approval and drop are owner actions on the host terminal. Approval shows the destination and final text and asks you to type a digest of them before it sends. Agent tool hooks refuse both, including registered seats. The cockpit displays pending drafts and the approval command read-only; it accepts no POST actions. Host-only enforcement follows the existing cooperative hook threat model in spec 9.1, not an operating-system identity boundary.
+Approval and drop are owner actions on the host terminal. Approval shows the destination and final text and asks y/N before it sends. Agent tool hooks refuse both, including registered seats. The cockpit displays pending drafts and the approval command read-only; it accepts no POST actions. Host-only enforcement follows the existing cooperative hook threat model in spec 9.1, not an operating-system identity boundary.
 
 Single-field replies edit as plain text. Multi-field tracker drafts edit as a JSON object of text fields such as `draft.title` and `draft.description`; field names and destination metadata cannot be changed through the editor. The stored record preserves original and final inputs and text. Events contain IDs and outcome metadata, not message bodies. Reply bodies remain in local day state for owner review.
 
@@ -240,8 +243,8 @@ computed from `config.toml` alone; the planner runs it once at the start of the 
 | `mcp-reports` | move legacy MCP reports | `.wuwei/ziran/report-*` directories from v0.12.0 (moves readable ones to `<server>/<digest>.json`, removes empty and clean ones, keeps those a pending decision lists) |
 
 It previews every fix first (the command's own dry run, or the digest its own confirmation
-would ask for), prints them as one batch, and asks for one digest on `/dev/tty`. Without a
-terminal it exits 2 and applies nothing; a wrong digest applies nothing and exits 1. Each fix
+would ask for), prints them as one batch, and asks y/N once on `/dev/tty`. Without a
+terminal it exits 2 and applies nothing; any answer but y applies nothing and exits 1. Each fix
 is then applied bound to what its preview showed: a plan or digest that changed since the
 preview is refused and reported, and the other fixes still run. Every applied fix appends one
 `doctor.fixed` event `{fix, exit}`, then doctor diagnoses again and exits with that result.
@@ -335,7 +338,7 @@ The lint rules:
 
 Every state write also writes a read-only copy of the written state to `.wuwei/days/<date>/state.snapshot.json`. When today's `state.json` is truncated or otherwise unreadable, every hook and command that reads state fails closed and names `wuwei state recover`. A missing `state.json` next to a snapshot fails the same way, so no write can replace the snapshot first.
 
-Run `bin/wuwei state recover` in a host terminal. It prints a short snapshot digest and asks you to type it, then restores `state.json` from the snapshot under the state lock and appends a `state.recovered` event. The day continues from the last state WUWEI wrote.
+Run `bin/wuwei state recover` in a host terminal. It prints a short snapshot digest and asks y/N, then restores `state.json` from the snapshot under the state lock and appends a `state.recovered` event. The day continues from the last state WUWEI wrote.
 
 | Exit | Meaning |
 | --- | --- |
@@ -353,7 +356,7 @@ Recovery is an owner action. Agent tool hooks refuse `wuwei state recover` insid
 
 With `security.areas.mcp = "off"`, `bin/wuwei mcp check` exits 0 with `MCP registry: not checked (security.areas.mcp = "off")`, runs no scanner and writes no event, and the launch gate passes. A non-zero launch gate reason names the mcp level and either `floor: scanner.mcp.block` or `security.areas.mcp`.
 
-`bin/wuwei mcp check --widget` runs the check, then prints today's pending registry decision as a JSON list with one AskUserQuestion widget. The `proceed` description adds one line per server with today's finding counts by severity since the last `proceed` (server names and severities only, never scanner text). `record` is `wuwei mcp decide D-<n> <label>`, the host-terminal command that records the answer. With nothing pending, or a pending record from an earlier day, it prints `[]`. `mcp decide --widget` is a usage error.
+`bin/wuwei mcp check --widget` runs the check, then prints today's pending registry decision as a JSON list with one AskUserQuestion widget. The `proceed` description adds one line per server with today's finding counts by severity since the last `proceed` (server names and severities only, never scanner text). `record` is `wuwei mcp decide D-<n> <label>`, the command that records the answer. With nothing pending, or a pending record from an earlier day, it prints `[]`. `mcp decide --widget` is a usage error.
 
 ## Why
 
@@ -375,8 +378,9 @@ Exit 0 prints the view, 1 means the target has no record, 2 means a record could
 
 These are owner actions. Agent tool hooks refuse them inside a workspace, so run them yourself in a host terminal:
 
-| Command | Asks you to type a digest |
+| Command | Asks y/N |
 | --- | --- |
+| `bin/wuwei decide D-<n> <option> [--note <text>]` (the planner records a decision it asked in the session, outside strict) | yes |
 | `bin/wuwei decision outcome D-<n> <option>` | yes |
 | `bin/wuwei state recover` | yes |
 | `bin/wuwei integrity reconfirm` | yes |
@@ -392,7 +396,7 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei config add-repo --name --path --branch` | yes |
 | `bin/wuwei setup` | yes |
 
-A command that asks for a digest reads it from `/dev/tty`. Without a terminal it changes nothing and exits 2 with `this is an owner action: run it in a host terminal`. `drafts approve --edit`, `goals edit` and `voice edit` open `EDITOR`. As with other host-only actions, this follows the cooperative hook threat model in spec 9.1.
+A command that asks y/N shows what it confirms and reads the answer from `/dev/tty`; anything but y or yes declines. Without a terminal it changes nothing and exits 2 with `this is an owner action: run it in a host terminal`. From outside the workspace, set `WUWEI_WORKSPACE=<path>` or put `--workspace <path>` first, as in `bin/wuwei --workspace <path> decide D-1 A`. `drafts approve --edit`, `goals edit` and `voice edit` open `EDITOR`. As with other host-only actions, this follows the cooperative hook threat model in spec 9.1.
 
 ## Hook latency budget
 

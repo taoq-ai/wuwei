@@ -129,7 +129,7 @@ def acknowledge(root):
         return 0, 'remote ack: no refused sender message today'
     token = sha256('\n'.join(ids).encode()).hexdigest()[:12]
     if not integrity._host_confirm(token, prompt=f'Acknowledge the refused sender messages '
-                                   f'{", ".join(ids)} on this host. To confirm, type:'):
+                                   f'{", ".join(ids)} on this host.'):
         return 1, 'remote ack: owner confirmation declined'
     state.append_event('remote.acknowledged', {'ids': ids}, root=root)
     return 0, f'remote ack: acknowledged {len(ids)} refused sender messages'

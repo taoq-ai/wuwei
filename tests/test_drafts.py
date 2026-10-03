@@ -181,7 +181,7 @@ def test_approve_digest_covers_id_and_final_text(root, port, monkeypatch):
     assert main(['drafts', 'approve', row['id'], '--edit']) == 0
     (digest, prompt), = seen
     assert digest == sha256((row['id'] + '\n' + final).encode()).hexdigest()
-    assert row['destination'] in prompt and final in prompt
+    assert row['destination'] in prompt and final in prompt and 'type:' not in prompt
 
 
 def test_editor_trailing_newline_counts_as_unedited(root, port, monkeypatch):

@@ -24,6 +24,19 @@ def current():
     return value or None
 
 
+def gate_topics(root, session_id):
+    """(topics and D-n records today's planner session asked through the gate, caller is that
+    planner); strict asks nothing, so the owner runs the command (#357, #354)."""
+    if not session_id:
+        return frozenset(), False  # before any state read: a host terminal has no session
+    data = state.read_state(root)
+    if session_id != data.get('planner_session_id'):
+        return frozenset(), False
+    if workspace.posture(workspace.load_config(root))[0] == 'strict':
+        return frozenset(), True
+    return frozenset(data.get('sessions', {}).get(session_id, {}).get('gate_asked', ())), True
+
+
 def stale_seconds(root):
     if (root / '.wuwei/config.toml').is_file():
         return workspace.load_config(root)['sessions']['stale_seconds']
