@@ -731,7 +731,7 @@ def test_issue_acceptance_nudges_print_lines(tmp_path, monkeypatch, capsys):
         'build.parked': 'nudge: ITEM-1 parked. Run: wuwei next',
         'decision.pending': 'nudge: D-1 pending owner decision. Run: wuwei decision show D-1',
         'decision.answered': 'nudge: D-2 answered from the phone: option A, '
-                             'confirm with decision outcome D-2 A'}
+                             'confirm with wuwei decide D-2 A'}
     rows = attention(directory)
     assert main(['nudges']) == 0
     assert capsys.readouterr().out.splitlines() == list(dict.fromkeys(expected[r['source']] for r in rows))
