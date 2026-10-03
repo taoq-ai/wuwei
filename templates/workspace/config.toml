@@ -48,6 +48,9 @@ max_notes = 60
 note_line_cap = 80
 probation_days = 10
 state_entry_cap = 3
+digest = "week" # "week" writes a week digest at close; "off" writes none.
+budget_tokens = 6000 # SessionStart memory payload budget; today is left out first.
+export_to = "CLAUDE.md" # Workspace-relative file that receives the generated rules block.
 
 [retro]
 repo = "." # Repository used for retro evidence.

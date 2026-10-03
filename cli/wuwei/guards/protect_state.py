@@ -81,6 +81,10 @@ _OWNER_ACTIONS = {
     ('config', 'add-repo'): ("Config edits are the owner's, outside agent tools: propose the repository, and the "
                              'owner runs bin/wuwei config add-repo --name <owner/repo> --path <dir> --branch <branch> in a host terminal.'),
     # An empty verb is the whole group: setup's flags take values, which _pair reads as a verb.
+    # An applied forgetting archives a note or drops a charter rule (design 5.14).
+    ('memory', 'forget'): ("Forgetting memory is the owner's answer, outside agent tools: show the proposals "
+                           'with bin/wuwei consolidate --widget, and the owner runs bin/wuwei memory forget '
+                           '<id> apply|keep in a host terminal.'),
     ('setup', ''): ('Setup writes config.toml, an owner action outside agent tools: the owner runs bin/wuwei '
                     'setup in a host terminal.'),
 }
@@ -245,11 +249,11 @@ def _protected_name(path, directories=False):
             return True
         if tail[:2] == ('memory', 'archive'):
             return True
-        if tail[:2] == ('memory', 'snapshots'):
+        if tail[:2] in (('memory', 'snapshots'), ('memory', 'digests')) or tail == ('memory', 'forget.json'):
             return True
         if directories and (not tail or (len(tail) in (1, 2) and tail[0] == 'days')):
             return True
-        if directories and tail in (('memory',), ('memory', 'notes'),
+        if directories and tail in (('memory',), ('memory', 'notes'), ('memory', 'digests'),
                                     ('memory', 'archive'), ('charters',)):
             return True
         if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'undo.jsonl', 'proposal.json', 'plan.md', 'goals.md', 'steward-decisions.json', 'interview.json', 'profile.json'):

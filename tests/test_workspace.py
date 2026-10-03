@@ -175,7 +175,8 @@ def test_config_defaults_and_independence(tmp_path):
         'chat': {'identity': 'connector'},
         'control_plane': {'content': 'summary', 'owner': ''},
         'host': {'free_memory_mb': 1024, 'seats': 4, 'reservation_timeout_seconds': 14400}, 'profile': 'strict',
-            'memory': {'max_notes': 60, 'note_line_cap': 80, 'probation_days': 10, 'state_entry_cap': 3},
+            'memory': {'max_notes': 60, 'note_line_cap': 80, 'probation_days': 10, 'state_entry_cap': 3,
+                       'digest': 'week', 'budget_tokens': 6000, 'export_to': 'CLAUDE.md'},
             'metrics': {'transcripts': '~/.claude/projects', 'band_margin': 0.2},
             'consolidation': {'archive_after_days': 30, 'similarity_threshold': 0.85},
             'voice': {'sources': {}, 'review_prs': []},
@@ -1224,3 +1225,18 @@ def test_load_config_returns_independent_copies(tmp_path):
     data['goals'].append('G-1')
     assert state.read_state(directory=tmp_path / 'day') == state.DAY_DEFAULTS
     assert state.DAY_DEFAULTS['items'] == {} and state.DAY_DEFAULTS['goals'] == []
+
+
+def test_memory_tier_keys_default_and_validate(tmp_path):
+    from wuwei.workspace import ConfigError, load_config
+    write_config(tmp_path, '')
+    memory = load_config(tmp_path)['memory']
+    assert (memory['digest'], memory['budget_tokens'], memory['export_to']) == ('week', 6000, 'CLAUDE.md')
+    for text in ('digest = "month"', 'budget_tokens = 0'):
+        write_config(tmp_path, '[memory]\n' + text + '\n')
+        with pytest.raises(ConfigError):
+            load_config(tmp_path)
+    shipped = (ROOT / 'templates/workspace/config.toml').read_text()
+    assert all(f'\n{key} = ' in shipped for key in ('digest', 'budget_tokens', 'export_to'))
+    write_config(tmp_path, shipped)
+    assert load_config(tmp_path)['memory']['budget_tokens'] == 6000

@@ -1,6 +1,6 @@
 """Print the session memory payload."""
 
-from wuwei import memory
+from wuwei import memory, state, workspace
 from wuwei.exits import CLEAN
 
 
@@ -9,7 +9,9 @@ def register(subparsers):
 
 
 def run(args):
-    content, size, tokens = memory.session_payload()
+    root = workspace.find_workspace()
+    constraints = memory.constraints(root, state.read_state(root))
+    content = constraints + '\n' + memory.session_payload(root)[0]
     print(content, end='')
-    print(f'Size: {size} bytes, {tokens} estimated tokens')
+    print(f'Size: {len(content.encode("utf-8"))} bytes, {memory.estimated_tokens(content)} estimated tokens')
     return CLEAN

@@ -362,3 +362,84 @@ def test_capacity_uses_load_rate_not_absolute_load_count(tmp_path):
     assert result.returncode == 1, result.stderr
     assert 'old: archive candidate' in result.stdout
     assert 'recent: archive candidate' not in result.stdout
+
+
+def fake_vcs(monkeypatch, commits=None):
+    from wuwei import registry
+
+    class VCS:
+        def workspace_changes(self, *a, **kw):
+            return registry.Result(0, [])
+
+        def workspace_commit(self, repo, paths, root=None):
+            (commits if commits is not None else []).append(paths)
+            return registry.Result(0, None)
+    monkeypatch.setattr(registry, 'load', lambda *args: VCS())
+
+
+def drop(base, old_text, target='.wuwei/charters/builder.md'):
+    (base / 'days' / DAY / 'report.md').write_text('Evidence\n')
+    return {'target': target, 'action': 'patch', 'text': '', 'old_text': old_text,
+            'reason': 'superseded', 'evidence': '.wuwei/days/' + DAY + '/report.md'}
+
+
+def test_charter_patch_with_empty_text_drops_one_rule(tmp_path, monkeypatch):
+    import pytest
+    from wuwei import promotion
+    base = setup(tmp_path)
+    monkeypatch.setenv('WUWEI_NOW', DAY + 'T12:00:00+02:00')
+    fake_vcs(monkeypatch)
+    charter = base / 'charters/builder.md'
+    charter.write_text('# Builder\n- Keep A.\n- Drop B.\n- Keep C.\n')
+    changed = promotion._apply(tmp_path, drop(base, '- Drop B.\n'))
+    assert charter.read_text() == '# Builder\n- Keep A.\n- Keep C.\n'
+    dropped = base / 'memory/archive/dropped-rules.md'
+    assert dropped.read_text() == f'- {DAY} builder.md: Drop B.\n'
+    assert changed == [charter, dropped]
+    charter.write_text('- Twice.\n- Twice.\n- Keep A.\n')
+    for old_text in ('- Twice.\n', 'Keep A.\n', '- Keep', '- Keep A.\n- Twice.\n'):
+        with pytest.raises(ValueError):
+            promotion._apply(tmp_path, drop(base, old_text))
+    note = base / 'memory/notes/one.md'
+    note.write_text('---\ntype: reference\nsummary: One\naliases: []\nstatus: active\n---\n- Body.\n')
+    with pytest.raises(ValueError, match='text or delta'):
+        promotion._apply(tmp_path, drop(base, '- Body.\n', target='.wuwei/memory/notes/one.md'))
+
+
+def test_land_records_what_promote_records(tmp_path, monkeypatch):
+    from wuwei import promotion
+    base = setup(tmp_path)
+    monkeypatch.setenv('WUWEI_NOW', DAY + 'T12:00:00+02:00')
+    commits = []
+    fake_vcs(monkeypatch, commits)
+    proposal(base)
+    [promoted] = promotion.promote(tmp_path)
+    (base / 'charters/builder.md').unlink()
+    data = {'target': '.wuwei/charters/builder.md', 'action': 'add', 'text': 'Check tests before review.\n',
+            'reason': 'Observed failure', 'evidence': '.wuwei/days/' + DAY + '/report.md'}
+    record = promotion.land(tmp_path, data, day=DAY, run=promoted['run_id'],
+                            ledger=base / 'memory/ledger.jsonl', name='F-1')
+    assert record == promoted and ledger(base) == [promoted, promoted]
+    assert len(commits) == 2 and commits[0] == commits[1]
+
+
+def test_promote_command_exports_after_a_landing(tmp_path, monkeypatch, capsys):
+    import pytest
+    from wuwei.commands import promote as promote_command
+    base = setup(tmp_path)
+    monkeypatch.setenv('WUWEI_NOW', DAY + 'T12:00:00+02:00')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    fake_vcs(monkeypatch)
+    calls = []
+    monkeypatch.setattr(memory, 'export', lambda root=None: calls.append(root) or (None, True))
+    proposal(base, target='charters/builder.md')
+    assert promote_command.run(None) == 1 and calls == []
+    proposal(base, name='two')
+    assert promote_command.run(None) == 0 and len(calls) == 1
+
+    def broken(root=None):
+        raise ValueError('memory.export_to must not use a symlink')
+    monkeypatch.setattr(memory, 'export', broken)
+    proposal(base, name='three', text='Run the linter.\n')
+    assert promote_command.run(None) == 2
+    assert 'wuwei promote export: memory.export_to must not use a symlink' in capsys.readouterr().err

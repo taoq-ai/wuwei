@@ -3,7 +3,7 @@
 # #348: every registered command path is in exactly one set (tests/test_cli_known_command.py).
 # A positional named `action` is part of the path (mcp check, calibrate export).
 READ_ONLY = frozenset({'board', 'calibrate', 'config check', 'doctor', 'heartbeat',
-                       'integrity check', 'mcp check', 'plan gate', 'sessions', 'shadow report', 'status',
+                       'integrity check', 'mcp check', 'memory show', 'memory status', 'plan gate', 'sessions', 'shadow report', 'status',
                        'why'})
 # calibrate only prints with --questions; doctor --fix writes (checked below).
 _NEEDS = {'calibrate': '--questions'}
@@ -14,7 +14,7 @@ WRITES = frozenset({
     'discover', 'dispatch discovery', 'dispatch next', 'dispatch opinion', 'dispatch receive',
     'drafts approve', 'drafts drop', 'event', 'fast-checks', 'git-hook', 'goals edit', 'hook',
     'index', 'init', 'integrity reconfirm', 'listen install', 'listen uninstall', 'mcp decide',
-    'memory lint', 'merge', 'metrics', 'next', 'note add', 'nudges', 'outbound tier', 'payload',
+    'memory export', 'memory forget', 'memory lint', 'merge', 'metrics', 'next', 'note add', 'nudges', 'outbound tier', 'payload',
     'plan add', 'plan approve', 'plan carry', 'plan park', 'plan propose', 'plan session', 'plan template', 'pr act',
     'pr claim', 'pr disposition', 'pr ping', 'pr ping-check', 'pr raise', 'pr reviewers', 'pr state', 'promote',
     'rank', 'remote ack', 'reply', 'report', 'retro', 'runtime continue', 'runtime dispatch',

@@ -89,12 +89,15 @@ and lets the turn end.
 | `memory.note_line_cap` | `80` | Maximum lines in a note. |
 | `memory.probation_days` | `10` | Working days before a note or rule can be archived for nonuse. |
 | `memory.state_entry_cap` | `3` | State entries included in memory payload. |
+| `memory.digest` | `"week"` | `"week"` writes the week digest at close and consolidate writes week and month digests; `"off"` writes none. |
+| `memory.budget_tokens` | `6000` | SessionStart memory payload budget in estimated tokens; over it today's lines are left out first. |
+| `memory.export_to` | `"CLAUDE.md"` | Workspace-relative file that receives the generated rules block; never under `.wuwei/`. |
 | `retro.repo` | `"."` | Repository used for retro evidence. |
 | `retro.charter_paths` | `[".wuwei/charters"]` | Paths to charter procedures reviewed during retro. |
 | `retro.changelog` | `".wuwei/memory/CHANGELOG.md"` | Retro change log path. |
 | `metrics.transcripts` | `"~/.claude/projects"` | Claude Code project transcript directory for attended time. Sessions are filtered to the workspace and its repositories. |
 | `metrics.band_margin` | `0.2` | The retro names a worst hour or session-age band only when its gate FIX rate over the last 7 days exceeds every other measured band by at least this much. |
-| `consolidation.archive_after_days` | `30` | Move older day directories into the archive. |
+| `consolidation.archive_after_days` | `30` | Pack older day directories into `archive/<year>/<date>.tar.gz`; read them with `wuwei memory show <date>`. |
 | `consolidation.similarity_threshold` | `0.85` | Text similarity ratio for near-duplicate review. |
 | `build.max_iterations` | `8` | Maximum build iterations. |
 | `build.stuck_after` | `3` | Repeated progress limit. |

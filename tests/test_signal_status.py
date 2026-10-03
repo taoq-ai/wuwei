@@ -319,6 +319,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'discovery.unmeasured': 'nudge', 'steward.notes': 'nudge',
                 'steward.run': 'silent', 'steward.due': 'nudge',
                 'steward.acknowledged': 'silent', 'inbox.redacted': 'silent',
+                'memory.folded': 'silent', 'memory.consolidated': 'silent',
                 'listen: clock': 'silent', 'listen: wake': 'silent',
                 'remote.pending': 'silent', 'remote.started': 'silent',
                 'remote.resumed': 'silent', 'remote.stopped': 'silent',

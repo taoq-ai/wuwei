@@ -454,7 +454,7 @@ def test_host_terminal_actions_and_morning_references():
         assert 'Host terminal actions' in text
         for command in ('decision outcome', 'decide', 'state recover', 'integrity reconfirm', 'mcp decide',
                         'drafts approve', 'watch uninstall', 'listen uninstall', 'config promote',
-                        'config set', 'config add-repo', 'setup'):
+                        'config set', 'config add-repo', 'setup', 'memory forget'):
             assert command in text
     for phrase in ('run it in a host terminal', 'no plan yet', 'proposal.json', 'pr raise',
                    '--base', '--title', '--body-file', '--item'):
@@ -1111,3 +1111,21 @@ def test_pages_address_the_reader():
             text = re.sub(r'\n## Glossary\n.*?(?=\n## )', '\n', text, flags=re.S)
         found += [f'{path.name}: {line}' for line in text.splitlines() if re.search(r'\bthe owner\b', line, re.I)]
     assert not found, f'{len(found)} lines:\n' + '\n'.join(found)
+
+
+def test_memory_tiers_are_documented():
+    configuration = (SITE / 'configuration.md').read_text()
+    for phrase in ('memory.digest', 'memory.budget_tokens', 'memory.export_to', 'archive/<year>/'):
+        assert phrase in configuration, phrase
+    concepts = (SITE / 'concepts.md').read_text()
+    memory = concepts[concepts.index('## Memory'):concepts.index('## Day flow')]
+    for phrase in ('digest', '30 days', 'wuwei memory forget', 'CLAUDE.md'):
+        assert phrase in memory, phrase
+    reference = (SITE / 'reference.md').read_text()
+    for phrase in ('memory show', 'memory status', 'memory export', 'memory forget', 'consolidate --widget'):
+        assert phrase in reference, phrase
+    doctor = reference[reference.index('## Doctor'):]
+    assert 'memory tiers' in doctor[:doctor.index('\n## ', 5)]
+    skill = (ROOT / 'skills/wuwei-consolidate/SKILL.md').read_text()
+    for phrase in ('consolidate --widget', 'memory forget', 'memory show'):
+        assert phrase in skill, phrase

@@ -20,7 +20,7 @@ SILENT = ('item.progress', 'traces.noted', 'remote.acknowledged', 'state.write',
           'remote.confirmed', 'watch: heartbeat', 'watch: observation', 'session: compact',
           'session: wake-seen', 'plan.session', 'gate.asked', 'pr.disposition', 'day.close_requested',
           'gate.received', 'gate.tiered', 'discovery.requested', 'discovery.intake',
-          'plan.added', 'steward.run', 'steward.acknowledged', 'plan.approved', 'state.import',
+          'plan.added', 'steward.run', 'steward.acknowledged', 'memory.folded', 'memory.consolidated', 'plan.approved', 'state.import',
           'build.started', 'build.launched', 'build.checked', 'verdict.rejected',
           'inbox.redacted', 'shepherd.dispatched', 'pr.notified', 'negotiation.notified',
           'doctor.fixed', 'adapter: none')

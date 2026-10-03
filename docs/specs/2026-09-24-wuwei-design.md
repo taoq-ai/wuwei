@@ -1370,6 +1370,58 @@ and the docs obligation, one paragraph in daily.md, and reference rows for `wuwe
 page`, `wuwei docs publish` and `plan set <item> docs=`. The board and `wuwei next` show
 an item's unmet obligation.
 
+### 5.14 Memory over time (owner, 2026-10-03, #443)
+
+Records grow every day; what a session loads must not. Memory has three tiers by age and
+use, one producer per tier, and a token budget for what SessionStart loads.
+
+- `raw`: a day's records under `days/<date>/`, complete and never edited. A day older than
+  `consolidation.archive_after_days` (default 30) moves, at `wuwei consolidate`, into
+  `archive/<year>/<date>.tar.gz`; `wuwei memory show <date>` prints it from either place.
+  An archived day leaves `memory/index.md`; its month digest stands for it.
+- `digest`: one Markdown record per ISO week (`memory/digests/<year>-W<week>.md`) and per
+  month (`memory/digests/<year>-<month>.md`), rebuilt from the day records in a fixed
+  shape: `## Decisions` (id, question, outcome), `## Lessons` (ledger lines landed or
+  rejected), `## Metrics` (the report's outcome lines; the #421 effectiveness metrics join
+  when #422 lands), `## Incidents` (page-tier events by kind), `## Items` (closed and
+  carried). `wuwei close` rebuilds the current week; `wuwei consolidate` rebuilds the
+  weeks and months of the days it archives plus the current ones. Free text in a line
+  passes the outward lint (owner-addressed) and carries no path; a line that fails keeps
+  only its structured fields (date, id, outcome label, target name, counts). `[memory]
+  digest = "week"` (or `"off"`, no digests).
+- `rules`: the local charter overrides and the spine and notes. Promoted rules live only in
+  charters (6.8); a digest records that a lesson landed, never the rule text.
+
+Budget. `[memory] budget_tokens` (default 6000) caps the SessionStart payload, built in
+priority order: digests (latest month, then current week), rules (spine, note lines of
+the index), today (raw day lines of the index, the promote line). When the whole would
+exceed the budget, SessionStart loads digests and rules only and says so in one line. The
+orientation block and `Active constraints:` (#358) precede the payload and are not part
+of it. `doctor` warns when a raw day is older than the archive window, which means
+`consolidate` has not run.
+
+Forgetting. `consolidate` proposes, with one evidence line each, to archive a note no
+brief, decision or retro under `days/` or the archive has named in 60 days; to fold one of
+two near-duplicate notes into the other; to drop a charter rule superseded by a later
+near-duplicate line in the same charter; and to drop a charter rule a later answered
+decision contradicts. Proposals sit in `memory/forget.json` as `F-n`; `wuwei consolidate
+--widget` asks them (#359) and `wuwei memory forget F-n apply|keep` is a host terminal owner
+action. `apply` asks y/N, then lands the change through `wuwei promote`'s own landing,
+which keeps the before text under `memory/archive/` and appends the ledger, and records a
+`memory.folded` event. Nothing is removed without that record; `keep` declines and the
+proposal is not asked again.
+
+No duplicate memory. The harness has its own memory (CLAUDE.md, auto-memory, rules
+files). WUWEI's records stay the source and nothing is read back from the harness. `wuwei
+memory export --claude`, run by `consolidate` and by `promote` when a proposal landed,
+writes the charters' rule lines and the current week's lessons as one block between
+markers it owns into the workspace's `CLAUDE.md` (or `[memory] export_to`), idempotent.
+Harness rules files (#441) get the same export when that item lands.
+
+Digests, `forget.json` and the archive are producer-only records under the records guard
+(9.1). `wuwei memory status` prints sizes and tokens per tier, the payload against the
+budget, the last consolidate and the pending proposals.
+
 ## 6. Memory
 
 ### 6.1 Kinds
