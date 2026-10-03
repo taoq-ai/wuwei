@@ -105,5 +105,5 @@ def archive_days(root):
     vcs = registry.load('vcs', workspace.load_config(root))
     result = vcs.workspace_commit(base, paths, root=root)
     if result.exit:
-        raise OSError(result.reason or 'could not commit archived days')
+        raise OSError(result.reason or 'could not commit archived days; retry with bin/wuwei consolidate; if it repeats, run bin/wuwei doctor')
     return [source.name for source, _ in moves]

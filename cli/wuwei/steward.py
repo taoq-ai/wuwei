@@ -227,7 +227,7 @@ def run(root=None, *, trigger='sweep'):
         if not isinstance(result, registry.Result) or type(result.exit) is not int or result.exit not in (0, 1, 2):
             raise ValueError(f'invalid runtime result; {ADAPTER_DATA}')
         if result.exit:
-            raise ValueError(result.reason or 'steward runtime could not launch')
+            raise ValueError(result.reason or 'steward runtime could not launch; retry; if it repeats, run bin/wuwei doctor')
         if not isinstance(result.data, dict) or result.data.get('error'):
             raise ValueError(f'steward runtime returned invalid or error data; {ADAPTER_DATA}')
     except Exception:

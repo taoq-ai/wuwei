@@ -53,7 +53,7 @@ def store(root, config, events):
     for event in events:
         result = redactor.redact(event['text'], root=root)
         if not _redacted(result):
-            return Result(2, None, result.reason or 'inbox: redactor returned malformed data')
+            return Result(2, None, result.reason or f'inbox: redactor returned malformed data; {ADAPTER_DATA}')
         batch.append((event, result.data))
     try:
         for event, data in batch:

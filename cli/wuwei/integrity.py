@@ -272,7 +272,7 @@ def cached(root):
                 and isinstance(record.get('plugin'), str) and record['plugin'] != str(PLUGIN)):
             return Result(2, reason=confirmed(record['plugin']))
         if record['exit']:
-            return Result(2, reason=record['reason'] or 'plugin integrity unmeasured')
+            return Result(2, reason=record['reason'] or 'plugin integrity unmeasured; run bin/wuwei integrity check, which measures it again')
         if record.get('checkout') is not None:
             current = _checkout(root)
             if current != record['checkout'] or not current or not current['clean']:

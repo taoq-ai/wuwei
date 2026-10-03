@@ -262,7 +262,7 @@ def _protection(host, repo, solo, gate):
         ]
     except (KeyError, TypeError, ValueError):
         print(f'{label}: protection: unmeasured')
-        print(result.reason or f"{repo['name']}: unreadable protection result", file=sys.stderr)
+        print(result.reason or f"{repo['name']}: unreadable protection result; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter", file=sys.stderr)
         return UNRUN
     for name, state, fix in rows:
         print(f'{label}: {name}: {state or f"missing ({fix})"}')
@@ -299,7 +299,7 @@ def _token(host, name):
     scopes = result.data.get('scopes') if result.exit == 0 and isinstance(result.data, dict) else None
     if not scopes or not isinstance(scopes, list) or not all(isinstance(s, str) for s in scopes):
         print(f'  {name} ({source}): unmeasured')
-        print(result.reason or f'{name}: unreadable scopes', file=sys.stderr)
+        print(result.reason or f'{name}: unreadable scopes; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter', file=sys.stderr)
         return UNRUN
     if all(scope.startswith('read:') for scope in scopes):
         print(f'  {name} ({source}): read-only')

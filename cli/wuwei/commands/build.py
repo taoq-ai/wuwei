@@ -332,7 +332,7 @@ def complete_checks(item, results, *, root, expected=None):
         if not isinstance(result, registry.Result) or type(result.exit) is not int or result.exit not in (0, 1, 2):
             raise ValueError(f'invalid check result; {ADAPTER_DATA}')
         if result.exit == 2:
-            raise ValueError(result.reason or 'fast check could not run')
+            raise ValueError(result.reason or 'fast check could not run; rerun bin/wuwei fast-checks in the worktree; if it repeats, run bin/wuwei doctor')
         if result.exit == 1:
             if isinstance(result.data, dict) and 'environment' in result.data:
                 reason = result.data['environment']

@@ -117,7 +117,7 @@ Result = namedtuple('Result', 'exit data reason', defaults=(None, ''))
 
 def data(result):
     if not isinstance(result, Result) or type(result.exit) is not int or result.exit != 0:
-        raise ValueError(getattr(result, 'reason', '') or 'VCS operation unavailable')
+        raise ValueError(getattr(result, 'reason', '') or 'VCS operation unavailable; retry; if it repeats, run bin/wuwei doctor')
     if not isinstance(result.data, dict):
         raise ValueError(f'malformed VCS data; {DAMAGED}')
     return result.data

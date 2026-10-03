@@ -49,7 +49,7 @@ def run(args, *, root=None):
         if not isinstance(response, registry.Result) or type(response.exit) is not int or response.exit not in (0, 1, 2):
             raise ValueError(f'invalid runtime result; {ADAPTER_DATA}')
         if response.exit:
-            print(response.reason or 'runtime operation did not complete', file=sys.stderr)
+            print(response.reason or 'runtime operation did not complete; retry; if it repeats, run bin/wuwei doctor', file=sys.stderr)
         else:
             data = response.data
             if args.action == 'dispatch' and selected['adapters']['runtime'] != config['adapters']['runtime']:
