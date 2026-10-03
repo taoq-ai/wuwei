@@ -1,12 +1,13 @@
 """Lint, route and record outcomes through the shared evaluator and state writer."""
 
 import hashlib
+import json
 import re
 import sys
 
 from wuwei import state, workspace
-from wuwei.decision import (evaluate, lint_file, present, record_rejection, route, route_owner,
-                            seat_outcome, table, today_path)
+from wuwei.decision import (evaluate, lint_file, present, record_rejection, record_widget, route,
+                            route_owner, seat_outcome, table, today_path)
 
 
 def register(subparsers):
@@ -27,7 +28,10 @@ def register(subparsers):
     outcome.set_defaults(func=run)
     show = commands.add_parser('show', help='Print a decision at the owner verbosity level')
     show.add_argument('id')
-    show.add_argument('--full', action='store_true', help='Print every field')
+    form = show.add_mutually_exclusive_group()
+    form.add_argument('--full', action='store_true', help='Print every field')
+    form.add_argument('--widget', action='store_true',
+                      help='Print the decision as an AskUserQuestion widget with its recording command')
     show.set_defaults(func=run)
 
 
@@ -76,6 +80,8 @@ def show(args):
         return 2, f'decision show: could not read {path}: {exc}'
     except ValueError as exc:
         return 1, f'decision show: {exc}'
+    if args.widget:
+        return 0, json.dumps([record_widget(args.id, fields)], indent=2)
     level = 'full' if args.full else workspace.verbosity(workspace.load_config(root), 'decisions')
     if level == 'full':
         return 0, text.rstrip()

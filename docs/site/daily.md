@@ -161,6 +161,19 @@ your DM when the listener runs. An external confirmation a seat routed with `--e
 waits `decisions.wait_hours` weekday hours for your answer; then the sweep confirms the
 recommendation on a two-way door or parks the item for your `decision outcome`.
 
+### How you answer
+
+In the Claude Code session (desktop app, terminal or IDE alike) each owner question shows up
+as a question card: tap an option, the recommended one first. The planner records your pick
+with the command printed beside the card. When that command needs your confirmation in a
+host terminal, the planner shows you the line to run.
+
+Away from the session, the same question reaches your phone through Remote Control, or as a
+DM from the listener when the planner runs headless.
+
+Use the host terminal for what a hook sends there: today the owner commands listed at the top
+of this section, and under `strict` posture everything owner-only.
+
 ## Long sessions
 
 The planner session is the one long-lived context of the day; seats are fresh per item.
