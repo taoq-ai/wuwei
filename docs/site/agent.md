@@ -59,7 +59,8 @@ with the owner, 2 means it could not run: show the reason and stop that path.
 ## What the hooks refuse
 
 - Records under `.wuwei/` (state, events, config, verdicts, decisions) change only through
-  the CLI, never through Edit, Write or a shell redirect.
+  the CLI, never through Edit, Write or a shell redirect. Reading them (Read, Grep, `cat`,
+  `grep`, `jq`, `ls`) is always allowed.
 - Item worktrees come only from `wuwei worktree add`.
 - A seat launches only from a logged brief, with the returned prompt unchanged.
 - No deploys, no merge outside `wuwei merge`, no pull request approvals.

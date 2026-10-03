@@ -597,8 +597,8 @@ WORKSPACE_ROOT = ('workspace guard: a top-level cd, pushd or popd may leave the 
 # A relevant call the guards could not read and that names no publisher (#347).
 UNPARSED = ('unparsed: write the commands to a file with the Write tool and run bash <file>; '
             'a plain git or gh command stays plain')
-READ_ONLY = frozenset({'ls', 'cat', 'grep', 'head', 'tail', 'sed', 'wc', 'jq', 'diff', 'find',
-                       'cd', 'pushd', 'popd'})
+READ_ONLY = frozenset({'ls', 'cat', 'less', 'grep', 'head', 'tail', 'sed', 'wc', 'jq', 'diff',
+                       'find', 'cd', 'pushd', 'popd'})
 PUBLISHERS = ('gh', 'glab', 'hub')
 # git verbs that only read; any other verb, an alias included, cannot be pinned (spec A3).
 _GIT_READS = frozenset({'status', 'diff', 'log', 'show', 'rev-parse', 'ls-files', 'ls-remote',
@@ -803,6 +803,35 @@ def _shell_script(args):
     return None
 
 
+def reads(argv, cwd=None):
+    """#349: one command only reads: a READ_ONLY word (sed -n Np, find with no action) or a
+    read-only call of the known CLI. Shared by the classifier and the state guard."""
+    from wuwei import commands
+    if not argv:
+        return False
+    name, args = PurePosixPath(argv[0]).name, argv[1:]
+    if name == 'sed':
+        options = [arg for arg in args if arg.startswith('-')]
+        operands = [arg for arg in args if not arg.startswith('-')]
+        return options == ['-n'] and bool(operands) and bool(re.fullmatch(r'[0-9,$]+p', operands[0]))
+    if name == 'find':
+        return not _FIND_ACTIONS.intersection(args)
+    if re.fullmatch(r'(?:python|pypy)[\d.]*', name) and args[:2] == ['-m', 'json.tool']:
+        return len(args) == 3  # a second operand is json.tool's outfile
+    return name in READ_ONLY or bool(not any('$' in word for word in args)
+                                     and known_cli(argv[0], cwd) and commands.read_only(args))
+
+
+def inline_code(argv):
+    """#349: an interpreter runs code given inline (-c, -e, --eval, ...)."""
+    name = PurePosixPath(argv[0]).name if argv else ''
+    if not re.fullmatch(_INTERPRETER, name):
+        return False
+    flags = 'c' if name.startswith(('python', 'pypy')) else _SNIPPET[name]
+    return any(re.fullmatch(r'-[a-zA-Z]*?[' + flags + r'][\s\S]*', arg)
+               or arg == '--eval' or arg.startswith('--eval=') for arg in argv[1:])
+
+
 @lru_cache(maxsize=32)
 def classify(command, publishers=(), cwd=None):
     """#347: the one lenient walk every Bash guard shares; never executes or expands."""
@@ -818,7 +847,6 @@ def classify(command, publishers=(), cwd=None):
 
 
 def _classify(command, publishers, cwd=None):
-    from wuwei import commands
     bodies = []
     texts = [_cut(command, bodies)]
     while len(texts) <= len(bodies):
@@ -848,7 +876,7 @@ def _classify(command, publishers, cwd=None):
         name = PurePosixPath(argv[0]).name if argv else ''
         args = argv[1:]
         literal = not any('$' in word for word in (*args, *writes))
-        safe = name in READ_ONLY or bool(literal and known_cli(argv[0], cwd) and commands.read_only(args))
+        safe = reads(argv, cwd)
         if name in ('cd', 'pushd'):
             dirs.append(expand(' '.join(argv)))  # a later write can land under its target
         if '$' in name:
@@ -867,9 +895,7 @@ def _classify(command, publishers, cwd=None):
         elif name in ('eval', 'source', '.'):
             publishes = True
         elif re.fullmatch(_INTERPRETER, name):
-            flags = 'c' if name.startswith(('python', 'pypy')) else _SNIPPET[name]
-            if fed == 'heredoc' or any(re.fullmatch(r'-[a-zA-Z]*?[' + flags + r'][\s\S]*', arg)
-                                       or arg == '--eval' or arg.startswith('--eval=') for arg in args):
+            if fed == 'heredoc' or inline_code(argv):
                 inline = True
                 publishes |= _names_publisher(command, publishers)
             elif fed == 'pipe' and all(arg.startswith('-') for arg in args):
@@ -878,12 +904,6 @@ def _classify(command, publishers, cwd=None):
             publishes |= _git_publishes(args)
         elif name in publishers:
             publishes = True
-        elif name == 'sed':
-            options = [arg for arg in args if arg.startswith('-')]
-            operands = [arg for arg in args if not arg.startswith('-')]
-            safe = options == ['-n'] and bool(operands) and bool(re.fullmatch(r'[0-9,$]+p', operands[0]))
-        elif name == 'find':
-            safe = not _FIND_ACTIONS.intersection(args)
         if writes or not safe:
             readonly = False
             text = expand(' '.join([*argv, *writes]))

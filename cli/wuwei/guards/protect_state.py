@@ -10,9 +10,8 @@ from wuwei.shell import WORKSPACE_ROOT
 from wuwei.workspace import contains_workspace, worktree_workspace
 
 
-_STATE_HINT = ('State and config files are protected; use the wuwei CLI for state changes. '
-               'The planner records goals and voice with wuwei goals edit --file and voice edit '
-               '--file after the morning gate; other owner edits run outside agent tools.')
+_STATE_HINT = ('State and config files are protected; use the wuwei CLI for state changes; '
+               'owner edits run outside agent tools.')
 # Pattern strings compile on first use (re's cache); most Bash calls never reach them.
 _STATE_MENTION = r'(?i)state\.json|state\.snapshot\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|\.wuwei'
 _STATE_GLOB = r'(?i)\.w[\w*?\[]'
@@ -240,6 +239,31 @@ def _protected_name(path, directories=False):
     return False
 
 
+def _hint(path):
+    """#349: the one-line reason for a refused write names the command that makes it."""
+    parts = tuple(part.casefold() for part in path.parts)
+    tail = parts[len(parts) - parts[::-1].index('.wuwei'):] if '.wuwei' in parts else ()
+    if tail == ('config.toml',):
+        return ('config.toml is protected: the owner runs wuwei config set <key> <value> '
+                'in a host terminal, outside agent tools.')
+    if tail[:1] == ('days',) and tail[-1:] in (('state.json',), ('state.snapshot.json',)):
+        return ('Day state is protected: change it with the wuwei CLI, wuwei state set '
+                '<path> <value> or wuwei state transition <item> <phase>.')
+    if tail[:1] == ('days',) and tail[-1:] == ('events.jsonl',):
+        return 'events.jsonl is protected: append with the wuwei CLI, wuwei event <kind> [payload].'
+    if tail[:1] == ('ziran',):
+        return ('Registry records are protected: wuwei mcp check writes them and the owner '
+                'runs wuwei mcp decide in a host terminal, outside agent tools.')
+    if tail in (('memory', 'goals.md'), ('memory', 'voice.md')):
+        return ('goals.md and voice.md are protected: after the morning gate the planner runs '
+                'wuwei goals edit --file <draft> or wuwei voice edit --file <draft>; other '
+                "edits are the owner's, outside agent tools.")
+    if tail[:1] == ('integrity',):
+        return ('Integrity records are protected: the owner runs wuwei integrity reconfirm '
+                'in a host terminal, outside agent tools.')
+    return _STATE_HINT
+
+
 def _protected(value, cwd, root, directories=False):
     path = _path(value, cwd).resolve()
     if _protected_name(path, directories):
@@ -292,8 +316,9 @@ def check_file(payload):
         cwd = _cwd(payload)
         root = _workspace(cwd) or worktree_workspace(cwd)
         field = 'notebook_path' if payload.get('tool_name') == 'NotebookEdit' else 'file_path'
-        if _protected(_input(payload, field), cwd, root):
-            return 1, _STATE_HINT
+        value = _input(payload, field)
+        if _protected(value, cwd, root):
+            return 1, _hint(_path(value, cwd).resolve())
         return 0, ''
     except (ValueError, OSError, RuntimeError) as exc:
         return 2, str(exc)
@@ -355,10 +380,11 @@ def _write_targets(argv, cwd, root):
         from wuwei.shell import _launcher
         if program != 'wuwei' or argv[0] == 'wuwei' or _launcher(Path(cwd, argv[0]), cwd):
             return []
+    from wuwei.shell import reads
     # Reader arguments are text; their redirects are checked from command.writes.
     # rg --pre runs a command on each searched file, so those operands are checked.
-    if program in (*_READERS, 'cat', 'less', 'jq') and not (
-            program == 'rg' and any(a == '--pre' or a.startswith('--pre=') for a in argv[1:])):
+    if program in _READERS and not (
+            program == 'rg' and any(a == '--pre' or a.startswith('--pre=') for a in argv[1:])) or reads(argv, cwd):
         return []
     if program in ('ln', 'install', 'rsync', 'rm', 'cp', 'mv', 'tee', 'truncate', 'sed'):
         # Normalized argv has no quote metadata; conservatively check glob matches.
@@ -421,7 +447,7 @@ def check_bash(payload):
         script = _input(payload, 'command')
         if not isinstance(script, str):
             raise ValueError('missing or invalid command')
-        from wuwei.shell import NonliteralPathError, ParseError, UNPARSED, classify, normalize, script_text
+        from wuwei.shell import NonliteralPathError, ParseError, UNPARSED, classify, normalize, reads, script_text
         from wuwei.workspace import guard_scope
 
         def owner_script(raw):
@@ -451,8 +477,9 @@ def check_bash(payload):
                     return found
             shape = classify(script, cwd=cwd)
             # #347: only text a write can target counts; a word the walk cannot pin may be the CLI.
-            if ((owner_relevant and guard_scope(payload) is not None
-                 and (shape.publishes or _owner_relevant(script, script=True)))
+            if not shape.readonly and (
+                    (owner_relevant and guard_scope(payload) is not None
+                     and (shape.publishes or _owner_relevant(script, script=True)))
                     or re.search(_STATE_MENTION, shape.written) or re.search(_STATE_GLOB, shape.written)
                     or (root is not None and _protected_name(cwd, directories=True)
                         and (isinstance(exc, NonliteralPathError)
@@ -476,8 +503,10 @@ def check_bash(payload):
         directories = persistent = {cwd}
         for command in commands:
             program = Path(command.argv[0]).name if command.argv else ''
-            if (re.fullmatch(r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua', program)
+            # #349: a script run with no state operand passes; -m json.tool with one file reads.
+            if (re.fullmatch(_INTERPRETER, program)
                     and command.argv[1:4] != ['-P', '-m', 'wuwei']
+                    and not reads(command.argv)
                     and re.search(_STATE_MENTION, ' '.join(command.argv[1:]))):
                 return 2, 'Opaque interpreter; use the wuwei CLI for state changes.'
             for directory in directories:
@@ -496,9 +525,10 @@ def check_bash(payload):
                                 return 1, _STATE_HINT
                             break
                 targets = [*command.writes, *_write_targets(command.argv, directory, root)]
-                if any(_protected(target, directory, root, program in ('rm', 'mv', 'chmod', 'chown'))
-                       for target in targets):
-                    return 1, _STATE_HINT
+                hit = next((target for target in targets if _protected(
+                    target, directory, root, program in ('rm', 'mv', 'chmod', 'chown'))), None)
+                if hit is not None:
+                    return 1, _hint(_path(hit, directory).resolve())
             if program == 'popd' or (program == 'pushd' and (len(command.argv) == 1 or
                     re.fullmatch(r'[+-][0-9]+', command.argv[1]))):
                 if contain_cwd and not command.subshell:
