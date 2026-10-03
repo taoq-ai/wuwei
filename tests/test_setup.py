@@ -1004,3 +1004,19 @@ def test_setup_leads_into_slack_when_chosen(project, host, terminal, slack, caps
     optional = next((line for line in out.splitlines() if line.startswith('Optional:')), '')
     assert ('Slack: connecting your DM now' in out) == (chat == 'Slack')
     assert ('bin/wuwei setup slack' in optional) == (chat == 'Slack')
+
+
+def test_setup_offers_a_detected_docs_link(project, host, terminal, monkeypatch, capsys):
+    from wuwei import interview
+    wiki = 'https://example.atlassian.net/wiki/spaces/DOCS/pages/1/Home'
+    (project / 'alpha/README.md').write_text(f'Docs: {wiki}\n')
+    seen = []
+
+    def ask(ids, repos, defaults=None):
+        seen.append(defaults)
+        return {'docs': wiki}
+    monkeypatch.setattr(interview, 'ask', ask)
+    assert run_setup(Confirm()) == 1  # the Confluence credentials are still owed
+    assert 'Next: set CONFLUENCE_EMAIL in .wuwei/env' in capsys.readouterr().out
+    assert seen == [{'docs': wiki}]
+    assert load_config(project)['docs']['system'] == 'confluence'

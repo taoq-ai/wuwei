@@ -463,3 +463,42 @@ def test_mcp_unmeasured_in_brief_header(day, monkeypatch):
                         'decided': [['aws', '1' * 64]]})
     assert brief(monkeypatch, 'body', 'builder', 'X', 'flagged') == 0
     assert 'MCP unmeasured: aws, remote' in (day[1] / 'briefs/flagged.md').read_text()
+
+
+def docs_brief(day, monkeypatch, role, system='notion', tier='standard', docs=None, name='d'):
+    with (day[0] / '.wuwei/config.toml').open('a') as stream:
+        stream.write(f'[docs]\nsystem = "{system}"\n')
+    def update(data):
+        data['items']['X']['gates'] = {'tier': tier}
+        if docs:
+            data['items']['X']['docs'] = docs
+    state._write_state(update, day[0], reserved=False)
+    args = ('--gate', '--worktree', 'tree') if role != 'builder' else ()
+    assert brief(monkeypatch, 'Review it.', role, 'X', name, *args) == 0
+    return [line for line in (day[1] / f'briefs/{name}.md').read_text().splitlines()
+            if line.startswith('Docs:')]
+
+
+def test_quality_brief_names_the_missing_docs_value(day, monkeypatch):
+    line, = docs_brief(day, monkeypatch, 'quality')
+    assert line.startswith('Docs: required (tier standard); value missing')
+    assert 'DOC: FINDING' in line and 'bin/wuwei plan set X docs=' in line
+
+
+def test_quality_brief_shows_the_recorded_value(day, monkeypatch):
+    line, = docs_brief(day, monkeypatch, 'quality', docs={'value': 'none', 'reason': 'internal refactor'})
+    assert 'value none (internal refactor)' in line
+
+
+def test_light_quality_brief_is_not_required(day, monkeypatch):
+    assert docs_brief(day, monkeypatch, 'quality', tier='light') == ['Docs: not required (tier light).']
+
+
+def test_builder_brief_has_the_docs_rule(day, monkeypatch):
+    line, = docs_brief(day, monkeypatch, 'builder')
+    assert line.startswith('Docs: notion;') and 'bin/wuwei plan set X docs=' in line
+
+
+@pytest.mark.parametrize('role,system', [('arch', 'notion'), ('quality', 'none'), ('builder', 'none')])
+def test_no_docs_line(day, monkeypatch, role, system):
+    assert docs_brief(day, monkeypatch, role, system=system) == []

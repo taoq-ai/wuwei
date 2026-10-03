@@ -70,6 +70,8 @@ EVENT_PRODUCERS = {
     'doctor.fixed': 'owner host wuwei doctor --fix',
     'config.newer_template': 'wuwei hook PreToolUse',
     'memory.folded': 'owner host wuwei memory forget', 'memory.consolidated': 'wuwei consolidate',
+    'docs.set': 'wuwei plan set or wuwei docs page',
+    'docs.written': 'wuwei docs or wuwei drafts approve', 'docs.exempt': 'wuwei dispatch next',
 }
 
 

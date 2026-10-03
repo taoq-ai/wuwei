@@ -305,8 +305,11 @@ def _setup(args, confirm):
     snapshot_path = root / '.wuwei/calibration.json'
     picked = {}
     if found['repos'] or not snapshot_path.exists():
+        from wuwei import docs
+        link = docs.detect([(root / Path(repo['path']).expanduser()).resolve() for repo in staged_cfg['repos']])
         picked = interview.ask(
-            [row['id'] for row in interview.QUESTIONS if not (args.shadow and row['id'] == 'posture')], names)
+            [row['id'] for row in interview.QUESTIONS if not (args.shadow and row['id'] == 'posture')], names,
+            **({'defaults': {'docs': link}} if link else {}))
         if args.shadow:
             picked['posture'] = 'Observe'  # the flag answered it, so the first day does not ask again
         interview.record(root, staged_cfg, picked)

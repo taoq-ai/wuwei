@@ -207,6 +207,7 @@ def pr(ref, root=None):
         'updated_at': _field(value, 'updated_at', str), 'node_id': _field(value, 'node_id', str),
         'requested_reviewers': [_field(v, 'login', str) for v in _list(value['requested_reviewers'])],
         'requested_teams': [_field(v, 'slug', str) for v in _list(value['requested_teams'])],
+        'title': value.get('title') or '', 'body': value.get('body') or '',
     }
 
 

@@ -82,6 +82,16 @@ def _login(text):
     return {'shepherd.lead_login': text, 'shepherd.min_reviewers': 1}
 
 
+def _docs_link(text):
+    from wuwei.docs import LINKS
+    text = text.strip()
+    for system, pattern in LINKS.items():
+        if re.fullmatch(pattern, text):
+            return {'docs.system': system, 'docs.space': text}
+    raise ValueError('expected a Notion or Confluence link; use the page link from the browser address bar, '
+                     'such as https://www.notion.so/<page> or https://<site>.atlassian.net/wiki/<page>')
+
+
 # The only definition of the interview. Effects: a dotted config key (`repos.` means each
 # answered repository), a charter override role with one fixed sentence, or voice never phrases.
 QUESTIONS = (
@@ -228,6 +238,16 @@ QUESTIONS = (
          ('Greptile', 'Read Greptile scores and findings; set GREPTILE_API_KEY in .wuwei/env.',
           {'adapters.review_bot': 'greptile'})),
      'free': None},
+    {'id': 'docs', 'scope': 'workspace', 'header': 'Docs',
+     'question': 'Where does your documentation live?',
+     'choices': (
+         ('Notion', 'Documentation in Notion; set NOTION_TOKEN in .wuwei/env.', {'docs.system': 'notion'}),
+         ('Confluence', 'Documentation in Confluence; set CONFLUENCE_EMAIL and CONFLUENCE_API_TOKEN in .wuwei/env.',
+          {'docs.system': 'confluence'}),
+         ('Markdown', 'Markdown files in each repository, shipped with the change.',
+          {'docs.system': 'markdown'}),
+         ('None', 'No documentation is asked for.', {'docs.system': 'none'})),
+     'free': (_docs_link, 'a Notion or Confluence link, for example https://<site>.atlassian.net/wiki/...')},
     # Claude asks these: labels name people in the third person, never I or me.
     {'id': 'reviewers', 'scope': 'workspace', 'header': 'Reviewers', 'question': 'Who reviews your pull requests?',
      'choices': (
@@ -421,17 +441,22 @@ def _put(picked, row, repo, answer):
         picked[row['id']] = answer
 
 
-def ask(ids, repos):
-    """Ask on this terminal until each answer is valid; a number picks a choice. EOFError propagates."""
+def ask(ids, repos, defaults=None):
+    """Ask on this terminal until each answer is valid; a number picks a choice and an empty
+    reply takes the row's default, when it has one. EOFError propagates."""
     picked = {}
     for row, repo in _selected(ids, repos):
+        default = (defaults or {}).get(row['id'])
         print(f"\n{row['header']}: {row['question'].format(repo=repo)}")
         for number, (label, description, _) in enumerate(row['choices'], 1):
             print(f'  {number}. {label}: {description}')
         if row['free']:
             print(f"  or type your own: {row['free'][1]}")
+        if default:
+            print(f'  Enter: {default}')
         while True:
-            reply = input('> ').strip()
+            reply = input('> ').strip() or default or ''
+
             if reply.isdecimal() and 1 <= int(reply) <= len(row['choices']):
                 reply = row['choices'][int(reply) - 1][0]
             try:

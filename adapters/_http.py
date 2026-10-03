@@ -38,12 +38,13 @@ def credential(name):
     return value
 
 
-def request(url, token, payload, *, authorization='Bearer', extra_headers=None):
+def request(url, token, payload=None, *, authorization='Bearer', extra_headers=None,
+            method='POST'):
     headers = {'Content-Type': 'application/json',
                'Authorization': f'{authorization} {token}' if authorization else token}
     headers.update(extra_headers or {})
-    request = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers,
-                                     method='POST')
+    data = None if payload is None else json.dumps(payload).encode()
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
     with urllib.request.urlopen(request, timeout=30) as response:
         if not 200 <= response.status < 300:
             raise Failure('HTTP status was not successful')
@@ -58,7 +59,7 @@ def request(url, token, payload, *, authorization='Bearer', extra_headers=None):
             if data:
                 events.append(json.loads(data))
         value = next((event for event in events if isinstance(event, dict)
-                      and event.get('id') == payload.get('id')), None)
+                      and event.get('id') == (payload or {}).get('id')), None)
     else:
         value = json.loads(body)
     if not isinstance(value, dict):

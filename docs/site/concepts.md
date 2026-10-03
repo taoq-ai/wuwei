@@ -104,6 +104,16 @@ Owner commands such as `bin/wuwei config set` refuse to run anywhere else.
 The writing checklist seats apply to text for a person, from the humanizer skill.
 A lint checks outward text for its mechanical tells before it is drafted or sent.
 
+### Docs system
+
+Where the team's documentation lives: Notion, Confluence, Markdown files in the repository, or none.
+WUWEI writes an item's page there from its records, never from memory.
+
+### Docs obligation
+
+An item tiered standard or full must record what it did to the docs before its quality gate passes.
+The value is a page, `new`, or `none` with a reason; the day close checks it again.
+
 ## Roles
 
 The shipped charters define planner, lead, builder, shepherd, steward, and four sentinels: goal, architecture, quality and security. Generated agent files in `agents/` carry the charters and tool allowlists. The planner owns the day, the lead shapes work, builders implement, sentinels check, the shepherd follows pull requests and the steward maintains procedure. `/wuwei plan` runs the day, starting with your morning gate; see the [daily path](daily.md).

@@ -111,6 +111,10 @@ def build(root=None):
     lines.extend(f"- {name}: {item['phase']}" for name, item in carry)
     if not carry:
         lines.append('none')
+    from wuwei import docs
+    documented = docs.report_lines(root, workspace.load_config(root), data)
+    if documented:
+        lines += ['', '## Docs', *documented]
     shadow = shadow_lines([day])
     if shadow:
         lines += ['', '## Shadow', *shadow]

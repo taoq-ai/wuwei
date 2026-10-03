@@ -401,6 +401,37 @@ def _gates(root, config):
     return rows
 
 
+def _docs(root, config):
+    """The docs system (#419): its space, credentials and a read of the space, or the markdown root."""
+    from wuwei import registry
+    from wuwei.commands import config as config_command
+    rules, link = config['docs'], 'docs/site/configuration.md#docs'
+
+    def docs_row(status, value, fix=''):
+        return [_row('gates', 'docs', status, value, fix, docs=link)]
+    if rules['system'] == 'none':
+        return docs_row('ok', 'not used')
+    if rules['system'] == 'markdown':
+        roots = [(root / Path(repo['path']).expanduser() / rules['root']) for repo in config['repos']]
+        if not any(path.is_dir() for path in roots):
+            return docs_row('fail', f"{rules['root']}/ is not a directory in any configured repository",
+                            f"create {rules['root']}/ in the repository or "
+                            "bin/wuwei config set docs.root '\"<dir>\"'")
+        if rules['publish']:
+            return docs_row('warn', 'publish has no effect under markdown',
+                            "bin/wuwei config set docs.publish '[]'")
+        return docs_row('ok', f"markdown: {rules['root']}/")
+    if not rules['space']:
+        return docs_row('fail', 'docs.space is empty', "bin/wuwei config set docs.space '\"<page link>\"'")
+    for alternatives in config_command.requirements(config).get(('docs', rules['system']), ()):
+        if not any(os.environ.get(name) for name in alternatives):
+            return docs_row('fail', f'{alternatives[0]} missing', f'add {alternatives[0]} to .wuwei/env')
+    result = registry.load('docs', config).read(rules['space'], root=root)
+    if result.exit:
+        return docs_row('fail', result.reason or 'docs.space unreadable', 'check docs.space and the credential')
+    return docs_row('ok', f"{rules['system']}: {result.data['title']}")
+
+
 NONE = {'tracker': 'none: discovery reads no tracker backlog',
         'chat': 'none: no review pings or chat posts; reviewers are requested on the code host only',
         'review_bot': 'none: discovery reads no review-bot findings'}
@@ -547,7 +578,7 @@ def diagnose(section=None):
             rows += [_row('gates', 'gates', 'unmeasured', UNLOADED, 'fix config.toml first'),
                      _row('day', 'day', 'unmeasured', UNLOADED, 'fix config.toml first')]
         else:
-            rows += [*_gates(root, config), *pr_flow(config), *_day(root, config, probes)]
+            rows += [*_gates(root, config), *_docs(root, config), *pr_flow(config), *_day(root, config, probes)]
     return rows + _guards(root, probes)
 
 

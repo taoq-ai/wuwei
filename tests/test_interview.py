@@ -81,7 +81,7 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
     assert [row['id'] for row in table] == ['merge', 'gates', 'quiet', 'interrupt', 'decisions', 'phone',
                                             'hours', 'avoid', 'formality', 'signature', 'risk', 'manual',
                                             'verbosity', 'posture', 'tracker', 'chat', 'review_bot',
-                                            'reviewers']
+                                            'docs', 'reviewers']
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / 'widget').mkdir()
     config = {'repos': [{'name': 'acme/widget'}]}
@@ -169,6 +169,26 @@ def test_communication_tools():
         module.effects('chat', 'c-lower!')
     [slack] = [description for label, description, _ in module.question('chat')['choices'] if label == 'Slack']
     assert 'bin/wuwei setup slack' in slack
+
+
+WIKI_LINK = 'https://example.atlassian.net/wiki/spaces/DOCS/pages/1/Home'
+
+
+def test_docs_question(monkeypatch, capsys):
+    import builtins
+    effects = interview().effects
+    assert interview().question('docs')['question'] == 'Where does your documentation live?'
+    for label in ('Notion', 'Confluence', 'Markdown', 'None'):
+        assert effects('docs', label) == {'docs.system': label.lower()}
+    assert effects('docs', WIKI_LINK) == {'docs.system': 'confluence', 'docs.space': WIKI_LINK}
+    notion = 'https://www.notion.so/Docs-00000000111122223333444444444444'
+    assert effects('docs', notion) == {'docs.system': 'notion', 'docs.space': notion}
+    with pytest.raises(ValueError, match='Notion or Confluence link'):
+        effects('docs', 'https://example.com/wiki')
+    replies = iter([''])
+    monkeypatch.setattr(builtins, 'input', lambda prompt='': next(replies))
+    assert interview().ask(['docs'], [], defaults={'docs': WIKI_LINK}) == {'docs': WIKI_LINK}
+    assert f'Enter: {WIKI_LINK}' in capsys.readouterr().out
 
 
 def test_reviewers_question(tmp_path):
@@ -364,14 +384,14 @@ def test_interview_needs_a_host_terminal(offline, capsys, monkeypatch):
 
 def test_interview_on_the_terminal(offline, capsys, monkeypatch):
     raw = (offline / '.wuwei/config.toml').read_text()
-    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '2', 'C0123ABCD', '1', 'pat-dev']
+    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '2', 'C0123ABCD', '1', '4', 'pat-dev']
     terminal(monkeypatch, replies)
     assert main('calibrate', '--interview', '--repo', 'acme/widget') == 0, capsys.readouterr().err
     out = capsys.readouterr().out
     answers = json.loads((offline / DAY / 'interview.json').read_text())
     assert answers['merge'] == {'acme/widget': 'Auto, 30 min soak'} and answers['gates'] == {
         'acme/widget': 'Standard'} and answers['phone'] == 'Summary' and answers['manual'] == 'Package publishing'
-    assert len(answers) == 18 and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
+    assert len(answers) == 19 and answers['docs'] == 'None' and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
     for line in interview().describe(answers, config(offline)):
         assert line in out
     assert 'gates: answer one of' in out and 'hours: answer one of' in out and 'bin/wuwei config promote' in out
@@ -488,7 +508,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     raw = (f'[[repos]]\nname = "acme/widget"\npath = {json.dumps(str(FIXTURES / "python"))}\n'
            'default_branch = "main"\n\n' + PLANE + '\n[deploy]\nworkflows = []\ndeny = []\n')
     (root / '.wuwei/config.toml').write_text(raw)
-    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '4', '1', '1'])
+    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '4', '1', '4', '1'])
     assert main('calibrate', '--interview') == 0, capsys.readouterr().err
     lines = interview().describe(json.loads((root / DAY / 'interview.json').read_text()), config(root))
     capsys.readouterr()

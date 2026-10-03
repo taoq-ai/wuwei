@@ -20,7 +20,8 @@ from wuwei.commands.config import PIN_MISSING
 ROOT = Path(__file__).resolve().parents[1]
 KEY = 'opaque-example-credential'
 VARIABLES = ('LINEAR_API_KEY', 'SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN',
-             'SLACK_OWNER_DM_CHANNEL', 'GREPTILE_API_KEY', 'WUWEI_CALENDAR_URL')
+             'SLACK_OWNER_DM_CHANNEL', 'GREPTILE_API_KEY', 'WUWEI_CALENDAR_URL',
+             'NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN')
 
 
 @pytest.fixture
@@ -283,6 +284,8 @@ def test_entry_paths(case, entry, monkeypatch):
     ('review_bot="greptile"', '', ('GREPTILE_API_KEY',)),
     ('calendar="ics"', '', ('WUWEI_CALENDAR_URL',)),
     ('runtime="codex"', '', ('codex.command',)),
+    ('', '[docs]\nsystem="notion"\n', ('NOTION_TOKEN',)),
+    ('', '[docs]\nsystem="confluence"\n', ('CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN')),
 ])
 def test_config_reports_missing_and_set(case, monkeypatch, capsys, adapter, settings, required):
     path = case / '.wuwei/config.toml'
@@ -724,3 +727,13 @@ def test_no_control_plane_section_without_an_inbound_adapter(case, capsys):
     (case / '.wuwei/config.toml').write_text('[adapters]\ncode_host="none"\n')
     assert main(['config', 'check']) == 0
     assert 'Control plane:' not in capsys.readouterr().out
+
+
+def test_docs_credentials(case, monkeypatch, capsys):
+    from wuwei import env
+    (case / '.wuwei/config.toml').write_text('[adapters]\ncode_host="none"\n[docs]\nsystem="notion"\n')
+    assert main(['config', 'check']) == 1
+    assert 'docs.notion: NOTION_TOKEN: missing' in capsys.readouterr().out
+    for name in ('NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN'):
+        monkeypatch.setenv(name, KEY)
+    assert not {'NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN'} & set(env.child_environment())

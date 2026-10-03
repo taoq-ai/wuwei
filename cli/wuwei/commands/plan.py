@@ -32,6 +32,10 @@ def register(subparsers):
         command = actions.add_parser(verb, help=text)
         command.add_argument('item')
         command.add_argument('--reason', help='Why; written into the record on one line')
+    assign = actions.add_parser('set', help="Record an item's value: docs=<page>|new|none")
+    assign.add_argument('item')
+    assign.add_argument('assignment', help='docs=<page>|new|none')
+    assign.add_argument('--reason', help='Why; required for docs=none')
     parser.set_defaults(func=run)
 
 
@@ -61,6 +65,13 @@ def run(args):
             print(json.dumps(plan.gate_widget(import_yesterday=args.import_yesterday), indent=2))
         elif args.action == 'add':
             print(json.dumps(plan.add(args.item)))
+        elif args.action == 'set':
+            key, _, value = args.assignment.partition('=')
+            if key != 'docs' or not value:
+                raise ValueError(f'plan set: {args.assignment} is not a docs value; run bin/wuwei plan set '
+                                 f'{args.item} docs=<page>|new|none --reason "<why>"')
+            from wuwei import docs
+            print(docs.assign(args.item, value, args.reason))
         elif args.action in ('carry', 'park'):
             outcome = {'carry': 'carried', 'park': 'parked'}[args.action]
             print(f'{plan.dispose(args.item, outcome, args.reason)}: {outcome} {args.item}')

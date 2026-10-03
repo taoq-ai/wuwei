@@ -512,3 +512,44 @@ def test_approve_strict_refuses_edited_tells(root, port, monkeypatch, capsys):
     output = capsys.readouterr()
     assert 'stock-word' in output.out + output.err
     assert port[1] == []
+
+
+DOCS_DRAFT = {'kind': 'page', 'item': 'X', 'title': 'X: Add a flag', 'body': 'Adds a flag.',
+              'parent': 'https://www.notion.so/Docs-00000000111122223333444444444444', 'ref': ''}
+
+
+def docs_queued(root, monkeypatch):
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('[docs]\nsystem = "notion"\n')
+    monkeypatch.setattr('urllib.request.urlopen', lambda *a, **k: pytest.fail('network'))
+    adapter = registry.load('docs', workspace.load_config(root))
+    result = adapter.write(DOCS_DRAFT, root=root)
+    assert result.exit == 1 and 'stored draft' in result.reason
+    row, = state.read_state(root)['drafts'].values()
+    return row
+
+
+def test_docs_write_is_queued(root, monkeypatch):
+    row = docs_queued(root, monkeypatch)
+    assert (row['channel'], row['operation'], row['adapter']) == ('docs', 'write', 'notion')
+    assert row['item'] == 'X' and row['destination'] == DOCS_DRAFT['parent']
+    assert row['status'] == 'pending' and row['inputs'] == {'draft': DOCS_DRAFT}
+    from wuwei import drafts
+    assert drafts.read(state.read_state(root))
+
+
+def test_approving_a_docs_draft_records_the_write(root, monkeypatch):
+    from test_docs_port import NOTION, replay
+    state._write_state(lambda data: data['items'].update(
+        X={'docs': {'value': 'new', 'reason': ''}}), root, reserved=False)
+    row = docs_queued(root, monkeypatch)
+    monkeypatch.setenv('NOTION_TOKEN', 'private-notion-token')
+    calls = replay(monkeypatch, NOTION['create'])
+    assert main(['drafts', 'approve', row['id']]) == 0
+    assert [call[0] for call in calls] == ['POST']
+    written = [json.loads(line)['payload'] for line in
+               (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()
+               if json.loads(line)['kind'] == 'docs.written']
+    assert len(written) == 1 and written[0]['draft'] == row['id']
+    assert written[0]['page'] == NOTION['create']['url']
+    assert state.read_state(root)['items']['X']['docs']['value'] == NOTION['create']['url']

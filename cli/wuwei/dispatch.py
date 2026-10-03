@@ -171,7 +171,8 @@ def next_step(item, root=None):
             raise Refused(f'builder must stand down before gates; wait for the {item} builder to stop, then run bin/wuwei dispatch next {item}')
     if phase == 'gate' and not row['gates'] and all(
             _record(data, item, role, 'initial') is None for role in ROLES):
-        record = tier(root, workspace.load_config(root), row)
+        config = workspace.load_config(root)
+        record = tier(root, config, row)
 
         def update(fresh):
             if _item(fresh, item)['gates']:
@@ -179,6 +180,8 @@ def next_step(item, root=None):
             fresh['items'][item]['gates'] = record
         state._write_state(update, root, reserved=False, kind='gate.tiered',
                            payload={'item': item, **record})
+        from wuwei import docs
+        docs.exempt(root, config, item, record['tier'])
         row = data['items'][item] = {**row, 'gates': record}
     gates = gate_set(row)
     if phase == 'fix':
@@ -364,6 +367,13 @@ def receive(item, role, name, round_name='initial', root=None):
         if code:
             raise OSError(f'scanner: unmeasured: {message}; fix the verdict as named, check it with bin/wuwei verdict lint <file>, then receive it again')
     result = re.search(verdict.VERDICT_ROW, text, re.M)[1]
+    if base(role) == 'quality':
+        from wuwei import docs
+        config = workspace.load_config(root)
+        if docs.unmet(config, data['items'][item]) and (
+                result == 'PASS' or not re.search(r'\bDOC: *FINDING', text)):
+            raise Refused(f'docs obligation unmet for {item}; have the sentinel write a FIX verdict with a '
+                          f'DOC: FINDING naming {docs.command(config, item)}, then receive it again')
     blocks = verdict.finding_blocks(text)
     notes = [block.strip() for block in blocks if not re.search(verdict.BLOCKS_YES, block, re.I)]
     value = {'item': item, 'role': role, 'round': round_name, 'verdict': result,

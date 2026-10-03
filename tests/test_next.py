@@ -322,3 +322,19 @@ def test_carried_item_is_skipped(root, capsys, decided_by):
         assert found['command'] != 'wuwei build next A'
     else:
         assert (found['state'], found['command']) == ('build', 'wuwei build next A')
+
+
+@pytest.mark.parametrize('system,fields,expected', [
+    ('notion', {'gates': {'tier': 'standard'}}, 'docs'),
+    ('notion', {'gates': {'tier': 'standard'}, 'docs': {'value': 'new', 'reason': ''}}, 'verdicts'),
+    ('notion', {'gates': {'tier': 'light'}}, 'verdicts'),
+    ('none', {'gates': {'tier': 'standard'}}, 'verdicts'),
+])
+def test_docs_row(root, capsys, system, fields, expected):
+    approved(root, {'ITEM-1': ('gate', fields)})
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(f'[docs]\nsystem = "{system}"\n')
+    found = row(capsys)[1]
+    assert found['state'] == expected
+    if expected == 'docs':
+        assert found['command'].startswith('wuwei plan set ITEM-1 docs=')
