@@ -36,7 +36,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei init` | Creates or upgrades a workspace; `--posture observe|guarded|strict` sets the [security posture](#security-posture) (`--shadow` is `--posture observe`). | [Daily path](daily.html) |
 | `bin/wuwei integrity` | Checks signed plugin integrity; `reconfirm` pins a development checkout. | [Recovery](recovery.html#integrity-reconfirm) |
 | `bin/wuwei listen` | Polls the inbound source into the workspace inbox and probes raised and claimed PRs. | [Remote](remote.html) |
-| `bin/wuwei mcp` | Checks the attached MCP servers; `decide` records the owner's answer. | [MCP registry checks](configuration.html#mcp-registry-checks-s3) |
+| `bin/wuwei mcp` | Checks the attached MCP servers; `decide D-<n> <option>` records the owner's answer. | [MCP registry checks](configuration.html#mcp-registry-checks-s3) |
 | `bin/wuwei memory` | Checks workspace memory. | [Concepts](concepts.html#memory) |
 | `bin/wuwei merge` | Checks or merges an eligible PR. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei metrics` | Shows the recorded process metrics. | [Long sessions](daily.html#long-sessions) |
@@ -218,6 +218,7 @@ and makes no network call beyond the `gh` reads `config check` makes. `--json` p
 | `watch-install` | `wuwei watch install` | the watch is not installed |
 | `listen-install` | `wuwei listen install` | an inbound source is set and the listener is not installed |
 | `trace-decisions` | `supersede pre-#352 tool-sequence decisions` | today has pending tool-sequence decisions the pre-#352 sweep wrote for a session with no item |
+| `mcp-reports` | move legacy MCP reports | `.wuwei/ziran/report-*` directories from v0.12.0 (moves readable ones to `<server>/<digest>.json`, removes empty and clean ones, keeps those a pending decision lists) |
 
 It previews every fix first (the command's own dry run, or the digest its own confirmation
 would ask for), prints them as one batch, and asks for one digest on `/dev/tty`. Without a
@@ -350,7 +351,7 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei decision outcome D-<n> <option>` | yes |
 | `bin/wuwei state recover` | yes |
 | `bin/wuwei integrity reconfirm` | yes |
-| `bin/wuwei mcp decide` | yes |
+| `bin/wuwei mcp decide D-<n> <option>` and `mcp decide proceed-unmeasured <server>...` | yes |
 | `bin/wuwei drafts approve <id>` | yes |
 | `bin/wuwei drafts drop <id>` | no |
 | `bin/wuwei goals edit` and `voice edit` | no |

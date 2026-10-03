@@ -1,5 +1,6 @@
 """Offline S3 registry contracts and launch refusal."""
 
+import hashlib
 import importlib
 import json
 from pathlib import Path
@@ -30,9 +31,6 @@ def source(tmp_path):
 @pytest.mark.parametrize('severity,code', [('high', 1), ('critical', 1), ('medium', 0), ('low', 0), (None, 0)])
 def test_adapter_fixed_argv_and_metadata(source, monkeypatch, severity, code):
     ziran = importlib.import_module('adapters.scanner.ziran')
-    servers = json.loads(source.read_text())
-    servers['mcpServers'].update(one={'command': 'fake'}, two={'command': 'fake'})
-    source.write_text(json.dumps(servers))
     calls = []
     def run(argv, **kwargs):
         calls.append(argv)
@@ -55,8 +53,54 @@ def test_adapter_fixed_argv_and_metadata(source, monkeypatch, severity, code):
     assert result.data['findings'] == ([{k: finding(severity)[k] for k in
         ('server_name', 'drift_type', 'severity', 'tool_name')}] if severity else [])
     assert 'PRIVATE' not in json.dumps(result.data) and 'UNTRUSTED' not in json.dumps(result.data)
-    assert len(result.data['reports']) == 1
-    assert not Path(result.data['reports'][0]).is_absolute()
+    [path] = result.data['reports']
+    rows = [finding(severity)] if severity else []
+    assert path == report(source.parent, rows)
+    assert (source.parent / path).read_text() == json.dumps(rows)
+
+
+def test_adapter_one_server_per_file(source, monkeypatch):
+    ziran = importlib.import_module('adapters.scanner.ziran')
+    servers = json.loads(source.read_text())
+    servers['mcpServers'].update(one={'command': 'fake'})
+    source.write_text(json.dumps(servers))
+    monkeypatch.setattr(ziran.subprocess, 'run', lambda argv, **kwargs: SimpleNamespace(
+        returncode=0, stdout='ziran, version 0.39.0'))
+    result = ziran.mcp([source], root=source.parent)
+    assert result.exit == 2 and 'one server per registry check' in result.reason
+    assert result.data is None or not result.data['reports']
+
+
+def adapter_run(monkeypatch, ziran, rows):
+    def run(argv, **kwargs):
+        if argv[1] == '--version':
+            return SimpleNamespace(returncode=0, stdout='ziran, version 0.39.0')
+        (Path(argv[argv.index('--out') + 1]) / 'registry-watch-report.json').write_text(json.dumps(rows))
+        return SimpleNamespace(returncode=int(bool(rows)), stdout='', stderr='')
+    monkeypatch.setattr(ziran.subprocess, 'run', run)
+
+
+def test_adapter_report_by_server_and_digest(source, monkeypatch):
+    ziran = importlib.import_module('adapters.scanner.ziran')
+    base = source.parent / '.wuwei/ziran'
+    adapter_run(monkeypatch, ziran, [finding()])
+    paths = {tuple(ziran.mcp([source], root=source.parent).data['reports']) for _ in range(3)}
+    [[path]] = paths
+    assert path == report(source.parent, [finding()])
+    assert [p.name for p in (base / 'docs').iterdir()] == [Path(path).name]
+    assert not [p for p in base.iterdir() if p.name.startswith(('report-', '.run-'))]
+    adapter_run(monkeypatch, ziran, [finding('critical')])
+    ziran.mcp([source], root=source.parent)
+    assert len(list((base / 'docs').iterdir())) == 2
+
+
+@pytest.mark.parametrize('name', ['servers', 'snapshots', 'snapshot-backup'])
+def test_adapter_report_storage_names(source, monkeypatch, name):
+    ziran = importlib.import_module('adapters.scanner.ziran')
+    source.write_text(json.dumps({'mcpServers': {name: {'command': 'fake'}}}))
+    adapter_run(monkeypatch, ziran, [])
+    result = ziran.mcp([source], root=source.parent)
+    assert result.exit == 2 and 'collides with registry storage' in result.reason
 
 
 def test_adapter_timeout_per_server_from_config(source, monkeypatch):
@@ -103,6 +147,8 @@ def test_adapter_unmeasured(source, monkeypatch, capsys, failure):
     result = ziran.mcp([source], root=source.parent)
     assert result.exit == 2 and 'watch-registry: unmeasured' in result.reason
     assert 'PRIVATE' not in result.reason + capsys.readouterr().err
+    assert not result.data or not result.data['reports']
+    assert {p.name for p in (source.parent / '.wuwei/ziran').iterdir()} <= {'snapshots'}
 
 
 def test_adapter_separate_configs_and_precedence(source, monkeypatch):
@@ -194,14 +240,31 @@ def block_critical(root):
         config.write('[scanner.mcp]\nblock = ["critical"]\n')
 
 
+def report(root, rows, name='docs'):
+    """A stored report as the adapter leaves it: .wuwei/ziran/<server>/<canonical digest>.json."""
+    digest = hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    path = Path(root) / '.wuwei/ziran' / name / (digest + '.json')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(json.dumps(rows))
+    return str(path.relative_to(root))
+
+
+def measured(root, rows, code=1, name='docs'):
+    keys = ('server_name', 'drift_type', 'severity', 'tool_name')
+    return registry.Result(code, {'findings': [{k: row[k] for k in keys} for row in rows],
+                                  'reports': [report(root, rows, name)]})
+
+
 def fake_scanner(monkeypatch, code=0, rows=None):
-    response = registry.Result(code, {'findings': rows or [], 'reports': []},
-                               'scanner unavailable' if code == 2 else '')
     calls = []
     original = registry.load
     def mcp(servers, *, root):
         calls.append(servers)
-        return response
+        if code == 2:
+            return registry.Result(2, {'findings': [], 'reports': []}, 'scanner unavailable')
+        [name] = json.loads(Path(servers[0]).read_text())['mcpServers']
+        return measured(root, rows or [], code, name)
     monkeypatch.setattr(registry, 'load', lambda kind, config:
         SimpleNamespace(mcp=mcp) if kind == 'scanner' else original(kind, config))
     return calls
@@ -320,9 +383,7 @@ def test_strict_blocks_critical_and_high(configured, monkeypatch, severity):
     assert check_mcp({'cwd': str(configured), 'tool_input': SEAT})[0] == 1
     with pytest.raises(state.StateError, match='MCP'):
         plan.propose(proposal(), configured)
-    for pending in (configured / '.wuwei/days').glob('*/decisions/D-*.md'):
-        pending.write_text(pending.read_text().replace('Outcome: pending', 'Outcome: proceed'))
-    assert core().decide(configured, confirm=lambda digest: True).exit == 0
+    assert core().decide(configured, 'D-1', 'proceed', confirm=lambda digest: True).exit == 0
     assert core().cached(configured).exit == 0
 
 
@@ -336,8 +397,7 @@ def test_guarded_critical_warns_with_summary(configured, monkeypatch, capsys):
     fake_scanner(monkeypatch, 1, [metadata('critical')])
     result = core().check(configured)
     assert result.exit == 1
-    assert '(critical)' in result.reason and 'decisions/D-1.md' in result.reason
-    assert 'bin/wuwei mcp decide' in result.reason
+    assert '(critical)' in result.reason and 'bin/wuwei mcp decide D-1 proceed' in result.reason
     assert core().cached(configured).exit == 0
     assert check_mcp({'cwd': str(configured), 'tool_input': SEAT})[0] == 0
     capsys.readouterr()
@@ -378,9 +438,9 @@ def test_sticky_findings_owner_confirmation_and_rollover(configured, monkeypatch
     assert core().check(configured).exit == 1
     pending.write_text(pending.read_text().replace('Outcome: pending', 'Outcome: proceed'))
     assert core().cached(configured).exit == 1  # Text alone cannot approve.
-    assert core().decide(configured, confirm=lambda digest: False).exit == 1
+    assert core().decide(configured, 'D-1', 'proceed', confirm=lambda digest: False).exit == 1
     assert core().cached(configured).exit == 1
-    assert core().decide(configured, confirm=lambda digest: True).exit == 0
+    assert core().decide(configured, 'D-1', 'proceed', confirm=lambda digest: True).exit == 0
     assert core().cached(configured).exit == 0
     events = (workspace.day_dir(configured) / 'events.jsonl').read_text()
     assert 'PRIVATE' not in events and 'UNTRUSTED' not in events
@@ -400,7 +460,7 @@ def test_unmeasured_cannot_be_owner_cleared(configured, monkeypatch):
     pending.write_text(pending.read_text().replace('Outcome: pending', 'Outcome: proceed'))
     monkeypatch.setattr(registry, 'load', lambda *args: SimpleNamespace(mcp=lambda files, root: None))
     assert core().check(configured).exit == 2
-    assert core().decide(configured, confirm=lambda digest: True).exit == 2
+    assert core().decide(configured, 'D-1', 'proceed', confirm=lambda digest: True).exit == 2
     fake_scanner(monkeypatch, 0)
     assert core().check(configured).exit == 1
 
@@ -462,7 +522,7 @@ def test_snapshot_recovery_after_timeout_preserves_drift(configured, monkeypatch
     def retry(files, *, root):
         assert snapshot.read_text() == 'approved'
         snapshot.write_text('unapproved')
-        return registry.Result(1, {'findings': [metadata()], 'reports': []})
+        return measured(root, [metadata()])
     monkeypatch.setattr(registry, 'load', lambda *args: SimpleNamespace(mcp=retry))
     assert mcp.check(configured).exit == 1
     assert snapshot.read_text() == 'unapproved'
@@ -484,12 +544,12 @@ def test_interrupted_scan_recovery_and_accumulated_pending(configured, monkeypat
     for index in (1, 2):
         def scan(files, *, root):
             assert snapshot.read_text() == 'approved'
-            return registry.Result(1, {'findings': [metadata()],
-                'reports': [f'.wuwei/ziran/report-{index}/registry-watch-report.json']})
+            return measured(root, [{**metadata(), 'tool_name': f'tool-{index}'}])
         monkeypatch.setattr(registry, 'load', lambda *args: SimpleNamespace(mcp=scan))
         assert mcp.check(configured).exit == 1
     last = sorted((workspace.day_dir(configured) / 'decisions').glob('D-*.md'))[-1].read_text()
-    assert 'report-1/' in last and 'report-2/' in last
+    for index in (1, 2):
+        assert report(configured, [{**metadata(), 'tool_name': f'tool-{index}'}]) in last
 
 
 def test_empty_registry_does_not_create_day_or_mutate_on_upgrade(tmp_path):
@@ -541,7 +601,7 @@ def test_scanner_event_failure_keeps_block_and_recovers(configured, monkeypatch)
     snapshot.write_text('baseline')
     def scan(files, *, root):
         snapshot.write_text('changed')
-        return registry.Result(1, {'findings': [metadata()], 'reports': []})
+        return measured(root, [metadata()])
     monkeypatch.setattr(registry, 'load', lambda *args: SimpleNamespace(mcp=scan))
     with monkeypatch.context() as patch:
         def fail(*args, **kwargs):
@@ -551,7 +611,7 @@ def test_scanner_event_failure_keeps_block_and_recovers(configured, monkeypatch)
     assert mcp.cached(configured).exit == 2
     def retry(files, *, root):
         assert snapshot.read_text() == 'baseline'
-        return registry.Result(1, {'findings': [metadata()], 'reports': []})
+        return measured(root, [metadata()])
     monkeypatch.setattr(registry, 'load', lambda *args: SimpleNamespace(mcp=retry))
     assert mcp.check(configured).exit == 1
 
@@ -568,7 +628,7 @@ def test_first_registration_interruption_discards_partial_snapshot(configured, m
         mcp.check(configured)
     def retry(files, *, root):
         assert not snapshot.exists()
-        return registry.Result(0, {'findings': [], 'reports': []})
+        return measured(root, [], 0)
     monkeypatch.setattr(registry, 'load', lambda *args: SimpleNamespace(mcp=retry))
     assert mcp.check(configured).exit == 0
 
@@ -638,7 +698,7 @@ def test_path_stub_init_then_description_drift_before_morning_launch(tmp_path, m
     assert check({'cwd': str(root), 'tool_input': {
         'subagent_type': 'wuwei:builder', 'description': 'Build', 'prompt': 'no brief'}})[0] == 1
     assert 'UNTRUSTED CHANGE' not in (workspace.day_dir(root) / 'events.jsonl').read_text()
-    assert 'UNTRUSTED CHANGE' in next(p for p in (root / '.wuwei/ziran').glob('report-*/registry-watch-report.json')
+    assert 'UNTRUSTED CHANGE' in next(p for p in (root / '.wuwei/ziran').glob('docs/*.json')
         if 'UNTRUSTED CHANGE' in p.read_text()).read_text()
 
 
@@ -662,7 +722,7 @@ def test_interrupted_backup_cleanup_never_replays_partial_backup(configured, mon
     assert snapshot.read_text() == 'approved'
     def scan(files, *, root):
         assert snapshot.read_text() == 'approved'
-        return registry.Result(0, {'findings': [], 'reports': []})
+        return measured(root, [], 0)
     monkeypatch.setattr(registry, 'load', lambda *args: SimpleNamespace(mcp=scan))
     assert mcp.check(configured).exit == 0
 
@@ -798,8 +858,11 @@ def test_cockpit_lookalike_inline_in_another_plugin_is_measured(tmp_path, monkey
 def scanned(root, monkeypatch):
     """Files the configured scanner receives, measured clean."""
     seen = []
-    scanner = SimpleNamespace(mcp=lambda files, root: seen.extend(files) or registry.Result(
-        0, {'findings': [], 'reports': []}))
+    def mcp(files, *, root):
+        seen.extend(files)
+        [name] = json.loads(Path(files[0]).read_text())['mcpServers']
+        return measured(root, [], 0, name)
+    scanner = SimpleNamespace(mcp=mcp)
     monkeypatch.setattr(registry, 'load', lambda kind, config: scanner)
     assert core().check(root).exit == 0
     return [json.loads(Path(f).read_text())['mcpServers'] for f in seen]
@@ -1202,9 +1265,8 @@ def test_findings_decision_while_another_server_unmeasured(configured, monkeypat
     aws_server(configured)
     assert core().check(configured).exit == 2
     assert core().cached(configured).exit == 1
-    pending = next(workspace.day_dir(configured).glob('decisions/D-*.md'))
-    pending.write_text(pending.read_text().replace('Outcome: pending', 'Outcome: proceed'))
-    assert core().decide(configured, confirm=lambda digest: True).exit == 0
+    result = core().decide(configured, 'D-1', 'proceed', confirm=lambda digest: True)
+    assert result.exit == 2 and result.reason.startswith('D-1 recorded: proceed; MCP registry unmeasured')
     assert json.loads((configured / '.wuwei/ziran/status.json').read_text())['exit'] == 2
     assert core().cached(configured).exit == 0
 
@@ -1234,8 +1296,220 @@ def test_mcp_cli_forms(configured, monkeypatch):
     assert main(['mcp', 'check']) == 0
 
 
+def test_mcp_cli_decide_forms(configured, monkeypatch, capsys):
+    from wuwei import integrity
+    from wuwei.__main__ import main
+    monkeypatch.chdir(configured)
+    fake_scanner(monkeypatch, 1, [metadata('critical')])
+    assert main(['mcp', 'check']) == 1
+    capsys.readouterr()
+    for words in (['decide'], ['decide', 'D-1'], ['decide', 'D-1', 'proceed', 'extra'], ['decide', 'x', 'proceed']):
+        assert main(['mcp', *words]) == 2
+        assert 'usage: wuwei mcp check | wuwei mcp decide D-<n> <option>' in capsys.readouterr().err
+    monkeypatch.setattr(integrity, '_host_confirm', lambda value, prompt: True)
+    assert main(['mcp', 'decide', 'D-1', 'proceed']) == 0
+    assert 'D-1 recorded: proceed' in capsys.readouterr().err
+    with pytest.raises(SystemExit) as exc:
+        main(['mcp', 'decide', '--help'])
+    assert exc.value.code == 0
+
+
+@pytest.mark.parametrize('command,code', [
+    ('bin/wuwei mcp decide --help', 0), ('bin/wuwei mcp decide -h', 0),
+    ('python3 -P -m wuwei mcp decide --help', 0), ('bin/wuwei mcp decide D-1 proceed', 1),
+    ('bin/wuwei mcp decide -- --help', 1), ('bin/wuwei mcp decide --he', 1)])
+def test_owner_help_allowed_from_seat(configured, command, code):
+    from wuwei.guards.protect_state import check_bash
+    assert check_bash({'cwd': str(configured), 'tool_input': {'command': command}})[0] == code
+
+
 def test_launcher_args_not_a_list_fail_closed(configured, monkeypatch):
     calls = fake_scanner(monkeypatch)
     (configured / '.mcp.json').write_text(json.dumps({'mcpServers': {'docs': {'command': 'npx', 'args': 'pkg'}}}))
     result = core().check(configured)
     assert result.exit == 2 and not calls and 'docs:' not in result.reason
+
+
+def events(root, kind):
+    path = workspace.day_dir(root) / 'events.jsonl'
+    return [row['payload'] for row in map(json.loads, path.read_text().splitlines()) if row['kind'] == kind]
+
+
+def decisions(root):
+    return sorted(p.name for p in workspace.day_dir(root).glob('decisions/D-*.md'))
+
+
+def poisoned(root, severity='high'):
+    import sys
+    (root / '.mcp.json').write_text(json.dumps({'mcpServers': {'docs': {
+        'command': sys.executable, 'args': ['-c', 'pass'], 'description': severity}}}))
+
+
+def test_issue_acceptance_three_checks_one_report(configured, tmp_path, monkeypatch):
+    exec_stub(tmp_path, monkeypatch)
+    poisoned(configured)
+    assert [core().check(configured).exit for _ in range(3)] == [1, 1, 1]
+    assert len(list((configured / '.wuwei/ziran/docs').iterdir())) == 1
+    assert [e['servers'] for e in events(configured, 'mcp.checked')] == [
+        {'docs': 'new'}, {'docs': 'unchanged'}, {'docs': 'unchanged'}]
+    assert decisions(configured) == ['D-1.md']
+
+
+def test_issue_acceptance_timeout_leaves_no_directory(configured, monkeypatch):
+    ziran = importlib.import_module('adapters.scanner.ziran')
+    (configured / '.mcp.json').write_text(json.dumps({'mcpServers': {
+        'docs': {'command': 'fake'}, 'slow': {'command': 'fake'}}}))
+    approve(configured, 'docs', 'slow')
+    def run(argv, **kwargs):
+        if argv[1] == '--version':
+            return SimpleNamespace(returncode=0, stdout='ziran, version 0.39.0')
+        if 'slow' in json.loads(Path(argv[argv.index('--from-claude-config') + 1]).read_text())['mcpServers']:
+            raise subprocess.TimeoutExpired(argv, 2)
+        (Path(argv[argv.index('--out') + 1]) / 'registry-watch-report.json').write_text('[]')
+        return SimpleNamespace(returncode=0, stdout='', stderr='')
+    monkeypatch.setattr(ziran.subprocess, 'run', run)
+    for _ in range(2):
+        result = core().check(configured)
+        assert result.exit == 2 and 'slow:' in result.reason
+        entries = {p.name for p in (configured / '.wuwei/ziran').iterdir()}
+        assert entries - {'status.json', 'registry.lock', 'servers', 'snapshots'} == {'docs'}
+    assert [e['servers'] for e in events(configured, 'mcp.checked')] == [
+        {'docs': 'new', 'slow': 'unmeasured'}, {'docs': 'unchanged', 'slow': 'unmeasured'}]
+
+
+@pytest.mark.parametrize('kind', ['none', 'two', 'other-server', 'legacy', 'missing'])
+def test_invalid_scanner_report_fails_closed(configured, monkeypatch, kind):
+    def scan(files, *, root):
+        good = report(root, [metadata()])
+        legacy = Path(root) / '.wuwei/ziran/report-x/registry-watch-report.json'
+        legacy.parent.mkdir(exist_ok=True)
+        legacy.write_text(json.dumps([metadata()]))
+        reports = {'none': [], 'two': [good, report(root, [])], 'other-server': [report(root, [metadata()], 'aws')],
+                   'legacy': [str(legacy.relative_to(root))],
+                   'missing': ['.wuwei/ziran/docs/' + '0' * 64 + '.json']}[kind]
+        return registry.Result(1, {'findings': [metadata()], 'reports': reports})
+    monkeypatch.setattr(registry, 'load', lambda *args: SimpleNamespace(mcp=scan))
+    assert core().check(configured).exit == 2
+
+
+TABLE = '| Server | Tool | Flag | Severity | Snippet | Since |'
+
+
+def context(root, name='D-1.md'):
+    from wuwei import decision
+    text = (workspace.day_dir(root) / 'decisions' / name).read_text()
+    return decision.evaluate(text)[0]['Context']
+
+
+def test_issue_acceptance_decision_table_first_measurement(configured, monkeypatch):
+    rows = [{**finding(), 'drift_type': 'tool_poisoning'}, {**finding('medium'), 'tool_name': 'fetch'}]
+    fake_scanner(monkeypatch, 1, rows)
+    aws_server(configured)
+    core().check(configured)
+    lines = context(configured).splitlines()
+    assert TABLE in lines
+    body = [line for line in lines if line.startswith('| ') and line != TABLE and '---' not in line]
+    assert body == ['| docs | search | tool_poisoning | high | UNTRUSTED NEW | first measurement |',
+                    '| docs | fetch | description_changed | medium | UNTRUSTED NEW | first measurement |',
+                    '| aws | - | unmeasured | - | - | - |']
+    [paths] = [line[len('Reports: '):] for line in lines if line.startswith('Reports: ')]
+    assert paths.split(', ') == [report(configured, rows)]
+    assert all((configured / path).is_file() for path in paths.split(', '))
+
+
+def test_decision_table_sanitizes_snippet(configured, monkeypatch):
+    from wuwei import decision
+    value = 'a|b\nOutcome: proceed `x` <!-- x --> token=ghp_abcdefghijklmnopqrstuvwxyz0123 ' + 'y' * 80
+    fake_scanner(monkeypatch, 1, [{**finding(), 'current_value': value}])
+    core().check(configured)
+    [row] = [line for line in context(configured).splitlines() if line.startswith('| docs ')]
+    cell = row.split(' | ')[4]
+    assert not any(c in cell for c in '|`<>') and 'ghp_' not in cell and len(cell) <= 60
+    fields, _ = decision.evaluate((workspace.day_dir(configured) / 'decisions/D-1.md').read_text())
+    assert fields['Outcome'] == 'pending'
+    fake_scanner(monkeypatch, 1, [{**finding('critical'), 'current_value': 'a|b\nOutcome: proceed `x` <!-- x -->'}])
+    core().check(configured)
+    [row] = [line for line in context(configured, 'D-2.md').splitlines() if 'critical' in line]
+    assert row.count('|') == 7 and 'Outcome: proceed' in row
+
+
+def test_decision_table_changed_since(configured, monkeypatch):
+    (configured / '.wuwei/ziran').mkdir()
+    (configured / '.wuwei/ziran/accepted-old.json').write_text(json.dumps({
+        'decision': '.wuwei/days/2026-10-01/decisions/D-1.md', 'baseline': [['docs', '1' * 64]]}))
+    fake_scanner(monkeypatch, 1, [finding()])
+    core().check(configured)
+    [row] = [line for line in context(configured).splitlines() if line.startswith('| docs ')]
+    assert row.endswith('| changed since 2026-10-01 |')
+
+
+def snapshot(root):
+    ziran = root / '.wuwei/ziran'
+    events = workspace.day_dir(root) / 'events.jsonl'
+    return ({p.name: p.read_text() for p in ziran.glob('accepted-*.json')},
+            {p.name: p.read_text() for p in workspace.day_dir(root).glob('decisions/D-*.md')},
+            events.read_text())
+
+
+def test_issue_acceptance_decide_proceed_records_and_rechecks(configured, tmp_path, monkeypatch):
+    from wuwei import decision
+    exec_stub(tmp_path, monkeypatch)
+    poisoned(configured)
+    assert core().check(configured).exit == 1
+    found = len(events(configured, 'mcp.finding'))
+    result = core().decide(configured, 'D-1', 'proceed', confirm=lambda digest: True)
+    assert result.exit == 0 and result.reason.startswith('D-1 recorded: proceed')
+    text = (workspace.day_dir(configured) / 'decisions/D-1.md').read_text()
+    fields, _ = decision.evaluate(text)
+    assert fields['Decided-by'] == 'owner' and fields['Outcome'] == 'proceed'
+    assert '\nNotes: Decided at 2026-09-29T08:00:00+02:00 at the host terminal.\n' in text
+    [accepted] = (configured / '.wuwei/ziran').glob('accepted-*.json')
+    [path] = (configured / '.wuwei/ziran/docs').iterdir()
+    assert json.loads(accepted.read_text())['baseline'] == [['docs', path.stem]]
+    assert core().check(configured).exit == 0
+    assert decisions(configured) == ['D-1.md']
+    assert len(events(configured, 'mcp.finding')) == found
+    assert events(configured, 'mcp.checked')[-1]['servers'] == {'docs': 'unchanged'}
+    assert core().cached(configured).exit == 0
+
+
+def test_decide_defer_keeps_gate(configured, monkeypatch):
+    block_critical(configured)
+    fake_scanner(monkeypatch, 1, [metadata('critical')])
+    assert core().check(configured).exit == 1
+    result = core().decide(configured, 'D-1', 'defer', confirm=lambda digest: True)
+    assert result.exit == 1 and 'D-1 recorded: defer' in result.reason
+    text = (workspace.day_dir(configured) / 'decisions/D-1.md').read_text()
+    assert 'Outcome: defer' in text and 'Notes: Decided at ' in text
+    assert not list((configured / '.wuwei/ziran').glob('accepted-*.json'))
+    assert core().cached(configured).exit == 1
+    assert core().decide(configured, 'D-1', 'proceed', confirm=lambda digest: True).exit == 0
+    assert core().cached(configured).exit == 0
+
+
+@pytest.mark.parametrize('identifier,option,answer', [
+    ('D-2', 'proceed', True), ('D-1', 'maybe', True), ('D-1', 'proceed', False)])
+def test_decide_refusals(configured, monkeypatch, identifier, option, answer):
+    fake_scanner(monkeypatch, 1, [metadata('critical')])
+    assert core().check(configured).exit == 1
+    before = snapshot(configured)
+    result = core().decide(configured, identifier, option, confirm=lambda digest: answer)
+    assert result.exit == 1
+    assert snapshot(configured) == before
+    if identifier == 'D-2':
+        assert 'bin/wuwei mcp decide D-1 proceed' in result.reason
+
+
+def test_pending_line_everywhere(configured, monkeypatch):
+    from test_plan import proposal
+    from wuwei import plan, state
+    goals(configured)
+    with (configured / '.wuwei/config.toml').open('a') as config:
+        config.write('[scanner.mcp]\nblock = ["high", "critical"]\n')
+    fake_scanner(monkeypatch, 1, [metadata()])
+    reasons = [core().check(configured).reason, core().cached(configured).reason]
+    with pytest.raises(state.StateError) as refused:
+        plan.propose(proposal(), configured)
+    for reason in [*reasons, str(refused.value)]:
+        assert 'bin/wuwei mcp decide D-1 proceed' in reason
+        assert 'Outcome:' not in reason and 'decisions/D-1.md' not in reason

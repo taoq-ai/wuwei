@@ -155,6 +155,9 @@ def _owner_action(commands, text, relevant, cwd, script=False):
             return 2, 'Input-driven owner action; use the host terminal.'
         if re.search(r'[$`]', group) or group in _OWNER_GROUPS and re.search(r'[$`]', verb):
             return 2, 'Not a literal owner action; use the host terminal.'
+        words = action[:action.index('--')] if '--' in action else action
+        if '-h' in words or '--help' in words:
+            continue  # argparse prints help and exits before any owner command runs
         if reason := _owner_reason((group, verb)):
             return 1, reason
     if relevant and unseen > 0:

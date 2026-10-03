@@ -254,6 +254,7 @@ def _setup(args, confirm):
     if gate.exit == 2 and mcp.unmeasured(root):
         owed.append('bin/wuwei mcp decide proceed-unmeasured ' + ' '.join(map(shlex.quote, mcp.unmeasured(root))))
     elif gate.exit:
-        owed.append('bin/wuwei mcp decide')
+        waiting = mcp.pending(root)
+        owed.append(mcp.command(waiting) if waiting else 'bin/wuwei mcp check')
     print('Still owed:\n' + ''.join(f'  {line}\n' for line in owed or ['nothing']) + 'Next: /wuwei plan')
     return max(check, gate.exit)

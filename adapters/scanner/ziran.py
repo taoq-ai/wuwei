@@ -3,6 +3,7 @@
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import re
 import shutil
@@ -75,8 +76,9 @@ def _trace_report(data):
 
 
 def mcp(servers, *, root=None):
-    """One file per invocation; descriptions remain only in retained reports."""
+    """One server per file; each distinct result is kept once at <server>/<digest>.json."""
     from wuwei import workspace
+    from wuwei.mcp import NAME, STORAGE, digest
 
     measured = {'findings': [], 'reports': []}
     code, reasons = 0, []
@@ -91,6 +93,8 @@ def mcp(servers, *, root=None):
         for file in servers:
             # A failed run must not replace this file's approved baseline with what it saw.
             saved, snapshots = Path(tempfile.mkdtemp(prefix='snapshot-', dir=base)) / 'copy', None
+            # A leading dot is never a server name, so the run directory never collides.
+            run = Path(tempfile.mkdtemp(prefix='.run-', dir=base))
             try:
                 target = Path(file).resolve(strict=True)
                 config = json.loads(target.read_text(encoding='utf-8'))
@@ -98,6 +102,11 @@ def mcp(servers, *, root=None):
                 entries = config.get('mcpServers', config)
                 if not isinstance(entries, dict) or any(not isinstance(v, dict) for v in entries.values()):
                     raise ValueError('invalid MCP config')
+                if len(entries) != 1:
+                    raise ValueError('one server per registry check')
+                [name] = entries
+                if not NAME.fullmatch(name) or name in STORAGE:
+                    raise ValueError('server name collides with registry storage')
                 key = hashlib.sha256(str(target).encode()).hexdigest()
                 snapshots = base / 'snapshots' / key
                 if snapshots.resolve() != snapshots:
@@ -105,14 +114,12 @@ def mcp(servers, *, root=None):
                 if snapshots.exists():
                     shutil.copytree(snapshots, saved)
                 snapshots.mkdir(parents=True, exist_ok=True)
-                output = Path(tempfile.mkdtemp(prefix='report-', dir=base))
-                measured['reports'].append(str((output / 'registry-watch-report.json').relative_to(root)))
                 process = subprocess.run(['ziran', 'watch-registry', '--from-claude-config', str(target),
-                    '--snapshot-dir', str(snapshots), '--out', str(output), '--format', 'json'],
+                    '--snapshot-dir', str(snapshots), '--out', str(run), '--format', 'json'],
                     timeout=timeout, capture_output=True, text=True)
                 if process.returncode not in (0, 1, 2):
                     raise ValueError(f'command exited {process.returncode}')
-                data = json.loads((output / 'registry-watch-report.json').read_text(encoding='utf-8'))
+                data = json.loads((run / 'registry-watch-report.json').read_text(encoding='utf-8'))
                 findings = _mcp_report(data)
                 measured['findings'].extend(findings)
                 high = any(row['severity'] in ('critical', 'high') for row in findings)
@@ -122,6 +129,15 @@ def mcp(servers, *, root=None):
                 if process.returncode == 2:
                     reasons.append('watch-registry: unmeasured: registry check incomplete (exit 2)')
                     _rollback(snapshots, saved)
+                    continue
+                folder = base / name
+                if folder.resolve() != folder:
+                    raise ValueError('registry reports must not use symlinks')
+                folder.mkdir(exist_ok=True)
+                final = folder / (digest(data) + '.json')
+                if not final.exists():
+                    os.replace(run / 'registry-watch-report.json', final)
+                measured['reports'].append(str(final.relative_to(root)))
             except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
                 code = 2
                 reasons.append(_unmeasured('watch-registry', exc).reason)
@@ -129,6 +145,7 @@ def mcp(servers, *, root=None):
                     _rollback(snapshots, saved)
             finally:
                 shutil.rmtree(saved.parent, ignore_errors=True)
+                shutil.rmtree(run, ignore_errors=True)
         return Result(code, measured, '; '.join(reasons))
     except (OSError, ValueError, TypeError, subprocess.SubprocessError) as exc:
         return _unmeasured('watch-registry', exc)

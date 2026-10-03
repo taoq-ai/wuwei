@@ -925,3 +925,9 @@ def test_unreadable_external_record_fails_closed(ws, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
     with pytest.raises(ValueError):
         decision.waits(ws)
+
+
+def test_set_outcome_rewrites_first_outcome():
+    from wuwei import decision
+    text = 'Question: Q?\n## Outcome: pending\nNotes: kept\nOutcome: pending\n'
+    assert decision.set_outcome(text, 'proceed') == 'Question: Q?\n## Outcome: proceed\nNotes: kept\nOutcome: pending\n'
