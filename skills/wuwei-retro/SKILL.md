@@ -5,7 +5,7 @@ description: Compile the steward retro, promote supported charter learnings, and
 
 # /wuwei retro
 
-Run inside a WUWEI workspace using the executable recorded in `.wuwei/executable`. Never invoke Python without `-P`.
+Run `wuwei next` first and follow the step it names; run the steps below when it names this skill or the owner asked for it. Run inside a WUWEI workspace using the executable recorded in `.wuwei/executable`. Never invoke Python without `-P`.
 
 1. Run `wuwei close` first if it has not run today. It runs the close steward review once and prints `steward_launch`; launch that steward with Agent exactly as returned. It then refuses until the retro exists. Do not run `wuwei steward run --trigger close` yourself: a second close review the same day writes no brief and says so. Read captured role notes, verdicts, events and the steward metrics.
 2. Run `wuwei retro`. Review the per-role table, cycle table and generated proposals. A `Change: Hard rule: ...` note becomes a pending owner decision record. Do not edit a guard or hard rule from the retro.

@@ -98,8 +98,10 @@ def run(args):
         enforced = posture(payload, refusals, root)
     reasons = [f'{message}\n{line}' if line else message for _, message, line in enforced]
     if args.event == 'SessionStart' and (context or reasons):
+        from wuwei.commands.next import HEADER  # Not guards: hook tests replace their __path__.
+        parts = sorted(context + reasons, key=lambda text: not text.startswith(HEADER))
         print(json.dumps({'hookSpecificOutput': {
-            'hookEventName': args.event, 'additionalContext': '\n'.join(context + reasons)}}))
+            'hookEventName': args.event, 'additionalContext': '\n'.join(parts)}}))
         if reasons:
             print('\n'.join(reasons), file=sys.stderr)
         return CLEAN

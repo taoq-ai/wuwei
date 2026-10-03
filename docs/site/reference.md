@@ -40,6 +40,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei memory` | Checks workspace memory. | [Concepts](concepts.html#memory) |
 | `bin/wuwei merge` | Checks or merges an eligible PR. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei metrics` | Shows the recorded process metrics. | [Long sessions](daily.html#long-sessions) |
+| `bin/wuwei next` | Prints where the day stands and the one next step with its command; `--json` prints `{state, step, command}`. | [What the session knows](agent.html) |
 | `bin/wuwei note` | Manages workspace notes. | [Concepts](concepts.html#memory) |
 | `bin/wuwei nudges` | Lists open nudges and pages. | [Watch state](#watch-state) |
 | `bin/wuwei outbound` | Inspects the outbound approval policy. | [Outbound tiers](configuration.html#outward-text-and-outbound-tiers) |
