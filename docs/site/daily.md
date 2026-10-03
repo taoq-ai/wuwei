@@ -342,7 +342,7 @@ Set them with `bin/wuwei config set` in a host terminal, for example
 `bin/wuwei config set owner.timezone '"Europe/Lisbon"'`,
 `bin/wuwei config set metrics.band_margin 0.3` or
 `bin/wuwei config set sessions.rotate_after.turns 200`. Each shows a diff and applies it
-after its digest ([configuration](configuration.md)).
+after its [digest](concepts.md#digest) ([configuration](configuration.md)).
 
 ## 6. Close
 
