@@ -11,6 +11,10 @@ daily use: reach for it when evidence and state disagree, a seat is lost, or the
 installation changed. Before a release, the [release rehearsal](rehearsal.html) drives a
 real day; its failures point back here.
 
+Start with `bin/wuwei doctor`: it names each problem with its fix, and
+`bin/wuwei doctor --fix` applies the deterministic ones after one confirmation. See
+[doctor](reference.html#doctor).
+
 ## state transition
 
 `bin/wuwei state transition <item> <phase>` moves an item's phase by hand. It is recovery,

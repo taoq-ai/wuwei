@@ -24,6 +24,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei decision` | Checks and routes decision records; `outcome` records the owner's answer. | [Decision record](#decision-record) |
 | `bin/wuwei discover` | Discovers candidate work. | [Goals and discovery](configuration.html#goals-and-discovery) |
 | `bin/wuwei dispatch` | Decides planner gate and discovery work; `dispatch opinion <item>` runs the second-opinion gate. | [Review tiers](concepts.html#review-tiers) |
+| `bin/wuwei doctor` | Finds install, host, workspace, gate, day and guard problems and prints each fix; `--fix` applies the allow-listed ones after one host confirmation. | [Doctor](#doctor) |
 | `bin/wuwei drafts` | Lists outward drafts awaiting owner approval. | [Outward draft queue](#outward-draft-queue) |
 | `bin/wuwei event` | Plumbing: appends a timestamped day event. | |
 | `bin/wuwei fast-checks` | Runs and records the configured fast checks. | [Seat briefs](#seat-briefs-and-the-build-loop) |
@@ -183,6 +184,48 @@ Each probe is `ok`, `failed` or `unmeasured` with its value. The `heartbeat: clo
 - A probe that was ok in the previous heartbeat and failed now is `behaviour drift`: the record lists it under `drift`, the watch log prints `heartbeat: behaviour drift: <probe>`, and the page reason starts `behaviour drift: `.
 
 Dead-man ping: set `watch.ping_url` to the https check URL of a hosted cron monitor such as Healthchecks.io or Cronitor. Each heartbeat whose health is ok sends one GET to it (5 s timeout); any failed or unmeasured probe withholds it, so the monitor alerts your phone when the host stops or stops behaving. The record says `sent`, `withheld`, `failed` or `off`. A failed ping is logged as `heartbeat ping failed: <host>: <error>` and never stops the watch. Keep the URL private: it is never written to logs, events or state.
+
+## Doctor
+
+`bin/wuwei doctor` runs the checks WUWEI already has in one pass and prints a row per check
+in six sections: Install (plugin, integrity, `.in_use` markers, hooks, launcher, Python),
+Host (`gh`, git identity, ZIRAN, Claude Code, Codex, free memory, service manager),
+Workspace (config, template drift, each repository's path, branch, identity and
+`fast_checks`, calibration, interview, profiles, shadow days), Gates and adapters
+(`config check`, the MCP gate and each server in today's registry record), Day and sessions
+(state, planner, watch, listener, heartbeat, open pages, nudges) and Guards (the heartbeat
+hook probes, plus `hook PreToolUse` from a directory outside any workspace, which must
+allow). It works before there is a workspace: the Workspace section then names where to run
+`bin/wuwei init --shadow`.
+
+Each row is `ok`, `warn`, `fail` or `unmeasured` with its value; every row that is not ok
+prints `fix:` with the exact command or edit and `docs:` with the page. A row that does not
+apply (the listener with `adapters.inbound = "none"`) is ok with the reason. Exit 1 when any
+row is warn or fail, else 2 when any is unmeasured, else 0. Without `--fix` it writes nothing
+and makes no network call beyond the `gh` reads `config check` makes. `--json` prints
+`{"exit", "rows"}` with one object per row (`section`, `name`, `status`, `value`, and `fix`,
+`apply`, `docs`, `detail` when set).
+
+`bin/wuwei doctor --fix` applies only this allow list:
+
+| Fix | Command | When |
+| --- | --- | --- |
+| `integrity-reconfirm` | `wuwei integrity reconfirm` | a development checkout asks for reconfirmation |
+| `init-upgrade` | `wuwei init --upgrade` | template drift, or `repos = []` above `[[repos]]` tables |
+| `config-promote` | `wuwei config promote` | a repository has an empty `fast_checks` (held when it would also apply interview answers or a profile) |
+| `calibrate` | `wuwei calibrate` | calibration drift was flagged today |
+| `watch-install` | `wuwei watch install` | the watch is not installed |
+| `listen-install` | `wuwei listen install` | an inbound source is set and the listener is not installed |
+
+It previews every fix first (the command's own dry run, or the digest its own confirmation
+would ask for), prints them as one batch, and asks for one digest on `/dev/tty`. Without a
+terminal it exits 2 and applies nothing; a wrong digest applies nothing and exits 1. Each fix
+is then applied bound to what its preview showed: a plan or digest that changed since the
+preview is refused and reported, and the other fixes still run. Every applied fix appends one
+`doctor.fixed` event `{fix, exit}`, then doctor diagnoses again and exits with that result.
+Decisions stay printed under `Not applied`: `mcp decide`, `guards.mode`, `state recover`,
+repository identity and anything that touches the code host. `--fix` and `--json` together
+are a usage error.
 
 ## Sessions
 

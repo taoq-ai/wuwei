@@ -22,7 +22,8 @@ SILENT = ('item.progress', 'remote.acknowledged', 'state.write', 'state.set', 's
           'gate.received', 'gate.tiered', 'discovery.requested', 'discovery.intake',
           'plan.added', 'steward.run', 'steward.acknowledged', 'plan.approved', 'state.import',
           'build.started', 'build.launched', 'build.checked', 'verdict.rejected',
-          'inbox.redacted', 'shepherd.dispatched', 'pr.notified', 'negotiation.notified')
+          'inbox.redacted', 'shepherd.dispatched', 'pr.notified', 'negotiation.notified',
+          'doctor.fixed')
 
 
 def classify(event, state):
