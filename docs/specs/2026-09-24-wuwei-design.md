@@ -174,7 +174,7 @@ WUWEI is built as ports and adapters (hexagonal).
 | PreToolUse | `gh pr merge` | the merge policy (4.6) does not clear this PR at this head |
 | PreToolUse | `gh pr review --approve`, `--admin`, protection changes | always |
 | PreToolUse | any deploy action (4.7) | always |
-| PreToolUse | chat or tracker adapter call | outward-text lint fails; a technical claim, disagreement or scope statement without an approved draft |
+| PreToolUse | chat, tracker or docs (5.12) adapter call | outward-text lint fails; a technical claim, disagreement or scope statement without an approved draft |
 | PreToolUse | Write or Edit on `state.json`, `events.jsonl` | always; state changes go through the CLI |
 | PreToolUse | Write, Edit, MultiEdit or NotebookEdit in an item worktree, outside the spec engine's directories | under spec mode, a step of the configured engine before implementation is not done for the item (5.10) |
 | PreToolUse | top-level `cd` out of the workspace | always; use `git -C` or a subshell |
@@ -1100,6 +1100,124 @@ how many arrive: a sender rotating IP addresses can still fill the daily cap, wh
 no more of the bot token than the cap and delays real weeks to a later run. A process
 running as the owner can forge `.wuwei/metrics/` (9.1); the payload rules bound what such a
 forgery can carry out to numbers in the schema.
+### 5.12 Documentation system (owner, 2026-10-03, #418)
+
+Where the team's documentation lives, whether an item changed it, and pages written from
+the records. With `docs.system = "none"` nothing in this section applies.
+
+Configuration, `[docs]` in `config.toml`:
+
+- `system`: `notion`, `confluence`, `markdown` (pages as files in the item's repository) or
+  `none`. The schema default is `none`, so a workspace that never chose one is unchanged;
+  setup and the interview recommend `notion` unless the repositories' links point
+  elsewhere. The value selects the `docs` port's adapter (section 8); the config check
+  refuses a name with no adapter under `adapters/docs/`.
+- `required_tiers` (default `["standard", "full"]`): the gate tiers, named as
+  `repos.gates.floor` names them, whose items carry the docs obligation. `light` items are
+  exempt by default.
+- `space`: the parent page for `notion` and `confluence`, as its id or its link; for
+  `confluence` it is the `https` link, which also names the site. `root` (default `docs`):
+  the directory, relative to the item's repository, for `markdown`.
+- `publish` (default `["report", "retro"]`): what the day writes there besides item pages.
+- `auto` (default `[]`): the write kinds (`page`, `report`, `retro`) written without
+  approval; every other write is a draft (4.9).
+- `strict_close` (default `true`): the day close refuses an unmet obligation; `false`
+  lists it in the report instead.
+
+The docs obligation. An item whose recorded gate tier (written when `dispatch next` tiers
+it) is in `required_tiers` carries one `docs` value, set by `wuwei plan set <item>
+docs=<value>` or by `wuwei docs page <item>`:
+
+- `<page>`: the page it updated, as a page id or link, or for `markdown` a path under
+  `root`; `plan set` reads it through the port and refuses a page that does not exist;
+- `new`: a new page under `space`, written from the record after the merge. Under
+  `markdown`, `plan set` refuses `new`; the builder runs `wuwei docs page <item>` before
+  the gate, which records the path;
+- `none, <reason>`: the item changes no documentation; the one-line reason appears in the
+  report.
+
+The builder sets the value before it stands down; the planner may set it. The value is the
+item's own declaration, never an owner approval: the quality gate reviews it and the report
+shows it. An item tiered outside `required_tiers` has no obligation and gets one
+`docs.exempt` event when it is tiered.
+
+Checks, at two points:
+
+- Before the gate verdict. The quality brief carries the obligation and the recorded
+  value. The quality sentinel checks the value against the diff under the `DOC` class: a
+  missing value, or `none` for a change to documented behaviour (a command, a config key,
+  an interface, user-visible output), is a blocking finding naming `plan set <item>
+  docs=...`. `wuwei dispatch receive` refuses a quality `PASS` while the value is missing,
+  so a missing value cannot pass the gate.
+- At close. `wuwei close` refuses while an item merged today in a required tier has no
+  value; has `new` or a `notion` or `confluence` page with no `docs.written` event for it
+  since its merge; has its docs draft still pending; or, under `markdown`, names a path its
+  merged PR did not change. Each line names its command: `plan set <item> docs=...`,
+  `wuwei docs page <item>` or `wuwei drafts approve <id>`. With `strict_close = false`
+  these are report lines and close does not refuse. A carried or parked item keeps its
+  obligation for the day it merges.
+
+Writes. `wuwei docs page <item>` renders the item's page from its records: the title (the
+item id and the first line of its scope), what changed (the scope and the PR title), why
+(the outcome of the goal it serves and the item's evidence), how to use it (the PR body's
+`How to use` section when it has one), and links to the PR and the ticket (5.11) when they
+exist. For `new` it creates the page under `space` and records the new page as the item's
+value; for a page it appends a dated section, so edits made by people stay. Under
+`markdown` it writes `<root>/<item>.md`, or the recorded path, in the item's worktree
+before the gate; the builder commits it and it goes out with the item's PR.
+`wuwei docs publish report|retro` writes the day's page once per kind per day, a second
+call naming the first: the report page holds the report's Merged, Parked, Decisions
+answered, Carry and Docs sections under `Report <date>`; the retro page holds the retro's
+Applied and Proposed sections under `Retro <date>`. `wuwei report` and `wuwei retro` publish
+their page when `publish` lists it. Under `markdown`, `publish` has no effect: there is no
+pull request to carry the day's pages.
+
+Approval and content. Every write to `notion` or `confluence` goes through the docs port
+under the outward policy (4.3, 4.9): a kind listed in `auto` is written at once, any other
+becomes a draft in the queue the owner approves, edits or drops, and the lint and the
+sensitive-topic rules apply to both. Every docs write, `markdown` included, first goes
+through the humanizer pass (`[outward] humanize`, default true, #420). A `markdown` write is a file in the item's worktree
+that leaves through the item's PR and its gates, so it is never a draft. A rendered page
+holds no raw record (state, events, verdicts, decision files), no absolute path and no
+credential; the renderer refuses rather than strips. Every write is one `docs.written`
+event (item, kind, adapter, page, draft id when it came from one); `docs.written` and
+`docs.exempt` are written only by the CLI. Seats write documentation only through `wuwei
+docs`: the default `outward.tool_patterns` add the Notion and Atlassian MCP write tools
+under channel `docs`, so a direct MCP write meets the same policy.
+
+Adapters. The `docs` port has two operations: `read(ref)` returns the page's id, title,
+link and last update; `write(draft)` creates a page under `draft.parent` when `draft.ref`
+is empty, otherwise appends to `draft.ref`, from `kind`, `item`, `title` and a Markdown
+`body`, and returns the page's id and link.
+
+- `notion`: REST, pages and blocks: read a page, create a page with the body as blocks,
+  append blocks to a page. Credential `NOTION_TOKEN`.
+- `confluence`: REST, pages: read a page with its version, create a page in the parent's
+  space, append by updating the page with the next version number and the body in storage
+  format. Credentials `CONFLUENCE_EMAIL` and `CONFLUENCE_API_TOKEN`; the site comes from
+  `space`.
+- `markdown`: files under `root` in the item's worktree, written atomically; no
+  credentials and no network.
+- `none`: records that it did nothing.
+
+Credentials are named in `.wuwei/env` and kept out of seat environments. Each adapter
+passes the docs port contract test with recorded fixtures; no test reaches the network.
+
+Setup, interview and doctor. The interview asks "Where does your documentation live?" with
+Notion, Confluence, Markdown and None, or a page link as free text that sets `system` and
+`space` together. Setup reads each configured repository's README and CONTRIBUTING for
+documentation links (`notion.so` or `notion.site` for `notion`, `atlassian.net/wiki` for
+`confluence`, with the linked page as `space`) and offers the system it found first; with
+none found Notion leads. `doctor` adds a docs row: `not used` under `none`; under `notion`
+or `confluence`, a fail when `space` is empty, a credential is missing, or `read(space)`
+could not run or found no page; under `markdown`, a fail when `root` is not a directory in
+a configured repository; each fail names the fix; a warn when `publish` is set under
+`markdown`.
+
+Owner-facing: a `[docs]` section in configuration.md, glossary entries for the docs system
+and the docs obligation, one paragraph in daily.md, and reference rows for `wuwei docs
+page`, `wuwei docs publish` and `plan set <item> docs=`. The board and `wuwei next` show
+an item's unmet obligation.
 
 ## 6. Memory
 
@@ -1243,6 +1361,7 @@ that it did nothing and returns exit 2 where a measurement was expected.
 |---|---|---|
 | tracker | `claim(item)`, `transition(item, state)`, `create(draft)`, `history(item)` | Linear |
 | chat | `post(channel, text, thread)`, `dm(text)` | Slack |
+| docs (5.12) | `read(ref)`, `write(draft)` | Notion (recommended), Confluence, repository Markdown |
 | review_bot | `score(pr)`, `open_findings(pr)` | Greptile |
 | runtime | `dispatch(role, brief_path, worktree, write)`, `status(job)`, `result(job)` (includes usage: tokens, cost, model, duration) | Claude (default), Codex |
 | scanner | `audit(path)`, `gate(result, threshold)`, `traces(file)`, `mcp(servers)` | ZIRAN |
