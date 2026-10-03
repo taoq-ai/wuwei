@@ -126,6 +126,8 @@ each shows a diff and applies it after its digest. See [configuration](docs/site
 
 Run `/wuwei plan` to start the planner and morning gate. See [concepts](docs/site/concepts.md) for roles, guards and the day flow.
 
+Every Claude Code session in the workspace orients itself on start: what WUWEI is, where the day stands and the next step from `bin/wuwei next` ([what the session knows](docs/site/agent.md)).
+
 ## Limits
 
 - WUWEI needs Claude Code. Codex can run seats as an optional runtime.

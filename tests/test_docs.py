@@ -716,3 +716,20 @@ def test_security_posture_table_matches_the_code():
     for phrase in ('Under `observe` and `guarded` (the default) every finding warns',
                    'never starts an unapproved project server', '`uvx`, `npx` or `pipx run`'):
         assert phrase in ziran, phrase
+
+
+def test_agent_guide_ships_and_is_linked():
+    page = (SITE / 'agent.md').read_text()
+    assert page.startswith('---\nlayout: default\n---\n') and len(page.splitlines()) <= 100
+    for phrase in ('wuwei next', '/wuwei:wuwei-plan', '/wuwei:wuwei-report', '.wuwei/executable',
+                   '-P', 'host terminal', 'posture:', 'planner', 'lead', 'builder', 'sentinel',
+                   'shepherd', 'steward'):
+        assert phrase in page, phrase
+    assert '\N{EM DASH}' not in page and not any(ord(c) >= 0x1F000 for c in page)
+    for name in ('index.md', 'daily.md'):
+        assert '(agent.html)' in (SITE / name).read_text(), name
+    readme = (ROOT / 'README.md').read_text()
+    assert 'orients itself' in readme.split('\n## Quick start\n', 1)[1].split('\n## ', 1)[0]
+    for skill in sorted(ROOT.glob('skills/*/SKILL.md')):
+        body = skill.read_text().split('\n# ', 1)[1].split('\n\n', 2)[1]
+        assert '`wuwei next`' in body, skill.parent.name

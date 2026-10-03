@@ -5,12 +5,6 @@ from pathlib import Path
 from wuwei import memory, sessions, state, watch, workspace
 from wuwei.guards import Guard
 
-SHADOW_LINE = ('Observe posture is on: guards record what they would refuse and let the call '
-               'through. Records (state, events, config, verdicts, decisions) and owner-only actions '
-               '(deploys, merges, approvals, approve-tier messages) still refuse. bin/wuwei shadow '
-               'report lists the would-be refusals.')
-
-
 def scoped(payload):
     cwd = Path(payload['cwd'])
     if not cwd.is_absolute():
@@ -36,9 +30,13 @@ def session_start(payload):
         root, config = context
     except watch.ERRORS as exc:
         return 2, f'session unmeasured: {exc}'
+    from wuwei.commands import next as next_command
     code, lines = 0, []
-    if workspace.posture(config)[0] == 'observe':
-        lines.append(SHADOW_LINE)
+    try:
+        row = next_command.step(root)
+    except watch.ERRORS as exc:
+        code, row = 2, {'state': 'unmeasured', 'step': str(exc), 'command': 'wuwei doctor'}
+    lines.append(next_command.orientation(row, workspace.posture(config)[0]))
     try:
         if isinstance(payload.get('session_id'), str) and payload['session_id'].strip():
             sessions.export(payload['session_id'])
