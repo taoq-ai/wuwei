@@ -41,35 +41,81 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for re
 Designed, not built: cruise mode, graduated autonomy per decision class
 ([design spec](docs/specs/2026-09-24-wuwei-design.md), section 5.8.1).
 
-## How WUWEI compares
+## How it works
 
-As of October 2026. Each other tool is described from its own README or docs. These
-projects change often, so follow the links. WUWEI keeps its process in hooks that refuse at
-the moment of action, since a model can skip a process written only as prompts. It runs
-alongside the tools below.
+You start the morning with `/wuwei:wuwei-plan`. The planner [seat](docs/site/concepts.md#seat) ranks
+the work against your goals, and one Ask card asks you to approve today's plan ([daily path](docs/site/daily.md)).
 
-| Tool | Who plans the day | Who reviews the work | What stops a bad merge | What is learned afterwards | Where it runs |
-|---|---|---|---|---|---|
-| **WUWEI**, chartered roles that run a working day | A planner [seat](docs/site/concepts.md#seat) ranks the work and you approve it at the morning gate | One or three gates that did not write the change, then one fix round | Shipped hooks refuse at the moment of action; the merge policy and your branch protection decide | A daily retro: seats propose rule changes and you promote them | Claude Code, across your repositories, through `gh` |
-| [Spec Kit](https://github.com/github/spec-kit), a spec-driven development toolkit | You run specify, plan and tasks per feature, after a project constitution | Converge adds checklists and consistency analysis when you want them | Your repository rules | Specs and the constitution in the repository | Many coding agents through integrations |
-| [OpenSpec](https://github.com/Fission-AI/OpenSpec), spec-driven development for AI coding assistants | You propose a change and the agent writes its specs, design and tasks | An optional verify step | Your repository rules | Archiving a change updates the specs | 30+ coding tools |
-| [superpowers](https://github.com/obra/superpowers), composable skills loaded by a session-start hook | Brainstorming, then a plan of small tasks | Each task is reviewed for spec compliance, then code quality | Finishing a branch verifies tests, then you choose merge or PR | Plans and code in the repository | Claude Code, Codex, Cursor, Gemini CLI and others |
-| [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD), agile AI-driven development with agent personas | Analyst, product manager and architect agents write the brief, PRD and architecture | A code review skill with several independent reviewers | Your repository rules | A retrospective reviews each finished epic, and the loop goes back to planning | Coding tools that support skills; Claude Code and Codex plugins |
-| [Kiro](https://kiro.dev), an agentic IDE, CLI and web app by AWS | Specs with requirements, design and tasks | Your own review | Hooks you write; a PreToolUse hook can block a tool call | Steering files you write | Kiro IDE, CLI and web |
-| [Claude Code](https://code.claude.com/docs/en/overview) plan mode, subagents, hooks, memory | Plan mode proposes a plan before any edit | Subagents you define; automatic review on pull requests | Hooks you write; a PreToolUse hook can deny a tool call | `CLAUDE.md` and auto memory | Terminal, IDE, desktop app and web |
+Then you get on with your own work. A builder writes each change in its own worktree, tests
+first, and reviewers that did not write it check it. A [shepherd](docs/site/concepts.md#shepherd)
+follows each pull request to merge, and the status line shows you where the day stands.
 
-WUWEI's roles are the planner, lead, builder, [shepherd](docs/site/concepts.md#shepherd), [steward](docs/site/concepts.md#steward) and four
-[sentinels](docs/site/concepts.md#sentinel) ([concepts](docs/site/concepts.md)). It works through `gh` for the code host, with tracker
-and chat as optional adapters. Releases include a signed manifest and an integrity check, and
-ZIRAN audits the role tool grants ([security](docs/site/security.md)).
+When a seat needs you, the question arrives as a decision with a recommendation, in the
+session or as a DM on your phone. You answer it, and the day goes on without you watching.
 
-### How they compose
+In the evening you close the day. `/wuwei:wuwei-report` runs the retro, and the
+[steward](docs/site/concepts.md#steward) proposes rule changes that you promote or drop. All
+day the hooks make the safe path the default one, so you have nothing special to remember.
 
-An item's spec can be written with Spec Kit or OpenSpec (this repository builds WUWEI with
-Spec Kit, see `specs/`), and a seat can run superpowers' skills inside its worktree. Claude
-Code's hooks, subagents, skills and plugins are what WUWEI is made of.
+## The basic workflow
 
-## Install
+1. **Setup and calibration**: `bin/wuwei setup` in a [host terminal](docs/site/concepts.md#host-terminal) calibrates your repositories and leaves `.wuwei/` with its config.
+2. **Plan and the morning gate**: `/wuwei:wuwei-plan` ranks the work; your answer leaves the approved plan.
+3. **Build**: an approved item starts a builder in its own worktree; it leaves a branch with tests written first and green fast checks. Specification mode, where hooks hold each spec-kit step, is designed, not built ([design spec](docs/specs/2026-09-24-wuwei-design.md), section 5.10).
+4. **Review by tier**: a finished change gets one gate or three by its tier, then one fix round; it leaves verdicts.
+5. **Shepherd to merge**: a raised pull request merges when your merge policy and branch protection allow it; the shepherd records the outcome.
+6. **Close and retro**: at the end of the day, `/wuwei:wuwei-report` or `/wuwei:wuwei-retro` leaves the report and the rule proposals.
+7. **Memory into tomorrow**: proposals you promote and `/wuwei:wuwei-consolidate` update memory, and [carried](docs/site/concepts.md#carry) items open the next plan.
+
+The hooks hold every step at the moment of action, and warn or block by the posture you configured ([concepts](docs/site/concepts.md)).
+
+## When something goes wrong
+
+- `bin/wuwei why last refusal` names the guard, the rule and the fix for the last refused call.
+- `bin/wuwei doctor --fix` checks the install, host, workspace and day, and applies the deterministic fixes after one confirmation.
+- `bin/wuwei next` prints the next step for the day.
+- `bin/wuwei shadow report` lists what the guards would have refused in the observe posture.
+- The day's records are under `.wuwei/days/<date>/`: state, events and decisions ([recovery](docs/site/recovery.md)).
+
+## What is inside
+
+- Skills: [wuwei-plan](skills/wuwei-plan/SKILL.md), [wuwei-report](skills/wuwei-report/SKILL.md), [wuwei-retro](skills/wuwei-retro/SKILL.md) and [wuwei-consolidate](skills/wuwei-consolidate/SKILL.md).
+- Seats, each with its charter: [planner](charters/planner.md), [lead](charters/lead.md), [builder](charters/builder.md), [shepherd](charters/shepherd.md), [steward](charters/steward.md) and four [sentinels](docs/site/concepts.md#sentinel): [architecture](charters/sentinel-arch.md), [goal](charters/sentinel-goal.md), [quality](charters/sentinel-quality.md) and [security](charters/sentinel-security.md).
+- Guards by hook event: PreToolUse checks a call before it runs (seat launches, commits, pushes, pull requests, merges, state writes); PostToolUse traces each call and lints gate verdicts; SubagentStop checks each seat's retro note; SessionStart prints the memory payload; PreCompact flushes state and events; Stop checks overdue PR actions and, at close, the retro.
+- Adapters by port ([adapters and ports](docs/site/adapters.md)); the [documentation site](docs/site/index.md) covers the rest:
+
+| Port | Shipped |
+|---|---|
+| calendar | ics, none |
+| chat | none, slack |
+| checks | local, none |
+| code_host | github, none |
+| editor | local |
+| host | local, none |
+| inbound | none, slack |
+| integrity | none, ssh |
+| redactor | builtin |
+| review_bot | greptile, none |
+| runtime | claude, codex, none |
+| scanner | none, ziran |
+| tracker | linear, none |
+| transcripts | none |
+| tts | none, say |
+| vcs | git |
+
+Planned: Signal and WhatsApp as owner channels (design spec, section 15).
+
+## Philosophy
+
+- The safe path is the default one, so you never have to remember it.
+- The workflow writes its own records; you answer questions.
+- The hooks are cooperative mistake prevention. Your code host carries the guarantee with protected branches, required checks and reviews ([security](docs/site/security.md)).
+- Each guard area warns or blocks by the posture you choose; records always block, and the default posture blocks publishing and integrity.
+- Evidence over claims: [unmeasured](docs/site/concepts.md#unmeasured) is never a pass. The runtime is Python stdlib only.
+
+## Installation
+
+### Claude Code
 
 You need Claude Code, Python 3.11 or newer, Git and `ssh-keygen`. Install the signed
 `wuwei.tar.gz` release asset. From the project directory that will own the workspace:
@@ -90,6 +136,15 @@ extracted plugin:
 ```
 
 The second command installs `wuwei` from the local `wuwei` marketplace. The plugin does not need a Python package install. Optional adapters need their own tools or credentials. See [integrity](docs/site/integrity.md) for signature verification and key pinning.
+To follow the development source instead, `/plugin marketplace add taoq-ai/wuwei` installs from this repository; see [development installs](#development-installs).
+
+### Codex
+
+Codex runs seats today as an optional runtime: set `adapters.runtime = "codex"` and `codex.command`, or let it repeat one gate of each standard and full item through `gates.second_opinion` ([configuration](docs/site/configuration.md)). A Codex plugin that runs the guards inside Codex sessions is planned; the [Codex spike](docs/specs/2026-09-30-codex-plugin-spike.md) lists what it needs.
+
+### Other harnesses (planned)
+
+More harnesses are tracked in [issue #441](https://github.com/taoq-ai/wuwei/issues/441). A harness is listed as supported only after a measured fixture day runs on it. Candidates include Cursor, Gemini CLI, GitHub Copilot CLI, OpenCode, Kimi Code, Kiro and Antigravity.
 
 ## Quick start
 
@@ -129,6 +184,34 @@ each shows a diff and applies it after its digest. See [configuration](docs/site
 Run `/wuwei plan` to start the planner and morning gate. See [concepts](docs/site/concepts.md) for roles, guards and the day flow.
 
 Every Claude Code session in the workspace orients itself on start: what WUWEI is, where the day stands and the next step from `bin/wuwei next` ([what the session knows](docs/site/agent.md)).
+
+## How WUWEI compares
+
+As of October 2026. Each other tool is described from its own README or docs. These
+projects change often, so follow the links. WUWEI keeps its process in hooks that refuse at
+the moment of action, since a model can skip a process written only as prompts. It runs
+alongside the tools below.
+
+| Tool | Who plans the day | Who reviews the work | What stops a bad merge | What is learned afterwards | Where it runs |
+|---|---|---|---|---|---|
+| **WUWEI**, chartered roles that run a working day | A planner [seat](docs/site/concepts.md#seat) ranks the work and you approve it at the morning gate | One or three gates that did not write the change, then one fix round | Shipped hooks refuse at the moment of action; the merge policy and your branch protection decide | A daily retro: seats propose rule changes and you promote them | Claude Code, across your repositories, through `gh` |
+| [Spec Kit](https://github.com/github/spec-kit), a spec-driven development toolkit | You run specify, plan and tasks per feature, after a project constitution | Converge adds checklists and consistency analysis when you want them | Your repository rules | Specs and the constitution in the repository | Many coding agents through integrations |
+| [OpenSpec](https://github.com/Fission-AI/OpenSpec), spec-driven development for AI coding assistants | You propose a change and the agent writes its specs, design and tasks | An optional verify step | Your repository rules | Archiving a change updates the specs | 30+ coding tools |
+| [superpowers](https://github.com/obra/superpowers), composable skills loaded by a session-start hook | Brainstorming, then a plan of small tasks | Each task is reviewed for spec compliance, then code quality | Finishing a branch verifies tests, then you choose merge or PR | Plans and code in the repository | Claude Code, Codex, Cursor, Gemini CLI and others |
+| [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD), agile AI-driven development with agent personas | Analyst, product manager and architect agents write the brief, PRD and architecture | A code review skill with several independent reviewers | Your repository rules | A retrospective reviews each finished epic, and the loop goes back to planning | Coding tools that support skills; Claude Code and Codex plugins |
+| [Kiro](https://kiro.dev), an agentic IDE, CLI and web app by AWS | Specs with requirements, design and tasks | Your own review | Hooks you write; a PreToolUse hook can block a tool call | Steering files you write | Kiro IDE, CLI and web |
+| [Claude Code](https://code.claude.com/docs/en/overview) plan mode, subagents, hooks, memory | Plan mode proposes a plan before any edit | Subagents you define; automatic review on pull requests | Hooks you write; a PreToolUse hook can deny a tool call | `CLAUDE.md` and auto memory | Terminal, IDE, desktop app and web |
+
+WUWEI's roles are the planner, lead, builder, [shepherd](docs/site/concepts.md#shepherd), [steward](docs/site/concepts.md#steward) and four
+[sentinels](docs/site/concepts.md#sentinel) ([concepts](docs/site/concepts.md)). It works through `gh` for the code host, with tracker
+and chat as optional adapters. Releases include a signed manifest and an integrity check, and
+ZIRAN audits the role tool grants ([security](docs/site/security.md)).
+
+### How they compose
+
+An item's spec can be written with Spec Kit or OpenSpec (this repository builds WUWEI with
+Spec Kit, see `specs/`), and a seat can run superpowers' skills inside its worktree. Claude
+Code's hooks, subagents, skills and plugins are what WUWEI is made of.
 
 ## Limits
 
@@ -192,6 +275,8 @@ WUWEI builds on the work below. [NOTICE](NOTICE) has the licence of each.
 
 - [GitHub Spec Kit](https://github.com/github/spec-kit): the vendored `.specify/` files and
   `speckit-*` skills behind this repository's workflow (MIT).
+- [superpowers](https://github.com/obra/superpowers): the shape of this README's sections
+  (MIT, structure only).
 - [autoharness](https://github.com/tigerless-labs/autoharness): propose then promote, the
   ledger and the adherence lifecycle (MIT, ideas only).
 - [ralph-starter](https://github.com/rubenmarcus/ralph-starter): the builder loop with
