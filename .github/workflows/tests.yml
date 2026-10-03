@@ -31,13 +31,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Audit role grants
-        uses: taoq-ai/ziran@v0.40.0
+        uses: taoq-ai/ziran@v0.41.0
         with:
           command: audit
           path: agents
           baseline: agents/ziran-baseline.json
           severity-threshold: high
-          ziran-version: "ziran==0.40.0"
+          ziran-version: "ziran==0.41.0"
           # SARIF upload needs Code Security (Advanced Security) on this private repo; it is
           # disabled there, so the upload fails after 45 s on every run. Set a path again once enabled.
           sarif-output: ""
