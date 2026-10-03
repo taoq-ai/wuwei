@@ -422,3 +422,25 @@ def test_empty_directory_owes_add_repo(tmp_path, project, host, terminal, monkey
     confirm = Confirm()
     assert run_setup(confirm) == 1
     assert confirm.digests == [] and 'bin/wuwei config add-repo' in capsys.readouterr().out
+
+
+def test_setup_stamps_the_template_version_in_its_proposal(project, host, terminal, capsys):
+    import json
+    from fakes.integrity import seed
+
+    version = json.loads((ROOT / '.claude-plugin/plugin.json').read_text())['version']
+    (project / '.wuwei').mkdir()
+    (project / '.wuwei/config.toml').write_text(TEMPLATE)
+    seed(project)
+    assert run_setup(Confirm(), shadow=False) == 0, capsys.readouterr().err
+    out = capsys.readouterr().out
+    assert f'+template_version = "{version}"' in out
+    assert load_config(project)['template_version'] == version
+    assert integrity.RESTART not in out
+
+
+@pytest.mark.parametrize('answer', [True, False])
+def test_setup_ends_with_the_restart_line(project, host, terminal, capsys, monkeypatch, answer):
+    monkeypatch.setattr(integrity, 'other_versions', lambda: ['0.11.0'])
+    run_setup(Confirm(answer))
+    assert capsys.readouterr().out.splitlines()[-1] == integrity.RESTART

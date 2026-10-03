@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 from datetime import date, datetime
+import difflib
 import os
 from pathlib import Path
 import re
@@ -70,6 +71,7 @@ SCHEMA = {
                              "ci/*", "workflows/*", "deploy/*", "infra/*"]]},
                "identity": {"name": (str, ""), "email": (str, "")}}],
     "cap": (int, 1, 1),
+    "template_version": (str, ""),
     "calibrate": {"fast_check_seconds": (int, 60, 1)},
     "prioritisation": {"framework": (str, "wsjf", ("wsjf", "rice"))},
     "discovery": {"min_queue": (int, 2, 1),
@@ -400,7 +402,9 @@ def _key_line(raw, path):
     return None
 
 
-def _validate(value, schema, path, raw):
+def _validate(value, schema, path, raw, unknown=None):
+    """Validate value against schema; with an unknown list, collect unknown keys there
+    instead of raising (#353)."""
     key = ".".join(map(str, path)) or "config"
     if isinstance(schema, tuple) and schema[1] is None and (
         value is None or isinstance(value, str) and not value.strip()
@@ -414,20 +418,22 @@ def _validate(value, schema, path, raw):
     if isinstance(schema, dict):
         for name in value:
             if name not in schema and "*" not in schema:
-                unknown = (*path, name)
-                line = _key_line(raw, unknown)
+                line = _key_line(raw, (*path, name))
                 location = f" at line {line}" if line is not None else ""
-                raise ConfigError(
-                    f"unknown key {'.'.join(map(str, unknown))}{location}; "
-                    "remove it or use a documented key"
-                )
+                near = difflib.get_close_matches(str(name), list(schema), n=1)
+                hint = (f"did you mean {'.'.join(map(str, (*path, near[0])))}?" if near
+                        else "remove it or use a documented key")
+                text = f"unknown key {'.'.join(map(str, (*path, name)))}{location}; {hint}"
+                if unknown is None:
+                    raise ConfigError(text)
+                unknown.append(text)
         if "*" in schema:
-            return {name: _validate(item, schema['*'], (*path, name), raw)
+            return {name: _validate(item, schema['*'], (*path, name), raw, unknown)
                     for name, item in value.items()}
-        return {name: _validate(value.get(name, _default(rule)), rule, (*path, name), raw)
+        return {name: _validate(value.get(name, _default(rule)), rule, (*path, name), raw, unknown)
                 for name, rule in schema.items()}
     if isinstance(schema, list):
-        return [_validate(item, schema[0], (*path, index), raw)
+        return [_validate(item, schema[0], (*path, index), raw, unknown)
                 for index, item in enumerate(value)]
     if len(schema) > 2:
         constraint = schema[2]
@@ -453,16 +459,25 @@ def _default(schema):
 _CONFIGS = {}
 
 
-def load_config(root=None, *, raw=None):
+def load_config(root=None, *, raw=None, warnings=None):
     """Read .wuwei/config.toml (or validate raw in its place), reject invalid fields, and
-    return fresh defaults."""
+    return fresh defaults. Unknown keys refuse only under strict (#353); otherwise their
+    texts are appended to warnings when it is a list."""
     path = (find_workspace() if root is None else Path(root)) / ".wuwei/config.toml"
     try:
         raw = path.read_text(encoding="utf-8") if raw is None else raw
         if _CONFIGS.get(path, (None,))[0] == raw:
+            if warnings is not None:
+                warnings.extend(f'config.toml: {text}' for text in _CONFIGS[path][2])
             return deepcopy(_CONFIGS[path][1])
         parsed = tomllib.loads(raw)
-        config = _validate(parsed, SCHEMA, (), raw)
+        unknown = []
+        try:
+            config = _validate(parsed, SCHEMA, (), raw, unknown)
+        except ConfigError:
+            if unknown:  # A typo usually explains the error after it, as before #353.
+                raise ConfigError(unknown[0]) from None
+            raise
         for pattern in config['deploy']['deny']:
             program = pattern.split()[0]
             if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]*', program):
@@ -520,7 +535,13 @@ def load_config(root=None, *, raw=None):
                 line = _key_line(raw, ('adapters', kind))
                 location = f' at line {line}' if line is not None else ''
                 raise ConfigError(f'{exc}{location}') from exc
-        _CONFIGS[path] = (raw, config)
+        if unknown and posture(config)[0] == 'strict':
+            from wuwei import integrity  # A newer plugin's keys are unknown to me, not errors.
+            if not integrity.newer_template(config):
+                raise ConfigError(unknown[0])
+        _CONFIGS[path] = (raw, config, tuple(unknown))
+        if warnings is not None:
+            warnings.extend(f'config.toml: {text}' for text in unknown)
         return deepcopy(config)
     except (ConfigError, tomllib.TOMLDecodeError, UnicodeError) as exc:
         hint = ''

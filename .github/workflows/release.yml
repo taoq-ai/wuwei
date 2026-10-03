@@ -60,3 +60,5 @@ jobs:
         with:
           tag_name: ${{ needs.release-please.outputs.tag_name }}
           files: release/wuwei.tar.gz
+          append_body: true
+          body: "Restart Claude Code so only this version's hooks run."

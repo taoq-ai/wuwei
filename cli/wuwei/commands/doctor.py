@@ -107,7 +107,9 @@ def _install(root, config):
                          'review the files named, then wuwei integrity reconfirm; or ' + REINSTALL))
     markers = plugin / integrity.MARKERS
     count = len(list(markers.iterdir())) if markers.is_dir() else 0
-    rows.append(_row('install', 'in_use', 'ok', f'{count} Claude Code process markers (expected)'))
+    notice = integrity.restart(config)
+    rows.append(_row('install', 'in_use', 'warn', notice, integrity.RESTART) if notice else
+                _row('install', 'in_use', 'ok', f'{count} Claude Code process markers (expected)'))
     rows.append(_hooks(root, config))
     launcher = plugin / 'bin/wuwei'
     rows.append(_row('install', 'launcher', 'ok', str(launcher)) if os.access(launcher, os.X_OK) else
@@ -207,13 +209,16 @@ def _host(root, config):
     return rows
 
 
-def _workspace(root, config, error):
+def _workspace(root, config, error, found):
     from wuwei.commands import init
     if root is None:
         return [_row('workspace', 'workspace', 'fail', error or f'no .wuwei/ found from {Path.cwd()}',
                      'wuwei init --shadow in the directory that holds your repositories')]
     rows = [_row('workspace', 'workspace', 'ok', str(root / '.wuwei'))]
-    if config is not None:
+    if config is not None and found:
+        rows.append(_row('workspace', 'config', 'warn', f'loads; {len(found)} unknown keys',
+                         'remove or rename each key named below in .wuwei/config.toml', detail=found))
+    elif config is not None:
         rows.append(_row('workspace', 'config', 'ok', 'loads'))
     elif 'delete that line before using [[repos]] tables' in error:
         rows.append(_row('workspace', 'config', 'fail', error, 'wuwei init --upgrade', apply='init-upgrade'))
@@ -443,15 +448,15 @@ def diagnose():
         root = None
     except ValueError as exc:
         root, error = None, str(exc)
-    config = None
+    config, found = None, []
     if root is not None:
         try:
-            config = workspace.load_config(root)
+            config = workspace.load_config(root, warnings=found)
         except workspace.ConfigError as exc:
             error = str(exc)
     defaults = config or workspace._validate({}, workspace.SCHEMA, (), '')
     probes = heartbeat.measure(root) if root is not None else None
-    rows = [*_install(root, config), *_host(root, defaults), *_workspace(root, config, error)]
+    rows = [*_install(root, config), *_host(root, defaults), *_workspace(root, config, error, found)]
     if root is not None:
         if config is None:
             rows += [_row('gates', 'gates', 'unmeasured', UNLOADED, 'fix config.toml first'),

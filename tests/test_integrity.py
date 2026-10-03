@@ -975,6 +975,23 @@ def test_in_use_markers_do_not_change_measure(tmp_path, monkeypatch):
     assert api.measure(base) == clean
 
 
+def test_in_use_markers_across_an_upgrade(tmp_path, monkeypatch):
+    """#353: two cached versions, each with a live marker, measure clean and name each other."""
+    (tmp_path / 'cache').mkdir()
+    bases, clean = [], []
+    for version, pid in (('0.12.0', '12345'), ('0.13.0', '23456')):
+        api, built = signed(tmp_path / version, monkeypatch)
+        base = built.rename(tmp_path / 'cache' / version)
+        clean.append(api.measure(base))
+        (base / '.in_use').mkdir()
+        (base / '.in_use' / pid).write_text('')
+        bases.append(base)
+    for base, before, other in zip(bases, clean, reversed(bases)):
+        assert before.exit == 0 and api.measure(base) == before
+        monkeypatch.setattr(api, 'PLUGIN', base)
+        assert api.other_versions() == [other.name]
+
+
 @pytest.mark.parametrize('shape, fragment', [
     ('file', 'not a Claude Code process marker: .in_use/evil.py'),
     ('directory', 'not a Claude Code process marker: .in_use/sub'),
