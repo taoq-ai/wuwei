@@ -3,6 +3,7 @@
 import os
 import re
 from pathlib import Path
+import sys
 import unicodedata
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
@@ -23,13 +24,14 @@ REVIEW_REQUEST = (
     r'((?:<@[A-Z0-9]+>(?: |$))+)')
 
 
-# Structural tells from the humanizer skill (MIT, 3.1.0). A hit is a style finding, never a refusal.
+# Structural tells from the humanizer skill (MIT, 3.1.0). A hit is a style finding;
+# outward.humanize_strict turns it into a refusal for outward text (humanize_lint).
 TELLS = (  # pattern strings, compiled on first use by re's cache
     ('not-x-but-y', r"\bnot (?:just|only|merely) [^.\n]{1,80}?\bbut\b|\bit['\u2019]?s not [^.\n]{1,60}?[,;] it['\u2019]?s\b"),
     ('closer', r"\b(?:that is the real win|that distinction matters|read that again|let that sink in|the message was clear)\b"),
     ('run-up', r"\b(?:let['\u2019]?s dive in|let['\u2019]?s break (?:this|it) down|here['\u2019]?s what you need to know|here['\u2019]?s the thing|without further ado)\b"),
     ('saying', r"\b(?:at its core|the real question is|what really matters|the heart of the matter)\b"),
-    ('dash', r"\u2013| -- "),
+    ('dash', r"[\u2013\u2014]| -- "),
     ('inflation', r"\b(?:plays? an? (?:key|crucial|vital) role|evolving landscape|setting the stage for|lasting legacy|the future looks bright)\b"),
     ('sales', r"\b(?:groundbreaking|breathtaking|nestled|renowned|must-visit|stunning|diverse array)\b"),
     ('stock-word', r"\b(?:delv(?:e|es|ed|ing)|tapestry|testament|showcas(?:e|es|ed|ing)|pivotal|meticulous(?:ly)?|intricate|intricacies|vibrant|garner(?:s|ed)?|bolstered|interplay)\b"),
@@ -42,6 +44,37 @@ def tells(text):
     """Names of the tells in text, each kind once, in table order; inline code is not prose."""
     text = re.sub(r'`[^`\n]*`', '', text)
     return [name for name, pattern in TELLS if re.search(pattern, text, re.IGNORECASE)]
+
+
+# Humanize kinds by port or tool channel; a DM is 'dm' whatever the channel.
+KINDS = {'chat': 'review', 'slack': 'review', 'tracker': 'tracker', 'code_host': 'pr', 'docs': 'docs'}
+HUMANIZE = ('rewrite it with the humanizer skill in embedded mode, '
+            'or the checklist in charters/_common-authoring.md')
+
+
+def humanize_lint(inputs, root, config, channels, *, draft=False):
+    """The humanizer pass on outward text: (0, '') off or clean, (1, reason) strict,
+    else warn, record outward.ai_tells and return (0, reason)."""
+    try:
+        texts, _ = _text(inputs)
+        if len(channels) != 1:
+            return UNRUN, 'outward: ambiguous tool channel configuration'
+        kind = 'dm' if inputs.get('is_dm') is True else KINDS.get(next(iter(channels)))
+        rules = config['outward']
+        if not rules['humanize'] or kind not in rules['humanize_kinds']:
+            return CLEAN, ''
+        found = tells('\n'.join(texts))
+        if not found:
+            return CLEAN, ''
+        reason = f"outward: ai tells {', '.join(found)}; {HUMANIZE}"
+        if rules['humanize_strict']:
+            return FINDINGS, reason
+        from wuwei import state
+        state.append_event('outward.ai_tells', {'kind': kind, 'tells': found, 'draft': draft}, root)
+        print(f'warning: {reason}', file=sys.stderr)
+        return CLEAN, reason
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
+        return UNRUN, 'outward: cannot read or validate policy or payload'
 
 
 # ponytail: cross-script confusables remain distinct; add a Unicode confusable table if needed.
@@ -358,13 +391,18 @@ def check_call(inputs, root, config, channels):
     """Shared lint and send policy for MCP hooks and text-bearing adapter ports."""
     from wuwei.guards import profile_result
     result = check_tier(inputs, root, config, channels)
-    if result[0]:
+    draft = result == (FINDINGS, APPROVAL_REQUIRED)
+    if result[0] and not draft:
         return result
     try:
-        return profile_result(check_lint(inputs, root, config, channels),
-                              config['profile'], root, next(iter(channels)))
+        # A draft gets the humanize pass only; the outward lint runs again at approval.
+        lint = (CLEAN, '') if draft else check_lint(inputs, root, config, channels)
+        if not lint[0]:
+            lint = humanize_lint(inputs, root, config, channels, draft=draft)
+        lint = profile_result(lint, config['profile'], root, next(iter(channels)))
     except KeyError:
         return UNRUN, 'outward: cannot read profile'
+    return lint if lint[0] else (result if draft else (CLEAN, ''))
 
 
 def check_tier(inputs, root, config, channels):

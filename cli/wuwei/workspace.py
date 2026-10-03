@@ -154,6 +154,10 @@ SCHEMA = {
         ]],
         "banned_characters": [(str, ""), ["emoji", "\u2014", "\u2015", "\u2e3a", "\u2e3b"]],
         "max_length": {"*": (int, 1, 1)},
+        "humanize": (bool, True),
+        "humanize_kinds": [(str, None, ("dm", "tracker", "docs", "pr", "review")),
+                           ["dm", "tracker", "docs", "pr", "review"]],
+        "humanize_strict": (bool, False),
         "tool_patterns": [{"pattern": (str, None), "channel": (str, None)}, [
             {"pattern": r"mcp__.*slack.*__.*(send|post|reply|schedule|update).*", "channel": "slack"},
             {"pattern": r"mcp__.*linear.*__(save|create|update)_(issue|comment)", "channel": "tracker"},

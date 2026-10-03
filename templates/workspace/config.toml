@@ -153,6 +153,9 @@ deny = [] # Literal executable plus argument glob, for example "make publish*".
 # tool_patterns = [{pattern = 'mcp__custom__send', channel = 'customer'}]
 # Register every outward write tool used by this workspace. Unsupported payload
 # shapes fail closed. See specs/011-outward-lint/contracts/outward.md.
+# humanize = true # AI-tell lint on outward text (charters/_common-authoring.md).
+# humanize_kinds = ["dm", "tracker", "docs", "pr", "review"] # Kinds the lint checks.
+# humanize_strict = false # true refuses a text with a tell instead of warning.
 [outward.max_length]
 # slack = 4000 # Positive maximum length for this channel.
 

@@ -438,3 +438,77 @@ def test_draft_style_finding_is_recorded_and_never_blocks(root, port, monkeypatc
     edit_to(monkeypatch, 'I can deliver this \u2014 tomorrow.')
     assert main(['drafts', 'approve', row['id'], '--edit']) == 1
     assert port[1] == []
+
+
+TELLS = 'I can deliver this tomorrow. This is not just a fix but a rewrite. We delve into it.'
+
+
+def outward_config(root, text):
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text() + f'\n[outward]\n{text}\n')
+
+
+def ai_tells(root):
+    path = workspace.day_dir(root) / 'events.jsonl'
+    rows = [json.loads(line) for line in path.read_text().splitlines()] if path.is_file() else []
+    return [row['payload'] for row in rows if row['kind'] == 'outward.ai_tells']
+
+
+def test_humanize_warns_and_records_on_draft(root, sink, capsys):
+    row = queued(root, TELLS)
+    assert row['style'] == ['not-x-but-y', 'stock-word']
+    assert ai_tells(root) == [{'kind': 'review', 'tells': ['not-x-but-y', 'stock-word'], 'draft': True}]
+    assert 'warning: outward: ai tells' in capsys.readouterr().err
+
+
+def test_humanize_strict_refuses_draft(root, sink):
+    outward_config(root, 'humanize_strict = true')
+    adapter = registry.load('chat', workspace.load_config(root))
+    result = adapter.post('C2', TELLS, None, root=root)
+    assert result.exit == 1
+    assert 'not-x-but-y' in result.reason and 'stock-word' in result.reason
+    assert 'humanizer' in result.reason
+    assert not state.read_state(root).get('drafts')
+    path = workspace.day_dir(root) / 'events.jsonl'
+    assert not path.is_file() or 'draft.created' not in path.read_text()
+    assert ai_tells(root) == [] and sink == []
+
+
+def test_humanize_off_drafts_as_before(root, sink, capsys):
+    outward_config(root, 'humanize = false\nhumanize_strict = true')
+    row = queued(root, TELLS)
+    assert row['style'] == ['not-x-but-y', 'stock-word']
+    assert ai_tells(root) == []
+    assert 'warning: outward: ai tells' not in capsys.readouterr().err
+
+
+def test_humanize_kinds_select_dm(root, sink):
+    outward_config(root, 'humanize_kinds = ["dm"]')
+    queued(root, TELLS)
+    assert ai_tells(root) == []
+    adapter = registry.load('chat', workspace.load_config(root))
+    assert adapter.dm(TELLS, root=root).exit == 1
+    assert [row['kind'] for row in ai_tells(root)] == ['dm']
+
+
+def test_approve_shows_humanize_findings(root, port, monkeypatch, capsys):
+    row = queued(root, TELLS)
+    assert main(['drafts']) == 0
+    assert 'not-x-but-y' in capsys.readouterr().out
+    prompts = []
+    monkeypatch.setattr(integrity, '_host_confirm',
+                        lambda value, **kwargs: prompts.append(kwargs['prompt']) or True)
+    assert main(['drafts', 'approve', row['id']]) == 0
+    assert len(port[1]) == 1
+    prompt, = prompts
+    assert row['destination'] in prompt and TELLS in prompt and 'not-x-but-y, stock-word' in prompt
+
+
+def test_approve_strict_refuses_edited_tells(root, port, monkeypatch, capsys):
+    row = queued(root)
+    outward_config(root, 'humanize_strict = true')
+    edit_to(monkeypatch, 'I can deliver this tomorrow. We delve into it.')
+    assert main(['drafts', 'approve', row['id'], '--edit']) == 1
+    output = capsys.readouterr()
+    assert 'stock-word' in output.out + output.err
+    assert port[1] == []

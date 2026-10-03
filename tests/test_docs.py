@@ -26,7 +26,8 @@ GLOSSARY = (('Seat', r'seats?'), ('Gate', r'gates?'), ('Sentinel', r'sentinels?'
             ('Delta', r'deltas?'), ('Park', r'park(?:s|ed|ing)?'),
             ('Carry', r'carr(?:y|ies|ied|ying)'), ('Nudge', r'nudges?'), ('Page', r'pages?'),
             ('Digest', r'digests?'), ('Unmeasured', r'unmeasured'), ('Mandate', r'mandates?'),
-            ('Trust surface', r'trust surfaces?'), ('Host terminal', r'host terminals?'))
+            ('Trust surface', r'trust surfaces?'), ('Host terminal', r'host terminals?'),
+            ('Humanizer', r'humanizer'))
 
 
 def _prose(text):
@@ -736,6 +737,18 @@ def test_owner_verbosity_and_voice_are_documented():
     assert remote.VOCABULARY in ' '.join(page.split()) and 'more D-n' in page
     concepts = (SITE / 'concepts.md').read_text()
     assert all(word in concepts for word in ('humanizer', '3.1.0', 'MIT', '`ai_tells`', '`style`'))
+
+
+def test_outward_humanize_is_documented():
+    configuration = (SITE / 'configuration.md').read_text()
+    for key in ('humanize', 'humanize_kinds', 'humanize_strict'):
+        assert f'`outward.{key}`' in configuration, key
+    concepts = (SITE / 'concepts.md').read_text()
+    assert '`outward.ai_tells`' in concepts and 'humanize_strict' in concepts
+    assert 'a tell never blocks a send' not in concepts
+    row = next(line for line in (SITE / 'reference.md').read_text().splitlines()
+               if line.startswith('| `bin/wuwei drafts approve <id>` |'))
+    assert 'humanize' in row
 
 
 def test_mandate_waits_and_loops_are_documented():

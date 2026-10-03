@@ -121,7 +121,7 @@ Approve-tier replies through the chat, code-host comment and tracker-create adap
 | Command | Effect |
 | --- | --- |
 | `bin/wuwei drafts` | List today's pending drafts with text, destination, audience and tier reason. |
-| `bin/wuwei drafts approve <id>` | Run security, outward and voice lint, then send the stored text once through its original adapter operation. |
+| `bin/wuwei drafts approve <id>` | Run security, outward, voice and humanize lint (the tells show in the prompt), then send the stored text once through its original adapter operation. |
 | `bin/wuwei drafts approve <id> --edit` | Edit with `EDITOR` (default `vi`), lint the final text, then send it. |
 | `bin/wuwei drafts drop <id>` | Close the draft without sending. |
 

@@ -310,6 +310,9 @@ Two starters ship in `templates/profiles/`, derived from WUWEI's own setup: `pyt
 | `outward.banned_characters` | `emoji`, U+2014, U+2015, U+2E3A, U+2E3B | Setting a list replaces defaults. |
 | `outward.tool_patterns` | Built-in Slack, Linear and GitHub MCP matches | Tool regex plus policy channel; setting a list replaces defaults. |
 | `outward.max_length.slack` | Not set | Example positive maximum for one channel under `[outward.max_length]`. |
+| `outward.humanize` | `true` | Lint outward text for AI tells before it is drafted or sent; `false` turns the lint off. |
+| `outward.humanize_kinds` | `["dm", "tracker", "docs", "pr", "review"]` | Kinds the lint checks: DMs, tracker comments, docs pages, PR comments and PR bodies, and other chat posts such as review pings. |
+| `outward.humanize_strict` | `false` | `true` refuses a text with a tell; `false` warns and records `outward.ai_tells`. |
 | `outbound.work_channels` | `[]` | Internal channel IDs eligible for routine auto-send. |
 | `outbound.external_channels` | `[]` | Shared or client channels; these override work channels. |
 | `outbound.company_domains` | `[]` | Exact internal domain names. |

@@ -265,6 +265,8 @@ def raise_pr(root, repo_name, base, title, body, item):
         if row['gates']:
             body += f'\n\nReview tier: {row["gates"]["tier"]} ({", ".join(dispatch.gate_set(row))})'
         code, reason = outward.lint(title + '\n' + body, 'code_host', config, root=root)
+        if not code:
+            code, reason = outward.humanize_lint({'title': title, 'body': body}, root, config, {'code_host'})
         if code:
             print(reason)
             return code

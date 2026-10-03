@@ -280,6 +280,16 @@ def test_solo_owner_raise_requests_no_reviewer(case, monkeypatch):
     assert not any(name == 'request_reviewers' for name, _, _ in host.calls)
 
 
+def test_raise_humanizes_title_and_body(case, monkeypatch, capsys):
+    from wuwei import shepherd
+    root, host = solo_raise(case, monkeypatch)
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('\n[outward]\nhumanize_strict = true\n')
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'We delve into it.', 'ITEM-1') == 1
+    assert 'stock-word' in capsys.readouterr().out
+    assert not any(name == 'create_pr' for name, _, _ in host.calls)
+
+
 def test_owner_handle_case_differs_from_code_host_login(case, monkeypatch):
     from wuwei import shepherd
     root, host = solo_raise(case, monkeypatch, minimum=1)

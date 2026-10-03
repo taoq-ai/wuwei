@@ -279,6 +279,29 @@ def test_reply_draft_reaches_owner_queue(case, capsys):
     assert 'pr_reply_drafts' not in state.read_state(root)
 
 
+@pytest.mark.parametrize('strict', [True, False])
+def test_reply_draft_is_humanized(case, capsys, strict):
+    root, host, _, _ = linked(case)
+    if strict:
+        with (root / '.wuwei/config.toml').open('a') as stream:
+            stream.write('\n[outward]\nhumanize_strict = true\n')
+    host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
+        'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
+            'body': 'Please explain', 'created_at': workspace.now().isoformat()}]}]
+    assert main(['pr', 'act', REF, '--reply', 'We delve into the race.']) == 1
+    output = capsys.readouterr()
+    assert 'stock-word' in (output.out if strict else output.err)
+    rows = drafts.read(state.read_state(root))
+    events = [json.loads(line) for line in
+              (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+    found = [row['payload'] for row in events if row['kind'] == 'outward.ai_tells']
+    if strict:
+        assert rows == {} and found == []
+    else:
+        assert len(rows) == 1
+        assert found == [{'kind': 'pr', 'tells': ['stock-word'], 'draft': True}]
+
+
 def test_repeated_act_keeps_first_unanswered_thread(case, capsys):
     root, host, _, _ = linked(case)
     host.results['threads'].data['threads'] = [

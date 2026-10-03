@@ -300,6 +300,19 @@ def test_report_counts_merged_items(bare):
         'Report 2026-09-30: merged 1, open 0, parked 0, decisions answered 0.']
 
 
+@pytest.mark.parametrize('level', ['full', 'brief'])
+def test_status_counts_draft_ai_tells_at_full_dm_verbosity(ws, level):
+    from wuwei import registry
+    (ws / '.wuwei/config.toml').write_text(OWNER + f'[owner.verbosity]\ndm = "{level}"\n')
+    chat = registry.load('chat', workspace.load_config(ws))
+    for text in ('This is not just a fix but a rewrite. We delve into it.', 'We delve into it.'):
+        assert chat.post('C2', text, None, root=ws).exit == 1
+    code, sent = handled(ws, 'status')
+    assert code == 0
+    assert sent[0].endswith(' | ai tells 3') == (level == 'full')
+    assert ('ai tells' in sent[0]) == (level == 'full')
+
+
 @pytest.mark.parametrize('text', ['plan today', 'plan today 000000', 'ask what changed'])
 def test_issue_acceptance_plan_without_a_second_factor_starts_nothing(ws, text):
     runtime = Runtime()

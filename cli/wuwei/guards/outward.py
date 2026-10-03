@@ -21,7 +21,14 @@ def check_tier(payload):
 
 
 def check_lint(payload):
-    return _check(payload, outward.check_lint)
+    return _check(payload, _lint)
+
+
+def _lint(inputs, root, config, channels):
+    # ponytail: runs even when check_tier refuses the same call, so a retried write records its
+    # tells twice; pass the tier result between guards if the metric needs exact counts.
+    result = outward.check_lint(inputs, root, config, channels)
+    return result if result[0] else outward.humanize_lint(inputs, root, config, channels)
 
 
 def _check(payload, policy):
