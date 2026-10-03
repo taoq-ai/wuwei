@@ -771,3 +771,158 @@ def test_issue_347_reads_warns_and_writes(workspace, script, expected):
         assert result == (expected[0], WORKSPACE_ROOT)
     else:
         assert result == expected
+
+
+@pytest.mark.parametrize('argv, expected', [
+    (['cat', 'x'], True), (['less', 'x'], True), (['ls', 'd'], True),
+    (['find', 'd', '-name', 'x'], True), (['diff', 'a', 'b'], True),
+    (['sed', '-n', '1,5p', 'x'], True), (['jq', '.', 'x'], True), (['wuwei', 'status'], True),
+    ([], False), (['sed', '-i', 's/a/b/', 'x'], False), (['find', 'd', '-delete'], False),
+    (['awk', '1', 'x'], False), (['python3', 'x.py'], False),
+    (['python3', '-m', 'json.tool', 'x'], True), (['python3', '-m', 'json.tool', 'x', 'y'], False),
+    (['wuwei', 'config', 'set', 'k', 'v'], False),
+])
+def test_issue_349_shared_read_predicate(argv, expected):
+    from wuwei import shell
+    assert shell.reads(argv) is expected
+
+
+def test_issue_349_classify_less_and_redirect_only():
+    from wuwei import shell
+    assert shell.classify('less x').readonly
+    assert shell.classify('for f in a; do cat $f; done > out.txt').readonly is False
+
+
+@pytest.mark.parametrize('argv, expected', [
+    (['python3', '-c', 'x'], True), (['python3', '-Bc', 'x'], True), (['node', '-e', 'x'], True),
+    (['node', '--eval=x'], True), (['perl', '-pe', 'x'], True),
+    (['python3', 'x.py'], False), (['python3', '-m', 'json.tool', 'f'], False),
+    (['python3', '-P', 'x.py'], False), (['cat', '-c'], False), ([], False),
+])
+def test_issue_349_inline_code(argv, expected):
+    from wuwei import shell
+    assert shell.inline_code(argv) is expected
+
+
+DAY_349 = '.wuwei/days/2026-09-28'
+
+
+@pytest.fixture
+def records(workspace):
+    for name, text in [(f'{DAY_349}/decisions/D-1.md', '# D-1\n'), (f'{DAY_349}/events.jsonl', ''),
+                       ('.wuwei/ziran/a/report.json', '{}\n'), ('.wuwei/charters/a.md', 'a\n'),
+                       ('.wuwei/charters/b.md', 'b\n'), ('.wuwei/memory/goals.md', 'goals\n')]:
+        (workspace / name).parent.mkdir(parents=True, exist_ok=True)
+        (workspace / name).write_text(text)
+    (workspace / 'read_reports.py').write_text(
+        'import glob\nfor path in glob.glob(".wuwei/ziran/*/report.json"):\n'
+        '    print(open(path).read())\n')
+    return workspace
+
+
+def _posture(root, name):
+    (root / '.wuwei/config.toml').write_text(f'[security]\nposture = "{name}"\n')
+
+
+def _hook(cwd, tool, monkeypatch, capsys, **tool_input):
+    from wuwei.commands.hook import run
+    data = {**payload(cwd, tool, **tool_input)}
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(data)))
+    code = run(SimpleNamespace(event='PreToolUse'))
+    capsys.readouterr()
+    return code
+
+
+def _events(root):
+    return [line for path in root.glob('.wuwei/days/*/events.jsonl')
+            for line in path.read_text().splitlines()
+            if json.loads(line)['kind'] in ('hook.refusal', 'guard.would_refuse')]
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('where, command', [
+    ('', 'grep posture .wuwei/config.toml'), ('', 'grep -n posture .wuwei/config.toml'),
+    ('', f'cat {DAY_349}/decisions/D-1.md'), ('', 'python3 read_reports.py'),
+    ('', 'python3 -m json.tool .wuwei/ziran/a/report.json'), ('', 'head -5 .wuwei/config.toml'),
+    ('', f'tail -5 {DAY_349}/events.jsonl'), ('', 'sed -n 1,5p .wuwei/config.toml'),
+    ('', 'less .wuwei/config.toml'), ('', f'wc -l {DAY_349}/state.json'),
+    ('', 'jq . .wuwei/ziran/a/report.json'), ('', 'ls .wuwei/ziran'),
+    ('', 'find .wuwei/ziran -name report.json'),
+    ('', 'diff .wuwei/charters/a.md .wuwei/charters/b.md'), ('', 'cat .wuwei/memory/goals.md'),
+    ('.wuwei', 'ls ziran'), ('.wuwei', 'find ziran -name report.json'),
+    ('.wuwei', 'for f in ziran/*/report.json; do cat $f 2>/dev/null; done'),
+])
+def test_issue_349_reads_pass(records, posture, where, command, monkeypatch, capsys):
+    _posture(records, posture)
+    assert _hook(records / where, 'Bash', monkeypatch, capsys, command=command) == 0
+    assert _events(records) == []
+
+
+@pytest.mark.parametrize('tool, field', [('Read', 'file_path'), ('Grep', 'path'), ('Glob', 'path')])
+def test_issue_349_read_tools_pass(records, tool, field, monkeypatch, capsys):
+    _posture(records, 'strict')
+    extra = {'pattern': 'posture'} if tool != 'Read' else {}
+    assert _hook(records, tool, monkeypatch, capsys, **{field: '.wuwei/config.toml'}, **extra) == 0
+    assert _events(records) == []
+
+
+_CONFIG = '.wuwei/config.toml'
+_STATE = f'{DAY_349}/state.json'
+_EVENTS = f'{DAY_349}/events.jsonl'
+_REPORT = '.wuwei/ziran/a/report.json'
+_GOALS = '.wuwei/memory/goals.md'
+
+
+@pytest.mark.parametrize('tool, value, expected', [
+    ('Edit', _CONFIG, 'wuwei config set'), ('Bash', f"sed -i 's/a/b/' {_CONFIG}", 'wuwei config set'),
+    ('Bash', f'echo x | tee {_CONFIG}', 'wuwei config set'),
+    ('Bash', f'echo x > {_CONFIG}', 'wuwei config set'),
+    ('Write', _STATE, 'wuwei state set'), ('Bash', f'echo x >> {_STATE}', 'wuwei state set'),
+    ('Write', _EVENTS, 'wuwei event'), ('Bash', f'echo x >> {_EVENTS}', 'wuwei event'),
+    ('Edit', _REPORT, 'wuwei mcp decide'), ('Bash', f'echo x >> {_REPORT}', 'wuwei mcp decide'),
+    ('Edit', _GOALS, 'wuwei goals edit --file'), ('Bash', f'cp /dev/null {_GOALS}', 'wuwei goals edit --file'),
+    ('Write', '.wuwei/integrity/verdict.json', 'wuwei integrity reconfirm'),
+    ('Write', '.wuwei/charters/a.md', 'use the wuwei CLI'),
+    ('Write', 'credentials', 'use the wuwei CLI'), ('Bash', 'credentials', 'use the wuwei CLI'),
+])
+def test_issue_349_write_reasons(records, tool, value, expected):
+    from wuwei import security
+    from wuwei.guards.protect_state import check_bash, check_file
+    if value == 'credentials':
+        security.initialize(records / '.wuwei', security.DEFAULT_HONEYTOKEN_PATH)
+        value = f'.wuwei/{security.DEFAULT_HONEYTOKEN_PATH}'
+        value = f'echo x > {value}' if tool == 'Bash' else value
+    if tool == 'Bash':
+        code, reason = check_bash(payload(records, 'Bash', command=value))
+    else:
+        code, reason = check_file(payload(records, tool, file_path=value))
+    assert code == 1
+    assert expected in reason
+    assert '\n' not in reason
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_issue_349_writes_refused_in_every_posture(records, posture, monkeypatch, capsys):
+    from wuwei.guards.protect_state import check_bash
+    _posture(records, posture)
+    for tool, value in [('Bash', f"sed -i 's/a/b/' {_CONFIG}"), ('Bash', f'echo x > {_CONFIG}'),
+                        ('Edit', _CONFIG)]:
+        before = len(_events(records))
+        field = {'command': value} if tool == 'Bash' else {'file_path': value}
+        assert _hook(records, tool, monkeypatch, capsys, **field) == 2
+        assert [json.loads(line)['kind'] for line in _events(records)[before:]] == ['hook.refusal']
+    command = f'python3 -c \'open("{_STATE}", "w")\''
+    assert check_bash(payload(records, 'Bash', command=command)) == (
+        2, 'Opaque interpreter; use the wuwei CLI for state changes.')
+    assert check_bash(payload(records, 'Bash', command=f'python3 tool.py > {_CONFIG}'))[0] == 1
+
+
+@pytest.mark.parametrize('posture', ['observe', 'strict'])
+@pytest.mark.parametrize('command', [
+    f'python3 -m json.tool /tmp/x.json {_CONFIG}', f'python3 -m json.tool /tmp/x.json {_STATE}',
+    'python3 -m zipfile -e a.zip .wuwei', 'python3 -m tarfile -e a.tar .wuwei/days',
+    f'python3 w.py {_CONFIG}', f'node w.js {_CONFIG}', f'python3 read_reports.py {_REPORT}',
+])
+def test_issue_349_interpreter_operands_stay_refused(records, posture, command, monkeypatch, capsys):
+    _posture(records, posture)
+    assert _hook(records, 'Bash', monkeypatch, capsys, command=command) == 2
