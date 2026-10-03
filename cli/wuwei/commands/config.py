@@ -266,7 +266,23 @@ def _protection(host, repo, solo, gate):
         return UNRUN
     for name, state, fix in rows:
         print(f'{label}: {name}: {state or f"missing ({fix})"}')
-    return CLEAN if all(state for _, state, _ in rows) else FINDINGS
+    if all(state for _, state, _ in rows):
+        return CLEAN
+    print(f"{label}: fix in https://github.com/{repo['name']}/settings/branches")
+    if not data['classic']:  # Nothing to overwrite: one PUT sets the whole recommended layout.
+        import shlex
+        from urllib.parse import quote
+        contexts = repo['review_required_checks']
+        argv = ['gh', 'api', '-X', 'PUT', f"repos/{repo['name']}/branches/{quote(branch, safe='')}/protection",
+                '-F', 'enforce_admins=false', '-F', 'restrictions=null',
+                '-F', 'allow_force_pushes=false', '-F', 'allow_deletions=false',
+                '-F', 'required_pull_request_reviews=null' if solo else
+                'required_pull_request_reviews[required_approving_review_count]=1',
+                *(['-F', 'required_status_checks[strict]=false',
+                   *(arg for name in contexts for arg in ('-f', f'required_status_checks[contexts][]={name}'))]
+                  if contexts else ['-F', 'required_status_checks=null'])]
+        print(f'{label}: or run in your own terminal: {shlex.join(argv)}')
+    return FINDINGS
 
 
 def _token(host, name):

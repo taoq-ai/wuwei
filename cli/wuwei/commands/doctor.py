@@ -293,7 +293,8 @@ def _workspace(root, config, error, found):
         checks = [command for command in repo['fast_checks'] if command.strip()]
         rows.append(_row('workspace', f'{name} fast_checks', 'ok', ', '.join(checks)) if checks else
                     _row('workspace', f'{name} fast_checks', 'warn', 'empty',
-                         "wuwei config promote (fills it from the calibration; read wuwei calibrate's report first)",
+                         'bin/wuwei config promote --measure (times the test runner once and proposes it when it '
+                         f"is fast), or bin/wuwei config set repos.{index}.fast_checks '[\"<command>\"]'",
                          apply='config-promote'))
     rows += _calibration(root, config)
     return rows

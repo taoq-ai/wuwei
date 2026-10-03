@@ -391,3 +391,20 @@ def test_remote_url_reads_origin(tmp_path):
     subprocess.run(['git', '-C', str(tmp_path), 'remote', 'add', 'origin',
                     'https://github.com/acme/widget.git'], check=True)
     assert adapter().remote_url(tmp_path).data == {'url': 'https://github.com/acme/widget.git'}
+
+
+def test_default_branch_from_git(tmp_path, capsys):
+    def git(*args):
+        subprocess.run(['git', '-C', str(tmp_path), *args], check=True, capture_output=True)
+
+    git('init', '-q', '-b', 'trunk')
+    git('-c', 'user.name=Pat Example', '-c', 'user.email=pat@example.test', 'commit', '-q', '--allow-empty',
+        '-m', 'feat: start')
+    assert adapter().default_branch(tmp_path).data == {'branch': 'trunk', 'source': 'the checked-out branch'}
+    git('update-ref', 'refs/remotes/origin/develop', 'HEAD')
+    git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/develop')
+    assert adapter().default_branch(tmp_path).data == {'branch': 'develop', 'source': 'origin/HEAD'}
+    git('symbolic-ref', '--delete', 'refs/remotes/origin/HEAD')
+    git('checkout', '-q', '--detach')
+    result = adapter().default_branch(tmp_path)
+    assert result.exit == 2 and 'git.default_branch' in result.reason

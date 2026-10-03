@@ -50,8 +50,10 @@ deterministic fixes after one confirmation. When something fails on the first da
 `setup` does the configuration in one pass. It finds the git repositories in the project
 directory (or under `--repos <dir>`), reads each one's GitHub name from its `origin` remote,
 its default branch through `gh` when `gh` is signed in, and its commit identity from its git
-config. It lists the host facts (platform, `claude`, `gh` and `ziran` on PATH, free memory),
-then calibrates and interviews:
+config. When `gh` cannot read the default branch, git answers: `origin/HEAD`, else the
+checked-out branch, and the line says which. A repository with no remote is proposed as
+`<your login>/<directory>`, where `gh repo create` would put it. It lists the host facts
+(platform, `claude`, `gh` and `ziran` on PATH, free memory), then calibrates and interviews:
 
 - the calibration is what `bin/wuwei calibrate` does: it reads each checkout and writes
   `.wuwei/days/<date>/calibration.md` with its checks, CI check names, conventions and deploy
@@ -59,21 +61,28 @@ then calibrates and interviews:
   ([calibration](configuration.html#calibration));
 - the owner interview is what `bin/wuwei calibrate --interview` asks: how much merge autonomy
   you want, your gate floor, quiet and working hours, how decisions reach you, words to avoid,
-  which commands you run by hand, and which tracker, chat and review bot you use
-  ([owner interview](configuration.html#owner-interview)); `config check` then names each
+  which commands you run by hand, which tracker, chat and review bot you use, and who reviews
+  your pull requests (`Owner only` for a solo owner) ([owner interview](configuration.html#owner-interview)); `config check` then names each
   credential variable those adapters need until you set it in `.wuwei/env`;
 - your identity: with `gh` signed in, `owner.handles` gains your code-host login,
   `shepherd.lead_login` defaults to it, and `shepherd.authors` maps your repositories' git
   emails to it and each bot author seen on the last 50 merged pull requests to its `[bot]`
-  login. Values you already set are kept.
+  login, and `owner.name` comes from the repositories' git identity. Values you already set
+  are kept.
+
+A few yes or no questions come with it: turn on ZIRAN scans when `ziran` is installed
+(default no), run your tests once to see whether they are fast enough for every push
+(default yes), add the status line to `.claude/settings.json` (default yes), and install the
+watch service (default no). A closed input answers no.
 
 It shows the `[[repos]]` tables, the calibration and the answers as one `config.toml` diff,
 applies it after you type its digest (the `bin/wuwei config promote` path), runs
-`bin/wuwei config check` and `bin/wuwei mcp check`, and prints what is still owed with the
-exact command for each: a repository it could not measure, a credential variable,
-`owner.name`, `bin/wuwei promote` for the charter proposals, an MCP decision. Run it again
-any time; with nothing new it proposes nothing. For a solo owner then run
-`bin/wuwei config set shepherd.min_reviewers 0`. You do not write goals by hand: the lead
+`bin/wuwei doctor` and `bin/wuwei mcp check`, and ends with one line: `Ready: run
+/wuwei:wuwei-plan`, or `Next:` with the one command still required (a failing install or
+workspace check, a credential variable, an MCP decision). Anything optional, such as
+`bin/wuwei promote` for the charter proposals, a repository it could not measure or the
+other doctor findings, is listed on an `Optional:` line before it. Run it again any time;
+with nothing new it proposes nothing. You do not write goals by hand: the lead
 proposes them at the first morning plan and the planner records the ones you approve. You
 can change them later with
 `bin/wuwei goals edit`. [Configuration](configuration.html) lists every key.

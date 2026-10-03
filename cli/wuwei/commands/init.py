@@ -63,14 +63,7 @@ def run(args):
     if destination.exists() or destination.is_symlink():
         print(f"wuwei init: {destination} already exists; run wuwei init {args.path} --upgrade to update it", file=sys.stderr)
         return FINDINGS
-    settings = destination.parent / '.claude/settings.json'
-    if settings.parent.is_symlink() or settings.is_symlink():
-        raise ValueError('workspace settings must not be symlinks')
-    if destination.parent.resolve() == Path.home().resolve():
-        raise ValueError('workspace settings must not be owner global settings')
-    data = json.loads(settings.read_text()) if settings.exists() else {}
-    if not isinstance(data, dict) or not isinstance(data.get('permissions', {}), dict):
-        raise ValueError('workspace settings and permissions must be objects')
+    settings_path, data = settings(destination.parent)
     permissions = data.setdefault('permissions', {})
     denials = permissions.setdefault('deny', [])
     if not isinstance(denials, list) or not all(isinstance(rule, str) for rule in denials):
@@ -100,14 +93,15 @@ def run(args):
         config.write_text(_stamp(config.read_text(encoding='utf-8')), encoding='utf-8')
         from wuwei import integrity
         integrity.initialize(Path(staging))
-        settings.parent.mkdir(exist_ok=True)
-        workspace.atomic_write(settings, json.dumps(data, indent=2) + '\n')
+        settings_path.parent.mkdir(exist_ok=True)
+        workspace.atomic_write(settings_path, json.dumps(data, indent=2) + '\n')
         os.rename(staging, destination)
     finally:
         if os.path.exists(staging):
             shutil.rmtree(staging)
     print(f"Created {destination.resolve()}")
-    _status_line(executable)
+    if getattr(args, 'status_line', True):
+        _status_line(executable)
     if (destination.parent / '.git').exists():
         print('This project is a Git repository; add these lines to its .gitignore:')
         print('.wuwei/\n.claude/')
@@ -115,9 +109,33 @@ def run(args):
     return _finish(destination.parent)
 
 
+def settings(root):
+    """(path, data) for the project's .claude/settings.json, refused when unsafe to write."""
+    path = Path(root) / '.claude/settings.json'
+    if path.parent.is_symlink() or path.is_symlink():
+        raise ValueError('workspace settings must not be symlinks')
+    if Path(root).resolve() == Path.home().resolve():
+        raise ValueError('workspace settings must not be owner global settings')
+    data = json.loads(path.read_text()) if path.exists() else {}
+    if not isinstance(data, dict) or not isinstance(data.get('permissions', {}), dict):
+        raise ValueError('workspace settings and permissions must be objects')
+    return path, data
+
+
+def _status_command(executable):
+    return {"type": "command", "command": shlex.quote(str(executable)) + " status --line"}
+
+
+def status_line(root):
+    """Write the statusLine key into the project's .claude/settings.json, keeping every other key."""
+    path, data = settings(root)
+    data['statusLine'] = _status_command(Path(__file__).resolve().parents[3] / 'bin/wuwei')
+    path.parent.mkdir(exist_ok=True)
+    workspace.atomic_write(path, json.dumps(data, indent=2) + '\n')
+
+
 def _status_line(executable):
-    print(json.dumps({"statusLine": {"type": "command",
-                                   "command": shlex.quote(str(executable)) + " status --line"}}))
+    print(json.dumps({"statusLine": _status_command(executable)}))
     print('Status line: put the "statusLine" key above in .claude/settings.json (this project) '
           'or ~/.claude/settings.json (every project).')
 
