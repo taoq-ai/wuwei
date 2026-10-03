@@ -3,6 +3,7 @@
 from collections import namedtuple
 from contextvars import ContextVar
 from importlib import import_module
+import os
 import re
 import sys
 
@@ -68,7 +69,7 @@ Guard = namedtuple('Guard', 'event matcher check profile_relaxable', defaults=(F
 
 
 def __getattr__(name):
-    # pkgutil (and typing through it) loads on first use; guards.pkgutil stays addressable.
+    # discover() lists modules itself (_modules); guards.pkgutil stays addressable.
     if name == 'pkgutil':
         import pkgutil
         return pkgutil
@@ -86,12 +87,28 @@ def profile_result(result, profile, root, tool):
     return result
 
 
+def _modules(paths):
+    """pkgutil.iter_modules for source modules and packages, without the inspect import
+    (about 4 ms) pkgutil pays on every hook."""
+    seen = set()
+    for directory in paths:
+        try:
+            names = sorted(os.listdir(directory))
+        except OSError:
+            continue
+        for filename in names:
+            name = filename[:-3] if filename.endswith('.py') else filename
+            if (name == '__init__' or '.' in name or name in seen
+                    or name == filename and not os.path.isfile(os.path.join(directory, name, '__init__.py'))):
+                continue
+            seen.add(name)
+            yield name
+
+
 def discover():
-    import pkgutil
     guards = []
     selection = SELECTION.get()
-    for module in pkgutil.iter_modules(__path__, __name__ + '.'):
-        name = module.name.rsplit('.', 1)[-1]
+    for name in _modules(__path__):
         if selection is not None and name in MODULES:
             event, tool = selection
             pattern = MODULES[name].get(event)
@@ -99,16 +116,17 @@ def discover():
                                               and re.fullmatch(pattern, tool) is None):
                 continue
         if not name.startswith('_'):
-            records = import_module(module.name).GUARDS
+            module = f'{__name__}.{name}'
+            records = import_module(module).GUARDS
             if not isinstance(records, list):
-                raise ValueError(f'{module.name}: GUARDS must be a list')
+                raise ValueError(f'{module}: GUARDS must be a list')
             for guard in records:
                 if not isinstance(guard, Guard) or not callable(guard.check):
-                    raise ValueError(f'{module.name}: invalid guard record')
+                    raise ValueError(f'{module}: invalid guard record')
                 if type(guard.profile_relaxable) is not bool:
-                    raise ValueError(f'{module.name}: invalid profile_relaxable flag')
+                    raise ValueError(f'{module}: invalid profile_relaxable flag')
                 if guard.matcher is not None and not isinstance(guard.matcher, str):
-                    raise ValueError(f'{module.name}: invalid guard matcher')
+                    raise ValueError(f'{module}: invalid guard matcher')
                 if guard.event not in EVENTS:
                     raise ValueError('unknown guard event')
                 if guard.matcher is not None:

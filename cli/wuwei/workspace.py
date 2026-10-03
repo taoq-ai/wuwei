@@ -178,13 +178,22 @@ class ConfigError(ValueError):
 
 def atomic_write(path, text, *, replace=True, mode=None):
     """Durably write text through a temporary file in the destination directory."""
-    import tempfile
     path = Path(path)
     temporary = None
     try:
-        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
-                                         delete=False) as stream:
-            temporary = Path(stream.name)
+        # tempfile.NamedTemporaryFile's own open (exclusive, no symlink, mode 0600) without
+        # importing tempfile, which brings shutil, bz2, lzma and random to every state write.
+        for _ in range(100):
+            candidate = path.parent / f'tmp{os.urandom(6).hex()}'
+            try:
+                fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            except FileExistsError:
+                continue
+            temporary = candidate
+            break
+        else:
+            raise FileExistsError(f'no unused temporary name in {path.parent}')
+        with open(fd, 'w', encoding='utf-8') as stream:
             if mode is not None:
                 os.fchmod(stream.fileno(), mode)
             stream.write(text)
@@ -351,14 +360,32 @@ def day_dir(root=None):
     return root / ".wuwei/days" / now().date().isoformat()
 
 
+def _unit_directory(platform):
+    home = Path.home()
+    if platform == "darwin":
+        return home / "Library/LaunchAgents"
+    return Path(os.environ.get("XDG_CONFIG_HOME", home / ".config")) / "systemd/user"
+
+
 def watch_unit(root, platform=sys.platform, name="watch"):
     """Service label and the unit file `<name> install` writes for this workspace."""
     import hashlib
     label = "wuwei-" + ("" if name == "watch" else f"{name}-") + hashlib.sha256(str(Path(root).resolve()).encode()).hexdigest()[:12]
-    home = Path.home()
-    if platform == "darwin":
-        return label, home / "Library/LaunchAgents" / f"{label}.plist"
-    return label, Path(os.environ.get("XDG_CONFIG_HOME", home / ".config")) / "systemd/user" / f"{label}.service"
+    suffix = ".plist" if platform == "darwin" else ".service"
+    return label, _unit_directory(platform) / f"{label}{suffix}"
+
+
+def unit_installed(root, name="watch"):
+    """watch_unit(root, name=name)[1].exists(); with no WUWEI unit installed at all (the
+    common case) it lists the directory instead of loading hashlib for the label."""
+    try:
+        if not any(entry.startswith("wuwei-") for entry in os.listdir(_unit_directory(sys.platform))):
+            return False
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError:
+        pass  # An unlistable directory: check the unit file itself, as before.
+    return watch_unit(root, name=name)[1].exists()
 
 
 def _key_line(raw, path):

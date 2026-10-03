@@ -1,6 +1,5 @@
 """Keep state writes in the CLI and persistent directory changes in the workspace."""
 
-import glob
 import os
 from pathlib import Path
 import re
@@ -14,10 +13,11 @@ from wuwei.workspace import contains_workspace, worktree_workspace
 _STATE_HINT = ('State and config files are protected; use the wuwei CLI for state changes. '
                'The planner records goals and voice with wuwei goals edit --file and voice edit '
                '--file after the morning gate; other owner edits run outside agent tools.')
-_STATE_MENTION = re.compile(r'state\.json|state\.snapshot\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|\.wuwei', re.I)
-_STATE_GLOB = re.compile(r'\.w[\w*?\[]', re.I)
-_DYNAMIC = re.compile(r'\$\(|[`*?\[]')
-_WRITE_CONSTRUCT = re.compile(
+# Pattern strings compile on first use (re's cache); most Bash calls never reach them.
+_STATE_MENTION = r'(?i)state\.json|state\.snapshot\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|\.wuwei'
+_STATE_GLOB = r'(?i)\.w[\w*?\[]'
+_DYNAMIC = r'\$\(|[`*?\[]'
+_WRITE_CONSTRUCT = (
     r'>|\b(?:tee|cp|mv|dd|truncate|ln|install|rsync|rm|patch)\b|'
     r'\bsed\s+(?:--in-place\b|-[^\s]*i)')
 
@@ -69,18 +69,18 @@ _OWNER_GROUPS = {group for group, _ in _OWNER_ACTIONS}
 _OWNER_VERBS = tuple(sorted({verb for _, verb in _OWNER_ACTIONS if verb}))
 # Owner words as tokens; `_` or `.` may precede them so python snippets such as
 # goals.owner_edit( stay relevant.
-_OWNER_VERB = re.compile(r'(?<![A-Za-z0-9])(?:' + '|'.join(_OWNER_VERBS) + r')(?![A-Za-z0-9])')
-_OWNER_GROUP = re.compile(r'(?<![A-Za-z0-9])(?:' + '|'.join(sorted(_OWNER_GROUPS)) + r')(?![A-Za-z0-9])')
+_OWNER_VERB = r'(?<![A-Za-z0-9])(?:' + '|'.join(_OWNER_VERBS) + r')(?![A-Za-z0-9])'
+_OWNER_GROUP = r'(?<![A-Za-z0-9])(?:' + '|'.join(sorted(_OWNER_GROUPS)) + r')(?![A-Za-z0-9])'
 _INTERPRETER = r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua'
 # Any mention of the CLI word, path segments included, or a dotted owner call such as
 # integrity.reconfirm(); relevance starts here.
 _WUWEI = re.compile(r'\bwuwei\b|-[A-Za-z]*mwuwei\b|\b(?:'
                     + '|'.join(rf'{g}\.{v}' for g, v in _OWNER_ACTIONS if v) + r')\b')
 # The CLI itself: a path segment such as cli/wuwei/x or .wuwei is a read, not the CLI.
-_CLI_WORD = re.compile(r'(?<![\w.-])wuwei(?![\w/.-])|-[A-Za-z]*mwuwei\b|\b(?:from|import)\s+wuwei\b')
+_CLI_WORD = r'(?<![\w.-])wuwei(?![\w/.-])|-[A-Za-z]*mwuwei\b|\b(?:from|import)\s+wuwei\b'
 # The CLI with a non-literal group or verb: relevant with no verb in the text.
-_CLI_NONLITERAL = re.compile(r'(?<![\w.-])wuwei(?:\s+-\S*)*(?:\s+(?:' + '|'.join(sorted(_OWNER_GROUPS))
-                             + r'))?(?:\s+-\S*)*\s+[$`]')
+_CLI_NONLITERAL = (r'(?<![\w.-])wuwei(?:\s+-\S*)*(?:\s+(?:' + '|'.join(sorted(_OWNER_GROUPS))
+                   + r'))?(?:\s+-\S*)*\s+[$`]')
 # Programs whose arguments are patterns or text, never run (except rg --pre, checked in
 # _write_targets), and that write no file by operand or flag (sort -o, uniq's output
 # operand and tee do, so they are not here).
@@ -101,9 +101,9 @@ def _owner_relevant(text, script=False):
     from wuwei.shell import mentions
     stripped = re.sub(r"['\"\\]", '', text)
     return bool(_WUWEI.search(stripped) and (
-        _CLI_NONLITERAL.search(stripped) or mentions(text, ('xargs',), script=script)
-        or (_OWNER_GROUP.search(stripped) or mentions(text, sorted(_OWNER_GROUPS), script=script))
-        and (_OWNER_VERB.search(stripped) or mentions(text, _OWNER_VERBS, script=script))))
+        re.search(_CLI_NONLITERAL, stripped) or mentions(text, ('xargs',), script=script)
+        or (re.search(_OWNER_GROUP, stripped) or mentions(text, sorted(_OWNER_GROUPS), script=script))
+        and (re.search(_OWNER_VERB, stripped) or mentions(text, _OWNER_VERBS, script=script))))
 
 
 # #357: records the planner may write from its own answered morning gate question.
@@ -167,7 +167,7 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
             hidden = (is_opaque(argv) and '-m' not in argv[1:]
                       or re.fullmatch(_INTERPRETER, program) and (named or any(
                           re.fullmatch(r'-(?:[a-zA-Z]*[ceEpr]|-eval)(?:=.*)?', arg, re.S) for arg in argv[1:])))
-            if hidden or _CLI_WORD.search(' '.join(words)):
+            if hidden or re.search(_CLI_WORD, ' '.join(words)):
                 return 2, 'Opaque owner action; use the host terminal.'
             continue
         group, verb = _pair(action)
@@ -362,6 +362,7 @@ def _write_targets(argv, cwd, root):
         return []
     if program in ('ln', 'install', 'rsync', 'rm', 'cp', 'mv', 'tee', 'truncate', 'sed'):
         # Normalized argv has no quote metadata; conservatively check glob matches.
+        import glob  # Here, not at module level: most Bash calls never glob.
         argv = [argv[0], *(match for arg in argv[1:]
                           for match in (glob.glob(arg, root_dir=cwd) or [arg]))]
     arguments = {arg for arg in argv[1:] if arg}
@@ -376,10 +377,11 @@ def _write_targets(argv, cwd, root):
         try:
             return _copy_targets(argv, cwd)
         except ValueError:
-            if protected or _STATE_MENTION.search(' '.join(argv)):
+            if protected or re.search(_STATE_MENTION, ' '.join(argv)):
                 raise
             return []
     if program == 'dd':
+        import glob
         return [match for arg in argv[1:] if arg.startswith('of=')
                 for match in (glob.glob(arg[3:], root_dir=cwd) or [arg[3:]])]
     if program == 'sed' and not any(
@@ -451,16 +453,16 @@ def check_bash(payload):
             # #347: only text a write can target counts; a word the walk cannot pin may be the CLI.
             if ((owner_relevant and guard_scope(payload) is not None
                  and (shape.publishes or _owner_relevant(script, script=True)))
-                    or _STATE_MENTION.search(shape.written) or _STATE_GLOB.search(shape.written)
+                    or re.search(_STATE_MENTION, shape.written) or re.search(_STATE_GLOB, shape.written)
                     or (root is not None and _protected_name(cwd, directories=True)
                         and (isinstance(exc, NonliteralPathError)
-                             or (_DYNAMIC.search(script) and _WRITE_CONSTRUCT.search(script))))):
+                             or (re.search(_DYNAMIC, script) and re.search(_WRITE_CONSTRUCT, script))))):
                 return 2, str(exc)
             if contain_cwd and re.search(r'\b(?:cd|pushd|popd)\b', script, re.I):
                 return 2, WORKSPACE_ROOT
             if shape.readonly:
                 return 0, ''
-            if _STATE_MENTION.search(script) or _STATE_GLOB.search(script):
+            if re.search(_STATE_MENTION, script) or re.search(_STATE_GLOB, script):
                 return 2, UNPARSED
             return 0, ''
         # normalize unwraps lists, subshells, wrappers, sh -c and xargs down to each script.
@@ -476,7 +478,7 @@ def check_bash(payload):
             program = Path(command.argv[0]).name if command.argv else ''
             if (re.fullmatch(r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua', program)
                     and command.argv[1:4] != ['-P', '-m', 'wuwei']
-                    and _STATE_MENTION.search(' '.join(command.argv[1:]))):
+                    and re.search(_STATE_MENTION, ' '.join(command.argv[1:]))):
                 return 2, 'Opaque interpreter; use the wuwei CLI for state changes.'
             for directory in directories:
                 if program == 'git' and 'apply' in command.argv[1:]:

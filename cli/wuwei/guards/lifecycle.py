@@ -2,8 +2,12 @@
 
 from pathlib import Path
 
-from wuwei import memory, sessions, state, watch, workspace
+from wuwei import sessions, state, workspace
 from wuwei.guards import Guard
+
+# watch.ERRORS; watch and memory import on the events that use them, not on SubagentStop.
+ERRORS = (OSError, ValueError, TypeError, KeyError, AttributeError)
+
 
 def scoped(payload):
     cwd = Path(payload['cwd'])
@@ -23,25 +27,26 @@ def _seen(root, payload, event):
 
 
 def session_start(payload):
+    from wuwei import memory, watch
     try:
         context = scoped(payload)
         if context is None:
             return 0, ''
         root, config = context
-    except watch.ERRORS as exc:
+    except ERRORS as exc:
         return 2, f'session unmeasured: {exc}'
     from wuwei.commands import next as next_command
     code, lines = 0, []
     try:
         row = next_command.step(root)
-    except watch.ERRORS as exc:
+    except ERRORS as exc:
         code, row = 2, {'state': 'unmeasured', 'step': str(exc), 'command': 'wuwei doctor'}
     lines.append(next_command.orientation(row, workspace.posture(config)[0]))
     try:
         if isinstance(payload.get('session_id'), str) and payload['session_id'].strip():
             sessions.export(payload['session_id'])
         _seen(root, payload, 'SessionStart')
-    except watch.ERRORS as exc:
+    except ERRORS as exc:
         code = 2
         lines.append(f'session registry unmeasured: {exc}')
     try:
@@ -50,7 +55,7 @@ def session_start(payload):
         findings = memory.lint(root)
         code = max(code, int(bool(findings)))
         lines.extend(findings)
-    except watch.ERRORS as exc:
+    except ERRORS as exc:
         code = 2
         lines.append(f'memory unmeasured: {exc}')
     health_code, message = watch.health(root)
@@ -78,19 +83,20 @@ def session_start(payload):
                     lines.append(f'orphan process candidate: {name} from {directory.name}; '
                                  'unclosed reservation, liveness unmeasured')
             break
-    except watch.ERRORS as exc:
+    except ERRORS as exc:
         code = 2
         lines.append(f'session continuity unmeasured: {exc}')
     return code, '\n'.join(lines)
 
 
 def pre_compact(payload):
+    from wuwei import watch
     try:
         context = scoped(payload)
         if context is not None:
             watch.flush(context[0])
         return 0, ''
-    except watch.ERRORS as exc:
+    except ERRORS as exc:
         return 2, f'compaction consistency unmeasured: {exc}'
 
 
@@ -106,10 +112,11 @@ def stop(payload):
         planner = data.get('planner_session_id')
         if not planner or payload.get('session_id') != planner:
             return 0, ''
+        from wuwei import watch
         message = (watch.wake(root, consume=True)
                    or sessions.rotation(root, config, data, payload['session_id']))
         return int(bool(message)), message
-    except watch.ERRORS as exc:
+    except ERRORS as exc:
         return 0, f'planner wake unmeasured: {exc}'
 
 
@@ -119,7 +126,7 @@ def subagent_stop(payload):
         if context is not None:
             _seen(context[0], payload, 'SubagentStop')
         return 0, ''
-    except watch.ERRORS as exc:
+    except ERRORS as exc:
         return 0, f'session registry unmeasured: {exc}'
 
 

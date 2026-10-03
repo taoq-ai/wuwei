@@ -638,3 +638,22 @@ def test_scan_decodes_torn_silent_line(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', NOW)
     rows, *_ = status.scan(directory)
     assert any(row['source'] == 'unreadable event' for row in rows)
+
+
+def test_scan_skip_matches_decoding_every_line(tmp_path, monkeypatch):
+    # The skipped runs change no row and no line number: the same day decoded line by line.
+    from wuwei.commands import status
+    silent = {'kind': 'state.write', 'payload': {'detail': '{"ts": "x"}'}, 'ts': NOW}
+    events = [silent, {'kind': 'hook.warning', 'payload': {'reason': 'one'}, 'ts': NOW}, silent, silent,
+              CLOCK, {'kind': 'hook.warning', 'payload': {'reason': 'one'}, 'ts': NOW}, silent]
+    directory = day(tmp_path, events=events)
+    with (directory / 'events.jsonl').open('a') as stream:
+        stream.write('\n{"kind": "seat stopped", "payload": {"a": {"b": 1}}\n'
+                     + json.dumps(silent) + '\n{"kind": "hook.warning", "ts": "' + NOW + '"}')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    skipped = status.scan(directory)
+    monkeypatch.setattr(status, 'LINES', r'([^\n]*)\n?')
+    assert skipped == status.scan(directory)
+    assert [row['source'] for row in skipped[0]].count('hook.warning') == 3
+    assert any(row['source'] == 'unreadable event' for row in skipped[0])

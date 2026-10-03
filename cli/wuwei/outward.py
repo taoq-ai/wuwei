@@ -10,13 +10,14 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 # ponytail: conservative emoji blocks also reject some text symbols. Use a versioned
 # Unicode property table if precise emoji/text presentation distinctions become needed.
-EMOJI = re.compile('[\U0001f000-\U0001faff\u2300-\u23ff\u2600-\u27bf'
-                   '\u24c2\u25aa-\u25fe'
-                   '\u2b00-\u2bff\u203c\u2049'
-                   '\u2122\u2139\u20e3\u3030\u303d\u3297\u3299]|[^\n]\ufe0f')
+# Pattern strings, compiled on first use by re's cache: most hooks lint no text.
+EMOJI = ('[\U0001f000-\U0001faff\u2300-\u23ff\u2600-\u27bf'
+         '\u24c2\u25aa-\u25fe'
+         '\u2b00-\u2bff\u203c\u2049'
+         '\u2122\u2139\u20e3\u3030\u303d\u3297\u3299]|[^\n]\ufe0f')
 PRONOUNS = ('he him his himself', 'she her hers herself',
             'they them their theirs themself themselves')
-REVIEW_REQUEST = re.compile(
+REVIEW_REQUEST = (
     r'PR #([1-9][0-9]*) ready for review: '
     r'<https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/\1\|#\1> '
     r'((?:<@[A-Z0-9]+>(?: |$))+)')
@@ -91,7 +92,7 @@ def lint(text, channel, config, *, root=None, to_owner=False):
             return FINDINGS, f'outward: third-person {label} reference'
     if any(pattern.search(view) for pattern in patterns for view in views):
         return FINDINGS, 'outward: internal state pattern'
-    if 'emoji' in banned and EMOJI.search(text):
+    if 'emoji' in banned and re.search(EMOJI, text):
         return FINDINGS, 'outward: emoji is banned'
     if any(c in text or c in normalized for c in banned if c != 'emoji'):
         return FINDINGS, 'outward: banned character'
@@ -285,7 +286,7 @@ def classify(text, root, config, context=None, *, kind='chat'):
         recipients = list(context.get('recipients', []))
         if 'recipient' in context:
             recipients.append(context['recipient'])
-        review_match = (REVIEW_REQUEST.fullmatch(text) if kind in ('chat', 'slack')
+        review_match = (re.fullmatch(REVIEW_REQUEST, text) if kind in ('chat', 'slack')
                         and destinations == [config['shepherd']['review_channel']] else None)
         mention_text = re.sub(r'<@[\w.-]+>', '', normalized) if review_match else normalized
         mentions = re.findall(r'(?<![\w@])@([\w.-]+)', mention_text)
