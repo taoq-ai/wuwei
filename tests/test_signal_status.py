@@ -153,6 +153,17 @@ def test_status_counts_every_nonzero_phase(tmp_path, monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)['phases'] == {'delta': 1, 'merged': 1}
 
 
+@pytest.mark.parametrize('recorded,shown', [({'acme/widget#7': [], 'acme/widget#8': ['alice']}, True),
+                                             ({'acme/widget#8': ['alice']}, False)])
+def test_status_line_names_a_solo_pr(tmp_path, monkeypatch, capsys, recorded, shown):
+    from wuwei.__main__ import main
+    day(tmp_path, {'cap': 1, 'items': {}, 'pr_reviewers': recorded})
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    assert main(['status', '--line']) == 0
+    assert ('reviewers: none (solo)' in capsys.readouterr().out) is shown
+
+
 @pytest.mark.parametrize('name', ['state.json', 'state.snapshot.json'])
 def test_unreadable_state_fails_closed(tmp_path, name):
     directory = day(tmp_path)
@@ -293,6 +304,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'reply: thread_posted': 'silent', 'pr.raised': 'silent',
                 'pr.claimed': 'silent',
                 'pr.reviewers_selected': 'silent', 'pr.review_posted': 'silent',
+                'reviewer.unresolved': 'silent',
                 'watch: sweep': 'nudge', 'watch: clock': 'silent', 'heartbeat: clock': 'silent',
                 'watch: heartbeat': 'silent', 'watch: observation': 'silent',
                 'watch: read-failed': 'nudge', 'pr.changed': 'nudge',

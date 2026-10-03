@@ -300,10 +300,14 @@ def test_shepherd_settings_are_visible_in_template_and_site():
     page = (SITE / 'configuration.md').read_text()
     settings = tomllib.loads(template)['shepherd']
     for key in ('lead_login', 'authors', 'review_channel', 'review_gate_check',
-                'tie_commits', 'source_exclude', 'min_reviewers', 'autostart'):
+                'tie_commits', 'source_exclude', 'min_reviewers', 'autostart', 'reviewers',
+                'reviewers_exclude'):
         assert key in settings
         assert f'`shepherd.{key}`' in page
     assert settings['min_reviewers'] == 1
+    assert settings['reviewers'] == settings['reviewers_exclude'] == []
+    assert '`repos.shepherd.reviewers`' in page and '`[repos.shepherd]`' in page
+    assert '# [repos.shepherd]' in template
     assert settings['autostart'] is False
     row = next(line for line in page.splitlines() if line.startswith('| `shepherd.min_reviewers`'))
     assert '`0`' in row.split('|')[3]

@@ -1015,6 +1015,19 @@ def test_profile_export_never_carries_the_posture(workspace_root, monkeypatch, p
     assert 'security' not in json.loads((out / 'team.json').read_text())['config']
 
 
+def test_profile_export_never_carries_reviewer_names(workspace_root, monkeypatch, ports, capsys):
+    out = exported(workspace_root, monkeypatch, ports,
+                   extra='reviewers = ["pat-dev"]\nreviewers_exclude = ["sam-dev"]\n', repos=[
+                       ('acme/widget', FIXTURES / 'python', '[repos.shepherd]\nreviewers = ["kim-dev"]\n')])
+    assert main('calibrate', 'export', 'team') == 0, capsys.readouterr().err
+    text = (out / 'team.json').read_text()
+    for name in ('pat-dev', 'sam-dev', 'kim-dev'):
+        assert name not in text, name
+    dropped = {row['where']: row['why'] for row in json.loads(text)['dropped']}
+    for key in ('config.shepherd.reviewers', 'config.shepherd.reviewers_exclude', 'config.repos.shepherd.reviewers'):
+        assert dropped[key] == 'personal', key
+
+
 def test_profile_export_edges(workspace_root, monkeypatch, ports, capsys):
     from wuwei import registry
 

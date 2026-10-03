@@ -9,7 +9,7 @@ import shlex
 from urllib.parse import unquote, urlsplit
 
 from wuwei import registry, shell, verdict, workspace
-from wuwei.guards import Guard
+from wuwei.guards import NO_REVIEWER, Guard
 from wuwei.guards.commit_push import data
 from wuwei.guards.protect_state import _cd_target, _cwd
 
@@ -207,7 +207,7 @@ def create_check(args, command, cwd, root, config):
     if (reviewers or config['shepherd']['min_reviewers']) and not (reviewers and all(
             part.strip() and not part.strip().startswith('-')
             for value in reviewers for part in value.split(','))):
-        return 1, 'PR create requires a named --reviewer in the same command'
+        return 1, NO_REVIEWER
     return gate_check(root, cwd, config)
 
 
