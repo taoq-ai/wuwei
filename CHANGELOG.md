@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.11.0](https://github.com/taoq-ai/wuwei/compare/v0.10.0...v0.11.0) (2026-10-02)
+
+
+### Features
+
+* **calibrate:** shareable calibration profiles: export a promoted calibration and interview, import as a proposal ([#322](https://github.com/taoq-ai/wuwei/issues/322)) ([7a3a081](https://github.com/taoq-ai/wuwei/commit/7a3a0817305d8cadaba9b8ccc9154572ddb98687)), closes [#313](https://github.com/taoq-ai/wuwei/issues/313)
+* **cli:** wuwei why: reconstruct from events why an item, decision or refusal happened ([#321](https://github.com/taoq-ai/wuwei/issues/321)) ([62ca7db](https://github.com/taoq-ai/wuwei/commit/62ca7db7d6e64db1a0133fdb5061328e2d9d7fde)), closes [#312](https://github.com/taoq-ai/wuwei/issues/312)
+* **gates:** a second-opinion gate on a different model for STANDARD and FULL items ([#320](https://github.com/taoq-ai/wuwei/issues/320)) ([d6385b2](https://github.com/taoq-ai/wuwei/commit/d6385b2d72814072fe3930a5ee343d52176b3435)), closes [#311](https://github.com/taoq-ai/wuwei/issues/311)
+* **guards:** shadow mode: hooks record what they would refuse, for a first week on a project ([#317](https://github.com/taoq-ai/wuwei/issues/317)) ([6e55d81](https://github.com/taoq-ai/wuwei/commit/6e55d813e6985c222d523fd02d237b6a52960fc7)), closes [#308](https://github.com/taoq-ai/wuwei/issues/308)
+
 ## [0.10.0](https://github.com/taoq-ai/wuwei/compare/v0.9.0...v0.10.0) (2026-10-01)
 
 
