@@ -397,8 +397,10 @@ def test_config_check_host_and_credential_layout_are_documented():
     page = (SITE / 'configuration.md').read_text()
     section = page[page.index('### Host protections and seat credentials'):]
     for text in ('Host protections', 'Seat credentials', '`ok`', '`missing`', '`unmeasured`',
-                 'exit 0', 'exit 1', 'exit 2', 'design 4.5', '9.1'):
+                 'exit 0', 'exit 1', 'exit 2', 'design 4.5', '9.1', 'classic protection',
+                 'none visible (404: unprotected or no admin)', 'required now', 'review_gate_check'):
         assert text in section, text
+    assert 'currently reads as missing' not in page
 
 def test_release_asset_ships_every_linked_doc(tmp_path, monkeypatch):
     signed = []

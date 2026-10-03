@@ -251,7 +251,8 @@
       "conversation_resolution": true,
       "allow_force_pushes": false,
       "allow_deletions": false,
-      "merge_queue": false
+      "merge_queue": false,
+      "classic": true
     }
   },
   {

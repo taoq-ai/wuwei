@@ -502,9 +502,10 @@ Host protections: for each `[[repos]]` entry it reads the protection of
 
 | Line | `ok` when |
 | --- | --- |
-| protected ref | the branch has branch protection |
-| required checks | at least one required status check, including every `review_required_checks` name |
-| required reviews | at least 1 approving review, or `shepherd.min_reviewers = 0` (solo owner) |
+| protected ref | classic branch protection is readable |
+| classic protection | printed instead of `protected ref` when the classic endpoint answers 404: `none visible (404: unprotected or no admin)`; information only, the other lines then come from rulesets |
+| required checks | at least one required status check, including every `review_required_checks` name; the line lists the required names, and a `missing` line names the absent ones and the ones `required now` |
+| required reviews | at least 1 approving review, or `shepherd.min_reviewers = 0` (solo owner); when the check named by `shepherd.review_gate_check` is required, a `missing` line says it may be satisfying it, and stays a finding |
 | force pushes | force pushes are blocked |
 | deletions | branch deletion is blocked |
 
@@ -518,4 +519,6 @@ Every line is `ok`, `missing` with the exact setting to change, or `unmeasured`
 (no permission to read, host unreachable, or `code_host = "none"`), with the reason
 on stderr. The command returns exit 0 when everything is `ok`, exit 1 on any `missing`
 line or write-scoped token, and exit 2 when anything is `unmeasured`; exit 2 wins
-over exit 1. A branch protected only by rulesets currently reads as missing.
+over exit 1. The check, review, force-push and deletion lines combine classic
+protection with the branch's rulesets, so a branch protected only by rulesets measures
+correctly.

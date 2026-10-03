@@ -402,12 +402,83 @@ def protected(**changes):
     return registry.Result(0, {**data, **changes})
 
 
-def test_unprotected_branch_is_a_finding(host, capsys):
-    host.results['protection'] = registry.Result(2, None, 'github.protection: could not run: branch protection absent')
+CLASSIC_404 = {'exit': 1, 'stderr': 'gh: Not Found (HTTP 404)'}
+CLASSIC_LINE = 'acme/widget main: classic protection: none visible (404: unprotected or no admin)'
+
+
+def check_through_github(case, monkeypatch, steps, extra=''):
+    from fakes.replay import install_replay
+    (case / '.wuwei/config.toml').write_text('[adapters]\ncode_host="github"\n' + REPO + extra)
+    install_replay(monkeypatch, 'gh', [{'exit': 0}, *steps])
+    return main(['config', 'check'])
+
+
+def test_classic_404_with_no_rulesets_is_a_finding(case, monkeypatch, capsys):
+    assert check_through_github(case, monkeypatch, [CLASSIC_404, {'stdout': '[[]]'}]) == 1
+    output = capsys.readouterr().out
+    assert CLASSIC_LINE in output
+    for line in ('required checks: missing (require status checks on main)',
+                 'required reviews: missing', 'force pushes: missing (block force pushes on main)',
+                 'deletions: missing (block deletions of main)'):
+        assert f'acme/widget main: {line}' in output
+    assert 'unmeasured' not in output and 'protected ref' not in output
+
+
+def test_ruleset_only_protection_is_clean(case, monkeypatch, capsys):
+    rules = [{'type': 'required_status_checks', 'parameters': {
+                 'strict_required_status_checks_policy': True,
+                 'required_status_checks': [{'context': 'unit'}]}},
+             {'type': 'pull_request', 'parameters': {
+                 'required_approving_review_count': 1, 'dismiss_stale_reviews_on_push': False,
+                 'require_code_owner_review': False, 'require_last_push_approval': False,
+                 'required_review_thread_resolution': False}},
+             {'type': 'non_fast_forward'}, {'type': 'deletion'}]
+    steps = [CLASSIC_404, {'stdout': json.dumps([rules])}]
+    assert check_through_github(case, monkeypatch, steps, 'review_required_checks = ["unit"]\n') == 0
+    output = capsys.readouterr().out
+    assert CLASSIC_LINE in output
+    for line in ('required checks: ok (unit)', 'required reviews: ok', 'force pushes: ok', 'deletions: ok'):
+        assert f'acme/widget main: {line}' in output
+
+
+def test_invisible_repository_is_unmeasured(case, monkeypatch, capsys):
+    assert check_through_github(case, monkeypatch, [CLASSIC_404, CLASSIC_404]) == 2
+    assert 'acme/widget main: protection: unmeasured' in capsys.readouterr().out
+
+
+def test_required_checks_lists_names(host, case, capsys):
+    (case / '.wuwei/config.toml').write_text(
+        '[adapters]\ncode_host="none"\n' + REPO + 'review_required_checks = ["unit"]\n')
+    security, unit = {'name': 'Security', 'app_id': None}, {'name': 'unit', 'app_id': None}
+    host.results['protection'] = protected(required_checks=[unit, security])
+    assert main(['config', 'check']) == 0
+    assert 'required checks: ok (Security, unit)' in capsys.readouterr().out
+    host.results['protection'] = protected(required_checks=[security])
+    assert main(['config', 'check']) == 1
+    assert ('required checks: missing (require status checks on main: unit; required now: Security)'
+            in capsys.readouterr().out)
+
+
+def test_missing_reviews_names_the_review_gate_check(host, capsys):
+    checks = [*protected().data['required_checks'], {'name': 'Review Gate', 'app_id': None}]
+    host.results['protection'] = protected(approvals=0, required_checks=checks)
+    assert main(['config', 'check']) == 1
+    assert ('required reviews: missing (require at least 1 approving review on main, or set '
+            'shepherd.min_reviewers = 0 for a solo owner; the required check Review Gate '
+            '(shepherd.review_gate_check) may be satisfying it)') in capsys.readouterr().out
+    host.results['protection'] = protected(approvals=0)
     assert main(['config', 'check']) == 1
     output = capsys.readouterr().out
-    assert 'acme/widget main: protected ref: missing' in output
-    assert host.calls[0][:2] == ('protection', ('acme/widget', 'main'))
+    assert 'shepherd.min_reviewers = 0 for a solo owner)\n' in output
+    assert 'review_gate_check' not in output
+
+
+def test_protection_without_classic_is_unmeasured(host, capsys):
+    data = protected().data
+    del data['classic']
+    host.results['protection'] = registry.Result(0, data)
+    assert main(['config', 'check']) == 2
+    assert 'protection: unmeasured' in capsys.readouterr().out
 
 
 def test_unreadable_protection_is_unmeasured(host, capsys):
@@ -428,7 +499,7 @@ def test_fully_protected_branch_is_clean(host, capsys):
 
 @pytest.mark.parametrize('changes,extra,line', [
     ({'required_checks': []}, '', 'required checks: missing'),
-    ({}, 'review_required_checks = ["unit"]\n', 'required checks: missing (require status checks on main: unit)'),
+    ({}, 'review_required_checks = ["unit"]\n', 'required checks: missing (require status checks on main: unit; required now: lint, tests)'),
     ({'approvals': 0}, '', 'required reviews: missing'),
     ({'allow_force_pushes': True}, '', 'force pushes: missing (block force pushes on main)'),
     ({'allow_deletions': True}, '', 'deletions: missing (block deletions of main)'),
@@ -459,7 +530,7 @@ def test_malformed_protection_is_unmeasured(host, capsys):
 def test_unmeasured_outranks_missing_across_repositories(host, case, capsys):
     (case / '.wuwei/config.toml').write_text('[adapters]\ncode_host="none"\n' + REPO +
                                              REPO.replace('acme/widget', 'acme/other').replace('"repo"', '"other"'))
-    results = iter([registry.Result(2, None, 'branch protection absent'),
+    results = iter([protected(approvals=0),
                     registry.Result(2, None, 'gh exited 1')])
     host.protection = lambda repo, branch, root=None: next(results)
     assert main(['config', 'check']) == 2

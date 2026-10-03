@@ -541,13 +541,15 @@ def test_new_port_adapters_parse_recorded_output(tmp_path, monkeypatch):
         {'email': 'bob@example.test', 'commits': 1}]
 
 
-def test_missing_branch_protection_keeps_reason_for_fallback(monkeypatch):
+def test_missing_branch_protection_reads_rulesets_for_fallback(monkeypatch):
+    # An empty required_checks list triggers shepherd's default-branch and config fallback.
     from adapters.code_host import github
     from fakes.replay import install_replay
-    install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Branch not protected (HTTP 404)'}])
+    install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Branch not protected (HTTP 404)'},
+                                       {'stdout': '[[]]'}])
     result = github.protection('acme/widget', 'feature-base')
-    assert result.exit == 2
-    assert 'branch protection absent' in result.reason
+    assert result.exit == 0
+    assert result.data['required_checks'] == [] and result.data['classic'] is False
 
 
 def test_thread_reply_posts_to_current_root_and_verifies_last_word(case):
