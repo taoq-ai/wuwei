@@ -139,6 +139,9 @@ def _apply(root, proposal):
         old = ''
     if action != 'add' and not target.is_file():
         raise ValueError('target does not exist; pass an existing target path')
+    if (action == 'patch' and proposal.get('text') == ''
+            and target.parent == root / '.wuwei/charters'):
+        return _drop(root, target, old, proposal.get('old_text'))
     if action in ('add', 'patch'):
         text = proposal.get('text', proposal.get('delta'))
         if not isinstance(text, str) or not text.strip():
@@ -216,6 +219,64 @@ def _apply(root, proposal):
     return [target]
 
 
+def _drop(root, target, old, previous):
+    """Remove one whole rule line from a local charter, keeping it in dropped-rules.md."""
+    if (not isinstance(previous, str) or not previous.startswith('- ') or not previous.endswith('\n')
+            or '\n' in previous[:-1] or old.count(previous) != 1
+            or not (old.startswith(previous) or '\n' + previous in old)):
+        raise ValueError('drop must name one whole existing rule line; pass the exact old_text of one '
+                         'rule line, newline included')
+    dropped = root / '.wuwei/memory/archive/dropped-rules.md'
+    if dropped.parent.is_symlink() or dropped.is_symlink():
+        raise ValueError(f'archive path must not be a symlink; {SYMLINK}')
+    _ensure_clean(root, target)
+    _ensure_clean(root, _changelog(root))
+    prior = dropped.read_text(encoding='utf-8') if dropped.exists() else ''
+    dropped.parent.mkdir(exist_ok=True)
+    workspace.atomic_write(target, old.replace(previous, '', 1))
+    workspace.atomic_write(dropped, prior + f'- {workspace.now().date()} {target.name}: {previous[2:].strip()}\n')
+    return [target, dropped]
+
+
+def land(root, proposal, *, day, run, ledger, name):
+    """Apply one proposal (a dict, or a proposal file renamed to its status once logged), log it
+    and commit it; returns the ledger record."""
+    source = proposal if isinstance(proposal, Path) else None
+    try:
+        if source is not None:
+            proposal = {}
+            proposal = json.loads(source.read_text(encoding='utf-8'))
+        if not isinstance(proposal, dict):
+            raise ValueError(f'proposal must be an object; {DAMAGED}')
+        changed = _apply(root, proposal)
+        status, reason = 'landed', proposal['reason']
+    except (ValueError, TypeError, KeyError) as exc:
+        status, reason = 'rejected', str(exc)
+    if not isinstance(proposal, dict):
+        proposal = {}
+    record = {'date': day, 'run_id': run, 'target': proposal.get('target', name),
+              'action': proposal.get('action', ''), 'status': status,
+              'reason': reason, 'evidence': proposal.get('evidence', '')}
+    state.append_jsonl(ledger, record)
+    if source is not None:
+        source.rename(source.with_suffix(f'.{status}'))
+    if status == 'landed':
+        vcs = registry.load('vcs', workspace.load_config(root))
+        charter = [p for p in changed if p.parent == root / '.wuwei/charters']
+        if charter:
+            changelog = _changelog(root)
+            prior = changelog.read_text(encoding='utf-8') if changelog.exists() else ''
+            line = f"- {day} {', '.join(p.name for p in charter)}: {reason}\n"
+            changelog.parent.mkdir(parents=True, exist_ok=True)
+            workspace.atomic_write(changelog, prior + line)
+            changed.append(changelog)
+        paths = [p.relative_to(root / '.wuwei').as_posix() for p in [*changed, ledger]]
+        result = vcs.workspace_commit(root / '.wuwei', paths, root=root)
+        if result.exit:
+            raise OSError(result.reason)
+    return record
+
+
 def promote(root=None):
     root = workspace.find_workspace() if root is None else Path(root)
     if (root / '.wuwei').is_symlink():
@@ -234,37 +295,7 @@ def promote(root=None):
     for path in sorted(directory.glob('*.json')):
         if path.is_symlink():
             raise ValueError(f'proposal must not be a symlink; {SYMLINK}')
-        proposal = {}
-        try:
-            proposal = json.loads(path.read_text(encoding='utf-8'))
-            if not isinstance(proposal, dict):
-                raise ValueError(f'proposal must be an object; {DAMAGED}')
-            changed = _apply(root, proposal)
-            status, reason = 'landed', proposal['reason']
-        except (ValueError, TypeError, KeyError) as exc:
-            status, reason = 'rejected', str(exc)
-        if not isinstance(proposal, dict):
-            proposal = {}
-        record = {'date': day, 'run_id': run, 'target': proposal.get('target', path.name),
-                  'action': proposal.get('action', ''), 'status': status,
-                  'reason': reason, 'evidence': proposal.get('evidence', '')}
-        state.append_jsonl(ledger, record)
-        path.rename(path.with_suffix(f'.{status}'))
-        records.append(record)
-        if status == 'landed':
-            vcs = registry.load('vcs', workspace.load_config(root))
-            charter = [p for p in changed if p.parent == root / '.wuwei/charters']
-            if charter:
-                changelog = _changelog(root)
-                prior = changelog.read_text(encoding='utf-8') if changelog.exists() else ''
-                line = f"- {day} {', '.join(p.name for p in charter)}: {reason}\n"
-                changelog.parent.mkdir(parents=True, exist_ok=True)
-                workspace.atomic_write(changelog, prior + line)
-                changed.append(changelog)
-            paths = [p.relative_to(root / '.wuwei').as_posix() for p in [*changed, ledger]]
-            result = vcs.workspace_commit(root / '.wuwei', paths, root=root)
-            if result.exit:
-                raise OSError(result.reason)
+        records.append(land(root, path, day=day, run=run, ledger=ledger, name=path.name))
     return records
 
 

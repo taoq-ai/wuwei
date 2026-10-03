@@ -633,3 +633,15 @@ def test_verbosity_question_sets_the_owner_default(tmp_path):
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text(text)
     assert workspace.load_config(tmp_path)['owner']['verbosity']['default'] == 'full'
+
+
+def test_archived_answers_are_not_asked_again(root):
+    from wuwei.consolidation import archive_days
+    (root / '.wuwei/memory/notes').mkdir()
+    day = root / '.wuwei/days/2026-08-01'
+    day.mkdir(parents=True)
+    (day / 'interview.json').write_text(json.dumps({'phone': 'Nothing'}))
+    assert archive_days(root) == ['2026-08-01']
+    assert (root / '.wuwei/archive/2026/2026-08-01.tar.gz').is_file()
+    assert ('phone', None) in interview()._recorded(root)
+    assert 'phone' not in [w['id'] for w in interview().widgets(root, ['acme/widget'])]

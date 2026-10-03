@@ -946,3 +946,33 @@ def test_owner_action_reasons_name_the_command():
     import inspect
     source = inspect.getsource(protect_state._owner_action)
     assert source.count("'Opaque owner action: write bin/wuwei <group> <verb> as a plain command so the '") == 2
+
+
+@pytest.mark.parametrize('path', ['.wuwei/memory/digests/2026-W40.md', '.wuwei/memory/forget.json'])
+def test_memory_tier_records_are_producer_only(workspace, path):
+    from wuwei.guards.protect_state import check_bash, check_file
+    assert check_file(payload(workspace, 'Write', file_path=path))[0] == 1
+    for command in (f'cp other {path}', f'mv other {path}', f'rm {path}'):
+        assert check_bash(payload(workspace, 'Bash', command=command))[0] == 1, command
+    # forget.json names the owner group and verb, so a redirect into it reads as opaque (exit 2).
+    assert check_bash(payload(workspace, 'Bash', command=f'echo forged > {path}'))[0] in (1, 2)
+    assert check_bash(payload(workspace, 'Bash', command=f'cat {path}')) == (0, '')
+    assert check_bash(payload(workspace, 'Bash', command='rm -rf .wuwei/memory/digests'))[0] == 1
+
+
+FORGET = ("Forgetting memory is the owner's answer, outside agent tools: show the proposals "
+          'with bin/wuwei consolidate --widget, and the owner runs bin/wuwei memory forget '
+          '<id> apply|keep in a host terminal.')
+
+
+@pytest.mark.parametrize('command,expected', [
+    ('bin/wuwei memory forget F-1 apply',
+     (1, FORGET)),
+    ('python3 -P -m wuwei memory forget F-1 keep',
+     (1, FORGET)),
+    ('bin/wuwei memory show 2026-08-01', (0, '')), ('bin/wuwei memory status', (0, '')),
+    ('bin/wuwei consolidate --widget', (0, '')), ('bin/wuwei memory lint', (0, '')),
+])
+def test_memory_forget_is_an_owner_action(workspace, command, expected):
+    from wuwei.guards.protect_state import check_bash
+    assert check_bash(payload(workspace, 'Bash', command=command)) == expected

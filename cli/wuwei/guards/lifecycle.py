@@ -51,8 +51,15 @@ def session_start(payload):
         code = 2
         lines.append(f'session registry unmeasured: {exc}')
     try:
+        # Constraints are orientation (#358), outside the memory budget.
+        lines.append(memory.constraints(root, state.read_state(root)))
         content, size, tokens = memory.session_payload(root)
         lines.extend([content, f'Size: {size} bytes, {tokens} estimated tokens'])
+        budget = config['memory']['budget_tokens']
+        if tokens > budget:
+            code = max(code, 1)
+            lines.append(f'memory: digests and rules exceed memory.budget_tokens ({tokens} > {budget}); '
+                         'run wuwei consolidate')
         findings = memory.lint(root)
         code = max(code, int(bool(findings)))
         lines.extend(findings)

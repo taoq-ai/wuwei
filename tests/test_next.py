@@ -237,6 +237,21 @@ def test_issue_acceptance_session_start_orients(root, monkeypatch, capsys):
     assert lines.index('Active constraints:') < 25
 
 
+def test_constraints_precede_a_long_week_digest(root, monkeypatch, capsys):
+    calibrated(root)
+    memory = root / '.wuwei/memory'
+    (memory / 'notes').mkdir(parents=True)
+    (memory / 'digests').mkdir()
+    (memory / 'digests/2026-W40.md').write_text('# Week 2026-W40\n' + '- line\n' * 40)
+    for name in ('spine.md', 'index.md', 'goals.md'):
+        (memory / name).write_text('')
+    capsys.readouterr()
+    hook(monkeypatch, root)
+    lines = context(capsys).splitlines()
+    assert lines.index('Active constraints:') < 25
+    assert lines.index('Active constraints:') < lines.index('Digests:')
+
+
 def test_orientation_precedes_integrity_line(root, monkeypatch, capsys):
     calibrated(root)
     from wuwei.integrity import Result

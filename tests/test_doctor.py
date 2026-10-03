@@ -290,7 +290,7 @@ def test_no_workspace(ws, tmp_path, monkeypatch):
 def test_workspace_rows_healthy(ws):
     rows = doctor.diagnose()
     assert names(rows, 'workspace') == [
-        'workspace', 'config', 'template', 'executable', 'acme/widget path', 'acme/widget git', 'acme/widget branch',
+        'workspace', 'config', 'template', 'executable', 'memory tiers', 'acme/widget path', 'acme/widget git', 'acme/widget branch',
         'acme/widget identity', 'acme/widget fast_checks', 'calibration', 'drift', 'interview',
         'profile', 'posture']
     assert row(rows, 'posture')['value'] == 'guarded (from security.posture)'
@@ -1049,3 +1049,17 @@ def test_fix_lines_use_the_launcher(ws, monkeypatch, capsys):
     monkeypatch.setattr(doctor, 'diagnose', lambda section=None: rows)
     doctor.run(Namespace(section=None, json=True, widget=False, apply=None, fix=False))
     assert json.loads(capsys.readouterr().out)['rows'][0]['fix'] == f'{launcher} init --upgrade'
+
+
+def test_memory_tiers_row_names_days_consolidate_left_raw(ws, tmp_path):
+    found = row(doctor.diagnose(), 'memory tiers')
+    assert (found['status'], found['value']) == ('ok', 'within 30 days')
+    (ws.root / '.wuwei/days/2026-08-01').mkdir(parents=True)
+    found = row(doctor.diagnose(), 'memory tiers')
+    assert found['status'] == 'warn' and found['fix'] == f"{ws.plugin / 'bin/wuwei'} consolidate"
+    assert found['value'] == '1 raw days older than consolidation.archive_after_days (30); consolidate has not run'
+    (ws.root / '.wuwei/days/2026-08-01').rmdir()
+    days = ws.root / '.wuwei/days'
+    days.rename(tmp_path / 'real-days')
+    days.symlink_to(tmp_path / 'real-days')
+    assert row(doctor.diagnose(), 'memory tiers')['status'] == 'unmeasured'
