@@ -709,9 +709,10 @@ def test_security_posture_table_matches_the_code():
     flat = ' '.join(section.split())
     for area, level in workspace.FLOORS.items():
         assert f'`{area}` always {level}s' in flat, area
-    block = ', '.join(workspace.SCHEMA['scanner']['mcp']['block'][1])
-    assert f'`scanner.mcp.block` (default `{block}`)' in flat
+    assert workspace.SCHEMA['scanner']['mcp']['block'][1] == []  # #351: the posture decides
+    assert '`scanner.mcp.block`, which is unset by default: no severity under `guarded`' in flat
+    assert '`critical`, `high` and `unmeasured` under `strict`' in flat
     ziran = ' '.join(page.split('\n## ZIRAN integration\n', 1)[1].split('\n## ', 1)[0].split())
-    for phrase in ('By default only a critical finding or a check that could not run blocks launches',
+    for phrase in ('Under `observe` and `guarded` (the default) every finding warns',
                    'never starts an unapproved project server', '`uvx`, `npx` or `pipx run`'):
         assert phrase in ziran, phrase
