@@ -1,6 +1,7 @@
 """Translate Claude Code lifecycle hooks into registered guard calls."""
 
 import json
+import os
 from pathlib import Path
 import re
 import shlex
@@ -45,6 +46,8 @@ def run(args):
             root = None
         if root is None or not cwd.is_relative_to(root):
             root = workspace.guard_scope(payload)
+        if not reaches_workspace(payload, root):
+            return CLEAN
         if root is not None:
             env.load(root)
             if args.event in CONFIG_EVENTS:
@@ -141,6 +144,40 @@ def repair_read(payload):
     except (OSError, ValueError, RuntimeError):
         return False
     return target == base / 'config.toml' or target.is_relative_to(base / 'charters')
+
+
+def reaches_workspace(payload, root):
+    """Design 9.1 before any guard parses: the cwd or a file target (root), a
+    WUWEI_WORKSPACE selection, or a path word of the call (literal, tilde or the hook's
+    own environment variables expanded) lies in, is, or
+    directly contains a workspace or managed worktree."""
+    if root is not None or 'WUWEI_WORKSPACE' in os.environ:
+        return True
+    from wuwei import workspace
+    cwd = Path(payload['cwd']).resolve()
+    inputs = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
+    words = {inputs.get('notebook_path'), os.environ.get('GIT_DIR'), os.environ.get('GIT_WORK_TREE')}
+    if isinstance(inputs.get('command'), str):
+        words.update(re.sub(r'^-\w(?=[~./])', '', word)
+                     for word in re.split(r'''[\s;&|()<>'"`=\\]+''', inputs['command']))
+    # ponytail: each word walks its own parents through workspace.scope; dedupe the walk if
+    # a large heredoc shows in the latency figures. Nonliteral targets (cd $P, bare cd,
+    # cd -, CDPATH) are not resolved; the code host and the pre-push hook are the anchors.
+    for word in words:
+        if not isinstance(word, str) or not word:
+            continue
+        try:
+            path = (cwd / Path(os.path.expandvars(word)).expanduser()).resolve()
+            if '/' not in word and not path.exists():
+                continue
+        except (OSError, ValueError, RuntimeError):
+            continue
+        try:
+            if workspace.scope(path) is not None or path.is_dir() and workspace.contains_workspace(path):
+                return True
+        except Exception:
+            return True  # A broken marker or anchor is WUWEI-shaped; the guards report it.
+    return False
 
 
 def shadow(payload, refusals, root):

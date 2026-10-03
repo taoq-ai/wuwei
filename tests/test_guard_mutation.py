@@ -46,6 +46,7 @@ SPECIAL_TESTS = {
     ('wuwei.decision', 'lint'): 'test_disabling_decision_lint_makes_its_probe_red',
     ('wuwei.guards.deploy', 'check'): 'test_disabling_guard_makes_its_probe_red',
     ('wuwei.guards.protect_state', '_owner_action'): 'test_disabling_owner_rule_makes_its_probe_red',
+    ('wuwei.commands.hook', 'reaches_workspace'): 'test_disabling_scope_gate_makes_outside_probe_red',
     **{('wuwei.remote', name): f'test_disabling_remote_{name}_makes_its_probe_red'
        for name in ('sender', 'code_step', 'confirmation', 'memory_floor')},
 }
@@ -89,6 +90,7 @@ def test_special_policies_have_mutation_probes():
                 (decision.lint.__module__, decision.lint.__name__),
                 ('wuwei.guards.deploy', 'check'),
                 ('wuwei.guards.protect_state', '_owner_action'),
+                ('wuwei.commands.hook', 'reaches_workspace'),
                 *(('wuwei.remote', name) for name in ('sender', 'code_step', 'confirmation', 'memory_floor'))}
     covered = {name for name, test in SPECIAL_TESTS.items() if callable(globals().get(test))}
     assert not missing_guards(required, covered), 'special policy lacks a mutation test'
@@ -118,6 +120,17 @@ def test_disabling_decision_lint_makes_its_probe_red():
     assert_refused(decision.lint)
     with pytest.raises(AssertionError):
         assert_refused(lambda text: (0, ''))
+
+
+def test_disabling_scope_gate_makes_outside_probe_red(tmp_path, monkeypatch):
+    from test_scope_first import TRIAL, assert_outside_clean, outside_dir
+    from wuwei.commands import hook
+
+    place = outside_dir(tmp_path, monkeypatch)
+    assert_outside_clean(TRIAL, place)
+    monkeypatch.setattr(hook, 'reaches_workspace', lambda *args: True)
+    with pytest.raises(AssertionError):
+        assert_outside_clean(TRIAL, place)
 
 
 def test_disabling_owner_rule_makes_its_probe_red(tmp_path, monkeypatch):

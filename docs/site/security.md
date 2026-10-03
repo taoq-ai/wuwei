@@ -8,7 +8,7 @@ layout: default
 
 ## Current controls
 
-Hooks invoke the CLI for relevant actions. Guard scope is a WUWEI workspace, its configured repositories and worktrees. Outside that scope, guards return 0. Relevance is checked before parsing; malformed input blocks a relevant call with exit 2 and a reason. CLI state and events use dedicated writers, and the outward policy limits text-bearing adapter calls. The `none` scanner reports unmeasured rather than clean.
+Hooks invoke the CLI for relevant actions. Guard scope is a WUWEI workspace, its configured repositories and worktrees. Outside that scope, every hook returns 0 before any guard reads or parses the call; a command that names a workspace path literally is in scope. Relevance is checked before parsing; malformed input blocks a relevant call with exit 2 and a reason. CLI state and events use dedicated writers, and the outward policy limits text-bearing adapter calls. The `none` scanner reports unmeasured rather than clean.
 
 ## ZIRAN integration
 

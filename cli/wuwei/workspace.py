@@ -275,6 +275,15 @@ def scope(path):
     return None
 
 
+def contains_workspace(path):
+    try:
+        with os.scandir(path) as entries:
+            return any(entry.is_dir() and os.path.isdir(os.path.join(entry.path, '.wuwei'))
+                       for entry in entries)
+    except PermissionError:
+        return False
+
+
 def guard_scope(payload):
     """Find a workspace covering cwd or a resolvable target, including Git anchors."""
     cwd = Path(payload.get('cwd') or Path.cwd()).resolve()
