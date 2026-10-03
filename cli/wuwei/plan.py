@@ -116,6 +116,10 @@ def propose(data, root=None):
     if gate.exit:
         raise (state.StateError if gate.exit == 1 else OSError)(gate.reason)
     data['sweep']['mcp'] = measured.reason or 'MCP registry: no attached servers'
+    from wuwei.commands.doctor import pr_flow
+    warned = [row['name'] for row in pr_flow(workspace.load_config(root)) if row['status'] != 'ok']
+    data['sweep']['pr-flow'] = (f"measured: {len(warned)} warn ({', '.join(warned)}); "
+                                'wuwei doctor --section pr-flow' if warned else 'measured: ok')
     data['candidates'] = rank.rank(data['candidates'], framework, goal_list)
     directory = workspace.day_dir(root)
     if (directory / 'state.json').exists() and state.read_state(root).get('gate_approved'):

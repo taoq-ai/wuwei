@@ -29,7 +29,7 @@ PARAMETERS = {
                 'continue_job': ('job', 'feedback')},
     'scanner': {'audit': ('path',), 'gate': ('result', 'threshold'),
                 'traces': ('file',), 'mcp': ('servers',)},
-    'code_host': {'auth_status': (), 'pr': ('ref',), 'checks': ('ref', 'sha'), 'reviews': ('ref',),
+    'code_host': {'auth_status': (), 'viewer_login': (), 'pr': ('ref',), 'checks': ('ref', 'sha'), 'reviews': ('ref',),
                   'commits': ('ref',),
                   'threads': ('ref',), 'protection': ('repo', 'branch'),
                   'files': ('ref',), 'history': ('repo', 'start', 'branch', 'patches'),

@@ -20,7 +20,9 @@ NOW = '2026-10-03T12:00:00+00:00'
 TODAY = '2026-10-03'
 REPO = ('[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n'
         'fast_checks = ["ruff check ."]\nidentity = { name = "Ada", email = "ada@example.com" }\n')
-CONFIG = '[adapters]\ncode_host = "github"\n' + REPO
+IDENTITY = ('\n[owner]\nhandles = ["ada"]\n\n[shepherd]\nlead_login = "ada"\n\n'
+            '[shepherd.authors]\n"ada@example.com" = {login = "ada"}\n')
+CONFIG = '[adapters]\ncode_host = "github"\n' + REPO + IDENTITY
 DIGEST = 'd' * 64
 CLASSIC_LINE = 'acme/widget main: classic protection: none visible (404: unprotected or no admin)'
 TRIAL = 'page: plugin integrity: .in_use/12345'
@@ -526,6 +528,68 @@ def test_unapproved_server_is_ok(ws):
     assert doctor.outcome(rows) == 0
 
 
+def pr_flow(extra=''):
+    return {r['name']: r for r in doctor.pr_flow(workspace.load_config(Path('pr-flow'), raw=extra))}
+
+
+def test_pr_flow_rows():
+    rows = pr_flow()
+    assert list(rows) == ['owner.handles', 'shepherd.lead_login', 'shepherd.authors',
+                          'adapters.tracker', 'adapters.chat', 'adapters.review_bot']
+    for name, phase in (('owner.handles', 'reviewer selection, review replies and obligations at pr raise'),
+                        ('shepherd.lead_login', 'the lead review request at pr raise'),
+                        ('shepherd.authors', 'reviewer mentions in the review ping at pr ping')):
+        assert rows[name]['status'] == 'warn' and rows[name]['value'].endswith('will block: ' + phase), name
+        assert rows[name]['fix'] and rows[name]['docs']
+    assert rows['owner.handles']['fix'] == "bin/wuwei config set owner.handles '[\"<code-host login>\"]'"
+    assert rows['shepherd.lead_login']['fix'] == "bin/wuwei config set shepherd.lead_login '\"<lead login>\"'"
+    assert rows['shepherd.authors']['fix'].startswith('bin/wuwei setup')
+    assert '{login = "<login>", mention = "<chat id>"}' in rows['shepherd.authors']['fix']
+    for name in ('adapters.tracker', 'adapters.chat', 'adapters.review_bot'):
+        assert rows[name]['status'] == 'ok' and rows[name]['value'].startswith('none: ')
+    slack = pr_flow('[adapters]\nchat = "slack"\n')
+    channel = slack['shepherd.review_channel']
+    assert channel['status'] == 'warn' and channel['value'].endswith('will block: the review ping at pr ping')
+    assert channel['fix'] == "bin/wuwei config set shepherd.review_channel '\"<channel id>\"'"
+    assert slack['adapters.chat'] == {'section': 'pr-flow', 'name': 'adapters.chat', 'status': 'ok',
+                                      'value': 'slack'}
+    solo = pr_flow('[adapters]\nchat = "slack"\n[shepherd]\nmin_reviewers = 0\n')
+    for name in ('shepherd.lead_login', 'shepherd.authors', 'shepherd.review_channel'):
+        assert (solo[name]['status'], solo[name]['value']) == ('ok', 'not applicable: shepherd.min_reviewers = 0')
+    assert solo['owner.handles']['status'] == 'warn'
+    filled = pr_flow('[adapters]\nchat = "slack"\n' + IDENTITY.replace(
+        'lead_login = "ada"\n', 'lead_login = "ada"\nreview_channel = "C0123ABCD"\n'))
+    assert all(r['status'] == 'ok' for r in filled.values()), filled
+    assert filled['owner.handles']['value'] == 'ada' and filled['shepherd.authors']['value'] == '1 mapped'
+
+
+def test_pr_flow_in_full_report(ws, capsys):
+    config(ws.root, CONFIG.replace('handles = ["ada"]', 'handles = []'))
+    assert main(['doctor']) == 1
+    lines = capsys.readouterr().out.splitlines()
+    assert lines.index('Gates and adapters') < lines.index('PR flow') < lines.index('Day and sessions')
+    assert '      fix: bin/wuwei config set owner.handles \'["<code-host login>"]\'' in lines
+
+
+def test_pr_flow_section_only(ws, monkeypatch, capsys):
+    def refuse(*a, **k):
+        raise AssertionError('measured outside the PR flow section')
+    monkeypatch.setattr(heartbeat, 'measure', refuse)
+    monkeypatch.setattr(init, 'upgrade', refuse)
+    monkeypatch.setattr(registry, 'load', refuse)
+    assert main(['doctor', '--section', 'pr-flow']) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == 'PR flow' and out[-1] == 'doctor: ok'
+    assert not set(out) & (set(doctor.SECTIONS.values()) - {'PR flow'})
+    config(ws.root, CONFIG.replace('handles = ["ada"]', 'handles = []'))
+    assert main(['doctor', '--section', 'pr-flow', '--json']) == 1
+    data = json.loads(capsys.readouterr().out)
+    assert {r['section'] for r in data['rows']} == {'pr-flow'}
+    config(ws.root, 'repos = []\n' + CONFIG)
+    assert main(['doctor', '--section', 'pr-flow']) == 2
+    assert 'unmeasured' in capsys.readouterr().out
+
+
 # US2: --fix
 
 CHECKOUT = ('page: plugin integrity: development checkout requires host reconfirmation; '
@@ -533,7 +597,7 @@ CHECKOUT = ('page: plugin integrity: development checkout requires host reconfir
 
 
 def fix(confirm):
-    return doctor.run(Namespace(fix=True, json=False), confirm=confirm)
+    return doctor.run(Namespace(fix=True, json=False, section=None), confirm=confirm)
 
 
 def empty_checks(ws, monkeypatch, repos=1):
@@ -597,7 +661,7 @@ def test_fix_applies_only_the_allow_list(ws, monkeypatch, capsys):
             doctor._row('workspace', 'posture', 'warn', 'observe long', 'set security.posture = "guarded"'),
             doctor._row('day', 'state', 'fail', 'bad', 'wuwei state recover in a host terminal'),
             doctor._row('gates', 'decision', 'fail', 'pending', 'wuwei mcp decide', apply='mcp-decide')]
-    monkeypatch.setattr(doctor, 'diagnose', lambda: rows)
+    monkeypatch.setattr(doctor, 'diagnose', lambda section=None: rows)
     asked = []
     assert fix(asked.append) == 1
     out = capsys.readouterr().out

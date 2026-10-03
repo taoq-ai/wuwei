@@ -61,6 +61,13 @@ def _commands(text):
     return {'deploy.deny': [item if item.endswith('*') else item + '*' for item in items]}
 
 
+def _channel(text):
+    text = text.strip()
+    if not re.fullmatch(r'[A-Z0-9]+', text):
+        raise ValueError('expected a Slack channel ID such as C0123ABCD')
+    return {'adapters.chat': 'slack', 'shepherd.review_channel': text}
+
+
 # The only definition of the interview. Effects: a dotted config key (`repos.` means each
 # answered repository), a charter override role with one fixed sentence, or voice never phrases.
 QUESTIONS = (
@@ -175,6 +182,25 @@ QUESTIONS = (
           'text and MCP warn.', {'security.posture': 'guarded'}),
          ('Strict', 'A repository that deploys or shared credentials: everything blocks.',
           {'security.posture': 'strict'})),
+     'free': None},
+    {'id': 'tracker', 'scope': 'workspace', 'header': 'Tracker', 'question': 'Where does your backlog live?',
+     'choices': (
+         ('None', 'Discovery reads no tracker backlog.', {'adapters.tracker': 'none'}),
+         ('Linear', 'Discovery reads the Linear backlog; set LINEAR_API_KEY in .wuwei/env.',
+          {'adapters.tracker': 'linear'})),
+     'free': None},
+    {'id': 'chat', 'scope': 'workspace', 'header': 'Chat', 'question': 'Where should review pings go?',
+     'choices': (
+         ('None', 'Reviewers are requested on the code host only.', {'adapters.chat': 'none'}),
+         ('Slack', 'Set SLACK_BOT_TOKEN and SLACK_OWNER_DM_CHANNEL in .wuwei/env; '
+          'type the review channel ID to set it too.', {'adapters.chat': 'slack'})),
+     'free': (_channel, 'the Slack review channel ID, for example C0123ABCD')},
+    {'id': 'review_bot', 'scope': 'workspace', 'header': 'Review bot',
+     'question': 'Which review bot reads your pull requests?',
+     'choices': (
+         ('None', 'Discovery reads no review-bot findings.', {'adapters.review_bot': 'none'}),
+         ('Greptile', 'Read Greptile scores and findings; set GREPTILE_API_KEY in .wuwei/env.',
+          {'adapters.review_bot': 'greptile'})),
      'free': None},
 )
 

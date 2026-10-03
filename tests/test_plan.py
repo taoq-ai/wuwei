@@ -151,3 +151,13 @@ def test_candidate_tier_is_copied_at_approve(root):
     plan.propose(good, root)
     plan.approve(['A'], root, goals_confirmed=True)
     assert state.read_state(root)['items']['A']['tier'] == 'full'
+
+
+def test_propose_sweep_has_pr_flow(root):
+    shepherd = '[shepherd]\nlead_login = "ada"\n\n[shepherd.authors]\n"ada@example.com" = {login = "ada"}\n'
+    (root / '.wuwei/config.toml').write_text(shepherd)
+    text = plan.propose(proposal(), root).read_text()
+    assert '- pr-flow: measured: 1 warn (owner.handles); wuwei doctor --section pr-flow\n' in text
+    (root / '.wuwei/config.toml').write_text('[owner]\nhandles = ["ada"]\n\n' + shepherd)
+    (root / '.wuwei/days/2026-09-28/plan.md').unlink()
+    assert '- pr-flow: measured: ok\n' in plan.propose(proposal(), root).read_text()
