@@ -86,6 +86,11 @@ spec 4.6 and 4.7).
   gets no further fix rounds; the next step is a design reconsideration recorded in its
   spec (why the approach keeps leaking, what replaces it), agreed with the owner before
   more code (example: #222, six rounds on shell parsing for owner actions).
+- Tracker hygiene (design 5.11) applies to WUWEI's own work: every feature has its GitHub
+  issue as its ticket; a bug or follow-up found mid-feature becomes its own issue linked to
+  the parent (recorded under Deferred in the feature's spec until it is filed), never
+  silent scope; decisions, verdicts and the pull request link are recorded on the issue or
+  its pull request.
 
 ## Governance
 
