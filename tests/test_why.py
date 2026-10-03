@@ -380,3 +380,10 @@ def test_shadow_refusal_is_explained(root, capsys):
     ident = refusal(root, SHADOW, kind='guard.would_refuse')
     assert why(capsys, 'last refusal') == (0, SHADOWED, '')
     assert why(capsys, ident) == (0, SHADOWED, '')
+
+
+def test_posture_warning_names_area_level_and_posture(root, capsys):
+    # #331: a warning names the area, its level and the posture that produced it.
+    refusal(root, {**SHADOW, 'area': 'publish', 'level': 'warn', 'posture': 'observe'},
+            kind='guard.would_refuse')
+    assert why(capsys, 'last refusal') == (0, [*SHADOWED, 'posture: publish = warn (observe)'], '')

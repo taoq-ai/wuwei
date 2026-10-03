@@ -43,6 +43,33 @@ audits run when ZIRAN is on PATH, including in the audit job. See the
 [agent maintenance instructions](https://github.com/taoq-ai/wuwei/blob/main/agents/README.md)
 for installation and regeneration details.
 
+## Security posture
+
+`security.posture` says what warns and what blocks, by where the plugin runs and for what purpose. Each area has a level: `off` (not checked; a refusal is dropped and not recorded), `warn` (recorded as `guard.would_refuse` and let through) or `block` (refused, as before). `[security.areas]` overrides one area, for example `mcp = "off"`. `bin/wuwei config check` prints the effective table.
+
+| Area | What it covers | observe | guarded (default) | strict |
+| --- | --- | --- | --- | --- |
+| `records` | State, events, config, generated instructions, verdicts, decisions, traces, session records (`protect_state`, `decision`, `verdict`, `traces`, `lifecycle`) | block | block | block |
+| `publish` | Commit and push rules, the owned-PR anchor and day close (`commit_push`, `stop`); deploys and PR actions (`deploy`, `pr`) | warn | block | block |
+| `integrity` | The plugin integrity gate (`integrity`) | warn | block | block |
+| `mcp` | The MCP registry launch gate | warn | warn | block |
+| `outward` | The outward text lint (`outward`) | warn | warn | block |
+| `seats` | The seat launch contract: logged brief, capacity, memory, clean worktree (`agent_launch`) | warn | warn | block |
+
+Floors no posture and no override lowers:
+
+- `records` always blocks. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
+- Owner-only actions always block: the deployment ban (`deploy`), the merge policy, approvals and owner markers (`pr`), and approve-tier messages and canary or honeytoken egress (the outward approval tier). Under `observe`, `publish` relaxes only the commit and push rules and the PR anchor.
+- MCP: under `guarded` and `strict`, a finding at a severity in `scanner.mcp.block` (default `critical`) or a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. `strict` also blocks every high finding and every unmeasured server.
+
+Where to run each:
+
+- `observe`: a first week on a project, or a personal sandbox. You see what the guards would stop in your own habits before they stop anything; the records stay trustworthy. After `guards.shadow_days` one nudge asks you to switch to `guarded`.
+- `guarded`: a real project. Records, publishing and integrity block; seat launches, outward text and MCP findings below the floor warn, and each warning is a status nudge.
+- `strict`: a repository that deploys, or a workspace that holds shared credentials. Everything blocks.
+
+The posture changes only what the cooperative guards refuse. The hard boundaries below (host rules, the credential layout, owner-sent messages) hold in every posture. `config.toml` is a record, so a seat cannot lower its own posture.
+
 ## Threat model 9.1
 
 The guards address agent mistakes, corner cutting and prompt injections sent through normal tools. They are cooperative mistake prevention, not an isolation boundary: no hook, Claude Code or git, is a hard boundary against a process running as the owner. Such a process can edit local files, including state, events and approval records. Hard boundaries are code host server-side rules (protected refs, required checks, required reviews), publication credentials kept out of seat environments, owner-sent approve-tier messages, and, when built, an external control plane. For push, merge, deploy and PR approval the guards refuse what they recognise; push and merge are guaranteed by the host rules (protected refs, and a merge lands only through required checks and reviews), and approval and deploy by the credential layout. WUWEI must never bypass branch protection, approve its own pull requests or deploy. Codex seats can be isolated in a write sandbox limited to their worktree. More hardening for Claude seats is **planned**.

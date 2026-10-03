@@ -282,7 +282,8 @@ def test_workspace_rows_healthy(ws):
     assert names(rows, 'workspace') == [
         'workspace', 'config', 'template', 'acme/widget path', 'acme/widget git', 'acme/widget branch',
         'acme/widget identity', 'acme/widget fast_checks', 'calibration', 'drift', 'interview',
-        'profile', 'shadow']
+        'profile', 'posture']
+    assert row(rows, 'posture')['value'] == 'guarded'
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'workspace'), rows
 
 
@@ -345,14 +346,21 @@ def test_workspace_calibration_and_shadow(ws, monkeypatch):
     state.append_event('calibration.drift', {'repo': 'acme/widget', 'changed': ['runner']}, ws.root)
     found = row(doctor.diagnose(), 'drift')
     assert found['status'] == 'warn' and found['apply'] == 'calibrate' and 'acme/widget' in found['value']
-    config(ws.root, CONFIG.replace('[adapters]', '[guards]\nmode = "shadow"\nshadow_since = "2026-09-30"\n'
-                                                 '[adapters]'))
-    found = row(doctor.diagnose(), 'shadow')
-    assert (found['status'], found['value']) == ('ok', 'shadow, 4 days left')
+    observe = '[security]\nposture = "observe"\n[guards]\nshadow_since = "{}"\n[adapters]'
+    config(ws.root, CONFIG.replace('[adapters]', observe.format('2026-09-30')))
+    found = row(doctor.diagnose(), 'posture')
+    assert (found['status'], found['value']) == ('ok', 'observe, 4 days left')
+    config(ws.root, CONFIG.replace('[adapters]', observe.format('2026-09-25')))
+    found = row(doctor.diagnose(), 'posture')
+    assert found['status'] == 'warn' and 'apply' not in found and '8 days' in found['value']
+    assert found['fix'] == ('set security.posture = "guarded" in .wuwei/config.toml, '
+                            'or raise guards.shadow_days')
+    # guards.mode = "shadow" is the deprecated alias for observe (#308).
     config(ws.root, CONFIG.replace('[adapters]', '[guards]\nmode = "shadow"\nshadow_since = "2026-09-25"\n'
                                                  '[adapters]'))
-    found = row(doctor.diagnose(), 'shadow')
-    assert found['status'] == 'warn' and 'apply' not in found and '8 days' in found['value']
+    assert row(doctor.diagnose(), 'posture')['status'] == 'warn'
+    config(ws.root, CONFIG.replace('[adapters]', '[security]\nposture = "strict"\n[adapters]'))
+    assert row(doctor.diagnose(), 'posture')['value'] == 'strict'
 
 
 def test_gates_rows(ws):
@@ -586,7 +594,7 @@ def test_fix_reconfirms_development_checkout(ws, monkeypatch, capsys):
 
 def test_fix_applies_only_the_allow_list(ws, monkeypatch, capsys):
     rows = [doctor._row('gates', 'mcp docs', 'warn', 'unmeasured', 'wuwei mcp decide proceed-unmeasured docs'),
-            doctor._row('workspace', 'shadow', 'warn', 'shadow long', 'set guards.mode = "enforce"'),
+            doctor._row('workspace', 'posture', 'warn', 'observe long', 'set security.posture = "guarded"'),
             doctor._row('day', 'state', 'fail', 'bad', 'wuwei state recover in a host terminal'),
             doctor._row('gates', 'decision', 'fail', 'pending', 'wuwei mcp decide', apply='mcp-decide')]
     monkeypatch.setattr(doctor, 'diagnose', lambda: rows)
@@ -595,7 +603,7 @@ def test_fix_applies_only_the_allow_list(ws, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert not asked and 'Nothing to apply' in out
     notes = out.split('Not applied:', 1)[1]
-    for text in ('wuwei mcp decide proceed-unmeasured docs', 'set guards.mode = "enforce"',
+    for text in ('wuwei mcp decide proceed-unmeasured docs', 'set security.posture = "guarded"',
                  'wuwei state recover in a host terminal', 'wuwei mcp decide'):
         assert text in notes
     assert not events(ws.root, 'doctor.fixed')

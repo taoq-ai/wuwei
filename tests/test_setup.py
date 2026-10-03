@@ -318,7 +318,8 @@ def test_one_command_three_repositories(project, host, terminal, capsys):
     assert [(r['name'], r['path'], r['default_branch'], r['identity']['email']) for r in loaded['repos']] == [
         (name, name.split('/')[1], 'main', 'pat@example.test') for name in NAMES]
     assert all(r['gates']['floor'] == 'full' for r in loaded['repos'])
-    assert loaded['owner']['verbosity']['default'] == 'standard' and loaded['guards']['mode'] == 'shadow'
+    assert loaded['owner']['verbosity']['default'] == 'standard'
+    assert (loaded['security']['posture'], loaded['guards']['mode']) == ('observe', 'enforce')
     assert sorted(json.loads((project / '.wuwei/calibration.json').read_text())) == NAMES
     assert (project / DAY / 'calibration.md').is_file()
     assert terminal.asked == [NAMES]
@@ -368,6 +369,19 @@ def test_hand_configured_repositories_get_calibrated(project, host, terminal, ca
     assert run_setup(confirm, shadow=False) == 0, capsys.readouterr().err
     out = capsys.readouterr().out
     assert '+[[repos]]' not in out and terminal.asked == [NAMES] and len(confirm.digests) == 1
+
+
+def test_shadow_on_an_existing_workspace_proposes_observe(project, host, terminal, capsys):
+    from fakes.integrity import seed
+
+    (project / '.wuwei').mkdir()
+    (project / '.wuwei/config.toml').write_text(TEMPLATE)
+    seed(project)
+    assert run_setup(Confirm()) == 0, capsys.readouterr().err
+    assert '+posture = "observe"' in capsys.readouterr().out
+    loaded = load_config(project)
+    assert (loaded['security']['posture'], loaded['guards']['mode']) == ('observe', 'enforce')
+    assert loaded['guards']['shadow_since'] == '2026-10-03'
 
 
 def test_ziran_on_path_is_proposed(project, host, terminal, capsys):

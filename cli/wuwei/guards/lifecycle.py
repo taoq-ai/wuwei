@@ -5,9 +5,10 @@ from pathlib import Path
 from wuwei import memory, sessions, state, watch, workspace
 from wuwei.guards import Guard
 
-SHADOW_LINE = ('Shadow mode is on: guards record what they would refuse and let the call '
-               'through. State, events, config, integrity, owner actions, deploys, outbound and '
-               'merge-policy refusals still refuse. bin/wuwei shadow report lists the would-be refusals.')
+SHADOW_LINE = ('Observe posture is on: guards record what they would refuse and let the call '
+               'through. Records (state, events, config, verdicts, decisions) and owner-only actions '
+               '(deploys, merges, approvals, approve-tier messages) still refuse. bin/wuwei shadow '
+               'report lists the would-be refusals.')
 
 
 def scoped(payload):
@@ -36,7 +37,7 @@ def session_start(payload):
     except watch.ERRORS as exc:
         return 2, f'session unmeasured: {exc}'
     code, lines = 0, []
-    if config['guards']['mode'] == 'shadow':
+    if workspace.posture(config)[0] == 'observe':
         lines.append(SHADOW_LINE)
     try:
         if isinstance(payload.get('session_id'), str) and payload['session_id'].strip():

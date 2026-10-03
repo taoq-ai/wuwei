@@ -35,33 +35,53 @@ def check(payload):
         return 2, f'agent launch could not run: {exc}'
 
 
-def _check(payload):
-    import hashlib
-    from wuwei import brief, registry, state, workspace
+def check_mcp(payload):
+    """The MCP launch gate (#325) as its own record: mcp.cached applies the mcp posture and
+    its floor (#331), so the seats level never relaxes it."""
+    try:
+        seat = _seat(payload)
+        if seat is None:
+            return 0, ''
+        from wuwei import mcp
+        measured = mcp.cached(seat[0])
+        return measured.exit, measured.reason
+    except Exception as exc:
+        return 2, f'agent launch could not run: {exc}'
+
+
+def _seat(payload):
+    """(root, tool_input, role) for a WUWEI seat launch in a workspace, else None."""
+    from wuwei import workspace
 
     inputs = payload.get('tool_input')
     if isinstance(inputs, dict):
         agent_type = inputs.get('subagent_type')
         if agent_type is None or isinstance(agent_type, str) and not wuwei_role(agent_type):
-            return 0, ''
+            return None
     root = workspace.guard_scope(payload)
     if root is None:
-        return 0, ''
+        return None
     inputs = payload.get('tool_input')
     if not isinstance(inputs, dict):
         raise ValueError('invalid tool_input')
     agent_type = inputs.get('subagent_type')
     if agent_type is None or isinstance(agent_type, str) and not agent_type.strip():
-        return 0, ''
+        return None
     if not isinstance(agent_type, str):
         raise ValueError('invalid Agent subagent_type')
-    role = agent_type.rsplit(':', 1)[-1]
     if not wuwei_role(agent_type):
+        return None
+    return root, inputs, agent_type.rsplit(':', 1)[-1]
+
+
+def _check(payload):
+    import hashlib
+    from wuwei import brief, registry, state, workspace
+
+    seat = _seat(payload)
+    if seat is None:
         return 0, ''
-    from wuwei import mcp
-    measured = mcp.cached(root)
-    if measured.exit:
-        return measured.exit, measured.reason
+    root, inputs, role = seat
     for key in ('prompt', 'description', 'subagent_type'):
         if not isinstance(inputs.get(key), str) or not inputs[key].strip():
             raise ValueError(f'invalid Agent {key}')
@@ -250,4 +270,5 @@ def stop(payload):
     return 0, ''
 
 
-GUARDS = [Guard('PreToolUse', 'Agent', check), Guard('SubagentStop', None, stop)]
+GUARDS = [Guard('PreToolUse', 'Agent', check_mcp), Guard('PreToolUse', 'Agent', check),
+          Guard('SubagentStop', None, stop)]

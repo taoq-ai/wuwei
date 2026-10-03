@@ -191,6 +191,8 @@ def refusal(root, target):
         # Messages carry no structured rule or fix; the first "; " splits them (Assumption A3).
         rule, _, fix = entry['reason'].partition('; ')
         lines += [f'guard: {entry.get("guard") or NOT}', f'rule: {rule}', f'fix: {fix or NOT}']
+    if shadowed and payload.get('area'):  # #331
+        lines.append(f'posture: {payload["area"]} = {payload.get("level")} ({payload.get("posture")})')
     return [(text, f'{day.name}:{number}', []) for text in lines]
 
 

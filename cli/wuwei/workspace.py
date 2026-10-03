@@ -34,6 +34,17 @@ MERGE_SCHEMA = {
 
 LEVELS = ("brief", "standard", "full")
 SURFACES = ("decisions", "digest", "nudges", "dm", "report")
+# #331: what warns and what blocks, per area, by where the plugin runs.
+AREAS = ('integrity', 'mcp', 'publish', 'records', 'outward', 'seats')
+AREA_LEVELS = ('off', 'warn', 'block')
+POSTURES = {
+    'observe': {**{area: 'warn' for area in AREAS}, 'records': 'block'},
+    'guarded': {'integrity': 'block', 'mcp': 'warn', 'publish': 'block', 'records': 'block',
+                'outward': 'warn', 'seats': 'warn'},
+    'strict': {area: 'block' for area in AREAS},
+}
+# Floors no posture or override lowers; a lower override is a config finding.
+FLOORS = {'records': 'block'}
 
 SCHEMA = {
     "scanner": {"severity_threshold": (str, "high", ("critical", "high", "medium", "low")),
@@ -43,7 +54,8 @@ SCHEMA = {
                         "timeout_seconds": (int, 60, 1),
                         "block": [(str, None, ("critical", "high", "medium", "low", "unmeasured")),
                                   ["critical"]]}},
-    "security": {"required": (bool, False)},
+    "security": {"required": (bool, False), "posture": (str, "guarded", tuple(POSTURES)),
+                 "areas": {area: (str, "", ("", *AREA_LEVELS)) for area in AREAS}},
     "owner": {"name": (str, ""), "pronouns": (str, ""), "handles": [(str, None)],
               "timezone": (str, ""),
               "verbosity": {"default": (str, "brief", LEVELS),
@@ -464,6 +476,11 @@ def load_config(root=None, *, raw=None):
                 date.fromisoformat(since)
             except ValueError:
                 raise ConfigError('guards.shadow_since: expected YYYY-MM-DD or ""') from None
+        for area, floor in FLOORS.items():
+            value = config['security']['areas'][area]
+            if value and AREA_LEVELS.index(value) < AREA_LEVELS.index(floor):
+                raise ConfigError(f'security.areas.{area}: "{value}" is below its floor "{floor}"; '
+                                  f'{area} always blocks, remove the override')
         from wuwei.decision import CLASSES
         for name, value in config['decisions']['cruise']['levels'].items():
             if name not in CLASSES:
@@ -513,6 +530,14 @@ def load_config(root=None, *, raw=None):
             if line:
                 hint = f'; repos is assigned on line {line}; delete that line before using [[repos]] tables'
         raise ConfigError(f"config.toml: {exc}{hint}") from exc
+
+
+def posture(config):
+    """The posture name and each area's level (#331); guards.mode = "shadow" (#308,
+    deprecated) is observe."""
+    name = 'observe' if config['guards']['mode'] == 'shadow' else config['security']['posture']
+    return name, {area: config['security']['areas'][area] or level
+                  for area, level in POSTURES[name].items()}
 
 
 def create_worktree(repo, branch, path, root, vcs, identity=None):

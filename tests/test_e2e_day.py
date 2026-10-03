@@ -208,14 +208,17 @@ def test_unconfirmed_plugin_change_denies_pretooluse(day):
              tool_input={'file_path': str(outside / 'note.md')})
 
 
-def test_shadow_mode_records_force_push_and_keeps_records_refused(day):
+@pytest.mark.parametrize('setting', ['[guards]\nmode = "shadow"\nshadow_since = "2026-09-29"\n',
+                                     '[security]\nposture = "observe"\n'])
+def test_shadow_mode_records_force_push_and_keeps_records_refused(day, setting):
+    # #331: the deprecated shadow mode and the observe posture are one implementation.
     from adapters.vcs import git
     from wuwei import registry
     from wuwei.registry import Result
     config = day.root / '.wuwei/config.toml'
     config.write_text(config.read_text().replace(
         'fast_checks', 'identity = {name = "Builder", email = "builder@example.test"}\nfast_checks')
-        + '[guards]\nmode = "shadow"\nshadow_since = "2026-09-29"\n')
+        + setting)
     # The day fixture has no Git identity (git var exits 128); report the configured one.
     identity = {'name': 'Builder', 'email': 'builder@example.test'}
     day.patch.setattr(registry.load('vcs', None), 'commit_context', lambda repo, *args, root=None: Result(
@@ -226,15 +229,21 @@ def test_shadow_mode_records_force_push_and_keeps_records_refused(day):
     assert event['kind'] == 'guard.would_refuse' and event['payload']['guard'] == 'commit_push'
     assert 'force' in event['payload']['reason'].lower()
     assert event['payload']['target'] == 'git push --force origin main'
+    assert {key: event['payload'][key] for key in ('area', 'level', 'posture')} == {
+        'area': 'publish', 'level': 'warn', 'posture': 'observe'}
     output = day.hook('PreToolUse', expected=2, tool_name='Write', tool_input={
         'file_path': str(day.directory / 'state.json'), 'content': '{}'})
-    assert json.loads(output)['hookSpecificOutput']['permissionDecision'] == 'deny'
+    denied = json.loads(output)['hookSpecificOutput']
+    assert denied['permissionDecision'] == 'deny'
+    assert 'posture: records = block (floor; no setting lowers it)' in denied['permissionDecisionReason']
     day.bash(['decision', 'outcome', 'D-1', 'A'], expected=2)
     report = day.run('shadow', 'report')
     assert 'commit_push: 1' in report
     day.run('integrity', 'check')
     (day.plugin / 'charters/builder.md').write_text('Changed without owner confirmation.\n')
     day.run('integrity', 'check', expected=1)
-    output = day.hook('PreToolUse', expected=2, tool_name='Read',
-                      tool_input={'file_path': str(day.repo / 'memory/demo.py')})
-    assert json.loads(output)['hookSpecificOutput']['permissionDecision'] == 'deny'
+    # Observe warns on integrity (#331): recorded, the read goes through.
+    assert day.hook('PreToolUse', tool_name='Read',
+                    tool_input={'file_path': str(day.repo / 'memory/demo.py')}) == ''
+    event = day.events[-1]
+    assert event['kind'] == 'guard.would_refuse' and event['payload']['area'] == 'integrity'

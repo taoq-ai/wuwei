@@ -66,12 +66,13 @@ install, host, workspace, gates and guards in one pass and prints the fix for an
 is not ok. Edit your goals in a host terminal with
 `bin/wuwei goals edit`. [Configuration](configuration.html) lists every key.
 
-`--shadow` starts a first week in shadow mode (on an existing workspace it proposes
-`guards.mode = "shadow"`), as does the `Shadow first week` answer in the interview. The guards then record what they would
-refuse and let the call through; records, integrity, owner actions, deploys, outbound and merge-policy refusals still refuse.
-Read `bin/wuwei shadow report` or the `## Shadow` section of the day report. When the nudge
-comes after `guards.shadow_days`, set `guards.mode = "enforce"` in `config.toml`, or raise
-`guards.shadow_days` to keep watching. See [shadow mode](concepts.html#shadow-mode).
+`--shadow` starts a first week in the observe posture (on an existing workspace it proposes
+`security.posture = "observe"`), as does the `Observe` answer in the interview. The guards
+then record what they would refuse and let the call through; records and owner-only actions
+(deploys, merges, approvals, approve-tier messages) still refuse. Read
+`bin/wuwei shadow report` or the `## Shadow` section of the day report. When the nudge comes
+after `guards.shadow_days`, set `security.posture = "guarded"` in `config.toml`, or raise
+`guards.shadow_days` to keep watching. See [security posture](concepts.html#security-posture).
 
 ## 3. Plan and the morning gate
 

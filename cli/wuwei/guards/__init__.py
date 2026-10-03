@@ -31,10 +31,33 @@ MODULES = {
     'traces': {'PostToolUse': None},
     'verdict': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'SubagentStop': None},
 }
-# Shadow mode (#308) never relaxes these modules: WUWEI's own records, config and owner
-# actions (protect_state), the integrity gate, the deployment ban (constitution VII),
-# canary and honeytoken egress (outward) and the merge policy and owner markers (pr).
-NEVER_SHADOWED = frozenset({'protect_state', 'integrity', 'deploy', 'outward', 'pr'})
+# #331: the posture area of each guard check; 'module.function' overrides its module. A test
+# pins the keys to MODULES. None: the check applies its own posture (the MCP launch gate in
+# mcp.cached), so the hook enforces it as returned.
+AREAS = {'agent_launch': 'seats', 'agent_launch.check_mcp': None, 'commit_push': 'publish',
+         'decision': 'records', 'deploy': 'publish', 'integrity': 'integrity',
+         'lifecycle': 'records', 'outward': 'outward', 'pr': 'publish',
+         'protect_state': 'records', 'stop': 'publish', 'traces': 'records',
+         'verdict': 'records'}
+# Owner-only actions block in every posture (#331 floor): the deployment ban (4.7), the merge
+# policy, approvals and owner markers (4.6), and approve-tier messages and canary egress (4.9).
+OWNER_ONLY = frozenset({'deploy', 'pr', 'outward.check_tier'})
+
+
+def level(check, levels):
+    """(module, area, level, line) for one guard check under resolved area levels. A check
+    with no area blocks with no posture line."""
+    module = check.__module__.rsplit('.', 1)[-1]
+    key = f'{module}.{getattr(check, "__name__", "")}'
+    area = AREAS.get(key, AREAS.get(module))
+    if area is None:
+        return module, None, 'block', ''
+    if key in OWNER_ONLY or module in OWNER_ONLY:
+        return module, area, 'block', f'posture: {area} = block (owner-only action; no setting lowers it)'
+    from wuwei.workspace import FLOORS
+    if area in FLOORS:
+        return module, area, 'block', f'posture: {area} = block (floor; no setting lowers it)'
+    return module, area, levels[area], f'posture: {area} = {levels[area]} (set security.areas.{area})'
 # ponytail: the hook's (event, tool_name) travels in context, not as discover()
 # arguments, because tests replace hook.discover with zero-argument stubs; make it a
 # parameter when those stubs take arguments.

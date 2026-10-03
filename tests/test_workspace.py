@@ -45,14 +45,20 @@ def test_init_layout(tmp_path, explicit):
     assert (workspace / 'config.toml').read_bytes() == (ROOT / 'templates/workspace/config.toml').read_bytes()
 
 
-def test_init_shadow(tmp_path):
+@pytest.mark.parametrize('flags,posture,since', [
+    (('--shadow',), 'observe', '2026-09-29'), (('--posture', 'observe'), 'observe', '2026-09-29'),
+    (('--posture', 'strict'), 'strict', ''), ((), 'guarded', '')])
+def test_init_posture(tmp_path, flags, posture, since):
     from wuwei import workspace
-    result = cli(tmp_path, 'init', '--shadow', WUWEI_NOW='2026-09-29T12:00:00Z')
+    result = cli(tmp_path, 'init', *flags, WUWEI_NOW='2026-09-29T12:00:00Z')
     assert result.returncode == 0, result.stderr
-    assert workspace.load_config(tmp_path)['guards'] == {
-        'mode': 'shadow', 'shadow_days': 7, 'shadow_since': '2026-09-29'}
-    result = cli(tmp_path, 'init', '--upgrade', '--shadow')
-    assert result.returncode == 2 and '--shadow' in result.stderr
+    config = workspace.load_config(tmp_path)
+    assert config['guards'] == {'mode': 'enforce', 'shadow_days': 7, 'shadow_since': since}
+    assert workspace.posture(config)[0] == posture
+    assert f'posture = "{posture}"' in (tmp_path / '.wuwei/config.toml').read_text()
+    for upgrade in (('--shadow',), ('--posture', 'strict')):
+        result = cli(tmp_path, 'init', '--upgrade', *upgrade)
+        assert result.returncode == 2 and upgrade[0] in result.stderr
 
 
 @pytest.mark.parametrize('kind', ['directory', 'file', 'symlink'])
@@ -122,6 +128,7 @@ def test_initialized_memory_lint(tmp_path):
 
 
 def test_config_defaults_and_independence(tmp_path):
+    from wuwei import workspace
     from wuwei.workspace import load_config
     write_config(tmp_path, '')
     config = load_config(tmp_path)
@@ -136,7 +143,8 @@ def test_config_defaults_and_independence(tmp_path):
         'scanner': {'severity_threshold': 'high', 'mcp': {
             'project_file': '.mcp.json', 'plugins_file': '~/.claude/plugins/installed_plugins.json',
             'user_file': '~/.claude.json', 'timeout_seconds': 60, 'block': ['critical']}},
-        'security': {'required': False},
+        'security': {'required': False, 'posture': 'guarded',
+                     'areas': {area: '' for area in workspace.AREAS}},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'digest': '', 'nudges': '', 'dm': '', 'report': ''}},
         'repos': [], 'cap': 1, 'calibrate': {'fast_check_seconds': 60},
