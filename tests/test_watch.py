@@ -859,6 +859,9 @@ def test_trace_sweep_parks_queues_and_pages(case, mapped, agent_id):
     from wuwei.commands.dashboard import cockpit_snapshot
     root = case[0]
     session, directory = trace_sweep_case(case, mapped=mapped, agent_id=agent_id)
+    if not mapped:  # #352: an unknown session prompts the owner only under strict.
+        with (root / '.wuwei/config.toml').open('a') as stream:
+            stream.write('\n[security]\nposture = "strict"\n')
     watch = watch_module()
     assert watch.sweep(root, watch_health=(0, '')) == 1
     item = state.read_state(root)['items']['work']
@@ -873,6 +876,8 @@ def test_trace_sweep_parks_queues_and_pages(case, mapped, agent_id):
     path = workspace.day_dir(root) / 'decisions' / (queued['id'] + '.md')
     fields, _ = decision.evaluate(path.read_text())
     assert decision.route(fields) == 'owner' and fields['Outcome'] == 'pending'
+    if not mapped:
+        assert 'Context: Session has no item reservation and no registration.' in path.read_text()
     assert len(cockpit_snapshot(workspace.day_dir(root))['decisions']) == 1
     assert watch.sweep(root, watch_health=(0, '')) == 1
     assert len(steward.decision_queue(root)) == 1

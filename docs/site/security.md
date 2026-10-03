@@ -62,6 +62,8 @@ Floors no posture and no override lowers:
 - Owner-only actions always block: the deployment ban (`deploy`), the merge policy, approvals and owner markers (`pr`), and approve-tier messages and canary or honeytoken egress (the outward approval tier). Under `observe`, `publish` relaxes only the commit and push rules and the PR anchor.
 - MCP: under `guarded` and `strict`, a finding at a severity in `scanner.mcp.block` (default `critical`) or a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. `strict` also blocks every high finding and every unmeasured server.
 
+Runtime trace chains (S2) page and ask the owner only for seats. The planner, its subagents and other registered sessions (shepherd, remote, seat-host) get one silent `traces.noted` event per session per day. A session the registry does not know gets one `traces.unmatched` event per day, and under `strict` one owner decision per session per day. `guards.mode = "shadow"` (`init --shadow`) counts as `observe`.
+
 Where to run each:
 
 - `observe`: a first week on a project, or a personal sandbox. You see what the guards would stop in your own habits before they stop anything; the records stay trustworthy. After `guards.shadow_days` one nudge asks you to switch to `guarded`.

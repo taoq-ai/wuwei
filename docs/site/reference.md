@@ -194,7 +194,7 @@ Host (`gh`, git identity, ZIRAN, Claude Code, Codex, free memory, service manage
 Workspace (config, template drift, each repository's path, branch, identity and
 `fast_checks`, calibration, interview, profiles, posture and its observe days), Gates and adapters
 (`config check`, the MCP gate and each server in today's registry record), Day and sessions
-(state, planner, watch, listener, heartbeat, open pages, nudges) and Guards (the heartbeat
+(state, planner, watch, listener, heartbeat, open pages, nudges, pre-#352 trace decisions) and Guards (the heartbeat
 hook probes, plus `hook PreToolUse` from a directory outside any workspace, which must
 allow). It works before there is a workspace: the Workspace section then names where to run
 `bin/wuwei init --shadow`.
@@ -217,6 +217,7 @@ and makes no network call beyond the `gh` reads `config check` makes. `--json` p
 | `calibrate` | `wuwei calibrate` | calibration drift was flagged today |
 | `watch-install` | `wuwei watch install` | the watch is not installed |
 | `listen-install` | `wuwei listen install` | an inbound source is set and the listener is not installed |
+| `trace-decisions` | `supersede pre-#352 tool-sequence decisions` | today has pending tool-sequence decisions the pre-#352 sweep wrote for a session with no item |
 
 It previews every fix first (the command's own dry run, or the digest its own confirmation
 would ask for), prints them as one batch, and asks for one digest on `/dev/tty`. Without a

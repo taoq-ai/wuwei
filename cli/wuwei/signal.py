@@ -3,7 +3,7 @@
 from datetime import datetime
 
 
-SILENT = ('item.progress', 'remote.acknowledged', 'state.write', 'state.set', 'state.transition',
+SILENT = ('item.progress', 'traces.noted', 'remote.acknowledged', 'state.write', 'state.set', 'state.transition',
           'seat started', 'seat stopped', 'seat launched', 'brief written',
           'brief.pack', 'brief.answer', 'session.seen', 'session.rotated', 'item.claimed',
           'draft.sending', 'draft.sent', 'draft.dropped',
@@ -39,7 +39,7 @@ def classify(event, state):
     lane = 'People' if kind.startswith('person.') else (
         'Decisions' if kind.startswith(('decision.', 'draft.')) or kind in (
             'item.escalated', 'merge.policy_blocked', 'work.outside_goals') else 'Work')
-    if kind == 'guard.would_refuse':  # #331: a warn level the owner set outside observe.
+    if kind in ('guard.would_refuse', 'traces.unmatched'):  # #331, #352: a warn level the owner set outside observe.
         return ('nudge' if payload.get('posture') in ('guarded', 'strict') else 'silent'), lane
     if kind == 'negotiation.loop':
         return ('page' if payload.get('past_goal') is True else 'nudge'), lane

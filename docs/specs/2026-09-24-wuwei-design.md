@@ -849,7 +849,9 @@ MCP appears only as a scan target), so the CLI is the sole integration surface.
   system prompt) in a ZIRAN release FIRST; WUWEI pins that release. No WUWEI-side converter.
 - S2. Runtime traces. Each sweep runs `ziran analyze-traces --source otel` over the day's
   `traces.jsonl`. A dangerous sequence observed in a live session parks the affected item
-  and prompts the user.
+  and prompts the user. Amendment (owner trial, 2026-10-03, #352): only seats park and prompt;
+  registered non-seat sessions are noted once per day, unknown sessions are noted once per
+  day and prompt once per day under strict.
 - S3. MCP audit and drift. `/wuwei init` runs ZIRAN's MCP metadata analysis over the MCP
   servers attached to the session and registers them with `ziran watch-registry`; each
   morning plan runs the registry check, so a server whose tools changed after approval is
