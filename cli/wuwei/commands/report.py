@@ -17,4 +17,5 @@ def run(args):
         print('No report today: no day has started. Start one with /wuwei:wuwei-plan.')
         return 0
     print(report.write().read_text(encoding='utf-8'), end='')
-    return 0
+    from wuwei.commands import docs
+    return docs.listed('report')

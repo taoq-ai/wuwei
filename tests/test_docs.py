@@ -27,7 +27,8 @@ GLOSSARY = (('Seat', r'seats?'), ('Gate', r'gates?'), ('Sentinel', r'sentinels?'
             ('Carry', r'carr(?:y|ies|ied|ying)'), ('Nudge', r'nudges?'), ('Page', r'pages?'),
             ('Digest', r'digests?'), ('Unmeasured', r'unmeasured'), ('Mandate', r'mandates?'),
             ('Trust surface', r'trust surfaces?'), ('Host terminal', r'host terminals?'),
-            ('Humanizer', r'humanizer'), ('Spec engine', r'spec engines?'), ('Strict mode', r'strict mode'))
+            ('Humanizer', r'humanizer'), ('Spec engine', r'spec engines?'), ('Strict mode', r'strict mode'),
+            ('Docs system', r'docs systems?'), ('Docs obligation', r'docs obligations?'))
 
 
 def _prose(text):
@@ -1156,3 +1157,18 @@ def test_telemetry_is_documented():
         assert phrase in reference, phrase
     assert 'telemetry send' in (SITE / 'concepts.md').read_text()
     assert 'OpenTelemetry' in (SITE / 'configuration.md').read_text()
+
+
+def test_docs_system_is_documented():
+    from wuwei import workspace
+    configuration = (SITE / 'configuration.md').read_text()
+    assert '`[docs]`' in configuration.split('\n## Sections\n', 1)[1].split('\n## ', 1)[0]
+    for key in workspace.SCHEMA['docs']:
+        assert f'`docs.{key}`' in configuration, key
+    commands = (SITE / 'reference.md').read_text().split('\n## Commands\n', 1)[1].split('\n## ', 1)[0]
+    for row in ('| `bin/wuwei docs page', '| `bin/wuwei docs publish', '| `bin/wuwei plan set <item> docs='):
+        assert row in commands, row
+    assert re.search(r'docs obligation', (SITE / 'daily.md').read_text(), re.I)
+    adapters = (SITE / 'adapters.md').read_text()
+    for name in ('NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN'):
+        assert name in adapters, name

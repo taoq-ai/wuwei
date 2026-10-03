@@ -180,6 +180,8 @@ def next_step(item, root=None):
             fresh['items'][item]['gates'] = record
         state._write_state(update, root, reserved=False, kind='gate.tiered',
                            payload={'item': item, **record})
+        from wuwei import docs
+        docs.exempt(root, config, item, record['tier'])
         row = data['items'][item] = {**row, 'gates': record}
     if phase == 'gate':
         # Design 5.10 backstop: no gates for an item reached by a manual transition with a gap.
@@ -372,6 +374,13 @@ def receive(item, role, name, round_name='initial', root=None):
         if code:
             raise OSError(f'scanner: unmeasured: {message}; fix the verdict as named, check it with bin/wuwei verdict lint <file>, then receive it again')
     result = re.search(verdict.VERDICT_ROW, text, re.M)[1]
+    if base(role) == 'quality':
+        from wuwei import docs
+        config = workspace.load_config(root)
+        if docs.unmet(config, data['items'][item]) and (
+                result == 'PASS' or not re.search(r'\bDOC: *FINDING', text)):
+            raise Refused(f'docs obligation unmet for {item}; have the sentinel write a FIX verdict with a '
+                          f'DOC: FINDING naming {docs.command(config, item)}, then receive it again')
     blocks = verdict.finding_blocks(text)
     notes = [block.strip() for block in blocks if not re.search(verdict.BLOCKS_YES, block, re.I)]
     value = {'item': item, 'role': role, 'round': round_name, 'verdict': result,

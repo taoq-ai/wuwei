@@ -252,3 +252,14 @@ def test_board_telemetry_table(day, tmp_path):
     data['watch']['telemetry'] = {'week': '2026-W40', 'skipped': 'size'}
     (day / 'state.json').write_text(json.dumps(data))
     assert '| unmeasured | size |' in table() and '| days |' not in table()
+
+
+def test_board_work_table_has_a_docs_column(day, tmp_path):
+    (tmp_path / '.wuwei/config.toml').write_text('[docs]\nsystem = "notion"\n')
+    data = json.loads((day / 'state.json').read_text())
+    data['items']['a']['gates'] = {'tier': 'standard'}
+    (day / 'state.json').write_text(json.dumps(data))
+    lines = board_call()['content'][0]['text'].splitlines()
+    assert '| Item | Phase | Status | Gates | PR | Docs |' in lines
+    assert next(line for line in lines if line.startswith('| a |')).endswith('| missing |')
+    assert next(line for line in lines if line.startswith('| b |')).endswith('| n/a |')

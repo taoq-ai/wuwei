@@ -132,7 +132,8 @@ def test_vocabularies_match_their_sources():
     assert set(telemetry.CLASSES) == set(decision.CLASSES)
     assert telemetry.AREAS == workspace.AREAS and telemetry.POSTURES == tuple(workspace.POSTURES)
     assert telemetry.PROFILES == workspace.SCHEMA['profile'][2]
-    assert set(telemetry.ADAPTERS) == set(workspace.SCHEMA['adapters'])
+    # #419: load_config mirrors docs.system into adapters.docs.
+    assert set(telemetry.ADAPTERS) == set(workspace.SCHEMA['adapters']) | {'docs'}
     assert {port: tuple(registry.known(port)) for port in telemetry.ADAPTERS} == telemetry.ADAPTERS
 
 

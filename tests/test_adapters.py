@@ -91,6 +91,8 @@ CALLS = [
     ('scanner', 'gate', ('result', 'threshold'), True),
     ('scanner', 'traces', ('file',), True),
     ('scanner', 'mcp', ('servers',), True),
+    ('docs', 'read', ('ref',), True),
+    ('docs', 'write', ('draft',), False),
 ]
 
 

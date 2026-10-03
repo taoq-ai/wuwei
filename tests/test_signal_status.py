@@ -330,7 +330,8 @@ def test_emitted_kinds_have_intended_tiers():
                 'negotiation.loop': 'nudge', 'negotiation.notified': 'silent',
                 'decision.waited': 'nudge', 'doctor.fixed': 'silent', 'outward.ai_tells': 'silent',
                 'spec.step': 'silent', 'spec.skipped': 'silent', 'spec.override': 'silent',
-                'spec.warned': 'nudge',
+                'spec.warned': 'nudge', 'docs.set': 'silent', 'docs.written': 'silent',
+                'docs.exempt': 'silent',
                 **{f'telemetry.{name}': 'nudge' if name == 'ready' else 'silent' for name in TELEMETRY}}
     assert emitted == set(expected)
     for kind, tier in expected.items():

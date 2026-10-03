@@ -173,6 +173,8 @@ def test_config_defaults_and_independence(tmp_path):
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'}},
+        'docs': {'system': 'none', 'required_tiers': ['standard', 'full'], 'space': '', 'root': 'docs',
+                 'publish': ['report', 'retro'], 'auto': [], 'strict_close': True},
         'chat': {'identity': 'connector'},
         'control_plane': {'content': 'summary', 'owner': ''},
         'host': {'free_memory_mb': 1024, 'seats': 4, 'reservation_timeout_seconds': 14400}, 'profile': 'strict',
@@ -214,7 +216,8 @@ def test_config_defaults_and_independence(tmp_path):
                      'runtime': 'claude', 'scanner': 'none',
                      'code_host': 'github', 'vcs': 'git', 'host': 'local',
                      'checks': 'local', 'tts': 'say' if sys.platform == 'darwin' else 'none', 'calendar': 'none',
-                     'transcripts': 'none', 'inbound': 'none', 'redactor': 'builtin'},
+                     'transcripts': 'none', 'inbound': 'none', 'redactor': 'builtin',
+                     'docs': 'none'},
     }
     outward['patterns'].append('changed')
     assert 'changed' not in load_config(tmp_path)['outward']['patterns']
@@ -385,6 +388,31 @@ def test_outward_humanize_keys(tmp_path):
     (tmp_path / '.wuwei/config.toml').write_text(
         (ROOT / 'templates/workspace/config.toml').read_text(encoding='utf-8'), encoding='utf-8')
     assert workspace.load_config(tmp_path)['outward']['humanize'] is True
+
+
+def test_docs_config(tmp_path):
+    from wuwei import workspace
+    write_config(tmp_path, '')
+    config = workspace.load_config(tmp_path)
+    assert config['docs'] == {'system': 'none', 'required_tiers': ['standard', 'full'], 'space': '',
+                              'root': 'docs', 'publish': ['report', 'retro'], 'auto': [],
+                              'strict_close': True}
+    assert config['adapters']['docs'] == 'none'
+    write_config(tmp_path, '[docs]\nsystem = "wiki"\n')
+    with pytest.raises(workspace.ConfigError, match='docs.system') as error:
+        workspace.load_config(tmp_path)
+    assert 'notion' in str(error.value) and 'adapters.docs' not in str(error.value)
+    for text in ('required_tiers = ["huge"]', 'auto = ["dm"]'):
+        write_config(tmp_path, f'[docs]\n{text}\n')
+        with pytest.raises(workspace.ConfigError):
+            workspace.load_config(tmp_path)
+    write_config(tmp_path, '[adapters]\ndocs = "notion"\n')
+    warnings = []
+    config = workspace.load_config(tmp_path, warnings=warnings)
+    assert config['adapters']['docs'] == 'none' and 'unknown key adapters.docs' in warnings[0]
+    (tmp_path / '.wuwei/config.toml').write_text(
+        (ROOT / 'templates/workspace/config.toml').read_text(encoding='utf-8'), encoding='utf-8')
+    assert workspace.load_config(tmp_path)['docs']['system'] == 'none'
 
 
 def test_solo_owner_min_reviewers_zero(tmp_path):
@@ -1252,7 +1280,7 @@ def test_telemetry_config(tmp_path):
     assert load_config(tmp_path)['telemetry'] == {
         'enabled': True, 'share': '', 'endpoint': '', 'repository': 'taoq-ai/wuwei',
         'otlp': {'endpoint': '', 'headers_env': ''}}
-    assert workspace.CONFIG_CACHE_VERSION == 3
+    assert workspace.CONFIG_CACHE_VERSION >= 3  # #419 bumped it again for [docs]
     write_config(tmp_path, '[telemetry]\nshare = "maybe"\n')
     with pytest.raises(ConfigError):
         load_config(tmp_path)

@@ -328,3 +328,19 @@ def test_orientation_shows_the_spec_engine_and_mode(monkeypatch):
     monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
     assert 'Spec: speckit strict' in next_command.orientation(ROW, 'guarded', 'speckit strict').splitlines()
     assert not any(line.startswith('Spec:') for line in next_command.orientation(ROW, 'guarded').splitlines())
+
+
+@pytest.mark.parametrize('system,fields,expected', [
+    ('notion', {'gates': {'tier': 'standard'}}, 'docs'),
+    ('notion', {'gates': {'tier': 'standard'}, 'docs': {'value': 'new', 'reason': ''}}, 'verdicts'),
+    ('notion', {'gates': {'tier': 'light'}}, 'verdicts'),
+    ('none', {'gates': {'tier': 'standard'}}, 'verdicts'),
+])
+def test_docs_row(root, capsys, system, fields, expected):
+    approved(root, {'ITEM-1': ('gate', fields)})
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(f'[docs]\nsystem = "{system}"\n')
+    found = row(capsys)[1]
+    assert found['state'] == expected
+    if expected == 'docs':
+        assert found['command'].startswith('wuwei plan set ITEM-1 docs=')

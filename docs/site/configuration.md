@@ -18,6 +18,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[calibrate]` | [Calibration](#calibration) |
 | `[spec]` | [Specification mode](#specification-mode) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
+| `[docs]` | [Docs](#docs) |
 
 ## Workspace and repositories
 
@@ -256,6 +257,20 @@ Unknown sessions still page and queue a decision. Repeated sweeps
 remeasure without duplicating a session/chain decision. Commands and argument values
 never enter finding events or decisions. A session identity changed by secret redaction
 uses a stable digest to keep different sessions distinct.
+
+## Docs
+
+The [docs system](concepts.md#docs-system) and the [docs obligation](concepts.md#docs-obligation) per review tier. With `system = "none"` nothing here applies.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `docs.system` | `"none"` | Where documentation lives: `notion`, `confluence`, `markdown` or `none`. Notion needs `NOTION_TOKEN` and Confluence needs `CONFLUENCE_EMAIL` and `CONFLUENCE_API_TOKEN` in `.wuwei/env`. |
+| `docs.required_tiers` | `["standard", "full"]` | Review tiers whose items need a docs value before the quality gate passes and before the day closes. A light item records one `docs.exempt` event instead. |
+| `docs.space` | `""` | The Notion or Confluence page new pages go under, as a link. `bin/wuwei doctor` reads it. |
+| `docs.root` | `"docs"` | Under markdown, the directory in each repository that holds the pages. |
+| `docs.publish` | `["report", "retro"]` | Daily pages `wuwei report` and `wuwei retro` publish once per day under notion or confluence. No effect under markdown. |
+| `docs.auto` | `[]` | Page kinds (`page`, `report`, `retro`) written at once; any other kind is stored as a draft for `bin/wuwei drafts approve <id>`. Sensitive text drafts anyway. |
+| `docs.strict_close` | `true` | `wuwei close` refuses while a merged item's docs obligation is unmet; `false` lists those lines in the report's `## Docs` section instead. |
 
 ## Owner voice
 

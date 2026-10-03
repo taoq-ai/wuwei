@@ -144,7 +144,7 @@ APPROVAL_REQUIRED = 'outward: deliver as a draft for the owner to send'
 METADATA_FIELDS = {'ref', 'channel', 'thread', 'thread_ts', 'item', 'issue', 'issue_id', 'id',
                    'team', 'team_id', 'project', 'project_id', 'state', 'assignee', 'labels',
                    'channel_id', 'issueId', 'teamId', 'stateId', 'assigneeId', 'projectId',
-                   'owner', 'repo', 'recipient', 'recipient_org', 'channel_type'}
+                   'owner', 'repo', 'recipient', 'recipient_org', 'channel_type', 'kind', 'parent'}
 BOOL_FIELDS = {'is_dm', 'is_external', 'is_shared', 'is_connected', 'is_client'}
 
 
@@ -333,6 +333,8 @@ def classify(text, root, config, context=None, *, kind='chat'):
         if ('recipient_org' in context and context['recipient_org'].casefold()
                 not in {org.casefold() for org in rules['code_host_orgs']}):
             return FINDINGS, 'draft'
+        if kind == 'docs':  # #419: a docs write sends only when its kind is in docs.auto.
+            return (CLEAN, 'send') if context.get('kind') in config['docs']['auto'] else (FINDINGS, 'draft')
         discussion = ''
         # The chat port cannot prove the thread's participants are internal.
         if kind in ('chat', 'slack') and any(

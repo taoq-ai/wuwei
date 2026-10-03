@@ -32,10 +32,11 @@ def register(subparsers):
         command = actions.add_parser(verb, help=text)
         command.add_argument('item')
         command.add_argument('--reason', help='Why; written into the record on one line')
-    override = actions.add_parser('set', help='Owner: require or skip the spec for one item')
-    override.add_argument('item')
-    override.add_argument('assignment', help='spec=required or spec=skipped')
-    override.add_argument('--reason', help='Why the spec is skipped; required for spec=skipped')
+    assign = actions.add_parser('set', help="Record an item's value: spec=required|skipped or "
+                                            'docs=<page>|new|none')
+    assign.add_argument('item')
+    assign.add_argument('assignment', help='spec=required|skipped or docs=<page>|new|none')
+    assign.add_argument('--reason', help='Why; required for spec=skipped and docs=none')
     parser.set_defaults(func=run)
 
 
@@ -66,7 +67,16 @@ def run(args):
         elif args.action == 'add':
             print(json.dumps(plan.add(args.item)))
         elif args.action == 'set':
-            print(plan.set_spec(args.item, args.assignment, args.reason))
+            key, _, value = args.assignment.partition('=')
+            if key == 'spec':
+                print(plan.set_spec(args.item, args.assignment, args.reason))
+            elif key == 'docs' and value:
+                from wuwei import docs
+                print(docs.assign(args.item, value, args.reason))
+            else:
+                raise ValueError(f'plan set: {args.assignment} is not a spec or docs value; run bin/wuwei plan '
+                                 f'set {args.item} spec=required|skipped or docs=<page>|new|none, '
+                                 'with --reason "<why>" for spec=skipped or docs=none')
         elif args.action in ('carry', 'park'):
             outcome = {'carry': 'carried', 'park': 'parked'}[args.action]
             print(f'{plan.dispose(args.item, outcome, args.reason)}: {outcome} {args.item}')

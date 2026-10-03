@@ -11,7 +11,7 @@ WRITES = frozenset({
     'agents build', 'agents check', 'brief', 'build', 'calibrate export', 'calibrate import',
     'close', 'config add-repo', 'config promote', 'config set', 'consolidate', 'dashboard',
     'decide', 'decision lint', 'decision outcome', 'decision route', 'decision show', 'decision template',
-    'discover', 'dispatch discovery', 'dispatch next', 'dispatch opinion', 'dispatch receive',
+    'discover', 'dispatch discovery', 'docs page', 'docs publish', 'dispatch next', 'dispatch opinion', 'dispatch receive',
     'drafts approve', 'drafts drop', 'event', 'fast-checks', 'git-hook', 'goals edit', 'hook',
     'index', 'init', 'integrity reconfirm', 'listen install', 'listen uninstall', 'mcp decide',
     'memory export', 'memory forget', 'memory lint', 'merge', 'metrics', 'next', 'note add', 'nudges', 'outbound tier', 'payload',

@@ -59,9 +59,9 @@ ROWS = [
         ('GitHub', 'GitHub', 'github', 'adapters/code_host/github.py', None),
         ('GitLab', 'GitLab', 'gitlab', None, '#370')]),
     ('Close docs', (1068, 552), [
-        ('Notion', 'Notion', 'notion', None, '#419'),
-        ('Confluence', 'Confluence', 'confluence', None, '#419'),
-        ('Markdown', 'Markdown', 'markdown', None, '#419')]),
+        ('Notion', 'Notion', 'notion', 'adapters/docs/notion.py', None),
+        ('Confluence', 'Confluence', 'confluence', 'adapters/docs/confluence.py', None),
+        ('Markdown', 'Markdown', 'markdown', 'adapters/docs/markdown.py', None)]),
     ('Phone and DM', (378, 372), [
         ('Slack', 'Slack', 'SL', 'adapters/chat/slack.py', None),
         ('Claude mobile', 'Mobile', 'claude', 'cli/wuwei/control_plane.py', None),

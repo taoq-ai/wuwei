@@ -320,3 +320,21 @@ def test_whole_group_owner_command(places, monkeypatch, capsys):
     for cwd, inside in zip(places, (True, False)):
         code, output = hook(cwd, "bin/wuwei config set owner.name '\"Pat\"'", monkeypatch, capsys)
         assert (code, output.get('permissionDecision')) == ((2, 'deny') if inside else (0, None)), output
+
+
+def test_seat_records_a_docs_value(places, monkeypatch, capsys):
+    """#419: the builder sets docs=; if a merge makes every plan set owner-only, this fails."""
+    root, _ = places
+    monkeypatch.setenv('WUWEI_SEAT_ROLE', 'builder')
+    command = 'bin/wuwei plan set X docs=none --reason "no docs change"'
+    assert bash(root, command) == (0, '')
+    code, output = hook(root, command, monkeypatch, capsys)
+    assert code == 0 and output.get('permissionDecision') != 'deny', output
+    # #412: spec= stays the owner's, however a docs= word is placed next to it.
+    for smuggled in ('bin/wuwei plan set X docs=none spec=skipped',
+                     'bin/wuwei plan set X spec=skipped --reason docs=x',
+                     'bin/wuwei plan set X docs=a --reason=x spec=skipped',
+                     'bin/wuwei plan set X $A --reason docs=x',
+                     'echo spec=skipped | xargs bin/wuwei plan set X --reason docs=x',
+                     'echo spec=skipped | xargs bin/wuwei plan set X docs=a --reason'):
+        assert bash(root, smuggled)[0] != 0, smuggled

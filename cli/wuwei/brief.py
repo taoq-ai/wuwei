@@ -296,6 +296,10 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             header.append("Assumptions: review the item's Assumptions: in its spec and PR body as "
                           'findings of kind Assumption: (severity, file:line, failure scenario, '
                           'blocks yes or no).')
+        from wuwei import docs
+        line = docs.brief_line(config, current, item, role)
+        if line:
+            header.append(line)
         header += rulings(body, directory, tree, data)
         for repo in config['repos']:
             for other in sorted(set(re.findall(re.escape(repo['name']) + r'#[0-9]+', body))):

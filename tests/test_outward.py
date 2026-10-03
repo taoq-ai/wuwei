@@ -673,6 +673,8 @@ def test_every_free_text_adapter_write_goes_through_the_port():
               ('code_host', 'create_pr'): 'shepherd.raise_pr runs outward.lint and outward.humanize_lint',
               # #422: a table of validated counts; telemetry send runs security.outbound itself.
               ('code_host', 'issue'): 'telemetry.validate and security.outbound in wuwei telemetry send'}
+    adapter_exempt = {('docs', 'write', 'markdown'):
+                      "a file in the item's pull request; docs.page runs outward.humanize_lint"}
     port = 'outward_operation.<locals>.decorate.<locals>.call'
     checked = 0
     for kind, operations in registry.PARAMETERS.items():
@@ -680,6 +682,8 @@ def test_every_free_text_adapter_write_goes_through_the_port():
             if not set(parameters) & (outward.TEXT_FIELDS | {'draft'}) or (kind, operation) in exempt:
                 continue
             for name in registry.known(kind):
+                if (kind, operation, name) in adapter_exempt:
+                    continue
                 module = registry.load(kind, {'adapters': {kind: name}})
                 function = getattr(module, operation)
                 assert function.__code__.co_qualname == port, (kind, name, operation)
@@ -688,6 +692,8 @@ def test_every_free_text_adapter_write_goes_through_the_port():
     assert 'humanize_lint' in inspect.getsource(shepherd.raise_pr)
     from wuwei.commands import telemetry
     assert 'security.outbound' in inspect.getsource(telemetry._send)
+    from wuwei import docs
+    assert 'humanize_lint' in inspect.getsource(docs.page)
 
 
 def test_owner_facing_templates_are_plain():
@@ -700,3 +706,33 @@ def test_owner_facing_templates_are_plain():
         for node in ast.walk(ast.parse((cli / name).read_text(encoding='utf-8'))):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 assert '\u2014' not in node.value and outward.tells(node.value) == [], (name, node.value)
+
+
+def docs_inputs(body='Adds a flag.'):
+    return {'draft': {'kind': 'page', 'item': 'X', 'title': 'T', 'body': body, 'parent': 'p', 'ref': ''}}
+
+
+def test_docs_kind_drafts_unless_auto(configured):
+    from wuwei import outward
+    root, config = configured
+    inputs = docs_inputs()
+    assert outward.classify('T\nAdds a flag.', root, config, inputs, kind='docs') == (1, 'draft')
+    config['docs']['auto'] = ['page']
+    assert outward.classify('T\nAdds a flag.', root, config, inputs, kind='docs') == (0, 'send')
+    assert outward.classify('T\nA salary change.', root, config, docs_inputs('A salary change.'),
+                            kind='docs') == (1, 'draft')
+    config['docs']['auto'] = ['report']
+    assert outward.classify('T\nAdds a flag.', root, config, inputs, kind='docs') == (1, 'draft')
+
+
+def test_docs_tool_patterns(configured):
+    import re
+    root, config = configured
+    def channel(tool):
+        return next((row['channel'] for row in config['outward']['tool_patterns']
+                     if re.fullmatch(row['pattern'], tool, re.IGNORECASE)), None)
+    assert channel('mcp__notion__notion-create-pages') == 'docs'
+    assert channel('mcp__atlassian__createConfluencePage') == 'docs'
+    assert channel('mcp__atlassian__updateConfluencePage') == 'docs'
+    assert channel('mcp__atlassian__createJiraIssue') is None
+    assert channel('mcp__notion__notion-search') is None

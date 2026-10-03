@@ -29,6 +29,16 @@ backlog_filter = "" # Optional Linear team ID; empty reads accessible issues.
 in_review = "In Review"
 done = "Done"
 
+# Docs system: notion, confluence, markdown or none (the default). See configuration.md#docs.
+# [docs]
+# system = "none"
+# required_tiers = ["standard", "full"]
+# space = "" # The Notion or Confluence page new pages go under.
+# root = "docs" # Markdown: the pages directory in each repository.
+# publish = ["report", "retro"]
+# auto = [] # page, report or retro: written without a draft.
+# strict_close = true
+
 [owner]
 name = ""
 pronouns = ""

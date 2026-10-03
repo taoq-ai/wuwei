@@ -12,7 +12,8 @@ from wuwei.exits import SYMLINK
 
 CREDENTIALS = ('LINEAR_API_KEY', 'SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN',
                'SLACK_OWNER_DM_CHANNEL', 'GREPTILE_API_KEY', 'WUWEI_CALENDAR_URL',
-               'GH_TOKEN', 'GITHUB_TOKEN', 'WUWEI_TOTP_SECRET', 'SLACK_API_BASE')
+               'GH_TOKEN', 'GITHUB_TOKEN', 'WUWEI_TOTP_SECRET', 'SLACK_API_BASE',
+               'NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN')
 PUBLIC = ('SLACK_OWNER_DM_CHANNEL',)  # identifiers: kept from seats, never redacted
 _loaded = set()
 _shadowed = set()  # .wuwei/env names whose value the process environment overrides

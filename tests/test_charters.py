@@ -155,7 +155,10 @@ def test_pre_review_class_sweep():
     classes = ("AUTH", "VAL", "DOC", "TEST", "INF", "RET", "ERR", "STATE", "CON", "BUD")
     for code in classes:
         assert f"{code}: PASS|N.A.|FINDING" in texts["builder.md"]
-        assert sum(code in texts[role] for role in ("sentinel-arch.md", "sentinel-quality.md", "sentinel-security.md")) == 1
+        # One sentinel owns each independent class check; quality also names DOC: FINDING for
+        # the docs obligation (#419), which is not the class check.
+        assert sum(bool(re.search(rf"Independently check[^\n]*\b{code}\b", texts[role]))
+                   for role in ("sentinel-arch.md", "sentinel-quality.md", "sentinel-security.md")) == 1
     assert "command" in texts["builder.md"]
 
 
@@ -193,3 +196,11 @@ def test_writing_for_a_person_names_the_humanizer_and_carries_the_checklist():
     for role in ("planner", "lead", "builder", "sentinel-arch", "sentinel-quality", "sentinel-security",
                  "sentinel-goal", "shepherd", "steward"):
         assert (ROOT / "agents" / f"{role}.md").read_text(encoding="utf-8").count("humanizer") == 1, role
+
+
+def test_docs_obligation_in_quality_and_builder_charters():
+    texts = charter_text()
+    quality = texts["sentinel-quality.md"]
+    assert "Docs:" in quality and "DOC: FINDING" in quality and "documented behaviour" in quality
+    builder = texts["builder.md"]
+    assert "Docs:" in builder and "bin/wuwei docs page" in builder

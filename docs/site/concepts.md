@@ -114,6 +114,16 @@ The tool each non-trivial item is specified with before it is built: spec-kit (d
 `[spec] mode = "strict"` (default): source edits and the gates wait until the engine's steps are done.
 `advisory` warns once per item and day instead; `off` checks nothing.
 
+### Docs system
+
+Where the team's documentation lives: Notion, Confluence, Markdown files in the repository, or none.
+WUWEI writes an item's page there from its records, never from memory.
+
+### Docs obligation
+
+An item tiered standard or full must record what it did to the docs before its quality gate passes.
+The value is a page, `new`, or `none` with a reason; the day close checks it again.
+
 ## Roles
 
 The shipped charters define planner, lead, builder, shepherd, steward, and four sentinels: goal, architecture, quality and security. Generated agent files in `agents/` carry the charters and tool allowlists. The planner owns the day, the lead shapes work, builders implement, sentinels check, the shepherd follows pull requests and the steward maintains procedure. `/wuwei plan` runs the day, starting with your morning gate; see the [daily path](daily.md).
