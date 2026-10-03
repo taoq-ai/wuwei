@@ -444,3 +444,14 @@ def test_setup_ends_with_the_restart_line(project, host, terminal, capsys, monke
     monkeypatch.setattr(integrity, 'other_versions', lambda: ['0.11.0'])
     run_setup(Confirm(answer))
     assert capsys.readouterr().out.splitlines()[-1] == integrity.RESTART
+
+
+def test_pending_mcp_decision_is_owed_by_command(project, host, terminal, monkeypatch, capsys):
+    from wuwei import mcp
+    from wuwei.registry import Result
+
+    monkeypatch.setattr(mcp, 'check', lambda root: Result(1, reason='MCP findings await the owner'))
+    monkeypatch.setattr(mcp, 'pending', lambda root: f'{DAY}/decisions/D-2.md')
+    run_setup(Confirm())
+    owed = capsys.readouterr().out.split('Still owed:\n', 1)[1]
+    assert '  bin/wuwei mcp decide D-2 proceed\n' in owed

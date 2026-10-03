@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 from urllib.parse import urlsplit
 
-from wuwei import brief_pack, drafts, state, workspace
+from wuwei import brief_pack, drafts, mcp, state, workspace
 from wuwei.decision import answered, clarification_fields, evaluate, lint_clarification, route
 from wuwei.commands.status import snapshot as status_snapshot
 from wuwei.signal import classify
@@ -29,6 +29,8 @@ def cockpit_snapshot(directory):
     directory = Path(directory)
     data = state.read_state(directory=directory)
     decisions = []
+    root = directory.parents[2]
+    waiting = mcp.pending(root)
     for path in sorted((directory / 'decisions').glob('*.md')):
         if path.is_symlink() or not path.name.startswith(('D-', 'C-')):
             continue
@@ -56,7 +58,8 @@ def cockpit_snapshot(directory):
             decision_route = 'owner'
         decisions.append({'id': path.stem, 'question': question, 'options': options,
                           'route': decision_route, 'record': content,
-                          'command': (f'bin/wuwei decision route {path.stem}' if path.name.startswith('D-')
+                          'command': (mcp.command(waiting) if str(path.relative_to(root)) == waiting
+                                      else f'bin/wuwei decision route {path.stem}' if path.name.startswith('D-')
                                       else f'bin/wuwei decision lint {path}')})
     refs = dict.fromkeys(data['raised_prs'] + data['claimed_prs'])
     prs = []

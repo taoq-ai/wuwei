@@ -411,3 +411,20 @@ def test_http_cockpit_read_and_all_posts_refused_without_writes(workspace, monke
         if method == 'GET' and expected == 200:
             assert json.loads(handler.wfile.getvalue())['briefing'] == 'unmeasured'
     assert {p.relative_to(day): p.read_bytes() for p in day.rglob('*') if p.is_file()} == before
+
+
+def test_cockpit_names_the_mcp_decide_command(workspace, monkeypatch):
+    from wuwei.commands.dashboard import cockpit_snapshot
+
+    day = workspace / '.wuwei/days/2026-09-28'
+    (day / 'decisions').mkdir()
+    (day / 'decisions/D-3.md').write_text(D3)
+    (day / 'decisions/D-4.md').write_text(D3)
+    (day / 'state.json').write_text(json.dumps({'items': {}, 'cap': 3, 'claimed_prs': [], 'raised_prs': []}))
+    status = workspace / '.wuwei/ziran/status.json'
+    status.parent.mkdir()
+    status.write_text(json.dumps({'exit': 1, 'day': '2026-09-28', 'reason': '', 'generation': 'g', 'reports': [],
+                                  'pending': '.wuwei/days/2026-09-28/decisions/D-4.md'}))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    commands = {row['id']: row['command'] for row in cockpit_snapshot(day)['decisions']}
+    assert commands == {'D-3': 'bin/wuwei decision route D-3', 'D-4': 'bin/wuwei mcp decide D-4 proceed'}

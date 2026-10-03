@@ -355,6 +355,12 @@ def seat_outcome(fields, scores):
             'item_disposition': fields['Outcome']}
 
 
+def set_outcome(text, option):
+    # ponytail: rewrites the first Outcome: line; a record with an inactive example
+    # Outcome: above the real field needs the active line from verdict.active_text.
+    return re.sub(r'^((?:#{1,6} )?Outcome:).*$', lambda m: f'{m[1]} {option}', text, count=1, flags=re.M)
+
+
 def write(text, root):
     """Validate and allocate a numbered decision without replacing an existing record."""
     evaluate(text)

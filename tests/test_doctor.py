@@ -158,7 +158,7 @@ def test_outcome_findings_before_unmeasured():
 def test_fix_allow_list_is_pinned():
     # config-set waits for #327's confirmed `config set`.
     assert set(doctor.FIXES) == {'integrity-reconfirm', 'init-upgrade', 'config-promote', 'calibrate',
-                                 'watch-install', 'listen-install', 'trace-decisions'}
+                                 'watch-install', 'listen-install', 'trace-decisions', 'mcp-reports'}
 
 
 # US1: the rows
@@ -394,7 +394,9 @@ def test_gates_mcp_servers(ws):
     assert row(doctor.diagnose(), 'mcp gate')['status'] == 'ok'  # #351: guarded warns.
     with (ws.root / '.wuwei/config.toml').open('a') as config:
         config.write('[security]\nposture = "strict"\n')
-    assert row(doctor.diagnose(), 'mcp gate')['status'] == 'fail'
+    found = row(doctor.diagnose(), 'mcp gate')
+    assert found['status'] == 'fail' and found['fix'] == 'bin/wuwei mcp decide D-1 proceed in a host terminal'
+    assert 'Outcome' not in found['fix']
 
     record(ws.root, day='2026-10-02')
     found = row(doctor.diagnose(), 'mcp gate')
@@ -849,3 +851,41 @@ def test_in_use_row_names_the_restart(ws):
     found = row(doctor.diagnose(), 'in_use')
     assert (found['status'], found['value']) == (
         'warn', 'plugin 0.11.0 running against template 0.12.0: restart Claude Code')
+
+
+def legacy_reports(root):
+    import hashlib
+    rows = [{'server_name': 'docs', 'drift_type': 'tool_poisoning', 'severity': 'high', 'tool_name': 'search'}]
+    ziran = root / '.wuwei/ziran'
+    for name, body in (('report-a', None), ('report-b', json.dumps(rows, indent=1)), ('report-c', '[]'),
+                       ('report-d', '{'), ('report-e', json.dumps(rows))):
+        (ziran / name).mkdir(parents=True)
+        if body is not None:
+            (ziran / name / 'registry-watch-report.json').write_text(body)
+    record(root, exit=1, pending=f'.wuwei/days/{TODAY}/decisions/D-1.md', severities=['critical'],
+           reports=['.wuwei/ziran/report-e/registry-watch-report.json'])
+    digest = hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    return ziran, ziran / 'docs' / (digest + '.json')
+
+
+def test_mcp_reports_migration(ws, capsys):
+    ziran, target = legacy_reports(ws.root)
+    body = (ziran / 'report-b/registry-watch-report.json').read_text()
+    found = row(doctor.diagnose(), 'mcp reports')
+    assert (found['status'], found['apply']) == ('warn', 'mcp-reports')
+    fix(lambda digest: True)
+    assert 'mcp-reports: exit 0' in capsys.readouterr().out
+    assert sorted(p.name for p in ziran.glob('report-*')) == ['report-d', 'report-e']
+    assert target.read_text() == body
+
+
+def test_mcp_reports_migration_bound_to_preview(ws, capsys):
+    ziran, target = legacy_reports(ws.root)
+
+    def confirm(digest):
+        (ziran / 'report-f').mkdir()
+        return True
+    fix(confirm)
+    out = capsys.readouterr().out
+    assert 'changed since the preview; nothing applied' in out and 'mcp-reports: exit 1' in out
+    assert (ziran / 'report-a').is_dir() and not target.exists()

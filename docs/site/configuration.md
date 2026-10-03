@@ -379,7 +379,14 @@ reported as `<name>: unpinned launcher` and never started; `@latest` and ranges 
 unpinned.
 
 The scanner keeps a snapshot per server under `.wuwei/ziran/snapshots` and untrusted
-raw reports under `.wuwei/ziran/report-*/registry-watch-report.json`. A server whose
+raw reports under `.wuwei/ziran/<server>/<digest>.json`, one file per server per
+distinct result (the digest is taken over the report's canonical JSON). A repeat check
+with the same result writes nothing and the `mcp.checked` event records the server as
+`unchanged` (`new` for a new result, `unmeasured` when the run failed); a failed run
+leaves no file. Servers named `servers`, `snapshots` or `snapshot-backup` collide with
+this storage and stay unmeasured. `wuwei doctor` warns about `report-*` directories left
+by v0.12.0, and `wuwei doctor --fix` removes the empty and clean ones and moves each
+readable one into this layout, leaving any that a pending decision still lists. A server whose
 measurement fails keeps its prior snapshot, and a check that could not run restores
 all of them, so retries cannot silently accept drift. After upgrading from v0.11.0
 the first check registers a fresh baseline per server, so drift between the last
@@ -409,10 +416,21 @@ later checks report the server as proceeding unmeasured by owner decision until 
 definition changes. Briefs list today's unmeasured servers in an `MCP unmeasured:`
 header line.
 
-An owner reviews every linked report, sets `Decided-by: owner` and
-`Outcome: proceed` in the queued decision and runs `bin/wuwei mcp decide` from a
-host terminal, typing the displayed digest. Agent tools cannot invoke this owner
-command. A decision file or forged event alone never clears a flag. Confirmation
+A new result with a queued severity opens one decision; a recheck that finds the
+same reports queues nothing more. Its `Context:` is a table with one row per finding
+(Server, Tool, Flag, Severity, Snippet, Since) and one row per unmeasured server,
+followed by `Reports:` with each report path. The snippet is redacted, limited to
+plain characters and cut to 60. Since reads `first measurement`, or
+`changed since <day>` when the server has an accepted baseline.
+
+To answer it, the owner runs `bin/wuwei mcp decide D-<n> proceed` (or `defer`) from a
+host terminal and types the displayed digest. The command writes `Outcome:` and a
+`Notes: Decided at <time> at the host terminal.` line into the record. On `proceed`
+it stores the accepted `[server, digest]` reports as the baseline in an
+`accepted-*.json` record and re-runs the check, so those findings do not queue again
+while the report stays the same. `defer` keeps the gate as it is, and a later
+`proceed` still works. Agent tools cannot invoke this owner command (its `--help` is
+allowed). A decision file or forged event alone never clears a flag. Confirmation
 cannot excuse exit 2. Pending findings and report references survive rechecks
 and day rollover. The host terminal follows the local friction boundary in
 threat model 9.1; remote authenticated decisions remain M5 work.

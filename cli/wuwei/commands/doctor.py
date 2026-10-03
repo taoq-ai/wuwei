@@ -338,8 +338,12 @@ def _gates(root, config):
                  detail=[line.strip() for line in text.splitlines() if line.strip()] if code else ())]
     result = mcp.cached(root)
     rows.append(_row('gates', 'mcp gate', ('ok', 'fail', 'unmeasured')[result.exit], result.reason or 'clean',
-                     ('review the decision named, set Outcome: proceed, then wuwei mcp decide',
-                      'wuwei mcp check')[result.exit - 1] if result.exit else ''))
+                     '' if not result.exit else 'wuwei mcp check' if result.exit == 2
+                     else f'{mcp.command(mcp.pending(root))} in a host terminal'))
+    legacy = list(Path(root, '.wuwei/ziran').glob('report-*'))
+    if legacy:
+        rows.append(_row('gates', 'mcp reports', 'warn', f'{len(legacy)} report directories in the v0.12.0 layout',
+                         'wuwei doctor --fix', apply='mcp-reports'))
     try:
         record = mcp._read(Path(root).resolve())
     except (OSError, ValueError) as exc:
@@ -567,6 +571,20 @@ def _calibrate(root, token):
                                    interview=None, questions=False, answer=None))
 
 
+def _reports_preview(root):
+    from wuwei import mcp
+    plan = mcp.migrate(root)
+    return plan, plan
+
+
+def _reports(root, token):
+    from wuwei import mcp
+    if mcp.migrate(root, token) != token:
+        print('move legacy MCP reports: changed since the preview; nothing applied')
+        return 1
+    return 0
+
+
 # The --fix allow list (a test pins it): id -> (command shown, preview(root) -> (text, token),
 # apply(root, token) -> exit). Decisions (mcp decide, security.posture, state recover, the code host)
 # stay printed. config-set waits for #327's confirmed `config set`.
@@ -580,6 +598,7 @@ FIXES = {
     'watch-install': _planned('wuwei watch install', _service('watch')),
     'listen-install': _planned('wuwei listen install', _service('listen')),
     'trace-decisions': ('supersede pre-#352 tool-sequence decisions', _supersede_preview, _supersede),
+    'mcp-reports': ('move legacy MCP reports', _reports_preview, _reports),
 }
 
 
