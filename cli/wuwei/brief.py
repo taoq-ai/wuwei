@@ -278,6 +278,11 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         if track == 'SLICE' and protected:
             raise Refused('SLICE brief touches protected paths: ' + ', '.join(protected) + '; use --track FULL')
         header.append(f'Track: {track}')
+        if role == 'builder' or gate:
+            from wuwei import specmode
+            line = specmode.brief_line(config, item, current, tree, gate)
+            if line:
+                header.append(line)
         host = registry.load('code_host', config) if pr else None
         header.append('PR head (no-cache): ' + (json.dumps(read(host.pr, pr, root=root)) if pr else 'not applicable'))
         if gate:

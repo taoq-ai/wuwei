@@ -9,10 +9,10 @@ import pytest
 from wuwei import registry, state
 
 
-def setup(tmp_path, monkeypatch, checks):
+def setup(tmp_path, monkeypatch, checks, spec='[spec]\nengine="none"\n'):
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text(
-        '[[repos]]\nname="app"\npath="repo"\ndefault_branch="main"\nfast_checks=["test"]\n'
+        '[[repos]]\nname="app"\npath="repo"\ndefault_branch="main"\nfast_checks=["test"]\n' + spec +
         '[adapters]\nruntime="codex"\n[build]\nmax_iterations=8\nstuck_after=3\npoll_interval_seconds=0\n')
     repo = tmp_path / 'repo'
     repo.mkdir()
@@ -248,3 +248,42 @@ def test_build_park_is_recorded_lintable_decision(tmp_path, monkeypatch, capsys,
     record = data['builds']['A']
     assert record['status'] == 'parked'
     assert tmp_path / record['action']['decision'] == path
+
+
+def test_spec_gap_is_a_failing_check_that_parks_when_stuck(tmp_path, monkeypatch):
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)] * 3, spec='')
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 1
+    assert state.read_state(tmp_path)['items']['A']['phase'] == 'parked'
+    feedback = runtime.calls[1][1]
+    assert feedback.startswith('spec: ') and 'specify first: /speckit.specify' in feedback
+
+
+def test_spec_complete_moves_to_gate(tmp_path, monkeypatch):
+    import shutil
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)], spec='')
+    shutil.copytree(Path(__file__).parent / 'fixtures/spec/speckit/specs', repo / 'specs')
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0
+    assert state.read_state(tmp_path)['items']['A']['phase'] == 'gate'
+
+
+def test_light_tier_spec_skip_is_rechecked_against_the_diff(tmp_path, monkeypatch):
+    from wuwei import dispatch
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)] * 3, spec='')
+    data = json.loads((day / 'state.json').read_text())
+    data['items']['A']['tier'] = 'light'
+    (day / 'state.json').write_text(json.dumps(data))
+    monkeypatch.setattr(dispatch, 'tier', lambda root, config, row: {'computed': 'standard'})
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 1
+    assert runtime.calls[1][1].startswith('spec: ')
+
+
+def test_advisory_spec_gap_warns_once_and_moves_to_gate(tmp_path, monkeypatch):
+    from wuwei.commands import build
+    repo, brief, day, runtime = setup(tmp_path, monkeypatch, [registry.Result(0)], spec='[spec]\nmode="advisory"\n')
+    assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 0
+    assert state.read_state(tmp_path)['items']['A']['phase'] == 'gate'
+    assert [e['payload'] for e in events(day) if e['kind'] == 'spec.warned'] == [
+        {'item': 'A', 'engine': 'speckit', 'step': 'specify', 'where': 'gates'}]

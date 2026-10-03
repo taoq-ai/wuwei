@@ -331,3 +331,32 @@ def test_gate_widget_is_the_one_approval_question(root):
     (root / '.wuwei/memory/goals.md').write_text(TEMPLATE.read_text(encoding='utf-8'))
     plan.propose(lead(), root)
     assert plan.gate_widget(root)['header'] == 'Goals'
+
+
+def test_plan_set_spec_override(root, capsys, monkeypatch):
+    from wuwei.__main__ import main
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    state._write_state(lambda data: data['items'].update(A={'phase': 'planned', 'status': 'queued'}),
+                       root, reserved=False)
+    events = root / '.wuwei/days/2026-09-28/events.jsonl'
+
+    def overrides():
+        return [{key: json.loads(line)['payload'][key] for key in ('item', 'value', 'reason')}
+                for line in events.read_text().splitlines() if json.loads(line)['kind'] == 'spec.override']
+    assert main(['plan', 'set', 'A', 'spec=skipped']) == 2
+    assert 'reason' in capsys.readouterr().err
+    assert main(['plan', 'set', 'A', 'spec=maybe']) == 2
+    assert main(['plan', 'set', 'A', 'tier=light']) == 2
+    assert main(['plan', 'set', 'Z', 'spec=required']) == 1
+    assert 'spec' not in state.read_state(root)['items']['A']
+    assert main(['plan', 'set', 'A', 'spec=skipped', '--reason', 'typo\nfix']) == 0
+    assert 'A: spec skipped' in capsys.readouterr().out
+    assert state.read_state(root)['items']['A']['spec'] == {'value': 'skipped', 'reason': 'typo fix'}
+    assert main(['plan', 'set', 'A', 'spec=required']) == 0
+    assert state.read_state(root)['items']['A']['spec'] == {'value': 'required', 'reason': ''}
+    assert overrides() == [{'item': 'A', 'value': 'skipped', 'reason': 'typo fix'},
+                           {'item': 'A', 'value': 'required', 'reason': ''}]
+    with pytest.raises(state.StateError, match='wuwei plan set'):
+        state.set_state('items.A.spec', '{"value": "skipped"}', root)
+    assert main(['event', 'spec.override', '{}']) == 1
+    assert 'wuwei plan set' in capsys.readouterr().err

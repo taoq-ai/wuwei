@@ -80,7 +80,7 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
     table = interview().QUESTIONS
     assert [row['id'] for row in table] == ['merge', 'gates', 'quiet', 'interrupt', 'decisions', 'phone',
                                             'hours', 'avoid', 'formality', 'signature', 'risk', 'manual',
-                                            'verbosity', 'posture', 'tracker', 'chat', 'review_bot',
+                                            'verbosity', 'posture', 'spec', 'tracker', 'chat', 'review_bot',
                                             'reviewers']
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / 'widget').mkdir()
@@ -364,14 +364,15 @@ def test_interview_needs_a_host_terminal(offline, capsys, monkeypatch):
 
 def test_interview_on_the_terminal(offline, capsys, monkeypatch):
     raw = (offline / '.wuwei/config.toml').read_text()
-    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '2', 'C0123ABCD', '1', 'pat-dev']
+    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '1', '2', 'C0123ABCD', '1',
+               'pat-dev']
     terminal(monkeypatch, replies)
     assert main('calibrate', '--interview', '--repo', 'acme/widget') == 0, capsys.readouterr().err
     out = capsys.readouterr().out
     answers = json.loads((offline / DAY / 'interview.json').read_text())
     assert answers['merge'] == {'acme/widget': 'Auto, 30 min soak'} and answers['gates'] == {
         'acme/widget': 'Standard'} and answers['phone'] == 'Summary' and answers['manual'] == 'Package publishing'
-    assert len(answers) == 18 and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
+    assert len(answers) == 19 and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
     for line in interview().describe(answers, config(offline)):
         assert line in out
     assert 'gates: answer one of' in out and 'hours: answer one of' in out and 'bin/wuwei config promote' in out
@@ -488,7 +489,8 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     raw = (f'[[repos]]\nname = "acme/widget"\npath = {json.dumps(str(FIXTURES / "python"))}\n'
            'default_branch = "main"\n\n' + PLANE + '\n[deploy]\nworkflows = []\ndeny = []\n')
     (root / '.wuwei/config.toml').write_text(raw)
-    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '4', '1', '1'])
+    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '1', '4', '1',
+                           '1'])
     assert main('calibrate', '--interview') == 0, capsys.readouterr().err
     lines = interview().describe(json.loads((root / DAY / 'interview.json').read_text()), config(root))
     capsys.readouterr()
@@ -645,3 +647,12 @@ def test_archived_answers_are_not_asked_again(root):
     assert (root / '.wuwei/archive/2026/2026-08-01.tar.gz').is_file()
     assert ('phone', None) in interview()._recorded(root)
     assert 'phone' not in [w['id'] for w in interview().widgets(root, ['acme/widget'])]
+def test_spec_question_and_detected_choice_first(capsys, monkeypatch):
+    row = interview().question('spec')
+    assert row['question'] == 'Which spec engine do your repositories use?'
+    assert [effects['spec.engine'] for _, _, effects in row['choices']] == [
+        'speckit', 'superpowers', 'openspec', 'none']
+    assert interview().effects('spec', 'OpenSpec') == {'spec.engine': 'openspec'}
+    monkeypatch.setattr('builtins.input', lambda prompt='': '1')
+    assert interview().ask(['spec'], [], first={'spec': 'OpenSpec'}) == {'spec': 'OpenSpec'}
+    assert '  1. OpenSpec: ' in capsys.readouterr().out

@@ -379,3 +379,17 @@ def test_retro_lists_findings_unique_to_each_model(tmp_path, monkeypatch):
     assert '| A | quality | opus | unmeasured | 412.0 |' in section
     assert '| A | quality@codex | m1 | 0.42 | 380 |' in section
     assert '| B | quality | unmeasured | unmeasured | unmeasured |' in section
+
+
+def test_report_lists_spec_warnings(tmp_path, monkeypatch):
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('[adapters]\ncode_host = "none"\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    state._write_state(lambda data: data.update(items={
+        'A': {**state.ITEM_DEFAULTS, 'phase': 'gate'}}), root, reserved=False)
+    from wuwei import report
+    assert '## Spec warnings' not in report.build(root)
+    state.append_event('spec.warned', {'item': 'A', 'engine': 'speckit', 'step': 'plan', 'where': 'edit'}, root)
+    assert '## Spec warnings\n- A: plan (edit)\n' in report.build(root)

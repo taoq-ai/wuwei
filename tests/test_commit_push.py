@@ -82,6 +82,8 @@ path = "repo"
 default_branch = "main"
 fast_checks = ["unit"]
 identity = {name = "Builder", email = "builder@example.test"}
+[spec]
+engine = "none"
 ''')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00Z')

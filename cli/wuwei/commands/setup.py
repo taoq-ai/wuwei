@@ -305,8 +305,13 @@ def _setup(args, confirm):
     snapshot_path = root / '.wuwei/calibration.json'
     picked = {}
     if found['repos'] or not snapshot_path.exists():
+        from wuwei import specmode
+        engine = specmode.detect([(root / Path(repo['path']).expanduser()).resolve()
+                                  for repo in staged_cfg['repos']], staged_cfg)
         picked = interview.ask(
-            [row['id'] for row in interview.QUESTIONS if not (args.shadow and row['id'] == 'posture')], names)
+            [row['id'] for row in interview.QUESTIONS if not (args.shadow and row['id'] == 'posture')], names,
+            first={'spec': next(label for label, _, effect in interview.question('spec')['choices']
+                                if effect == {'spec.engine': engine})})
         if args.shadow:
             picked['posture'] = 'Observe'  # the flag answered it, so the first day does not ask again
         interview.record(root, staged_cfg, picked)

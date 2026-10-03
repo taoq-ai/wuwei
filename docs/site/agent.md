@@ -40,6 +40,8 @@ Each role has a charter in `charters/<role>.md` (sentinels as `sentinel-<area>.m
    Only on the owner's answers, `wuwei plan approve --items <ids> --goals-confirmed`.
 4. Build, per item: `wuwei worktree add <item>`, `wuwei brief builder <item> <name>
    --worktree <path> --file -`, then `wuwei build next <item>` until it returns `done`.
+   The builder runs the spec engine's steps first (the brief's `Spec:` line); a gap
+   comes back as a failing check named `spec`.
 5. Gates: `wuwei dispatch next <item>` names the gate briefs to write and the seats to
    launch; after each seat stops, run the `wuwei dispatch receive` call it gave you.
 6. Pull request: `wuwei pr raise`, then `wuwei pr act <ref>` for each next action;
@@ -59,6 +61,8 @@ with the owner, 2 means it could not run: show the reason and stop that path.
 - A seat launches only from a logged brief, with the returned prompt unchanged.
 - No deploys, no merge outside `wuwei merge`, no pull request approvals.
 - Python only with `-P`.
+- In an item worktree, a source edit before the spec steps are done (`specify first:
+  /speckit.specify`); only the owner skips one with `wuwei plan set <item> spec=skipped`.
 
 A refusal names its reason and ends with a `posture:` line. Use the accepted form it
 names; never look for a way around it.

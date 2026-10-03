@@ -16,7 +16,7 @@ FIX = ('Verdict: FIX\nHead: abc1234\n'
 @pytest.fixture
 def root(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('')
+    (tmp_path / '.wuwei/config.toml').write_text('[spec]\nengine = "none"\n')
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     state._write_state(lambda data: data.update(
         gate_approved=True, approved_items=['A'],
@@ -39,6 +39,21 @@ def test_gate_dispatch_and_live_builder_refusal(root):
         'item': 'A', 'role': 'builder', 'status': 'running'}), root, reserved=False)
     with pytest.raises(dispatch.Refused, match='builder'):
         dispatch.next_step('A', root)
+
+
+def test_gate_dispatch_refuses_an_item_with_a_spec_gap(root):
+    import shutil
+    from pathlib import Path
+    from wuwei import dispatch
+
+    (root / '.wuwei/config.toml').write_text('')
+    tree = root / 'tree'
+    tree.mkdir()
+    state._write_state(lambda data: data['items']['A'].update(worktree=str(tree)), root, reserved=False)
+    with pytest.raises(dispatch.Refused, match='specify first: /speckit.specify'):
+        dispatch.next_step('A', root)
+    shutil.copytree(Path(__file__).parent / 'fixtures/spec/speckit/specs', tree / 'specs')
+    assert dispatch.next_step('A', root)['action'] == 'gates'
 
 
 def test_gate_dispatch_requires_builder_stand_down(root):
@@ -268,7 +283,7 @@ def agent_gate(root, monkeypatch, *, findings=True, trust=False, threshold='high
     if not findings:
         payload['findings'] = []
     (root / '.wuwei/config.toml').write_text(
-        '[adapters]\nscanner="ziran"\n[scanner]\nseverity_threshold="' + threshold + '"\n')
+        '[spec]\nengine = "none"\n[adapters]\nscanner="ziran"\n[scanner]\nseverity_threshold="' + threshold + '"\n')
     state._write_state(lambda data: data['items']['A']['flags'].update(
         agent_surface=True, trust_surface=trust), root, reserved=False)
     directory = workspace.day_dir(root)
@@ -700,7 +715,7 @@ def tiered(root, monkeypatch, paths, floor='light', flags=(), track='SLICE', lea
     repo = root / 'repo'
     repo.mkdir(exist_ok=True)
     (root / '.wuwei/config.toml').write_text(
-        '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n'
+        '[spec]\nengine = "none"\n[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n'
         f'[repos.gates]\nfloor = "{floor}"\n' + extra)
     fake = Fake(results={
         'head': Result(0, {'sha': 'a' * 40}), 'merge_base': Result(0, {'sha': 'b' * 40}),
@@ -854,7 +869,7 @@ def test_unmeasured_diff_stays_standard(root, monkeypatch):
 
 def test_item_without_worktree_is_unmeasured_standard(root):
     (root / '.wuwei/config.toml').write_text(
-        '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n'
+        '[spec]\nengine = "none"\n[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n'
         '[repos.gates]\nfloor = "light"\n')
     record = tier_of(root)
     assert record['tier'] == 'standard' and record['reasons'] == ['diff unmeasured: no worktree; create one with bin/wuwei worktree add <item> before dispatching gates']

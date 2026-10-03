@@ -89,6 +89,7 @@ def ws(tmp_path, monkeypatch):
     root = tmp_path / 'ws'
     (root / '.wuwei').mkdir(parents=True)
     (root / 'repo/.git').mkdir(parents=True)
+    (root / 'repo/.specify').mkdir()
     (root / '.wuwei/config.toml').write_text(CONFIG)
     (root / '.wuwei/calibration.json').write_text(json.dumps({'acme/widget': {'date': TODAY}}))
     (root / '.wuwei/executable').write_text(f"{plugin / 'bin/wuwei'}\n")
@@ -291,8 +292,8 @@ def test_workspace_rows_healthy(ws):
     rows = doctor.diagnose()
     assert names(rows, 'workspace') == [
         'workspace', 'config', 'template', 'executable', 'memory tiers', 'acme/widget path', 'acme/widget git', 'acme/widget branch',
-        'acme/widget identity', 'acme/widget fast_checks', 'calibration', 'drift', 'interview',
-        'profile', 'posture']
+        'acme/widget identity', 'acme/widget fast_checks', 'acme/widget spec', 'calibration', 'drift',
+        'interview', 'profile', 'posture']
     assert row(rows, 'posture')['value'] == 'guarded (from security.posture)'
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'workspace'), rows
 
@@ -363,6 +364,28 @@ def test_workspace_repository_rows(ws, repo, name, status, apply):
         assert "bin/wuwei config set repos.0.fast_checks '[\"<command>\"]'" in found['fix']
     if name.endswith('identity'):
         assert 'repos.0.identity.name = "Ada"' in found['fix']
+
+
+@pytest.mark.parametrize('spec, plugins, status', [
+    ('', None, 'ok'), ('[spec]\nengine = "none"\n', None, 'ok'),
+    ('[spec]\nengine = "superpowers"\n', '{"plugins": {"superpowers@superpowers-marketplace": []}}', 'ok'),
+    ('[spec]\nengine = "superpowers"\n', '{"plugins": {}}', 'fail'),
+    ('[spec]\nengine = "superpowers"\n', b'\xff', 'unmeasured')])
+def test_workspace_spec_row(ws, spec, plugins, status):
+    from wuwei import specmode
+    if plugins is not None:
+        path = ws.root / 'plugins.json'
+        path.write_bytes(plugins if isinstance(plugins, bytes) else plugins.encode())
+        spec += f'[scanner.mcp]\nplugins_file = "{path}"\n'
+    config(ws.root, CONFIG + spec)
+    found = row(doctor.diagnose(), 'acme/widget spec')
+    assert found['status'] == status, found
+    if status == 'fail':
+        assert found['fix'] == specmode.INSTALL['superpowers']
+    (ws.root / 'repo/.specify').rmdir()
+    if not spec:
+        found = row(doctor.diagnose(), 'acme/widget spec')
+        assert found['status'] == 'fail' and found['fix'] == specmode.INSTALL['speckit']
 
 
 def test_workspace_calibration_and_shadow(ws, monkeypatch):

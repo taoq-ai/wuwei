@@ -70,7 +70,8 @@ def evidence():
                for k in ('seat launched', 'seat stopped', 'seat.usage', 'build.checked')]
     events += [{'kind': 'gate.received', 'payload': {'item': 'A', 'role': r,
                 'round': 'initial', 'verdict': 'PASS'}} for r in ('arch', 'quality', 'security')]
-    events += [{'kind': 'retro.captured', 'payload': {}},
+    events += [{'kind': 'spec.skipped', 'payload': {'item': 'A', 'reason': 'lead tier light'}},
+               {'kind': 'retro.captured', 'payload': {}},
                {'kind': 'day.close_requested', 'payload': {}}]
     hooks = [{'event': e, 'exit': code, 'tool': tool, 'input': inputs}
              for e, code, tool, inputs in [
@@ -104,7 +105,7 @@ def test_complete_structured_evidence_passes():
 
 @pytest.mark.parametrize('mutation', [
     'no-launch', 'no-stop', 'no-skill', 'no-hooks', 'no-block', 'no-close',
-    'no-gate', 'live-seat', 'incomplete-build', 'unapproved',
+    'no-gate', 'live-seat', 'incomplete-build', 'unapproved', 'no-spec-skip',
 ])
 def test_missing_contract_evidence_fails_despite_success_prose(mutation):
     runner = load('headless_e2e')
@@ -127,6 +128,8 @@ def test_missing_contract_evidence_fails_despite_success_prose(mutation):
         data['seats']['builder']['status'] = 'running'
     elif mutation == 'incomplete-build':
         data['builds']['A']['status'] = 'running'
+    elif mutation == 'no-spec-skip':
+        events = [e for e in events if e['kind'] != 'spec.skipped']
     else:
         data['gate_approved'] = False
     assert runner.validate(data, events, hooks)
@@ -486,3 +489,10 @@ def test_rehearsal_sessions_and_owner_decision(tmp_path, monkeypatch, capsys,
         assert sessions[1][sessions[1].index('--resume') + 1] == 's1'
         assert sessions[1][sessions[1].index('--max-budget-usd') + 1] == str(runner.REHEARSAL['second'][1])
         assert fields == {**fields, 'verdict': 'pass', 'cost_usd': 2.0, 'pr': 'acme/rehearsal#4'}
+
+
+def test_fixture_item_is_light_so_its_spec_is_skipped(tmp_path):
+    (tmp_path / '.wuwei/memory').mkdir(parents=True)
+    load('headless_e2e').fixture_plan(tmp_path, 'repo/README.md', 'Verify README exists')
+    [candidate] = json.loads((tmp_path / 'proposal.json').read_text())['candidates']
+    assert candidate['tier'] == 'light'
