@@ -596,7 +596,7 @@ def test_session_start_shows_a_phone_answer_without_changing_its_code(case):
     assert 'answered from the phone' not in message
     state.append_event('decision.replied', {'id': 'D-1', 'option': 'A'}, root)
     assert lifecycle.session_start({'cwd': str(root)}) == (
-        code, message + '\nD-1 answered from the phone: option A, confirm with decision outcome D-1 A')
+        code, message + '\nD-1 answered from the phone: option A, confirm with wuwei decide D-1 A')
 
 
 REF = 'example/project#7'

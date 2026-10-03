@@ -718,7 +718,7 @@ def fix(rows, confirm=None, only=None, widget=False):
     print(text, end='')
     try:
         accepted = (confirm or (lambda value: integrity._host_confirm(
-            value, prompt='Review the fixes above. To apply them all, type:')))(
+            value, prompt='Apply the fixes above.')))(
             hashlib.sha256(text.encode()).hexdigest()[:12])
     except OSError as exc:
         print(f'wuwei doctor: {exc}', file=sys.stderr)

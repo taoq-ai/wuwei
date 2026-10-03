@@ -483,6 +483,14 @@ def test_owner_command_not_available_to_seats(configured, command):
     assert check_bash({'cwd': str(configured), 'tool_input': {'command': command}})[0] == 1
 
 
+def test_workspace_flag_does_not_hide_owner_action(configured):
+    from wuwei.guards.protect_state import check_bash
+    def run(words):
+        return check_bash({'cwd': str(configured), 'tool_input': {'command': f'bin/wuwei --workspace {configured} {words}'}})
+    assert run('mcp decide D-1 proceed') == (1, 'MCP decisions require the owner terminal, outside agent tools.')
+    assert run('status') == (0, '')
+
+
 @pytest.mark.parametrize('command', ['python3 -m pytest -q', 'for x in 1; do echo "$x"; done', 'export X=1'])
 def test_irrelevant_shell_is_allowed(configured, command):
     from wuwei.guards.protect_state import check_bash
@@ -1290,7 +1298,7 @@ def test_mcp_cli_forms(configured, monkeypatch):
     assert main(['mcp', 'check']) == 2
     assert main(['mcp', 'decide', 'proceed-unmeasured']) == 2
     assert main(['mcp', 'check', 'proceed-unmeasured', 'aws']) == 2
-    assert main(['mcp', 'decide', 'aws']) == 2
+    assert main(['mcp', 'decide', 'aws']) == 1  # one word answers the pending decision (#354): none
     monkeypatch.setattr(integrity, '_host_confirm', lambda value, prompt: True)
     assert main(['mcp', 'decide', 'proceed-unmeasured', 'aws']) == 0
     assert main(['mcp', 'check']) == 0
@@ -1305,7 +1313,7 @@ def test_mcp_cli_decide_forms(configured, monkeypatch, capsys):
     capsys.readouterr()
     for words in (['decide'], ['decide', 'D-1'], ['decide', 'D-1', 'proceed', 'extra'], ['decide', 'x', 'proceed']):
         assert main(['mcp', *words]) == 2
-        assert 'usage: wuwei mcp check [--widget] | wuwei mcp decide D-<n> <option>' in capsys.readouterr().err
+        assert 'usage: wuwei mcp check [--widget] | wuwei mcp decide [D-<n>] <option>' in capsys.readouterr().err
     monkeypatch.setattr(integrity, '_host_confirm', lambda value, prompt: True)
     assert main(['mcp', 'decide', 'D-1', 'proceed']) == 0
     assert 'D-1 recorded: proceed' in capsys.readouterr().err
@@ -1562,3 +1570,119 @@ def test_pending_line_everywhere(configured, monkeypatch):
     for reason in [*reasons, str(refused.value)]:
         assert 'bin/wuwei mcp decide D-1 proceed' in reason
         assert 'Outcome:' not in reason and 'decisions/D-1.md' not in reason
+
+
+def test_mcp_decide_confirm_prompt_shows_findings(configured, monkeypatch, capsys):
+    from wuwei import integrity
+    from wuwei.__main__ import main
+    monkeypatch.chdir(configured)
+    block_critical(configured)
+    fake_scanner(monkeypatch, 1, [metadata('critical')])
+    assert core().check(configured).exit == 1
+    path = workspace.day_dir(configured) / 'decisions/D-1.md'
+    prompts = []
+    monkeypatch.setattr(integrity, '_host_confirm', lambda value, prompt: prompts.append((value, prompt)) and False)
+    assert main(['mcp', 'decide', 'D-1', 'proceed']) == 1
+    assert 'MCP registry owner confirmation declined' in capsys.readouterr().err
+    assert 'Outcome: pending' in path.read_text()
+    [(digest, prompt)] = prompts
+    assert 'D-1' in prompt and 'proceed' in prompt and '| Server |' in prompt
+    assert digest not in prompt and 'type:' not in prompt
+    monkeypatch.setattr(integrity, '_host_confirm', lambda value, prompt: True)
+    assert main(['mcp', 'decide', 'D-1', 'proceed']) == 0
+    assert 'Outcome: proceed' in path.read_text()
+
+
+def test_mcp_confirm_without_terminal_names_the_host_terminal(configured, monkeypatch):
+    from wuwei import integrity
+    def no_terminal(value, prompt):
+        raise OSError(integrity.HOST_TERMINAL)
+    block_critical(configured)
+    fake_scanner(monkeypatch, 1, [metadata('critical')])
+    assert core().check(configured).exit == 1
+    monkeypatch.setattr(integrity, '_host_confirm', no_terminal)
+    result = core().decide(configured, 'D-1', 'proceed')
+    assert (result.exit, result.reason) == (2, integrity.HOST_TERMINAL)
+    aws_server(configured)
+    fake_scanner(monkeypatch)
+    core().check(configured)
+    result = core().decide(configured, servers=['aws'])
+    assert (result.exit, result.reason) == (2, integrity.HOST_TERMINAL)
+
+
+def test_decide_command_answers_the_mcp_decision(configured, monkeypatch, capsys):
+    from wuwei import integrity
+    from wuwei.__main__ import main
+    monkeypatch.chdir(configured)
+    block_critical(configured)
+    fake_scanner(monkeypatch, 1, [metadata('critical')])
+    assert core().check(configured).exit == 1
+    capsys.readouterr()
+    monkeypatch.setattr(integrity, '_host_confirm', lambda value, prompt: True)
+    assert main(['decide', 'D-1', 'defer', '--note', 'look first']) == 1
+    assert 'D-1 recorded: defer' in capsys.readouterr().err
+    assert (workspace.day_dir(configured) / 'decisions/D-1.md').read_text().endswith(
+        'at the host terminal. look first\n')
+    assert main(['mcp', 'decide', 'proceed']) == 0
+    assert 'D-1 recorded: proceed' in capsys.readouterr().err
+    assert core().cached(configured).exit == 0
+
+
+@pytest.mark.parametrize('posture', ['guarded', 'strict'])
+def test_planner_session_records_asked_mcp_decision(configured, monkeypatch, capsys, posture):
+    from wuwei import integrity, plan
+    from wuwei.__main__ import main
+    from wuwei.guards.decision import record_gate
+    from wuwei.guards.protect_state import check_bash
+    monkeypatch.chdir(configured)
+    block_critical(configured)
+    with (configured / '.wuwei/config.toml').open('a') as config:
+        config.write(f'[security]\nposture = "{posture}"\n')
+    fake_scanner(monkeypatch, 1, [metadata('critical')])
+    assert core().check(configured).exit == 1
+    plan.session('planner-1', configured)
+    [question] = core().widget(configured)
+    assert question['header'] == 'D-1'
+    assert record_gate({'cwd': str(configured), 'session_id': 'planner-1', 'tool_name': 'AskUserQuestion',
+                        'tool_input': {'questions': [question]}}) == (0, '')
+    command = 'bin/wuwei mcp decide D-1 proceed'
+    found = check_bash({'cwd': str(configured), 'session_id': 'planner-1', 'tool_input': {'command': command}})
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
+
+    def no_terminal(value, prompt):
+        raise OSError(integrity.HOST_TERMINAL)
+    monkeypatch.setattr(integrity, '_host_confirm', no_terminal)
+    capsys.readouterr()
+    code = main(['mcp', 'decide', 'D-1', 'proceed'])
+    text = (workspace.day_dir(configured) / 'decisions/D-1.md').read_text()
+    if posture == 'strict':
+        assert found[0] == 1 and found[1].endswith(f'Run it in a host terminal: {command}')
+        assert code == 2 and integrity.HOST_TERMINAL in capsys.readouterr().err
+        assert 'Outcome: pending' in text
+    else:
+        assert found == (0, '')
+        assert code == 0 and text.endswith('in the planner session.\n')
+        assert core().cached(configured).exit == 0
+
+
+def test_mcp_decide_workspace_from_outside(configured, tmp_path_factory, monkeypatch, capsys):
+    from wuwei import integrity
+    from wuwei.__main__ import main
+    block_critical(configured)
+    fake_scanner(monkeypatch, 1, [metadata('critical')])
+    monkeypatch.chdir(configured)
+    inside = main(['mcp', 'check'])
+    assert inside == 1
+    monkeypatch.chdir(tmp_path_factory.mktemp('outside'))
+    monkeypatch.setenv('WUWEI_WORKSPACE', '')  # recorded, so the value --workspace sets is undone
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    capsys.readouterr()
+    assert main(['mcp', 'check']) == 0 and capsys.readouterr() == ('', '')
+    assert main(['mcp', 'decide', 'D-1', 'proceed']) == 2
+    [line] = capsys.readouterr().err.splitlines()
+    assert 'WUWEI_WORKSPACE' in line and '--workspace' in line
+    assert main(['--workspace', str(configured), 'mcp', 'check']) == inside
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(configured))
+    monkeypatch.setattr(integrity, '_host_confirm', lambda value, prompt: True)
+    assert main(['mcp', 'decide', 'D-1', 'proceed']) == 0
+    assert 'Outcome: proceed' in (workspace.day_dir(configured) / 'decisions/D-1.md').read_text()

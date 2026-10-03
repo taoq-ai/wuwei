@@ -1,6 +1,7 @@
 """Discover commands and enforce the three-state exit contract."""
 
 from contextlib import redirect_stdout, redirect_stderr
+import os
 import sys
 
 from wuwei import env, redact
@@ -19,6 +20,9 @@ def main(argv=None):
 
 def _main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ['--workspace'] and len(argv) > 1:
+        # ponytail: leading form only; it selects the workspace for this process (#354).
+        os.environ['WUWEI_WORKSPACE'], argv = argv[1], argv[2:]
     if len(argv) == 2 and argv[0] == 'hook':
         # Hook fast path: no parser, manifest or command listing on every tool call.
         try:

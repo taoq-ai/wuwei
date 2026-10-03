@@ -193,7 +193,7 @@ def scan(directory, classified_state=None):
             if option := replied.get(identifier):
                 source, reason = 'decision.answered', (
                     f'{identifier} answered from the phone: option {option}, '
-                    f'confirm with decision outcome {identifier} {option}')
+                    f'confirm with wuwei decide {identifier} {option}')
             current[('decision.pending', identifier)] = {
                 'tier': 'nudge', 'source': source, 'lane': 'Decisions', 'reason': reason}
     planner = classified_state.get('planner_session_id')

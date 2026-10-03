@@ -65,7 +65,7 @@ review and close. The [daily path](daily.html) walks through the whole day; the 
 the marketplace's `./` development source. For that installation or a source
 checkout, use the installed checkout's `bin/wuwei` to initialize the workspace.
 Then, from the workspace in a host terminal, run `bin/wuwei integrity reconfirm`
-using that executable and type the displayed digest after reviewing its contents.
+using that executable and answer y after reviewing its contents.
 
 Reconfirmation records the content fingerprint, HEAD commit and clean tree state.
 One confirmation permits repeated tool calls while HEAD and the tree are unchanged.

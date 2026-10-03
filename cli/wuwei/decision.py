@@ -143,7 +143,7 @@ def present(identifier, fields, level):
 
 
 # The command that records an owner's answer to a D-n widget; <label> is the chosen option.
-RECORD = 'wuwei decision outcome {id} <label>'
+RECORD = 'wuwei decide {id} <label>'
 
 
 def widget(question, header, options, record, *, multi=False):
@@ -359,6 +359,24 @@ def set_outcome(text, option):
     # ponytail: rewrites the first Outcome: line; a record with an inactive example
     # Outcome: above the real field needs the active line from verdict.active_text.
     return re.sub(r'^((?:#{1,6} )?Outcome:).*$', lambda m: f'{m[1]} {option}', text, count=1, flags=re.M)
+
+
+def owner_confirm(root, identifier, digest, prompt):
+    """Where the owner answered: the planner session's asked gate question, else y/N at the
+    host terminal (#354); '' when declined. OSError without a terminal propagates."""
+    from wuwei import sessions
+    if identifier in sessions.gate_topics(root, sessions.current())[0]:
+        return 'in the planner session'
+    from wuwei.integrity import _host_confirm
+    return 'at the host terminal' if _host_confirm(digest, prompt=prompt) else ''
+
+
+def owner_record(text, option, where, note=None):
+    """The record after the owner's answer: Outcome, Decided-by: owner and one Notes line."""
+    text = set_outcome(text, option)
+    text = re.sub(r'^((?:#{1,6} )?Decided-by:).*$', r'\1 owner', text, count=1, flags=re.M)
+    stamp = workspace.now().isoformat(timespec='seconds')
+    return text.rstrip('\n') + f'\nNotes: Decided at {stamp} {where}.' + (f' {note}' if note else '') + '\n'
 
 
 def write(text, root):

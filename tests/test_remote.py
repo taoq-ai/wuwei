@@ -826,6 +826,7 @@ def test_issue_acceptance_remote_ack_clears_a_refused_page(ws, capsys, monkeypat
     assert len(refused_pages(capsys)) == 1
     assert main(['remote', 'ack']) == 0
     assert calls[0][0] == sha256(b'D1/1.000001').hexdigest()[:12] and 'D1/1.000001' in calls[0][1]
+    assert 'type:' not in calls[0][1]
     assert payloads(ws, 'remote.acknowledged') == [{'ids': ['D1/1.000001']}]
     assert refused_pages(capsys) == []
     assert main(['status', '--json']) == 0

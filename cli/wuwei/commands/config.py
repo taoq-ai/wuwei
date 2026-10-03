@@ -193,7 +193,7 @@ def offer(root, raw, text, summary, *, label, what, confirm=None, snapshot=None)
     print(summary, end='')
     digest = hashlib.sha256(summary.encode()).hexdigest()[:12]
     if not (confirm or integrity._host_confirm)(
-            digest, prompt=f'Review the {what} above. To apply it, type:'):
+            digest, prompt=f'Apply the {what} above.'):
         print(f'wuwei {label}: declined; nothing written', file=sys.stderr)
         return FINDINGS
     path = root / '.wuwei/config.toml'
