@@ -659,3 +659,18 @@ def test_doctor_is_the_first_stop():
     for name, (command, _, _) in doctor.FIXES.items():
         assert f'`{name}`' in section and command in section, name
     assert '/dev/tty' in section and 'doctor.fixed' in section
+
+
+def test_owner_questions_use_widgets_or_the_dm():
+    for path in (ROOT / 'skills').glob('*/SKILL.md'):
+        text = path.read_text()
+        for phrase in ('AskUserQuestion', 'decision route', '--widget', 'Seats never ask the owner'):
+            assert phrase in text, (path.parent.name, phrase)
+        assert 'Decided-by: owner' not in text and 'Outcome: proceed' not in text, path.parent.name
+    plan = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+    for phrase in ('wuwei mcp check --widget', 'record', 'calibrate --answer', 'wuwei_board'):
+        assert phrase in plan, phrase
+    decisions = (SITE / 'daily.md').read_text().split('\n## 5. Owner decisions\n', 1)[1].split('\n## ', 1)[0]
+    answer = decisions.split('\n### How you answer\n', 1)[1].split('\n#', 1)[0]
+    for phrase in ('question card', 'DM', 'host terminal'):
+        assert phrase in answer, phrase

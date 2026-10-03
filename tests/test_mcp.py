@@ -1157,3 +1157,53 @@ def test_launcher_args_not_a_list_fail_closed(configured, monkeypatch):
     (configured / '.mcp.json').write_text(json.dumps({'mcpServers': {'docs': {'command': 'npx', 'args': 'pkg'}}}))
     result = core().check(configured)
     assert result.exit == 2 and not calls and 'docs:' not in result.reason
+
+
+SPREAD = [{**metadata('high'), 'server_name': 'alpha'}, {**metadata('critical'), 'server_name': 'alpha'},
+          {**metadata('medium'), 'server_name': 'beta'}]
+
+
+def test_findings_summary_per_server(configured, monkeypatch):
+    from wuwei import state
+    fake_scanner(monkeypatch, 1, SPREAD)
+    core().check(configured)
+    assert core().findings(configured) == ['alpha: 1 critical, 1 high', 'beta: 1 medium']
+    core().check(configured)
+    assert core().findings(configured) == ['alpha: 1 critical, 1 high', 'beta: 1 medium']
+    state.append_event('mcp.decided', {'decision': 'x', 'outcome': 'proceed'}, configured)
+    assert core().findings(configured) == []
+    state.append_event('mcp.finding', {'server_name': 'bad name; run x', 'severity': 'urgent',
+                                       'drift_type': 'x', 'tool_name': None}, configured)
+    state.append_event('mcp.checked', {'exit': 1}, configured)
+    assert core().findings(configured) == ['unnamed server: 1 unknown']
+
+
+def test_check_widget(configured, monkeypatch, capsys, tmp_path):
+    from wuwei.__main__ import main
+    from wuwei.guards.decision import check_question
+    monkeypatch.chdir(configured)
+    fake_scanner(monkeypatch, 1, SPREAD)
+    assert main(['mcp', 'check', '--widget']) == 1
+    widgets = json.loads(capsys.readouterr().out)
+    pending = next((configured / '.wuwei/days').glob('*/decisions/D-*.md')).stem
+    assert len(widgets) == 1 and widgets[0]['question'].startswith(f'{pending}: May seats proceed')
+    assert [o['label'] for o in widgets[0]['options']] == ['defer', 'proceed']
+    assert widgets[0]['options'][1]['description'].splitlines()[-2:] == ['alpha: 1 critical, 1 high',
+                                                                          'beta: 1 medium']
+    assert widgets[0]['record'] == (f'wuwei decision route {pending} && wuwei decision outcome {pending} '
+                                    '<label> && wuwei mcp decide')
+    assert check_question({'cwd': str(configured), 'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [
+        {key: widgets[0][key] for key in ('question', 'header', 'options', 'multiSelect')}]}}) == (0, '')
+    assert main(['mcp', 'decide', '--widget']) == 2
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T08:00:00+02:00')
+    fake_scanner(monkeypatch, 0)
+    core().check(configured)
+    assert core().widget(configured) == []
+
+
+def test_check_widget_without_findings(configured, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    monkeypatch.chdir(configured)
+    fake_scanner(monkeypatch, 0)
+    assert main(['mcp', 'check', '--widget']) == 0
+    assert json.loads(capsys.readouterr().out) == []

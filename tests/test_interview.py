@@ -363,6 +363,8 @@ def test_widgets_come_from_the_table_and_pass_the_question_guard(offline, capsys
         assert [o['label'] for o in widget['options']] == [label for label, _, _ in row['choices']]
         assert widget['question'].startswith('Morning gate (days/2026-10-01/plan.md): ')
         assert len(widget['header']) <= 12 and widget['multiSelect'] is False
+        assert widget['record'] == f'wuwei calibrate --answer "{widget["id"]}=<label>"' + (
+            f' --repo {widget["repo"]}' if 'repo' in widget else '')
         payload = {'tool_name': 'AskUserQuestion', 'cwd': str(offline), 'tool_input': {'questions': [
             {key: widget[key] for key in ('question', 'header', 'options', 'multiSelect')}]}}
         assert check_question(payload) == (0, ''), widget

@@ -533,7 +533,7 @@ CHECKOUT = ('page: plugin integrity: development checkout requires host reconfir
 
 
 def fix(confirm):
-    return doctor.run(Namespace(fix=True, json=False), confirm=confirm)
+    return doctor.run(Namespace(fix=True, json=False, widget=False, apply=None), confirm=confirm)
 
 
 def empty_checks(ws, monkeypatch, repos=1):
@@ -761,3 +761,68 @@ def test_trace_decisions_changed_since_preview(ws, capsys):
     out = capsys.readouterr().out
     assert 'changed since the preview' in out and 'trace-decisions: exit 1' in out
     assert 'Outcome: pending' in (directory / 'D-3.md').read_text()
+
+
+def two_fixes(ws, monkeypatch):
+    """calibrate and init-upgrade due, each with a fake preview and an apply that records its call."""
+    applied = []
+    rows = [doctor._row('workspace', 'calibration', 'warn', 'old', 'wuwei calibrate', apply='calibrate'),
+            doctor._row('workspace', 'template', 'warn', 'drift', 'wuwei init --upgrade', apply='init-upgrade')]
+    monkeypatch.setattr(doctor, 'diagnose', lambda: rows)
+    for name, command in (('calibrate', 'wuwei calibrate'), ('init-upgrade', 'wuwei init --upgrade')):
+        monkeypatch.setitem(doctor.FIXES, name, (command, lambda root, name=name: (f'preview {name}\n', name),
+                                                 lambda root, token: applied.append(token) or 0))
+    return applied
+
+
+def widget_args(**changes):
+    return Namespace(**{'fix': True, 'json': False, 'widget': True, 'apply': None, **changes})
+
+
+def test_fix_widget_needs_todays_plan(ws, monkeypatch, capsys):
+    from wuwei.guards.decision import check_question
+    applied, asked = two_fixes(ws, monkeypatch), []
+    assert doctor.run(widget_args(), confirm=asked.append) == 1
+    assert 'run wuwei doctor --fix in a host terminal' in capsys.readouterr().err
+    assert not asked and not applied
+    plan = workspace.day_dir(ws.root) / 'plan.md'
+    plan.parent.mkdir(parents=True, exist_ok=True)
+    plan.write_text('# Plan\n')
+    assert doctor.run(widget_args(), confirm=asked.append) == 1
+    (built,) = json.loads(capsys.readouterr().out)
+    assert built['header'] == 'Fixes' and built['multiSelect'] is True
+    assert [o['label'] for o in built['options']] == ['init-upgrade', 'calibrate']
+    assert built['options'][0]['description'].startswith('wuwei init --upgrade')
+    assert built['options'][1]['description'].startswith('wuwei calibrate')
+    assert built['record'] == 'wuwei doctor --fix --apply <labels>'
+    assert built['question'].startswith(f'Morning gate (days/{TODAY}/plan.md): ')
+    assert check_question({'cwd': str(ws.root), 'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [
+        {key: built[key] for key in ('question', 'header', 'options', 'multiSelect')}]}}) == (0, '')
+    assert not asked and not applied and not events(ws.root, 'doctor.fixed')
+
+
+def test_widgets_split_and_skip(ws):
+    names = list(doctor.FIXES)
+    def sizes(count):
+        batch = [(names[i], 'text\n', None) for i in range(count)]
+        return [len(w['options']) for w in doctor.widgets(ws.root, batch)]
+    assert sizes(0) == [] and sizes(4) == [4] and sizes(5) == [3, 2] and sizes(6) == [3, 3]
+    split = doctor.widgets(ws.root, [(names[i], 'text\n', None) for i in range(5)])
+    assert [w['question'][-22:] for w in split] == ['doctor fixes (1 of 2)?', 'doctor fixes (2 of 2)?']
+    (single,) = doctor.widgets(ws.root, [(names[0], 'text\n', None)])
+    assert [o['label'] for o in single['options']] == [names[0], 'Skip']
+
+
+def test_fix_apply_limits_the_batch(ws, monkeypatch, capsys):
+    applied = two_fixes(ws, monkeypatch)
+    assert doctor.run(widget_args(widget=False, apply='calibrate'), confirm=lambda digest: True) == 1
+    out = capsys.readouterr().out
+    assert '[calibrate]' in out and '[init-upgrade]' not in out
+    assert applied == ['calibrate'] and len(events(ws.root, 'doctor.fixed')) == 1
+    assert doctor.run(widget_args(widget=False, apply='nope'), confirm=lambda digest: True) == 2
+    assert 'nope' in capsys.readouterr().err and applied == ['calibrate']
+    assert doctor.run(widget_args(widget=False, apply='Skip'), confirm=lambda digest: True) in (0, 1)
+    assert applied == ['calibrate']
+    for changes in ({'fix': False}, {'fix': False, 'widget': False, 'apply': 'calibrate'}, {'apply': 'calibrate'}):
+        assert doctor.run(widget_args(**changes), confirm=lambda digest: True) == 2
+    assert applied == ['calibrate']
