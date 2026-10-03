@@ -212,6 +212,51 @@ def test_hook_imports_only_needed_guards(tmp_path, event, name, unloaded):
     assert unloaded & set(json.loads(out.read_text())) == set()
 
 
+DENY = {'tomllib', 'hashlib', 'argparse', 'dataclasses', 'inspect', 'typing', 'datetime', 'subprocess'}
+
+
+@pytest.mark.parametrize('inside, deny', [(False, DENY), (True, {'argparse', 'dataclasses', 'subprocess'})],
+                         ids=['outside', 'workspace'])
+def test_hook_imports_no_unused_stdlib(tmp_path, inside, deny):
+    # A fresh interpreter: a hook pays only for the stdlib modules its path uses.
+    cwd = tmp_path / 'project'
+    cwd.mkdir()
+    env = {k: v for k, v in os.environ.items() if not k.startswith(('WUWEI_', 'GIT_'))}
+    if inside:
+        from fakes.integrity import seed
+        cwd = tmp_path
+        (tmp_path / '.wuwei').mkdir()
+        (tmp_path / '.wuwei/config.toml').write_text('')
+        seed(tmp_path)
+        env['WUWEI_WORKSPACE'] = str(tmp_path)
+    payload = {**json.loads((ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()), 'cwd': str(cwd)}
+    out = tmp_path / 'modules.json'
+    # bin/wuwei's own launcher line, with sys.modules dumped at exit.
+    script = ('import atexit, json, runpy, sys; out = sys.argv.pop(3); '
+              'atexit.register(lambda: open(out, "w").write(json.dumps(sorted(sys.modules)))); '
+              'sys.path[:0] = sys.argv[1:3]; del sys.argv[1:3]; '
+              'runpy.run_module("wuwei", run_name="__main__", alter_sys=True)')
+    result = subprocess.run([sys.executable, '-I', '-P', '-c', script, str(ROOT / 'cli'), str(ROOT), str(out),
+                             'hook', 'PreToolUse'],
+                            input=json.dumps(payload), text=True, capture_output=True, cwd=cwd, env=env)
+    assert result.returncode == 0, result.stderr
+    if not inside:
+        assert result.stdout == ''
+    assert deny & set(json.loads(out.read_text())) == set()
+
+
+def test_guard_modules_defer_heavy_imports():
+    import ast
+    for path in (ROOT / 'cli/wuwei/guards').glob('*.py'):
+        roots = set()
+        for node in ast.parse(path.read_text()).body:
+            if isinstance(node, ast.Import):
+                roots.update(alias.name.split('.')[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                roots.add((node.module or '').split('.')[0])
+        assert not roots & {'tomllib', 'datetime', 'subprocess', 'hashlib'}, path
+
+
 def test_calibrate_is_off_every_hook_path(tmp_path):
     from fakes.integrity import seed
     (tmp_path / '.wuwei').mkdir()

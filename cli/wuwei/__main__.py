@@ -1,14 +1,9 @@
 """Discover commands and enforce the three-state exit contract."""
 
-import argparse
 from contextlib import redirect_stdout, redirect_stderr
-from importlib import import_module
-import json
-from pathlib import Path
-import pkgutil
 import sys
 
-from wuwei import commands, env, redact, workspace
+from wuwei import env, redact
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 
@@ -24,6 +19,21 @@ def main(argv=None):
 
 def _main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    if len(argv) == 2 and argv[0] == 'hook':
+        # Hook fast path: no parser, manifest or command listing on every tool call.
+        try:
+            from types import SimpleNamespace
+            from wuwei.commands import hook
+        except Exception as exc:
+            print(f"wuwei: {str(exc) or type(exc).__name__}", file=sys.stderr)
+            return UNRUN
+        if argv[1] in hook.EVENTS:
+            return _call(hook.run, SimpleNamespace(command='hook', event=argv[1]))
+    import argparse
+    from importlib import import_module
+    import json
+    from pathlib import Path
+    from wuwei import commands, workspace
     parser = argparse.ArgumentParser(prog="wuwei")
     subparsers = parser.add_subparsers(dest="command", required=True)
     try:
@@ -39,17 +49,16 @@ def _main(argv=None):
         if not isinstance(version, str) or not version.strip():
             raise ValueError("plugin version must be a non-empty string")
         parser.add_argument("--version", action="version", version=version)
-        modules = {
-            module.name.rsplit(".", 1)[-1]: module.name
-            for module in pkgutil.iter_modules(commands.__path__, commands.__name__ + ".")
-            if not module.name.rsplit(".", 1)[-1].startswith("_")
-        }
-        selected = modules.pop(argv[0].replace("-", "_"), None) if argv else None
-        if selected:
-            import_module(selected).register(subparsers)
+        name = argv[0].replace("-", "_") if argv else ""
+        if (name.isidentifier() and not name.startswith("_")
+                and (Path(commands.__file__).parent / f"{name}.py").is_file()):
+            import_module(f"{commands.__name__}.{name}").register(subparsers)
         if not argv or (argv[0] != "--version" and argv[0] not in subparsers.choices):
-            for module in modules.values():
-                import_module(module).register(subparsers)
+            import pkgutil
+            for module in pkgutil.iter_modules(commands.__path__, commands.__name__ + "."):
+                short = module.name.rsplit(".", 1)[-1]
+                if not short.startswith("_") and short != name:
+                    import_module(module.name).register(subparsers)
     except Exception as exc:
         print(f"wuwei: {str(exc) or type(exc).__name__}", file=sys.stderr)
         return UNRUN
@@ -61,8 +70,12 @@ def _main(argv=None):
     except BaseException as exc:
         print(f"wuwei: {str(exc) or type(exc).__name__}", file=sys.stderr)
         return UNRUN
+    return _call(args.func, args)
+
+
+def _call(func, args):
     try:
-        status = args.func(args)
+        status = func(args)
         if isinstance(status, bool) or not isinstance(status, int) or status not in (CLEAN, FINDINGS, UNRUN):
             raise ValueError(f"invalid exit status {status!r}; expected 0, 1, or 2")
         return status
