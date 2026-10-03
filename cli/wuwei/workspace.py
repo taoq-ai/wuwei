@@ -1,14 +1,9 @@
 """Shared workspace paths and validated configuration."""
 
-from copy import deepcopy
-from datetime import date, datetime
-import difflib
 import os
 from pathlib import Path
 import re
 import sys
-import tempfile
-import tomllib
 
 
 # Dicts describe tables; lists contain an item rule and optional array defaults;
@@ -186,9 +181,19 @@ def atomic_write(path, text, *, replace=True, mode=None):
     path = Path(path)
     temporary = None
     try:
-        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
-                                         delete=False) as stream:
-            temporary = Path(stream.name)
+        # tempfile.NamedTemporaryFile's own open (exclusive, no symlink, mode 0600) without
+        # importing tempfile, which brings shutil, bz2, lzma and random to every state write.
+        for _ in range(100):
+            candidate = path.parent / f'tmp{os.urandom(6).hex()}'
+            try:
+                fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            except FileExistsError:
+                continue
+            temporary = candidate
+            break
+        else:
+            raise FileExistsError(f'no unused temporary name in {path.parent}')
+        with open(fd, 'w', encoding='utf-8') as stream:
             if mode is not None:
                 os.fchmod(stream.fileno(), mode)
             stream.write(text)
@@ -254,9 +259,6 @@ def worktree_workspace(path):
 
 def scope(path):
     """An environment-selected workspace is context, not proof of membership."""
-    from wuwei import registry
-    from wuwei.registry import data
-
     selected = None
     if 'WUWEI_WORKSPACE' in os.environ:
         try:
@@ -277,6 +279,8 @@ def scope(path):
         return root, config
     # External worktrees share a configured repository's common directory.
     if any((parent / '.git').exists() for parent in (path, *path.parents)):
+        from wuwei import registry
+        from wuwei.registry import data
         vcs = registry.load('vcs', config)
         actual = data(vcs.repo_context(str(path), root=root))
         common = actual.get('common_dir')
@@ -337,6 +341,7 @@ def verbosity(config, surface):
 
 def now():
     """Return local now, or the datetime represented by WUWEI_NOW."""
+    from datetime import datetime
     if "WUWEI_NOW" not in os.environ:
         return datetime.now().astimezone()
     timestamp = os.environ["WUWEI_NOW"]
@@ -355,14 +360,32 @@ def day_dir(root=None):
     return root / ".wuwei/days" / now().date().isoformat()
 
 
+def _unit_directory(platform):
+    home = Path.home()
+    if platform == "darwin":
+        return home / "Library/LaunchAgents"
+    return Path(os.environ.get("XDG_CONFIG_HOME", home / ".config")) / "systemd/user"
+
+
 def watch_unit(root, platform=sys.platform, name="watch"):
     """Service label and the unit file `<name> install` writes for this workspace."""
     import hashlib
     label = "wuwei-" + ("" if name == "watch" else f"{name}-") + hashlib.sha256(str(Path(root).resolve()).encode()).hexdigest()[:12]
-    home = Path.home()
-    if platform == "darwin":
-        return label, home / "Library/LaunchAgents" / f"{label}.plist"
-    return label, Path(os.environ.get("XDG_CONFIG_HOME", home / ".config")) / "systemd/user" / f"{label}.service"
+    suffix = ".plist" if platform == "darwin" else ".service"
+    return label, _unit_directory(platform) / f"{label}{suffix}"
+
+
+def unit_installed(root, name="watch"):
+    """watch_unit(root, name=name)[1].exists(); with no WUWEI unit installed at all (the
+    common case) it lists the directory instead of loading hashlib for the label."""
+    try:
+        if not any(entry.startswith("wuwei-") for entry in os.listdir(_unit_directory(sys.platform))):
+            return False
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError:
+        pass  # An unlistable directory: check the unit file itself, as before.
+    return watch_unit(root, name=name)[1].exists()
 
 
 def _key_line(raw, path):
@@ -420,6 +443,7 @@ def _validate(value, schema, path, raw, unknown=None):
             if name not in schema and "*" not in schema:
                 line = _key_line(raw, (*path, name))
                 location = f" at line {line}" if line is not None else ""
+                import difflib  # Only for an unknown key's suggestion.
                 near = difflib.get_close_matches(str(name), list(schema), n=1)
                 hint = (f"did you mean {'.'.join(map(str, (*path, near[0])))}?" if near
                         else "remove it or use a documented key")
@@ -447,6 +471,7 @@ def _validate(value, schema, path, raw, unknown=None):
 
 
 def _default(schema):
+    from copy import deepcopy
     if isinstance(schema, dict):
         return {}
     if isinstance(schema, list):
@@ -459,10 +484,21 @@ def _default(schema):
 _CONFIGS = {}
 
 
+def __getattr__(name):
+    # tomllib loads on first use, off the hook path; workspace.tomllib stays addressable.
+    if name == 'tomllib':
+        import tomllib
+        return tomllib
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+
+
 def load_config(root=None, *, raw=None, warnings=None):
     """Read .wuwei/config.toml (or validate raw in its place), reject invalid fields, and
     return fresh defaults. Unknown keys refuse only under strict (#353); otherwise their
     texts are appended to warnings when it is a list."""
+    from copy import deepcopy
+    from datetime import date
+    import tomllib
     path = (find_workspace() if root is None else Path(root)) / ".wuwei/config.toml"
     try:
         raw = path.read_text(encoding="utf-8") if raw is None else raw
@@ -495,8 +531,8 @@ def load_config(root=None, *, raw=None, warnings=None):
             if value and AREA_LEVELS.index(value) < AREA_LEVELS.index(floor):
                 raise ConfigError(f'security.areas.{area}: "{value}" is below its floor "{floor}"; '
                                   f'{area} always blocks, remove the override')
-        from wuwei.decision import CLASSES
         for name, value in config['decisions']['cruise']['levels'].items():
+            from wuwei.decision import CLASSES
             if name not in CLASSES:
                 raise ConfigError(f'decisions.cruise.levels.{name}: unknown class; use one of '
                                   + ', '.join(CLASSES))

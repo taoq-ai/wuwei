@@ -122,9 +122,13 @@ def newer_template(root, payload, config):
     """#353: one config.newer_template event per session and day when config.toml was
     written by a newer plugin; recording never refuses."""
     try:
-        from wuwei import integrity, state, watch, workspace
+        from wuwei import integrity
         found = integrity.newer_template(config)
-        if found is None or any(
+        if found is None:
+            return
+        # Only now: watch (brief, discovery, obligations, hashlib) stays off a current install's path.
+        from wuwei import state, watch, workspace
+        if any(
                 row['kind'] == 'config.newer_template' and row['payload'].get('session') == payload['session_id']
                 for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
             return

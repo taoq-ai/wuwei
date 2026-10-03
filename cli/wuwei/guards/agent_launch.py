@@ -1,6 +1,5 @@
 """Require a logged brief and fresh evidence for WUWEI seats."""
 
-from datetime import date, datetime
 import json
 from pathlib import Path
 
@@ -75,6 +74,7 @@ def _seat(payload):
 
 
 def _check(payload):
+    from datetime import datetime
     import hashlib
     from wuwei import brief, registry, state, workspace
 
@@ -196,6 +196,7 @@ def _check(payload):
 
 def stopping_seat(payload, root):
     """Resolve a stop to its registered seat and original day."""
+    from datetime import date
     from wuwei import brief, state
 
     # Runtime IDs can repeat across days; only the transcript brief binds the stop.

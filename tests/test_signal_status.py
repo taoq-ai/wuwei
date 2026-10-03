@@ -608,3 +608,52 @@ def test_restart_on_the_status_line(tmp_path, monkeypatch):
     assert data['restart'] == '' and 'restart' not in line
     text = 'plugin 0.11.0 running against template 0.12.0: restart Claude Code'
     assert f'nudges 0 | {text} |' in status.line({**data, 'restart': text})
+
+
+def test_scan_skips_silent_lines_undecoded(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from wuwei.commands import status
+    stamp = {'ts': NOW}
+    events = ([{'kind': 'state.write', 'payload': {'item': f'I{n}'}, **stamp} for n in range(50)]
+              + [{'kind': 'watch: clock', 'payload': {}, **stamp},
+                 {'kind': 'hook.warning', 'payload': {'reason': 'lint finding'}, **stamp}])
+    directory = day(tmp_path, events=events)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    expected = status.scan(directory)
+    seen = []
+    monkeypatch.setattr(status, 'json', SimpleNamespace(
+        loads=lambda line, **kw: seen.append(line) or json.loads(line, **kw), dumps=json.dumps))
+    rows, watch, *_ = status.scan(directory)
+    assert len(seen) == 2 and not any('state.write' in line for line in seen)
+    assert (rows, watch, *_) == expected
+    assert any(row['source'] == 'hook.warning' and row['reason'] == 'lint finding' for row in rows)
+
+
+def test_scan_decodes_torn_silent_line(tmp_path, monkeypatch):
+    from wuwei.commands import status
+    directory = day(tmp_path, events=[])
+    (directory / 'events.jsonl').write_text('{"kind": "state.write", "payload": {"a": 1}\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    rows, *_ = status.scan(directory)
+    assert any(row['source'] == 'unreadable event' for row in rows)
+
+
+def test_scan_skip_matches_decoding_every_line(tmp_path, monkeypatch):
+    # The skipped runs change no row and no line number: the same day decoded line by line.
+    from wuwei.commands import status
+    silent = {'kind': 'state.write', 'payload': {'detail': '{"ts": "x"}'}, 'ts': NOW}
+    events = [silent, {'kind': 'hook.warning', 'payload': {'reason': 'one'}, 'ts': NOW}, silent, silent,
+              CLOCK, {'kind': 'hook.warning', 'payload': {'reason': 'one'}, 'ts': NOW}, silent]
+    directory = day(tmp_path, events=events)
+    with (directory / 'events.jsonl').open('a') as stream:
+        stream.write('\n{"kind": "seat stopped", "payload": {"a": {"b": 1}}\n'
+                     + json.dumps(silent) + '\n{"kind": "hook.warning", "ts": "' + NOW + '"}')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    skipped = status.scan(directory)
+    monkeypatch.setattr(status, 'LINES', r'([^\n]*)\n?')
+    assert skipped == status.scan(directory)
+    assert [row['source'] for row in skipped[0]].count('hook.warning') == 3
+    assert any(row['source'] == 'unreadable event' for row in skipped[0])

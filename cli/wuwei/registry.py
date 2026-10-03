@@ -1,7 +1,8 @@
 """Fixed adapter operations and the shared three-state result."""
 
-from dataclasses import dataclass
+from collections import namedtuple
 from importlib.util import module_from_spec, spec_from_file_location
+import os
 from pathlib import Path
 import sys
 
@@ -65,9 +66,15 @@ def known(kind):
     """List installed public module names without importing external tools."""
     if kind not in INTERFACES:
         raise ValueError(f'unknown adapter kind: {kind}')
-    return sorted(path.stem for path in (ADAPTERS / kind).glob('*.py')
-                  if path.is_file() and path.stem.isidentifier()
-                  and not path.stem.startswith('_'))
+    # os.listdir, not Path.glob: config validation lists 14 kinds on every hook.
+    directory = ADAPTERS / kind
+    try:
+        names = os.listdir(directory)
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+    return sorted(name[:-3] for name in names
+                  if name.endswith('.py') and name[:-3].isidentifier() and not name.startswith('_')
+                  and os.path.isfile(directory / name))
 
 
 def validate(kind, name, *, for_config=False):
@@ -105,11 +112,7 @@ def runtime_config(role, config, root):
     return {**config, 'adapters': {**config['adapters'], 'runtime': selected}}
 
 
-@dataclass(frozen=True)
-class Result:
-    exit: int
-    data: object = None
-    reason: str = ''
+Result = namedtuple('Result', 'exit data reason', defaults=(None, ''))
 
 
 def data(result):
@@ -118,6 +121,31 @@ def data(result):
     if not isinstance(result.data, dict):
         raise ValueError('malformed VCS data')
     return result.data
+
+
+def together(*calls):
+    """Run independent calls concurrently, the first in this thread; results and the first
+    error keep call order. Plain threads: concurrent.futures imports logging (hook start)."""
+    if not calls:
+        return []
+    from threading import Thread
+    outcomes = [None] * len(calls)
+
+    def run(index):
+        try:
+            outcomes[index] = (True, calls[index]())
+        except BaseException as exc:
+            outcomes[index] = (False, exc)
+    threads = [Thread(target=run, args=(index,)) for index in range(1, len(calls))]
+    for thread in threads:
+        thread.start()
+    run(0)
+    for thread in threads:
+        thread.join()
+    for ok, value in outcomes:
+        if not ok:
+            raise value
+    return [value for _, value in outcomes]
 
 
 def record_none(kind, call, root=None, *, measurement=True):

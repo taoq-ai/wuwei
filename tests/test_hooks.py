@@ -212,6 +212,126 @@ def test_hook_imports_only_needed_guards(tmp_path, event, name, unloaded):
     assert unloaded & set(json.loads(out.read_text())) == set()
 
 
+def test_subagent_stop_skips_watch_and_memory(tmp_path):
+    # SubagentStop records the session; the watch and memory modules (and their imports) are
+    # SessionStart's, Stop's and PreCompact's. lifecycle keeps watch's error tuple itself.
+    from wuwei import watch
+    from wuwei.guards import lifecycle
+    from fakes.integrity import seed
+    assert lifecycle.ERRORS == watch.ERRORS
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    seed(tmp_path)
+    today = tmp_path / '.wuwei/days/2026-09-28'
+    today.mkdir(parents=True)
+    (today / 'state.json').write_text('{"items": {}, "cap": 1}\n')
+    payload = {**fixture('SubagentStop'), 'cwd': str(tmp_path)}
+    out = tmp_path / 'modules.json'
+    script = ('import json, sys\nsys.path[:0] = sys.argv[1:3]\n'
+              'from wuwei.__main__ import main\ncode = main(["hook", "SubagentStop"])\n'
+              'open(sys.argv[3], "w").write(json.dumps(sorted(sys.modules)))\nsys.exit(code)\n')
+    result = subprocess.run([sys.executable, '-I', '-P', '-c', script, str(ROOT / 'cli'), str(ROOT), str(out)],
+                            input=json.dumps(payload), text=True, capture_output=True, cwd=tmp_path,
+                            env={**os.environ, 'WUWEI_WORKSPACE': str(tmp_path), 'WUWEI_NOW': DAY + 'T12:00:00+00:00'})
+    assert result.returncode == 0, result.stderr
+    assert {'wuwei.guards.lifecycle', 'wuwei.sessions'} <= set(json.loads(out.read_text()))
+    # The registry write goes through workspace.atomic_write, which needs no tempfile.
+    assert 'abc123' in json.loads((today / 'state.json').read_text())['sessions']
+    assert {'wuwei.watch', 'wuwei.memory', 'tempfile'} & set(json.loads(out.read_text())) == set()
+
+
+DENY = {'tomllib', 'hashlib', 'argparse', 'dataclasses', 'inspect', 'typing', 'datetime', 'subprocess'}
+
+
+@pytest.mark.parametrize('inside, deny', [(False, DENY), (True, {'argparse', 'dataclasses', 'subprocess', 'inspect', 'hashlib', 'glob'})],
+                         ids=['outside', 'workspace'])
+def test_hook_imports_no_unused_stdlib(tmp_path, inside, deny):
+    # A fresh interpreter: a hook pays only for the stdlib modules its path uses.
+    cwd = tmp_path / 'project'
+    cwd.mkdir()
+    env = {k: v for k, v in os.environ.items() if not k.startswith(('WUWEI_', 'GIT_'))}
+    if inside:
+        from fakes.integrity import seed
+        cwd = tmp_path
+        (tmp_path / '.wuwei').mkdir()
+        (tmp_path / '.wuwei/config.toml').write_text('')
+        seed(tmp_path)
+        env['WUWEI_WORKSPACE'] = str(tmp_path)
+    payload = {**json.loads((ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()), 'cwd': str(cwd)}
+    out = tmp_path / 'modules.json'
+    # bin/wuwei's own launcher line, with sys.modules dumped at exit.
+    script = ('import atexit, json, runpy, sys; out = sys.argv.pop(3); '
+              'atexit.register(lambda: open(out, "w").write(json.dumps(sorted(sys.modules)))); '
+              'sys.path[:0] = sys.argv[1:3]; del sys.argv[1:3]; '
+              'runpy.run_module("wuwei", run_name="__main__", alter_sys=True)')
+    result = subprocess.run([sys.executable, '-I', '-P', '-c', script, str(ROOT / 'cli'), str(ROOT), str(out),
+                             'hook', 'PreToolUse'],
+                            input=json.dumps(payload), text=True, capture_output=True, cwd=cwd, env=env)
+    assert result.returncode == 0, result.stderr
+    if not inside:
+        assert result.stdout == ''
+    assert deny & set(json.loads(out.read_text())) == set()
+
+
+def test_status_line_skips_parser_and_hashlib(tmp_path):
+    # Claude Code runs the status line on every refresh: no argparse (gettext, shutil), no
+    # decision ledger without routes and, with no unit file installed, no hashlib.
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    env = {**{k: v for k, v in os.environ.items() if not k.startswith(('WUWEI_', 'GIT_'))},
+           'WUWEI_WORKSPACE': str(tmp_path), 'HOME': str(tmp_path / 'home'), 'XDG_CONFIG_HOME': str(tmp_path / 'xdg')}
+    out = tmp_path / 'modules.json'
+    script = ('import atexit, json, runpy, sys; out = sys.argv.pop(3); '
+              'atexit.register(lambda: open(out, "w").write(json.dumps(sorted(sys.modules)))); '
+              'sys.path[:0] = sys.argv[1:3]; del sys.argv[1:3]; '
+              'runpy.run_module("wuwei", run_name="__main__", alter_sys=True)')
+    result = subprocess.run([sys.executable, '-I', '-P', '-c', script, str(ROOT / 'cli'), str(ROOT), str(out),
+                             'status', '--line'], text=True, capture_output=True, cwd=tmp_path, env=env)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith('WUWEI no plan yet | pages 0 | nudges 0 | watch off')
+    assert {'argparse', 'hashlib', 'shutil', 'wuwei.decision'} & set(json.loads(out.read_text())) == set()
+
+
+def test_together_runs_concurrently_and_raises_in_call_order():
+    import threading
+    from wuwei.registry import together
+    barrier = threading.Barrier(3, timeout=2)
+    # Each call returns only once all three wait together.
+    assert together(*(lambda value=value: (barrier.wait(), value)[1] for value in 'abc')) == ['a', 'b', 'c']
+
+    def fail(message):
+        raise ValueError(message)
+    with pytest.raises(ValueError, match='first'):
+        together(lambda: 1, lambda: fail('first'), lambda: fail('second'))
+
+
+def test_unit_installed_matches_the_unit_file(tmp_path, monkeypatch):
+    from wuwei import workspace
+    monkeypatch.setenv('HOME', str(tmp_path / 'home'))
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path / 'xdg'))
+    root = tmp_path / 'ws'
+    assert not workspace.unit_installed(root, name='listen')
+    unit = workspace.watch_unit(root, name='listen')[1]
+    unit.parent.mkdir(parents=True)
+    other = workspace.watch_unit(tmp_path / 'other', name='listen')[1]
+    other.write_text('')
+    assert not workspace.unit_installed(root, name='listen')
+    unit.write_text('')
+    assert workspace.unit_installed(root, name='listen') and not workspace.unit_installed(root)
+
+
+def test_guard_modules_defer_heavy_imports():
+    import ast
+    for path in (ROOT / 'cli/wuwei/guards').glob('*.py'):
+        roots = set()
+        for node in ast.parse(path.read_text()).body:
+            if isinstance(node, ast.Import):
+                roots.update(alias.name.split('.')[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                roots.add((node.module or '').split('.')[0])
+        assert not roots & {'tomllib', 'datetime', 'subprocess', 'hashlib'}, path
+
+
 def test_calibrate_is_off_every_hook_path(tmp_path):
     from fakes.integrity import seed
     (tmp_path / '.wuwei').mkdir()

@@ -8,7 +8,7 @@ import re
 import subprocess
 import sys
 
-from wuwei.registry import Result
+from wuwei.registry import Result, together as _together  # Independent reads, concurrently.
 
 
 TIMEOUT = 30
@@ -182,14 +182,6 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
             raise ValueError('not a git repository')
         raise ValueError(f'git exited {result.returncode}')
     return result.stdout.decode('utf-8', errors='surrogateescape')
-
-
-def _together(*calls):
-    """Run independent reads concurrently; results and the first error keep call order."""
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(len(calls)) as pool:
-        futures = [pool.submit(call) for call in calls]
-    return [future.result() for future in futures]
 
 
 def _later(call):

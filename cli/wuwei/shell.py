@@ -1,11 +1,11 @@
 """Static shell normalization for guards. Never execute or expand input text."""
 
+from collections import namedtuple
 from functools import lru_cache
 from itertools import count
 from pathlib import Path, PurePosixPath
 import re
 import shlex
-from typing import NamedTuple
 
 
 class ParseError(ValueError):
@@ -16,14 +16,10 @@ class NonliteralPathError(ParseError):
     """A file or directory operand cannot be resolved statically."""
 
 
-class Command(NamedTuple):
-    argv: list[str]
-    subshell: bool
-    env: dict[str, str]
-    writes: tuple[str, ...] = ()
-    reads: tuple[str, ...] = ()
-    scope: tuple[int, ...] = ()
-    separator: str = ''
+# argv: list[str], subshell: bool, env: dict[str, str], writes and reads: tuple[str, ...],
+# scope: tuple[int, ...], separator: str. collections.namedtuple: typing costs every hook 1 ms.
+Command = namedtuple('Command', 'argv subshell env writes reads scope separator',
+                     defaults=((), (), (), ''))
 
 
 def operands(args, valued=(), flags=()):
@@ -614,12 +610,11 @@ _OPERATOR = re.compile(r'&&|\|\||;;|;&|[;()]|\|&|\||&>>|&>|>>|>&|>\||<>|<<<|<<|<
 _SUBSTITUTED = re.compile(r'\$_(\d+)')
 
 
-class Shape(NamedTuple):
-    parsed: bool     # normalize read the whole command
-    readonly: bool   # every command word is read-only and nothing is written
-    inline: bool     # an interpreter runs code given inline (-c, -e, ...) or in a here-doc
-    publishes: bool  # a publisher word, or a word the walk cannot pin to a safe form
-    written: str     # the text a write in this call can target; '' when readonly
+# parsed: normalize read the whole command; readonly: every command word is read-only and
+# nothing is written; inline: an interpreter runs code given inline (-c, -e, ...) or in a
+# here-doc; publishes: a publisher word, or a word the walk cannot pin to a safe form;
+# written: the text a write in this call can target, '' when readonly. All bool but written.
+Shape = namedtuple('Shape', 'parsed readonly inline publishes written')
 
 
 def _close(text, position):

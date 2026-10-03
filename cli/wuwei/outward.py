@@ -10,20 +10,21 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 # ponytail: conservative emoji blocks also reject some text symbols. Use a versioned
 # Unicode property table if precise emoji/text presentation distinctions become needed.
-EMOJI = re.compile('[\U0001f000-\U0001faff\u2300-\u23ff\u2600-\u27bf'
-                   '\u24c2\u25aa-\u25fe'
-                   '\u2b00-\u2bff\u203c\u2049'
-                   '\u2122\u2139\u20e3\u3030\u303d\u3297\u3299]|[^\n]\ufe0f')
+# Pattern strings, compiled on first use by re's cache: most hooks lint no text.
+EMOJI = ('[\U0001f000-\U0001faff\u2300-\u23ff\u2600-\u27bf'
+         '\u24c2\u25aa-\u25fe'
+         '\u2b00-\u2bff\u203c\u2049'
+         '\u2122\u2139\u20e3\u3030\u303d\u3297\u3299]|[^\n]\ufe0f')
 PRONOUNS = ('he him his himself', 'she her hers herself',
             'they them their theirs themself themselves')
-REVIEW_REQUEST = re.compile(
+REVIEW_REQUEST = (
     r'PR #([1-9][0-9]*) ready for review: '
     r'<https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/\1\|#\1> '
     r'((?:<@[A-Z0-9]+>(?: |$))+)')
 
 
 # Structural tells from the humanizer skill (MIT, 3.1.0). A hit is a style finding, never a refusal.
-TELLS = tuple((name, re.compile(pattern, re.IGNORECASE)) for name, pattern in (
+TELLS = (  # pattern strings, compiled on first use by re's cache
     ('not-x-but-y', r"\bnot (?:just|only|merely) [^.\n]{1,80}?\bbut\b|\bit['\u2019]?s not [^.\n]{1,60}?[,;] it['\u2019]?s\b"),
     ('closer', r"\b(?:that is the real win|that distinction matters|read that again|let that sink in|the message was clear)\b"),
     ('run-up', r"\b(?:let['\u2019]?s dive in|let['\u2019]?s break (?:this|it) down|here['\u2019]?s what you need to know|here['\u2019]?s the thing|without further ado)\b"),
@@ -34,13 +35,13 @@ TELLS = tuple((name, re.compile(pattern, re.IGNORECASE)) for name, pattern in (
     ('stock-word', r"\b(?:delv(?:e|es|ed|ing)|tapestry|testament|showcas(?:e|es|ed|ing)|pivotal|meticulous(?:ly)?|intricate|intricacies|vibrant|garner(?:s|ed)?|bolstered|interplay)\b"),
     ('bold-label', r"(?m)^\s*(?:[-*]|\d+\.)\s+\*\*[^*\n]+\*\*"),
     ('chat-leftover', r"\b(?:i hope this helps|great question|you['\u2019]?re absolutely right|let me know if|would you like me to)\b|\b(?:certainly|of course)!"),
-))
+)
 
 
 def tells(text):
     """Names of the tells in text, each kind once, in table order; inline code is not prose."""
     text = re.sub(r'`[^`\n]*`', '', text)
-    return [name for name, pattern in TELLS if pattern.search(text)]
+    return [name for name, pattern in TELLS if re.search(pattern, text, re.IGNORECASE)]
 
 
 # ponytail: cross-script confusables remain distinct; add a Unicode confusable table if needed.
@@ -91,7 +92,7 @@ def lint(text, channel, config, *, root=None, to_owner=False):
             return FINDINGS, f'outward: third-person {label} reference'
     if any(pattern.search(view) for pattern in patterns for view in views):
         return FINDINGS, 'outward: internal state pattern'
-    if 'emoji' in banned and EMOJI.search(text):
+    if 'emoji' in banned and re.search(EMOJI, text):
         return FINDINGS, 'outward: emoji is banned'
     if any(c in text or c in normalized for c in banned if c != 'emoji'):
         return FINDINGS, 'outward: banned character'
@@ -285,7 +286,7 @@ def classify(text, root, config, context=None, *, kind='chat'):
         recipients = list(context.get('recipients', []))
         if 'recipient' in context:
             recipients.append(context['recipient'])
-        review_match = (REVIEW_REQUEST.fullmatch(text) if kind in ('chat', 'slack')
+        review_match = (re.fullmatch(REVIEW_REQUEST, text) if kind in ('chat', 'slack')
                         and destinations == [config['shepherd']['review_channel']] else None)
         mention_text = re.sub(r'<@[\w.-]+>', '', normalized) if review_match else normalized
         mentions = re.findall(r'(?<![\w@])@([\w.-]+)', mention_text)

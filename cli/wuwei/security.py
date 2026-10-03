@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 import re
-import secrets
 import tomllib
 
 from wuwei import workspace
@@ -25,6 +24,7 @@ def honeytoken_path(directory, value):
 
 
 def initialize(directory, decoy=DEFAULT_HONEYTOKEN_PATH):
+    import secrets
     directory = Path(directory)
     path = honeytoken_path(directory, decoy)
     if path.exists():

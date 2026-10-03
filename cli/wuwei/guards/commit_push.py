@@ -52,7 +52,6 @@ def context(cwd, settings, env, root, push=None, identity=True):
 
     With push=(remote, refspecs), also return push_context read alongside, or None.
     """
-    from concurrent.futures import ThreadPoolExecutor
     from wuwei import registry, workspace
 
     if 'GIT_COMMON_DIR' in env:
@@ -65,12 +64,12 @@ def context(cwd, settings, env, root, push=None, identity=True):
     vcs = registry.load('vcs', config)
     if push is None:
         return _context(cwd, settings, env, root, config, vcs, identity)
-    with ThreadPoolExecutor(1) as pool:
-        # Without repository overrides, Git discovers the same repository from cwd.
-        early = (pool.submit(vcs.push_context, str(cwd), *push, root=root)
-                 if not REPO_ENV & env.keys() else None)
-        found = _context(cwd, settings, env, root, config, vcs, identity)
-    return *found, early and early.result()
+    if REPO_ENV & env.keys():
+        return *_context(cwd, settings, env, root, config, vcs, identity), None
+    # Without repository overrides, Git discovers the same repository from cwd.
+    found, early = registry.together(lambda: _context(cwd, settings, env, root, config, vcs, identity),
+                                     lambda: vcs.push_context(str(cwd), *push, root=root))
+    return *found, early
 
 
 def _context(cwd, settings, env, root, config, vcs, identity):

@@ -9,9 +9,9 @@ from wuwei.registry import Result
 PATTERNS = (
     # ponytail: the trace SECRET list also catches field words such as `message:`;
     # a message-specific list replaces it when that over-redaction matters.
-    ('secret', re.compile(rf'(?:{patterns.SECRET.pattern})\S*', re.I)),
+    ('secret', re.compile(rf'(?:{patterns.SECRET})\S*', re.I)),
     ('email', re.compile(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+')),
-    ('phone', re.compile(r'\+?' + patterns.PHONE.pattern)),
+    ('phone', re.compile(r'\+?' + patterns.PHONE)),
 )
 
 

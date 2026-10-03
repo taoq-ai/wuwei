@@ -1,10 +1,10 @@
 """Authenticated release inventories and cached workspace verdicts."""
 
-import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import stat
 
 from wuwei import registry, workspace
 from wuwei.registry import Result
@@ -93,18 +93,23 @@ def inventory(plugin):
     plugin = Path(plugin)
     if not plugin.is_dir():
         raise OSError('installed plugin directory missing')
+    import hashlib  # Here, not at module level: PreToolUse reads only the cached verdict.
     files = {}
     def failed(error):
         raise error
+    # String paths and one lstat per entry: SessionStart hashes every installed file.
+    start = len(str(plugin)) + 1
     for directory, dirs, names in os.walk(plugin, onerror=failed):
         _prune(plugin, directory, dirs)
+        prefix = directory[start:] + '/' if len(directory) > start else ''
         for name in dirs + names:
-            path = Path(directory) / name
-            relative = path.relative_to(plugin).as_posix()
-            if path.is_symlink():
+            path = os.path.join(directory, name)
+            relative = prefix + name
+            mode = os.lstat(path).st_mode
+            if stat.S_ISLNK(mode):
                 raise ValueError(f'symlink in installed plugin: {relative}')
-            if path.is_file() and relative not in EXCLUDED and not name.endswith('.pyc'):
-                files[_name(relative)] = hashlib.sha256(path.read_bytes()).hexdigest()
+            if stat.S_ISREG(mode) and relative not in EXCLUDED and not name.endswith('.pyc'):
+                files[_name(relative)] = hashlib.sha256(Path(path).read_bytes()).hexdigest()
     return files
 
 
@@ -115,10 +120,25 @@ def write_manifest(plugin):
 
 
 def measure(plugin=None, pinned=None, *, checkout=None, root=None):
+    import hashlib
     plugin = PLUGIN if plugin is None else Path(plugin)
     try:
+        key = plugin / KEY
+        signature = plugin / (MANIFEST + '.sig')
+        manifest = plugin / MANIFEST
+
+        def unlinked():
+            for path in (manifest, signature, key):
+                if path.is_symlink():
+                    raise ValueError(f'symlink in installed plugin: {path.name}')
+
+        def verify():
+            unlinked()
+            return signature_adapter().verify(manifest, signature, key)
         if checkout is None:
-            actual = inventory(plugin)
+            # The signature check (a child process) runs while the installed files hash;
+            # errors keep their order: the inventory's, then the symlink check's.
+            actual, result = registry.together(lambda: inventory(plugin), verify)
         else:
             vcs = registry.load('vcs', workspace.load_config(root))
             tree = vcs.read_tree(plugin, checkout['head'], ['.'], root=root)
@@ -133,15 +153,9 @@ def measure(plugin=None, pinned=None, *, checkout=None, root=None):
                 if any((plugin / part).is_symlink() for part in (relative, *relative.parents)):
                     raise ValueError(f'symlink in installed plugin: {name}')
                 actual[name] = hashlib.sha256((plugin / relative).read_bytes()).hexdigest()
-        key = plugin / KEY
-        signature = plugin / (MANIFEST + '.sig')
-        manifest = plugin / MANIFEST
-        for path in (manifest, signature, key):
-            if path.is_symlink():
-                raise ValueError(f'symlink in installed plugin: {path.name}')
-        result = (Result(1, reason='development checkout requires host reconfirmation; '
-                          'run wuwei integrity reconfirm on the host')
-                  if checkout is not None else signature_adapter().verify(manifest, signature, key))
+            unlinked()
+            result = Result(1, reason='development checkout requires host reconfirmation; '
+                                      'run wuwei integrity reconfirm on the host')
         if result.exit == 2:
             return result
         reasons = [result.reason] if result.exit else []
