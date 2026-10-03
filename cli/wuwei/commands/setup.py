@@ -285,8 +285,11 @@ def _setup(args, confirm):
         profiles.record(root, accepted, names)
     snapshot_path = root / '.wuwei/calibration.json'
     if found['repos'] or not snapshot_path.exists():
-        interview.record(root, staged_cfg, interview.ask(
-            [row['id'] for row in interview.QUESTIONS if not (args.shadow and row['id'] == 'posture')], names))
+        picked = interview.ask(
+            [row['id'] for row in interview.QUESTIONS if not (args.shadow and row['id'] == 'posture')], names)
+        if args.shadow:
+            picked['posture'] = 'Observe'  # the flag answered it, so the first day does not ask again
+        interview.record(root, staged_cfg, picked)
     results = calibrate.survey(root, staged_cfg, list(enumerate(staged_cfg['repos'])), style=True)
     unmeasured = [f"{r['repo']['name']}: {command}" for r in results
                   for command, (_, note) in r['checks'].items() if note == calibrate.UNMEASURED]

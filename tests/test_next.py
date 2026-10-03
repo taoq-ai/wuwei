@@ -90,6 +90,7 @@ def test_morning_rows(root, capsys):
     found = row(capsys)[1]
     assert (found['state'], found['command']) == ('gate', '/wuwei:wuwei-plan')
     assert 'Morning gate' in found['step'] and 'days/2026-09-30/plan.md' in found['step']
+    assert "Approve today's plan as proposed?" in found['step']
     capsys.readouterr()
     assert main(['next']) == 0
     assert capsys.readouterr().out == f'gate: {found["step"]} Run: /wuwei:wuwei-plan\n'

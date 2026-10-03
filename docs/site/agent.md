@@ -36,7 +36,7 @@ Each role has a charter in `charters/<role>.md` (sentinels as `sentinel-<area>.m
 2. Plan: `/wuwei:wuwei-plan` registers the planner (`wuwei plan session`), runs
    `wuwei mcp check`, launches the lead, orders its JSON with `wuwei rank` and writes
    `days/<date>/plan.md` with `wuwei plan propose`.
-3. Morning gate: one AskUserQuestion per decision, each starting with `Morning gate`.
+3. Morning gate: one AskUserQuestion, `Morning gate (days/<date>/plan.md): Approve today's plan as proposed?`; the separate questions only after `Change something`.
    Only on the owner's answers, `wuwei plan approve --items <ids> --goals-confirmed`.
 4. Build, per item: `wuwei worktree add <item>`, `wuwei brief builder <item> <name>
    --worktree <path> --file -`, then `wuwei build next <item>` until it returns `done`.

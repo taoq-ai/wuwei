@@ -18,6 +18,9 @@ def register(subparsers):
                          help='Hand the planner role over from the registered session')
     propose = actions.add_parser('propose')
     propose.add_argument('input', type=Path, help='Lead discovery JSON')
+    gate = actions.add_parser('gate', help="Print the morning gate question as an AskUserQuestion widget; writes nothing")
+    gate.add_argument('--import-yesterday', action='store_true',
+                      help='The plan proposes carrying over unfinished prior-day items')
     approve = actions.add_parser('approve')
     approve.add_argument('--items', nargs='*', required=True)
     approve.add_argument('--goals-confirmed', action='store_true')
@@ -54,6 +57,8 @@ def run(args):
         elif args.action == 'propose':
             source = sys.stdin.read() if str(args.input) == '-' else args.input.read_text(encoding='utf-8')
             print(plan.propose(json.loads(source)))
+        elif args.action == 'gate':
+            print(json.dumps(plan.gate_widget(import_yesterday=args.import_yesterday), indent=2))
         elif args.action == 'add':
             print(json.dumps(plan.add(args.item)))
         elif args.action in ('carry', 'park'):

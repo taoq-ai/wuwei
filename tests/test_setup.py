@@ -410,6 +410,17 @@ def test_shadow_skips_the_posture_question(project, host, terminal, shadow):
     assert 'reviewers' in ids and ('posture' in ids) is not shadow
 
 
+@pytest.mark.parametrize('shadow', [True, False])
+def test_shadow_records_posture_answer(project, host, terminal, capsys, shadow):
+    import json
+
+    assert run_setup(Confirm(), shadow=shadow) == 0, capsys.readouterr().err
+    answers = json.loads((project / DAY / 'interview.json').read_text())
+    assert answers.get('posture') == ('Observe' if shadow else None)
+    if shadow:
+        assert load_config(project)['security']['posture'] == 'observe'
+
+
 def test_teammate_login_wins_over_setup_lead(project, host, terminal, capsys):
     terminal.answers['reviewers'] = 'pat-dev'
     assert run_setup(Confirm()) == 0, capsys.readouterr().err
