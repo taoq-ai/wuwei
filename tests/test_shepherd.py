@@ -473,6 +473,27 @@ def test_unreachable_code_host_fails_closed(case, answer):
     assert unresolved_events(root) == []
 
 
+def test_author_login_without_a_reason_names_the_next_step(case):
+    # #362: a code host failure with no reason still says what to run.
+    from wuwei import shepherd
+    root, host, _, _, vcs = case
+    host.author_login = lambda repo, email, root=None: Result(2)
+    vcs.responses['authorship'] = Result(0, [{'email': 'missing@example.test', 'commits': 3}])
+    with pytest.raises(ValueError, match='^author login unmeasured; retry; if it repeats, run bin/wuwei '
+                                         'doctor, which tests the code host adapter$'):
+        shepherd.select_reviewers(root, REF)
+
+
+def test_only_excluded_paths_names_the_reviewers_override(case):
+    # #362: every changed path matches shepherd.source_exclude and no override is set.
+    from wuwei import merge, shepherd
+    root, host, _, _, _ = case
+    configure(root, 'review_channel = "CREVIEW"', 'review_channel = "CREVIEW"\nsource_exclude = ["docs/*"]')
+    host.results['files'] = Result(0, [{'path': 'docs/a.md'}])
+    with pytest.raises(merge.Refused, match=r"""^no changed source paths for reviewer selection; run bin/wuwei config set shepherd.reviewers '\["login"\]'$"""):
+        shepherd.select_reviewers(root, REF)
+
+
 def configure(root, old, new):
     config_path = root / '.wuwei/config.toml'
     config_path.write_text(config_path.read_text().replace(old, new, 1))

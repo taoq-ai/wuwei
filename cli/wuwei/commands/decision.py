@@ -116,7 +116,8 @@ def owner_outcome(args, note=None, *, root=None, where=None):
         return 1, 'decision: invalid prior outcome; run bin/wuwei doctor, then bin/wuwei why <id>'
     digest = hashlib.sha256((args.id + '\n' + args.option + '\n' + text).encode()).hexdigest()
     if where and fields['Reversibility'] != 'two-way':
-        return 1, 'decision: only a two-way decision is decided from the DM'
+        return 1, (f'decision: only a two-way decision is decided from the DM; '
+                   f'run bin/wuwei decide {args.id} {args.option} in a host terminal')
     where = where or owner_confirm(root, args.id, digest, f'{args.id}: {fields["Question"]}\nRecord {args.option}.')
     if not where:
         return 1, 'decision: owner confirmation declined; rerun bin/wuwei decide <id> <option> in a host terminal and answer y'

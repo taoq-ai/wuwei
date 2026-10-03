@@ -357,7 +357,7 @@ Each reply is kept as a `decision.replied` event. What happens next depends on t
 decision's `Reversibility:`.
 
 A two-way decision can be undone, so your reply is your outcome: it is recorded at once,
-as `bin/wuwei decide` records it, with the Notes line `Decided at <time> in the owner DM.`,
+as `bin/wuwei decide` records it, with a Notes line giving the time and naming the DM,
 and items parked on it resume. Nothing is needed on the host. The DM answers:
 
 ```text

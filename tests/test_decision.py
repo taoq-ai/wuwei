@@ -628,7 +628,8 @@ def test_owner_outcome_with_where_refuses_a_one_way_record(ws, monkeypatch):
     decision.route_owner('D-3', decision.evaluate(one_way)[0], ws)
     before = path.read_bytes()
     assert owner_outcome(SimpleNamespace(id='D-3', option='A'), root=ws, where='in the owner DM') == (
-        1, 'decision: only a two-way decision is decided from the DM')
+        1, 'decision: only a two-way decision is decided from the DM; '
+           'run bin/wuwei decide D-3 A in a host terminal')
     assert not state.read_state(ws).get('decision_outcomes')
     assert path.read_bytes() == before
 

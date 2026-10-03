@@ -95,10 +95,11 @@ def write(root, values):
     from wuwei import workspace
     path = Path(root) / '.wuwei/env'
     if path.is_symlink():
-        raise ValueError('.wuwei/env must not be a symlink')
+        raise ValueError(f'.wuwei/env must not be a symlink; {SYMLINK}')
     for name, value in values.items():
         if name not in CREDENTIALS or not re.fullmatch(r'[^\s"\'#\\]+', value):
-            raise ValueError(f'.wuwei/env: refused to write {name}')
+            raise ValueError(f'.wuwei/env: refused to write {name}; add it to .wuwei/env by hand as '
+                             'NAME=value, with no spaces, quotes, # or backslashes')
     lines = path.read_text(encoding='utf-8').splitlines() if path.exists() else []
     lines = [line for line in lines if line.partition('=')[0].strip() not in values]
     lines += [f'{name}={value}' for name, value in values.items()]

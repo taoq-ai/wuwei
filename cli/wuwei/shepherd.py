@@ -40,7 +40,8 @@ def _rank(root, config, repo, branch, paths, author, source_path=None, explain=N
         explain.append('shepherd.reviewers: ' + ' '.join(override))
         return _logins([login for login in dict.fromkeys(override)
                         if login.casefold() != author.casefold()])
-    merge.require(paths, 'no changed source paths for reviewer selection')
+    merge.require(paths, 'no changed source paths for reviewer selection; run '
+                  "bin/wuwei config set shepherd.reviewers '[\"login\"]'")
     excluded = {login.casefold() for login in (author, *config['shepherd']['reviewers_exclude'])}
     mapping = config['shepherd']['authors']
     vcs = registry.load('vcs', config)
@@ -61,7 +62,8 @@ def _rank(root, config, repo, branch, paths, author, source_path=None, explain=N
                                      ('author login unavailable', 'invalid author email')):
                 cache[email] = fresh[email] = None
             else:
-                raise ValueError(result.reason or 'author login unmeasured')
+                raise ValueError(result.reason or 'author login unmeasured; retry; if it repeats, run '
+                                 'bin/wuwei doctor, which tests the code host adapter')
         return cache[email]
 
     def tally(rows):
@@ -115,7 +117,7 @@ def _rank(root, config, repo, branch, paths, author, source_path=None, explain=N
                                {'repo': repo['name'], 'author': email.split('@', 1)[0]}, root)
     if selected and len(selected) < config['shepherd']['min_reviewers']:
         from wuwei.guards import REVIEWER_WAYS_OUT
-        raise merge.Refused('fewer eligible reviewers than shepherd.min_reviewers; ' + REVIEWER_WAYS_OUT)
+        raise merge.Refused('fewer eligible reviewers than shepherd.min_reviewers; run ' + REVIEWER_WAYS_OUT)
     _logins(selected)
     # Logins named in shepherd.authors are checked against the code host; owner-named and
     # host-resolved logins are checked by the requested == selected comparison on request.

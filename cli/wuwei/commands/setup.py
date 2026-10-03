@@ -40,7 +40,7 @@ def register(subparsers):
     parser.add_argument('--repos', nargs='+', metavar='DIR',
                         help='directories whose child git repositories to add (default: the workspace)')
     parser.add_argument('target', nargs='?', choices=('slack',),
-                        help='slack: connect the owner DM: token, pin, second factor, listener')
+                        help='slack: connect your owner DM: token, pin, second factor, listener')
     parser.set_defaults(func=run)
 
 
