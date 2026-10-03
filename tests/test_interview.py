@@ -147,10 +147,28 @@ def test_adapter_questions():
     assert effects('chat', 'C0123ABCD') == {'adapters.chat': 'slack', 'shepherd.review_channel': 'C0123ABCD'}
     assert effects('chat', 'Slack') == {'adapters.chat': 'slack'}
     assert effects('chat', 'None') == {'adapters.chat': 'none'}
-    with pytest.raises(ValueError, match='expected a Slack channel ID such as C0123ABCD'):
-        effects('chat', 'c-lower')
+    with pytest.raises(ValueError, match='Slack channel ID such as C0123ABCD.*another tool'):
+        effects('chat', 'c-lower!')
     assert effects('review_bot', 'Greptile') == {'adapters.review_bot': 'greptile'}
     assert effects('review_bot', 'none') == {'adapters.review_bot': 'none'}
+
+
+def test_communication_tools():
+    module = interview()
+    assert module.BACKLOG == 'https://github.com/taoq-ai/wuwei/issues/370'
+    for qid, answer, key in (('chat', 'Microsoft Teams', 'adapters.chat'), ('chat', 'discord', 'adapters.chat'),
+                             ('tracker', 'GitHub Issues', 'adapters.tracker'), ('tracker', 'JIRA', 'adapters.tracker')):
+        assert module.effects(qid, answer) == {key: 'none'}
+        [description] = [description for label, description, _ in module.question(qid)['choices']
+                         if label.casefold() == answer.casefold()]
+        assert 'not supported yet' in description.casefold() and module.BACKLOG in description
+    assert module.effects('chat', 'Email') == {'adapters.chat': 'none'}
+    assert module.BACKLOG in module.question('chat')['free'][1]
+    assert module.effects('chat', 'C0123ABCD') == {'adapters.chat': 'slack', 'shepherd.review_channel': 'C0123ABCD'}
+    with pytest.raises(ValueError, match='Slack channel ID.*another tool'):
+        module.effects('chat', 'c-lower!')
+    [slack] = [description for label, description, _ in module.question('chat')['choices'] if label == 'Slack']
+    assert 'bin/wuwei setup slack' in slack
 
 
 def test_reviewers_question(tmp_path):
@@ -425,7 +443,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     raw = (f'[[repos]]\nname = "acme/widget"\npath = {json.dumps(str(FIXTURES / "python"))}\n'
            'default_branch = "main"\n\n' + PLANE + '\n[deploy]\nworkflows = []\ndeny = []\n')
     (root / '.wuwei/config.toml').write_text(raw)
-    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '1', '1', '1'])
+    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '4', '1', '1'])
     assert main('calibrate', '--interview') == 0, capsys.readouterr().err
     lines = interview().describe(json.loads((root / DAY / 'interview.json').read_text()), config(root))
     capsys.readouterr()

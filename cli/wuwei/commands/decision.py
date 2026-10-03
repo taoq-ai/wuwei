@@ -87,8 +87,9 @@ def show(args):
     return 0, present(args.id, fields, level) + f'\nFull record: wuwei decision show {args.id} --full'
 
 
-def owner_outcome(args, note=None):
-    root = workspace.find_workspace()
+def owner_outcome(args, note=None, *, root=None, where=None):
+    """The one owner-outcome writer; where is given only by the DM listener for a two-way door."""
+    root = workspace.find_workspace(root)
     path = today_path(args.id, root)
     if path.is_symlink() or path.parent.is_symlink():
         return 2, 'decision: record must be a regular file'
@@ -110,7 +111,9 @@ def owner_outcome(args, note=None):
     if previous is not None and previous.get('decided_by') != 'seat':
         return 1, 'decision: invalid prior outcome'
     digest = hashlib.sha256((args.id + '\n' + args.option + '\n' + text).encode()).hexdigest()
-    where = owner_confirm(root, args.id, digest, f'{args.id}: {fields["Question"]}\nRecord {args.option}.')
+    if where and fields['Reversibility'] != 'two-way':
+        return 1, 'decision: only a two-way decision is decided from the DM'
+    where = where or owner_confirm(root, args.id, digest, f'{args.id}: {fields["Question"]}\nRecord {args.option}.')
     if not where:
         return 1, 'decision: owner confirmation declined'
     if path.read_text(encoding='utf-8') != text:

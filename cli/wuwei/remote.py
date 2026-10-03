@@ -25,6 +25,10 @@ LOW_MEMORY = 'Not started: free memory on the host is below the floor.'
 NOTHING = 'Nothing to confirm from the last 2 minutes.'
 ANSWERED = ('Not recorded: {identifier} already has option {option} from this DM. '
             'Record the outcome on the host to change it.')
+RECORDED = ('Recorded {identifier} option {option} as your outcome; it can be undone, '
+            'so no host step is needed.')
+NOTED = ('Noted {identifier} option {option}. {identifier} cannot be undone, so confirm it on '
+         'the host: decide {identifier} {option}.')
 NOT_PENDING = '{identifier} is not waiting on you.'
 ON_HOST = 'The full record of {identifier} is on the host.'
 FACTOR = frozenset({'plan', 'ask'})  # commands that need a code or a confirm reply
@@ -265,22 +269,32 @@ def handle(root, event, *, transport=TRANSPORT, runtime=None):
             state.append_event('remote.confirmed', {'id': event['id'], 'factor': 'code', 'step': step},
                                root=root)
         if command is None:
-            answer = control_plane.parse(text, control_plane.pending(root))
+            decisions = control_plane.pending(root)
+            answer = control_plane.parse(text, decisions)
             if answer is None:
                 return _say(transport, root, VOCABULARY, 1)
             identifier, option = answer
-            # The first DM answer stands; the owner changes it with the outcome on the host.
-            first = replied(root, identifier)
+            two_way = decisions[identifier]['Reversibility'] == 'two-way'
+            # A one-way answer stays evidence: the first stands until the outcome on the host.
+            first = None if two_way else replied(root, identifier)
             if first is not None:
                 if first != option:
                     return _say(transport, root, ANSWERED.format(identifier=identifier, option=first), 1)
-                return _say(transport, root, f'Recorded {identifier} option {option}. '
-                            'Confirm it on the host.', 0)
+                return _say(transport, root, NOTED.format(identifier=identifier, option=option), 0)
             state.append_event('decision.replied', {'id': identifier, 'option': option}, root=root)
+            said = 0
+            if two_way:
+                # The pinned DM sender is the confirmation for a two-way door; one-way keeps the host (#364).
+                from wuwei.commands import decision as decision_command
+                code, reason = decision_command.owner_outcome(
+                    SimpleNamespace(id=identifier, option=option), root=root, where='in the owner DM')
+                if code:
+                    raise RuntimeError(reason)
+                said = transport.dm(RECORDED.format(identifier=identifier, option=option), root=root).exit
             session = owner_session(state.read_state(root), identifier)
             if session is None:
-                return _say(transport, root, f'Recorded {identifier} option {option}. '
-                            'Confirm it on the host.', 0)
+                return said if two_way else _say(transport, root, NOTED.format(
+                    identifier=identifier, option=option), 0)
             command = ('reply', session)
         verb, argument = command
         if verb == 'more':
@@ -310,7 +324,7 @@ def handle(root, event, *, transport=TRANSPORT, runtime=None):
                          transport=transport, runtime=runtime)
         if verb == 'stop':
             return stop(root, argument, transport=transport)
-        return resume(root, argument, identifier, option, transport=transport, runtime=runtime)
+        return max(said, resume(root, argument, identifier, option, transport=transport, runtime=runtime))
     except (OSError, UnicodeError, ValueError, KeyError, TypeError, RuntimeError) as exc:
         print(f'listen remote unmeasured: {exc}', flush=True)
         try:

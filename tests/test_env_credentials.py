@@ -168,6 +168,35 @@ def test_env_write_payload_is_private_even_for_new_values():
     assert result['content'] == '[REDACTED]'
 
 
+def test_env_write_sets_lines_and_keeps_the_rest(case):
+    from wuwei import env
+    path = case / '.wuwei/env'
+    env.write(case, {'SLACK_OWNER_DM_CHANNEL': 'D0123ABC'})
+    assert path.read_text() == 'SLACK_OWNER_DM_CHANNEL=D0123ABC\n'
+    assert path.stat().st_mode & 0o777 == 0o600
+    write_env(case, '# private\nLINEAR_API_KEY=a\nSLACK_BOT_TOKEN=old\n')
+    token = 'xoxb-' + 'test-1'
+    env.write(case, {'SLACK_BOT_TOKEN': token, 'SLACK_OWNER_DM_CHANNEL': 'D0123ABC'})
+    assert path.read_text() == ('# private\nLINEAR_API_KEY=a\nSLACK_BOT_TOKEN=' + token
+                                + '\nSLACK_OWNER_DM_CHANNEL=D0123ABC\n')
+    assert path.stat().st_mode & 0o777 == 0o600
+    with env.session():
+        env.load(case)
+        assert os.environ['SLACK_BOT_TOKEN'] == token
+    before = path.read_text()
+    for values in ({'CUSTOM': 'x'}, {'SLACK_BOT_TOKEN': 'a b'}, {'SLACK_BOT_TOKEN': 'a"b'},
+                   {'SLACK_BOT_TOKEN': 'a\nb'}, {'SLACK_BOT_TOKEN': ''}):
+        with pytest.raises(ValueError):
+            env.write(case, values)
+    assert path.read_text() == before
+    path.unlink()
+    (case / 'elsewhere').write_text('')
+    path.symlink_to(case / 'elsewhere')
+    with pytest.raises(ValueError):
+        env.write(case, {'SLACK_OWNER_DM_CHANNEL': 'D0123ABC'})
+    assert (case / 'elsewhere').read_text() == ''
+
+
 def test_hook_loads_payload_workspace_and_keeps_outside_clean(case, monkeypatch, capsys):
     from wuwei.commands import hook
     write_env(case, 'LINEAR_API_KEY=' + KEY + '\n')

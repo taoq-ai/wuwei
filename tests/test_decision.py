@@ -600,6 +600,39 @@ def test_owner_outcome_rejects_bad_choice_and_declined_confirmation(ws, monkeypa
     assert path.read_bytes() == before
 
 
+def test_owner_outcome_takes_a_root_and_where(ws, monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from wuwei import decision, state
+    from wuwei.commands.decision import owner_outcome
+    elsewhere = tmp_path / 'elsewhere'
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    path = save(ws)
+    decision.route_owner('D-3', decision.evaluate(VALID)[0], ws)
+
+    def refuse(*args, **kwargs):
+        raise AssertionError('the host terminal must not be asked')
+    monkeypatch.setattr('wuwei.integrity._host_confirm', refuse)
+    assert owner_outcome(SimpleNamespace(id='D-3', option='A'), root=ws, where='in the owner DM') == (0, 'A')
+    assert state.read_state(ws)['decision_outcomes']['D-3']['decided_by'] == 'owner'
+    text = path.read_text()
+    assert 'Outcome: A\n' in text and ' in the owner DM.\n' in text
+
+
+def test_owner_outcome_with_where_refuses_a_one_way_record(ws, monkeypatch):
+    from types import SimpleNamespace
+    from wuwei import decision, state
+    from wuwei.commands.decision import owner_outcome
+    one_way = VALID.replace('Reversibility: two-way', 'Reversibility: one-way')
+    path = save(ws, one_way)
+    decision.route_owner('D-3', decision.evaluate(one_way)[0], ws)
+    before = path.read_bytes()
+    assert owner_outcome(SimpleNamespace(id='D-3', option='A'), root=ws, where='in the owner DM') == (
+        1, 'decision: only a two-way decision is decided from the DM')
+    assert not state.read_state(ws).get('decision_outcomes')
+    assert path.read_bytes() == before
+
+
 def test_owner_outcome_without_a_terminal_names_the_owner_action(ws, monkeypatch, capsys):
     import builtins
     from wuwei.__main__ import main
