@@ -208,6 +208,7 @@ def test_config_defaults_and_independence(tmp_path):
         'boundary': {}, 'environments': {},
         'deploy': {'workflows': [], 'deny': []},
         'guards': {'mode': 'enforce', 'shadow_days': 7, 'shadow_since': ''},
+        'spec': {'engine': 'speckit', 'mode': 'strict', 'skip_tiers': ['light']},
         'adapters': {'tracker': 'none', 'chat': 'none', 'review_bot': 'none',
                      'runtime': 'claude', 'scanner': 'none',
                      'code_host': 'github', 'vcs': 'git', 'host': 'local',

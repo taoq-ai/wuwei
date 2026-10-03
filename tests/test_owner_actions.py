@@ -16,7 +16,7 @@ LAUNCHER = Path(__file__).resolve().parents[1] / 'bin/wuwei'
 ACTIONS = [('decision', 'outcome'), ('drafts', 'approve'), ('drafts', 'drop'),
            ('mcp', 'decide'), ('integrity', 'reconfirm'), ('state', 'recover'),
            ('watch', 'uninstall'), ('goals', 'edit'), ('voice', 'edit'), ('remote', 'ack'),
-           ('config', 'promote'), ('config', 'set'), ('config', 'add-repo')]
+           ('config', 'promote'), ('config', 'set'), ('config', 'add-repo'), ('plan', 'set')]
 # Ids stay free of owner verbs: pytest puts them in tmp_path, which reaches payloads.
 IDS = [f'pair{index}' for index in range(len(ACTIONS))]
 
@@ -67,6 +67,14 @@ def test_script_file_is_refused_inside_only(places, pair):
             code, reason = bash(cwd, command)
             assert code == expected, (cwd, command, reason)
             assert expected or reason == ''
+
+
+def test_plan_set_is_the_only_owner_plan_verb(places):
+    root, _ = places
+    code, reason = bash(root, 'bin/wuwei plan set A spec=skipped --reason x')
+    assert code == 1 and 'Spec overrides are an owner action' in reason
+    assert bash(root, 'bin/wuwei plan approve --items A --goals-confirmed') == (0, '')
+    assert bash(root, 'bin/wuwei plan carry A') == (0, '')
 
 
 def test_forwarding_script_and_plain_script(places):

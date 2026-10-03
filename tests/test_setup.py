@@ -237,9 +237,11 @@ def terminal(monkeypatch):
         ('/stub/' + name if found[name] else None) if name in found else real(name, *a, **k)))
     monkeypatch.setattr(sys.stdin, 'isatty', lambda: True, raising=False)
     from wuwei.commands import doctor
-    state = SimpleNamespace(found=found, asked=[], ids=[], replies={}, rows=[], prompts=[], answers={})
+    state = SimpleNamespace(found=found, asked=[], ids=[], replies={}, rows=[], prompts=[], answers={},
+                            first=[])
 
-    def ask(ids, repos):
+    def ask(ids, repos, first=None):
+        state.first.append(first)
         state.asked.append(list(repos))
         state.ids.append(list(ids))
         return {'gates': {repo: 'Full' for repo in repos}, 'verbosity': 'Standard', **state.answers}
@@ -432,6 +434,17 @@ def test_teammate_login_wins_over_setup_lead(project, host, terminal, capsys):
     assert 'lead_login = "pat-example"' not in capsys.readouterr().out
     loaded = load_config(project)
     assert (loaded['shepherd']['lead_login'], loaded['shepherd']['min_reviewers']) == ('pat-dev', 1)
+
+
+@pytest.mark.parametrize('marker, label, engine', [
+    (None, 'spec-kit', 'speckit'), ('openspec', 'OpenSpec', 'openspec'), ('.specify', 'spec-kit', 'speckit')])
+def test_setup_offers_the_detected_spec_engine_first(project, host, terminal, capsys, marker, label, engine):
+    if marker:
+        (project / 'beta' / marker).mkdir()
+    terminal.answers['spec'] = label
+    assert run_setup(Confirm()) == 0, capsys.readouterr().err
+    assert terminal.first == [{'spec': label}] and 'spec' in terminal.ids[0]
+    assert load_config(project)['spec']['engine'] == engine
 
 
 def run_setup(confirm, shadow=True, posture=None, repos=None):
@@ -818,6 +831,7 @@ def test_first_day_on_defaults_without_github_remote(project, host, terminal, mo
     for name in REMOTES:
         shutil.rmtree(project / name)
     make_repo(project / 'widget', None)
+    (project / 'widget/.specify').mkdir()  # spec-kit set up, so doctor's spec row is ok (5.10)
     host.merged_prs = host.protection = lambda *a, **k: Result(2, reason='unmeasured')
     monkeypatch.setattr(doctor, 'diagnose', DIAGNOSE)
     monkeypatch.setattr(integrity, 'fresh', lambda root: Result(0))

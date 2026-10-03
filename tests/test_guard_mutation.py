@@ -37,6 +37,11 @@ PROBES = {
         ('Bash', {'command': 'echo x > .wuwei/days/2026-09-29/state.json'}, 1),
     ('protect_state', 'PreToolUse', 'Write|Edit|MultiEdit|NotebookEdit', 'check_file'):
         ('Write', {}, 2),
+    ('spec', 'PreToolUse', 'Write|Edit|MultiEdit|NotebookEdit', 'check_edit'):
+        ('Write', {'file_path': 'src/app.py'}, 2),
+    ('spec', 'PostToolUse', 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'check_record'):
+        ('Write', {'file_path': 'specs/001-a/spec.md'}, 2),
+    ('spec', 'SubagentStop', None, 'check_stop'): ('SubagentStop', {}, 2),
     ('stop', 'Stop', None, 'check'): ('Bash', {}, 2),
     ('traces', 'PostToolUse', None, 'check'): ('Bash', {}, 2),
     ('verdict', 'PostToolUse', 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'check_write'):
@@ -172,7 +177,12 @@ def assert_probe(check, row, root, monkeypatch):
         payload['cwd'] = 'relative'
     elif check.__module__.endswith('.stop'):
         payload['cwd'] = 'relative'
-    elif check.__module__.endswith('.traces'):
+    elif check.__module__.endswith('.spec') and check.__name__ == 'check_stop':
+        from wuwei.guards import agent_launch
+        payload['agent_type'] = 'wuwei:builder'
+        # A seat the day's state does not hold: the check reports it cannot run.
+        monkeypatch.setattr(agent_launch, 'stopping_seat', lambda payload, root: (root / 'day', 'b', 'builder'))
+    elif check.__module__.endswith(('.traces', '.spec')):
         monkeypatch.setattr(workspace, 'guard_scope', lambda _: (_ for _ in ()).throw(ValueError('scope')))
     elif check.__name__ == 'check_mcp':
         (root / '.mcp.json').write_text('{"mcpServers": {"docs": {"command": "fake-server"}}}')

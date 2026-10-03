@@ -5,6 +5,7 @@ from datetime import datetime
 
 SILENT = ('item.progress', 'traces.noted', 'remote.acknowledged', 'state.write', 'state.set', 'state.transition',
           'seat started', 'seat stopped', 'seat launched', 'brief written',
+          'spec.step', 'spec.skipped', 'spec.override',
           'brief.pack', 'brief.answer', 'session.seen', 'session.rotated', 'item.claimed',
           'draft.sending', 'draft.sent', 'draft.dropped', 'outward.ai_tells',
           'fast_checks.record', 'retro.captured', 'decision.two_way', 'merge.auto',

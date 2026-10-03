@@ -31,7 +31,7 @@ def module(name):
 def case(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/.git').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles=["builder"]\n')
+    (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles=["builder"]\n[spec]\nengine = "none"\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', DAY + 'T12:00:00+00:00')
     state.write_state(lambda data: None, tmp_path)

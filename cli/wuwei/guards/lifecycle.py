@@ -42,7 +42,8 @@ def session_start(payload):
         row = next_command.step(root)
     except ERRORS as exc:
         code, row = 2, {'state': 'unmeasured', 'step': str(exc), 'command': 'wuwei doctor'}
-    lines.append(next_command.orientation(row, workspace.posture(config)[0]))
+    from wuwei import specmode
+    lines.append(next_command.orientation(row, workspace.posture(config)[0], specmode.label(config)))
     try:
         if isinstance(payload.get('session_id'), str) and payload['session_id'].strip():
             sessions.export(payload['session_id'])

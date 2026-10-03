@@ -311,6 +311,27 @@ def add(item, root=None):
     return {'action': 'build next', 'item': item}
 
 
+def set_spec(item, assignment, reason=None, root=None):
+    """plan set <item> spec=required|skipped: the owner's per-item spec override (5.10)."""
+    root = workspace.find_workspace(root)
+    key, _, value = assignment.partition('=')
+    if key != 'spec' or value not in ('required', 'skipped'):
+        raise ValueError(f'expected spec=required or spec=skipped; run bin/wuwei plan set {item} spec=required, '
+                         f'or spec=skipped --reason <why>')
+    reason = ' '.join((reason or '').split())  # one line, as plan carry and park
+    if value == 'skipped' and not reason:
+        raise ValueError(f'spec=skipped needs a reason; run bin/wuwei plan set {item} spec=skipped --reason <why>')
+
+    def update(data):
+        if item not in data['items']:
+            raise state.StateError(f"no item {item} today; today's items: "
+                                   f"{', '.join(sorted(data['items'])) or 'none'}; use one of those ids")
+        data['items'][item]['spec'] = {'value': value, 'reason': reason}
+    state._write_state(update, root, reserved=False, kind='spec.override',
+                       payload={'item': item, 'value': value, 'reason': reason})
+    return f'{item}: spec {value}'
+
+
 def dispose(item, outcome, reason=None, root=None):
     """plan carry|park: write and route a two-way record that carries or parks one item at
     day close; return its D-n. Park pauses an active item, carry changes no phase."""

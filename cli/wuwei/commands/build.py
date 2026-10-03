@@ -341,13 +341,21 @@ def complete_checks(item, results, *, root, expected=None):
                 _park(root, item, record, f'environment: {reason}', expected)
                 return 1
             failures.append((command, result.data))
+    config = workspace.load_config(root)
+    row = state.read_state(root)['items'][item]
+    if not failures and row['phase'] in ('implement', 'fix'):
+        # Design 5.10: the move to the gates needs every spec step, implementation included.
+        from wuwei import specmode
+        code, reason = specmode.check(root, config, item, row, Path(record['worktree']),
+                                      build=True, where='gates')
+        if code:
+            failures.append(('spec', {'error': reason}))
     if not failures:
         record.update(status='done', action={'action': 'done'})
     else:
         signature = _signature(failures)
         record['repeats'] = record['repeats'] + 1 if signature == record['signature'] else 1
         record['signature'] = signature
-        config = workspace.load_config(root)
         reason = ('same fast-check failure repeated' if record['repeats'] >= config['build']['stuck_after']
                   else 'maximum build iterations reached' if record['iteration'] >= config['build']['max_iterations'] else None)
         if reason:

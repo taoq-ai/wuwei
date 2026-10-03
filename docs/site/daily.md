@@ -258,6 +258,14 @@ executes each returned action unchanged:
    round. When the host reports the PR merged, the item is `merged`, whatever round it
    was in.
 
+On a non-trivial item the builder first runs every step of the configured [spec engine](concepts.md#spec-engine)
+(spec-kit by default: specify, clarify, plan, tasks, analyze, checklist, then implement) in
+the item's worktree. Under [strict mode](concepts.md#strict-mode) the hooks refuse source edits until the
+steps before implementation are done, and the build loop keeps the item from the gates
+until all of them are. An item the lead marks `tier: light` skips the spec. To skip one
+item yourself, run `bin/wuwei plan set <item> spec=skipped --reason <why>` in a host
+terminal; `spec=required` turns the check back on.
+
 Phases move by themselves: `planned`, `implement`, `gate`, `fix`, `delta`, `raised`,
 `merged`. You never move one by hand on this path.
 

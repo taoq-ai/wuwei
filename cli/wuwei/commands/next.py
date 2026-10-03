@@ -115,8 +115,9 @@ def line(row):
     return f"{row['state']}: {row['step']} Run: {row['command']}"
 
 
-def orientation(row, posture):
-    """The SessionStart block; paths are computed, no file is read."""
+def orientation(row, posture, spec=None):
+    """The SessionStart block; paths are computed, no file is read. spec: the spec engine
+    and its effective mode (5.10)."""
     plugin = integrity.PLUGIN
     role = os.environ.get('WUWEI_SEAT_ROLE')
     if (isinstance(role, str) and role and '/' not in role and not role.startswith(('_', '.'))
@@ -138,6 +139,7 @@ def orientation(row, posture):
         'Day loop: plan, morning gate, dispatch builders, gates verify, PR and merge, report and '
         'close.',
         POSTURES[posture],
+        *([f'Spec: {spec}'] if spec else []),
         f'Next: {line(row)}',
         entry,
         f'Guide: {plugin}/docs/site/agent.md (the whole flow for a session); owner guide: '

@@ -117,7 +117,7 @@ def test_guard_areas_table():
     from wuwei import guards
     assert {key for key in guards.AREAS if '.' not in key} == set(guards.MODULES)
     for key, area in guards.AREAS.items():
-        assert area in workspace.AREAS or (key == 'agent_launch.check_mcp' and area is None)
+        assert area in workspace.AREAS or (key in ('agent_launch.check_mcp', 'spec') and area is None)
     from importlib import import_module
     for key in guards.OWNER_ONLY:
         module, _, function = key.partition('.')

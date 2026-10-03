@@ -32,6 +32,10 @@ def register(subparsers):
         command = actions.add_parser(verb, help=text)
         command.add_argument('item')
         command.add_argument('--reason', help='Why; written into the record on one line')
+    override = actions.add_parser('set', help='Owner: require or skip the spec for one item')
+    override.add_argument('item')
+    override.add_argument('assignment', help='spec=required or spec=skipped')
+    override.add_argument('--reason', help='Why the spec is skipped; required for spec=skipped')
     parser.set_defaults(func=run)
 
 
@@ -61,6 +65,8 @@ def run(args):
             print(json.dumps(plan.gate_widget(import_yesterday=args.import_yesterday), indent=2))
         elif args.action == 'add':
             print(json.dumps(plan.add(args.item)))
+        elif args.action == 'set':
+            print(plan.set_spec(args.item, args.assignment, args.reason))
         elif args.action in ('carry', 'park'):
             outcome = {'carry': 'carried', 'park': 'parked'}[args.action]
             print(f'{plan.dispose(args.item, outcome, args.reason)}: {outcome} {args.item}')

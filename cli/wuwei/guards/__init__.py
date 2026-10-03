@@ -27,17 +27,19 @@ MODULES = {
     'outward': {'PreToolUse': None},
     'pr': {'PreToolUse': 'Bash'},
     'protect_state': {'PreToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash'},
+    'spec': {'PreToolUse': 'Write|Edit|MultiEdit|NotebookEdit',
+             'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'SubagentStop': None},
     'stop': {'Stop': None},
     'traces': {'PostToolUse': None},
     'verdict': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'SubagentStop': None},
 }
 # #331: the posture area of each guard check; 'module.function' overrides its module. A test
 # pins the keys to MODULES. None: the check applies its own posture (the MCP launch gate in
-# mcp.cached), so the hook enforces it as returned.
+# mcp.cached; spec mode's own mode setting), so the hook enforces it as returned.
 AREAS = {'agent_launch': 'seats', 'agent_launch.check_mcp': None, 'commit_push': 'publish',
          'decision': 'records', 'deploy': 'publish', 'integrity': 'integrity',
          'lifecycle': 'records', 'outward': 'outward', 'pr': 'publish',
-         'protect_state': 'records', 'stop': 'publish', 'traces': 'records',
+         'protect_state': 'records', 'spec': None, 'stop': 'publish', 'traces': 'records',
          'verdict': 'records'}
 # Owner-only actions block in every posture (#331 floor): the deployment ban (4.7), the merge
 # policy, approvals and owner markers (4.6), and approve-tier messages and canary egress (4.9).
