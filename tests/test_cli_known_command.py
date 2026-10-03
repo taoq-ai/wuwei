@@ -60,6 +60,9 @@ def test_every_registered_command_is_in_exactly_one_set():
     (['calibrate', 'export', 'x', '--questions'], False), (['mcp', 'decide', 'D-1', 'proceed'], False),
     (['mcp', 'decide', '--', '--help'], False), (['config', 'show'], False),
     (['config', 'set', 'k', 'v'], False), (['integrity', 'reconfirm'], False), (['state', 'get'], False),
+    (['--workspace', 'doctor', 'decide', 'D-1', 'proceed'], False), (['--workspace', '/w', 'doctor'], True),
+    (['--workspace', '--help', 'decide', 'D-1', 'proceed'], False),
+    (['--workspace', '--', 'decide', 'D-1', 'proceed'], False),
 ])
 def test_read_only(args, expected):
     assert commands.read_only(args) is expected
@@ -145,6 +148,17 @@ def test_owner_actions_keep_the_host_terminal_rule(workspace, posture, form, mon
     code, out = hook(workspace.root, form.format(exe=workspace.exe), monkeypatch, capsys)
     assert code == 2
     assert 'MCP decisions require the owner terminal' in out['permissionDecisionReason']
+
+
+@pytest.mark.parametrize('posture', ('guarded', 'strict'))
+@pytest.mark.parametrize('form', ['{exe} --workspace doctor decide D-1 proceed',
+                                  '{exe} --workspace --help decide D-1 proceed'])
+def test_workspace_value_is_not_the_command(workspace, posture, form, monkeypatch, capsys):
+    # #354: the value after a leading --workspace is a path, never the command or --help.
+    configure(workspace.root, posture)
+    code, out = hook(workspace.root, form.format(exe=workspace.exe), monkeypatch, capsys)
+    assert code == 2
+    assert 'Decisions require the owner terminal' in out['permissionDecisionReason']
 
 
 @pytest.mark.parametrize('posture', POSTURES)
