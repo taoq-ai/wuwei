@@ -10,7 +10,7 @@ _NEEDS = {'calibrate': '--questions'}
 WRITES = frozenset({
     'agents build', 'agents check', 'brief', 'build', 'calibrate export', 'calibrate import',
     'close', 'config add-repo', 'config promote', 'config set', 'consolidate', 'dashboard',
-    'decision lint', 'decision outcome', 'decision route', 'decision show', 'decision template',
+    'decide', 'decision lint', 'decision outcome', 'decision route', 'decision show', 'decision template',
     'discover', 'dispatch discovery', 'dispatch next', 'dispatch opinion', 'dispatch receive',
     'drafts approve', 'drafts drop', 'event', 'fast-checks', 'git-hook', 'goals edit', 'hook',
     'index', 'init', 'integrity reconfirm', 'listen install', 'listen uninstall', 'mcp decide',
