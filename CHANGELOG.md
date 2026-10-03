@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.14.0](https://github.com/taoq-ai/wuwei/compare/v0.13.0...v0.14.0) (2026-10-03)
+
+
+### Features
+
+* **cli:** every refusal says what happened, why, and the one command to run, with real values and one reason per refusal ([#455](https://github.com/taoq-ai/wuwei/issues/455)) ([d911002](https://github.com/taoq-ai/wuwei/commit/d9110027b3d4770966d97ed8b1580754d2897ef0)), closes [#362](https://github.com/taoq-ai/wuwei/issues/362)
+* **outward:** every external write goes through the humanizer pass by default (configurable): tracker comments, docs pages, DM, PR comments and review pings ([#434](https://github.com/taoq-ai/wuwei/issues/434)) ([23dff23](https://github.com/taoq-ai/wuwei/commit/23dff23829b2873c4b108d56958ef21b5740d254)), closes [#420](https://github.com/taoq-ai/wuwei/issues/420)
+* **plan:** one approval at the morning gate, and no second interview on the first day ([#430](https://github.com/taoq-ai/wuwei/issues/430)) ([6f9d48b](https://github.com/taoq-ai/wuwei/commit/6f9d48bd9cff96950f4b08dc3e86093404ea71c5)), closes [#365](https://github.com/taoq-ai/wuwei/issues/365)
+* **remote:** phone answers to two-way decisions are outcomes, and `wuwei setup slack` connects the DM in one command ([#447](https://github.com/taoq-ai/wuwei/issues/447)) ([6e9908c](https://github.com/taoq-ai/wuwei/commit/6e9908cd5ff7bf64b89b301c6d7d36e27efddbea)), closes [#364](https://github.com/taoq-ai/wuwei/issues/364)
+
+
+### Bug Fixes
+
+* **mcp:** adapters.scanner = none turns the MCP gate off with one nudge line instead of an unmeasured exit 2 from init, mcp check and the launch gate ([#448](https://github.com/taoq-ai/wuwei/issues/448)) ([f627198](https://github.com/taoq-ai/wuwei/commit/f627198a7a50ed1195674a7bc655f28c6b221ea6)), closes [#424](https://github.com/taoq-ai/wuwei/issues/424)
+* **shepherd:** reviewers come from who touched the changed code with no configuration, the owner can override them, and a solo owner raises PRs with none ([#446](https://github.com/taoq-ai/wuwei/issues/446)) ([b57b457](https://github.com/taoq-ai/wuwei/commit/b57b4578a3c7d0c7d45887b8796de8bbd77054e4)), closes [#369](https://github.com/taoq-ai/wuwei/issues/369)
+
+
+### Performance Improvements
+
+* **hooks:** fourth round: a parsed-config cache keyed on the config text, security.load from the validated config, SessionStart guards run together and the day decoded once ([#426](https://github.com/taoq-ai/wuwei/issues/426)) ([54513f3](https://github.com/taoq-ai/wuwei/commit/54513f3337d7dffe221a3d27db87b66a2adf4d9c)), closes [#346](https://github.com/taoq-ai/wuwei/issues/346)
+
 ## [0.13.0](https://github.com/taoq-ai/wuwei/compare/v0.12.0...v0.13.0) (2026-10-03)
 
 
