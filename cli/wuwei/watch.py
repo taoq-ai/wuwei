@@ -22,18 +22,34 @@ def records(path):
         text = path.read_text(encoding='utf-8')
     except FileNotFoundError:
         return []
+    return _rows(text)
+
+
+def _rows(text):
     if text and not text.endswith('\n'):
         raise ValueError('incomplete event line')
     rows = []
     for line in text.splitlines():
-        row = json.loads(line)
+        # The decoder refuses what json.dumps(allow_nan=False) would (NaN, Infinity and
+        # floats that overflow): half the cost of encoding every row again.
+        row = json.loads(line, parse_constant=_not_json, parse_float=_finite)
         if (not isinstance(row, dict) or not isinstance(row.get('kind'), str)
                 or not isinstance(row.get('payload'), dict)):
             raise ValueError('invalid event record')
         obligations._time(row['ts'])
-        json.dumps(row, allow_nan=False)
         rows.append(row)
     return rows
+
+
+def _not_json(value):
+    raise ValueError(f'Out of range float values are not JSON compliant: {value}')
+
+
+def _finite(text):
+    value = float(text)
+    if value in (float('inf'), float('-inf')):
+        _not_json(text)
+    return value
 
 
 def days(root):
@@ -50,7 +66,7 @@ def health(root, clocks=None, name='watch'):
     """
     try:
         if clocks is None:
-            clocks = [row['ts'] for row in records(workspace.day_dir(root) / 'events.jsonl')
+            clocks = [row['ts'] for row in _day_rows(workspace.day_dir(root) / 'events.jsonl')
                       if row['kind'] == f'{name}: clock']
         if clocks:
             age = (workspace.now() - max(map(obligations._time, clocks))).total_seconds()
@@ -59,11 +75,28 @@ def health(root, clocks=None, name='watch'):
             if age < workspace.load_config(root)[name]['dead_seconds']:
                 return 0, ''
             return 1, f'{name} dead: no clock line within deadline'
-        if workspace.watch_unit(root, name=name)[1].exists():
+        if workspace.unit_installed(root, name=name):
             return 1, f'{name} dead: installed but no clock line today'
         return 0, f'{name} off: no clock line today'
     except ERRORS as exc:
         return 2, f'{name} health unmeasured: {exc}'
+
+
+# The last events text health decoded and its rows: SessionStart asks for watch and listen
+# in turn, and an unchanged day decodes once. Only health reads it (kinds and stamps).
+_SEEN = {}
+
+
+def _day_rows(path):
+    try:
+        text = path.read_text(encoding='utf-8')
+    except FileNotFoundError:
+        return []
+    if _SEEN.get('text') != text:
+        rows = _rows(text)
+        _SEEN.clear()
+        _SEEN.update(text=text, rows=rows)
+    return _SEEN['rows']
 
 
 def saved(root):

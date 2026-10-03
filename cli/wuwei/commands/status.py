@@ -2,10 +2,10 @@
 
 from datetime import date, datetime, timedelta
 import json
+import re
 import sys
 
 from wuwei import sessions, state, workspace
-from wuwei.decision import answered
 from wuwei.exits import CLEAN, UNRUN
 from wuwei.signal import SILENT, classify
 
@@ -19,6 +19,11 @@ SKIP = frozenset(SILENT) - {
     'watch: clock', 'listen: clock', 'heartbeat: clock', 'decision.replied',
     'decision.decided', 'draft.sending', 'draft.sent', 'draft.dropped',
     'session: wake-seen', 'steward.run', 'remote.acknowledged'}
+# One match per line scan reads: a run of complete producer lines (state._append_jsonl:
+# kind first, ts last) of a skipped kind, consumed in C, then the next line (group 1).
+# Anything else, torn lines included, is decoded as before. Compiled on first scan.
+LINES = (r'(?:\{"kind": "(?:' + '|'.join(map(re.escape, sorted(SKIP)))
+         + r')", [^\n]*, "ts": "[^"\n]*"\}\n)*([^\n]*)\n?')
 
 
 def register(subparsers):
@@ -42,115 +47,114 @@ def scan(directory, classified_state=None):
     current, clocks, replied, pin, beat, loops = {}, {'watch': [], 'listen': []}, {}, None, None, 0
     path = directory / 'events.jsonl'
     if path.exists():
-        with path.open(encoding='utf-8') as stream:
-            for number, line in enumerate(stream):
-                if not line.strip():
+        text = path.read_text(encoding='utf-8')
+        number, counted = 0, 0
+        for found in re.finditer(LINES, text):
+            line = found[1]
+            if not line.strip():
+                continue
+            # The line's index in the file, as enumerate over its lines gave it.
+            number += text.count('\n', counted, found.start(1))
+            counted = found.start(1)
+            try:
+                event = json.loads(line)
+            except ValueError:
+                event = None
+            if isinstance(event, dict):
+                kind = event.get('kind')
+                payload = event.get('payload', {})
+                stamp = event.get('ts')
+                if isinstance(stamp, str) and datetime.fromisoformat(stamp).date() != today:
                     continue
-                # Producer lines (state._append_jsonl) start with the kind; skip silent ones
-                # undecoded. Anything else, torn lines included, is decoded as before.
-                if (line.startswith('{"kind": "') and line.rstrip().endswith('}')
-                        and line.count('{') == line.count('}')
-                        and line[10:line.find('"', 10)] in SKIP):
+                loops += kind == 'negotiation.loop'
+                if kind in ('watch: clock', 'listen: clock'):
+                    clocks[kind.split(':')[0]].append(stamp)
+                if kind == 'heartbeat: clock':
+                    beat = payload
+                if kind == 'decision.replied' and isinstance(payload, dict):
+                    replied.setdefault(payload.get('id'), payload.get('option'))
+                if kind in ('state.transition', 'item.escalated'):
                     continue
-                try:
-                    event = json.loads(line)
-                except ValueError:
-                    event = None
-                if isinstance(event, dict):
-                    kind = event.get('kind')
-                    payload = event.get('payload', {})
-                    stamp = event.get('ts')
-                    if isinstance(stamp, str) and datetime.fromisoformat(stamp).date() != today:
+                if kind == 'mcp.checked' and isinstance(payload, dict) and payload.get('exit') == 0:
+                    current = {key: value for key, value in current.items() if key[0] != 'mcp.finding'}
+                    continue
+                if kind == 'pr.action' and isinstance(payload, dict) and 'tier' not in payload:
+                    current.pop(('pr.action', payload.get('pr')), None)
+                    continue
+                if kind == 'decision.decided' and isinstance(payload, dict):
+                    current.pop(('decision.one_way', payload.get('id')), None)
+                    continue
+                if kind in ('draft.sending', 'draft.sent', 'draft.failed', 'draft.dropped') \
+                        and isinstance(payload, dict):
+                    current.pop(('draft.created', payload.get('id')), None)
+                if (kind == 'pr.action' and isinstance(payload, dict)
+                        and payload.get('state') in ('merged', 'closed')):
+                    current.pop(('merge.policy_blocked', payload.get('pr')), None)
+                if kind == 'session: wake-seen':
+                    current = {key: value for key, value in current.items() if key[0] != 'pr.changed'}
+                if kind == 'steward.run':
+                    current = {key: value for key, value in current.items() if key[0] != 'steward.due'}
+                if kind == 'remote.acknowledged' and isinstance(payload, dict):
+                    for identifier in payload.get('ids', []):
+                        current.pop(('remote.refused', identifier), None)
+                    continue
+                if kind in SILENT:
+                    continue
+                if kind == 'remote.refused' and isinstance(payload, dict) and 'pin' in payload:
+                    if pin is None:
+                        pin = workspace.load_config(directory.parents[2])['control_plane']['owner']
+                    if payload['pin'] != pin:
                         continue
-                    loops += kind == 'negotiation.loop'
-                    if kind in ('watch: clock', 'listen: clock'):
-                        clocks[kind.split(':')[0]].append(stamp)
-                    if kind == 'heartbeat: clock':
-                        beat = payload
-                    if kind == 'decision.replied' and isinstance(payload, dict):
-                        replied.setdefault(payload.get('id'), payload.get('option'))
-                    if kind in ('state.transition', 'item.escalated'):
-                        continue
-                    if kind == 'mcp.checked' and isinstance(payload, dict) and payload.get('exit') == 0:
-                        current = {key: value for key, value in current.items() if key[0] != 'mcp.finding'}
-                        continue
-                    if kind == 'pr.action' and isinstance(payload, dict) and 'tier' not in payload:
-                        current.pop(('pr.action', payload.get('pr')), None)
-                        continue
-                    if kind == 'decision.decided' and isinstance(payload, dict):
-                        current.pop(('decision.one_way', payload.get('id')), None)
-                        continue
-                    if kind in ('draft.sending', 'draft.sent', 'draft.failed', 'draft.dropped') \
-                            and isinstance(payload, dict):
-                        current.pop(('draft.created', payload.get('id')), None)
-                    if (kind == 'pr.action' and isinstance(payload, dict)
-                            and payload.get('state') in ('merged', 'closed')):
-                        current.pop(('merge.policy_blocked', payload.get('pr')), None)
-                    if kind == 'session: wake-seen':
-                        current = {key: value for key, value in current.items() if key[0] != 'pr.changed'}
-                    if kind == 'steward.run':
-                        current = {key: value for key, value in current.items() if key[0] != 'steward.due'}
-                    if kind == 'remote.acknowledged' and isinstance(payload, dict):
-                        for identifier in payload.get('ids', []):
-                            current.pop(('remote.refused', identifier), None)
-                        continue
-                    if kind in SILENT:
-                        continue
-                    if kind == 'remote.refused' and isinstance(payload, dict) and 'pin' in payload:
-                        if pin is None:
-                            pin = workspace.load_config(directory.parents[2])['control_plane']['owner']
-                        if payload['pin'] != pin:
-                            continue
-                else:
-                    kind, payload = 'unreadable event', {}
-                if kind == 'watch: sweep' and isinstance(payload, dict):
-                    current = {key: value for key, value in current.items() if key[0] != 'watch: sweep'}
-                    fields = (('reply_owed', 'reply', 'nudge'),
-                              ('visibility_owed', 'visibility', 'nudge'),
-                              ('stale_owed', 'stale', 'nudge'),
-                              ('watch_dead', 'watch', 'page'),
-                              ('scanner_owed', 'scanner', 'page'),
-                              ('integrity_owed', 'integrity', 'page'),
-                              ('unreadable', 'unmeasured', 'nudge'))
-                    # Absent counts are 0 (the obligations sweep has fewer), but owed must be covered.
-                    counts = [payload.get(field, 0) for field, _, _ in fields]
-                    if all(type(count) is int and count >= 0 for count in counts) and not (
-                            type(payload.get('owed')) is int and payload['owed'] > sum(counts)):
-                        for field, source, level in fields:
-                            for index in range(payload.get(field, 0)):
-                                current[('watch: sweep', source, index)] = {
-                                    'tier': level, 'source': f'watch: sweep:{source}',
-                                    'lane': 'Work', 'reason': source}
-                        continue
-                tier, lane = classify(event, classified_state)
-                if kind == 'watch: sweep':
-                    key = (kind, '')
-                elif kind in ('pr.action', 'merge.policy_blocked', 'pr.changed') and isinstance(payload, dict):
-                    key = (kind, payload.get('pr'))
-                elif kind in ('decision.one_way', 'draft.created', 'remote.refused') and isinstance(payload, dict):
-                    key = (kind, payload.get('id', number))
-                elif kind == 'guard.would_refuse' and isinstance(payload, dict):
-                    key = (kind, payload.get('guard'))
-                else:
-                    key = (kind, number)
-                if tier == 'silent':
-                    current.pop(key, None)
-                else:
-                    reason = payload.get('reason', kind) if isinstance(payload, dict) else kind
-                    if kind == 'pr.changed' and isinstance(payload, dict):
-                        reason = payload.get('summary') or (
-                            f'{payload.get("pr")} changed: {", ".join(map(str, payload.get("fields") or []))}')
-                    if kind == 'guard.would_refuse' and isinstance(payload, dict):
-                        reason = (f'{payload.get("guard")}: {payload.get("reason")} '
-                                  f'(warn: security.areas.{payload.get("area")})')
-                    current[key] = {'tier': tier, 'source': kind, 'lane': lane, 'reason': reason}
+            else:
+                kind, payload = 'unreadable event', {}
+            if kind == 'watch: sweep' and isinstance(payload, dict):
+                current = {key: value for key, value in current.items() if key[0] != 'watch: sweep'}
+                fields = (('reply_owed', 'reply', 'nudge'),
+                          ('visibility_owed', 'visibility', 'nudge'),
+                          ('stale_owed', 'stale', 'nudge'),
+                          ('watch_dead', 'watch', 'page'),
+                          ('scanner_owed', 'scanner', 'page'),
+                          ('integrity_owed', 'integrity', 'page'),
+                          ('unreadable', 'unmeasured', 'nudge'))
+                # Absent counts are 0 (the obligations sweep has fewer), but owed must be covered.
+                counts = [payload.get(field, 0) for field, _, _ in fields]
+                if all(type(count) is int and count >= 0 for count in counts) and not (
+                        type(payload.get('owed')) is int and payload['owed'] > sum(counts)):
+                    for field, source, level in fields:
+                        for index in range(payload.get(field, 0)):
+                            current[('watch: sweep', source, index)] = {
+                                'tier': level, 'source': f'watch: sweep:{source}',
+                                'lane': 'Work', 'reason': source}
+                    continue
+            tier, lane = classify(event, classified_state)
+            if kind == 'watch: sweep':
+                key = (kind, '')
+            elif kind in ('pr.action', 'merge.policy_blocked', 'pr.changed') and isinstance(payload, dict):
+                key = (kind, payload.get('pr'))
+            elif kind in ('decision.one_way', 'draft.created', 'remote.refused') and isinstance(payload, dict):
+                key = (kind, payload.get('id', number))
+            elif kind == 'guard.would_refuse' and isinstance(payload, dict):
+                key = (kind, payload.get('guard'))
+            else:
+                key = (kind, number)
+            if tier == 'silent':
+                current.pop(key, None)
+            else:
+                reason = payload.get('reason', kind) if isinstance(payload, dict) else kind
+                if kind == 'pr.changed' and isinstance(payload, dict):
+                    reason = payload.get('summary') or (
+                        f'{payload.get("pr")} changed: {", ".join(map(str, payload.get("fields") or []))}')
+                if kind == 'guard.would_refuse' and isinstance(payload, dict):
+                    reason = (f'{payload.get("guard")}: {payload.get("reason")} '
+                              f'(warn: security.areas.{payload.get("area")})')
+                current[key] = {'tier': tier, 'source': kind, 'lane': lane, 'reason': reason}
     # Live health, not the last sweep's count: a partial sweep event must not hide a dead watch.
     current = {key: value for key, value in current.items() if key[:2] != ('watch: sweep', 'watch')}
     health = {}
     for name, stamps in clocks.items():
         code, message = 0, ''
         # No clock line today and no installed unit is off: skip the watch import.
-        if stamps or workspace.watch_unit(directory.parents[2], name=name)[1].exists():
+        if stamps or workspace.unit_installed(directory.parents[2], name=name):
             from wuwei import watch
             code, message = watch.health(directory.parents[2], stamps, name=name)
         if code:
@@ -175,6 +179,7 @@ def scan(directory, classified_state=None):
     if not isinstance(routes, dict):
         raise ValueError('invalid decision ledger')
     for identifier in routes:
+        from wuwei.decision import answered  # Here: decision and outward cost a quiet day's line.
         if answered(classified_state, identifier) is None:
             source, reason = 'decision.pending', f'{identifier} pending owner decision'
             if option := replied.get(identifier):

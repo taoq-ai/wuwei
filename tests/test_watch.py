@@ -1132,3 +1132,35 @@ def test_watch_skips_pr_poll_while_the_listener_lives(case, monkeypatch):
     monkeypatch.setattr(watch, 'poll_prs', lambda root: polled.append(root) or 0)
     watch.tick(root)
     assert polled == [root]
+
+
+@pytest.mark.parametrize('value', ['NaN', 'Infinity', '-Infinity', '1e999', '-1e999'])
+def test_records_reject_values_json_cannot_write(tmp_path, value):
+    from wuwei import watch
+    path = tmp_path / 'events.jsonl'
+    good = '{"kind": "note", "payload": {"n": 1.5, "m": 10}, "ts": "2026-09-28T12:00:00+00:00"}\n'
+    path.write_text(good)
+    assert watch.records(path) == [json.loads(good)]
+    path.write_text(good + good.replace('1.5', value))
+    with pytest.raises(ValueError):
+        watch.records(path)
+
+
+def test_health_decodes_an_unchanged_day_once(tmp_path, monkeypatch):
+    from wuwei import watch
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    events = workspace.day_dir(tmp_path) / 'events.jsonl'
+    events.parent.mkdir(parents=True)
+    clock = '{"kind": "watch: clock", "payload": {}, "ts": "2026-09-28T11:59:00+00:00"}\n'
+    events.write_text(clock)
+    decoded = []
+    monkeypatch.setattr(watch, '_SEEN', {})
+    monkeypatch.setattr(watch, '_rows', lambda text, rows=watch._rows: decoded.append(text) or rows(text))
+    assert watch.health(tmp_path) == (0, '')
+    assert watch.health(tmp_path, name='listen')[0] == 0
+    assert len(decoded) == 1
+    events.write_text(clock + 'torn')
+    assert watch.health(tmp_path)[0] == 2 and watch.health(tmp_path)[0] == 2
+    assert len(decoded) == 3

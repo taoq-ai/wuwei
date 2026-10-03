@@ -29,21 +29,33 @@ def _main(argv=None):
             return UNRUN
         if argv[1] in hook.EVENTS:
             return _call(hook.run, SimpleNamespace(command='hook', event=argv[1]))
-    import argparse
-    from importlib import import_module
-    import json
-    from pathlib import Path
-    from wuwei import commands, workspace
-    parser = argparse.ArgumentParser(prog="wuwei")
-    subparsers = parser.add_subparsers(dest="command", required=True)
     try:
         if argv and argv[0] not in ('hook', 'init'):
+            from wuwei import workspace
             try:
                 root = workspace.find_workspace()
             except FileNotFoundError:
                 root = None
             if root is not None:
                 env.load(root)
+        if argv == ['status', '--line']:
+            # Status-line fast path: Claude Code runs it on every refresh, so it skips the
+            # parser (argparse, gettext, shutil), the manifest and the command listing.
+            from types import SimpleNamespace
+            from wuwei.commands import status
+    except Exception as exc:
+        print(f"wuwei: {str(exc) or type(exc).__name__}", file=sys.stderr)
+        return UNRUN
+    if argv == ['status', '--line']:
+        return _call(status.run, SimpleNamespace(command='status', line=True, json=False))
+    import argparse
+    from importlib import import_module
+    import json
+    from pathlib import Path
+    from wuwei import commands
+    parser = argparse.ArgumentParser(prog="wuwei")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    try:
         manifest = Path(__file__).resolve().parents[2] / ".claude-plugin/plugin.json"
         version = json.loads(manifest.read_text())["version"]
         if not isinstance(version, str) or not version.strip():

@@ -1,10 +1,10 @@
 """Static shell normalization for guards. Never execute or expand input text."""
 
+from collections import namedtuple
 from itertools import count
 from pathlib import Path, PurePosixPath
 import re
 import shlex
-from typing import NamedTuple
 
 
 class ParseError(ValueError):
@@ -15,14 +15,10 @@ class NonliteralPathError(ParseError):
     """A file or directory operand cannot be resolved statically."""
 
 
-class Command(NamedTuple):
-    argv: list[str]
-    subshell: bool
-    env: dict[str, str]
-    writes: tuple[str, ...] = ()
-    reads: tuple[str, ...] = ()
-    scope: tuple[int, ...] = ()
-    separator: str = ''
+# argv: list[str], subshell: bool, env: dict[str, str], writes and reads: tuple[str, ...],
+# scope: tuple[int, ...], separator: str. collections.namedtuple: typing costs every hook 1 ms.
+Command = namedtuple('Command', 'argv subshell env writes reads scope separator',
+                     defaults=((), (), (), ''))
 
 
 def operands(args, valued=(), flags=()):
