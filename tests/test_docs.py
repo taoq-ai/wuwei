@@ -78,16 +78,24 @@ def test_daily_shows_a_clean_first_day():
     daily = (SITE / 'daily.md').read_text()
     for number, markers in (('2', ('plugin integrity: clean', 'code host login:', 'Interview answers:',
                                    '- review_bot: None -> adapters.review_bot = "none"',
+                                   '- reviewers: Owner only -> shepherd.min_reviewers = 0',
+                                   'Test runner found: acme/widget: python3 -m pytest -q',
                                    'Applied the setup and recorded .wuwei/calibration.json',
-                                   'Still owed:', 'Next: /wuwei plan')),
+                                   'Status line: added to .claude/settings.json',
+                                   'Optional: bin/wuwei promote; 2 more in bin/wuwei doctor\n'
+                                   'Ready: run /wuwei:wuwei-plan\n',
+                                   '  warn       watch: not installed',
+                                   'doctor: 1 fail, 1 warn, 0 unmeasured')),
                             ('3', ('goals: 1 goal saved (G-1)', 'planned 1/1', 'planned item(s) queued'))):
         section = daily.split(f'\n## {number}. ', 1)[1].split('\n## ', 1)[0]
         blocks = re.findall(r'```text\n(.*?)```', section, re.S)
         for marker in markers:
             assert any(marker in block for block in blocks), (number, marker)
+    assert 'Still owed' not in daily and 'Next: /wuwei plan' not in daily
     source = '\n'.join(path.read_text() for path in ROOT.glob('cli/wuwei/**/*.py'))
     for marker in ('plugin integrity: clean', 'code host login:', 'Interview answers:', 'and recorded .wuwei/calibration.json',
-                   'Still owed:', 'Next: /wuwei plan', 'planned item(s) queued'):
+                   'Test runner found: ', 'Status line: added to .claude/settings.json', 'more in bin/wuwei doctor',
+                   "'Optional: '", 'Ready: run /wuwei:wuwei-plan', "'not installed'", 'planned item(s) queued'):
         assert marker in source, marker
 
 

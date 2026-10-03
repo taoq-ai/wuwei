@@ -103,8 +103,10 @@ From the same project directory, in a [host terminal](docs/site/concepts.md#host
 directory (their GitHub names, default branches through `gh`, and commit identities), checks
 the host, calibrates the repositories and asks the owner interview. It shows the whole
 `config.toml` proposal once and applies it after you type its digest. Then it runs
-`config check` and `mcp check` and prints what is still owed, each with its exact command. A
-second run proposes nothing new ([calibration](docs/site/configuration.md#calibration)).
+`doctor` and `mcp check` and ends with one line: `Ready: run /wuwei:wuwei-plan`, or `Next:`
+with the one command still required. Optional items, such as branch protections, are listed
+before it and do not block. A second run proposes nothing new
+([calibration](docs/site/configuration.md#calibration)).
 
 `--shadow` starts the guards in the observe posture for your first week: they record what they would refuse and let the call through, and `bin/wuwei shadow report` lists it. See [security posture](docs/site/concepts.md#security-posture).
 

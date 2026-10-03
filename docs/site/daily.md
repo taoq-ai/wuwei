@@ -50,8 +50,10 @@ deterministic fixes after one confirmation. When something fails on the first da
 `setup` does the configuration in one pass. It finds the git repositories in the project
 directory (or under `--repos <dir>`), reads each one's GitHub name from its `origin` remote,
 its default branch through `gh` when `gh` is signed in, and its commit identity from its git
-config. It lists the host facts (platform, `claude`, `gh` and `ziran` on PATH, free memory),
-then calibrates and interviews:
+config. When `gh` cannot read the default branch, git answers: `origin/HEAD`, else the
+checked-out branch, and the line says which. A repository with no remote is proposed as
+`<your login>/<directory>`, where `gh repo create` would put it. It lists the host facts
+(platform, `claude`, `gh` and `ziran` on PATH, free memory), then calibrates and interviews:
 
 - the calibration is what `bin/wuwei calibrate` does: it reads each checkout and writes
   `.wuwei/days/<date>/calibration.md` with its checks, CI check names, conventions and deploy
@@ -59,42 +61,48 @@ then calibrates and interviews:
   ([calibration](configuration.html#calibration));
 - the owner interview is what `bin/wuwei calibrate --interview` asks: how much merge autonomy
   you want, your gate floor, quiet and working hours, how decisions reach you, words to avoid,
-  which commands you run by hand, and which tracker, chat and review bot you use
-  ([owner interview](configuration.html#owner-interview)); `config check` then names each
+  which commands you run by hand, which tracker, chat and review bot you use, and who reviews
+  your pull requests (`Owner only` for a solo owner) ([owner interview](configuration.html#owner-interview)); `config check` then names each
   credential variable those adapters need until you set it in `.wuwei/env`;
 - your identity: with `gh` signed in, `owner.handles` gains your code-host login,
   `shepherd.lead_login` defaults to it, and `shepherd.authors` maps your repositories' git
   emails to it and each bot author seen on the last 50 merged pull requests to its `[bot]`
-  login. Values you already set are kept.
+  login, and `owner.name` comes from the repositories' git identity. Values you already set
+  are kept.
+
+A few yes or no questions come with it: turn on ZIRAN scans when `ziran` is installed
+(default no), run your tests once to see whether they are fast enough for every push
+(default yes), add the status line to `.claude/settings.json` (default yes), and install the
+watch service (default no). A closed input answers no.
 
 It shows the `[[repos]]` tables, the calibration and the answers as one `config.toml` diff,
 applies it after you type its [digest](concepts.html#digest) (the `bin/wuwei config promote` path), runs
-`bin/wuwei config check` and `bin/wuwei mcp check`, and prints what is still owed with the
-exact command for each: a repository it could not measure, a credential variable,
-`owner.name`, `bin/wuwei promote` for the charter proposals, an MCP decision. Run it again
-any time; with nothing new it proposes nothing. For a solo owner then run
-`bin/wuwei config set shepherd.min_reviewers 0`. You do not write goals by hand: the lead
-proposes them at the first morning plan and the planner records the ones you approve. You
-can change them later with
-`bin/wuwei goals edit`. [Configuration](configuration.html) lists every key.
+`bin/wuwei doctor` and `bin/wuwei mcp check`, and ends with one line:
+`Ready: run /wuwei:wuwei-plan`, or `Next:` with the one command still required (a failing
+install or workspace check, a credential variable, an MCP decision). Anything optional, such
+as `bin/wuwei promote` for the charter proposals, a repository it could not measure or the
+other doctor findings, is listed on an `Optional:` line before it. Run it again any time;
+with nothing new it proposes nothing. You do not write goals by hand: the lead proposes them
+at the first morning plan and the planner records the ones you approve. You can change them
+later with `bin/wuwei goals edit`. [Configuration](configuration.html) lists every key.
 
-A clean first run for one repository looks like this, with the interview answered `1` each
-time (cut where it shows `...`):
+A clean first run for one repository with a pytest suite looks like this, with every
+question answered `1` and every yes or no question left at its default (cut where it shows
+`...`):
 
 ```text
 Created <project>/.wuwei
-{"statusLine": {"type": "command", "command": "<plugin>/bin/wuwei status --line"}}
-Status line: put the "statusLine" key above in .claude/settings.json (this project) or ~/.claude/settings.json (every project).
 Recommended publishing layout (design 4.5, 9.1):
   ...
 Verify with: wuwei config check
+...
 plugin integrity: clean
 Host: <platform>
 claude: on PATH
 gh: on PATH
 ziran: missing
 code host auth: set
-code host login: <login>
+code host login: pat-example
 free memory: <n> MiB
 
 Merges: Who merges pull requests in acme/widget?
@@ -102,49 +110,81 @@ Merges: Who merges pull requests in acme/widget?
   ...
 > 1
 ...
+Reviewers: Who reviews your pull requests?
+  1. Owner only: No second reviewer: you merge your own pull requests.
+  ...
+> 1
+Test runner found: acme/widget: python3 -m pytest -q
+Run your tests once now to see if they are fast enough for every push? [Y/n]
 --- config.toml
 +++ config.toml (proposed)
+...
+ [owner]
+-name = ""
++name = "Pat Example"
 ...
 +[[repos]]
 +name = "acme/widget"
 +path = "widget"
 +default_branch = "main"
++identity = {name = "Pat Example", email = "pat@example.com"}
++# Added by wuwei config promote from calibration.
++fast_checks = ["python3 -m pytest -q"]
 ...
 Interview answers:
 - merge (acme/widget): Owner merges -> repos.0.merge.auto = false
 ...
-- posture: Observe -> security.posture = "observe"
 - tracker: None -> adapters.tracker = "none"
 - chat: None -> adapters.chat = "none"
 - review_bot: None -> adapters.review_bot = "none"
+- reviewers: Owner only -> shepherd.min_reviewers = 0
 Approved calibration for .wuwei/calibration.json:
 ...
 Review the setup above. To apply it, type:
 <digest>
 > <digest>
 Applied the setup and recorded .wuwei/calibration.json
-Credentials:
-  ...
-Owner:
-  owner.name: not set; the outward lint refuses every outward message except replies in the owner DM
-Posture: observe (from security.posture)
-  ...
-Host protections:
-  ...
-Seat credentials:
-  ...
-Still owed:
-  bin/wuwei config set owner.name '"<your name>"'
-  bin/wuwei promote
-Next: /wuwei plan
+Show the WUWEI status line in Claude Code for this project? [Y/n]
+Status line: added to .claude/settings.json
+Install the watch service, which supervises the day and your pull requests in the background? [y/N]
+WUWEI plugin.json servers covered by plugin integrity (signed manifest), not scanned
+Optional: bin/wuwei promote; 2 more in bin/wuwei doctor
+Ready: run /wuwei:wuwei-plan
 ```
 
 It worked when you see `Applied the setup and recorded .wuwei/calibration.json` and
-`Next: /wuwei plan`. On day one `owner.name` and `bin/wuwei promote` under `Still owed:` are
-normal, and exit 1 with `missing` rows under `Host protections:` means the setup was applied
-and the branch protections are still to set. It did not work when the `Applied` line is
-missing (nothing was written; the reason is on the last line) or when `Still owed:` lists
-`bin/wuwei config add-repo` (setup could not read a repository); see
+`Ready: run /wuwei:wuwei-plan`; setup then exits 0. The `Optional:` line is normal on day one
+and blocks nothing. The two doctor findings it counts are the branch protections and the watch
+service you declined:
+
+```text
+$ bin/wuwei doctor
+...
+Gates and adapters
+  fail       config check: exit 1
+      fix: apply the fix each detail line names
+      ...
+      Host protections:
+      acme/widget main: classic protection: none visible (404: unprotected or no admin)
+      acme/widget main: required checks: missing (require status checks on main)
+      acme/widget main: required reviews: ok (solo owner: shepherd.min_reviewers = 0)
+      acme/widget main: force pushes: missing (block force pushes on main)
+      acme/widget main: deletions: missing (block deletions of main)
+      acme/widget main: fix in https://github.com/acme/widget/settings/branches
+      ...
+Day and sessions
+  ...
+  warn       watch: not installed
+      fix: wuwei watch install
+      ...
+doctor: 1 fail, 1 warn, 0 unmeasured
+```
+
+Set the protections when you are ready, and run `bin/wuwei watch install` when you want the
+background supervisor. It did not work when the `Applied` line is missing (nothing was
+written; the reason is on the last line) or when the last line is `Next:` instead of `Ready:`
+(setup exits 1): run that one command, then `bin/wuwei setup` again. A repository setup
+could not read shows on the `Optional:` line as `bin/wuwei config add-repo ...`; see
 [troubleshooting](recovery.html#troubleshooting).
 
 `--shadow` starts a first week in the observe posture (on an existing workspace it proposes

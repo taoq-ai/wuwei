@@ -1,6 +1,7 @@
 """Issue #279: an owner interview whose answers land only through the calibrate proposal path."""
 
 import json
+import re
 from pathlib import Path
 import tomllib
 
@@ -79,13 +80,16 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
     table = interview().QUESTIONS
     assert [row['id'] for row in table] == ['merge', 'gates', 'quiet', 'interrupt', 'decisions', 'phone',
                                             'hours', 'avoid', 'formality', 'signature', 'risk', 'manual',
-                                            'verbosity', 'posture', 'tracker', 'chat', 'review_bot']
+                                            'verbosity', 'posture', 'tracker', 'chat', 'review_bot',
+                                            'reviewers']
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / 'widget').mkdir()
     config = {'repos': [{'name': 'acme/widget'}]}
     for row in table:
         assert len(row['header']) <= 12 and 2 <= len(row['choices']) <= 4, row['id']
         labels = [label for label, _, _ in row['choices']]
+        # Claude asks these questions: a first-person label would read as Claude speaking.
+        assert not any(re.search(r'\bI\b|(?i:\b(me|my|mine|myself)\b)', label) for label in labels), labels
         assert len(set(label.casefold() for label in labels)) == len(labels)
         for label, description, effects in row['choices']:
             assert description and interview().effects(row['id'], label.upper()) == effects
@@ -147,6 +151,19 @@ def test_adapter_questions():
         effects('chat', 'c-lower')
     assert effects('review_bot', 'Greptile') == {'adapters.review_bot': 'greptile'}
     assert effects('review_bot', 'none') == {'adapters.review_bot': 'none'}
+
+
+def test_reviewers_question(tmp_path):
+    effects = interview().effects
+    assert effects('reviewers', 'Owner only') == {'shepherd.min_reviewers': 0}
+    assert effects('reviewers', 'Code authors') == {'shepherd.min_reviewers': 1}
+    assert effects('reviewers', 'pat-dev') == {'shepherd.lead_login': 'pat-dev', 'shepherd.min_reviewers': 1}
+    with pytest.raises(ValueError, match='code-host login'):
+        effects('reviewers', 'not a login!')
+    (tmp_path / '.wuwei').mkdir()
+    assert 'reviewers' in [row['id'] for row in interview().widgets(tmp_path, ['acme/widget'])]
+    config = {'repos': [], 'guards': {}}
+    assert interview().settings({'reviewers': 'Owner only'}, config) == [(('shepherd',), 'min_reviewers', 0)]
 
 
 def test_adapter_answers_promote_and_name_credentials(tmp_path, monkeypatch, capsys):
@@ -329,14 +346,14 @@ def test_interview_needs_a_host_terminal(offline, capsys, monkeypatch):
 
 def test_interview_on_the_terminal(offline, capsys, monkeypatch):
     raw = (offline / '.wuwei/config.toml').read_text()
-    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '2', 'C0123ABCD', '1']
+    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '2', 'C0123ABCD', '1', 'pat-dev']
     terminal(monkeypatch, replies)
     assert main('calibrate', '--interview', '--repo', 'acme/widget') == 0, capsys.readouterr().err
     out = capsys.readouterr().out
     answers = json.loads((offline / DAY / 'interview.json').read_text())
     assert answers['merge'] == {'acme/widget': 'Auto, 30 min soak'} and answers['gates'] == {
         'acme/widget': 'Standard'} and answers['phone'] == 'Summary' and answers['manual'] == 'Package publishing'
-    assert len(answers) == 17 and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
+    assert len(answers) == 18 and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
     for line in interview().describe(answers, config(offline)):
         assert line in out
     assert 'gates: answer one of' in out and 'hours: answer one of' in out and 'bin/wuwei config promote' in out
@@ -408,7 +425,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     raw = (f'[[repos]]\nname = "acme/widget"\npath = {json.dumps(str(FIXTURES / "python"))}\n'
            'default_branch = "main"\n\n' + PLANE + '\n[deploy]\nworkflows = []\ndeny = []\n')
     (root / '.wuwei/config.toml').write_text(raw)
-    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '1', '1'])
+    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '1', '1', '1'])
     assert main('calibrate', '--interview') == 0, capsys.readouterr().err
     lines = interview().describe(json.loads((root / DAY / 'interview.json').read_text()), config(root))
     capsys.readouterr()

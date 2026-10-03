@@ -511,6 +511,50 @@ def test_each_protection_gap_is_a_finding(host, case, capsys, changes, extra, li
     assert f'acme/widget main: {line}' in capsys.readouterr().out
 
 
+URL_LINE = 'acme/widget main: fix in https://github.com/acme/widget/settings/branches'
+
+
+def gh_api(output):
+    import shlex
+    lines = [line for line in output.splitlines() if 'or run in your own terminal: ' in line]
+    assert len(lines) <= 1, lines
+    return shlex.split(lines[0].split('or run in your own terminal: ', 1)[1]) if lines else None
+
+
+@pytest.mark.parametrize('extra,expected,absent', [
+    ('', ['required_pull_request_reviews[required_approving_review_count]=1', 'required_status_checks=null'],
+     'required_status_checks[strict]=false'),
+    ('review_required_checks = ["unit"]\n', ['required_status_checks[contexts][]=unit'],
+     'required_status_checks=null'),
+    ('[shepherd]\nmin_reviewers = 0\n', ['required_pull_request_reviews=null'],
+     'required_pull_request_reviews[required_approving_review_count]=1'),
+])
+def test_unprotected_branch_prints_the_fix(host, case, capsys, extra, expected, absent):
+    config = REPO + extra if extra.startswith('review') else extra + REPO
+    (case / '.wuwei/config.toml').write_text('[adapters]\ncode_host="none"\n' + config)
+    host.results['protection'] = protected(classic=False, approvals=0, required_checks=[],
+                                           allow_force_pushes=None, allow_deletions=None)
+    assert main(['config', 'check']) == 1
+    output = capsys.readouterr().out
+    assert URL_LINE in output
+    argv = gh_api(output)
+    assert argv[:5] == ['gh', 'api', '-X', 'PUT', 'repos/acme/widget/branches/main/protection']
+    for value in ('allow_force_pushes=false', 'allow_deletions=false', *expected):
+        assert value in argv
+    assert absent not in argv
+
+
+def test_protected_branch_prints_only_the_url(host, capsys):
+    host.results['protection'] = protected(approvals=0)
+    assert main(['config', 'check']) == 1
+    output = capsys.readouterr().out
+    assert URL_LINE in output and gh_api(output) is None
+    host.results['protection'] = protected()
+    assert main(['config', 'check']) == 0
+    output = capsys.readouterr().out
+    assert 'settings/branches' not in output and gh_api(output) is None
+
+
 def test_solo_owner_exemption(host, case, capsys):
     (case / '.wuwei/config.toml').write_text(
         '[adapters]\ncode_host="none"\n[shepherd]\nmin_reviewers = 0\n' + REPO)

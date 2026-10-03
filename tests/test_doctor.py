@@ -354,7 +354,8 @@ def test_workspace_repository_rows(ws, repo, name, status, apply):
     assert found['status'] == status, found
     assert found.get('apply') == apply
     if name.endswith('fast_checks'):
-        assert found['fix'].startswith('wuwei config promote')
+        assert found['fix'].startswith('bin/wuwei config promote --measure')
+        assert "bin/wuwei config set repos.0.fast_checks '[\"<command>\"]'" in found['fix']
     if name.endswith('identity'):
         assert 'repos.0.identity.name = "Ada"' in found['fix']
 
@@ -548,7 +549,7 @@ def test_trial_failures_then_clean(ws, monkeypatch, capsys):
     config(ws.root, trial)
     assert main(['doctor']) == 1
     out = capsys.readouterr().out
-    for text in ('wuwei mcp decide proceed-unmeasured docs', 'fix: wuwei config promote', CLASSIC_LINE,
+    for text in ('wuwei mcp decide proceed-unmeasured docs', 'fix: bin/wuwei config promote --measure', CLASSIC_LINE,
                  'acme/widget main: required reviews: missing ('):
         assert text in out, text
 

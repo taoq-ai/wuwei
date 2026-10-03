@@ -55,7 +55,7 @@ PARAMETERS = {
             'push_context': ('repo', 'remote', 'refspecs'), 'hooks_path': ('repo', 'path'),
             'worktree_identity': ('repo', 'name', 'email'),
             'push_commits': ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'),
-            'recent_commits': ('repo',)},
+            'recent_commits': ('repo',), 'default_branch': ('repo',)},
 }
 INTERFACES = {kind: tuple(operations) for kind, operations in PARAMETERS.items()}
 

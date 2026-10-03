@@ -65,7 +65,7 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
             allowed = True
         case ('show', '-s', format_arg, 'HEAD'):
             allowed = format_arg == _HEAD_FORMAT
-        case ('symbolic-ref', '--quiet', '--short', 'HEAD'):
+        case ('symbolic-ref', '--quiet', '--short', 'HEAD' | 'refs/remotes/origin/HEAD'):
             allowed = True
         case ('check-ref-format', ref):
             allowed = isinstance(ref, str) and ref.startswith('refs/heads/')
@@ -603,6 +603,19 @@ def branch(repo, root=None):
     if not name or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]*', name):
         raise ValueError('invalid current branch')
     return {'name': name}
+
+
+@_operation
+def default_branch(repo, root=None):
+    """origin/HEAD when the clone recorded it, else the checked-out branch; the source says which."""
+    name = _run(repo, 'symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD', missing=True).strip()
+    if name:
+        name, source = name.removeprefix('origin/'), 'origin/HEAD'
+    else:
+        name, source = _run(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD').strip(), 'the checked-out branch'
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._/-]*', name):
+        raise ValueError('invalid default branch')
+    return {'branch': name, 'source': source}
 
 
 @_operation
