@@ -197,6 +197,11 @@ def project(tmp_path, monkeypatch):
     return root
 
 
+BOT = '49699333+dependabot[bot]@users.noreply.github.com'
+BOT_PR = {'additions': 1, 'deletions': 1, 'created_at': '2026-09-28T10:00:00Z',
+          'merged_at': '2026-09-28T11:00:00Z', 'author': 'dependabot[bot]', 'author_email': BOT}
+
+
 @pytest.fixture
 def host(monkeypatch):
     from wuwei import registry
@@ -204,10 +209,11 @@ def host(monkeypatch):
 
     real = registry.load
     fake = SimpleNamespace(
-        auth=Result(0, {}), calls=[],
+        auth=Result(0, {}), calls=[], login=Result(0, {'login': 'pat-example'}),
         auth_status=lambda *a, **k: fake.auth,
+        viewer_login=lambda *a, **k: fake.calls.append('viewer_login') or fake.login,
         default_branch=lambda repo, **k: fake.calls.append(repo) or Result(0, {'branch': 'main'}),
-        merged_prs=lambda *a, **k: Result(0, []),
+        merged_prs=lambda *a, **k: Result(0, [BOT_PR]),
         token_scopes=lambda *a, **k: Result(0, {'scopes': ['read:org']}),
         protection=lambda *a, **k: Result(0, {'required_checks': [{'name': 'test'}], 'approvals': 1,
                                               'allow_force_pushes': False, 'allow_deletions': False,
@@ -293,6 +299,61 @@ def test_discovery_proposes_one_table_for_two_clones(project, host, terminal):
     found = discovered(project)
     assert [r['name'] for r in found['repos']] == NAMES
     assert 'alpha-copy: acme/alpha already listed, not added' in found['lines']
+
+
+def test_discovery_reads_the_login(project, host, terminal):
+    from wuwei.registry import Result
+
+    found = discovered(project)
+    assert 'code host login: pat-example' in found['lines'] and found['login'] == 'pat-example'
+    host.auth, host.calls[:] = Result(1, None, 'gh auth: missing'), []
+    (project / '.wuwei/config.toml').write_text(TEMPLATE)
+    found = setup().discover(project, [project], load_config(project))
+    assert 'code host login: unmeasured' in found['lines'] and found['login'] is None
+    assert 'viewer_login' not in host.calls
+
+
+def settings_of(raw, login='pat-example', bots=None):
+    config = load_config(ROOT, raw=raw)
+    return {('.'.join(path), key): value for path, key, value in setup().identity(
+        config, login, [{'bots': bots}, {'bots': None}])}
+
+
+def test_identity_settings():
+    repos = ('\n[[repos]]\nname = "acme/widget"\npath = "widget"\ndefault_branch = "main"\n'
+             'identity = {name = "Pat", email = "Pat@Example.test"}\n')
+    assert settings_of(TEMPLATE + repos, bots={BOT: 'dependabot[bot]'}) == {
+        ('owner', 'handles'): ['pat-example'], ('shepherd', 'lead_login'): 'pat-example',
+        ('shepherd.authors', 'pat@example.test'): {'login': 'pat-example'},
+        ('shepherd.authors', BOT): {'login': 'dependabot[bot]'}}
+    chat = TEMPLATE.replace('handles = []', 'handles = ["U0123ABC"]')
+    assert settings_of(chat)[('owner', 'handles')] == ['U0123ABC', 'pat-example']
+    for handles in ('["someone"]', '["a", "b"]'):
+        assert ('owner', 'handles') not in settings_of(TEMPLATE.replace('handles = []', f'handles = {handles}'))
+    lead = TEMPLATE.replace('lead_login = ""', 'lead_login = "lead"')
+    assert ('shepherd', 'lead_login') not in settings_of(lead)
+    mapped = TEMPLATE.replace('[shepherd.authors]\n', '[shepherd.authors]\n"PAT@example.test" = {login = "p"}\n')
+    assert settings_of(mapped + repos) == {
+        ('owner', 'handles'): ['pat-example'], ('shepherd', 'lead_login'): 'pat-example'}
+    assert settings_of(TEMPLATE + repos, None, {BOT: 'dependabot[bot]'}) == {
+        ('shepherd.authors', BOT): {'login': 'dependabot[bot]'}}
+
+
+def test_setup_fills_identity_end_to_end(project, host, terminal, capsys):
+    confirm = Confirm()
+    assert run_setup(confirm) == 0, capsys.readouterr().err
+    out = capsys.readouterr().out
+    for line in ('+handles = ["pat-example"]', '+lead_login = "pat-example"',
+                 '+"pat@example.test" = {login = "pat-example"}', f'+"{BOT}" = {{login = "dependabot[bot]"}}'):
+        assert out.count(line) == 1, line
+    loaded = load_config(project)
+    assert loaded['owner']['handles'] == ['pat-example']
+    assert loaded['shepherd']['lead_login'] == 'pat-example'
+    assert loaded['shepherd']['authors'] == {
+        'pat@example.test': {'login': 'pat-example', 'mention': ''},
+        BOT: {'login': 'dependabot[bot]', 'mention': ''}}
+    assert run_setup(confirm) == 0
+    assert 'pat-example' not in capsys.readouterr().out.split('code host login: pat-example', 1)[1]
 
 
 def run_setup(confirm, shadow=True, posture=None, repos=None):

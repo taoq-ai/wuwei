@@ -191,11 +191,16 @@ Dead-man ping: set `watch.ping_url` to the https check URL of a hosted cron moni
 ## Doctor
 
 `bin/wuwei doctor` runs the checks WUWEI already has in one pass and prints a row per check
-in six sections: Install (plugin, integrity, `.in_use` markers, hooks, launcher, Python),
+in seven sections: Install (plugin, integrity, `.in_use` markers, hooks, launcher, Python),
 Host (`gh`, git identity, ZIRAN, Claude Code, Codex, free memory, service manager),
 Workspace (config, template drift, each repository's path, branch, identity and
 `fast_checks`, calibration, interview, profiles, posture and its observe days), Gates and adapters
-(`config check`, the MCP gate and each server in today's registry record), Day and sessions
+(`config check`, the MCP gate and each server in today's registry record), PR flow (the
+settings the shepherd reads: `owner.handles`, `shepherd.lead_login`, `shepherd.authors`,
+`shepherd.review_channel` when chat is set, and the tracker, chat and review-bot adapters; an
+empty one warns with `will block: <what> at <phase>` and the `config set` line, a `none`
+adapter is ok with what discovery and the shepherd skip, and with `shepherd.min_reviewers = 0`
+the reviewer rows are not applicable), Day and sessions
 (state, planner, watch, listener, heartbeat, open pages, nudges, pre-#352 trace decisions) and Guards (the heartbeat
 hook probes, plus `hook PreToolUse` from a directory outside any workspace, which must
 allow). It works before there is a workspace: the Workspace section then names where to run
@@ -218,7 +223,8 @@ apply (the listener with `adapters.inbound = "none"`) is ok with the reason. Exi
 row is warn or fail, else 2 when any is unmeasured, else 0. Without `--fix` it writes nothing
 and makes no network call beyond the `gh` reads `config check` makes. `--json` prints
 `{"exit", "rows"}` with one object per row (`section`, `name`, `status`, `value`, and `fix`,
-`apply`, `docs`, `detail` when set).
+`apply`, `docs`, `detail` when set). `--section pr-flow` prints only the PR flow rows,
+computed from `config.toml` alone; the planner runs it once at the start of the day.
 
 `bin/wuwei doctor --fix` applies only this allow list:
 

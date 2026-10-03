@@ -58,8 +58,14 @@ then calibrates and interviews:
   signals, each with the file and line it came from
   ([calibration](configuration.html#calibration));
 - the owner interview is what `bin/wuwei calibrate --interview` asks: how much merge autonomy
-  you want, your gate floor, quiet and working hours, how decisions reach you, words to avoid
-  and which commands you run by hand ([owner interview](configuration.html#owner-interview)).
+  you want, your gate floor, quiet and working hours, how decisions reach you, words to avoid,
+  which commands you run by hand, and which tracker, chat and review bot you use
+  ([owner interview](configuration.html#owner-interview)); `config check` then names each
+  credential variable those adapters need until you set it in `.wuwei/env`;
+- your identity: with `gh` signed in, `owner.handles` gains your code-host login,
+  `shepherd.lead_login` defaults to it, and `shepherd.authors` maps your repositories' git
+  emails to it and each bot author seen on the last 50 merged pull requests to its `[bot]`
+  login. Values you already set are kept.
 
 It shows the `[[repos]]` tables, the calibration and the answers as one `config.toml` diff,
 applies it after you type its digest (the `bin/wuwei config promote` path), runs

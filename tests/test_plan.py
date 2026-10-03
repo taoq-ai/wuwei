@@ -294,3 +294,13 @@ def test_template_proposes_goal_on_empty_goals(empty):
     result = subprocess.run([*command, 'propose', '-'], env=env, input=result.stdout,
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_propose_sweep_has_pr_flow(root):
+    shepherd = '[shepherd]\nlead_login = "ada"\n\n[shepherd.authors]\n"ada@example.com" = {login = "ada"}\n'
+    (root / '.wuwei/config.toml').write_text(shepherd)
+    text = plan.propose(proposal(), root).read_text()
+    assert '- pr-flow: measured: 1 warn (owner.handles); wuwei doctor --section pr-flow\n' in text
+    (root / '.wuwei/config.toml').write_text('[owner]\nhandles = ["ada"]\n\n' + shepherd)
+    (root / '.wuwei/days/2026-09-28/plan.md').unlink()
+    assert '- pr-flow: measured: ok\n' in plan.propose(proposal(), root).read_text()
