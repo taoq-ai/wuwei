@@ -694,6 +694,15 @@ def test_wuwei_cli_arguments_are_data(workspace, command):
     assert check_bash(payload(workspace, 'Bash', command=command)) == (0, '')
 
 
+@pytest.mark.parametrize('tool', ['Write', 'Edit'])
+def test_config_cache_is_producer_only(workspace, tool):
+    # #346: the parsed copy of config.toml decides like the file itself, so seats never write it.
+    from wuwei.guards.protect_state import check_bash, check_file
+    target = '.wuwei/generated/config.cache.json'
+    assert check_file(payload(workspace, tool, file_path=target))[0] == 1
+    assert check_bash(payload(workspace, 'Bash', command=f'echo {{}} > {target}'))[0] != 0
+
+
 @pytest.mark.parametrize('command', [
     'bin/wuwei state get > .wuwei/config.toml',
     'cp /dev/null .wuwei/generated/agents/a.md',

@@ -262,3 +262,29 @@ events are mostly silent producer lines.
   probes, the force-push refusal before the Git read, `os.listdir` in `discover()`.
 - The compiled hook dispatcher of design section 2 stays out of scope; this issue exhausts
   the Python fixes first.
+- Round four (owner's go-ahead for a parsed-config cache): `.wuwei/generated/config.cache.json`
+  holds the validated config and its warnings, keyed on the exact `config.toml` text, the
+  plugin version and `workspace.CONFIG_CACHE_VERSION`. The owner's brief named the file's
+  `st_mtime_ns`, `st_size` and `st_ino` as the key; the text is used instead because Linux
+  file times come from a coarse clock, so a same-size rewrite inside one tick keeps all
+  three and a stat key would serve the old config, and because `load_config` reads the text
+  anyway (one small read, no extra I/O against main). Writers: only hook and `status --line`
+  processes (`__main__` sets `workspace.CONFIG_CACHE_WRITES`), and only after a miss, so a
+  hot path writes at most once per config edit or plugin update and a hit writes nothing.
+  Every other command reads a current copy and never writes one: `doctor`, `why` and the
+  board have tests that pin them read-only, and the config writers (`config set`, `setup`,
+  `init`, `promote`) need not refresh it because the next hook does. A candidate text
+  (`raw=`) and a config that fails never touch it. Validation results that depend on the host beyond the
+  key (a repository path whose symlinks change so two entries now resolve to one path, or a
+  `~` path under another `HOME`) are served from the copy until the text changes; the
+  in-process memo already behaved this way.
+- `security.load` reads `security.required` from the validated config when the file loads
+  and falls back to the raw TOML key for a candidate text or a missing or invalid file, as
+  before.
+- SessionStart runs its guards together (`registry.together`); round two tried this on macOS
+  and saw no gain because macOS `fsync` does not flush. With every `fsync` made to cost 3 ms
+  (a Linux disk), the paired wall ratio is 0.79. Results keep guard order.
+- SessionStart reads phone answers (`status.attention`) only on a day with decision routes,
+  since an answer needs a route. The broken-events-file check stays in `watch.health`'s
+  strict decode, one decode shared by watch and listen; a broken file is reported there
+  (`watch health unmeasured`) and no longer a second time as `session continuity unmeasured`.

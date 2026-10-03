@@ -275,6 +275,46 @@ def test_hook_imports_no_unused_stdlib(tmp_path, inside, deny):
     assert deny & set(json.loads(out.read_text())) == set()
 
 
+LAUNCHER_MODULES = ('import atexit, json, runpy, sys; out = sys.argv.pop(3); '
+                    'atexit.register(lambda: open(out, "w").write(json.dumps(sorted(sys.modules)))); '
+                    'sys.path[:0] = sys.argv[1:3]; del sys.argv[1:3]; '
+                    'runpy.run_module("wuwei", run_name="__main__", alter_sys=True)')
+
+
+@pytest.mark.parametrize('shape', ['template', 'empty'])
+@pytest.mark.parametrize('args', [('hook', 'PreToolUse'), ('hook', 'PostToolUse'), ('hook', 'Stop'),
+                                  ('status', '--line')], ids=' '.join)
+def test_warm_config_cache_skips_tomllib(tmp_path, args, shape):
+    # #346: with the parsed copy of config.toml current, no hook or status line parses TOML,
+    # in a templated workspace with security material and in the latency tests' blank one.
+    from fakes.integrity import seed
+    from wuwei import security
+    (tmp_path / '.wuwei').mkdir()
+    if shape == 'template':
+        (tmp_path / '.wuwei/config.toml').write_text((ROOT / 'templates/workspace/config.toml').read_text())
+        security.initialize(tmp_path / '.wuwei')
+    else:
+        (tmp_path / '.wuwei/config.toml').write_text('')
+    seed(tmp_path)
+    env = {**{k: v for k, v in os.environ.items() if not k.startswith(('WUWEI_', 'GIT_'))},
+           'WUWEI_WORKSPACE': str(tmp_path), 'HOME': str(tmp_path / 'home'), 'XDG_CONFIG_HOME': str(tmp_path / 'xdg')}
+    event = args[1] if args[0] == 'hook' else None
+    name = {'PreToolUse': 'bash', 'PostToolUse': 'example'}.get(event)
+    source = (ROOT / f'tests/payloads/{event}/{name}.json') if name else next(
+        (p for p in PAYLOADS if p.parent.name == event), None)
+    payload = json.dumps({**json.loads(source.read_text()), 'cwd': str(tmp_path)}) if source else ''
+    out = tmp_path / 'modules.json'
+    loaded = []
+    for _ in range(2):  # The first run parses and writes the cache; the second reads it.
+        result = subprocess.run([sys.executable, '-I', '-P', '-S', '-c', LAUNCHER_MODULES, str(ROOT / 'cli'),
+                                 str(ROOT), str(out), *args],
+                                input=payload, text=True, capture_output=True, cwd=tmp_path, env=env)
+        assert result.returncode == 0, result.stderr
+        loaded.append(set(json.loads(out.read_text())))
+    assert 'tomllib' in loaded[0] and (tmp_path / '.wuwei/generated/config.cache.json').is_file()
+    assert {'tomllib', 'typing', 'string'} & loaded[1] == set()
+
+
 def test_status_line_skips_parser_and_hashlib(tmp_path):
     # Claude Code runs the status line on every refresh: no argparse (gettext, shutil), no
     # decision ledger without routes and, with no unit file installed, no hashlib.
@@ -443,6 +483,30 @@ GUARDS = [Guard('SessionStart', None, lambda p: (0, '{"decision":"block"}')),
     assert json.loads(result.stdout) == {'hookSpecificOutput': {
         'hookEventName': 'SessionStart',
         'additionalContext': '{"decision":"block"}\nmemory context'}}
+
+
+def test_session_start_guards_run_together_in_guard_order(plugin):
+    # #346: SessionStart's guards wait on git, ssh-keygen and fsync; run together, each one's
+    # waits overlap the others' work. Each guard below returns only once both are running.
+    install(plugin, '''
+import threading
+from wuwei.guards import Guard
+both = threading.Barrier(2, timeout=5)
+def first(payload):
+    both.wait()
+    return 0, 'first'
+def second(payload):
+    both.wait()
+    raise ValueError('second failed')
+def other(payload):
+    return 1, 'not this event'
+GUARDS = [Guard('SessionStart', None, first), Guard('Stop', None, other),
+          Guard('SessionStart', 'NoSuchTool', other), Guard('SessionStart', None, second)]
+''')
+    result = replay(plugin, 'SessionStart', json.dumps(fixture('SessionStart')))
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)['hookSpecificOutput']['additionalContext'] == (
+        'first\nValueError: second failed')
 
 
 @pytest.mark.parametrize('event', EVENTS)

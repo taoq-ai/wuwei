@@ -599,6 +599,23 @@ def test_session_start_shows_a_phone_answer_without_changing_its_code(case):
         code, message + '\nD-1 answered from the phone: option A, confirm with wuwei decide D-1 A')
 
 
+def test_session_start_decodes_a_day_without_routes_once(case, monkeypatch):
+    # #346: phone answers need decision routes, so a day without them skips status.scan;
+    # watch health still decodes the day and still reports a broken events file.
+    from wuwei.commands import status
+    root, _ = case
+    expected = lifecycle.session_start({'cwd': str(root)})
+    monkeypatch.setattr(status, 'scan', lambda *args: pytest.fail('second decode of the day'))
+    assert lifecycle.session_start({'cwd': str(root)}) == expected
+    state.append_event('note', {'detail': 'x'}, root)
+    events = workspace.day_dir(root) / 'events.jsonl'
+    events.chmod(0o644)
+    with events.open('a') as stream:
+        stream.write('{"kind": "torn')
+    code, message = lifecycle.session_start({'cwd': str(root)})
+    assert code == 2 and 'watch health unmeasured: incomplete event line' in message
+
+
 REF = 'example/project#7'
 PR_CONFIG = '[owner]\nname = "Robin Example"\nhandles = ["owner"]\n[[repos]]\nname = "example/project"\npath = "repo"\ndefault_branch = "main"\n'
 TAGS = {'pr': '"p"', 'head': 'a' * 40, 'checks': '"c"', 'statuses': '"s"'}

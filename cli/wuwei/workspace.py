@@ -492,6 +492,17 @@ def copy_data(value):
 # ponytail: per-process memo keyed on the config text; adapter and path checks rerun only
 # when the text changes.
 _CONFIGS = {}
+# #346: the validated config and its warnings as JSON in .wuwei/generated, so a hook skips
+# tomllib (with typing and string) and the checks. A copy serves only the exact text it was
+# made from, under this plugin version and this layout; any other text is parsed and the
+# copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
+# coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
+CONFIG_CACHE = 'config.cache.json'
+CONFIG_CACHE_VERSION = 1  # Bump when the parse, the schema, the defaults or the checks change.
+# Only hook and status --line processes write the copy (__main__ turns this on): they pay the
+# parse on every call. Every other command reads a current copy and writes nothing, so
+# doctor, why and the board stay read-only.
+CONFIG_CACHE_WRITES = False
 
 
 def __getattr__(name):
@@ -502,19 +513,70 @@ def __getattr__(name):
     raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
 
 
+def _cache_key(raw):
+    from wuwei import integrity
+    return {'layout': CONFIG_CACHE_VERSION, 'plugin': integrity.version(), 'text': raw}
+
+
+def _cached(directory, raw):
+    """(config, warnings) from the parsed copy when it was made from raw, else None; a
+    missing, stale, unreadable or symlinked copy is ignored, never an error."""
+    import json
+    try:
+        if os.path.islink(directory):
+            return None
+        descriptor = os.open(directory / CONFIG_CACHE, os.O_RDONLY | os.O_NOFOLLOW)
+        with open(descriptor, encoding='utf-8') as stream:
+            data = json.load(stream)
+        config, unknown = data['config'], data['warnings']
+        if (data['key'] == _cache_key(raw) and isinstance(config, dict) and isinstance(unknown, list)
+                and all(isinstance(text, str) for text in unknown)):
+            return config, tuple(unknown)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
+def _cache(directory, raw, config, unknown):
+    """Rewrite the parsed copy; a workspace that cannot take it parses on every load."""
+    import json
+    try:
+        if not os.path.islink(directory):
+            directory.mkdir(exist_ok=True)
+            atomic_write(directory / CONFIG_CACHE, json.dumps(
+                {'key': _cache_key(raw), 'config': config, 'warnings': list(unknown)}) + '\n')
+    except OSError:
+        pass
+
+
+def _decode_error():
+    import tomllib  # Only while an exception is being matched: a cache hit never loads it.
+    return tomllib.TOMLDecodeError
+
+
 def load_config(root=None, *, raw=None, warnings=None):
     """Read .wuwei/config.toml (or validate raw in its place), reject invalid fields, and
     return fresh defaults. Unknown keys refuse only under strict (#353); otherwise their
-    texts are appended to warnings when it is a list."""
-    from datetime import date
-    import tomllib
+    texts are appended to warnings when it is a list. In a hook or status line process, a
+    parse of the file after its parsed copy missed rewrites the copy (#346); a hit writes
+    nothing."""
     path = (find_workspace() if root is None else Path(root)) / ".wuwei/config.toml"
+    generated = path.parent / 'generated'
+    stale = False
     try:
-        raw = path.read_text(encoding="utf-8") if raw is None else raw
+        if raw is None:
+            raw = path.read_text(encoding="utf-8")
+            if _CONFIGS.get(path, (None,))[0] != raw:
+                found = _cached(generated, raw)
+                if found:
+                    _CONFIGS[path] = (raw, *found)
+                stale = not found
         if _CONFIGS.get(path, (None,))[0] == raw:
             if warnings is not None:
                 warnings.extend(f'config.toml: {text}' for text in _CONFIGS[path][2])
             return copy_data(_CONFIGS[path][1])
+        from datetime import date
+        import tomllib
         parsed = tomllib.loads(raw)
         unknown = []
         try:
@@ -585,10 +647,12 @@ def load_config(root=None, *, raw=None, warnings=None):
             if not integrity.newer_template(config):
                 raise ConfigError(unknown[0])
         _CONFIGS[path] = (raw, config, tuple(unknown))
+        if stale and CONFIG_CACHE_WRITES:
+            _cache(generated, raw, config, unknown)
         if warnings is not None:
             warnings.extend(f'config.toml: {text}' for text in unknown)
         return copy_data(config)
-    except (ConfigError, tomllib.TOMLDecodeError, UnicodeError) as exc:
+    except (ConfigError, UnicodeError, _decode_error()) as exc:
         hint = ''
         if "immutable namespace ('repos',)" in str(exc):  # #326: repos = [] before [[repos]]
             line = _key_line(raw, ('repos',))

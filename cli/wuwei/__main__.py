@@ -18,6 +18,10 @@ import os
 from wuwei import env, redact
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
+if _FAST:
+    from wuwei import workspace
+    workspace.CONFIG_CACHE_WRITES = True  # #346: the parsed config copy, rewritten on a miss
+
 # Top-level help groups, in the order printed; plumbing shows only with --all.
 GROUPS = (
     ('Daily: the session runs these through the day',
