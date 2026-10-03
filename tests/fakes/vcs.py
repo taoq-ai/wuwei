@@ -33,6 +33,9 @@ class Fake(Recorder):
     def identity(self, repo, root=None):
         return self._call('identity', (repo,), root)
 
+    def remote_url(self, repo, root=None):
+        return self._call('remote_url', (repo,), root)
+
     def head(self, repo, root=None):
         return self._call('head', (repo,), root)
 

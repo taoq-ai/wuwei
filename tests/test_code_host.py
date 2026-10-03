@@ -11,7 +11,7 @@ from fakes.replay import install_replay, recordings
 
 
 CASES = [c for c in recordings('code_host') if c['operation'] in
-         ('pr', 'checks', 'reviews', 'threads', 'protection', 'merged_prs')]
+         ('pr', 'checks', 'reviews', 'threads', 'protection', 'merged_prs', 'default_branch')]
 WRITES = [c for c in recordings('code_host') if c not in CASES]
 
 
@@ -440,3 +440,9 @@ def test_threads_carry_the_file_path(monkeypatch):
     install_replay(monkeypatch, 'gh', case['steps'])
     result = adapter().threads('acme/widget#7')
     assert [thread['path'] for thread in result.data['threads']] == [None, 'cli/x.py']
+
+
+@pytest.mark.parametrize('branch', ['-x', '', None])
+def test_default_branch_refuses_an_unusable_name(branch, monkeypatch):
+    install_replay(monkeypatch, 'gh', [{'stdout': json.dumps({'default_branch': branch})}])
+    assert adapter().default_branch('acme/widget').exit == 2

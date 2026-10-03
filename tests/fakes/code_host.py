@@ -54,5 +54,8 @@ class Fake(Recorder):
     def merged_prs(self, repo, root=None):
         return self._call('merged_prs', (repo,), root)
 
+    def default_branch(self, repo, root=None):
+        return self._call('default_branch', (repo,), root)
+
     def probe(self, ref, tags, root=None):
         return self._call('probe', (ref, tags), root)

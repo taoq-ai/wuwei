@@ -54,6 +54,24 @@ def run(args):
         _, diff, edits = calibrate.propose(raw, results)
     except ValueError as exc:
         diff, edits, error = '', [], str(exc)
+    evidence, _ = record(root, results, diff, edits, error)
+    print(f'Wrote {evidence}')
+    print(diff or ('Could not place the proposal: ' + error if error else 'No config.toml changes'))
+    for key, current, detected in edits:
+        print(f'Config differs; edit by hand: {key}')
+    for name, command, note in calibrate.ci_only(results):
+        print(f'CI only, not proposed as a fast check: {name}: {command} ({note})')
+    print(f"Next: review the report, run bin/wuwei config promote{' --measure' if args.measure else ''} "
+          'in a host terminal, then bin/wuwei promote for the charter proposals.')
+    if error or any(r['style'] is None or r['baseline'] is None for r in results):
+        print('wuwei calibrate: ' + (error or 'commit style or PR baseline unmeasured'), file=sys.stderr)
+        return UNRUN
+    flagged = any(f['kind'] in ('instruction_like', 'unsafe') for r in results for f in r['findings'])
+    return FINDINGS if flagged else CLEAN
+
+
+def record(root, results, diff, edits, error):
+    """Write today's charter proposals and calibration.md; (evidence path, proposal paths)."""
     day = workspace.day_dir(root)
     (day / 'proposals').mkdir(parents=True, exist_ok=True)
     evidence = f'.wuwei/days/{day.name}/calibration.md'
@@ -70,19 +88,7 @@ def run(args):
                 'evidence': evidence}, indent=2) + '\n')
             written.append(f'.wuwei/days/{day.name}/proposals/{path.name}')
     workspace.atomic_write(day / 'calibration.md', calibrate.report(results, diff, edits, written, error))
-    print(f'Wrote {evidence}')
-    print(diff or ('Could not place the proposal: ' + error if error else 'No config.toml changes'))
-    for key, current, detected in edits:
-        print(f'Config differs; edit by hand: {key}')
-    for name, command, note in calibrate.ci_only(results):
-        print(f'CI only, not proposed as a fast check: {name}: {command} ({note})')
-    print(f"Next: review the report, run bin/wuwei config promote{' --measure' if args.measure else ''} "
-          'in a host terminal, then bin/wuwei promote for the charter proposals.')
-    if error or any(r['style'] is None or r['baseline'] is None for r in results):
-        print('wuwei calibrate: ' + (error or 'commit style or PR baseline unmeasured'), file=sys.stderr)
-        return UNRUN
-    flagged = any(f['kind'] in ('instruction_like', 'unsafe') for r in results for f in r['findings'])
-    return FINDINGS if flagged else CLEAN
+    return evidence, written
 
 
 def _interview(args):

@@ -16,7 +16,7 @@ LAUNCHER = Path(__file__).resolve().parents[1] / 'bin/wuwei'
 ACTIONS = [('decision', 'outcome'), ('drafts', 'approve'), ('drafts', 'drop'),
            ('mcp', 'decide'), ('integrity', 'reconfirm'), ('state', 'recover'),
            ('watch', 'uninstall'), ('goals', 'edit'), ('voice', 'edit'), ('remote', 'ack'),
-           ('config', 'promote')]
+           ('config', 'promote'), ('config', 'set'), ('config', 'add-repo')]
 # Ids stay free of owner verbs: pytest puts them in tmp_path, which reaches payloads.
 IDS = [f'pair{index}' for index in range(len(ACTIONS))]
 
@@ -300,3 +300,15 @@ def test_cli_hidden_beside_a_visible_mention_is_refused(places):
     command = "echo bin/wuwei; tclsh <<'EOF'\nexec bin/wuwei decision outcome x\nEOF"
     assert bash(places[0], command)[0] == 2
     assert bash(places[1], command) == (0, '')
+
+
+def test_whole_group_owner_command(places, monkeypatch, capsys):
+    root, outside = places
+    for command in ('bin/wuwei setup --shadow', 'bin/wuwei setup --repos src --posture cli-tool',
+                    'bin/wuwei setup'):
+        code, reason = bash(root, command)
+        assert code == 1 and 'owner' in reason, (command, reason)
+        assert bash(outside, command) == (0, ''), command
+    for cwd, inside in zip(places, (True, False)):
+        code, output = hook(cwd, "bin/wuwei config set owner.name '\"Pat\"'", monkeypatch, capsys)
+        assert (code, output.get('permissionDecision')) == ((2, 'deny') if inside else (0, None)), output

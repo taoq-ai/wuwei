@@ -212,7 +212,8 @@ def test_host_terminal_actions_and_morning_references():
     for text in (reference, concepts):
         assert 'Host terminal actions' in text
         for command in ('decision outcome', 'state recover', 'integrity reconfirm', 'mcp decide',
-                        'drafts approve', 'watch uninstall', 'listen uninstall', 'config promote'):
+                        'drafts approve', 'watch uninstall', 'listen uninstall', 'config promote',
+                        'config set', 'config add-repo', 'setup'):
             assert command in text
     for phrase in ('run it in a host terminal', 'no plan yet', 'proposal.json', 'pr raise',
                    '--base', '--title', '--body-file', '--item'):
@@ -498,10 +499,9 @@ def test_readme_first_day_and_shipped_areas():
     index = (SITE / 'index.md').read_text()
     for text, heading in ((readme, '## Quick start'), (index, '## Start here')):
         section = text.split(f'\n{heading}\n', 1)[1].split('\n## ', 1)[0]
-        steps = [section.index(step) for step in ('init .', 'bin/wuwei calibrate',
-                                                  'calibrate --interview', '/wuwei plan')]
+        steps = [section.index(step) for step in ('setup --shadow', '/wuwei plan')]
         assert steps == sorted(steps), heading
-        assert 'config promote' in section, heading
+        assert 'config set' in section, heading
     assert (readme.index('## What WUWEI is and is not') < readme.index('## What ships today')
             < readme.index('## How WUWEI compares'))
     ships = readme.split('\n## What ships today\n', 1)[1].split('\n## ', 1)[0]

@@ -58,9 +58,13 @@ _OWNER_ACTIONS = {
     ('remote', 'ack'): 'Remote acknowledgements require the owner terminal, outside agent tools.',
     # config.toml holds executed commands and merge eligibility; seats run wuwei promote.
     ('config', 'promote'): 'Calibration promotion is an owner action on the host, outside agent tools.',
+    ('config', 'set'): 'Config edits are an owner action on the host, outside agent tools.',
+    ('config', 'add-repo'): 'Config edits are an owner action on the host, outside agent tools.',
+    # An empty verb is the whole group: setup's flags take values, which _pair reads as a verb.
+    ('setup', ''): 'Setup writes config.toml; it is an owner action on the host, outside agent tools.',
 }
 _OWNER_GROUPS = {group for group, _ in _OWNER_ACTIONS}
-_OWNER_VERBS = tuple(sorted({verb for _, verb in _OWNER_ACTIONS}))
+_OWNER_VERBS = tuple(sorted({verb for _, verb in _OWNER_ACTIONS if verb}))
 # Owner words as tokens; `_` or `.` may precede them so python snippets such as
 # goals.owner_edit( stay relevant.
 _OWNER_VERB = re.compile(r'(?<![A-Za-z0-9])(?:' + '|'.join(_OWNER_VERBS) + r')(?![A-Za-z0-9])')
@@ -69,7 +73,7 @@ _INTERPRETER = r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua'
 # Any mention of the CLI word, path segments included, or a dotted owner call such as
 # integrity.reconfirm(); relevance starts here.
 _WUWEI = re.compile(r'\bwuwei\b|-[A-Za-z]*mwuwei\b|\b(?:'
-                    + '|'.join(rf'{g}\.{v}' for g, v in _OWNER_ACTIONS) + r')\b')
+                    + '|'.join(rf'{g}\.{v}' for g, v in _OWNER_ACTIONS if v) + r')\b')
 # The CLI itself: a path segment such as cli/wuwei/x or .wuwei is a read, not the CLI.
 _CLI_WORD = re.compile(r'(?<![\w.-])wuwei(?![\w/.-])|-[A-Za-z]*mwuwei\b|\b(?:from|import)\s+wuwei\b')
 # The CLI with a non-literal group or verb: relevant with no verb in the text.
@@ -83,6 +87,11 @@ _READERS = ('grep', 'rg', 'echo', 'printf', 'head', 'tail', 'wc', 'cut', 'tr')
 
 def _pair(words):
     return tuple(([word for word in words if not word.startswith('-')] + ['', ''])[:2])
+
+
+def _owner_reason(pair):
+    """The owner-table reason for a (group, verb) pair, a whole-group row included."""
+    return _OWNER_ACTIONS.get(pair) or _OWNER_ACTIONS.get((pair[0], ''))
 
 
 def _owner_relevant(text, script=False):
@@ -118,7 +127,7 @@ def _owner_action(commands, text, relevant, cwd, script=False):
             unseen -= named
         action = _wuwei_action(argv)
         # A renamed or symlinked launcher is the CLI too; checked only for a literal owner pair.
-        if (action is None and argv and '/' in argv[0] and _pair(argv[1:]) in _OWNER_ACTIONS
+        if (action is None and argv and '/' in argv[0] and _owner_reason(_pair(argv[1:]))
                 and _launcher(Path(cwd, argv[0]), cwd)):
             action = argv[1:]
         if action is None:
@@ -146,8 +155,8 @@ def _owner_action(commands, text, relevant, cwd, script=False):
             return 2, 'Input-driven owner action; use the host terminal.'
         if re.search(r'[$`]', group) or group in _OWNER_GROUPS and re.search(r'[$`]', verb):
             return 2, 'Not a literal owner action; use the host terminal.'
-        if (group, verb) in _OWNER_ACTIONS:
-            return 1, _OWNER_ACTIONS[group, verb]
+        if reason := _owner_reason((group, verb)):
+            return 1, reason
     if relevant and unseen > 0:
         # A CLI mention sits in a heredoc, comment or other input no argv shows.
         return 2, 'Opaque owner action; use the host terminal.'
