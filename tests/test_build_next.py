@@ -396,3 +396,35 @@ def test_build_done_hands_item_to_next_phase(seat, start, end):
     assert build.next_action('A', root=root)['action'] == 'done'
     assert phase(root) == end
     assert 'fix_rounds' not in state.read_state(root)['builds']['A']
+
+
+def test_build_next_needs_a_ticket_and_claims_it(seat, monkeypatch, capsys):
+    from fakes.tracker import Fake
+    root, _, _, _, _ = seat
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('[adapters]\n', '[adapters]\ntracker="linear"\n'))
+    fake = Fake({'claim': registry.Result(0, {})})
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake if kind == 'tracker'
+                        else load(kind, config))
+    assert main(['build', 'next', 'A']) == 1
+    assert 'bin/wuwei tracker create A' in capsys.readouterr().err
+    assert 'builds' not in state.read_state(root)
+    state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-7', 'source': 'set'}}),
+                       root, reserved=False)
+    assert build.next_action('A', root=root)['action'] == 'launch'
+    assert [call[:2] for call in fake.calls] == [('claim', ('ENG-7',))]
+
+
+def test_checked_event_counts_passed_and_failed(seat):
+    root, _, _, day, _ = seat
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat) == (0, '')
+    record = state.read_state(root)['builds']['A']
+    state._write_state(lambda data: data['builds']['A'].update(commands=['one', 'two']),
+                       root, reserved=False)
+    build.complete_checks('A', [registry.Result(0), registry.Result(1, {'error': 'broken'})],
+                          root=root)
+    checked, = [e['payload'] for e in events(day) if e['kind'] == 'build.checked']
+    assert (checked['item'], checked['passed'], checked['failed']) == ('A', 1, 1)
+    assert record['status'] == 'check'

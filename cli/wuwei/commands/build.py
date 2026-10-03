@@ -91,13 +91,13 @@ def _repo(root, tree, config):
     return repo
 
 
-def _save(item, record, root, kind, expected):
+def _save(item, record, root, kind, expected, extra=None):
     def update(data):
         builds = data.setdefault('builds', {})
         if builds.get(item) != expected:
             raise ValueError(f'build changed before recording action; {RACE}')
         builds[item] = record
-    state._write_state(update, root, reserved=False, kind=kind, payload={'item': item})
+    state._write_state(update, root, reserved=False, kind=kind, payload={'item': item, **(extra or {})})
 
 
 def next_action(item, brief=None, worktree=None, *, root=None):
@@ -130,6 +130,10 @@ def next_action(item, brief=None, worktree=None, *, root=None):
             raise ValueError(f'cannot replace an unfinished build with a new brief; run bin/wuwei build next {item} to finish it first')
         if data['items'][item]['phase'] in ('parked', 'escalated'):
             raise ValueError(f'{item} is parked; resume the parked item before starting a new build (answer its decision, then run bin/wuwei build next {item})')
+    from wuwei import tracker
+    status, reason = tracker.check(data, config, item, data['items'][item])
+    if status == 'missing':
+        raise PortExit(1, reason)
     repo = _repo(root, tree, config)
     action = seat_action('builder', path, tree, root)
     previous = record
@@ -368,7 +372,8 @@ def complete_checks(item, results, *, root, expected=None):
                   'agent_type': 'wuwei:builder',
                   'prompt': launch_prompt(root / record['brief'], agent_path(root, 'builder'), root=root) + '\n\n' + feedback}
         record.update(status='ready', action=action)
-    _save(item, record, root, 'build.checked', expected)
+    _save(item, record, root, 'build.checked', expected,
+          {'passed': len(results) - len(failures), 'failed': len(failures)})
     after = {'implement': 'gate', 'fix': 'delta'}.get(state.read_state(root)['items'][item]['phase'])
     if not failures and after:
         state.transition(item, after, root)

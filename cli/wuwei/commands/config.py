@@ -115,6 +115,8 @@ def requirements(config):
     """Credential variables per selected adapter; each tuple needs one of its names."""
     needed = {
         ('tracker', 'linear'): [('LINEAR_API_KEY',)],
+        ('tracker', 'jira'): [('JIRA_SITE',), ('JIRA_EMAIL',), ('JIRA_API_TOKEN',)],
+        ('tracker', 'github'): [('GITHUB_TRACKER_TOKEN',)],
         ('chat', 'slack'): [('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN'), ('SLACK_OWNER_DM_CHANNEL',)],
         ('inbound', 'slack'): [('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN'), ('SLACK_OWNER_DM_CHANNEL',)],
         ('review_bot', 'greptile'): [('GREPTILE_API_KEY',)],

@@ -260,6 +260,22 @@ def test_board_work_table_has_a_docs_column(day, tmp_path):
     data['items']['a']['gates'] = {'tier': 'standard'}
     (day / 'state.json').write_text(json.dumps(data))
     lines = board_call()['content'][0]['text'].splitlines()
-    assert '| Item | Phase | Status | Gates | PR | Docs |' in lines
+    assert '| Item | Phase | Status | Ticket | Gates | PR | Docs |' in lines
     assert next(line for line in lines if line.startswith('| a |')).endswith('| missing |')
     assert next(line for line in lines if line.startswith('| b |')).endswith('| n/a |')
+
+
+def test_board_shows_tickets(day):
+    data = json.loads((day / 'state.json').read_text())
+    data['tickets'] = {'a': {'id': 'ENG-1', 'source': 'create'}}
+    data['tracker_log'] = {'progress:a:1': {'outcome': 'folded', 'ticket': 'ENG-1'}}
+    (day / 'state.json').write_text(json.dumps(data))
+    with (day / 'events.jsonl').open('a') as stream:
+        stream.write(json.dumps({'kind': 'tracker.created', 'ts': NOW, 'payload': {
+            'class': 'bugs', 'subject': 'a', 'ticket': 'ENG-2', 'parent': 'ENG-1'}}) + '\n')
+    text = board_call()['content'][0]['text']
+    assert '| Item | Phase | Status | Ticket | Gates | PR |' in text
+    row, = [line for line in text.splitlines() if line.startswith('| a |')]
+    assert '| ENG-1, 1 folded |' in row
+    created = text.split('## Tickets created', 1)[1].splitlines()
+    assert '| bugs | a | ENG-2 | ENG-1 |' in created

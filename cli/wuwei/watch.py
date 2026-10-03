@@ -300,6 +300,15 @@ def sweep(root=None, *, watch_health=None):
         counts['owed'] += 1
         counts['exit'] = 2
         print(f'watch steward unmeasured: {exc}', flush=True)
+    from wuwei import tracker
+    try:
+        if tracker.log(root) == 2:
+            raise ValueError('a tracker comment could not be written; run bin/wuwei tracker log to see why')
+    except ERRORS as exc:
+        counts['unreadable'] += 1
+        counts['owed'] += 1
+        counts['exit'] = 2
+        print(f'watch tracker log unmeasured: {exc}', flush=True)
     from wuwei import telemetry
     try:
         counts['telemetry'] = telemetry.step(root, config)

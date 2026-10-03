@@ -32,10 +32,10 @@ def register(subparsers):
         command = actions.add_parser(verb, help=text)
         command.add_argument('item')
         command.add_argument('--reason', help='Why; written into the record on one line')
-    assign = actions.add_parser('set', help="Record an item's value: spec=required|skipped or "
-                                            'docs=<page>|new|none')
+    assign = actions.add_parser('set', help="Record an item's value: spec=required|skipped, "
+                                            'docs=<page>|new|none or ticket=<id>')
     assign.add_argument('item')
-    assign.add_argument('assignment', help='spec=required|skipped or docs=<page>|new|none')
+    assign.add_argument('assignment', help='spec=required|skipped, docs=<page>|new|none or ticket=<id>')
     assign.add_argument('--reason', help='Why; required for spec=skipped and docs=none')
     parser.set_defaults(func=run)
 
@@ -73,10 +73,13 @@ def run(args):
             elif key == 'docs' and value:
                 from wuwei import docs
                 print(docs.assign(args.item, value, args.reason))
+            elif key == 'ticket':
+                plan.set_ticket(args.item, value)
+                print(f'{args.item}: ticket {value}')
             else:
-                raise ValueError(f'plan set: {args.assignment} is not a spec or docs value; run bin/wuwei plan '
-                                 f'set {args.item} spec=required|skipped or docs=<page>|new|none, '
-                                 'with --reason "<why>" for spec=skipped or docs=none')
+                raise ValueError(f'plan set: {args.assignment} is not a spec, docs or ticket value; run '
+                                 f'bin/wuwei plan set {args.item} spec=required|skipped, docs=<page>|new|none '
+                                 'or ticket=<id>, with --reason "<why>" for spec=skipped or docs=none')
         elif args.action in ('carry', 'park'):
             outcome = {'carry': 'carried', 'park': 'parked'}[args.action]
             print(f'{plan.dispose(args.item, outcome, args.reason)}: {outcome} {args.item}')

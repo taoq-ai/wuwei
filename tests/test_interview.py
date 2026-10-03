@@ -80,8 +80,8 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
     table = interview().QUESTIONS
     assert [row['id'] for row in table] == ['merge', 'gates', 'quiet', 'interrupt', 'decisions', 'phone',
                                             'hours', 'avoid', 'formality', 'signature', 'risk', 'manual',
-                                            'verbosity', 'posture', 'spec', 'telemetry', 'docs', 'tracker', 'chat',
-                                            'review_bot', 'reviewers']
+                                            'verbosity', 'posture', 'spec', 'telemetry', 'docs', 'tracker',
+                                            'tickets', 'updates', 'chat', 'review_bot', 'reviewers']
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / 'widget').mkdir()
     config = {'repos': [{'name': 'acme/widget'}]}
@@ -169,12 +169,14 @@ def test_adapter_questions():
 def test_communication_tools():
     module = interview()
     assert module.BACKLOG == 'https://github.com/taoq-ai/wuwei/issues/370'
-    for qid, answer, key in (('chat', 'Microsoft Teams', 'adapters.chat'), ('chat', 'discord', 'adapters.chat'),
-                             ('tracker', 'GitHub Issues', 'adapters.tracker'), ('tracker', 'JIRA', 'adapters.tracker')):
+    for qid, answer, key in (('chat', 'Microsoft Teams', 'adapters.chat'), ('chat', 'discord', 'adapters.chat')):
         assert module.effects(qid, answer) == {key: 'none'}
         [description] = [description for label, description, _ in module.question(qid)['choices']
                          if label.casefold() == answer.casefold()]
         assert 'not supported yet' in description.casefold() and module.BACKLOG in description
+    # #417: Jira and GitHub trackers are supported, so they map to their adapters.
+    assert module.effects('tracker', 'JIRA') == {'adapters.tracker': 'jira'}
+    assert module.effects('tracker', 'GitHub') == {'adapters.tracker': 'github'}
     assert module.effects('chat', 'Email') == {'adapters.chat': 'none'}
     assert module.BACKLOG in module.question('chat')['free'][1]
     assert module.effects('chat', 'C0123ABCD') == {'adapters.chat': 'slack', 'shepherd.review_channel': 'C0123ABCD'}
@@ -398,14 +400,14 @@ def test_interview_needs_a_host_terminal(offline, capsys, monkeypatch):
 def test_interview_on_the_terminal(offline, capsys, monkeypatch):
     raw = (offline / '.wuwei/config.toml').read_text()
     replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '1', '3', '4',
-               '2', 'C0123ABCD', '1', 'pat-dev']
+               '1', '1', '1', 'C0123ABCD', '1', 'pat-dev']
     terminal(monkeypatch, replies)
     assert main('calibrate', '--interview', '--repo', 'acme/widget') == 0, capsys.readouterr().err
     out = capsys.readouterr().out
     answers = json.loads((offline / DAY / 'interview.json').read_text())
     assert answers['merge'] == {'acme/widget': 'Auto, 30 min soak'} and answers['gates'] == {
         'acme/widget': 'Standard'} and answers['phone'] == 'Summary' and answers['manual'] == 'Package publishing'
-    assert len(answers) == 21 and answers['telemetry'] == 'Off' and answers['docs'] == 'None' and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
+    assert len(answers) == 23 and answers['telemetry'] == 'Off' and answers['docs'] == 'None' and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
     for line in interview().describe(answers, config(offline)):
         assert line in out
     assert 'gates: answer one of' in out and 'hours: answer one of' in out and 'bin/wuwei config promote' in out
@@ -522,8 +524,8 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     raw = (f'[[repos]]\nname = "acme/widget"\npath = {json.dumps(str(FIXTURES / "python"))}\n'
            'default_branch = "main"\n\n' + PLANE + '\n[deploy]\nworkflows = []\ndeny = []\n')
     (root / '.wuwei/config.toml').write_text(raw)
-    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '3', '4', '1',
-                           '4', '1', '1'])
+    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '3', '4', '4',
+                           '1', '1', '4', '1', '1'])
     assert main('calibrate', '--interview') == 0, capsys.readouterr().err
     lines = interview().describe(json.loads((root / DAY / 'interview.json').read_text()), config(root))
     capsys.readouterr()
@@ -690,3 +692,18 @@ def test_spec_question_and_detected_choice_first(capsys, monkeypatch):
     monkeypatch.setattr('builtins.input', lambda prompt='': '1')
     assert interview().ask(['spec'], [], first={'spec': 'OpenSpec'}) == {'spec': 'OpenSpec'}
     assert '  1. OpenSpec: ' in capsys.readouterr().out
+
+
+def test_tracker_questions():
+    effects = interview().effects
+    assert [label for label, _, _ in interview().question('tracker')['choices']] == [
+        'Linear', 'Jira', 'GitHub', 'None']
+    assert effects('tracker', 'jira PROJ') == {'adapters.tracker': 'jira', 'tracker.project': 'PROJ'}
+    assert effects('tracker', 'github acme/app') == {'adapters.tracker': 'github',
+                                                     'tracker.project': 'acme/app'}
+    with pytest.raises(ValueError, match='tracker'):
+        effects('tracker', 'trello BOARD')
+    assert effects('tickets', 'All but light items') == {'tracker.skip_tiers': ['light']}
+    assert effects('tickets', 'Optional') == {'tracker.required': False}
+    assert effects('updates', 'Nothing') == {'tracker.auto': []}
+    assert effects('updates', 'Progress and close') == {'tracker.auto': ['progress', 'pr', 'close']}

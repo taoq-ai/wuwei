@@ -1,0 +1,70 @@
+[
+ {
+  "issues": [
+   {
+    "key": "PROJ-1",
+    "fields": {
+     "summary": "Export",
+     "updated": "2026-09-28T10:00:00.000+0000",
+     "status": {
+      "name": "To Do"
+     }
+    }
+   }
+  ],
+  "isLast": true
+ },
+ {
+  "accountId": "account-1"
+ },
+ null,
+ {
+  "transitions": [
+   {
+    "id": "31",
+    "to": {
+     "name": "In Review"
+    }
+   },
+   {
+    "id": "41",
+    "to": {
+     "name": "Done"
+    }
+   }
+  ]
+ },
+ null,
+ {
+  "id": "10002",
+  "key": "PROJ-2",
+  "self": "https://acme.atlassian.net/rest/api/3/issue/10002"
+ },
+ null,
+ {
+  "id": "20001"
+ },
+ {
+  "values": [
+   {
+    "created": "2026-09-28T11:00:00.000+0000",
+    "items": [
+     {
+      "field": "assignee",
+      "toString": "Robin"
+     },
+     {
+      "field": "status",
+      "toString": "In Progress"
+     }
+    ]
+   }
+  ],
+  "isLast": true
+ },
+ {
+  "fields": {
+   "created": "2026-09-27T10:00:00.000+0000"
+  }
+ }
+]

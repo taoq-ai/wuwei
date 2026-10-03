@@ -176,6 +176,7 @@ def test_reusable_classification(configured, text, code, decision):
     ('mcp__slack__chat_postMessage', {'text': 'per Pat, the fix is in'}, 1),
     ('mcp__slack__slack_reply_to_thread', {'text': 'drafts are with the owner'}, 1),
     ('mcp__linear__create_comment', {'body': 'fixed in abc1234', 'issue_id': 'issue-1'}, 1),
+    ('mcp__linear__create_comment', {'body': 'Phase: gate.', 'issueId': 'ENG-1', 'category': 'progress'}, 1),
     ('mcp__linear__update_issue', {'description': 'drafts are with the owner'}, 1),
     ('mcp__linear__create_issue', {'draft': {'title': 'fixed in abc1234', 'description': 'They wrote it'}}, 1),
     ('mcp__slack__post_message', {'message': 'drafts are with the owner'}, 1),
@@ -736,3 +737,52 @@ def test_docs_tool_patterns(configured):
     assert channel('mcp__atlassian__updateConfluencePage') == 'docs'
     assert channel('mcp__atlassian__createJiraIssue') is None
     assert channel('mcp__notion__notion-search') is None
+
+
+@pytest.mark.parametrize('category,auto,expected', [
+    ('progress', None, 'send'), ('pr', None, 'send'), ('close', None, 'send'),
+    ('decisions', None, 'draft'), ('verdicts', None, 'draft'), ('items', None, 'draft'),
+    ('bugs', None, 'draft'), ('bugs', '["bugs"]', 'send'), (None, None, 'draft'),
+])
+def test_tracker_auto_policy(configured, category, auto, expected):
+    from wuwei import outward
+    root, _ = configured
+    if auto:
+        with (root / '.wuwei/config.toml').open('a') as stream:
+            stream.write(f'\n[tracker]\nauto = {auto}\n')
+    config = workspace.load_config(root)
+    text = '[2026-09-28 item-1] Phase: gate.'
+    context = {'item': 'ENG-1', 'text': text, 'category': category}
+    code, decision = outward.classify(text, root, config, context, kind='tracker', port=True)
+    assert decision == expected and code == (0 if expected == 'send' else 1)
+    nested = {'draft': {'title': text, 'item': 'item-1', 'category': category, 'parent': 'ENG-1'}}
+    assert outward._text(nested) == ([text], [])
+    assert outward.classify(text, root, config, nested, kind='tracker', port=True)[1] == expected
+
+
+@pytest.mark.parametrize('text', ['[2026-09-28 item-1] Phase: gate, thanks @pat.',
+                                  '[2026-09-28 item-1] Phase: gate; salary review.',
+                                  '[2026-09-28 item-1] We will fix it by tomorrow.'])
+def test_tracker_auto_still_drafts_people_and_sensitive_text(configured, text):
+    from wuwei import outward
+    root, config = configured
+    assert outward.classify(text, root, config, {'item': 'ENG-1', 'text': text,
+                                                 'category': 'progress'},
+                            kind='tracker', port=True) == (1, 'draft')
+
+
+@pytest.mark.parametrize('project,board,expected', [
+    ('outside/repo', '', 'draft'), ('acme/app', '', 'send'), ('', '', 'send'),
+    ('acme/app', 'outside/3', 'draft'),
+])
+def test_tracker_github_outside_code_host_orgs_drafts(configured, project, board, expected):
+    from wuwei import outward
+    root, config = configured
+    config['adapters']['tracker'] = 'github'
+    config['tracker'].update(project=project, board=board)
+    config['outbound']['code_host_orgs'] = ['Acme']
+    config['repos'][0]['name'] = 'acme/app'
+    text = '[2026-09-28 item-1] Phase: gate.'
+    assert outward.classify(text, root, config, {'item': 'acme/app#1', 'text': text,
+                                                 'category': 'progress'},
+                            kind='tracker', port=True)[1] == expected

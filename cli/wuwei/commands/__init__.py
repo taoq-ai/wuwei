@@ -15,7 +15,8 @@ WRITES = frozenset({
     'drafts approve', 'drafts drop', 'event', 'fast-checks', 'git-hook', 'goals edit', 'hook',
     'index', 'init', 'integrity reconfirm', 'listen install', 'listen uninstall', 'mcp decide',
     'memory export', 'memory forget', 'memory lint', 'merge', 'metrics', 'next', 'note add', 'nudges', 'outbound tier', 'payload',
-    'plan add', 'plan approve', 'plan carry', 'plan park', 'plan propose', 'plan session', 'plan template', 'pr act',
+    'plan add', 'plan approve', 'plan carry', 'plan park', 'plan propose', 'plan session', 'plan set',
+    'plan template', 'pr act',
     'pr claim', 'pr disposition', 'pr ping', 'pr ping-check', 'pr raise', 'pr reviewers', 'pr state', 'promote',
     'memory lint', 'merge', 'metrics', 'next', 'note add', 'nudges', 'outbound tier', 'payload',
     'plan add', 'plan approve', 'plan carry', 'plan park', 'plan propose', 'plan session', 'plan set', 'plan template',
@@ -25,7 +26,8 @@ WRITES = frozenset({
     'runtime result', 'runtime status', 'setup', 'signal classify', 'state get',
     'state recover', 'state set', 'state transition', 'steward ack', 'steward run',
     'sweep obligations', 'sweep watch', 'telemetry off', 'telemetry preview', 'telemetry proposals',
-    'telemetry send', 'verdict lint', 'voice edit', 'voice learn',
+    'telemetry send', 'tracker create', 'tracker done', 'tracker log', 'verdict lint', 'voice edit',
+    'voice learn',
     'watch install', 'watch uninstall', 'worktree add'})
 
 

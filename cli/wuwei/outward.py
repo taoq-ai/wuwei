@@ -144,7 +144,8 @@ APPROVAL_REQUIRED = 'outward: deliver as a draft for the owner to send'
 METADATA_FIELDS = {'ref', 'channel', 'thread', 'thread_ts', 'item', 'issue', 'issue_id', 'id',
                    'team', 'team_id', 'project', 'project_id', 'state', 'assignee', 'labels',
                    'channel_id', 'issueId', 'teamId', 'stateId', 'assigneeId', 'projectId',
-                   'owner', 'repo', 'recipient', 'recipient_org', 'channel_type', 'kind', 'parent'}
+                   'owner', 'repo', 'recipient', 'recipient_org', 'channel_type', 'kind',
+                   'category', 'parent'}
 BOOL_FIELDS = {'is_dm', 'is_external', 'is_shared', 'is_connected', 'is_client'}
 
 
@@ -282,7 +283,18 @@ def _pr_context(context, root, config):
     return CLEAN, _normalize('\n'.join(comment['body'] for comment in comments))
 
 
-def classify(text, root, config, context=None, *, kind='chat'):
+def _external_tracker(config):
+    """A GitHub project or board owned outside outbound.code_host_orgs is external."""
+    if config['adapters']['tracker'] != 'github':
+        return False
+    orgs = {org.casefold() for org in config['outbound']['code_host_orgs']}
+    tracker = config['tracker']
+    project = tracker['project'] or next((repo['name'] for repo in config['repos']), '')
+    return any(name.split('/')[0].casefold() not in orgs
+               for name in (project, tracker['board']) if name)
+
+
+def classify(text, root, config, context=None, *, kind='chat', port=False):
     """Return (0|1|2, send|draft); missing destination or uncertain meaning drafts."""
     try:
         if os.environ.get('WUWEI_SEAT_ROLE') == 'shepherd':
@@ -335,6 +347,11 @@ def classify(text, root, config, context=None, *, kind='chat'):
             return FINDINGS, 'draft'
         if kind == 'docs':  # #419: a docs write sends only when its kind is in docs.auto.
             return (CLEAN, 'send') if context.get('kind') in config['docs']['auto'] else (FINDINGS, 'draft')
+        if kind == 'tracker':
+            # 5.11: record-derived tracker writes in tracker.auto send; the rest draft.
+            # Only the CLI port sets category; a seat's MCP payload cannot claim it.
+            return ((CLEAN, 'send') if port and context.get('category') in config['tracker']['auto']
+                    and not _external_tracker(config) else (FINDINGS, 'draft'))
         discussion = ''
         # The chat port cannot prove the thread's participants are internal.
         if kind in ('chat', 'slack') and any(
@@ -389,10 +406,10 @@ def classify(text, root, config, context=None, *, kind='chat'):
         return UNRUN, 'draft'
 
 
-def check_call(inputs, root, config, channels):
+def check_call(inputs, root, config, channels, *, port=False):
     """Shared lint and send policy for MCP hooks and text-bearing adapter ports."""
     from wuwei.guards import profile_result
-    result = check_tier(inputs, root, config, channels)
+    result = check_tier(inputs, root, config, channels, port=port)
     draft = result == (FINDINGS, APPROVAL_REQUIRED)
     if result[0] and not draft:
         return result
@@ -407,7 +424,7 @@ def check_call(inputs, root, config, channels):
     return lint if lint[0] else (result if draft else (CLEAN, ''))
 
 
-def check_tier(inputs, root, config, channels):
+def check_tier(inputs, root, config, channels, *, port=False):
     """Approval tiers are blocking under every profile."""
     try:
         from wuwei import security
@@ -418,7 +435,7 @@ def check_tier(inputs, root, config, channels):
         text = '\n'.join(texts)
         if len(channels) != 1:
             return UNRUN, 'outward: ambiguous tool channel configuration; pass one channel per call'
-        code, decision = classify(text, root, config, inputs, kind=next(iter(channels)))
+        code, decision = classify(text, root, config, inputs, kind=next(iter(channels)), port=port)
         if code == UNRUN:
             return code, 'outward: cannot classify policy, audience or message evidence; deliver as a draft for the owner to send'
         if decision == 'draft':

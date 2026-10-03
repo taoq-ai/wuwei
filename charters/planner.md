@@ -1,5 +1,5 @@
 ---
-version: 1.0.0
+version: 1.1.0
 ---
 # Planner charter
 
@@ -8,7 +8,7 @@ Read `_common.md` and `_common-authoring.md` before planning. Own the day plan, 
 ## Morning plan
 
 1. Read configured repos, adapters, owner, host floors and goals. Sweep live work and obligations; report unavailable sources as unmeasured. Ask the lead for goal-linked discovery, evidence, rank components, overlap and capacity.
-2. Build the ranked plan with the lead's scope, flags, track, open PRs, risks and decision ids. The morning gate is one question, `Approve today's plan as proposed?`, with `Change something` as the other option; ask goals, queue, seat policy, CAP, envelope and carry-over separately only after `Change something`. Seat policy is set at that gate: record model and runtime for each role in day state, along with the owner's approved goals, queue and CAP. Do not dispatch before that gate.
+2. Build the ranked plan with the lead's scope, flags, track, open PRs, risks and decision ids. The morning gate is one question, `Approve today's plan as proposed?`, with `Change something` as the other option; ask goals, queue, seat policy, CAP, envelope and carry-over separately only after `Change something`. Seat policy is set at that gate: record model and runtime for each role in day state, along with the owner's approved goals, queue and CAP. Do not dispatch before that gate. When a tracker is set, an approved item without a ticket is refused; open it with `bin/wuwei tracker create <item>`, or ask the owner to record an existing one with `bin/wuwei plan set <item> ticket=<id>` in a host terminal.
 3. Check host floors and budget at dispatch time. Brief each seat with charter paths, worktree, item promise, evidence, track, flags, head, required output and open decisions. Do not launch a builder and its gate against the same worktree at once.
 
 Launch builders from `wuwei build next` and gate sentinels from the `seats` actions of `wuwei dispatch next`; for the lead and shepherd, obtain the prompt from `wuwei runtime dispatch <role> <brief> <worktree>`. Pass the returned prompt and agent type unchanged to Agent from the workspace root. `wuwei.brief.launch_prompt` owns the format; follow the launch contract in `skills/wuwei-plan/SKILL.md`. Use `wuwei runtime continue` only to recover a seat and `steward_launch` from `wuwei steward run` for the steward. A missing spec step comes back from the build loop as a failing check named `spec`; relay it to the builder, never skip it. Only the owner skips one item's spec, in a host terminal: `wuwei plan set <item> spec=skipped --reason <why>`.
@@ -21,4 +21,4 @@ Launch builders from `wuwei build next` and gate sentinels from the `seats` acti
 
 ## Close
 
-1. Run the final obligation and guard sweep. Have the steward write its retro. Report shipped work, pending decisions, findings, unmeasured sources and the next action for each open item.
+1. Run the final obligation and guard sweep. Have the steward write its retro. Open each follow-up the retro proposes with `bin/wuwei tracker create --follow-up <item> "<title>" --evidence "<line>"`. Report shipped work, pending decisions, findings, unmeasured sources and the next action for each open item.

@@ -141,6 +141,17 @@ def _owed(name, path, branch):
             f'--branch {shlex.quote(branch or "<default branch>")}')
 
 
+def _tracker_links(repo, path):
+    """Tracker hosts a repository's README, CONTRIBUTING or PR template links (5.11); shown only."""
+    files = [*repo.glob('README*'), *repo.glob('CONTRIBUTING*'), *repo.glob('.github/PULL_REQUEST_TEMPLATE*')]
+    found = []
+    for file in sorted(f for f in files if f.is_file() and not f.is_symlink()):
+        text = file.read_text(encoding='utf-8', errors='replace')[:200_000]
+        found += [f'tracker links: {host} ({path}/{file.relative_to(repo)})'
+                  for host in ('linear.app', 'atlassian.net') if host in text]
+    return found
+
+
 def discover(root, dirs, config):
     """Repositories, host facts and owed commands; reads git config and gh only, never guesses."""
     hub, vcs = registry.load('code_host', config), registry.load('vcs', config)
@@ -167,6 +178,7 @@ def discover(root, dirs, config):
         if resolved in seen or resolved in configured:
             continue
         seen.add(resolved)
+        lines.extend(_tracker_links(candidate, path))
         if (candidate / '.git').is_file():
             lines.append(f'{path}: worktree, not added')
             continue

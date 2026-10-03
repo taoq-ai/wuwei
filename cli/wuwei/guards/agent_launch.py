@@ -183,6 +183,11 @@ def _check(payload):
             raise brief.Refused(f'running build seats {builders} at CAP {config["cap"]}; wait for a build seat to finish, then retry' + stale_note)
         if len(running) >= config['host']['seats']:
             raise brief.Refused(f'running seats {len(running)} at host seat ceiling host.seats={config["host"]["seats"]}; wait for a seat to finish, or ask the owner to raise host.seats' + stale_note)
+        if logged['item'] in data['items']:
+            from wuwei import tracker  # lazy: hook path (#346)
+            status, reason = tracker.check(data, config, logged['item'], data['items'][logged['item']])
+            if status == 'missing':
+                raise brief.Refused(reason)
         data['seats'][logged['name']] = {
             'id': logged['name'], 'role': logged['role'], 'item': logged['item'],
             'brief': relative, 'head': head, 'status': 'running',

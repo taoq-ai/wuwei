@@ -275,6 +275,11 @@ builder records `bin/wuwei plan set <item> docs=<page>|new|none --reason "<why>"
 markdown writes the file with `bin/wuwei docs page <item>`. `wuwei next` shows a `docs` row
 until it does, and `close` names any merged item whose docs were never written.
 
+With a tracker set up, every item has a [ticket](concepts.md#ticket). An item without one
+stops with a line naming `bin/wuwei tracker create <item>`. The board and the loop DM show the
+ticket id beside the item, and WUWEI comments the item's phases, pull request and merge on it.
+Decisions and review results wait in `bin/wuwei drafts` until you send them.
+
 PR changes reach the planner without you. Every change on a raised or claimed PR is one
 `pr.changed` event with a summary, for example
 `PR owner/repo#12: 2 new review comments by alice on cli/x.py; check test (3.11) failed`.

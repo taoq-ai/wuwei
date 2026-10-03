@@ -136,13 +136,22 @@ def read(root):
     from wuwei import docs
     config = workspace.load_config(root)
     work = []
+    log = data.get('tracker_log', {}).values()
     for name, item in sorted(data['items'].items(), key=lambda row: order.index(row[1]['phase'])):
         gates = ', '.join(f"{v['role']} {v['round']}: {v['verdict']}"
                           for v in data['gate_verdicts'].values() if v.get('item') == name)
-        work.append((name, item['phase'], item['status'], gates or 'none', item.get('pr_url') or 'none',
-                     docs.shown(config, item)))
+        ticket = data.get('tickets', {}).get(name, {}).get('id')
+        folded = sum(row.get('ticket') == ticket and row.get('outcome') == 'folded' for row in log)
+        work.append((name, item['phase'], item['status'],
+                     (ticket + (f', {folded} folded' if folded else '')) if ticket else 'none',
+                     gates or 'none', item.get('pr_url') or 'none', docs.shown(config, item)))
+    created = [json.loads(line).get('payload', {}) for line in events.splitlines()
+               if '"tracker.created"' in line]
     lines = [status.line(cockpit['status']),
-             *_table('Work', ('Item', 'Phase', 'Status', 'Gates', 'PR', 'Docs'), work),
+             *_table('Work', ('Item', 'Phase', 'Status', 'Ticket', 'Gates', 'PR', 'Docs'), work),
+             *_table('Tickets created', ('Class', 'Subject', 'Ticket', 'Parent'),
+                     [(row.get('class'), row.get('subject'), row.get('ticket'), row.get('parent') or 'none')
+                      for row in created]),
              *_table('PRs', ('PR', 'State', 'Waiting on', 'Deadline'),
                      [(r['ref'], r['state'], r['waiting_on'], r['deadline']) for r in cockpit['prs']]),
              *_table('Decisions', ('Id', 'Question', 'Route', 'Command'),

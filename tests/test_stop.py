@@ -981,3 +981,41 @@ def test_carry_closes_day(case, monkeypatch):
     approved(root)
     monkeypatch.chdir(root)
     assert [main(['close']), main(['plan', 'carry', 'A']), main(['close'])] == [1, 0, 0]
+
+
+def test_close_needs_the_merged_ticket_done(case, monkeypatch, capsys):
+    from fakes.tracker import Fake
+    from wuwei import tracker
+    root, host, _ = case
+    own(root)
+    approved(root, pr=REF)
+    for phase in ('implement', 'gate', 'raised', 'merged'):
+        state.transition('A', phase, root=root)
+    state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-1', 'source': 'set'}}),
+                       root, reserved=False)
+    host.results['pr'].data.update(state='closed', merged=True, merged_at=DAY + 'T11:00:00Z')
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text() + '[adapters]\ntracker = "linear"\n')
+    fake = Fake({'transition': Result(2, reason='LINEAR_API_KEY is missing')})
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, cfg: fake if kind == 'tracker' else load(kind, cfg))
+    rows = module('pr_actions').evaluate(root)[1]
+    line = 'A: ticket ENG-1 is not done: bin/wuwei tracker done A'
+    assert module('closing').unresolved(root, rows) == (1, line)
+    monkeypatch.chdir(root)
+    assert main(['tracker', 'done', 'A']) == 2
+    assert module('closing').unresolved(root, rows) == (1, line)
+    config.write_text(config.read_text() + '[tracker]\nstrict_close = false\n')
+    capsys.readouterr()
+    assert module('closing').unresolved(root, rows) == (0, '')
+    assert line in capsys.readouterr().err
+    fake.results['transition'] = Result(0, {})
+    assert main(['tracker', 'done', 'A']) == 0
+    assert fake.calls[-1][:2] == ('transition', ('ENG-1', 'Done'))
+    config.write_text(config.read_text().replace('strict_close = false', 'strict_close = true'))
+    assert module('closing').unresolved(root, rows) == (0, '')
+    calls = []
+    monkeypatch.setattr(tracker, 'log', lambda path: calls.append(path) or 0)
+    monkeypatch.setattr(module('steward'), 'run', lambda *a, **k: None)  # metrics: own tests
+    assert main(['close']) == 0
+    assert calls == [root]

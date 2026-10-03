@@ -1,6 +1,6 @@
 """Linear GraphQL tracker adapter."""
 
-from .._http import Failure, credential, operation, request
+from .._http import Failure, credential, operation, request, settings
 from wuwei.registry import outward_operation
 
 
@@ -78,19 +78,48 @@ def transition(item, state, *, root=None):
     return _updated(item, {'stateId': state_id})
 
 
+def _uuid(item):
+    issue = _query('query($id:String!){issue(id:$id){id}}', {'id': item})['issue']
+    if not isinstance(issue, dict) or not isinstance(issue.get('id'), str):
+        raise Failure('Linear issue not found')
+    return issue['id']
+
+
 @outward_operation('tracker')
 @operation('linear.create')
 def create(draft, *, root=None):
-    if not isinstance(draft, dict) or not isinstance(draft.get('teamId'), str) or not isinstance(draft.get('title'), str):
+    """The neutral 5.11 draft, or Linear's own fields for existing callers."""
+    if not isinstance(draft, dict) or not isinstance(draft.get('title'), str):
         raise Failure('invalid issue draft')
-    allowed = {'teamId', 'title', 'description', 'stateId', 'assigneeId', 'projectId'}
-    if draft.keys() - allowed:
-        raise Failure('unsupported issue field')
-    value = _query('mutation($input:IssueCreateInput!){issueCreate(input:$input){success issue{id}}}',
-                   {'input': draft})['issueCreate']
+    if 'teamId' in draft:
+        if draft.keys() - {'teamId', 'title', 'description', 'stateId', 'assigneeId', 'projectId'}:
+            raise Failure('unsupported issue field')
+        issue = dict(draft)
+    else:
+        if draft.keys() - {'title', 'description', 'item', 'category', 'parent'}:
+            raise Failure('unsupported issue field')
+        tracker = settings(root)['tracker']
+        team = tracker['project'] or tracker['backlog_filter']
+        if not team:
+            raise Failure('tracker.project or backlog_filter must name a Linear team')
+        issue = {'teamId': team, 'title': draft['title'], 'description': draft.get('description', '')}
+        if draft.get('parent'):
+            issue['parentId'] = _uuid(draft['parent'])
+    value = _query('mutation($input:IssueCreateInput!){issueCreate(input:$input){success issue{id identifier url}}}',
+                   {'input': issue})['issueCreate']
     if value['success'] is not True or not isinstance(value['issue'], dict):
         raise Failure('Linear create failed')
-    return value['issue']
+    return {'id': value['issue']['identifier'], 'url': value['issue']['url']}
+
+
+@outward_operation('tracker')
+@operation('linear.comment')
+def comment(item, text, category, *, root=None):
+    value = _query('mutation($input:CommentCreateInput!){commentCreate(input:$input){success comment{id}}}',
+                   {'input': {'issueId': _uuid(item), 'body': text}})['commentCreate']
+    if value['success'] is not True or not isinstance(value['comment'], dict):
+        raise Failure('Linear comment failed')
+    return {'id': value['comment']['id']}
 
 
 @operation('linear.history')

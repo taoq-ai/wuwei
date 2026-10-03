@@ -527,6 +527,25 @@ def _day(root, config, probes):
     return rows
 
 
+def _tracker(root, config):
+    """5.11: with tickets required, the tracker must answer a backlog read."""
+    name = config['adapters']['tracker']
+    if name == 'none' or not config['tracker']['required']:
+        return _row('day', 'tracker', 'ok', name if name == 'none' else f'{name}, tickets optional')
+    from wuwei.commands.config import requirements
+    names = ', '.join(key for keys in requirements(config).get(('tracker', name), ()) for key in keys)
+    try:
+        result = registry.load('tracker', config).backlog(config['tracker']['backlog_filter'], root=root)
+        reason = result.reason if result.exit else ''
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        reason = f'tracker unmeasured: {exc}'
+    if not reason:
+        return _row('day', 'tracker', 'ok', f'{name}: backlog read')
+    return _row('day', 'tracker', 'fail', reason,
+                (f'set {names} in .wuwei/env, or ' if names else '')
+                + 'bin/wuwei config set tracker.required false')
+
+
 LEGACY_TRACE = ('Question: How should this critical tool sequence be investigated?\n'
                 'Context: Session has no matching item reservation.\n')
 SUPERSEDED = 'superseded by wuwei doctor --fix: tool-sequence decisions apply to item seats only (#352)'
@@ -592,7 +611,8 @@ def diagnose(section=None):
             rows += [_row('gates', 'gates', 'unmeasured', UNLOADED, 'fix config.toml first'),
                      _row('day', 'day', 'unmeasured', UNLOADED, 'fix config.toml first')]
         else:
-            rows += [*_gates(root, config), *_docs(root, config), *pr_flow(config), *_day(root, config, probes)]
+            rows += [*_gates(root, config), *_docs(root, config), *pr_flow(config), *_day(root, config, probes),
+                     _tracker(root, config)]
     return rows + _guards(root, probes)
 
 

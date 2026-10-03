@@ -28,7 +28,8 @@ GLOSSARY = (('Seat', r'seats?'), ('Gate', r'gates?'), ('Sentinel', r'sentinels?'
             ('Digest', r'digests?'), ('Unmeasured', r'unmeasured'), ('Mandate', r'mandates?'),
             ('Trust surface', r'trust surfaces?'), ('Host terminal', r'host terminals?'),
             ('Humanizer', r'humanizer'), ('Spec engine', r'spec engines?'), ('Strict mode', r'strict mode'),
-            ('Docs system', r'docs systems?'), ('Docs obligation', r'docs obligations?'))
+            ('Docs system', r'docs systems?'), ('Docs obligation', r'docs obligations?'),
+            ('Ticket', r'tickets?'), ('Tracker hygiene', r'tracker hygiene'), ('Fold', r'fold(?:s|ed)?'))
 
 
 def _prose(text):

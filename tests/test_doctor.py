@@ -495,7 +495,7 @@ def test_gates_mcp_servers(ws):
 
 def test_day_rows(ws):
     rows = doctor.diagnose()
-    assert names(rows, 'day') == ['state', 'planner', 'watch', 'listener', 'heartbeat', 'nudges']
+    assert names(rows, 'day') == ['state', 'planner', 'watch', 'listener', 'heartbeat', 'nudges', 'tracker']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'day'), rows
     assert row(rows, 'listener')['value'] == 'not used'
 
@@ -1133,3 +1133,18 @@ def test_docs_row_markdown(ws):
     assert found['status'] == 'warn' and 'docs.publish' in found['fix']
     found = docs_row(ws, '[docs]\nsystem = "markdown"\npublish = []\n')
     assert found['status'] == 'ok'
+
+
+def test_tracker_row(ws):
+    from fakes.tracker import Fake
+    assert row(doctor.diagnose(), 'tracker')['status'] == 'ok'
+    config(ws.root, CONFIG.replace('code_host = "github"\n', 'code_host = "github"\ntracker = "linear"\n'))
+    tracker = Fake({'backlog': Result(2, reason='LINEAR_API_KEY is missing')})
+    real = registry.load
+    ws.mp.setattr(registry, 'load', lambda kind, cfg: tracker if kind == 'tracker' else real(kind, cfg))
+    found = row(doctor.diagnose(), 'tracker')
+    assert found['status'] == 'fail' and 'LINEAR_API_KEY' in found['value']
+    assert 'LINEAR_API_KEY' in found['fix']
+    assert 'bin/wuwei config set tracker.required false' in found['fix']
+    tracker.results['backlog'] = Result(0, [])
+    assert row(doctor.diagnose(), 'tracker')['status'] == 'ok'

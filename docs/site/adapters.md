@@ -4,7 +4,7 @@ The CLI core asks named ports for plain data. Modules under `adapters/` implemen
 
 | Port | Shipped implementations | Default |
 | --- | --- | --- |
-| tracker | none, linear | none |
+| tracker | none, linear, jira, github | none |
 | chat | none, slack | none |
 | review_bot | none, greptile | none |
 | runtime | none, claude, codex | claude |
@@ -54,6 +54,8 @@ the exit code.
 | --- | --- |
 | code_host.github | `gh auth status --hostname github.com` must succeed. Authenticate gh separately or supply `GH_TOKEN` or `GITHUB_TOKEN`. WUWEI captures and discards gh's account output. A write-scoped `GH_TOKEN` or `GITHUB_TOKEN` in `.wuwei/env` or the environment is readable by seats, and `wuwei config check` reports it. |
 | tracker.linear | `LINEAR_API_KEY` |
+| tracker.jira | `JIRA_SITE` (an `https://` origin, kept from seats but not redacted), `JIRA_EMAIL` and `JIRA_API_TOKEN`; `tracker.project` names the project key |
+| tracker.github | `GITHUB_TRACKER_TOKEN`; `tracker.project` names `owner/repo` (else the first repository) and optional `tracker.board` names a Projects board as `owner/number` |
 | chat.slack | `SLACK_BOT_TOKEN` or `SLACK_USER_TOKEN`, plus `SLACK_OWNER_DM_CHANNEL`. With `chat.identity = "custom_app"`, `SLACK_BOT_TOKEN` is required. Optional `SLACK_API_BASE` overrides `https://slack.com/api/` (https, or http to a loopback host). |
 | inbound.slack | `SLACK_BOT_TOKEN` or `SLACK_USER_TOKEN`, plus `SLACK_OWNER_DM_CHANNEL`. Mentions in work and external channels need your Slack user id in `owner.handles`. Commands from your owner DM need `control_plane.owner`; `plan` and `ask` with a code need `WUWEI_TOTP_SECRET`. Optional `SLACK_API_BASE` as for chat.slack. |
 | review_bot.greptile | `GREPTILE_API_KEY` |

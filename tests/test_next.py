@@ -344,3 +344,9 @@ def test_docs_row(root, capsys, system, fields, expected):
     assert found['state'] == expected
     if expected == 'docs':
         assert found['command'].startswith('wuwei plan set ITEM-1 docs=')
+
+
+def test_item_row_shows_the_ticket(root, capsys):
+    approved(root, {'ITEM-1': ('implement', {})}, tickets={'ITEM-1': {'id': 'ENG-1', 'source': 'set'}})
+    found = row(capsys)[1]
+    assert 'ITEM-1 (ENG-1)' in found['step'] and found['command'] == 'wuwei build next ITEM-1'

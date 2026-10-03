@@ -204,3 +204,10 @@ def test_docs_obligation_in_quality_and_builder_charters():
     assert "Docs:" in quality and "DOC: FINDING" in quality and "documented behaviour" in quality
     builder = texts["builder.md"]
     assert "Docs:" in builder and "bin/wuwei docs page" in builder
+
+
+def test_tracker_hygiene_commands_have_one_home():
+    texts = charter_text()
+    assert [name for name, body in texts.items() if "tracker create --bug" in body] == ["_common.md"]
+    assert "tracker create --follow-up" in texts["planner.md"]
+    assert "bin/wuwei tracker create <item>" in texts["planner.md"]

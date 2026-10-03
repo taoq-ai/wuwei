@@ -69,7 +69,7 @@ def test_digest_with_default_chat_adapter_saves_draft(tmp_path, monkeypatch):
     (root / '.wuwei').mkdir()
     (root / '.wuwei/config.toml').write_text('')
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00+00:00')
-    monkeypatch.setattr(outward, 'check_call', lambda *args: (0, ''))
+    monkeypatch.setattr(outward, 'check_call', lambda *args, **kwargs: (0, ''))
     state._write_state(lambda data: data.update(decision_outcomes={
         'D-1': {'option': 'A', 'decided_by': 'seat', 'reversibility': 'two-way'},
     }), root, reserved=False)

@@ -172,7 +172,12 @@ def test_config_defaults_and_independence(tmp_path):
         'repos': [], 'cap': 1, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},
-        'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'}},
+        'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
+                    'required': True, 'skip_tiers': [], 'strict_close': True,
+                    'create': ['bugs', 'triage', 'follow-ups'],
+                    'log': ['decisions', 'progress', 'verdicts', 'pr', 'close'],
+                    'auto': ['progress', 'pr', 'close'], 'max_per_item_per_day': 10,
+                    'project': '', 'board': ''},
         'docs': {'system': 'none', 'required_tiers': ['standard', 'full'], 'space': '', 'root': 'docs',
                  'publish': ['report', 'retro'], 'auto': [], 'strict_close': True},
         'chat': {'identity': 'connector'},
@@ -1284,3 +1289,25 @@ def test_telemetry_config(tmp_path):
     write_config(tmp_path, '[telemetry]\nshare = "maybe"\n')
     with pytest.raises(ConfigError):
         load_config(tmp_path)
+
+
+def test_tracker_hygiene_keys(tmp_path):
+    from wuwei import workspace
+    write_config(tmp_path, '')
+    config = workspace.load_config(tmp_path)
+    assert config['adapters']['tracker'] == 'none'
+    assert config['tracker'] == {
+        'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
+        'required': True, 'skip_tiers': [], 'strict_close': True,
+        'create': ['bugs', 'triage', 'follow-ups'],
+        'log': ['decisions', 'progress', 'verdicts', 'pr', 'close'],
+        'auto': ['progress', 'pr', 'close'], 'max_per_item_per_day': 10,
+        'project': '', 'board': ''}
+    for text in ('skip_tiers = ["LIGHT"]', 'auto = ["merge"]', 'log = ["items"]',
+                 'create = ["items"]', 'max_per_item_per_day = 0'):
+        write_config(tmp_path, f'[tracker]\n{text}\n')
+        with pytest.raises(workspace.ConfigError, match='tracker'):
+            workspace.load_config(tmp_path)
+    (tmp_path / '.wuwei/config.toml').write_text(
+        (ROOT / 'templates/workspace/config.toml').read_text(encoding='utf-8'), encoding='utf-8')
+    assert workspace.load_config(tmp_path)['tracker']['required'] is True

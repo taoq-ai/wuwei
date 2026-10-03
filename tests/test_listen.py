@@ -1019,3 +1019,12 @@ def test_listener_dispatches_nothing_when_off(seat, monkeypatch, text):
 
 LISTEN_FIX = 'the owner restarts it with bin/wuwei listen install in a host terminal'
 LISTEN_DEAD = 'listen dead: no clock line within deadline; ' + LISTEN_FIX
+
+
+def test_negotiation_loop_names_the_ticket(owner_dm):
+    root, host = owner_dm
+    state._write_state(lambda data: data.update(tickets={'alpha': {'id': 'ENG-1', 'source': 'set'}}),
+                       root, reserved=False)
+    loop_event(root)
+    assert listen().tick(root, {}) == 0
+    assert host.chat.sent == [LOOP_REASON + ' Ticket: ENG-1.']

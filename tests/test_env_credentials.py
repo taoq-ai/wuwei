@@ -21,7 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 KEY = 'opaque-example-credential'
 VARIABLES = ('LINEAR_API_KEY', 'SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN',
              'SLACK_OWNER_DM_CHANNEL', 'GREPTILE_API_KEY', 'WUWEI_CALENDAR_URL',
-             'NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN')
+             'NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN', 'JIRA_SITE', 'JIRA_EMAIL',
+             'JIRA_API_TOKEN', 'GITHUB_TRACKER_TOKEN')
 
 
 @pytest.fixture
@@ -286,6 +287,8 @@ def test_entry_paths(case, entry, monkeypatch):
     ('runtime="codex"', '', ('codex.command',)),
     ('', '[docs]\nsystem="notion"\n', ('NOTION_TOKEN',)),
     ('', '[docs]\nsystem="confluence"\n', ('CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN')),
+    ('tracker="jira"', '', ('JIRA_SITE', 'JIRA_EMAIL', 'JIRA_API_TOKEN')),
+    ('tracker="github"', '', ('GITHUB_TRACKER_TOKEN',)),
 ])
 def test_config_reports_missing_and_set(case, monkeypatch, capsys, adapter, settings, required):
     path = case / '.wuwei/config.toml'
@@ -737,3 +740,15 @@ def test_docs_credentials(case, monkeypatch, capsys):
     for name in ('NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN'):
         monkeypatch.setenv(name, KEY)
     assert not {'NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN'} & set(env.child_environment())
+
+
+def test_tracker_credentials_are_private(case, monkeypatch):
+    from wuwei import env, redact
+    for name in ('JIRA_API_TOKEN', 'JIRA_EMAIL', 'GITHUB_TRACKER_TOKEN', 'JIRA_SITE'):
+        monkeypatch.setenv(name, name.lower() + '-value')
+    assert not {'JIRA_API_TOKEN', 'JIRA_EMAIL', 'GITHUB_TRACKER_TOKEN',
+                'JIRA_SITE'} & env.child_environment().keys()
+    with env.session():
+        text = redact.known_values('jira_api_token-value jira_email-value '
+                                   'github_tracker_token-value jira_site-value')
+    assert text == '[REDACTED] [REDACTED] [REDACTED] jira_site-value'

@@ -64,10 +64,14 @@ def notify(root, config, waiting):
             return 2
         state.append_event('pr.notified', {'pr': ref, 'at': row['ts']}, root)
     notified = {row['payload'].get('item') for row in rows if row['kind'] == 'negotiation.notified'}
+    tickets = None
     for row in rows:
         item, text = row['payload'].get('item'), row['payload'].get('reason')
         if row['kind'] != 'negotiation.loop' or not isinstance(text, str) or item in notified:
             continue
+        tickets = state.read_state(root).get('tickets', {}) if tickets is None else tickets
+        if tickets.get(item, {}).get('id'):
+            text += f" Ticket: {tickets[item]['id']}."
         result = control_plane.notify(text, root=root, transport=remote.TRANSPORT)
         if result.exit == 1:
             result = remote.TRANSPORT.dm(LOOP_FALLBACK.format(item=item), root=root)

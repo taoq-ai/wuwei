@@ -1352,3 +1352,80 @@ def test_quality_pass_recorded_after_docs_value(root):
 def test_quality_pass_without_docs_obligation(root, system, tier):
     docs_root(root, system, tier)
     assert record(root, 'quality', 'quality-1', QUALITY_PASS)['verdict'] == 'PASS'
+
+
+TRACKED = '[adapters]\ntracker = "linear"\n'
+NO_SPEC = '[spec]\nengine = "none"\n'
+
+
+def test_dispatch_refuses_an_item_without_a_ticket(root, monkeypatch, capsys):
+    from wuwei.__main__ import main
+
+    (root / '.wuwei/config.toml').write_text(NO_SPEC + TRACKED)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    assert main(['dispatch', 'next', 'A']) == 1
+    err = capsys.readouterr().err
+    assert 'bin/wuwei tracker create A' in err and 'bin/wuwei plan set A ticket=<id>' in err
+    state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-1', 'source': 'set'}}),
+                       root, reserved=False)
+    assert main(['dispatch', 'next', 'A']) == 0
+    assert json.loads(capsys.readouterr().out)['action'] == 'gates'
+
+
+def test_light_item_skips_the_ticket_until_its_tier_rises(root, monkeypatch):
+    from wuwei import dispatch
+
+    extra = TRACKED + '[tracker]\nskip_tiers = ["light"]\n'
+    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], extra=extra)
+    assert dispatch.next_step('A', root)['tier']['tier'] == 'light'
+    state._write_state(lambda data: data['items']['A'].update(gates={}), root, reserved=False)
+    tiered(root, monkeypatch, [('cli/wuwei/guards/pr.py', 2, 0)], lead='light', extra=extra)
+    with pytest.raises(dispatch.Refused, match='A has no ticket'):
+        dispatch.next_step('A', root)
+    assert state.read_state(root)['items']['A']['gates']['tier'] == 'standard'
+
+
+def test_tracker_call_uses_the_ticket(root, monkeypatch):
+    from fakes.tracker import Fake
+    from wuwei import dispatch, registry
+
+    (root / '.wuwei/config.toml').write_text(NO_SPEC + TRACKED)
+    fake = Fake({'claim': registry.Result(0, {})})
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
+    state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-7', 'source': 'set'}}),
+                       root, reserved=False)
+    dispatch.tracker_call('A', 'claim', root)
+    dispatch.tracker_call('B', 'claim', root)
+    assert [call[1] for call in fake.calls] == [('ENG-7',), ('B',)]
+    events = [json.loads(line) for line in
+              (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+    assert [(e['payload']['item'], e['payload']['ticket']) for e in events
+            if e['kind'] == 'tracker.call'] == [('A', 'ENG-7'), ('B', 'B')]
+
+
+def test_issue_acceptance_ticket_then_dispatch(root, monkeypatch, capsys):
+    from fakes.tracker import Fake, ported
+    from wuwei import registry
+    from wuwei.__main__ import main
+    from wuwei.commands import board
+
+    (root / '.wuwei/config.toml').write_text(
+        '[owner]\nname = "Pat Example"\n' + NO_SPEC + TRACKED + '[tracker]\nauto = ["items"]\n')
+    (workspace.day_dir(root) / 'proposal.json').write_text(json.dumps({'candidates': [
+        {'id': 'A', 'scope': 'Add the export button', 'evidence': 'issue 12', 'goal': 'G-1',
+         'track': 'SLICE'}]}))
+    fake = Fake({'create': registry.Result(0, {'id': 'ENG-7', 'url': 'https://example.test/ENG-7'})})
+    port = ported(fake)
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
+                        else load(kind, config))
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    assert main(['dispatch', 'next', 'A']) == 1
+    assert 'bin/wuwei tracker create A' in capsys.readouterr().err
+    assert main(['tracker', 'create', 'A']) == 0
+    assert state.read_state(root)['tickets'] == {'A': {'id': 'ENG-7', 'source': 'create'}}
+    capsys.readouterr()
+    assert main(['dispatch', 'next', 'A']) == 0
+    assert json.loads(capsys.readouterr().out)['action'] == 'gates'
+    row, = [line for line in board.read(root)[0].splitlines() if line.startswith('| A |')]
+    assert 'ENG-7' in row
