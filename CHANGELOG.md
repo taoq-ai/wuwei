@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.15.0](https://github.com/taoq-ai/wuwei/compare/v0.14.0...v0.15.0) (2026-10-03)
+
+
+### Features
+
+* **docs:** documentation system: [docs] system and obligation per tier, docs page from the item's record, report and retro publishing, Notion by default with Confluence and repository Markdown adapters ([#467](https://github.com/taoq-ai/wuwei/issues/467)) ([163f0ee](https://github.com/taoq-ai/wuwei/commit/163f0eec37ec9c4a2b3f397b28dba2751109ecec)), closes [#419](https://github.com/taoq-ai/wuwei/issues/419)
+* **memory:** memory tiers over time: raw days archived after a window, a rolling week and month digest that sessions load, promoted rules only in charters, and forgetting proposed by the retro with evidence ([#458](https://github.com/taoq-ai/wuwei/issues/458)) ([ae475ef](https://github.com/taoq-ai/wuwei/commit/ae475ef30ce8356a0697f84c7093c68e9f4ffb7c)), closes [#443](https://github.com/taoq-ai/wuwei/issues/443)
+* **spec:** specification mode: [spec] engine and mode, hooks that enforce the engine's steps per item, trivial tiers skipped, setup and doctor detect the engine ([#462](https://github.com/taoq-ai/wuwei/issues/462)) ([ab4d0c6](https://github.com/taoq-ai/wuwei/commit/ab4d0c68016701a5fbb6a562e17283e97401606d)), closes [#412](https://github.com/taoq-ai/wuwei/issues/412)
+* **telemetry:** signal set with a versioned vocabulary, weekly aggregation off the hook path, metrics on the board with proposals, and anonymous sharing the owner approves or turns off ([#466](https://github.com/taoq-ai/wuwei/issues/466)) ([56709f8](https://github.com/taoq-ai/wuwei/commit/56709f82568a32a77f1cfbcaf485db0651d26228)), closes [#422](https://github.com/taoq-ai/wuwei/issues/422)
+* **tracker:** tracker hygiene: required tickets per item, mid-item bug and triage tickets, decisions, progress and verdicts as comments, Linear by default with Jira and GitHub Projects adapters ([#468](https://github.com/taoq-ai/wuwei/issues/468)) ([df55a85](https://github.com/taoq-ai/wuwei/commit/df55a857c1229fae8e4569963e1edfe29835416c)), closes [#417](https://github.com/taoq-ai/wuwei/issues/417)
+
+
+### Bug Fixes
+
+* **reasons:** the next-step test also collects `x or 'literal'` fallbacks, and the two branch-protection fallbacks get a next step ([#463](https://github.com/taoq-ai/wuwei/issues/463)) ([10f01ed](https://github.com/taoq-ai/wuwei/commit/10f01ed66a250b66d6e42198eddee079faefebae)), closes [#456](https://github.com/taoq-ai/wuwei/issues/456)
+
 ## [0.14.0](https://github.com/taoq-ai/wuwei/compare/v0.13.0...v0.14.0) (2026-10-03)
 
 
