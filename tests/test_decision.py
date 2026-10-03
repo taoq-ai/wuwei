@@ -925,3 +925,27 @@ def test_unreadable_external_record_fails_closed(ws, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
     with pytest.raises(ValueError):
         decision.waits(ws)
+
+
+@pytest.mark.parametrize('command, expected', [
+    ('python3 -P -c \'import subprocess;r=subprocess.run(["git","log","-1"]);'
+     'print(open("days/x/decisions/D-1.md").read())\'', 'unparsed'),
+    ('for f in days/x/decisions/D-1.md days/x/decisions/D-2.md; do cat $f; done', 'clean'),
+    ('for f in a; do echo x > days/x/decisions/D-1.md; done', 'kept'),
+])
+def test_issue_347_unparsed_decision_commands(ws, command, expected):
+    from wuwei.guards.decision import check_write
+    from wuwei.shell import UNPARSED
+    result = check_write({'cwd': str(ws), 'tool_name': 'Bash', 'tool_input': {'command': command}})
+    assert result == {'unparsed': (2, UNPARSED), 'clean': (0, ''),
+                      'kept': (2, 'decision lint: could not inspect decision record; '
+                               'use a plain file write')}[expected]
+
+
+def test_issue_347_inline_snippet_still_lints_the_day(ws):
+    from wuwei.guards.decision import check_write
+    from wuwei.shell import UNPARSED
+    save(ws, 'Question: bad')
+    code, message = check_write({'cwd': str(ws), 'tool_name': 'Bash', 'tool_input': {
+        'command': 'python3 -c \'print(open("decisions/D-3.md").read())\''}})
+    assert code == 2 and message.splitlines()[0] == UNPARSED and len(message.splitlines()) > 1

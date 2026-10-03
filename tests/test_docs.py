@@ -733,3 +733,10 @@ def test_agent_guide_ships_and_is_linked():
     for skill in sorted(ROOT.glob('skills/*/SKILL.md')):
         body = skill.read_text().split('\n# ', 1)[1].split('\n\n', 2)[1]
         assert '`wuwei next`' in body, skill.parent.name
+
+
+def test_unparsed_commands_are_documented():
+    # #347: the security page names the unparsed class and the cd rule's subshell form.
+    security = ' '.join((SITE / 'security.md').read_text().split())
+    for phrase in ('unparsed', '(cd <dir> && <command>)', 'blocks only under `strict`'):
+        assert phrase in security, phrase

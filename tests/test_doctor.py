@@ -434,7 +434,7 @@ def test_day_rows(ws):
 
 def test_guards_rows(ws):
     rows = doctor.diagnose()
-    assert names(rows, 'guards') == ['refused', 'allowed', 'state_write', 'status_line', 'outside workspace']
+    assert names(rows, 'guards') == ['refused', 'allowed', 'state_write', 'read_loop', 'status_line', 'outside workspace']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'guards'), rows
     (calls, cwd), = ws.service.calls
     (argv, text), = calls

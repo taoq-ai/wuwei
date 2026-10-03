@@ -8,7 +8,7 @@ from wuwei.decision import lint_file, record_rejection, today_path
 from wuwei.guards import Guard
 from wuwei.guards.verdict import INTERPRETERS, required_text
 from wuwei.workspace import scope
-from wuwei.shell import ParseError, is_opaque, mentions, normalize
+from wuwei.shell import UNPARSED, ParseError, classify, is_opaque, mentions, normalize
 
 
 def is_decision(path):
@@ -65,6 +65,12 @@ def check_write(payload):
                 if not any(str(target) + '/' in raw for target in targets):
                     return 0, ''
                 root = anchor
+            shape = classify(raw)
+            if shape.readonly:
+                return 0, ''
+            # #347: inline code is a file the lint cannot read; a write names its D- record.
+            if shape.inline or 'D-' not in shape.written:
+                return 2, UNPARSED
             raise ValueError('could not inspect decision record; use a plain file write')
         roots = {root} if root else set()
         named = set()
@@ -84,7 +90,7 @@ def check_write(payload):
         results = []
         for root in sorted(roots):
             if any(opaque(command.argv) for command in commands):
-                results.append((2, 'decision lint: opaque command; use a plain file write'))
+                results.append((2, UNPARSED))
             for path in sorted((workspace.day_dir(root) / 'decisions').glob('D-*.md')):
                 if scope(path.resolve()) is not None:
                     results.append(lint_file(path, root=root, record=path.resolve() in named))

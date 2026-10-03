@@ -502,3 +502,19 @@ def test_workflow_aliases_fail_closed(workspace, marked, target):
 def test_distinct_workflow_filenames_are_clean(workspace):
     (workspace / '.wuwei/config.toml').write_text('[deploy]\nworkflows = ["deploy.yml"]\n')
     assert check(workspace, 'gh workflow run test.yml') == (0, '')
+
+
+@pytest.mark.parametrize('command, code, reason', [
+    ('W=$(cat .wuwei/executable); $W plan session abc --take-over; $W mcp check', 2, 'unparsed'),
+    ('python3 -P -c \'import subprocess;r=subprocess.run(["git","log","-1"]);'
+     'print(open("config.toml").read())\'', 2, 'unparsed'),
+    ('for r in a b; do cat $r/x; done; git -C repo log -1', 2, 'unparsed'),
+    ('for r in a b; do cat $r/x; done | grep kubectl', 0, ''),
+    ('for r in a b; do git -C $r push origin main; done', 2, 'control flow'),
+    ('G=git; $G push origin main', 2, 'deploy'),
+    ('for r in a; do kubectl apply -f $r; done', 2, 'deploy'),
+])
+def test_issue_347_unparsed_calls(workspace, command, code, reason):
+    actual, message = check(workspace, command)
+    assert actual == code, message
+    assert reason in message
