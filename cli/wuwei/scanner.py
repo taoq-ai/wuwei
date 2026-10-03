@@ -56,14 +56,29 @@ def merge(text, findings):
     return text + '\n\n## ZIRAN findings\n' + '\n'.join(findings) + '\nProbe: ziran audit\n'
 
 
-def _trace_response(finding, root):
-    """Page first, then park reserved items and queue one owner decision per chain."""
+def _trace_response(finding, root, posture):
+    """Seats: page, park and one owner decision per chain. A registered session: one silent
+    traces.noted per day. Unknown: one traces.unmatched per day, or under strict a page and
+    one decision per session per day (#352). Returns True when the finding paged."""
     import hashlib
     import json
-    from wuwei import brief, decision
+    from wuwei import brief, decision, sessions, watch
 
+    session = finding['session_id']
+    digest = hashlib.sha256(session.encode()).hexdigest()
+    data = state.read_state(root)
+    seat = any(session in seat.get('trace_sessions', []) for seat in brief.seats(data).values())
+    role = None if seat else sessions.registered(data, session)
+    if not seat and (role or posture != 'strict'):
+        kind = 'traces.noted' if role else 'traces.unmatched'
+        if not any(row['kind'] == kind and row['payload'].get('session_digest') == digest
+                   for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
+            extra = ({'role': role, 'summary': f'traces: {role} session, chain noted'} if role
+                     else {'posture': posture})
+            state.append_event(kind, {'session_digest': digest, 'chain': finding['chain'], **extra}, root)
+        return False
     state.append_event('scanner.finding', finding, root)
-    key = hashlib.sha256(json.dumps(finding, sort_keys=True).encode()).hexdigest()
+    key = hashlib.sha256(json.dumps(finding, sort_keys=True).encode()).hexdigest() if seat else digest
     directory = workspace.day_dir(root) / 'decisions'
 
     def update(data):
@@ -84,12 +99,12 @@ def _trace_response(finding, root):
             used.extend(int(value[2:]) for value in queued.values())
             queued[key] = f'D-{max(used, default=0) + 1}'
             path = decision.today_path(queued[key], root)
-        context = 'Affected reserved items parked where active.' if items else 'Session has no matching item reservation.'
+        context = 'Affected reserved items parked where active.' if items else 'Session has no item reservation and no registration.'
         body = (
             'Question: How should this critical tool sequence be investigated?\n'
             f'Context: {context}\n'
             + 'Chain: ' + ' -> '.join(finding['chain']) + '\n'
-            + 'Session digest: ' + hashlib.sha256(finding['session_id'].encode()).hexdigest() + '\n'
+            + 'Session digest: ' + digest + '\n'
             'Options:\n| Option | Description |\n| --- | --- |\n'
             '| investigate | Investigate the session and contain any exposure |\n'
             '| defer | Defer investigation while affected work stays paused |\n'
@@ -105,6 +120,7 @@ def _trace_response(finding, root):
         workspace.atomic_write(path, body)
 
     state._write_state(update, root, reserved=False)
+    return True
 
 
 def trace_sweep(root, config):
@@ -133,14 +149,15 @@ def trace_sweep(root, config):
         if type(result.exit) is not int or result.exit not in (0, 1):
             raise ValueError(result.reason or 'scanner unavailable')
         markers = security.load(root)
+        posture, owed = workspace.posture(config)[0], 0
         for finding in result.data['findings']:
             safe = redact.redact(security.redact(finding, markers))
             # Match the recorder's identity when redaction changes an opaque session id.
             if safe['session_id'] != finding['session_id']:
                 import hashlib
                 safe['session_id'] = hashlib.sha256(finding['session_id'].encode()).hexdigest()
-            _trace_response(safe, root)
-        counts.update(scanner='measured', scanner_owed=len(result.data['findings']))
+            owed += _trace_response(safe, root, posture)
+        counts.update(scanner='measured', scanner_owed=owed)
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
         counts['unreadable'] = 1
         print(f'watch scanner: unmeasured: {type(exc).__name__}', flush=True)

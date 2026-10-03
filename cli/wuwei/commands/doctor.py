@@ -7,6 +7,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import sys
 import tempfile
@@ -386,7 +387,29 @@ def _day(root, config, probes):
                              str(page['reason']), 'wuwei nudges'))
     nudges = sum(page['tier'] == 'nudge' for page in found)
     rows.append(_row('day', 'nudges', 'ok', f'{nudges} open (wuwei nudges lists them)'))
+    try:
+        if ids := _legacy_traces(root):
+            rows.append(_row('day', 'trace decisions', 'warn', f'{", ".join(ids)} pending under the pre-#352 rule',
+                             'wuwei doctor --fix', apply='trace-decisions'))
+    except (OSError, ValueError) as exc:
+        rows.append(_row('day', 'trace decisions', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
     return rows
+
+
+LEGACY_TRACE = ('Question: How should this critical tool sequence be investigated?\n'
+                'Context: Session has no matching item reservation.\n')
+SUPERSEDED = 'superseded by wuwei doctor --fix: tool-sequence decisions apply to item seats only (#352)'
+
+
+def _legacy_traces(root):
+    """Today's pending, unanswered decisions the pre-#352 sweep wrote for a non-seat session."""
+    from wuwei import decision, state
+    data = state.read_state(root)
+    return [path.stem for path in sorted((workspace.day_dir(root) / 'decisions').glob('D-*.md'))
+            if not path.is_symlink()
+            and (text := path.read_text(encoding='utf-8')).startswith(LEGACY_TRACE)
+            and re.search(r'^Outcome: pending$', text, re.M)
+            and decision.answered(data, path.stem) is None]
 
 
 def _guards(root, probes):
@@ -504,6 +527,35 @@ def _promote(root, token):
     return config.promote(Namespace(), confirm=lambda digest, **_: digest == token)
 
 
+def _supersede_preview(root):
+    ids = _legacy_traces(root)
+    if not ids:
+        raise ValueError('nothing to supersede')
+    return ''.join(f'{ident}: Outcome: superseded ({SUPERSEDED})\n' for ident in ids), ids
+
+
+def _supersede(root, token):
+    """Close each previewed record: the Outcome line for the board, an owner outcome for close,
+    status and the steward queue."""
+    from wuwei import decision, state
+    if _legacy_traces(root) != token:
+        print('trace-decisions: changed since the preview; nothing applied')
+        return 1
+    for ident in token:
+        path = decision.today_path(ident, root)
+        text = path.read_text(encoding='utf-8')
+        fields, _ = decision.evaluate(text)
+        text = re.sub(r'^Outcome: pending$', 'Outcome: superseded', text, count=1, flags=re.M)
+        workspace.atomic_write(path, text + f'Notes: {SUPERSEDED}\n')
+        outcome = {'option': 'superseded', 'outcome': 'superseded', 'decided_by': 'owner',
+                   'reversibility': fields['Reversibility']}
+        state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update({ident: outcome}),
+                           root, reserved=False, kind='decision.decided',
+                           payload={'id': ident, 'option': 'superseded', 'decided_by': 'owner',
+                                    'reversibility': fields['Reversibility']})
+    return 0
+
+
 def _calibrate(root, token):
     from wuwei.commands import calibrate
     return calibrate.run(Namespace(action=None, target=None, repo=None, measure=False, skip=[],
@@ -522,6 +574,7 @@ FIXES = {
         'config.toml unchanged\n', None), _calibrate),
     'watch-install': _planned('wuwei watch install', _service('watch')),
     'listen-install': _planned('wuwei listen install', _service('listen')),
+    'trace-decisions': ('supersede pre-#352 tool-sequence decisions', _supersede_preview, _supersede),
 }
 
 

@@ -158,7 +158,7 @@ def test_outcome_findings_before_unmeasured():
 def test_fix_allow_list_is_pinned():
     # config-set waits for #327's confirmed `config set`.
     assert set(doctor.FIXES) == {'integrity-reconfirm', 'init-upgrade', 'config-promote', 'calibrate',
-                                 'watch-install', 'listen-install'}
+                                 'watch-install', 'listen-install', 'trace-decisions'}
 
 
 # US1: the rows
@@ -693,3 +693,71 @@ def test_fix_nothing_to_apply(ws, capsys):
     asked = []
     assert fix(asked.append) == 0
     assert 'Nothing to apply' in capsys.readouterr().out and not asked
+
+
+# #352: doctor supersedes the tool-sequence decisions the pre-#352 sweep wrote
+
+LEGACY_BODY = (
+    'Question: How should this critical tool sequence be investigated?\n'
+    'Context: {context}\n'
+    'Chain: Bash -> {tool}\n'
+    'Session digest: ' + 'a' * 64 + '\n'
+    'Options:\n| Option | Description |\n| --- | --- |\n'
+    '| investigate | Investigate the session and contain any exposure |\n'
+    '| defer | Defer investigation while affected work stays paused |\n'
+    'Musts:\n| Criterion | investigate | defer |\n| --- | --- | --- |\n'
+    '| Keep affected work paused | pass | pass |\n'
+    'Wants:\n| Criterion | Weight | investigate | defer |\n| --- | --- | --- | --- |\n'
+    '| Resolve potential exposure | 10 | 10 | 0 |\n'
+    'Recommendation: investigate\nConfidence: high\nReversibility: unsure\n'
+    'Blast radius: workspace security\nPre-mortem: Further activity could expose data.\n'
+    'Revisit: Before resuming affected work.\nDecided-by: owner\nOutcome: pending\n')
+
+
+def legacy_decisions(root):
+    directory = workspace.day_dir(root) / 'decisions'
+    directory.mkdir(exist_ok=True)
+    for ident, context, tool in [('D-2', 'Session has no matching item reservation.', 'Write'),
+                                 ('D-3', 'Session has no matching item reservation.', 'Edit'),
+                                 ('D-4', 'Affected reserved items parked where active.', 'Write')]:
+        (directory / f'{ident}.md').write_text(LEGACY_BODY.format(context=context, tool=tool))
+    return directory
+
+
+def test_trace_decisions_row_and_fix(ws, capsys):
+    from wuwei import decision
+    from wuwei.commands.dashboard import cockpit_snapshot
+    directory = legacy_decisions(ws.root)
+    seat = (directory / 'D-4.md').read_text()
+    found = row(doctor.diagnose(), 'trace decisions')
+    assert found['status'] == 'warn' and 'D-2, D-3' in found['value']
+    assert found['apply'] == 'trace-decisions'
+    shown = []
+    fix(lambda digest: shown.append(capsys.readouterr().out) or True)
+    assert '[trace-decisions]' in shown[0] and 'D-2' in shown[0] and 'D-3' in shown[0]
+    data = state.read_state(ws.root)
+    for ident in ('D-2', 'D-3'):
+        text = (directory / f'{ident}.md').read_text()
+        assert 'Outcome: superseded' in text and text.count('Outcome:') == 1
+        assert 'Notes: superseded by wuwei doctor --fix' in text
+        decision.evaluate(text)
+        assert data['decision_outcomes'][ident]['decided_by'] == 'owner'
+        assert decision.answered(data, ident) == 'superseded'
+    assert [d['id'] for d in cockpit_snapshot(workspace.day_dir(ws.root))['decisions']] == ['D-4']
+    assert {'fix': 'trace-decisions', 'exit': 0} in events(ws.root, 'doctor.fixed')
+    assert not [r for r in doctor.diagnose() if r['name'] == 'trace decisions']
+    assert (directory / 'D-4.md').read_text() == seat
+
+
+def test_trace_decisions_changed_since_preview(ws, capsys):
+    directory = legacy_decisions(ws.root)
+
+    def answer(digest):
+        state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update(
+            {'D-2': {'option': 'defer', 'outcome': 'defer', 'decided_by': 'owner',
+                     'reversibility': 'unsure'}}), ws.root, reserved=False)
+        return True
+    fix(answer)
+    out = capsys.readouterr().out
+    assert 'changed since the preview' in out and 'trace-decisions: exit 1' in out
+    assert 'Outcome: pending' in (directory / 'D-3.md').read_text()
