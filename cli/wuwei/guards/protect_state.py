@@ -64,6 +64,8 @@ _OWNER_ACTIONS = {
     ('config', 'set'): 'Config edits are an owner action on the host, outside agent tools.',
     ('config', 'add-repo'): 'Config edits are an owner action on the host, outside agent tools.',
     # An empty verb is the whole group: setup's flags take values, which _pair reads as a verb.
+    # An applied forgetting archives a note or drops a charter rule (design 5.14).
+    ('memory', 'forget'): 'Forgetting memory is an owner action on the host, outside agent tools.',
     ('setup', ''): 'Setup writes config.toml; it is an owner action on the host, outside agent tools.',
 }
 _OWNER_GROUPS = {group for group, _ in _OWNER_ACTIONS}
@@ -223,11 +225,11 @@ def _protected_name(path, directories=False):
             return True
         if tail[:2] == ('memory', 'archive'):
             return True
-        if tail[:2] == ('memory', 'snapshots'):
+        if tail[:2] in (('memory', 'snapshots'), ('memory', 'digests')) or tail == ('memory', 'forget.json'):
             return True
         if directories and (not tail or (len(tail) in (1, 2) and tail[0] == 'days')):
             return True
-        if directories and tail in (('memory',), ('memory', 'notes'),
+        if directories and tail in (('memory',), ('memory', 'notes'), ('memory', 'digests'),
                                     ('memory', 'archive'), ('charters',)):
             return True
         if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'undo.jsonl', 'proposal.json', 'plan.md', 'goals.md', 'steward-decisions.json', 'interview.json', 'profile.json'):

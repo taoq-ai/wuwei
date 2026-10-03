@@ -454,7 +454,7 @@ def test_host_terminal_actions_and_morning_references():
         assert 'Host terminal actions' in text
         for command in ('decision outcome', 'decide', 'state recover', 'integrity reconfirm', 'mcp decide',
                         'drafts approve', 'watch uninstall', 'listen uninstall', 'config promote',
-                        'config set', 'config add-repo', 'setup'):
+                        'config set', 'config add-repo', 'setup', 'memory forget'):
             assert command in text
     for phrase in ('run it in a host terminal', 'no plan yet', 'proposal.json', 'pr raise',
                    '--base', '--title', '--body-file', '--item'):
@@ -1097,3 +1097,19 @@ def test_scanner_none_turns_the_gate_off():
     assert 'The `none` scanner reports unmeasured rather than clean' not in security
     assert 'turns the registry gate off' in configuration and 'tool drift or poisoning' in configuration
     assert 'the `none` adapter are unmeasured' not in configuration
+def test_memory_tiers_are_documented():
+    configuration = (SITE / 'configuration.md').read_text()
+    for phrase in ('memory.digest', 'memory.budget_tokens', 'memory.export_to', 'archive/<year>/'):
+        assert phrase in configuration, phrase
+    concepts = (SITE / 'concepts.md').read_text()
+    memory = concepts[concepts.index('## Memory'):concepts.index('## Day flow')]
+    for phrase in ('digest', '30 days', 'wuwei memory forget', 'CLAUDE.md'):
+        assert phrase in memory, phrase
+    reference = (SITE / 'reference.md').read_text()
+    for phrase in ('memory show', 'memory status', 'memory export', 'memory forget', 'consolidate --widget'):
+        assert phrase in reference, phrase
+    doctor = reference[reference.index('## Doctor'):]
+    assert 'memory tiers' in doctor[:doctor.index('\n## ', 5)]
+    skill = (ROOT / 'skills/wuwei-consolidate/SKILL.md').read_text()
+    for phrase in ('consolidate --widget', 'memory forget', 'memory show'):
+        assert phrase in skill, phrase

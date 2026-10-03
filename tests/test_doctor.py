@@ -286,7 +286,7 @@ def test_no_workspace(ws, tmp_path, monkeypatch):
 def test_workspace_rows_healthy(ws):
     rows = doctor.diagnose()
     assert names(rows, 'workspace') == [
-        'workspace', 'config', 'template', 'executable', 'acme/widget path', 'acme/widget git', 'acme/widget branch',
+        'workspace', 'config', 'template', 'executable', 'memory tiers', 'acme/widget path', 'acme/widget git', 'acme/widget branch',
         'acme/widget identity', 'acme/widget fast_checks', 'calibration', 'drift', 'interview',
         'profile', 'posture']
     assert row(rows, 'posture')['value'] == 'guarded (from security.posture)'
@@ -1004,3 +1004,17 @@ def test_mcp_reports_migration_bound_to_preview(ws, capsys):
     out = capsys.readouterr().out
     assert 'changed since the preview; nothing applied' in out and 'mcp-reports: exit 1' in out
     assert (ziran / 'report-a').is_dir() and not target.exists()
+
+
+def test_memory_tiers_row_names_days_consolidate_left_raw(ws, tmp_path):
+    found = row(doctor.diagnose(), 'memory tiers')
+    assert (found['status'], found['value']) == ('ok', 'within 30 days')
+    (ws.root / '.wuwei/days/2026-08-01').mkdir(parents=True)
+    found = row(doctor.diagnose(), 'memory tiers')
+    assert found['status'] == 'warn' and found['fix'] == 'wuwei consolidate'
+    assert found['value'] == '1 raw days older than consolidation.archive_after_days (30); consolidate has not run'
+    (ws.root / '.wuwei/days/2026-08-01').rmdir()
+    days = ws.root / '.wuwei/days'
+    days.rename(tmp_path / 'real-days')
+    days.symlink_to(tmp_path / 'real-days')
+    assert row(doctor.diagnose(), 'memory tiers')['status'] == 'unmeasured'

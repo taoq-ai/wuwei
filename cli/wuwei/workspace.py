@@ -86,7 +86,9 @@ SCHEMA = {
     "consolidation": {"archive_after_days": (int, 30, 0),
                       "similarity_threshold": (float, 0.85)},
     "memory": {"max_notes": (int, 60, 1), "note_line_cap": (int, 80, 1),
-               "probation_days": (int, 10, 0), "state_entry_cap": (int, 3, 1)},
+               "probation_days": (int, 10, 0), "state_entry_cap": (int, 3, 1),
+               "digest": (str, "week", ("week", "off")), "budget_tokens": (int, 6000, 1),
+               "export_to": (str, "CLAUDE.md")},
     "metrics": {"transcripts": (str, "~/.claude/projects"), "band_margin": (float, 0.2)},
     "voice": {"sources": {"*": [(str, None)]}, "review_prs": [(str, None)]},
     "build": {"max_iterations": (int, 8, 1), "stuck_after": (int, 3, 1),
@@ -504,7 +506,7 @@ _CONFIGS = {}
 # copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
-CONFIG_CACHE_VERSION = 1  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 2  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor, why and the board stay read-only.

@@ -257,6 +257,16 @@ def _workspace(root, config, error, found):
                          detail=charters, docs='docs/site/charter-overrides.md'))
     if config is None:
         return rows
+    window = config['consolidation']['archive_after_days']
+    try:
+        from wuwei import consolidation
+        late = [path for path in consolidation.expired(root) if path.parent.name == 'days']
+        rows.append(_row('workspace', 'memory tiers', 'warn', f'{len(late)} raw days older than '
+                         f'consolidation.archive_after_days ({window}); consolidate has not run',
+                         'wuwei consolidate') if late else
+                    _row('workspace', 'memory tiers', 'ok', f'within {window} days'))
+    except (OSError, ValueError) as exc:
+        rows.append(_row('workspace', 'memory tiers', 'unmeasured', str(exc), 'wuwei consolidate'))
     vcs = registry.load('vcs', config)
     for index, repo in enumerate(config['repos']):
         name, branch = repo['name'], repo['default_branch']

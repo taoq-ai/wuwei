@@ -50,6 +50,9 @@ def run(args):
         if code == 0:
             steward.run(root, trigger='close')
             code, reason = closing.check(root)
+            if code == 0:
+                from wuwei import digest
+                digest.write(root, workspace.now().date(), 'week')
     if reason:
         print(reason)
     return code

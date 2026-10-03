@@ -458,20 +458,29 @@ def parse(pairs, repos):
 def _recorded(root):
     """(question id, repository or None) for every answer a day's or archived day's interview.json
     records; membership only, so an answer from an older table still counts."""
+    from wuwei.consolidation import day_records
     found = set()
+    sources = []
     for base in ('days', 'archive'):
         for path in sorted((root / '.wuwei' / base).glob('*/interview.json')):
             name = path.relative_to(root / '.wuwei').as_posix()
             if path.is_symlink():
                 raise ValueError(f'{name} must not be a symlink')
-            try:
-                answers = json.loads(path.read_text(encoding='utf-8'))
-            except ValueError as exc:  # JSONDecodeError and UnicodeDecodeError
-                raise ValueError(f'{name}: {exc}') from None
-            if not isinstance(answers, dict):
-                raise ValueError(f'{name}: expected an object')
-            for qid, value in answers.items():
-                found |= {(qid, repo) for repo in value} if isinstance(value, dict) else {(qid, None)}
+            sources.append((name, path.read_bytes))
+    # ponytail: opens every archived day; index answers in a digest if calibrate gets slow.
+    for path in sorted((root / '.wuwei/archive').glob('*/*.tar.gz')):
+        day = path.name.removesuffix('.tar.gz')
+        sources.append((path.relative_to(root / '.wuwei').as_posix(),
+                        lambda day=day: (day_records(root, day) or {}).get('interview.json', '{}')))
+    for name, read in sources:
+        try:
+            answers = json.loads(read())
+        except ValueError as exc:  # JSONDecodeError and UnicodeDecodeError
+            raise ValueError(f'{name}: {exc}') from None
+        if not isinstance(answers, dict):
+            raise ValueError(f'{name}: expected an object')
+        for qid, value in answers.items():
+            found |= {(qid, repo) for repo in value} if isinstance(value, dict) else {(qid, None)}
     return found
 
 

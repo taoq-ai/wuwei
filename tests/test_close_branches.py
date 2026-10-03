@@ -30,3 +30,27 @@ def test_pushed_branches_tool_failure(monkeypatch, tmp_path, error):
     monkeypatch.setattr(git.subprocess, 'run', fail)
     result = git.pushed_branches(str(tmp_path))
     assert result.exit == 2 and 'could not run' in result.reason
+
+
+@pytest.mark.parametrize('passing', [True, False])
+def test_passing_close_writes_the_week_digest(tmp_path, monkeypatch, passing):
+    from argparse import Namespace
+    from wuwei import closing, pr_actions, state, steward
+    from wuwei.commands import close
+    (tmp_path / '.wuwei/memory/notes').mkdir(parents=True)
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-03T18:00:00+02:00')
+    state._write_state(lambda data: None, tmp_path, reserved=False)
+    monkeypatch.setattr(pr_actions, 'evaluate', lambda root: (0, []))
+    monkeypatch.setattr(closing, 'unresolved', lambda *a, **k: (0, ''))
+    monkeypatch.setattr(steward, 'run', lambda *a, **k: 0)
+    monkeypatch.setattr(closing, 'check', lambda root: (0, '') if passing else (1, 'refused'))
+    args = Namespace(check=None, widget=False)
+    digest = tmp_path / '.wuwei/memory/digests/2026-W40.md'
+    assert close.run(args) == (0 if passing else 1)
+    assert digest.is_file() == passing
+    if passing:
+        before = digest.read_bytes()
+        assert close.run(args) == 0 and digest.read_bytes() == before

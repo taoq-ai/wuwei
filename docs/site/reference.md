@@ -15,7 +15,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei calibrate` | Profiles the repositories and proposes config; `--measure` times each test runner once to decide whether it is a fast check; `--interview` asks the owner; `export` and `import` share a profile. | [Calibration](configuration.md#calibration) |
 | `bin/wuwei close` | Refuses day close until every obligation lands; `--widget` asks about each open item. | [Day close](concepts.md#day-close) |
 | `bin/wuwei config` | Inspects and changes workspace configuration: `check`; `promote`, `set <key> <value>` and `add-repo` apply after a digest. | [Configuration](configuration.md#calibration) |
-| `bin/wuwei consolidate` | Reviews and archives workspace memory. | [Configuration](configuration.md#host-build-and-memory) |
+| `bin/wuwei consolidate` | Reviews memory, packs old days into tarballs, rebuilds digests and proposes forgetting; `consolidate --widget` asks each pending proposal. | [Configuration](configuration.md#host-build-and-memory) |
 | `bin/wuwei dashboard` | Serves the read-only day board on loopback. | [Cockpit and board](concepts.md#cockpit-and-board) |
 | `bin/wuwei decide` | Owner: `decide D-<n> <option> [--note <text>]` records the answer to today's decision, the MCP registry one included. | [Host terminal actions](#host-terminal-actions) |
 | `bin/wuwei decision` | Checks and routes decision records; `outcome` records the owner's answer. | [Decision record](#decision-record) |
@@ -34,9 +34,8 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei integrity` | Checks signed plugin integrity; `reconfirm` pins a development checkout. | [Recovery](recovery.md#integrity-reconfirm) |
 | `bin/wuwei listen` | Polls the inbound source into the workspace inbox and probes raised and claimed PRs. | [Remote](remote.md) |
 | `bin/wuwei mcp` | Checks the attached MCP servers; `decide D-<n> <option>` records the owner's answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
-| `bin/wuwei memory` | Plumbing: checks workspace memory. | [Concepts](concepts.md#memory) |
 | `bin/wuwei mcp` | Checks the attached MCP servers; `decide [D-<n>] <option>` records the owner's answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
-| `bin/wuwei memory` | Checks workspace memory. | [Concepts](concepts.md#memory) |
+| `bin/wuwei memory` | `lint` checks workspace memory; `memory show <date>` prints a raw or archived day; `memory status` sizes every tier; `memory export --claude` writes the rules block into `memory.export_to`; `memory forget F-n apply` or `keep` is the owner's answer to a forgetting proposal. | [Concepts](concepts.md#memory) |
 | `bin/wuwei merge` | Checks or merges an eligible PR. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei metrics` | Shows the recorded process metrics. | [Long sessions](daily.md#long-sessions) |
 | `bin/wuwei next` | Prints where the day stands and the one next step with its command; `--json` prints `{state, step, command}`. | [What the session knows](agent.md) |
@@ -195,7 +194,7 @@ Dead-man ping: set `watch.ping_url` to the https check URL of a hosted cron moni
 in seven sections: Install (plugin, integrity, `.in_use` markers, hooks, launcher, Python),
 Host (`gh`, git identity, ZIRAN, Claude Code, Codex, free memory, service manager),
 Workspace (config, template drift, each repository's path, branch, identity and
-`fast_checks`, calibration, interview, profiles, posture and its observe days), Gates and adapters
+`fast_checks`, calibration, interview, profiles, posture and its observe days, and `memory tiers`, which warns when raw days are older than `consolidation.archive_after_days`), Gates and adapters
 (`config check`, the MCP gate and each server in today's registry record), PR flow (the
 settings the shepherd reads: `owner.handles`, `shepherd.lead_login`, `shepherd.authors`,
 `shepherd.review_channel` when chat is set, and the tracker, chat and review-bot adapters; an
@@ -393,6 +392,7 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei config set <key> <value>` | yes |
 | `bin/wuwei config add-repo --name --path --branch` | yes |
 | `bin/wuwei setup` | yes |
+| `bin/wuwei memory forget F-<n> apply` and `memory forget F-<n> keep` (apply asks) | yes |
 
 A command that asks y/N shows what it confirms and reads the answer from `/dev/tty`; anything but y or yes declines. Without a terminal it changes nothing and exits 2 with `this is an owner action: run it in a host terminal`. From outside the workspace, set `WUWEI_WORKSPACE=<path>` or put `--workspace <path>` first, as in `bin/wuwei --workspace <path> decide D-1 A`. `drafts approve --edit`, `goals edit` and `voice edit` open `EDITOR`. As with other host-only actions, this follows the cooperative hook threat model in spec 9.1.
 

@@ -935,3 +935,28 @@ def test_issue_349_writes_refused_in_every_posture(records, posture, monkeypatch
 def test_issue_349_interpreter_operands_stay_refused(records, posture, command, monkeypatch, capsys):
     _posture(records, posture)
     assert _hook(records, 'Bash', monkeypatch, capsys, command=command) == 2
+
+
+@pytest.mark.parametrize('path', ['.wuwei/memory/digests/2026-W40.md', '.wuwei/memory/forget.json'])
+def test_memory_tier_records_are_producer_only(workspace, path):
+    from wuwei.guards.protect_state import check_bash, check_file
+    assert check_file(payload(workspace, 'Write', file_path=path))[0] == 1
+    for command in (f'cp other {path}', f'mv other {path}', f'rm {path}'):
+        assert check_bash(payload(workspace, 'Bash', command=command))[0] == 1, command
+    # forget.json names the owner group and verb, so a redirect into it reads as opaque (exit 2).
+    assert check_bash(payload(workspace, 'Bash', command=f'echo forged > {path}'))[0] in (1, 2)
+    assert check_bash(payload(workspace, 'Bash', command=f'cat {path}')) == (0, '')
+    assert check_bash(payload(workspace, 'Bash', command='rm -rf .wuwei/memory/digests'))[0] == 1
+
+
+@pytest.mark.parametrize('command,expected', [
+    ('bin/wuwei memory forget F-1 apply',
+     (1, 'Forgetting memory is an owner action on the host, outside agent tools.')),
+    ('python3 -P -m wuwei memory forget F-1 keep',
+     (1, 'Forgetting memory is an owner action on the host, outside agent tools.')),
+    ('bin/wuwei memory show 2026-08-01', (0, '')), ('bin/wuwei memory status', (0, '')),
+    ('bin/wuwei consolidate --widget', (0, '')), ('bin/wuwei memory lint', (0, '')),
+])
+def test_memory_forget_is_an_owner_action(workspace, command, expected):
+    from wuwei.guards.protect_state import check_bash
+    assert check_bash(payload(workspace, 'Bash', command=command)) == expected
