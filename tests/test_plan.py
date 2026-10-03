@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from wuwei import plan, state
+from wuwei import discovery, plan, registry, state
 
 
 @pytest.fixture
@@ -151,3 +151,67 @@ def test_candidate_tier_is_copied_at_approve(root):
     plan.propose(good, root)
     plan.approve(['A'], root, goals_confirmed=True)
     assert state.read_state(root)['items']['A']['tier'] == 'full'
+
+
+SCANNER_CONFIG = '[adapters]\nscanner = "ziran"\n[[repos]]\nname = "acme/widget"\npath = "widget"\ndefault_branch = "main"\n'
+REPORT = (Path(__file__).parent / 'fixtures/scanner/audit.json').read_text()
+
+
+def fake_ziran(monkeypatch, code, stdout, version='0.39.0'):
+    import subprocess
+    from types import SimpleNamespace
+
+    def run(argv, **kwargs):
+        if argv == ['ziran', '--version']:
+            return SimpleNamespace(returncode=0, stdout=f'ziran, version {version}', stderr='')
+        assert argv[:2] == ['ziran', 'audit'] and argv[3:] == ['--format', 'json', '--severity', 'low']
+        return SimpleNamespace(returncode=code, stdout=stdout, stderr='')
+
+    monkeypatch.setattr(subprocess, 'run', run)
+
+
+def propose_with_scanner(root, monkeypatch):
+    from wuwei.__main__ import main
+
+    (root / '.wuwei/config.toml').write_text(SCANNER_CONFIG)
+    (root / 'widget').mkdir()
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    source = root / 'lead.json'
+    source.write_text(json.dumps(proposal()))
+    assert main(['plan', 'propose', str(source)]) == 0
+    day = root / '.wuwei/days/2026-09-28'
+    return json.loads((day / 'proposal.json').read_text())['sweep']['discovery.scanner'], (day / 'plan.md').read_text()
+
+
+@pytest.mark.parametrize('findings,code,count', [(True, 1, 'measured: 1'), (False, 0, 'measured: 0')])
+def test_plan_propose_lists_scanner_findings(root, monkeypatch, findings, code, count):
+    report = json.loads(REPORT)
+    if not findings:
+        report['findings'] = []
+    fake_ziran(monkeypatch, code, json.dumps(report))
+    measured, text = propose_with_scanner(root, monkeypatch)
+    assert measured == count
+    if findings:
+        assert ('- acme/widget:scanner:SA003:vulnerable.py:5: high SA003 vulnerable.py:5: '
+                'Untrusted input reaches eval') in text
+
+
+@pytest.mark.parametrize('version,code,stdout', [('0.38.9', 1, REPORT), ('0.39.0', 3, REPORT),
+                                                 ('0.39.0', 1, 'not json')])
+def test_plan_propose_with_unrunnable_scanner(root, monkeypatch, version, code, stdout):
+    fake_ziran(monkeypatch, code, stdout, version)
+    measured, _ = propose_with_scanner(root, monkeypatch)
+    assert measured.startswith('unmeasured: acme/widget: ziran audit: unmeasured')
+
+
+@pytest.mark.parametrize('result', [registry.Result(0, []), registry.Result(1, {'files_analyzed': 1}),
+                                    registry.Result(0, {'files_analyzed': 1, 'findings': ['x']}),
+                                    registry.Result(5, None), None])
+def test_discover_marks_out_of_contract_scanner_unmeasured(root, result):
+    from types import SimpleNamespace
+
+    (root / '.wuwei/config.toml').write_text(SCANNER_CONFIG)
+    (root / 'widget').mkdir()
+    found = discovery.discover(root, ports={'scanner': SimpleNamespace(audit=lambda path, root=None: result)})
+    assert found['sources']['scanner'] == 'unmeasured: acme/widget: invalid scanner result'
+    assert not [row for row in found['candidates'] if row['source'] == 'scanner']

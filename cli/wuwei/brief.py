@@ -242,9 +242,18 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         if tree:
             changed = status(vcs, tree, root)
             head = read(vcs.head, tree, root=root)['sha']
-            repo = next((r for r in config['repos'] if (root / r['path']).resolve() == tree), {})
-            ref = config['brief']['remote'] + '/' + repo.get('default_branch', 'main')
-            base = read(vcs.merge_base, tree, ref, root=root)['sha']
+            repo = next((r for r in config['repos'] if (root / r['path']).resolve() == tree), None)
+            if repo is None and config['repos']:
+                from wuwei.guards.commit_push import context
+                repo = context(tree, {}, {}, root, identity=False)[0]
+            repo = repo or {}
+            remote = config['brief']['remote']
+            ref = remote + '/' + repo.get('default_branch', 'main')
+            try:
+                base = read(vcs.merge_base, tree, ref, root=root)['sha']
+            except ValueError as exc:
+                raise ValueError(f"no merge base with {ref} in {repo.get('name', tree.name)} ({exc}); "
+                                 f'run git -C {tree} fetch {remote}, then write the brief again') from None
             prior = read(vcs.branches, tree, config['brief']['prior_branch_pattern'].format(item=item.lower()), root=root)
             header += [f'Worktree: {tree}', f'HEAD: {head}', f'Merge-base: {base} ({ref})',
                        f'Status: {json.dumps(changed)}', f'Prior branches: {json.dumps(prior)}']
