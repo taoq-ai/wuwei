@@ -38,7 +38,7 @@ PARAMETERS = {
                   'create_pr': ('draft',), 'request_reviewers': ('ref', 'logins'),
                   'comment': ('ref', 'text', 'thread'), 'merge': ('ref', 'sha'),
                   'revert_pr': ('ref',), 'merged_prs': ('repo',), 'probe': ('ref', 'tags'),
-                  'default_branch': ('repo',)},
+                  'default_branch': ('repo',), 'issue': ('repo', 'title', 'body')},
     'vcs': {'workspace_init': ('repo',),
             'workspace_changes': ('repo',),
             'workspace_commit': ('repo', 'paths'), 'workspace_owner_commit': ('repo', 'paths'),

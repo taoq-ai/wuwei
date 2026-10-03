@@ -41,6 +41,7 @@ CALLS = [
     ('code_host', 'merged_prs', ('repo',), True),
     ('code_host', 'probe', ('ref', 'tags'), True),
     ('code_host', 'default_branch', ('repo',), True),
+    ('code_host', 'issue', ('repo', 'title', 'body'), False),
     ('vcs', 'workspace_init', ('repo',), False),
     ('vcs', 'workspace_changes', ('repo',), True),
     ('vcs', 'workspace_commit', ('repo', 'paths'), False),
@@ -476,3 +477,55 @@ def test_watch_ping_requires_https(monkeypatch):
     monkeypatch.setattr(urllib.request, 'urlopen', lambda *a, **k: pytest.fail('opened a connection'))
     with pytest.raises(ValueError, match='ping URL must be https'):
         module.ping('http://example.test/x')
+
+
+def test_watch_post_sends_json_over_https_and_returns_the_status(monkeypatch):
+    # #422: telemetry posts; a 409 comes back as a status, never an exception.
+    import io
+    import urllib.error
+    import urllib.request
+    from wuwei.registry import watch_service
+    module, sent = watch_service(), []
+
+    class Response(io.BytesIO):
+        status = 202
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def urlopen(request, timeout):
+        sent.append((request.full_url, request.get_method(), request.data, dict(request.header_items()), timeout))
+        if len(sent) == 2:
+            raise urllib.error.HTTPError(request.full_url, 409, 'Conflict', {}, io.BytesIO(b''))
+        return Response(b'ok')
+    monkeypatch.setattr(urllib.request.OpenerDirector, 'open', lambda self, request, data=None, timeout=None: urlopen(request, timeout))
+    assert module.post('https://example.test/v1', {'a': 1}, {'Authorization': 'x'}) == 202
+    assert module.post('https://example.test/v1', {'a': 1}) == 409
+    url, method, data, headers, timeout = sent[0]
+    assert (url, method, json.loads(data), timeout) == ('https://example.test/v1', 'POST', {'a': 1}, 5)
+    assert headers['Content-type'] == 'application/json' and headers['Authorization'] == 'x'
+    with pytest.raises(ValueError, match='https'):
+        module.post('http://example.test/v1', {})
+    assert len(sent) == 2
+
+
+def test_watch_post_does_not_follow_a_redirect(monkeypatch):
+    # A 302 must not carry the Authorization header to the Location host.
+    import email.message
+    import io
+    import urllib.request
+    import urllib.response
+    from wuwei.registry import watch_service
+    headers = email.message.Message()
+    headers['Location'] = 'http://other.test/'
+
+    def https_open(self, request):
+        response = urllib.response.addinfourl(io.BytesIO(b''), headers, request.full_url, 302)
+        response.msg = 'Found'
+        return response
+    monkeypatch.setattr(urllib.request.HTTPSHandler, 'https_open', https_open)
+    monkeypatch.setattr(urllib.request.HTTPHandler, 'http_open', lambda self, request: pytest.fail('followed'))
+    assert watch_service().post('https://example.test/v1', {}, {'Authorization': 'x'}) == 302

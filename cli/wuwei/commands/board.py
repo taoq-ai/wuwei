@@ -114,6 +114,18 @@ def _table(title, header, rows):
     return lines + ['| ' + ' | '.join(_cell(value) for value in row) + ' |' for row in rows]
 
 
+def _telemetry(root, data):
+    """#422: the current week's aggregate, or unmeasured with the reason today's step skipped."""
+    from wuwei import telemetry
+    skipped = data.get('watch', {}).get('telemetry', {}).get('skipped')
+    if skipped:
+        return [('unmeasured', skipped)]
+    found = telemetry.load_week(root, telemetry.current_week(root))
+    if found is None:
+        return [('unmeasured', 'no aggregate yet')]
+    return [(key, json.dumps(value)) for key, value in found['metrics'].items()]
+
+
 def read(root):
     directory = workspace.day_dir(root)
     cockpit = dashboard.cockpit_snapshot(directory)
@@ -132,6 +144,7 @@ def read(root):
                      [(r['ref'], r['state'], r['waiting_on'], r['deadline']) for r in cockpit['prs']]),
              *_table('Decisions', ('Id', 'Question', 'Route', 'Command'),
                      [(r['id'], r['question'], r['route'], r['command']) for r in cockpit['decisions']]),
+             *_table('Telemetry', ('Metric', 'Value'), _telemetry(root, data)),
              *_table('Attention', ('Tier', 'Lane', 'Reason'),
                      [(r['tier'], r['lane'], r['reason']) for r in status.attention(directory)]),
              '', 'Full cockpit: run bin/wuwei dashboard and open the printed loopback URL.']

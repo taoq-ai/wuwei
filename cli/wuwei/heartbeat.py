@@ -140,11 +140,17 @@ def measure(root):
         found.update(refused=_exit(refused, 2), allowed=_exit(allowed, 0),
                      state_write=_exit(written, 2), status_line=_status_line(status),
                      read_loop=_exit(loop, 0))
+        # #422: the hook as the owner feels it; a timed-out call has no ms.
+        timed = {name: result[2] for name, result in
+                 (('refused', refused), ('allowed', allowed), ('state_write', written), ('read_loop', loop))
+                 if result[0] is not None}
     except (OSError, ValueError) as exc:
+        timed = {}
         if not found:
             during()
         found.update({name: ('unmeasured', str(exc)) for name in ('refused', 'allowed', 'state_write', 'status_line', 'read_loop')})
-    return {name: {'result': found[name][0], 'value': found[name][1]} for name, _ in PROBES}
+    return {name: {'result': found[name][0], 'value': found[name][1],
+                   **({'ms': timed[name]} if name in timed else {})} for name, _ in PROBES}
 
 
 def health(probes):

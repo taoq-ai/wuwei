@@ -1132,6 +1132,8 @@ def test_memory_tiers_are_documented():
     skill = (ROOT / 'skills/wuwei-consolidate/SKILL.md').read_text()
     for phrase in ('consolidate --widget', 'memory forget', 'memory show'):
         assert phrase in skill, phrase
+
+
 def test_charters_carry_the_spec_mode():
     builder = (ROOT / 'charters/builder.md').read_text()
     assert 'Spec:' in builder and 'plan set' in builder
@@ -1140,3 +1142,17 @@ def test_charters_carry_the_spec_mode():
         assert 'spec=skipped' in path.read_text(), path
     agent = (SITE / 'agent.md').read_text()
     assert 'specify first' in agent and 'spec engine' in (SITE / 'daily.md').read_text().lower()
+
+
+def test_telemetry_is_documented():
+    # #422: the plan skill presents proposals after the gate; the security page says what leaves.
+    plan = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+    assert 'wuwei telemetry proposals --widget' in plan
+    security = (SITE / 'security.md').read_text()
+    for phrase in ('IP address', 'your login', 'wuwei telemetry off', '`telemetry.share`'):
+        assert phrase in security, phrase
+    reference = (SITE / 'reference.md').read_text()
+    for phrase in ('metrics --week', '`ms`', 'telemetry send'):
+        assert phrase in reference, phrase
+    assert 'telemetry send' in (SITE / 'concepts.md').read_text()
+    assert 'OpenTelemetry' in (SITE / 'configuration.md').read_text()

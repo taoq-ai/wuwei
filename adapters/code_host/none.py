@@ -82,3 +82,7 @@ def merged_prs(repo, root=None):
 
 def probe(ref, tags, root=None):
     return record_none('code_host', 'probe', root, measurement=True)
+
+
+def issue(repo, title, body, root=None):
+    return record_none('code_host', 'issue', root, measurement=False)

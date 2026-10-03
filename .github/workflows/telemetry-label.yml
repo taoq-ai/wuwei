@@ -1,0 +1,18 @@
+name: Telemetry label
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  label:
+    if: startsWith(github.event.issue.title, 'telemetry: ')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label an attributed telemetry week
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+        run: gh issue edit "$NUMBER" --repo "$GITHUB_REPOSITORY" --add-label telemetry

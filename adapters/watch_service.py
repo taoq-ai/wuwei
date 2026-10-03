@@ -1,4 +1,4 @@
-"""Allowlisted local process and network calls for the watch: service manager, heartbeat probes and the dead-man ping."""
+"""Allowlisted local process and network calls for the watch: service manager, heartbeat probes, the dead-man ping and telemetry posts."""
 
 from pathlib import Path
 import subprocess
@@ -77,3 +77,25 @@ def ping(url, timeout=5):
         raise ValueError('ping URL must be https')
     with urllib.request.urlopen(url, timeout=timeout) as response:
         response.read(1024)
+
+
+def post(url, body, headers=None, timeout=5):
+    """POST JSON to an https URL and return the HTTP status (#422); an error status is a
+    status, any other failure raises OSError or ValueError."""
+    import json
+    import urllib.error
+    import urllib.request
+    if not url.startswith('https://'):
+        raise ValueError('post URL must be https')
+    request = urllib.request.Request(url, data=json.dumps(body).encode(), method='POST',
+                                     headers={'Content-Type': 'application/json', **(headers or {})})
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        # A 3xx comes back as its status: following it would resend the headers to the Location host.
+        def redirect_request(self, *args):
+            return None
+    try:
+        with urllib.request.build_opener(NoRedirect).open(request, timeout=timeout) as response:
+            response.read(1024)
+            return response.status
+    except urllib.error.HTTPError as exc:
+        return exc.code

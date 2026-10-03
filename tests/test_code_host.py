@@ -463,3 +463,21 @@ def test_stderr_line_search_has_no_email(monkeypatch):
     result = adapter().author_login('acme/widget', 'dev@example.test')
     assert result.exit == 2 and 'gh exited 1' in result.reason and 'search' in result.reason
     assert 'example.test' not in result.reason
+
+
+def test_issue_opens_through_the_allowlisted_api(tmp_path, monkeypatch):
+    # #422: the attributed telemetry week; the validated body skips the outward lint by design.
+    from wuwei import registry
+    assert registry.INTERFACES['code_host'][-1] == 'issue'
+    assert registry.PARAMETERS['code_host']['issue'] == ('repo', 'title', 'body')
+    calls = install_replay(monkeypatch, 'gh', [{
+        'argv': ['api', 'repos/acme/widget/issues', '--method', 'POST', '--input', '-', '--hostname', 'github.com'],
+        'input': {'title': 'telemetry: 2026-W39', 'body': '| key | value |'},
+        'stdout': json.dumps({'number': 5, 'html_url': 'https://github.com/acme/widget/issues/5'})}])
+    result = adapter().issue('acme/widget', 'telemetry: 2026-W39', '| key | value |', root=tmp_path)
+    assert (result.exit, result.data) == (0, {'number': 5, 'url': 'https://github.com/acme/widget/issues/5'})
+    assert len(calls) == 1
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **k: pytest.fail('invalid input reached subprocess'))
+    assert adapter().issue('../widget', 't', 'b').exit == 2
+    none = importlib.import_module('adapters.code_host.none')
+    assert none.issue('acme/widget', 't', 'b', root=tmp_path).exit == 2
