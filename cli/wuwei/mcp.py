@@ -17,6 +17,7 @@ DEFAULTS = {'project_file': '.mcp.json',
             'user_file': '~/.claude.json'}
 COVERED = 'WUWEI plugin.json servers covered by plugin integrity (signed manifest), not scanned'
 NOT_CHECKED = 'MCP registry: not checked (security.areas.mcp = "off")'
+DECIDE = 'bin/wuwei mcp decide'
 NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}')
 SEVERITIES = workspace.SCHEMA['scanner']['severity_threshold'][2]
 # An exact version only: @latest, ranges and 1.x are unpinned.
@@ -265,10 +266,15 @@ def _failure(exc):
     return registry.Result(2, reason=f'MCP registry unmeasured: {type(exc).__name__}; check configuration and scanner reports')
 
 
+def _summary(record):
+    """One line for a pending finding batch (#351): what was found and the command."""
+    return (f"MCP registry findings ({', '.join(record['severities'])}) await review in "
+            f"{record['pending']}: run {DECIDE}")
+
+
 def _result(record):
     code = max(record['exit'], int(bool(record['pending'])))
-    reason = record['reason'] if code == 2 else (
-        'MCP registry findings: owner decision required in ' + record['pending'] if code else record['reason'])
+    reason = _summary(record) if code == 1 else record['reason']
     return registry.Result(code, reason=reason)
 
 
@@ -277,7 +283,7 @@ def _gate(record, block):
     if record['exit'] == 2 and not record['unmeasured'] or record['unmeasured'] and 'unmeasured' in block:
         return registry.Result(2, reason=record['reason'])
     if record['pending'] and set(record['severities']) & set(block):
-        return registry.Result(1, reason='MCP registry findings: owner decision required in ' + record['pending'])
+        return registry.Result(1, reason=_summary(record))
     return registry.Result(0, reason=record['reason'])
 
 

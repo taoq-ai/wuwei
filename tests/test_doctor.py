@@ -391,6 +391,9 @@ def test_gates_mcp_servers(ws):
     assert row(rows, 'mcp gate')['status'] == 'ok'
 
     record(ws.root, exit=1, pending=f'.wuwei/days/{TODAY}/decisions/D-1.md', severities=['critical'])
+    assert row(doctor.diagnose(), 'mcp gate')['status'] == 'ok'  # #351: guarded warns.
+    with (ws.root / '.wuwei/config.toml').open('a') as config:
+        config.write('[security]\nposture = "strict"\n')
     assert row(doctor.diagnose(), 'mcp gate')['status'] == 'fail'
 
     record(ws.root, day='2026-10-02')

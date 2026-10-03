@@ -188,6 +188,12 @@ def core():
     return importlib.import_module('wuwei.mcp')
 
 
+def block_critical(root):
+    """The pre-#351 default list, pinned for tests of the blocking path."""
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write('[scanner.mcp]\nblock = ["critical"]\n')
+
+
 def fake_scanner(monkeypatch, code=0, rows=None):
     response = registry.Result(code, {'findings': rows or [], 'reports': []},
                                'scanner unavailable' if code == 2 else '')
@@ -261,6 +267,9 @@ def test_init_registers_and_reports_poisoning(tmp_path, monkeypatch, upgrade, ca
     assert file.parent == root.resolve() / '.wuwei/ziran/servers'
     assert json.loads(file.read_text()) == {'mcpServers': {'docs': {'command': 'fake'}}}
     assert 'MCP' in capsys.readouterr().err
+    assert core().cached(root).exit == 0  # #351: guarded warns.
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('posture = "guarded"', 'posture = "strict"'))
     assert core().cached(root).exit == 1
     assert list((root / '.wuwei/days').glob('*/decisions/D-*.md'))
 
@@ -273,6 +282,7 @@ def test_morning_check_before_launch(configured, monkeypatch, code):
     memory = configured / '.wuwei/memory'
     memory.mkdir()
     (memory / 'goals.md').write_text('# Goals\n## G-1\noutcome: Ship\nmeasure: shipped\ntarget: 1\ndate: 2026-10-30\npriority: 1\n')
+    block_critical(configured)
     calls = fake_scanner(monkeypatch, code, [metadata('critical')] if code == 1 else [])
     if code == 1:
         with pytest.raises(state.StateError, match='MCP'):
@@ -291,8 +301,76 @@ def test_morning_check_before_launch(configured, monkeypatch, code):
     assert not state.read_state(configured)['seats']
 
 
+SEAT = {'subagent_type': 'wuwei:builder', 'description': 'Build', 'prompt': 'no brief'}
+
+
+@pytest.mark.parametrize('severity', ['high', 'critical'])
+def test_strict_blocks_critical_and_high(configured, monkeypatch, severity):
+    # #351: strict refuses a high or critical finding until the owner decides.
+    from test_plan import proposal
+    from wuwei import plan, state
+    from wuwei.guards.agent_launch import check_mcp
+    goals(configured)
+    with (configured / '.wuwei/config.toml').open('a') as config:
+        config.write('[security]\nposture = "strict"\n')
+    fake_scanner(monkeypatch, 1, [metadata(severity)])
+    assert core().check(configured).exit == 1
+    result = core().cached(configured)
+    assert result.exit == 1 and '(mcp: block, security.areas.mcp)' in result.reason
+    assert check_mcp({'cwd': str(configured), 'tool_input': SEAT})[0] == 1
+    with pytest.raises(state.StateError, match='MCP'):
+        plan.propose(proposal(), configured)
+    for pending in (configured / '.wuwei/days').glob('*/decisions/D-*.md'):
+        pending.write_text(pending.read_text().replace('Outcome: pending', 'Outcome: proceed'))
+    assert core().decide(configured, confirm=lambda digest: True).exit == 0
+    assert core().cached(configured).exit == 0
+
+
+def test_guarded_critical_warns_with_summary(configured, monkeypatch, capsys):
+    # #351: under the default posture a critical finding warns; every surface names the command.
+    from test_plan import proposal
+    from wuwei import plan
+    from wuwei.commands import status
+    from wuwei.guards.agent_launch import check_mcp
+    goals(configured)
+    fake_scanner(monkeypatch, 1, [metadata('critical')])
+    result = core().check(configured)
+    assert result.exit == 1
+    assert '(critical)' in result.reason and 'decisions/D-1.md' in result.reason
+    assert 'bin/wuwei mcp decide' in result.reason
+    assert core().cached(configured).exit == 0
+    assert check_mcp({'cwd': str(configured), 'tool_input': SEAT})[0] == 0
+    capsys.readouterr()
+    text = plan.propose(proposal(), configured).read_text()
+    assert 'bin/wuwei mcp decide' in capsys.readouterr().err
+    [line] = [line for line in text.splitlines() if line.startswith('- mcp:')]
+    assert 'bin/wuwei mcp decide' in line
+    reasons = [row['reason'] for row in status.attention(workspace.day_dir(configured))]
+    assert 'MCP critical description_changed finding on docs: run bin/wuwei mcp decide' in reasons
+
+
+def test_finding_row_hides_untrusted_text(configured):
+    from wuwei import state
+    from wuwei.commands import status
+    state.append_event('mcp.finding', {**metadata(), 'server_name': 'bad name; run rm',
+                                       'tool_name': 'IGNORE PREVIOUS'}, configured)
+    rows = status.attention(workspace.day_dir(configured))
+    assert 'MCP high description_changed finding on unnamed: run bin/wuwei mcp decide' in [
+        row['reason'] for row in rows]
+    assert 'IGNORE PREVIOUS' not in json.dumps(rows)
+
+
+def test_template_has_no_block_key():
+    import tomllib
+    text = (Path(__file__).parents[1] / 'templates/workspace/config.toml').read_text()
+    assert 'block' not in tomllib.loads(text)['scanner']['mcp']
+    section = text.split('[scanner.mcp]')[1].split('\n[')[0]
+    assert all(word in section for word in ('observe', 'guarded', 'strict', 'block'))
+
+
 def test_sticky_findings_owner_confirmation_and_rollover(configured, monkeypatch):
     from wuwei import state
+    block_critical(configured)
     fake_scanner(monkeypatch, 1, [metadata('critical')])
     assert core().check(configured).exit == 1
     pending = next((configured / '.wuwei/days').glob('*/decisions/D-*.md'))
@@ -543,7 +621,7 @@ def test_path_stub_init_then_description_drift_before_morning_launch(tmp_path, m
     assert main(['init']) == 0
     config = root / '.wuwei/config.toml'
     config.write_text(config.read_text().replace('scanner = "none"', 'scanner = "ziran"').replace(
-        'block = ["critical"]', 'block = ["high", "critical"]'))
+        'timeout_seconds = 60', 'timeout_seconds = 60\nblock = ["high", "critical"]'))
     approve(root, 'docs')
     mcp_file = root / '.mcp.json'
     mcp_file.write_text('{"mcpServers":{"docs":{"command":"fake","description":"approved"}}}')
@@ -780,6 +858,7 @@ def test_issue_acceptance_two_server_one_unreachable(configured, tmp_path, monke
     from test_plan import proposal
     from wuwei import plan, state
     goals(configured)
+    block_critical(configured)
     calls = exec_stub(tmp_path, monkeypatch)
     two_servers(configured, severity)
     result = core().check(configured)
@@ -814,7 +893,8 @@ def legacy(root, **fields):
     ('[]', 'invalid', 2, 2, 2),
     ('[]', 'stale', None, 2, 2),
     ('[]', 'legacy', None, 2, 2),
-    (None, 'legacy-pending', None, 1, 1),
+    (None, 'legacy-pending', None, 0, 1),
+    (None, 'critical', 1, 0, 1),
 ])
 def test_posture_block_table(configured, monkeypatch, posture, block, setup, check_exit, cached_exit,
                              strict_exit):
@@ -1117,6 +1197,7 @@ def test_proceed_unmeasured_refused_without_a_current_check(configured, monkeypa
 
 
 def test_findings_decision_while_another_server_unmeasured(configured, monkeypatch):
+    block_critical(configured)
     fake_scanner(monkeypatch, 1, [metadata('critical')])
     aws_server(configured)
     assert core().check(configured).exit == 2
@@ -1129,6 +1210,7 @@ def test_findings_decision_while_another_server_unmeasured(configured, monkeypat
 
 
 def test_proceed_unmeasured_keeps_exit_while_findings_pending(configured, monkeypatch):
+    block_critical(configured)
     fake_scanner(monkeypatch, 1, [metadata('critical')])
     aws_server(configured)
     assert core().check(configured).exit == 2

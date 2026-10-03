@@ -859,7 +859,8 @@ MCP appears only as a scan target), so the CLI is the sole integration surface.
   servers Claude Code would attach (project servers need approval), one server per scanner
   call, never runs an unpinned `uvx`, `npx` or `pipx run` launcher, and warns by default:
   `scanner.mcp.block` (default `["critical"]`) sets what blocks launches, while a check that
-  could not run always blocks.
+  could not run always blocks. Amendment (owner, 2026-10-03, #351): the default list is
+  empty; the security posture decides (strict blocks critical, high and unmeasured).
 - S4. Agent-surface gate. When `agent_surface` is set, the security sentinel runs
   `ziran audit` and `ziran ci --severity-threshold <config>` at pre-PR; each finding becomes a
   verdict row.
@@ -983,7 +984,7 @@ Floors no posture and no override lowers:
 
 - `records` always blocks. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
 - Owner-only actions always block: the deployment ban (`deploy`), the merge policy, approvals and owner markers (`pr`), and approve-tier messages and canary or honeytoken egress (the outward approval tier). Under `observe`, `publish` relaxes only the commit and push rules and the PR anchor.
-- MCP: under `guarded` and `strict`, a finding at a severity in `scanner.mcp.block` (default `critical`) or a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. `strict` also blocks every high finding and every unmeasured server.
+- MCP: under `guarded` and `strict` a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. A finding blocks only at a severity in `scanner.mcp.block`, which is unset by default: no severity under `guarded`; `critical`, `high` and `unmeasured` under `strict`. Under `observe`, and with `mcp = "off"`, the list has no effect and `config check` says so.
 
 The posture changes what the cooperative guards refuse, never the hard boundaries above.
 

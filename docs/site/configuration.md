@@ -390,12 +390,16 @@ before the lead, and `bin/wuwei plan propose` checks again. The check exits 2 wh
 any server is unmeasured, else 1 while findings await an owner decision, else 0.
 High/critical findings open an owner decision. Medium/low findings remain visible.
 
-`scanner.mcp.block` (default `["critical"]`) sets what refuses agent and runtime
-launches and `plan propose`: a pending finding with a listed severity (exit 1), or
-any unmeasured server when the list holds `"unmeasured"` (exit 2). Everything else is
-a nudge. `[]` blocks on nothing measured; the full v0.11.0 behaviour is
-`["high", "critical", "unmeasured"]`. A check that could not run (invalid input, an
-interrupted check, a stale or missing record) always refuses with exit 2.
+`scanner.mcp.block` is unset by default; the security posture decides: `observe` and
+`guarded` block no finding, `strict` blocks `["critical", "high", "unmeasured"]`. Set
+it to refuse agent and runtime launches and `plan propose` on top of that default: a
+pending finding with a listed severity (exit 1), or any unmeasured server when the list
+holds `"unmeasured"` (exit 2). Everything else is a nudge. Under `observe` the list has
+no effect. The full v0.11.0 behaviour is `["high", "critical", "unmeasured"]`. A check
+that could not run (invalid input, an interrupted check, a stale or missing record)
+refuses with exit 2 under `guarded` and `strict`. A workspace created before #351
+carries `block = ["critical"]` from the old template; `bin/wuwei config check` names it,
+and deleting the line takes the posture default.
 
 For a server that stays unmeasured, the owner may run
 `bin/wuwei mcp decide proceed-unmeasured <server>...` from the host terminal and type

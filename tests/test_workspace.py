@@ -142,7 +142,7 @@ def test_config_defaults_and_independence(tmp_path):
     assert config == {
         'scanner': {'severity_threshold': 'high', 'mcp': {
             'project_file': '.mcp.json', 'plugins_file': '~/.claude/plugins/installed_plugins.json',
-            'user_file': '~/.claude.json', 'timeout_seconds': 60, 'block': ['critical']}},
+            'user_file': '~/.claude.json', 'timeout_seconds': 60, 'block': []}},
         'security': {'required': False, 'posture': 'guarded',
                      'areas': {area: '' for area in workspace.AREAS}},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {

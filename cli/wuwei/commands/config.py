@@ -80,6 +80,12 @@ def run(args):
         print(f'  {area}: {levels[area]}{mark}')
     print('  owner-only actions block in every posture: deploys, merges and approvals, '
           'approve-tier messages')
+    block = config['scanner']['mcp']['block']
+    if block:  # Reported, not a finding (#351): the list against the posture default.
+        ignored = levels['mcp'] == 'off' or name == 'observe' and levels['mcp'] == 'warn'
+        print(f'  scanner.mcp.block ({", ".join(block)}): ' + (
+            f'no effect under {name} (mcp: {levels["mcp"]}); remove the key' if ignored else
+            f'blocks launches at these severities on top of the {name} default'))
     if config['guards']['mode'] == 'shadow':
         print('  guards.mode = "shadow" is deprecated: set security.posture = "observe"; '
               'guards.shadow_days and guards.shadow_since keep the time box')
