@@ -12,7 +12,8 @@ from wuwei.workspace import contains_workspace, worktree_workspace
 
 
 _STATE_HINT = ('State and config files are protected; use the wuwei CLI for state changes. '
-               'The owner edits config.toml, voice.md and goals.md outside agent tools.')
+               'The planner records goals and voice with wuwei goals edit --file and voice edit '
+               '--file after the morning gate; other owner edits run outside agent tools.')
 _STATE_MENTION = re.compile(r'state\.json|state\.snapshot\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|\.wuwei', re.I)
 _STATE_GLOB = re.compile(r'\.w[\w*?\[]', re.I)
 _DYNAMIC = re.compile(r'\$\(|[`*?\[]')
@@ -105,7 +106,26 @@ def _owner_relevant(text, script=False):
         and (_OWNER_VERB.search(stripped) or mentions(text, _OWNER_VERBS, script=script))))
 
 
-def _owner_action(commands, text, relevant, cwd, script=False):
+# #357: records the planner may write from its own answered morning gate question.
+_GATE_EDITS = {('goals', 'edit'), ('voice', 'edit')}
+
+
+def _gate_edits(payload, root):
+    """(topics the planner's gate asked, caller is the planner): only today's registered
+    planner session, never a seat; strict records nothing, so the owner runs it."""
+    from wuwei import state, workspace
+    if root is None or 'agent_id' in payload:
+        return frozenset(), False
+    day = state.read_state(root)
+    session = payload.get('session_id')
+    if not session or session != day.get('planner_session_id'):
+        return frozenset(), False
+    if workspace.posture(workspace.load_config(root))[0] == 'strict':
+        return frozenset(), True
+    return frozenset(day.get('sessions', {}).get(session, {}).get('gate_asked', ())), True
+
+
+def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(), False)):
     """One rule for every owner-only action; (code, reason) or None."""
     from wuwei.shell import _launcher, is_opaque, mentions
     # normalize unwraps xargs, so a CLI command may take its group or verb from stdin.
@@ -157,6 +177,11 @@ def _owner_action(commands, text, relevant, cwd, script=False):
         if re.search(r'[$`]', group) or group in _OWNER_GROUPS and re.search(r'[$`]', verb):
             return 2, 'Not a literal owner action; use the host terminal.'
         if reason := _owner_reason((group, verb)):
+            if (group, verb) in _GATE_EDITS and edits[1]:
+                if group in edits[0] and any(word == '--file' or word.startswith('--file=')
+                                             for word in action):
+                    continue
+                return 1, f'{reason} Run it in a host terminal: {shlex.join(argv)}'
             return 1, reason
     if relevant and unseen > 0:
         # A CLI mention sits in a heredoc, comment or other input no argv shows.
@@ -201,7 +226,7 @@ def _protected_name(path, directories=False):
         if directories and tail in (('memory',), ('memory', 'notes'),
                                     ('memory', 'archive'), ('charters',)):
             return True
-        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'undo.jsonl', 'proposal.json', 'plan.md', 'steward-decisions.json', 'interview.json', 'profile.json'):
+        if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'undo.jsonl', 'proposal.json', 'plan.md', 'goals.md', 'steward-decisions.json', 'interview.json', 'profile.json'):
             return True
         if tail == ('memory', 'ledger.jsonl'):
             return True
@@ -439,7 +464,8 @@ def check_bash(payload):
         for command in commands:
             if found := owner_script(shlex.join(command.argv)):
                 return found
-        found = _owner_action(commands, script, owner_relevant, cwd)
+        edits = _gate_edits(payload, root) if owner_relevant else (frozenset(), False)
+        found = _owner_action(commands, script, owner_relevant, cwd, edits=edits)
         if found and guard_scope(payload) is not None:
             return found
         directories = persistent = {cwd}

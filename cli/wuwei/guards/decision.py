@@ -102,6 +102,56 @@ def check_write(payload):
                 if root and payload.get('tool_name') != 'Bash' else (2, message))
 
 
+def gate_question(question, root):
+    """The question is marked Morning gate and cites today's plan file."""
+    text = required_text(question, 'question')
+    header = question.get('header', '')
+    morning = text.startswith('Morning gate') or (
+        isinstance(header, str) and header.startswith('Morning gate'))
+    plan = workspace.day_dir(root) / 'plan.md'
+    citations = (str(plan), plan.relative_to(root).as_posix(),
+                 plan.relative_to(root / '.wuwei').as_posix())
+    return bool(morning and plan.is_file() and plan.resolve() == plan
+                and any(re.search(r'(?<![\w./-])' + re.escape(citation) + r'(?![\w./-])', text)
+                        for citation in citations))
+
+
+TOPICS = {'goals', 'voice'}
+
+
+def record_gate(payload):
+    """PostToolUse: note on the planner's session row which records (goals, voice) its
+    answered morning gate questions asked, by header `Goals` or `Voice` only;
+    protect_state lets the planner record them."""
+    try:
+        context = scope(Path(required_text(payload, 'cwd')).resolve())
+        if context is None or 'agent_id' in payload:
+            return 0, ''
+        root, _ = context
+        from wuwei import state
+        session = payload.get('session_id')
+        if not session or session != state.read_state(root).get('planner_session_id'):
+            return 0, ''
+        topics = set()
+        for question in payload['tool_input']['questions']:
+            header = question.get('header')
+            topic = header.strip().lower() if isinstance(header, str) else None
+            if gate_question(question, root) and topic in TOPICS:
+                topics.add(topic)
+        if not topics:
+            return 0, ''
+
+        def update(data):
+            row = data['sessions'][session]
+            row['gate_asked'] = sorted(topics | set(row.get('gate_asked', ())))
+
+        state._write_state(update, root, reserved=False, kind='gate.asked',
+                           payload={'session_id': session, 'topics': sorted(topics)})
+        return 0, ''
+    except (OSError, ValueError, RuntimeError, TypeError, KeyError) as exc:
+        return 2, f'gate record: {exc}'
+
+
 def check_question(payload):
     """Shared citation check for AskUserQuestion and future control-plane escalation."""
     hint = ('Cite a decision D-n or clarification C-n whose record exists today and passes lint, '
@@ -125,15 +175,7 @@ def check_question(payload):
             if not isinstance(question, dict):
                 raise ValueError('invalid question')
             text = required_text(question, 'question')
-            header = question.get('header', '')
-            morning = text.startswith('Morning gate') or (
-                isinstance(header, str) and header.startswith('Morning gate'))
-            plan = workspace.day_dir(root) / 'plan.md'
-            citations = (str(plan), plan.relative_to(root).as_posix(),
-                         plan.relative_to(root / '.wuwei').as_posix())
-            if (morning and plan.is_file() and plan.resolve() == plan
-                    and any(re.search(r'(?<![\w./-])' + re.escape(citation) + r'(?![\w./-])', text)
-                            for citation in citations)):
+            if gate_question(question, root):
                 continue
             ids = re.findall(r'(?<![\w-])[DC]-[1-9][0-9]*(?![\w-])', text)
             if not ids:
@@ -197,4 +239,5 @@ def check_stop(payload):
 
 GUARDS = [Guard('PostToolUse', 'Write|Edit|MultiEdit|NotebookEdit|Bash', check_write),
           Guard('PreToolUse', 'AskUserQuestion', check_question),
+          Guard('PostToolUse', 'AskUserQuestion', record_gate),
           Guard('SubagentStop', None, check_stop)]

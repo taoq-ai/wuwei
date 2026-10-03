@@ -29,16 +29,17 @@ def run(args):
     try:
         root = workspace.find_workspace()
         config = workspace.load_config(root)
-        goal_list = goals.parse((root / '.wuwei/memory/goals.md').read_text(encoding='utf-8'))
+        text = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
         if str(args.input) == 'template':
-            if not goal_list:
-                raise ValueError('memory/goals.md needs at least one G-n goal for rank template')
+            goal_list = goals.parse(text)
             print(json.dumps([candidate_template(next(iter(goal_list)), config['prioritisation']['framework'])], indent=2))
             return CLEAN
         source = sys.stdin.read() if str(args.input) == '-' else args.input.read_text(encoding='utf-8')
         rows = json.loads(source)
         if isinstance(rows, dict):  # a whole lead JSON, such as proposal.json
+            text, _ = goals.proposed(text, rows.get('goals'))
             rows = rows.get('candidates')
+        goal_list = goals.parse(text)
         print(json.dumps(rank.rank(rows, config['prioritisation']['framework'], goal_list)))
         return CLEAN
     except (OSError, UnicodeError, ValueError, TypeError, KeyError) as exc:
