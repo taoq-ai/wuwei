@@ -3,31 +3,26 @@ on:
   push:
     branches: [main]
     paths:
-      - docs/site/**
-      - .github/workflows/docs.yml
+      - "docs/site/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
   workflow_dispatch:
+
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-concurrency:
-  group: pages
-  cancel-in-progress: true
+  contents: write
+
 jobs:
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/jekyll-build-pages@v1
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
         with:
-          source: ./docs/site
-          destination: ./_site
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./_site
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Deploy to GitHub Pages
+        run: uvx --with mkdocs-material mkdocs gh-deploy --force --strict

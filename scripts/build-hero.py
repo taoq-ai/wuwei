@@ -1,4 +1,4 @@
-"""Generate docs/assets/hero-dark.svg and hero-light.svg from one geometry.
+"""Generate docs/site/assets/hero-dark.svg and hero-light.svg from one geometry.
 
 Path lengths set the token timings, so edit the drawing here, then run
 `python3 scripts/build-hero.py` and commit both files. A test checks they match.
@@ -336,4 +336,4 @@ def svg(p):
 if __name__ == '__main__':
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parents[1]
     for name, pal in PAL.items():
-        (root / f'docs/assets/hero-{name}.svg').write_text(svg(pal))
+        (root / f'docs/site/assets/hero-{name}.svg').write_text(svg(pal))

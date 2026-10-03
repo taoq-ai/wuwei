@@ -1,7 +1,3 @@
----
-layout: default
----
-
 # Operator data reference
 
 Use `bin/wuwei` from the installed checkout, or `python3 -P -m wuwei` with the package on `PYTHONPATH`. The `-P` option keeps a local `wuwei/` directory from shadowing the CLI.
@@ -12,59 +8,59 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 
 | Command | What it does | More |
 | --- | --- | --- |
-| `bin/wuwei agents` | Plumbing: builds or checks the generated role agents. | [Concepts](concepts.html#roles) |
-| `bin/wuwei board` | Plumbing: serves the day board to Claude Code over MCP stdio. | [Cockpit and board](concepts.html#cockpit-and-board) |
+| `bin/wuwei agents` | Plumbing: builds or checks the generated role agents. | [Concepts](concepts.md#roles) |
+| `bin/wuwei board` | Plumbing: serves the day board to Claude Code over MCP stdio. | [Cockpit and board](concepts.md#cockpit-and-board) |
 | `bin/wuwei brief` | Writes and logs a seat brief. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei build` | Selects the next builder action. | [Seat briefs](#seat-briefs-and-the-build-loop) |
-| `bin/wuwei calibrate` | Profiles the repositories and proposes config; `--measure` times each test runner once to decide whether it is a fast check; `--interview` asks the owner; `export` and `import` share a profile. | [Calibration](configuration.html#calibration) |
-| `bin/wuwei close` | Refuses day close until every obligation lands; `--widget` asks about each open item. | [Day close](concepts.html#day-close) |
-| `bin/wuwei config` | Inspects and changes workspace configuration: `check`; `promote`, `set <key> <value>` and `add-repo` apply after a digest. | [Configuration](configuration.html#calibration) |
-| `bin/wuwei consolidate` | Reviews and archives workspace memory. | [Configuration](configuration.html#host-build-and-memory) |
-| `bin/wuwei dashboard` | Serves the read-only day board on loopback. | [Cockpit and board](concepts.html#cockpit-and-board) |
+| `bin/wuwei calibrate` | Profiles the repositories and proposes config; `--measure` times each test runner once to decide whether it is a fast check; `--interview` asks the owner; `export` and `import` share a profile. | [Calibration](configuration.md#calibration) |
+| `bin/wuwei close` | Refuses day close until every obligation lands; `--widget` asks about each open item. | [Day close](concepts.md#day-close) |
+| `bin/wuwei config` | Inspects and changes workspace configuration: `check`; `promote`, `set <key> <value>` and `add-repo` apply after a digest. | [Configuration](configuration.md#calibration) |
+| `bin/wuwei consolidate` | Reviews and archives workspace memory. | [Configuration](configuration.md#host-build-and-memory) |
+| `bin/wuwei dashboard` | Serves the read-only day board on loopback. | [Cockpit and board](concepts.md#cockpit-and-board) |
 | `bin/wuwei decision` | Checks and routes decision records; `outcome` records the owner's answer. | [Decision record](#decision-record) |
-| `bin/wuwei discover` | Discovers candidate work. | [Goals and discovery](configuration.html#goals-and-discovery) |
-| `bin/wuwei dispatch` | Decides planner gate and discovery work; `dispatch opinion <item>` runs the second-opinion gate. | [Review tiers](concepts.html#review-tiers) |
+| `bin/wuwei discover` | Discovers candidate work. | [Goals and discovery](configuration.md#goals-and-discovery) |
+| `bin/wuwei dispatch` | Decides planner gate and discovery work; `dispatch opinion <item>` runs the second-opinion gate. | [Review tiers](concepts.md#review-tiers) |
 | `bin/wuwei doctor` | Finds install, host, workspace, gate, day and guard problems and prints each fix; `--fix` applies the allow-listed ones after one host confirmation. | [Doctor](#doctor) |
 | `bin/wuwei drafts` | Lists outward drafts awaiting owner approval. | [Outward draft queue](#outward-draft-queue) |
 | `bin/wuwei event` | Plumbing: appends a timestamped day event. | |
 | `bin/wuwei fast-checks` | Plumbing: runs and records the configured fast checks. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei git-hook` | Plumbing: runs a native Git identity or push guard. | [Item worktrees](#item-worktrees) |
-| `bin/wuwei goals` | Shows or edits the owner goals. | [Goals and discovery](configuration.html#goals-and-discovery) |
+| `bin/wuwei goals` | Shows or edits the owner goals. | [Goals and discovery](configuration.md#goals-and-discovery) |
 | `bin/wuwei heartbeat` | Probes that hooks refuse, allow and answer in budget. | [Heartbeat](#heartbeat) |
 | `bin/wuwei hook` | Plumbing: runs the guards for a Claude Code hook. | [Hook latency budget](#hook-latency-budget) |
-| `bin/wuwei index` | Plumbing: generates the memory index. | [Concepts](concepts.html#memory) |
-| `bin/wuwei init` | Creates or upgrades a workspace; `--posture observe|guarded|strict` sets the [security posture](#security-posture) (`--shadow` is `--posture observe`). | [Daily path](daily.html) |
-| `bin/wuwei integrity` | Checks signed plugin integrity; `reconfirm` pins a development checkout. | [Recovery](recovery.html#integrity-reconfirm) |
-| `bin/wuwei listen` | Polls the inbound source into the workspace inbox and probes raised and claimed PRs. | [Remote](remote.html) |
-| `bin/wuwei mcp` | Checks the attached MCP servers; `decide D-<n> <option>` records the owner's answer. | [MCP registry checks](configuration.html#mcp-registry-checks-s3) |
-| `bin/wuwei memory` | Plumbing: checks workspace memory. | [Concepts](concepts.html#memory) |
+| `bin/wuwei index` | Plumbing: generates the memory index. | [Concepts](concepts.md#memory) |
+| `bin/wuwei init` | Creates or upgrades a workspace; `--posture observe|guarded|strict` sets the [security posture](#security-posture) (`--shadow` is `--posture observe`). | [Daily path](daily.md) |
+| `bin/wuwei integrity` | Checks signed plugin integrity; `reconfirm` pins a development checkout. | [Recovery](recovery.md#integrity-reconfirm) |
+| `bin/wuwei listen` | Polls the inbound source into the workspace inbox and probes raised and claimed PRs. | [Remote](remote.md) |
+| `bin/wuwei mcp` | Checks the attached MCP servers; `decide D-<n> <option>` records the owner's answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
+| `bin/wuwei memory` | Plumbing: checks workspace memory. | [Concepts](concepts.md#memory) |
 | `bin/wuwei merge` | Checks or merges an eligible PR. | [Retro and merge](#retro-and-merge-configuration) |
-| `bin/wuwei metrics` | Shows the recorded process metrics. | [Long sessions](daily.html#long-sessions) |
-| `bin/wuwei next` | Prints where the day stands and the one next step with its command; `--json` prints `{state, step, command}`. | [What the session knows](agent.html) |
-| `bin/wuwei note` | Manages workspace notes. | [Concepts](concepts.html#memory) |
+| `bin/wuwei metrics` | Shows the recorded process metrics. | [Long sessions](daily.md#long-sessions) |
+| `bin/wuwei next` | Prints where the day stands and the one next step with its command; `--json` prints `{state, step, command}`. | [What the session knows](agent.md) |
+| `bin/wuwei note` | Manages workspace notes. | [Concepts](concepts.md#memory) |
 | `bin/wuwei nudges` | Lists open nudges and pages. | [Watch state](#watch-state) |
-| `bin/wuwei outbound` | Inspects the outbound approval policy. | [Outbound tiers](configuration.html#outward-text-and-outbound-tiers) |
+| `bin/wuwei outbound` | Inspects the outbound approval policy. | [Outbound tiers](configuration.md#outward-text-and-outbound-tiers) |
 | `bin/wuwei payload` | Plumbing: prints the session memory payload. | |
 | `bin/wuwei plan` | Proposes or approves the morning plan; `session` names the planner; `carry` and `park` record an open item's disposition at close. | [Lead plan JSON](#lead-plan-json) |
 | `bin/wuwei pr` | Measures owned PRs, raises one, or records a verified disposition. | [Raising a PR](#raising-a-pr) |
-| `bin/wuwei promote` | Promotes memory and charter proposals. | [Charter overrides](charter-overrides.html) |
+| `bin/wuwei promote` | Promotes memory and charter proposals. | [Charter overrides](charter-overrides.md) |
 | `bin/wuwei rank` | Plumbing: ranks candidate JSON using the workspace goals. | [Lead plan JSON](#lead-plan-json) |
-| `bin/wuwei remote` | Owner actions for the remote control plane. | [Remote](remote.html) |
+| `bin/wuwei remote` | Owner actions for the remote control plane. | [Remote](remote.md) |
 | `bin/wuwei reply` | Replies to one unthreaded human obligation. | [Outward draft queue](#outward-draft-queue) |
-| `bin/wuwei report` | Shows the owner report. | [Day close](concepts.html#day-close) |
-| `bin/wuwei setup` | Owner, host terminal: runs `init` if needed, discovers the repositories and the host, calibrates and interviews, applies one proposal after a digest, then checks and prints what is still owed; `--shadow`, `--posture <profile>`, `--repos <dir>...`. | [Daily path](daily.html) |
-| `bin/wuwei shadow` | `report` lists what the guards would have refused since `guards.shadow_since`, grouped by guard, and names likely false positives. | [Security posture](concepts.html#security-posture) |
+| `bin/wuwei report` | Shows the owner report. | [Day close](concepts.md#day-close) |
+| `bin/wuwei setup` | Owner, host terminal: runs `init` if needed, discovers the repositories and the host, calibrates and interviews, applies one proposal after a digest, then checks and prints what is still owed; `--shadow`, `--posture <profile>`, `--repos <dir>...`. | [Daily path](daily.md) |
+| `bin/wuwei shadow` | `report` lists what the guards would have refused since `guards.shadow_since`, grouped by guard, and names likely false positives. | [Security posture](concepts.md#security-posture) |
 | `bin/wuwei retro` | Compiles the steward retro. | [Retro and merge](#retro-and-merge-configuration) |
-| `bin/wuwei runtime` | Dispatches and inspects runtime jobs. | [Recovery](recovery.html#runtime-dispatch) |
+| `bin/wuwei runtime` | Dispatches and inspects runtime jobs. | [Recovery](recovery.md#runtime-dispatch) |
 | `bin/wuwei sessions` | Lists registered sessions, roles and claims. | [Sessions](#sessions) |
 | `bin/wuwei signal` | Plumbing: classifies attention. | |
 | `bin/wuwei state` | Reads or updates day state; `recover` restores it. | [State recovery](#state-recovery) |
 | `bin/wuwei status` | Shows day status; `--line` is the status line. | [Watch state](#watch-state) |
 | `bin/wuwei steward` | Runs a steward review or acknowledges steering. | [Steward](#steward) |
-| `bin/wuwei sweep` | Plumbing: checks day obligations. | [Concepts](concepts.html#day-flow) |
+| `bin/wuwei sweep` | Plumbing: checks day obligations. | [Concepts](concepts.md#day-flow) |
 | `bin/wuwei verdict` | Plumbing: checks a gate verdict. | [Gate verdict layout](#gate-verdict-layout) |
-| `bin/wuwei voice` | Shows or edits the owner voice profile. | [Owner voice](configuration.html#owner-voice) |
-| `bin/wuwei watch` | Supervises workspace activity and owned PRs. | [Running the watch](configuration.html#running-the-watch) |
+| `bin/wuwei voice` | Shows or edits the owner voice profile. | [Owner voice](configuration.md#owner-voice) |
+| `bin/wuwei watch` | Supervises workspace activity and owned PRs. | [Running the watch](configuration.md#running-the-watch) |
 | `bin/wuwei why` | Explains from recorded events why an item, a decision or a refusal is where it is. | [Why](#why) |
 | `bin/wuwei worktree` | Creates an anchored item worktree. | [Item worktrees](#item-worktrees) |
 
@@ -279,7 +275,7 @@ Several Claude Code sessions can work in one workspace. Once today's `state.json
 
 ## Item phase order
 
-Phases move by themselves on the daily path. `bin/wuwei state transition` is a [recovery](recovery.html) command and accepts only these moves. `parked` and `escalated` resume only to the recorded prior phase.
+Phases move by themselves on the daily path. `bin/wuwei state transition` is a [recovery](recovery.md) command and accepts only these moves. `parked` and `escalated` resume only to the recorded prior phase.
 
 | Phase | Legal next phases |
 | --- | --- |

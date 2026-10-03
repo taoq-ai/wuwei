@@ -145,9 +145,9 @@ def prepare(scratch, *, local_login=False, repo=None, url=None):
     for name in ('.claude-plugin', 'cli', 'adapters', 'bin', 'hooks', 'charters',
                  'skills', 'agents', 'templates', 'keys'):
         shutil.copytree(ROOT / name, source / name, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-    for name in ('README.md', 'LICENSE', 'NOTICE', 'SECURITY.md', 'pyproject.toml', 'docs/integrity.md', 'scripts/build-release.py'):
+    for name in ('README.md', 'LICENSE', 'NOTICE', 'SECURITY.md', 'pyproject.toml', 'docs/site/integrity.md', 'scripts/build-release.py'):
         target = source / name
-        target.parent.mkdir(exist_ok=True)
+        target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / name, target)
     key = scratch / 'signing-key'
     checked(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', key], cwd=scratch, env=env)

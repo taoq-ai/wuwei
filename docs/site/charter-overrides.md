@@ -1,10 +1,4 @@
----
-layout: default
----
-
 # Charter overrides and promote
-
-[Home](index.html)
 
 Shipped role rules live in the plugin's `charters/`. Workspace-specific overrides live in `.wuwei/charters/` with matching role filenames such as `builder.md`. Keep the plugin charter as the common baseline; local overrides add rules for this workspace.
 

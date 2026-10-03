@@ -1,10 +1,4 @@
----
-layout: default
----
-
 # Remote operation
-
-[Home](index.html)
 
 This page sets up running a day from your phone: Claude Code Remote Control first, then
 optionally the Slack listener and the owner DM. Every step runs on the always-on host
@@ -40,7 +34,7 @@ A phone answer is not yet your outcome; see section 7.
 
 The rest of this page is optional. Set both Slack adapters in `.wuwei/config.toml`; the
 listener answers through the chat adapter, so remote operation replaces the
-`chat = "none"` the [daily path](daily.html) suggests for a solo owner. With
+`chat = "none"` the [daily path](daily.md) suggests for a solo owner. With
 `shepherd.min_reviewers = 0` the channel-post obligation stays not applicable.
 
 ```toml
@@ -191,7 +185,7 @@ from a shell where `claude` is on `PATH` and signed in: the unit records the cur
 The listener reads `.wuwei/env` once at start: after editing it, run
 `bin/wuwei listen uninstall` and `bin/wuwei listen install` again. Edits to `config.toml`
 apply at the next poll. More detail is in
-[running the listener](configuration.html#running-the-listener).
+[running the listener](configuration.md#running-the-listener).
 
 `bin/wuwei listen --once` runs one poll: exit 0 when it polled, with or without new
 messages, and exit 2 when it could not run (configuration, credentials, the pin, the
@@ -355,7 +349,7 @@ lists it as pending. Drafts are the same:
 these commands, and `decision outcome` and `drafts approve` also read a typed digest from
 the terminal, so they run neither through Remote Control nor the DM; from a phone,
 use your own remote shell to the host, for example SSH. See
-[host terminal actions](reference.html#host-terminal-actions).
+[host terminal actions](reference.md#host-terminal-actions).
 
 ## 8. Limits
 

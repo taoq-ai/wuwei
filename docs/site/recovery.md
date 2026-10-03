@@ -1,21 +1,15 @@
----
-layout: default
----
-
 # Recovery
 
-[Home](index.html)
-
-The [daily path](daily.html) needs none of these commands. Each one here is recovery, not
+The [daily path](daily.md) needs none of these commands. Each one here is recovery, not
 daily use: reach for it when evidence and state disagree, a seat is lost, or the
-installation changed. Before a release, the [release rehearsal](rehearsal.html) drives a
+installation changed. Before a release, the [release rehearsal](rehearsal.md) drives a
 real day; its failures point back here.
 
 ## Troubleshooting
 
 Start with `bin/wuwei doctor`: it names each problem with its fix, and
 `bin/wuwei doctor --fix` applies the deterministic ones after one confirmation. See
-[doctor](reference.html#doctor). The entries below are first-day recovery: what a first run
+[doctor](reference.md#doctor). The entries below are first-day recovery: what a first run
 on 0.11.0 showed, what changed in 0.12.0, and the command for each.
 
 ### Every tool call is refused with plugin integrity
@@ -34,7 +28,7 @@ files. Doctor's `in_use` row counts the markers.
 unreachable or slow server is unmeasured by name. Under `guarded` only a critical finding or
 a check that could not run blocks, and an unmeasured server is a nudge. Accept one with
 `bin/wuwei mcp decide proceed-unmeasured <server>`, or give a slow one more time with
-`scanner.mcp.timeout_seconds` ([MCP registry checks](configuration.html#mcp-registry-checks-s3)).
+`scanner.mcp.timeout_seconds` ([MCP registry checks](configuration.md#mcp-registry-checks-s3)).
 
 ### config.toml does not load
 
@@ -65,7 +59,7 @@ filled by `bin/wuwei config promote`, like the deploy lists.
 A test runner is CI only unless measured. `setup` offers to run it once and proposes it only
 when it is fast enough; later, `bin/wuwei calibrate --measure` times each one
 against `calibrate.fast_check_seconds` and proposes only the fast ones
-([calibration](configuration.html#calibration)).
+([calibration](configuration.md#calibration)).
 
 ### Branch protection reads as unmeasured
 
@@ -86,7 +80,7 @@ prints the guard, the rule, the command and the fix. Under `observe`,
 not daily use: on the daily path `build next`, `dispatch next`, `pr raise` and an observed
 merge move every phase. Use it only when the recorded phase disagrees with the evidence,
 for example to resume a parked item. It accepts only the moves in the
-[item phase order](reference.html#item-phase-order).
+[item phase order](reference.md#item-phase-order).
 
 ## runtime dispatch
 
@@ -106,14 +100,14 @@ delta continuations come from the `seats` list of `dispatch next`.
 `bin/wuwei integrity reconfirm` records the owner's confirmation of a development
 checkout or a changed installation. It is recovery, not daily use: an intact signed
 release needs no reconfirmation. Run it in a host terminal and type the displayed digest
-after reviewing the contents. See the [index](index.html#development-checkouts) for what
+after reviewing the contents. See the [index](index.md#development-checkouts) for what
 it records.
 
 ## Other recovery
 
 `bin/wuwei state recover` restores an unreadable `state.json` from its snapshot; see
-[state recovery](reference.html#state-recovery). Owner-only commands are listed under
-[host terminal actions](reference.html#host-terminal-actions).
+[state recovery](reference.md#state-recovery). Owner-only commands are listed under
+[host terminal actions](reference.md#host-terminal-actions).
 
 ### An MCP finding on a server you installed yourself
 

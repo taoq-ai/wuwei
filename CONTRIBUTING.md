@@ -25,6 +25,16 @@ What to build is in the [design spec](docs/specs/2026-09-24-wuwei-design.md).
 - A pull request merges with the suite green and an adversarial review covering
   correctness, security and over-engineering with no open blocking findings.
 
+## Docs site
+
+The site at https://taoq-ai.github.io/wuwei/ is built with MkDocs Material from
+`docs/site` and `mkdocs.yml`. Preview it with `uvx --with mkdocs-material mkdocs serve`
+and check it with `uvx --with mkdocs-material mkdocs build --strict`: a broken link, a
+missing anchor or a page left out of `nav` fails the build. After a merge the `Docs`
+workflow publishes the site to the `gh-pages` branch. One-time owner setting: in the
+repository settings, under Pages, set the source to "Deploy from a branch" with branch
+`gh-pages` and folder `/ (root)`.
+
 ## Security
 
 Report vulnerabilities as described in [SECURITY.md](SECURITY.md), never in a public issue.

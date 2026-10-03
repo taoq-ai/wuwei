@@ -101,17 +101,19 @@ def test_daily_shows_a_clean_first_day():
 
 def test_readme_install_and_hero():
     readme = (ROOT / 'README.md').read_text()
-    for phrase in ('prefers-color-scheme: dark', 'docs/assets/hero-light.svg',
-                   'docs/assets/hero-dark.svg', '#00C9A7', '无为',
+    for phrase in ('prefers-color-scheme: dark', 'docs/site/assets/hero-light.svg',
+                   'docs/site/assets/hero-dark.svg', '#00C9A7', '无为',
                    'What WUWEI is and is not', '/plugin marketplace add taoq-ai/wuwei',
                    '/plugin install wuwei@wuwei', 'wuwei init', '/wuwei plan'):
         assert phrase in readme
+    index = (SITE / 'index.md').read_text()
     for variant in ('light', 'dark'):
-        art = ROOT / f'docs/assets/hero-{variant}.svg'
+        art = SITE / f'assets/hero-{variant}.svg'
         svg = ElementTree.parse(art).getroot()
         assert svg.tag == '{http://www.w3.org/2000/svg}svg'
         assert '#00C9A7' in art.read_text()
         assert all(word in art.read_text() for word in ('Plan', 'Build', 'Review', 'Close'))
+        assert f'<img src="assets/hero-{variant}.svg#only-{variant}"' in index, variant
 
 
 def test_readme_compares_with_other_tools():
@@ -159,24 +161,50 @@ def test_readme_lead_and_limits():
 
 
 def test_hero_variants_share_geometry_and_motion():
-    dark, light = ((ROOT / f'docs/assets/hero-{v}.svg').read_text() for v in ('dark', 'light'))
+    dark, light = ((SITE / f'assets/hero-{v}.svg').read_text() for v in ('dark', 'light'))
     mask = lambda text: re.sub(r'#[0-9A-Fa-f]{3,8}', '#', text)
     assert mask(dark) == mask(light)
     assert 'prefers-reduced-motion' in dark and 'animateMotion' in dark
 
 
-def test_site_pages_and_links():
-    pages = sorted(p.stem for p in SITE.glob('*.md') if p.stem != 'index')
-    index = (SITE / 'index.md').read_text()
-    assert index.startswith('---\nlayout: default\n---\n')
-    for page in pages:
-        assert (SITE / f'{page}.md').is_file()
-        assert (SITE / f'{page}.md').read_text().startswith('---\nlayout: default\n---\n')
-        assert f'({page}.html)' in index
-    assert (SITE / '_config.yml').is_file()
+def test_site_pages_are_plain_markdown():
+    for path in SITE.rglob('*.md'):
+        text = path.read_text()
+        assert not text.startswith('---') and '[Home](index' not in text, path.name
+        for target in re.findall(r'\]\(([^)\s]+)\)', text):
+            if ':' in target or target.startswith('#'):
+                continue
+            file = target.split('#', 1)[0]
+            assert not file.endswith('.html') and (path.parent / file).is_file(), (path.name, target)
     assert '9.1' in (SITE / 'security.md').read_text()
     assert (ROOT / 'skills/wuwei-plan/SKILL.md').is_file()
-    assert 'docs/site' in (ROOT / '.github/workflows/docs.yml').read_text()
+
+
+def test_mkdocs_nav_covers_every_page():
+    config = (ROOT / 'mkdocs.yml').read_text()
+    for phrase in ('site_name: WUWEI', 'site_url: https://taoq-ai.github.io/wuwei/',
+                   'repo_url: https://github.com/taoq-ai/wuwei', 'docs_dir: docs/site',
+                   'name: material', 'scheme: slate', 'scheme: default', 'primary: indigo',
+                   'accent: cyan', 'navigation.tabs', 'content.code.copy', 'permalink: true',
+                   'omitted_files: warn', 'anchors: warn', 'unrecognized_links: warn'):
+        assert phrase in config, phrase
+    nav = set(re.findall(r'^\s*- (?:[^:\n]+: )?([\w./-]+\.md)\s*$', config, re.M))
+    pages = {path.relative_to(SITE).as_posix() for path in SITE.rglob('*.md')}
+    assert nav == pages, (sorted(pages - nav), sorted(nav - pages))
+    index = (SITE / 'index.md').read_text()
+    for page in sorted(pages - {'index.md'}):
+        assert f'({page})' in index, page
+
+
+def test_docs_workflow_deploys_mkdocs():
+    workflow = (ROOT / '.github/workflows/docs.yml').read_text()
+    for phrase in ('docs/site/**', 'mkdocs.yml', 'contents: write', 'astral-sh/setup-uv',
+                   'uvx --with mkdocs-material mkdocs gh-deploy --force --strict'):
+        assert phrase in workflow, phrase
+    assert 'jekyll' not in workflow and 'pages: write' not in workflow
+    assert not (SITE / '_config.yml').exists()
+    ignore = (ROOT / '.gitignore').read_text().split()
+    assert '/site/' in ignore and 'site/' not in ignore  # unanchored would also ignore docs/site
 
 
 def test_release_rehearsal_page_is_runnable_alone():
@@ -248,7 +276,7 @@ def test_docs_retire_guards_mode():
 
 
 def test_entry_guides_install_signed_release_and_explain_development_checkout():
-    integrity = (ROOT / 'docs/integrity.md').read_text()
+    integrity = (SITE / 'integrity.md').read_text()
     assert 'source checkouts are unsigned and report a page' not in integrity
     assert 'clean commit' in integrity and 'HEAD' in integrity and '.in_use' in integrity
     for path in (ROOT / 'README.md', SITE / 'index.md'):
@@ -286,7 +314,7 @@ def test_hero_files_match_their_generator():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     for name, palette in module.PAL.items():
-        assert (ROOT / f'docs/assets/hero-{name}.svg').read_text() == module.svg(palette), name
+        assert (SITE / f'assets/hero-{name}.svg').read_text() == module.svg(palette), name
 
 
 def test_reference_verdict_example_and_phase_table():
@@ -450,7 +478,7 @@ def test_remote_runbook_matches_the_code():
     from wuwei.commands.event import EVENT_PRODUCERS
     page = (SITE / 'remote.md').read_text()
     flat = ' '.join(page.split())
-    assert '(remote.html)' in (SITE / 'daily.md').read_text()
+    assert '(remote.md)' in (SITE / 'daily.md').read_text()
     headings = ['## 1. Remote Control, no setup', '## 2. The Slack app', '## 3. Pin your identity',
                 '## 4. The second factor', '## 5. Install the listener', '## 6. Commands from the DM',
                 '## 7. Decisions on the phone', '## 8. Limits']
@@ -548,7 +576,7 @@ def test_release_asset_ships_every_linked_doc(tmp_path, monkeypatch):
     assert 'docs/site/index.md' in resolved
     assert not missing, missing
     expected = {p.relative_to(ROOT).as_posix() for p in
-                [*SITE.glob('*.md'), *(ROOT / 'docs/assets').glob('*.svg')]}
+                [*SITE.glob('*.md'), *(SITE / 'assets').glob('*.svg')]}
     with tarfile.open(archive) as tar:
         archived = {n.removeprefix('wuwei/') for n in tar.getnames()}
     assert expected <= listed and expected <= archived
@@ -647,11 +675,11 @@ def test_concepts_and_daily_cover_shipped_mechanisms():
 
 
 def test_security_integrity_and_cross_links():
-    for path in (SITE / 'security.md', ROOT / 'docs/integrity.md'):
+    for path in (SITE / 'security.md', SITE / 'integrity.md'):
         text = path.read_text()
         assert 'plugin.json' in text and 'mcp check' in text, path.name
-    assert '(rehearsal.html)' in (SITE / 'recovery.md').read_text()
-    assert '(recovery.html)' in (SITE / 'rehearsal.md').read_text()
+    assert '(rehearsal.md)' in (SITE / 'recovery.md').read_text()
+    assert '(recovery.md)' in (SITE / 'rehearsal.md').read_text()
 
 
 def test_shipped_things_are_not_called_planned():
@@ -669,7 +697,7 @@ def test_hero_shows_the_current_day():
     readme = (ROOT / 'README.md').read_text()
     alt = re.search(r'alt="([^"]+)"', readme)[1].lower()
     for variant in ('light', 'dark'):
-        art = ROOT / f'docs/assets/hero-{variant}.svg'
+        art = SITE / f'assets/hero-{variant}.svg'
         text = art.read_text()
         assert len(art.read_bytes()) < 20000, variant
         for word in ('Calibrate', 'interview', 'tier', 'Phone', 'DM', 'heartbeat'):
@@ -742,7 +770,8 @@ def test_security_policy_scope_and_channel():
 def test_contributing_points_at_the_rules():
     text = _plain('CONTRIBUTING.md')
     for phrase in ('AGENTS.md', '.specify/memory/constitution.md', 'python3 -m pytest -q',
-                   'scripts/build-hero.py', 'SECURITY.md', 'stdlib'):
+                   'scripts/build-hero.py', 'SECURITY.md', 'stdlib',
+                   'uvx --with mkdocs-material mkdocs serve', 'gh-pages'):
         assert phrase in text, phrase
     assert 'test first' in text.lower()
     assert calibrate.instruction_like(text) == []
@@ -833,14 +862,14 @@ def test_security_posture_table_matches_the_code():
 
 def test_agent_guide_ships_and_is_linked():
     page = (SITE / 'agent.md').read_text()
-    assert page.startswith('---\nlayout: default\n---\n') and len(page.splitlines()) <= 100
+    assert len(page.splitlines()) <= 100
     for phrase in ('wuwei next', '/wuwei:wuwei-plan', '/wuwei:wuwei-report', '.wuwei/executable',
                    '-P', 'host terminal', 'posture:', 'planner', 'lead', 'builder', 'sentinel',
                    'shepherd', 'steward', 'first word of a plain command'):
         assert phrase in page, phrase
     assert '\N{EM DASH}' not in page and not any(ord(c) >= 0x1F000 for c in page)
     for name in ('index.md', 'daily.md'):
-        assert '(agent.html)' in (SITE / name).read_text(), name
+        assert '(agent.md)' in (SITE / name).read_text(), name
     readme = (ROOT / 'README.md').read_text()
     assert 'orients itself' in readme.split('\n## Quick start\n', 1)[1].split('\n## ', 1)[0]
     for skill in sorted(ROOT.glob('skills/*/SKILL.md')):
