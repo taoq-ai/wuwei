@@ -919,3 +919,29 @@ def test_close_carry_skill_and_docs():
     concepts = (SITE / 'concepts.md').read_text()
     assert 'bin/wuwei plan carry' in concepts and 'bin/wuwei plan park' in concepts
     assert 'Outcome: carried ITEM' not in concepts
+
+
+def test_one_gate_question():
+    # #365: the morning gate is one approval; the separate questions come only on Change something.
+    plan = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text().splitlines()
+    gate = next(line for line in plan if line.startswith('4. '))
+    for phrase in ("Approve today's plan as proposed?", '`Change something`', 'header `Goals`', '`Plan`',
+                   'calibrate --questions', '`[]`', '`wuwei plan gate`', '`record` command'):
+        assert phrase in gate, phrase
+    assert 'one AskUserQuestion per decision' not in gate and 'Ask separately' not in gate
+    after = gate.split('Only on `Change something`', 1)[1]
+    for phrase in ('goals', 'queue', 'seat policy', 'CAP', 'envelope', 'carry-over'):
+        assert phrase in after, phrase
+    approve = next(line for line in plan if line.startswith('5. '))
+    assert '--import-yesterday' in approve and 'carry-over' in approve
+    charter = (ROOT / 'charters/planner.md').read_text()
+    assert "Approve today's plan as proposed?" in charter and 'Change something' in charter
+    daily = (SITE / 'daily.md').read_text().split('\n## 3. Plan and the morning gate\n', 1)[1].split('\n## ', 1)[0]
+    assert "Approve today's plan as proposed?" in daily and 'Change something' in daily
+    assert 'question per decision' not in daily
+    agent = next(line for line in (SITE / 'agent.md').read_text().splitlines() if line.startswith('3. Morning gate'))
+    assert "Approve today's plan as proposed?" in agent and 'per decision' not in agent
+    configuration = (SITE / 'configuration.md').read_text()
+    assert '`[]`' in configuration.split('\n## Owner interview\n', 1)[1].split('\n## ', 1)[0]
+    prompt = ROOT / 'evals/wuwei-plan-positive-06/prompt.md'
+    assert 'once' in prompt.read_text().split('---', 2)[2]

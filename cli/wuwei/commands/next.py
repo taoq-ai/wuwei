@@ -54,8 +54,9 @@ def step(root):
                     '/wuwei:wuwei-plan')
     data = state.read_state(directory=directory)
     if not data['gate_approved']:
-        return _row('gate', f'Morning gate open: ask the owner the Morning gate questions in '
-                    f'days/{directory.name}/plan.md and approve only on the owner\'s answers.',
+        return _row('gate', 'Morning gate open: ask the owner the one Morning gate question, '
+                    f'"Approve today\'s plan as proposed?", citing days/{directory.name}/plan.md, '
+                    'and approve only on the owner\'s answer.',
                     '/wuwei:wuwei-plan')
     routes = data.get('decision_routes', {})
     if not isinstance(routes, dict):

@@ -163,6 +163,32 @@ def propose(data, root=None):
     return path
 
 
+def gate_widget(root=None, *, import_yesterday=False):
+    """The one morning gate question for today's proposal and the command that approves it."""
+    from wuwei import decision
+    root = workspace.find_workspace() if root is None else Path(root)
+    directory = workspace.day_dir(root)
+    data = json.loads((directory / 'proposal.json').read_text(encoding='utf-8'))
+    draft = directory / 'goals.md'  # propose writes it only for provisional goals
+    provisional = goals.parse(draft.read_text(encoding='utf-8')) if draft.is_file() else None
+    ids = [item['id'] for item in data['candidates']]
+    approves = '; '.join([
+        'Goals ' + ', '.join(f'{goal} ({provisional[goal]["outcome"]})' if provisional else goal
+                             for goal in data['goals']),
+        'queue ' + (', '.join(ids) or 'empty'), f'CAP {data["cap"]}',
+        'seat policy ' + json.dumps(data['seat_policy'], sort_keys=True),
+        'envelope ' + json.dumps(data['envelope'], sort_keys=True),
+        *(['carry-over of unfinished prior-day items'] if import_yesterday else [])])
+    return decision.widget(
+        decision.gate(root) + "Approve today's plan as proposed?",
+        'Goals' if provisional else 'Plan',
+        [('Approve', approves + '.'),
+         ('Change something', 'Ask the separate questions on goals, queue, seat policy, CAP, '
+                              'envelope and carry-over')],
+        ' '.join(['wuwei plan approve --items', *ids, '--goals-confirmed',
+                  *(['--import-yesterday'] if import_yesterday else [])]))
+
+
 def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
     root = workspace.find_workspace() if root is None else Path(root)
     directory = workspace.day_dir(root)

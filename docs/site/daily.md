@@ -193,9 +193,10 @@ terminal, or keep watching with `bin/wuwei config set guards.shadow_days 14`. Se
 Run `/wuwei plan` in Claude Code. The planner registers its session
 (`wuwei plan session`), sweeps live work, asks the lead for candidates, orders them with
 `wuwei rank` and writes the proposal with `wuwei plan propose`. It then asks you one
-`Morning gate` question per decision: goals, queue, [seat](concepts.md#seat) policy, [CAP](concepts.md#cap),
-[envelope](concepts.md#envelope) and [carry-over](concepts.md#carry). Nothing is dispatched before your answers. While `memory/goals.md` has no goals,
-the lead proposes them, `plan.md` shows them as provisional and the goals question shows the
+`Morning gate` question, `Approve today's plan as proposed?`. Pick `Change something` to get
+the separate questions on goals, queue, [seat](concepts.md#seat) policy, [CAP](concepts.md#cap),
+[envelope](concepts.md#envelope) and [carry-over](concepts.md#carry). Nothing is dispatched before your answer. While `memory/goals.md` has no goals,
+the lead proposes them, `plan.md` shows them as provisional and the approval question shows the
 blocks. On approval the planner records them with
 `wuwei goals edit --file .wuwei/days/<date>/goals.md`; under the strict posture the hook
 refuses that call and prints the command for a host terminal. It then records the gate with

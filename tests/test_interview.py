@@ -416,6 +416,51 @@ def test_widgets_come_from_the_table_and_pass_the_question_guard(offline, capsys
         assert check_question(payload) == (0, ''), widget
 
 
+def questions(capsys):
+    assert main('calibrate', '--questions') == 0
+    return [(w['id'], w.get('repo')) for w in json.loads(capsys.readouterr().out)]
+
+
+def test_questions_skip_recorded_answers(offline, capsys):
+    rows = interview().QUESTIONS
+    every = [(row['id'], repo) for row in rows
+             for repo in (['acme/widget', 'acme/gadget'] if row['scope'] == 'repo' else [None])]
+    assert questions(capsys) == every
+    today = offline / DAY / 'interview.json'
+    today.parent.mkdir(parents=True)
+    today.write_text(json.dumps({'merge': {'acme/widget': 'Owner merges'}, 'phone': 'Nothing'}))
+    assert questions(capsys) == [pair for pair in every
+                                 if pair not in {('phone', None), ('merge', 'acme/widget')}]
+    full = {row['id']: ({'acme/widget': row['choices'][0][0], 'acme/gadget': row['choices'][0][0]}
+                        if row['scope'] == 'repo' else row['choices'][0][0]) for row in rows}
+    today.unlink()
+    half = len(rows) // 2
+    for day, part in (('days/2026-09-30', dict(list(full.items())[:half])),
+                      ('archive/2026-09-01', dict(list(full.items())[half:]))):
+        path = offline / '.wuwei' / day / 'interview.json'
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(part))
+    assert questions(capsys) == []
+    for day in ('days/2026-09-30', 'archive/2026-09-01'):
+        (offline / '.wuwei' / day / 'interview.json').unlink()
+    today.write_text(json.dumps(full))
+    assert questions(capsys) == []
+
+
+@pytest.mark.parametrize('kind', ['not json', 'list', 'symlink'])
+def test_questions_refuse_unreadable_answers(offline, capsys, kind):
+    path = offline / '.wuwei/days/2026-09-30/interview.json'
+    path.parent.mkdir(parents=True)
+    if kind == 'symlink':
+        (offline / 'elsewhere.json').write_text('{"phone": "Nothing"}')
+        path.symlink_to(offline / 'elsewhere.json')
+    else:
+        path.write_text('{nope' if kind == 'not json' else '["phone"]')
+    assert main('calibrate', '--questions') == 2
+    captured = capsys.readouterr()
+    assert 'days/2026-09-30/interview.json' in captured.err and captured.out == ''
+
+
 def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatch):
     from types import SimpleNamespace
     from wuwei import promotion, registry

@@ -118,6 +118,8 @@ def test_cli_propose_and_approve(root, monkeypatch):
     result = subprocess.run([*command, 'propose', str(source)], env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert 'unmeasured' in next((root / '.wuwei/days').glob('*/plan.md')).read_text()
+    result = subprocess.run([*command, 'gate'], env=env, capture_output=True, text=True)
+    assert json.loads(result.stdout)['record'] == 'wuwei plan approve --items A --goals-confirmed'
     result = subprocess.run([*command, 'approve', '--items', 'A', '--goals-confirmed'],
                             env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
@@ -304,3 +306,28 @@ def test_propose_sweep_has_pr_flow(root):
     (root / '.wuwei/config.toml').write_text('[owner]\nhandles = ["ada"]\n\n' + shepherd)
     (root / '.wuwei/days/2026-09-28/plan.md').unlink()
     assert '- pr-flow: measured: ok\n' in plan.propose(proposal(), root).read_text()
+
+
+def test_gate_widget_is_the_one_approval_question(root):
+    # #365: the CLI prints the one gate question, its header and the approve command.
+    from wuwei.guards.decision import gate_question
+
+    data = proposal()
+    data['candidates'].append({**data['candidates'][0], 'id': 'B'})
+    plan.propose(data, root)
+    widget = plan.gate_widget(root)
+    assert widget['question'] == ("Morning gate (days/2026-09-28/plan.md): "
+                                  "Approve today's plan as proposed?")
+    assert gate_question(widget, root)
+    assert widget['header'] == 'Plan'
+    assert [row['label'] for row in widget['options']] == ['Approve', 'Change something']
+    approve = widget['options'][0]['description']
+    assert all(part in approve for part in ('G-1', 'A, B', 'CAP 2', 'claude', '09:00'))
+    assert 'carry' not in approve.lower()
+    assert widget['record'] == 'wuwei plan approve --items A B --goals-confirmed'
+    carry = plan.gate_widget(root, import_yesterday=True)
+    assert 'carry-over' in carry['options'][0]['description']
+    assert carry['record'].endswith(' --goals-confirmed --import-yesterday')
+    (root / '.wuwei/memory/goals.md').write_text(TEMPLATE.read_text(encoding='utf-8'))
+    plan.propose(lead(), root)
+    assert plan.gate_widget(root)['header'] == 'Goals'
