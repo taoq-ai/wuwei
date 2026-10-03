@@ -313,13 +313,38 @@ def test_shepherd_settings_are_visible_in_template_and_site():
     assert '`0`' in row.split('|')[3]
 
 
-def test_hero_files_match_their_generator():
+def _hero():
     import importlib.util
     spec = importlib.util.spec_from_file_location('build_hero', ROOT / 'scripts/build-hero.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def test_hero_files_match_their_generator():
+    module = _hero()
     for name, palette in module.PAL.items():
         assert (SITE / f'assets/hero-{name}.svg').read_text() == module.svg(palette), name
+
+
+OPEN_ISSUES = {'#370', '#412', '#415', '#417', '#419'}  # issues that ship planned hero tools
+
+
+def test_hero_tools_match_the_repository():
+    hero = _hero()
+    text = (SITE / 'assets/hero-light.svg').read_text()
+    assert text.count('attributeName="x"') == len(hero.ROWS)  # one stepping highlight per row
+    for _, _, tools in hero.ROWS:
+        for name, _, glyph, proof, issue in tools:
+            slug = name.lower().replace(' ', '_').replace('-', '')
+            assert glyph in hero.ICONS or re.fullmatch(r'[A-Z]{2}', glyph), name
+            if proof:
+                assert (ROOT / proof).is_file() and issue is None, name
+                assert text.count(f'<title>{name}</title>') == 2, name
+            else:
+                assert not list(ROOT.glob(f'adapters/*/{slug}.py')), name
+                assert issue is None or issue in OPEN_ISSUES, name
+                assert text.count(f'<title>{name} (planned)</title>') == 2, name
 
 
 def test_reference_verdict_example_and_phase_table():
@@ -705,12 +730,19 @@ def test_shipped_things_are_not_called_planned():
 def test_hero_shows_the_current_day():
     readme = (ROOT / 'README.md').read_text()
     alt = re.search(r'alt="([^"]+)"', readme)[1].lower()
+    hero = _hero()
+    alts = re.findall(r'<img src="assets/hero-[^>]*alt="([^"]+)"', (SITE / 'index.md').read_text())
+    assert len(alts) == 2 and all(hero.tools_text() in a for a in alts)
+    assert hero.tools_text() in re.search(r'alt="([^"]+)"', readme)[1]
+    cap = 20000 + sum(len(d) for d in hero.ICONS.values()) + 12000  # rows measured at 10978
     for variant in ('light', 'dark'):
         art = SITE / f'assets/hero-{variant}.svg'
         text = art.read_text()
-        assert len(art.read_bytes()) < 20000, variant
+        assert len(art.read_bytes()) < cap, variant
+        assert all(h.startswith('#') for h in re.findall(r'href="([^"]*)"', text)) and 'url(http' not in text
         for word in ('Calibrate', 'interview', 'tier', 'Phone', 'DM', 'heartbeat'):
             assert word in text, (variant, word)
+        assert hero.tools_text() in re.search(r'<desc[^>]*>(.*?)</desc>', text, re.S)[1], variant
         desc = re.search(r'<desc[^>]*>(.*?)</desc>', text, re.S)[1].lower()
         for word in ('calibrat', 'tier', 'phone', 'heartbeat'):
             assert word in desc and word in alt, (variant, word)
@@ -811,8 +843,9 @@ def test_notice_credits_match_readme_acknowledgements():
     for text in ('.specify/', '.agents/skills/speckit-', '.specify/LICENSE'):
         assert text in notice, text
     for name in ('Spec Kit', 'autoharness', 'ralph-starter', 'humanizer', 'Model Context Protocol',
-                 'MCP Apps', 'release-please', 'ZIRAN', 'WSJF', 'RICE', 'two-way door'):
+                 'MCP Apps', 'release-please', 'ZIRAN', 'WSJF', 'RICE', 'two-way door', 'Simple Icons'):
         assert name.lower() in notice.lower(), name
+    assert '16.33.0' in notice and 'CC0' in notice
 
 
 def test_doctor_is_the_first_stop():

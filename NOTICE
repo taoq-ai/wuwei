@@ -13,6 +13,12 @@ GitHub Spec Kit
   Used: the vendored .specify/ templates and scripts (spec-kit 1.0.13.dev0) and
   .agents/skills/speckit-*, the development workflow for this repository.
 
+Simple Icons
+  Source: https://github.com/simple-icons/simple-icons
+  Licence: CC0-1.0 for the icon data; the brands remain trademarks of their owners.
+  Used: monochrome glyph path data (simple-icons 16.33.0) embedded in
+  scripts/build-hero.py for the hero.
+
 Projects whose ideas or tools WUWEI uses (no code copied)
 
 autoharness
