@@ -353,7 +353,7 @@ def test_goal_guard_blocks_outside_workspace(tmp_path):
     assert check_file(payload)[0] == 1
 
 
-@pytest.mark.parametrize('name', ['proposal.json', 'plan.md'])
+@pytest.mark.parametrize('name', ['proposal.json', 'plan.md', 'goals.md'])
 def test_plan_producer_files_are_protected(tmp_path, name):
     from wuwei.guards.protect_state import check_file
 
@@ -445,3 +445,54 @@ def test_goals_preamble_is_ignored_and_indented_example_is_not_a_goal():
             '## G-1\noutcome: Ship\nmeasure: PRs\ntarget: 3\ndate: 2026-10-30\npriority: 1\n')
     parsed = goals.parse(text)
     assert list(parsed) == ['G-1'] and parsed['G-1']['outcome'] == 'Ship'
+
+
+TEMPLATE = (Path(__file__).resolve().parents[1] / 'templates/workspace/memory/goals.md')
+LEAD_GOALS = [
+    {'id': 'G-1', 'outcome': 'Ship the widget', 'measure': 'widgets shipped', 'target': '1',
+     'date': '2026-10-30', 'priority': 1},
+    {'id': 'G-2', 'outcome': 'Document the widget', 'measure': 'widgets shipped',
+     'target': '1', 'date': '2026-10-30', 'priority': 2},
+]
+
+
+def test_proposed_renders_lead_goals_on_template():
+    from wuwei import goals
+
+    text, provisional = goals.proposed(TEMPLATE.read_text(encoding='utf-8'), LEAD_GOALS)
+    assert provisional
+    parsed = goals.parse(text)
+    assert list(parsed) == ['G-1', 'G-2'] and parsed['G-2']['outcome'] == 'Document the widget'
+
+
+def test_proposed_keeps_defined_goals():
+    from wuwei import goals
+
+    assert goals.proposed(GOALS, LEAD_GOALS) == (GOALS, False)
+
+
+@pytest.mark.parametrize('change', [
+    {'measure': None}, {'owner': 'x'}, {'date': '2026-13-01'}, {'priority': True},
+    {'outcome': 'Ship\n## G-9'},
+])
+def test_proposed_refuses_bad_objects(change):
+    from wuwei import goals
+
+    goal = {**LEAD_GOALS[0], **change}
+    goal = {key: value for key, value in goal.items() if value is not None}
+    with pytest.raises(ValueError, match='^proposed goals'):
+        goals.proposed(TEMPLATE.read_text(encoding='utf-8'), [goal])
+
+
+def test_rank_lead_json_on_provisional_goals(tmp_path, monkeypatch, capsys):
+    from wuwei.__main__ import main
+
+    base = tmp_path / '.wuwei'
+    (base / 'memory').mkdir(parents=True)
+    (base / 'memory/goals.md').write_text(TEMPLATE.read_text(encoding='utf-8'))
+    (base / 'config.toml').write_text('')
+    source = tmp_path / 'lead.json'
+    source.write_text(json.dumps({'goals': LEAD_GOALS, 'candidates': [candidate('A')]}))
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    assert main(['rank', str(source)]) == 0, capsys.readouterr().err
+    assert [row['id'] for row in json.loads(capsys.readouterr().out)] == ['A']

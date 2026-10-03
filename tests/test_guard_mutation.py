@@ -20,6 +20,8 @@ PROBES = {
         ('Write', {}, 2),
     ('decision', 'PreToolUse', 'AskUserQuestion', 'check_question'):
         ('AskUserQuestion', {'questions': [{}]}, 2),
+    ('decision', 'PostToolUse', 'AskUserQuestion', 'record_gate'):
+        ('AskUserQuestion', {'questions': [{}]}, 2),
     ('decision', 'SubagentStop', None, 'check_stop'): ('SubagentStop', {}, 1),
     ('deploy', 'PreToolUse', 'Bash', 'check'): ('Bash', {'command': 'terraform apply'}, 1),
     ('integrity', 'PreToolUse', None, 'check'): ('Bash', {'command': 'echo hi'}, 2),
@@ -174,6 +176,10 @@ def assert_probe(check, row, root, monkeypatch):
         monkeypatch.setattr(workspace, 'guard_scope', lambda _: (_ for _ in ()).throw(ValueError('scope')))
     elif check.__name__ == 'check_mcp':
         (root / '.mcp.json').write_text('{"mcpServers": {"docs": {"command": "fake-server"}}}')
+    elif check.__name__ == 'record_gate':
+        from wuwei import state
+        del payload['agent_id']  # the planner session itself, not a seat
+        monkeypatch.setattr(state, 'read_state', lambda root: {'planner_session_id': 'mutation'})
     elif check.__name__ == 'check_stop':
         payload.update(agent_type='wuwei:builder', last_assistant_message='Add a cache?')
     elif check.__module__.endswith('.verdict') and check.__name__ == 'check_retro':

@@ -18,7 +18,7 @@ EVENTS = ('PreToolUse', 'PostToolUse', 'SubagentStop', 'SessionStart', 'PreCompa
 MODULES = {
     'agent_launch': {'PreToolUse': 'Agent', 'SubagentStop': None},
     'commit_push': {'PreToolUse': 'Bash'},
-    'decision': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash',
+    'decision': {'PostToolUse': 'Write|Edit|MultiEdit|NotebookEdit|Bash|AskUserQuestion',
                  'PreToolUse': 'AskUserQuestion', 'SubagentStop': None},
     'deploy': {'PreToolUse': 'Bash'},
     'integrity': {'PreToolUse': None, 'SessionStart': None},

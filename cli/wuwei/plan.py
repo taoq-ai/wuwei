@@ -91,8 +91,12 @@ def propose(data, root=None):
     root = workspace.find_workspace() if root is None else Path(root)
     from wuwei import steward
     steward_finding = steward.previous_day_finding(root)
-    goals_text = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
+    goals_text, provisional = goals.proposed(
+        (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8'),
+        data.get('goals') if isinstance(data, dict) else None)
     goal_list = goals.parse(goals_text)
+    if provisional:
+        data = {**data, 'goals': list(goal_list)}
     found = discovery.discover(root)
     day = workspace.day_dir(root)
     prior = sorted((path for path in (root / '.wuwei/days').glob('*')
@@ -125,7 +129,13 @@ def propose(data, root=None):
         raise state.StateError('morning gate already approved')
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
              *(['Finding: ' + steward_finding, ''] if steward_finding else []),
-             '## Goals to confirm', *[f'- {goal}' for goal in data['goals']], '',
+             '## Goals to confirm',
+             *([f'Provisional: proposed by the lead; the planner records days/{directory.name}/'
+                'goals.md on approval.'] if provisional else []),
+             *[line for goal in data['goals'] for line in (
+                 [f'- {goal} (provisional)', *(f'  {key}: {goal_list[goal][key]}'
+                                               for key in goals.FIELDS)]
+                 if provisional else [f'- {goal}'])], '',
              '## Measured sweep', *[f'- {key}: {value}' for key, value in data['sweep'].items()], '',
              '## Proposed queue']
     for number, item in enumerate(data['candidates'], 1):
@@ -140,6 +150,10 @@ def propose(data, root=None):
               'Envelope: ' + json.dumps(data['envelope'], sort_keys=True), '']
     directory.mkdir(parents=True, exist_ok=True)
     workspace.atomic_write(directory / 'proposal.json', json.dumps(data, allow_nan=False, indent=2) + '\n')
+    if provisional:
+        workspace.atomic_write(directory / 'goals.md', goals_text)
+    else:
+        (directory / 'goals.md').unlink(missing_ok=True)
     path = directory / 'plan.md'
     workspace.atomic_write(path, '\n'.join(lines))
     return path

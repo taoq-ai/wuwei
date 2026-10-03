@@ -215,3 +215,82 @@ def test_discover_marks_out_of_contract_scanner_unmeasured(root, result):
     found = discovery.discover(root, ports={'scanner': SimpleNamespace(audit=lambda path, root=None: result)})
     assert found['sources']['scanner'] == 'unmeasured: acme/widget: invalid scanner result'
     assert not [row for row in found['candidates'] if row['source'] == 'scanner']
+TEMPLATE = Path(__file__).resolve().parents[1] / 'templates/workspace/memory/goals.md'
+LEAD_GOALS = [
+    {'id': 'G-1', 'outcome': 'Ship the widget', 'measure': 'widgets shipped', 'target': '1',
+     'date': '2026-10-30', 'priority': 1},
+    {'id': 'G-2', 'outcome': 'Document the widget', 'measure': 'widgets shipped',
+     'target': '1', 'date': '2026-10-30', 'priority': 2},
+]
+
+
+@pytest.fixture
+def empty(root):
+    (root / '.wuwei/memory/goals.md').write_text(TEMPLATE.read_text(encoding='utf-8'))
+    return root
+
+
+def lead():
+    return {**proposal(), 'goals': LEAD_GOALS}
+
+
+def test_propose_runs_on_provisional_goals(empty):
+    from wuwei import goals
+
+    before = (empty / '.wuwei/memory/goals.md').read_text()
+    text = plan.propose(lead(), empty).read_text()
+    assert 'G-1 (provisional)' in text and 'G-2 (provisional)' in text
+    assert 'Ship the widget' in text
+    day = empty / '.wuwei/days/2026-09-28'
+    assert list(goals.parse((day / 'goals.md').read_text())) == ['G-1', 'G-2']
+    assert json.loads((day / 'proposal.json').read_text())['goals'] == ['G-1', 'G-2']
+    assert (empty / '.wuwei/memory/goals.md').read_text() == before
+
+
+def test_propose_refuses_goal_objects_once_goals_exist(root):
+    with pytest.raises(ValueError, match='goals must cite identifiers'):
+        plan.propose(lead(), root)
+
+
+def test_repropose_on_confirmed_goals_removes_draft(empty):
+    plan.propose(lead(), empty)
+    (empty / '.wuwei/memory/goals.md').write_text(
+        (empty / '.wuwei/days/2026-09-28/goals.md').read_text())
+    plan.propose({**proposal(), 'goals': ['G-1', 'G-2']}, empty)
+    assert not (empty / '.wuwei/days/2026-09-28/goals.md').exists()
+
+
+def test_approve_needs_recorded_goals(empty):
+    plan.propose(lead(), empty)
+    with pytest.raises(ValueError, match='no goals'):
+        plan.approve(['A'], empty, goals_confirmed=True)
+
+
+def test_cli_propose_on_provisional_goals(empty):
+    import os
+    import subprocess
+    import sys
+
+    source = empty / 'lead.json'
+    source.write_text(json.dumps(lead()))
+    env = {**os.environ, 'WUWEI_WORKSPACE': str(empty),
+           'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'cli')}
+    result = subprocess.run([sys.executable, '-P', '-m', 'wuwei', 'plan', 'propose', str(source)],
+                            env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+def test_template_proposes_goal_on_empty_goals(empty):
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, 'WUWEI_WORKSPACE': str(empty),
+           'PYTHONPATH': str(Path(__file__).resolve().parents[1] / 'cli')}
+    command = [sys.executable, '-P', '-m', 'wuwei', 'plan']
+    result = subprocess.run([*command, 'template'], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert isinstance(json.loads(result.stdout)['goals'][0], dict)
+    result = subprocess.run([*command, 'propose', '-'], env=env, input=result.stdout,
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
