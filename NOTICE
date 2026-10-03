@@ -64,6 +64,13 @@ ZIRAN
   Licence: Apache-2.0
   Used: as a CI tool for the role grant audit (ziran-audit job, agents/ziran-baseline.json).
 
+superpowers
+  Source: https://github.com/obra/superpowers
+  Licence: MIT, Copyright (c) 2025 Jesse Vincent
+  Used: the section structure of README.md (how it works, the basic workflow, when
+  something goes wrong, what is inside, philosophy, installation per harness); no text
+  copied.
+
 Concepts (credited by author and source)
 
 WSJF (Weighted Shortest Job First)
