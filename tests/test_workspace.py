@@ -595,6 +595,35 @@ def test_upgrade_previous_workspace(tmp_path):
     assert (directory / 'charters/builder.md').read_text().endswith('Local builder\n')
     assert 'statusLine' in result.stdout
     assert cli(tmp_path, 'config', 'check').returncode == 0
+    assert 'repos = []\n' in raw.splitlines(keepends=True)
+
+
+def test_upgrade_removes_empty_repos_before_tables(tmp_path):
+    import tomllib
+
+    directory = previous_workspace(tmp_path)
+    config_path = directory / 'config.toml'
+    config_path.write_text(config_path.read_text()
+                           + '\n[[repos]]\nname = "app"\npath = "repo"\ndefault_branch = "main"\n')
+    before = {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+    preview = cli(tmp_path, 'init', '--upgrade', '--dry-run')
+    assert preview.returncode == 0, preview.stderr
+    assert 'Would upgrade config.toml: remove repos = []' in preview.stdout
+    assert before == {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+
+    result = cli(tmp_path, 'init', '--upgrade')
+    assert result.returncode == 0, result.stderr
+    assert 'Upgraded config.toml: remove repos = []' in result.stdout
+    raw = config_path.read_text()
+    assert 'repos = []\n' not in raw.splitlines(keepends=True)
+    assert '# Owner comment stays.' in raw
+    assert tomllib.loads(raw)['repos'][0]['name'] == 'app'
+
+    after = {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+    again = cli(tmp_path, 'init', '--upgrade')
+    assert again.returncode == 0, again.stderr
+    assert 'No workspace changes needed' in again.stdout
+    assert after == {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
 
 
 def test_upgrade_is_idempotent(tmp_path):
@@ -611,8 +640,8 @@ def test_upgrade_preserves_nonadjacent_repo_tables(tmp_path):
     assert cli(tmp_path, 'init').returncode == 0
     config_path = tmp_path / '.wuwei/config.toml'
     raw = config_path.read_text().replace(
-        'repos = []\n',
-        '[[repos]]\nname = "b"\npath = "b"\ndefault_branch = "main"\n# b stays here',
+        '[prioritisation]\n',
+        '[[repos]]\nname = "b"\npath = "b"\ndefault_branch = "main"\n# b stays here\n\n[prioritisation]\n',
         1,
     ) + '\n[[repos]]\nname = "a"\npath = "a"\ndefault_branch = "main"\n# a stays here\n'
     config_path.write_text(raw)

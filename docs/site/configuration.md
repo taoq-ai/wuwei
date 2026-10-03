@@ -72,6 +72,13 @@ merge_deploys = false
 fast_checks = ["python3 -m pytest -q"]
 ```
 
+Do not keep a `repos = []` line once you add `[[repos]]` tables: TOML rejects the two
+together. `bin/wuwei config check` names the line to delete, and `bin/wuwei init --upgrade`
+removes it. While `config.toml` does not load, every tool call in the workspace is refused
+with that error except `ToolSearch` and `Read`, `Grep` and `Glob` of `.wuwei/config.toml`
+and `.wuwei/charters`, so the session can show you the line; the Stop hook prints the error
+and lets the turn end.
+
 ## Host, build and memory
 
 | Key | Default | Meaning |
