@@ -339,7 +339,7 @@ def test_host_terminal_actions_and_morning_references():
     concepts = (SITE / 'concepts.md').read_text()
     for text in (reference, concepts):
         assert 'Host terminal actions' in text
-        for command in ('decision outcome', 'state recover', 'integrity reconfirm', 'mcp decide',
+        for command in ('decision outcome', 'decide', 'state recover', 'integrity reconfirm', 'mcp decide',
                         'drafts approve', 'watch uninstall', 'listen uninstall', 'config promote',
                         'config set', 'config add-repo', 'setup'):
             assert command in text
@@ -458,7 +458,7 @@ RECOVERY = ('state transition', 'runtime dispatch', 'runtime continue', 'integri
 def test_daily_path_and_recovery_pages():
     daily = (SITE / 'daily.md').read_text()
     for phrase in ('/wuwei plan', 'wuwei.tar.gz', 'plan approve', 'build next', 'dispatch next',
-                   'pr raise', 'pr state', 'decision outcome', 'close',
+                   'pr raise', 'pr state', 'wuwei decide', 'close',
                    'Remote Control', 'Push when actions required'):
         assert phrase in daily, phrase
     for command in RECOVERY:
@@ -503,7 +503,7 @@ def test_remote_runbook_matches_the_code():
         assert (ROOT / f'cli/wuwei/commands/{command}.py').is_file(), command
     for text in (remote.VOCABULARY, remote.CONFIRM, remote.CHANGED, remote.NOTHING, remote.UNAVAILABLE,
                  control_plane.HELP, 'Push when actions required', 'organisation Owner',
-                 'Recorded D-3 option B. Confirm it on the host.', 'decision.replied', 'decision outcome',
+                 'Recorded D-3 option B. Confirm it on the host.', 'decision.replied', 'wuwei decide',
                  'drafts approve', 'listen install', 'listen uninstall', 'listen dead',
                  'responder.enabled = false', 'stop all', 'loginctl enable-linger', 'resets at midnight',
                  'otpauth://totp/', 'algorithm=SHA1&digits=6&period=30', 'App Home', 'Messages Tab',

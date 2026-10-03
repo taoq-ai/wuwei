@@ -5,8 +5,8 @@ import json
 import sys
 
 from wuwei import state, workspace
-from wuwei.decision import (evaluate, lint_file, present, record_rejection, record_widget, route,
-                            route_owner, seat_outcome, set_outcome, table, today_path)
+from wuwei.decision import (evaluate, lint_file, owner_confirm, owner_record, present, record_rejection,
+                            record_widget, route, route_owner, seat_outcome, table, today_path)
 
 
 def register(subparsers):
@@ -87,8 +87,7 @@ def show(args):
     return 0, present(args.id, fields, level) + f'\nFull record: wuwei decision show {args.id} --full'
 
 
-def owner_outcome(args):
-    from wuwei.integrity import _host_confirm
+def owner_outcome(args, note=None):
     root = workspace.find_workspace()
     path = today_path(args.id, root)
     if path.is_symlink() or path.parent.is_symlink():
@@ -111,7 +110,8 @@ def owner_outcome(args):
     if previous is not None and previous.get('decided_by') != 'seat':
         return 1, 'decision: invalid prior outcome'
     digest = hashlib.sha256((args.id + '\n' + args.option + '\n' + text).encode()).hexdigest()
-    if not _host_confirm(digest, prompt='Review the decision and chosen option on this host. To confirm, type:'):
+    where = owner_confirm(root, args.id, digest, f'{args.id}: {fields["Question"]}\nRecord {args.option}.')
+    if not where:
         return 1, 'decision: owner confirmation declined'
     if path.read_text(encoding='utf-8') != text:
         return 2, 'decision: record changed during confirmation'
@@ -136,7 +136,7 @@ def owner_outcome(args):
                        kind='decision.reversed' if reversed_choice else 'decision.decided',
                        payload={'id': args.id, 'option': args.option, 'decided_by': 'owner',
                                 'reversibility': fields['Reversibility']})
-    workspace.atomic_write(path, set_outcome(text, args.option))
+    workspace.atomic_write(path, owner_record(text, args.option, where, note))
     return 0, args.option
 
 

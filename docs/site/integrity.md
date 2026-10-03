@@ -42,7 +42,7 @@ failure returns unmeasured and leaves landed content visible as an uncommitted c
 
 To recover, reinstall the signed release and run `bin/wuwei integrity check`.
 Alternatively, after reviewing the exact installed contents on the host, the owner
-can run `bin/wuwei integrity reconfirm` in a terminal and type the displayed digest.
+can run `bin/wuwei integrity reconfirm` in a terminal and answer y.
 There is no `--yes` switch. Agent tools refuse this action. The confirmation is tied
 to the inventory, manifest, signature and workspace pin; later changes invalidate it.
 Missing tools and unreadable measurements cannot be confirmed.

@@ -1,4 +1,4 @@
-"""No owner-facing text asks the owner to type or paste a workflow record (#357)."""
+"""No owner-facing text asks the owner to type or paste a workflow record or a digest (#357, #354)."""
 
 import ast
 from pathlib import Path
@@ -9,7 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 MARKS = ('. ', '? ', '! ', '.\n', '?\n', '!\n', '\n\n')
 PATTERN = re.compile(r"\bpaste\b|\bedit the file\b|\b(?:set|sets|record|records)\s+`?"
                      r"(?:Outcome|Decided-by)\b|Decided-by: owner`? in\b|\badd\b[^.\n]*\bgoals\.md|"
-                     r"\bopen\s+`?\.wuwei/|replace this guide", re.I)
+                     r"\bopen\s+`?\.wuwei/|replace this guide|"
+                     r"\btyp(?:e|es|ing) the (?:displayed )?digest\b|To confirm, type", re.I)
 ALLOWED = {
     # Credentials are the owner's own secret file; no workflow step can answer for them.
     'Edit the file as the owner; the existing state guard refuses agent writes to it.',
@@ -21,15 +22,6 @@ ALLOWED = {
     'repository with `bin/wuwei config add-repo` (see [calibration](#calibration)); edit the file '
     'by hand only for what they refuse, a table or a value that spans lines.',
     'Edit the file yourself only for a table or a value that spans lines.',
-}
-# removed by #354 (decide command); delete this set when it lands
-PENDING_354 = {
-    'An owner reviews every linked report, sets `Decided-by: owner` and `Outcome: proceed` in '
-    'the queued decision and runs `bin/wuwei mcp decide` from a host terminal, typing the '
-    'displayed digest.',
-    'The owner reviews the reports, records `Decided-by: owner` and `Outcome: proceed` in the '
-    'decision, then runs `wuwei mcp decide` from the host terminal.',
-    'review the decision named, set Outcome: proceed, then wuwei mcp decide',
 }
 
 
@@ -49,7 +41,7 @@ def sentences(text):
 def hits(path, text, line=0):
     rel = path.relative_to(ROOT).as_posix()
     return [f'{rel}:{line + number}: {sentence}' for number, sentence in sentences(text)
-            if sentence not in ALLOWED | PENDING_354]
+            if sentence not in ALLOWED]
 
 
 def collect():
@@ -68,6 +60,7 @@ def collect():
 def test_lint_catches_planted_instruction():
     planted = ROOT / 'docs/site/planted.md'
     assert hits(planted, 'Paste these blocks into .wuwei/memory/goals.md.')
+    assert hits(planted, 'Run it and type the displayed digest.')
     assert not hits(planted, 'Never paste the secret or the URI into a website.')
 
 

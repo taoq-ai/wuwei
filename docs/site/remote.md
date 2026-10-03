@@ -127,7 +127,7 @@ With the pin set:
   re-confirmation: the event records the pin it was checked against, and the page clears
   once `control_plane.owner` holds a different value. A refusal while the pin is right
   stays paged until you run `bin/wuwei remote ack` in a host terminal: it lists today's
-  refused message ids, asks you to type a digest and records a `remote.acknowledged`
+  refused message ids, asks y/N and records a `remote.acknowledged`
   event. A later refusal pages again. Agent tools are refused this command, and without
   a terminal it exits 2. Otherwise the page ends with the day. `stop all` is still
   accepted.
@@ -340,13 +340,13 @@ The first answer stands. A second, different answer is not recorded:
 Not recorded: D-3 already has option B from this DM. Record the outcome on the host to change it.
 ```
 
-Either way, record the outcome in a host terminal with `bin/wuwei decision outcome D-3 B`.
+Either way, record the outcome with `bin/wuwei decide D-3 B`.
 Until then `bin/wuwei nudges` and session start show
-`D-3 answered from the phone: option B, confirm with decision outcome D-3 B`,
+`D-3 answered from the phone: option B, confirm with wuwei decide D-3 B`,
 `status --line` and the DM `status` reply count it as `phone answers 1`, and the report
 lists it as pending. Drafts are the same:
 `bin/wuwei drafts approve <id>` or `bin/wuwei drafts drop <id>`. Agent tools are refused
-these commands, and `decision outcome` and `drafts approve` also read a typed digest from
+these commands, and `decide` and `drafts approve` also ask y/N on
 the terminal, so they run neither through Remote Control nor the DM; from a phone,
 use your own remote shell to the host, for example SSH. See
 [host terminal actions](reference.md#host-terminal-actions).

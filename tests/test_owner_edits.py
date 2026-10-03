@@ -229,3 +229,41 @@ def test_queue_question_naming_a_goal_does_not_unlock_edit(tmp_path, monkeypatch
 def test_voice_edit_after_voice_gate(tmp_path, monkeypatch):
     gated(tmp_path, monkeypatch, topics=('voice',))
     assert edit(tmp_path, 'bin/wuwei voice edit --file voice-draft.md') == (0, '')
+
+
+DECIDE = 'Decisions require the owner terminal, outside agent tools.'
+
+
+def asked_decision(tmp_path, monkeypatch, posture='guarded', ask=True):
+    """The planner asked the owner about today's D-3 record through the gate (#354)."""
+    from test_decision import VALID, save
+    from wuwei.guards.decision import record_gate
+    gated(tmp_path, monkeypatch, posture, topics=())
+    save(tmp_path, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
+    if ask:
+        assert record_gate({'cwd': str(tmp_path), 'session_id': 'planner-1', 'tool_name': 'AskUserQuestion',
+                            'tool_input': {'questions': [{'question': 'D-3: Which fix?', 'header': 'D-3'}]}}) == (0, '')
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded'])
+def test_planner_records_asked_decision(tmp_path, monkeypatch, posture):
+    asked_decision(tmp_path, monkeypatch, posture)
+    assert edit(tmp_path, 'bin/wuwei decide D-3 B') == (0, '')
+    assert edit(tmp_path, 'bin/wuwei mcp decide D-3 B') == (0, '')
+    for command, reason in (('bin/wuwei decide D-3 B --note D-4', DECIDE), ('bin/wuwei decide D-4 B', DECIDE),
+                            ('bin/wuwei mcp decide proceed-unmeasured aws',
+                             'MCP decisions require the owner terminal, outside agent tools.')):
+        assert edit(tmp_path, command) == (1, f'{reason} Run it in a host terminal: {command}')
+    assert edit(tmp_path, 'bin/wuwei decide D-3 B', agent_id='a1') == (1, DECIDE)
+
+
+def test_unasked_or_strict_decision_prints_host_terminal_command(tmp_path, monkeypatch):
+    asked_decision(tmp_path, monkeypatch, ask=False)
+    assert edit(tmp_path, 'bin/wuwei decide D-3 B') == (
+        1, f'{DECIDE} Run it in a host terminal: bin/wuwei decide D-3 B')
+
+
+def test_strict_asked_decision_prints_host_terminal_command(tmp_path, monkeypatch):
+    asked_decision(tmp_path, monkeypatch, 'strict')
+    assert edit(tmp_path, 'bin/wuwei decide D-3 B') == (
+        1, f'{DECIDE} Run it in a host terminal: bin/wuwei decide D-3 B')
