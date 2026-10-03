@@ -9,6 +9,12 @@ The manifest inventories every packaged file except itself and its signature.
 That includes `.claude-plugin/plugin.json` and the board MCP server it declares, so
 `bin/wuwei mcp check` reports that server as covered by integrity instead of scanning it.
 Git metadata and generated Python bytecode are not shipped or measured.
+Claude Code writes one marker file per running Claude process into `.in_use/` at the
+install root, named by the process id, so its plugin cache cleanup skips versions in
+use. Markers come and go as processes start and exit, so they are not measured and do
+not change a confirmed fingerprint. Anything else in that `.in_use/` (another name, a
+directory or a symlink), a symlinked `.in_use`, or an `.in_use` deeper in the plugin is
+still a finding.
 
 Run `bin/wuwei integrity check` from a WUWEI workspace. Exit 0 means the release
 matches its signature and inventory, or its exact content was explicitly confirmed

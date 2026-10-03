@@ -28,6 +28,21 @@ def _name(name):
     return name
 
 
+MARKERS = '.in_use'  # Claude Code's per-process <pid> files, kept by its plugin cache cleanup
+
+
+def _prune(plugin, directory, dirs):
+    dirs[:] = sorted(d for d in dirs if d not in ('.git', '__pycache__'))
+    markers = Path(directory) / MARKERS
+    if Path(directory) != Path(plugin) or MARKERS not in dirs or markers.is_symlink():
+        return
+    with os.scandir(markers) as entries:
+        for entry in entries:
+            if not (re.fullmatch(r'[0-9]+', entry.name) and entry.is_file(follow_symlinks=False)):
+                raise ValueError(f'not a Claude Code process marker: {_name(MARKERS + "/" + entry.name)}')
+    dirs.remove(MARKERS)
+
+
 def inventory(plugin):
     plugin = Path(plugin)
     if not plugin.is_dir():
@@ -36,7 +51,7 @@ def inventory(plugin):
     def failed(error):
         raise error
     for directory, dirs, names in os.walk(plugin, onerror=failed):
-        dirs[:] = [d for d in dirs if d not in ('.git', '__pycache__')]
+        _prune(plugin, directory, dirs)
         for name in dirs + names:
             path = Path(directory) / name
             relative = path.relative_to(plugin).as_posix()
@@ -210,7 +225,7 @@ def fresh(root):
         def failed(error):
             raise error
         for directory, dirs, names in os.walk(PLUGIN, onerror=failed):
-            dirs[:] = sorted(d for d in dirs if d not in ('.git', '__pycache__'))
+            _prune(PLUGIN, directory, dirs)
             for name in sorted(names):
                 file = Path(directory) / name
                 if not name.endswith('.pyc') and file.lstat().st_mtime > since:
