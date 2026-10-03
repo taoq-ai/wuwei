@@ -39,6 +39,11 @@ Then set up the workspace in a host terminal:
 for an intact signed release. A development checkout needs one host confirmation first; see
 [recovery](recovery.html).
 
+Then run `bin/wuwei doctor`. It checks the install, host, workspace, gates, day and guards in
+one pass and prints the fix for anything that is not ok; `bin/wuwei doctor --fix` applies the
+deterministic fixes after one confirmation. When something fails on the first day, see
+[troubleshooting](recovery.html#troubleshooting).
+
 ## 2. Configure
 
 `setup` does the configuration in one pass. It finds the git repositories in the project
@@ -61,9 +66,7 @@ applies it after you type its digest (the `bin/wuwei config promote` path), runs
 exact command for each: a repository it could not measure, a credential variable,
 `owner.name`, `bin/wuwei promote` for the charter proposals, an MCP decision. Run it again
 any time; with nothing new it proposes nothing. For a solo owner then run
-`bin/wuwei config set shepherd.min_reviewers 0`. Then run `bin/wuwei doctor`; it checks the
-install, host, workspace, gates and guards in one pass and prints the fix for anything that
-is not ok. Edit your goals in a host terminal with
+`bin/wuwei config set shepherd.min_reviewers 0`. Edit your goals in a host terminal with
 `bin/wuwei goals edit`. [Configuration](configuration.html) lists every key.
 
 `--shadow` starts a first week in the observe posture (on an existing workspace it proposes
@@ -71,8 +74,8 @@ is not ok. Edit your goals in a host terminal with
 then record what they would refuse and let the call through; records and owner-only actions
 (deploys, merges, approvals, approve-tier messages) still refuse. Read
 `bin/wuwei shadow report` or the `## Shadow` section of the day report. When the nudge comes
-after `guards.shadow_days`, set `security.posture = "guarded"` in `config.toml`, or raise
-`guards.shadow_days` to keep watching. See [security posture](concepts.html#security-posture).
+after `guards.shadow_days`, run `bin/wuwei config set security.posture '"guarded"'` in a host
+terminal, or keep watching with `bin/wuwei config set guards.shadow_days 14`. See [security posture](concepts.html#security-posture).
 
 ## 3. Plan and the morning gate
 
@@ -181,8 +184,11 @@ planner on a schedule.
   with `Active constraints:`, the day's goals, the approved plan, open decisions and the
   briefs of running seats.
 
-You can set `owner.timezone`, `metrics.band_margin` and `sessions.rotate_after` in
-`.wuwei/config.toml` ([configuration](configuration.html)).
+Set them with `bin/wuwei config set` in a host terminal, for example
+`bin/wuwei config set owner.timezone '"Europe/Lisbon"'`,
+`bin/wuwei config set metrics.band_margin 0.3` or
+`bin/wuwei config set sessions.rotate_after.turns 200`. Each shows a diff and applies it
+after its digest ([configuration](configuration.html)).
 
 ## 6. Close
 

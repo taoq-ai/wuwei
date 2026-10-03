@@ -8,7 +8,7 @@ WUWEI 无为 means "effortless action." It is a Claude Code plugin that runs you
 
 - [Daily path](daily.html): one solo-owner path from install to close
 - [Remote operation](remote.html): run a day from the phone with Remote Control and the Slack owner DM
-- [Recovery](recovery.html): low-level commands for when evidence and state disagree
+- [Recovery](recovery.html): doctor first, troubleshooting for first-day failures, and low-level commands for when evidence and state disagree
 - [Concepts](concepts.html): roles, guards, memory, the day flow, review tiers, sessions, the listener, the heartbeat and the board
 - [Configuration](configuration.html): every section and key of the workspace config
 - [Operator reference](reference.html): every CLI command, JSON, decisions, heartbeat, sessions and hook latency budget
@@ -50,6 +50,11 @@ guards in the observe posture for a first week. `init` checks the installation: 
 release prints `plugin integrity: clean` and needs no reconfirmation. Use `bin/wuwei` or
 `python3 -P -m wuwei` for CLI calls. To change one value later, use `bin/wuwei config set` or
 `bin/wuwei config add-repo` in a host terminal ([daily path](daily.html)).
+
+Then run `../wuwei-plugin/bin/wuwei doctor`. It prints one row per check, with the fix for
+anything that is not ok; `bin/wuwei doctor --fix` applies the deterministic fixes after one
+confirmation ([doctor](reference.html#doctor)).
+
 Run `/wuwei plan` to start the planner and owner morning gate, followed by builders,
 review and close. The [daily path](daily.html) walks through the whole day; the linked pages describe the CLI and configuration.
 

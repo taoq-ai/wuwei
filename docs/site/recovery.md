@@ -11,9 +11,73 @@ daily use: reach for it when evidence and state disagree, a seat is lost, or the
 installation changed. Before a release, the [release rehearsal](rehearsal.html) drives a
 real day; its failures point back here.
 
+## Troubleshooting
+
 Start with `bin/wuwei doctor`: it names each problem with its fix, and
 `bin/wuwei doctor --fix` applies the deterministic ones after one confirmation. See
-[doctor](reference.html#doctor).
+[doctor](reference.html#doctor). The entries below are first-day recovery: what a first run
+on 0.11.0 showed, what changed in 0.12.0, and the command for each.
+
+### Every tool call is refused with plugin integrity
+
+The refusal names a file under `.in_use/`. Claude Code writes one marker there per running
+Claude process, and 0.11.0 counted each marker as tampering. From 0.12.0 the check skips
+files named by a process id directly in the install root's `.in_use/`; any other name, a
+directory, a symlink or a deeper `.in_use` is still a finding. Install the new release and
+run `bin/wuwei init --upgrade`. If it still refuses, `bin/wuwei integrity check` names the
+files. Doctor's `in_use` row counts the markers.
+
+### The MCP gate blocks, or names a server unmeasured
+
+`bin/wuwei mcp check` reports each server on its own. A project server you never approved is
+`not attached (unapproved)` and is never started; an `unpinned launcher` is not run; an
+unreachable or slow server is unmeasured by name. Under `guarded` only a critical finding or
+a check that could not run blocks, and an unmeasured server is a nudge. Accept one with
+`bin/wuwei mcp decide proceed-unmeasured <server>`, or give a slow one more time with
+`scanner.mcp.timeout_seconds` ([MCP registry checks](configuration.html#mcp-registry-checks-s3)).
+
+### config.toml does not load
+
+Every tool is refused with the parse error, except `ToolSearch` and a `Read`, `Grep` or
+`Glob` of `.wuwei/config.toml` or its charters, so the session can still show the line. Run
+`bin/wuwei config check`: it names the key, the line and the fix.
+
+### repos = [] next to [[repos]] tables
+
+The load error ends with "repos is assigned on line N; delete that line before using
+[[repos]] tables". `bin/wuwei init --upgrade` removes the line, and `doctor --fix` offers it.
+The template no longer ships `repos = []`.
+
+### Changing one value
+
+Do not edit `config.toml` by hand for a single value. `bin/wuwei config set <key> <value>`
+and `bin/wuwei config add-repo --name <owner/repo> --path <dir> --branch <branch>` show a
+diff and apply it after its digest. Edit the file yourself only for a table or a value that
+spans lines.
+
+### fast_checks stays empty after promote
+
+0.11.0 left an explicit `fast_checks = []` alone. From 0.12.0 a one-line empty list is
+filled by `bin/wuwei config promote`, like the deploy lists.
+
+### A test suite is proposed as a fast check
+
+A test runner is CI only unless measured. `bin/wuwei calibrate --measure` times each one
+against `calibrate.fast_check_seconds` and proposes only the fast ones
+([calibration](configuration.html#calibration)).
+
+### Branch protection reads as unmeasured
+
+A 404 on the classic endpoint means the branch is unprotected or you lack admin.
+`bin/wuwei config check` now prints `classic protection: none visible (404: unprotected or
+no admin)` and reads the rulesets as well.
+
+### A read-only shell command was refused
+
+From 0.12.0 a `for` loop, `$(...)` or `git symbolic-ref` that only reads is not refused, and
+outside a workspace every hook allows. If a refusal remains, `bin/wuwei why last refusal`
+prints the guard, the rule, the command and the fix. Under `observe`,
+`bin/wuwei shadow report` lists what would have been refused.
 
 ## state transition
 

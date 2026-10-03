@@ -33,6 +33,9 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for re
 - Remote operation from the phone through Remote Control and a Slack owner DM ([remote operation](docs/site/remote.md)).
 - The cockpit: a day board on loopback and inline in Claude Code ([cockpit and board](docs/site/concepts.md#cockpit-and-board)).
 - Calibration and the owner interview ([calibration](docs/site/configuration.md#calibration)).
+- Setup in one command: it finds the repositories, calibrates them, asks the owner interview and applies one proposal after its digest ([setup](docs/site/daily.md#2-configure)).
+- Doctor: install, host, workspace, gate, day and guard problems, each with its fix ([doctor](docs/site/reference.md#doctor)).
+- Security posture: observe, guarded or strict per area, with floors no setting lowers. The MCP registry gate warns by default and blocks on a critical finding or a check that could not run ([security posture](docs/site/security.md#security-posture)).
 - The heartbeat: probes that prove the system behaves, with a dead-man ping ([heartbeat](docs/site/reference.md#heartbeat)).
 
 Designed, not built: cruise mode, graduated autonomy per decision class
@@ -105,6 +108,16 @@ second run proposes nothing new ([calibration](docs/site/configuration.md#calibr
 
 `--shadow` starts the guards in the observe posture for your first week: they record what they would refuse and let the call through, and `bin/wuwei shadow report` lists it. See [security posture](docs/site/concepts.md#security-posture).
 
+Then check the install:
+
+```sh
+../wuwei-plugin/bin/wuwei doctor
+```
+
+It prints one row per check, with the fix for anything that is not ok.
+`bin/wuwei doctor --fix` applies the deterministic fixes after one confirmation
+([doctor](docs/site/reference.md#doctor)).
+
 `init` ends by checking the installation. An intact signed release prints `plugin integrity: clean` and needs no reconfirmation. It creates `.wuwei/` and adds workspace guard denials to `.claude/settings.json`. From another project, use the installed plugin's `bin/wuwei` path. Use `bin/wuwei` or `python3 -P -m wuwei` for CLI calls; plain `python3 -m wuwei` can import a same-named directory in the current working directory.
 
 To change one value later, run `bin/wuwei config set owner.verbosity.default '"standard"'` or
@@ -121,6 +134,9 @@ Run `/wuwei plan` to start the planner and morning gate. See [concepts](docs/sit
   ([hook latency budget](docs/site/reference.md#hook-latency-budget)).
 - It is early: so far only its author has used it day to day, and the
   [live rehearsal](docs/site/rehearsal.md) is the check before each release.
+- Start a new project with `setup --shadow`: a first week in the observe posture, where the
+  guards record what they would refuse before they refuse it
+  ([security posture](docs/site/security.md#security-posture)).
 
 What the guards cover, and what they leave to the code host, is in
 [security](docs/site/security.md).
