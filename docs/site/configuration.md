@@ -119,7 +119,7 @@ and lets the turn end.
 | `shepherd.tie_commits` | `2` | Include a third author within this many commits of second place. |
 | `shepherd.source_exclude` | `specs/*`, lock files and generated files | Changed paths excluded from reviewer selection. |
 | `shepherd.autostart` | `false` | Start one headless shepherd seat per mechanical PR action (conflicted, red CI, review comments, stale review) when the listener sees it. The seat never merges and every post it makes is a draft. |
-| `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity. An unmapped email is resolved to the code host login for that email before reviewer selection refuses. |
+| `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity; `mention` is optional (default `""`) and a review ping refuses a reviewer without one. `bin/wuwei setup` maps your repositories' git emails to your code-host login and each bot author seen on the last 50 merged pull requests to its `[bot]` login. An unmapped email is resolved to the code host login for that email before reviewer selection refuses. |
 | `watch.clock_seconds` | `600` | Interval between watch clock events. |
 | `watch.dead_seconds` | `1200` | Clock age after which the watch is reported dead. |
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
@@ -282,6 +282,9 @@ The interview asks a short, fixed set of questions about your own preferences. E
 | `manual` | `deploy.deny` patterns for commands you always run yourself |
 | `verbosity` | `owner.verbosity.default` |
 | `posture` | `security.posture`; `Observe` also sets `guards.shadow_since` to today |
+| `tracker` | `adapters.tracker`: `None` or `Linear` (then set `LINEAR_API_KEY` in `.wuwei/env`) |
+| `chat` | `adapters.chat`: `None` or `Slack`; typing a channel ID such as `C0123ABCD` sets `slack` and `shepherd.review_channel` |
+| `review_bot` | `adapters.review_bot`: `None` or `Greptile` (then set `GREPTILE_API_KEY` in `.wuwei/env`) |
 
 Run `bin/wuwei calibrate --interview` in a host terminal to answer every question, or `bin/wuwei calibrate --interview merge` to answer one again; `--repo <name>` limits the per-repository questions to one repository. Without a terminal it exits 2. On the first day the plan skill asks the same questions as `Morning gate` widgets from `bin/wuwei calibrate --questions` and records each answer with `bin/wuwei calibrate --answer <id>=<choice or text>`. Free text is checked against the calibration character set and the instruction-like scan.
 

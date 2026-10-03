@@ -182,6 +182,50 @@ def test_baseline():
     assert calibrate.baseline([]) == {'prs': 0}
 
 
+BOT = '49699333+dependabot[bot]@users.noreply.github.com'
+
+
+def test_survey_keeps_bot_authors(tmp_path, ports):
+    from wuwei.registry import Result
+
+    repo = {**REPO, 'path': str(FIXTURES / 'python')}
+    config = {'calibrate': {'fast_check_seconds': 30}}
+    [result] = calibrate.survey(tmp_path, config, [(0, repo)], style=False)
+    assert result['bots'] == {BOT: 'dependabot[bot]'}
+    assert result['baseline'] == calibrate.baseline(ports['code_host'].results['merged_prs'].data)
+    assert [c[0] for c in ports['code_host'].calls] == ['merged_prs']
+    ports['code_host'].results['merged_prs'] = Result(2, None, 'down')
+    [result] = calibrate.survey(tmp_path, config, [(0, repo)], style=False)
+    assert result['bots'] is None and result['baseline'] is None
+
+
+def test_apply_writes_author_inline_table(tmp_path):
+    import tomllib
+    from wuwei.workspace import load_config
+
+    raw = (ROOT / 'templates/workspace/config.toml').read_text()
+    entry = [(('shepherd', 'authors'), 'pat@example.test', {'login': 'pat-example'})]
+    text = calibrate.apply(raw, entry)
+    authors = text.split('[shepherd.authors]', 1)[1].split('\n[', 1)[0]
+    assert '"pat@example.test" = {login = "pat-example"}' in authors
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text(text)
+    assert load_config(tmp_path)['shepherd']['authors'] == {
+        'pat@example.test': {'login': 'pat-example', 'mention': ''}}
+    bare = raw.replace('[shepherd.authors]\n', '')
+    assert tomllib.loads(calibrate.apply(bare, entry))['shepherd']['authors'] == {
+        'pat@example.test': {'login': 'pat-example'}}
+
+
+def test_author_without_mention_loads(tmp_path):
+    from wuwei.workspace import load_config
+
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text(
+        '[shepherd.authors]\n"ada@example.com" = {login = "ada"}\n')
+    assert load_config(tmp_path)['shepherd']['authors']['ada@example.com']['mention'] == ''
+
+
 def facts(fixture):
     return calibrate.profile(FIXTURES / fixture, REPO)['facts']
 
@@ -532,7 +576,7 @@ def test_config_promote_writes_config_and_snapshot(workspace_root, capsys):
     assert snapshot == {'acme/widget': {
         'fast_checks': [], 'ci_checks': ['Lint code', 'bench', 'test'], 'deploy_workflows': [],
         'environments': [], 'deploy_deny': [], 'never_auto': [], 'date': '2026-10-01',
-        'baseline': {'prs': 2, 'median_changed_lines': 126, 'median_cycle_hours': 14.0}}}
+        'baseline': {'prs': 3, 'median_changed_lines': 12, 'median_cycle_hours': 4.0}}}
     assert promote(workspace_root, lambda digest, **kw: True) == 0
     assert 'No config.toml changes' in capsys.readouterr().out
     assert (workspace_root / '.wuwei/config.toml').read_text() == config

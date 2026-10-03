@@ -496,7 +496,10 @@ def apply(raw, additions):
         return raw
     sections, replaced, commented = _labelled(raw), [], set()
     for path, key, value in additions:
-        line = f'{json.dumps(key) if path[:1] in (("environments",), ("boundary",)) else key} = {json.dumps(value)}\n'
+        quoted = path[:1] in (("environments",), ("boundary",)) or path == ('shepherd', 'authors')
+        text = ('{' + ', '.join(f'{k} = {json.dumps(v)}' for k, v in value.items()) + '}'
+                if isinstance(value, dict) else json.dumps(value))
+        line = f'{json.dumps(key) if quoted else key} = {text}\n'
         lines = next((lines for p, lines in sections if p == path), None)
         if lines is None:
             if path[0] != 'repos':
@@ -590,8 +593,14 @@ def survey(root, config, selected, *, style=True, measure=False):
     for result in results:
         result['style'] = (_port(vcs.recent_commits(str(result['checkout']), root=root), commit_style)
                            if style else None)
-        result['baseline'] = _port(host.merged_prs(result['repo']['name'], root=root), baseline)
+        prs = host.merged_prs(result['repo']['name'], root=root)
+        result['baseline'], result['bots'] = _port(prs, baseline), _port(prs, bot_authors)
     return results
+
+
+def bot_authors(prs):
+    """{noreply email: bot login} for the bot authors among merged pull requests."""
+    return {row['author_email'].casefold(): row['author'] for row in prs if row['author_email']}
 
 
 def proposed(result):
