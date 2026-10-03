@@ -48,6 +48,22 @@ def test_init_layout(tmp_path, explicit):
         'template_version = ""', f'template_version = "{version}"', 1)
 
 
+def test_init_without_scanner_exits_0(tmp_path, monkeypatch, capsys):
+    # #424: the template scanner is "none", so the registry gate is off with one line.
+    from argparse import Namespace
+    from wuwei import mcp
+    from wuwei.commands import init
+    project = tmp_path / 'project'
+    project.mkdir()
+    (project / '.mcp.json').write_text('{"mcpServers": {"docs": {"command": "fake-server"}}}')
+    user = Path.home() / '.claude.json'
+    user.write_text(json.dumps({'projects': {str(project.resolve()): {'enabledMcpjsonServers': ['docs']}}}))
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(Namespace(path=str(project))) == 0
+    err = capsys.readouterr().err
+    assert err.count(mcp.NO_SCANNER) == 1 and 'unmeasured' not in err
+
+
 @pytest.mark.parametrize('flags,posture,since', [
     (('--shadow',), 'observe', '2026-09-29'), (('--posture', 'observe'), 'observe', '2026-09-29'),
     (('--posture', 'strict'), 'strict', ''), ((), 'guarded', '')])

@@ -176,6 +176,8 @@ def assert_probe(check, row, root, monkeypatch):
         monkeypatch.setattr(workspace, 'guard_scope', lambda _: (_ for _ in ()).throw(ValueError('scope')))
     elif check.__name__ == 'check_mcp':
         (root / '.mcp.json').write_text('{"mcpServers": {"docs": {"command": "fake-server"}}}')
+        with (root / '.wuwei/config.toml').open('a') as config:
+            config.write('[adapters]\nscanner = "ziran"\n')  # #424: "none" turns the gate off
     elif check.__name__ == 'record_gate':
         from wuwei import state
         del payload['agent_id']  # the planner session itself, not a seat

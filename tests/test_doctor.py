@@ -26,6 +26,7 @@ IDENTITY = ('\n[owner]\nhandles = ["ada"]\n\n[shepherd]\nlead_login = "ada"\n\n'
             '[shepherd.authors]\n"ada@example.com" = {login = "ada"}\n')
 CONFIG = '[adapters]\ncode_host = "github"\n' + REPO + IDENTITY
 DIGEST = 'd' * 64
+ZIRAN = CONFIG.replace('code_host = "github"\n', 'code_host = "github"\nscanner = "ziran"\n')  # #424: record rows
 CLASSIC_LINE = 'acme/widget main: classic protection: none visible (404: unprotected or no admin)'
 TRIAL = 'page: plugin integrity: .in_use/12345'
 
@@ -414,7 +415,22 @@ def test_gates_rows(ws):
     assert row(doctor.diagnose(), 'config check')['status'] == 'unmeasured'
 
 
+def test_gates_without_scanner(ws):
+    # #424: CONFIG leaves adapters.scanner at "none": the gate is off and WUWEI's own servers are covered.
+    from wuwei import mcp
+    manifest = integrity.PLUGIN / '.claude-plugin/plugin.json'
+    manifest.write_text(json.dumps({**json.loads(manifest.read_text()),
+                                    'mcpServers': {'cockpit': {'command': 'bin/wuwei'}}}))
+    record(ws.root, exit=2, unmeasured=[['docs', DIGEST]], reason='MCP registry unmeasured; docs: unmeasured')
+    rows = doctor.diagnose()
+    assert (row(rows, 'mcp gate')['status'], row(rows, 'mcp gate')['value']) == ('ok', mcp.NO_SCANNER)
+    assert row(rows, 'mcp cockpit') == {'section': 'gates', 'name': 'mcp cockpit', 'status': 'ok',
+                                        'value': 'covered by plugin integrity'}
+    assert 'mcp docs' not in names(rows, 'gates')
+
+
 def test_gates_mcp_servers(ws):
+    (ws.root / '.wuwei/config.toml').write_text(ZIRAN)
     record(ws.root, exit=2, reason='MCP registry unmeasured; docs: scanner check incomplete; '
            'remote: not attached (unapproved)', unmeasured=[['docs', DIGEST]], decided=[['notes', DIGEST]])
     rows = doctor.diagnose()
@@ -538,7 +554,7 @@ def test_trial_failures_then_clean(ws, monkeypatch, capsys):
     record(ws.root, exit=2, reason='MCP registry unmeasured; docs: scanner check incomplete',
            unmeasured=[['docs', DIGEST]])
     ws.code_host.results['protection'] = protected(**CLASSIC_404)
-    trial = CONFIG.replace('["ruff check ."]', '[]')
+    trial = ZIRAN.replace('["ruff check ."]', '[]')
     config(ws.root, 'repos = []\n' + trial)
 
     assert main(['doctor']) == 1
@@ -561,6 +577,7 @@ def test_trial_failures_then_clean(ws, monkeypatch, capsys):
 
 
 def test_unapproved_server_is_ok(ws):
+    config(ws.root, ZIRAN)
     record(ws.root, reason='remote: not attached (unapproved)')
     rows = doctor.diagnose()
     assert row(rows, 'mcp remote')['status'] == 'ok'

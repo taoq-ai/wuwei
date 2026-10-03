@@ -363,6 +363,14 @@ def _gates(root, config):
     if legacy:
         rows.append(_row('gates', 'mcp reports', 'warn', f'{len(legacy)} report directories in the v0.12.0 layout',
                          'wuwei doctor --fix', apply='mcp-reports'))
+    if config['adapters']['scanner'] == 'none':  # #424: no record rows; WUWEI's own servers stay covered.
+        try:
+            own = json.loads((integrity.PLUGIN / '.claude-plugin/plugin.json').read_text(encoding='utf-8'))
+            servers = own.get('mcpServers')
+            names = sorted(servers) if isinstance(servers, dict) else []
+        except (OSError, ValueError, AttributeError):
+            names = []  # the install section already reports an unreadable manifest
+        return rows + [_row('gates', f'mcp {name}', 'ok', 'covered by plugin integrity') for name in names]
     try:
         record = mcp._read(Path(root).resolve())
     except (OSError, ValueError) as exc:
