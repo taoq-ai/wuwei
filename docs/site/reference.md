@@ -415,7 +415,7 @@ CPU p95 on a 2-CPU runner, three `main` runs of 2026-09-30:
 
 ### Where hook time goes
 
-A hook process starts an interpreter, imports the CLI core, discovers the guards, then runs the ones that match its event and tool. Each hook imports only the guard modules its event and tool can run (`MODULES` in `cli/wuwei/guards/__init__.py`); a guard module missing from that map is imported for every event. Stop and PostToolUse never import the Bash guards, and a PreToolUse call for a file tool imports only the file guards.
+A hook process starts an interpreter, imports the CLI core, discovers the guards, then runs the ones that match its event and tool. `bin/wuwei` starts it with `python3 -I -P -S`: `-S` skips the `site` import, which a stdlib-only CLI with its own import paths does not need. Hook and `status --line` processes also run without the cyclic garbage collector and leave through `os._exit` once their output is flushed and any `atexit` handlers ran, which skips the interpreter teardown. Each hook imports only the guard modules its event and tool can run (`MODULES` in `cli/wuwei/guards/__init__.py`); a guard module missing from that map is imported for every event. Stop and PostToolUse never import the Bash guards, and a PreToolUse call for a file tool imports only the file guards.
 
 Guard discovery on an M-series Mac, before and after the import map (2026-09-30, three runs each):
 

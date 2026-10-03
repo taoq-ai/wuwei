@@ -243,7 +243,9 @@ def test_subagent_stop_skips_watch_and_memory(tmp_path):
 DENY = {'tomllib', 'hashlib', 'argparse', 'dataclasses', 'inspect', 'typing', 'datetime', 'subprocess'}
 
 
-@pytest.mark.parametrize('inside, deny', [(False, DENY), (True, {'argparse', 'dataclasses', 'subprocess', 'inspect', 'hashlib', 'glob'})],
+@pytest.mark.parametrize('inside, deny', [(False, DENY | {'copy'}),
+                                          (True, {'argparse', 'dataclasses', 'subprocess', 'inspect', 'hashlib',
+                                                  'glob', 'copy', 'weakref'})],
                          ids=['outside', 'workspace'])
 def test_hook_imports_no_unused_stdlib(tmp_path, inside, deny):
     # A fresh interpreter: a hook pays only for the stdlib modules its path uses.
@@ -289,7 +291,8 @@ def test_status_line_skips_parser_and_hashlib(tmp_path):
                              'status', '--line'], text=True, capture_output=True, cwd=tmp_path, env=env)
     assert result.returncode == 0, result.stderr
     assert result.stdout.startswith('WUWEI no plan yet | pages 0 | nudges 0 | watch off')
-    assert {'argparse', 'hashlib', 'shutil', 'wuwei.decision'} & set(json.loads(out.read_text())) == set()
+    assert {'argparse', 'hashlib', 'shutil', 'wuwei.decision', 'copy', 'weakref',
+            'wuwei.sessions', 'shlex'} & set(json.loads(out.read_text())) == set()
 
 
 def test_together_runs_concurrently_and_raises_in_call_order():

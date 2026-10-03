@@ -1,6 +1,5 @@
 """The single writer for day state and append-only events."""
 
-from copy import deepcopy
 import fcntl
 import json
 import os
@@ -53,7 +52,7 @@ def _defaults(value, defaults, path):
     if not isinstance(value, dict):
         raise StateError(f'{path}: expected object')
     for key, default in defaults.items():
-        value.setdefault(key, deepcopy(default))
+        value.setdefault(key, workspace.copy_data(default))
         if type(value[key]) is not type(default):
             raise StateError(f'{path}.{key}: expected {type(default).__name__}')
 
@@ -125,7 +124,7 @@ def read_state(root=None, *, directory=None):
     except FileNotFoundError:
         if (directory / SNAPSHOT).exists():
             raise ValueError(f'{path}: day state missing while {SNAPSHOT} exists; {RECOVER}') from None
-        return deepcopy(DAY_DEFAULTS)
+        return workspace.copy_data(DAY_DEFAULTS)
     except (ValueError, TypeError) as exc:
         raise ValueError(f'{path}: {exc}; {RECOVER}') from exc
 
@@ -205,8 +204,8 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
     with (directory / 'state.lock').open('a') as lock:
         lock_ex(lock, 'state.lock')
         data = read_state(directory=directory)
-        previous = deepcopy(data) if (directory / 'state.json').exists() else None
-        before = deepcopy(data) if reserved else None
+        previous = workspace.copy_data(data) if (directory / 'state.json').exists() else None
+        before = workspace.copy_data(data) if reserved else None
         update(data)
         if reserved:
             protected = _protected(before, before)
@@ -287,7 +286,7 @@ def _generic_allowed(parts, data):
 
 def _protected(data, before):
     """Everything except explicitly tunable fields is producer-owned by default."""
-    result = deepcopy(data)
+    result = workspace.copy_data(data)
     if not before['gate_approved']:
         for key in OWNER_FIELDS:
             result.pop(key, None)

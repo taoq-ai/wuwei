@@ -2,10 +2,11 @@
 
 Invoke `<plugin root>/bin/wuwei [arguments]`.
 
-The shim unsets PYTHONEXECUTABLE and execs `python3 -I -P` (isolated mode).
+The shim unsets PYTHONEXECUTABLE and execs `python3 -I -P -S` (isolated mode, no `site`).
 Isolated mode ignores PYTHON* environment settings except PYTHONEXECUTABLE on macOS,
 excludes user site-packages, and implies -P. Passing -P explicitly enforces Python 3.11+:
-older interpreters reject it with usage exit 2. PATH remains trusted for interpreter selection.
+older interpreters reject it with usage exit 2. `-S` (#346) skips the `site` import: the
+stdlib-only CLI needs no site-packages or `.pth` files. PATH remains trusted for interpreter selection.
 It explicitly prepends `<plugin root>/cli` and `<plugin root>` to sys.path, removes
 those bootstrap arguments, and runs the installed wuwei module as __main__ via runpy.
 The working directory and inherited import paths cannot shadow plugin or stdlib modules.

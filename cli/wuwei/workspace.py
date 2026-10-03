@@ -471,12 +471,21 @@ def _validate(value, schema, path, raw, unknown=None):
 
 
 def _default(schema):
-    from copy import deepcopy
     if isinstance(schema, dict):
         return {}
     if isinstance(schema, list):
-        return deepcopy(schema[1]) if len(schema) > 1 else []
+        return copy_data(schema[1]) if len(schema) > 1 else []
     return schema[1]
+
+
+def copy_data(value):
+    """copy.deepcopy for parsed TOML and JSON data: dicts and lists are copied, everything
+    else in them is immutable. Hooks skip importing copy and weakref (#346)."""
+    if isinstance(value, dict):
+        return {key: copy_data(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [copy_data(item) for item in value]
+    return value
 
 
 # ponytail: per-process memo keyed on the config text; adapter and path checks rerun only
@@ -496,7 +505,6 @@ def load_config(root=None, *, raw=None, warnings=None):
     """Read .wuwei/config.toml (or validate raw in its place), reject invalid fields, and
     return fresh defaults. Unknown keys refuse only under strict (#353); otherwise their
     texts are appended to warnings when it is a list."""
-    from copy import deepcopy
     from datetime import date
     import tomllib
     path = (find_workspace() if root is None else Path(root)) / ".wuwei/config.toml"
@@ -505,7 +513,7 @@ def load_config(root=None, *, raw=None, warnings=None):
         if _CONFIGS.get(path, (None,))[0] == raw:
             if warnings is not None:
                 warnings.extend(f'config.toml: {text}' for text in _CONFIGS[path][2])
-            return deepcopy(_CONFIGS[path][1])
+            return copy_data(_CONFIGS[path][1])
         parsed = tomllib.loads(raw)
         unknown = []
         try:
@@ -578,7 +586,7 @@ def load_config(root=None, *, raw=None, warnings=None):
         _CONFIGS[path] = (raw, config, tuple(unknown))
         if warnings is not None:
             warnings.extend(f'config.toml: {text}' for text in unknown)
-        return deepcopy(config)
+        return copy_data(config)
     except (ConfigError, tomllib.TOMLDecodeError, UnicodeError) as exc:
         hint = ''
         if "immutable namespace ('repos',)" in str(exc):  # #326: repos = [] before [[repos]]

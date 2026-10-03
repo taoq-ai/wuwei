@@ -1,7 +1,16 @@
 """Discover commands and enforce the three-state exit contract."""
 
-from contextlib import redirect_stdout, redirect_stderr
 import sys
+
+# #346: Claude Code starts a hook process on every tool call and a status line on every
+# refresh. Those processes live tens of milliseconds and free their objects by reference
+# counting, so they run without the cyclic collector and skip the interpreter teardown.
+_FAST = __name__ == "__main__" and (sys.argv[1:2] == ["hook"] or sys.argv[1:] == ["status", "--line"])
+if _FAST:
+    import gc
+    gc.disable()
+
+from contextlib import redirect_stdout, redirect_stderr
 
 from wuwei import env, redact
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
@@ -132,4 +141,15 @@ def _help(parser, subparsers, everything):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    status = main()
+    if _FAST:
+        import atexit
+        import os
+        atexit._run_exitfuncs()
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except BaseException:
+            sys.exit(status)  # A closed stream keeps the interpreter's own exit handling.
+        os._exit(status)
+    sys.exit(status)

@@ -5,9 +5,24 @@ import json
 import re
 import sys
 
-from wuwei import sessions, state, workspace
+from wuwei import state, workspace
 from wuwei.exits import CLEAN, UNRUN
 from wuwei.signal import SILENT, classify
+
+
+def _alternation(words):
+    """A regex alternation of literal words as a prefix tree: each character is tested once
+    per level, not once per word (#346: the scan meets this once per line)."""
+    if len(words) == 1:
+        return re.escape(words[0])
+    groups = {}
+    for word in words:
+        if word:
+            groups.setdefault(word[0], []).append(word[1:])
+    parts = [re.escape(head) + _alternation(tails) for head, tails in sorted(groups.items())]
+    if len(parts) == 1 and '' not in words:
+        return parts[0]
+    return '(?:' + '|'.join(parts) + ')' + ('?' if '' in words else '')
 
 
 SHADOW_NUDGE = ('Observe posture has run {days} days. To enforce, set '
@@ -22,8 +37,8 @@ SKIP = frozenset(SILENT) - {
 # One match per line scan reads: a run of complete producer lines (state._append_jsonl:
 # kind first, ts last) of a skipped kind, consumed in C, then the next line (group 1).
 # Anything else, torn lines included, is decoded as before. Compiled on first scan.
-LINES = (r'(?:\{"kind": "(?:' + '|'.join(map(re.escape, sorted(SKIP)))
-         + r')", [^\n]*, "ts": "[^"\n]*"\}\n)*([^\n]*)\n?')
+LINES = (r'(?:\{"kind": "' + _alternation(sorted(SKIP))
+         + r'", [^\n]*, "ts": "[^"\n]*"\}\n)*([^\n]*)\n?')
 
 
 def register(subparsers):
@@ -47,7 +62,10 @@ def scan(directory, classified_state=None):
     current, clocks, replied, pin, beat, loops = {}, {'watch': [], 'listen': []}, {}, None, None, 0
     path = directory / 'events.jsonl'
     if path.exists():
-        text = path.read_text(encoding='utf-8')
+        # read_text's universal newlines without its second full-size copy of the day (#346).
+        text = path.read_bytes().decode('utf-8')
+        if '\r' in text:
+            text = text.replace('\r\n', '\n').replace('\r', '\n')
         number, counted = 0, 0
         for found in re.finditer(LINES, text):
             line = found[1]
@@ -198,6 +216,7 @@ def scan(directory, classified_state=None):
                 'tier': 'nudge', 'source': source, 'lane': 'Decisions', 'reason': reason}
     planner = classified_state.get('planner_session_id')
     if planner and planner in classified_state.get('sessions', {}):
+        from wuwei import sessions  # Here and in snapshot: only a day with sessions pays for it.
         for row in sessions.rows(classified_state, datetime.fromisoformat(classified_state['now']),
                                  sessions.stale_seconds(directory.parents[2])):
             if row['role'] == 'planner' and row['stale']:
@@ -220,13 +239,15 @@ def scan(directory, classified_state=None):
 
 def snapshot(directory):
     data = state.read_state(directory=directory)
+    live = 0
+    if data.get('sessions'):
+        from wuwei import sessions
+        live = sum(not row['stale'] and 'stopped' not in row for row in sessions.rows(
+            data, workspace.now(), sessions.stale_seconds(directory.parents[2])))
     result = {'pages': 0, 'nudges': 0, 'cap': data['cap'], 'gate_approved': data['gate_approved'],
               'phases': {phase: count for phase in state.PHASES
                          if (count := sum(item['phase'] == phase for item in data['items'].values()))},
-              'next_reply_due': None, 'next_meeting': None,
-              'sessions': sum(not row['stale'] and 'stopped' not in row for row in sessions.rows(
-                  data, workspace.now(), sessions.stale_seconds(directory.parents[2])))
-              if data.get('sessions') else 0}
+              'next_reply_due': None, 'next_meeting': None, 'sessions': live}
     result['gates'] = {name: row['gates'] for name, row in data['items'].items() if row['gates']}
     classified_state = {**data, 'now': workspace.now().isoformat()}
     active, result['watch'], result['listen'], result['health'], result['loops'] = scan(

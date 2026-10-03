@@ -41,11 +41,13 @@ def claude_command(plugin, *, turns=48, budget=3, resume=None):
 
 def observe(python, log, argv):
     """Transparent python3 shim: observe bin/wuwei without changing the signed plugin."""
-    is_wuwei = len(argv) >= 6 and argv[:3] == ['-I', '-P', '-c'] and 'run_module("wuwei"' in argv[3]
+    code = argv.index('-c') + 1 if '-c' in argv else len(argv)
+    is_wuwei = (len(argv) >= code + 3 and all(flag.startswith('-') for flag in argv[:code])
+                and 'run_module("wuwei"' in argv[code])
     if not is_wuwei:
         os.execv(python, [python, *argv])
-    # bin/wuwei passes its two import paths before the actual CLI arguments.
-    args = argv[6:]
+    # bin/wuwei passes its interpreter flags, its code and two import paths before the CLI arguments.
+    args = argv[code + 3:]
     raw = sys.stdin.read()
     result = run([python, *argv], cwd=Path.cwd(), input=raw, own_group=False)
     row = {'event': 'cli', 'args': args, 'exit': result.returncode}

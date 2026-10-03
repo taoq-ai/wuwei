@@ -246,8 +246,9 @@ events are mostly silent producer lines.
   cut the heartbeat's critical path by about half, but it changes the guard's answer (the
   reason, and exit 1 versus 2 outside a configured repository). It is out of scope; if the
   PR's job still shows the heartbeat over 150 ms, raise it with the owner as a follow-up.
-- `bin/wuwei` stays as it is: `tests/test_cli.py` pins `exec python3 -I -P -c` and the
-  `dirname` dependency, so `-S` and a `dirname`-free root are not available.
+- Rounds one and two left `bin/wuwei` as it was. Round three (owner's go-ahead) adds `-S`
+  and updates `tests/test_cli.py`'s pin to `exec python3 -I -P -S -c`; the `dirname`
+  dependency stays pinned, so a `dirname`-free root is still not available.
 - Skipping the `plugin.json` version read on the hook path means a missing or invalid
   manifest no longer fails every hook with exit 2; `--version` and every other command
   still read and validate it, and the integrity check covers a damaged install.
