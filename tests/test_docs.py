@@ -76,7 +76,7 @@ def test_readme_lead_and_limits():
     flat = ' '.join(section.split()).lower()
     for phrase in ('needs claude code', 'one owner per workspace', '40 to 100 ms', 'its author',
                    'live rehearsal', 'docs/site/reference.md#hook-latency-budget',
-                   'docs/site/rehearsal.md', 'docs/site/security.md'):
+                   'docs/site/rehearsal.md', 'docs/site/security.md', 'setup --shadow', 'observe'):
         assert phrase in flat, phrase
 
 
@@ -499,7 +499,7 @@ def test_readme_first_day_and_shipped_areas():
     index = (SITE / 'index.md').read_text()
     for text, heading in ((readme, '## Quick start'), (index, '## Start here')):
         section = text.split(f'\n{heading}\n', 1)[1].split('\n## ', 1)[0]
-        steps = [section.index(step) for step in ('setup --shadow', '/wuwei plan')]
+        steps = [section.index(step) for step in ('setup --shadow', 'bin/wuwei doctor', '/wuwei plan')]
         assert steps == sorted(steps), heading
         assert 'config set' in section, heading
     assert (readme.index('## What WUWEI is and is not') < readme.index('## What ships today')
@@ -508,7 +508,8 @@ def test_readme_first_day_and_shipped_areas():
     for link in ('docs/site/daily.md', 'docs/site/security.md', 'docs/site/concepts.md#review-tiers',
                  'docs/site/remote.md', 'docs/site/concepts.md#cockpit-and-board',
                  'docs/site/configuration.md#calibration', 'docs/site/reference.md#heartbeat',
-                 'docs/specs/2026-09-24-wuwei-design.md'):
+                 'docs/specs/2026-09-24-wuwei-design.md', 'docs/site/daily.md#2-configure',
+                 'docs/site/reference.md#doctor', 'docs/site/security.md#security-posture'):
         assert f'({link})' in ships, link
 
 
@@ -659,3 +660,58 @@ def test_doctor_is_the_first_stop():
     for name, (command, _, _) in doctor.FIXES.items():
         assert f'`{name}`' in section and command in section, name
     assert '/dev/tty' in section and 'doctor.fixed' in section
+    daily = (SITE / 'daily.md').read_text()
+    first = daily.split('\n## 1. ', 1)[1].split('\n## ', 1)[0]
+    assert first.index('setup --shadow') < first.index('bin/wuwei doctor')
+    flat = ' '.join(daily.split())
+    for key in ('security.posture', 'guards.shadow_days', 'owner.timezone', 'metrics.band_margin',
+                'sessions.rotate_after'):
+        assert f'bin/wuwei config set {key}' in flat, key
+    assert '"guarded"` in `config.toml`' not in flat
+    intro = (SITE / 'configuration.md').read_text().split('\n## Sections\n', 1)[0]
+    assert 'bin/wuwei config set' in intro and 'bin/wuwei config add-repo' in intro
+
+
+TROUBLESHOOTING = (  # the 0.11.0 trial findings B1 to B9, in order
+    ('.in_use', 'bin/wuwei integrity check'),
+    ('not attached (unapproved)', 'bin/wuwei mcp decide proceed-unmeasured'),
+    ('does not load', 'bin/wuwei config check'),
+    ('delete that line before using [[repos]] tables', 'bin/wuwei init --upgrade'),
+    ('by hand', 'bin/wuwei config set'),
+    ('fast_checks = []', 'bin/wuwei config promote'),
+    ('CI only', 'bin/wuwei calibrate --measure'),
+    ('none visible (404: unprotected or no admin)', 'bin/wuwei config check'),
+    ('read-only', 'bin/wuwei why last refusal'),
+)
+
+
+def test_troubleshooting_covers_the_first_run_findings():
+    section = (SITE / 'recovery.md').read_text().split('\n## Troubleshooting\n', 1)[1].split('\n## ', 1)[0]
+    assert re.search(r'bin/wuwei [a-z-]+', section)[0] == 'bin/wuwei doctor'
+    entries = [' '.join(entry.split()) for entry in section.split('\n### ')[1:]]
+    assert len(entries) == len(TROUBLESHOOTING)
+    for entry, (symptom, command) in zip(entries, TROUBLESHOOTING):
+        assert symptom in entry and command in entry, (symptom, command)
+    assert integrity.MARKERS == '.in_use'
+
+
+def test_security_posture_table_matches_the_code():
+    from wuwei import workspace
+    page = (SITE / 'security.md').read_text()
+    section = page.split('\n## Security posture\n', 1)[1].split('\n## ', 1)[0]
+    rows = [[cell.strip() for cell in line.strip().strip('|').split('|')]
+            for line in section.splitlines() if line.startswith('|')]
+    default = workspace.SCHEMA['security']['posture'][1]
+    names = [cell.removesuffix(' (default)') for cell in rows[0][2:]]
+    assert names == list(workspace.POSTURES) and f'{default} (default)' in rows[0]
+    table = {row[0].strip('`'): row[2:] for row in rows[2:]}
+    assert table == {area: [workspace.POSTURES[name][area] for name in names] for area in workspace.AREAS}
+    flat = ' '.join(section.split())
+    for area, level in workspace.FLOORS.items():
+        assert f'`{area}` always {level}s' in flat, area
+    block = ', '.join(workspace.SCHEMA['scanner']['mcp']['block'][1])
+    assert f'`scanner.mcp.block` (default `{block}`)' in flat
+    ziran = ' '.join(page.split('\n## ZIRAN integration\n', 1)[1].split('\n## ', 1)[0].split())
+    for phrase in ('By default only a critical finding or a check that could not run blocks launches',
+                   'never starts an unapproved project server', '`uvx`, `npx` or `pipx run`'):
+        assert phrase in ziran, phrase
