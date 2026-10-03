@@ -117,7 +117,7 @@ SCHEMA = {
                  "tie_commits": (int, 2, 0), "autostart": (bool, False),
                  "source_exclude": [(str, None), ["specs/*", "*.lock", "*lock.json",
                                                     "*.generated.*", "generated/*"]],
-                 "authors": {"*": {"login": (str, None), "mention": (str, None)}}},
+                 "authors": {"*": {"login": (str, None), "mention": (str, "")}}},
     "retro": {"repo": (str, "."),
               "charter_paths": [(str, None), [".wuwei/charters"]],
               "changelog": (str, ".wuwei/memory/CHANGELOG.md")},

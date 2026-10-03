@@ -51,6 +51,9 @@ class Fake(Recorder):
     def token_scopes(self, variable, root=None):
         return self._call('token_scopes', (variable,), root)
 
+    def viewer_login(self, root=None):
+        return self._call('viewer_login', (), root)
+
     def merged_prs(self, repo, root=None):
         return self._call('merged_prs', (repo,), root)
 
