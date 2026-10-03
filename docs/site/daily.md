@@ -42,7 +42,9 @@ checkout needs one host confirmation first; see [recovery](recovery.html).
 
 Edit `.wuwei/config.toml`: your repositories (`path`, `default_branch`, `fast_checks`) and
 adapters. For a solo owner set `[shepherd] min_reviewers = 0` and `[adapters] chat = "none"`.
-Check the file with `bin/wuwei config check`. Edit your goals in a host terminal with
+Check the file with `bin/wuwei config check`. Then run `bin/wuwei doctor`; it checks the
+install, host, workspace, gates and guards in one pass and prints the fix for anything that
+is not ok. Edit your goals in a host terminal with
 `bin/wuwei goals edit`. [Configuration](configuration.html) lists every key.
 
 Then calibrate: `bin/wuwei calibrate` reads each configured checkout and writes

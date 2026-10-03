@@ -314,7 +314,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'remote.confirmed': 'silent', 'calibration.drift': 'nudge',
                 'shepherd.dispatched': 'silent', 'shepherd.finished': 'nudge', 'pr.notified': 'silent',
                 'negotiation.loop': 'nudge', 'negotiation.notified': 'silent',
-                'decision.waited': 'nudge'}
+                'decision.waited': 'nudge', 'doctor.fixed': 'silent'}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier

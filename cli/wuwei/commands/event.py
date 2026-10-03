@@ -64,6 +64,7 @@ EVENT_PRODUCERS = {
     'calibration.drift': 'wuwei steward run',
     'negotiation.loop': 'wuwei steward run or wuwei dispatch next',
     'negotiation.notified': 'wuwei listen', 'decision.waited': 'wuwei sweep',
+    'doctor.fixed': 'owner host wuwei doctor --fix',
 }
 
 

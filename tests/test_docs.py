@@ -649,3 +649,13 @@ def test_notice_credits_match_readme_acknowledgements():
     for name in ('Spec Kit', 'autoharness', 'ralph-starter', 'humanizer', 'Model Context Protocol',
                  'MCP Apps', 'release-please', 'ZIRAN', 'WSJF', 'RICE', 'two-way door'):
         assert name.lower() in notice.lower(), name
+
+
+def test_doctor_is_the_first_stop():
+    from wuwei.commands import doctor
+    for page in ('recovery.md', 'daily.md'):
+        assert 'bin/wuwei doctor' in (SITE / page).read_text(), page
+    section = (SITE / 'reference.md').read_text().split('\n## Doctor\n', 1)[1].split('\n## ', 1)[0]
+    for name, (command, _, _) in doctor.FIXES.items():
+        assert f'`{name}`' in section and command in section, name
+    assert '/dev/tty' in section and 'doctor.fixed' in section
