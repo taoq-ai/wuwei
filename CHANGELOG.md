@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.13.0](https://github.com/taoq-ai/wuwei/compare/v0.12.0...v0.13.0) (2026-10-03)
+
+
+### Features
+
+* **close:** close offers carry or park for each open item and records the decision itself ([#408](https://github.com/taoq-ai/wuwei/issues/408)) ([8083971](https://github.com/taoq-ai/wuwei/commit/8083971b820fa54b859e4e45dc858dde638df91b)), closes [#363](https://github.com/taoq-ai/wuwei/issues/363)
+* **owner:** every owner question is an AskUserQuestion widget in the session, with its recording command printed next to it, and the DM when no widget exists ([#385](https://github.com/taoq-ai/wuwei/issues/385)) ([f98fedc](https://github.com/taoq-ai/wuwei/commit/f98fedc086dbad3612065821253511047bb84468)), closes [#359](https://github.com/taoq-ai/wuwei/issues/359)
+* **owner:** owner confirmations are a yes or no at the terminal or a question in the session, never a typed digest, and a decision is one command ([#414](https://github.com/taoq-ai/wuwei/issues/414)) ([9434cc0](https://github.com/taoq-ai/wuwei/commit/9434cc0327a8125b188caa0cfcd96ed2dc376982)), closes [#354](https://github.com/taoq-ai/wuwei/issues/354)
+* **plan:** the workflow writes its own records: lead-proposed goals run the first plan, the planner records them on gate approval, and no step asks the owner to edit a file by hand ([#391](https://github.com/taoq-ai/wuwei/issues/391)) ([701b1ce](https://github.com/taoq-ai/wuwei/commit/701b1ce295a0359a576210d37274c93a6299a37a)), closes [#357](https://github.com/taoq-ai/wuwei/issues/357)
+* **security:** MCP findings warn by default under guarded, block only under strict, and the owner accepts a baseline in one command ([#373](https://github.com/taoq-ai/wuwei/issues/373)) ([bd89809](https://github.com/taoq-ai/wuwei/commit/bd89809948ba8cd8a104d3ce39840d16fbfa50e0)), closes [#351](https://github.com/taoq-ai/wuwei/issues/351)
+* **session:** wuwei next names the next step from the day's state, SessionStart orients the session with it, and the plugin ships an agent-facing guide to the whole flow ([#382](https://github.com/taoq-ai/wuwei/issues/382)) ([05b4a8b](https://github.com/taoq-ai/wuwei/commit/05b4a8b374bafe0339dd64f7d8a709292c3a0aae)), closes [#358](https://github.com/taoq-ai/wuwei/issues/358)
+* **setup:** setup fills the owner's code-host identity and bot authors, the interview chooses the adapters, and doctor warns on every empty setting that would block the PR flow ([#395](https://github.com/taoq-ai/wuwei/issues/395)) ([957b43c](https://github.com/taoq-ai/wuwei/commit/957b43c58647d6401b7b2fe8ebb3b41733f696be)), closes [#356](https://github.com/taoq-ai/wuwei/issues/356)
+
+
+### Bug Fixes
+
+* **brief:** item worktrees use their repository's default branch, and plan propose reads the scanner findings list ([#383](https://github.com/taoq-ai/wuwei/issues/383)) ([e1927cb](https://github.com/taoq-ai/wuwei/commit/e1927cbb928297dc5bbe378bfd51c3cbedbe844e)), closes [#361](https://github.com/taoq-ai/wuwei/issues/361)
+* **cli:** readable nudges, grouped help and a short session-start block ([#400](https://github.com/taoq-ai/wuwei/issues/400)) ([8700ec2](https://github.com/taoq-ai/wuwei/commit/8700ec2ea1a9ffe0bd1dccd9212914dbb3980d81)), closes [#367](https://github.com/taoq-ai/wuwei/issues/367)
+* **config:** keys from a newer template warn instead of refusing, and setup and doctor tell the owner to restart Claude Code after an upgrade so one plugin version runs ([#390](https://github.com/taoq-ai/wuwei/issues/390)) ([87269d7](https://github.com/taoq-ai/wuwei/commit/87269d7aae749759356f5662cf76805a9df10b5e)), closes [#353](https://github.com/taoq-ai/wuwei/issues/353)
+* **guards:** a command the parser cannot read warns instead of falling to the publish floor, and read-only commands are never opaque ([#389](https://github.com/taoq-ai/wuwei/issues/389)) ([cc9ccbf](https://github.com/taoq-ai/wuwei/commit/cc9ccbf59be110ed3fc68129848ba88a48718bf6)), closes [#347](https://github.com/taoq-ai/wuwei/issues/347)
+* **guards:** protect_state blocks writes to records and config, never reads of them ([#409](https://github.com/taoq-ai/wuwei/issues/409)) ([e0c32d1](https://github.com/taoq-ai/wuwei/commit/e0c32d1741b4a36214f56b8a17439c4184f7e758)), closes [#349](https://github.com/taoq-ai/wuwei/issues/349)
+* **guards:** the plugin's own CLI is a known command: absolute path, recorded executable or wuwei on PATH, with read-only subcommands and --help passing in every posture ([#397](https://github.com/taoq-ai/wuwei/issues/397)) ([a3dbd7f](https://github.com/taoq-ai/wuwei/commit/a3dbd7f9263dc9638b2f938eedd71c55fc8ae427)), closes [#348](https://github.com/taoq-ai/wuwei/issues/348)
+* **mcp:** mcp check writes one report per server per check, the decision summarises the findings, and mcp decide records the outcome without hand edits ([#393](https://github.com/taoq-ai/wuwei/issues/393)) ([89b577e](https://github.com/taoq-ai/wuwei/commit/89b577e47f7def01dfdad5e19f327f0dca0d1449)), closes [#350](https://github.com/taoq-ai/wuwei/issues/350)
+* **setup:** --shadow means posture observe: setup, init and init --upgrade write security.posture = "observe" and retire guards.mode = "shadow" ([#394](https://github.com/taoq-ai/wuwei/issues/394)) ([685470e](https://github.com/taoq-ai/wuwei/commit/685470e3bf9bdbb0f2004114e1ae12ab8ab0f9ce)), closes [#355](https://github.com/taoq-ai/wuwei/issues/355)
+* **setup:** the first day works on defaults: default branch from git, scanner off unless asked, tests measured once, solo owner asked, one ready line ([#406](https://github.com/taoq-ai/wuwei/issues/406)) ([b2a4557](https://github.com/taoq-ai/wuwei/commit/b2a4557f125629082ac0049578cdb1cbcbca5f29)), closes [#360](https://github.com/taoq-ai/wuwei/issues/360)
+* **traces:** tool-sequence decisions apply to item seats only, once per session per day, and never to the planner or lead session ([#368](https://github.com/taoq-ai/wuwei/issues/368)) ([92077ef](https://github.com/taoq-ai/wuwei/commit/92077efd78ec38d26777be54881befaa968912da)), closes [#352](https://github.com/taoq-ai/wuwei/issues/352)
+
+
+### Performance Improvements
+
+* **hooks:** bring the hook, status line and heartbeat under their latency budgets on the CI runner without touching the budgets ([#396](https://github.com/taoq-ai/wuwei/issues/396)) ([e19aa66](https://github.com/taoq-ai/wuwei/commit/e19aa669cae43372f2ea5c542603874a5215ec17)), closes [#346](https://github.com/taoq-ai/wuwei/issues/346)
+* **hooks:** third round: python3 -I -P -S, hooks and the status line exit without interpreter teardown, no copy import, prefix-tree scan ([#405](https://github.com/taoq-ai/wuwei/issues/405)) ([0c528f6](https://github.com/taoq-ai/wuwei/commit/0c528f6245f7ad45fb2faa47664f2d80de3a8288))
+
 ## [0.12.0](https://github.com/taoq-ai/wuwei/compare/v0.11.0...v0.12.0) (2026-10-03)
 
 
