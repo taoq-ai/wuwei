@@ -556,6 +556,7 @@ def test_shepherd_seat_drafts_what_would_send(configured, monkeypatch):
     ('run-up', "Here's the thing: tests fail.", 'Tests fail on main.'),
     ('saying', 'At its core, this is a cache.', 'This is a cache.'),
     ('dash', 'Two options \u2013 A or B.', 'Two options: A or B.'),
+    ('dash', 'Two options \u2014 A or B.', 'Two options: A or B.'),
     ('inflation', 'It plays a key role in releases.', 'It runs before releases.'),
     ('sales', 'A stunning new parser.', 'A new parser.'),
     ('stock-word', 'We delve into the logs.', 'We read the logs.'),
@@ -579,6 +580,105 @@ def test_tells_never_change_the_lint(configured):
     assert outward.tells('Two options -- A or B.') == ['dash']
     assert outward.lint(text, 'C1', config) == (0, '')
     assert outward.lint('A fix \u2014 now.', 'C1', config) == (1, 'outward: banned character')
+
+
+TELL_TEXT = 'This is not just a fix but a rewrite. We delve into it.'
+
+
+def ai_tells(root):
+    path = workspace.day_dir(root) / 'events.jsonl'
+    lines = path.read_text().splitlines() if path.is_file() else []
+    return [json.loads(line)['payload'] for line in lines
+            if json.loads(line)['kind'] == 'outward.ai_tells']
+
+
+@pytest.mark.parametrize('channel,is_dm,kind', [
+    ('chat', True, 'dm'), ('chat', False, 'review'), ('slack', False, 'review'),
+    ('tracker', False, 'tracker'), ('code_host', False, 'pr'), ('docs', False, 'docs'),
+    ('customer', False, None),
+])
+def test_humanize_lint_kinds(configured, capsys, channel, is_dm, kind):
+    from wuwei import outward
+    root, config = configured
+    inputs = {'text': TELL_TEXT, **({'is_dm': True} if is_dm else {})}
+    code, reason = outward.humanize_lint(inputs, root, config, {channel})
+    assert code == 0
+    if kind is None:
+        assert reason == '' and ai_tells(root) == []
+        return
+    assert 'not-x-but-y' in reason and 'stock-word' in reason and 'humanizer' in reason
+    assert ai_tells(root) == [{'kind': kind, 'tells': ['not-x-but-y', 'stock-word'], 'draft': False}]
+    assert TELL_TEXT not in (workspace.day_dir(root) / 'events.jsonl').read_text()
+    assert 'warning:' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('change,inputs,code', [
+    ({'humanize_strict': True}, {'text': TELL_TEXT}, 1),
+    ({'humanize': False}, {'text': TELL_TEXT}, 0),
+    ({'humanize_kinds': ['dm']}, {'text': TELL_TEXT}, 0),
+    ({}, {'text': 'We use `delve` in code.'}, 0),
+    ({}, {'text': 1}, 2),
+])
+def test_humanize_lint_gates(configured, change, inputs, code):
+    from wuwei import outward
+    root, config = configured
+    config['outward'].update(change)
+    result = outward.humanize_lint(inputs, root, config, {'chat'}, draft=True)
+    assert result[0] == code
+    assert ('not-x-but-y' in result[1]) == (code == 1)
+    assert ai_tells(root) == []
+
+
+def test_check_call_send_humanizes(configured, monkeypatch, capsys):
+    from wuwei import outward
+    root, config = configured
+    monkeypatch.setattr(outward, 'classify', lambda *a, **k: (0, 'send'))
+    inputs = {'channel': 'C1', 'text': 'Fixed the parser.'}
+    assert outward.check_call(inputs, root, config, {'chat'}) == (0, '')
+    assert ai_tells(root) == []
+    inputs['text'] = 'We delve into the parser.'
+    assert outward.check_call(inputs, root, config, {'chat'}) == (0, '')
+    assert ai_tells(root) == [{'kind': 'review', 'tells': ['stock-word'], 'draft': False}]
+    config['outward']['humanize_strict'] = True
+    code, reason = outward.check_call(inputs, root, config, {'chat'})
+    assert code == 1 and 'stock-word' in reason
+    config['profile'] = 'standard'
+    assert outward.check_call(inputs, root, config, {'chat'}) == (0, '')
+    assert 'hook.warning' in (workspace.day_dir(root) / 'events.jsonl').read_text()
+
+
+def test_hook_lint_humanizes_mcp_writes(configured, monkeypatch, capsys):
+    from wuwei.guards.outward import check_lint
+    root, config = configured
+    monkeypatch.setattr(workspace, 'load_config', lambda root: config)
+    call = payload(root, 'We delve into the race.', tool='mcp__linear__create_comment')
+    assert check_lint(call)[0] == 0
+    assert ai_tells(root) == [{'kind': 'tracker', 'tells': ['stock-word'], 'draft': False}]
+    assert check_lint(payload(root, 'Fixed the race.', tool='mcp__linear__create_comment'))[0] == 0
+    assert len(ai_tells(root)) == 1
+    config['outward']['humanize_strict'] = True
+    code, reason = check_lint(call)
+    assert code == 1 and 'stock-word' in reason
+
+
+def test_every_free_text_adapter_write_goes_through_the_port():
+    import inspect
+    from wuwei import outward, registry, shepherd
+    exempt = {('tts', 'speak'): 'local', ('redactor', 'redact'): 'local',
+              ('code_host', 'create_pr'): 'shepherd.raise_pr runs outward.lint and outward.humanize_lint'}
+    port = 'outward_operation.<locals>.decorate.<locals>.call'
+    checked = 0
+    for kind, operations in registry.PARAMETERS.items():
+        for operation, parameters in operations.items():
+            if not set(parameters) & (outward.TEXT_FIELDS | {'draft'}) or (kind, operation) in exempt:
+                continue
+            for name in registry.known(kind):
+                module = registry.load(kind, {'adapters': {kind: name}})
+                function = getattr(module, operation)
+                assert function.__code__.co_qualname == port, (kind, name, operation)
+                checked += 1
+    assert checked
+    assert 'humanize_lint' in inspect.getsource(shepherd.raise_pr)
 
 
 def test_owner_facing_templates_are_plain():

@@ -14,7 +14,7 @@ Read `_common.md` first. These rules apply whenever a seat drafts, posts, commit
 
 ## Writing for a person
 
-Text written for a person (decision records, PR bodies and review comments, drafts, retro summaries, digests and briefing packs) is rewritten with the `humanizer` skill in embedded mode before it is saved or posted, when the skill is installed. Without it, check the text against this list. The CLI lint counts the mechanical tells as `style` findings; only an em dash or an emoji is refused.
+Text written for a person (decision records, PR bodies, drafts, retro summaries, digests and briefing packs) and every outward text (tracker comments, docs pages, DMs, PR comments and review pings) is rewritten with the `humanizer` skill in embedded mode before it is saved, drafted or posted, when the skill is installed. Without it, check the text against this list. The CLI lint flags the mechanical tells: a `style` finding on drafts and decision records and, on outward text, a warning and an `outward.ai_tells` event, or a refusal when `outward.humanize_strict` is on. An em dash or an emoji is always refused.
 
 1. Lead with the decision or the fact the reader needs; leave out background the reader already has.
 2. State the point directly. Do not deny a claim nobody made so that the real point sounds larger.

@@ -314,7 +314,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'remote.confirmed': 'silent', 'calibration.drift': 'nudge',
                 'shepherd.dispatched': 'silent', 'shepherd.finished': 'nudge', 'pr.notified': 'silent',
                 'negotiation.loop': 'nudge', 'negotiation.notified': 'silent',
-                'decision.waited': 'nudge', 'doctor.fixed': 'silent'}
+                'decision.waited': 'nudge', 'doctor.fixed': 'silent', 'outward.ai_tells': 'silent'}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier
@@ -774,3 +774,11 @@ def test_nudge_page_and_nudge_stay_apart(tmp_path, monkeypatch, capsys):
     assert nudges.run(type('A', (), {'json': False})()) == 0
     assert capsys.readouterr().out.splitlines() == [
         'nudge: same (2 times). Run: wuwei next', 'page: same. Run: wuwei next']
+
+
+def test_outward_ai_tells_is_silent_and_reserved(capsys):
+    from wuwei.signal import classify
+    from wuwei.__main__ import main
+    assert classify({'kind': 'outward.ai_tells', 'payload': {}}, {})[0] == 'silent'
+    assert main(['event', 'outward.ai_tells', '{}']) == 1
+    assert 'humanize_lint' in capsys.readouterr().err

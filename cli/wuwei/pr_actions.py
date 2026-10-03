@@ -431,6 +431,10 @@ def _thread(root, ref, item, measured, reply=None):
             if code == 2:
                 pending = (pending[0], 2)
             continue
+        humanized, reason = outward.humanize_lint(inputs, root, config, {channel_kind}, draft=True)
+        if humanized:
+            print(reason)
+            return humanized
         draft_id = drafts.create(root, config, channel_kind, 'comment', config['adapters']['code_host'],
                                  inputs, 'outward tier unmeasured; reply kept as a draft' if code == 2
                                  else outward.APPROVAL_REQUIRED)

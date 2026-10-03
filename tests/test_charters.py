@@ -185,3 +185,11 @@ def test_writing_for_a_person_names_the_humanizer_and_carries_the_checklist():
         assert section.strip() in (ROOT / "agents" / f"{role}.md").read_text(encoding="utf-8"), role
     skill = (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
     assert all(phrase in skill for phrase in ("humanizer", "decision show", "Writing for a person"))
+    kinds = ("tracker comments", "docs pages", "DMs", "PR comments", "review pings")
+    assert all(kind in section for kind in kinds)
+    assert "outward.ai_tells" in section and "outward.humanize_strict" in section
+    assert "only an em dash or an emoji is refused" not in section
+    assert "tracker comments" in skill and skill.count("humanizer") == 1
+    for role in ("planner", "lead", "builder", "sentinel-arch", "sentinel-quality", "sentinel-security",
+                 "sentinel-goal", "shepherd", "steward"):
+        assert (ROOT / "agents" / f"{role}.md").read_text(encoding="utf-8").count("humanizer") == 1, role

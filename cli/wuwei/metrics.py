@@ -511,6 +511,9 @@ def collect(root=None, *, day=None):
     for path in sorted((directory / 'decisions').glob('D-*.md')):
         if not path.is_symlink():
             ai_tells[path.stem] = len(outward.tells(path.read_text(encoding='utf-8')))
+    for index, row in enumerate(events or []):  # drafts count from their rows
+        if row['kind'] == 'outward.ai_tells' and row['payload'].get('draft') is False:
+            ai_tells[f'outward-{index}'] = len(row['payload']['tells'])
     traces = _traces(directory)
     now = workspace.now()
     if events is None:

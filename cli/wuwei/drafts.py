@@ -136,6 +136,11 @@ def approve(root, draft_id, *, edit=False):
             lint_inputs = ({**inputs, 'channel': row['destination']}
                            if row['operation'] == 'dm' else inputs)
             code, reason = outward.check_lint(lint_inputs, root, config, {row['channel']})
+        style = ''
+        if not code:
+            code, style = outward.humanize_lint({**inputs, 'is_dm': row['operation'] == 'dm'}, root,
+                                                config, {row['channel']}, draft=True)
+            reason = style
         if code:
             return registry.Result(code, reason=reason)
         text = '\n'.join(outward._text(inputs)[0])
@@ -145,7 +150,7 @@ def approve(root, draft_id, *, edit=False):
         try:
             confirmed = integrity._host_confirm(
                 sha256((draft_id + '\n' + text).encode()).hexdigest(),
-                prompt=f"Send this draft to {row['destination']}:\n{text}")
+                prompt=f"Send this draft to {row['destination']}:\n{text}" + (f'\n{style}' if style else ''))
         except OSError as exc:
             return registry.Result(2, reason=str(exc))
         if not confirmed:

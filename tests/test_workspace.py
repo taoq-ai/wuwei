@@ -353,6 +353,20 @@ def test_guards_mode(tmp_path):
             workspace.load_config(tmp_path)
 
 
+def test_outward_humanize_keys(tmp_path):
+    from wuwei import workspace
+    write_config(tmp_path, '')
+    rules = workspace.load_config(tmp_path)['outward']
+    assert rules['humanize'] is True and rules['humanize_strict'] is False
+    assert rules['humanize_kinds'] == ['dm', 'tracker', 'docs', 'pr', 'review']
+    write_config(tmp_path, '[outward]\nhumanize_kinds = ["chat"]\n')
+    with pytest.raises(workspace.ConfigError, match='humanize_kinds'):
+        workspace.load_config(tmp_path)
+    (tmp_path / '.wuwei/config.toml').write_text(
+        (ROOT / 'templates/workspace/config.toml').read_text(encoding='utf-8'), encoding='utf-8')
+    assert workspace.load_config(tmp_path)['outward']['humanize'] is True
+
+
 def test_solo_owner_min_reviewers_zero(tmp_path):
     from wuwei.workspace import load_config
     write_config(tmp_path, '[shepherd]\nmin_reviewers = 0')

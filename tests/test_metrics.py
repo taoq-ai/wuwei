@@ -272,6 +272,14 @@ def test_ai_tells_per_text(root, monkeypatch):
     assert json.loads(lines[lines.index('## Process metrics') + 1])['ai_tells'] == {'draft-1': 2, 'D-1': 2}
 
 
+def test_ai_tells_counts_sent_outward_text(root):
+    from wuwei import metrics
+    state.append_event('outward.ai_tells', {'kind': 'tracker', 'tells': ['dash', 'sales'], 'draft': False}, root)
+    state.append_event('outward.ai_tells', {'kind': 'review', 'tells': ['dash'], 'draft': True}, root)
+    found = metrics.collect(root)['ai_tells']
+    assert list(found.values()) == [2] and next(iter(found)).startswith('outward-')
+
+
 def test_ask_metrics(root):
     from wuwei import metrics
 

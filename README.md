@@ -196,7 +196,7 @@ WUWEI builds on the work below. [NOTICE](NOTICE) has the licence of each.
   ledger and the adherence lifecycle (MIT, ideas only).
 - [ralph-starter](https://github.com/rubenmarcus/ralph-starter): the builder loop with
   backpressure and stuck detection (MIT, ideas only).
-- [humanizer](https://github.com/blader/humanizer): the writing checklist in the charters
+- [humanizer](docs/site/concepts.md#humanizer) ([source](https://github.com/blader/humanizer)): the writing checklist in the charters
   (MIT, paraphrased).
 - [Wikipedia: Signs of AI writing](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing):
   the source humanizer is based on.
