@@ -69,6 +69,16 @@ def events(root):
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
 
+def test_hook_probes_carry_ms(ws):
+    # #422: the four hook probes keep the wall milliseconds the service measured.
+    root, service, _, _ = ws
+    service.results[2] = (None, 'timeout', 10000)
+    probes = heartbeat.measure(root)
+    assert [probes[name].get('ms') for name in ('refused', 'allowed', 'state_write', 'read_loop')] == [
+        60, None, 45, 50]
+    assert 'ms' not in probes['status_line'] and 'ms' not in probes['state']
+
+
 def test_measure_every_probe_ok(ws):
     root, service, _, _ = ws
     probes = heartbeat.measure(root)
@@ -356,7 +366,8 @@ def test_allow_all_guard_fails_the_refused_probe(launcher, capsys):
     root, _, pings = launcher(mutate=True)
     assert heartbeat.beat(root) == 1
     record = watch.saved(root)['heartbeat']
-    assert record['probes']['refused'] == {'result': 'failed', 'value': 'exit 0'}
+    refused = record['probes']['refused']
+    assert (refused['result'], refused['value'], type(refused['ms'])) == ('failed', 'exit 0', int)
     assert record['probes']['state_write']['result'] == 'failed'
     assert record['page'] == 'heartbeat refused failed: exit 0'
     assert pings == []

@@ -976,3 +976,18 @@ FORGET = ("Forgetting memory is the owner's answer, outside agent tools: show th
 def test_memory_forget_is_an_owner_action(workspace, command, expected):
     from wuwei.guards.protect_state import check_bash
     assert check_bash(payload(workspace, 'Bash', command=command)) == expected
+
+
+@pytest.mark.parametrize('target', ['.wuwei/metrics/2026-W40.json', '.wuwei/metrics/token'])
+def test_telemetry_records_are_protected(workspace, target):
+    # #422: the week files and the token are written by the CLI only.
+    from wuwei.guards.protect_state import check_file
+    code, reason = check_file(payload(workspace, 'Write', file_path=target))
+    assert code == 1 and reason
+
+
+def test_seat_cannot_send_telemetry(workspace):
+    from wuwei.guards.protect_state import check_bash
+    code, reason = check_bash(payload(workspace, 'Bash', command='bin/wuwei telemetry send'))
+    assert code == 1 and 'bin/wuwei telemetry send in a host terminal' in reason
+    assert check_bash(payload(workspace, 'Bash', command='bin/wuwei telemetry preview')) == (0, '')

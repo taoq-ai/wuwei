@@ -670,7 +670,9 @@ def test_every_free_text_adapter_write_goes_through_the_port():
     import inspect
     from wuwei import outward, registry, shepherd
     exempt = {('tts', 'speak'): 'local', ('redactor', 'redact'): 'local',
-              ('code_host', 'create_pr'): 'shepherd.raise_pr runs outward.lint and outward.humanize_lint'}
+              ('code_host', 'create_pr'): 'shepherd.raise_pr runs outward.lint and outward.humanize_lint',
+              # #422: a table of validated counts; telemetry send runs security.outbound itself.
+              ('code_host', 'issue'): 'telemetry.validate and security.outbound in wuwei telemetry send'}
     port = 'outward_operation.<locals>.decorate.<locals>.call'
     checked = 0
     for kind, operations in registry.PARAMETERS.items():
@@ -684,6 +686,8 @@ def test_every_free_text_adapter_write_goes_through_the_port():
                 checked += 1
     assert checked
     assert 'humanize_lint' in inspect.getsource(shepherd.raise_pr)
+    from wuwei.commands import telemetry
+    assert 'security.outbound' in inspect.getsource(telemetry._send)
 
 
 def test_owner_facing_templates_are_plain():

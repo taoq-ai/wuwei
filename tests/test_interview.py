@@ -80,7 +80,7 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
     table = interview().QUESTIONS
     assert [row['id'] for row in table] == ['merge', 'gates', 'quiet', 'interrupt', 'decisions', 'phone',
                                             'hours', 'avoid', 'formality', 'signature', 'risk', 'manual',
-                                            'verbosity', 'posture', 'spec', 'tracker', 'chat', 'review_bot',
+                                            'verbosity', 'posture', 'spec', 'telemetry', 'tracker', 'chat', 'review_bot',
                                             'reviewers']
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / 'widget').mkdir()
@@ -101,6 +101,19 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
             additions, edits = calibrate.settle(ONE + PLANE, interview().settings(answers, config))
             (tmp_path / '.wuwei/config.toml').write_text(calibrate.apply(ONE + PLANE, additions))
             assert edits == [] and load_config(tmp_path)
+
+
+def test_telemetry_question_follows_the_posture():
+    # #422, design 5.13: consent per workspace, choices and texts in order.
+    row = next(row for row in interview().QUESTIONS if row['id'] == 'telemetry')
+    assert (row['scope'], row['header'], row['question'], row['free']) == (
+        'workspace', 'Telemetry', 'Share weekly usage counts with the WUWEI project?', None)
+    assert row['choices'] == (
+        ('Anonymous', 'Counts only, sent over HTTPS with a random workspace id; no account, nothing about '
+         'your code or people.', {'telemetry.share': 'anonymous'}),
+        ('Attributed', 'The same counts as a GitHub issue opened from your gh account, so it shows your login.',
+         {'telemetry.share': 'attributed'}),
+        ('Off', 'Nothing leaves this machine; the counts stay local.', {'telemetry.share': 'off'}))
 
 
 def test_observe_answer_sets_the_start_day(monkeypatch):
@@ -364,15 +377,15 @@ def test_interview_needs_a_host_terminal(offline, capsys, monkeypatch):
 
 def test_interview_on_the_terminal(offline, capsys, monkeypatch):
     raw = (offline / '.wuwei/config.toml').read_text()
-    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '1', '2', 'C0123ABCD', '1',
-               'pat-dev']
+    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '1', '3', '2',
+               'C0123ABCD', '1', 'pat-dev']
     terminal(monkeypatch, replies)
     assert main('calibrate', '--interview', '--repo', 'acme/widget') == 0, capsys.readouterr().err
     out = capsys.readouterr().out
     answers = json.loads((offline / DAY / 'interview.json').read_text())
     assert answers['merge'] == {'acme/widget': 'Auto, 30 min soak'} and answers['gates'] == {
         'acme/widget': 'Standard'} and answers['phone'] == 'Summary' and answers['manual'] == 'Package publishing'
-    assert len(answers) == 19 and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
+    assert len(answers) == 20 and answers['telemetry'] == 'Off' and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
     for line in interview().describe(answers, config(offline)):
         assert line in out
     assert 'gates: answer one of' in out and 'hours: answer one of' in out and 'bin/wuwei config promote' in out
@@ -489,8 +502,8 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     raw = (f'[[repos]]\nname = "acme/widget"\npath = {json.dumps(str(FIXTURES / "python"))}\n'
            'default_branch = "main"\n\n' + PLANE + '\n[deploy]\nworkflows = []\ndeny = []\n')
     (root / '.wuwei/config.toml').write_text(raw)
-    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '1', '4', '1',
-                           '1'])
+    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '3', '1', '4',
+                           '1', '1'])
     assert main('calibrate', '--interview') == 0, capsys.readouterr().err
     lines = interview().describe(json.loads((root / DAY / 'interview.json').read_text()), config(root))
     capsys.readouterr()
@@ -515,6 +528,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     assert parsed['control_plane'] == {'content': 'none', 'owner': ''}
     assert parsed['owner']['verbosity'] == {'default': 'full'}
     assert parsed['security']['posture'] == 'observe'
+    assert parsed['telemetry']['share'] == 'off'
     assert parsed['guards'] == {'shadow_since': '2026-10-01'}
     assert parsed['deploy']['deny'] == ['npm publish*', 'twine upload*', 'cargo publish*', 'gem push*']
     assert [r['status'] for r in promotion.promote(root)] == ['landed'] * 4

@@ -733,6 +733,7 @@ REVIEWED = [
     ('repos.merge.auto', False, False, ''), ('repos.fast_checks', ['make test'], False, ''),
     ('deploy.deny', ['twine upload*'], False, ''),
     ('gates.second_opinion', 'codex:gpt-5', True, ''), ('gates.second_opinion', 'off', False, ''),
+    ('telemetry.share', 'anonymous', True, ''), ('telemetry.otlp.endpoint', 'https://x.test', True, ''),
 ]
 
 
@@ -1026,6 +1027,16 @@ def test_profile_export_never_carries_reviewer_names(workspace_root, monkeypatch
     dropped = {row['where']: row['why'] for row in json.loads(text)['dropped']}
     for key in ('config.shepherd.reviewers', 'config.shepherd.reviewers_exclude', 'config.repos.shepherd.reviewers'):
         assert dropped[key] == 'personal', key
+
+
+def test_profile_export_never_carries_telemetry(workspace_root, monkeypatch, ports, capsys):
+    # #422, design 5.13: consent is per workspace.
+    out = exported(workspace_root, monkeypatch, ports, extra='[telemetry]\nshare = "anonymous"\n')
+    assert main('calibrate', 'export', 'team') == 0, capsys.readouterr().err
+    profile = json.loads((out / 'team.json').read_text())
+    assert 'telemetry' not in profile['config']
+    assert {row['where']: row['why'] for row in profile['dropped']}['config.telemetry.share'] == (
+        'outside what a profile may carry')
 
 
 def test_profile_export_edges(workspace_root, monkeypatch, ports, capsys):

@@ -151,6 +151,23 @@ def test_sweep_runs_the_external_wait_time_box(case, capsys):
     assert 'watch external waits unmeasured: bad record' in capsys.readouterr().out
 
 
+def test_sweep_telemetry_step_never_changes_the_exit(case, capsys):
+    # #422, design 5.13: a telemetry failure is never owed work.
+    from wuwei import telemetry
+    root, _, _, monkeypatch = case
+    watch = watch_module()
+    monkeypatch.setattr(telemetry, 'step', lambda root, config: 'not due')
+    code = watch.sweep(root)
+    before = events(root, 'watch: sweep')[-1]['payload']
+    assert before['telemetry'] == 'not due'
+    monkeypatch.setattr(telemetry, 'step', lambda root, config: (_ for _ in ()).throw(ValueError('bad week')))
+    assert watch.sweep(root) == code
+    after = events(root, 'watch: sweep')[-1]['payload']
+    assert after['telemetry'] == 'unmeasured: bad week'
+    assert [after[key] for key in ('exit', 'owed', 'unreadable')] == [before[key] for key in ('exit', 'owed', 'unreadable')]
+    assert 'watch telemetry unmeasured: bad week' in capsys.readouterr().out
+
+
 @pytest.mark.parametrize('field', ['head', 'mergeable', 'updated_at', 'checks', 'reviews', 'threads'])
 def test_pr_poll_persisted_diff_wakes_once(case, field, capsys):
     root, host, _, _ = case

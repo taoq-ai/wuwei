@@ -24,7 +24,7 @@ REPO = ('[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"
         'fast_checks = ["ruff check ."]\nidentity = { name = "Ada", email = "ada@example.com" }\n')
 IDENTITY = ('\n[owner]\nhandles = ["ada"]\n\n[shepherd]\nlead_login = "ada"\n\n'
             '[shepherd.authors]\n"ada@example.com" = {login = "ada"}\n')
-CONFIG = '[adapters]\ncode_host = "github"\n' + REPO + IDENTITY
+CONFIG = '[adapters]\ncode_host = "github"\n' + REPO + IDENTITY + '\n[telemetry]\nshare = "off"\n'
 DIGEST = 'd' * 64
 ZIRAN = CONFIG.replace('code_host = "github"\n', 'code_host = "github"\nscanner = "ziran"\n')  # #424: record rows
 CLASSIC_LINE = 'acme/widget main: classic protection: none visible (404: unprotected or no admin)'
@@ -293,8 +293,9 @@ def test_workspace_rows_healthy(ws):
     assert names(rows, 'workspace') == [
         'workspace', 'config', 'template', 'executable', 'memory tiers', 'acme/widget path', 'acme/widget git', 'acme/widget branch',
         'acme/widget identity', 'acme/widget fast_checks', 'acme/widget spec', 'calibration', 'drift',
-        'interview', 'profile', 'posture']
+        'interview', 'profile', 'posture', 'telemetry']
     assert row(rows, 'posture')['value'] == 'guarded (from security.posture)'
+    assert row(rows, 'telemetry')['value'] == 'share off'
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'workspace'), rows
 
 
@@ -411,6 +412,16 @@ def test_workspace_calibration_and_shadow(ws, monkeypatch):
     assert found['status'] == 'warn' and found['apply'] == 'init-upgrade'
     config(ws.root, CONFIG.replace('[adapters]', '[security]\nposture = "strict"\n[adapters]'))
     assert row(doctor.diagnose(), 'posture')['value'] == 'strict (from security.posture)'
+
+
+def test_workspace_telemetry_question_pending(ws):
+    # #422: share unset behaves as off but the interview question is still owed.
+    config(ws.root, CONFIG.replace('share = "off"', 'share = ""'))
+    found = row(doctor.diagnose(), 'telemetry')
+    assert (found['status'], found['value'], found['fix']) == (
+        'warn', 'sharing not chosen yet (pending interview question)', W('calibrate --interview telemetry'))
+    config(ws.root, CONFIG.replace('share = "off"', 'enabled = false'))
+    assert row(doctor.diagnose(), 'telemetry')['status'] == 'ok'
 
 
 def test_workspace_retired_shadow_mode(ws, monkeypatch):

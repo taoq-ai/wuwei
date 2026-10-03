@@ -236,3 +236,19 @@ def test_board_why_chain_unmeasured_never_fails_the_board(day):
     result = board_call()
     assert result['isError'] is False
     assert list(json.loads(result['structuredContent']['./why.json'])) == ['unmeasured']
+
+
+def test_board_telemetry_table(day, tmp_path):
+    # #422: the current week's aggregate, or unmeasured with the reason the step skipped.
+    def table():
+        text = board_call()['content'][0]['text']
+        return text.split('## Telemetry', 1)[1].split('\n## ', 1)[0]
+    assert '| unmeasured | no aggregate yet |' in table()
+    (tmp_path / '.wuwei/metrics').mkdir()
+    (tmp_path / '.wuwei/metrics/2026-W40.json').write_text(json.dumps(
+        {'week': '2026-W40', 'metrics': {'days': 1, 'refusals': {'pr': 2}}}))
+    assert '| days | 1 |' in table() and '| refusals | {"pr": 2} |' in table()
+    data = json.loads((day / 'state.json').read_text())
+    data['watch']['telemetry'] = {'week': '2026-W40', 'skipped': 'size'}
+    (day / 'state.json').write_text(json.dumps(data))
+    assert '| unmeasured | size |' in table() and '| days |' not in table()

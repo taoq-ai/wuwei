@@ -114,12 +114,11 @@ def run(args):
     # #362: the most specific refusal first: a finding before a could-not-run, integrity last.
     if args.event != 'SessionStart':
         refusals.sort(key=lambda row: (row[2], module(row[0]) == 'integrity'))
-    refusals = [(check, message) for check, message, _ in refusals]
-    enforced = [(module(check), message, '') for check, message in refusals]
+    enforced = [(module(check), message, '', code) for check, message, code in refusals]
     if (refusals and args.event != 'SessionStart'
             and payload.get('session_id') != HEARTBEAT_SESSION):
         enforced = posture(payload, refusals, root)
-    reasons = [f'{message}\n{line}' if line else message for _, message, line in enforced]
+    reasons = [f'{message}\n{line}' if line else message for _, message, line, _ in enforced]
     if args.event == 'SessionStart' and (context or reasons):
         from wuwei.commands.next import HEADER  # Not guards: hook tests replace their __path__.
         parts = sorted(context + reasons, key=lambda text: not text.startswith(HEADER))
@@ -131,7 +130,7 @@ def run(args):
     if reasons:
         return refuse(args.event, reasons[0], cwd=payload.get('cwd'),
                       record=payload.get('session_id') != HEARTBEAT_SESSION,
-                      refusals=[(guard, message) for guard, message, _ in enforced],
+                      refusals=[(guard, message, code) for guard, message, _, code in enforced],
                       payload=payload)
     if args.event == 'Stop' and context:
         print('\n'.join(context), file=sys.stderr)
@@ -233,7 +232,7 @@ def module(check):
 def posture(payload, refusals, root):
     """#331, at the point #308 shadow mode used: per refusal, off drops it, warn records
     guard.would_refuse and lets the call through, block enforces it with its posture line.
-    Returns (guard, reason, line); the config is read only because a guard refused."""
+    Returns (guard, reason, line, exit); the config is read only because a guard refused."""
     from wuwei import state, workspace
     from wuwei.guards import NO_REVIEWER, level
     try:
@@ -241,10 +240,10 @@ def posture(payload, refusals, root):
             raise LookupError('no workspace; run bin/wuwei init')
         name, levels = workspace.posture(workspace.load_config(root))
     except BaseException:  # No workspace or an unreadable config enforces, as before #331.
-        return [(module(check), reason, '') for check, reason in refusals]
+        return [(module(check), reason, '', code) for check, reason, code in refusals]
     from wuwei.shell import UNPARSED, WORKSPACE_ROOT
     enforced, shown, seen = [], None, set()
-    for check, reason in refusals:
+    for check, reason, code in refusals:
         guard, area, decided, line = level(check, levels)
         if reason == NO_REVIEWER:  # It names its own ways out; still blocked.
             line = ''
@@ -257,18 +256,18 @@ def posture(payload, refusals, root):
         if decided == 'off':
             continue
         if decided == 'block':
-            enforced.append((guard, reason, line))
+            enforced.append((guard, reason, line, code))
             continue
         try:
             if shown is None:
                 shown = redacted_target(payload, root)
             state.append_event('guard.would_refuse', {
                 'guard': guard, 'area': area, 'level': decided, 'posture': name,
-                'reason': reason, 'target': shown, 'session': payload['session_id'],
+                'reason': reason, 'exit': code, 'target': shown, 'session': payload['session_id'],
                 'item': claimed(root, payload['session_id'])}, root)
         except BaseException as exc:
             print(f'wuwei hook: could not record shadow refusal: {exc}; run bin/wuwei doctor', file=sys.stderr)
-            enforced.append((guard, reason, line))
+            enforced.append((guard, reason, line, code))
     return enforced
 
 
@@ -333,7 +332,8 @@ def refuse(event, reason, *, malformed=False, cwd=None, record=True, refusals=()
         if root is not None:
             details = {'reason': reason}
             if refusals:
-                details['refusals'] = [{'guard': guard, 'reason': message} for guard, message in refusals]
+                details['refusals'] = [{'guard': guard, 'reason': message, 'exit': code}
+                                   for guard, message, code in refusals]
                 try:
                     details['target'] = redacted_target(payload, root)
                 except Exception:

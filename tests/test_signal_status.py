@@ -330,7 +330,8 @@ def test_emitted_kinds_have_intended_tiers():
                 'negotiation.loop': 'nudge', 'negotiation.notified': 'silent',
                 'decision.waited': 'nudge', 'doctor.fixed': 'silent', 'outward.ai_tells': 'silent',
                 'spec.step': 'silent', 'spec.skipped': 'silent', 'spec.override': 'silent',
-                'spec.warned': 'nudge'}
+                'spec.warned': 'nudge',
+                **{f'telemetry.{name}': 'nudge' if name == 'ready' else 'silent' for name in TELEMETRY}}
     assert emitted == set(expected)
     for kind, tier in expected.items():
         assert classify({'kind': kind}, {})[0] == tier
@@ -798,3 +799,19 @@ def test_outward_ai_tells_is_silent_and_reserved(capsys):
     assert classify({'kind': 'outward.ai_tells', 'payload': {}}, {})[0] == 'silent'
     assert main(['event', 'outward.ai_tells', '{}']) == 1
     assert 'humanize_lint' in capsys.readouterr().err
+
+
+TELEMETRY = ('skipped', 'unsent', 'shared', 'ready', 'presented', 'off')
+
+
+@pytest.mark.parametrize('name', TELEMETRY)
+def test_telemetry_events_are_cli_only_and_quiet(tmp_path, monkeypatch, capsys, name):
+    # #422, design 5.13: telemetry.ready is a nudge, the rest are silent; the CLI writes all six.
+    from wuwei.__main__ import main
+    from wuwei.signal import classify
+    assert classify({'kind': f'telemetry.{name}'}, {})[0] == ('nudge' if name == 'ready' else 'silent')
+    day(tmp_path, {})
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    assert main(['event', f'telemetry.{name}', '{}']) == 1
+    assert 'written by wuwei telemetry or wuwei sweep' in capsys.readouterr().err
