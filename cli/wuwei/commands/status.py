@@ -13,6 +13,12 @@ from wuwei.signal import SILENT, classify
 SHADOW_NUDGE = ('Observe posture has run {days} days. To enforce, set '
                 'security.posture = "guarded" in config.toml; to keep observing, raise guards.shadow_days. '
                 'bin/wuwei shadow report lists what would have been refused.')
+# Silent kinds scan drops with no action; the rest of SILENT is read (clocks, replies,
+# draft and decision closures, wake, steward and acknowledgements).
+SKIP = frozenset(SILENT) - {
+    'watch: clock', 'listen: clock', 'heartbeat: clock', 'decision.replied',
+    'decision.decided', 'draft.sending', 'draft.sent', 'draft.dropped',
+    'session: wake-seen', 'steward.run', 'remote.acknowledged'}
 
 
 def register(subparsers):
@@ -39,6 +45,12 @@ def scan(directory, classified_state=None):
         with path.open(encoding='utf-8') as stream:
             for number, line in enumerate(stream):
                 if not line.strip():
+                    continue
+                # Producer lines (state._append_jsonl) start with the kind; skip silent ones
+                # undecoded. Anything else, torn lines included, is decoded as before.
+                if (line.startswith('{"kind": "') and line.rstrip().endswith('}')
+                        and line.count('{') == line.count('}')
+                        and line[10:line.find('"', 10)] in SKIP):
                     continue
                 try:
                     event = json.loads(line)

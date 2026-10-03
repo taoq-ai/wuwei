@@ -1,6 +1,6 @@
 """Fixed adapter operations and the shared three-state result."""
 
-from dataclasses import dataclass
+from collections import namedtuple
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 import sys
@@ -105,11 +105,7 @@ def runtime_config(role, config, root):
     return {**config, 'adapters': {**config['adapters'], 'runtime': selected}}
 
 
-@dataclass(frozen=True)
-class Result:
-    exit: int
-    data: object = None
-    reason: str = ''
+Result = namedtuple('Result', 'exit data reason', defaults=(None, ''))
 
 
 def data(result):

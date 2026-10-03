@@ -1,13 +1,9 @@
 """Shared workspace paths and validated configuration."""
 
-from copy import deepcopy
-from datetime import date, datetime
 import os
 from pathlib import Path
 import re
 import sys
-import tempfile
-import tomllib
 
 
 # Dicts describe tables; lists contain an item rule and optional array defaults;
@@ -182,6 +178,7 @@ class ConfigError(ValueError):
 
 def atomic_write(path, text, *, replace=True, mode=None):
     """Durably write text through a temporary file in the destination directory."""
+    import tempfile
     path = Path(path)
     temporary = None
     try:
@@ -253,9 +250,6 @@ def worktree_workspace(path):
 
 def scope(path):
     """An environment-selected workspace is context, not proof of membership."""
-    from wuwei import registry
-    from wuwei.registry import data
-
     selected = None
     if 'WUWEI_WORKSPACE' in os.environ:
         try:
@@ -276,6 +270,8 @@ def scope(path):
         return root, config
     # External worktrees share a configured repository's common directory.
     if any((parent / '.git').exists() for parent in (path, *path.parents)):
+        from wuwei import registry
+        from wuwei.registry import data
         vcs = registry.load('vcs', config)
         actual = data(vcs.repo_context(str(path), root=root))
         common = actual.get('common_dir')
@@ -336,6 +332,7 @@ def verbosity(config, surface):
 
 def now():
     """Return local now, or the datetime represented by WUWEI_NOW."""
+    from datetime import datetime
     if "WUWEI_NOW" not in os.environ:
         return datetime.now().astimezone()
     timestamp = os.environ["WUWEI_NOW"]
@@ -442,6 +439,7 @@ def _validate(value, schema, path, raw):
 
 
 def _default(schema):
+    from copy import deepcopy
     if isinstance(schema, dict):
         return {}
     if isinstance(schema, list):
@@ -454,9 +452,20 @@ def _default(schema):
 _CONFIGS = {}
 
 
+def __getattr__(name):
+    # tomllib loads on first use, off the hook path; workspace.tomllib stays addressable.
+    if name == 'tomllib':
+        import tomllib
+        return tomllib
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+
+
 def load_config(root=None, *, raw=None):
     """Read .wuwei/config.toml (or validate raw in its place), reject invalid fields, and
     return fresh defaults."""
+    from copy import deepcopy
+    from datetime import date
+    import tomllib
     path = (find_workspace() if root is None else Path(root)) / ".wuwei/config.toml"
     try:
         raw = path.read_text(encoding="utf-8") if raw is None else raw
@@ -481,8 +490,8 @@ def load_config(root=None, *, raw=None):
             if value and AREA_LEVELS.index(value) < AREA_LEVELS.index(floor):
                 raise ConfigError(f'security.areas.{area}: "{value}" is below its floor "{floor}"; '
                                   f'{area} always blocks, remove the override')
-        from wuwei.decision import CLASSES
         for name, value in config['decisions']['cruise']['levels'].items():
+            from wuwei.decision import CLASSES
             if name not in CLASSES:
                 raise ConfigError(f'decisions.cruise.levels.{name}: unknown class; use one of '
                                   + ', '.join(CLASSES))

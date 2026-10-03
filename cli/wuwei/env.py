@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 import stat
 
-from wuwei import redact, workspace
+from wuwei import redact
 
 
 CREDENTIALS = ('LINEAR_API_KEY', 'SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN',
@@ -91,6 +91,7 @@ def load(root):
 
 def initialize(directory, *, dry_run=False):
     """Provision missing credentials without replacing owner values."""
+    from wuwei import workspace
     directory = Path(directory)
     path, ignore = directory / 'env', directory / '.gitignore'
     if path.is_symlink() or ignore.is_symlink():

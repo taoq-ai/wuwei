@@ -1,11 +1,10 @@
 """Guard modules expose a plain GUARDS list; private modules are helpers."""
 
+from collections import namedtuple
 from contextvars import ContextVar
 from importlib import import_module
-import pkgutil
 import re
 import sys
-from typing import Callable, NamedTuple
 
 from wuwei.exits import CLEAN, FINDINGS
 
@@ -64,11 +63,16 @@ def level(check, levels):
 SELECTION = ContextVar('SELECTION', default=None)
 
 
-class Guard(NamedTuple):
-    event: str
-    matcher: str | None
-    check: Callable[[dict], tuple[int, str]]
-    profile_relaxable: bool = False
+# check(payload) -> (exit, message); matcher None runs for any tool.
+Guard = namedtuple('Guard', 'event matcher check profile_relaxable', defaults=(False,))
+
+
+def __getattr__(name):
+    # pkgutil (and typing through it) loads on first use; guards.pkgutil stays addressable.
+    if name == 'pkgutil':
+        import pkgutil
+        return pkgutil
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
 
 
 def profile_result(result, profile, root, tool):
@@ -83,6 +87,7 @@ def profile_result(result, profile, root, tool):
 
 
 def discover():
+    import pkgutil
     guards = []
     selection = SELECTION.get()
     for module in pkgutil.iter_modules(__path__, __name__ + '.'):

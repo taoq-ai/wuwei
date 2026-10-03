@@ -1,6 +1,5 @@
 """Shared gate verdict lint, ported from the production verdict-lint script."""
 
-import hashlib
 from pathlib import Path
 import re
 
@@ -148,6 +147,7 @@ def record_rejection(path, code, message, *, root=None):
     """Record file/guard rejections when a WUWEI workspace is available."""
     if not code:
         return code, message
+    import hashlib
     from wuwei import state, workspace
 
     try:
