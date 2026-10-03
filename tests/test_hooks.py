@@ -1034,3 +1034,44 @@ def test_refusal_from_two_guards_lists_both_in_order(plugin):
     assert recorded['reason'] == 'first; a\nsecond'
     assert recorded['refusals'] == [{'guard': 'first', 'reason': 'first; a'},
                                     {'guard': 'second', 'reason': 'second'}]
+
+
+def returning(reason, code=2):
+    return f'''
+from wuwei.guards import Guard
+from wuwei.shell import {reason}
+GUARDS = [Guard('PreToolUse', None, lambda payload: ({code}, {reason}))]
+'''
+
+
+@pytest.mark.parametrize('name', ['observe', 'guarded', 'strict'])
+def test_posture_levels_unparsed_and_workspace_root_by_reason(plugin, name):
+    # #347: the two reasons are levelled by their text, not by the guard's area or floor.
+    from wuwei.shell import UNPARSED, WORKSPACE_ROOT
+    payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
+    set_posture(plugin, f'[security]\nposture = "{name}"\n')
+    guards = plugin[0] / 'cli/wuwei/guards'
+    try:
+        forget_guards()
+        install(plugin, returning('UNPARSED'), 'deploy')
+        install(plugin, returning('UNPARSED'), 'pr')
+        result = replay(plugin, 'PreToolUse', payload)
+        if name == 'strict':
+            assert_refusal(result, 'PreToolUse', UNPARSED)
+            assert events_of(plugin, 'guard.would_refuse') == []
+        else:
+            assert (result.returncode, result.stdout, result.stderr) == (0, '', '')
+            assert [row['reason'] for row in events_of(plugin, 'guard.would_refuse')] == [UNPARSED]
+        for module in ('deploy', 'pr'):
+            (guards / f'{module}.py').unlink()
+        forget_guards()
+        install(plugin, returning('WORKSPACE_ROOT', 1), 'protect_state')
+        result = replay(plugin, 'PreToolUse', payload)
+        assert (result.returncode, result.stdout, result.stderr) == (0, '', '')
+        assert events_of(plugin, 'guard.would_refuse')[-1]['reason'] == WORKSPACE_ROOT
+        forget_guards()
+        install(plugin, refusing('PreToolUse', 'kept'), 'protect_state')
+        assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse',
+                       'kept\nposture: records = block (floor; no setting lowers it)')
+    finally:
+        forget_guards()

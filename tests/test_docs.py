@@ -748,3 +748,8 @@ def test_owner_questions_use_widgets_or_the_dm():
     answer = decisions.split('\n### How you answer\n', 1)[1].split('\n#', 1)[0]
     for phrase in ('question card', 'DM', 'host terminal'):
         assert phrase in answer, phrase
+def test_unparsed_commands_are_documented():
+    # #347: the security page names the unparsed class and the cd rule's subshell form.
+    security = ' '.join((SITE / 'security.md').read_text().split())
+    for phrase in ('unparsed', '(cd <dir> && <command>)', 'blocks only under `strict`'):
+        assert phrase in security, phrase

@@ -731,3 +731,14 @@ def test_second_opinion_verdict_is_linted_as_quality(case):
         root, decisions, evidence().replace('Simplicity: checked\nDesign: checked\n', ''))
     with pytest.raises(ValueError, match='quality@codex verdict'):
         guard()._recorded_gates(root, SHA, records, '9', items)
+
+
+@pytest.mark.parametrize('command, code, reason', [
+    ('W=$(cat .wuwei/executable); $W plan session abc --take-over; $W mcp check', 2, 'unparsed'),
+    ('x=$(cat f); gh pr merge $x', 2, 'PR guard could not run'),
+    ('for r in a b; do gh -R $r issue list; done', 0, ''),
+])
+def test_issue_347_unparsed_calls(case, command, code, reason):
+    root, _, _ = case
+    result = guard().check(payload(root, command))
+    assert result[0] == code and reason in result[1], result

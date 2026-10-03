@@ -760,3 +760,21 @@ def test_identity_refusal_names_the_fix():
     demo = {'name': 'Demo Owner', 'email': 'demo@example.test'}
     assert "git config user.name 'Demo Owner'" in guard().identity_check(
         demo, {'author': OTHER, 'committer': demo})[1]
+
+
+@pytest.mark.parametrize('command, expected', [
+    ('ls; ls days/x; cat days/x/decisions/D-1.md; grep -n rm config.toml', (0, '')),
+    ('W=$(cat .wuwei/executable); $W plan session abc --take-over; $W mcp check', 'unparsed'),
+    ('python3 -P -c \'import subprocess;r=subprocess.run(["git","log","-1"]);'
+     'print(open("config.toml").read())\'', 'unparsed'),
+    ('for r in a b; do git -C $r push origin main; done', 'kept'),
+    ('for f in a; do rm wuwei-workspace; done', 'kept'),
+])
+def test_issue_347_unparsed_and_read_only(workspace_case, command, expected):
+    from wuwei.shell import UNPARSED
+    root, _ = workspace_case
+    result = guard().check({'cwd': str(root), 'tool_name': 'Bash', 'tool_input': {'command': command}})
+    if expected == 'kept':
+        assert result[0] == 2 and 'commit/push guard could not run' in result[1], result
+    else:
+        assert result == ((2, UNPARSED) if expected == 'unparsed' else expected)

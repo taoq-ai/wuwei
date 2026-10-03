@@ -43,7 +43,7 @@ def hook(cwd, command, monkeypatch, capsys):
     ('python3 -m pytest -q && git status', 0, ()),
     ('git push $(cat remote) main', 2, ('commit/push guard', 'deploy')),
     ('git status | python3', 2, ('deploy', 'python3')),
-    ('cd $(git rev-parse --show-toplevel) && ls', 2, ('workspace guard',)),
+    ('cd $(git rev-parse --show-toplevel) && ls', 0, ()),
 ])
 def test_seat_command_forms(workspace, where, command, code, words, monkeypatch, capsys):
     actual, output = hook(workspace / where, command, monkeypatch, capsys)

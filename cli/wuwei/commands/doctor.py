@@ -417,7 +417,7 @@ def _guards(root, probes):
     rows = [_row('guards', name, PROBE[probes[name]['result']], probes[name]['value'],
                  'fix the integrity row first' if 'plugin integrity' in probes[name]['value'] else
                  'the hook no longer behaves as shipped; run wuwei integrity check and ' + REINSTALL)
-            for name in ('refused', 'allowed', 'state_write', 'status_line')] if root is not None else []
+            for name in ('refused', 'allowed', 'state_write', 'read_loop', 'status_line')] if root is not None else []
     fix = 'upgrade WUWEI: outside a workspace every hook must allow (#323)'
     try:
         with tempfile.TemporaryDirectory() as outside:
