@@ -163,8 +163,8 @@ def test_report_requires_day_state(tmp_path, monkeypatch, capsys):
     (tmp_path / '.wuwei/config.toml').write_text('')
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
-    assert main(['report']) == 2
-    assert 'state missing' in capsys.readouterr().err
+    assert main(['report']) == 0  # #362: a state answer
+    assert 'no day has started' in capsys.readouterr().out
 
 
 def test_report_and_retro_outside_workspace_are_clean(tmp_path, monkeypatch):

@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 
+from wuwei.redact import redact
 from wuwei.registry import Result, together as _together  # Independent reads, concurrently.
 
 
@@ -180,7 +181,15 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
     if result.returncode:
         if b'not a git repository' in result.stderr:
             raise ValueError('not a git repository')
-        raise ValueError(f'git exited {result.returncode}')
+        # #362: the subcommand, the repository, the first stderr line (redacted, capped) and a hint.
+        line = next((text.strip() for text in result.stderr.decode('utf-8', errors='replace').splitlines()
+                     if text.strip()), '')
+        reason = f'git exited {result.returncode} ({args[0]} in {os.fspath(repo)})'
+        if line:
+            reason += ': ' + redact(line)[:200]
+        if re.search(r'origin/\S|unknown revision|bad revision|not a valid object name', line, re.I):
+            reason += f'; run git -C {os.fspath(repo)} fetch origin, then retry'
+        raise ValueError(reason)
     return result.stdout.decode('utf-8', errors='surrogateescape')
 
 

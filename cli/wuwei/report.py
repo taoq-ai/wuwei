@@ -5,6 +5,7 @@ import json
 import re
 
 from wuwei import metrics, signal, state, watch, workspace
+from wuwei.exits import SYMLINK
 
 FALSE_POSITIVE_AFTER = 3  # A form refused more often than this with no later page is a candidate.
 
@@ -14,7 +15,7 @@ def decisions(day, data):
     outcomes = {}
     for path in sorted((day / 'decisions').glob('D-*.md')):
         if path.is_symlink():
-            raise ValueError('decision record must not be a symlink')
+            raise ValueError(f'decision record must not be a symlink; {SYMLINK}')
         values = re.findall(r'^Outcome:\s*(\S[^\n]*)$', path.read_text(encoding='utf-8'), re.M)
         if len(values) > 1:
             raise ValueError(f'duplicate decision outcome: {path.name}')
@@ -56,7 +57,7 @@ def build(root=None):
     root = workspace.find_workspace(root)
     day = workspace.day_dir(root)
     if not (day / 'state.json').is_file():
-        raise ValueError('day state missing; report cannot infer open work')
+        raise ValueError('day state missing; report cannot infer open work; start the day with /wuwei:wuwei-plan')
     data = state.read_state(root)
     measured = metrics.collect(root)
     baseline = measured['baseline']
@@ -93,7 +94,7 @@ def build(root=None):
         ident = item.get('decision')
         record = day / 'decisions' / f'{ident}.md' if isinstance(ident, str) else None
         if record is not None and record.is_symlink():
-            raise ValueError('parked decision must not be a symlink')
+            raise ValueError(f'parked decision must not be a symlink; {SYMLINK}')
         reference = f'decisions/{ident}.md' if record is not None and record.is_file() else 'unmeasured'
         lines.append(f'- {name}: decision {ident or "unmeasured"} ({reference})')
     if not parked:

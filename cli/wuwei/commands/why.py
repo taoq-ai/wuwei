@@ -86,11 +86,11 @@ def item(root, name):
                      for key, row in state.read_state(directory=day)['items'].items()
                      if row.get('pr') == ref), None)
         if name is None:
-            raise Missing(f'no item links {ref}')
+            raise Missing(f'no item links {ref}; run bin/wuwei pr state for the PRs owned today')
     days = [(day, data) for day in reversed(watch.days(root))
             if name in (data := state.read_state(directory=day))['items']]
     if not days:
-        raise Missing(f'no recorded item {name}')
+        raise Missing(f'no recorded item {name}; run bin/wuwei status for today\'s items')
     rel = lambda path: str(path.relative_to(root))
     groups = {group: [] for group in GROUPS}
     for day, data in days:
@@ -172,13 +172,13 @@ def refusal(root, target):
                       for number, event in reversed(list(enumerate(watch.records(day / 'events.jsonl'), 1)))
                       if event['kind'] in REFUSALS), None)
         if found is None:
-            raise Missing('no recorded refusal')
+            raise Missing('no recorded refusal; nothing was refused today, so run bin/wuwei status for the day')
     else:
         name, _, line = target.partition(':')
         day = next((day for day in watch.days(root) if day.name == name), None)
         rows = watch.records(day / 'events.jsonl') if day else []
         if int(line) > len(rows) or rows[int(line) - 1]['kind'] not in REFUSALS:
-            raise Missing(f'no recorded refusal {target}')
+            raise Missing(f'no recorded refusal {target}; run bin/wuwei why last refusal for the latest one')
         found = day, int(line), rows[int(line) - 1]
     day, number, event = found
     payload = event['payload']
@@ -200,7 +200,7 @@ def decided(root, ident):
     """Today's D-n: options and scores, weights, margin, class, level and who decided."""
     path = decision.today_path(ident, root)
     if not path.is_file():
-        raise Missing(f'no decision record {ident} today')
+        raise Missing(f'no decision record {ident} today; run bin/wuwei nudges for open decisions')
     text = path.read_text(encoding='utf-8')
     fields, scores = decision.evaluate(text)
     _, _, wants, _ = decision._scored(fields)

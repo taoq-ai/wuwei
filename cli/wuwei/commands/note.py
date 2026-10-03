@@ -3,7 +3,7 @@
 import json
 import sys
 
-from wuwei.exits import CLEAN, FINDINGS
+from wuwei.exits import CLEAN, FINDINGS, SYMLINK
 from wuwei.notes import OWNER_NOTES, SLUG_RE, parse_note
 from wuwei.workspace import atomic_write, find_workspace, now
 
@@ -22,10 +22,10 @@ def register(subparsers):
 
 def run_add(args):
     if args.slug in OWNER_NOTES:
-        print('wuwei note: baseline is maintained by the owner outside agent tools', file=sys.stderr)
+        print('wuwei note: baseline is maintained by the owner outside agent tools; write the change as a proposal; the owner edits the baseline in a host terminal', file=sys.stderr)
         return FINDINGS
     if not SLUG_RE.fullmatch(args.slug):
-        print('wuwei note: invalid slug', file=sys.stderr)
+        print('wuwei note: invalid slug; use lowercase letters, digits and dashes', file=sys.stderr)
         return FINDINGS
     fields = [('type', args.type), ('summary', args.summary),
               ('aliases', '[' + ', '.join(json.dumps(alias, ensure_ascii=False) for alias in args.alias) + ']'),
@@ -44,12 +44,12 @@ def run_add(args):
         raise ValueError('.wuwei must not be a symlink')
     directory = root / '.wuwei/memory/notes'
     if directory.is_symlink() or not directory.resolve().is_relative_to(root):
-        raise ValueError('notes directory must be inside the workspace and not a symlink')
+        raise ValueError(f'notes directory must be inside the workspace and not a symlink; {SYMLINK}')
     path = directory / f'{args.slug}.md'
     try:
         atomic_write(path, content, replace=False)
     except FileExistsError:
-        print(f'wuwei note: {path} already exists', file=sys.stderr)
+        print(f'wuwei note: {path} already exists; use another slug, or edit that note', file=sys.stderr)
         return FINDINGS
     print(path)
     return CLEAN

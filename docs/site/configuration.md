@@ -25,7 +25,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `template_version` | `""` | Plugin version that last wrote this file. `wuwei init`, `wuwei setup` and `wuwei init --upgrade` raise it and never lower it. A plugin older than this value treats keys it does not know as unknown to it, records `config.newer_template` once per session, and `wuwei doctor` and the status line say to restart Claude Code. |
 | `prioritisation.framework` | `"wsjf"` | Ranking formula: `wsjf` or `rice`. |
 | `discovery.min_queue` | `2` | Discover again when a seat frees and the queue is below this count. |
-| `discovery.autostart` | `"strict"` | Intraday start policy: `off` carries safe items to the next morning; `strict` admits confirmed-goal SLICE items above the approved queue cut; `goal` admits confirmed-goal SLICE items under CAP and budget. Unsafe or over-budget items go to the owner. |
+| `discovery.autostart` | `"strict"` | Intraday start policy: `off` carries safe items to the next morning; `strict` admits confirmed-goal SLICE items above the approved queue cut; `goal` admits confirmed-goal SLICE items under CAP and budget. Unsafe or over-budget items come to you. |
 | `tracker.backlog_filter` | `""` | Optional Linear team ID for backlog discovery. Empty reads accessible issues. |
 | `tracker.states.in_review` | `"In Review"` | Linear workflow state name after a PR is raised. |
 | `tracker.states.done` | `"Done"` | Linear workflow state name after a confirmed merge. |
@@ -55,8 +55,8 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `owner.verbosity.default` | `"brief"` | How much the CLI tells you: `brief`, `standard` or `full`. At `brief` a decision is its question, one line per option with its score, and the recommendation with one reason; the report leads with up to three outcome numbers that changed. `standard` adds the context, confidence, reversibility, blast radius, pre-mortem and revisit lines to a decision and keeps the earlier report. `full` adds every field and the record paths. Seat briefs keep `brief.style.length`. |
 | `owner.verbosity.decisions` | `""` | Level for `bin/wuwei decision show`. Empty uses `owner.verbosity.default`. |
 | `owner.verbosity.digest` | `""` | Level for the two-way decision digest; `full` adds each record path. Empty uses the default. |
-| `owner.verbosity.nudges` | `""` | Level for PR change messages in the owner DM; `full` adds the changed fields. Empty uses the default. |
-| `owner.verbosity.dm` | `""` | Level for decisions sent to the owner DM. Empty uses the default. |
+| `owner.verbosity.nudges` | `""` | Level for PR change messages in your owner DM; `full` adds the changed fields. Empty uses the default. |
+| `owner.verbosity.dm` | `""` | Level for decisions sent to your owner DM. Empty uses the default. |
 | `owner.verbosity.report` | `""` | Level for `bin/wuwei report`. Empty uses the default. |
 
 A minimal repository entry after initialization looks like this. Replace the example values with your own:
@@ -112,7 +112,7 @@ and lets the turn end.
 | `shepherd.reviewers_exclude` | `[]` | Code host logins never picked from history; the lead too when listed. |
 | `shepherd.review_channel` | `""` | Chat channel ID for review requests. |
 | `shepherd.review_gate_check` | `"Review Gate"` | Check excluded during review requests. |
-| `shepherd.min_reviewers` | `1` | Minimum eligible reviewers required to raise or request review. `0` is a solo owner: `wuwei pr raise` and `gh pr create` need no reviewer, the owner merges, and the reviewer and channel-post obligations are not applicable. When the history finds nobody but the author, `wuwei pr raise` raises with `reviewers: none (solo)` on any value; it refuses only when it found some reviewers but fewer than this, and names `bin/wuwei config set shepherd.min_reviewers 0` and `shepherd.reviewers` as the ways out. Above `0`, `gh pr create` still needs a `--reviewer`: `shepherd.reviewers` takes effect only through `wuwei pr raise`. |
+| `shepherd.min_reviewers` | `1` | Minimum eligible reviewers required to raise or request review. `0` is a solo owner: `wuwei pr raise` and `gh pr create` need no reviewer, you merge, and the reviewer and channel-post obligations are not applicable. When the history finds nobody but the author, `wuwei pr raise` raises with `reviewers: none (solo)` on any value; it refuses only when it found some reviewers but fewer than this, and names `bin/wuwei config set shepherd.min_reviewers 0` and `shepherd.reviewers` as the ways out. Above `0`, `gh pr create` still needs a `--reviewer`: `shepherd.reviewers` takes effect only through `wuwei pr raise`. |
 | `shepherd.author_windows_days` | `[90, 180]` | Authorship lookback windows, then all history. |
 | `shepherd.tie_commits` | `2` | Include a third author within this many commits of second place. |
 | `shepherd.source_exclude` | `specs/*`, lock files and generated files | Changed paths excluded from reviewer selection. |
@@ -170,7 +170,7 @@ These keys feed the mandate block in every seat prompt. Cruise mode itself, wher
 | `brief.full_path_patterns` | `[]` | Owner supplied regexes for paths needing full context. |
 | `chat.identity` | `"connector"` | Optional CLI default: connector or custom_app. This key is not in the template. |
 | `control_plane.content` | `"summary"` | What a messaging transport sends about a pending decision. `summary` sends the decision at the `owner.verbosity.dm` level (at `brief`: the id, the question, each option with its score and the reason for the recommendation; at `standard` or `full`: more of the record, up to all of it, including context, blast radius and evidence paths) and the whole record on a `more D-n` reply; `none` sends only the id and option letters, and a fixed line in place of an update. The question widget in the planner session always shows the summary. |
-| `control_plane.owner` | `""` | The pinned sender of commands from the owner DM, as `<team id>/<user id>` (such as `T0123ABC/U0123ABC`). Empty handles no command; `wuwei config check` reports it when `adapters.inbound` is set. |
+| `control_plane.owner` | `""` | The pinned sender of commands from your owner DM, as `<team id>/<user id>` (such as `T0123ABC/U0123ABC`). Empty handles no command; `wuwei config check` reports it when `adapters.inbound` is set. |
 
 Run `bin/wuwei brief pack` once for a daily text pack, or `bin/wuwei brief pack --meeting`
 inside the lead window for the next attendee meeting. The returned path contains the
@@ -235,7 +235,7 @@ The template also shows a `"release/*"` environment example. Add any actual envi
 
 ## Calibration
 
-`bin/wuwei setup` runs the calibration and the owner interview for you: it adds a `[[repos]]` table for each repository it finds, calibrates them, and applies everything after one digest in a host terminal. The sections below describe what it proposes.
+`bin/wuwei setup` runs the calibration and your interview: it adds a `[[repos]]` table for each repository it finds, calibrates them, and applies everything after one digest in a host terminal. The sections below describe what it proposes.
 
 Two host terminal commands change one value later, each with a diff and a digest, the same path as `config promote`. The value is parse-checked before you are asked; an invalid one is refused with the reason and nothing is written:
 
@@ -330,9 +330,9 @@ Unknown destinations and direct messages draft by default. A channel allowlist i
 
 ## Goals and discovery
 
-While `memory/goals.md` has no goals, the lead proposes goal objects in its JSON, `wuwei plan propose` shows them as provisional and writes `days/<date>/goals.md`, and after the owner approves them in the morning gate the planner records that file with `wuwei goals edit --file`. Under the strict posture the hook refuses the planner's call and prints the command for a host terminal. Later the owner can run `bin/wuwei goals edit` to open `$EDITOR`, or `bin/wuwei goals edit --file goals.md` to use a prepared file. The command validates and commits the change in `.wuwei` history with `Promoted-by: wuwei` and `Edited-by: owner`, so SessionStart does not flag it as an unpromoted edit. Seats cannot use this owner action. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei rank candidates.json` reads JSON candidates with a goal or `unplanned` mark, a `score` object, and one `evidence_lines` entry per score component. `wuwei discover` reports unavailable sources as `unmeasured`.
+While `memory/goals.md` has no goals, the lead proposes goal objects in its JSON, `wuwei plan propose` shows them as provisional and writes `days/<date>/goals.md`, and after you approve them in the morning gate the planner records that file with `wuwei goals edit --file`. Under the strict posture the hook refuses the planner's call and prints the command for a host terminal. Later you can run `bin/wuwei goals edit` to open `$EDITOR`, or `bin/wuwei goals edit --file goals.md` to use a prepared file. The command validates and commits the change in `.wuwei` history with `Promoted-by: wuwei` and `Edited-by: owner`, so SessionStart does not flag it as an unpromoted edit. Seats cannot use this owner action. Each `## G-n` block needs `outcome`, `measure`, `target`, `date` in ISO format, and a positive integer `priority`. Priority 1 wins score ties. `wuwei rank candidates.json` reads JSON candidates with a goal or `unplanned` mark, a `score` object, and one `evidence_lines` entry per score component. `wuwei discover` reports unavailable sources as `unmeasured`.
 
-The owner uses `bin/wuwei voice edit` or `bin/wuwei voice edit --file voice.md` for the same validated history flow. Seat proposals still go through `wuwei promote`.
+You use `bin/wuwei voice edit` or `bin/wuwei voice edit --file voice.md` for the same validated history flow. Seat proposals still go through `wuwei promote`.
 
 After the morning gate, sweeps and qualifying seat-free events save new discovery candidates. A builder seat stop only records the seat-free request; the watch runs that discovery on its next tick and records a failure once as `discovery.unmeasured`. Run `bin/wuwei plan add <item>` to apply the same admission gate to one saved candidate. A started item enters the existing `build next` path when a builder brief and worktree are logged; otherwise a build request remains visible for the planner. Owner proposals appear in the steward decision batch. The morning plan shows safe `off` mode candidates carried from the prior day.
 
@@ -418,7 +418,7 @@ refuses with exit 2 under `guarded` and `strict`. A workspace created before #35
 carries `block = ["critical"]` from the old template; `bin/wuwei config check` names it,
 and deleting the line takes the posture default.
 
-For a server that stays unmeasured, the owner may run
+For a server that stays unmeasured, you may run
 `bin/wuwei mcp decide proceed-unmeasured <server>...` from the host terminal and answer
 y. It records an owner decision bound to each server's definition;
 later checks report the server as proceeding unmeasured by owner decision until its
@@ -432,8 +432,8 @@ followed by `Reports:` with each report path. The snippet is redacted, limited t
 plain characters and cut to 60. Since reads `first measurement`, or
 `changed since <day>` when the server has an accepted baseline.
 
-To answer it, the owner runs `bin/wuwei decide D-<n> proceed` (or `defer`), or
-`bin/wuwei mcp decide D-<n> proceed`, from a host terminal and answers y. Under
+To answer it, run `bin/wuwei decide D-<n> proceed` (or `defer`), or
+`bin/wuwei mcp decide D-<n> proceed`, from a host terminal and answer y. Under
 `observe` and `guarded` the planner asks it in the session and records the answer with
 the same command. The command writes `Outcome:`, `Decided-by: owner` and a
 `Notes: Decided at <time> at the host terminal.` (or `in the planner session.`) line
@@ -516,7 +516,7 @@ previous successful poll, and the first poll starts five minutes back. A Slack r
 and the next poll retries. The reading token needs the `channels:history`,
 `groups:history` and `im:history` scopes and membership of the polled channels.
 
-### Commands from the owner DM
+### Commands from your owner DM
 
 Each new message in `SLACK_OWNER_DM_CHANNEL` is handled once, in order, by the
 listener: `plan`, `status`, `report`, `ask <question>`, `stop <session>` (a unique prefix
@@ -551,7 +551,7 @@ is below `host.free_memory_mb`. The
 session is listed in `wuwei sessions` with role `remote`. A tool outside the role's
 tools is refused and arrives as a decision; granting it stays a host change.
 
-Messages to the owner DM are sent, not drafted: they pass the security check and the
+Messages to your owner DM are sent, not drafted: they pass the security check and the
 outward lint first, and a decision the lint refuses arrives as "D-n is waiting in the
 workspace." Every other DM still becomes a draft. With `responder.enabled = false` no
 command is handled; stored commands are handled once it is back on.
@@ -562,10 +562,10 @@ when the listener is installed and wrote none today. A listener that is off or a
 adds nothing to session start. `wuwei status --line` shows `listen dead`,
 `listen unmeasured` or `listen off` (nothing while alive, and nothing without an inbound
 adapter), and `wuwei nudges` pages a dead listener as `listen: health`. A DM answer to a
-two-way decision is recorded as the owner outcome by the listener. A DM answer to a
+two-way decision is recorded as your outcome by the listener. A DM answer to a
 one-way or `unsure` decision shows in `wuwei nudges` and session start as "D-n answered
-from the phone", and the status line counts them as `phone answers N`, until the owner
-records the outcome.
+from the phone", and the status line counts them as `phone answers N`, until you
+record the outcome.
 
 ## Private workspace environment
 
@@ -610,7 +610,7 @@ Seat credentials: `GH_TOKEN` and `GITHUB_TOKEN` in `.wuwei/env` or in the enviro
 that seats inherit are readable by any seat. Each line reports `not set`, `read-only`
 (every classic OAuth scope starts with `read:`), a finding naming the variable, its
 source and its write scopes, or `unmeasured`. Fine-grained and app tokens report no
-scopes and are always `unmeasured`. Publish from the owner's own `gh auth login`.
+scopes and are always `unmeasured`. Publish from your own `gh auth login`.
 
 Every line is `ok`, `missing` with the exact setting to change, or `unmeasured`
 (no permission to read, host unreachable, or `code_host = "none"`), with the reason

@@ -6,6 +6,7 @@ import shlex
 import sys
 
 from wuwei import brief, registry, state, verdict, workspace
+from wuwei.exits import ADAPTER_DATA, DAMAGED, RACE
 
 
 ROLES = ('arch', 'quality', 'security')
@@ -20,7 +21,7 @@ def gate_set(row):
     if roles is None:
         return ROLES
     if not isinstance(roles, list) or 'quality' not in roles or not set(roles) <= set(ROLES):
-        raise ValueError('invalid recorded gate set')
+        raise ValueError(f'invalid recorded gate set; {DAMAGED}')
     roles = tuple(role for role in ROLES if role in roles)
     second = row['gates'].get('second_opinion')
     if second is None:
@@ -28,7 +29,7 @@ def gate_set(row):
     if (not isinstance(second, dict) or second.get('role') not in roles
             or not re.fullmatch(r'[a-z]+', str(second.get('runtime')))
             or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', str(second.get('model')))):
-        raise ValueError('invalid recorded gate set')
+        raise ValueError(f'invalid recorded gate set; {DAMAGED}')
     return (*roles, f"{second['role']}@{second['runtime']}")
 
 
@@ -54,7 +55,7 @@ def tier(root, config, row):
             rise('standard', f'lead flag {name}')
     try:
         if not row.get('worktree'):
-            raise ValueError('no worktree')
+            raise ValueError('no worktree; create one with bin/wuwei worktree add <item> before dispatching gates')
         tree = (root / row['worktree']).resolve()
         repo, _, vcs = commit_push.context(tree, {}, {}, root, identity=False)
         head = brief.read(vcs.head, str(tree), root=root)['sha']
@@ -110,7 +111,7 @@ def tracker_call(item, action, root=None):
     try:
         config = workspace.load_config(root)
         if config['adapters']['tracker'] == 'none':
-            result = registry.Result(2, reason='tracker adapter is none')
+            result = registry.Result(2, reason='tracker adapter is none; tracker updates are skipped; the owner sets adapters.tracker with bin/wuwei config set in a host terminal if they should reach the tracker')
         else:
             tracker = registry.load('tracker', config)
             if action == 'claim':
@@ -118,16 +119,16 @@ def tracker_call(item, action, root=None):
             elif action in ('in_review', 'done'):
                 result = tracker.transition(item, config['tracker']['states'][action], root=root)
             else:
-                raise ValueError('unknown tracker action')
+                raise ValueError('unknown tracker action; pass claim, in_review or done')
             if not isinstance(result, registry.Result) or result.exit not in (0, 1, 2):
-                raise ValueError('invalid tracker result')
+                raise ValueError(f'invalid tracker result; {ADAPTER_DATA}')
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
         result = registry.Result(2, reason=f'tracker call unmeasured: {type(exc).__name__}')
     try:
         state.append_event('tracker.call', {'item': item, 'action': action,
                            'exit': result.exit, 'reason': result.reason or ''}, root)
     except (OSError, ValueError) as exc:
-        print(f'tracker call unmeasured: could not record result: {type(exc).__name__}', file=sys.stderr)
+        print(f'tracker call unmeasured: could not record result: {type(exc).__name__}; run bin/wuwei doctor, which tests the tracker adapter', file=sys.stderr)
     return result
 
 
@@ -137,7 +138,8 @@ class Refused(ValueError):
 
 def _item(data, item):
     if not data['gate_approved'] or item not in data['approved_items'] or item not in data['items']:
-        raise Refused('item is not approved at the morning gate')
+        raise Refused(f'{item} is not approved at the morning gate; approve it there (/wuwei:wuwei-plan) '
+                      f'or admit it with bin/wuwei plan add {item}')
     return data['items'][item]
 
 
@@ -158,7 +160,7 @@ def next_step(item, root=None):
                       f'{notes[0]["text"]}')
     phase = row['phase']
     if phase not in ('gate', 'fix', 'delta'):
-        raise Refused(f'item phase {phase} is not dispatchable')
+        raise Refused(f'{item} is in phase {phase}, not at a gate; run bin/wuwei build next {item}')
     if phase in ('gate', 'delta'):
         try:
             brief.gate_ready(data, item)
@@ -166,14 +168,14 @@ def next_step(item, root=None):
             raise Refused(str(exc)) from exc
         if not any(seat['item'] == item and seat['role'] == 'builder'
                    and seat['status'] == 'stopped' for seat in brief.seats(data).values()):
-            raise Refused('builder must stand down before gates')
+            raise Refused(f'builder must stand down before gates; wait for the {item} builder to stop, then run bin/wuwei dispatch next {item}')
     if phase == 'gate' and not row['gates'] and all(
             _record(data, item, role, 'initial') is None for role in ROLES):
         record = tier(root, workspace.load_config(root), row)
 
         def update(fresh):
             if _item(fresh, item)['gates']:
-                raise Refused('gate tier changed during dispatch')
+                raise Refused(f'gate tier changed during dispatch; {RACE}')
             fresh['items'][item]['gates'] = record
         state._write_state(update, root, reserved=False, kind='gate.tiered',
                            payload={'item': item, **record})
@@ -183,7 +185,7 @@ def next_step(item, root=None):
         if any(_record(data, item, role, 'delta') is not None for role in gates):
             return {'action': 'escalate', 'reason': 'fix round already used'}
         if any(_record(data, item, role, 'initial') is None for role in gates):
-            raise Refused('fix phase requires all initial verdicts')
+            raise Refused(f'fix phase requires all initial verdicts; record the missing one with bin/wuwei dispatch receive {item} <role> <seat> (bin/wuwei why {item} shows it)')
         roles = [role for role in gates
                  if _record(data, item, role, 'initial')['verdict'] == 'FIX']
         return _fix(item, roles)
@@ -192,7 +194,7 @@ def next_step(item, root=None):
         round_name = 'initial'
     else:
         if any(_record(data, item, role, 'initial') is None for role in gates):
-            raise Refused('delta phase requires all initial verdicts')
+            raise Refused(f'delta phase requires all initial verdicts; record the missing one with bin/wuwei dispatch receive {item} <role> <seat> (bin/wuwei why {item} shows it)')
         roles = [role for role in gates
                  if _record(data, item, role, 'initial')['verdict'] == 'FIX']
         round_name = 'delta'
@@ -294,32 +296,32 @@ def receive(item, role, name, round_name='initial', root=None):
     data = state.read_state(root)
     _item(data, item)
     if round_name not in ('initial', 'delta'):
-        raise Refused('unknown gate round')
+        raise Refused('unknown gate round; pass --round delta for a delta, or leave the flag out for the initial round')
     gates = gate_set(data['items'][item])
     if role not in gates:
-        raise Refused(f'gate role {role} is not in the item gate set')
+        raise Refused(f'gate role {role} is not in the item gate set; use one of {", ".join(gates)}')
     sentinel = 'sentinel-' + base(role)
     if data['items'][item]['phase'] != ('gate' if round_name == 'initial' else 'delta'):
-        raise Refused('gate round does not match item phase')
+        raise Refused(f'gate round does not match item phase {data["items"][item]["phase"]};run bin/wuwei dispatch next {item} for the right round')
     if round_name == 'delta':
         first = _record(data, item, role, 'initial')
         if first is None or first['verdict'] != 'FIX':
-            raise Refused('gate did not need a delta')
+            raise Refused(f'gate did not need a delta; drop --round delta, or run bin/wuwei dispatch next {item} for what is open')
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name):
-        raise Refused('unsafe seat name')
+        raise Refused('unsafe seat name; use the seat name that bin/wuwei dispatch next returned')
     seat = brief.seats(data).get(name)
     if not seat or seat['item'] != item or seat['role'] != sentinel or seat['status'] != 'stopped':
-        raise Refused('matching sentinel must stand down before receive')
+        raise Refused('matching sentinel must stand down before receive; wait for the seat to stop, then rerun the same bin/wuwei dispatch receive')
     runtime = role.partition('@')[2] or None
     if seat.get('runtime') != runtime or (runtime and not name.endswith('-' + runtime)):
-        raise Refused(f'gate role {role} needs its own runtime seat')
+        raise Refused(f'gate role {role} needs its own runtime seat; start it with bin/wuwei dispatch opinion {item}')
     key = f'{item}:{role}:{round_name}'
     if key in data['gate_verdicts']:
-        raise Refused('gate already received')
+        raise Refused(f'gate already received; run bin/wuwei dispatch next {item} for what remains')
     directory = workspace.day_dir(root)
     path = directory / 'decisions' / f'gate-{name}.md'
     if path.is_symlink():
-        raise Refused('gate verdict must be a regular day file')
+        raise Refused('gate verdict must be a regular day file; replace the link with the file itself; bin/wuwei doctor names it')
     code, message = verdict.lint_file(path, role=sentinel, root=root)
     if code == 2:
         raise OSError(message)
@@ -329,38 +331,38 @@ def receive(item, role, name, round_name='initial', root=None):
     head = verdict.rows(text, 'Head')[0].strip()
     brief_path = root / seat['brief']
     if brief_path.resolve() != directory / 'briefs' / f'{name}.md':
-        raise Refused('seat brief path does not match gate name')
+        raise Refused(f'seat brief path does not match gate name; receive the seat with the name its brief was written for (bin/wuwei dispatch next {item})')
     brief_text = brief_path.read_text(encoding='utf-8')
     if (f'HEAD: {head}' not in brief_text and f'Head: {head}' not in brief_text
             and not str(seat.get('head') or '').lower().startswith(head.lower())):
-        raise Refused('verdict HEAD differs from dispatched brief')
+        raise Refused('verdict HEAD differs from dispatched brief; have the sentinel write the verdict with the Head from its brief, then receive it again')
     trees = re.findall(r'^Worktree: (.+)$', brief_text, re.M)
     if trees and trees[0] != 'none':
         from wuwei import registry
         tree = Path(trees[0])
         if not tree.is_absolute():
-            raise Refused('gate brief has an invalid worktree')
+            raise Refused(f'gate brief has an invalid worktree; write the brief again with --worktree <absolute path> (bin/wuwei worktree add {item} creates it)')
         current_head = brief.read(registry.load('vcs', workspace.load_config(root)).head,
                                   str(tree), root=root)['sha']
         if not isinstance(current_head, str) or not current_head.lower().startswith(head.lower()):
-            raise Refused('verdict HEAD differs from current worktree HEAD')
+            raise Refused(f'verdict HEAD differs from current worktree HEAD; write a fresh gate brief for the current HEAD and run bin/wuwei dispatch next {item}')
     current = [_record(data, item, gate, round_name) for gate in gates]
     if any(record and record['head'] != head for record in current):
-        raise Refused('gate HEAD differs from sibling verdict')
+        raise Refused(f'gate HEAD differs from sibling verdict; rerun the odd gate on the current HEAD via bin/wuwei dispatch next {item}')
     if sentinel == 'sentinel-security' and data['items'][item]['flags']['agent_surface']:
         from wuwei import scanner
         if not trees or trees[0] == 'none':
-            raise OSError('scanner: unmeasured: missing reviewed worktree')
+            raise OSError('scanner: unmeasured: missing reviewed worktree; write the security brief again with --worktree <absolute path>, then receive the verdict again')
         findings = scanner.rows(tree, item, data['items'][item]['flags'],
                                 workspace.load_config(root), root)
         measured_head = brief.read(registry.load('vcs', workspace.load_config(root)).head,
                                    str(tree), root=root)['sha']
         if measured_head != current_head:
-            raise OSError('scanner: unmeasured: worktree HEAD changed during audit')
+            raise OSError(f'scanner: unmeasured: worktree HEAD changed during audit; {RACE}')
         text = scanner.merge(text, findings)
         code, message = verdict.lint(text, class_sweep=True)
         if code:
-            raise OSError('scanner: unmeasured: ' + message)
+            raise OSError(f'scanner: unmeasured: {message}; fix the verdict as named, check it with bin/wuwei verdict lint <file>, then receive it again')
     result = re.search(verdict.VERDICT_ROW, text, re.M)[1]
     blocks = verdict.finding_blocks(text)
     notes = [block.strip() for block in blocks if not re.search(verdict.BLOCKS_YES, block, re.I)]
@@ -375,9 +377,9 @@ def receive(item, role, name, round_name='initial', root=None):
     def update(fresh):
         _item(fresh, item)
         if fresh['items'][item]['flags'] != data['items'][item]['flags']:
-            raise OSError('scanner: unmeasured: item flags changed during receive')
+            raise OSError(f'scanner: unmeasured: item flags changed during receive; {RACE}')
         if fresh['items'][item]['phase'] != data['items'][item]['phase'] or key in fresh['gate_verdicts']:
-            raise Refused('gate state changed during receive')
+            raise Refused(f'gate state changed during receive; {RACE}')
         fresh['gate_verdicts'][key] = value
 
     state._write_state(update, root, reserved=False, kind='gate.received',
@@ -396,17 +398,17 @@ def opinion(item, root=None):
     row = _item(data, item)
     second = (row.get('gates') or {}).get('second_opinion')
     if not second:
-        raise Refused('item has no second opinion')
+        raise Refused(f'item has no second opinion; the owner enables one with bin/wuwei config set gates.second_opinion in a host terminal')
     gate = gate_set(row)[-1]
     sentinel = 'sentinel-' + base(gate)
     round_name = {'gate': 'initial', 'delta': 'delta'}.get(row['phase'])
     if round_name is None:
-        raise Refused(f'item phase {row["phase"]} has no second-opinion round')
+        raise Refused(f'item phase {row["phase"]} has no second-opinion round; run bin/wuwei dispatch next {item} for the current step')
     if _record(data, item, gate, round_name):
         return _record(data, item, gate, round_name)
     first = _record(data, item, gate, 'initial')
     if round_name == 'delta' and (not first or first['verdict'] != 'FIX'):
-        raise Refused('gate did not need a delta')
+        raise Refused(f'gate did not need a delta; drop --round delta, or run bin/wuwei dispatch next {item} for what is open')
     name = _opinion_name(data, brief.events(root) if round_name == 'initial' else [], item, gate, round_name)
     if name is None:
         raise Refused(f'write the {base(gate)} gate brief first')
@@ -416,10 +418,10 @@ def opinion(item, root=None):
     seat = data['seats'].get(name)
     if seat is None or seat['status'] == 'stopped':
         if sum(other['status'] == 'running' for other in brief.seats(data).values()) >= config['host']['seats']:
-            raise Refused(f'running seats at host seat ceiling host.seats={config["host"]["seats"]}')
+            raise Refused(f'running seats at host seat ceiling host.seats={config["host"]["seats"]}; wait for a seat to finish, or the owner raises host.seats with bin/wuwei config set in a host terminal')
         if seat is None:
             if round_name == 'delta':
-                raise Refused('second-opinion seat is missing')
+                raise Refused(f'second-opinion seat is missing; run bin/wuwei why {item}, then bin/wuwei dispatch next {item}')
             if not (root / relative).exists():
                 text = (directory / 'briefs' / f'{name.rpartition("-")[0]}.md').read_text(encoding='utf-8')
                 try:
@@ -433,7 +435,7 @@ def opinion(item, root=None):
             # continue_job resumes the latest thread of this runtime in the worktree, which is
             # the builder's own thread when the builder runs on the same runtime.
             if data['seat_policy'].get('builder', {}).get('runtime') == second['runtime']:
-                raise Refused('second opinion cannot resume on the builder runtime')
+                raise Refused('second opinion cannot resume on the builder runtime; set gates.second_opinion to a runtime other than the builder (the owner runs bin/wuwei config set in a host terminal)')
             feedback = (_delta_feedback(first) if round_name == 'delta' else
                         'Your verdict file was rejected by the verdict lint; rewrite '
                         f'{directory.relative_to(root)}/decisions/gate-{name}.md to the verdict '
@@ -448,10 +450,10 @@ def opinion(item, root=None):
     status = build.wait(runtime, seat['job'], config, root)
     result = build._data(runtime.result(seat['job'], root=root), 'result')
     if not isinstance(result, dict) or not isinstance(result.get('text'), str):
-        raise ValueError('invalid runtime result')
+        raise ValueError(f'invalid runtime result; {ADAPTER_DATA}')
     path = directory / 'decisions' / f'gate-{name}.md'
     if path.is_symlink():
-        raise Refused('gate verdict must be a regular day file')
+        raise Refused('gate verdict must be a regular day file; replace the link with the file itself; bin/wuwei doctor names it')
     if not path.is_file() or path.stat().st_mtime < seat['job'].get('started_at', float('inf')):
         path.parent.mkdir(exist_ok=True)
         workspace.atomic_write(path, result['text'] + '\n')
@@ -482,7 +484,7 @@ def _seat_usage(seat, policy):
 def discovery(trigger, root=None, found=None):
     """Emit a discovery wake; ranking and starts belong to discovery policy."""
     if trigger not in ('sweep', 'seat-free'):
-        raise Refused('unknown discovery trigger')
+        raise Refused('unknown discovery trigger; run bin/wuwei dispatch discovery sweep or bin/wuwei dispatch discovery seat-free')
     root = workspace.find_workspace() if root is None else Path(root)
     data = state.read_state(root)
     config = workspace.load_config(root)

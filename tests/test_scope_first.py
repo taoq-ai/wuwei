@@ -192,7 +192,9 @@ def test_inside_verdicts_unchanged(tmp_path, outside, monkeypatch):
     seed(ws)
     code, _, err = hook('PreToolUse', payload('PreToolUse', ws, tool_input={'command': TRIAL[0]}))
     assert code == 2
-    assert 'commit/push guard could not run' in err and 'PR guard could not run' in err
+    assert 'commit/push guard could not run' in err and 'PR guard could not run' not in err
+    recorded = [json.loads(line) for line in next((ws / '.wuwei/days').glob('*/events.jsonl')).read_text().splitlines()]
+    assert 'PR guard could not run' in json.dumps([row for row in recorded if row['kind'] == 'hook.refusal'])
     monkeypatch.setenv('WS', str(ws))
     for command in (f'rm -rf {ws}/.wuwei/days', f'rm -rf {ws.parent}', 'rm -rf "$WS/.wuwei"'):
         code, _, err = hook('PreToolUse', payload('PreToolUse', outside, tool_input={'command': command}))

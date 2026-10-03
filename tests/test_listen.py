@@ -273,7 +273,7 @@ def test_dead_listener_is_reported_at_session_start(case, monkeypatch):
     assert watch.health(root, name='listen') == (0, '')
     assert 'listen' not in lifecycle.session_start({'cwd': str(root)})[1]
     later(monkeypatch, 1)
-    assert watch.health(root, name='listen') == (1, 'listen dead: no clock line within deadline')
+    assert watch.health(root, name='listen') == (1, LISTEN_DEAD)
     code, message = lifecycle.session_start({'cwd': str(root)})
     assert code == 1 and 'listen dead' in message
 
@@ -285,7 +285,7 @@ def test_installed_listener_without_clock_is_dead(case):
     assert 'listen' not in workspace.watch_unit(root)[0]
     unit.parent.mkdir(parents=True)
     unit.write_text('')
-    assert watch.health(root, name='listen') == (1, 'listen dead: installed but no clock line today')
+    assert watch.health(root, name='listen') == (1, 'listen dead: installed but no clock line today; ' + LISTEN_FIX)
 
 
 def test_tick_writes_the_clock_line(case, monkeypatch):
@@ -510,7 +510,7 @@ def test_issue_acceptance_dead_listener_shows_in_the_status_line(case, monkeypat
     text, listening, rows = status_of(capsys)
     assert 'listen dead' in text and listening == 'dead'
     assert rows == [{'tier': 'page', 'source': 'listen: health', 'lane': 'Work',
-                     'reason': 'listen dead: no clock line within deadline'}]
+                     'reason': LISTEN_DEAD}]
 
 
 @pytest.mark.parametrize('setup, part, listening, tier', [
@@ -1015,3 +1015,7 @@ def test_listener_dispatches_nothing_when_off(seat, monkeypatch, text):
     monkeypatch.setattr(registry, 'load', lambda kind, settings: runtime if kind == 'runtime' else load(kind, settings))
     assert listen().tick(root, {}) == 0
     assert not runtime.calls and not briefs(root) and not kinds(root, 'shepherd.dispatched')
+
+
+LISTEN_FIX = 'the owner restarts it with bin/wuwei listen install in a host terminal'
+LISTEN_DEAD = 'listen dead: no clock line within deadline; ' + LISTEN_FIX

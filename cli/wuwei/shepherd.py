@@ -6,6 +6,7 @@ import re
 from wuwei import merge, obligations, registry, state, workspace
 from wuwei.references import pull_request, repository
 from wuwei.registry import Result
+from wuwei.exits import DAMAGED
 
 
 ERRORS = merge.ERRORS
@@ -15,19 +16,19 @@ def _settings(config, ref):
     repo = ref.split('#')[0]
     settings = next((row for row in config['repos'] if row['name'] == repo), None)
     if settings is None:
-        raise ValueError('PR repository is not configured')
+        raise ValueError('PR repository is not configured; the owner adds it with bin/wuwei config add-repo in a host terminal')
     return settings
 
 
 def _source(path, config):
     if not isinstance(path, str) or not path or path.startswith('/') or '..' in path.split('/'):
-        raise ValueError('invalid changed source path')
+        raise ValueError(f'invalid changed source path; {DAMAGED}')
     return not any(fnmatchcase(path, pattern) for pattern in config['shepherd']['source_exclude'])
 
 
 def _logins(selected):
     if any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]*', login) for login in selected):
-        raise ValueError('invalid reviewer login')
+        raise ValueError(f'invalid reviewer login; {DAMAGED}')
     return selected
 
 
@@ -65,12 +66,12 @@ def _rank(root, config, repo, branch, paths, author, source_path=None, explain=N
 
     def tally(rows):
         if not isinstance(rows, list):
-            raise ValueError('invalid authorship evidence')
+            raise ValueError(f'invalid authorship evidence; {DAMAGED}')
         counts = {}
         for row in rows:
             email, commits = row['email'].casefold(), row['commits']
             if not isinstance(email, str) or '@' not in email or type(commits) is not int or commits < 1:
-                raise ValueError('invalid authorship record')
+                raise ValueError('invalid authorship record; run bin/wuwei doctor, which names the record')
             login = login_of(email)
             if login is None:
                 unresolved.add(email.split('@', 1)[0])
@@ -81,7 +82,7 @@ def _rank(root, config, repo, branch, paths, author, source_path=None, explain=N
     source = str(source_path or (root / repo['path']).resolve())
     windows = config['shepherd']['author_windows_days']
     if not windows or windows != sorted(set(windows)):
-        raise ValueError('authorship windows must increase')
+        raise ValueError('authorship windows must increase; the owner sets increasing shepherd.author_windows_days with bin/wuwei config set in a host terminal')
     for days in (*windows, 0):
         counts = tally(merge.read(vcs.authorship, source, branch, paths, days, root=root))
         ranked = selected = sorted(counts, key=lambda login: (-counts[login], login))
@@ -123,7 +124,7 @@ def _rank(root, config, repo, branch, paths, author, source_path=None, explain=N
         if login in emails:
             verified = merge.read(host.author_login, repo['name'], emails[login], root=root)
             if verified['login'] != login:
-                raise ValueError('configured reviewer login differs from code host')
+                raise ValueError('configured reviewer login differs from code host; the owner fixes its login under shepherd.authors with bin/wuwei setup in a host terminal')
     return selected
 
 
@@ -136,7 +137,7 @@ def select_reviewers(root, ref, explain=None):
     pr = merge.checked_pr(host, ref, root)
     files = merge.read(host.files, ref, root=root)
     if len(files) != pr['changed_files']:
-        raise ValueError('incomplete changed files')
+        raise ValueError('incomplete changed files; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
     paths = [row['path'] for row in files if _source(row['path'], config)]
     return _rank(root, config, settings,
                  config['brief']['remote'] + '/' + pr['base'], paths, pr['author'], explain=explain)
@@ -155,7 +156,7 @@ def ping_gate(root, ref):
         merge.require(pr['merge_state'] != 'dirty', 'mergeable_state=dirty: no CI can run')
         merge.require(pr['merge_state'] != 'behind', 'mergeable_state=behind: update base first')
         if pr['mergeable'] is None or pr['merge_state'] == 'unknown':
-            raise ValueError('mergeability unmeasured')
+            raise ValueError('mergeability unmeasured; wait a minute and retry; if it persists, run bin/wuwei doctor')
         checks = merge.checks_at(host, ref, pr['head'], root)
         ignored = config['shepherd']['review_gate_check']
         checks = [row for row in checks if row['name'] != ignored]
@@ -165,7 +166,7 @@ def ping_gate(root, ref):
             raise ValueError(protection_result.reason or 'branch protection unmeasured')
         if not missing and (not isinstance(protection_result.data, dict) or
                             'message' in protection_result.data or 'errors' in protection_result.data):
-            raise ValueError('branch protection error body')
+            raise ValueError('branch protection error body; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
         if ((missing or not protection_result.data.get('required_checks'))
                 and pr['base'] != settings['default_branch']):
             protection_result = host.protection(ref.split('#')[0], settings['default_branch'], root=root)
@@ -207,7 +208,7 @@ def _mentions(config, reviewers):
     by_login = {row['login']: row['mention'] for row in config['shepherd']['authors'].values()}
     if any(login not in by_login or not re.fullmatch(r'[A-Z0-9]+', by_login[login])
            for login in reviewers):
-        raise ValueError('reviewer needs a configured chat mention')
+        raise ValueError('reviewer needs a configured chat mention; the owner adds its mention under shepherd.authors with bin/wuwei setup in a host terminal')
     return ' '.join('<@' + by_login[login] + '>' for login in reviewers)
 
 
@@ -218,7 +219,7 @@ def post_review_request(root, ref):
         config = workspace.load_config(root)
         ref = pull_request(ref)
         if ref not in state.read_state(root)['raised_prs'] + state.read_state(root)['claimed_prs']:
-            raise ValueError('PR is not owned today')
+            raise ValueError('PR is not owned today; claim it with bin/wuwei pr claim, then retry')
         gate = ping_gate(root, ref)
         if gate.exit:
             print(gate.reason)
@@ -227,12 +228,12 @@ def post_review_request(root, ref):
         if reviewers is None:
             reviewers = select_reviewers(root, ref)
         if not isinstance(reviewers, list) or len(set(reviewers)) != len(reviewers):
-            raise ValueError('invalid selected reviewer record')
+            raise ValueError('invalid selected reviewer record; run bin/wuwei doctor, which names the record')
         if reviewers:
             host = registry.load('code_host', config)
             requested = merge.read(host.request_reviewers, ref, reviewers, root=root)
             if set(requested['requested']) != set(reviewers):
-                raise ValueError('requested reviewer set differs from selected set')
+                raise ValueError('requested reviewer set differs from selected set; retry once, then request the missing reviewers on the PR')
         state._write_state(lambda data: data.setdefault('pr_reviewers', {}).update({ref: reviewers}),
                            root, reserved=False, kind='pr.reviewers_selected',
                            payload={'pr': ref, 'reviewers': reviewers})
@@ -245,7 +246,7 @@ def post_review_request(root, ref):
             return gate.exit
         channel = config['shepherd']['review_channel']
         if not re.fullmatch(r'[A-Z0-9]+', channel):
-            raise ValueError('shepherd.review_channel is required')
+            raise ValueError('shepherd.review_channel is required; the owner sets it with bin/wuwei config set in a host terminal')
         pr = gate.data['pr']
         text = f'PR #{pr["number"]} ready for review: <{pr["url"]}|#{pr["number"]}> {_mentions(config, reviewers)}'
         chat = registry.load('chat', config)
@@ -254,7 +255,7 @@ def post_review_request(root, ref):
             print(posted.reason or 'review post was not sent')
             return posted.exit
         if posted.data['channel'] != channel or not re.fullmatch(r'[0-9]+\.[0-9]+', posted.data['ts']):
-            raise ValueError('invalid chat post confirmation')
+            raise ValueError(f'invalid chat post confirmation; {DAMAGED}')
         permalink = f'https://slack.com/archives/{channel}/p{posted.data["ts"].replace(".", "")}'
         def record(data):
             data.setdefault('channel_posts', []).append({'pr': ref, 'status': 'posted',
@@ -280,13 +281,13 @@ def raise_pr(root, repo_name, base, title, body, item):
         repo_name = repository(repo_name)
         settings = _settings(config, repo_name + '#1')
         if not all(isinstance(v, str) and v.strip() for v in (base, title, body, item)):
-            raise ValueError('raise needs base, title, body and item')
+            raise ValueError('raise needs base, title, body and item; pass the base, title, body and item')
         data = state.read_state(root)
         merge.require(item in data['items'] and item in data['approved_items'],
                       'PR item must be in the approved plan')
         merge.require(data['items'][item].get('pr') is None, 'item already links another PR')
         if config['adapters']['code_host'] == 'none':
-            raise ValueError('code_host adapter is none; configure github')
+            raise ValueError('code_host adapter is none; configure github; the owner sets adapters.code_host to github with bin/wuwei config set in a host terminal')
         tree = data['items'][item].get('worktree')
         if not isinstance(tree, str) or not tree:
             raise ValueError('item worktree is not recorded; write a brief with --worktree')
@@ -317,12 +318,12 @@ def raise_pr(root, repo_name, base, title, body, item):
         identity = merge.read(vcs.identity, str(repo_path), root=root)
         expected = settings['identity']
         if expected['email'] and identity['email'] != expected['email']:
-            raise merge.Refused('repository identity does not match configured owner')
+            raise merge.Refused('repository identity does not match configured owner; use a worktree from bin/wuwei worktree add, which sets repos.<n>.identity')
         if expected['name'] and identity['name'] != expected['name']:
-            raise merge.Refused('repository identity does not match configured owner')
+            raise merge.Refused('repository identity does not match configured owner; use a worktree from bin/wuwei worktree add, which sets repos.<n>.identity')
         if any(identity[key] != {'name': identity['name'], 'email': identity['email']}
                for key in ('author', 'committer')):
-            raise merge.Refused('author and committer identity differ from configured repository identity')
+            raise merge.Refused('author and committer identity differ from configured repository identity; use a worktree from bin/wuwei worktree add, which sets repos.<n>.identity')
         branch = config['brief']['remote'] + '/' + base
         base_sha = merge.read(vcs.merge_base, str(repo_path), branch, root=root)['sha']
         merge.sha(base_sha)
@@ -337,13 +338,13 @@ def raise_pr(root, repo_name, base, title, body, item):
         ref = pull_request(f'{repo_name}#{created["number"]}')
         pr = merge.checked_pr(host, ref, root)
         if pr['head'] != head or pr['url'] != created['url']:
-            raise ValueError('created PR does not match checked head and URL')
+            raise ValueError('created PR does not match checked head and URL; run bin/wuwei pr state to read the PR before any retry')
         state.record_pr(root, item, ref, raised=True, head=head, reviewers=reviewers)
         dispatch.tracker_call(item, 'in_review', root)
         if reviewers:
             requested = merge.read(host.request_reviewers, ref, reviewers, root=root)
             if set(requested['requested']) != set(reviewers):
-                raise ValueError('reviewer request could not be verified')
+                raise ValueError('reviewer request could not be verified; run bin/wuwei pr state to read the PR before any retry')
         print(ref)
         if not reviewers:
             print(obligations.SOLO)

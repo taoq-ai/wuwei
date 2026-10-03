@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import unicodedata
 
-from wuwei.exits import CLEAN, FINDINGS, UNRUN
+from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED
 
 
 # ponytail: conservative emoji blocks also reject some text symbols. Use a versioned
@@ -93,14 +93,14 @@ def lint(text, channel, config, *, root=None, to_owner=False):
     to_owner: the text is addressed to the owner, so the third-person rules do not apply.
     """
     if not isinstance(text, str) or not text.strip():
-        return UNRUN, 'outward: nonempty text required'
+        return UNRUN, 'outward: nonempty text required; pass the message text'
     if not isinstance(channel, str) or not channel.strip():
-        return UNRUN, 'outward: channel required'
+        return UNRUN, 'outward: channel required; pass the channel the message goes to'
     try:
         owner = config['owner']
         names = _normalize(owner['name']).split()
         if not names and not to_owner:
-            return UNRUN, 'outward: owner name must be configured'
+            return UNRUN, 'outward: owner name must be configured; the owner sets owner.name with bin/wuwei config set in a host terminal'
         names.extend(_normalize(handle) for handle in owner.get('handles', []))
         pronouns = set(re.split(r'[/,\s]+', _normalize(owner['pronouns']))) - {''}
         for family in PRONOUNS:
@@ -111,26 +111,26 @@ def lint(text, channel, config, *, root=None, to_owner=False):
                     for pattern in rules['patterns']]
         banned = rules['banned_characters']
         if not isinstance(banned, list) or not all(isinstance(c, str) and c for c in banned):
-            raise ValueError('invalid banned characters')
+            raise ValueError(f'invalid banned characters; {DAMAGED}')
         limits = rules['max_length']
         if not isinstance(limits, dict) or any(type(n) is not int or n < 1 for n in limits.values()):
-            raise ValueError('invalid lengths')
+            raise ValueError(f'invalid lengths; {DAMAGED}')
     except (KeyError, TypeError, ValueError, AttributeError, re.error):
-        return UNRUN, 'outward: invalid lint configuration'
+        return UNRUN, 'outward: invalid lint configuration; run bin/wuwei config check, which names the outward key to fix'
     normalized = _normalize(text)
     views = (normalized, normalized.replace('_', ' '))
     for label, words in () if to_owner else (('owner', names), ('pronoun', pronouns)):
         if any(re.search(r'(?<!\w)' + re.escape(word) + r'(?!\w)', view)
                for word in words for view in views):
-            return FINDINGS, f'outward: third-person {label} reference'
+            return FINDINGS, f'outward: third-person {label} reference; write it in the first person, or address the owner directly'
     if any(pattern.search(view) for pattern in patterns for view in views):
-        return FINDINGS, 'outward: internal state pattern'
+        return FINDINGS, 'outward: internal state pattern; remove the internal state words (item ids, phases, file paths) from the message'
     if 'emoji' in banned and re.search(EMOJI, text):
-        return FINDINGS, 'outward: emoji is banned'
+        return FINDINGS, 'outward: emoji is banned; remove the emoji and send again'
     if any(c in text or c in normalized for c in banned if c != 'emoji'):
-        return FINDINGS, 'outward: banned character'
+        return FINDINGS, 'outward: banned character; remove the banned character (outward.banned_characters lists them) and send again'
     if channel in limits and len(text) > limits[channel]:
-        return FINDINGS, 'outward: channel length exceeded'
+        return FINDINGS, 'outward: channel length exceeded; split the message or shorten it to the channel limit (outward.max_length)'
     if root is not None:
         from wuwei.voice import lint as voice_lint
         code, reason = voice_lint(text, channel, config, root)
@@ -150,12 +150,12 @@ BOOL_FIELDS = {'is_dm', 'is_external', 'is_shared', 'is_connected', 'is_client'}
 
 def _text(inputs, *, nested=False):
     if not isinstance(inputs, dict):
-        raise ValueError('expected input object')
+        raise ValueError('expected input object; pass the outward input as a JSON object of fields such as text and channel')
     texts, channels = [], []
     for key, value in sorted(inputs.items()):
         if key in TEXT_FIELDS:
             if not isinstance(value, str):
-                raise ValueError('expected plain text')
+                raise ValueError('expected plain text; pass text, message, body, title and description as plain strings')
             texts.append(value)
         elif key == 'draft' and not nested:
             child_texts, child_channels = _text(value, nested=True)
@@ -163,23 +163,23 @@ def _text(inputs, *, nested=False):
             channels.extend(child_channels)
         elif key in BOOL_FIELDS:
             if type(value) is not bool:
-                raise ValueError('expected boolean audience flag')
+                raise ValueError('expected boolean audience flag; set is_dm, is_external, is_shared, is_connected and is_client to true or false')
         elif key == 'recipients':
             if not isinstance(value, list) or not all(isinstance(item, str) and item.strip() for item in value):
-                raise ValueError('expected recipients list')
+                raise ValueError('expected recipients list; pass recipients as a list of non-empty strings, or remove the field')
         elif key in {'issue_number', 'pull_number', 'thread'}:
             if not (key == 'thread' and value is None) and type(value) not in (str, int):
-                raise ValueError('invalid issue or pull number')
+                raise ValueError(f'invalid issue or pull number; {DAMAGED}')
         elif key in METADATA_FIELDS:
             if not (value is None or isinstance(value, str)
                     or isinstance(value, list) and all(isinstance(item, str) for item in value)):
-                raise ValueError('invalid metadata')
+                raise ValueError(f'invalid metadata; {DAMAGED}')
             if key in {'channel', 'channel_id'}:
                 if not isinstance(value, str) or not value.strip():
-                    raise ValueError('invalid channel')
+                    raise ValueError(f'invalid channel; {DAMAGED}')
                 channels.append(value)
         else:
-            raise ValueError('unsupported input field')
+            raise ValueError('unsupported input field; remove the unknown field, or ask the owner if it is needed')
     return texts, channels
 
 
@@ -206,7 +206,7 @@ def _internal(person, rules, namespace, org=None):
 def _result(result):
     from wuwei.registry import Result
     if not isinstance(result, Result) or type(result.exit) is not int or result.exit not in (0, 1, 2):
-        raise ValueError('invalid port result')
+        raise ValueError(f'invalid port result; {DAMAGED}')
     return result
 
 
@@ -241,7 +241,7 @@ def _pr_context(context, root, config):
         return result.exit, ''
     pr = result.data
     if pr['repo'].casefold() != repo.casefold() or type(pr['number']) is not int or pr['number'] != number:
-        raise ValueError('PR evidence does not match destination')
+        raise ValueError('PR evidence does not match destination; retry with the exact owner/repo#n; if it repeats, run bin/wuwei doctor')
     org = repo.split('/')[0]
     if not _internal(pr['author'], rules, 'github', org):
         return FINDINGS, ''
@@ -249,7 +249,7 @@ def _pr_context(context, root, config):
     if result.exit:
         return result.exit, ''
     if not isinstance(result.data, list):
-        raise ValueError('invalid review evidence')
+        raise ValueError(f'invalid review evidence; {DAMAGED}')
     if any(not _internal(review['author'], rules, 'github', org) for review in result.data):
         return FINDINGS, ''
     result = _result(host.threads(ref, root=root))
@@ -257,15 +257,15 @@ def _pr_context(context, root, config):
         return result.exit, ''
     discussion = result.data
     if not isinstance(discussion['comments'], list) or not isinstance(discussion['threads'], list):
-        raise ValueError('invalid discussion evidence')
+        raise ValueError(f'invalid discussion evidence; {DAMAGED}')
     comments = list(discussion['comments'])
     for thread in discussion['threads']:
         if not isinstance(thread['comments'], list):
-            raise ValueError('invalid thread evidence')
+            raise ValueError(f'invalid thread evidence; {DAMAGED}')
         comments.extend(thread['comments'])
     for comment in comments:
         if not isinstance(comment['body'], str):
-            raise ValueError('invalid comment evidence')
+            raise ValueError(f'invalid comment evidence; {DAMAGED}')
         if not _internal(comment['author'], rules, 'github', org):
             return FINDINGS, ''
     target = context.get('thread')
@@ -378,7 +378,7 @@ def classify(text, root, config, context=None, *, kind='chat'):
             if result.exit == CLEAN:
                 sha = result.data['sha']
                 if not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', sha) or not sha.startswith(mechanical[1]):
-                    raise ValueError('invalid commit evidence')
+                    raise ValueError('invalid commit evidence; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
                 return CLEAN, 'send'
             if result.exit == UNRUN:
                 unresolved = UNRUN
@@ -401,7 +401,7 @@ def check_call(inputs, root, config, channels):
             lint = humanize_lint(inputs, root, config, channels, draft=draft)
         lint = profile_result(lint, config['profile'], root, next(iter(channels)))
     except KeyError:
-        return UNRUN, 'outward: cannot read profile'
+        return UNRUN, 'outward: cannot read profile; run bin/wuwei config check, which names the profile key to fix'
     return lint if lint[0] else (result if draft else (CLEAN, ''))
 
 
@@ -415,7 +415,7 @@ def check_tier(inputs, root, config, channels):
         texts, _ = _text(inputs)
         text = '\n'.join(texts)
         if len(channels) != 1:
-            return UNRUN, 'outward: ambiguous tool channel configuration'
+            return UNRUN, 'outward: ambiguous tool channel configuration; pass one channel per call'
         code, decision = classify(text, root, config, inputs, kind=next(iter(channels)))
         if code == UNRUN:
             return code, 'outward: cannot classify policy, audience or message evidence; deliver as a draft for the owner to send'
@@ -423,7 +423,7 @@ def check_tier(inputs, root, config, channels):
             return code, APPROVAL_REQUIRED
         return CLEAN, ''
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
-        return UNRUN, 'outward: cannot read or validate policy or payload'
+        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'
 
 
 def check_lint(inputs, root, config, channels, *, to_owner=False):
@@ -432,11 +432,11 @@ def check_lint(inputs, root, config, channels, *, to_owner=False):
         texts, destinations = _text(inputs)
         text = '\n'.join(texts)
         if len(channels) != 1:
-            return UNRUN, 'outward: ambiguous tool channel configuration'
+            return UNRUN, 'outward: ambiguous tool channel configuration; pass one channel per call'
         for channel in sorted(channels.union(destinations)):
             code, reason = lint(text, channel, config, root=root, to_owner=to_owner)
             if code:
                 return code, reason
         return CLEAN, ''
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
-        return UNRUN, 'outward: cannot read or validate policy or payload'
+        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'

@@ -25,8 +25,8 @@ SessionStart and every watch/obligations sweep refresh the protected cached verd
 PreToolUse reads that verdict without walking the installed plugin.
 
 `wuwei init` copies the plugin public key into `.wuwei/integrity/pinned.pub` and
-initializes `.wuwei/` history through the VCS adapter. An existing workspace must
-have the owner copy that key and initialize its history after reviewing current
+initializes `.wuwei/` history through the VCS adapter. In an existing workspace,
+copy that key yourself and initialize its history after reviewing current
 content; automatic upgrade must not bless existing hand edits. `wuwei init` and
 `wuwei init --upgrade` end by measuring the plugin and caching the verdict, so the first
 tool call is gated on a real measurement. They print `plugin integrity: clean` or the
@@ -41,7 +41,7 @@ with prior unpromoted edits are rejected so promotion cannot bless a hand edit. 
 failure returns unmeasured and leaves landed content visible as an uncommitted change.
 
 To recover, reinstall the signed release and run `bin/wuwei integrity check`.
-Alternatively, after reviewing the exact installed contents on the host, the owner
+Alternatively, after reviewing the exact installed contents on the host, you
 can run `bin/wuwei integrity reconfirm` in a terminal and answer y.
 There is no `--yes` switch. Agent tools refuse this action. The confirmation is tied
 to the inventory, manifest, signature and workspace pin; later changes invalidate it.

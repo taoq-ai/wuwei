@@ -9,6 +9,7 @@ import sys
 from urllib.parse import quote
 
 from wuwei.registry import Result, outward_operation
+from wuwei.redact import redact
 from wuwei.references import pull_request, repository as _repo
 
 
@@ -107,7 +108,22 @@ def _run(args, payload=None, *, json_output=True, env=None):
                 re.fullmatch(r'repos/[^/]+/[^/]+/branches/.+/protection', args[1]) and
                 re.search(r'\(HTTP 404\)', result.stderr)):
             raise ValueError('branch protection absent')
-        raise ValueError(f'gh exited {result.returncode}')
+        # #362: what was asked, the first stderr line (redacted, capped) and a hint; never the
+        # stdout body, and nothing from a search, whose endpoint and error can carry an email.
+        endpoint = args[1] if args[0] == 'api' and len(args) > 1 else ''
+        found = re.match(r'repos/([^/]+/[^/]+)', endpoint) or re.search(
+            r'github\.com/([^/]+/[^/]+)/pull/', ' '.join(args))
+        subject = 'search' if endpoint.startswith('search/') else found[1] if found else args[0]
+        line = '' if subject == 'search' else next(
+            (text.strip() for text in result.stderr.splitlines() if text.strip()), '')
+        reason = f'gh exited {result.returncode} ({subject})'
+        for token in {(env or os.environ).get(key) for key in ('GH_TOKEN', 'GITHUB_TOKEN')} - {None, ''}:
+            line = line.replace(token, '[REDACTED]')
+        if line:
+            reason += ': ' + redact(line)[:200]
+        if re.search(r'auth login|not logged|authentication', line, re.I):
+            reason += '; run gh auth login'
+        raise ValueError(reason)
     if json_output:
         value = json.loads(result.stdout)
         _errors(value)

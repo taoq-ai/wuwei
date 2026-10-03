@@ -4,6 +4,7 @@ import json
 import sys
 
 from wuwei import dispatch, registry, workspace
+from wuwei.exits import ADAPTER_DATA
 
 
 def register(subparsers):
@@ -46,14 +47,14 @@ def run(args, *, root=None):
             else:
                 response = adapter.continue_job(job, args.feedback, root=root)
         if not isinstance(response, registry.Result) or type(response.exit) is not int or response.exit not in (0, 1, 2):
-            raise ValueError('invalid runtime result')
+            raise ValueError(f'invalid runtime result; {ADAPTER_DATA}')
         if response.exit:
             print(response.reason or 'runtime operation did not complete', file=sys.stderr)
         else:
             data = response.data
             if args.action == 'dispatch' and selected['adapters']['runtime'] != config['adapters']['runtime']:
                 if not isinstance(data, dict):
-                    raise ValueError('invalid runtime job')
+                    raise ValueError(f'invalid runtime job; {ADAPTER_DATA}')
                 data = {**data, 'runtime': selected['adapters']['runtime']}
             print(json.dumps(data, allow_nan=False))
         return response.exit

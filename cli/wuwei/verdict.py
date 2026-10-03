@@ -163,7 +163,7 @@ def record_rejection(path, code, message, *, root=None):
         state.append_event('verdict.rejected', {'file': str(path), 'sha256': digest,
                            'reasons': message.splitlines()}, root=root)
     except (OSError, ValueError, RuntimeError) as exc:
-        return UNRUN, f'{message}\nverdict lint: could not record rejection: {exc}'
+        return UNRUN, f'{message}\nverdict lint: could not record rejection: {exc}; run bin/wuwei doctor'
     return code, message
 
 

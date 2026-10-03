@@ -64,7 +64,7 @@ def run(args):
     print(f"Next: review the report, run bin/wuwei config promote{' --measure' if args.measure else ''} "
           'in a host terminal, then bin/wuwei promote for the charter proposals.')
     if error or any(r['style'] is None or r['baseline'] is None for r in results):
-        print('wuwei calibrate: ' + (error or 'commit style or PR baseline unmeasured'), file=sys.stderr)
+        print('wuwei calibrate: ' + (error or 'commit style or PR baseline unmeasured') + '; run bin/wuwei doctor, then retry', file=sys.stderr)
         return UNRUN
     flagged = any(f['kind'] in ('instruction_like', 'unsafe') for r in results for f in r['findings'])
     return FINDINGS if flagged else CLEAN
@@ -112,7 +112,7 @@ def _interview(args):
             picked = interview.ask(ids, repos)
         answers = interview.record(root, config, picked)
     except EOFError:
-        print('wuwei calibrate: interview interrupted; nothing written', file=sys.stderr)
+        print('wuwei calibrate: interview interrupted; nothing written; run bin/wuwei calibrate again to start over', file=sys.stderr)
         return UNRUN
     except (OSError, ValueError) as exc:
         print(f'wuwei calibrate: {exc}', file=sys.stderr)
@@ -128,9 +128,9 @@ def _profile(args):
 
     try:
         if not args.target:
-            raise ValueError(f'calibrate {args.action} needs a NAME or SOURCE')
+            raise ValueError(f'calibrate {args.action} needs a NAME or SOURCE; pass a profile NAME or SOURCE')
         if args.interview is not None or args.questions or args.answer or (args.skip and args.action == 'export'):
-            raise ValueError(f'calibrate {args.action} takes only --repo' + (' and --skip' if args.action == 'import' else ''))
+            raise ValueError(f'calibrate {args.action} takes only --repo' + (' and --skip' if args.action == 'import' else '') + '; remove the other options')
         root = workspace.find_workspace()
         config = workspace.load_config(root)
         names = [repo['name'] for repo in config['repos'] if args.repo in (None, repo['name'])]
@@ -148,7 +148,7 @@ def _profile(args):
         accepted, refused, flagged = profiles.review(profile, config, names)
         if refused:
             for key, why in refused:
-                print(f'wuwei calibrate: refused: {key} ({why}); nothing written', file=sys.stderr)
+                print(f'wuwei calibrate: refused: {key} ({why}); nothing written; run it again with a value bin/wuwei config check accepts', file=sys.stderr)
             return FINDINGS
         accepted = profiles.skip(profile, accepted, args.skip)
         raw = (root / '.wuwei/config.toml').read_text(encoding='utf-8')

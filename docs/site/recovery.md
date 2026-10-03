@@ -97,7 +97,7 @@ delta continuations come from the `seats` list of `dispatch next`.
 
 ## integrity reconfirm
 
-`bin/wuwei integrity reconfirm` records the owner's confirmation of a development
+`bin/wuwei integrity reconfirm` records your confirmation of a development
 checkout or a changed installation. It is recovery, not daily use: an intact signed
 release needs no reconfirmation. Run it in a host terminal and answer y
 after reviewing the contents. See the [index](index.md#development-checkouts) for what

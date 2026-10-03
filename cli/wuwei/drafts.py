@@ -5,6 +5,7 @@ import os
 from uuid import uuid4
 
 from wuwei import outward, state, voice, workspace
+from wuwei.exits import RACE, DAMAGED
 
 
 OPERATIONS = {'chat': {'post', 'dm'}, 'code_host': {'comment'},
@@ -14,7 +15,7 @@ OPERATIONS = {'chat': {'post', 'dm'}, 'code_host': {'comment'},
 def read(data):
     rows = data.get('drafts', {})
     if not isinstance(rows, dict):
-        raise ValueError('drafts: invalid queue')
+        raise ValueError(f'drafts: invalid queue; {DAMAGED}')
     for key, row in rows.items():
         if (not isinstance(row, dict) or row.get('id') != key
                 or row.get('status') not in ('pending', 'sending', 'sent', 'failed', 'dropped')
@@ -23,25 +24,25 @@ def read(data):
                 or any(not isinstance(row.get(field), str) or not row[field]
                        for field in ('id', 'adapter', 'destination', 'text', 'created',
                                      'tier_reason', 'audience'))):
-            raise ValueError('drafts: invalid record')
+            raise ValueError(f'drafts: invalid record; {DAMAGED}')
         texts, _ = outward._text(row['inputs'])
         if '\n'.join(texts) != row['text']:
-            raise ValueError('drafts: text differs from operation inputs')
+            raise ValueError(f'drafts: text differs from operation inputs; {DAMAGED}')
         if row['status'] in ('sending', 'sent', 'failed'):
             if (not isinstance(row.get('final_inputs'), dict)
                     or not isinstance(row.get('final_text'), str)
                     or type(row.get('edit_size')) is not int or row['edit_size'] < 0
                     or type(row.get('sent_unedited')) is not bool
                     or row['sent_unedited'] != (row['inputs'] == row['final_inputs'])):
-                raise ValueError('drafts: invalid send record')
+                raise ValueError(f'drafts: invalid send record; {DAMAGED}')
             if '\n'.join(outward._text(row['final_inputs'])[0]) != row['final_text']:
-                raise ValueError('drafts: final text differs from operation inputs')
+                raise ValueError(f'drafts: final text differs from operation inputs; {DAMAGED}')
     return rows
 
 
 def create(root, config, channel, operation, adapter, inputs, reason):
     if operation not in OPERATIONS.get(channel, set()):
-        raise ValueError('drafts: unsupported operation')
+        raise ValueError('drafts: unsupported operation; use approve or drop')
     inputs = deepcopy(inputs)
     inputs.pop('is_dm', None)
     texts, destinations = outward._text(inputs)
@@ -72,9 +73,9 @@ def create(root, config, channel, operation, adapter, inputs, reason):
 def _pending(data, draft_id):
     row = read(data).get(draft_id)
     if row is None:
-        raise state.StateError('drafts: unknown draft ID')
+        raise state.StateError('drafts: unknown draft ID; run bin/wuwei drafts for the queued ids')
     if row['status'] != 'pending':
-        raise state.StateError(f"drafts: draft is {row['status']}; cannot decide again")
+        raise state.StateError(f"drafts: draft is {row['status']}; cannot decide again; run bin/wuwei drafts for what is still queued")
     return row
 
 
@@ -95,14 +96,14 @@ def _edit(inputs, root):
         editor = registry.load('editor', {'adapters': {'editor': 'local'}})
         result = outward._result(editor.edit(path, os.environ.get('EDITOR') or 'vi', root=root))
         if result.exit:
-            raise OSError('drafts: editor could not complete')
+            raise OSError('drafts: editor could not complete; set EDITOR to a working editor, or run bin/wuwei drafts approve without --edit')
         text = path.read_text(encoding='utf-8')
     if single and not next(iter(fields.values())).endswith('\n'):
         text = text.removesuffix('\n')
     edited = {next(iter(fields)): text} if single else json.loads(text)
     if (not isinstance(edited, dict) or edited.keys() != fields.keys()
             or any(not isinstance(value, str) or not value.strip() for value in edited.values())):
-        raise ValueError('drafts: edit must preserve text field names and nonempty strings')
+        raise ValueError('drafts: edit must preserve text field names and nonempty strings; write the same text fields, each with nonempty text, then save again')
     for key, value in edited.items():
         if key.startswith('draft.'):
             inputs['draft'][key[6:]] = value
@@ -122,10 +123,10 @@ def approve(root, draft_id, *, edit=False):
         row = _pending(state.read_state(directory=directory), draft_id)
         config = workspace.load_config(root)
         if config['adapters'][row['channel']] != row['adapter']:
-            raise ValueError('drafts: adapter configuration changed; cannot replay destination')
+            raise ValueError('drafts: adapter configuration changed; cannot replay destination; drop the draft with bin/wuwei drafts drop and send it again')
         if (row['operation'] == 'dm' and row['destination'] !=
                 os.environ.get('SLACK_OWNER_DM_CHANNEL', 'owner DM')):
-            raise ValueError('drafts: DM destination changed; cannot replay destination')
+            raise ValueError('drafts: DM destination changed; cannot replay destination; drop the draft with bin/wuwei drafts drop and send it again')
         adapter = registry.load(row['channel'], config)
         operation = getattr(adapter, row['operation']).__wrapped__
         inputs = deepcopy(row['inputs'])
@@ -154,12 +155,12 @@ def approve(root, draft_id, *, edit=False):
         except OSError as exc:
             return registry.Result(2, reason=str(exc))
         if not confirmed:
-            return registry.Result(1, reason='drafts: owner confirmation declined')
+            return registry.Result(1, reason='drafts: owner confirmation declined; rerun it in a host terminal and answer y')
 
         def claim(data):
             current = _pending(data, draft_id)
             if current != row:
-                raise ValueError('drafts: draft changed during approval')
+                raise ValueError(f'drafts: draft changed during approval; {RACE}')
             current.update(status='sending', final_inputs=inputs, final_text=text,
                            edit_size=size, sent_unedited=(inputs == row['inputs']),
                            decided=workspace.now().isoformat())
@@ -174,7 +175,7 @@ def approve(root, draft_id, *, edit=False):
         def finish(data):
             current = read(data)[draft_id]
             if current['status'] != 'sending':
-                raise ValueError('drafts: send state changed')
+                raise ValueError(f'drafts: send state changed; {RACE}')
             current.update(status=status, closed=workspace.now().isoformat())
         state._write_state(finish, reserved=False, directory=directory, kind='draft.' + status,
                            payload={'id': draft_id, 'exit': result.exit})
@@ -183,7 +184,7 @@ def approve(root, draft_id, *, edit=False):
     except state.StateError as exc:
         return registry.Result(1, reason=str(exc))
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
-        return registry.Result(2, reason='drafts: cannot read, edit, validate or record approval')
+        return registry.Result(2, reason='drafts: cannot read, edit, validate or record approval; run bin/wuwei doctor, then retry')
 
 
 def drop(root, draft_id):
@@ -198,4 +199,4 @@ def drop(root, draft_id):
     except state.StateError as exc:
         return registry.Result(1, reason=str(exc))
     except (OSError, ValueError, TypeError, KeyError):
-        return registry.Result(2, reason='drafts: cannot read or record drop')
+        return registry.Result(2, reason='drafts: cannot read or record drop; run bin/wuwei doctor, then retry')

@@ -761,7 +761,7 @@ def row_of(source, reason, tier='nudge'):
 
 
 @pytest.mark.parametrize('source,reason,expected', [
-    ('item.escalated', 'ITEM-1', 'nudge: ITEM-1 is escalated and waits for the owner. Run: wuwei why ITEM-1'),
+    ('item.escalated', 'ITEM-1', 'nudge: ITEM-1 is escalated and waits for you. Run: wuwei why ITEM-1'),
     ('draft.created', 'DR-1', 'nudge: An outward draft waits for owner approval. Run: bin/wuwei drafts'),
     ('watch: health', 'watch is dead', 'nudge: watch is dead. Run: wuwei doctor'),
     ('listen: health', 'listen is dead', 'nudge: listen is dead. Run: wuwei doctor'),

@@ -7,6 +7,7 @@ import sys
 
 from wuwei import workspace
 from wuwei.guards import commit_push as guard
+from wuwei.exits import DAMAGED, PAYLOAD
 
 
 def register(subparsers):
@@ -21,7 +22,7 @@ def install(path, root, vcs):
     """Write policy-free shims, then enable them through the VCS port."""
     root = Path(root).resolve()
     if not (root / '.wuwei').is_dir():
-        raise ValueError('hook installation requires a workspace')
+        raise ValueError('hook installation requires a workspace; run it from a folder that holds .wuwei, or create one with bin/wuwei init <path>')
     directory = root / '.wuwei/git-hooks'
     directory.mkdir(exist_ok=True)
     for event in ('pre-commit', 'pre-push'):
@@ -42,12 +43,12 @@ fi
 exec "$executable" git-hook ''' + event + ' "$@"\n')
         target = directory / event
         if target.exists() and target.read_text() != source:
-            raise ValueError('managed Git hook differs; refusing to overwrite it')
+            raise ValueError('managed Git hook differs; refusing to overwrite it; ask the owner to delete that hook file, then create the worktree again (bin/wuwei doctor names it)')
         workspace.atomic_write(target, source, mode=0o755)
     installed = guard.data(vcs.hooks_path(str(path), str(directory), root=root))
     git_dir = Path(installed['git_dir'])
     if not git_dir.is_absolute():
-        raise ValueError('invalid worktree Git directory')
+        raise ValueError(f'invalid worktree Git directory; {DAMAGED}')
     workspace.atomic_write(git_dir / 'wuwei-workspace', str(root) + '\n')
 
 
@@ -66,13 +67,13 @@ def run(args):
                 fields = line.split()
                 if len(fields) != 4 or any(not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', fields[i])
                                            for i in (1, 3)):
-                    raise ValueError('malformed pre-push update')
+                    raise ValueError(f'malformed pre-push update; {PAYLOAD}')
                 _, local_sha, destination, remote_sha = fields
                 updates.append({'source': local_sha, 'destination': destination, 'remote_sha': remote_sha})
                 if set(remote_sha) != {'0'}:
                     ancestors.append(remote_sha)
             if not updates:
-                raise ValueError('pre-push update list is empty')
+                raise ValueError(f'pre-push update list is empty; {PAYLOAD}')
             push = {'head': guard.data(vcs.head(actual['path'], root=root)),
                     'remote': args.remote, 'updates': updates, 'force': False}
             result = guard.push_check(repo, actual, push, root, vcs)

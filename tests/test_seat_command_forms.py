@@ -51,7 +51,15 @@ def test_seat_command_forms(workspace, where, command, code, words, monkeypatch,
     if code:
         assert output['permissionDecision'] == 'deny'
         for word in words:
-            assert word in output['permissionDecisionReason'], output
+            assert word in refused(workspace), output
+
+
+def refused(root):
+    """Every guard reason the hook.refusal events recorded; the hook prints one (#362)."""
+    import glob
+    return ' '.join(row['reason'] for path in glob.glob(str(root / '.wuwei/days/*/events.jsonl'))
+                    for line in open(path).read().splitlines() if json.loads(line)['kind'] == 'hook.refusal'
+                    for row in json.loads(line)['payload'].get('refusals', []))
 
 
 def test_commit_outside_a_repository_says_so(workspace, monkeypatch, capsys):
@@ -90,7 +98,7 @@ def test_issue_330_effectful_forms_refuse(workspace, mode, command, words, monke
     reason = output['permissionDecisionReason']
     if mode == 'shadow':
         assert [e['payload']['guard'] for e in events(workspace, 'guard.would_refuse')] == ['commit_push']
-        assert all(word in reason for word in words) and 'commit/push guard' not in reason, reason
+        assert all(word in refused(workspace) for word in words) and 'commit/push guard' not in reason, reason
 
 
 def test_issue_330_shadow_records_commit_loop(workspace, monkeypatch, capsys):

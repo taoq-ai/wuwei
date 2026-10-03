@@ -86,7 +86,9 @@ def test_five_shapes(workspace, posture, name, command, monkeypatch, capsys):
 def test_publish_forms_still_refuse(workspace, posture, command, monkeypatch, capsys):
     configure(workspace, posture)
     code, out, _ = hook(workspace, command, monkeypatch, capsys)
-    assert code == 2 and 'deploy' in out['permissionDecisionReason'], out
+    recorded = [json.loads(line)['payload'] for line in next(workspace.glob('.wuwei/days/*/events.jsonl')).read_text().splitlines()
+                if json.loads(line)['kind'] == 'hook.refusal']
+    assert code == 2 and 'deploy' in [row['guard'] for row in recorded[-1]['refusals']], out
 
 
 @pytest.mark.parametrize('posture', POSTURES)

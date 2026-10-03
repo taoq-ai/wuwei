@@ -8,6 +8,7 @@ import urllib.request
 
 from wuwei import calibrate, decision, workspace
 from wuwei.notes import SLUG_RE
+from wuwei.exits import DAMAGED, SYMLINK
 
 
 PLUGIN = Path(__file__).resolve().parents[2]
@@ -101,20 +102,20 @@ def refusal(dotted, new, current):
 def _shape(profile):
     """The profile if it has the profile shape, else ValueError."""
     if not isinstance(profile, dict) or profile.get('wuwei_profile') != 1:
-        raise ValueError('not a WUWEI profile (expected "wuwei_profile": 1)')
+        raise ValueError('not a WUWEI profile (expected "wuwei_profile": 1); pass a file written by bin/wuwei calibrate export')
     if not isinstance(profile.get('name'), str) or not SLUG_RE.fullmatch(profile['name']):
-        raise ValueError('profile name must be a lowercase slug')
+        raise ValueError('profile name must be a lowercase slug; use lowercase letters, digits and dashes')
     profile.setdefault('config', {})
     profile.setdefault('charters', {})
     if not isinstance(profile['config'], dict) or not isinstance(profile['config'].get('repos', {}), dict):
-        raise ValueError('profile config must be an object, and its repos one table')
+        raise ValueError('profile config must be an object, and its repos one table; write the profile config as one object with one repos table')
     if not isinstance(profile['charters'], dict):
-        raise ValueError('profile charters must be an object')
+        raise ValueError(f'profile charters must be an object; {DAMAGED}')
     for role, block in profile['charters'].items():
         if (role not in ROLES or not isinstance(block, dict) or not isinstance(block.get('text'), str)
                 or not isinstance(block.get('reasons'), list)
                 or not all(isinstance(r, str) for r in block['reasons'])):
-            raise ValueError(f'charters.{role}: expected a shipped role with text and a list of reasons')
+            raise ValueError(f'charters.{role}: expected a shipped role with text and a list of reasons; use a shipped role with text and a list of reasons')
     return profile
 
 
@@ -124,16 +125,16 @@ def read(source):
         source = str(STARTERS / f'{source}.json')
     if re.match(r'[A-Za-z][A-Za-z0-9+.-]*://', source):
         if not source.startswith('https://'):
-            raise ValueError('only https URLs are read')
+            raise ValueError('only https URLs are read; use an https URL')
         with urllib.request.urlopen(source, timeout=30) as response:
             if not response.geturl().startswith('https://'):
-                raise ValueError('only https URLs are read; the source redirected elsewhere')
+                raise ValueError('only https URLs are read; the source redirected elsewhere; use the final https URL')
             data = response.read(calibrate.MAX_BYTES + 1)
     else:
         with open(source, 'rb') as stream:
             data = stream.read(calibrate.MAX_BYTES + 1)
     if len(data) > calibrate.MAX_BYTES:
-        raise ValueError('profile is over 1 MiB')
+        raise ValueError('profile is over 1 MiB; split it or trim it below 1 MiB')
     try:
         return _shape(json.loads(data))
     except (UnicodeError, json.JSONDecodeError) as exc:
@@ -190,7 +191,8 @@ def skip(profile, accepted, keys):
     known |= {f'charters.{role}' for role in profile['charters']}
     unknown = [key for key in keys if key not in known]
     if unknown:
-        raise ValueError('--skip names nothing in the profile: ' + ', '.join(unknown))
+        raise ValueError(('--skip names nothing in the profile: ' + ', '.join(unknown)
+                         + '; pass names the profile has'))
     return {**accepted, 'config': _nest(row for row in _leaves(accepted['config']) if _dotted(*row[:2]) not in keys),
             'charters': {role: block for role, block in accepted['charters'].items()
                          if f'charters.{role}' not in keys}}
@@ -233,7 +235,7 @@ def load(root, config):
     """Today's imported profile as (name, settings), re-checked against the current config."""
     path = workspace.day_dir(root) / 'profile.json'
     if path.is_symlink():
-        raise ValueError('profile.json must not be a symlink')
+        raise ValueError(f'profile.json must not be a symlink; {SYMLINK}')
     if not path.exists():
         return None, []
     try:
@@ -241,7 +243,7 @@ def load(root, config):
         names = data.pop('repos', None) if isinstance(data, dict) else None
         configured = [repo['name'] for repo in config['repos']]
         if not isinstance(names, list) or not all(name in configured for name in names):
-            raise ValueError('repos must list configured repositories')
+            raise ValueError('repos must list configured repositories; use names from [[repos]]')
         profile = _shape(data)
         accepted, refused, flagged = review(profile, config, names)
         if refused or flagged:
@@ -299,7 +301,7 @@ def export(root, config, name, repo=None):
     from wuwei import promotion, registry
 
     if not SLUG_RE.fullmatch(name):
-        raise ValueError('profile name must be a lowercase slug')
+        raise ValueError('profile name must be a lowercase slug; use lowercase letters, digits and dashes')
     chosen = next((r for r in config['repos'] if repo in (None, r['name'])), None)
     if repo and chosen is None:
         raise ValueError(f'unknown repository {repo!r}; use a configured repos.name')
@@ -322,7 +324,7 @@ def export(root, config, name, repo=None):
         rows = [json.loads(line) for line in (ledger.read_text(encoding='utf-8') if ledger.exists() else '')
                 .splitlines() if line.strip()]
         if not all(isinstance(row, dict) for row in rows):
-            raise ValueError('expected one object per line')
+            raise ValueError(f'expected one object per line; {DAMAGED}')
     except ValueError as exc:
         raise ValueError(f'ledger.jsonl: {exc}') from None
     charters = {}

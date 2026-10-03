@@ -7,7 +7,7 @@ import re
 import shlex
 import sys
 
-from wuwei.exits import CLEAN, FINDINGS, UNRUN
+from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, PAYLOAD
 from wuwei.guards import EVENTS, SELECTION, discover, profile_result
 from wuwei.workspace import ConfigError
 
@@ -96,7 +96,7 @@ def run(args):
             if (not isinstance(result, tuple) or len(result) != 2
                     or type(result[0]) is not int or result[0] not in (CLEAN, FINDINGS, UNRUN)
                     or not isinstance(result[1], str) or (result[0] and not result[1].strip())):
-                raise ValueError('invalid guard result; expected (0|1|2, message)')
+                raise ValueError(f'invalid guard result; expected (0|1|2, message); {PAYLOAD}')
             code, message = result
             if code == FINDINGS and guard.profile_relaxable:
                 from wuwei import workspace
@@ -108,9 +108,13 @@ def run(args):
             message = (f'{type(exc).__name__}: could not run PostToolUse guard'
                        if args.event == 'PostToolUse' else f'{type(exc).__name__}: {exc}')
         if code:
-            refusals.append((guard.check, message))
+            refusals.append((guard.check, message, code))
         elif message:
             context.append(message)
+    # #362: the most specific refusal first: a finding before a could-not-run, integrity last.
+    if args.event != 'SessionStart':
+        refusals.sort(key=lambda row: (row[2], module(row[0]) == 'integrity'))
+    refusals = [(check, message) for check, message, _ in refusals]
     enforced = [(module(check), message, '') for check, message in refusals]
     if (refusals and args.event != 'SessionStart'
             and payload.get('session_id') != HEARTBEAT_SESSION):
@@ -125,7 +129,7 @@ def run(args):
             print('\n'.join(reasons), file=sys.stderr)
         return CLEAN
     if reasons:
-        return refuse(args.event, '\n'.join(reasons), cwd=payload.get('cwd'),
+        return refuse(args.event, reasons[0], cwd=payload.get('cwd'),
                       record=payload.get('session_id') != HEARTBEAT_SESSION,
                       refusals=[(guard, message) for guard, message, _ in enforced],
                       payload=payload)
@@ -151,7 +155,7 @@ def newer_template(root, payload, config):
         state.append_event('config.newer_template', {
             'plugin': found[0], 'template': found[1], 'session': payload['session_id']}, root)
     except Exception as exc:
-        print(f'wuwei hook: could not record config.newer_template: {exc}', file=sys.stderr)
+        print(f'wuwei hook: could not record config.newer_template: {exc}; run bin/wuwei doctor', file=sys.stderr)
 
 
 def config_failure(event, payload, reason):
@@ -234,7 +238,7 @@ def posture(payload, refusals, root):
     from wuwei.guards import NO_REVIEWER, level
     try:
         if root is None:
-            raise LookupError('no workspace')
+            raise LookupError('no workspace; run bin/wuwei init')
         name, levels = workspace.posture(workspace.load_config(root))
     except BaseException:  # No workspace or an unreadable config enforces, as before #331.
         return [(module(check), reason, '') for check, reason in refusals]
@@ -263,7 +267,7 @@ def posture(payload, refusals, root):
                 'reason': reason, 'target': shown, 'session': payload['session_id'],
                 'item': claimed(root, payload['session_id'])}, root)
         except BaseException as exc:
-            print(f'wuwei hook: could not record shadow refusal: {exc}', file=sys.stderr)
+            print(f'wuwei hook: could not record shadow refusal: {exc}; run bin/wuwei doctor', file=sys.stderr)
             enforced.append((guard, reason, line))
     return enforced
 
@@ -301,17 +305,17 @@ def claimed(root, session):
 
 
 def invalid_constant(value):
-    raise ValueError('invalid JSON constant')
+    raise ValueError(f'invalid JSON constant; {PAYLOAD}')
 
 
 def validate(payload, event):
     if not isinstance(payload, dict):
-        raise ValueError('hook payload must be a JSON object')
+        raise ValueError(f'hook payload must be a JSON object; {PAYLOAD}')
     for field in ('session_id', 'transcript_path', 'cwd', 'hook_event_name'):
         if not isinstance(payload.get(field), str) or not payload[field].strip():
-            raise ValueError(f'missing or invalid {field}')
+            raise ValueError(f'missing or invalid {field}; {DAMAGED}')
     if payload['hook_event_name'] != event:
-        raise ValueError('hook_event_name does not match command event')
+        raise ValueError(f'hook_event_name does not match command event; {PAYLOAD}')
 
 
 def refuse(event, reason, *, malformed=False, cwd=None, record=True, refusals=(), payload=None):
@@ -337,7 +341,7 @@ def refuse(event, reason, *, malformed=False, cwd=None, record=True, refusals=()
             try:
                 state.append_event('hook.refusal', details, root)
             except BaseException as exc:
-                print(f'wuwei hook: could not record refusal: {exc}', file=sys.stderr)
+                print(f'wuwei hook: could not record refusal: {exc}; run bin/wuwei doctor', file=sys.stderr)
     if event == 'PreToolUse':
         print(json.dumps({'hookSpecificOutput': {
             'hookEventName': event, 'permissionDecision': 'deny',

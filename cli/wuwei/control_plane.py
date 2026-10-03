@@ -9,6 +9,7 @@ import re
 
 from wuwei import decision, state, workspace
 from wuwei.registry import Result
+from wuwei.exits import DAMAGED, ADAPTER_DATA, SYMLINK
 
 
 # Fixed outward lines avoid words the outward lint refuses; a transport dm is an outward operation.
@@ -33,13 +34,13 @@ def pending(root):
     data = state.read_state(root)
     routes = data.get('decision_routes', {})
     if not isinstance(routes, dict):
-        raise ValueError('invalid decision ledger')
+        raise ValueError(f'invalid decision ledger; {DAMAGED}')
     found = {}
     for identifier in routes:
         if decision.answered(data, identifier) is None:
             path = decision.today_path(identifier, root)
             if path.is_symlink() or path.parent.is_symlink():
-                raise ValueError(f'decision {identifier}: record must be a regular file')
+                raise ValueError(f'decision {identifier}: record must be a regular file; {SYMLINK}')
             found[identifier], _ = decision.evaluate(path.read_text(encoding='utf-8'))
     return found
 
@@ -88,7 +89,7 @@ def escalate(decision_id, *, root=None, transport=None):
     root = workspace.find_workspace(root)
     decisions = pending(root)
     if decision_id not in decisions:
-        return Result(1, None, f'control plane: {decision_id} is not pending')
+        return Result(1, None, f'control plane: {decision_id} is not pending; run bin/wuwei nudges for the open decisions')
     if transport is None:
         return Result(0, render(decision_id, decisions[decision_id], 'summary', _level(root), root),
                       'ask as a question widget; Remote Control pushes it')
@@ -119,7 +120,7 @@ def poll_replies(since, *, root=None, transport=None):
         return Result(2, None, polled.reason or 'control plane: poll failed')
     if not isinstance(polled.data, list) or not all(
             isinstance(reply, dict) and isinstance(reply.get('text'), str) for reply in polled.data):
-        return Result(2, None, 'control plane: invalid poll result')
+        return Result(2, None, f'control plane: invalid poll result; {ADAPTER_DATA}')
     decisions, content, level = pending(root), _content(root), _level(root)
     lines = [render(identifier, fields, content, level, root) for identifier, fields in decisions.items()]
     echo = '\n'.join([HELP, *(lines or ['No pending decisions.'])])

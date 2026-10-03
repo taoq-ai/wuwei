@@ -924,7 +924,7 @@ def test_issue_acceptance_remote_ack_clears_a_refused_page(ws, capsys, monkeypat
     assert len(refused_pages(capsys)) == 1
     monkeypatch.setattr(integrity, '_host_confirm', lambda token, prompt: calls.append((token, prompt)) and False)
     assert main(['remote', 'ack']) == 1
-    assert capsys.readouterr().err == 'remote ack: owner confirmation declined\n'
+    assert capsys.readouterr().err.startswith('remote ack: owner confirmation declined;')
     assert len(refused_pages(capsys)) == 1
     assert payloads(ws, 'remote.acknowledged') == [{'ids': ['D1/1.000001']}]
     monkeypatch.setattr(integrity, '_host_confirm', lambda token, prompt: calls.append((token, prompt)) or True)

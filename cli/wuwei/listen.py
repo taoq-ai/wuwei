@@ -4,6 +4,7 @@ import json
 import os
 
 from wuwei import control_plane, inbox, obligations, outward, registry, remote, shepherd, state, watch, workspace
+from wuwei.exits import DAMAGED
 
 CLOCK_SECONDS = 120
 # ponytail: fixed probe interval; a 304 is free, so no config.
@@ -24,7 +25,7 @@ def cursor(root):
             and all(isinstance(k, str) and isinstance(v, str) for k, v in data['cursors'].items())
             and type(data.get('woken')) is int and data['woken'] >= 0
             and type(data.get('handled', 0)) is int and data.get('handled', 0) >= 0):
-        raise ValueError('invalid listen cursor')
+        raise ValueError(f'invalid listen cursor; {DAMAGED}')
     return data
 
 

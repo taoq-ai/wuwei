@@ -4,7 +4,7 @@ Use `bin/wuwei` from the installed checkout, or `python3 -P -m wuwei` with the p
 
 ## Commands
 
-Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them and leaves out the plumbing, and `bin/wuwei <command> --help` shows its options. Commands marked plumbing are called by hooks, seats or the plugin, not by the owner.
+Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them and leaves out the plumbing, and `bin/wuwei <command> --help` shows its options. Commands marked plumbing are called by hooks, seats or the plugin, not by you.
 
 | Command | What it does | More |
 | --- | --- | --- |
@@ -12,13 +12,13 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei board` | Plumbing: serves the day board to Claude Code over MCP stdio. | [Cockpit and board](concepts.md#cockpit-and-board) |
 | `bin/wuwei brief` | Writes and logs a seat brief. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei build` | Selects the next builder action. | [Seat briefs](#seat-briefs-and-the-build-loop) |
-| `bin/wuwei calibrate` | Profiles the repositories and proposes config; `--measure` times each test runner once to decide whether it is a fast check; `--interview` asks the owner; `export` and `import` share a profile. | [Calibration](configuration.md#calibration) |
+| `bin/wuwei calibrate` | Profiles the repositories and proposes config; `--measure` times each test runner once to decide whether it is a fast check; `--interview` asks you; `export` and `import` share a profile. | [Calibration](configuration.md#calibration) |
 | `bin/wuwei close` | Refuses day close until every obligation lands; `--widget` asks about each open item. | [Day close](concepts.md#day-close) |
 | `bin/wuwei config` | Inspects and changes workspace configuration: `check`; `promote`, `set <key> <value>` and `add-repo` apply after a digest. | [Configuration](configuration.md#calibration) |
 | `bin/wuwei consolidate` | Reviews and archives workspace memory. | [Configuration](configuration.md#host-build-and-memory) |
 | `bin/wuwei dashboard` | Serves the read-only day board on loopback. | [Cockpit and board](concepts.md#cockpit-and-board) |
 | `bin/wuwei decide` | Owner: `decide D-<n> <option> [--note <text>]` records the answer to today's decision, the MCP registry one included. | [Host terminal actions](#host-terminal-actions) |
-| `bin/wuwei decision` | Checks and routes decision records; `outcome` records the owner's answer. | [Decision record](#decision-record) |
+| `bin/wuwei decision` | Checks and routes decision records; `outcome` records your answer. | [Decision record](#decision-record) |
 | `bin/wuwei discover` | Discovers candidate work. | [Goals and discovery](configuration.md#goals-and-discovery) |
 | `bin/wuwei dispatch` | Decides planner gate and discovery work; `dispatch opinion <item>` runs the second-opinion gate. | [Review tiers](concepts.md#review-tiers) |
 | `bin/wuwei doctor` | Finds install, host, workspace, gate, day and guard problems and prints each fix; `--fix` applies the allow-listed ones after one host confirmation. | [Doctor](#doctor) |
@@ -26,16 +26,16 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei event` | Plumbing: appends a timestamped day event. | |
 | `bin/wuwei fast-checks` | Plumbing: runs and records the configured fast checks. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei git-hook` | Plumbing: runs a native Git identity or push guard. | [Item worktrees](#item-worktrees) |
-| `bin/wuwei goals` | Shows or edits the owner goals. | [Goals and discovery](configuration.md#goals-and-discovery) |
+| `bin/wuwei goals` | Shows or edits your goals. | [Goals and discovery](configuration.md#goals-and-discovery) |
 | `bin/wuwei heartbeat` | Probes that hooks refuse, allow and answer in budget. | [Heartbeat](#heartbeat) |
 | `bin/wuwei hook` | Plumbing: runs the guards for a Claude Code hook. | [Hook latency budget](#hook-latency-budget) |
 | `bin/wuwei index` | Plumbing: generates the memory index. | [Concepts](concepts.md#memory) |
 | `bin/wuwei init` | Creates or upgrades a workspace; `--posture observe|guarded|strict` sets the [security posture](#security-posture) (`--shadow` is `--posture observe`). | [Daily path](daily.md) |
 | `bin/wuwei integrity` | Checks signed plugin integrity; `reconfirm` pins a development checkout. | [Recovery](recovery.md#integrity-reconfirm) |
 | `bin/wuwei listen` | Polls the inbound source into the workspace inbox and probes raised and claimed PRs. | [Remote](remote.md) |
-| `bin/wuwei mcp` | Checks the attached MCP servers; `decide D-<n> <option>` records the owner's answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
+| `bin/wuwei mcp` | Checks the attached MCP servers; `decide D-<n> <option>` records your answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
 | `bin/wuwei memory` | Plumbing: checks workspace memory. | [Concepts](concepts.md#memory) |
-| `bin/wuwei mcp` | Checks the attached MCP servers; `decide [D-<n>] <option>` records the owner's answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
+| `bin/wuwei mcp` | Checks the attached MCP servers; `decide [D-<n>] <option>` records your answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
 | `bin/wuwei memory` | Checks workspace memory. | [Concepts](concepts.md#memory) |
 | `bin/wuwei merge` | Checks or merges an eligible PR. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei metrics` | Shows the recorded process metrics. | [Long sessions](daily.md#long-sessions) |
@@ -50,7 +50,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei rank` | Plumbing: ranks candidate JSON using the workspace goals. | [Lead plan JSON](#lead-plan-json) |
 | `bin/wuwei remote` | Owner actions for the remote control plane. | [Remote](remote.md) |
 | `bin/wuwei reply` | Replies to one unthreaded human obligation. | [Outward draft queue](#outward-draft-queue) |
-| `bin/wuwei report` | Shows the owner report. | [Day close](concepts.md#day-close) |
+| `bin/wuwei report` | Shows your report. | [Day close](concepts.md#day-close) |
 | `bin/wuwei setup` | Owner, host terminal: runs `init` if needed, discovers the repositories and the host, calibrates and interviews, applies one proposal after a digest, then checks and prints what is still owed; `--shadow`, `--posture <profile>`, `--repos <dir>...`. | [Daily path](daily.md) |
 | `bin/wuwei shadow` | `report` lists what the guards would have refused since `guards.shadow_since`, grouped by guard, and names likely false positives. | [Security posture](concepts.md#security-posture) |
 | `bin/wuwei retro` | Compiles the steward retro. | [Retro and merge](#retro-and-merge-configuration) |
@@ -62,7 +62,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei steward` | Runs a steward review or acknowledges steering. | [Steward](#steward) |
 | `bin/wuwei sweep` | Plumbing: checks day obligations. | [Concepts](concepts.md#day-flow) |
 | `bin/wuwei verdict` | Plumbing: checks a gate verdict. | [Gate verdict layout](#gate-verdict-layout) |
-| `bin/wuwei voice` | Shows or edits the owner voice profile. | [Owner voice](configuration.md#owner-voice) |
+| `bin/wuwei voice` | Shows or edits your voice profile. | [Owner voice](configuration.md#owner-voice) |
 | `bin/wuwei watch` | Supervises workspace activity and owned PRs. | [Running the watch](configuration.md#running-the-watch) |
 | `bin/wuwei why` | Explains from recorded events why an item, a decision or a refusal is where it is. | [Why](#why) |
 | `bin/wuwei worktree` | Creates an anchored item worktree. | [Item worktrees](#item-worktrees) |
@@ -94,7 +94,7 @@ For `prioritisation.framework = "rice"`, use `reach` (positive people or systems
 
 ## Decision record
 
-`bin/wuwei decision template` prints a record that passes `bin/wuwei decision lint FILE`. Save it as `.wuwei/days/<date>/decisions/D-<n>.md`. Include `Question:`, `Context:` with evidence paths, and an `Options:` table with at least two choices including deferral. A `Musts:` table marks pass/fail for each option. A `Wants:` table gives each criterion a weight from 1 to 10 and each option a score from 0 to 10. `Recommendation:` names the highest scoring option that passes every must. Complete `Confidence: high|medium|low`, `Reversibility: one-way|two-way`, `Blast radius:`, `Pre-mortem:`, `Revisit:`, `Decided-by: seat|owner`, and `Outcome:`. `bin/wuwei decision show D-<n>` prints a valid record at the `owner.verbosity.decisions` level (exit 1 for an invalid record, 2 for one it cannot read), and `--full` prints every field. `--widget` instead prints a JSON list with one AskUserQuestion question (`question` `D-<n>: <Question>`, `header` `D-<n>`, the recommended option first with its description prefixed `Recommended. `, at most four options, `multiSelect`) plus `record`, `wuwei decide D-<n> <label>`, the command that records the answer. A valid record whose text carries tells from the writing checklist lints with an extra `style:` line and still exits 0. Route an existing record with `bin/wuwei decision route D-<n>`. For a confirmation from a person outside the loop, run `bin/wuwei decision route D-n --external <item>`: the record goes to the owner whatever its reversibility, the item records `assumption: {kind: external, decision, day, since, status: waiting}` and its reversible work continues. After `decisions.wait_hours` weekday hours in `owner.timezone` without an owner answer, the watch sweep confirms the recommendation on a two-way door (`status: confirmed`; the record stays pending) or parks the item with the record as its decision (`status: parked`); either writes a `decision.waited` event, and your `decision outcome` resumes a parked item. `bin/wuwei pr act` routes the decisions it creates, and a routed decision without an owner outcome shows in `bin/wuwei nudges` and the status line.
+`bin/wuwei decision template` prints a record that passes `bin/wuwei decision lint FILE`. Save it as `.wuwei/days/<date>/decisions/D-<n>.md`. Include `Question:`, `Context:` with evidence paths, and an `Options:` table with at least two choices including deferral. A `Musts:` table marks pass/fail for each option. A `Wants:` table gives each criterion a weight from 1 to 10 and each option a score from 0 to 10. `Recommendation:` names the highest scoring option that passes every must. Complete `Confidence: high|medium|low`, `Reversibility: one-way|two-way`, `Blast radius:`, `Pre-mortem:`, `Revisit:`, `Decided-by: seat|owner`, and `Outcome:`. `bin/wuwei decision show D-<n>` prints a valid record at the `owner.verbosity.decisions` level (exit 1 for an invalid record, 2 for one it cannot read), and `--full` prints every field. `--widget` instead prints a JSON list with one AskUserQuestion question (`question` `D-<n>: <Question>`, `header` `D-<n>`, the recommended option first with its description prefixed `Recommended. `, at most four options, `multiSelect`) plus `record`, `wuwei decide D-<n> <label>`, the command that records the answer. A valid record whose text carries tells from the writing checklist lints with an extra `style:` line and still exits 0. Route an existing record with `bin/wuwei decision route D-<n>`. For a confirmation from a person outside the loop, run `bin/wuwei decision route D-n --external <item>`: the record comes to you whatever its reversibility, the item records `assumption: {kind: external, decision, day, since, status: waiting}` and its reversible work continues. After `decisions.wait_hours` weekday hours in `owner.timezone` without an owner answer, the watch sweep confirms the recommendation on a two-way door (`status: confirmed`; the record stays pending) or parks the item with the record as its decision (`status: parked`); either writes a `decision.waited` event, and your `decision outcome` resumes a parked item. `bin/wuwei pr act` routes the decisions it creates, and a routed decision without an owner outcome shows in `bin/wuwei nudges` and the status line.
 
 ## Retro and merge configuration
 
@@ -106,9 +106,9 @@ In a `[[repos]]` entry, `[repos.merge]` sets `merge.auto` (default `false`). Aut
 
 `bin/wuwei steward run --trigger sweep|close|tool-calls` writes a steward brief, launches the steward seat through the runtime adapter, records a `steward.run` event and prints `steward_launch`; launch that agent exactly as returned. `bin/wuwei close` runs the close review once a day. A second `--trigger close` run the same day writes no brief, launches nothing and prints `steward: close review already ran today (brief <path>)`.
 
-`bin/wuwei steward ack <id>` acknowledges a steward steering note. The id has the form `<item>-fix-3` (a third fix round) or `<item>-question-<agent>` (a seat stopped on a question to the owner without a decision record, written by the SubagentStop guard) and is named, with the note text, by the refusal `steward note <id> requires planner acknowledgement: <text>` from `dispatch next`. A `steward.due` nudge is not a note and takes no ack: it clears when `steward run` records a run.
+`bin/wuwei steward ack <id>` acknowledges a steward steering note. The id has the form `<item>-fix-3` (a third fix round) or `<item>-question-<agent>` (a seat stopped on a question to you without a decision record, written by the SubagentStop guard) and is named, with the note text, by the refusal `steward note <id> requires planner acknowledgement: <text>` from `dispatch next`. A `steward.due` nudge is not a note and takes no ack: it clears when `steward run` records a run.
 
-Every steward review (on the sweep, at close and on each `dispatch next`) also counts, per item over the last `steward.loop_window_hours`, the decision and clarification records naming it on their `Question:` or `Context:` line, `gate.received` verdicts, repeated briefs for the same role and `build.fix_opened` fix requests. Above `steward.loop_threshold`, or on a second fix round today, it writes one `negotiation.loop` event per item per day with the counts and the last two exchanges: a nudge, or a page when the item's goal date has passed. The listener sends its summary to the owner DM once and records `negotiation.notified`; the status line shows `loops N`. The signal reports; it never parks or blocks.
+Every steward review (on the sweep, at close and on each `dispatch next`) also counts, per item over the last `steward.loop_window_hours`, the decision and clarification records naming it on their `Question:` or `Context:` line, `gate.received` verdicts, repeated briefs for the same role and `build.fix_opened` fix requests. Above `steward.loop_threshold`, or on a second fix round today, it writes one `negotiation.loop` event per item per day with the counts and the last two exchanges: a nudge, or a page when the item's goal date has passed. The listener sends its summary to your owner DM once and records `negotiation.notified`; the status line shows `loops N`. The signal reports; it never parks or blocks.
 
 ## Codex companion protocol
 

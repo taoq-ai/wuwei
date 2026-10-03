@@ -34,7 +34,7 @@ PERMISSIONS_DENY = [f'Bash({command})' for command in (
 
 
 def deny(rule):
-    return 1, f'deploy: refused by {rule}'
+    return 1, f'deploy: refused by {rule}; deploying is an owner action: stop and ask the owner to run it'
 
 
 def unknown(reason):
@@ -112,7 +112,7 @@ def git(args, env, config):
         if any(key in options for key in ('--receive-pack', '--exec')):
             unknown('git executable override prevents inspection')
         if len(targets) < 2:
-            unknown('push destination is unresolved')
+            unknown('push destination is unresolved; name it: git push origin HEAD:refs/heads/<branch>')
         for ref in targets[1:]:
             target = ref.lstrip('+').split(':')[-1]
             if environment(target, config):
@@ -314,7 +314,7 @@ def check(payload):
                     return result
         return 0, ''
     except (ParseError, ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
-        return 2, f'deploy: could not inspect: {exc}'
+        return 2, f'deploy: could not inspect: {exc}; write it as plain literal commands, or ask the owner to run it'
 
 
 GUARDS = [Guard('PreToolUse', 'Bash', check)]

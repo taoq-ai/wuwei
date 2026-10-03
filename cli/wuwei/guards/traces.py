@@ -1,6 +1,7 @@
 """Record completed tool calls in the OTLP JSONL shape consumed by ZIRAN."""
 
 from wuwei.guards import Guard
+from wuwei.exits import PAYLOAD
 
 
 def _record(payload, root, findings=(), transcript_path=None):
@@ -17,21 +18,21 @@ def _record(payload, root, findings=(), transcript_path=None):
         if field == 'agent_type' and field not in payload:
             continue
         if not isinstance(payload.get(field), str) or not payload[field].strip():
-            return 2, f'wuwei traces: missing or invalid {field}'
+            return 2, f'wuwei traces: missing or invalid {field}; {PAYLOAD}'
     if not isinstance(payload.get('tool_input'), dict):
-        return 2, 'wuwei traces: missing or invalid tool_input'
+        return 2, f'wuwei traces: missing or invalid tool_input; {PAYLOAD}'
     duration = payload.get('duration_ms', 0)
     if (type(duration) not in (int, float) or duration < 0
             or isinstance(duration, float) and not math.isfinite(duration)):
-        return 2, 'wuwei traces: invalid duration_ms'
+        return 2, f'wuwei traces: invalid duration_ms; {PAYLOAD}'
     directory = workspace.day_dir(root)
     now = workspace.now()
     end = int(now.timestamp()) * 1_000_000_000 + now.microsecond * 1000
     if duration > end / 1_000_000:
-        return 2, 'wuwei traces: invalid duration_ms'
+        return 2, f'wuwei traces: invalid duration_ms; {PAYLOAD}'
     start = end - int(duration * 1_000_000)
     if start < 0:
-        return 2, 'wuwei traces: invalid duration_ms'
+        return 2, f'wuwei traces: invalid duration_ms; {PAYLOAD}'
     role = redact(payload.get('agent_type', 'unknown'))
     tool = redact(payload['tool_name'])
     attributes = {
@@ -89,7 +90,7 @@ def check(payload):
         if root is None:
             return 0, ''
     except (OSError, ValueError, TypeError, RuntimeError):
-        return 2, 'wuwei traces: cannot determine workspace scope'
+        return 2, 'wuwei traces: cannot determine workspace scope; run bin/wuwei doctor, which names the workspace problem'
     try:
         try:
             security_data = security.load(root)
@@ -101,7 +102,7 @@ def check(payload):
                 from pathlib import Path
                 agent_id = payload['agent_id']
                 if not isinstance(agent_id, str) or not agent_id.strip():
-                    raise ValueError('invalid agent_id')
+                    raise ValueError(f'invalid agent_id; {PAYLOAD}')
                 if transcript_path:
                     transcript_path = (Path(transcript_path).parent / payload['session_id']
                                        / 'subagents' / f'agent-{agent_id}.jsonl')
@@ -115,7 +116,7 @@ def check(payload):
                     payload['session_id'] = hashlib.sha256(original_session.encode()).hexdigest()
 
         except (OSError, ValueError, TypeError, KeyError, RuntimeError):
-            return 2, 'wuwei traces: cannot inspect or record workspace security evidence'
+            return 2, 'wuwei traces: cannot inspect or record workspace security evidence; run bin/wuwei doctor, then retry'
         code, reason = _record(payload, root, findings, transcript_path)
         if not code:
             return 0, ''
@@ -125,7 +126,7 @@ def check(payload):
     try:
         state.append_event('hook.post_tool_use_error', {'reason': reason}, root)
     except BaseException as exc:
-        print(f'wuwei traces: {type(exc).__name__}: could not log PostToolUse error',
+        print(f'wuwei traces: {type(exc).__name__}: could not log PostToolUse error; run bin/wuwei doctor',
               file=sys.stderr)
     return (2, reason) if security_data is not None else (0, '')
 

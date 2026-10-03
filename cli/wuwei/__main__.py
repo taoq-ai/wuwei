@@ -16,7 +16,7 @@ from contextlib import redirect_stdout, redirect_stderr
 import os
 
 from wuwei import env, redact
-from wuwei.exits import CLEAN, FINDINGS, UNRUN
+from wuwei.exits import CLEAN, FINDINGS, UNRUN, PAYLOAD
 
 if _FAST:
     from wuwei import workspace
@@ -92,7 +92,7 @@ def _main(argv=None):
         manifest = Path(__file__).resolve().parents[2] / ".claude-plugin/plugin.json"
         version = json.loads(manifest.read_text())["version"]
         if not isinstance(version, str) or not version.strip():
-            raise ValueError("plugin version must be a non-empty string")
+            raise ValueError("plugin version must be a non-empty string; reinstall the plugin, then run bin/wuwei doctor")
         parser.add_argument("--version", action="version", version=version)
         name = argv[0].replace("-", "_") if argv else ""
         if (name.isidentifier() and not name.startswith("_")
@@ -125,7 +125,7 @@ def _call(func, args):
     try:
         status = func(args)
         if isinstance(status, bool) or not isinstance(status, int) or status not in (CLEAN, FINDINGS, UNRUN):
-            raise ValueError(f"invalid exit status {status!r}; expected 0, 1, or 2")
+            raise ValueError(f"invalid exit status {status!r}; expected 0, 1, or 2; {PAYLOAD}")
         return status
     except BaseException as exc:
         print(f"wuwei {args.command}: {str(exc) or type(exc).__name__}", file=sys.stderr)

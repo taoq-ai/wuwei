@@ -8,6 +8,7 @@ import zoneinfo
 from wuwei import calibrate, workspace
 from wuwei.merge import quiet
 from wuwei.promotion import safe_path
+from wuwei.exits import DAMAGED, SYMLINK
 
 
 BLOCK = '## Owner preferences (interview)\n'
@@ -26,14 +27,14 @@ def _items(text):
     items = [item.strip() for item in text.split(',') if item.strip()]
     if not 1 <= len(items) <= 20 or any(
             not calibrate.SAFE.fullmatch(item) or calibrate.instruction_like(item) for item in items):
-        raise ValueError('expected 1 to 20 comma-separated items of letters, digits, spaces and ._/()*@+-')
+        raise ValueError('expected 1 to 20 comma-separated items of letters, digits, spaces and ._/()*@+-; write the answer that way')
     return items
 
 
 def _windows(text):
     windows = [item.strip() for item in text.split(',') if item.strip()]
     if not 1 <= len(windows) <= 20:
-        raise ValueError('expected 1 to 20 comma-separated HH:MM-HH:MM windows')
+        raise ValueError('expected 1 to 20 comma-separated HH:MM-HH:MM windows; write the windows that way, for example 09:00-17:00')
     for window in windows:
         quiet({'quiet_hours': [window]}, datetime(2000, 1, 1))
     return windows
@@ -42,9 +43,9 @@ def _windows(text):
 def _hours(text):
     window, _, zone = text.strip().partition(' ')
     if len(_windows(window)) != 1:
-        raise ValueError('expected one HH:MM-HH:MM window and a time zone')
+        raise ValueError(f'expected one HH:MM-HH:MM window and a time zone; {DAMAGED}')
     if zone.strip() not in zoneinfo.available_timezones():
-        raise ValueError(f'unknown time zone {zone.strip()!r}')
+        raise ValueError(f'unknown time zone {zone.strip()!r}; use an IANA zone such as Europe/Lisbon')
     return {'planner': f'The owner works {window} in {zone.strip()}; '
                        'outside those hours only pages interrupt.'}
 
@@ -52,7 +53,7 @@ def _hours(text):
 def _signature(text):
     items = _items(text)
     if len(items) != 1:
-        raise ValueError('expected one signature without commas')
+        raise ValueError(f'expected one signature without commas; {DAMAGED}')
     return {'shepherd': f'Sign messages sent as the owner with: {items[0]}.'}
 
 
@@ -70,13 +71,14 @@ def _chat(text):
         return {'adapters.chat': 'slack', 'shepherd.review_channel': text}
     if re.fullmatch(r'[A-Za-z][A-Za-z0-9 .+-]{0,39}', text) and not calibrate.instruction_like(text):
         return {'adapters.chat': 'none'}
-    raise ValueError('expected a Slack channel ID such as C0123ABCD, or the name of another tool such as Email')
+    raise ValueError('expected a Slack channel ID such as C0123ABCD, or the name of another tool such as Email; '
+                     'use the channel ID from the channel details, or the tool name')
 
 
 def _login(text):
     text = text.strip()
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,38}', text):
-        raise ValueError('expected a code-host login such as pat-dev')
+        raise ValueError('expected a code-host login such as pat-dev; use the login shown on the code host profile')
     return {'shepherd.lead_login': text, 'shepherd.min_reviewers': 1}
 
 
@@ -248,7 +250,7 @@ def effects(qid, answer):
     """The effects of one answer: a choice label (any case), else valid free text."""
     row = question(qid)
     if not isinstance(answer, str):
-        raise ValueError(f'{qid}: expected text')
+        raise ValueError(f'{qid}: expected text; write the answer as text')
     for label, _, result in row['choices']:
         if label.casefold() == answer.strip().casefold():
             return result
@@ -316,20 +318,20 @@ def load(root, config):
     """Today's answers, re-validated against the table and the configured repositories."""
     path = workspace.day_dir(root) / 'interview.json'
     if path.is_symlink():
-        raise ValueError('interview.json must not be a symlink')
+        raise ValueError(f'interview.json must not be a symlink; {SYMLINK}')
     if not path.exists():
         return {}
     try:
         answers = json.loads(path.read_text(encoding='utf-8'))
         if not isinstance(answers, dict):
-            raise ValueError('expected an object')
+            raise ValueError(f'expected an object; {DAMAGED}')
         names = {repo['name'] for repo in config['repos']}
         for qid, value in answers.items():
             if question(qid)['scope'] == 'repo':
                 if not isinstance(value, dict) or not value or not set(value) <= names:
-                    raise ValueError(f'{qid}: expected answers keyed by configured repositories')
+                    raise ValueError(f'{qid}: expected answers keyed by configured repositories; use names from [[repos]] as the keys')
             elif not isinstance(value, str):
-                raise ValueError(f'{qid}: expected one answer')
+                raise ValueError(f'{qid}: expected one answer; pass a single text answer')
         list(_answered(answers))
     except ValueError as exc:
         raise ValueError(f'interview.json: {exc}') from None
@@ -389,7 +391,7 @@ def record(root, config, picked):
     names = {repo['name'] for repo in config['repos']}
     if any(not set(answers[row['id']]) <= names for row in QUESTIONS
            if row['scope'] == 'repo' and row['id'] in answers):
-        raise ValueError('answers must name configured repositories')
+        raise ValueError('answers must name configured repositories; use names from [[repos]] in .wuwei/config.toml')
     proposals = _proposals(root, answers)
     day = workspace.day_dir(root)
     (day / 'proposals').mkdir(parents=True, exist_ok=True)
@@ -447,7 +449,7 @@ def parse(pairs, repos):
     for pair in pairs:
         qid, separator, answer = pair.partition('=')
         if not separator:
-            raise ValueError(f'expected ID=VALUE, got {pair!r}')
+            raise ValueError(f'expected ID=VALUE, got {pair!r}; pass each answer as ID=VALUE')
         answer = answer.strip()
         effects(qid.strip(), answer)
         for row, repo in _selected([qid.strip()], repos):
@@ -463,13 +465,13 @@ def _recorded(root):
         for path in sorted((root / '.wuwei' / base).glob('*/interview.json')):
             name = path.relative_to(root / '.wuwei').as_posix()
             if path.is_symlink():
-                raise ValueError(f'{name} must not be a symlink')
+                raise ValueError(f'{name} must not be a symlink; {SYMLINK}')
             try:
                 answers = json.loads(path.read_text(encoding='utf-8'))
             except ValueError as exc:  # JSONDecodeError and UnicodeDecodeError
                 raise ValueError(f'{name}: {exc}') from None
             if not isinstance(answers, dict):
-                raise ValueError(f'{name}: expected an object')
+                raise ValueError(f'{name}: expected an object; {DAMAGED}')
             for qid, value in answers.items():
                 found |= {(qid, repo) for repo in value} if isinstance(value, dict) else {(qid, None)}
     return found

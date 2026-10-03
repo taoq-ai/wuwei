@@ -110,7 +110,7 @@ def sender(config, event):
     """owner, changed (same user id, other or no team) or other, against control_plane.owner."""
     pin = config['control_plane']['owner']
     if not re.fullmatch(PIN, pin):
-        raise ValueError(f'control_plane.owner must pin <team>/<user>; this message came from {event["sender"]}')
+        raise ValueError(f'control_plane.owner must pin <team>/<user>; this message came from {event["sender"]}; the owner checks control_plane.owner with bin/wuwei config check')
     if event['sender'] == pin:
         return 'owner'
     return 'changed' if event['sender'].rsplit('/', 1)[-1] == pin.rsplit('/', 1)[-1] else 'other'
@@ -134,7 +134,7 @@ def acknowledge(root):
     token = sha256('\n'.join(ids).encode()).hexdigest()[:12]
     if not integrity._host_confirm(token, prompt=f'Acknowledge the refused sender messages '
                                    f'{", ".join(ids)} on this host.'):
-        return 1, 'remote ack: owner confirmation declined'
+        return 1, 'remote ack: owner confirmation declined; rerun bin/wuwei remote ack in a host terminal and answer y'
     state.append_event('remote.acknowledged', {'ids': ids}, root=root)
     return 0, f'remote ack: acknowledged {len(ids)} refused sender messages'
 
@@ -170,7 +170,7 @@ def code_step(root, event, code):
     try:
         key = base64.b32decode(secret + '=' * (-len(secret) % 8))
     except binascii.Error:
-        raise ValueError('WUWEI_TOTP_SECRET is not base32') from None
+        raise ValueError('WUWEI_TOTP_SECRET is not base32; set WUWEI_TOTP_SECRET in .wuwei/env to the base32 secret from setup') from None
     used = max((row['payload']['step'] for row in _today(root) if row['kind'] == 'remote.confirmed'
                 and row['payload'].get('factor') == 'code'), default=-1)
     return next((step for step in (int(ts // 30) + d for d in (-1, 0, 1))

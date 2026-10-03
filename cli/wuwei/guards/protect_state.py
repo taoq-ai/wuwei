@@ -8,6 +8,7 @@ import shlex
 from wuwei.guards import Guard
 from wuwei.shell import WORKSPACE_ROOT
 from wuwei.workspace import contains_workspace, worktree_workspace
+from wuwei.exits import DAMAGED, PAYLOAD
 
 
 _STATE_HINT = ('State and config files are protected; use the wuwei CLI for state changes; '
@@ -23,7 +24,7 @@ _WRITE_CONSTRUCT = (
 
 def _text(value, name):
     if not isinstance(value, str) or not value or '\0' in value:
-        raise ValueError(f'missing or invalid {name}')
+        raise ValueError(f'missing or invalid {name}; {PAYLOAD}')
     return value
 
 
@@ -43,28 +44,45 @@ def _wuwei_action(argv):
 
 
 _OWNER_ACTIONS = {
-    ('decision', 'outcome'): 'Decision outcomes require the owner terminal, outside agent tools.',
-    ('drafts', 'approve'): 'Draft decisions require the owner terminal, outside agent tools.',
-    ('drafts', 'drop'): 'Draft decisions require the owner terminal, outside agent tools.',
-    ('mcp', 'decide'): 'MCP decisions require the owner terminal, outside agent tools.',
+    ('decision', 'outcome'): ("Recording a decision outcome is the owner's answer, outside agent tools: show it "
+                              'with bin/wuwei decision show <id> --widget, and the owner runs bin/wuwei decision '
+                              'outcome <id> <option> in a host terminal.'),
+    ('drafts', 'approve'): ("Approving a draft is the owner's decision, outside agent tools: list drafts with "
+                            'bin/wuwei drafts, and the owner runs bin/wuwei drafts approve <id> in a host terminal.'),
+    ('drafts', 'drop'): ("Dropping a draft is the owner's decision, outside agent tools: list drafts with "
+                         'bin/wuwei drafts, and the owner runs bin/wuwei drafts drop <id> in a host terminal.'),
+    ('mcp', 'decide'): ("MCP decisions are the owner's, outside agent tools: show the request, and the owner "
+                        'runs bin/wuwei mcp decide <id> <option> in a host terminal.'),
     # A whole group: decide's verb position holds the D-n (#354).
-    ('decide', ''): 'Decisions require the owner terminal, outside agent tools.',
-    ('integrity', 'reconfirm'): 'Integrity re-confirmation is an owner action on the host, outside agent tools.',
-    ('state', 'recover'): 'State recovery is an owner action on the host, outside agent tools.',
+    ('decide', ''): ("Decisions are the owner's answer, outside agent tools: show it with bin/wuwei decision "
+                     'show <id> --widget, and the owner runs bin/wuwei decide <id> <option> in a host terminal.'),
+    ('integrity', 'reconfirm'): ('Integrity re-confirmation is an owner action, outside agent tools: the owner '
+                                 'runs bin/wuwei integrity reconfirm in a host terminal.'),
+    ('state', 'recover'): ('State recovery is an owner action, outside agent tools: the owner runs bin/wuwei '
+                           'state recover in a host terminal; bin/wuwei doctor shows what is damaged.'),
     # An uninstalled watch reads as off, so a seat could silence a dead-watch page.
-    ('watch', 'uninstall'): 'Watch uninstall requires the owner terminal, outside agent tools.',
+    ('watch', 'uninstall'): ('Watch uninstall is an owner action, outside agent tools: the owner runs bin/wuwei '
+                             'watch uninstall in a host terminal.'),
     # An uninstalled listener reads as off, so a seat could silence a dead-listener report.
-    ('listen', 'uninstall'): 'Listener uninstall requires the owner terminal, outside agent tools.',
-    ('goals', 'edit'): 'Owner memory edits are an owner action on the host, outside agent tools.',
-    ('voice', 'edit'): 'Owner memory edits are an owner action on the host, outside agent tools.',
+    ('listen', 'uninstall'): ('Listener uninstall is an owner action, outside agent tools: the owner runs '
+                              'bin/wuwei listen uninstall in a host terminal.'),
+    ('goals', 'edit'): ('Owner memory edits are an owner action on the host, outside agent tools: propose the '
+                        'change, and the owner runs bin/wuwei goals edit in a host terminal.'),
+    ('voice', 'edit'): ('Owner memory edits are an owner action on the host, outside agent tools: propose the '
+                        'change, and the owner runs bin/wuwei voice edit in a host terminal.'),
     # An acknowledged refusal stops paging, so a seat could silence an impostor alert.
-    ('remote', 'ack'): 'Remote acknowledgements require the owner terminal, outside agent tools.',
+    ('remote', 'ack'): ('Remote acknowledgements are an owner action, outside agent tools: the owner runs '
+                        'bin/wuwei remote ack in a host terminal.'),
     # config.toml holds executed commands and merge eligibility; seats run wuwei promote.
-    ('config', 'promote'): 'Calibration promotion is an owner action on the host, outside agent tools.',
-    ('config', 'set'): 'Config edits are an owner action on the host, outside agent tools.',
-    ('config', 'add-repo'): 'Config edits are an owner action on the host, outside agent tools.',
+    ('config', 'promote'): ('Calibration promotion is an owner action, outside agent tools: the owner runs '
+                            'bin/wuwei config promote in a host terminal.'),
+    ('config', 'set'): ("Config edits are the owner's, outside agent tools: propose the line, and the owner "
+                        'runs bin/wuwei config set <key> <value> in a host terminal.'),
+    ('config', 'add-repo'): ("Config edits are the owner's, outside agent tools: propose the repository, and the "
+                             'owner runs bin/wuwei config add-repo --name <owner/repo> --path <dir> --branch <branch> in a host terminal.'),
     # An empty verb is the whole group: setup's flags take values, which _pair reads as a verb.
-    ('setup', ''): 'Setup writes config.toml; it is an owner action on the host, outside agent tools.',
+    ('setup', ''): ('Setup writes config.toml, an owner action outside agent tools: the owner runs bin/wuwei '
+                    'setup in a host terminal.'),
 }
 _OWNER_GROUPS = {group for group, _ in _OWNER_ACTIONS}
 _OWNER_VERBS = tuple(sorted({verb for _, verb in _OWNER_ACTIONS if verb}))
@@ -166,14 +184,17 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
                       or re.fullmatch(_INTERPRETER, program) and (named or any(
                           re.fullmatch(r'-(?:[a-zA-Z]*[ceEpr]|-eval)(?:=.*)?', arg, re.S) for arg in argv[1:])))
             if hidden or re.search(_CLI_WORD, ' '.join(words)):
-                return 2, 'Opaque owner action; use the host terminal.'
+                return 2, ('Opaque owner action: write bin/wuwei <group> <verb> as a plain command so the '
+                           'guard can read it; owner actions run in a host terminal.')
             continue
         group, verb = _pair(action)
         if xargs and not (re.fullmatch(r'[a-z][\w-]*', group) and (
                 group not in _OWNER_GROUPS or re.fullmatch(r'[a-z][\w-]*', verb))):
-            return 2, 'Input-driven owner action; use the host terminal.'
+            return 2, ('Input-driven owner action: write bin/wuwei <group> <verb> literally instead of from '
+                       'input; owner actions run in a host terminal.')
         if re.search(r'[$`]', group) or group in _OWNER_GROUPS and re.search(r'[$`]', verb):
-            return 2, 'Not a literal owner action; use the host terminal.'
+            return 2, ('Not a literal owner action: write bin/wuwei <group> <verb> without variables; owner '
+                       'actions run in a host terminal.')
         if read_only(action):  # #348: --help prints usage and runs nothing
             continue
         if reason := _owner_reason((group, verb)):
@@ -189,14 +210,15 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
             return 1, reason
     if relevant and unseen > 0:
         # A CLI mention sits in a heredoc, comment or other input no argv shows.
-        return 2, 'Opaque owner action; use the host terminal.'
+        return 2, ('Opaque owner action: write bin/wuwei <group> <verb> as a plain command so the '
+                   'guard can read it; owner actions run in a host terminal.')
     return None
 
 
 def _input(payload, field):
     value = payload.get('tool_input')
     if not isinstance(value, dict):
-        raise ValueError('missing or invalid tool_input')
+        raise ValueError(f'missing or invalid tool_input; {PAYLOAD}')
     return value.get(field)
 
 
@@ -309,7 +331,7 @@ def _workspace(cwd):
 def _cwd(payload):
     cwd = Path(_text(payload.get('cwd'), 'cwd'))
     if not cwd.is_absolute():
-        raise ValueError('cwd must be absolute')
+        raise ValueError(f'cwd must be absolute; {PAYLOAD}')
     return cwd.resolve()
 
 
@@ -338,7 +360,7 @@ def _copy_targets(argv, cwd):
             options = False
         elif options and not rsync and arg in ('-t', '--target-directory'):
             if index == len(argv):
-                raise ValueError('missing target directory')
+                raise ValueError('missing target directory; pass the target directory')
             target = argv[index]
             index += 1
         elif options and not rsync and arg.startswith('--target-directory='):
@@ -352,10 +374,10 @@ def _copy_targets(argv, cwd):
             operands.append(arg)
     if target is None:
         if len(operands) < 2:
-            raise ValueError('copy/move requires source and destination')
+            raise ValueError('copy/move requires source and destination; pass the source and the destination')
         target = operands.pop()
     if not operands:
-        raise ValueError('copy/move requires a source')
+        raise ValueError('copy/move requires a source; pass the source and the destination')
     destination = _path(target, cwd)
     targets = [] if destination.is_dir() else [target]
     for source in operands:
@@ -429,7 +451,7 @@ def _cd_target(command):
     elif args and args[0].startswith('-') and args[0] != '-':
         raise ValueError('unsupported cd option; use git -C or a subshell')
     if len(args) > 1:
-        raise ValueError('cd requires a single literal directory')
+        raise ValueError('cd requires a single literal directory; pass one literal directory to cd')
     env = {**os.environ, **command.env}
     target = args[0] if args else _text(env.get('HOME'), 'HOME')
     if target == '~' or target.startswith('~/'):
@@ -448,7 +470,7 @@ def check_bash(payload):
         contain_cwd = root is not None and cwd.is_relative_to(root)
         script = _input(payload, 'command')
         if not isinstance(script, str):
-            raise ValueError('missing or invalid command')
+            raise ValueError(f'missing or invalid command; {DAMAGED}')
         from wuwei.shell import NonliteralPathError, ParseError, UNPARSED, classify, normalize, reads, script_text
         from wuwei.workspace import guard_scope
 

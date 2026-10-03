@@ -124,7 +124,7 @@ def test_outward_hook_profiles(configured, monkeypatch, capsys, profile, text, c
         assert json.loads(out)['hookSpecificOutput']['permissionDecision'] == 'deny'
     elif text == 'Thanks':
         assert out == ''
-        assert err == 'warning: outward: channel length exceeded\n'
+        assert err.startswith('warning: outward: channel length exceeded;')
     else:
         assert out == err == ''
 
@@ -147,7 +147,7 @@ def test_standard_outward_warning_records_tool_and_reason(configured, monkeypatc
     events, = (configured / '.wuwei').glob('days/*/events.jsonl')
     record, = [json.loads(line) for line in events.read_text().splitlines()
                if json.loads(line)['kind'] == 'hook.warning']
-    assert record['payload'] == {'reason': 'outward: channel length exceeded',
+    assert record['payload'] == {'reason': CHANNEL_LENGTH,
                                  'tool': 'mcp__slack__post_message'}
 
 
@@ -172,7 +172,7 @@ def test_direct_port_preserves_profile_and_tiers(configured, monkeypatch, capsys
     if allowed:
         record, = [json.loads(line) for line in events[0].read_text().splitlines()
                    if json.loads(line)['kind'] == 'hook.warning']
-        assert record['payload'] == {'reason': 'outward: channel length exceeded', 'tool': 'chat'}
+        assert record['payload'] == {'reason': CHANNEL_LENGTH, 'tool': 'chat'}
     elif channel == 'Cclient':
         record, = [json.loads(line) for line in events[0].read_text().splitlines()]
         assert record['kind'] == 'draft.created'
@@ -199,8 +199,20 @@ def test_hard_guards_under_each_profile(configured, monkeypatch, capsys, command
     result, out, err = replay(configured, monkeypatch, capsys, tool='Bash', inputs={'command': command})
     assert result == 2
     assert json.loads(out)['hookSpecificOutput']['permissionDecision'] == 'deny'
-    assert reason in err
+    assert reason in refused(configured)
     assert 'warning:' not in err
+
+
+def refused(root):
+    """Every guard reason the hook.refusal events recorded; the hook prints one (#362)."""
+    import glob
+    return ' '.join(row['reason'] for path in glob.glob(str(root / '.wuwei/days/*/events.jsonl'))
+                    for line in open(path).read().splitlines() if json.loads(line)['kind'] == 'hook.refusal'
+                    for row in json.loads(line)['payload'].get('refusals', []))
+
+
+CHANNEL_LENGTH = ('outward: channel length exceeded; split the message or shorten it to the channel '
+                  'limit (outward.max_length)')
 
 
 @pytest.mark.parametrize('inside', [False, True])

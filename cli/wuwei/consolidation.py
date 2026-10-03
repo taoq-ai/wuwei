@@ -7,6 +7,7 @@ import re
 
 from wuwei import memory, promotion, registry, workspace
 from wuwei.notes import parse_note
+from wuwei.exits import SYMLINK
 
 
 def note_findings(root):
@@ -17,7 +18,7 @@ def note_findings(root):
     active = []
     for path in sorted(notes.glob('*.md')):
         if path.is_symlink():
-            raise ValueError('note must not be a symlink')
+            raise ValueError(f'note must not be a symlink; {SYMLINK}')
         fields, body = parse_note(path.read_text(encoding='utf-8'))
         if fields['status'] == 'active':
             active.append((path.stem, fields['summary'], body))
@@ -31,12 +32,12 @@ def note_findings(root):
                 findings.append(f'{left}, {right}: potential contradiction; review shared summary')
     charters = root / '.wuwei/charters'
     if charters.is_symlink():
-        raise ValueError('charters must not be a symlink')
+        raise ValueError(f'charters must not be a symlink; {SYMLINK}')
     rules = []
     if charters.is_dir():
         for path in sorted(charters.glob('*.md')):
             if path.is_symlink():
-                raise ValueError('charter must not be a symlink')
+                raise ValueError(f'charter must not be a symlink; {SYMLINK}')
             for line in path.read_text(encoding='utf-8').splitlines():
                 if line.startswith('- '):
                     rules.append((path.name, line[2:].strip()))
@@ -69,7 +70,7 @@ def archive_days(root):
     config = workspace.load_config(root)['consolidation']
     days, archive = base / 'days', base / 'archive'
     if days.is_symlink() or archive.is_symlink() or not days.is_dir():
-        raise ValueError('day directories must be real directories')
+        raise ValueError(f'day directories must be real directories; {SYMLINK}')
     today = workspace.now().date()
     moves = []
     for source in sorted(days.iterdir()):

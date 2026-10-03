@@ -774,8 +774,8 @@ def test_decision_show(ws, monkeypatch, capsys):
     assert main(['decision', 'show', 'D-3']) == 1
     assert 'missing fields' in capsys.readouterr().err
     path.unlink()
-    assert main(['decision', 'show', 'D-3']) == 2
-    assert 'could not read' in capsys.readouterr().err
+    assert main(['decision', 'show', 'D-3']) == 0  # #362: a state answer
+    assert 'No D-3 today' in capsys.readouterr().out
     path.symlink_to(save(ws, name='D-4.md'))
     assert main(['decision', 'show', 'D-3']) == 2
     assert 'must belong to today' in capsys.readouterr().err
@@ -1037,7 +1037,7 @@ def test_decision_show_widget(ws, monkeypatch, capsys):
     assert main(['decision', 'show', 'D-3', '--widget']) == 1
     assert 'missing fields' in capsys.readouterr().err
     path.unlink()
-    assert main(['decision', 'show', 'D-3', '--widget']) == 2
+    assert main(['decision', 'show', 'D-3', '--widget']) == 1
     with pytest.raises(SystemExit, match='2'):
         main(['decision', 'show', 'D-3', '--widget', '--full'])
 @pytest.mark.parametrize('command, expected', [

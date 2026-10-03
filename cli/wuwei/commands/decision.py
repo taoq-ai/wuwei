@@ -7,6 +7,7 @@ import sys
 from wuwei import state, workspace
 from wuwei.decision import (evaluate, lint_file, owner_confirm, owner_record, present, record_rejection,
                             record_widget, route, route_owner, seat_outcome, table, today_path)
+from wuwei.exits import RACE, SYMLINK
 
 
 def register(subparsers):
@@ -75,8 +76,11 @@ def show(args):
     try:
         text = path.read_text(encoding='utf-8')
         fields, _ = evaluate(text)
+    except FileNotFoundError:  # #362: a state answer; --widget callers read JSON, so a finding there.
+        return int(bool(args.widget)), f'No {args.id} today; bin/wuwei nudges lists open decisions.'
     except (OSError, UnicodeError) as exc:
-        return 2, f'decision show: could not read {path}: {exc}'
+        return 2, (f'decision show: could not read {path.relative_to(root)}: {type(exc).__name__}; '
+                   'check the file is readable, then run bin/wuwei doctor')
     except ValueError as exc:
         return 1, f'decision show: {exc}'
     if args.widget:
@@ -92,7 +96,7 @@ def owner_outcome(args, note=None, *, root=None, where=None):
     root = workspace.find_workspace(root)
     path = today_path(args.id, root)
     if path.is_symlink() or path.parent.is_symlink():
-        return 2, 'decision: record must be a regular file'
+        return 2, f'decision: record must be a regular file; {SYMLINK}'
     text = path.read_text(encoding='utf-8')
     try:
         fields, _ = evaluate(text)
@@ -101,28 +105,28 @@ def owner_outcome(args, note=None, *, root=None, where=None):
     options = {row[0] for row in table(
         fields['Options'], ['Option', 'Description'], 'Options')}
     if args.option not in options:
-        return 1, 'decision: option is not in the record'
+        return 1, 'decision: option is not in the record; pick an option id from bin/wuwei decision show <id>'
     data = state.read_state(root)
     previous = data.get('decision_outcomes', {}).get(args.id)
     if previous and previous.get('decided_by') == 'owner':
-        return 1, 'decision: already answered'
+        return 1, 'decision: already answered; read it with bin/wuwei decision show <id>; write a new decision record to change course'
     if previous is None and args.id not in data.get('decision_routes', {}):
-        return 1, 'decision: route this pending owner decision first'
+        return 1, 'decision: route this pending owner decision first; route it with bin/wuwei decision route <id> first'
     if previous is not None and previous.get('decided_by') != 'seat':
-        return 1, 'decision: invalid prior outcome'
+        return 1, 'decision: invalid prior outcome; run bin/wuwei doctor, then bin/wuwei why <id>'
     digest = hashlib.sha256((args.id + '\n' + args.option + '\n' + text).encode()).hexdigest()
     if where and fields['Reversibility'] != 'two-way':
         return 1, 'decision: only a two-way decision is decided from the DM'
     where = where or owner_confirm(root, args.id, digest, f'{args.id}: {fields["Question"]}\nRecord {args.option}.')
     if not where:
-        return 1, 'decision: owner confirmation declined'
+        return 1, 'decision: owner confirmation declined; rerun bin/wuwei decide <id> <option> in a host terminal and answer y'
     if path.read_text(encoding='utf-8') != text:
-        return 2, 'decision: record changed during confirmation'
+        return 2, f'decision: record changed during confirmation; {RACE}'
     reversed_choice = previous is not None and previous['option'] != args.option
 
     def update(current):
         if current.get('decision_outcomes', {}).get(args.id) != previous:
-            raise ValueError('decision changed during confirmation')
+            raise ValueError(f'decision changed during confirmation; {RACE}')
         current.setdefault('decision_outcomes', {})[args.id] = {
             'option': args.option, 'outcome': args.option, 'decided_by': 'owner',
             'reversibility': fields['Reversibility']}

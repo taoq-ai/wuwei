@@ -3,7 +3,7 @@
 import json
 import sys
 
-from wuwei.exits import CLEAN, FINDINGS
+from wuwei.exits import CLEAN, FINDINGS, DAMAGED
 from wuwei.state import append_event
 
 
@@ -81,10 +81,10 @@ def register(subparsers):
 
 def run(args):
     if not args.kind.strip():
-        raise ValueError('event kind must be a nonempty string')
+        raise ValueError(f'event kind must be a nonempty string; {DAMAGED}')
     if args.kind not in FREE_KINDS:
         producer = EVENT_PRODUCERS.get(args.kind, 'its dedicated command')
-        print(f'wuwei event: {args.kind}: reserved; written by {producer}', file=sys.stderr)
+        print(f'wuwei event: {args.kind}: reserved; written by {producer}; use another event kind; that producer writes this one', file=sys.stderr)
         return FINDINGS
     payload = json.loads(args.payload)
     append_event(args.kind, payload)

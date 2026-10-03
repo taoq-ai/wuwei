@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 from wuwei import security, workspace
-from wuwei.exits import CLEAN, FINDINGS, UNRUN
+from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, SYMLINK
 
 
 ROLES = (
@@ -30,9 +30,9 @@ def _charter(root, name, overrides=None):
     text = path.read_text(encoding='utf-8')
     lines = text.splitlines(keepends=True)
     if len(lines) < 4 or lines[0] != '---\n' or not lines[1].startswith('version: ') or lines[2] != '---\n':
-        raise ValueError(f'{name}: expected versioned charter frontmatter')
+        raise ValueError(f'{name}: expected versioned charter frontmatter; reinstall the plugin, then run bin/wuwei doctor')
     if not lines[1][len('version: '):].strip():
-        raise ValueError(f'{name}: empty charter version')
+        raise ValueError(f'{name}: empty charter version; reinstall the plugin, then run bin/wuwei doctor')
     return text
 
 
@@ -41,7 +41,7 @@ def render(root, overrides=None):
     root = Path(root)
     allowlist = json.loads((root / 'agents/allowlist.json').read_text(encoding='utf-8'))
     if not isinstance(allowlist, dict) or set(allowlist) != set(ROLES):
-        raise ValueError('allowlist must contain exactly the nine roles')
+        raise ValueError(f'allowlist must contain exactly the nine roles; {DAMAGED}')
     common = _charter(root, '_common', overrides)
     authoring = _charter(root, '_common-authoring', overrides)
     output = {}
@@ -50,7 +50,7 @@ def render(root, overrides=None):
         if (not isinstance(tools, list) or not tools or
                 any(not isinstance(tool, str) or tool not in TOOLS for tool in tools) or
                 len(tools) != len(set(tools))):
-            raise ValueError(f'{role}: expected a nonempty, explicit, unique tool list')
+            raise ValueError(f'{role}: expected a nonempty, explicit, unique tool list; {DAMAGED}')
         body = common + '\n' + authoring + '\n' + _charter(root, role, overrides)
         description = f'Follow the {role.replace("-", " ")} charter for assigned WUWEI work.'
         output[f'{role}.md'] = (
@@ -118,7 +118,7 @@ def run(action):
             root = workspace.find_workspace()
         except FileNotFoundError:
             if 'WUWEI_WORKSPACE' in os.environ:
-                raise ValueError('invalid WUWEI_WORKSPACE override') from None
+                raise ValueError(f'invalid WUWEI_WORKSPACE override; {DAMAGED}') from None
             return build(ROOT) if action == 'build' else check(ROOT)
         if security.load(root) is None:
             return build(ROOT) if action == 'build' else check(ROOT)
@@ -141,5 +141,5 @@ def write_workspace(root, directory):
         path = directory / 'generated' / name
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.resolve() != directory.resolve() / 'generated' / name:
-            raise ValueError('generated instructions must not traverse symlinks')
+            raise ValueError(f'generated instructions must not traverse symlinks; {SYMLINK}')
         workspace.atomic_write(path, content, mode=0o400)
