@@ -70,6 +70,7 @@ CALLS = [
     ('vcs', 'worktree_identity', ('repo', 'name', 'email'), False),
     ('vcs', 'push_commits', ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'), True),
     ('vcs', 'recent_commits', ('repo',), True),
+    ('vcs', 'default_branch', ('repo',), True),
     ('tracker', 'backlog', ('filter',), True),
     ('tracker', 'claim', ('item',), False),
     ('tracker', 'transition', ('item', 'state'), False),

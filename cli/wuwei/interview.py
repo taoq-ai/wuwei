@@ -68,6 +68,13 @@ def _channel(text):
     return {'adapters.chat': 'slack', 'shepherd.review_channel': text}
 
 
+def _login(text):
+    text = text.strip()
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,38}', text):
+        raise ValueError('expected a code-host login such as pat-dev')
+    return {'shepherd.lead_login': text, 'shepherd.min_reviewers': 1}
+
+
 # The only definition of the interview. Effects: a dotted config key (`repos.` means each
 # answered repository), a charter override role with one fixed sentence, or voice never phrases.
 QUESTIONS = (
@@ -208,6 +215,13 @@ QUESTIONS = (
          ('Greptile', 'Read Greptile scores and findings; set GREPTILE_API_KEY in .wuwei/env.',
           {'adapters.review_bot': 'greptile'})),
      'free': None},
+    # Claude asks these: labels name people in the third person, never I or me.
+    {'id': 'reviewers', 'scope': 'workspace', 'header': 'Reviewers', 'question': 'Who reviews your pull requests?',
+     'choices': (
+         ('Owner only', 'No second reviewer: you merge your own pull requests.', {'shepherd.min_reviewers': 0}),
+         ('Code authors', 'Whoever touched the changed code is asked; at least one review before merge.',
+          {'shepherd.min_reviewers': 1})),
+     'free': (_login, "a teammate's code-host login, for example pat-dev")},
 )
 
 

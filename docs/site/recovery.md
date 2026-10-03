@@ -62,7 +62,8 @@ filled by `bin/wuwei config promote`, like the deploy lists.
 
 ### A test suite is proposed as a fast check
 
-A test runner is CI only unless measured. `bin/wuwei calibrate --measure` times each one
+A test runner is CI only unless measured. `setup` offers to run it once and proposes it only
+when it is fast enough; later, `bin/wuwei calibrate --measure` times each one
 against `calibrate.fast_check_seconds` and proposes only the fast ones
 ([calibration](configuration.html#calibration)).
 

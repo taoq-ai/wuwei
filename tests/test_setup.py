@@ -16,6 +16,9 @@ TEMPLATE = (ROOT / 'templates/workspace/config.toml').read_text()
 REPO = '\n[[repos]]\nname = "acme/widget"\npath = "widget"\ndefault_branch = "main"\n'
 
 
+from wuwei.commands.doctor import diagnose as DIAGNOSE  # noqa: E402  the real one; terminal stubs it
+
+
 def setup():
     from wuwei.commands import setup as module
     return module
@@ -177,7 +180,8 @@ def make_repo(path, remote, name='Pat Example'):
         'commit', '-q', '--allow-empty', '-m', 'feat: start')
     git('-C', str(path), 'config', 'user.name', name)
     git('-C', str(path), 'config', 'user.email', 'pat@example.test')
-    git('-C', str(path), 'remote', 'add', 'origin', remote)
+    if remote:
+        git('-C', str(path), 'remote', 'add', 'origin', remote)
 
 
 @pytest.fixture
@@ -232,13 +236,21 @@ def terminal(monkeypatch):
     monkeypatch.setattr(shutil, 'which', lambda name, *a, **k: (
         ('/stub/' + name if found[name] else None) if name in found else real(name, *a, **k)))
     monkeypatch.setattr(sys.stdin, 'isatty', lambda: True, raising=False)
-    asked = []
+    from wuwei.commands import doctor
+    state = SimpleNamespace(found=found, asked=[], ids=[], replies={}, rows=[], prompts=[], answers={})
 
     def ask(ids, repos):
-        asked.append(list(repos))
-        return {'gates': {repo: 'Full' for repo in repos}, 'verbosity': 'Standard'}
+        state.asked.append(list(repos))
+        state.ids.append(list(ids))
+        return {'gates': {repo: 'Full' for repo in repos}, 'verbosity': 'Standard', **state.answers}
+
+    def reply(prompt=''):
+        state.prompts.append(prompt)
+        return next((value for key, value in state.replies.items() if key in prompt), '')
     monkeypatch.setattr(interview, 'ask', ask)
-    return SimpleNamespace(found=found, asked=asked)
+    monkeypatch.setattr('builtins.input', reply)
+    monkeypatch.setattr(doctor, 'diagnose', lambda *a, **k: state.rows)
+    return state
 
 
 def discovered(project, config=None):
@@ -271,14 +283,41 @@ def test_discovery_lists_worktrees_and_owes_other_hosts(project, host, terminal)
                for line in found['owed']), found['owed']
 
 
-def test_discovery_without_host_auth_owes_every_repository(project, host, terminal):
+def test_discovery_without_host_auth_stages_from_git(project, host, terminal):
     from wuwei.registry import Result
 
     host.auth = Result(1, None, 'gh auth: missing')
     found = discovered(project)
-    assert found['repos'] == [] and host.calls == []
-    assert [line.split(' --branch')[0] for line in found['owed']] == [
-        f'bin/wuwei config add-repo --name acme/{n} --path {n}' for n in ('alpha', 'beta', 'gamma')]
+    assert [(r['name'], r['default_branch']) for r in found['repos']] == [(n, 'main') for n in NAMES]
+    assert host.calls == [] and found['owed'] == []
+    assert 'alpha: default branch main (from the checked-out branch; gh could not read it: '\
+        'gh is not signed in)' in found['lines']
+
+
+def test_discovery_falls_back_to_git_when_gh_cannot_read(project, host, terminal):
+    from wuwei.registry import Result
+
+    reason = 'github.default_branch: could not run: gh exited 1'
+    host.default_branch = lambda repo, **k: Result(2, reason=reason)
+    found = discovered(project)
+    assert [(r['name'], r['default_branch']) for r in found['repos']] == [(n, 'main') for n in NAMES]
+    assert found['owed'] == []
+    assert f'alpha: default branch main (from the checked-out branch; gh could not read it: {reason})' \
+        in found['lines']
+
+
+def test_discovery_names_a_repository_without_remote(project, host, terminal):
+    from wuwei.registry import Result
+
+    make_repo(project / 'widget', None)
+    found = discovered(project)
+    assert ('pat-example/widget', 'main') in [(r['name'], r['default_branch']) for r in found['repos']]
+    assert 'widget: no GitHub remote; proposed as pat-example/widget, default branch main ' \
+        '(from the checked-out branch)' in found['lines']
+    host.auth = Result(1, None, 'gh auth: missing')
+    found = discovered(project)
+    assert 'widget' not in [r['path'] for r in found['repos']]
+    assert any('--path widget' in line for line in found['owed']), found['owed']
 
 
 def test_discovery_drops_an_instruction_like_identity(project, host, terminal):
@@ -323,7 +362,7 @@ def test_identity_settings():
     repos = ('\n[[repos]]\nname = "acme/widget"\npath = "widget"\ndefault_branch = "main"\n'
              'identity = {name = "Pat", email = "Pat@Example.test"}\n')
     assert settings_of(TEMPLATE + repos, bots={BOT: 'dependabot[bot]'}) == {
-        ('owner', 'handles'): ['pat-example'], ('shepherd', 'lead_login'): 'pat-example',
+        ('owner', 'name'): 'Pat', ('owner', 'handles'): ['pat-example'], ('shepherd', 'lead_login'): 'pat-example',
         ('shepherd.authors', 'pat@example.test'): {'login': 'pat-example'},
         ('shepherd.authors', BOT): {'login': 'dependabot[bot]'}}
     chat = TEMPLATE.replace('handles = []', 'handles = ["U0123ABC"]')
@@ -334,9 +373,11 @@ def test_identity_settings():
     assert ('shepherd', 'lead_login') not in settings_of(lead)
     mapped = TEMPLATE.replace('[shepherd.authors]\n', '[shepherd.authors]\n"PAT@example.test" = {login = "p"}\n')
     assert settings_of(mapped + repos) == {
-        ('owner', 'handles'): ['pat-example'], ('shepherd', 'lead_login'): 'pat-example'}
+        ('owner', 'name'): 'Pat', ('owner', 'handles'): ['pat-example'], ('shepherd', 'lead_login'): 'pat-example'}
     assert settings_of(TEMPLATE + repos, None, {BOT: 'dependabot[bot]'}) == {
-        ('shepherd.authors', BOT): {'login': 'dependabot[bot]'}}
+        ('owner', 'name'): 'Pat', ('shepherd.authors', BOT): {'login': 'dependabot[bot]'}}
+    named = TEMPLATE.replace('[owner]\nname = ""', '[owner]\nname = "Pat Owner"')
+    assert ('owner', 'name') not in settings_of(named + repos)
 
 
 def test_setup_fills_identity_end_to_end(project, host, terminal, capsys):
@@ -354,6 +395,27 @@ def test_setup_fills_identity_end_to_end(project, host, terminal, capsys):
         BOT: {'login': 'dependabot[bot]', 'mention': ''}}
     assert run_setup(confirm) == 0
     assert 'pat-example' not in capsys.readouterr().out.split('code host login: pat-example', 1)[1]
+
+
+def test_setup_proposes_owner_name(project, host, terminal, capsys):
+    assert run_setup(Confirm()) == 0, capsys.readouterr().err
+    assert '+name = "Pat Example"' in capsys.readouterr().out
+    assert load_config(project)['owner']['name'] == 'Pat Example'
+
+
+@pytest.mark.parametrize('shadow', [True, False])
+def test_shadow_skips_the_posture_question(project, host, terminal, shadow):
+    run_setup(Confirm(), shadow=shadow)
+    [ids] = terminal.ids
+    assert 'reviewers' in ids and ('posture' in ids) is not shadow
+
+
+def test_teammate_login_wins_over_setup_lead(project, host, terminal, capsys):
+    terminal.answers['reviewers'] = 'pat-dev'
+    assert run_setup(Confirm()) == 0, capsys.readouterr().err
+    assert 'lead_login = "pat-example"' not in capsys.readouterr().out
+    loaded = load_config(project)
+    assert (loaded['shepherd']['lead_login'], loaded['shepherd']['min_reviewers']) == ('pat-dev', 1)
 
 
 def run_setup(confirm, shadow=True, posture=None, repos=None):
@@ -388,9 +450,9 @@ def test_one_command_three_repositories(project, host, terminal, capsys):
     assert (project / DAY / 'calibration.md').is_file()
     assert terminal.asked == [NAMES]
     assert config.run(SimpleNamespace()) == 0
-    owed = out.split('Still owed:\n', 1)[1]
-    assert 'bin/wuwei promote' in owed and 'bin/wuwei config set owner.name' in owed
-    assert out.rstrip().endswith('Next: /wuwei plan')
+    *_, optional, last = out.rstrip().splitlines()
+    assert 'Still owed:' not in out and last == 'Ready: run /wuwei:wuwei-plan'
+    assert optional.startswith('Optional:') and 'bin/wuwei promote' in optional and 'owner.name' not in optional
 
 
 def test_declined_setup_keeps_what_init_wrote(project, host, terminal, capsys):
@@ -448,10 +510,64 @@ def test_shadow_on_an_existing_workspace_proposes_observe(project, host, termina
     assert loaded['guards']['shadow_since'] == '2026-10-03'
 
 
-def test_ziran_on_path_is_proposed(project, host, terminal, capsys):
+@pytest.mark.parametrize('reply,proposed', [('y', True), ('', False), ('n', False)])
+def test_ziran_is_proposed_only_on_yes(project, host, terminal, capsys, reply, proposed):
     terminal.found['ziran'] = True
+    terminal.replies['ZIRAN'] = reply
     run_setup(Confirm())
-    assert '+scanner = "ziran"' in capsys.readouterr().out
+    assert ('+scanner = "ziran"' in capsys.readouterr().out) is proposed
+    assert any('ZIRAN' in prompt and '[y/N]' in prompt for prompt in terminal.prompts)
+
+
+@pytest.fixture
+def runner(project, monkeypatch):
+    from wuwei import registry
+    from wuwei.registry import Result
+
+    (project / 'alpha/pyproject.toml').write_text('[tool.pytest.ini_options]\naddopts = "-q"\n')
+    git('-C', str(project / 'alpha'), 'add', 'pyproject.toml')
+    git('-C', str(project / 'alpha'), 'commit', '-q', '-m', 'feat: tests')
+    fake = SimpleNamespace(calls=[], result=Result(0))
+    fake.run = lambda path, command, **k: fake.calls.append(command) or fake.result
+    loaded = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake if kind == 'checks' else loaded(kind, config))
+    return fake
+
+
+def test_setup_measures_the_test_runner_once(project, host, terminal, runner, capsys):
+    confirm = Confirm()
+    assert run_setup(confirm) == 0, capsys.readouterr().err
+    out = capsys.readouterr().out
+    assert runner.calls == ['python3 -m pytest -q'] and len(confirm.digests) == 1
+    assert 'Test runner found: acme/alpha: python3 -m pytest -q' in out
+    assert '+fast_checks = ["python3 -m pytest -q"]' in out
+    assert load_config(project)['repos'][0]['fast_checks'] == ['python3 -m pytest -q']
+
+
+def test_setup_measures_nothing_on_no(project, host, terminal, runner, capsys):
+    terminal.replies['tests'] = 'n'
+    run_setup(Confirm())
+    assert runner.calls == []
+    assert 'CI only, not proposed as a fast check: acme/alpha: python3 -m pytest -q (test runner, unmeasured' \
+        in capsys.readouterr().out
+
+
+def test_setup_keeps_a_failing_runner_ci_only(project, host, terminal, runner, capsys):
+    from wuwei.registry import Result
+
+    runner.result = Result(1, reason='tests failed')
+    run_setup(Confirm())
+    assert runner.calls == ['python3 -m pytest -q']
+    out = capsys.readouterr().out
+    assert 'CI only, not proposed as a fast check: acme/alpha: python3 -m pytest -q (test runner, measured' in out
+
+
+def test_closed_stdin_measures_nothing(project, host, terminal, runner, monkeypatch):
+    def closed(prompt=''):
+        raise EOFError
+    monkeypatch.setattr('builtins.input', closed)
+    run_setup(Confirm())
+    assert runner.calls == []
 
 
 def test_posture_joins_the_proposal(project, host, terminal, capsys):
@@ -485,7 +601,8 @@ def test_empty_directory_owes_add_repo(tmp_path, project, host, terminal, monkey
     monkeypatch.chdir(empty)
     confirm = Confirm()
     assert run_setup(confirm) == 1
-    assert confirm.digests == [] and 'bin/wuwei config add-repo' in capsys.readouterr().out
+    assert confirm.digests == []
+    assert capsys.readouterr().out.splitlines()[-1].startswith('Next: bin/wuwei config add-repo')
 
 
 def test_setup_stamps_the_template_version_in_its_proposal(project, host, terminal, capsys):
@@ -516,6 +633,169 @@ def test_pending_mcp_decision_is_owed_by_command(project, host, terminal, monkey
 
     monkeypatch.setattr(mcp, 'check', lambda root: Result(1, reason='MCP findings await the owner'))
     monkeypatch.setattr(mcp, 'pending', lambda root: f'{DAY}/decisions/D-2.md')
+    assert run_setup(Confirm()) == 1
+    assert capsys.readouterr().out.splitlines()[-1] == 'Next: bin/wuwei mcp decide D-2 proceed'
+
+
+def test_setup_next_names_a_failing_doctor_row(project, host, terminal, capsys):
+    terminal.rows = [{'section': 'install', 'name': 'plugin', 'status': 'fail', 'value': 'changed',
+                      'fix': 'wuwei integrity reconfirm'}]
+    assert run_setup(Confirm()) == 1
+    assert capsys.readouterr().out.splitlines()[-1] == 'Next: wuwei integrity reconfirm'
+
+
+def test_status_line_is_written_once(tmp_path, monkeypatch):
+    import json
+    from wuwei.commands import init
+
+    root = tmp_path / 'ws'
+    (root / '.claude').mkdir(parents=True)
+    (root / '.claude/settings.json').write_text('{"permissions": {"deny": ["Bash(rm *)"]}}')
+    init.status_line(root)
+    data = json.loads((root / '.claude/settings.json').read_text())
+    assert data['permissions'] == {'deny': ['Bash(rm *)']}
+    assert data['statusLine']['type'] == 'command' and data['statusLine']['command'].endswith(' status --line')
+    fresh = tmp_path / 'fresh'
+    fresh.mkdir()
+    init.status_line(fresh)
+    assert 'statusLine' in json.loads((fresh / '.claude/settings.json').read_text())
+    linked = tmp_path / 'linked'
+    (linked / '.claude').mkdir(parents=True)
+    (linked / '.claude/settings.json').symlink_to(root / '.claude/settings.json')
+    before = (root / '.claude/settings.json').read_text()
+    with pytest.raises(ValueError):
+        init.status_line(linked)
+    assert (root / '.claude/settings.json').read_text() == before
+    monkeypatch.setenv('HOME', str(fresh.parent / 'home'))
+    (fresh.parent / 'home').mkdir()
+    with pytest.raises(ValueError):
+        init.status_line(fresh.parent / 'home')
+    assert not (fresh.parent / 'home/.claude').exists()
+
+
+def settings_json(project):
+    import json
+    return json.loads((project / '.claude/settings.json').read_text())
+
+
+@pytest.mark.parametrize('reply,written', [('', True), ('n', False)])
+def test_setup_writes_the_status_line_on_yes(project, host, terminal, capsys, reply, written):
+    terminal.replies['status line'] = reply
+    assert run_setup(Confirm()) == 0, capsys.readouterr().err
+    assert ('statusLine' in settings_json(project)) is written
+    assert ('Status line: added' in capsys.readouterr().out) is written
+
+
+def test_setup_keeps_an_existing_status_line(project, host, terminal, capsys):
+    import json
+
+    (project / '.claude').mkdir()
+    (project / '.claude/settings.json').write_text(json.dumps({'statusLine': {'type': 'command', 'command': 'x'}}))
+    assert run_setup(Confirm()) == 0, capsys.readouterr().err
+    assert settings_json(project)['statusLine']['command'] == 'x'
+    assert not any('status line' in prompt for prompt in terminal.prompts)
+
+
+def test_setup_init_prints_no_status_json(project, host, terminal, capsys):
     run_setup(Confirm())
-    owed = capsys.readouterr().out.split('Still owed:\n', 1)[1]
-    assert '  bin/wuwei mcp decide D-2 proceed\n' in owed
+    assert not any(line.startswith('{"statusLine"') for line in capsys.readouterr().out.splitlines())
+
+
+@pytest.fixture
+def service(project, monkeypatch):
+    from wuwei import registry
+    from wuwei.commands import watch
+
+    monkeypatch.delenv('XDG_CONFIG_HOME', raising=False)
+    monkeypatch.setattr(watch, 'service_platform', lambda: 'linux')
+    recorder = SimpleNamespace(calls=[], error=None)
+
+    def call(argv):
+        if recorder.error:
+            raise recorder.error
+        recorder.calls.append(argv)
+    recorder.call = call
+    monkeypatch.setattr(registry, 'watch_service', lambda: recorder)
+    return recorder
+
+
+def unit(project):
+    from wuwei import workspace
+    return workspace.watch_unit(project, 'linux')[1]
+
+
+def test_setup_offers_the_watch(project, host, terminal, service, capsys):
+    assert run_setup(Confirm()) == 0, capsys.readouterr().err
+    assert service.calls == [] and not unit(project).exists()
+    assert any('watch' in prompt and '[y/N]' in prompt for prompt in terminal.prompts)
+    terminal.replies['watch'] = 'y'
+    terminal.prompts.clear()
+    assert run_setup(Confirm()) == 0, capsys.readouterr().err
+    assert unit(project).is_file() and unit(project).is_relative_to(project.parent / 'home')
+    assert ['systemctl', '--user', 'enable', '--now', unit(project).name] in service.calls
+    terminal.prompts.clear()
+    run_setup(Confirm())
+    assert not any('watch' in prompt for prompt in terminal.prompts)
+
+
+def test_setup_survives_a_failed_watch_install(project, host, terminal, service, capsys):
+    terminal.replies['watch'] = 'y'
+    service.error = OSError('systemctl missing')
+    assert run_setup(Confirm()) == 0
+    assert 'watch install: systemctl missing' in capsys.readouterr().err
+
+
+def doctor_row(section, status, fix='', name='row'):
+    return {'section': section, 'name': name, 'status': status, 'value': '', 'fix': fix}
+
+
+READY = 'Ready: run /wuwei:wuwei-plan'
+
+
+@pytest.mark.parametrize('rows,required,optional,gate,lines,code', [
+    ([], [], [], 0, [READY], 0),
+    ([doctor_row('workspace', 'warn', 'a'), doctor_row('gates', 'fail', 'b')], [], [], 0,
+     ['Optional: 2 more in bin/wuwei doctor', READY], 0),
+    ([doctor_row('host', 'warn', 'a'), doctor_row('install', 'ok')], [], ['bin/wuwei promote'], 0,
+     ['Optional: bin/wuwei promote; 1 more in bin/wuwei doctor', READY], 0),
+    ([doctor_row('install', 'fail', 'wuwei integrity reconfirm')], [], [], 0,
+     ['Next: wuwei integrity reconfirm'], 1),
+    ([doctor_row('workspace', 'unmeasured', 'bin/wuwei calibrate')], [], [], 0, ['Next: bin/wuwei calibrate'], 2),
+    ([doctor_row('install', 'fail', 'wuwei integrity reconfirm')], ['set LINEAR_API_KEY in .wuwei/env'], [], 0,
+     ['Next: set LINEAR_API_KEY in .wuwei/env'], 1),
+    ([], ['bin/wuwei mcp check'], [], 2, ['Next: bin/wuwei mcp check'], 2),
+    ([doctor_row('gates', 'fail', 'x', name='mcp gate')], [], [], 0, [READY], 0),
+])
+def test_ending(rows, required, optional, gate, lines, code):
+    text, got = setup().ending(rows, required, optional, gate)
+    assert (text.splitlines(), got) == (lines, code)
+    assert [line for line in text.splitlines() if line.startswith(('Ready:', 'Next:'))] == lines[-1:]
+
+
+def test_first_day_on_defaults_without_github_remote(project, host, terminal, monkeypatch, capsys):
+    """Issue #360 acceptance: a repository with no GitHub remote reaches Ready and a plan on defaults."""
+    from wuwei import heartbeat, integrity, registry
+    from wuwei.__main__ import main
+    from wuwei.commands import doctor
+    from wuwei.registry import Result
+
+    for name in REMOTES:
+        shutil.rmtree(project / name)
+    make_repo(project / 'widget', None)
+    host.merged_prs = host.protection = lambda *a, **k: Result(2, reason='unmeasured')
+    monkeypatch.setattr(doctor, 'diagnose', DIAGNOSE)
+    monkeypatch.setattr(integrity, 'fresh', lambda root: Result(0))
+    monkeypatch.setattr(heartbeat, 'measure', lambda root: {name: {'result': 'ok', 'value': 'ok'}
+                                                             for name, _ in heartbeat.PROBES})
+    monkeypatch.setattr(registry, 'watch_service', lambda: SimpleNamespace(
+        call=lambda argv: None, probe=lambda calls, cwd, during=lambda: None, timeout=10: ([(0, '', 30)], during())))
+    code = run_setup(Confirm())
+    out, err = capsys.readouterr()
+    assert code == 0, out + err
+    assert out.splitlines()[-1] == 'Ready: run /wuwei:wuwei-plan', out
+    repo = load_config(project)['repos'][0]
+    assert (repo['name'], repo['default_branch']) == ('pat-example/widget', 'main')
+    assert main(['plan', 'template']) == 0
+    lead = project / 'lead.json'
+    lead.write_text(capsys.readouterr().out)
+    assert main(['plan', 'propose', str(lead)]) == 0, capsys.readouterr()

@@ -286,6 +286,7 @@ The interview asks a short, fixed set of questions about your own preferences. E
 | `tracker` | `adapters.tracker`: `None` or `Linear` (then set `LINEAR_API_KEY` in `.wuwei/env`) |
 | `chat` | `adapters.chat`: `None` or `Slack`; typing a channel ID such as `C0123ABCD` sets `slack` and `shepherd.review_channel` |
 | `review_bot` | `adapters.review_bot`: `None` or `Greptile` (then set `GREPTILE_API_KEY` in `.wuwei/env`) |
+| `reviewers` | `shepherd.min_reviewers`: `Owner only` sets `0`, `Code authors` sets `1`; typing a teammate's code-host login sets `shepherd.lead_login` to it and `min_reviewers = 1` |
 
 Run `bin/wuwei calibrate --interview` in a host terminal to answer every question, or `bin/wuwei calibrate --interview merge` to answer one again; `--repo <name>` limits the per-repository questions to one repository. Without a terminal it exits 2. On the first day the plan skill asks the same questions as `Morning gate` widgets from `bin/wuwei calibrate --questions` and records each answer with `bin/wuwei calibrate --answer <id>=<choice or text>`. Free text is checked against the calibration character set and the instruction-like scan.
 
@@ -589,6 +590,11 @@ Host protections: for each `[[repos]]` entry it reads the protection of
 | required reviews | at least 1 approving review, or `shepherd.min_reviewers = 0` (solo owner); when the check named by `shepherd.review_gate_check` is required, a `missing` line says it may be satisfying it, and stays a finding |
 | force pushes | force pushes are blocked |
 | deletions | branch deletion is blocked |
+
+When a line is `missing`, the next line links the branch settings page. When no classic
+protection is visible it also prints one `gh api -X PUT .../protection` command for your own
+terminal that sets the layout above; it is not printed over existing protection, which a PUT
+would replace.
 
 Seat credentials: `GH_TOKEN` and `GITHUB_TOKEN` in `.wuwei/env` or in the environment
 that seats inherit are readable by any seat. Each line reports `not set`, `read-only`

@@ -110,6 +110,18 @@ def add_repo(args, confirm=None):
     return _edit('config add-repo', 'repository', confirm, change)
 
 
+def _yes(question, default):
+    """One preference on the setup terminal; empty takes the default, a closed stdin is no.
+
+    ponytail: local prompt until a shared y/N prompt lands (#354).
+    """
+    try:
+        reply = input(f"{question} [{'Y/n' if default else 'y/N'}] ").strip().lower()
+    except EOFError:
+        return False
+    return default if not reply else reply in ('y', 'yes')
+
+
 def _owed(name, path, branch):
     return (f'bin/wuwei config add-repo --name {shlex.quote(name or "owner/repo")} --path {shlex.quote(path)} '
             f'--branch {shlex.quote(branch or "<default branch>")}')
@@ -145,9 +157,11 @@ def discover(root, dirs, config):
             lines.append(f'{path}: worktree, not added')
             continue
         remote = vcs.remote_url(resolved)
-        found = GITHUB.fullmatch(remote.data['url']) if remote.exit == 0 else None
-        try:
-            name = references.repository(found[1]) if found else None
+        url = remote.data['url'] if remote.exit == 0 else None
+        found = GITHUB.fullmatch(url) if url else None
+        try:  # No origin: where gh repo create would put it, under the measured login.
+            name = references.repository(found[1] if found else f'{login}/{candidate.name}' if url == '' and login
+                                         else '')
         except ValueError:
             name = None
         if name in configured:
@@ -155,8 +169,13 @@ def discover(root, dirs, config):
         if any(repo['name'] == name for repo in repos):
             lines.append(f'{path}: {name} already listed, not added')
             continue
-        branch = hub.default_branch(name) if name and auth == 0 else None
+        branch = hub.default_branch(name) if found and name and auth == 0 else None
+        why = (branch.reason if branch else 'gh is not signed in') if found else None
         branch = branch.data['branch'] if branch and branch.exit == 0 else None
+        if name and not branch and (local := vcs.default_branch(resolved)).exit == 0:
+            branch, source = local.data['branch'], local.data['source']
+            lines.append(f'{path}: default branch {branch} (from {source}; gh could not read it: {why})' if found
+                         else f'{path}: no GitHub remote; proposed as {name}, default branch {branch} (from {source})')
         if not (name and branch):
             owed.append(_owed(name, path, branch))
             continue
@@ -177,6 +196,9 @@ def identity(config, login, results):
     from wuwei import obligations
 
     settings = []
+    named = next((name for repo in config['repos'] if (name := repo['identity']['name'].strip())), '')
+    if named and not config['owner']['name'].strip():
+        settings.append((('owner',), 'name', named))
     handles = config['owner']['handles']
     if login:
         try:  # Only when no code-host login is there yet; chat IDs stay.
@@ -196,7 +218,7 @@ def identity(config, login, results):
 
 
 def run(args, confirm=None):
-    """Owner action: init, discover, one proposal and one digest, then the checks and what is owed."""
+    """Owner action: init, discover, one proposal and one digest, then doctor and one Ready or Next line."""
     from wuwei import integrity
     try:
         return _setup(args, confirm)
@@ -217,7 +239,7 @@ def run(args, confirm=None):
 def _setup(args, confirm):
     from types import SimpleNamespace
     from wuwei import integrity, interview, mcp, profiles, security
-    from wuwei.commands import calibrate as calibrate_command, init
+    from wuwei.commands import calibrate as calibrate_command, doctor, init, watch
 
     # The interview and the digest both need this terminal; nothing is written yet.
     if not sys.stdin.isatty():
@@ -226,7 +248,7 @@ def _setup(args, confirm):
         root = workspace.find_workspace()
     except FileNotFoundError:
         init.run(SimpleNamespace(path='.', shadow=args.shadow, upgrade=False, dry_run=False, menu_bar=False,
-                                 honeytoken_path=security.DEFAULT_HONEYTOKEN_PATH))
+                                 honeytoken_path=security.DEFAULT_HONEYTOKEN_PATH, status_line=False))
         root = workspace.find_workspace()
         if not args.shadow:
             print('Suggested for a first week: bin/wuwei setup --shadow (guards record instead of refusing)')
@@ -237,12 +259,13 @@ def _setup(args, confirm):
     staged = init._stamp(repo_tables(raw, found['repos']))
     staged_cfg = load_config(root, raw=staged)
     if not staged_cfg['repos']:
-        print('Still owed:\n' + ''.join(f'  {line}\n' for line in found['owed'] or [_owed(None, '<path>', None)]),
-              end='')
+        owed = found['owed'] or [_owed(None, '<path>', None)]
+        print(ending([], owed[:1], owed[1:])[0])
         return FINDINGS
     names = [repo['name'] for repo in staged_cfg['repos']]
     extra = []
-    if found['tools']['ziran'] and cfg['adapters']['scanner'] == 'none':
+    if found['tools']['ziran'] and cfg['adapters']['scanner'] == 'none' and _yes(
+            'ZIRAN is installed. Turn on its security scans (adapters.scanner = "ziran")?', False):
         extra.append((('adapters',), 'scanner', 'ziran'))
     if args.shadow and workspace.posture(cfg)[0] != 'observe':
         extra += [(('security',), 'posture', 'observe'),
@@ -260,8 +283,18 @@ def _setup(args, confirm):
         profiles.record(root, accepted, names)
     snapshot_path = root / '.wuwei/calibration.json'
     if found['repos'] or not snapshot_path.exists():
-        interview.record(root, staged_cfg, interview.ask([], names))
+        interview.record(root, staged_cfg, interview.ask(
+            [row['id'] for row in interview.QUESTIONS if not (args.shadow and row['id'] == 'posture')], names))
     results = calibrate.survey(root, staged_cfg, list(enumerate(staged_cfg['repos'])), style=True)
+    unmeasured = [f"{r['repo']['name']}: {command}" for r in results
+                  for command, (_, note) in r['checks'].items() if note == calibrate.UNMEASURED]
+    if unmeasured:
+        print('Test runner found: ' + '; '.join(unmeasured))
+        if _yes('Run your tests once now to see if they are fast enough for every push?', True):
+            runner = registry.load('checks', staged_cfg)
+            for r in results:
+                r['checks'] = calibrate.classify(r['checkout'], r['facts']['fast_checks'], runner,
+                                                 staged_cfg['calibrate']['fast_check_seconds'], root)
     extra += identity(staged_cfg, found['login'], results)
     text, diff, edits, summary, snapshot = config.proposal(root, raw, staged, staged_cfg, results, extra)
     if text == raw and snapshot_path.exists():
@@ -271,21 +304,58 @@ def _setup(args, confirm):
                         snapshot=snapshot):
             return FINDINGS
         calibrate_command.record(root, results, diff, edits, None)
-    check = config.run(SimpleNamespace())
+    optional = []
+    try:
+        if 'statusLine' not in init.settings(root)[1] and _yes(
+                'Show the WUWEI status line in Claude Code for this project?', True):
+            init.status_line(root)
+            print('Status line: added to .claude/settings.json')
+    except (OSError, ValueError) as exc:
+        print(f'wuwei setup: status line not written: {exc}', file=sys.stderr)
+        optional.append('put the statusLine from bin/wuwei init into .claude/settings.json')
+    platform = watch.service_platform()
+    if platform in ('darwin', 'linux') and not workspace.watch_unit(root, platform)[1].exists() and _yes(
+            'Install the watch service, which supervises the day and your pull requests in the background?', False):
+        try:
+            watch.service(SimpleNamespace(watch_action='install', once=False, dry_run=False), 'watch', None)
+        except (OSError, ValueError) as exc:
+            print(f'wuwei setup: watch install: {exc}', file=sys.stderr)
     gate = mcp.check(root)
     if gate.reason:
         print(gate.reason, file=sys.stderr)
     final = load_config(root)
-    owed = found['owed'] + [f'set {name} in .wuwei/env' for name in config.missing(final)]
-    if not final['owner']['name'].strip():
-        owed.append('bin/wuwei config set owner.name \'"<your name>"\'')
-    proposals = workspace.day_dir(root) / 'proposals'
-    if proposals.is_dir() and any(proposals.iterdir()):
-        owed.append('bin/wuwei promote')
+    required = [f'set {name} in .wuwei/env' for name in config.missing(final)]
     if gate.exit == 2 and mcp.unmeasured(root):
-        owed.append('bin/wuwei mcp decide proceed-unmeasured ' + ' '.join(map(shlex.quote, mcp.unmeasured(root))))
+        required.append('bin/wuwei mcp decide proceed-unmeasured '
+                        + ' '.join(map(shlex.quote, mcp.unmeasured(root))))
     elif gate.exit:
         waiting = mcp.pending(root)
-        owed.append(mcp.command(waiting) if waiting else 'bin/wuwei mcp check')
-    print('Still owed:\n' + ''.join(f'  {line}\n' for line in owed or ['nothing']) + 'Next: /wuwei plan')
-    return max(check, gate.exit)
+        required.append(mcp.command(waiting) if waiting else 'bin/wuwei mcp check')
+    optional = found['owed'] + optional
+    if not final['owner']['name'].strip():
+        optional.append('bin/wuwei config set owner.name \'"<your name>"\'')
+    proposals = workspace.day_dir(root) / 'proposals'
+    if proposals.is_dir() and any(proposals.iterdir()):
+        optional.append('bin/wuwei promote')
+    text, code = ending(doctor.diagnose(), required, optional, gate.exit)
+    print(text)
+    return code
+
+
+def ending(rows, required, optional, gate=0):
+    """(text, exit): an Optional line when anything is left, then one Ready or Next line.
+
+    Required: what is passed in, the MCP gate, and failing or unmeasured Install and Workspace
+    doctor rows; every other doctor row is optional.
+    """
+    from wuwei.commands import doctor
+
+    blocking = [row for row in rows if row['section'] in ('install', 'workspace')
+                and row['status'] in ('fail', 'unmeasured')]
+    steps = required + [row.get('fix') or 'bin/wuwei doctor' for row in blocking]
+    others = sum(row['status'] != 'ok' for row in rows if row not in blocking and row['name'] != 'mcp gate')
+    parts = optional + ([f'{others} more in bin/wuwei doctor'] if others else [])
+    text = ('Optional: ' + '; '.join(parts) + '\n' if parts else '') + (
+        f'Next: {steps[0]}' if steps else 'Ready: run /wuwei:wuwei-plan')
+    return text, max([FINDINGS if steps else CLEAN, gate,
+                      *(doctor.CODES[row['status']] for row in blocking)])
