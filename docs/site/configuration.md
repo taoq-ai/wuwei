@@ -21,6 +21,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[boundary]`, `[environments]`, `[deploy]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outbound]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
 | `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]` | [Decisions](#decisions); cruise answering is not built |
+| `[calibrate]` | [Calibration](#calibration) |
 
 ## Workspace and repositories
 
@@ -227,7 +228,7 @@ The template also shows a `"release/*"` environment example. Add any actual envi
 
 ## Calibration
 
-Run `bin/wuwei calibrate [--repo <name>]` after `init` and the basic `[[repos]]` entry (`name`, `path`, `default_branch`), and before the first plan. It reads each checkout and writes `.wuwei/days/<date>/calibration.md`; it never changes the checkout or `config.toml`. It exits 0 clean, 1 when it flagged text and 2 when it could not run or a read was unmeasured.
+Run `bin/wuwei calibrate [--repo <name>]` after `init` and the basic `[[repos]]` entry (`name`, `path`, `default_branch`), and before the first plan. It reads each checkout and writes `.wuwei/days/<date>/calibration.md`; it never changes `config.toml`, and without `--measure` it runs nothing in the checkout. It exits 0 clean, 1 when it flagged text and 2 when it could not run or a read was unmeasured.
 
 | Detector | Reads | Proposes |
 | --- | --- | --- |
@@ -238,7 +239,9 @@ Run `bin/wuwei calibrate [--repo <name>]` after `init` and the basic `[[repos]]`
 
 It also reads the last 100 commit subjects for the commit style and the last 30 merged pull requests for a size and cycle time baseline, which the steward gets as advisory input.
 
-The proposal is additive. A key absent from `config.toml` is added, and `deploy.workflows` or `deploy.deny` still at a one-line `[]` is replaced. A key you already set is never changed: the report lists it under "config differs; edit by hand". Calibration never proposes `merge_deploys = false` or `merge.auto`.
+The proposal is additive. A key absent from `config.toml` is added, and `deploy.workflows`, `deploy.deny` or `repos.fast_checks` still at a one-line `[]` is replaced. A key you already set is never changed: the report lists it under "config differs; edit by hand". Calibration never proposes `merge_deploys = false` or `merge.auto`.
+
+Only fast commands go into `repos.fast_checks` and the charter blocks. `ruff check .`, `black --check .`, `npm run lint` and `make lint` are fast. A test runner (`python3 -m pytest -q`, `npm test`, `cargo test`, `go test ./...`, `make test`, `make check`) is CI only unless measured. `bin/wuwei calibrate --measure` runs each detected test runner once in the configured checkout through the checks port, the same runner as `wuwei fast-checks` (`/bin/sh -c <command>`, capped at 300 seconds), and may leave tool caches there. It is fast when it exits 0 within `calibrate.fast_check_seconds` (default 60). The `## CI only (not proposed as fast checks)` section of `calibration.md` lists the rest with the measurement or "unmeasured", and the calibrate output and the promote digest print the same lines. `bin/wuwei config promote --measure` measures again before it applies.
 
 Repository text is data. A file with instruction-like text, such as a line telling an agent to ignore its instructions, contributes nothing; the report names its file, line and rule without quoting it. Job, environment and owner names outside a safe character set are reported as unsafe and dropped.
 

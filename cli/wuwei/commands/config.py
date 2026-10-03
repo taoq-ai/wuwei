@@ -18,8 +18,10 @@ def register(subparsers):
     actions = parser.add_subparsers(dest="action", required=True)
     check = actions.add_parser("check", help="validate config.toml")
     check.set_defaults(func=run)
-    actions.add_parser('promote', help='apply the calibration proposal (owner, host terminal)'
-                       ).set_defaults(func=promote)
+    parser = actions.add_parser('promote', help='apply the calibration proposal (owner, host terminal)')
+    parser.add_argument('--measure', action='store_true',
+                        help='time each test runner once through the checks port (runs repository commands)')
+    parser.set_defaults(func=promote)
 
 
 def run(args):
@@ -123,7 +125,8 @@ def promote(args, confirm=None):
         raw = path.read_text(encoding='utf-8')
         if not config['repos']:
             raise ValueError(calibrate.NO_REPOS)
-        results = calibrate.survey(root, config, list(enumerate(config['repos'])), style=False)
+        results = calibrate.survey(root, config, list(enumerate(config['repos'])), style=False,
+                                   measure=getattr(args, 'measure', False))
         answers = interview.load(root, config)
         name, imported = profiles.load(root, config)
         asked = interview.settings(answers, config)
@@ -141,7 +144,9 @@ def promote(args, confirm=None):
             f"Profile {name}: {'.'.join(map(str, (*path, key)))} = {json.dumps(value)}\n"
             for path, key, value in imported) + ''.join(
             f"Flagged {f['kind']}: {f['source']} ({f['value']})\n" for r in results
-            for f in r['findings'] if f['kind'] in ('instruction_like', 'unsafe')) + (
+            for f in r['findings'] if f['kind'] in ('instruction_like', 'unsafe')) + ''.join(
+            f'CI only, not proposed as a fast check: {repo}: {command} ({note})\n'
+            for repo, command, note in calibrate.ci_only(results)) + (
             'Approved calibration for .wuwei/calibration.json:\n'
             + json.dumps(snapshot, indent=2, sort_keys=True) + '\n')
         print(summary, end='')

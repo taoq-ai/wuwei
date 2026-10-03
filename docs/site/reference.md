@@ -16,7 +16,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei board` | Plumbing: serves the day board to Claude Code over MCP stdio. | [Cockpit and board](concepts.html#cockpit-and-board) |
 | `bin/wuwei brief` | Writes and logs a seat brief. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei build` | Selects the next builder action. | [Seat briefs](#seat-briefs-and-the-build-loop) |
-| `bin/wuwei calibrate` | Profiles the repositories and proposes config; `--interview` asks the owner; `export` and `import` share a profile. | [Calibration](configuration.html#calibration) |
+| `bin/wuwei calibrate` | Profiles the repositories and proposes config; `--measure` times each test runner once to decide whether it is a fast check; `--interview` asks the owner; `export` and `import` share a profile. | [Calibration](configuration.html#calibration) |
 | `bin/wuwei close` | Refuses day close until every obligation lands. | [Day close](concepts.html#day-close) |
 | `bin/wuwei config` | Inspects workspace configuration (`check`, `promote`). | [Configuration](configuration.html) |
 | `bin/wuwei consolidate` | Reviews and archives workspace memory. | [Configuration](configuration.html#host-build-and-memory) |

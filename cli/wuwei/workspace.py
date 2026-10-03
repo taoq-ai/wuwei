@@ -56,6 +56,7 @@ SCHEMA = {
                              "ci/*", "workflows/*", "deploy/*", "infra/*"]]},
                "identity": {"name": (str, ""), "email": (str, "")}}],
     "cap": (int, 1, 1),
+    "calibrate": {"fast_check_seconds": (int, 60, 1)},
     "prioritisation": {"framework": (str, "wsjf", ("wsjf", "rice"))},
     "discovery": {"min_queue": (int, 2, 1),
                   "autostart": (str, "strict", ("off", "strict", "goal"))},

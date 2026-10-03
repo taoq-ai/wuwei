@@ -247,6 +247,49 @@ def test_empty_deploy_lists_are_replaced_and_others_kept(tmp_path):
     assert edits == [('deploy.workflows', ['x.yml'], ['deploy.yml'])]
 
 
+@pytest.mark.parametrize('line', ['fast_checks = []\n', 'fast_checks = []  # none yet\n'])
+def test_empty_fast_checks_is_filled(tmp_path, line):
+    import tomllib
+
+    raw = repo_block('acme/widget', line) + DEPLOY_TABLE
+    additions, edits = calibrate.proposal(raw, [(0, facts('python'))])
+    text = calibrate.apply(raw, additions)
+    assert tomllib.loads(text)['repos'][0]['fast_checks'] == ['python3 -m pytest -q', 'ruff check .']
+    assert edits == [] and text.count('fast_checks =') == 1
+    raw = repo_block('acme/widget', 'fast_checks = [\n]\n') + DEPLOY_TABLE
+    assert [e[0] for e in calibrate.proposal(raw, [(0, facts('python'))])[1]] == ['repos.0.fast_checks']
+
+
+LINTS = ['ruff check .', 'black --check .', 'npm run lint', 'make lint']
+RUNNERS = ['python3 -m pytest -q', 'npm test', 'cargo test', 'go test ./...', 'make test', 'make check']
+
+
+def test_classify_without_measure():
+    checks = calibrate.classify(FIXTURES / 'python', RUNNERS + LINTS, None, 60)
+    assert list(checks) == RUNNERS + LINTS
+    assert all(checks[c][0] for c in LINTS) and not any(checks[c][0] for c in RUNNERS)
+    assert 'unmeasured' in checks['npm test'][1] and '--measure' in checks['npm test'][1]
+
+
+@pytest.mark.parametrize('result,times,fast,phrases', [
+    ((0,), [0.0, 75.0], False, ['75.0', '60']),
+    ((0,), [0.0, 3.0], True, ['3.0']),
+    ((1, {}), [0.0, 3.0], False, ['exit 1']),
+    ((2, None, 'fast check could not run: TimeoutExpired'), [0.0, 3.0], False, ['exit 2', 'TimeoutExpired'])])
+def test_classify_measures_test_runners(monkeypatch, result, times, fast, phrases):
+    from types import SimpleNamespace
+    from wuwei import registry
+
+    calls = []
+    runner = SimpleNamespace(run=lambda path, command, root=None: calls.append((path, command))
+                             or registry.Result(*result))
+    monkeypatch.setattr(calibrate, 'monotonic', iter(times).__next__)
+    checks = calibrate.classify(FIXTURES / 'python', ['python3 -m pytest -q', 'ruff check .'], runner, 60)
+    assert checks['python3 -m pytest -q'][0] is fast and checks['ruff check .'][0] is True
+    assert all(p in checks['python3 -m pytest -q'][1] for p in phrases), checks
+    assert calls == [(str(FIXTURES / 'python'), 'python3 -m pytest -q')]
+
+
 def test_missing_merge_table_lands_after_its_repo(tmp_path):
     from wuwei.workspace import MERGE_SCHEMA
 
@@ -365,7 +408,69 @@ def test_calibrate_this_repository(workspace_root, capsys):
         assert data['action'] == 'add' and data['target'] == f'.wuwei/charters/{role}.md'
         assert data['evidence'] == '.wuwei/days/2026-10-01/calibration.md'
     out = capsys.readouterr().out
-    assert 'calibration.md' in out and '+fast_checks = ["python3 -m pytest -q"]' in out
+    assert 'calibration.md' in out and '+fast_checks' not in out
+    assert '- taoq-ai/wuwei: python3 -m pytest -q (test runner, unmeasured' in report
+
+
+def test_ci_only_without_measure_runs_nothing(workspace_root, ports, capsys):
+    from types import SimpleNamespace
+
+    ports['checks'] = SimpleNamespace(run=lambda *a, **k: pytest.fail('ran a repository command'))
+    configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
+    assert main('calibrate') == 0, capsys.readouterr().err
+    out = capsys.readouterr().out
+    assert '+fast_checks = ["ruff check ."]' in out
+    assert 'CI only, not proposed as a fast check: acme/widget: python3 -m pytest -q' in out
+    day = workspace_root / '.wuwei/days/2026-10-01'
+    report = (day / 'calibration.md').read_text()
+    assert '- ruff check . (pyproject.toml:' in report and ') fast check (lint or format)' in report
+    assert ') CI only (test runner, unmeasured' in report
+    assert '## CI only (not proposed as fast checks)' in report
+    assert '- acme/widget: python3 -m pytest -q (test runner, unmeasured' in report
+    text = json.loads((day / 'proposals/calibration-acme-widget-builder.json').read_text())['text']
+    assert 'ruff check .' in text and 'pytest' not in text
+
+
+def measured(monkeypatch, ports, times):
+    from types import SimpleNamespace
+    from wuwei import registry
+
+    calls = []
+    ports['checks'] = SimpleNamespace(run=lambda *a, **k: calls.append(a) or registry.Result(0))
+    monkeypatch.setattr(calibrate, 'monotonic', iter(times * 4).__next__)
+    return calls
+
+
+def test_calibrate_measure_lists_slow_tests_as_ci_only(workspace_root, ports, monkeypatch, capsys):
+    raw = configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
+    calls = measured(monkeypatch, ports, [0.0, 75.0])
+    assert main('calibrate', '--measure') == 0, capsys.readouterr().err
+    out = capsys.readouterr().out
+    report = (workspace_root / '.wuwei/days/2026-10-01/calibration.md').read_text()
+    ci = report.split('## CI only (not proposed as fast checks)', 1)[1].split('##', 1)[0]
+    assert 'python3 -m pytest -q' in ci and '75.0' in ci and '60' in ci
+    assert '+fast_checks = ["ruff check ."]' in out and 'config promote --measure' in out
+    assert len(calls) == 1
+    (workspace_root / '.wuwei/config.toml').write_text(raw + '[calibrate]\nfast_check_seconds = 100\n')
+    measured(monkeypatch, ports, [0.0, 75.0])
+    assert main('calibrate', '--measure') == 0, capsys.readouterr().err
+    assert '+fast_checks = ["python3 -m pytest -q", "ruff check ."]' in capsys.readouterr().out
+
+
+def test_empty_fast_checks_calibrate_and_promote(workspace_root, capsys):
+    from wuwei.workspace import load_config
+
+    raw = configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
+    (workspace_root / '.wuwei/config.toml').write_text(
+        raw.replace('default_branch = "main"\n', 'default_branch = "main"\nfast_checks = []\n'))
+    assert main('calibrate') == 0, capsys.readouterr().err
+    out = capsys.readouterr().out
+    assert '-fast_checks = []' in out and '+fast_checks = ["ruff check ."]' in out
+    assert 'edit by hand: repos.0.fast_checks' not in out
+    assert promote(workspace_root, lambda digest, **kw: True) == 0
+    assert load_config(workspace_root)['repos'][0]['fast_checks'] == ['ruff check .']
+    snapshot = json.loads((workspace_root / '.wuwei/calibration.json').read_text())
+    assert snapshot['acme/widget']['fast_checks'] == ['python3 -m pytest -q', 'ruff check .']
 
 
 def test_calibrate_cannot_run(workspace_root, capsys):
@@ -463,6 +568,33 @@ def test_config_promote_through_cli_needs_a_host_terminal(workspace_root, monkey
                         if path == '/dev/tty' else real(path, *a, **k))
     assert main('config', 'promote') == 2
     assert integrity.HOST_TERMINAL in capsys.readouterr().err
+
+
+def test_config_promote_measure(workspace_root, ports, monkeypatch, capsys):
+    import builtins
+    from types import SimpleNamespace
+    from wuwei.commands import config
+
+    raw = configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
+    measured(monkeypatch, ports, [0.0, 75.0])
+    assert config.promote(SimpleNamespace(measure=True), confirm=lambda digest, **kw: True) == 0
+    out = capsys.readouterr().out
+    assert 'CI only, not proposed as a fast check: acme/widget: python3 -m pytest -q' in out
+    assert out.index('CI only') < out.index('Approved calibration')
+    assert 'fast_checks = ["ruff check ."]' in (workspace_root / '.wuwei/config.toml').read_text()
+    (workspace_root / '.wuwei/config.toml').write_text(raw)
+    measured(monkeypatch, ports, [0.0, 3.0])
+    assert config.promote(SimpleNamespace(measure=True), confirm=lambda digest, **kw: True) == 0
+    assert ('fast_checks = ["python3 -m pytest -q", "ruff check ."]'
+            in (workspace_root / '.wuwei/config.toml').read_text())
+    (workspace_root / '.wuwei/config.toml').write_text(raw)
+    ports['checks'] = SimpleNamespace(run=lambda *a, **k: pytest.fail('ran a repository command'))
+    assert promote(workspace_root, lambda digest, **kw: True) == 0
+    real = builtins.open
+    monkeypatch.setattr(builtins, 'open', lambda path, *a, **k: (_ for _ in ()).throw(OSError('no tty'))
+                        if path == '/dev/tty' else real(path, *a, **k))
+    measured(monkeypatch, ports, [0.0, 3.0])
+    assert main('config', 'promote', '--measure') == 2
 
 
 def drift_events(root):

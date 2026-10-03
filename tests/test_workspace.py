@@ -139,7 +139,7 @@ def test_config_defaults_and_independence(tmp_path):
         'security': {'required': False},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'digest': '', 'nudges': '', 'dm': '', 'report': ''}},
-        'repos': [], 'cap': 1,
+        'repos': [], 'cap': 1, 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'}},

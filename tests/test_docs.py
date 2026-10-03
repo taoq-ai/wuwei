@@ -273,8 +273,12 @@ def test_calibration_is_documented_between_configure_and_plan():
     configuration = (SITE / 'configuration.md').read_text()
     section = configuration.split('\n## Calibration\n', 1)[1].split('\n## ', 1)[0]
     for phrase in ('.wuwei/calibration.json', 'calibration.drift', 'config promote',
-                   'instruction-like', 'edit by hand'):
+                   'instruction-like', 'edit by hand', '--measure', 'calibrate.fast_check_seconds',
+                   'CI only', 'repos.fast_checks'):
         assert phrase in section, phrase
+    row = next(line for line in (SITE / 'reference.md').read_text().splitlines()
+               if line.startswith('| `bin/wuwei calibrate`'))
+    assert '--measure' in row
 
 
 
