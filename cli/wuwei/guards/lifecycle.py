@@ -70,9 +70,14 @@ def session_start(payload):
         notice = watch.wake(root)
         if notice:
             lines.append(notice)
-        from wuwei.commands.status import attention
-        lines.extend(row['reason'] for row in attention(workspace.day_dir(root))
-                     if row['source'] == 'decision.answered')
+        # Phone answers exist only for routed decisions: a day without routes skips the second
+        # decode of its events (#346); health above already refused a broken events file.
+        day = state.read_state(root)
+        if day.get('decision_routes', {}) != {}:
+            from wuwei.commands.status import attention
+            lines.extend(row['reason'] for row in attention(
+                workspace.day_dir(root), {**day, 'now': workspace.now().isoformat()})
+                if row['source'] == 'decision.answered')
         for directory in watch.days(root):
             if directory == workspace.day_dir(root):
                 continue

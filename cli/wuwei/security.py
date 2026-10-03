@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 import re
-import tomllib
 
 from wuwei import workspace
 
@@ -48,9 +47,15 @@ def load(root, *, raw=None):
     try:
         if not path.exists() and not path.is_symlink():
             config = directory / 'config.toml'
+            required = None
             if raw is None:
-                raw = config.read_text() if config.exists() else ''
-            required = tomllib.loads(raw).get('security', {}).get('required', False)
+                try:  # The validated config, from its parsed copy on a hook (#346).
+                    required = workspace.load_config(root)['security']['required']
+                except (OSError, ValueError):
+                    raw = config.read_text() if config.exists() else ''
+            if required is None:  # A candidate text, or a missing or invalid file: the key itself.
+                import tomllib
+                required = tomllib.loads(raw).get('security', {}).get('required', False)
             if not required:
                 return None
         if path.is_symlink():

@@ -69,14 +69,30 @@ def run(args):
         reason = (f'{type(exc).__name__}: could not discover guards' if args.event == 'PostToolUse'
                   else f'wuwei hook: {type(exc).__name__}: {exc}')
         return refuse(args.event, reason, malformed=True)
-    refusals, context = [], []
-    for guard in guards:
-        if guard.event != args.event:
-            continue
+    selected = [guard for guard in guards if guard.event == args.event]
+
+    def outcome(guard):
+        """('skipped' | 'ran' | 'raised', value) for one guard; never raises."""
         try:
             if guard.matcher is not None and not re.fullmatch(guard.matcher, payload.get('tool_name', '')):
-                continue
-            result = guard.check(payload)
+                return 'skipped', None
+            return 'ran', guard.check(payload)
+        except BaseException as exc:
+            return 'raised', exc
+    if args.event == 'SessionStart':
+        # #346: SessionStart's guards are independent reads, each with its own records; run
+        # together, one's git and ssh-keygen children and fsyncs overlap the other's work.
+        from wuwei.registry import together
+        outcomes = together(*(lambda guard=guard: outcome(guard) for guard in selected))
+    else:
+        outcomes = map(outcome, selected)  # One at a time, in order, as before.
+    refusals, context = [], []
+    for guard, (how, result) in zip(selected, outcomes):
+        if how == 'skipped':
+            continue
+        try:
+            if how == 'raised':
+                raise result
             if (not isinstance(result, tuple) or len(result) != 2
                     or type(result[0]) is not int or result[0] not in (CLEAN, FINDINGS, UNRUN)
                     or not isinstance(result[1], str) or (result[0] and not result[1].strip())):

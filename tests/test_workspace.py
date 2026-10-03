@@ -822,6 +822,185 @@ def test_config_parsed_once_per_text(tmp_path, monkeypatch):
     assert len(parsed) == 4
 
 
+CACHE = '.wuwei/generated/config.cache.json'
+
+
+def counted_parse(monkeypatch):
+    import tomllib
+    parsed, loads = [], tomllib.loads
+    monkeypatch.setattr(tomllib, 'loads', lambda text: parsed.append(text) or loads(text))
+    return parsed
+
+
+def fresh_load(root, monkeypatch, warnings=None, writes=True):
+    """load_config as a new hook process sees it (one that writes the parsed copy on a
+    miss, as __main__ sets for hooks and the status line): no in-process memo, only files."""
+    from wuwei import workspace
+    monkeypatch.setattr(workspace, '_CONFIGS', {})
+    monkeypatch.setattr(workspace, 'CONFIG_CACHE_WRITES', writes)
+    return workspace.load_config(root, warnings=warnings)
+
+
+def test_config_cache_only_hooks_and_the_status_line_write_it(tmp_path, monkeypatch):
+    from wuwei import workspace
+    write_config(tmp_path, 'cap = 2\n')
+    assert workspace.CONFIG_CACHE_WRITES is False  # Every other command stays read-only.
+    assert fresh_load(tmp_path, monkeypatch, writes=False)['cap'] == 2
+    assert not (tmp_path / '.wuwei/generated').exists()
+    fresh_load(tmp_path, monkeypatch)
+    parsed = counted_parse(monkeypatch)
+    assert fresh_load(tmp_path, monkeypatch, writes=False)['cap'] == 2
+    assert parsed == []  # A current copy serves every command.
+
+
+def test_config_cache_hit_skips_the_parse(tmp_path, monkeypatch):
+    write_config(tmp_path, (ROOT / 'templates/workspace/config.toml').read_text())
+    parsed = counted_parse(monkeypatch)
+    first = fresh_load(tmp_path, monkeypatch)
+    assert (tmp_path / CACHE).is_file() and len(parsed) == 1
+    written = (tmp_path / CACHE).stat().st_mtime_ns
+    assert fresh_load(tmp_path, monkeypatch) == first
+    assert len(parsed) == 1
+    assert (tmp_path / CACHE).stat().st_mtime_ns == written  # A hit writes nothing.
+
+
+@pytest.mark.parametrize('text', ['cap = 12\n', 'cap = 3\n'], ids=['size', 'same-size-same-mtime'])
+def test_config_cache_is_stale_when_the_text_changes(tmp_path, monkeypatch, text):
+    write_config(tmp_path, 'cap = 2\n')
+    path = tmp_path / '.wuwei/config.toml'
+    before = path.stat()
+    assert fresh_load(tmp_path, monkeypatch)['cap'] == 2
+    path.write_text(text)
+    # A rewrite inside one coarse timestamp tick keeps mtime, size and inode: the text decides.
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    parsed = counted_parse(monkeypatch)
+    assert fresh_load(tmp_path, monkeypatch)['cap'] == int(text.split()[-1])
+    assert len(parsed) == 1
+    assert fresh_load(tmp_path, monkeypatch)['cap'] == int(text.split()[-1])
+    assert len(parsed) == 1
+
+
+def test_config_cache_survives_a_touch(tmp_path, monkeypatch):
+    write_config(tmp_path, 'cap = 2\n')
+    fresh_load(tmp_path, monkeypatch)
+    path = tmp_path / '.wuwei/config.toml'
+    os.utime(path, ns=(path.stat().st_atime_ns, path.stat().st_mtime_ns + 10**9))
+    parsed = counted_parse(monkeypatch)
+    assert fresh_load(tmp_path, monkeypatch)['cap'] == 2
+    assert parsed == []
+
+
+@pytest.mark.parametrize('change', ['plugin', 'layout'])
+def test_config_cache_is_stale_for_another_version(tmp_path, monkeypatch, change):
+    from wuwei import integrity, workspace
+    write_config(tmp_path, 'cap = 2\n')
+    fresh_load(tmp_path, monkeypatch)
+    if change == 'plugin':
+        monkeypatch.setattr(integrity, 'version', lambda: '999.0.0')
+    else:
+        monkeypatch.setattr(workspace, 'CONFIG_CACHE_VERSION', workspace.CONFIG_CACHE_VERSION + 1)
+    parsed = counted_parse(monkeypatch)
+    assert fresh_load(tmp_path, monkeypatch)['cap'] == 2
+    assert fresh_load(tmp_path, monkeypatch)['cap'] == 2
+    assert len(parsed) == 1  # Parsed once, then the rewritten copy serves this version.
+
+
+@pytest.mark.parametrize('content', [b'{', b'[]', b'\xff', b'{"key": 1, "config": [], "warnings": 3}\n', b''])
+def test_config_cache_unreadable_is_ignored(tmp_path, monkeypatch, content):
+    write_config(tmp_path, 'cap = 2\n')
+    expected = fresh_load(tmp_path, monkeypatch)
+    (tmp_path / CACHE).write_bytes(content)
+    assert fresh_load(tmp_path, monkeypatch) == expected
+    parsed = counted_parse(monkeypatch)
+    assert fresh_load(tmp_path, monkeypatch) == expected
+    assert parsed == []  # Rewritten by the parse that ignored it.
+
+
+def test_config_cache_forged_text_is_a_miss(tmp_path, monkeypatch):
+    write_config(tmp_path, 'cap = 2\n')
+    fresh_load(tmp_path, monkeypatch)
+    data = json.loads((tmp_path / CACHE).read_text())
+    data['config']['cap'] = 9
+    data['key']['text'] = 'cap = 9\n'
+    (tmp_path / CACHE).write_text(json.dumps(data))
+    assert fresh_load(tmp_path, monkeypatch)['cap'] == 2
+
+
+def test_config_cache_missing_directory(tmp_path, monkeypatch):
+    write_config(tmp_path, 'cap = 2\n')
+    assert not (tmp_path / '.wuwei/generated').exists()
+    assert fresh_load(tmp_path, monkeypatch)['cap'] == 2
+    assert (tmp_path / CACHE).is_file()
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason='root writes through file modes')
+def test_config_cache_unwritable_directory(tmp_path, monkeypatch):
+    write_config(tmp_path, 'cap = 2\n')
+    (tmp_path / '.wuwei/generated').mkdir()
+    (tmp_path / '.wuwei/generated').chmod(0o500)
+    try:
+        assert fresh_load(tmp_path, monkeypatch)['cap'] == 2
+        assert not (tmp_path / CACHE).exists()
+    finally:
+        (tmp_path / '.wuwei/generated').chmod(0o700)
+
+
+def test_config_cache_symlink_is_ignored(tmp_path, monkeypatch):
+    write_config(tmp_path, 'cap = 2\n')
+    fresh_load(tmp_path, monkeypatch)
+    forged = tmp_path / 'forged.json'
+    data = json.loads((tmp_path / CACHE).read_text())
+    data['config']['cap'] = 9
+    forged.write_text(json.dumps(data))
+    (tmp_path / CACHE).unlink()
+    (tmp_path / CACHE).symlink_to(forged)
+    assert fresh_load(tmp_path, monkeypatch)['cap'] == 2
+
+
+def test_config_cache_keeps_the_warnings(tmp_path, monkeypatch):
+    write_config(tmp_path, 'cap = 2\ncapp = 3\n[owner]\nhandle = "x"\n')
+    fresh, cached = [], []
+    parsed = counted_parse(monkeypatch)
+    first = fresh_load(tmp_path, monkeypatch, warnings=fresh)
+    assert fresh_load(tmp_path, monkeypatch, warnings=cached) == first
+    assert len(parsed) == 1
+    assert cached == fresh and len(fresh) == 2 and 'did you mean cap?' in fresh[0]
+
+
+def test_config_cache_deleted_changes_nothing(tmp_path, monkeypatch):
+    write_config(tmp_path, (ROOT / 'templates/workspace/config.toml').read_text() + 'capp = 3\n')
+    with_cache, without = [], []
+    fresh_load(tmp_path, monkeypatch)
+    first = fresh_load(tmp_path, monkeypatch, warnings=with_cache)  # served from the cache
+    (tmp_path / CACHE).unlink()
+    assert fresh_load(tmp_path, monkeypatch, warnings=without) == first
+    assert without == with_cache and with_cache
+
+
+def test_config_cache_only_for_the_file(tmp_path, monkeypatch):
+    from wuwei import workspace
+    write_config(tmp_path, 'cap = 2\n')
+    monkeypatch.setattr(workspace, 'CONFIG_CACHE_WRITES', True)
+    assert workspace.load_config(tmp_path, raw='cap = 5\n')['cap'] == 5
+    assert not (tmp_path / CACHE).exists()  # A candidate text is not the file.
+    write_config(tmp_path, 'cap = 0\n')
+    for _ in range(2):
+        with pytest.raises(workspace.ConfigError):
+            fresh_load(tmp_path, monkeypatch)
+    assert not (tmp_path / CACHE).exists()  # Findings are never cached.
+
+
+def test_config_cache_is_no_workspace_finding(tmp_path, monkeypatch):
+    from wuwei import integrity, workspace
+    write_config(tmp_path, 'cap = 2\n')
+    (tmp_path / '.wuwei/memory').mkdir()
+    (tmp_path / '.wuwei/memory/spine.md').write_text('Memory\n')
+    integrity.initialize(tmp_path / '.wuwei')
+    fresh_load(tmp_path, monkeypatch)
+    assert (tmp_path / CACHE).is_file()
+    assert integrity.workspace_check(tmp_path).exit == 0
+
+
 def test_repository_gate_defaults_and_floor_choices(tmp_path):
     from wuwei.workspace import ConfigError, load_config
     repo = '[[repos]]\nname="a"\npath="/a"\ndefault_branch="main"\n'
