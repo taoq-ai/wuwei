@@ -270,3 +270,29 @@ def test_issue_acceptance_silent_outside_workspace(tmp_path, monkeypatch, capsys
     capsys.readouterr()
     assert hook(monkeypatch, outside) == 0
     assert capsys.readouterr().out == ''
+
+
+BUDGET = 4096  # The issue's fixed SessionStart budget in UTF-8 bytes for a busy day.
+
+
+def test_issue_acceptance_session_start_budget(root, monkeypatch, capsys):
+    import shutil
+    build = {'status': 'ready', 'brief': 'briefs/b.md',
+             'action': {'action': 'launch', 'prompt': 'LAUNCH-PROMPT ' + 'x' * 4000}}
+    approved(root, {f'ITEM-{n}': ('implement', {}) for n in (1, 2, 3)}, cap=3,
+             builds={f'ITEM-{n}': build for n in (1, 2, 3)},
+             seats={'b1': {'role': 'builder', 'item': 'ITEM-1', 'status': 'running', 'brief': 'briefs/b1.md'}},
+             decision_routes={'D-1': {}, 'D-2': {}})
+    memory = root / '.wuwei/memory'
+    (memory / 'notes').mkdir(parents=True)
+    for name in ('spine.md', 'index.md', 'goals.md'):
+        shutil.copy(Path(__file__).parents[1] / 'templates/workspace/memory' / name, memory / name)
+    capsys.readouterr()
+    assert hook(monkeypatch, root) == 0
+    text = context(capsys)
+    assert len(text.encode('utf-8')) <= BUDGET
+    for phrase in ('Next: decision: ', 'Open decisions: D-1, D-2', 'Goals: ', 'Plan: ',
+                   'Full day state: wuwei state get'):
+        assert phrase in text
+    for phrase in ('LAUNCH-PROMPT', 'Today state:', '"approved_items"'):
+        assert phrase not in text

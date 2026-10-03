@@ -210,7 +210,8 @@ planner on a schedule.
 - Re-anchoring: every SessionStart payload, after a compaction or a rotation too, opens
   with the orientation block: what WUWEI is, the posture and the next step from
   `bin/wuwei next`. `Active constraints:` follows with the day's goals, the approved plan,
-  open decisions and the briefs of running seats.
+  open decisions and the briefs of running seats. The full day state is no longer pasted
+  into the session; it is one command away, `bin/wuwei state get`.
 
 Set them with `bin/wuwei config set` in a host terminal, for example
 `bin/wuwei config set owner.timezone '"Europe/Lisbon"'`,

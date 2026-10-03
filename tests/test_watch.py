@@ -546,7 +546,7 @@ def test_session_payload_omits_watch_state(case):
     watch_module().poll(root)
     content, size, tokens = memory.session_payload(root)
     assert '"watch"' not in content
-    assert '"raised_prs"' in content
+    assert 'Full day state: wuwei state get' in content and '"raised_prs"' not in content
     assert size == len(content.encode('utf-8'))
     assert tokens == memory.estimated_tokens(content)
 
@@ -564,11 +564,11 @@ def test_fresh_day_before_the_plan_is_clean(case, capsys):
     assert len(sweeps) == 2
     assert all(row['payload']['unreadable'] == 0 and row['payload']['owed'] == 0 for row in sweeps)
     capsys.readouterr()
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--json']) == 0
     assert json.loads(capsys.readouterr().out) == []
 
 
-def test_session_payload_lists_drafts_without_bodies(case):
+def test_session_payload_carries_no_drafts(case):
     from wuwei import drafts, memory
     root, _, _, _ = case
     text = 'A private reply body'
@@ -578,8 +578,7 @@ def test_session_payload_lists_drafts_without_bodies(case):
     state._write_state(lambda data: data.update(drafts={'DR-1': row}), root, reserved=False)
     assert drafts.read(state.read_state(root))
     content = memory.session_payload(root)[0]
-    assert '"DR-1": "C2"' in content
-    assert text not in content and '"inputs"' not in content
+    assert text not in content and '"inputs"' not in content and 'C2' not in content
 
 
 def test_restart_dead_watch_swept_before_clock_hides_gap(case):

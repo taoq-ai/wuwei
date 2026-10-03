@@ -64,7 +64,7 @@ def test_merged_item_and_answered_decision_read_the_same_everywhere(tmp_path, mo
     assert section(pack, '## Headline').strip() == 'DIVIDE-1: merged (org/repo#1)'
     assert section(pack, '## Decided').strip() == 'D-1: defer'
 
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--json']) == 0
     assert json.loads(capsys.readouterr().out) == []
     assert set(state.read_state(root)['items']) == {'DIVIDE-1'}
     assert not any('DISCOVERY' in text for text in (report, line, pack))

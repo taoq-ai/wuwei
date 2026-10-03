@@ -115,14 +115,10 @@ def session_payload(root=None):
     index = (memory / 'index.md').read_text(encoding='utf-8')
     data = state.read_state(root)
     active = constraints(root, data)
-    data.pop('watch', None)
-    from wuwei import drafts
-    data['drafts'] = {key: row['destination'] for key, row in drafts.read(data).items()}
-    state_text = json.dumps(data, ensure_ascii=False, sort_keys=True)
     from wuwei.promotion import last_run
     promote_line = last_run(root)
     content = (f'{active}\nSpine:\n{spine.rstrip()}\n\nIndex:\n{index.rstrip()}\n\n'
-               f'Today state:\n{state_text}\n{promote_line}\n')
+               f'Full day state: wuwei state get\n{promote_line}\n')
     return content, len(content.encode('utf-8')), estimated_tokens(content)
 
 

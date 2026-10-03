@@ -787,7 +787,7 @@ def test_a_second_answer_resumes_no_session(ws):
 def refused_pages(capsys):
     from wuwei.__main__ import main
     capsys.readouterr()
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--json']) == 0
     return [row for row in json.loads(capsys.readouterr().out) if row['source'] == 'remote.refused']
 
 

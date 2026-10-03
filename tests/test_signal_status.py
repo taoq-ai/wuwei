@@ -289,7 +289,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'verdict.rejected': 'silent', 'decision.rejected': 'nudge',
                     'decision.decided': 'silent', 'decision.routed': 'silent',
                     'decision.digest': 'silent', 'decision.replied': 'silent', 'decision.escalated': 'silent',
-                'adapter: none': 'nudge', 'reply: acknowledged': 'silent',
+                'adapter: none': 'silent', 'reply: acknowledged': 'silent',
                 'reply: thread_posted': 'silent', 'pr.raised': 'silent',
                 'pr.claimed': 'silent',
                 'pr.reviewers_selected': 'silent', 'pr.review_posted': 'silent',
@@ -422,7 +422,7 @@ def test_routed_decision_nudges_until_answered(tmp_path, monkeypatch, capsys, ou
                    'decision_outcomes': outcomes})
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--json']) == 0
     rows = [row for row in json.loads(capsys.readouterr().out) if row['source'] == 'decision.pending']
     assert rows == [{'tier': 'nudge', 'source': 'decision.pending', 'lane': 'Decisions',
                      'reason': 'D-2 pending owner decision'}][:count]
@@ -435,7 +435,7 @@ def test_invalid_decision_ledger_is_unmeasured(tmp_path, monkeypatch, capsys):
     day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': ['D-2']})
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
-    assert main(['nudges']) == 2
+    assert main(['nudges', '--json']) == 2
     capsys.readouterr()
     assert main(['status', '--line']) == 2
     assert capsys.readouterr().out == 'WUWEI ? unmeasured\n'
@@ -452,7 +452,7 @@ def test_issue_acceptance_a_phone_answer_shows_on_the_host(tmp_path, monkeypatch
     monkeypatch.setenv('WUWEI_NOW', NOW)
     reason = 'D-2 answered from the phone: option A, confirm with decision outcome D-2 A'
     expected = [] if outcomes else [reason]
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--json']) == 0
     rows = [row for row in json.loads(capsys.readouterr().out) if 'D-2' in row['reason']]
     assert rows == [{'tier': 'nudge', 'source': 'decision.answered', 'lane': 'Decisions',
                      'reason': reason}][:len(expected)]
@@ -478,7 +478,7 @@ def test_issue_acceptance_four_phone_answers_are_one_status_segment(tmp_path, mo
     assert main(['status', '--line']) == 0
     text = capsys.readouterr().out.strip()
     assert 'phone answers 4' in text and 'answered from the phone' not in text and len(text) < 160
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--json']) == 0
     rows = [row['reason'] for row in json.loads(capsys.readouterr().out) if row['source'] == 'decision.answered']
     assert rows == reasons
     assert main(['status', '--json']) == 0
@@ -657,3 +657,86 @@ def test_scan_skip_matches_decoding_every_line(tmp_path, monkeypatch):
     assert skipped == status.scan(directory)
     assert [row['source'] for row in skipped[0]].count('hook.warning') == 3
     assert any(row['source'] == 'unreadable event' for row in skipped[0])
+
+
+NONE_EVENT = {'kind': 'adapter: none', 'payload': {'adapter': 'none', 'kind': 'scanner', 'call': 'audit',
+                                                   'exit': 2, 'reason': 'unmeasured', 'performed': False}}
+
+
+def test_issue_acceptance_adapter_none_is_silent(tmp_path, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    from wuwei.commands.status import attention
+    from wuwei.signal import classify
+    assert classify(NONE_EVENT, {}) == ('silent', 'Work')
+    directory = day(tmp_path, {'cap': 1, 'items': {}}, [NONE_EVENT, NONE_EVENT])
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    assert attention(directory) == []
+    assert main(['status', '--line']) == 0
+    assert 'nudges 0' in capsys.readouterr().out
+
+
+def test_issue_acceptance_nudges_print_lines(tmp_path, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    from wuwei.commands.status import attention
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    assert main(['nudges']) == 0
+    assert capsys.readouterr().out == 'No open pages or nudges.\n'
+    assert main(['nudges', '--json']) == 0
+    assert capsys.readouterr().out == '[]\n'
+    checked = {'kind': 'mcp.checked', 'payload': {'exit': 2}}
+    events = [checked, checked, NONE_EVENT, NONE_EVENT,
+              {'kind': 'decision.replied', 'ts': '2026-09-28T11:00:00+02:00',
+               'payload': {'id': 'D-2', 'option': 'A'}},
+              {'kind': 'build.parked', 'payload': {'reason': 'ITEM-1 parked'}}]
+    directory = day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': {'D-1': {}, 'D-2': {}}}, events)
+    expected = {
+        'mcp.checked': 'nudge: The last MCP registry check did not pass or could not run (2 times). '
+                       'Run: wuwei mcp check',
+        'build.parked': 'nudge: ITEM-1 parked. Run: wuwei next',
+        'decision.pending': 'nudge: D-1 pending owner decision. Run: wuwei decision show D-1',
+        'decision.answered': 'nudge: D-2 answered from the phone: option A, '
+                             'confirm with decision outcome D-2 A'}
+    rows = attention(directory)
+    assert main(['nudges']) == 0
+    assert capsys.readouterr().out.splitlines() == list(dict.fromkeys(expected[r['source']] for r in rows))
+    assert main(['nudges', '--json']) == 0
+    assert capsys.readouterr().out == json.dumps(rows, allow_nan=False) + '\n'
+    assert [r['source'] for r in rows].count('mcp.checked') == 2
+    (directory / 'events.jsonl').write_text('')
+    (directory / 'state.json').write_text(json.dumps({'cap': 1, 'items': {}}))
+    assert main(['nudges']) == 0
+    assert capsys.readouterr().out == 'No open pages or nudges.\n'
+
+
+def row_of(source, reason, tier='nudge'):
+    return {'tier': tier, 'source': source, 'lane': 'Work', 'reason': reason}
+
+
+@pytest.mark.parametrize('source,reason,expected', [
+    ('item.escalated', 'ITEM-1', 'nudge: ITEM-1 is escalated and waits for the owner. Run: wuwei why ITEM-1'),
+    ('draft.created', 'DR-1', 'nudge: An outward draft waits for owner approval. Run: bin/wuwei drafts'),
+    ('watch: health', 'watch is dead', 'nudge: watch is dead. Run: wuwei doctor'),
+    ('listen: health', 'listen is dead', 'nudge: listen is dead. Run: wuwei doctor'),
+    ('watch: sweep:unmeasured', 'x', 'nudge: A sweep could not read a record (unmeasured). Run: wuwei doctor'),
+    ('decision.answered', 'D-2 answered, confirm with decision outcome D-2 A',
+     'nudge: D-2 answered, confirm with decision outcome D-2 A'),
+    ('decision.pending', '', 'nudge: . Run: wuwei next'),
+    ('build.parked', 'start with /wuwei:wuwei-plan', 'nudge: start with /wuwei:wuwei-plan'),
+])
+def test_nudge_line_actions(source, reason, expected):
+    from wuwei.commands import nudges
+    assert nudges.line(row_of(source, reason), 1) == expected
+
+
+def test_nudge_page_and_nudge_stay_apart(tmp_path, monkeypatch, capsys):
+    from wuwei.commands import nudges
+    rows = [row_of('x', 'same'), row_of('x', 'same', 'page'), row_of('x', 'same')]
+    monkeypatch.setattr(nudges, 'attention', lambda directory: rows)
+    day(tmp_path, {'cap': 1, 'items': {}})
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    assert nudges.run(type('A', (), {'json': False})()) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        'nudge: same (2 times). Run: wuwei next', 'page: same. Run: wuwei next']

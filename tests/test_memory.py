@@ -88,7 +88,7 @@ def test_payload_content_size_and_missing_source(tmp_path):
     assert result.returncode == 0, result.stderr
     assert '# Spine' in result.stdout
     assert 'a | reference | Summary' in result.stdout
-    assert '"cap": 2' in result.stdout
+    assert 'Full day state: wuwei state get' in result.stdout and '"cap": 2' not in result.stdout
     content, size = result.stdout.rsplit('Size: ', 1)
     assert size == f'{len(content.encode())} bytes, {(len(content) + 3) // 4} estimated tokens\n'
     (root / '.wuwei/memory/index.md').unlink()
