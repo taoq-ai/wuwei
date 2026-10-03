@@ -83,6 +83,11 @@ def step(root):
             return _row('build', f'{name} is in {phase}; run the build loop and do the step it '
                         'returns.', f'wuwei build next {name}')
         if phase in ('gate', 'delta'):
+            from wuwei import docs  # Local: only an item at the gate needs it.
+            if docs.unmet(config, items[name]):
+                return _row('docs', f"{name} (tier {items[name]['gates']['tier']}) has no docs value; "
+                            'record it before the quality gate.',
+                            docs.command(config, name).removeprefix('bin/'))
             return _row('verdicts', f'{name} is at {phase}; collect the gate verdicts and launch '
                         'the gate seats it names.', f'wuwei dispatch next {name}')
         if phase == 'raised':

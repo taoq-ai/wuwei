@@ -127,6 +127,17 @@ def _owner_reason(pair):
     return _OWNER_ACTIONS.get(pair) or _OWNER_ACTIONS.get((pair[0], ''))
 
 
+def _seat_docs_set(action):
+    """#419: plan set <item> docs=<value> [--reason <why>] is a seat command; spec= stays the
+    owner's. Only this literal shape passes, so no later word can become the assignment."""
+    rest = list(action[4:])
+    return (len(action) >= 4 and list(action[:2]) == ['plan', 'set'] and not action[2].startswith('-')
+            and action[3].startswith('docs=')
+            and (not rest or len(rest) == 2 and rest[0] == '--reason'
+                 or len(rest) == 1 and rest[0].startswith('--reason='))
+            and not any(re.search(r'[$`*?\[{]', word) for word in action))
+
+
 def _owner_relevant(text, script=False):
     """Text only: the CLI word plus an owner group and verb, a non-literal CLI word, or xargs."""
     from wuwei.shell import mentions
@@ -207,7 +218,7 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
                        'actions run in a host terminal.')
         if read_only(action):  # #348: --help prints usage and runs nothing
             continue
-        if reason := _owner_reason((group, verb)):
+        if (reason := _owner_reason((group, verb))) and not (not xargs and _seat_docs_set(action)):
             if ((group, verb) in _GATE_EDITS or (group, '') in _GATE_EDITS) and edits[1]:
                 if group in edits[0] and any(word == '--file' or word.startswith('--file=')
                                              for word in action):

@@ -76,6 +76,12 @@ SCHEMA = {
                   "autostart": (str, "strict", ("off", "strict", "goal"))},
     "tracker": {"backlog_filter": (str, ""),
                 "states": {"in_review": (str, "In Review"), "done": (str, "Done")}},
+    "docs": {"system": (str, "none"),
+             "required_tiers": [(str, None, ("light", "standard", "full")), ["standard", "full"]],
+             "space": (str, ""), "root": (str, "docs"),
+             "publish": [(str, None, ("report", "retro")), ["report", "retro"]],
+             "auto": [(str, None, ("page", "report", "retro")), []],
+             "strict_close": (bool, True)},
     "calendar": {"url": (str, "")},
     "brief": {"lead_minutes": (int, 30, 1),
               "style": {"length": (str, "standard", ("concise", "standard")),
@@ -168,6 +174,8 @@ SCHEMA = {
             {"pattern": r"mcp__.*slack.*__.*(send|post|reply|schedule|update).*", "channel": "slack"},
             {"pattern": r"mcp__.*linear.*__(save|create|update)_(issue|comment)", "channel": "tracker"},
             {"pattern": r"mcp__.*github.*__(add|create|update)_.*comment.*", "channel": "code_host"},
+            {"pattern": r"mcp__.*notion.*__.*(create|update|append|patch|post|move|duplicate).*", "channel": "docs"},
+            {"pattern": r"mcp__.*atlassian.*__(create|update)Confluence.*", "channel": "docs"},
         ]],
     },
     "telemetry": {"enabled": (bool, True),
@@ -515,7 +523,7 @@ _CONFIGS = {}
 # copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
-CONFIG_CACHE_VERSION = 3  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 4  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor, why and the board stay read-only.
@@ -602,6 +610,7 @@ def load_config(root=None, *, raw=None, warnings=None):
             if unknown:  # A typo usually explains the error after it, as before #353.
                 raise ConfigError(unknown[0]) from None
             raise
+        config['adapters']['docs'] = config['docs']['system']  # #419: the registry reads adapters.
         for pattern in config['deploy']['deny']:
             program = pattern.split()[0]
             if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]*', program):
@@ -656,9 +665,11 @@ def load_config(root=None, *, raw=None, warnings=None):
             try:
                 registry.validate(kind, name, for_config=True)
             except ValueError as exc:
-                line = _key_line(raw, ('adapters', kind))
+                key = ('docs', 'system') if kind == 'docs' else ('adapters', kind)
+                line = _key_line(raw, key)
                 location = f' at line {line}' if line is not None else ''
-                raise ConfigError(f'{exc}{location}') from exc
+                text = str(exc).replace('adapters.docs:', 'docs.system:')
+                raise ConfigError(f'{text}{location}') from exc
         if unknown and posture(config)[0] == 'strict':
             from wuwei import integrity  # A newer plugin's keys are unknown to me, not errors.
             if not integrity.newer_template(config):

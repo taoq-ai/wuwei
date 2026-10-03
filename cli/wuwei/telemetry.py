@@ -40,7 +40,7 @@ ADAPTERS = {'tracker': ('linear', 'none'), 'chat': ('none', 'slack'), 'review_bo
             'runtime': ('claude', 'codex', 'none'), 'scanner': ('none', 'ziran'), 'code_host': ('github', 'none'),
             'vcs': ('git',), 'host': ('local', 'none'), 'checks': ('local', 'none'), 'tts': ('none', 'say'),
             'calendar': ('ics', 'none'), 'transcripts': ('none',), 'inbound': ('none', 'slack'),
-            'redactor': ('builtin',)}
+            'redactor': ('builtin',), 'docs': ('confluence', 'markdown', 'none', 'notion')}
 INNER = frozenset((*GUARDS, 'config', *PHASES, *TIERS, *CLASSES, *AREAS, 'p50', 'p75', 'p90', 'p95', 'max',
                    'merged', 'escaped', 'owner', 'seat', 'cruise'))
 OWNER_KINDS = ('remote.acknowledged', 'state.recovered', 'integrity_confirmation', 'mcp.decided',

@@ -9,7 +9,7 @@ from wuwei.exits import RACE, DAMAGED
 
 
 OPERATIONS = {'chat': {'post', 'dm'}, 'code_host': {'comment'},
-              'tracker': {'create'}}
+              'tracker': {'create'}, 'docs': {'write'}}
 
 
 def read(data):
@@ -48,7 +48,7 @@ def create(root, config, channel, operation, adapter, inputs, reason):
     texts, destinations = outward._text(inputs)
     nested = inputs.get('draft', {})
     destination = (destinations[0] if destinations else inputs.get('ref')
-                   or nested.get('teamId') or nested.get('team') or
+                   or nested.get('ref') or nested.get('parent') or nested.get('teamId') or nested.get('team') or
                    (os.environ.get('SLACK_OWNER_DM_CHANNEL', 'owner DM')
                     if operation == 'dm' else channel))
     audience = voice.audience(destination if destinations or operation == 'dm' else channel, config)
@@ -179,6 +179,9 @@ def approve(root, draft_id, *, edit=False):
             current.update(status=status, closed=workspace.now().isoformat())
         state._write_state(finish, reserved=False, directory=directory, kind='draft.' + status,
                            payload={'id': draft_id, 'exit': result.exit})
+        if row['channel'] == 'docs' and result.exit == 0:
+            from wuwei import docs
+            docs.record(root, inputs['draft'], row['adapter'], result.data['link'], draft_id=draft_id)
         return registry.Result(result.exit, reason=(f'drafts: {draft_id} sent' if not result.exit
                                else 'drafts: adapter did not confirm send; do not retry'))
     except state.StateError as exc:

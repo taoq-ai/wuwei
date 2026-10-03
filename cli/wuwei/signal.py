@@ -25,7 +25,7 @@ SILENT = ('item.progress', 'traces.noted', 'remote.acknowledged', 'state.write',
           'build.started', 'build.launched', 'build.checked', 'verdict.rejected',
           'inbox.redacted', 'shepherd.dispatched', 'pr.notified', 'negotiation.notified',
           'doctor.fixed', 'adapter: none', 'telemetry.skipped', 'telemetry.unsent', 'telemetry.shared',
-          'telemetry.presented', 'telemetry.off')
+          'telemetry.presented', 'telemetry.off', 'docs.set', 'docs.written', 'docs.exempt')
 
 
 def classify(event, state):

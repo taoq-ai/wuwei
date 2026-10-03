@@ -14,7 +14,7 @@
           "--hostname",
           "github.com"
         ],
-        "stdout": "{\"number\": 7, \"html_url\": \"https://github.com/acme/widget/pull/7\", \"user\": {\"login\": \"builder\"}, \"state\": \"open\", \"draft\": false, \"head\": {\"sha\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"ref\": \"feature\"}, \"base\": {\"ref\": \"main\", \"sha\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}, \"mergeable\": true, \"mergeable_state\": \"clean\", \"additions\": 4, \"deletions\": 2, \"changed_files\": 1, \"updated_at\": \"2026-09-28T12:00:00Z\", \"node_id\": \"PR_7\", \"requested_reviewers\": [{\"login\": \"reviewer\"}], \"requested_teams\": [], \"merged\": false, \"merged_at\": null, \"merge_commit_sha\": null, \"created_at\": \"2026-09-28T10:00:00Z\"}"
+        "stdout": "{\"number\": 7, \"html_url\": \"https://github.com/acme/widget/pull/7\", \"user\": {\"login\": \"builder\"}, \"state\": \"open\", \"draft\": false, \"head\": {\"sha\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"ref\": \"feature\"}, \"base\": {\"ref\": \"main\", \"sha\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}, \"mergeable\": true, \"mergeable_state\": \"clean\", \"additions\": 4, \"deletions\": 2, \"changed_files\": 1, \"updated_at\": \"2026-09-28T12:00:00Z\", \"node_id\": \"PR_7\", \"requested_reviewers\": [{\"login\": \"reviewer\"}], \"requested_teams\": [], \"merged\": false, \"merged_at\": null, \"merge_commit_sha\": null, \"created_at\": \"2026-09-28T10:00:00Z\", \"title\": \"Add a widget option\", \"body\": \"## How to use\\nSet the option.\"}"
       }
     ],
     "data": {
@@ -42,7 +42,9 @@
       "merged": false,
       "merged_at": null,
       "merge_commit": null,
-      "created_at": "2026-09-28T10:00:00Z"
+      "created_at": "2026-09-28T10:00:00Z",
+      "title": "Add a widget option",
+      "body": "## How to use\nSet the option."
     }
   },
   {

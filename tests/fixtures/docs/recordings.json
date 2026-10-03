@@ -1,0 +1,33 @@
+{
+  "notion": {
+    "read": {"object": "page", "id": "11111111-2222-3333-4444-555555555555",
+             "url": "https://www.notion.so/Example-docs-11111111222233334444555555555555",
+             "last_edited_time": "2026-10-01T10:00:00.000Z",
+             "properties": {"Status": {"type": "select", "select": null},
+                            "Name": {"type": "title", "title": [{"plain_text": "Example "},
+                                                                 {"plain_text": "docs"}]}}},
+    "create": {"object": "page", "id": "66666666-7777-8888-9999-aaaaaaaaaaaa",
+               "url": "https://www.notion.so/Item-66666666777788889999aaaaaaaaaaaa"},
+    "append": {"object": "list", "results": []},
+    "error": {"object": "error", "status": 400, "code": "validation_error",
+              "message": "provider detail that must not leak"}
+  },
+  "confluence": {
+    "read": {"id": "101", "title": "Example docs", "spaceId": "55",
+             "_links": {"webui": "/spaces/DOCS/pages/101/Example+docs"},
+             "version": {"number": 3, "createdAt": "2026-10-01T10:00:00.000Z"}},
+    "parent": {"id": "100", "title": "Docs home", "spaceId": "55",
+               "_links": {"webui": "/spaces/DOCS/pages/100/Docs+home"},
+               "version": {"number": 1, "createdAt": "2026-09-01T10:00:00.000Z"}},
+    "create": {"id": "102", "title": "X: Add a flag", "spaceId": "55",
+               "_links": {"webui": "/spaces/DOCS/pages/102/X"}},
+    "current": {"id": "101", "title": "Example docs", "spaceId": "55",
+                "_links": {"webui": "/spaces/DOCS/pages/101/Example+docs"},
+                "version": {"number": 3, "createdAt": "2026-10-01T10:00:00.000Z"},
+                "body": {"storage": {"value": "<p>Earlier text</p>"}}},
+    "update": {"id": "101", "title": "Example docs", "spaceId": "55",
+               "_links": {"webui": "/spaces/DOCS/pages/101/Example+docs"},
+               "version": {"number": 4, "createdAt": "2026-10-03T10:00:00.000Z"}},
+    "error": {"statusCode": 500, "message": "provider detail that must not leak"}
+  }
+}

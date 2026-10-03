@@ -133,13 +133,16 @@ def read(root):
     path = directory / 'events.jsonl'
     events = path.read_text(encoding='utf-8') if path.exists() else ''
     order = list(state.PHASES)
+    from wuwei import docs
+    config = workspace.load_config(root)
     work = []
     for name, item in sorted(data['items'].items(), key=lambda row: order.index(row[1]['phase'])):
         gates = ', '.join(f"{v['role']} {v['round']}: {v['verdict']}"
                           for v in data['gate_verdicts'].values() if v.get('item') == name)
-        work.append((name, item['phase'], item['status'], gates or 'none', item.get('pr_url') or 'none'))
+        work.append((name, item['phase'], item['status'], gates or 'none', item.get('pr_url') or 'none',
+                     docs.shown(config, item)))
     lines = [status.line(cockpit['status']),
-             *_table('Work', ('Item', 'Phase', 'Status', 'Gates', 'PR'), work),
+             *_table('Work', ('Item', 'Phase', 'Status', 'Gates', 'PR', 'Docs'), work),
              *_table('PRs', ('PR', 'State', 'Waiting on', 'Deadline'),
                      [(r['ref'], r['state'], r['waiting_on'], r['deadline']) for r in cockpit['prs']]),
              *_table('Decisions', ('Id', 'Question', 'Route', 'Command'),

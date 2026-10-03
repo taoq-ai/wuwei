@@ -119,6 +119,8 @@ def requirements(config):
         ('inbound', 'slack'): [('SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN'), ('SLACK_OWNER_DM_CHANNEL',)],
         ('review_bot', 'greptile'): [('GREPTILE_API_KEY',)],
         ('calendar', 'ics'): [('WUWEI_CALENDAR_URL',)],
+        ('docs', 'notion'): [('NOTION_TOKEN',)],
+        ('docs', 'confluence'): [('CONFLUENCE_EMAIL',), ('CONFLUENCE_API_TOKEN',)],
     }
     if config['chat']['identity'] == 'custom_app':
         needed['chat', 'slack'][0] = ('SLACK_BOT_TOKEN',)
