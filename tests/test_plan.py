@@ -360,3 +360,96 @@ def test_plan_set_spec_override(root, capsys, monkeypatch):
         state.set_state('items.A.spec', '{"value": "skipped"}', root)
     assert main(['event', 'spec.override', '{}']) == 1
     assert 'wuwei plan set' in capsys.readouterr().err
+
+
+def two(**extra):
+    data = proposal()
+    data['candidates'].append({**data['candidates'][0], 'id': 'B'})
+    for candidate in data['candidates']:
+        candidate.update(extra.get(candidate['id'], {}))
+    return data
+
+
+def tracked(root, settings=''):
+    (root / '.wuwei/config.toml').write_text('[adapters]\ntracker = "linear"\n' + settings)
+
+
+def events(root):
+    return [json.loads(line) for line in
+            (root / '.wuwei/days/2026-09-28/events.jsonl').read_text().splitlines()]
+
+
+def test_approve_refuses_every_candidate_without_a_ticket(root, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    plan.propose(two(), root)
+    tracked(root)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    assert main(['plan', 'approve', '--items', 'A', 'B', '--goals-confirmed']) == 1
+    err = capsys.readouterr().err
+    assert 'A has no ticket' in err and 'B has no ticket' in err
+    assert not state.read_state(root)['approved_items']
+
+
+def test_approve_records_candidate_and_tracker_tickets(root):
+    data = two(A={'ticket': 'ENG-3'})
+    plan.propose(data, root)
+    path = root / '.wuwei/days/2026-09-28/proposal.json'
+    stored = json.loads(path.read_text())
+    stored['discovered'] = [{'id': 'B', 'title': 'x', 'source': 'tracker'}]
+    path.write_text(json.dumps(stored))
+    tracked(root)
+    plan.approve(['A', 'B'], root, goals_confirmed=True)
+    assert state.read_state(root)['tickets'] == {
+        'A': {'id': 'ENG-3', 'source': 'candidate'}, 'B': {'id': 'B', 'source': 'tracker'}}
+
+
+def test_invalid_candidate_ticket_is_unrun(root):
+    with pytest.raises(ValueError, match='A: invalid ticket'):
+        plan.propose(two(A={'ticket': 'has space'}), root)
+
+
+def test_import_yesterday_carries_tickets(root):
+    yesterday = root / '.wuwei/days/2026-09-27'
+    yesterday.mkdir(parents=True)
+    (yesterday / 'state.json').write_text(json.dumps({
+        'items': {'OLD': {'phase': 'implement', 'status': 'running'}},
+        'tickets': {'OLD': {'id': 'ENG-1', 'source': 'create'}}}))
+    data = proposal()
+    data['candidates'][0]['ticket'] = 'ENG-2'
+    plan.propose(data, root)
+    tracked(root)
+    plan.approve(['A'], root, goals_confirmed=True, import_yesterday=True)
+    assert state.read_state(root)['tickets'] == {
+        'OLD': {'id': 'ENG-1', 'source': 'yesterday'}, 'A': {'id': 'ENG-2', 'source': 'candidate'}}
+
+
+def test_light_candidate_is_approved_without_a_ticket(root):
+    plan.propose(two(A={'tier': 'light'}, B={'ticket': 'ENG-4'}), root)
+    tracked(root, '[tracker]\nskip_tiers = ["light"]\n')
+    plan.approve(['A', 'B'], root, goals_confirmed=True)
+    assert state.read_state(root)['tickets'] == {'B': {'id': 'ENG-4', 'source': 'candidate'}}
+    skipped = [event['payload'] for event in events(root) if event['kind'] == 'tracker.skipped']
+    assert skipped == [{'item': 'A', 'tier': 'light'}]
+
+
+def test_plan_set_records_a_confirmed_ticket(root, monkeypatch, capsys):
+    from fakes.tracker import Fake
+    from wuwei.__main__ import main
+    plan.propose(proposal(), root)
+    tracked(root)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    fake = Fake({'created': registry.Result(2, reason='LINEAR_API_KEY is missing')})
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
+    assert main(['plan', 'set', 'A', 'ticket=ENG-4']) == 2
+    assert 'tickets' not in state.read_state(root)
+    fake.results['created'] = registry.Result(0, '2026-09-27T10:00:00Z')
+    assert main(['plan', 'set', 'A', 'ticket=ENG-4']) == 0
+    assert fake.calls[-1][:2] == ('created', ('ENG-4',))
+    assert state.read_state(root)['tickets'] == {'A': {'id': 'ENG-4', 'source': 'set'}}
+    assert [e['payload']['item'] for e in events(root) if e['kind'] == 'plan.set'] == ['A']
+    assert main(['plan', 'set', 'UNKNOWN', 'ticket=ENG-4']) == 1
+    assert main(['plan', 'set', 'A', 'owner=pat']) == 2
+    assert main(['plan', 'set', 'A', 'ticket=bad id']) == 2
+    fake.results['created'] = registry.Result(1, reason='not found')
+    assert main(['plan', 'set', 'A', 'ticket=ENG-5']) == 1
+    assert 'owner=pat is not a spec, docs or ticket value' in capsys.readouterr().err

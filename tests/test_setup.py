@@ -1034,3 +1034,14 @@ def test_setup_offers_a_detected_docs_link(project, host, terminal, monkeypatch,
     assert 'Next: set CONFLUENCE_EMAIL in .wuwei/env' in capsys.readouterr().out
     assert seen == [{'docs': wiki}]
     assert load_config(project)['docs']['system'] == 'confluence'
+
+
+def test_discovery_prints_tracker_links(project, host, terminal):
+    (project / 'alpha/README.md').write_text('Issues: https://linear.app/acme/team/ENG\n')
+    (project / 'beta/.github').mkdir(exist_ok=True)
+    (project / 'beta/.github/PULL_REQUEST_TEMPLATE.md').write_text('See acme.atlassian.net/browse\n')
+    found = discovered(project)
+    assert 'tracker links: linear.app (alpha/README.md)' in found['lines']
+    assert 'tracker links: atlassian.net (beta/.github/PULL_REQUEST_TEMPLATE.md)' in found['lines']
+    assert not any('gamma' in line and 'tracker' in line for line in found['lines'])
+    assert load_config(project)['adapters']['tracker'] == 'none'

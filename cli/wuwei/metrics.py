@@ -225,7 +225,9 @@ def _references(root):
         for item, record in data.get('items', {}).items():
             if isinstance(record.get('pr'), str):
                 refs.add(record['pr'])
-                items.setdefault(item, set()).add(record['pr'])
+                # 5.11: lead time reads the item's ticket, else the item id.
+                ticket = data.get('tickets', {}).get(item, {}).get('id') or item
+                items.setdefault(ticket, set()).add(record['pr'])
     return sorted(refs), items
 
 

@@ -124,6 +124,20 @@ WUWEI writes an item's page there from its records, never from memory.
 An item tiered standard or full must record what it did to the docs before its quality gate passes.
 The value is a page, `new`, or `none` with a reason; the day close checks it again.
 
+### Ticket
+
+The tracker issue an item is built under: a Linear, Jira or GitHub id such as `ENG-12`.
+With a tracker set, no item is built, reviewed or launched without one.
+
+### Tracker hygiene
+
+The rule that every item has a ticket, bugs found midway become linked tickets,
+and the item's decisions, progress, verdicts, pull request and close land on its ticket.
+
+### Fold
+
+One comment that stands for the rest of a ticket's updates once its daily comment cap is reached.
+
 ## Roles
 
 The shipped charters define planner, lead, builder, shepherd, steward, and four sentinels: goal, architecture, quality and security. Generated agent files in `agents/` carry the charters and tool allowlists. The planner owns the day, the lead shapes work, builders implement, sentinels check, the shepherd follows pull requests and the steward maintains procedure. `/wuwei plan` runs the day, starting with your morning gate; see the [daily path](daily.md).
@@ -168,6 +182,25 @@ Memory has three tiers. A day keeps its raw records under `days/` for 30 days (`
 ## Day flow
 
 Plan, Build, Review, Close. `/wuwei plan` runs the morning gate, then the planner loops `build next` and `dispatch next` for each approved item, raises the PR and closes the day; phases move by themselves. The [daily path](daily.md) is your walkthrough and the [recovery](recovery.md) page covers the rest.
+
+## Tickets and comments
+
+With `adapters.tracker` set and `tracker.required` on, one rule decides whether an item may
+run: it has a ticket, or its tier is in `tracker.skip_tiers`. `plan approve`, `plan add`,
+`build next`, `dispatch next` and the seat launch all ask it and give the same reason. A
+candidate's `ticket` field, an item discovered from the tracker backlog,
+`bin/wuwei tracker create <item>` and `bin/wuwei plan set <item> ticket=<id>` record one.
+Builders and sentinels open a linked bug with
+`bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>"` instead of widening
+the item; the planner opens retro follow-ups with `--follow-up`. Each creation is written once
+per day and writes one `tracker.created` event.
+
+`bin/wuwei tracker log` turns today's events into comments on each ticket, once each:
+decisions, progress (phases, seat starts and stops, fast checks), gate verdicts, the pull
+request and the close outcome. The watch sweep and `wuwei close` run it. Kinds in
+`tracker.auto` are sent; the rest wait as drafts. After `tracker.max_per_item_per_day`
+comments the last one is a fold. `wuwei close` refuses while an item merged today has a
+ticket that never reached done; `bin/wuwei tracker done <item>` moves it.
 
 ## PR ownership
 

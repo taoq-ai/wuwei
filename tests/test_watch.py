@@ -1180,3 +1180,18 @@ def test_health_decodes_an_unchanged_day_once(tmp_path, monkeypatch):
     events.write_text(clock + 'torn')
     assert watch.health(tmp_path)[0] == 2 and watch.health(tmp_path)[0] == 2
     assert len(decoded) == 3
+
+
+def test_sweep_writes_tracker_comments(case, capsys):
+    from wuwei import tracker
+    root, _, _, monkeypatch = case
+    watch = watch_module()
+    calls = []
+    monkeypatch.setattr(tracker, 'log', lambda path: calls.append(path) or 0)
+    watch.sweep(root)
+    clean = events(root, 'watch: sweep')[-1]['payload']['unreadable']
+    assert calls == [root]
+    monkeypatch.setattr(tracker, 'log', lambda path: 2)
+    assert watch.sweep(root) == 2
+    assert events(root, 'watch: sweep')[-1]['payload']['unreadable'] == clean + 1
+    assert 'watch tracker log unmeasured' in capsys.readouterr().out

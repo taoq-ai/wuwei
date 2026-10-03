@@ -10,6 +10,7 @@ from wuwei.exits import PAYLOAD, PLAN_JSON, SYMLINK
 
 
 FLAGS = ('trust_surface', 'boundary_relevant', 'agent_surface')
+TICKET = r'[A-Za-z0-9][A-Za-z0-9._/#-]{0,99}'  # ENG-1, PROJ-12, owner/repo#12
 
 
 def session(session_id, root=None, *, take_over=False):
@@ -81,6 +82,9 @@ def _proposal(data, goals_text, framework="wsjf"):
             raise ValueError(f'{name}: track must be SLICE or FULL; {PLAN_JSON}')
         if 'tier' in item and item['tier'] not in dispatch.TIERS:
             raise ValueError(f'{name}: tier must be light, standard or full; {PLAN_JSON}')
+        if 'ticket' in item and not (isinstance(item['ticket'], str) and re.fullmatch(
+                TICKET, item['ticket'])):
+            raise ValueError(f'{name}: invalid ticket; {PLAN_JSON}')
         flags = item.get('flags')
         if not isinstance(flags, dict) or set(flags) != set(FLAGS) or any(type(v) is not bool for v in flags.values()):
             raise ValueError(f'{name}: flags must contain boolean trust_surface, boundary_relevant, agent_surface; {PLAN_JSON}')
@@ -201,7 +205,8 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
     proposal_path = directory / 'proposal.json'
     if proposal_path.is_symlink() or (directory / 'plan.md').is_symlink():
         raise ValueError(f'plan files must not be symlinks; {SYMLINK}')
-    framework = workspace.load_config(root)['prioritisation']['framework']
+    config = workspace.load_config(root)
+    framework = config['prioritisation']['framework']
     data = _proposal(json.loads(proposal_path.read_text(encoding='utf-8')),
                      (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8'),
                      framework)
@@ -210,7 +215,11 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
     candidates = {item['id']: item for item in data['candidates']}
     if any(name not in candidates for name in items):
         raise state.StateError('approved item is absent from proposal; approve only ids from the proposal (bin/wuwei status lists them), or run bin/wuwei plan propose again')
-    imported = {}
+    from wuwei import tracker
+    imported, carried = {}, {}
+    tracked = {row.get('id') for row in data.get('discovered', []) if isinstance(row, dict)
+               and row.get('source') == 'tracker'}
+    skipped = []
     if import_yesterday:
         days = root / '.wuwei/days'
         prior = sorted((path for path in days.iterdir() if path.is_dir() and
@@ -218,9 +227,12 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
                        reverse=True)
         if not prior or not (prior[0] / 'state.json').is_file():
             raise ValueError('no prior day state to import; run bin/wuwei plan approve without --import-yesterday')
+        earlier = state.read_state(directory=prior[0])
         imported = {name: {**item, 'phase': 'planned', 'status': 'queued', 'gates': {}}
-                    for name, item in state.read_state(directory=prior[0])['items'].items()
+                    for name, item in earlier['items'].items()
                     if item['phase'] != 'merged' and item['status'] != 'done'}
+        carried = {name: {'id': tracker.ticket(earlier, name), 'source': 'yesterday'}
+                   for name in imported if tracker.ticket(earlier, name)}
         for item in imported.values():
             item.pop('resume_phase', None)
         if set(imported) & set(items):
@@ -231,6 +243,23 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
             raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item')
         if set(current['items']) & (set(imported) | set(items)):
             raise state.StateError('day item already exists; remove the existing ids from --items (bin/wuwei status lists them)')
+        tickets = {**current.get('tickets', {}), **carried}
+        for name in items:
+            if name not in tickets and 'ticket' in candidates[name]:
+                tickets[name] = {'id': candidates[name]['ticket'], 'source': 'candidate'}
+            elif name not in tickets and name in tracked:
+                tickets[name] = {'id': name, 'source': 'tracker'}
+        if tickets:
+            current['tickets'] = tickets
+        reasons = []
+        for name in items:
+            status, reason = tracker.check(current, config, name, candidates[name])
+            if status == 'missing':
+                reasons.append(reason)
+            elif status == 'skipped':
+                skipped.append(name)
+        if reasons:
+            raise state.StateError('\n'.join(reasons))
         current['items'].update(imported)
         current['items'].update({name: {'goal': candidates[name].get('goal', 'unplanned'),
                                        'track': candidates[name]['track'],
@@ -245,10 +274,13 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
                        approved_items=items, gate_approved=True)
 
     kind = 'state.import' if import_yesterday else 'plan.approved'
-    return state._write_state(update, root, reserved=False, kind=kind,
-                              payload={'items': sorted(imported) if import_yesterday else items,
-                                       'approved_items': items,
-                                       'flags': {name: candidates[name]['flags'] for name in items}})
+    written = state._write_state(update, root, reserved=False, kind=kind,
+                                 payload={'items': sorted(imported) if import_yesterday else items,
+                                          'approved_items': items,
+                                          'flags': {name: candidates[name]['flags'] for name in items}})
+    for name in skipped:
+        state.append_event('tracker.skipped', {'item': name, 'tier': candidates[name]['tier']}, root)
+    return written
 
 
 def add(item, root=None):
@@ -267,6 +299,13 @@ def add(item, root=None):
                'sweep': {'discovery': 'measured: candidate'},
                'candidates': [candidate]}, goals_text,
               config['prioritisation']['framework'])
+    from wuwei import tracker
+    chosen = ({'id': candidate['ticket'], 'source': 'candidate'} if 'ticket' in candidate else
+              {'id': item, 'source': 'tracker'} if candidate.get('source') == 'tracker' else None)
+    status, reason = tracker.check({'tickets': {item: chosen}} if chosen else day,
+                                   config, item, candidate)
+    if status == 'missing':
+        raise state.StateError(reason)
     size_key = 'job_size' if config['prioritisation']['framework'] == 'wsjf' else 'effort'
     size = candidate['score'][size_key]
     committed = sum(row.get('budget_size', float('inf')) for row in day['items'].values())
@@ -306,8 +345,12 @@ def add(item, root=None):
                                   'flags': candidate['flags'], 'budget_size': size,
                                   **{key: candidate[key] for key in ('tier',) if key in candidate}}
         current['approved_items'].append(item)
+        if chosen and not tracker.ticket(current, item):
+            current.setdefault('tickets', {})[item] = chosen
     state._write_state(admit, root, reserved=False, kind='plan.added',
                        payload={'item': item})
+    if status == 'skipped':
+        state.append_event('tracker.skipped', {'item': item, 'tier': candidate['tier']}, root)
     return {'action': 'build next', 'item': item}
 
 
@@ -330,6 +373,30 @@ def set_spec(item, assignment, reason=None, root=None):
     state._write_state(update, root, reserved=False, kind='spec.override',
                        payload={'item': item, 'value': value, 'reason': reason})
     return f'{item}: spec {value}'
+
+
+def set_ticket(item, ticket, root=None):
+    """plan set <item> ticket=<id>: record an existing ticket once the tracker confirms it."""
+    from wuwei import registry
+    root = workspace.find_workspace(root)
+    if not isinstance(ticket, str) or not re.fullmatch(TICKET, ticket):
+        raise ValueError(f'invalid ticket {ticket!r}; pass an id such as ENG-12, PROJ-12 or owner/repo#12')
+    proposal = workspace.day_dir(root) / 'proposal.json'
+    names = set(state.read_state(root)['items'])
+    if proposal.is_file() and not proposal.is_symlink():
+        names |= {row.get('id') for row in
+                  json.loads(proposal.read_text(encoding='utf-8')).get('candidates', [])}
+    if item not in names:
+        raise state.StateError(f"unknown item {item}; use an id from today's plan or proposal "
+                               '(bin/wuwei status lists them)')
+    result = registry.load('tracker', workspace.load_config(root)).created(ticket, root=root)
+    if result.exit:
+        raise (state.StateError if result.exit == 1 else OSError)(
+            result.reason or f'tracker could not confirm {ticket}; check the id in the tracker, then '
+                             f'run bin/wuwei plan set {item} ticket=<id> again')
+    state._write_state(lambda data: data.setdefault('tickets', {}).update(
+        {item: {'id': ticket, 'source': 'set'}}), root, reserved=False, kind='plan.set',
+        payload={'item': item, 'ticket': ticket})
 
 
 def dispose(item, outcome, reason=None, root=None):

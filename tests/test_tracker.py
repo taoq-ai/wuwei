@@ -1,0 +1,315 @@
+"""Tracker hygiene (5.11): the ticket rule, creation and the comment writer, offline."""
+
+import json
+
+import pytest
+
+from fakes.tracker import Fake, ported
+from wuwei import integrity, registry, state, tracker, workspace
+from wuwei.__main__ import main
+
+
+def config(adapter='linear', required=True, skip=()):
+    return {'adapters': {'tracker': adapter},
+            'tracker': {'required': required, 'skip_tiers': list(skip)}}
+
+
+MISSING = ("item-1 has no ticket: bin/wuwei tracker create item-1 (opens one from the item's "
+           "record) or bin/wuwei plan set item-1 ticket=<id>")
+
+
+@pytest.mark.parametrize('settings,data,row,expected', [
+    (config('none'), {}, {}, ('off', '')),
+    (config(required=False), {}, {}, ('off', '')),
+    (config(), {'tickets': {'item-1': {'id': 'ENG-1', 'source': 'set'}}}, {}, ('ticket', '')),
+    (config(skip=['light']), {}, {'tier': 'light'}, ('skipped', '')),
+    (config(skip=['light']), {}, {'gates': {'tier': 'light'}}, ('skipped', '')),
+    (config(skip=['light']), {}, {}, ('missing', MISSING)),
+    (config(skip=['light']), {}, None, ('missing', MISSING)),
+    (config(skip=['light']), {}, {'tier': 'light', 'gates': {'tier': 'standard'}},
+     ('missing', MISSING)),
+])
+def test_check(settings, data, row, expected):
+    assert tracker.check(data, settings, 'item-1', row) == expected
+
+
+def test_ticket():
+    assert tracker.ticket({}, 'item-1') is None
+    assert tracker.ticket({'tickets': {'item-1': {'id': 'ENG-1', 'source': 'set'}}},
+                          'item-1') == 'ENG-1'
+
+
+def test_pending_items_draft_names_approval():
+    row = {'id': 'draft-1', 'status': 'pending', 'channel': 'tracker', 'operation': 'create',
+           'inputs': {'draft': {'title': 'x', 'item': 'item-1', 'category': 'items'}}}
+    other = {**row, 'id': 'draft-2', 'inputs': {'draft': {'title': 'x', 'item': 'item-1',
+                                                          'category': 'bugs'}}}
+    data = {'drafts': {'draft-2': other, 'draft-1': row}}
+    assert tracker.pending(data, 'item-1') == 'draft-1'
+    assert tracker.check(data, config(), 'item-1') == (
+        'missing', 'item-1 has no ticket: bin/wuwei drafts approve draft-1')
+    row['status'] = 'sent'
+    assert tracker.pending(data, 'item-1') is None
+
+
+CREATED = registry.Result(0, {'id': 'ENG-9', 'url': 'https://example.test/ENG-9'})
+
+
+@pytest.fixture
+def ws(tmp_path, monkeypatch):
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(integrity, '_host_confirm', lambda *a, **k: True)
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text(
+        '[owner]\nname = "Pat Example"\npronouns = "they/them"\n'
+        '[adapters]\ntracker = "linear"\n')
+    day = workspace.day_dir(tmp_path)
+    day.mkdir(parents=True)
+    (day / 'proposal.json').write_text(json.dumps({'candidates': [
+        {'id': 'item-1', 'scope': 'Add the export\n  button', 'evidence': 'issue 12',
+         'goal': 'G-1', 'track': 'SLICE'}]}))
+    fake = Fake({'create': CREATED, 'comment': registry.Result(0, {'id': 'c-1'}),
+                 'transition': registry.Result(0, {})})
+    port = ported(fake)
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
+                        else load(kind, config))
+    return tmp_path, fake
+
+
+def settings(root, text):
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('[tracker]\n' + text + '\n')
+
+
+def seed_ticket(root, item='item-1', ticket='ENG-1'):
+    state._write_state(lambda data: data.setdefault('tickets', {}).update(
+        {item: {'id': ticket, 'source': 'set'}}), root, reserved=False)
+
+
+def day_events(root, kind=None):
+    path = workspace.day_dir(root) / 'events.jsonl'
+    rows = [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+    return [row for row in rows if kind is None or row['kind'] == kind]
+
+
+BUG = ['tracker', 'create', '--bug', 'item-1', 'Export fails on empty rows',
+       '--evidence', 'cli/x.py:12']
+
+
+def test_bug_drafts_once_by_default(ws, capsys):
+    root, fake = ws
+    seed_ticket(root)
+    assert main(BUG) == 1
+    assert 'bin/wuwei drafts approve' in capsys.readouterr().out
+    row, = state.read_state(root)['drafts'].values()
+    draft = row['inputs']['draft']
+    assert draft == {'title': 'Export fails on empty rows', 'description': 'Evidence: cli/x.py:12',
+                     'item': 'item-1', 'category': 'bugs', 'parent': 'ENG-1'}
+    before = (workspace.day_dir(root) / 'events.jsonl').read_text()
+    assert main(BUG) == 1
+    assert row['id'] in capsys.readouterr().out
+    assert (workspace.day_dir(root) / 'events.jsonl').read_text() == before
+    assert fake.calls == []
+
+
+def test_bug_in_auto_creates_once(ws, capsys):
+    root, fake = ws
+    seed_ticket(root)
+    settings(root, 'auto = ["bugs"]')
+    assert main(BUG) == 0
+    assert 'ENG-9' in capsys.readouterr().out
+    created, = [row['payload'] for row in day_events(root, 'tracker.created')]
+    assert {key: created[key] for key in ('class', 'subject', 'ticket', 'parent')} == {
+        'class': 'bugs', 'subject': 'item-1', 'ticket': 'ENG-9', 'parent': 'ENG-1'}
+    assert state.read_state(root)['tickets'] == {'item-1': {'id': 'ENG-1', 'source': 'set'}}
+    assert main(BUG) == 0
+    assert 'ENG-9' in capsys.readouterr().out
+    assert len(fake.calls) == 1 and len(day_events(root, 'tracker.created')) == 1
+
+
+def test_creation_refusals(ws, capsys):
+    root, fake = ws
+    assert main(['tracker', 'create', '--bug', 'item-1', 'Broken', '--evidence',
+                 '/srv/x/file.py:3']) == 1
+    assert 'absolute path' in capsys.readouterr().err
+    settings(root, 'create = ["bugs"]')
+    assert main(['tracker', 'create', '--follow-up', 'item-1', 'Later', '--evidence', 'x']) == 1
+    assert 'tracker.create' in capsys.readouterr().err
+    assert main(['tracker', 'create', 'nothing']) == 2
+    assert fake.calls == [] and not day_events(root)
+
+
+def test_item_ticket_from_the_proposal(ws, capsys):
+    root, fake = ws
+    settings(root, 'auto = ["items"]')
+    assert main(['tracker', 'create', 'item-1']) == 0
+    (_, (draft,), _), = fake.calls
+    assert draft == {'title': 'Add the export button', 'item': 'item-1', 'category': 'items',
+                     'description': 'Evidence: issue 12\nGoal: G-1\nTrack: SLICE'}
+    assert state.read_state(root)['tickets'] == {'item-1': {'id': 'ENG-9', 'source': 'create'}}
+    assert main(['tracker', 'create', 'item-1']) == 0
+    assert len(fake.calls) == 1
+
+
+def test_create_without_adapter_cannot_run(ws, monkeypatch, capsys):
+    root, _ = ws
+    (root / '.wuwei/config.toml').write_text('')
+    monkeypatch.setattr(registry, 'load', lambda kind, config: pytest.fail('no port call'))
+    assert main(['tracker', 'create', 'item-1']) == 2
+    assert 'tracker adapter is none' in capsys.readouterr().err
+
+
+def approved(root, item='item-1', phase='implement'):
+    state._write_state(lambda data: data.update(
+        gate_approved=True, approved_items=[item],
+        items={item: {'phase': phase, 'status': 'queued'}}), root, reserved=False)
+
+
+def comments(fake):
+    return [call[1] for call in fake.calls if call[0] == 'comment']
+
+
+def story(root):
+    """A decision outcome, a phase change and a gate verdict, as their producers write them."""
+    decisions = workspace.day_dir(root) / 'decisions'
+    decisions.mkdir()
+    (decisions / 'D-1.md').write_text('Question: Ship item-1 now?\nOutcome: yes\n')
+    state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update(
+        {'D-1': {'option': 'yes', 'decided_by': 'owner'}}), root, reserved=False,
+        kind='decision.decided', payload={'id': 'D-1', 'option': 'yes', 'decided_by': 'owner'})
+    state.transition('item-1', 'gate', root)
+    state._write_state(lambda data: data['gate_verdicts'].update({'item-1:quality:initial': {
+        'verdict': 'FIX', 'findings': ['- P1 | cli/x.py:1 | empty | blocks: yes',
+                                       '- P3 | cli/x.py:2 | naming | blocks: no']}}),
+        root, reserved=False, kind='gate.received',
+        payload={'item': 'item-1', 'role': 'quality', 'round': 'initial', 'verdict': 'FIX'})
+
+
+def test_log_writes_the_story_once(ws):
+    root, fake = ws
+    approved(root)
+    seed_ticket(root)
+    story(root)
+    assert main(['tracker', 'log']) == 0
+    assert comments(fake) == [('ENG-1', '[2026-09-29 item-1] Phase: gate.', 'progress')]
+    drafted = sorted(row['text'] for row in state.read_state(root)['drafts'].values())
+    assert drafted == ['[2026-09-29 item-1] Decision D-1: Ship item-1 now? Outcome: yes.',
+                       '[2026-09-29 item-1] Review quality (initial): FIX, 1 blocking findings.']
+    log = state.read_state(root)['tracker_log']
+    assert sorted(entry['outcome'] for entry in log.values()) == ['drafted', 'drafted', 'written']
+    before = (workspace.day_dir(root) / 'events.jsonl').read_text()
+    assert main(['tracker', 'log']) == 0
+    assert len(fake.calls) == 1
+    assert (workspace.day_dir(root) / 'events.jsonl').read_text() == before
+
+
+def test_log_pr_merge_and_carry(ws):
+    root, fake = ws
+    approved(root, phase='gate')
+    seed_ticket(root)
+    state.record_pr(root, 'item-1', 'acme/app#1', raised=True)
+    state.transition('item-1', 'merged', root)
+    assert main(['tracker', 'log']) == 0
+    texts = [text for _, text, _ in comments(fake)]
+    assert texts == ['[2026-09-29 item-1] Phase: raised.', '[2026-09-29 item-1] Pull request: acme/app#1.',
+                     '[2026-09-29 item-1] Merged in acme/app#1.']
+
+
+def test_log_carry_is_a_close_entry(ws):
+    from wuwei import plan
+    root, fake = ws
+    approved(root)
+    seed_ticket(root)
+    plan.dispose('item-1', 'carried', root=root)
+    assert main(['tracker', 'log']) == 0
+    assert comments(fake) == [('ENG-1', '[2026-09-29 item-1] Carried to 2026-09-30 (D-1).', 'close')]
+
+
+def test_log_filters(ws, monkeypatch):
+    root, fake = ws
+    approved(root)
+    settings(root, 'log = ["verdicts"]')
+    story(root)
+    assert main(['tracker', 'log']) == 0  # no ticket: nowhere to log
+    assert fake.calls == []
+    seed_ticket(root)
+    assert main(['tracker', 'log']) == 0
+    assert [entry['kind'] for entry in state.read_state(root)['tracker_log'].values()] == ['verdicts']
+    (root / '.wuwei/config.toml').write_text('')
+    monkeypatch.setattr(registry, 'load', lambda kind, config: pytest.fail('no port call'))
+    assert main(['tracker', 'log']) == 0
+
+
+def phases(root, count):
+    for _ in range(count):
+        state.transition('item-1', 'parked', root)
+        state.transition('item-1', 'implement', root)
+
+
+def test_log_caps_and_folds_per_ticket(ws):
+    root, fake = ws
+    approved(root)
+    seed_ticket(root)
+    settings(root, 'max_per_item_per_day = 3')
+    phases(root, 2)
+    state.transition('item-1', 'parked', root)  # five phase changes
+    assert main(['tracker', 'log']) == 0
+    texts = [text for _, text, _ in comments(fake)]
+    assert texts == ['[2026-09-29 item-1] Phase: parked.', '[2026-09-29 item-1] Phase: implement.',
+                     '[2026-09-29 item-1] Folded 3 updates: progress 3.']
+    folded, = [row['payload'] for row in day_events(root, 'tracker.folded')]
+    assert (folded['item'], folded['ticket'], folded['counts']) == ('item-1', 'ENG-1', {'progress': 3})
+    state.transition('item-1', 'implement', root)
+    assert main(['tracker', 'log']) == 0
+    assert len(fake.calls) == 3 and len(day_events(root, 'tracker.folded')) == 1
+    log = state.read_state(root)['tracker_log']
+    assert sum(entry['outcome'] == 'folded' for entry in log.values()) == 4
+
+
+def test_log_refusal_unrun_and_fold_category(ws):
+    root, fake = ws
+    approved(root)
+    seed_ticket(root)
+    state.transition('item-1', 'gate', root)
+    fake.results['comment'] = registry.Result(1, reason='outward: lint refused')
+    assert main(['tracker', 'log']) == 1
+    entry, = state.read_state(root)['tracker_log'].values()
+    assert entry['outcome'] == 'refused' and 'lint refused' in entry['reason']
+    assert main(['tracker', 'log']) == 0 and len(fake.calls) == 1
+    state.transition('item-1', 'parked', root)
+    fake.results['comment'] = registry.Result(2, reason='LINEAR_API_KEY is missing')
+    assert main(['tracker', 'log']) == 2
+    assert len(state.read_state(root)['tracker_log']) == 1
+    fake.results['comment'] = registry.Result(0, {'id': 'c-2'})
+    assert main(['tracker', 'log']) == 0
+    assert comments(fake)[-1][1] == '[2026-09-29 item-1] Phase: parked.'
+
+
+def test_fold_holding_a_decision_drafts(ws):
+    root, fake = ws
+    approved(root)
+    seed_ticket(root)
+    settings(root, 'max_per_item_per_day = 1')
+    story(root)
+    assert main(['tracker', 'log']) == 0
+    row, = state.read_state(root)['drafts'].values()
+    assert row['inputs']['category'] == 'decisions'
+    assert row['text'].endswith('Folded 3 updates: decisions 1, progress 1, verdicts 1.')
+
+
+def test_log_never_sends_an_absolute_path(ws):
+    root, fake = ws
+    approved(root)
+    seed_ticket(root)
+    settings(root, 'auto = ["decisions"]')
+    decisions = workspace.day_dir(root) / 'decisions'
+    decisions.mkdir()
+    (decisions / 'D-1.md').write_text('Question: Keep /srv/x/notes.txt for item-1?\n')
+    state.append_event('decision.decided', {'id': 'D-1', 'option': 'yes'}, root)
+    assert main(['tracker', 'log']) == 1
+    assert fake.calls == []
+    entry, = state.read_state(root)['tracker_log'].values()
+    assert entry['outcome'] == 'refused' and 'absolute path' in entry['reason']

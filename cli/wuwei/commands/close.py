@@ -52,8 +52,14 @@ def run(args):
             steward.run(root, trigger='close')
             code, reason = closing.check(root)
             if code == 0:
-                from wuwei import digest
+                from wuwei import digest, tracker
                 digest.write(root, workspace.now().date(), 'week')
+                try:  # Comments are hygiene; strict_close is the close rule.
+                    if tracker.log(root):
+                        print('tracker log: some comments were not written; run bin/wuwei tracker log '
+                              'to see why', file=sys.stderr)
+                except (OSError, ValueError, TypeError, KeyError) as exc:
+                    print(f'tracker log: {exc}', file=sys.stderr)
     if reason:
         print(reason)
     return code

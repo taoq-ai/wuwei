@@ -45,6 +45,27 @@ def replay(monkeypatch, *responses):
     return calls
 
 
+def test_http_request_methods_and_empty_body(monkeypatch):
+    from adapters import _http
+    seen = []
+
+    def urlopen(request, timeout=None):
+        seen.append((request.get_method(), request.data, dict(request.header_items())))
+        reply = Reply({'ok': True})
+        if request.get_method() == 'PUT':
+            reply.payload, reply.status = b'', 204
+        return reply
+
+    monkeypatch.setattr('urllib.request.urlopen', urlopen)
+    assert _http.request('https://example.test/a', 't', None, method='GET') == {'ok': True}
+    assert _http.request('https://example.test/a', 't', {'x': 1}, method='PUT',
+                         authorization='Basic') == {}
+    assert _http.request('https://example.test/a', 't', {'y': 2}) == {'ok': True}
+    assert [(method, data) for method, data, _ in seen] == [
+        ('GET', None), ('PUT', b'{"x": 1}'), ('POST', b'{"y": 2}')]
+    assert seen[1][2]['Authorization'] == 'Basic t' and seen[2][2]['Authorization'] == 'Bearer t'
+
+
 def test_linear_replay(monkeypatch):
     linear = importlib.import_module('adapters.tracker.linear')
     monkeypatch.setenv('LINEAR_API_KEY', 'private-linear-key')
@@ -90,12 +111,13 @@ def test_public_linear_create_sends_after_policy_clearance(monkeypatch, tmp_path
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('')
     monkeypatch.setenv('LINEAR_API_KEY', 'private-linear-key')
-    monkeypatch.setattr(outward, 'check_call', lambda *args: (0, ''))
-    calls = replay(monkeypatch, RECORDINGS['linear'][3])
+    monkeypatch.setattr(outward, 'check_call', lambda *args, **kwargs: (0, ''))
+    calls = replay(monkeypatch, {'data': {'issueCreate': {'success': True, 'issue': {
+        'id': 'issue-2', 'identifier': 'ENG-2', 'url': 'https://linear.app/acme/issue/ENG-2'}}}})
     draft = {'teamId': 'team-1', 'title': 'New item'}
     result = linear.create(draft, root=tmp_path)
     assert result.exit == 0
-    assert result.data == {'id': 'issue-2'}
+    assert result.data == {'id': 'ENG-2', 'url': 'https://linear.app/acme/issue/ENG-2'}
     assert len(calls) == 1
     assert calls[0][2]['variables']['input'] == draft
 
@@ -273,7 +295,7 @@ def test_public_slack_custom_app_uses_bot_identity(monkeypatch, tmp_path):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('SLACK_BOT_TOKEN', 'bot-secret')
     monkeypatch.setenv('SLACK_USER_TOKEN', 'user-secret')
-    monkeypatch.setattr(outward, 'check_call', lambda *args: (0, ''))
+    monkeypatch.setattr(outward, 'check_call', lambda *args, **kwargs: (0, ''))
     calls = replay(monkeypatch, {'ok': True, 'channel': 'C123', 'ts': '1.2'})
     result = slack.post('C123', 'fixed in abcdef0.', None, root=tmp_path)
     assert result.exit == 0

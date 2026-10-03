@@ -583,3 +583,24 @@ def test_hook_denies_launch_on_mcp_floor_while_seats_warn(day, monkeypatch, caps
     assert main(['hook', 'PreToolUse']) == 2
     reason = json.loads(capsys.readouterr().out)['hookSpecificOutput']['permissionDecisionReason']
     assert reason == 'MCP registry findings: x'
+
+
+@pytest.mark.parametrize('settings,ticket,code', [
+    ('[adapters]\ntracker = "linear"\n', None, 1),
+    ('[adapters]\ntracker = "linear"\n', 'ENG-1', 0),
+    ('', None, 0),
+])
+def test_launch_needs_the_item_ticket(launch, monkeypatch, settings, ticket, code):
+    day, payload = launch
+    root = day[0]
+    from wuwei.guards import agent_launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda config, root: 8 * 1024**3)
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(settings)
+    if ticket:
+        state._write_state(lambda data: data.update(tickets={'X': {'id': ticket, 'source': 'set'}}),
+                           root, reserved=False)
+    actual, message = check(payload)
+    assert actual == code, message
+    assert ('X has no ticket' in message) == (code == 1)
+    assert bool(state.read_state(root)['seats']) == (code == 0)

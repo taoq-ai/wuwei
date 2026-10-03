@@ -80,9 +80,12 @@ _OWNER_ACTIONS = {
                         'runs bin/wuwei config set <key> <value> in a host terminal.'),
     ('config', 'add-repo'): ("Config edits are the owner's, outside agent tools: propose the repository, and the "
                              'owner runs bin/wuwei config add-repo --name <owner/repo> --path <dir> --branch <branch> in a host terminal.'),
-    # Only the owner lowers the spec requirement for one item (5.10); other plan verbs are seat commands.
+    # Only the owner lowers the spec requirement for one item (5.10) or links an existing ticket
+    # (5.11); other plan verbs are seat commands.
     ('plan', 'set'): ('Spec overrides are an owner action, outside agent tools: the owner runs bin/wuwei plan '
-                      'set <item> spec=skipped --reason <why> in a host terminal.'),
+                      'set <item> spec=skipped --reason <why> in a host terminal. To link an existing ticket, '
+                      'the owner runs bin/wuwei plan set <item> ticket=<id> there; a seat runs bin/wuwei '
+                      'tracker create <item>.'),
     # An empty verb is the whole group: setup's flags take values, which _pair reads as a verb.
     # An applied forgetting archives a note or drops a charter rule (design 5.14).
     ('memory', 'forget'): ("Forgetting memory is the owner's answer, outside agent tools: show the proposals "

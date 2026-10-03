@@ -9,7 +9,7 @@ from wuwei.exits import RACE, DAMAGED
 
 
 OPERATIONS = {'chat': {'post', 'dm'}, 'code_host': {'comment'},
-              'tracker': {'create'}, 'docs': {'write'}}
+              'tracker': {'create', 'comment'}, 'docs': {'write'}}
 
 
 def read(data):
@@ -182,6 +182,18 @@ def approve(root, draft_id, *, edit=False):
         if row['channel'] == 'docs' and result.exit == 0:
             from wuwei import docs
             docs.record(root, inputs['draft'], row['adapter'], result.data['link'], draft_id=draft_id)
+        if row['channel'] == 'tracker' and row['operation'] == 'create' and result.exit == 0:
+            from wuwei import tracker
+            try:
+                tracker.record(inputs['draft'], result.data, directory=directory)
+            except (OSError, ValueError, TypeError, KeyError):
+                created = inputs['draft']
+                return registry.Result(2, reason=(
+                    f'drafts: {draft_id} sent; could not record ticket; run bin/wuwei plan set '
+                    f'{created["item"]} ticket=<id> with the id the tracker shows'
+                    if created.get('category') == 'items' else
+                    f'drafts: {draft_id} sent; could not record ticket; do not retry, the ticket '
+                    'is in the tracker'))
         return registry.Result(result.exit, reason=(f'drafts: {draft_id} sent' if not result.exit
                                else 'drafts: adapter did not confirm send; do not retry'))
     except state.StateError as exc:

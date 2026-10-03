@@ -107,17 +107,20 @@ def tier(root, config, row):
 
 def tracker_call(item, action, root=None):
     """Record the tracker measurement without blocking the local build loop."""
+    from wuwei.tracker import ticket as recorded
     root = workspace.find_workspace(root)
+    ticket = item
     try:
         config = workspace.load_config(root)
+        ticket = recorded(state.read_state(root), item) or item
         if config['adapters']['tracker'] == 'none':
             result = registry.Result(2, reason='tracker adapter is none; tracker updates are skipped; the owner sets adapters.tracker with bin/wuwei config set in a host terminal if they should reach the tracker')
         else:
             tracker = registry.load('tracker', config)
             if action == 'claim':
-                result = tracker.claim(item, root=root)
+                result = tracker.claim(ticket, root=root)
             elif action in ('in_review', 'done'):
-                result = tracker.transition(item, config['tracker']['states'][action], root=root)
+                result = tracker.transition(ticket, config['tracker']['states'][action], root=root)
             else:
                 raise ValueError('unknown tracker action; pass claim, in_review or done')
             if not isinstance(result, registry.Result) or result.exit not in (0, 1, 2):
@@ -125,7 +128,7 @@ def tracker_call(item, action, root=None):
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
         result = registry.Result(2, reason=f'tracker call unmeasured: {type(exc).__name__}')
     try:
-        state.append_event('tracker.call', {'item': item, 'action': action,
+        state.append_event('tracker.call', {'item': item, 'ticket': ticket, 'action': action,
                            'exit': result.exit, 'reason': result.reason or ''}, root)
     except (OSError, ValueError) as exc:
         print(f'tracker call unmeasured: could not record result: {type(exc).__name__}; run bin/wuwei doctor, which tests the tracker adapter', file=sys.stderr)
@@ -190,6 +193,10 @@ def next_step(item, root=None):
                                       if row.get('worktree') else None, build=True, where='dispatch')
         if code:
             raise Refused(reason)
+    from wuwei import tracker
+    status, reason = tracker.check(data, config, item, row)
+    if status == 'missing':
+        raise Refused(reason)
     gates = gate_set(row)
     if phase == 'fix':
         if any(_record(data, item, role, 'delta') is not None for role in gates):

@@ -317,6 +317,8 @@ def test_emitted_kinds_have_intended_tiers():
                 'discovery.intake': 'silent', 'plan.added': 'silent',
                 'plan.proposed': 'nudge', 'build.requested': 'nudge',
                 'tracker.call': 'nudge',
+                'tracker.created': 'silent', 'tracker.skipped': 'silent', 'tracker.folded': 'silent',
+                'tracker.logged': 'silent', 'plan.set': 'silent',
                 'discovery.unmeasured': 'nudge', 'steward.notes': 'nudge',
                 'steward.run': 'silent', 'steward.due': 'nudge',
                 'steward.acknowledged': 'silent', 'inbox.redacted': 'silent',

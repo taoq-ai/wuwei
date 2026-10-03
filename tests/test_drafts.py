@@ -553,3 +553,55 @@ def test_approving_a_docs_draft_records_the_write(root, monkeypatch):
     assert len(written) == 1 and written[0]['draft'] == row['id']
     assert written[0]['page'] == NOTION['create']['url']
     assert state.read_state(root)['items']['X']['docs']['value'] == NOTION['create']['url']
+
+
+def fake_tracker(monkeypatch, root, created=None):
+    """A tracker module behind the real outward wrapper, recording sends."""
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text() + '\n[adapters]\ntracker = "linear"\n')
+    sent = []
+
+    def create(draft, *, root=None):
+        sent.append(('create', draft))
+        return registry.Result(0, created)
+
+    def comment(item, text, category, *, root=None):
+        sent.append(('comment', item, text, category))
+        return registry.Result(0, {'id': 'comment-1'})
+    for function in (create, comment):
+        function.__module__ = 'adapters.tracker.linear'
+    module = SimpleNamespace(create=registry.outward_operation('tracker')(create),
+                             comment=registry.outward_operation('tracker')(comment))
+    original = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: module if kind == 'tracker'
+                        else original(kind, config))
+    return module, sent
+
+
+def test_tracker_comment_drafts_and_approves_through_comment(root, monkeypatch):
+    module, sent = fake_tracker(monkeypatch, root)
+    text = '[2026-09-29 item-1] Decision D-1: ship it. Outcome: yes.'
+    result = module.comment('ENG-1', text, 'decisions', root=root)
+    assert result.exit == 1 and sent == []
+    row, = state.read_state(root)['drafts'].values()
+    assert (row['channel'], row['operation'], row['text']) == ('tracker', 'comment', text)
+    assert main(['drafts', 'approve', row['id']]) == 0
+    assert sent == [('comment', 'ENG-1', text, 'decisions')]
+
+
+def test_approved_ticket_creation_is_recorded(root, monkeypatch):
+    module, sent = fake_tracker(monkeypatch, root, {'id': 'ENG-9', 'url': 'https://example.test/ENG-9'})
+    draft = {'title': 'Add export', 'description': 'Track: build', 'item': 'item-1',
+             'category': 'items'}
+    assert module.create(draft, root=root).exit == 1
+    row, = state.read_state(root)['drafts'].values()
+    assert main(['drafts', 'approve', row['id']]) == 0
+    data = state.read_state(root)
+    assert data['tickets'] == {'item-1': {'id': 'ENG-9', 'source': 'create'}}
+    assert data['tracker_log'] == {'create:items:item-1:add export': {
+        'outcome': 'written', 'ticket': 'ENG-9'}}
+    events = [json.loads(line) for line in
+              (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+    created = [event['payload'] for event in events if event['kind'] == 'tracker.created']
+    assert len(created) == 1 and created[0].items() >= {
+        'class': 'items', 'subject': 'item-1', 'ticket': 'ENG-9', 'parent': None}.items()

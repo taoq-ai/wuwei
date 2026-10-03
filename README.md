@@ -1,7 +1,7 @@
 <p align="center"><picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/site/assets/hero-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/site/assets/hero-light.svg">
-    <img src="docs/site/assets/hero-light.svg" alt="WUWEI day loop. Calibration and the owner interview come before the first Plan. Each day is planned and ranked, and each item is built and checked, then reviewed by one gate or three by tier, with one fix round. A shepherd takes each pull request to merge under the merge policy, and Close runs a retro that carries the lessons into the next day. Guards with a heartbeat check every action, and the owner answers decisions from the phone through the DM. Tools, outlined when planned. Plan tracker: Linear; planned Jira, GitHub Projects. Plan spec engine: planned spec-kit, superpowers, OpenSpec. Build runtime: Claude Code, Codex. Review gate tools: ZIRAN, pytest. Close code host: GitHub; planned GitLab. Close docs: Notion, Confluence, Markdown. Phone and DM: Slack, Claude mobile; planned Teams, Discord. On-call: planned PagerDuty, Grafana, Sentry, Datadog." width="100%">
+    <img src="docs/site/assets/hero-light.svg" alt="WUWEI day loop. Calibration and the owner interview come before the first Plan. Each day is planned and ranked, and each item is built and checked, then reviewed by one gate or three by tier, with one fix round. A shepherd takes each pull request to merge under the merge policy, and Close runs a retro that carries the lessons into the next day. Guards with a heartbeat check every action, and the owner answers decisions from the phone through the DM. Tools, outlined when planned. Plan tracker: Linear, Jira, GitHub Projects. Plan spec engine: planned spec-kit, superpowers, OpenSpec. Build runtime: Claude Code, Codex. Review gate tools: ZIRAN, pytest. Close code host: GitHub; planned GitLab. Close docs: Notion, Confluence, Markdown. Phone and DM: Slack, Claude mobile; planned Teams, Discord. On-call: planned PagerDuty, Grafana, Sentry, Datadog." width="100%">
 </picture></p>
 
 <h1 align="center">WUWEI 无为</h1>
@@ -96,7 +96,7 @@ The hooks hold every step at the moment of action, and warn or block by the post
 | review_bot | greptile, none |
 | runtime | claude, codex, none |
 | scanner | none, ziran |
-| tracker | linear, none |
+| tracker | github, jira, linear, none |
 | transcripts | none |
 | tts | none, say |
 | vcs | git |

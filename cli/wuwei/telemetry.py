@@ -36,7 +36,7 @@ AREAS = ('integrity', 'mcp', 'publish', 'records', 'outward', 'seats')
 POSTURES = ('observe', 'guarded', 'strict')
 PROFILES = ('strict', 'standard')
 OS = ('darwin', 'linux', 'other')
-ADAPTERS = {'tracker': ('linear', 'none'), 'chat': ('none', 'slack'), 'review_bot': ('greptile', 'none'),
+ADAPTERS = {'tracker': ('github', 'jira', 'linear', 'none'), 'chat': ('none', 'slack'), 'review_bot': ('greptile', 'none'),
             'runtime': ('claude', 'codex', 'none'), 'scanner': ('none', 'ziran'), 'code_host': ('github', 'none'),
             'vcs': ('git',), 'host': ('local', 'none'), 'checks': ('local', 'none'), 'tts': ('none', 'say'),
             'calendar': ('ics', 'none'), 'transcripts': ('none',), 'inbound': ('none', 'slack'),

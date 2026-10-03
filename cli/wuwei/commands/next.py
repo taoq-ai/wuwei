@@ -79,8 +79,11 @@ def step(root):
         phase = items[name]['phase']
         if phase in TERMINAL or name in running:
             continue
+        # Inline, not wuwei.tracker: next runs on hook paths.
+        ticket = data.get('tickets', {}).get(name, {}).get('id')
+        label = f'{name} ({ticket})' if ticket else name
         if phase in state.BUILD_PHASES:
-            return _row('build', f'{name} is in {phase}; run the build loop and do the step it '
+            return _row('build', f'{label} is in {phase}; run the build loop and do the step it '
                         'returns.', f'wuwei build next {name}')
         if phase in ('gate', 'delta'):
             from wuwei import docs  # Local: only an item at the gate needs it.
@@ -88,15 +91,15 @@ def step(root):
                 return _row('docs', f"{name} (tier {items[name]['gates']['tier']}) has no docs value; "
                             'record it before the quality gate.',
                             docs.command(config, name).removeprefix('bin/'))
-            return _row('verdicts', f'{name} is at {phase}; collect the gate verdicts and launch '
+            return _row('verdicts', f'{label} is at {phase}; collect the gate verdicts and launch '
                         'the gate seats it names.', f'wuwei dispatch next {name}')
         if phase == 'raised':
             pr = items[name].get('pr')
-            return _row('pr', f'{name} has PR {pr} open; act on its review state.',
+            return _row('pr', f'{label} has PR {pr} open; act on its review state.',
                         f'wuwei pr act {pr}')
         if phase == 'planned' and building < data['cap']:
             return _row('dispatch', f'{queued} planned item(s) queued, {building} of CAP '
-                        f'{data["cap"]} building; create the worktree for {name}, then wuwei '
+                        f'{data["cap"]} building; create the worktree for {label}, then wuwei '
                         f'brief builder {name} <name> --worktree <path> and wuwei build next {name}.',
                         f'wuwei worktree add {name}')
     names = sorted(name for name, seat in seats.items() if seat['status'] == 'running')

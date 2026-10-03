@@ -1,0 +1,139 @@
+[
+ {
+  "data": {
+   "issues": {
+    "nodes": [
+     {
+      "identifier": "ENG-1",
+      "title": "Export",
+      "url": "https://linear.app/acme/issue/ENG-1",
+      "updatedAt": "2026-09-28T10:00:00Z",
+      "state": {
+       "name": "Todo"
+      }
+     }
+    ],
+    "pageInfo": {
+     "hasNextPage": false
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "viewer": {
+    "id": "user-1"
+   }
+  }
+ },
+ {
+  "data": {
+   "issueUpdate": {
+    "success": true,
+    "issue": {
+     "id": "uuid-1"
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "issue": {
+    "team": {
+     "id": "team-1"
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "workflowStates": {
+    "nodes": [
+     {
+      "id": "state-1",
+      "name": "In Review"
+     }
+    ],
+    "pageInfo": {
+     "hasNextPage": false
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "issueUpdate": {
+    "success": true,
+    "issue": {
+     "id": "uuid-1"
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "issue": {
+    "id": "uuid-1"
+   }
+  }
+ },
+ {
+  "data": {
+   "issueCreate": {
+    "success": true,
+    "issue": {
+     "id": "uuid-2",
+     "identifier": "ENG-2",
+     "url": "https://linear.app/acme/issue/ENG-2"
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "issue": {
+    "id": "uuid-1"
+   }
+  }
+ },
+ {
+  "data": {
+   "commentCreate": {
+    "success": true,
+    "comment": {
+     "id": "comment-1"
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "issue": {
+    "history": {
+     "nodes": [
+      {
+       "id": "change-1",
+       "createdAt": "2026-09-28T11:00:00Z",
+       "fromState": {
+        "name": "Todo"
+       },
+       "toState": {
+        "name": "In Progress"
+       }
+      }
+     ],
+     "pageInfo": {
+      "hasNextPage": false
+     }
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "issue": {
+    "createdAt": "2026-09-27T10:00:00Z"
+   }
+  }
+ }
+]

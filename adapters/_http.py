@@ -38,6 +38,12 @@ def credential(name):
     return value
 
 
+def settings(root):
+    """The workspace config, for adapters that read their own table (tracker)."""
+    from wuwei import workspace
+    return workspace.load_config(workspace.find_workspace(root))
+
+
 def request(url, token, payload=None, *, authorization='Bearer', extra_headers=None,
             method='POST'):
     headers = {'Content-Type': 'application/json',
@@ -51,6 +57,8 @@ def request(url, token, payload=None, *, authorization='Bearer', extra_headers=N
         body = response.read(4_000_001)
     if len(body) > 4_000_000:
         raise Failure('response too large')
+    if not body.strip():
+        return {}  # Jira answers 204 with no body
     if body.lstrip().startswith((b'event:', b'data:')):
         events = []
         for block in body.decode().split('\n\n'):

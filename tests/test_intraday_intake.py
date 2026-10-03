@@ -223,3 +223,23 @@ def test_plan_add_copies_candidate_tier(root):
     save_candidate(root, {**candidate(), 'tier': 'full'})
     assert plan.add('NEW', root)['action'] == 'build next'
     assert state.read_state(root)['items']['NEW']['tier'] == 'full'
+
+
+def test_plan_add_needs_a_ticket(root, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    (root / '.wuwei/config.toml').write_text(
+        '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "linear"\n')
+    monkeypatch.setattr(discovery, 'discover', lambda path: {
+        'sources': {}, 'candidates': [candidate(), {**candidate('ENG-5'), 'source': 'tracker'}]})
+    result = discovery.intake(root, trigger='sweep')
+    assert result['owner'] == ['NEW'] and result['started'] == ['ENG-5']
+    day = state.read_state(root)
+    assert 'tracker create NEW' in day['intraday_proposals']['NEW']['reason']
+    assert day['tickets'] == {'ENG-5': {'id': 'ENG-5', 'source': 'tracker'}}
+    save_candidate(root, candidate('OTHER'))
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    assert main(['plan', 'add', 'OTHER']) == 1
+    assert 'OTHER has no ticket' in capsys.readouterr().err
+    save_candidate(root, {**candidate('LATER'), 'ticket': 'ENG-6'})
+    assert plan.add('LATER', root)['action'] == 'build next'
+    assert state.read_state(root)['tickets']['LATER'] == {'id': 'ENG-6', 'source': 'candidate'}

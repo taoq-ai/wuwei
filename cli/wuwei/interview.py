@@ -92,6 +92,14 @@ def _docs_link(text):
                      'such as https://www.notion.so/<page> or https://<site>.atlassian.net/wiki/<page>')
 
 
+def _tracker(text):
+    name, _, project = text.strip().partition(' ')
+    if name.lower() not in ('linear', 'jira', 'github') or not re.fullmatch(r'[\w./#-]+', project.strip()):
+        raise ValueError('expected a tracker (linear, jira or github) and its project; '
+                         'write the name, a space and the project, for example jira PROJ')
+    return {'adapters.tracker': name.lower(), 'tracker.project': project.strip()}
+
+
 # The only definition of the interview. Effects: a dotted config key (`repos.` means each
 # answered repository), a charter override role with one fixed sentence, or voice never phrases.
 QUESTIONS = (
@@ -246,11 +254,38 @@ QUESTIONS = (
      'free': (_docs_link, 'a Notion or Confluence link, for example https://<site>.atlassian.net/wiki/...')},
     {'id': 'tracker', 'scope': 'workspace', 'header': 'Tracker', 'question': 'Where does your backlog live?',
      'choices': (
-         ('None', 'Discovery reads no tracker backlog.', {'adapters.tracker': 'none'}),
          ('Linear', 'Discovery reads the Linear backlog; set LINEAR_API_KEY in .wuwei/env.',
           {'adapters.tracker': 'linear'}),
-         ('GitHub Issues', LATER, {'adapters.tracker': 'none'}),
-         ('Jira', LATER, {'adapters.tracker': 'none'})),
+         ('Jira', 'Set JIRA_SITE, JIRA_EMAIL and JIRA_API_TOKEN in .wuwei/env; type jira and the '
+          'project key to set the project too.', {'adapters.tracker': 'jira'}),
+         ('GitHub', 'GitHub issues; set GITHUB_TRACKER_TOKEN in .wuwei/env; type github and '
+          'owner/repo to set the project too.', {'adapters.tracker': 'github'}),
+         ('None', 'Discovery reads no tracker backlog.', {'adapters.tracker': 'none'})),
+     'free': (_tracker, 'the tracker and its project, for example jira PROJ')},
+    {'id': 'tickets', 'scope': 'workspace', 'header': 'Tracking',
+     'question': 'Which items need an issue in your tracker before work starts? (ticket)',
+     'choices': (
+         ('Every item', 'No item is built or reviewed without its issue (tracker.required).',
+          {'tracker.required': True, 'tracker.skip_tiers': []}),
+         ('All but light items', 'Small low-risk items run without one (tracker.skip_tiers).',
+          {'tracker.skip_tiers': ['light']}),
+         ('Optional', 'Items run without an issue (tracker.required = false).',
+          {'tracker.required': False})),
+     'free': None},
+    {'id': 'updates', 'scope': 'workspace', 'header': 'Updates',
+     'question': 'Which tracker updates go out without your approval?',
+     'choices': (
+         ('Progress and close', 'Phase changes, the pull request and the merge go out; decisions and '
+          'review results wait for you as drafts (tracker.auto).',
+          {'tracker.auto': ['progress', 'pr', 'close']}),
+         ('Plus new issues', 'Those, and new issues for items, bugs, triage and follow-ups '
+          '(tracker.auto).', {'tracker.auto': ['progress', 'pr', 'close', 'items', 'bugs',
+                                               'triage', 'follow-ups']}),
+         ('Everything', 'Every comment and new issue goes out without a draft (tracker.auto).',
+          {'tracker.auto': ['decisions', 'progress', 'verdicts', 'pr', 'close', 'items', 'bugs',
+                            'triage', 'follow-ups']}),
+         ('Nothing', 'Every tracker write waits for you as a draft (tracker.auto = []).',
+          {'tracker.auto': []})),
      'free': None},
     {'id': 'chat', 'scope': 'workspace', 'header': 'Chat',
      'question': 'Which tool does your team use for messages? Your DM and review pings go there.',

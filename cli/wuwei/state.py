@@ -261,6 +261,8 @@ STATE_PRODUCERS = {
     'intraday_proposals': 'wuwei plan add',
     'sessions': 'wuwei hook SessionStart, Stop and SubagentStop, wuwei plan session, wuwei listen (remote sessions) or wuwei hook PostToolUse (gate questions)',
     'claims': 'wuwei brief builder or wuwei worktree add',
+    'tickets': 'wuwei plan approve, add or set, wuwei tracker create or wuwei drafts approve',
+    'tracker_log': 'wuwei tracker create or log',
 }
 
 

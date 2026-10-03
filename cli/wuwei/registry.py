@@ -21,7 +21,8 @@ PARAMETERS = {
     'host': {'free_memory': ()},
     'checks': {'run': ('path', 'command')},
     'tracker': {'backlog': ('filter',), 'claim': ('item',), 'transition': ('item', 'state'),
-                'create': ('draft',), 'history': ('item',), 'created': ('item',)},
+                'create': ('draft',), 'history': ('item',), 'created': ('item',),
+                'comment': ('item', 'text', 'category')},
     'chat': {'post': ('channel', 'text', 'thread'), 'dm': ('text',),
              'sent': ('channel', 'owner')},
     'review_bot': {'score': ('pr',), 'open_findings': ('pr',)},
@@ -181,7 +182,7 @@ def outward_operation(kind):
                     inputs['is_dm'] = True
                 root = workspace.find_workspace(start)
                 config = workspace.load_config(root)
-                code, reason = outward.check_call(inputs, root, config, {kind})
+                code, reason = outward.check_call(inputs, root, config, {kind}, port=True)
                 if code == 1 and reason == outward.APPROVAL_REQUIRED:
                     from wuwei import drafts
                     draft_id = drafts.create(root, config, kind, operation.__name__,

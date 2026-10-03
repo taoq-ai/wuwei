@@ -26,7 +26,7 @@ if _FAST:
 GROUPS = (
     ('Daily: the session runs these through the day',
      'next status nudges plan decision worktree brief build dispatch pr merge reply discover '
-     'note metrics report retro close steward docs'),
+     'note tracker metrics report retro close steward docs'),
     ('Owner: run these in your own host terminal',
      'setup init config decide calibrate goals voice drafts remote mcp outbound watch listen '
      'dashboard promote consolidate telemetry'),

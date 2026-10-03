@@ -43,8 +43,8 @@ ICONS = {
 ROWS = [
     ('Plan tracker', (124, 262), [
         ('Linear', 'Linear', 'linear', 'adapters/tracker/linear.py', None),
-        ('Jira', 'Jira', 'jira', None, '#417'),
-        ('GitHub Projects', 'Projects', 'github', None, '#417')]),
+        ('Jira', 'Jira', 'jira', 'adapters/tracker/jira.py', None),
+        ('GitHub Projects', 'Projects', 'github', 'adapters/tracker/github.py', None)]),
     ('Plan spec engine', (124, 262), [
         ('spec-kit', 'spec-kit', 'SK', None, '#412'),
         ('superpowers', 'superpowers', 'SP', None, '#412'),

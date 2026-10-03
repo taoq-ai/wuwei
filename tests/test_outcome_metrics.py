@@ -239,3 +239,39 @@ def test_missing_code_host_does_not_bias_defect_denominator(root, monkeypatch):
             'merged_at': '2026-09-29T10:00:00Z',
             'outcome': {'escaped': False, 'reverts': [], 'fixes': []}}}), root, reserved=False)
     assert metrics.collect(root)['escaped_defects'] == 'unmeasured'
+
+
+def test_tracker_lead_time_reads_the_recorded_ticket(root, monkeypatch):
+    from wuwei.registry import Result
+    from wuwei import registry
+
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text() + '\n[adapters]\ntracker = "linear"\n')
+    state._write_state(lambda data: data.update(items={'item-1': {'pr': 'example/project#1'}},
+                                                tickets={'item-1': {'id': 'ENG-1', 'source': 'set'}}),
+                       root, reserved=False)
+    calls = []
+
+    class Host:
+        def pr(self, ref, root=None):
+            return Result(0, {'merged': True, 'merged_at': '2026-09-29T10:00:00Z',
+                              'created_at': '2026-09-28T10:00:00Z', 'author': 'owner'})
+
+        def threads(self, ref, root=None):
+            return Result(0, {'threads': []})
+
+        def commits(self, ref, root=None):
+            return Result(0, [])
+
+    class Tracker:
+        def history(self, item, root=None):
+            calls.append(('history', item))
+            return Result(0, [{'createdAt': '2026-09-28T12:00:00Z', 'toState': {'name': 'In Progress'}}])
+
+        def created(self, item, root=None):
+            calls.append(('created', item))
+            return Result(0, '2026-09-27T10:00:00Z')
+
+    monkeypatch.setattr(registry, 'load', lambda kind, config: Tracker() if kind == 'tracker' else Host())
+    metrics.collect(root)
+    assert calls and all(item == 'ENG-1' for _, item in calls)

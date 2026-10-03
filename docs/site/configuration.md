@@ -32,6 +32,15 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `tracker.backlog_filter` | `""` | Optional Linear team ID for backlog discovery. Empty reads accessible issues. |
 | `tracker.states.in_review` | `"In Review"` | Linear workflow state name after a PR is raised. |
 | `tracker.states.done` | `"Done"` | Linear workflow state name after a confirmed merge. |
+| `tracker.required` | `true` | While `adapters.tracker` is not `none`, every approved item needs a ticket: `plan approve`, `plan add`, `build next`, `dispatch next` and the seat launch refuse without one and name `bin/wuwei tracker create <item>` or `bin/wuwei plan set <item> ticket=<id>`. |
+| `tracker.skip_tiers` | `[]` | Gate tiers that need no ticket, for example `["light"]`. The recorded gate tier decides, else the lead's tier. |
+| `tracker.strict_close` | `true` | `wuwei close` refuses while an item merged today has a ticket with no successful done transition (`bin/wuwei tracker done <item>`). `false` prints the line and closes. |
+| `tracker.create` | `["bugs", "triage", "follow-ups"]` | Ticket classes seats may open besides items with `bin/wuwei tracker create --bug, --triage or --follow-up`. |
+| `tracker.log` | `["decisions", "progress", "verdicts", "pr", "close"]` | Comment kinds `bin/wuwei tracker log` writes on each item's ticket. |
+| `tracker.auto` | `["progress", "pr", "close"]` | Classes and kinds sent without a draft. Everything else waits in `wuwei drafts`; text naming a person or matching a sensitive pattern drafts whatever this says. |
+| `tracker.max_per_item_per_day` | `10` | Comments per ticket per day; the last allowed one folds the rest into one comment. |
+| `tracker.project` | `""` | Where new tickets go: a Linear team ID (empty uses `backlog_filter`), a Jira project key (required for Jira) or a GitHub `owner/repo` (empty uses the first repository). |
+| `tracker.board` | `""` | GitHub Projects board as `owner/number`; transitions set its Status field. Empty uses a label for in review and closes the issue for done. A board or project outside `outbound.code_host_orgs` makes every tracker write a draft. |
 | `profile` | `"strict"` | Guard profile: `strict` or `standard`. Standard warns for outward text lint. |
 | `guards.mode` | `"enforce"` | Retired. `init --upgrade` and `doctor --fix` rewrite `"shadow"` to `security.posture = "observe"` (keeping `guards.shadow_since` and `guards.shadow_days`) and remove `"enforce"`. Until then `"shadow"` still means `observe`, and `config check` and `doctor` show `posture: observe (from guards.mode = "shadow", deprecated; run doctor --fix)`. |
 | `guards.shadow_days` | `7` | Days in the `observe` posture before one status nudge asks you to switch to `guarded` or raise this number. |
@@ -189,7 +198,7 @@ OpenTelemetry: with `telemetry.otlp.endpoint` set, each sweep posts the records 
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `adapters.tracker` | `"none"` | Tracker implementation: none or linear. |
+| `adapters.tracker` | `"none"` | Tracker implementation: none, linear, jira or github. |
 | `adapters.chat` | `"none"` | Chat implementation: none or slack. With none, the channel-post obligation is not applicable. |
 | `adapters.review_bot` | `"none"` | Review bot: none or greptile. |
 | `adapters.runtime` | `"claude"` | Seat runtime: claude, codex or none. |
@@ -338,7 +347,9 @@ The interview asks a short, fixed set of questions about your own preferences. E
 | `verbosity` | `owner.verbosity.default` |
 | `posture` | `security.posture`; `Observe` also sets `guards.shadow_since` to today |
 | `telemetry` | `telemetry.share`: `Anonymous`, `Attributed` or `Off` |
-| `tracker` | `adapters.tracker`: `None` or `Linear` (then set `LINEAR_API_KEY` in `.wuwei/env`) |
+| `tracker` | `adapters.tracker`: `Linear`, `Jira`, `GitHub` or `None` (then set its credentials in `.wuwei/env`); typing `jira PROJ` or `github owner/repo` also sets `tracker.project` |
+| `tickets` | `Every item` sets `tracker.required = true`; `All but light items` sets `tracker.skip_tiers = ["light"]`; `Optional` sets `tracker.required = false` |
+| `updates` | `tracker.auto`: progress, pull request and close by default; `Plus new issues` adds the four classes; `Everything` adds decisions and verdicts; `Nothing` drafts every tracker write |
 | `chat` | `adapters.chat`: `None` or `Slack`; typing a channel ID such as `C0123ABCD` sets `slack` and `shepherd.review_channel` |
 | `review_bot` | `adapters.review_bot`: `None` or `Greptile` (then set `GREPTILE_API_KEY` in `.wuwei/env`) |
 | `reviewers` | `shepherd.min_reviewers`: `Owner only` sets `0`, `Code authors` sets `1`; typing a teammate's code-host login sets `shepherd.lead_login` to it and `min_reviewers = 1` |

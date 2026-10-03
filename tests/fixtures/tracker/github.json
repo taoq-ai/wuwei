@@ -1,0 +1,127 @@
+[
+ {
+  "data": {
+   "repository": {
+    "issues": {
+     "nodes": [
+      {
+       "number": 1,
+       "title": "Export",
+       "url": "https://github.com/acme/app/issues/1",
+       "updatedAt": "2026-09-28T10:00:00Z"
+      }
+     ],
+     "pageInfo": {
+      "hasNextPage": false
+     }
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "viewer": {
+    "id": "viewer-1"
+   },
+   "repository": {
+    "issue": {
+     "id": "issue-node-1"
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "addAssigneesToAssignable": {
+    "assignable": {
+     "id": "issue-node-1"
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "repository": {
+    "issue": {
+     "id": "issue-node-1"
+    },
+    "label": {
+     "id": "label-review"
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "addLabelsToLabelable": {
+    "labelable": {
+     "id": "issue-node-1"
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "repository": {
+    "id": "repo-node-1",
+    "label": {
+     "id": "label-bug"
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "createIssue": {
+    "issue": {
+     "number": 2,
+     "url": "https://github.com/acme/app/issues/2"
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "repository": {
+    "issue": {
+     "id": "issue-node-1"
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "addComment": {
+    "commentEdge": {
+     "node": {
+      "id": "comment-node-1"
+     }
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "repository": {
+    "issue": {
+     "timelineItems": {
+      "nodes": [
+       {
+        "createdAt": "2026-09-28T11:00:00Z"
+       }
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "data": {
+   "repository": {
+    "issue": {
+     "createdAt": "2026-09-27T10:00:00Z"
+    }
+   }
+  }
+ }
+]
