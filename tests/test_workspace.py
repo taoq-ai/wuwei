@@ -1,5 +1,6 @@
 """Workspace contracts, including real CLI processes without site packages."""
 
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -42,7 +43,9 @@ def test_init_layout(tmp_path, explicit):
         assert (workspace / name).is_dir()
     assert not any(p.is_dir() for p in (workspace / 'days').iterdir())
     assert not list(workspace.rglob('.gitkeep'))
-    assert (workspace / 'config.toml').read_bytes() == (ROOT / 'templates/workspace/config.toml').read_bytes()
+    version = json.loads((ROOT / '.claude-plugin/plugin.json').read_text())['version']
+    assert (workspace / 'config.toml').read_text() == (ROOT / 'templates/workspace/config.toml').read_text().replace(
+        'template_version = ""', f'template_version = "{version}"', 1)
 
 
 @pytest.mark.parametrize('flags,posture,since', [
@@ -147,7 +150,7 @@ def test_config_defaults_and_independence(tmp_path):
                      'areas': {area: '' for area in workspace.AREAS}},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'digest': '', 'nudges': '', 'dm': '', 'report': ''}},
-        'repos': [], 'cap': 1, 'calibrate': {'fast_check_seconds': 60},
+        'repos': [], 'cap': 1, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'}},
@@ -254,16 +257,17 @@ scanner = "none"
     ('[host]\n"seatz" = 2\n', 'host.seatz', 2),
 ])
 def test_unknown_key_line(tmp_path, text, key, line):
-    write_config(tmp_path, text)
-    result = cli(tmp_path, 'config', 'check')
-    assert result.returncode == 1, result.stderr
-    assert key in result.stderr and f'line {line}' in result.stderr
-    assert 'config.toml' in result.stderr and 'unknown key' in result.stderr
+    from wuwei import workspace
+    # #353: unknown keys refuse only under strict; appending keeps the line numbers.
+    write_config(tmp_path, text.rstrip('\n') + '\n[security]\nposture = "strict"\n')
+    with pytest.raises(workspace.ConfigError) as error:
+        workspace.load_config(tmp_path)
+    assert f'config.toml: unknown key {key} at line {line};' in str(error.value)
 
 
 def test_unknown_key_without_known_line(tmp_path, monkeypatch):
     from wuwei import workspace
-    write_config(tmp_path, 'typo = 1')
+    write_config(tmp_path, 'typo = 1\n[security]\nposture = "strict"')
     monkeypatch.setattr(workspace, '_key_line', lambda raw, path: None)
     with pytest.raises(workspace.ConfigError) as error:
         workspace.load_config(tmp_path)
@@ -319,10 +323,14 @@ def test_owner_verbosity(tmp_path):
     config = workspace.load_config(tmp_path)
     assert workspace.verbosity(config, 'dm') == 'brief'
     assert workspace.verbosity(config, 'report') == 'full'
-    for text in ('default = "short"', 'dm = "loud"', 'retro = "full"'):
+    for text in ('default = "short"', 'dm = "loud"'):
         write_config(tmp_path, f'[owner.verbosity]\n{text}\n')
         with pytest.raises(workspace.ConfigError):
             workspace.load_config(tmp_path)
+    write_config(tmp_path, '[owner.verbosity]\nretro = "full"\n')
+    found = []
+    workspace.load_config(tmp_path, warnings=found)  # #353: unknown keys warn below strict
+    assert found and 'unknown key owner.verbosity.retro' in found[0]
     (tmp_path / '.wuwei/config.toml').write_text(
         (ROOT / 'templates/workspace/config.toml').read_text(encoding='utf-8'), encoding='utf-8')
     assert workspace.load_config(tmp_path)['owner']['verbosity']['default'] == 'brief'
@@ -683,7 +691,8 @@ def test_upgrade_rejects_unknown_key_without_writes(tmp_path):
     directory = previous_workspace(tmp_path)
     config_path = directory / 'config.toml'
     config_path.write_text(config_path.read_text().replace('pronouns = "they/them"',
-                                                      'pronouns = "they/them"\nmystery = 1'))
+                                                      'pronouns = "they/them"\nmystery = 1')
+                           + '[security]\nposture = "strict"\n')
     before = {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
     result = cli(tmp_path, 'init', '--upgrade')
     assert result.returncode == 1
@@ -859,7 +868,7 @@ def test_decisions_config(tmp_path):
                       ('[decisions.cruise.levels]\nmessage = 2', 'decisions.cruise.levels.message'),
                       ('[decisions.cruise.levels]\nunknown = 1', 'decisions.cruise.levels.unknown'),
                       ('[decisions.cruise]\nmargin = 0.2', 'decisions.cruise.margin')):
-        write_config(tmp_path, text + '\n')
+        write_config(tmp_path, text + '\n[security]\nposture = "strict"\n')
         with pytest.raises(ConfigError, match=key):
             load_config(tmp_path)
 
@@ -878,3 +887,38 @@ def test_second_opinion_config(tmp_path):
     write_config(tmp_path, '[gates]\nsecond_opinion_role = "goal"\n')
     with pytest.raises(ConfigError, match='gates.second_opinion_role'):
         load_config(tmp_path)
+
+
+def test_init_stamps_the_template_version(tmp_path):
+    import json
+    import tomllib
+    version = json.loads((ROOT / '.claude-plugin/plugin.json').read_text())['version']
+    assert cli(tmp_path, 'init').returncode == 0
+    config = tomllib.loads((tmp_path / '.wuwei/config.toml').read_text())
+    assert config['template_version'] == version
+    again = cli(tmp_path, 'init', '--upgrade')
+    assert again.returncode == 0, again.stderr
+    assert 'No workspace changes needed' in again.stdout
+
+
+def test_upgrade_stamps_a_previous_workspace(tmp_path):
+    import json
+    import tomllib
+    version = json.loads((ROOT / '.claude-plugin/plugin.json').read_text())['version']
+    directory = previous_workspace(tmp_path)
+    before = {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+    preview = cli(tmp_path, 'init', '--upgrade', '--dry-run')
+    assert f'Would upgrade config.toml: template_version {version}' in preview.stdout
+    assert before == {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
+    result = cli(tmp_path, 'init', '--upgrade')
+    assert f'Upgraded config.toml: template_version {version}' in result.stdout
+    assert tomllib.loads((directory / 'config.toml').read_text())['template_version'] == version
+
+
+def test_upgrade_warns_about_unknown_keys(tmp_path):
+    directory = previous_workspace(tmp_path)
+    config_path = directory / 'config.toml'
+    config_path.write_text(config_path.read_text().replace('seats = 2', 'seats = 2\nseatz = 3'))
+    result = cli(tmp_path, 'init', '--upgrade')
+    assert result.returncode == 0, result.stderr
+    assert 'wuwei init: warning: config.toml: unknown key host.seatz at line 11; did you mean host.seats?' in result.stderr

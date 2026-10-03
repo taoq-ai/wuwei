@@ -95,6 +95,8 @@ def run(args):
                 text = text.replace(
                     'shadow_since = ""', f'shadow_since = "{workspace.now().date().isoformat()}"', 1)
             config.write_text(text, encoding='utf-8')
+        config = Path(staging) / 'config.toml'
+        config.write_text(_stamp(config.read_text(encoding='utf-8')), encoding='utf-8')
         from wuwei import integrity
         integrity.initialize(Path(staging))
         settings.parent.mkdir(exist_ok=True)
@@ -148,6 +150,24 @@ def _sections(raw):
             else:
                 sections[-1][1].append(line)
     return sections
+
+
+def _stamp(text):
+    """Raise the top-level template_version to this plugin's version; never lower it (#353)."""
+    from wuwei import integrity
+    mine = integrity.version()
+    current = tomllib.loads(text).get('template_version', '')
+    if not integrity.release(mine) or (integrity.release(current) or ()) >= integrity.release(mine):
+        return text
+    sections = _sections(text)
+    root = sections[0][1]
+    for index, line in enumerate(root):
+        if re.match(r'\s*template_version\s*=', line):
+            root[index] = re.sub(r'=\s*("[^"\n]*"|\'[^\'\n]*\')', f'= "{mine}"', line, count=1)
+            break
+    else:
+        root.insert(0, f'template_version = "{mine}"\n')
+    return ''.join(''.join(lines) for _, lines in sections)
 
 
 def _without_empty_repos(raw):
@@ -229,10 +249,15 @@ def upgrade(args):
         raw = config_path.read_text(encoding='utf-8')
         text = _without_empty_repos(raw)
         tomllib.loads(text)
-        workspace.load_config(destination.parent, raw=text)
+        found = []
+        workspace.load_config(destination.parent, raw=text, warnings=found)
+        for warning in found:
+            print(f'wuwei init: warning: {warning}', file=sys.stderr)
         plugin = Path(__file__).resolve().parents[3]
         template = (plugin / 'templates/workspace/config.toml').read_text(encoding='utf-8')
         migrated, added = _migrated_config(text, template)
+        stamped = _stamp(migrated)
+        stamp_changed, migrated = stamped != migrated, stamped
         executable = plugin / 'bin/wuwei'
         pointer = pointer_path.read_text(encoding='utf-8') if pointer_path.exists() else ''
         conflicts = []
@@ -264,6 +289,9 @@ def upgrade(args):
             print(f'{prefix} config.toml: remove repos = []; the [[repos]] tables define the repositories')
         for key in added:
             print(f'{prefix} config.toml: add {key}')
+        if stamp_changed:
+            from wuwei import integrity
+            print(f'{prefix} config.toml: template_version {integrity.version()}')
         if pointer_changed:
             print(f'{prefix} executable pointer')
         for name, local_version, base_version in conflicts:
@@ -271,9 +299,15 @@ def upgrade(args):
                   f'(local {local_version or "unversioned"}, base {base_version or "missing"})')
         if not args.dry_run:
             _status_line(executable)
-        if not added and not pointer_changed and not env_changed and text == raw:
+        if not added and not stamp_changed and not pointer_changed and not env_changed and text == raw:
             print('No workspace changes needed')
-        return CLEAN if args.dry_run else _finish(destination.parent)
+        if args.dry_run:
+            return CLEAN
+        code = _finish(destination.parent)
+        from wuwei import integrity
+        if integrity.other_versions():  # #353: another version's hooks still run
+            print(integrity.RESTART)
+        return code
     except workspace.ConfigError as exc:
         print(f'wuwei init: {exc}', file=sys.stderr)
         return FINDINGS
