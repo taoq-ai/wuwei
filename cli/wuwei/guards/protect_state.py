@@ -87,6 +87,9 @@ _OWNER_ACTIONS = {
                            '<id> apply|keep in a host terminal.'),
     ('setup', ''): ('Setup writes config.toml, an owner action outside agent tools: the owner runs bin/wuwei '
                     'setup in a host terminal.'),
+    ('telemetry', 'send'): ('Telemetry sends are an owner action, outside agent tools: show the payload with '
+                            'bin/wuwei telemetry preview, and the owner runs bin/wuwei telemetry send in a host '
+                            'terminal.'),
 }
 _OWNER_GROUPS = {group for group, _ in _OWNER_ACTIONS}
 _OWNER_VERBS = tuple(sorted({verb for _, verb in _OWNER_ACTIONS if verb}))
@@ -241,7 +244,7 @@ def _protected_name(path, directories=False):
         tail = parts[index + 1:]
         if tail in (('config.toml',), ('env',), ('security.json',), ('.gitignore',), ('merge.lock',), ('executable',), ('calibration.json',)) or tail[:1] == ('generated',):
             return True
-        if tail[:1] in (('integrity',), ('.git',), ('ziran',), ('inbox',)):
+        if tail[:1] in (('integrity',), ('.git',), ('ziran',), ('inbox',), ('metrics',)):
             return True
         if tail in (('memory', 'voice.md'), ('memory', 'goals.md')):
             return True

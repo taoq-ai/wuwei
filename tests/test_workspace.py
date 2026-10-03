@@ -153,6 +153,7 @@ def test_config_defaults_and_independence(tmp_path):
     from wuwei.workspace import load_config
     write_config(tmp_path, '')
     config = load_config(tmp_path)
+    config.pop('telemetry')  # pinned in test_telemetry_config
     outbound = config.pop('outbound')
     assert outbound['work_channels'] == outbound['company_domains'] == []
     assert outbound['people'] == {} and outbound['sensitive_keywords']
@@ -1240,3 +1241,17 @@ def test_memory_tier_keys_default_and_validate(tmp_path):
     assert all(f'\n{key} = ' in shipped for key in ('digest', 'budget_tokens', 'export_to'))
     write_config(tmp_path, shipped)
     assert load_config(tmp_path)['memory']['budget_tokens'] == 6000
+
+
+def test_telemetry_config(tmp_path):
+    # #422, design 5.13: sharing is not asked yet by default and only three values exist.
+    from wuwei import workspace
+    from wuwei.workspace import ConfigError, load_config
+    write_config(tmp_path, '')
+    assert load_config(tmp_path)['telemetry'] == {
+        'enabled': True, 'share': '', 'endpoint': '', 'repository': 'taoq-ai/wuwei',
+        'otlp': {'endpoint': '', 'headers_env': ''}}
+    assert workspace.CONFIG_CACHE_VERSION == 3
+    write_config(tmp_path, '[telemetry]\nshare = "maybe"\n')
+    with pytest.raises(ConfigError):
+        load_config(tmp_path)

@@ -243,9 +243,9 @@ def test_subagent_stop_skips_watch_and_memory(tmp_path):
 DENY = {'tomllib', 'hashlib', 'argparse', 'dataclasses', 'inspect', 'typing', 'datetime', 'subprocess'}
 
 
-@pytest.mark.parametrize('inside, deny', [(False, DENY | {'copy'}),
+@pytest.mark.parametrize('inside, deny', [(False, DENY | {'copy', 'wuwei.telemetry', 'secrets'}),
                                           (True, {'argparse', 'dataclasses', 'subprocess', 'inspect', 'hashlib',
-                                                  'glob', 'copy', 'weakref'})],
+                                                  'glob', 'copy', 'weakref', 'wuwei.telemetry', 'secrets'})],
                          ids=['outside', 'workspace'])
 def test_hook_imports_no_unused_stdlib(tmp_path, inside, deny):
     # A fresh interpreter: a hook pays only for the stdlib modules its path uses.
@@ -998,7 +998,7 @@ def test_no_hook_path_imports_heartbeat():
             names = ([alias.name for alias in node.names] if isinstance(node, (ast.Import, ast.ImportFrom)) else [])
             if isinstance(node, ast.ImportFrom):
                 names.append(node.module or '')
-            assert not any('heartbeat' in name for name in names), path
+            assert not any('heartbeat' in name or 'telemetry' in name for name in names), path
 
 
 def test_heartbeat_latency(seeded_workspace, capsys, monkeypatch, quiet_heartbeat):
@@ -1172,7 +1172,7 @@ def test_posture_levels_at_the_hook(plugin):
             install(plugin, refusing('PreToolUse', 'kept'), name)
             assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', f'kept\n{line}')
             assert events_of(plugin, 'guard.would_refuse') == []
-            assert events_of(plugin, 'hook.refusal')[-1]['refusals'] == [{'guard': name, 'reason': 'kept'}]
+            assert events_of(plugin, 'hook.refusal')[-1]['refusals'] == [{'guard': name, 'reason': 'kept', 'exit': 1}]
             (plugin[0] / f'cli/wuwei/guards/{name}.py').unlink()
         for name in ('commit_push', 'integrity'):
             forget_guards()
@@ -1201,9 +1201,9 @@ def test_missing_reviewer_refusal_carries_no_posture_line(tmp_path):
     from wuwei.guards import NO_REVIEWER, pr
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('')
-    assert hook.posture({}, [(pr.check, NO_REVIEWER), (pr.check, 'other')], tmp_path) == [
-        ('pr', NO_REVIEWER, ''),
-        ('pr', 'other', 'posture: publish = block (owner-only action; no setting lowers it)')]
+    assert hook.posture({}, [(pr.check, NO_REVIEWER, 1), (pr.check, 'other', 1)], tmp_path) == [
+        ('pr', NO_REVIEWER, '', 1),
+        ('pr', 'other', 'posture: publish = block (owner-only action; no setting lowers it)', 1)]
 
 
 FORCE = 'force-push is refused; push a branch instead'
@@ -1215,7 +1215,7 @@ def test_refusal_records_guard_and_target_for_why(plugin):
     payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
     assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', FORCE)
     assert events_of(plugin, 'hook.refusal') == [
-        {'reason': FORCE, 'refusals': [{'guard': 'fake', 'reason': FORCE}], 'target': 'npm test'}]
+        {'reason': FORCE, 'refusals': [{'guard': 'fake', 'reason': FORCE, 'exit': 1}], 'target': 'npm test'}]
     (plugin[0] / '.wuwei/config.toml').write_text('')
     assert main(['why', 'last refusal']) == 0
     lines = plugin[2].readouterr().out.splitlines()
@@ -1231,7 +1231,7 @@ def test_refusal_without_a_target_is_still_recorded_and_enforced(plugin):
     payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
     assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', FORCE)
     assert events_of(plugin, 'hook.refusal') == [
-        {'reason': FORCE, 'refusals': [{'guard': 'fake', 'reason': FORCE}]}]
+        {'reason': FORCE, 'refusals': [{'guard': 'fake', 'reason': FORCE, 'exit': 1}]}]
 
 
 def test_refusal_from_two_guards_lists_both_in_order(plugin):
@@ -1241,8 +1241,59 @@ def test_refusal_from_two_guards_lists_both_in_order(plugin):
     assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', 'first; a')
     recorded, = events_of(plugin, 'hook.refusal')
     assert recorded['reason'] == 'first; a'
-    assert recorded['refusals'] == [{'guard': 'first', 'reason': 'first; a'},
-                                    {'guard': 'second', 'reason': 'second'}]
+    assert recorded['refusals'] == [{'guard': 'first', 'reason': 'first; a', 'exit': 1},
+                                    {'guard': 'second', 'reason': 'second', 'exit': 1}]
+
+
+def exiting(code, reason='guard reason'):
+    return f'''
+from wuwei.guards import Guard
+GUARDS = [Guard('PreToolUse', None, lambda payload: ({code}, {reason!r}))]
+'''
+
+
+@pytest.mark.parametrize('code', [1, 2])
+def test_refusal_rows_and_warnings_carry_the_exit(plugin, code):
+    # #422: a refusal (exit 1) and a guard that could not run (exit 2) are told apart.
+    install(plugin, exiting(code))
+    payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
+    assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', 'guard reason')
+    assert events_of(plugin, 'hook.refusal')[-1]['refusals'] == [
+        {'guard': 'fake', 'reason': 'guard reason', 'exit': code}]
+    shadow_mode(plugin)
+    warns(plugin)
+    assert replay(plugin, 'PreToolUse', payload).returncode == 0
+    recorded, = events_of(plugin, 'guard.would_refuse')
+    assert recorded['exit'] == code
+
+
+def event_count(plugin):
+    from wuwei import workspace
+    path = workspace.day_dir(plugin[0]) / 'events.jsonl'
+    return len(path.read_text().splitlines()) if path.exists() else 0
+
+
+def test_event_count_per_hook_path(plugin):
+    # #422: telemetry adds no record to a hook: allowed 0, refused 1, warned 1, heartbeat 0.
+    payload = json.loads((ROOT / 'tests/payloads/PreToolUse/bash.json').read_text())
+    install(plugin, exiting(0, ''))
+    before = event_count(plugin)
+    assert replay(plugin, 'PreToolUse', json.dumps(payload)).returncode == 0
+    assert event_count(plugin) - before == 0
+    forget_guards()
+    install(plugin, exiting(1))
+    before = event_count(plugin)
+    assert replay(plugin, 'PreToolUse', json.dumps(payload)).returncode == 2
+    assert event_count(plugin) - before == 1
+    before = event_count(plugin)
+    heartbeat = {**payload, 'session_id': 'wuwei-heartbeat'}
+    assert replay(plugin, 'PreToolUse', json.dumps(heartbeat)).returncode == 2
+    assert event_count(plugin) - before == 0
+    shadow_mode(plugin)
+    warns(plugin)
+    before = event_count(plugin)
+    assert replay(plugin, 'PreToolUse', json.dumps(payload)).returncode == 0
+    assert event_count(plugin) - before == 1
 
 
 def returning(reason, code=2):

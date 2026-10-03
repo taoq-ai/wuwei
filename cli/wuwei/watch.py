@@ -300,6 +300,12 @@ def sweep(root=None, *, watch_health=None):
         counts['owed'] += 1
         counts['exit'] = 2
         print(f'watch steward unmeasured: {exc}', flush=True)
+    from wuwei import telemetry
+    try:
+        counts['telemetry'] = telemetry.step(root, config)
+    except ERRORS as exc:  # Design 5.13: never the sweep's exit, never owed work.
+        counts['telemetry'] = f'unmeasured: {exc}'
+        print(f'watch telemetry unmeasured: {exc}', flush=True)
     state.append_event('watch: sweep', counts, root)
     print('watch: sweep ' + json.dumps(counts, sort_keys=True), flush=True)
     return counts['exit']

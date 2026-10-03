@@ -70,6 +70,8 @@ EVENT_PRODUCERS = {
     'doctor.fixed': 'owner host wuwei doctor --fix',
     'config.newer_template': 'wuwei hook PreToolUse',
     'memory.folded': 'owner host wuwei memory forget', 'memory.consolidated': 'wuwei consolidate',
+    **{f'telemetry.{action}': 'wuwei telemetry or wuwei sweep'
+       for action in ('skipped', 'unsent', 'shared', 'ready', 'presented', 'off')},
 }
 
 

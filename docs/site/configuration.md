@@ -16,6 +16,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[outward]`, `[outward.max_length]`, `[outbound]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
 | `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]` | [Decisions](#decisions); cruise answering is not built |
 | `[calibrate]` | [Calibration](#calibration) |
+| `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
 
 ## Workspace and repositories
 
@@ -144,6 +145,21 @@ and lets the turn end.
 | `decisions.cruise.levels` | `{}` | Per-class level (0 to 3) that lowers a 5.8.1 class default in the seat mandate; a level above the class ceiling or an unknown class is refused. |
 
 These keys feed the mandate block in every seat prompt. Cruise mode itself, where the CLI answers some classes at levels L0 to L3, is designed in design spec 5.8.1 and not built: every routed decision still goes to you.
+
+## Telemetry
+
+Weekly usage counts that say whether WUWEI itself works: how often guards refuse or cannot run, how long a hook takes, how often items loop, how many decisions reach you. The watch sweep aggregates them at most once a day into `.wuwei/metrics/<week>.json`, never in a hook; `bin/wuwei metrics --week [<week>]` prints a week on demand. A finalised week can propose a config change, asked once at the next morning gate; nothing applies on its own.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `telemetry.enabled` | `true` | `false` stops the aggregate, the proposals, sharing and the OpenTelemetry export. |
+| `telemetry.share` | `""` | `"anonymous"`, `"attributed"` or `"off"`. Empty means the interview question is not answered yet and sends nothing; `bin/wuwei doctor` lists it as pending. A calibration profile never carries it. |
+| `telemetry.endpoint` | `""` | Where anonymous mode posts; empty or not `https://` keeps every week local. |
+| `telemetry.repository` | `"taoq-ai/wuwei"` | Where attributed mode opens issues with `bin/wuwei telemetry send`. |
+| `telemetry.otlp.endpoint` | `""` | An `https://` OTLP/HTTP base URL on your own platform; off when empty. |
+| `telemetry.otlp.headers_env` | `""` | The name of the `.wuwei/env` variable holding the auth headers as `key=value,key=value`; the value never enters config, events or output. |
+
+OpenTelemetry: with `telemetry.otlp.endpoint` set, each sweep posts the records appended since the last export to `<endpoint>/v1/traces` and each newly finalised week to `<endpoint>/v1/metrics`, as OTLP/HTTP JSON with the stdlib. A day is a trace; each refusal, warning and seat run is a span with the attributes `wuwei.event`, `wuwei.guard`, `wuwei.outcome`, `wuwei.reason_code`, `wuwei.posture` and `wuwei.item`; decisions, loops, gate rounds and owner actions are span events; the weekly metrics are counters and gauges. It never carries command text, reasons or record bodies, and it never goes to the project. The mark advances only on a 2xx answer; a failure records `telemetry.unsent` and the next sweep resends.
 
 ## Adapters and brief
 
@@ -283,6 +299,7 @@ The interview asks a short, fixed set of questions about your own preferences. E
 | `manual` | `deploy.deny` patterns for commands you always run yourself |
 | `verbosity` | `owner.verbosity.default` |
 | `posture` | `security.posture`; `Observe` also sets `guards.shadow_since` to today |
+| `telemetry` | `telemetry.share`: `Anonymous`, `Attributed` or `Off` |
 | `tracker` | `adapters.tracker`: `None` or `Linear` (then set `LINEAR_API_KEY` in `.wuwei/env`) |
 | `chat` | `adapters.chat`: `None` or `Slack`; typing a channel ID such as `C0123ABCD` sets `slack` and `shepherd.review_channel` |
 | `review_bot` | `adapters.review_bot`: `None` or `Greptile` (then set `GREPTILE_API_KEY` in `.wuwei/env`) |

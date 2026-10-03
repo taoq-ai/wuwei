@@ -68,6 +68,15 @@ Where to run each:
 
 The posture changes only what the cooperative guards refuse. The hard boundaries below (host rules, the credential layout, owner-sent messages) hold in every posture. `config.toml` is a record, so a seat cannot lower its own posture.
 
+## Telemetry: what leaves
+
+Nothing leaves the machine unless `telemetry.share` is `"anonymous"` or `"attributed"`; empty (not asked yet) and `"off"` send nothing. Then only a final week's payload leaves: the schema, the ISO week, the plugin, Python and OS versions, the posture, profile, adapter names and the number of repositories, and the weekly counts. Every key and value is checked against a fixed vocabulary before it is sent, so no repository, item, ticket, pull request, person, handle, path, branch, command, reason text or time finer than the week can leave; a payload that breaks a rule is not sent. `bin/wuwei telemetry preview` prints exactly what each mode would send.
+
+- Anonymous: the watch posts the payload over HTTPS with a random workspace id kept in `.wuwei/metrics/token`, the only identifier. No account and no secret are involved. The collector, like any web server, sees your IP address and does not store it.
+- Attributed: you run `bin/wuwei telemetry send` in a host terminal; it shows the issue, asks y/N, runs the canary and honeytoken check, and opens it from your gh account, so it shows your login. The token is never in it.
+
+`bin/wuwei telemetry off` stops sharing at once without a confirmation. The aggregate, `.wuwei/metrics/`, is a protected record only the CLI writes. Your own OpenTelemetry export (`[telemetry.otlp]`) goes only to the endpoint you set and never to the project.
+
 ## Threat model 9.1
 
 The guards address agent mistakes, corner cutting and prompt injections sent through normal tools. They are cooperative mistake prevention, not an isolation boundary: no hook, Claude Code or git, is a hard boundary against a process running as you. Such a process can edit local files, including state, events and approval records. Hard boundaries are code host server-side rules (protected refs, required checks, required reviews), publication credentials kept out of seat environments, owner-sent approve-tier messages, and, when built, an external control plane. For push, merge, deploy and PR approval the guards refuse what they recognise; push and merge are guaranteed by the host rules (protected refs, and a merge lands only through required checks and reviews), and approval and deploy by the credential layout. WUWEI must never bypass branch protection, approve its own pull requests or deploy. Codex seats can be isolated in a write sandbox limited to their worktree. More hardening for Claude seats is **planned**.

@@ -20,7 +20,8 @@ WRITES = frozenset({
     'rank', 'remote ack', 'reply', 'report', 'retro', 'runtime continue', 'runtime dispatch',
     'runtime result', 'runtime status', 'setup', 'signal classify', 'state get',
     'state recover', 'state set', 'state transition', 'steward ack', 'steward run',
-    'sweep obligations', 'sweep watch', 'verdict lint', 'voice edit', 'voice learn',
+    'sweep obligations', 'sweep watch', 'telemetry off', 'telemetry preview', 'telemetry proposals',
+    'telemetry send', 'verdict lint', 'voice edit', 'voice learn',
     'watch install', 'watch uninstall', 'worktree add'})
 
 

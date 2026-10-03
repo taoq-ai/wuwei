@@ -358,6 +358,11 @@ def _calibration(root, config):
         rows.append(_row('workspace', 'posture', 'ok', f'{shown}, {left} days left') if left > 0 else
                     _row('workspace', 'posture', 'warn', f'{shown}: ' + SHADOW_NUDGE.format(days=days),
                          'set security.posture = "guarded" in .wuwei/config.toml, or raise guards.shadow_days'))
+    telemetry = config['telemetry']
+    rows.append(_row('workspace', 'telemetry', 'warn', 'sharing not chosen yet (pending interview question)',
+                     'bin/wuwei calibrate --interview telemetry') if telemetry['enabled'] and not telemetry['share']
+                else _row('workspace', 'telemetry', 'ok', f"share {telemetry['share'] or 'off'}"
+                          if telemetry['enabled'] else 'disabled'))
     return rows
 
 

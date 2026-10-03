@@ -170,6 +170,10 @@ SCHEMA = {
             {"pattern": r"mcp__.*github.*__(add|create|update)_.*comment.*", "channel": "code_host"},
         ]],
     },
+    "telemetry": {"enabled": (bool, True),
+                  "share": (str, "", ("", "off", "anonymous", "attributed")),
+                  "endpoint": (str, ""), "repository": (str, "taoq-ai/wuwei"),
+                  "otlp": {"endpoint": (str, ""), "headers_env": (str, "")}},
     "chat": {"identity": (str, "connector", ("connector", "custom_app"))},
     "control_plane": {"content": (str, "summary", ("summary", "none")), "owner": (str, "")},
     "adapters": {"tracker": (str, "none"), "chat": (str, "none"),
@@ -508,7 +512,7 @@ _CONFIGS = {}
 # copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
-CONFIG_CACHE_VERSION = 2  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 3  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor, why and the board stay read-only.
