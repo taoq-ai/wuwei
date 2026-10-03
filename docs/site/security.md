@@ -10,8 +10,8 @@ The ZIRAN scanner adapter provides runtime trace analysis, MCP registry checks a
 
 ## S1: Reviewed role grants in CI
 
-Pull requests and pushes to main run `taoq-ai/ziran@v0.40.0` in audit mode with
-`ziran==0.40.0`, high severity and `agents/ziran-baseline.json`. ZIRAN reads the
+Pull requests and pushes to main run `taoq-ai/ziran@v0.41.0` in audit mode with
+`ziran==0.41.0`, high severity and `agents/ziran-baseline.json`. ZIRAN reads the
 Claude Code agents directly. The recorded baseline is the reviewed proposal of
 tool grants and dangerous chains; no WUWEI converter or runtime dependency is
 needed. Existing grants pass, while widened tools/chains and new critical
@@ -20,7 +20,7 @@ naming the chain it creates. Both findings (exit 1) and an audit that could not
 run (exit 2) fail CI. The action uploads SARIF to code scanning when
 permissions allow; an upload failure does not change the audit result.
 
-After a reviewed charter or allowlist change, use ZIRAN 0.40.0 in a disposable
+After a reviewed charter or allowlist change, use ZIRAN 0.41.0 in a disposable
 dev environment. From the plugin repository root, outside an initialized WUWEI
 workspace, run:
 
