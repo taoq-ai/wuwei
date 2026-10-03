@@ -234,7 +234,8 @@ def find_workspace(start=None, *, use_environment=True):
             if (root / '.wuwei').is_symlink():
                 raise ValueError('.wuwei must not be a symlink')
             return root
-    raise FileNotFoundError(f"No .wuwei/ found from {start}; run wuwei init")
+    raise FileNotFoundError(f"No .wuwei/ found from {start}; run from the workspace, set "
+                            "WUWEI_WORKSPACE=<path> or pass --workspace <path> (wuwei init creates one)")
 
 
 def worktree_workspace(path):

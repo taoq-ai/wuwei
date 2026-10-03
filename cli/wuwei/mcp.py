@@ -589,9 +589,12 @@ def _proceed_unmeasured(root, record, servers, confirm):
     if confirm is None:
         from wuwei.integrity import _host_confirm
         confirm = lambda value: _host_confirm(value, prompt=f"Seats will use {', '.join(names)} "
-            'without a registry measurement. To proceed unmeasured, type:')
-    if not confirm(digest):
-        return registry.Result(1, reason='MCP registry owner confirmation declined')
+            'without a registry measurement.')
+    try:
+        if not confirm(digest):
+            return registry.Result(1, reason='MCP registry owner confirmation declined')
+    except OSError as exc:
+        return registry.Result(2, reason=str(exc))
     text = (
         'Question: May seats proceed with MCP servers the registry could not measure?\n'
         f"Context: Unmeasured servers: {', '.join(names)}. Their tool output is untrusted data.\n"
@@ -619,8 +622,9 @@ def _proceed_unmeasured(root, record, servers, confirm):
     return registry.Result(0)
 
 
-def decide(root, identifier=None, option=None, *, servers=None, confirm=None):
-    """Record the owner's answer to the pending MCP decision at the host terminal only."""
+def decide(root, identifier=None, option=None, *, servers=None, confirm=None, note=None):
+    """Record the owner's answer to the pending MCP decision: y/N at the host terminal, or
+    the planner session's asked gate question (#354)."""
     try:
         root = Path(root).resolve()
         with _lock(root):
@@ -637,27 +641,28 @@ def decide(root, identifier=None, option=None, *, servers=None, confirm=None):
             waiting = record['pending']
             if not waiting:
                 return registry.Result(1, reason='MCP registry has no pending decision')
+            identifier = identifier or Path(waiting).stem
             if Path(waiting).stem != identifier:
                 return registry.Result(1, reason=f'{identifier} is not the pending MCP decision; run {command(waiting)}')
             path = root / waiting
             if path.resolve() != path:
                 raise ValueError('decision must not use symlinks')
             text = path.read_text(encoding='utf-8')
-            _, scores = decision.evaluate(text)
+            fields, scores = decision.evaluate(text)
             if option not in scores:
                 return registry.Result(1, reason=f'{identifier} options: ' + ', '.join(scores))
             digest = hashlib.sha256((json.dumps([record, option], sort_keys=True) + text).encode()).hexdigest()
-            if confirm is None:
-                from wuwei.integrity import _host_confirm
-                confirm = lambda value: _host_confirm(value, prompt=f'{identifier}: record {option} for the '
-                    'MCP registry findings. To confirm, type:')
-            if not confirm(digest):
+            try:
+                where = (('at the host terminal' if confirm(digest) else '') if confirm else
+                         decision.owner_confirm(root, identifier, digest,
+                                                f'{identifier}: record {option}.\n' + fields['Context']))
+            except OSError as exc:
+                return registry.Result(2, reason=str(exc))
+            if not where:
                 return registry.Result(1, reason='MCP registry owner confirmation declined')
             if path.read_text(encoding='utf-8') != text:
                 raise ValueError('decision changed during confirmation')
-            stamp = workspace.now().isoformat(timespec='seconds')
-            workspace.atomic_write(path, decision.set_outcome(text, option)
-                                   + f'Notes: Decided at {stamp} at the host terminal.\n')
+            workspace.atomic_write(path, decision.owner_record(text, option, where, note))
             if option == 'proceed':
                 baseline = [[m[1], m[2]] for m in map(REPORT.fullmatch, record['reports']) if m]
                 workspace.atomic_write(_path(root, 'accepted-' + digest + '.json'), json.dumps(

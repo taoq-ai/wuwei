@@ -88,7 +88,7 @@ Paths are under `.wuwei/`; `<date>` is today.
 
 Ask with AskUserQuestion in this session. The owner can also answer from the phone
 through Remote Control or the Slack DM. Some commands are the owner's alone and run in a
-host terminal in every posture: `decision outcome`, `drafts approve`, `mcp decide`,
+host terminal in every posture: `decide`, `decision outcome`, `drafts approve`, `mcp decide`,
 `config set` and `setup`. Name the exact command; never ask the owner to edit a file.
 
 ## First day

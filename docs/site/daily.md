@@ -69,6 +69,7 @@ then calibrates and interviews:
 
 It shows the `[[repos]]` tables, the calibration and the answers as one `config.toml` diff,
 applies it after you type its [digest](concepts.html#digest) (the `bin/wuwei config promote` path), runs
+applies it after you answer y (the `bin/wuwei config promote` path), runs
 `bin/wuwei config check` and `bin/wuwei mcp check`, and prints what is still owed with the
 exact command for each: a repository it could not measure, a credential variable,
 `owner.name`, `bin/wuwei promote` for the charter proposals, an MCP decision. Run it again
@@ -241,9 +242,10 @@ session, the Claude Code desktop PR monitor is the complement.
 ## 5. Owner decisions
 
 Some commands are yours alone and run in a host terminal, never through an agent:
-`bin/wuwei decision outcome <id> <option>`, `bin/wuwei drafts approve` or `drafts drop`,
-and `bin/wuwei mcp decide D-<n> proceed` (or `defer`) for MCP registry findings, which also
-re-runs the check. Nudges and the report name each pending decision.
+`bin/wuwei decide D-<n> <option>` for any decision, MCP registry findings included (`proceed`
+also re-runs the check), and `bin/wuwei drafts approve` or `drafts drop`. Under `observe` and
+`guarded` the planner asks you a decision in the session and records your answer with the
+same command; under `strict`, and for credentials, you run it in a host terminal and answer y. Nudges and the report name each pending decision.
 
 `bin/wuwei decision show D-<n>` prints a decision at your `owner.verbosity` level: by default
 the question, each option with its score, and the recommendation with one reason.
@@ -252,11 +254,11 @@ the question, each option with its score, and the recommendation with one reason
 To answer from your phone, run the planner session with Claude Code Remote Control
 (`claude --remote-control`, or `/remote-control` inside the session) and turn on
 "Push when actions required" in `/config`. Each decision question then reaches the Claude
-mobile app and stays open until you answer. A phone answer is not yet your outcome: run
-`bin/wuwei decision outcome` in a host terminal to record it. To command the workspace and
+mobile app and stays open until you answer. A phone answer is not yet your outcome: the planner
+records it with `bin/wuwei decide`, or you run it in a host terminal. To command the workspace and
 answer decisions from Slack as well, follow [remote operation](remote.html). A decision
 answered in the Slack DM is recorded as evidence, and `status --line` counts it as
-`phone answers 1` until you record it with `bin/wuwei decision outcome`.
+`phone answers 1` until you record it with `bin/wuwei decide`.
 
 Seats do not ask what their [mandate](concepts.html#mandate) lets them decide. You see two more things here. An item
 that goes back and forth shows as `loops N` on the status line and a `negotiation.loop`
@@ -264,6 +266,7 @@ nudge (a [page](concepts.html#page) when its goal date has passed), with the cou
 your DM when the listener runs. An external confirmation a seat routed with `--external`
 waits `decisions.wait_hours` weekday hours for your answer; then the sweep confirms the
 recommendation on a two-way door or [parks](concepts.html#park) the item for your `decision outcome`.
+recommendation on a two-way door or parks the item for your `decide`.
 
 ### How you answer
 

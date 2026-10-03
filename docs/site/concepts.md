@@ -138,7 +138,7 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are the owner's alone: `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei goals edit` and `voice edit` (except that the planner records goals and voice you approved at the morning gate with `--file`, outside the strict posture), `wuwei watch uninstall`, `wuwei listen uninstall`, `wuwei remote ack`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei setup`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. The ones that ask you to type a digest exit 2 without a terminal. See [host terminal actions](reference.html#host-terminal-actions).
+Some commands are the owner's alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei goals edit` and `voice edit` (except that the planner records goals and voice you approved at the morning gate with `--file`, outside the strict posture), `wuwei watch uninstall`, `wuwei listen uninstall`, `wuwei remote ack`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei setup`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records a decision it asked you in the session with `wuwei decide`. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.html#host-terminal-actions).
 
 ## Memory
 
@@ -199,7 +199,7 @@ fast-check failures or exhausted iterations. Its `D-<n>.md` file passes
 
 A linked PR's externally verified owner park or carry also accounts for its item.
 Editing an owner decision's Outcome does not prove an owner action. An owner
-decision answered with `bin/wuwei decision outcome D-<n> OPTION` counts as
+decision answered with `bin/wuwei decide D-<n> OPTION` counts as
 resolved, and the command writes the chosen option into the record's `Outcome:`
 line.
 Pushed branch checks read remote-tracking refs in recorded item worktrees through

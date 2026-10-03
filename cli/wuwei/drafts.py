@@ -145,7 +145,7 @@ def approve(root, draft_id, *, edit=False):
         try:
             confirmed = integrity._host_confirm(
                 sha256((draft_id + '\n' + text).encode()).hexdigest(),
-                prompt=f"Send this draft to {row['destination']}:\n{text}\nTo confirm, type:")
+                prompt=f"Send this draft to {row['destination']}:\n{text}")
         except OSError as exc:
             return registry.Result(2, reason=str(exc))
         if not confirmed:

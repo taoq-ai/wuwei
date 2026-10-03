@@ -102,7 +102,7 @@ From the same project directory, in a [host terminal](docs/site/concepts.md#host
 `setup` runs `init` when there is no workspace, finds the git repositories in the project
 directory (their GitHub names, default branches through `gh`, and commit identities), checks
 the host, calibrates the repositories and asks the owner interview. It shows the whole
-`config.toml` proposal once and applies it after you type its digest. Then it runs
+`config.toml` proposal once and applies it after you answer y. Then it runs
 `config check` and `mcp check` and prints what is still owed, each with its exact command. A
 second run proposes nothing new ([calibration](docs/site/configuration.md#calibration)).
 
@@ -148,8 +148,8 @@ What the guards cover, and what they leave to the code host, is in
 `/plugin marketplace add taoq-ai/wuwei` followed by `/plugin install wuwei@wuwei`
 uses the marketplace's `./` development source. A source checkout is also a
 development install. From the workspace, use that installed checkout's `bin/wuwei`
-to run `init .`, then run `bin/wuwei integrity reconfirm` in a host terminal and type
-the displayed digest after reviewing the checkout. Agent tools cannot reconfirm.
+to run `init .`, then run `bin/wuwei integrity reconfirm` in a host terminal and answer
+y after reviewing the checkout. Agent tools cannot reconfirm.
 
 The checkout must have a clean tree. Reconfirmation pins its content, HEAD commit
 and clean state once per commit. Repeated tool calls pass while HEAD and the tree

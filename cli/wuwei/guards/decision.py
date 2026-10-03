@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 
 from wuwei import workspace
-from wuwei.decision import lint_file, record_rejection, today_path
+from wuwei.decision import DECISION_ID, lint_file, record_rejection, today_path
 from wuwei.guards import Guard
 from wuwei.guards.verdict import INTERPRETERS, required_text
 from wuwei.workspace import scope
@@ -121,8 +121,9 @@ TOPICS = {'goals', 'voice'}
 
 def record_gate(payload):
     """PostToolUse: note on the planner's session row which records (goals, voice) its
-    answered morning gate questions asked, by header `Goals` or `Voice` only;
-    protect_state lets the planner record them."""
+    answered morning gate questions asked, by header `Goals` or `Voice` only, and which
+    decisions it asked, by header `D-n` citing today's record (#354); protect_state lets the
+    planner record them."""
     try:
         context = scope(Path(required_text(payload, 'cwd')).resolve())
         if context is None or 'agent_id' in payload:
@@ -138,6 +139,10 @@ def record_gate(payload):
             topic = header.strip().lower() if isinstance(header, str) else None
             if gate_question(question, root) and topic in TOPICS:
                 topics.add(topic)
+            elif (isinstance(header, str) and re.fullmatch(DECISION_ID, header)
+                  and re.search(rf'(?<![\w-]){header}(?![\w-])', required_text(question, 'question'))
+                  and today_path(header, root).is_file()):
+                topics.add(header)
         if not topics:
             return 0, ''
 

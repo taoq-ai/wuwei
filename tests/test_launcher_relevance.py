@@ -67,7 +67,7 @@ def test_force_push_script_is_refused(workspace, where, monkeypatch, capsys):
 
 @pytest.mark.parametrize('where', ['.', 'worktrees/ITEM-1'])
 @pytest.mark.parametrize('action', ['decision outcome D-1 A', 'drafts approve 1',
-                                    'mcp decide', 'integrity reconfirm'])
+                                    'mcp decide', 'integrity reconfirm', 'decide D-1 A'])
 def test_owner_actions_through_launcher_are_refused(workspace, where, action, monkeypatch, capsys):
     root, _ = workspace
     code, output = hook(root / where, f'{LAUNCHER} {action}', monkeypatch, capsys)

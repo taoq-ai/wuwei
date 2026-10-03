@@ -31,7 +31,7 @@ def run(args):
         elif args.action == 'recover':
             from wuwei import integrity
             digest = state.recover(confirm=lambda token: integrity._host_confirm(
-                token, prompt="Restore today's state from its snapshot. To confirm, type:"))
+                token, prompt="Restore today's state from its snapshot."))
             print(f'state recovered from snapshot {digest[:12]}')
         else:
             state.transition(args.item, args.phase)
