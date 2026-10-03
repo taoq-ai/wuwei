@@ -197,3 +197,14 @@ def test_inside_verdicts_unchanged(tmp_path, outside, monkeypatch):
     for command in (f'rm -rf {ws}/.wuwei/days', f'rm -rf {ws.parent}', 'rm -rf "$WS/.wuwei"'):
         code, _, err = hook('PreToolUse', payload('PreToolUse', outside, tool_input={'command': command}))
         assert code == 2 and 'protect' in err.lower(), (command, err)
+
+
+def test_broken_config_elsewhere_outside_is_clean(tmp_path, outside):
+    from test_config_failure import BROKEN
+    ws = tmp_path / 'host2/ws'
+    (ws / '.wuwei').mkdir(parents=True)
+    (ws / '.wuwei/config.toml').write_text(BROKEN)
+    for event in ('PreToolUse', 'PostToolUse', 'Stop'):
+        for row in TRIAL + SHAPES:
+            result = hook(event, payload(event, outside, tool_input={'command': row}))
+            assert result == (0, '', ''), (event, row, result)
