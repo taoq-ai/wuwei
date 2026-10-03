@@ -2,7 +2,7 @@
 
 import json
 
-from wuwei import pr_actions, shepherd, workspace
+from wuwei import merge, obligations, pr_actions, shepherd, workspace
 
 
 def register(subparsers):
@@ -25,6 +25,10 @@ def register(subparsers):
     ping = commands.add_parser('ping', help='Request reviewers and post when gates clear')
     ping.add_argument('ref')
     ping.set_defaults(func=run_ping)
+    reviewers = commands.add_parser('reviewers', help='Show the reviewers pr ping would request')
+    reviewers.add_argument('ref')
+    reviewers.add_argument('--explain', action='store_true', help='Show the ranking behind the selection')
+    reviewers.set_defaults(func=run_reviewers)
     ping_check = commands.add_parser('ping-check', help='Measure review ping gate')
     ping_check.add_argument('ref')
     ping_check.set_defaults(func=run_ping_check)
@@ -69,6 +73,20 @@ def run_claim(args):
 
 def run_ping(args):
     return shepherd.post_review_request(workspace.find_workspace(), args.ref)
+
+
+def run_reviewers(args):
+    lines = [] if args.explain else None
+    try:
+        selected = shepherd.select_reviewers(workspace.find_workspace(), args.ref, explain=lines)
+    except merge.Refused as exc:
+        print(exc)
+        return 1
+    except shepherd.ERRORS as exc:
+        print(f'reviewer selection unmeasured: {exc}')
+        return 2
+    print('\n'.join([*(lines or []), 'reviewers: ' + ' '.join(selected) if selected else obligations.SOLO]))
+    return 0
 
 
 def run_ping_check(args):

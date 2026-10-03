@@ -45,7 +45,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei outbound` | Inspects the outbound approval policy. | [Outbound tiers](configuration.md#outward-text-and-outbound-tiers) |
 | `bin/wuwei payload` | Plumbing: prints the session memory payload. | |
 | `bin/wuwei plan` | Proposes or approves the morning plan; `session` names the planner; `carry` and `park` record an open item's disposition at close. | [Lead plan JSON](#lead-plan-json) |
-| `bin/wuwei pr` | Measures owned PRs, raises one, or records a verified disposition. | [Raising a PR](#raising-a-pr) |
+| `bin/wuwei pr` | Measures owned PRs, raises one, shows its reviewers, or records a verified disposition. | [Raising a PR](#raising-a-pr) |
 | `bin/wuwei promote` | Promotes memory and charter proposals. | [Charter overrides](charter-overrides.md) |
 | `bin/wuwei rank` | Plumbing: ranks candidate JSON using the workspace goals. | [Lead plan JSON](#lead-plan-json) |
 | `bin/wuwei remote` | Owner actions for the remote control plane. | [Remote](remote.md) |
@@ -143,6 +143,8 @@ A worktree made with raw `git worktree add` has no anchor. Its commits and pushe
 
 `bin/wuwei pr raise OWNER/REPO --base BRANCH --title TEXT --body-file PATH --item ITEM` raises a prepared, pushed branch. All four options are required. The body file must be a regular file, not a symlink. The item must be in the approved plan with a worktree recorded by `bin/wuwei brief ... --worktree`, and it must not already link a PR. The pre-PR gate runs on the worktree head first; a finding exits 1 and raises nothing.
 
+Reviewers are the people who committed most to the changed source paths (top two, three on a tie within `shepherd.tie_commits`), plus `shepherd.lead_login`. Their emails resolve through `shepherd.authors`, then the code host, cached for the day; an email the code host cannot resolve is skipped with a `reviewer.unresolved` event. `shepherd.reviewers`, or `reviewers` under the repository's `[repos.shepherd]`, replaces the ranking and the lead; `shepherd.reviewers_exclude` removes logins from both. When nobody but the author is left, the PR is raised with no reviewer and the command prints `reviewers: none (solo)`; `pr ping` then requests and posts nothing, and the reviewer and channel-post obligations are not owed. `bin/wuwei pr reviewers REF [--explain]` prints the selection `pr ping` would use; `--explain` adds the deciding window, each ranked login with its commits per changed path, the lead and the unresolved authors. It exits 0 selected, 1 refused, 2 could not measure.
+
 ## Watch state
 
 `bin/wuwei status --line` and `status --json` report the watch from today's `watch: clock` events and from whether `bin/wuwei watch install` has installed its unit for this workspace:
@@ -157,7 +159,7 @@ Before the morning gate is approved, including before today's `state.json` exist
 
 When one or more registered sessions are live, the line adds `sessions N` before the reply and meeting parts, and `status --json` carries `sessions`.
 
-When raised or claimed PRs changed since the planner last saw a wake, the line adds `prs N changed`, cleared by the next `session: wake-seen`, and `status --json` carries `prs_changed`.
+When raised or claimed PRs changed since the planner last saw a wake, the line adds `prs N changed`, cleared by the next `session: wake-seen`, and `status --json` carries `prs_changed`. When any PR today was raised with no reviewer, the line adds `reviewers: none (solo)` and `status --json` carries `solo`.
 
 ## Heartbeat
 
@@ -346,7 +348,7 @@ Recovery is an owner action. Agent tool hooks refuse `wuwei state recover` insid
 
 ## Security posture
 
-`bin/wuwei init --posture <name>` writes `security.posture` into a new workspace; `observe` also writes today's date as `guards.shadow_since`, and `--shadow` is `--posture observe`. With `--upgrade` either exits 2. The hook reads the posture only when a guard refused, and per refusal: an `off` area drops it; a `warn` area records a `guard.would_refuse` event and the hook exits 0; a `block` area enforces it and the reason shown gains a line `posture: <area> = block (set security.areas.<area>)`, or `(floor; no setting lowers it)` for `records`, or `(owner-only action; no setting lowers it)` for `deploy`, `pr` and the outward approval tier. `hook.refusal` keeps the guard's own reason in `refusals`. A refusal from a guard module with no area (a test stub) blocks with no posture line. The event payload is `{guard, area, level, posture, reason, target, session, item}`: `target` is the normalised Bash command, else the file path, else the tool name, with credentials, the canary and the honeytoken redacted; `item` is the item the session claims, or null. Only the hook writes it; `bin/wuwei event` refuses the kind. If the event cannot be written, or the config cannot be read, the refusal is enforced. Refusals in the heartbeat session `wuwei-heartbeat` are always enforced.
+`bin/wuwei init --posture <name>` writes `security.posture` into a new workspace; `observe` also writes today's date as `guards.shadow_since`, and `--shadow` is `--posture observe`. With `--upgrade` either exits 2. The hook reads the posture only when a guard refused, and per refusal: an `off` area drops it; a `warn` area records a `guard.would_refuse` event and the hook exits 0; a `block` area enforces it and the reason shown gains a line `posture: <area> = block (set security.areas.<area>)`, or `(floor; no setting lowers it)` for `records`, or `(owner-only action; no setting lowers it)` for `deploy`, `pr` and the outward approval tier. The `gh pr create` refusal for a missing `--reviewer` names its own ways out (`shepherd.min_reviewers 0`, or `shepherd.reviewers` raised with `bin/wuwei pr raise`, since this guard never reads `shepherd.reviewers`) and carries no posture line; it still blocks. `hook.refusal` keeps the guard's own reason in `refusals`. A refusal from a guard module with no area (a test stub) blocks with no posture line. The event payload is `{guard, area, level, posture, reason, target, session, item}`: `target` is the normalised Bash command, else the file path, else the tool name, with credentials, the canary and the honeytoken redacted; `item` is the item the session claims, or null. Only the hook writes it; `bin/wuwei event` refuses the kind. If the event cannot be written, or the config cannot be read, the refusal is enforced. Refusals in the heartbeat session `wuwei-heartbeat` are always enforced.
 
 `status --line` adds the posture name after the nudges when it is not `guarded`, and `status --json` carries `posture`. Under `observe`, once `guards.shadow_days` calendar days have passed since `guards.shadow_since`, `bin/wuwei nudges` and the status line count one `guards.shadow` nudge asking you to set `security.posture = "guarded"` or raise `guards.shadow_days`. With an empty `shadow_since` there is no nudge. Under `guarded` or `strict` a `guard.would_refuse` event is a nudge, one row per guard per day, naming the guard, its reason and `security.areas.<area>`; under `observe` it is silent.
 

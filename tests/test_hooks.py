@@ -1184,6 +1184,16 @@ def test_posture_levels_at_the_hook(plugin):
         forget_guards()
 
 
+def test_missing_reviewer_refusal_carries_no_posture_line(tmp_path):
+    from wuwei.commands import hook
+    from wuwei.guards import NO_REVIEWER, pr
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    assert hook.posture({}, [(pr.check, NO_REVIEWER), (pr.check, 'other')], tmp_path) == [
+        ('pr', NO_REVIEWER, ''),
+        ('pr', 'other', 'posture: publish = block (owner-only action; no setting lowers it)')]
+
+
 FORCE = 'force-push is refused; push a branch instead'
 
 

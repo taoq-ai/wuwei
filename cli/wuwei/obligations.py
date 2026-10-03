@@ -11,6 +11,8 @@ from wuwei.commands.event import FREE_KINDS
 from wuwei.references import pull_request
 from wuwei.verdict import VERDICTS
 
+SOLO = 'reviewers: none (solo)'
+
 
 def _read(operation, *args, root):
     result = operation(*args, root=root)
@@ -140,17 +142,20 @@ def _gate_recorded(directory, head):
     return False
 
 
-def _not_applicable(config):
-    """Visibility findings the owner's config makes impossible to owe."""
+def _not_applicable(config, recorded=None):
+    """Visibility findings the owner's config, or a PR recorded with no reviewer, makes
+    impossible to owe."""
     if config['shepherd']['min_reviewers'] == 0:
         return {'reviewer': 'shepherd.min_reviewers = 0', 'channel-post': 'shepherd.min_reviewers = 0'}
+    if recorded == []:
+        return {'reviewer': SOLO, 'channel-post': SOLO}
     if config['adapters']['chat'] == 'none':
         return {'channel-post': 'adapters.chat = "none"'}
     return {}
 
 
 def _visibility(ref, pr, reviews, data, me, directory, config):
-    skip = _not_applicable(config)
+    skip = _not_applicable(config, data.get('pr_reviewers', {}).get(ref))
     reviewers = []
     for field in ('requested_reviewers', 'requested_teams'):
         for name in _list(pr[field]):
@@ -250,7 +255,7 @@ def evaluate(root=None):
                 counts['visibility_owed'] += len(visibility)
                 for finding in replies + visibility:
                     print(f'{ref} OWED {finding}')
-                for finding, reason in _not_applicable(config).items():
+                for finding, reason in _not_applicable(config, data.get('pr_reviewers', {}).get(ref)).items():
                     print(f'{ref} NOT APPLICABLE {finding}: {reason}')
             except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
                 counts['unreadable'] += 1

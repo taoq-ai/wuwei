@@ -18,6 +18,7 @@ PRIVATE = ('owner', 'control_plane.owner', 'repos.name', 'repos.path', 'repos.de
            'repos.identity', 'repos.merge.bot_login', 'voice', 'outbound.work_channels',
            'outbound.external_channels', 'outbound.company_domains', 'outbound.code_host_orgs',
            'outbound.people', 'shepherd.review_channel', 'shepherd.lead_login', 'shepherd.authors',
+           'shepherd.reviewers', 'shepherd.reviewers_exclude', 'repos.shepherd',
            'tracker.backlog_filter', 'retro.repo', 'metrics.transcripts', 'scanner.mcp', 'guards',
            'security')
 FLOORS = workspace.SCHEMA['repos'][0]['gates']['floor'][2]

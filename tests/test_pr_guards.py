@@ -103,6 +103,15 @@ def test_solo_owner_create_needs_no_reviewer(case, command, code, hint, gate):
         assert ('head', (str(root / 'repo'),), root) in fake.calls
 
 
+def test_missing_reviewer_refusal_names_the_ways_out(case):
+    root, _, _ = case
+    code, reason = guard().check(payload(root, 'gh pr create'))
+    assert code == 1
+    assert '--reviewer' in reason and 'shepherd.min_reviewers 0' in reason and 'shepherd.reviewers' in reason
+    # shepherd.reviewers does not satisfy this guard; it works only through pr raise.
+    assert 'shepherd.reviewers and raise with bin/wuwei pr raise' in reason
+
+
 def test_pr_gate_accepts_quality_only_delta_after_fix(case):
     from wuwei import state
     root, fake, decisions = case

@@ -244,6 +244,7 @@ STATE_PRODUCERS = {
     'decision_routes': 'wuwei decision route',
     'channel_posts': 'wuwei pr ping',
     'pr_reviewers': 'wuwei pr raise or ping',
+    'author_logins': 'wuwei pr raise, ping or reviewers',
     'scanner_decisions': 'wuwei sweep',
     'watch': 'wuwei watch or wuwei listen', 'pr_dispositions': 'wuwei pr disposition',
     'pr_action_done': 'wuwei pr act', 'pr_reply_drafts': 'wuwei pr act',

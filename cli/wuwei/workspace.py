@@ -64,7 +64,8 @@ SCHEMA = {
                          "trust_paths": [(str, None), [
                              "guards/*", "state.py", "adapters/*", ".claude-plugin/*", ".github/*",
                              "ci/*", "workflows/*", "deploy/*", "infra/*"]]},
-               "identity": {"name": (str, ""), "email": (str, "")}}],
+               "identity": {"name": (str, ""), "email": (str, "")},
+               "shepherd": {"reviewers": [(str, None)]}}],
     "cap": (int, 1, 1),
     "template_version": (str, ""),
     "calibrate": {"fast_check_seconds": (int, 60, 1)},
@@ -108,6 +109,7 @@ SCHEMA = {
     "pr": {"poll_seconds": (int, 120, 1), "action_minutes": (int, 30, 1),
            "review_window": (int, 120, 1)},
     "shepherd": {"review_channel": (str, ""), "lead_login": (str, ""),
+                 "reviewers": [(str, None)], "reviewers_exclude": [(str, None)],
                  "review_gate_check": (str, "Review Gate"),
                  "min_reviewers": (int, 1, 0),
                  "author_windows_days": [(int, None, 1), [90, 180]],
