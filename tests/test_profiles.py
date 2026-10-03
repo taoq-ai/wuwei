@@ -29,6 +29,8 @@ work_channels = ["Cwork"]
 [outward.max_length]
 slack = 3
 chat = 3
+[security]
+posture = "strict" # #331: these tests pin the outward lint blocking; guarded warns.
 ''')
     from fakes.integrity import seed
     seed(tmp_path)

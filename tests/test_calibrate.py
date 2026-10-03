@@ -684,6 +684,7 @@ REVIEWED = [
     ('watch.ping_url', 'https://x.test/p', True, ''), ('codex.command', ['node', 'x.mjs'], True, ''),
     ('owner.name', 'Pat', True, ''), ('repos.identity.email', 'pat@x.test', True, ''),
     ('shepherd.review_channel', 'C1', True, ''), ('guards.mode', 'shadow', True, ''),
+    ('security.posture', 'observe', True, ''), ('security.areas.mcp', 'off', True, ''),
     ('decisions.cruise.levels.approach', 1, False, ON), ('repos.gates.floor', 'full', False, ''),
     ('repos.merge.auto', False, False, ''), ('repos.fast_checks', ['make test'], False, ''),
     ('deploy.deny', ['twine upload*'], False, ''),
@@ -960,6 +961,14 @@ def test_profile_export_has_nothing_personal(workspace_root, monkeypatch, ports,
     monkeypatch.setenv('WUWEI_WORKSPACE', str(other))
     configure(other, ('acme/gadget', FIXTURES / 'node'))
     assert main('calibrate', 'import', str(out / 'team.json')) == 0, capsys.readouterr().err
+
+
+def test_profile_export_never_carries_the_posture(workspace_root, monkeypatch, ports, capsys):
+    # #331: a posture says where this workspace runs; it is private.
+    out = exported(workspace_root, monkeypatch, ports,
+                   extra='[security]\nposture = "strict"\n[security.areas]\nmcp = "off"\n')
+    assert main('calibrate', 'export', 'team') == 0, capsys.readouterr().err
+    assert 'security' not in json.loads((out / 'team.json').read_text())['config']
 
 
 def test_profile_export_edges(workspace_root, monkeypatch, ports, capsys):

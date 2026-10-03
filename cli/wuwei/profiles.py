@@ -18,7 +18,8 @@ PRIVATE = ('owner', 'control_plane.owner', 'repos.name', 'repos.path', 'repos.de
            'repos.identity', 'repos.merge.bot_login', 'voice', 'outbound.work_channels',
            'outbound.external_channels', 'outbound.company_domains', 'outbound.code_host_orgs',
            'outbound.people', 'shepherd.review_channel', 'shepherd.lead_login', 'shepherd.authors',
-           'tracker.backlog_filter', 'retro.repo', 'metrics.transcripts', 'scanner.mcp', 'guards')
+           'tracker.backlog_filter', 'retro.repo', 'metrics.transcripts', 'scanner.mcp', 'guards',
+           'security')
 FLOORS = workspace.SCHEMA['repos'][0]['gates']['floor'][2]
 # #313: what a profile may never carry, as (key pattern, refused(new, current)).
 DENIED = (
@@ -33,7 +34,7 @@ DENIED = (
 )
 OUTSIDE = 'outside what a profile may carry'
 # Private keys whose values say nothing about a person, so they are not searched for in text.
-NOT_LITERALS = ('owner.verbosity', 'guards', 'repos.default_branch')
+NOT_LITERALS = ('owner.verbosity', 'guards', 'security', 'repos.default_branch')
 # ponytail: a one-segment /name (a slash command) is not a path; a path-shaped CODEOWNERS key
 # such as /src/api/ is dropped, which is conservative.
 ABSOLUTE = re.compile(r'''(?:^|[\s"'`=(,])(?:~/|[A-Za-z]:[\\/]|/[^\s/]+/)''')

@@ -10,7 +10,7 @@ SILENT = ('item.progress', 'remote.acknowledged', 'state.write', 'state.set', 's
           'fast_checks.record', 'retro.captured', 'decision.two_way', 'merge.auto',
           'merge.observation', 'merge.metric', 'merge.intent', 'merge.completed', 'merge.red', 'merge.revert',
           'reply: acknowledged', 'reply: thread_posted', 'pr.raised', 'pr.claimed',
-          'pr.reviewers_selected', 'pr.review_posted', 'hook.refusal', 'guard.would_refuse',
+          'pr.reviewers_selected', 'pr.review_posted', 'hook.refusal',
           'decision.decided',
           'decision.routed', 'decision.digest', 'decision.replied', 'mcp.decided',
           'seat.usage', 'build.iteration', 'build.fix_opened', 'pr.action.done',
@@ -39,6 +39,8 @@ def classify(event, state):
     lane = 'People' if kind.startswith('person.') else (
         'Decisions' if kind.startswith(('decision.', 'draft.')) or kind in (
             'item.escalated', 'merge.policy_blocked', 'work.outside_goals') else 'Work')
+    if kind == 'guard.would_refuse':  # #331: a warn level the owner set outside observe.
+        return ('nudge' if payload.get('posture') in ('guarded', 'strict') else 'silent'), lane
     if kind == 'negotiation.loop':
         return ('page' if payload.get('past_goal') is True else 'nudge'), lane
     if kind == 'mcp.finding':

@@ -269,7 +269,7 @@ def test_init_registers_and_reports_poisoning(tmp_path, monkeypatch, upgrade, ca
 def test_morning_check_before_launch(configured, monkeypatch, code):
     from test_plan import proposal
     from wuwei import plan, state
-    from wuwei.guards.agent_launch import check
+    from wuwei.guards.agent_launch import check, check_mcp
     memory = configured / '.wuwei/memory'
     memory.mkdir()
     (memory / 'goals.md').write_text('# Goals\n## G-1\noutcome: Ship\nmeasure: shipped\ntarget: 1\ndate: 2026-10-30\npriority: 1\n')
@@ -283,8 +283,11 @@ def test_morning_check_before_launch(configured, monkeypatch, code):
     result = check({'cwd': str(configured), 'tool_input': {
         'subagent_type': 'wuwei:builder', 'description': 'Build', 'prompt': 'no brief'}})
     assert result[0] == 1
+    gate = check_mcp({'cwd': str(configured), 'tool_input': {
+        'subagent_type': 'wuwei:builder', 'description': 'Build', 'prompt': 'no brief'}})
+    assert gate[0] == (1 if code == 1 else 0)
     if code == 1:
-        assert 'MCP' in result[1]
+        assert 'MCP' in gate[1]
     assert not state.read_state(configured)['seats']
 
 
@@ -802,20 +805,26 @@ def legacy(root, **fields):
                                 'reports': [], 'reason': 'MCP registry unmeasured: legacy', **fields}))
 
 
-@pytest.mark.parametrize('block,setup,check_exit,cached_exit', [
-    (None, 'unmeasured', 2, 0),
-    ('["unmeasured"]', 'unmeasured', 2, 2),
-    ('[]', 'critical', 1, 0),
-    ('["high", "critical"]', 'high', 1, 1),
-    ('[]', 'invalid', 2, 2),
-    ('[]', 'stale', None, 2),
-    ('[]', 'legacy', None, 2),
-    (None, 'legacy-pending', None, 1),
+@pytest.mark.parametrize('posture', [None, 'strict', 'observe'])
+@pytest.mark.parametrize('block,setup,check_exit,cached_exit,strict_exit', [
+    (None, 'unmeasured', 2, 0, 2),
+    ('["unmeasured"]', 'unmeasured', 2, 2, 2),
+    ('[]', 'critical', 1, 0, 1),
+    ('["high", "critical"]', 'high', 1, 1, 1),
+    ('[]', 'invalid', 2, 2, 2),
+    ('[]', 'stale', None, 2, 2),
+    ('[]', 'legacy', None, 2, 2),
+    (None, 'legacy-pending', None, 1, 1),
 ])
-def test_posture_block_table(configured, monkeypatch, block, setup, check_exit, cached_exit):
-    if block is not None:
-        with (configured / '.wuwei/config.toml').open('a') as config:
+def test_posture_block_table(configured, monkeypatch, posture, block, setup, check_exit, cached_exit,
+                             strict_exit):
+    # #331: guarded (the default) is #336's table, strict the pre-#325 list, observe never blocks.
+    with (configured / '.wuwei/config.toml').open('a') as config:
+        if posture:
+            config.write(f'[security]\nposture = "{posture}"\n')
+        if block is not None:
             config.write(f'[scanner.mcp]\nblock = {block}\n')
+    cached_exit = {None: cached_exit, 'strict': strict_exit, 'observe': 0}[posture]
     if setup == 'unmeasured':
         fake_scanner(monkeypatch, 2)
     elif setup in ('critical', 'high'):
@@ -832,7 +841,34 @@ def test_posture_block_table(configured, monkeypatch, block, setup, check_exit, 
         legacy(configured, exit=0, reason='', pending='.wuwei/days/2026-09-29/decisions/D-1.md')
     if check_exit is not None:
         assert core().check(configured).exit == check_exit
-    assert core().cached(configured).exit == cached_exit
+    result = core().cached(configured)
+    assert result.exit == cached_exit
+    if result.exit:
+        assert 'mcp: ' in result.reason
+        assert 'floor: scanner.mcp.block' in result.reason or 'security.areas.mcp' in result.reason
+
+
+OFF = 'MCP registry: not checked (security.areas.mcp = "off")'
+
+
+def test_mcp_off_is_not_checked(configured, monkeypatch):
+    from wuwei.commands import status
+    with (configured / '.wuwei/config.toml').open('a') as config:
+        config.write('[security.areas]\nmcp = "off"\n')
+    calls = fake_scanner(monkeypatch, 1, [metadata('critical')])
+    assert core().check(configured) == registry.Result(0, reason=OFF)
+    assert core().cached(configured) == registry.Result(0, reason=OFF)
+    assert calls == []
+    assert not (configured / '.wuwei/ziran/status.json').exists()
+    events = workspace.day_dir(configured) / 'events.jsonl'
+    assert not events.exists() or '"mcp.' not in events.read_text()
+    from test_plan import proposal
+    from wuwei import plan
+    goals(configured)
+    text = plan.propose(proposal(), configured).read_text()
+    assert any(line.startswith('- mcp:') and 'not checked' in line for line in text.splitlines())
+    assert not [row for row in status.attention(workspace.day_dir(configured))
+                if str(row.get('source', '')).startswith('mcp.')]
 
 
 def test_adapter_failed_run_restores_only_its_snapshot(source, monkeypatch):

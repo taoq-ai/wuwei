@@ -10,8 +10,8 @@ from wuwei.exits import CLEAN, UNRUN
 from wuwei.signal import SILENT, classify
 
 
-SHADOW_NUDGE = ('Shadow mode has run {days} days. To enforce the guards, set '
-                'guards.mode = "enforce" in config.toml; to keep shadowing, raise guards.shadow_days. '
+SHADOW_NUDGE = ('Observe posture has run {days} days. To enforce, set '
+                'security.posture = "guarded" in config.toml; to keep observing, raise guards.shadow_days. '
                 'bin/wuwei shadow report lists what would have been refused.')
 
 
@@ -117,6 +117,8 @@ def scan(directory, classified_state=None):
                     key = (kind, payload.get('pr'))
                 elif kind in ('decision.one_way', 'draft.created', 'remote.refused') and isinstance(payload, dict):
                     key = (kind, payload.get('id', number))
+                elif kind == 'guard.would_refuse' and isinstance(payload, dict):
+                    key = (kind, payload.get('guard'))
                 else:
                     key = (kind, number)
                 if tier == 'silent':
@@ -126,6 +128,9 @@ def scan(directory, classified_state=None):
                     if kind == 'pr.changed' and isinstance(payload, dict):
                         reason = payload.get('summary') or (
                             f'{payload.get("pr")} changed: {", ".join(map(str, payload.get("fields") or []))}')
+                    if kind == 'guard.would_refuse' and isinstance(payload, dict):
+                        reason = (f'{payload.get("guard")}: {payload.get("reason")} '
+                                  f'(warn: security.areas.{payload.get("area")})')
                     current[key] = {'tier': tier, 'source': kind, 'lane': lane, 'reason': reason}
     # Live health, not the last sweep's count: a partial sweep event must not hide a dead watch.
     current = {key: value for key, value in current.items() if key[:2] != ('watch: sweep', 'watch')}
@@ -177,8 +182,9 @@ def scan(directory, classified_state=None):
                               f'{row["idle_seconds"]}s; take over from the live session with: '
                               'wuwei plan session <session id> --take-over'}
     if (directory.parents[1] / 'config.toml').is_file():
-        guards = workspace.load_config(directory.parents[2])['guards']
-        if guards['mode'] == 'shadow' and guards['shadow_since']:
+        config = workspace.load_config(directory.parents[2])
+        guards = config['guards']
+        if workspace.posture(config)[0] == 'observe' and guards['shadow_since']:
             days = (today - date.fromisoformat(guards['shadow_since'])).days
             if days >= guards['shadow_days']:
                 current[('guards.shadow',)] = {'tier': 'nudge', 'source': 'guards.shadow', 'lane': 'Work',
@@ -218,7 +224,7 @@ def snapshot(directory):
             result[destination] = min(parsed, key=lambda row: row[0])[1]
     config_path = directory.parents[1] / 'config.toml'
     config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
-    result['shadow'] = config is not None and config['guards']['mode'] == 'shadow'
+    result['posture'] = workspace.posture(config)[0] if config is not None else None
     if result['listen'] == 'off' and (config is None or config['adapters']['inbound'] == 'none'):
         result['listen'] = 'none'
     if config is not None and config['adapters']['calendar'] != 'none':
@@ -266,8 +272,8 @@ def run(args):
 
 def line(data):
     parts = [f'WUWEI pages {data["pages"]}', f'nudges {data["nudges"]}']
-    if data.get('shadow'):
-        parts.append('shadow')
+    if data.get('posture') not in (None, 'guarded'):
+        parts.append(data['posture'])
     if data.get('loops'):
         parts.append(f'loops {data["loops"]}')
     if not data['gate_approved']:

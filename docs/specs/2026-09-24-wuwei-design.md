@@ -963,6 +963,28 @@ Guard scope. The plugin is installed for the owner's whole machine, so:
 - guards that concern roles (brief, retro, verdicts) apply to WUWEI role seats only, not to
   other subagents.
 
+Security posture (owner, 2026-10-03, #331). What the cooperative guards refuse is
+configurable by where the plugin runs: `security.posture` is `observe`, `guarded` (default)
+or `strict`, and `[security.areas]` overrides one area with `off`, `warn` or `block`.
+`guards.mode = "shadow"` (#308) is deprecated and means `observe`.
+
+| Area | What it covers | observe | guarded (default) | strict |
+| --- | --- | --- | --- | --- |
+| `records` | State, events, config, generated instructions, verdicts, decisions, traces, session records (`protect_state`, `decision`, `verdict`, `traces`, `lifecycle`) | block | block | block |
+| `publish` | Commit and push rules, the owned-PR anchor and day close (`commit_push`, `stop`); deploys and PR actions (`deploy`, `pr`) | warn | block | block |
+| `integrity` | The plugin integrity gate (`integrity`) | warn | block | block |
+| `mcp` | The MCP registry launch gate | warn | warn | block |
+| `outward` | The outward text lint (`outward`) | warn | warn | block |
+| `seats` | The seat launch contract: logged brief, capacity, memory, clean worktree (`agent_launch`) | warn | warn | block |
+
+Floors no posture and no override lowers:
+
+- `records` always blocks. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
+- Owner-only actions always block: the deployment ban (`deploy`), the merge policy, approvals and owner markers (`pr`), and approve-tier messages and canary or honeytoken egress (the outward approval tier). Under `observe`, `publish` relaxes only the commit and push rules and the PR anchor.
+- MCP: under `guarded` and `strict`, a finding at a severity in `scanner.mcp.block` (default `critical`) or a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. `strict` also blocks every high finding and every unmeasured server.
+
+The posture changes what the cooperative guards refuse, never the hard boundaries above.
+
 ## 10. Testing
 
 - Guards: table tests for exits 0, 1 and 2, including every bypass form in section 4.5,

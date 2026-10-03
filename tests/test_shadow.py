@@ -83,32 +83,41 @@ def test_shadow_report_command(root, capsys, tmp_path_factory, monkeypatch):
     assert main(['shadow', 'report']) == 2
 
 
-@pytest.mark.parametrize('config,shadow,nudged', [
-    ('', False, False),
-    ('mode = "enforce"\nshadow_since = "2026-09-22"', False, False),
-    ('mode = "shadow"', True, False),
-    ('mode = "shadow"\nshadow_since = "2026-09-23"', True, False),
-    ('mode = "shadow"\nshadow_since = "2026-09-22"', True, True),
-    ('mode = "shadow"\nshadow_days = 3\nshadow_since = "2026-09-25"', True, True),
+OBSERVE = '[security]\nposture = "observe"\n'
+
+
+@pytest.mark.parametrize('config,posture,nudged', [
+    ('', 'guarded', False),
+    ('[security]\nposture = "strict"\n[guards]\nshadow_since = "2026-09-22"', 'strict', False),
+    ('[guards]\nmode = "enforce"\nshadow_since = "2026-09-22"', 'guarded', False),
+    (OBSERVE, 'observe', False),
+    (OBSERVE + '[guards]\nshadow_since = "2026-09-23"', 'observe', False),
+    (OBSERVE + '[guards]\nshadow_since = "2026-09-22"', 'observe', True),
+    (OBSERVE + '[guards]\nshadow_days = 3\nshadow_since = "2026-09-25"', 'observe', True),
+    # The deprecated #308 form is observe.
+    ('[guards]\nmode = "shadow"\nshadow_since = "2026-09-22"', 'observe', True),
 ])
-def test_status_shows_shadow_and_nudges_once(root, config, shadow, nudged):
+def test_status_shows_posture_and_nudges_once(root, config, posture, nudged):
     from wuwei.commands import status
-    (root / '.wuwei/config.toml').write_text(f'[guards]\n{config}\n')
+    (root / '.wuwei/config.toml').write_text(f'{config}\n')
     state._write_state(lambda data: None, root, reserved=False)
     directory = workspace.day_dir(root)
     data = status.snapshot(directory)
-    assert data['shadow'] is shadow
-    assert (' | shadow' in status.line(data)) is shadow
+    assert data['posture'] == posture
+    for name in ('observe', 'strict'):
+        assert (f' | {name}' in status.line(data)) is (name == posture)
+    assert 'guarded' not in status.line(data)
     rows = [row for row in status.attention(directory) if row['source'] == 'guards.shadow']
     assert data['nudges'] == len(rows) == int(nudged)
     if nudged:
         assert rows[0]['tier'] == 'nudge'
-        assert 'guards.mode = "enforce"' in rows[0]['reason'] and 'guards.shadow_days' in rows[0]['reason']
+        assert 'security.posture = "guarded"' in rows[0]['reason'] and 'guards.shadow_days' in rows[0]['reason']
 
 
-@pytest.mark.parametrize('mode', ['enforce', 'shadow'])
-def test_session_start_says_shadow_mode_is_on(root, mode):
+@pytest.mark.parametrize('config,on', [('', False), ('[guards]\nmode = "shadow"\n', True), (OBSERVE, True),
+                                       ('[security]\nposture = "strict"\n', False)])
+def test_session_start_says_observe_is_on(root, config, on):
     from wuwei.guards import lifecycle
-    (root / '.wuwei/config.toml').write_text(f'[guards]\nmode = "{mode}"\n')
+    (root / '.wuwei/config.toml').write_text(config)
     message = lifecycle.session_start({'cwd': str(root)})[1]
-    assert ('Shadow mode is on' in message and 'bin/wuwei shadow report' in message) is (mode == 'shadow')
+    assert ('Observe posture is on' in message and 'bin/wuwei shadow report' in message) is on

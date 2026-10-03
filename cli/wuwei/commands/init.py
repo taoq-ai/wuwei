@@ -28,8 +28,9 @@ def register(subparsers):
     parser.add_argument("path", nargs="?", default=".")
     parser.add_argument("--upgrade", action="store_true", help="upgrade an existing workspace")
     parser.add_argument("--dry-run", action="store_true", help="show the upgrade plan")
-    parser.add_argument("--shadow", action="store_true",
-                        help="start with the guards in shadow mode: record what they would refuse")
+    parser.add_argument("--posture", choices=tuple(workspace.POSTURES),
+                        help="security posture for a new workspace: observe, guarded or strict")
+    parser.add_argument("--shadow", action="store_true", help="same as --posture observe")
     parser.add_argument("--menu-bar", action="store_true", help="show SwiftBar setup instructions")
     parser.add_argument("--honeytoken-path", default=security.DEFAULT_HONEYTOKEN_PATH,
                         help="decoy credentials path relative to .wuwei")
@@ -37,8 +38,10 @@ def register(subparsers):
 
 
 def run(args):
-    if getattr(args, 'shadow', False) and (getattr(args, 'upgrade', False) or getattr(args, 'menu_bar', False)):
-        raise ValueError('--shadow applies to a new workspace; set guards.mode in config.toml')
+    posture = 'observe' if getattr(args, 'shadow', False) else getattr(args, 'posture', None)
+    if posture and (getattr(args, 'upgrade', False) or getattr(args, 'menu_bar', False)):
+        flag = '--shadow' if getattr(args, 'shadow', False) else '--posture'
+        raise ValueError(f'{flag} applies to a new workspace; set security.posture in config.toml')
     if getattr(args, 'menu_bar', False):
         if getattr(args, 'upgrade', False) or getattr(args, 'dry_run', False):
             raise ValueError('--menu-bar cannot be combined with --upgrade or --dry-run')
@@ -84,12 +87,14 @@ def run(args):
         write_workspace(template.parents[1], Path(staging))
         executable = Path(__file__).resolve().parents[3] / "bin/wuwei"
         (Path(staging) / "executable").write_text(str(executable) + "\n")
-        if getattr(args, 'shadow', False):
+        if posture:
             config = Path(staging) / 'config.toml'
-            config.write_text(config.read_text(encoding='utf-8').replace(
-                'mode = "enforce"', 'mode = "shadow"', 1).replace(
-                'shadow_since = ""', f'shadow_since = "{workspace.now().date().isoformat()}"', 1),
-                encoding='utf-8')
+            text = config.read_text(encoding='utf-8').replace(
+                'posture = "guarded"', f'posture = "{posture}"', 1)
+            if posture == 'observe':
+                text = text.replace(
+                    'shadow_since = ""', f'shadow_since = "{workspace.now().date().isoformat()}"', 1)
+            config.write_text(text, encoding='utf-8')
         from wuwei import integrity
         integrity.initialize(Path(staging))
         settings.parent.mkdir(exist_ok=True)

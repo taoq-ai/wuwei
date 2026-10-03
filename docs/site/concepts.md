@@ -14,13 +14,13 @@ The shipped charters define planner, lead, builder, shepherd, steward, and four 
 
 Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse relevant unsafe actions inside a WUWEI workspace or configured repository. Outside that scope they return clean. The three outcomes are 0 clean, 1 findings and 2 could not run. A relevant parse or measurement failure returns 2 with a reason. The CLI also records traces and events. See [security](security.html) for the trust boundary.
 
-## Shadow mode
+## Security posture
 
-With `guards.mode = "shadow"` every guard still runs, but a refusal is recorded as a `guard.would_refuse` event and the call goes through. Use it for the first week on a project, to see what the guards would stop in your own habits before they stop anything.
+`security.posture` sets what warns and what blocks per area: `observe`, `guarded` (the default) or `strict`, with per-area overrides under `[security.areas]`. A `warn` level still runs the guard, records the refusal as a `guard.would_refuse` event and lets the call through. Every enforced refusal ends with a `posture:` line naming the area, its level and the key that changes it. See [security posture](security.html#security-posture) for the table.
 
-Some refusals never shadow, whatever the mode: writes to state, events, config and generated instructions, owner-only actions, the integrity gate, the deployment ban, canary and honeytoken egress (`outward`) and the merge policy and owner disposition markers (`pr`). Shadowing those would corrupt the records the report is built from or let a seat leak a decoy or act as the owner. The heartbeat probe session is never shadowed either.
+`observe` is the old shadow mode (`guards.mode = "shadow"` still means it). Use it for the first week on a project, to see what the guards would stop in your own habits before they stop anything. Some refusals never relax, in any posture: writes to state, events, config and generated instructions, verdicts and decisions (`records`), and owner-only actions: the deployment ban, the merge policy, approvals and owner markers, and approve-tier messages and canary or honeytoken egress. Relaxing those would corrupt the records the report is built from or let a seat act as the owner. The heartbeat probe session is never relaxed either.
 
-`bin/wuwei shadow report` and the day report group the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows `shadow`, each session starts with a line saying so, and after `guards.shadow_days` one nudge asks you to switch to enforce or extend.
+`bin/wuwei shadow report` and the day report group the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows the posture when it is not `guarded`, each `observe` session starts with a line saying so, and after `guards.shadow_days` one nudge asks you to switch to `guarded` or extend. Under `guarded` or `strict` a warning is a nudge, one per guard per day.
 
 ## Seat launch contract
 

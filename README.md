@@ -103,7 +103,7 @@ the host, calibrates the repositories and asks the owner interview. It shows the
 `config check` and `mcp check` and prints what is still owed, each with its exact command. A
 second run proposes nothing new ([calibration](docs/site/configuration.md#calibration)).
 
-`--shadow` starts the guards in shadow mode for your first week: they record what they would refuse and let the call through, and `bin/wuwei shadow report` lists it. See [shadow mode](docs/site/concepts.md#shadow-mode).
+`--shadow` starts the guards in the observe posture for your first week: they record what they would refuse and let the call through, and `bin/wuwei shadow report` lists it. See [security posture](docs/site/concepts.md#security-posture).
 
 `init` ends by checking the installation. An intact signed release prints `plugin integrity: clean` and needs no reconfirmation. It creates `.wuwei/` and adds workspace guard denials to `.claude/settings.json`. From another project, use the installed plugin's `bin/wuwei` path. Use `bin/wuwei` or `python3 -P -m wuwei` for CLI calls; plain `python3 -m wuwei` can import a same-named directory in the current working directory.
 

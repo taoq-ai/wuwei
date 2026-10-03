@@ -223,8 +223,11 @@ autostart = false # Start a headless shepherd seat for mechanical PR actions whe
 
 [security]
 required = true
+posture = "guarded" # observe, guarded or strict: what warns and what blocks; see the posture table in the security docs.
+# Per-area overrides of the posture: off, warn or block. records always blocks.
+# [security.areas]
+# mcp = "off" # integrity, mcp, publish, records, outward, seats
 
 [guards]
-mode = "enforce" # enforce, or shadow: guards record what they would refuse; see bin/wuwei shadow report.
-shadow_days = 7 # Days in shadow before one nudge asks to switch to enforce.
-shadow_since = "" # YYYY-MM-DD the shadow week started; wuwei init --shadow sets it.
+shadow_days = 7 # Days in observe before one nudge asks to switch to guarded.
+shadow_since = "" # YYYY-MM-DD observe started; wuwei init --posture observe sets it.
