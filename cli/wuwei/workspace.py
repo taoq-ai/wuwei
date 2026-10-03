@@ -170,6 +170,9 @@ SCHEMA = {
     },
     "chat": {"identity": (str, "connector", ("connector", "custom_app"))},
     "control_plane": {"content": (str, "summary", ("summary", "none")), "owner": (str, "")},
+    "spec": {"engine": (str, "speckit", ("speckit", "superpowers", "openspec", "none")),
+             "mode": (str, "strict", ("strict", "advisory", "off")),
+             "skip_tiers": [(str, None, ("light", "standard", "full")), ["light"]]},
     "adapters": {"tracker": (str, "none"), "chat": (str, "none"),
                  "review_bot": (str, "none"), "runtime": (str, "claude"),
                  "scanner": (str, "none"), "code_host": (str, "github"),
@@ -506,7 +509,7 @@ _CONFIGS = {}
 # copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
-CONFIG_CACHE_VERSION = 1  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 2  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor, why and the board stay read-only.

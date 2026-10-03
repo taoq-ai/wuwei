@@ -231,6 +231,14 @@ autostart = false # Start a headless shepherd seat for mechanical PR actions whe
 # An unmapped email is resolved through the code host; one it cannot resolve is skipped.
 # "reviewer@example.test" = {login = "reviewer", mention = "UREVIEWER"}
 
+[spec]
+# The spec engine each non-trivial item is specified with before it is built: speckit, superpowers, openspec or none.
+engine = "speckit"
+# strict: the hooks refuse source edits and the gates until the engine's steps are done. advisory: warn once per item and day. off: no check.
+mode = "strict"
+# Lead tiers whose items need no spec. The owner overrides one item with wuwei plan set <item> spec=required or spec=skipped --reason <why>.
+skip_tiers = ["light"]
+
 [security]
 # observe: guards record what they would refuse and let the call through; records and owner-only actions still refuse. setup --shadow starts here.
 # guarded: the default. Records, publishing and integrity block; MCP findings, outward text and seat launches warn.

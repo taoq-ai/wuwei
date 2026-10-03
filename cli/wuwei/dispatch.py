@@ -169,9 +169,10 @@ def next_step(item, root=None):
         if not any(seat['item'] == item and seat['role'] == 'builder'
                    and seat['status'] == 'stopped' for seat in brief.seats(data).values()):
             raise Refused(f'builder must stand down before gates; wait for the {item} builder to stop, then run bin/wuwei dispatch next {item}')
+    config = workspace.load_config(root)
     if phase == 'gate' and not row['gates'] and all(
             _record(data, item, role, 'initial') is None for role in ROLES):
-        record = tier(root, workspace.load_config(root), row)
+        record = tier(root, config, row)
 
         def update(fresh):
             if _item(fresh, item)['gates']:
@@ -180,6 +181,13 @@ def next_step(item, root=None):
         state._write_state(update, root, reserved=False, kind='gate.tiered',
                            payload={'item': item, **record})
         row = data['items'][item] = {**row, 'gates': record}
+    if phase == 'gate':
+        # Design 5.10 backstop: no gates for an item reached by a manual transition with a gap.
+        from wuwei import specmode
+        code, reason = specmode.check(root, config, item, row, (root / row['worktree']).resolve()
+                                      if row.get('worktree') else None, build=True, where='dispatch')
+        if code:
+            raise Refused(reason)
     gates = gate_set(row)
     if phase == 'fix':
         if any(_record(data, item, role, 'delta') is not None for role in gates):

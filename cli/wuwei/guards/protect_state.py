@@ -80,6 +80,9 @@ _OWNER_ACTIONS = {
                         'runs bin/wuwei config set <key> <value> in a host terminal.'),
     ('config', 'add-repo'): ("Config edits are the owner's, outside agent tools: propose the repository, and the "
                              'owner runs bin/wuwei config add-repo --name <owner/repo> --path <dir> --branch <branch> in a host terminal.'),
+    # Only the owner lowers the spec requirement for one item (5.10); other plan verbs are seat commands.
+    ('plan', 'set'): ('Spec overrides are an owner action, outside agent tools: the owner runs bin/wuwei plan '
+                      'set <item> spec=skipped --reason <why> in a host terminal.'),
     # An empty verb is the whole group: setup's flags take values, which _pair reads as a verb.
     ('setup', ''): ('Setup writes config.toml, an owner action outside agent tools: the owner runs bin/wuwei '
                     'setup in a host terminal.'),

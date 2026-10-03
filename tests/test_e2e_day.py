@@ -102,10 +102,26 @@ def test_scripted_day(day):
     assert kinds.index('plan.approved') < kinds.index('seat launched') < kinds.index('gate.received') < kinds.index('pr.raised')
     assert kinds.count('seat.usage') == 2
     assert kinds.count('retro.captured') == 7
+    # Design 5.10: one refused source write before the spec, then one spec.step per step.
+    refusals = [row['payload']['reason'] for row in events if row['kind'] == 'hook.refusal']
+    assert len([reason for reason in refusals if 'specify first: /speckit.specify' in reason]) == 1
+    assert sorted(row['payload']['step'] for row in events if row['kind'] == 'spec.step') == sorted([
+        'specify', 'clarify', 'plan', 'tasks', 'analyze', 'checklist', 'implement'])
     assert 'seat stop unmatched' not in kinds
     assert json.loads(day.run('metrics'))['fix_rounds_per_item'] == {'A': 1}
     assert not [call for call in day.calls if call[:2] == ('state', 'transition') or call[0] == 'runtime']
     assert time.monotonic() - started < 20
+
+
+def test_light_item_skips_spec(day):
+    day.runtime.spec = False
+    day.plan(tier='light')
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    day.build('builder-initial')
+    assert day.data['items']['A']['phase'] == 'gate'
+    kinds = [(row['kind'], row['payload']) for row in day.events if row['kind'].startswith('spec.')]
+    assert kinds == [('spec.skipped', {'item': 'A', 'reason': 'lead tier light'})]
 
 
 def test_solo_daily_path(tmp_path, monkeypatch):

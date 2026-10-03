@@ -41,6 +41,8 @@ Write the builder brief with its worktree using `wuwei brief builder <item> <nam
 - `park`: show the reason and decision path and stop this item's loop.
 - `done`: the checks passed and the item moved to `gate` (or to `delta` after a fix build); proceed to the item gate flow.
 
+Specification mode (`[spec]`): a gap in the configured engine's steps comes back as a failing check named `spec` and goes to the builder like any failing check; `wuwei dispatch next` refuses the gates of an item with a gap. Only the owner skips one item's spec, in a host terminal: `wuwei plan set <item> spec=skipped --reason <why>`.
+
 After each Agent or measured check returns, call `wuwei build next <item>` again. Repeating next without a state change returns the same action; do not execute it twice. Calling next while the seat is running exits 2. SubagentStop can reuse fast checks recorded by the builder only for that iteration, worktree and current HEAD, with a clean tree at measurement and stop; otherwise next returns check. Do not poll Claude through the CLI or use the old blocking `wuwei build <item>` form. For Codex, the CLI can execute the same loop with `wuwei build <item> <brief> <worktree>` using its polling adapter. A new logged brief after completion starts the next build or fix round; resume a parked item's phase before restarting it.
 
 The default `host.seats` is four, allowing the default builder cap of one plus three parallel gate seats. Increase `host.seats` when increasing cap. CAP counts builders only; gate launches still obey the total host ceiling and memory floor.

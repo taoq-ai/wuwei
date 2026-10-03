@@ -16,6 +16,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[outward]`, `[outward.max_length]`, `[outbound]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
 | `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]` | [Decisions](#decisions); cruise answering is not built |
 | `[calibrate]` | [Calibration](#calibration) |
+| `[spec]` | [Specification mode](#specification-mode) |
 
 ## Workspace and repositories
 
@@ -77,6 +78,28 @@ removes it. While `config.toml` does not load, every tool call in the workspace 
 with that error except `ToolSearch` and `Read`, `Grep` and `Glob` of `.wuwei/config.toml`
 and `.wuwei/charters`, so the session can show you the line; the Stop hook prints the error
 and lets the turn end.
+
+## Specification mode
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `spec.engine` | `"speckit"` | The spec engine every non-trivial item is specified with before it is built: `speckit`, `superpowers`, `openspec`, or `none`, which checks nothing. |
+| `spec.mode` | `"strict"` | `strict` refuses source edits in an item worktree while a step before implementation is missing, keeps the item from the gates until every step is done (a failing check named `spec` in the build loop; `wuwei dispatch next` refuses too) and refuses a builder stop whose last message does not name its artifacts. `advisory` lets each call through and records the first gap per item and day as one `spec.warned` event, listed in the report. `off` checks nothing. Under `security.posture = "observe"`, `strict` runs as `advisory`. |
+| `spec.skip_tiers` | `["light"]` | Lead tiers (`light`, `standard`, `full`) whose items need no spec. The skip holds only while the diff agrees: at the move to the gates, a computed tier outside this list needs the spec after all. |
+
+Steps per engine, each run by the builder with the engine's own command, read from the artifacts in the item's worktree (the item id lowercased):
+
+- spec-kit (`specs/<item>` or `specs/*-<item>`): `specify` (`spec.md`), `clarify` (a `## Clarifications` section), `plan` (`plan.md`), `tasks` (`tasks.md`), `analyze` (`analysis.md` with no CRITICAL or HIGH finding row), `checklist` (every item checked in `checklists/*.md`), `implement` (every task checked).
+- superpowers: `brainstorming` (`docs/superpowers/specs/<date>-<item>-design.md`), `writing-plans` (`docs/superpowers/plans/<date>-<item>.md`), `executing-plans` (every step in that plan checked), `verification-before-completion` (the fast checks and the gates).
+- OpenSpec (`openspec/changes/<item>`, later `openspec/changes/archive/*-<item>`): `proposal` (`proposal.md`), `specs` (`specs/<capability>/spec.md`), `tasks` (`tasks.md`), `validate` (`validation.json` from `openspec validate <item> --strict --json`, every entry valid), `apply` (every task checked), `archive` (before the gates).
+
+You skip or require the spec for one item in a host terminal: `bin/wuwei plan set <item> spec=skipped --reason <why>` or `bin/wuwei plan set <item> spec=required`. `wuwei doctor` fails a repository where the engine is absent and prints its install line:
+
+- spec-kit: `uvx --from git+https://github.com/github/spec-kit.git specify init --here --ai claude`
+- superpowers: `/plugin marketplace add obra/superpowers-marketplace`, then `/plugin install superpowers@superpowers-marketplace`
+- OpenSpec: `npm install -g @fission-ai/openspec`, then `openspec init`
+
+`wuwei setup` offers the engine it finds first (`.specify/`, `openspec/`, or a `superpowers@` entry in `scanner.mcp.plugins_file`), spec-kit when it finds none.
 
 ## Host, build and memory
 

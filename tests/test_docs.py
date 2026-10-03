@@ -27,7 +27,7 @@ GLOSSARY = (('Seat', r'seats?'), ('Gate', r'gates?'), ('Sentinel', r'sentinels?'
             ('Carry', r'carr(?:y|ies|ied|ying)'), ('Nudge', r'nudges?'), ('Page', r'pages?'),
             ('Digest', r'digests?'), ('Unmeasured', r'unmeasured'), ('Mandate', r'mandates?'),
             ('Trust surface', r'trust surfaces?'), ('Host terminal', r'host terminals?'),
-            ('Humanizer', r'humanizer'))
+            ('Humanizer', r'humanizer'), ('Spec engine', r'spec engines?'), ('Strict mode', r'strict mode'))
 
 
 def _prose(text):
@@ -41,7 +41,9 @@ def test_interview_options_lead_with_plain_words():
     words = [pattern for _, pattern in GLOSSARY] + [re.escape(word) for word in (
         'floor', 'control plane', 'control-plane', 'deploy.deny', 'one-way')]
     for row in interview.QUESTIONS:
-        for text in (row['header'], row['question'], *(d for _, d, _ in row['choices'])):
+        # Design 5.10 fixes the spec question's wording, glossary term included.
+        question = () if row['id'] == 'spec' else (row['question'],)
+        for text in (row['header'], *question, *(d for _, d, _ in row['choices'])):
             lead = text.split('(', 1)[0]
             for word in words:
                 assert not re.search(rf'\b{word}\b', lead, re.I), (row['id'], word, text)
@@ -340,7 +342,8 @@ def test_every_template_config_key_is_documented():
 def test_template_security_starts_with_posture_and_has_no_guards_mode():
     template = (ROOT / 'templates/workspace/config.toml').read_text()
     assert 'guards.mode' not in template
-    assert not re.search(r'^\s*mode\s*=', template, re.MULTILINE)
+    # [spec] has its own mode key (5.10); no other table may.
+    assert not re.search(r'^\s*mode\s*=', template.replace('\nmode = "strict"\n', '\n', 1), re.MULTILINE)
     assert 'mode' not in tomllib.loads(template)['guards']
     block = template.split('\n[security]\n', 1)[1].splitlines()
     first = next(i for i, line in enumerate(block) if line.strip() and not line.startswith('#'))
@@ -1111,3 +1114,13 @@ def test_pages_address_the_reader():
             text = re.sub(r'\n## Glossary\n.*?(?=\n## )', '\n', text, flags=re.S)
         found += [f'{path.name}: {line}' for line in text.splitlines() if re.search(r'\bthe owner\b', line, re.I)]
     assert not found, f'{len(found)} lines:\n' + '\n'.join(found)
+
+
+def test_charters_carry_the_spec_mode():
+    builder = (ROOT / 'charters/builder.md').read_text()
+    assert 'Spec:' in builder and 'plan set' in builder
+    assert 'skip_tiers' in (ROOT / 'charters/lead.md').read_text()
+    for path in (ROOT / 'charters/planner.md', ROOT / 'skills/wuwei-plan/SKILL.md'):
+        assert 'spec=skipped' in path.read_text(), path
+    agent = (SITE / 'agent.md').read_text()
+    assert 'specify first' in agent and 'spec engine' in (SITE / 'daily.md').read_text().lower()

@@ -114,6 +114,9 @@ def build(root=None):
     shadow = shadow_lines([day])
     if shadow:
         lines += ['', '## Shadow', *shadow]
+    warned = [row['payload'] for row in watch.records(day / 'events.jsonl') if row['kind'] == 'spec.warned']
+    if warned:
+        lines += ['', '## Spec warnings', *(f"- {row['item']}: {row['step']} ({row['where']})" for row in warned)]
     if level == 'brief':
         return '\n'.join([*lines, ''])
     quality = measured['quality_by_band']

@@ -104,6 +104,16 @@ Owner commands such as `bin/wuwei config set` refuse to run anywhere else.
 The writing checklist seats apply to text for a person, from the humanizer skill.
 A lint checks outward text for its mechanical tells before it is drafted or sent.
 
+### Spec engine
+
+The tool each non-trivial item is specified with before it is built: spec-kit (default), superpowers or OpenSpec.
+`[spec] engine` picks it; the hooks keep its steps in order in the item's worktree.
+
+### Strict mode
+
+`[spec] mode = "strict"` (default): source edits and the gates wait until the engine's steps are done.
+`advisory` warns once per item and day instead; `off` checks nothing.
+
 ## Roles
 
 The shipped charters define planner, lead, builder, shepherd, steward, and four sentinels: goal, architecture, quality and security. Generated agent files in `agents/` carry the charters and tool allowlists. The planner owns the day, the lead shapes work, builders implement, sentinels check, the shepherd follows pull requests and the steward maintains procedure. `/wuwei plan` runs the day, starting with your morning gate; see the [daily path](daily.md).

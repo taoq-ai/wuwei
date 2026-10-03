@@ -299,6 +299,15 @@ def _workspace(root, config, error, found):
                          'bin/wuwei config promote --measure (times the test runner once and proposes it when it '
                          f"is fast), or bin/wuwei config set repos.{index}.fast_checks '[\"<command>\"]'",
                          apply='config-promote'))
+        from wuwei import specmode
+        engine = config['spec']['engine']
+        found = True if specmode.mode(config) == 'off' else specmode.present(path, engine, config)
+        rows.append(_row('workspace', f'{name} spec', 'ok', specmode.label(config)) if found else
+                    _row('workspace', f'{name} spec', 'fail', f'{engine} not found in {path}',
+                         specmode.INSTALL[engine]) if found is False else
+                    _row('workspace', f'{name} spec', 'unmeasured',
+                         f"{config['scanner']['mcp']['plugins_file']} is unreadable",
+                         f'check scanner.mcp.plugins_file, or run {specmode.INSTALL[engine]}'))
     rows += _calibration(root, config)
     return rows
 

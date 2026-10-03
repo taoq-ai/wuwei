@@ -307,3 +307,9 @@ def test_carried_item_is_skipped(root, capsys, decided_by):
         assert found['command'] != 'wuwei build next A'
     else:
         assert (found['state'], found['command']) == ('build', 'wuwei build next A')
+
+
+def test_orientation_shows_the_spec_engine_and_mode(monkeypatch):
+    monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
+    assert 'Spec: speckit strict' in next_command.orientation(ROW, 'guarded', 'speckit strict').splitlines()
+    assert not any(line.startswith('Spec:') for line in next_command.orientation(ROW, 'guarded').splitlines())

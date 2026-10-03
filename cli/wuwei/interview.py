@@ -203,6 +203,17 @@ QUESTIONS = (
                      'credentials (strict posture).'),
           {'security.posture': 'strict'})),
      'free': None},
+    {'id': 'spec', 'scope': 'workspace', 'header': 'Spec',
+     'question': 'Which spec engine do your repositories use?',
+     'choices': (
+         ('spec-kit', 'Each change gets a spec, a plan, tasks and an analysis before code; the hooks keep '
+          'the steps in order (spec-kit).', {'spec.engine': 'speckit'}),
+         ('superpowers', 'A design and a plan from the superpowers skills before code (superpowers).',
+          {'spec.engine': 'superpowers'}),
+         ('OpenSpec', 'A proposal, specs, tasks and a validation before code (OpenSpec).',
+          {'spec.engine': 'openspec'}),
+         ('None', 'No spec step; the build loop starts at the code.', {'spec.engine': 'none'})),
+     'free': None},
     {'id': 'tracker', 'scope': 'workspace', 'header': 'Tracker', 'question': 'Where does your backlog live?',
      'choices': (
          ('None', 'Discovery reads no tracker backlog.', {'adapters.tracker': 'none'}),
@@ -421,19 +432,22 @@ def _put(picked, row, repo, answer):
         picked[row['id']] = answer
 
 
-def ask(ids, repos):
-    """Ask on this terminal until each answer is valid; a number picks a choice. EOFError propagates."""
+def ask(ids, repos, first=None):
+    """Ask on this terminal until each answer is valid; a number picks a choice. first maps a
+    question id to the choice label listed first (setup's detected spec engine). EOFError propagates."""
     picked = {}
     for row, repo in _selected(ids, repos):
         print(f"\n{row['header']}: {row['question'].format(repo=repo)}")
-        for number, (label, description, _) in enumerate(row['choices'], 1):
+        lead = (first or {}).get(row['id'])
+        choices = sorted(row['choices'], key=lambda choice: choice[0] != lead)
+        for number, (label, description, _) in enumerate(choices, 1):
             print(f'  {number}. {label}: {description}')
         if row['free']:
             print(f"  or type your own: {row['free'][1]}")
         while True:
             reply = input('> ').strip()
-            if reply.isdecimal() and 1 <= int(reply) <= len(row['choices']):
-                reply = row['choices'][int(reply) - 1][0]
+            if reply.isdecimal() and 1 <= int(reply) <= len(choices):
+                reply = choices[int(reply) - 1][0]
             try:
                 effects(row['id'], reply)
                 break

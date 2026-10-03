@@ -240,6 +240,38 @@ def test_subagent_stop_skips_watch_and_memory(tmp_path):
     assert {'wuwei.watch', 'wuwei.memory', 'tempfile'} & set(json.loads(out.read_text())) == set()
 
 
+
+@pytest.mark.parametrize('event, name, target, loaded', [
+    ('PreToolUse', 'bash', None, False), ('PreToolUse', 'write', 'notes.md', False),
+    ('PostToolUse', 'example', None, False), ('PreToolUse', 'write', 'repo/src/app.py', True)])
+def test_spec_helper_loads_only_in_item_worktrees(tmp_path, event, name, target, loaded):
+    # #346: the spec guard reads state and returns before importing wuwei.specmode unless
+    # the path lies in an item's recorded worktree.
+    from fakes.integrity import seed
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('[spec]\nmode = "advisory"\n')
+    seed(tmp_path)
+    day = tmp_path / '.wuwei/days/2026-10-03'
+    day.mkdir(parents=True)
+    (day / 'state.json').write_text(json.dumps({'items': {'A': {
+        'phase': 'implement', 'status': 'running', 'worktree': str(tmp_path / 'repo')}}}))
+    (tmp_path / 'repo/src').mkdir(parents=True)
+    payload = {**json.loads((ROOT / f'tests/payloads/{event}/{name}.json').read_text()), 'cwd': str(tmp_path)}
+    if target:
+        payload['tool_input'] = {'file_path': str(tmp_path / target), 'content': 'x'}
+    if event == 'PostToolUse':
+        payload.update(tool_name='Bash', tool_input={'command': 'true'})
+    out = tmp_path / 'modules.json'
+    script = ('import json, sys\nsys.path.insert(0, sys.argv[1])\n'
+              'from wuwei.__main__ import main\ncode = main(["hook", sys.argv[2]])\n'
+              'open(sys.argv[3], "w").write(json.dumps(sorted(sys.modules)))\nsys.exit(code)\n')
+    result = subprocess.run([sys.executable, '-I', '-P', '-c', script, str(ROOT / 'cli'), event, str(out)],
+                            input=json.dumps(payload), text=True, capture_output=True, cwd=tmp_path,
+                            env={**os.environ, 'WUWEI_WORKSPACE': str(tmp_path),
+                                 'WUWEI_NOW': '2026-10-03T12:00:00+00:00'})
+    assert result.returncode == 0, result.stderr
+    assert ('wuwei.specmode' in json.loads(out.read_text())) is loaded
+
 DENY = {'tomllib', 'hashlib', 'argparse', 'dataclasses', 'inspect', 'typing', 'datetime', 'subprocess'}
 
 
@@ -849,7 +881,9 @@ def seeded_workspace(subprocess_plugin, tmp_path, monkeypatch):
         'default_branch = "main"\nfast_checks = ["unit"]\n'
         'identity = {name = "Builder", email = "builder@example.test"}\n'
         # The running seat keeps every turn dirty, so Stop pays the rotation check and prints nothing.
-        '[sessions]\nrotate_after = { turns = 1 }\n')
+        '[sessions]\nrotate_after = { turns = 1 }\n'
+        # Advisory: the builder stop pays the whole spec check and still ends cleanly.
+        '[spec]\nmode = "advisory"\n')
     for name in ('spine.md', 'index.md'):
         (tmp_path / '.wuwei/memory/notes').mkdir(parents=True, exist_ok=True)
         (tmp_path / '.wuwei/memory' / name).write_text('Memory\n')

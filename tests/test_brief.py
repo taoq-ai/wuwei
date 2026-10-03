@@ -463,3 +463,27 @@ def test_mcp_unmeasured_in_brief_header(day, monkeypatch):
                         'decided': [['aws', '1' * 64]]})
     assert brief(monkeypatch, 'body', 'builder', 'X', 'flagged') == 0
     assert 'MCP unmeasured: aws, remote' in (day[1] / 'briefs/flagged.md').read_text()
+
+
+def spec_line(path):
+    return [line for line in path.read_text().splitlines() if line.startswith('Spec:')]
+
+
+def test_builder_and_gate_briefs_carry_the_spec_line(day, monkeypatch):
+    import shutil
+    from pathlib import Path
+    root, directory, vcs, host = day
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'b1', '--worktree', 'tree') == 0
+    [line] = spec_line(directory / 'briefs/b1.md')
+    assert line.startswith('Spec: speckit strict;') and '/speckit.specify' in line
+    assert 'create-new-feature.sh --json --short-name x' in line and 'specs/x or specs/*-x' in line
+    shutil.copytree(Path(__file__).parent / 'fixtures/spec/speckit/specs', root / 'tree/specs')
+    (root / 'tree/specs/001-a').rename(root / 'tree/specs/001-x')
+    assert brief(monkeypatch, 'body', 'sentinel-arch', 'X', 'g1', '--worktree', 'tree') == 0
+    assert spec_line(directory / 'briefs/g1.md') == ['Spec: speckit artifacts: specs/001-x']
+    state._write_state(lambda data: data['items']['X'].update(tier='light'), root, reserved=False)
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'b2', '--worktree', 'tree') == 0
+    assert spec_line(directory / 'briefs/b2.md') == ['Spec: skipped (lead tier light)']
+    (root / '.wuwei/config.toml').write_text('[spec]\nengine = "none"\n')
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'b3', '--worktree', 'tree') == 0
+    assert spec_line(directory / 'briefs/b3.md') == []

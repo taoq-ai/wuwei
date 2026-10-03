@@ -3,6 +3,7 @@
 from contextlib import redirect_stderr, redirect_stdout
 import io
 import json
+import os
 import shlex
 from pathlib import Path
 import socket
@@ -23,6 +24,7 @@ from wuwei.registry import Result
 
 LAUNCHER = Path(__file__).resolve().parents[2] / 'bin/wuwei'
 RETRO = 'Blocked: none\nGap: none\nChange: none\n'
+SPEC = Path(__file__).resolve().parents[1] / 'fixtures/spec/speckit/specs/001-a'
 
 
 class Runtime:
@@ -30,6 +32,7 @@ class Runtime:
         self.day = day
         self.verdict = 'PASS'
         self.builds = 0
+        self.spec = True  # the builder runs the spec-kit steps (design 5.10)
 
     def dispatch(self, role, brief_path, worktree, write, *, root=None, resume=None):
         day = self.day
@@ -40,8 +43,24 @@ class Runtime:
         if resume:
             tool_input['resume'] = resume
         day.hook('PreToolUse', tool_name='Agent', tool_input=tool_input)
+        message = RETRO
         if role == 'builder':
             self.builds += 1
+            demo = {'tool_name': 'Write', 'tool_input': {'file_path': str(day.repo / 'memory/demo.py')}}
+            if self.spec:
+                message = 'Spec: specs/001-a\n' + RETRO
+            if self.spec and self.builds == 1:
+                assert 'specify first: /speckit.specify' in day.hook('PreToolUse', 2, **demo)
+                for source in sorted(SPEC.rglob('*.md'), key=lambda path: path.name != 'spec.md'):
+                    target = day.repo / 'specs/001-a' / source.relative_to(SPEC)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(source.read_bytes())
+                    day.hook('PostToolUse', tool_name='Write', tool_input={'file_path': str(target)})
+                for argv in (['add', '-A', '--', 'specs'], ['-c', 'user.name=Builder', '-c',
+                             'user.email=builder@example.test', 'commit', '-q', '-m', 'spec', '--', 'specs']):
+                    subprocess.run(['git', '-C', str(day.repo), *argv], env=dict(os.environ),
+                                   capture_output=True, check=True)
+            day.hook('PreToolUse', **demo)
             (day.repo / 'memory/demo.py').write_text(f'VALUE = {self.builds}\n')
             result = git.workspace_commit(day.repo, ['memory/demo.py'])
             assert result.exit == 0, result.reason
@@ -61,9 +80,9 @@ class Runtime:
         # A resumed Agent appends its new turn to the same transcript.
         with transcript.open('a' if resume else 'w') as lines:
             lines.write(json.dumps({'type': 'user', 'message': {'content': prompt}}) + '\n'
-                        + json.dumps({'type': 'assistant', 'message': {'content': RETRO}}) + '\n')
+                        + json.dumps({'type': 'assistant', 'message': {'content': message}}) + '\n')
         day.hook('SubagentStop', agent_type=role, agent_id=path.stem,
-                 agent_transcript_path=str(transcript), last_assistant_message=RETRO)
+                 agent_transcript_path=str(transcript), last_assistant_message=message)
         assert day.data['seats'][path.stem]['status'] == 'stopped'
         return Result(0, {'id': path.stem})
 
@@ -230,10 +249,10 @@ lead_login = "lead"
                    'hook_event_name': event, 'stop_hook_active': False, **fields}
         return self._main(('hook', event), expected, json.dumps(payload), ('hook', event, fields))
 
-    def plan(self, *, agent_surface=False):
+    def plan(self, *, agent_surface=False, tier=None):
         from copy import deepcopy
         candidate = {'id': 'A', 'goal': 'G-1', 'evidence': 'recorded issue A',
-            'scope': 'one value', 'overlap': 'none', 'track': 'SLICE',
+            'scope': 'one value', 'overlap': 'none', 'track': 'SLICE', **({'tier': tier} if tier else {}),
             'flags': {'trust_surface': False, 'boundary_relevant': False, 'agent_surface': agent_surface},
             'score': {'value': 5, 'time_criticality': 3, 'risk_reduction': 2, 'job_size': 2},
             'evidence_lines': {key: 'recorded issue A' for key in

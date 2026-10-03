@@ -63,6 +63,8 @@ def validate(data, events, hooks):
     for kind in ('plan.approved', 'seat launched', 'seat stopped', 'seat.usage',
                  'build.checked', 'retro.captured', 'day.close_requested'):
         require(kind in kinds, f'missing event: {kind}')
+    require(any(e['kind'] == 'spec.skipped' and e['payload'].get('item') == 'A' for e in events),
+            'light item A recorded no spec.skipped')
     if all(k in kinds for k in ('plan.approved', 'seat launched', 'gate.received', 'day.close_requested')):
         require(kinds.index('plan.approved') < kinds.index('seat launched') <
                 kinds.index('gate.received') < kinds.index('day.close_requested'), 'events out of order')
@@ -204,7 +206,8 @@ priority: 1
                 'envelope': {'start': '09:00', 'end': '17:00', 'net_build_hours': 1},
                 'sweep': {'tracker': 'unmeasured: no remote fixture', 'processes': 'fixture only'},
                 'candidates': [{'id': 'A', 'goal': 'G-1', 'evidence': evidence,
-                    'scope': scope, 'overlap': 'none', 'track': 'SLICE',
+                    # A light lead tier: the small diff keeps the spec skipped (design 5.10).
+                    'scope': scope, 'overlap': 'none', 'track': 'SLICE', 'tier': 'light',
                     'flags': {'trust_surface': False, 'boundary_relevant': False, 'agent_surface': False},
                     'score': {'value': 1, 'time_criticality': 1, 'risk_reduction': 1, 'job_size': 1},
                     'evidence_lines': {k: 'headless fixture' for k in

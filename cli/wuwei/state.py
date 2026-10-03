@@ -274,7 +274,7 @@ def _producer_error(parts):
                     'worktree': 'wuwei brief',
                     'pr': 'wuwei pr raise or wuwei pr claim',
                     'goal': 'wuwei plan approve', 'tier': 'wuwei plan approve',
-                    'gates': 'wuwei dispatch next',
+                    'gates': 'wuwei dispatch next', 'spec': 'wuwei plan set',
                     'assumption': 'wuwei decision route --external or wuwei sweep'}.get(
                         parts[2], 'its dedicated command')
     return StateError(f'{".".join(parts)}: reserved; written by {producer}')
