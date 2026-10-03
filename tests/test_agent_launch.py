@@ -556,6 +556,18 @@ def test_mcp_gate_is_its_own_guard_record(launch, monkeypatch):
     assert agent_launch.check_mcp(other) == (0, '')
 
 
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_mcp_gate_off_without_scanner(launch, monkeypatch, posture):
+    # #424: adapters.scanner = "none" turns the registry gate off in every posture.
+    from wuwei import mcp
+    from wuwei.guards import agent_launch
+    (root, _, _, _), payload = launch
+    (root / '.mcp.json').write_text('{"mcpServers": {"docs": {"command": "fake-server"}}}')
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write(f'[security]\nposture = "{posture}"\n')
+    assert agent_launch.check_mcp(payload) == (0, mcp.NO_SCANNER)
+
+
 def test_hook_denies_launch_on_mcp_floor_while_seats_warn(day, monkeypatch, capsys):
     import io
     import sys

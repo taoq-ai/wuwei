@@ -150,7 +150,7 @@ These keys feed the mandate block in every seat prompt. Cruise mode itself, wher
 | `adapters.chat` | `"none"` | Chat implementation: none or slack. With none, the channel-post obligation is not applicable. |
 | `adapters.review_bot` | `"none"` | Review bot: none or greptile. |
 | `adapters.runtime` | `"claude"` | Seat runtime: claude, codex or none. |
-| `adapters.scanner` | `"none"` | Scanner: none or ziran. S4 requires the compatible JSON CLI described below. |
+| `adapters.scanner` | `"none"` | Scanner: none or ziran. S4 requires the compatible JSON CLI described below. `none` turns the MCP registry gate off. |
 | `scanner.severity_threshold` | `"high"` | Blocking threshold: critical, high, medium or low. Trust-boundary findings always block. |
 | `adapters.code_host` | `"github"` | Code host: github or none. |
 | `adapters.vcs` | `"git"` | Version control: git. |
@@ -341,8 +341,13 @@ After the morning gate, sweeps and qualifying seat-free events save new discover
 
 `wuwei init` and `wuwei init --upgrade` discover attached MCP configurations and
 register them through `scanner.mcp`. Set `adapters.scanner = "ziran"` to use ZIRAN
-0.39.0 or newer. Missing tools or the `none` adapter are unmeasured when servers
-are attached. No attached servers is a clean empty registry.
+0.39.0 or newer. `none`, the default, turns the registry gate off: every MCP
+command and the launch gate exit 0, the first check of the day with attached servers
+prints `mcp: not measured (no scanner configured; set adapters.scanner = "ziran" to measure)`, and doctor shows
+the gate ok and WUWEI's own servers as covered by plugin integrity. Nothing checks
+attached servers for tool drift or poisoning then. A configured scanner that is
+missing or the wrong version is a check that could not run (exit 2) and blocks
+launches under `guarded` and `strict`. No attached servers is a clean empty registry.
 WUWEI declares its own read-only board server in the signed
 `.claude-plugin/plugin.json`; the integrity check covers it, so the registry does
 not scan it and `bin/wuwei mcp check` reports it as covered by plugin integrity.

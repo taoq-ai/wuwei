@@ -324,6 +324,12 @@ def test_init_registers_and_reports_poisoning(tmp_path, monkeypatch, upgrade, ca
     if upgrade:
         (root / '.wuwei').mkdir()
         (root / '.wuwei/config.toml').write_text('')
+    load = workspace.load_config
+    def ziran(*args, **kwargs):  # #424: the template scanner is "none"; this test measures.
+        config = load(*args, **kwargs)
+        config['adapters']['scanner'] = 'ziran'
+        return config
+    monkeypatch.setattr(workspace, 'load_config', ziran)
     args = ['init', str(root), *(['--upgrade'] if upgrade else [])]
     assert main(args) == 1
     [[file]] = calls
@@ -790,6 +796,7 @@ def test_cockpit_lookalike_file_stays_unmeasured_and_refused(tmp_path, monkeypat
     plugin = tmp_path / 'plugin'
     plugin.mkdir()
     root = own_workspace(tmp_path, monkeypatch, plugin)
+    no_ziran(root, tmp_path, monkeypatch)
     strict(root)
     monkeypatch.setattr(core(), 'PLUGIN', plugin, raising=False)
     path = (plugin if where == 'install' else root) / '.mcp.json'
@@ -798,8 +805,17 @@ def test_cockpit_lookalike_file_stays_unmeasured_and_refused(tmp_path, monkeypat
     assert core().discover(root, workspace.load_config(root)) == [path]
     assert core().cached(root).exit == 2
     result = core().check(root)
-    assert result.exit == 2 and 'unmeasured' in result.reason
+    assert result.exit == 2 and 'could not run' in result.reason
     assert core().launch(root).exit == 2
+
+
+def no_ziran(root, tmp_path, monkeypatch):
+    """scanner = "ziran" configured but not on PATH: the check could not run (#424)."""
+    empty = tmp_path / 'empty-path'
+    empty.mkdir()
+    monkeypatch.setenv('PATH', str(empty))
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write('[adapters]\nscanner = "ziran"\n')
 
 
 def strict(root):
@@ -852,11 +868,12 @@ def test_inline_plugin_servers_invalid_fail_closed(tmp_path, monkeypatch, server
 def test_cockpit_lookalike_inline_in_another_plugin_is_measured(tmp_path, monkeypatch, server):
     plugin, manifest = inline_plugin(tmp_path, {'cockpit': server}, name='wuwei')
     root = own_workspace(tmp_path, monkeypatch, plugin)
+    no_ziran(root, tmp_path, monkeypatch)
     strict(root)
     assert core().discover(root, workspace.load_config(root)) == [manifest.resolve()]
     assert core().cached(root).exit == 2
     result = core().check(root)
-    assert result.exit == 2 and 'unmeasured' in result.reason
+    assert result.exit == 2 and 'could not run' in result.reason
     assert core().launch(root).exit == 2
     monkeypatch.setattr(core(), 'PLUGIN', plugin.resolve(), raising=False)
     assert core().discover(root, workspace.load_config(root)) == []
@@ -884,6 +901,7 @@ def test_symlinked_signed_manifest_in_another_plugin_is_measured(tmp_path, monke
     (evil / '.claude-plugin').mkdir(parents=True)
     (evil / '.claude-plugin/plugin.json').symlink_to(signed)
     root = own_workspace(tmp_path, monkeypatch, evil)
+    no_ziran(root, tmp_path, monkeypatch)
     strict(root)
     monkeypatch.setattr(core(), 'PLUGIN', plugin.resolve(), raising=False)
     assert core().discover(root, workspace.load_config(root)) == [evil.resolve() / '.claude-plugin/plugin.json']
@@ -902,6 +920,7 @@ def test_only_plugin_manifest_sources_are_expanded(tmp_path, monkeypatch):
     manifest.rename(target)
     manifest.symlink_to(target)
     root = own_workspace(tmp_path, monkeypatch, plugin)
+    (root / '.wuwei/config.toml').write_text('[adapters]\nscanner = "ziran"\n')
     other = inline_plugin(tmp_path / 'p2', {'raw': {'command': '${CLAUDE_PLUGIN_ROOT}/x'}})[1]
     (root / '.mcp.json').symlink_to(other)
     approve(root, 'raw')
@@ -1686,3 +1705,96 @@ def test_mcp_decide_workspace_from_outside(configured, tmp_path_factory, monkeyp
     monkeypatch.setattr(integrity, '_host_confirm', lambda value, prompt: True)
     assert main(['mcp', 'decide', 'D-1', 'proceed']) == 0
     assert 'Outcome: proceed' in (workspace.day_dir(configured) / 'decisions/D-1.md').read_text()
+
+
+def no_scanner(source, monkeypatch, posture='guarded'):
+    """#424: the template default, adapters.scanner = "none", one approved server."""
+    root = source.parent
+    (root / '.wuwei/config.toml').write_text(f'[adapters]\nscanner = "none"\n[security]\nposture = "{posture}"\n')
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T08:00:00+02:00')
+    approve(root, 'docs')
+    return root
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_no_scanner_gate_is_off(source, monkeypatch, posture):
+    root = no_scanner(source, monkeypatch, posture)
+    assert core().cached(root) == registry.Result(0, reason=core().NO_SCANNER)
+    assert core().launch(root).exit == 0
+
+
+def test_no_scanner_check_says_it_once_a_day(source, monkeypatch, capsys):
+    from wuwei.commands import status
+    root = no_scanner(source, monkeypatch)
+    assert core().check(root) == registry.Result(0, reason=core().NO_SCANNER)
+    assert core().check(root) == registry.Result(0, reason='')
+    assert not (root / '.wuwei/ziran/status.json').exists()
+    rows = [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+    assert [row['payload'] for row in rows if row['kind'] == 'mcp.checked'] == [
+        {'exit': 0, 'servers': {}, 'scanner': 'none'}]
+    assert not any(row['kind'] == 'adapter' for row in rows)
+    assert 'unmeasured' not in capsys.readouterr().err
+    assert not [row for row in status.attention(workspace.day_dir(root))
+                if str(row.get('source', '')).startswith('mcp.')]
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-30T08:00:00+02:00')
+    assert core().check(root).reason == core().NO_SCANNER
+
+
+def test_no_scanner_mcp_check_command(source, monkeypatch, capsys):
+    from argparse import Namespace
+    from wuwei.commands import mcp as command
+    root = no_scanner(source, monkeypatch)
+    monkeypatch.chdir(root)
+    assert command.run(Namespace(action='check', words=[], widget=False)) == 0
+    assert capsys.readouterr().err == core().NO_SCANNER + '\n'
+    assert command.run(Namespace(action='check', words=[], widget=False)) == 0
+    assert capsys.readouterr().err == ''
+
+
+@pytest.mark.parametrize('checked_first', [False, True])
+def test_propose_without_scanner_prints_line(source, monkeypatch, capsys, checked_first):
+    from test_plan import proposal
+    from wuwei import plan
+    root = no_scanner(source, monkeypatch)
+    goals(root)
+    if checked_first:  # init or mcp check already said it today
+        core().check(root)
+        capsys.readouterr()
+    text = plan.propose(proposal(), root).read_text()
+    assert '- mcp: ' + core().NO_SCANNER in text.splitlines()
+    assert (core().NO_SCANNER in capsys.readouterr().err) is not checked_first
+
+
+@pytest.mark.parametrize('posture,code', [('guarded', 2), ('strict', 2), ('observe', 0)])
+def test_scanner_cannot_start_blocks_under_guarded(configured, tmp_path, monkeypatch, posture, code):
+    # #424: a configured scanner that cannot start is a check that could not run (#351).
+    empty = tmp_path / 'empty-path'
+    empty.mkdir()
+    monkeypatch.setenv('PATH', str(empty))
+    with (configured / '.wuwei/config.toml').open('a') as config:
+        config.write(f'[security]\nposture = "{posture}"\n')
+    result = core().check(configured)
+    assert result.exit == 2
+    assert result.reason.startswith('MCP registry could not run: ziran watch-registry: unmeasured: FileNotFoundError')
+    data = json.loads((configured / '.wuwei/ziran/status.json').read_text())
+    assert data['exit'] == 2 and data['unmeasured'] == []
+    assert core().cached(configured).exit == code
+    assert code == 0 or 'could not run' in core().cached(configured).reason
+    assert core().launch(configured).exit == code
+
+
+def test_scanner_without_data_is_could_not_run(configured, monkeypatch):
+    snapshots = configured / '.wuwei/ziran/snapshots/x'
+    snapshots.mkdir(parents=True)
+    (snapshots / 'docs.json').write_text('baseline')
+    reason = ('ziran watch-registry: unmeasured: ValueError: ZIRAN >= 0.39.0 required; '
+              'version unavailable or unsupported')
+    monkeypatch.setattr(registry, 'load', lambda kind, config: SimpleNamespace(
+        mcp=lambda files, root: registry.Result(2, None, reason)))
+    assert core().check(configured) == registry.Result(2, reason='MCP registry could not run: ' + reason)
+    assert core().cached(configured).exit == 2
+    assert (snapshots / 'docs.json').read_text() == 'baseline'
+    fake_scanner(monkeypatch, 2)  # data present: one server unmeasured, guarded warns
+    assert core().check(configured).exit == 2
+    assert core().unmeasured(configured) == ['docs']
+    assert core().cached(configured).exit == 0

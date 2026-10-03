@@ -657,6 +657,22 @@ def test_pending_mcp_decision_is_owed_by_command(project, host, terminal, monkey
     assert capsys.readouterr().out.splitlines()[-1] == 'Next: bin/wuwei mcp decide D-2 proceed'
 
 
+def test_setup_owes_no_mcp_step_without_scanner(project, host, terminal, capsys):
+    # #424: scanner "none" (the default) turns the registry gate off; nothing is owed.
+    import json
+    from pathlib import Path
+
+    (project / '.mcp.json').write_text('{"mcpServers": {"docs": {"command": "fake-server"}}}')
+    user = Path.home() / '.claude.json'
+    user.parent.mkdir(parents=True, exist_ok=True)
+    data = json.loads(user.read_text()) if user.exists() else {}
+    data.setdefault('projects', {})[str(project.resolve())] = {'enabledMcpjsonServers': ['docs']}
+    user.write_text(json.dumps(data))
+    run_setup(Confirm())
+    last = capsys.readouterr().out.splitlines()[-1]
+    assert 'mcp decide' not in last and 'mcp check' not in last
+
+
 def test_setup_next_names_a_failing_doctor_row(project, host, terminal, capsys):
     terminal.rows = [{'section': 'install', 'name': 'plugin', 'status': 'fail', 'value': 'changed',
                       'fix': 'wuwei integrity reconfirm'}]

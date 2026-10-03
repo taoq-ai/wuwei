@@ -966,3 +966,15 @@ def test_one_gate_question():
     assert '`[]`' in configuration.split('\n## Owner interview\n', 1)[1].split('\n## ', 1)[0]
     prompt = ROOT / 'evals/wuwei-plan-positive-06/prompt.md'
     assert 'once' in prompt.read_text().split('---', 2)[2]
+
+
+def test_scanner_none_turns_the_gate_off():
+    # #424: the docs say what scanner "none" turns off and what still blocks.
+    security = ' '.join((SITE / 'security.md').read_text().split())
+    configuration = ' '.join((SITE / 'configuration.md').read_text().split())
+    assert 'the registry gate is off' in security
+    assert 'mcp: not measured (no scanner configured; set adapters.scanner = "ziran" to measure)' in security
+    assert 'cannot start (not on PATH, wrong version) is a check that could not run' in security
+    assert 'The `none` scanner reports unmeasured rather than clean' not in security
+    assert 'turns the registry gate off' in configuration and 'tool drift or poisoning' in configuration
+    assert 'the `none` adapter are unmeasured' not in configuration

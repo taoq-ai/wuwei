@@ -18,6 +18,7 @@ DEFAULTS = {'project_file': '.mcp.json',
             'user_file': '~/.claude.json'}
 COVERED = 'WUWEI plugin.json servers covered by plugin integrity (signed manifest), not scanned'
 NOT_CHECKED = 'MCP registry: not checked (security.areas.mcp = "off")'
+NO_SCANNER = 'mcp: not measured (no scanner configured; set adapters.scanner = "ziran" to measure)'
 DECIDE = 'bin/wuwei mcp decide'
 NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}')
 # Registry storage beside the per-server report directories.
@@ -325,6 +326,8 @@ def cached(root):
     level = levels['mcp']
     if level == 'off':
         return registry.Result(0, reason=NOT_CHECKED)
+    if config['adapters']['scanner'] == 'none':  # #424: no scanner is a choice, the gate is off.
+        return registry.Result(0, reason=NO_SCANNER)
     block = config['scanner']['mcp']['block']
     if level == 'block':  # strict: the pre-#325 list
         block = sorted({*block, 'critical', 'high', 'unmeasured'})
@@ -494,6 +497,14 @@ def check(root):
         covered, plugins = [], set()
         if _read(root) is None and not discover(root, config, covered):
             return registry.Result(0, reason=COVERED if covered else '')
+        if config['adapters']['scanner'] == 'none':  # #424: servers attached, the gate is off; say so once a day.
+            from wuwei import watch
+            # ponytail: racy marker, two first checks of the day may both print the line.
+            if any(row['kind'] == 'mcp.checked' and row['payload'].get('scanner') == 'none'
+                   for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
+                return registry.Result(0)
+            state.append_event('mcp.checked', {'exit': 0, 'servers': {}, 'scanner': 'none'}, root)
+            return registry.Result(0, reason=NO_SCANNER)
         with _lock(root):
             old = _read(root)
             _recover(root, old)
@@ -531,6 +542,14 @@ def check(root):
                         if (not isinstance(result, registry.Result) or type(result.exit) is not int
                                 or result.exit not in (0, 1, 2)):
                             raise ValueError('invalid scanner result')
+                        if result.exit == 2 and result.data is None:
+                            # #424: the scanner itself could not start (not on PATH, wrong
+                            # version): the check could not run, not one unmeasured server.
+                            record.update(unmeasured=[], decided=[],
+                                          reason=f'MCP registry could not run: {result.reason}')
+                            _write(root, record)
+                            _recover(root, record)
+                            return registry.Result(2, reason=record['reason'])
                         if result.exit != 2:
                             # A partial run (exit 2) stores no report, so its data is ignored.
                             [report] = result.data['reports']
