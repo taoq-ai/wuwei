@@ -145,6 +145,16 @@ def _sections(raw):
     return sections
 
 
+def _without_empty_repos(raw):
+    """Drop a top-level one-line repos = [] that [[repos]] tables make a TOML error (#326)."""
+    sections = _sections(raw)
+    if not any(label == '[[repos]]' for label, _ in sections):
+        return raw
+    sections[0][1][:] = [line for line in sections[0][1]
+                         if not re.fullmatch(r'\s*repos\s*=\s*\[\s*\]\s*(?:#.*)?\n?', line)]
+    return ''.join(''.join(lines) for _, lines in sections)
+
+
 def _migrated_config(raw, template):
     present = tomllib.loads(raw)
     source = _sections(template)
@@ -212,11 +222,12 @@ def upgrade(args):
     try:
         env.load(destination.parent)
         raw = config_path.read_text(encoding='utf-8')
-        tomllib.loads(raw)
-        workspace.load_config(destination.parent)
+        text = _without_empty_repos(raw)
+        tomllib.loads(text)
+        workspace.load_config(destination.parent, raw=text)
         plugin = Path(__file__).resolve().parents[3]
         template = (plugin / 'templates/workspace/config.toml').read_text(encoding='utf-8')
-        migrated, added = _migrated_config(raw, template)
+        migrated, added = _migrated_config(text, template)
         executable = plugin / 'bin/wuwei'
         pointer = pointer_path.read_text(encoding='utf-8') if pointer_path.exists() else ''
         conflicts = []
@@ -226,7 +237,7 @@ def upgrade(args):
             base_version = _charter_version(base.read_text(encoding='utf-8')) if base.is_file() else None
             if local_version != base_version or base_version is None:
                 conflicts.append((local.name, local_version, base_version))
-        security_data = security.load(destination.parent)
+        security_data = security.load(destination.parent, raw=text)
         config_changed = migrated != raw
         pointer_changed = pointer != str(executable) + '\n'
         env_changed = env.initialize(destination, dry_run=args.dry_run)
@@ -244,6 +255,8 @@ def upgrade(args):
             print(f'{prefix} workspace security material and instructions')
         if env_changed:
             print(f'{prefix} private .wuwei/env and Git ignore rule')
+        if text != raw:
+            print(f'{prefix} config.toml: remove repos = []; the [[repos]] tables define the repositories')
         for key in added:
             print(f'{prefix} config.toml: add {key}')
         if pointer_changed:
@@ -253,7 +266,7 @@ def upgrade(args):
                   f'(local {local_version or "unversioned"}, base {base_version or "missing"})')
         if not args.dry_run:
             _status_line(executable)
-        if not added and not pointer_changed and not env_changed:
+        if not added and not pointer_changed and not env_changed and text == raw:
             print('No workspace changes needed')
         return CLEAN if args.dry_run else _finish(destination.parent)
     except workspace.ConfigError as exc:

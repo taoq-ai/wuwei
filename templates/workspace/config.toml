@@ -2,8 +2,7 @@
 # Running build seats and host limits. Integer counts must be positive.
 cap = 1
 profile = "strict" # strict or standard
-repos = []
-# Replace repos = [] with one or more tables like:
+# Add one [[repos]] table per repository, for example:
 # [[repos]]
 # name = "owner/repo" # GitHub repository name used for merge_deploys matching.
 # path = "repos/example" # Relative to the workspace, or an absolute repository path.

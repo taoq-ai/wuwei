@@ -8,9 +8,14 @@ import sys
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
 from wuwei.guards import EVENTS, NEVER_SHADOWED, SELECTION, discover, profile_result
+from wuwei.workspace import ConfigError
 
 # The watch heartbeat's probe calls; their refusals are measurements, not seat refusals.
 HEARTBEAT_SESSION = 'wuwei-heartbeat'
+# #326: events whose answer to a config.toml that does not load is config_failure.
+CONFIG_EVENTS = ('PreToolUse', 'Stop')
+# #326: with a broken config these reads still pass, so the session can show the line.
+REPAIR_READS = {'Read': 'file_path', 'Grep': 'path', 'Glob': 'path'}
 
 
 def register(subparsers):
@@ -42,12 +47,19 @@ def run(args):
             root = workspace.guard_scope(payload)
         if root is not None:
             env.load(root)
+            if args.event in CONFIG_EVENTS:
+                try:
+                    workspace.load_config(root)
+                except OSError:
+                    pass  # A missing or unreadable file stays the guards' to measure, as before.
         token = SELECTION.set((args.event, payload.get('tool_name', '')))
         try:
             guards = discover()
         finally:
             SELECTION.reset(token)
     except BaseException as exc:
+        if isinstance(exc, ConfigError) and args.event in CONFIG_EVENTS:
+            return config_failure(args.event, payload, str(exc))
         reason = (f'{type(exc).__name__}: could not discover guards' if args.event == 'PostToolUse'
                   else f'wuwei hook: {type(exc).__name__}: {exc}')
         return refuse(args.event, reason, malformed=True)
@@ -95,6 +107,40 @@ def run(args):
     if args.event == 'Stop' and context:
         print('\n'.join(context), file=sys.stderr)
     return CLEAN
+
+
+def config_failure(event, payload, reason):
+    """A config.toml that does not load (#326): Stop prints it and lets the turn end;
+    PreToolUse lets ToolSearch and reads of the config and charters through so the session
+    can show the line, and refuses everything else with the error."""
+    if event == 'Stop':
+        print(reason, file=sys.stderr)
+        return CLEAN
+    if repair_read(payload):
+        return CLEAN
+    return refuse(event, reason, cwd=payload.get('cwd'),
+                  record=payload.get('session_id') != HEARTBEAT_SESSION, payload=payload)
+
+
+def repair_read(payload):
+    """ToolSearch, or a Read, Grep or Glob whose path is a workspace's .wuwei/config.toml,
+    its .wuwei/charters directory or a file in it."""
+    tool = payload.get('tool_name')
+    if tool == 'ToolSearch':
+        return True
+    inputs = payload.get('tool_input')
+    if not isinstance(tool, str) or tool not in REPAIR_READS or not isinstance(inputs, dict):
+        return False
+    value = inputs.get(REPAIR_READS[tool])
+    if not isinstance(value, str) or not value:
+        return False
+    from wuwei import workspace
+    try:
+        target = (Path(payload['cwd']) / Path(value).expanduser()).resolve()
+        base = workspace.find_workspace(target, use_environment=False) / '.wuwei'
+    except (OSError, ValueError, RuntimeError):
+        return False
+    return target == base / 'config.toml' or target.is_relative_to(base / 'charters')
 
 
 def shadow(payload, refusals, root):

@@ -40,13 +40,17 @@ def initialize(directory, decoy=DEFAULT_HONEYTOKEN_PATH):
     return data
 
 
-def load(root):
+def load(root, *, raw=None):
+    """Security material, or None when absent and not required; raw stands in for config.toml
+    (init --upgrade checks a repaired config before writing it, #326)."""
     directory = Path(root) / '.wuwei'
     path = directory / 'security.json'
     try:
         if not path.exists() and not path.is_symlink():
             config = directory / 'config.toml'
-            required = config.exists() and tomllib.loads(config.read_text()).get('security', {}).get('required', False)
+            if raw is None:
+                raw = config.read_text() if config.exists() else ''
+            required = tomllib.loads(raw).get('security', {}).get('required', False)
             if not required:
                 return None
         if path.is_symlink():

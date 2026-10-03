@@ -429,11 +429,12 @@ def _default(schema):
 _CONFIGS = {}
 
 
-def load_config(root=None):
-    """Read .wuwei/config.toml, reject invalid fields, and return fresh defaults."""
+def load_config(root=None, *, raw=None):
+    """Read .wuwei/config.toml (or validate raw in its place), reject invalid fields, and
+    return fresh defaults."""
     path = (find_workspace() if root is None else Path(root)) / ".wuwei/config.toml"
     try:
-        raw = path.read_text(encoding="utf-8")
+        raw = path.read_text(encoding="utf-8") if raw is None else raw
         if _CONFIGS.get(path, (None,))[0] == raw:
             return deepcopy(_CONFIGS[path][1])
         parsed = tomllib.loads(raw)
@@ -493,7 +494,12 @@ def load_config(root=None):
         _CONFIGS[path] = (raw, config)
         return deepcopy(config)
     except (ConfigError, tomllib.TOMLDecodeError, UnicodeError) as exc:
-        raise ConfigError(f"config.toml: {exc}") from exc
+        hint = ''
+        if "immutable namespace ('repos',)" in str(exc):  # #326: repos = [] before [[repos]]
+            line = _key_line(raw, ('repos',))
+            if line:
+                hint = f'; repos is assigned on line {line}; delete that line before using [[repos]] tables'
+        raise ConfigError(f"config.toml: {exc}{hint}") from exc
 
 
 def create_worktree(repo, branch, path, root, vcs, identity=None):
