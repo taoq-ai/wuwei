@@ -1,5 +1,6 @@
 """Static shell normalization for guards. Never execute or expand input text."""
 
+from functools import lru_cache
 from itertools import count
 from pathlib import Path, PurePosixPath
 import re
@@ -546,6 +547,11 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
     return []
 
 
+_INTERPRETER = r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua'
+# The inline-code option letters of each interpreter other than python and pypy (-c).
+_SNIPPET = {'node': 'ep', 'perl': 'eE', 'ruby': 'e', 'php': 'r', 'lua': 'e'}
+
+
 def is_opaque(argv: list[str], stdin: bool = True) -> bool:
     """Flag hidden git/gh argv and interpreter snippets for guard refusal.
 
@@ -560,10 +566,9 @@ def is_opaque(argv: list[str], stdin: bool = True) -> bool:
     if any(PurePosixPath(word).name in ('git', 'gh') for word in argv[1:]):
         return True
     program = PurePosixPath(argv[0]).name or argv[0]
-    if not re.fullmatch(r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua', program):
+    if not re.fullmatch(_INTERPRETER, program):
         return False
-    flags = ('c' if program.startswith(('python', 'pypy')) else
-             {'node': 'ep', 'perl': 'eE', 'ruby': 'e', 'php': 'r', 'lua': 'e'}[program])
+    flags = 'c' if program.startswith(('python', 'pypy')) else _SNIPPET[program]
     has_snippet = False
     for index, arg in enumerate(argv[1:], 1):
         match = re.fullmatch(r'-[a-zA-Z]*?[' + flags + r']([\s\S]*)', arg)
@@ -581,3 +586,324 @@ def is_opaque(argv: list[str], stdin: bool = True) -> bool:
     # Without a snippet, only a leading path proves input is not stdin. Option
     # operands might otherwise look like paths; conservatively flag those forms.
     return stdin and not has_snippet and (len(argv) == 1 or argv[1].startswith('-'))
+
+
+# Every cd, pushd and popd refusal of the state guard; the hook warns it in every posture.
+WORKSPACE_ROOT = ('workspace guard: a top-level cd, pushd or popd may leave the workspace; '
+                  'run it in a subshell, (cd <dir> && <command>), or use git -C <dir>')
+# A relevant call the guards could not read and that names no publisher (#347).
+UNPARSED = ('unparsed: write the commands to a file with the Write tool and run bash <file>; '
+            'a plain git or gh command stays plain')
+READ_ONLY = frozenset({'ls', 'cat', 'grep', 'head', 'tail', 'sed', 'wc', 'jq', 'diff', 'find',
+                       'cd', 'pushd', 'popd'})
+PUBLISHERS = ('gh', 'glab', 'hub')
+# git verbs that only read; any other verb, an alias included, cannot be pinned (spec A3).
+_GIT_READS = frozenset({'status', 'diff', 'log', 'show', 'rev-parse', 'ls-files', 'ls-remote',
+                        'remote', 'symbolic-ref', 'describe', 'show-ref', 'blame', 'grep',
+                        'cat-file', 'rev-list', 'for-each-ref', 'shortlog', 'fetch', 'help',
+                        'version'})
+_GIT_PUBLISH = ('push', 'commit', 'tag', 'merge', 'rebase', 'reset', 'checkout', 'switch', 'branch')
+_KEYWORDS = frozenset({'if', 'then', 'else', 'elif', 'fi', 'do', 'done', 'while', 'until', '!',
+                       '{', '}', 'esac'})
+_WRAPPERS = frozenset({'env', 'command', 'exec', 'nohup', 'time', 'nice', 'timeout', 'sudo',
+                       'stdbuf', 'setsid', 'xargs'})
+_SHELLS = ('sh', 'bash', 'zsh', 'dash', 'ksh')
+_FIND_ACTIONS = frozenset({'-exec', '-execdir', '-ok', '-okdir', '-delete', '-fprint', '-fprint0',
+                           '-fprintf', '-fls'})
+_OPERATOR = re.compile(r'&&|\|\||;;|;&|[;()]|\|&|\||&>>|&>|>>|>&|>\||<>|<<<|<<|<&|[<>&]')
+_SUBSTITUTED = re.compile(r'\$_(\d+)')
+
+
+class Shape(NamedTuple):
+    parsed: bool     # normalize read the whole command
+    readonly: bool   # every command word is read-only and nothing is written
+    inline: bool     # an interpreter runs code given inline (-c, -e, ...) or in a here-doc
+    publishes: bool  # a publisher word, or a word the walk cannot pin to a safe form
+    written: str     # the text a write in this call can target; '' when readonly
+
+
+def _close(text, position):
+    """The index of the ')' closing a $( whose body starts at position."""
+    depth, quote = 1, None
+    while position < len(text):
+        char = text[position]
+        if quote == "'":
+            quote = None if char == "'" else quote
+        elif char == '\\':
+            position += 1
+        elif char == '`':
+            position = _tick(text, position)
+        elif quote == '"':
+            if char == '"':
+                quote = None
+            elif text.startswith('$(', position):
+                depth += 1
+                position += 1
+        elif char in '\'"':
+            quote = char
+        elif char in '()':
+            depth += 1 if char == '(' else -1
+            if not depth:
+                return position
+        position += 1
+    raise ValueError('unbalanced command substitution')
+
+
+def _tick(text, position):
+    """The index of the backtick closing the one at position."""
+    position += 1
+    while position < len(text) and text[position] != '`':
+        position += 2 if text[position] == '\\' else 1
+    if position >= len(text):
+        raise ValueError('unbalanced backticks')
+    return position
+
+
+def _cut(text, bodies):
+    """One quote-aware pass: substitutions become $_<n> (bodies appended), here-doc bodies
+    are cut, comments dropped and newlines become ';'. Raises ValueError when unbalanced."""
+    out, pending, quote, position = [], [], None, 0
+    while position < len(text):
+        char = text[position]
+        if quote == "'":
+            quote = None if char == "'" else quote
+        elif text.startswith('\\\n', position):
+            position += 2
+            continue
+        elif char == '\\':
+            out.append(text[position:position + 2])
+            position += 2
+            continue
+        elif text.startswith(('$(', '<(', '>('), position) or char == '`':
+            # Process substitution <(...) and >(...) is walked like $(...).
+            end = _close(text, position + 2) if char != '`' else _tick(text, position)
+            body = text[position + 2:end] if char != '`' else text[position + 1:end].replace('\\`', '`')
+            out.append(f'$_{len(bodies)}')
+            bodies.append(body)
+            position = end + 1
+            continue
+        elif quote == '"':
+            quote = None if char == '"' else quote
+        elif char in '\'"':
+            quote = char
+        elif char == '#' and (not position or text[position - 1] in ' \t\n;&|()'):
+            position = text.find('\n', position) % (len(text) + 1)
+            continue
+        elif text.startswith('<<', position) and not text.startswith('<<<', position):
+            match = re.match(r'''<<(-?)[ \t]*(?:'([^'\n]*)'|"([^"\n]*)"|(\\?)([^\s;&|()<>]+))''',
+                             text[position:])
+            if not match:
+                raise ValueError('unreadable here-doc')
+            quoted = match[2] is not None or match[3] is not None or bool(match[4])
+            pending.append((match[2] or match[3] or match[5], bool(match[1]), quoted))
+            out.append(' << - ')
+            position += match.end()
+            continue
+        elif char == '\n':
+            out.append(';')
+            position += 1
+            for delimiter, tabs, quoted in pending:
+                end = re.compile('^' + ('\t*' if tabs else '') + re.escape(delimiter) + '$',
+                                 re.M).search(text, position)
+                if not end:
+                    raise ValueError('unterminated here-doc')
+                if not quoted and re.search(r'\$\(|`', text[position:end.start()]):
+                    raise ValueError('expanding here-doc')
+                position = end.end()
+            pending.clear()
+            continue
+        out.append(char)
+        position += 1
+    if quote or pending:
+        raise ValueError('unbalanced quotes or unterminated here-doc')
+    return ''.join(out)
+
+
+def _simple(text):
+    """[(argv, write targets, fed)] per simple command; fed is 'pipe' or 'heredoc' or ''."""
+    lexer = shlex.shlex(text, posix=True, punctuation_chars=';&|()<>')
+    lexer.whitespace_split, lexer.commenters = True, ''
+    commands, argv, writes, fed, redirect = [], [], [], '', None
+    for token in lexer:
+        if redirect is not None:
+            if ('>' in redirect and token not in ('/dev/null', '/dev/stdout', '/dev/stderr')
+                    and not ('&' in redirect and re.fullmatch(r'[0-9]+-?|-', token))):
+                writes.append(token)
+            redirect = None
+            continue
+        if not token or token.strip(';&|()<>'):
+            argv.append(token)
+            continue
+        operators = _OPERATOR.findall(token)
+        if ''.join(operators) != token:
+            raise ValueError('unreadable operator')
+        for operator in operators:
+            if '<' in operator or '>' in operator:
+                redirect = operator
+                if operator in ('<<', '<<<'):
+                    fed = 'heredoc'
+                elif operator == '<':
+                    fed = 'pipe'
+                continue
+            if argv or writes:
+                commands.append((argv, writes, fed))
+            argv, writes, fed = [], [], 'pipe' if operator in ('|', '|&') else ''
+    if redirect is not None:
+        raise ValueError('missing redirect target')
+    if argv or writes:
+        commands.append((argv, writes, fed))
+    return commands
+
+
+def _strip(argv):
+    """(assignments, argv, pinned): leading assignments, keywords and wrappers removed;
+    xargs takes its arguments from input, so it is not pinned."""
+    assignments, pinned = [], True
+    while argv:
+        name = PurePosixPath(argv[0]).name
+        if _ASSIGNMENT.match(argv[0]):
+            assignments.append(tuple(argv[0].split('=', 1)))
+        elif name in _WRAPPERS:
+            pinned &= name != 'xargs'
+            while len(argv) > 1 and argv[1].startswith('-'):
+                argv = argv[1:]
+            if name == 'timeout' and len(argv) > 1 and re.fullmatch(r'[0-9.]+[smhd]?', argv[1]):
+                argv = argv[1:]
+        elif argv[0] not in _KEYWORDS:
+            break
+        argv = argv[1:]
+    return assignments, argv, pinned
+
+
+def _git_publishes(args):
+    args = iter(args)
+    for arg in args:
+        if arg in ('-c', '--config-env') or arg.startswith(('-c', '--config-env=')):
+            return True  # a config value can define an alias or run a command
+        if arg in ('-C', '--git-dir', '--work-tree', '--namespace'):
+            next(args, None)
+        elif not arg.startswith('-'):
+            return '$' in arg or arg not in _GIT_READS
+    return False
+
+
+def _names_publisher(text, publishers=PUBLISHERS):
+    return mentions(text, publishers, script=True) or (
+        mentions(text, ('git',), script=True) and mentions(text, _GIT_PUBLISH, script=True))
+
+
+def _shell_script(args):
+    for index, arg in enumerate(args):
+        if not arg.startswith(('-', '+')) or arg == '--':
+            return None
+        if arg.startswith('-') and not arg.startswith('--') and 'c' in arg:
+            return args[index + 1] if index + 1 < len(args) else None
+    return None
+
+
+@lru_cache(maxsize=32)
+def classify(command, publishers=()):
+    """#347: the one lenient walk every Bash guard shares; never executes or expands."""
+    try:
+        normalize(command)
+        parsed = True
+    except ParseError:
+        parsed = False
+    try:
+        return _classify(command, (*PUBLISHERS, *publishers))._replace(parsed=parsed)
+    except (ValueError, RecursionError):
+        return Shape(parsed, False, False, True, command)
+
+
+def _classify(command, publishers):
+    bodies = []
+    texts = [_cut(command, bodies)]
+    while len(texts) <= len(bodies):
+        texts.append(_cut(bodies[len(texts) - 1], bodies))
+
+    def expand(word):
+        return _SUBSTITUTED.sub(lambda m: f'$({bodies[int(m[1])]})' if int(m[1]) < len(bodies)
+                                else m[0], word)
+
+    stripped, assigned, assignments, written, dirs = [], {}, [], [], []
+    readonly, inline, publishes, whole = True, False, False, False
+    for argv, writes, fed in (item for text in texts for item in _simple(text)):
+        found, argv, pinned = _strip(argv)
+        publishes |= not pinned
+        assignments += found
+        for key, value in found:
+            assigned.setdefault(key, []).append(expand(value))
+        if argv[:1] in (['for'], ['select']) and len(argv) > 1:
+            assigned.setdefault(argv[1], []).append(expand(' '.join(argv[2:])))
+        elif argv[:1] != ['case'] and (argv or writes):
+            stripped.append((argv, writes, fed))
+    # ponytail: a variable is followed only to its assigned text, not into what a command in
+    # it prints (W=$(cat file)), and a name built at run time from words that look literal is
+    # not evaluated; the pre-push hook, protected refs and credentials kept out of seats are
+    # the anchors (spec 4.5).
+    for argv, writes, fed in stripped:
+        name = PurePosixPath(argv[0]).name if argv else ''
+        args = argv[1:]
+        literal = not any('$' in word for word in (*args, *writes))
+        safe = name in READ_ONLY
+        if name in ('cd', 'pushd'):
+            dirs.append(expand(' '.join(argv)))  # a later write can land under its target
+        if '$' in name:
+            variable = re.fullmatch(r'\$\{?(\w+)\}?', argv[0])
+            values = assigned.get(variable[1]) if variable else None
+            publishes |= (not values or not literal
+                          or any(mentions(value, (*publishers, 'git'), script=True) for value in values)
+                          or any(arg in (*publishers, 'git', *_GIT_PUBLISH) for arg in args))
+        elif name in _SHELLS:
+            script = _shell_script(args)
+            if script is None:
+                publishes = True
+            else:
+                inner = _classify(script, publishers)
+                safe, inline, publishes = inner.readonly, inline or inner.inline, publishes or inner.publishes
+        elif name in ('eval', 'source', '.'):
+            publishes = True
+        elif re.fullmatch(_INTERPRETER, name):
+            flags = 'c' if name.startswith(('python', 'pypy')) else _SNIPPET[name]
+            if fed == 'heredoc' or any(re.fullmatch(r'-[a-zA-Z]*?[' + flags + r'][\s\S]*', arg)
+                                       or arg == '--eval' or arg.startswith('--eval=') for arg in args):
+                inline = True
+                publishes |= _names_publisher(command, publishers)
+            elif fed == 'pipe' and all(arg.startswith('-') for arg in args):
+                publishes = True  # the code comes from input, never from this text
+        elif name == 'git':
+            publishes |= _git_publishes(args)
+        elif name in publishers:
+            publishes = True
+        elif name == 'sed':
+            options = [arg for arg in args if arg.startswith('-')]
+            operands = [arg for arg in args if not arg.startswith('-')]
+            safe = options == ['-n'] and bool(operands) and bool(re.fullmatch(r'[0-9,$]+p', operands[0]))
+        elif name == 'find':
+            safe = not _FIND_ACTIONS.intersection(args)
+        if writes or not safe:
+            readonly = False
+            text = expand(' '.join([*argv, *writes]))
+            publishes |= _names_publisher(text, publishers)
+            whole |= not literal or fed == 'heredoc'
+            written.append(text)
+    if readonly and not publishes and not inline:
+        return Shape(False, True, False, False, '')
+    written += dirs
+    for key, value in assignments:
+        written.append(f'{key}=' + _SUBSTITUTED.sub(
+            lambda m: '' if int(m[1]) >= len(bodies) or _classify(bodies[int(m[1])], publishers).readonly
+            else f'$({bodies[int(m[1])]})', value))
+    return Shape(False, False, inline, publishes, command if whole else '\n'.join(written))
+
+
+def unread(command, publishers=()):
+    """#347 decision table for a relevant call a guard cannot read: (0, '') when every word
+    is read-only; UNPARSED when the parser could not read it, or it runs inline code, and
+    no publisher word appears; None when the guard decides as before."""
+    shape = classify(command, tuple(publishers))
+    if shape.readonly:
+        return 0, ''
+    if not shape.publishes and (not shape.parsed or shape.inline):
+        return 2, UNPARSED
+    return None

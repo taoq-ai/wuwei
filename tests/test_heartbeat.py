@@ -18,7 +18,7 @@ from wuwei.registry import Result
 BEAT = heartbeat.beat  # the real one; tests/conftest.py replaces it for every other test
 ROOT = Path(__file__).resolve().parents[1]
 NOW = '2026-09-28T12:00:00+00:00'
-OK = [(0, '', 40), (2, 'refused', 60), (0, '', 50), (2, 'refused', 45)]  # status, refused, allowed, state_write
+OK = [(0, '', 40), (2, 'refused', 60), (0, '', 50), (2, 'refused', 45), (0, '', 50)]  # status, refused, allowed, state_write, read_loop
 
 
 class Service:
@@ -81,19 +81,21 @@ def test_measure_every_probe_ok(ws):
     assert probes['planner']['value'] == 'no planner'
     (calls, cwd), = service.calls
     assert cwd == root / '.wuwei'
-    assert [argv for argv, _ in calls] == [('status', '--line')] + [('hook', 'PreToolUse')] * 3
+    assert [argv for argv, _ in calls] == [('status', '--line')] + [('hook', 'PreToolUse')] * 4
     payloads = [json.loads(text) for _, text in calls[1:]]
     assert {p['session_id'] for p in payloads} == {'wuwei-heartbeat'}
     assert {p['cwd'] for p in payloads} == {str(root / '.wuwei')}
     assert [p['tool_input'].get('command') for p in payloads[:2]] == ['git push --force origin main', 'ls -la']
     assert payloads[2]['tool_name'] == 'Write'
     assert payloads[2]['tool_input']['file_path'] == str(workspace.day_dir(root) / 'state.json')
+    assert payloads[3]['tool_input']['command'] == heartbeat.READ_LOOP
 
 
 @pytest.mark.parametrize('index, result, probe, expected', [
     (1, (0, '', 50), 'refused', ('failed', 'exit 0')),
     (2, (2, 'git: refused', 50), 'allowed', ('failed', 'exit 2: git: refused')),
     (3, (None, 'timeout', 10000), 'state_write', ('unmeasured', 'timeout')),
+    (4, (2, 'refused', 50), 'read_loop', ('failed', 'exit 2: refused')),
     (0, (0, '', heartbeat.STATUS_LINE_BUDGET_MS + 1), 'status_line',
      ('failed', f'{heartbeat.STATUS_LINE_BUDGET_MS + 1} ms over {heartbeat.STATUS_LINE_BUDGET_MS} ms')),
     (0, (2, 'boom', 40), 'status_line', ('failed', 'exit 2: boom')),
@@ -109,7 +111,7 @@ def test_adapter_failure_leaves_in_process_probes_measured(ws):
     root, service, _, _ = ws
     service.error = OSError('no launcher')
     probes = heartbeat.measure(root)
-    for name in ('refused', 'allowed', 'state_write', 'status_line'):
+    for name in ('refused', 'allowed', 'state_write', 'status_line', 'read_loop'):
         assert probes[name] == {'result': 'unmeasured', 'value': 'no launcher'}
     assert probes['state']['result'] == probes['memory']['result'] == 'ok'
 

@@ -7,7 +7,7 @@ from urllib.parse import unquote, urlsplit
 
 from wuwei import registry
 from wuwei.guards import Guard
-from wuwei.shell import ParseError, is_opaque, mentions, normalize, operands, script_text
+from wuwei.shell import ParseError, is_opaque, mentions, normalize, operands, script_text, unread
 from wuwei.workspace import find_workspace, load_config
 
 
@@ -269,7 +269,11 @@ def check(payload):
         except ParseError:
             if not mentions(raw, (*DEPLOY_ACTIONS, *protected[len(PROGRAMS):])):
                 return 0, ''
-            raise
+            if (found := unread(raw, protected[2:])) is None:
+                raise
+            return found
+        if (found := unread(raw, protected[2:])) is not None:
+            return found
         for index, command in enumerate(commands):
             argv, env = command.argv, command.env
             if not argv:

@@ -199,9 +199,16 @@ def posture(payload, refusals, root):
         name, levels = workspace.posture(workspace.load_config(root))
     except BaseException:  # No workspace or an unreadable config enforces, as before #331.
         return [(module(check), reason, '') for check, reason in refusals]
-    enforced, shown = [], None
+    from wuwei.shell import UNPARSED, WORKSPACE_ROOT
+    enforced, shown, seen = [], None, set()
     for check, reason in refusals:
         guard, area, decided, line = level(check, levels)
+        if reason in (UNPARSED, WORKSPACE_ROOT):  # #347: decided by the reason, not the area
+            if reason in seen:
+                continue
+            seen.add(reason)
+            decided = 'block' if reason == UNPARSED and name == 'strict' else 'warn'
+            line = ''
         if decided == 'off':
             continue
         if decided == 'block':

@@ -642,3 +642,77 @@ def test_script_path_without_pointer_reads_copy(tmp_path, monkeypatch):
     from wuwei.shell import script_path
     root, recorded, _ = _launcher_workspace(tmp_path, monkeypatch, record=False)
     assert script_path(f'{recorded} state get', root) == recorded
+
+
+# Issue #347: (readonly, publishes, inline, written names .wuwei).
+CLASSIFY = [
+    ('cd .wuwei/ziran && for r in a b c; do cat $r/report.json; done', (True, False, False, False)),
+    ('ls; ls days/x; cat days/x/decisions/D-1.md; grep -n rm config.toml', (True, False, False, False)),
+    ('W=$(cat .wuwei/executable); $W plan session abc --take-over; $W mcp check',
+     (False, False, False, False)),
+    ('python3 -P -c \'import subprocess;r=subprocess.run(["git","log","-1"]);'
+     'print(open("config.toml").read())\'', (False, False, True, False)),
+    ('mkdir -p ../scratch && cd ../scratch && ls', (False, False, False, False)),
+    ('for r in a b; do git -C $r push origin main; done', (False, True, False, False)),
+    ('x=$(git push origin main)', (False, True, False, False)),
+    ('G=git; $G push origin main', (False, True, False, False)),
+    ('G=git; $G config core.hooksPath x', (False, True, False, False)),
+    ('W=cat; for W in gh; do $W pr merge 1; done', (False, True, False, False)),
+    ('echo x > .wuwei/days/d/state.json', (False, False, False, True)),
+    ('for r in a; do echo x > .wuwei/days/d/state.json; done', (False, False, False, True)),
+    ('echo x > .wuwei/days/$(date +%F)/state.json', (False, False, False, True)),
+    ('echo x | tee $(ls -d .wuwei/days/d)/state.json', (False, False, False, True)),
+    ('T="tee .wuwei/days/d/state.json"; echo x | $T', (False, False, False, True)),
+    ('python3 -c \'open(".wuwei/days/d/state.json", "w")\'', (False, False, True, True)),
+    ('$x push origin main', (False, True, False, False)),
+    ('${TOOL} ${VERB} -f', (False, True, False, False)),
+    ('$DEPLOY apply', (False, True, False, False)),
+    ('timeout 5 git push origin main', (False, True, False, False)),
+    (r'find . -exec git push \;',(False, True, False, False)),
+    ("sh -c 'for r in a; do git push; done'", (False, True, False, False)),
+    ('for r in a b; do git -C $r log -1; done', (False, False, False, False)),
+    ('for r in a b; do git -C $r config core.hooksPath x; done', (False, True, False, False)),
+    ('for r in a b; do git -C $r p; done', (False, True, False, False)),
+    ('echo "unterminated', (False, True, False, False)),
+    ('for f in *.py; do wc -l $f; done', (True, False, False, False)),
+    ('sed -n 1,40p x', (True, False, False, False)),
+    ('sed -i s/a/b/ x', (False, False, False, False)),
+    ('cat cmds.txt | xargs git', (False, True, False, False)),
+    ('echo "gh pr merge 17"', (False, True, False, False)),
+    ('grep -n "git push" notes.md', (True, False, False, False)),
+    ('git show HEAD:d.py | python3', (False, True, False, False)),
+    ("python3 - <<'PYEOF'\nimport subprocess\nsubprocess.run(['gh', 'pr', 'merge'])\nPYEOF\n",
+     (False, True, True, False)),
+    ("cat <<'EOF' | bash\nls\nEOF\n", (False, True, False, False)),
+    ('cat <<EOF\n$(git push)\nEOF\n', (False, True, False, False)),
+    ('cat x | sh', (False, True, False, False)),
+    ('eval ls', (False, True, False, False)),
+    ('cat `ls`', (True, False, False, False)),
+    ('find . -name x -delete', (False, False, False, False)),
+]
+
+
+@pytest.mark.parametrize('command, expected', CLASSIFY)
+def test_classify_table(command, expected):
+    from wuwei.shell import classify
+    shape = classify(command)
+    assert (shape.readonly, shape.publishes, shape.inline, '.wuwei' in shape.written) == expected
+
+
+def test_classify_deploy_publishers():
+    from wuwei.shell import classify
+    assert classify('for r in a; do kubectl apply -f $r; done', ('kubectl',)).publishes
+    assert not classify('for r in a; do kubectl apply -f $r; done').publishes
+
+
+@pytest.mark.parametrize('command, expected', [
+    ('ls; ls days/x; cat days/x/decisions/D-1.md; grep -n rm config.toml', (0, '')),
+    ('W=$(cat .wuwei/executable); $W plan session abc --take-over; $W mcp check', 'unparsed'),
+    ('python3 -P -c \'import subprocess;r=subprocess.run(["git","log","-1"]);'
+     'print(open("config.toml").read())\'', 'unparsed'),
+    ('for r in a b; do git -C $r push origin main; done', None),
+    ('python3 -m pytest -q && git status', None),
+])
+def test_unread_table(command, expected):
+    from wuwei.shell import UNPARSED, unread
+    assert unread(command) == ((2, UNPARSED) if expected == 'unparsed' else expected)

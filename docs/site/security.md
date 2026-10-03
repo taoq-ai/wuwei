@@ -64,6 +64,8 @@ Floors no posture and no override lowers:
 
 Runtime trace chains (S2) page and ask the owner only for seats. The planner, its subagents and other registered sessions (shepherd, remote, seat-host) get one silent `traces.noted` event per session per day. A session the registry does not know gets one `traces.unmatched` event per day, and under `strict` one owner decision per session per day. `guards.mode = "shadow"` (`init --shadow`) counts as `observe`.
 
+A command a Bash guard finds relevant but cannot parse (a loop, a command substitution, inline interpreter code) that names no publishing tool and writes no record is `unparsed`: it warns under `observe` and `guarded` and blocks only under `strict`, and the reason gives the one accepted form, `write the commands to a file with the Write tool and run bash <file>`. A command whose words are all read-only (`ls`, `cat`, `grep`, `head`, `tail`, `sed -n`, `wc`, `jq`, `diff`, `find`) passes. A command that names a publishing tool keeps the floors above. A top-level `cd`, `pushd` or `popd` that may leave the workspace warns in every posture; run it in a subshell, `(cd <dir> && <command>)`, or use `git -C <dir>`.
+
 Where to run each:
 
 - `observe`: a first week on a project, or a personal sandbox. You see what the guards would stop in your own habits before they stop anything; the records stay trustworthy. After `guards.shadow_days` one nudge asks you to switch to `guarded`.

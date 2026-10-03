@@ -168,7 +168,7 @@ def test_writes_after_cd_resolve_aliases(workspace, script):
     ('Edit', {'file_path': '.wuwei/days/2026-09-28/state.json'}, 2),
     ('Write', {'file_path': 'notes.md'}, 0),
     ('Bash', {'command': 'tee .wuwei/days/2026-09-28/events.jsonl'}, 2),
-    ('Bash', {'command': 'cd ..'}, 2),
+    ('Bash', {'command': 'cd ..'}, 0),
     ('Bash', {'command': '(cd .. && git status)'}, 0),
     ('Bash', {'command': 'echo "unterminated'}, 0),
 ])
@@ -741,3 +741,33 @@ def test_interview_answers_are_protected(workspace, tool, name):
     else:
         code, reason = check_file(payload(workspace, tool, file_path=target))
     assert code == 1 and 'outside agent tools' in reason
+
+
+@pytest.mark.parametrize('script, expected', [
+    ('for r in a b; do cat .wuwei/$r/report.json; done', (0, '')),
+    ('W=$(cat .wuwei/executable); $W plan session abc --take-over; $W mcp check', 'unparsed'),
+    ('cd .wuwei/ziran && for r in a b c; do cat $r/report.json; done', (2, 'root')),
+    ('mkdir -p ../scratch && cd ../scratch && ls', (1, 'root')),
+    ('cd ..', (1, 'root')),
+    ('pushd', (2, 'root')),
+    ('cd "$DEST"', (2, 'root')),
+    ('W=$(cat .wuwei/executable); $W drafts approve x', 'kept'),
+    ('echo x > .wuwei/days/2026-09-28/state.json', 'kept'),
+    ('for r in a; do echo x > .wuwei/days/2026-09-28/state.json; done', 'kept'),
+    ('echo x > .wuwei/days/$(date +%F)/state.json', 'kept'),
+    ('echo x | tee $(ls -d .wuwei/days/2026-09-28)/state.json', 'kept'),
+    ('T="tee .wuwei/days/2026-09-28/state.json"; echo x | $T', 'kept'),
+    ('python3 -c \'open(".wuwei/days/2026-09-28/state.json", "w").write("x")\'', 'kept'),
+])
+def test_issue_347_reads_warns_and_writes(workspace, script, expected):
+    from wuwei.guards.protect_state import check_bash
+    from wuwei.shell import UNPARSED, WORKSPACE_ROOT
+    result = check_bash(payload(workspace, 'Bash', command=script))
+    if expected == 'kept':
+        assert result[0] and result[1] not in (UNPARSED, WORKSPACE_ROOT), result
+    elif expected == 'unparsed':
+        assert result == (2, UNPARSED)
+    elif expected[1] == 'root':
+        assert result == (expected[0], WORKSPACE_ROOT)
+    else:
+        assert result == expected

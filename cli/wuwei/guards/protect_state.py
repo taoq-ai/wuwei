@@ -7,6 +7,7 @@ import re
 import shlex
 
 from wuwei.guards import Guard
+from wuwei.shell import WORKSPACE_ROOT
 from wuwei.workspace import contains_workspace, worktree_workspace
 
 
@@ -390,7 +391,7 @@ def check_bash(payload):
         script = _input(payload, 'command')
         if not isinstance(script, str):
             raise ValueError('missing or invalid command')
-        from wuwei.shell import NonliteralPathError, ParseError, normalize, script_text
+        from wuwei.shell import NonliteralPathError, ParseError, UNPARSED, classify, normalize, script_text
         from wuwei.workspace import guard_scope
 
         def owner_script(raw):
@@ -418,16 +419,21 @@ def check_bash(payload):
                 if ((word.endswith('.sh') or os.access(Path(cwd, word), os.X_OK))
                         and (found := owner_script(shlex.quote(word)))):
                     return found
-            if ((owner_relevant and guard_scope(payload) is not None)
-                    or _STATE_MENTION.search(script) or _STATE_GLOB.search(script)
+            shape = classify(script)
+            # #347: only text a write can target counts; a word the walk cannot pin may be the CLI.
+            if ((owner_relevant and guard_scope(payload) is not None
+                 and (shape.publishes or _owner_relevant(script, script=True)))
+                    or _STATE_MENTION.search(shape.written) or _STATE_GLOB.search(shape.written)
                     or (root is not None and _protected_name(cwd, directories=True)
                         and (isinstance(exc, NonliteralPathError)
                              or (_DYNAMIC.search(script) and _WRITE_CONSTRUCT.search(script))))):
                 return 2, str(exc)
             if contain_cwd and re.search(r'\b(?:cd|pushd|popd)\b', script, re.I):
-                return 2, ('workspace guard: a top-level cd, pushd or popd to a directory that '
-                           'cannot be resolved statically may leave the workspace; cd to a literal '
-                           'directory inside it or use git -C')
+                return 2, WORKSPACE_ROOT
+            if shape.readonly:
+                return 0, ''
+            if _STATE_MENTION.search(script) or _STATE_GLOB.search(script):
+                return 2, UNPARSED
             return 0, ''
         # normalize unwraps lists, subshells, wrappers, sh -c and xargs down to each script.
         for command in commands:
@@ -465,15 +471,18 @@ def check_bash(payload):
             if program == 'popd' or (program == 'pushd' and (len(command.argv) == 1 or
                     re.fullmatch(r'[+-][0-9]+', command.argv[1]))):
                 if contain_cwd and not command.subshell:
-                    return 2, 'Unknown directory stack; use git -C or a subshell instead of top-level pushd/popd.'
+                    return 2, WORKSPACE_ROOT
                 continue
             if program in ('cd', 'pushd'):
-                target = _cd_target(command)
+                try:
+                    target = _cd_target(command)
+                except ValueError:
+                    return 2, WORKSPACE_ROOT
                 bases = directories if command.subshell else persistent
                 destinations = {_path(target, base).resolve() for base in bases}
                 if not command.subshell:
                     if contain_cwd and any(not path.is_relative_to(root) for path in destinations):
-                        return 1, 'Keep the workspace root; use git -C or a subshell instead of top-level cd/pushd.'
+                        return 1, WORKSPACE_ROOT
                     persistent = persistent | destinations
                 # ponytail: flattened commands omit branch and nested-scope identity.
                 # Retain possible paths; add scope metadata if false positives matter.
