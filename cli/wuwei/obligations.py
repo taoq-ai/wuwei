@@ -18,7 +18,7 @@ SOLO = 'reviewers: none (solo)'
 def _read(operation, *args, root):
     result = operation(*args, root=root)
     if type(result.exit) is not int or result.exit != 0:
-        raise ValueError(result.reason or 'code-host read unavailable')
+        raise ValueError(result.reason or 'code-host read unavailable; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
     return result.data
 
 

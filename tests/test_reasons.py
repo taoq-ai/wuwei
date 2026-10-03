@@ -52,6 +52,8 @@ def _text(node):
         return [(a + b, fa or fb) for a, fa in left for b, fb in right]
     if isinstance(node, ast.IfExp):
         return _text(node.body) + _text(node.orelse)
+    if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):  # x or 'fallback' (#456)
+        return [] if _passthrough(node.values[-1]) else _text(node.values[-1])
     return []
 
 
@@ -165,6 +167,18 @@ def test_collector_finds_a_new_bare_wall():
                  'guard could not run'):
         assert not NEXT_STEP.search(text), text
     assert NEXT_STEP.search('state file is a symlink; run bin/wuwei doctor')
+
+
+def test_collector_finds_an_or_fallback_wall():
+    def texts(source):
+        return [text for _, text, _ in reasons(source)]
+    assert texts("raise ValueError(result.reason or 'branch protection unmeasured')") == [
+        'branch protection unmeasured']
+    assert texts("import sys\nprint(result.reason or f'{name}: unreadable scopes', file=sys.stderr)") == [
+        '{}: unreadable scopes']
+    assert texts("Result(2, None, a or b or 'poll failed now')") == ['poll failed now']
+    assert reasons("raise ValueError(result.reason or f'{exc}')") == []
+    assert reasons("raise ValueError(result.reason or f'build: {exc}')") == []
 
 
 def test_record_id_hint_matches_its_prefix(tmp_path):

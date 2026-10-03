@@ -117,7 +117,7 @@ def poll_replies(since, *, root=None, transport=None):
     root = workspace.find_workspace(root)
     polled = transport.poll(since, root=root)
     if polled.exit != 0:
-        return Result(2, None, polled.reason or 'control plane: poll failed')
+        return Result(2, None, polled.reason or 'control plane: poll failed; retry; if it repeats, run bin/wuwei doctor')
     if not isinstance(polled.data, list) or not all(
             isinstance(reply, dict) and isinstance(reply.get('text'), str) for reply in polled.data):
         return Result(2, None, f'control plane: invalid poll result; {ADAPTER_DATA}')
@@ -134,5 +134,5 @@ def poll_replies(since, *, root=None, transport=None):
         echoed = True
         sent = transport.dm(echo, root=root)
         if sent.exit != 0:
-            return Result(2, answers, sent.reason or 'control plane: echo failed')
+            return Result(2, answers, sent.reason or 'control plane: echo failed; retry; if it repeats, run bin/wuwei doctor')
     return Result(1 if echoed else 0, answers, 'replies not recorded were echoed' if echoed else '')

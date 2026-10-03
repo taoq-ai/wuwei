@@ -88,7 +88,7 @@ def read(call, *args, root):
     if type(result.exit) is not int or result.exit not in (0, 1, 2):
         raise ValueError(f'invalid adapter result; {ADAPTER_DATA}')
     if result.exit:
-        raise ValueError(result.reason or 'adapter read unavailable')
+        raise ValueError(result.reason or 'adapter read unavailable; retry; if it repeats, run bin/wuwei doctor, which tests the adapters')
     return result.data
 
 

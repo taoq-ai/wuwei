@@ -148,7 +148,7 @@ def trace_sweep(root, config):
             return counts
         result = registry.load('scanner', config).traces(str(path), root=root)
         if type(result.exit) is not int or result.exit not in (0, 1):
-            raise ValueError(result.reason or 'scanner unavailable')
+            raise ValueError(result.reason or 'scanner unavailable; retry; if it repeats, run bin/wuwei doctor')
         markers = security.load(root)
         posture, owed = workspace.posture(config)[0], 0
         for finding in result.data['findings']:

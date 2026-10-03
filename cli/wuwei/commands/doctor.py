@@ -563,7 +563,7 @@ def diagnose(section=None):
 def _dry(function, args):
     code, text = _capture(function, args)
     if code:
-        raise ValueError(text.strip() or f'dry run exit {code}')
+        raise ValueError(text.strip() or f'dry run exit {code} with no output; run the fix command by hand to see its error')
     return text
 
 
@@ -598,7 +598,7 @@ def _service(name):
 def _reconfirm_preview(root):
     result = integrity.check(root)
     if not result.data:
-        raise ValueError(result.reason or 'nothing to confirm')
+        raise ValueError(result.reason or 'nothing to confirm; run bin/wuwei integrity check to see the current verdict')
     return f'installation fingerprint {result.data}\n', result.data
 
 
@@ -614,7 +614,7 @@ def _promote_preview(root):
     seen = []
     _, text = _capture(config.promote, Namespace(), confirm=lambda digest, **_: seen.append(digest))
     if not seen:
-        raise ValueError(text.strip() or 'nothing to promote')
+        raise ValueError(text.strip() or 'nothing to promote; run bin/wuwei config promote to see its output')
     # Interview answers and profile settings carry owner decisions (merge.auto, posture): run it yourself.
     if any(line == 'Interview answers:' or line.startswith('Profile ') for line in text.splitlines()):
         raise ValueError('it would also apply interview or profile settings; review them and run it yourself')

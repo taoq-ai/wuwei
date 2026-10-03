@@ -165,7 +165,7 @@ def ping_gate(root, ref):
         protection_result = host.protection(ref.split('#')[0], pr['base'], root=root)
         missing = protection_result.exit == 2 and 'branch protection absent' in protection_result.reason
         if protection_result.exit and not missing:
-            raise ValueError(protection_result.reason or 'branch protection unmeasured')
+            raise ValueError(protection_result.reason or 'branch protection unmeasured; retry; if it repeats, run bin/wuwei config check, which reads the protection and names the source')
         if not missing and (not isinstance(protection_result.data, dict) or
                             'message' in protection_result.data or 'errors' in protection_result.data):
             raise ValueError('branch protection error body; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
@@ -175,7 +175,7 @@ def ping_gate(root, ref):
         fallback = settings['review_required_checks']
         missing = protection_result.exit == 2 and 'branch protection absent' in protection_result.reason
         if protection_result.exit and not missing:
-            raise ValueError(protection_result.reason or 'branch protection unmeasured')
+            raise ValueError(protection_result.reason or 'branch protection unmeasured; retry; if it repeats, run bin/wuwei config check, which reads the protection and names the source')
         if missing and fallback:
             protection = {'required_checks': []}
         else:
