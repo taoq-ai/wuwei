@@ -46,7 +46,7 @@ In your project directory, in a host terminal, set up the workspace:
 `setup` runs `bin/wuwei init` when there is no workspace, finds the git repositories in the
 project directory, calibrates them and asks the owner interview, then applies the whole
 `config.toml` proposal after one digest and prints what is still owed. `--shadow` starts the
-guards in shadow mode for a first week. `init` checks the installation: an intact signed
+guards in the observe posture for a first week. `init` checks the installation: an intact signed
 release prints `plugin integrity: clean` and needs no reconfirmation. Use `bin/wuwei` or
 `python3 -P -m wuwei` for CLI calls. To change one value later, use `bin/wuwei config set` or
 `bin/wuwei config add-repo` in a host terminal ([daily path](daily.html)).

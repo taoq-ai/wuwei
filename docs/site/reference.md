@@ -192,7 +192,7 @@ Dead-man ping: set `watch.ping_url` to the https check URL of a hosted cron moni
 in six sections: Install (plugin, integrity, `.in_use` markers, hooks, launcher, Python),
 Host (`gh`, git identity, ZIRAN, Claude Code, Codex, free memory, service manager),
 Workspace (config, template drift, each repository's path, branch, identity and
-`fast_checks`, calibration, interview, profiles, shadow days), Gates and adapters
+`fast_checks`, calibration, interview, profiles, posture and its observe days), Gates and adapters
 (`config check`, the MCP gate and each server in today's registry record), Day and sessions
 (state, planner, watch, listener, heartbeat, open pages, nudges) and Guards (the heartbeat
 hook probes, plus `hook PreToolUse` from a directory outside any workspace, which must
@@ -224,7 +224,7 @@ terminal it exits 2 and applies nothing; a wrong digest applies nothing and exit
 is then applied bound to what its preview showed: a plan or digest that changed since the
 preview is refused and reported, and the other fixes still run. Every applied fix appends one
 `doctor.fixed` event `{fix, exit}`, then doctor diagnoses again and exits with that result.
-Decisions stay printed under `Not applied`: `mcp decide`, `guards.mode`, `state recover`,
+Decisions stay printed under `Not applied`: `mcp decide`, `security.posture`, `state recover`,
 repository identity and anything that touches the code host. `--fix` and `--json` together
 are a usage error.
 

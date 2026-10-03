@@ -28,7 +28,7 @@ def register(subparsers):
         'setup', help='discover repositories, write config, calibrate and interview, apply once '
                       '(owner, host terminal)')
     parser.add_argument('--shadow', action='store_true',
-                        help='start or switch the guards to shadow mode (suggested for a first week)')
+                        help='start or switch to the observe posture (suggested for a first week)')
     parser.add_argument('--posture', metavar='PROFILE', help='starter profile name or local file')
     parser.add_argument('--repos', nargs='+', metavar='DIR',
                         help='directories whose child git repositories to add (default: the workspace)')
@@ -214,8 +214,8 @@ def _setup(args, confirm):
     extra = []
     if found['tools']['ziran'] and cfg['adapters']['scanner'] == 'none':
         extra.append((('adapters',), 'scanner', 'ziran'))
-    if args.shadow and cfg['guards']['mode'] != 'shadow':
-        extra += [(('guards',), 'mode', 'shadow'),
+    if args.shadow and workspace.posture(cfg)[0] != 'observe':
+        extra += [(('security',), 'posture', 'observe'),
                   (('guards',), 'shadow_since', workspace.now().date().isoformat())]
     if args.posture:
         if re.match(r'[A-Za-z][A-Za-z0-9+.-]*://', args.posture):

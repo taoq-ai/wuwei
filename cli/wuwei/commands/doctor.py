@@ -309,17 +309,17 @@ def _calibration(root, config):
                          f"guards profile {config['profile']}; calibration profile {name or 'none'}"))
     except (OSError, ValueError) as exc:
         rows.append(_row('workspace', 'profile', 'unmeasured', str(exc), 'wuwei calibrate import <profile>'))
-    guards = config['guards']
-    if guards['mode'] == 'enforce':
-        rows.append(_row('workspace', 'shadow', 'ok', 'enforce'))
+    guards, name = config['guards'], workspace.posture(config)[0]
+    if name != 'observe':
+        rows.append(_row('workspace', 'posture', 'ok', name))
     else:
         from datetime import date
         since = guards['shadow_since']
         days = (workspace.now().date() - date.fromisoformat(since)).days if since else 0
         left = guards['shadow_days'] - days
-        rows.append(_row('workspace', 'shadow', 'ok', f'shadow, {left} days left') if left > 0 else
-                    _row('workspace', 'shadow', 'warn', SHADOW_NUDGE.format(days=days),
-                         'set guards.mode = "enforce" in .wuwei/config.toml, or raise guards.shadow_days'))
+        rows.append(_row('workspace', 'posture', 'ok', f'observe, {left} days left') if left > 0 else
+                    _row('workspace', 'posture', 'warn', SHADOW_NUDGE.format(days=days),
+                         'set security.posture = "guarded" in .wuwei/config.toml, or raise guards.shadow_days'))
     return rows
 
 
@@ -511,7 +511,7 @@ def _calibrate(root, token):
 
 
 # The --fix allow list (a test pins it): id -> (command shown, preview(root) -> (text, token),
-# apply(root, token) -> exit). Decisions (mcp decide, guards.mode, state recover, the code host)
+# apply(root, token) -> exit). Decisions (mcp decide, security.posture, state recover, the code host)
 # stay printed. config-set waits for #327's confirmed `config set`.
 FIXES = {
     'integrity-reconfirm': ('wuwei integrity reconfirm', _reconfirm_preview, _reconfirm),
