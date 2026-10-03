@@ -169,6 +169,19 @@ def test_solo_owner_visibility_not_applicable(case, capsys, minimum, gate, expec
         assert f'{REF} NOT APPLICABLE {line}' in out
 
 
+def test_solo_pr_owes_no_reviewer_or_channel_post(case, capsys):
+    root, host = case
+    (root / '.wuwei/config.toml').write_text(
+        '[owner]\nhandles = ["U12345", "builder"]\n[adapters]\nchat = "slack"\n[shepherd]\nmin_reviewers = 1\n')
+    host.results['pr'].data['requested_reviewers'] = []
+    state._write_state(lambda data: data.update(channel_posts=[], pr_reviewers={REF: []}), root, reserved=False)
+    assert sweep() == 0
+    out = capsys.readouterr().out
+    assert ' OWED ' not in out
+    assert f'{REF} NOT APPLICABLE reviewer: reviewers: none (solo)' in out
+    assert f'{REF} NOT APPLICABLE channel-post: reviewers: none (solo)' in out
+
+
 @pytest.mark.parametrize('operation,bad', [
     ('pr', Result(2, reason='offline')), ('threads', Result(2, reason='offline')),
     ('reviews', Result(2, reason='offline')),

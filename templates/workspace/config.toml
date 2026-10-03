@@ -13,6 +13,8 @@ template_version = "" # Plugin version that last wrote this file; init, setup an
 # fast_checks = ["python3 -m pytest -q"] # Run and record with wuwei fast-checks <checkout>.
 # [repos.merge]
 # auto = false # Enable only after review, check, soak and path rules are configured.
+# [repos.shepherd]
+# reviewers = ["reviewer"] # Replaces shepherd.reviewers for this repository.
 
 [prioritisation]
 framework = "wsjf" # wsjf or rice
@@ -214,9 +216,11 @@ review_window = 120
 
 [shepherd]
 lead_login = "" # Code host login of the lead; eligible when different from the PR author.
+reviewers = [] # Code host logins requested instead of the history ranking and the lead.
+reviewers_exclude = [] # Code host logins never picked from history, the lead included.
 review_channel = "" # Chat channel ID for review requests.
 review_gate_check = "Review Gate" # Check excluded while requesting reviewers.
-min_reviewers = 1 # Minimum eligible reviewers, including the lead; 0 is a solo owner who merges without a reviewer.
+min_reviewers = 1 # Minimum eligible reviewers, including the lead; 0 is a solo owner who merges without a reviewer. A repository with no other author raises with no reviewer.
 author_windows_days = [90, 180] # Authorship lookback windows before all history.
 tie_commits = 2 # Include a third author within this commit count of second place.
 source_exclude = ["specs/*", "*.lock", "*lock.json", "*.generated.*", "generated/*"] # Paths excluded from reviewer selection.
@@ -224,7 +228,7 @@ autostart = false # Start a headless shepherd seat for mechanical PR actions whe
 
 [shepherd.authors]
 # Map each author email to a verified code host login and chat mention.
-# An unmapped email is resolved through the code host before reviewer selection refuses.
+# An unmapped email is resolved through the code host; one it cannot resolve is skipped.
 # "reviewer@example.test" = {login = "reviewer", mention = "UREVIEWER"}
 
 [security]

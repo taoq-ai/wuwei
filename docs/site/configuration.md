@@ -8,7 +8,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 
 | Sections | Keys under |
 | --- | --- |
-| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[security.areas]`, `[guards]` | [Workspace and repositories](#workspace-and-repositories) |
+| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[security.areas]`, `[guards]` | [Workspace and repositories](#workspace-and-repositories) |
 | `[host]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[brief.style]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
@@ -46,6 +46,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `repos.gates.floor` | `"standard"` | Lowest review tier for this repository: `light`, `standard` or `full`. `wuwei dispatch next` computes a tier from the item diff at its first gate; LIGHT runs the quality gate only, STANDARD and FULL run arch, quality and security. Keep `standard` until the escaped defects per tier in the retro support lowering it. |
 | `repos.gates.light_max_lines` | `100` | A diff with more changed lines is at least STANDARD. Binary changes, any lead flag and track FULL also raise the tier. |
 | `repos.gates.trust_paths` | `["guards/*", "state.py", "adapters/*", ".claude-plugin/*", ".github/*", "ci/*", "workflows/*", "deploy/*", "infra/*"]` | Path globs, matched on any path suffix, that force at least STANDARD. `repos.merge.never_auto_paths` and `brief.full_path_patterns` force it too. |
+| `repos.shepherd.reviewers` | `[]` | Code host logins requested for this repository's PRs; when set it replaces `shepherd.reviewers` here. |
 | `repos.fast_checks` | `[]` | Commands for `wuwei fast-checks` on this checkout. |
 | `owner.name` | `""` | Name used by outward text checks. |
 | `owner.pronouns` | `""` | Owner pronouns for outward text checks. |
@@ -107,14 +108,16 @@ and lets the turn end.
 | `pr.action_minutes` | `30` | Positive minutes to act on a measured PR finding. Nudge after this deadline, page at twice the interval. |
 | `pr.review_window` | `120` | Positive minutes to await review before re-requesting it. Starts at first observation of the head; comments do not reset it. |
 | `shepherd.lead_login` | `""` | Lead code host login. Counts as a reviewer when different from the author. |
+| `shepherd.reviewers` | `[]` | Code host logins to request instead of the history ranking and the lead. No `min_reviewers` check; the PR author is dropped. |
+| `shepherd.reviewers_exclude` | `[]` | Code host logins never picked from history; the lead too when listed. |
 | `shepherd.review_channel` | `""` | Chat channel ID for review requests. |
 | `shepherd.review_gate_check` | `"Review Gate"` | Check excluded during review requests. |
-| `shepherd.min_reviewers` | `1` | Minimum eligible reviewers required to raise or request review. `0` is a solo owner: `wuwei pr raise` and `gh pr create` need no reviewer, the owner merges, and the reviewer and channel-post obligations are not applicable. |
+| `shepherd.min_reviewers` | `1` | Minimum eligible reviewers required to raise or request review. `0` is a solo owner: `wuwei pr raise` and `gh pr create` need no reviewer, the owner merges, and the reviewer and channel-post obligations are not applicable. When the history finds nobody but the author, `wuwei pr raise` raises with `reviewers: none (solo)` on any value; it refuses only when it found some reviewers but fewer than this, and names `bin/wuwei config set shepherd.min_reviewers 0` and `shepherd.reviewers` as the ways out. Above `0`, `gh pr create` still needs a `--reviewer`: `shepherd.reviewers` takes effect only through `wuwei pr raise`. |
 | `shepherd.author_windows_days` | `[90, 180]` | Authorship lookback windows, then all history. |
 | `shepherd.tie_commits` | `2` | Include a third author within this many commits of second place. |
 | `shepherd.source_exclude` | `specs/*`, lock files and generated files | Changed paths excluded from reviewer selection. |
 | `shepherd.autostart` | `false` | Start one headless shepherd seat per mechanical PR action (conflicted, red CI, review comments, stale review) when the listener sees it. The seat never merges and every post it makes is a draft. |
-| `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity; `mention` is optional (default `""`) and a review ping refuses a reviewer without one. `bin/wuwei setup` maps your repositories' git emails to your code-host login and each bot author seen on the last 50 merged pull requests to its `[bot]` login. An unmapped email is resolved to the code host login for that email before reviewer selection refuses. |
+| `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity; `mention` is optional (default `""`) and a review ping refuses a reviewer without one. `bin/wuwei setup` maps your repositories' git emails to your code-host login and each bot author seen on the last 50 merged pull requests to its `[bot]` login. An unmapped email is resolved to the code host login for that email and cached for the day; one the code host cannot resolve is skipped with a `reviewer.unresolved` event, never a refusal. |
 | `watch.clock_seconds` | `600` | Interval between watch clock events. |
 | `watch.dead_seconds` | `1200` | Clock age after which the watch is reported dead. |
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |

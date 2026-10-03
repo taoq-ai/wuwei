@@ -231,7 +231,7 @@ def posture(payload, refusals, root):
     guard.would_refuse and lets the call through, block enforces it with its posture line.
     Returns (guard, reason, line); the config is read only because a guard refused."""
     from wuwei import state, workspace
-    from wuwei.guards import level
+    from wuwei.guards import NO_REVIEWER, level
     try:
         if root is None:
             raise LookupError('no workspace')
@@ -242,6 +242,8 @@ def posture(payload, refusals, root):
     enforced, shown, seen = [], None, set()
     for check, reason in refusals:
         guard, area, decided, line = level(check, levels)
+        if reason == NO_REVIEWER:  # It names its own ways out; still blocked.
+            line = ''
         if reason in (UNPARSED, WORKSPACE_ROOT):  # #347: decided by the reason, not the area
             if reason in seen:
                 continue

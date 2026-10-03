@@ -290,20 +290,48 @@ def test_raise_humanizes_title_and_body(case, monkeypatch, capsys):
     assert not any(name == 'create_pr' for name, _, _ in host.calls)
 
 
-def test_owner_handle_case_differs_from_code_host_login(case, monkeypatch):
+def test_owner_handle_case_differs_from_code_host_login(case, monkeypatch, capsys):
     from wuwei import shepherd
     root, host = solo_raise(case, monkeypatch, minimum=1)
     host.author_login = lambda repo, email, root=None: Result(0, {'login': 'Builder'})
-    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
-    assert not any(name == 'create_pr' for name, _, _ in host.calls)
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
+    assert 'reviewers: none (solo)' in capsys.readouterr().out
+    assert state.read_state(root)['pr_reviewers'][REF] == []
 
 
-def test_empty_code_host_login_names_email_and_key(case, monkeypatch, capsys):
+def test_single_author_raises_solo_on_defaults(case, monkeypatch, capsys):
+    from wuwei import shepherd
+    root, host = solo_raise(case, monkeypatch, minimum=1)
+    config_path = root / '.wuwei/config.toml'
+    config_path.write_text(config_path.read_text().replace('lead_login = ""', 'lead_login = "builder"'))
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
+    out = capsys.readouterr().out
+    assert REF in out and 'reviewers: none (solo)' in out
+    assert state.read_state(root)['pr_reviewers'][REF] == []
+    assert not any(name == 'request_reviewers' for name, _, _ in host.calls)
+
+
+def test_empty_code_host_login_raises_solo(case, monkeypatch, capsys):
     from wuwei import shepherd
     root, host = solo_raise(case, monkeypatch)
     host.author_login = lambda repo, email, root=None: Result(0, {'login': ''})
-    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 2
-    assert 'shepherd.authors has no mapping for builder@example.test' in capsys.readouterr().out
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
+    assert 'reviewers: none (solo)' in capsys.readouterr().out
+    assert unresolved_events(root) == [{'repo': 'acme/widget', 'author': 'builder'}]
+
+
+def test_solo_ping_requests_and_posts_nothing(case, capsys):
+    from wuwei import shepherd
+    root, host, _, chat, _ = case
+    host.results['threads'].data['comments'] = [{'id': 1, 'author': 'review-bot', 'is_bot': True,
+        'body': 'Confidence Score: 5/5 /commit/' + SHA,
+        'created_at': '2026-09-29T10:00:00Z', 'updated_at': '2026-09-29T10:00:00Z'}]
+    state._write_state(lambda data: data.update(pr_reviewers={REF: []}), root, reserved=False)
+    assert shepherd.post_review_request(root, REF) == 0
+    assert 'reviewers: none (solo)' in capsys.readouterr().out
+    assert not any(name == 'request_reviewers' for name, _, _ in host.calls)
+    assert not chat.calls
+    assert 'channel_posts' not in state.read_state(root)
 
 
 def test_raise_refuses_item_already_linked_before_creating_pr(case):
@@ -362,16 +390,20 @@ def test_minimum_one_reviewer_can_be_lead(case):
     root, _, _, _, vcs = case
     vcs.responses['authorship'] = Result(0, [])
     assert shepherd.select_reviewers(root, REF) == ['lead']
+    vcs.responses['authorship'] = Result(0, [{'email': 'alice@example.test', 'commits': 1}])
+    lines = []
+    assert shepherd.select_reviewers(root, REF, explain=lines) == ['alice', 'lead']
+    assert lines == ['window: all history', 'alice 1: src/app.py 1 (selected)',
+                     'lead: shepherd.lead_login (selected)']
 
 
-def test_zero_reviewers_names_minimum(case, capsys):
+def test_zero_reviewers_is_solo(case, capsys):
     from wuwei import shepherd
     root, _, _, _, vcs = case
     vcs.responses['authorship'] = Result(0, [])
     config_path = root / '.wuwei/config.toml'
     config_path.write_text(config_path.read_text().replace('lead_login = "lead"', 'lead_login = ""'))
-    with pytest.raises(shepherd.merge.Refused, match='shepherd.min_reviewers'):
-        shepherd.select_reviewers(root, REF)
+    assert shepherd.select_reviewers(root, REF) == []
 
 
 def test_configured_minimum_two_requires_two(case):
@@ -381,16 +413,139 @@ def test_configured_minimum_two_requires_two(case):
     config_path = root / '.wuwei/config.toml'
     config_path.write_text(config_path.read_text().replace('lead_login = "lead"',
                                                 'lead_login = "lead"\nmin_reviewers = 2'))
-    with pytest.raises(shepherd.merge.Refused, match='shepherd.min_reviewers'):
+    with pytest.raises(shepherd.merge.Refused, match='shepherd.min_reviewers') as refused:
         shepherd.select_reviewers(root, REF)
+    assert 'shepherd.min_reviewers 0' in str(refused.value) and 'shepherd.reviewers' in str(refused.value)
+    assert 'no setting lowers it' not in str(refused.value)
 
 
-def test_unmapped_author_names_email_and_key(case):
+def unresolved_events(root):
+    from wuwei import watch
+    return [row['payload'] for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
+            if row['kind'] == 'reviewer.unresolved']
+
+
+def test_history_reviewers_need_no_authors_table(case):
     from wuwei import shepherd
     root, _, _, _, vcs = case
-    vcs.responses['authorship'] = Result(0, [{'email': 'missing@example.test', 'commits': 1}])
-    with pytest.raises(ValueError, match='shepherd.authors.*missing@example.test'):
+    config_path = root / '.wuwei/config.toml'
+    text = config_path.read_text()
+    config_path.write_text(text.replace('"alice@example.test" = { login = "alice", mention = "UALICE" }\n', '')
+                           .replace('"bob@example.test" = { login = "bob", mention = "UBOB" }\n', ''))
+    history = [{'email': 'alice@example.test', 'commits': 5}, {'email': 'bob@example.test', 'commits': 4},
+               {'email': 'carol@example.test', 'commits': 1}]
+    vcs.responses['authorship'] = Result(0, history)
+    assert shepherd.select_reviewers(root, REF) == ['alice', 'bob', 'lead']
+    history[2]['commits'] = 3
+    assert shepherd.select_reviewers(root, REF) == ['alice', 'bob', 'carol', 'lead']
+
+
+@pytest.mark.parametrize('answer', [
+    Result(2, reason='author login unavailable'),
+    Result(0, {'login': ''}),
+    Result(2, reason='github.author_login: could not run: invalid author email'),
+])
+def test_unresolved_author_is_skipped_once(case, answer):
+    from wuwei import shepherd
+    root, host, _, _, vcs = case
+    asked = []
+    known = host.author_login
+    host.author_login = lambda repo, email, root=None: (asked.append(email), answer if email ==
+                                                        'missing@example.test' else known(repo, email))[1]
+    vcs.responses['authorship'] = Result(0, [{'email': 'alice@example.test', 'commits': 4},
+                                             {'email': 'missing@example.test', 'commits': 3}])
+    assert shepherd.select_reviewers(root, REF) == ['alice', 'lead']
+    assert unresolved_events(root) == [{'repo': 'acme/widget', 'author': 'missing'}]
+    assert state.read_state(root)['author_logins'] == {'missing@example.test': None}
+    assert shepherd.select_reviewers(root, REF) == ['alice', 'lead']
+    assert asked.count('missing@example.test') == 1
+    assert len(unresolved_events(root)) == 1
+
+
+@pytest.mark.parametrize('answer', [Result(2, reason='offline'), Result(0, {'message': 'Not Found'})])
+def test_unreachable_code_host_fails_closed(case, answer):
+    from wuwei import shepherd
+    root, host, _, _, vcs = case
+    host.author_login = lambda repo, email, root=None: answer
+    vcs.responses['authorship'] = Result(0, [{'email': 'missing@example.test', 'commits': 3}])
+    with pytest.raises(ValueError):
         shepherd.select_reviewers(root, REF)
+    assert unresolved_events(root) == []
+
+
+def configure(root, old, new):
+    config_path = root / '.wuwei/config.toml'
+    config_path.write_text(config_path.read_text().replace(old, new, 1))
+
+
+BOT_CLEAR = {'id': 1, 'author': 'review-bot', 'is_bot': True, 'body': 'Confidence Score: 5/5 /commit/' + SHA,
+             'created_at': '2026-09-29T10:00:00Z', 'updated_at': '2026-09-29T10:00:00Z'}
+
+
+def test_owner_override_replaces_history_and_lead(case):
+    from wuwei import shepherd
+    root, host, _, chat, vcs = case
+    configure(root, 'lead_login = "lead"', 'lead_login = "lead"\nreviewers = ["pat-dev"]')
+    configure(root, '[shepherd.authors]', '[shepherd.authors]\n"pat@example.test" = { login = "pat-dev", mention = "UPAT" }')
+    host.results['threads'].data['comments'] = [BOT_CLEAR]
+    host.results['request_reviewers'] = Result(0, {'requested': ['pat-dev']})
+    assert shepherd.select_reviewers(root, REF) == ['pat-dev']
+    assert not any(name == 'authorship' for name, _ in vcs.calls)
+    assert not any(name == 'author_login' for name, _, _ in host.calls)
+    assert shepherd.post_review_request(root, REF) == 0
+    assert ('request_reviewers', (REF, ['pat-dev']), root) in host.calls
+
+
+def test_repository_override_wins_and_drops_the_author(case):
+    from wuwei import shepherd
+    root, host, _, _, vcs = case
+    configure(root, 'lead_login = "lead"', 'lead_login = "lead"\nreviewers = ["pat-dev"]')
+    configure(root, 'bot_login = "review-bot"', 'bot_login = "review-bot"\n[repos.shepherd]\nreviewers = ["sam-dev", "Builder"]')
+    host.results['pr'].data['author'] = 'builder'
+    assert shepherd.select_reviewers(root, REF) == ['sam-dev']
+    host.results['files'] = Result(0, [{'path': 'specs/x.md'}])
+    assert shepherd.select_reviewers(root, REF) == ['sam-dev']
+
+
+@pytest.mark.parametrize('excluded,expected', [('Alice', ['bob', 'lead']), ('lead', ['alice', 'bob'])])
+def test_excluded_logins_leave_history_and_lead(case, excluded, expected):
+    from wuwei import shepherd
+    root, _, _, _, _ = case
+    configure(root, 'lead_login = "lead"', f'lead_login = "lead"\nreviewers_exclude = ["{excluded}"]')
+    assert shepherd.select_reviewers(root, REF) == expected
+
+
+def test_reviewers_command_explains_the_selection(case, capsys):
+    from wuwei.__main__ import main
+    root, host, _, _, vcs = case
+    host.results['files'] = Result(0, [{'path': 'src/app.py'}, {'path': 'src/util.py'}])
+    host.results['pr'].data['changed_files'] = 2
+    per_path = {'src/app.py': {'alice': 4, 'bob': 3, 'missing': 1}, 'src/util.py': {'alice': 3, 'bob': 2}}
+
+    def authorship(repo, branch, paths, days):
+        counts = {}
+        for path in paths:
+            for name, commits in per_path[path].items():
+                counts[name] = counts.get(name, 0) + commits
+        return Result(0, [{'email': f'{name}@example.test', 'commits': n} for name, n in counts.items()])
+    vcs.responses['authorship'] = authorship
+    assert main(['pr', 'reviewers', REF, '--explain']) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines == ['window: 90 days', 'alice 7: src/app.py 4, src/util.py 3 (selected)',
+                     'bob 5: src/app.py 3, src/util.py 2 (selected)',
+                     'lead: shepherd.lead_login (selected)', 'unresolved: missing',
+                     'reviewers: alice bob lead']
+    assert main(['pr', 'reviewers', REF]) == 0
+    assert capsys.readouterr().out.splitlines() == ['reviewers: alice bob lead']
+    configure(root, 'lead_login = "lead"', 'lead_login = "lead"\nreviewers_exclude = ["alice", "bob", "lead"]')
+    assert main(['pr', 'reviewers', REF]) == 0
+    assert capsys.readouterr().out.splitlines() == ['reviewers: none (solo)']
+    configure(root, 'reviewers_exclude = ["alice", "bob", "lead"]', 'min_reviewers = 4')
+    assert main(['pr', 'reviewers', REF]) == 1
+    assert 'shepherd.min_reviewers' in capsys.readouterr().out
+    host.results['pr'] = Result(2, reason='offline')
+    assert main(['pr', 'reviewers', REF]) == 2
+    assert 'offline' in capsys.readouterr().out
 
 
 def test_unmapped_author_falls_back_to_code_host_login(case):

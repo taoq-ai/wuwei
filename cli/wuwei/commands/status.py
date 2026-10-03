@@ -256,6 +256,7 @@ def snapshot(directory):
     result['answered'] = [row['reason'] for row in active if row['source'] == 'decision.answered']
     result['nudges'] = sum(row['tier'] == 'nudge' for row in active)
     result['prs_changed'] = sum(row['source'] == 'pr.changed' for row in active)
+    result['solo'] = any(row == [] for row in data.get('pr_reviewers', {}).values())
     for key, field, destination in (('reply_obligations', 'due', 'next_reply_due'),
                                      ('meetings', 'start', 'next_meeting')):
         rows = data.get(key, [])
@@ -330,6 +331,9 @@ def line(data):
         parts[0] = 'WUWEI no plan yet | ' + parts[0][6:]
     if data.get('prs_changed'):
         parts.append(f'prs {data["prs_changed"]} changed')
+    if data.get('solo'):
+        from wuwei.obligations import SOLO  # Imported only when shown: the status line stays light.
+        parts.append(SOLO)
     if data['watch'] != 'alive':
         parts.append(f'watch {data["watch"]}')
     if data['listen'] not in ('alive', 'none'):

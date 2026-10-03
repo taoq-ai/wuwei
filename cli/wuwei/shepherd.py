@@ -25,18 +25,45 @@ def _source(path, config):
     return not any(fnmatchcase(path, pattern) for pattern in config['shepherd']['source_exclude'])
 
 
-def _rank(root, config, repo, branch, paths, author, source_path=None):
+def _logins(selected):
+    if any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]*', login) for login in selected):
+        raise ValueError('invalid reviewer login')
+    return selected
+
+
+def _rank(root, config, repo, branch, paths, author, source_path=None, explain=None):
+    """Reviewers for changed paths; explain, when a list, receives the reasoning lines."""
+    asked, explain = explain is not None, [] if explain is None else explain
+    override = repo['shepherd']['reviewers'] or config['shepherd']['reviewers']
+    if override:  # The owner's list: no history, no lead, no minimum, no email check.
+        explain.append('shepherd.reviewers: ' + ' '.join(override))
+        return _logins([login for login in dict.fromkeys(override)
+                        if login.casefold() != author.casefold()])
+    merge.require(paths, 'no changed source paths for reviewer selection')
+    excluded = {login.casefold() for login in (author, *config['shepherd']['reviewers_exclude'])}
     mapping = config['shepherd']['authors']
     vcs = registry.load('vcs', config)
     host = registry.load('code_host', config)
-    resolved = {}
-    selected = []
-    windows = config['shepherd']['author_windows_days']
-    if not windows or windows != sorted(set(windows)):
-        raise ValueError('authorship windows must increase')
-    for days in (*windows, 0):
-        rows = merge.read(vcs.authorship, str(source_path or (root / repo['path']).resolve()), branch,
-                          paths, days, root=root)
+    cache, fresh, unresolved = dict(state.read_state(root).get('author_logins', {})), {}, set()
+
+    def login_of(email):
+        """shepherd.authors, then today's cache, then the code host; None when it cannot resolve."""
+        if email in mapping:
+            return mapping[email]['login']
+        if email not in cache:
+            result = host.author_login(repo['name'], email, root=root)
+            data = result.data
+            if (result.exit == 0 and isinstance(data, dict) and 'message' not in data
+                    and 'errors' not in data and isinstance(data.get('login', ''), str)):
+                cache[email] = fresh[email] = data.get('login') or None
+            elif result.exit and any(text in (result.reason or '') for text in
+                                     ('author login unavailable', 'invalid author email')):
+                cache[email] = fresh[email] = None
+            else:
+                raise ValueError(result.reason or 'author login unmeasured')
+        return cache[email]
+
+    def tally(rows):
         if not isinstance(rows, list):
             raise ValueError('invalid authorship evidence')
         counts = {}
@@ -44,21 +71,20 @@ def _rank(root, config, repo, branch, paths, author, source_path=None):
             email, commits = row['email'].casefold(), row['commits']
             if not isinstance(email, str) or '@' not in email or type(commits) is not int or commits < 1:
                 raise ValueError('invalid authorship record')
-            if email in mapping:
-                login = mapping[email]['login']
-            else:
-                if email not in resolved:
-                    try:
-                        resolved[email] = merge.read(host.author_login, repo['name'], email,
-                                                     root=root)['login']
-                    except ERRORS as exc:
-                        raise ValueError(f'shepherd.authors has no mapping for {email}: {exc}')
-                    if not isinstance(resolved[email], str) or not resolved[email]:
-                        raise ValueError(f'shepherd.authors has no mapping for {email}')
-                login = resolved[email]
-            if login.casefold() != author.casefold() and not login.casefold().endswith('[bot]'):
+            login = login_of(email)
+            if login is None:
+                unresolved.add(email.split('@', 1)[0])
+            elif login.casefold() not in excluded and not login.casefold().endswith('[bot]'):
                 counts[login] = counts.get(login, 0) + commits
-        selected = sorted(counts, key=lambda login: (-counts[login], login))
+        return counts
+
+    source = str(source_path or (root / repo['path']).resolve())
+    windows = config['shepherd']['author_windows_days']
+    if not windows or windows != sorted(set(windows)):
+        raise ValueError('authorship windows must increase')
+    for days in (*windows, 0):
+        counts = tally(merge.read(vcs.authorship, source, branch, paths, days, root=root))
+        ranked = selected = sorted(counts, key=lambda login: (-counts[login], login))
         if len(selected) >= max(2, config['shepherd']['min_reviewers']):
             if (len(selected) >= 3 and counts[selected[1]] - counts[selected[2]]
                     <= config['shepherd']['tie_commits']):
@@ -67,24 +93,41 @@ def _rank(root, config, repo, branch, paths, author, source_path=None):
                 selected = selected[:max(2, config['shepherd']['min_reviewers'])]
             break
     lead = config['shepherd']['lead_login']
-    if lead and lead != author and lead not in selected:
-        selected.append(lead)
-    if len(selected) < config['shepherd']['min_reviewers']:
-        raise merge.Refused('fewer eligible reviewers than shepherd.min_reviewers')
-    if any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]*', login) for login in selected):
-        raise ValueError('invalid reviewer login')
-    emails = {login: email for email, login in resolved.items()}
-    emails.update({row['login']: email for email, row in mapping.items()})
+    if lead and lead.casefold() not in excluded and lead not in selected:
+        selected = [*selected, lead]  # A new list: ranked stays the ranking.
+    explain.append(f'window: {days} days' if days else 'window: all history')
+    if asked:  # Per-path counts are read only when asked for.
+        by_path = {path: tally(merge.read(vcs.authorship, source, branch, [path], days, root=root))
+                   for path in paths}
+        for login in ranked:
+            detail = ', '.join(f'{path} {by_path[path][login]}' for path in paths if login in by_path[path])
+            explain.append(f'{login} {counts[login]}: {detail}' + ' (selected)' * (login in selected))
+    if lead in selected and lead not in ranked:
+        explain.append(f'{lead}: shepherd.lead_login (selected)')
+    if unresolved:
+        explain.append('unresolved: ' + ' '.join(sorted(unresolved)))
+    if fresh:
+        state._write_state(lambda data: data.setdefault('author_logins', {}).update(fresh),
+                           root, reserved=False)
+        for email in (email for email, login in fresh.items() if login is None):
+            state.append_event('reviewer.unresolved',
+                               {'repo': repo['name'], 'author': email.split('@', 1)[0]}, root)
+    if selected and len(selected) < config['shepherd']['min_reviewers']:
+        from wuwei.guards import REVIEWER_WAYS_OUT
+        raise merge.Refused('fewer eligible reviewers than shepherd.min_reviewers; ' + REVIEWER_WAYS_OUT)
+    _logins(selected)
+    # Logins named in shepherd.authors are checked against the code host; owner-named and
+    # host-resolved logins are checked by the requested == selected comparison on request.
+    emails = {row['login']: email for email, row in mapping.items()}
     for login in selected:
-        if login not in emails:
-            raise ValueError('reviewer needs a configured email')
-        verified = merge.read(host.author_login, repo['name'], emails[login], root=root)
-        if verified['login'] != login:
-            raise ValueError('configured reviewer login differs from code host')
+        if login in emails:
+            verified = merge.read(host.author_login, repo['name'], emails[login], root=root)
+            if verified['login'] != login:
+                raise ValueError('configured reviewer login differs from code host')
     return selected
 
 
-def select_reviewers(root, ref):
+def select_reviewers(root, ref, explain=None):
     root = workspace.find_workspace(root)
     config = workspace.load_config(root)
     ref = pull_request(ref)
@@ -95,10 +138,8 @@ def select_reviewers(root, ref):
     if len(files) != pr['changed_files']:
         raise ValueError('incomplete changed files')
     paths = [row['path'] for row in files if _source(row['path'], config)]
-    if not paths:
-        raise merge.Refused('no changed source paths for reviewer selection')
     return _rank(root, config, settings,
-                 config['brief']['remote'] + '/' + pr['base'], paths, pr['author'])
+                 config['brief']['remote'] + '/' + pr['base'], paths, pr['author'], explain=explain)
 
 
 def ping_gate(root, ref):
@@ -185,16 +226,19 @@ def post_review_request(root, ref):
         reviewers = state.read_state(root).get('pr_reviewers', {}).get(ref)
         if reviewers is None:
             reviewers = select_reviewers(root, ref)
-        if (not isinstance(reviewers, list) or len(reviewers) < config['shepherd']['min_reviewers']
-                or len(set(reviewers)) != len(reviewers)):
+        if not isinstance(reviewers, list) or len(set(reviewers)) != len(reviewers):
             raise ValueError('invalid selected reviewer record')
-        host = registry.load('code_host', config)
-        requested = merge.read(host.request_reviewers, ref, reviewers, root=root)
-        if set(requested['requested']) != set(reviewers):
-            raise ValueError('requested reviewer set differs from selected set')
+        if reviewers:
+            host = registry.load('code_host', config)
+            requested = merge.read(host.request_reviewers, ref, reviewers, root=root)
+            if set(requested['requested']) != set(reviewers):
+                raise ValueError('requested reviewer set differs from selected set')
         state._write_state(lambda data: data.setdefault('pr_reviewers', {}).update({ref: reviewers}),
                            root, reserved=False, kind='pr.reviewers_selected',
                            payload={'pr': ref, 'reviewers': reviewers})
+        if not reviewers:
+            print(obligations.SOLO)
+            return 0
         gate = ping_gate(root, ref)
         if gate.exit:
             print(gate.reason)
@@ -284,7 +328,6 @@ def raise_pr(root, repo_name, base, title, body, item):
         merge.sha(base_sha)
         changes = merge.read(vcs.diff_stat, str(repo_path), base_sha, head, root=root)
         paths = [row['path'] for row in changes if _source(row['path'], config)]
-        merge.require(paths, 'no changed source paths for reviewer selection')
         author = obligations._owner_login(config)
         reviewers = _rank(root, config, settings, branch, paths, author, repo_path)
         host = registry.load('code_host', config)
@@ -302,6 +345,8 @@ def raise_pr(root, repo_name, base, title, body, item):
             if set(requested['requested']) != set(reviewers):
                 raise ValueError('reviewer request could not be verified')
         print(ref)
+        if not reviewers:
+            print(obligations.SOLO)
         return 0
     except (merge.Refused, state.StateError) as exc:
         print(exc)

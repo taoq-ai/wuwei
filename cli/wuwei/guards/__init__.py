@@ -42,6 +42,13 @@ AREAS = {'agent_launch': 'seats', 'agent_launch.check_mcp': None, 'commit_push':
 # Owner-only actions block in every posture (#331 floor): the deployment ban (4.7), the merge
 # policy, approvals and owner markers (4.6), and approve-tier messages and canary egress (4.9).
 OWNER_ONLY = frozenset({'deploy', 'pr', 'outward.check_tier'})
+# The missing-reviewer refusal names its ways out, so the hook adds no posture line to it.
+REVIEWER_WAYS_OUT = ("bin/wuwei config set shepherd.min_reviewers 0, or "
+                     "bin/wuwei config set shepherd.reviewers '[\"login\"]'")
+# This guard never reads shepherd.reviewers, so that way out goes through pr raise.
+NO_REVIEWER = ('PR create requires a named --reviewer in the same command; or '
+               'bin/wuwei config set shepherd.min_reviewers 0; or set '
+               'shepherd.reviewers and raise with bin/wuwei pr raise')
 
 
 def level(check, levels):
