@@ -951,3 +951,134 @@ def test_fresh_skips_the_walk_for_a_checkout(fresh_plugin, monkeypatch):
     monkeypatch.setattr(api, '_checkout', lambda root: checkout)
     monkeypatch.setattr(os, 'walk', lambda *a, **k: (_ for _ in ()).throw(AssertionError('walked')))
     assert api.fresh(root) == registry.Result(0)
+
+
+def signed(tmp_path, monkeypatch):
+    api = core()
+    base = plugin(tmp_path)
+    api.write_manifest(base)
+    (base / 'MANIFEST.sha256.sig').write_text('signature')
+    monkeypatch.setattr(api, 'signature_adapter', lambda: Namespace(
+        verify=lambda *a: registry.Result(0)))
+    return api, base
+
+
+def test_in_use_markers_do_not_change_measure(tmp_path, monkeypatch):
+    api, base = signed(tmp_path, monkeypatch)
+    clean = api.measure(base)
+    assert clean.exit == 0
+    (base / '.in_use').mkdir()
+    (base / '.in_use/12345').write_text('')
+    assert api.measure(base) == clean
+    (base / '.in_use/12345').unlink()
+    (base / '.in_use/23456').write_text('')
+    assert api.measure(base) == clean
+
+
+@pytest.mark.parametrize('shape, fragment', [
+    ('file', 'not a Claude Code process marker: .in_use/evil.py'),
+    ('directory', 'not a Claude Code process marker: .in_use/sub'),
+    ('symlinked marker', 'not a Claude Code process marker: .in_use/12345'),
+    ('nested', 'charters/.in_use/12345'),
+    ('root symlink', 'symlink in installed plugin: .in_use')])
+def test_in_use_cannot_hide_other_content(tmp_path, monkeypatch, shape, fragment):
+    api, base = signed(tmp_path, monkeypatch)
+    markers = base / '.in_use'
+    if shape == 'root symlink':
+        (tmp_path / 'elsewhere').mkdir()
+        markers.symlink_to(tmp_path / 'elsewhere', target_is_directory=True)
+    elif shape == 'nested':
+        (base / 'charters/.in_use').mkdir()
+        (base / 'charters/.in_use/12345').write_text('')
+    else:
+        markers.mkdir()
+        if shape == 'file':
+            (markers / 'evil.py').write_text('print(1)\n')
+        elif shape == 'directory':
+            (markers / 'sub').mkdir()
+        else:
+            (markers / '12345').symlink_to(base / 'charters/builder.md')
+    result = api.measure(base)
+    assert result.exit == 1 and fragment in result.reason
+
+
+def test_fresh_ignores_markers_but_not_other_in_use_entries(fresh_plugin):
+    import os
+    api, base, root = fresh_plugin
+    later = (root / '.wuwei/integrity/verdict.json').stat().st_mtime + 10
+    (base / '.in_use').mkdir()
+    (base / '.in_use/12345').write_text('')
+    os.utime(base / '.in_use/12345', (later, later))
+    assert api.fresh(root) == registry.Result(0)
+    (base / '.in_use/evil.py').write_text('')
+    result = api.fresh(root)
+    assert result.exit != 0 and '.in_use/evil.py' in result.reason
+    (base / '.in_use/evil.py').unlink()
+    (base / 'cli/.in_use').mkdir()
+    (base / 'cli/.in_use/12345').write_text('')
+    os.utime(base / 'cli/.in_use/12345', (later, later))
+    result = api.fresh(root)
+    assert result.exit == 1 and 'cli/.in_use/12345' in result.reason
+
+
+def test_confirmation_survives_marker_churn(tmp_path, monkeypatch):
+    api, base = signed(tmp_path, monkeypatch)
+    root = workspace_root(tmp_path)
+    monkeypatch.setattr(api, 'PLUGIN', base)
+    shutil.copyfile(base / api.KEY, root / '.wuwei/integrity/pinned.pub')
+    (base / '.in_use').mkdir()
+    (base / '.in_use/12345').write_text('')
+    assert api.check(root).exit == 0 and api.cached(root).exit == 0
+    (base / 'charters/builder.md').write_text('Changed\n')
+    assert api.reconfirm(root, confirm=lambda digest: True).exit == 0
+    (base / '.in_use/12345').unlink()
+    (base / '.in_use/23456').write_text('')
+    result = api.check(root)
+    assert result.exit == 0 and 'owner-confirmed' in result.reason
+    assert api.cached(root).exit == 0
+
+
+def test_release_asset_through_the_launcher_with_a_marker(tmp_path, monkeypatch):
+    import os
+    import runpy
+    if not shutil.which('ssh-keygen'):
+        pytest.skip('ssh-keygen absent; in-process marker coverage still runs')
+    api = core()
+    real = ssh()
+    monkeypatch.setattr(api, 'signature_adapter', lambda: Namespace(
+        sign=lambda manifest, key: Path(str(manifest) + '.sig').write_text('signature') and registry.Result(0),
+        verify=lambda *a: registry.Result(0)))
+    runpy.run_path(str(ROOT / 'scripts/build-release.py'))['build'](
+        ROOT, tmp_path / 'release', tmp_path / 'unused-key')
+    stage = tmp_path / 'release/wuwei'
+    key = tmp_path / 'owner'
+    subprocess.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(key)],
+                   check=True, capture_output=True)
+    shutil.copyfile(str(key) + '.pub', stage / api.KEY)
+    (stage / 'MANIFEST.sha256.sig').unlink()
+    api.write_manifest(stage)
+    assert real.sign(stage / api.MANIFEST, key).exit == 0
+    (stage / '.in_use').mkdir()
+    (stage / '.in_use/12345').write_text('')
+    path = tmp_path / 'path'
+    path.mkdir()
+    (path / 'python3').symlink_to(sys.executable)
+    home = tmp_path / 'home'
+    home.mkdir()
+    env = {k: v for k, v in os.environ.items() if k != 'WUWEI_WORKSPACE'}
+    env.update(PATH=str(path) + os.pathsep + env['PATH'], HOME=str(home))
+    ws = tmp_path / 'ws'
+    def wuwei(*args, stdin=None, cwd=tmp_path):
+        return subprocess.run([str(stage / 'bin/wuwei'), *args], input=stdin, env=env, cwd=cwd,
+                              capture_output=True, text=True, timeout=60)
+    payload = json.dumps({'cwd': str(ws), 'session_id': 'test', 'transcript_path': 'transcript',
+                          'hook_event_name': 'PreToolUse', 'tool_name': 'Bash',
+                          'tool_input': {'command': 'ls'}})
+    init = wuwei('init', str(ws))
+    assert init.returncode == 0 and 'plugin integrity: clean' in init.stdout, init.stdout + init.stderr
+    hook = wuwei('hook', 'PreToolUse', stdin=payload)
+    assert hook.returncode == 0, hook.stdout + hook.stderr
+    (stage / '.in_use/23456').write_text('')
+    check = wuwei('integrity', 'check', cwd=ws)
+    assert check.returncode == 0, check.stdout + check.stderr
+    assert wuwei('hook', 'PreToolUse', stdin=payload).returncode == 0

@@ -150,7 +150,7 @@ def test_every_template_config_key_is_documented():
 def test_entry_guides_install_signed_release_and_explain_development_checkout():
     integrity = (ROOT / 'docs/integrity.md').read_text()
     assert 'source checkouts are unsigned and report a page' not in integrity
-    assert 'clean commit' in integrity and 'HEAD' in integrity
+    assert 'clean commit' in integrity and 'HEAD' in integrity and '.in_use' in integrity
     for path in (ROOT / 'README.md', SITE / 'index.md'):
         text = path.read_text()
         for phrase in ('releases/latest/download/wuwei.tar.gz', 'curl -fL', 'tar -xzf',
