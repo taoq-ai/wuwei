@@ -9,6 +9,7 @@ import shlex
 from wuwei import shell
 from wuwei.guards import Guard
 from wuwei.registry import data
+from wuwei.exits import DAMAGED
 
 
 def _identity(value):
@@ -16,7 +17,7 @@ def _identity(value):
             not isinstance(value.get(key), str) or not value[key].strip()
             or any(char in value[key] for char in '\n\r\0<>')
             for key in ('name', 'email')):
-        raise ValueError('missing or malformed identity')
+        raise ValueError(f'missing or malformed identity; {DAMAGED}')
     return value['name'], value['email']
 
 
@@ -33,7 +34,7 @@ def identity_check(expected, actual, head=None):
         if head is not None:
             for kind in ('author', 'committer'):
                 if _identity(head[kind]) != owner:
-                    return 1, 'HEAD author/committer do not match configured identity'
+                    return 1, 'HEAD author/committer do not match configured identity; run git commit --amend --reset-author --no-edit in the item worktree, then push again'
         return 0, ''
     except (KeyError, TypeError, ValueError) as exc:
         return 2, f'could not check identity: {exc}'
@@ -55,11 +56,11 @@ def context(cwd, settings, env, root, push=None, identity=True):
     from wuwei import registry, workspace
 
     if 'GIT_COMMON_DIR' in env:
-        raise ValueError('GIT_COMMON_DIR overrides cannot be inspected safely')
+        raise ValueError('GIT_COMMON_DIR overrides cannot be inspected safely; run unset GIT_COMMON_DIR, then run plain git from the item worktree')
     if not identity and (settings or env):
-        raise ValueError('identity-free repository read takes no settings or env overrides')
+        raise ValueError('identity-free repository read takes no settings or env overrides; retry; if it repeats, run bin/wuwei doctor')
     if not identity and push is not None:
-        raise ValueError('push checks need the commit identity')
+        raise ValueError('push checks need the commit identity; retry; if it repeats, run bin/wuwei doctor')
     config = workspace.load_config(root)
     vcs = registry.load('vcs', config)
     if push is None:
@@ -77,7 +78,7 @@ def _context(cwd, settings, env, root, config, vcs, identity):
                   else vcs.repo_context(str(cwd), root=root))
     for key in ('path', 'common_dir'):
         if not isinstance(actual.get(key), str) or not Path(actual[key]).is_absolute():
-            raise ValueError('missing repository context')
+            raise ValueError('missing repository context; run the command from inside a repository checkout or worktree; if it is one, run bin/wuwei doctor')
     for repo in config['repos']:
         path = (root / Path(repo['path']).expanduser()).resolve()
         # A checkout whose own .git directory is the common directory Git just measured
@@ -87,7 +88,7 @@ def _context(cwd, settings, env, root, config, vcs, identity):
         configured = data(vcs.repo_context(str(path), root=root))
         if configured.get('common_dir') == actual['common_dir']:
             return repo, actual, vcs
-    raise ValueError('repository is not configured in this workspace')
+    raise ValueError('repository is not configured in this workspace; work in a configured repository, or the owner adds this one with bin/wuwei config add-repo in a host terminal')
 
 
 def push_check(repo, actual, push, root, vcs):
@@ -97,52 +98,56 @@ def push_check(repo, actual, push, root, vcs):
     result = identity_check(repo['identity'], actual, push['head'])
     if result[0]:
         return result
+    item = _item(actual['path'], root)
+    branch = item.lower() if item else '<branch>'
+    checks = f'bin/wuwei build check {item}' if item else 'bin/wuwei fast-checks in this worktree'
     sha = push['head']['sha']
     if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', sha):
-        raise ValueError('invalid HEAD')
+        raise ValueError(f'invalid HEAD; {DAMAGED}')
     if type(push['force']) is not bool:
-        raise ValueError('invalid force evidence')
+        raise ValueError(f'invalid force evidence; {DAMAGED}')
     if push['force']:
-        return 1, 'force-push is refused'
+        return 1, f'force-push is refused; run it without --force: git push origin HEAD:refs/heads/{branch}'
     updates = push['updates']
     if not isinstance(updates, list) or not updates:
-        raise ValueError('push destinations are unmeasured')
+        raise ValueError(f'push destinations are unmeasured; run git push origin HEAD:refs/heads/{branch}')
     if not repo['default_branch'].strip():
-        raise ValueError('missing default branch')
+        raise ValueError('missing default branch; the owner sets repos.<n>.default_branch with bin/wuwei config set in a host terminal')
     for update in updates:
         destination = update['destination']
         if not isinstance(destination, str) or not destination.startswith('refs/heads/'):
-            raise ValueError('only branch pushes are supported; tags require deployment policy')
+            raise ValueError(f'only branch pushes are supported; tags require deployment policy; run git push origin HEAD:refs/heads/{branch} and leave tagging to the owner')
         if destination == 'refs/heads/' + repo['default_branch']:
-            return 1, 'push to the default branch is refused'
+            return 1, (f'push to the default branch {repo["default_branch"]} is refused; run git push '
+                       f'origin HEAD:refs/heads/{branch} for the item branch instead')
         if any(fnmatchcase(destination.removeprefix('refs/heads/'), pattern)
                for pattern in workspace.load_config(root)['environments']):
-            return 1, 'push to an environment branch is refused'
+            return 1, f'push to an environment branch is refused; deploying is an owner action, so run git push origin HEAD:refs/heads/{branch} for the item branch'
         if update['source'] != sha:
-            return 1, 'push must use the checked current HEAD'
+            return 1, 'push must use the checked current HEAD; run git push <remote> HEAD:<branch> from the item worktree'
         commits = data(vcs.push_commits(actual['path'], push['remote'], destination,
                                        sha, update.get('remote_sha'), repo['default_branch'],
                                        root=root))['commits']
         if not isinstance(commits, list):
-            raise ValueError('malformed pushed commit range')
+            raise ValueError('malformed pushed commit range; run git fetch origin in the worktree, then push again; if it repeats, run bin/wuwei doctor')
         for commit in commits:
             result = identity_check(repo['identity'], commit)
             if result[0]:
                 return result[0], 'pushed commit identity: ' + result[1]
     evidence = state.read_state(root).get('fast_checks', {})
     if not isinstance(evidence, dict) or not isinstance(evidence.get(repo['name'], {}), dict):
-        raise ValueError('malformed fast-check evidence')
+        raise ValueError(f'malformed fast-check evidence; {DAMAGED}')
     for check in repo['fast_checks']:
         if not check.strip():
-            raise ValueError('empty configured fast check')
+            raise ValueError('empty configured fast check; the owner removes the empty entry with bin/wuwei config set repos.<n>.fast_checks in a host terminal')
         record = evidence.get(repo['name'], {}).get(check)
         if record is None:
-            return 1, f'fast check has not passed for current HEAD: {check}'
+            return 1, f'fast check "{check}" has not passed for HEAD {sha[:12]}; run {checks}'
         if (not isinstance(record, dict) or not isinstance(record.get('sha'), str)
                 or type(record.get('exit')) is not int or record['exit'] not in (0, 1, 2)):
-            raise ValueError('malformed fast-check evidence')
+            raise ValueError(f'malformed fast-check evidence; {DAMAGED}')
         if record['sha'] != sha or record['exit'] != 0:
-            return 1, f'fast check has not passed for current HEAD: {check}'
+            return 1, f'fast check "{check}" has not passed for HEAD {sha[:12]}; run {checks}'
     return 0, ''
 
 
@@ -202,7 +207,7 @@ def commit_options(args, actual):
         if arg == '--':
             break
         if arg in ('--no-verify', '-n'):
-            return 1, 'disabling commit hooks is refused'
+            return 1, 'disabling commit hooks is refused; run the commit without --no-verify or -n'
         if arg == '--reset-author':
             reset = True
         elif arg == '--amend':
@@ -217,31 +222,39 @@ def commit_options(args, actual):
                        '--reuse-message', '--reedit-message', '--fixup', '--trailer'):
                 if not separator:
                     if index == len(args):
-                        raise ValueError('missing commit option value')
+                        raise ValueError('missing commit option value; add the value after the option')
                     value, index = args[index], index + 1
             elif arg[:2] in ('-m', '-F', '-t', '-C', '-c'):
                 key, value = arg[:2], arg[2:]
                 if not value:
                     if index == len(args):
-                        raise ValueError('missing commit option value')
+                        raise ValueError('missing commit option value; add the value after the option')
                     value, index = args[index], index + 1
             elif not arg.startswith('-'):
                 continue
             else:
-                raise ValueError('unsupported commit option')
+                raise ValueError('unsupported commit option; remove it, or run the commit with -m, -a, --amend or --author only')
             if key == '--author':
                 match = re.fullmatch(r'([^<>]+) <([^<>]+)>', value)
                 if not match:
-                    raise ValueError('commit author must be an explicit name and email')
+                    raise ValueError('commit author must be an explicit name and email; use --author \'Name <email>\' with the configured identity, or remove --author')
                 actual['author'] = {'name': match[1], 'email': match[2]}
             if key in ('-C', '-c', '--reuse-message', '--reedit-message'):
                 reused = True
     if reused and not reset:
-        raise ValueError('reused commit authors require --reset-author')
+        raise ValueError('reused commit authors require --reset-author; add --reset-author to the commit')
     return 0, ''
 
 
-def push_options(args):
+def _item(path, root):
+    """The item of an item worktree (<root>/worktrees/<ITEM>), else None."""
+    try:
+        return Path(path).resolve().relative_to(Path(root).resolve() / 'worktrees').parts[0]
+    except (ValueError, IndexError):
+        return None
+
+
+def push_options(args, branch='<branch>'):
     operands = []
     for arg in args:
         if (arg.startswith(('--force', '--mirror')) or arg.startswith('+')
@@ -253,10 +266,10 @@ def push_options(args):
                    '--porcelain', '--atomic', '--dry-run', '--thin', '--no-thin'):
             continue
         if arg.startswith('-'):
-            raise ValueError('unsupported push option; use an explicit remote and HEAD refspec')
+            raise ValueError(f'unsupported push option {arg}; run git push origin HEAD:refs/heads/{branch}')
         operands.append(arg)
     if len(operands) < 2:
-        raise ValueError('use an explicit remote and branch refspec: git push origin <branch>')
+        return (1, f'name the remote and the branch: run git push origin HEAD:refs/heads/{branch}'), None, []
     return (0, ''), operands[0], operands[1:]
 
 
@@ -350,9 +363,9 @@ def check(payload):
             raise ValueError('opaque script command; run git as a plain command')
         # The shared parser intentionally discards these context-changing wrappers.
         if re.search(r'\benv\s+(?:-i|--ignore-environment|-u|--unset)\b|\bexec\s+-c\b', raw):
-            raise ValueError('unsupported environment clearing around Git')
+            raise ValueError('unsupported environment clearing around Git; run git with the normal environment, without clearing or unsetting variables')
         if re.search(r'''(?:^|[;\n'"])\s*\w+=[^;\n]*[;\n]''', raw):
-            raise ValueError('standalone environment assignment before Git')
+            raise ValueError('standalone environment assignment before Git; write the assignment directly in front of the git command, or remove it')
         creates_commit = False
         for command, directory, root, parsed, errors in scoped:
             if errors:
@@ -361,7 +374,7 @@ def check(payload):
                 for arg in command.argv[1:]:
                     target = (directory / arg).resolve()
                     if target.name == 'wuwei-workspace' or target == root / '.wuwei/executable':
-                        return 1, 'removing a WUWEI hook pointer is refused'
+                        return 1, 'removing a WUWEI hook pointer is refused; leave it in place, and run bin/wuwei doctor if it looks wrong'
             if Path(command.argv[0]).name != 'git':
                 if (shell.is_opaque(command.argv) or len(commands) > 1
                         or '/' in command.argv[0] and not shell.known_cli(command.argv[0], directory)
@@ -371,7 +384,11 @@ def check(payload):
                 continue
             cwd, settings, env, verb, args = parsed
             if verb == 'push' and creates_commit:
-                return 1, 'run push separately after commit creation and fresh fast checks'
+                item = _item(directory, root)
+                checks = f'bin/wuwei build check {item}' if item else 'bin/wuwei fast-checks'
+                return 1, (f'push runs after fresh fast checks: run the commit alone, then {checks}, then '
+                           f'git push origin HEAD:refs/heads/{item.lower() if item else "<branch>"} '
+                           'as its own command')
             creates_commit |= verb in COMMIT_VERBS
             if verb == 'config':
                 args = [part for arg in args for part in arg.split('=', 1)]
@@ -384,20 +401,20 @@ def check(payload):
                 protected |= section_change and any(arg.lower() in ('core', 'extensions') for arg in args)
                 if protected and action not in (
                         '--get', '--get-all', '--get-regexp', '--list', '-l', 'get', 'list'):
-                    return 1, 'changing Git hook configuration is refused'
+                    return 1, 'changing Git hook configuration is refused; use git config --get to read them; only the owner changes them, by hand'
                 if len(commands) > 1:
                     raise ValueError('run configuration changes separately')
             overrides = settings or any(key in IDENTITY_ENV or key.startswith('GIT_CONFIG')
                                         for key in command.env)
             if verb not in COMMIT_VERBS | {'push'} and not overrides:
                 if len(commands) > 1 and verb != 'add':
-                    raise ValueError('unsupported compound Git command')
+                    raise ValueError('unsupported compound Git command; run it as its own call, without &&, ; or pipes')
                 continue
             if any(key in command.env for key in ('HOME', 'XDG_CONFIG_HOME', 'PATH')):
-                raise ValueError('unsupported Git configuration or executable environment override')
+                raise ValueError('unsupported Git configuration or executable environment override; remove the override and run git with the normal environment')
             allowed_env = IDENTITY_ENV | REPO_ENV | {'GIT_EDITOR', 'GIT_PAGER'}
             if any(key.startswith('GIT_') and key not in allowed_env for key in env):
-                raise ValueError('unsupported GIT_* override')
+                raise ValueError('unsupported GIT_* override; remove it from the command; if it is truly needed, ask the owner')
             try:
                 early, remote, refs = push_options(args) if verb == 'push' else ((1, ''), None, [])
             except ValueError:
@@ -409,11 +426,11 @@ def check(payload):
             # Explicit mismatching overrides are refused even if another override wins.
             for key, value in settings.items():
                 if value != expected[key.rsplit('.', 1)[1]]:
-                    return 1, 'Git configuration override differs from configured identity'
+                    return 1, 'Git configuration override differs from configured identity; remove the override; worktrees from bin/wuwei worktree add already use repos.<n>.identity'
             for key, value in env.items():
                 if key in IDENTITY_ENV and not key.endswith('_DATE'):
                     if value != expected[key.rsplit('_', 1)[1].lower()]:
-                        return 1, 'Git environment override differs from configured identity'
+                        return 1, 'Git environment override differs from configured identity; unset it, or set it to the exact name and email in repos.<n>.identity'
             if verb == 'commit':
                 result = commit_options(args, actual)
                 if result[0]:
@@ -423,7 +440,8 @@ def check(payload):
                 return result
             if verb != 'push':
                 continue
-            result, remote, refs = push_options(args)
+            item = _item(actual['path'], root)
+            result, remote, refs = push_options(args, item.lower() if item else '<branch>')
             if result[0]:
                 return result
             push = data(next(iter(early), None) or vcs.push_context(actual['path'], remote, refs, root=root))

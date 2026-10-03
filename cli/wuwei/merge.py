@@ -10,6 +10,7 @@ import re
 from wuwei import obligations, registry, state, workspace
 from wuwei.references import pull_request
 from wuwei.registry import Result
+from wuwei.exits import DAMAGED
 
 ERRORS = (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError, RuntimeError, re.error)
 
@@ -25,20 +26,20 @@ def require(condition, reason):
 
 def sha(value):
     if not isinstance(value, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', value):
-        raise ValueError('invalid head SHA')
+        raise ValueError(f'invalid head SHA; {DAMAGED}')
     return value
 
 
 def integer(value):
     if type(value) is not int or value < 0:
-        raise ValueError('expected nonnegative integer evidence')
+        raise ValueError(f'expected nonnegative integer evidence; {DAMAGED}')
     return value
 
 
 def read(operation, *args, root):
     value = obligations._read(operation, *args, root=root)
     if isinstance(value, dict) and ('message' in value or 'errors' in value):
-        raise ValueError('adapter returned an error body')
+        raise ValueError('adapter returned an error body; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
     return value
 
 
@@ -54,7 +55,7 @@ def reference(ref, root, config, cwd=None, repo=None):
                 candidates = [r for r in config['repos'] if read(vcs.repo_context,
                     str((root / Path(r['path']).expanduser()).resolve()), root=root)['common_dir'] == common]
             if len(candidates) != 1:
-                raise ValueError('numeric PR requires an unambiguous configured repository')
+                raise ValueError('numeric PR requires an unambiguous configured repository; pass owner/repo#n')
             repo = candidates[0]['name']
         ref = f'{repo}#{ref}'
     if isinstance(ref, str):
@@ -71,7 +72,7 @@ def journals(root):
             breakers.setdefault(repo, item)
         for ref, item in data.get('merges', {}).items():
             if pull_request(ref) != ref or item['head'] != sha(item['head']):
-                raise ValueError('invalid merge journal')
+                raise ValueError(f'invalid merge journal; {DAMAGED}')
             obligations._time(item['at'])
             entries.append((directory, ref, item))
     return entries, breakers
@@ -80,13 +81,13 @@ def journals(root):
 def checked_pr(host, ref, root):
     pr = read(host.pr, ref, root=root)
     if f'{pr["repo"]}#{pr["number"]}' != ref:
-        raise ValueError('PR identity differs from requested PR')
+        raise ValueError('PR identity differs from requested PR; retry with the exact owner/repo#n; if it repeats, run bin/wuwei doctor')
     sha(pr['head'])
     sha(pr['base_sha'])
     if type(pr['draft']) is not bool or type(pr['merged']) is not bool:
-        raise ValueError('invalid PR boolean evidence')
+        raise ValueError(f'invalid PR boolean evidence; {DAMAGED}')
     if not isinstance(pr['author'], str) or not pr['author']:
-        raise ValueError('invalid PR author')
+        raise ValueError(f'invalid PR author; {DAMAGED}')
     obligations._time(pr['updated_at'])
     return pr
 
@@ -98,7 +99,7 @@ def checks_at(host, ref, head, root):
                 or check['state'] not in ('queued', 'pending', 'in_progress', 'completed', 'waiting', 'requested')
                 or check['conclusion'] not in (None, 'success', 'failure', 'error', 'neutral',
                     'skipped', 'cancelled', 'timed_out', 'action_required', 'stale', 'startup_failure')):
-            raise ValueError('invalid check evidence at head')
+            raise ValueError(f'invalid check evidence at head; {DAMAGED}')
         if check.get('app_id') is not None:
             integer(check['app_id'])
     return checks
@@ -109,7 +110,7 @@ def green(checks, protection):
     require(required, 'no required checks resolvable')
     for entry in required:
         if not isinstance(entry['name'], str) or not entry['name']:
-            raise ValueError('invalid required check name')
+            raise ValueError('invalid required check name; the owner fixes the check name in the repository settings or config (bin/wuwei config check names it)')
         if entry['app_id'] is not None:
             integer(entry['app_id'])
         matches = [c for c in checks if c['name'] == entry['name'] and
@@ -126,7 +127,7 @@ def quiet(policy, now):
     for window in policy['quiet_hours']:
         match = re.fullmatch(r'([0-2][0-9]):([0-5][0-9])-([0-2][0-9]):([0-5][0-9])', window)
         if not match or any(int(match[i]) > 23 for i in (1, 3)):
-            raise ValueError('invalid quiet hours, expected HH:MM-HH:MM')
+            raise ValueError(f'invalid quiet hours, expected HH:MM-HH:MM; {DAMAGED}')
         start, end = int(match[1]) * 60 + int(match[2]), int(match[3]) * 60 + int(match[4])
         if start == end or (start <= minute < end if start < end else minute >= start or minute < end):
             return True
@@ -144,10 +145,10 @@ def item_evidence(root, ref, data):
                 if row['kind'] in ('plan.approved', 'state.import')
                 and name in row['payload'].get('flags', {})]
     if not approved:
-        raise ValueError('approved item risk evidence is missing; replan the item')
+        raise ValueError('approved item risk evidence is missing; replan the item; run bin/wuwei plan add <item> again so its risk is measured')
     for flags in [item['flags'], *approved]:
         if set(flags) != set(state.ITEM_DEFAULTS['flags']) or any(type(v) is not bool for v in flags.values()):
-            raise ValueError('invalid item risk evidence')
+            raise ValueError(f'invalid item risk evidence; {DAMAGED}')
         require(not any(flags.values()), 'item carries a risk flag')
     for phase in ('fix', 'delta'):
         count = sum((row['kind'].startswith('state.') and
@@ -164,7 +165,7 @@ def bot_evidence(config, policy, discussion, ref, head, root):
         return None
     login = policy['bot_login']
     if not login:
-        raise ValueError('merge.bot_login required for a configured review bot')
+        raise ValueError('merge.bot_login required for a configured review bot; the owner sets merge.bot_login with bin/wuwei config set in a host terminal')
     bot = registry.load('review_bot', config)
     score = read(bot.score, ref, root=root)
     integer(score)
@@ -218,7 +219,7 @@ def check(ref, root=None, *, cwd=None, repo=None):
         require(pr['state'] == 'open' and not pr['merged'], 'PR must be open')
         require(not pr['draft'], 'PR is a draft')
         if not isinstance(pr['base'], str) or not pr['base']:
-            raise ValueError('missing base branch')
+            raise ValueError('missing base branch; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
         require(not any(fnmatchcase(pr['base'], pattern) for pattern in config['environments']),
                 'ineligible base branch')
         require(pr['merge_state'] != 'dirty', 'mergeable_state=dirty')
@@ -226,26 +227,26 @@ def check(ref, root=None, *, cwd=None, repo=None):
         for key in ('strict', 'merge_queue', 'require_code_owner_reviews', 'require_last_push_approval',
                     'dismiss_stale_reviews', 'conversation_resolution', 'enforce_admins'):
             if type(protection[key]) is not bool:
-                raise ValueError('invalid branch protection evidence')
+                raise ValueError(f'invalid branch protection evidence; {DAMAGED}')
         require(pr['merge_state'] != 'behind' or protection['merge_queue'], 'mergeable_state=behind')
         if pr['mergeable'] is None or pr['merge_state'] == 'unknown':
-            raise ValueError('mergeability unmeasured')
+            raise ValueError('mergeability unmeasured; wait a minute and retry; if it persists, run bin/wuwei doctor')
         files = obligations._list(read(host.files, ref, root=root))
         if len(files) != integer(pr['changed_files']):
-            raise ValueError('incomplete changed files')
+            raise ValueError('incomplete changed files; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
         additions = sum(integer(f['additions']) for f in files)
         deletions = sum(integer(f['deletions']) for f in files)
         if additions != integer(pr['additions']) or deletions != integer(pr['deletions']):
-            raise ValueError('incomplete diff size')
+            raise ValueError('incomplete diff size; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
         require(additions + deletions <= policy['max_changed_lines'], 'diff exceeds max changed lines')
         for file in files:
             if not isinstance(file['path'], str) or not file['path']:
-                raise ValueError('invalid changed file path')
+                raise ValueError(f'invalid changed file path; {DAMAGED}')
             for path in (file['path'], file['previous_path']):
                 if path is None:
                     continue
                 if not isinstance(path, str) or not path or path.startswith('/') or '..' in Path(path).parts:
-                    raise ValueError('invalid changed file path')
+                    raise ValueError(f'invalid changed file path; {DAMAGED}')
                 require(matched(path, policy['never_auto_paths']) is None, f'never-auto path: {path}')
         from wuwei.dispatch import gate_set
         from wuwei.guards.pr import gate_check
@@ -297,9 +298,9 @@ def check(ref, root=None, *, cwd=None, repo=None):
             'protection': protection, 'bot': bot,
             'files': [{k: v for k, v in file.items() if k != 'patch'} for file in files]})
     except Refused as exc:
-        return Result(1, None, f'merge policy: {exc}; the owner merges')
+        return Result(1, None, f'merge policy: {exc}; the owner merges; ask the owner')
     except ERRORS as exc:
-        return Result(2, None, f'merge policy unmeasured: {exc}; route to owner')
+        return Result(2, None, f'merge policy unmeasured: {exc}; route to owner; run bin/wuwei doctor if it repeats')
 
 
 def locked(root):
@@ -353,13 +354,13 @@ def execute(ref, root=None, *, cwd=None):
             host = registry.load('code_host', workspace.load_config(root))
             accepted = read(host.merge, ref, evidence['head'], root=root)
             if accepted.get('accepted') is not True or accepted.get('sha') != evidence['head']:
-                raise ValueError('merge result could not be verified')
+                raise ValueError('merge result could not be verified; run bin/wuwei pr state to read the PR again before any retry')
             # Accepted can mean enqueued. The watch reads the actual merged commit.
             entry['status'] = 'accepted'
             save_entry(root, directory, ref, entry, 'merge.auto')
             return Result(0, evidence)
     except ERRORS as exc:
-        return Result(2, None, f'merge unmeasured: {exc}; route to owner; watch will reconcile intent')
+        return Result(2, None, f'merge unmeasured: {exc}; route to owner; watch will reconcile intent; run bin/wuwei pr state to read the PR again')
 
 
 def trip(root, repo, policy, reason, *, ref=None, kind='merge.breaker', incident=None):
@@ -380,14 +381,14 @@ def edits(file):
     """Exact changed ranges from a complete unified patch; no context-line overlap."""
     patch = file['patch']
     if not isinstance(patch, str):
-        raise ValueError('outcome unmeasured: missing text patch')
+        raise ValueError('outcome unmeasured: missing text patch; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
     result, old, new, old_end, new_end = [], None, None, None, None
     added = removed = 0
     for line in patch.splitlines():
         match = re.match(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@', line)
         if match:
             if old is not None and (old != old_end or new != new_end):
-                raise ValueError('truncated patch hunk')
+                raise ValueError('truncated patch hunk; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
             old_count = int(match[2]) if match[2] is not None else 1
             new_count = int(match[4]) if match[4] is not None else 1
             old = int(match[1]) + (old_count == 0)
@@ -396,7 +397,7 @@ def edits(file):
         elif line.startswith('\\'):
             continue
         elif old is None or not line or line[0] not in ' +-':
-            raise ValueError('invalid patch evidence')
+            raise ValueError(f'invalid patch evidence; {DAMAGED}')
         elif line[0] == ' ':
             old += 1
             new += 1
@@ -412,7 +413,7 @@ def edits(file):
             removed += deletion
             added += addition
     if (old != old_end or new != new_end or added != file['additions'] or removed != file['deletions']):
-        raise ValueError('incomplete file patch')
+        raise ValueError('incomplete file patch; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
     return result
 
 
@@ -429,13 +430,13 @@ def outcome(entry, history, policy):
         at = obligations._time(commit['at'])
         sha(commit['sha'])
         if not isinstance(commit['message'], str):
-            raise ValueError('invalid commit message evidence')
+            raise ValueError('invalid commit message evidence; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
         if re.search(r'\bThis reverts commit ' + re.escape(entry['merge_commit']) + r'\.', commit['message']):
             reverts.append({'sha': commit['sha'], 'at': at.isoformat()})
         if at > end:
             continue
         if at < start:
-            raise ValueError('nonchronological outcome history')
+            raise ValueError('nonchronological outcome history; check the system clock, then run bin/wuwei doctor')
         touched = False
         for file in obligations._list(commit['files']):
             path = file['previous_path'] or file['path']
@@ -467,7 +468,7 @@ def baseline(root):
     text = (root / '.wuwei/memory/notes/baseline.md').read_text(encoding='utf-8')
     values = re.findall(r'^Escaped-defect-rate: *([0-9]+(?:\.[0-9]+)?) *$', text, re.M)
     if len(values) != 1 or not 0 <= float(values[0]) <= 1:
-        raise ValueError('baseline needs one Escaped-defect-rate: fraction between 0 and 1')
+        raise ValueError('baseline needs one Escaped-defect-rate: fraction between 0 and 1; ask the owner to add that line to the baseline in a host terminal')
     return float(values[0])
 
 
@@ -487,11 +488,11 @@ def monitor(root, directory, ref, entry, host, settings):
         return 0, None  # Still in the queue, or an uncertain request. Never retry mutation.
     if pr['head'] != entry['head'] or pr['base'] != entry['evidence']['base']:
         trip(root, repo, policy, 'merged identity differs from checked PR', ref=ref)
-        raise ValueError('merged PR identity differs from checked evidence')
+        raise ValueError(f'merged PR identity differs from checked evidence; {DAMAGED}')
     merge_commit = sha(pr['merge_commit'])
     obligations._time(pr['merged_at'])
     if entry.get('merge_commit') not in (None, merge_commit):
-        raise ValueError('merge commit changed')
+        raise ValueError('merge commit changed; run bin/wuwei pr state for the current merge commit, then retry')
     if 'merge_commit' not in entry:
         entry.update(status='merged', merge_commit=merge_commit, merged_at=pr['merged_at'])
         undo(root, directory, ref, entry)
@@ -514,7 +515,7 @@ def monitor(root, directory, ref, entry, host, settings):
         try:
             checks = checks_at(host, ref, merge_commit, root)
             if not checks:
-                raise ValueError('base checks unmeasured: no checks at merge commit')
+                raise ValueError('base checks unmeasured: no checks at merge commit; wait for the checks to start on the merge commit, then run bin/wuwei pr state')
         except ERRORS as exc:
             checks, check_error = [], exc
         red = [c['name'] for c in checks if c['conclusion'] in
@@ -528,7 +529,7 @@ def monitor(root, directory, ref, entry, host, settings):
             result = read(host.revert_pr, ref, root=root)
             target = f'https://github.com/{repo}/pull/{integer(result["number"])}'
             if result['url'] != target or result['number'] <= 0 or target.endswith('/' + ref.split('#')[1]):
-                raise ValueError('invalid revert PR result')
+                raise ValueError(f'invalid revert PR result; {DAMAGED}')
             entry['revert_pr'] = target
             save_entry(root, directory, ref, entry, 'merge.revert')
         return 1, {'reverts': [entry['revert_pr']], 'fixes': [], 'escaped': True}

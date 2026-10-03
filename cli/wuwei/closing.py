@@ -8,18 +8,19 @@ import re
 
 from wuwei import decision, obligations, registry, state, verdict, watch, workspace
 from wuwei.promotion import safe_path
+from wuwei.exits import DAMAGED, SYMLINK
 
 
 def _settings(root):
     config = workspace.load_config(root)
     settings = config['retro']
     if not settings['charter_paths']:
-        raise ValueError('retro.charter_paths must not be empty')
+        raise ValueError('retro.charter_paths must not be empty; the owner lists the charter folders the retro may change with bin/wuwei config set retro.charter_paths in a host terminal')
     for raw in [*settings['charter_paths'], settings['changelog']]:
         path = Path(raw)
         if (path.is_absolute() or '..' in path.parts or raw.startswith(('-', ':'))
                 or any(c in raw for c in '*?[]\n\r\0')):
-            raise ValueError('retro paths must be literal repository-relative paths')
+            raise ValueError('retro paths must be literal repository-relative paths; the owner sets plain relative paths with bin/wuwei config set in a host terminal')
     return settings, registry.load('vcs', config), str((root / '.wuwei').resolve())
 
 
@@ -27,7 +28,7 @@ def _tree(vcs, repo, ref, paths, root):
     data = obligations._read(vcs.read_tree, repo, ref, paths, root=root)
     if not isinstance(data, dict) or any(not isinstance(k, str) or not isinstance(v, str)
                                          for k, v in data.items()):
-        raise ValueError('invalid committed tree evidence')
+        raise ValueError(f'invalid committed tree evidence; {DAMAGED}')
     return data
 
 
@@ -39,14 +40,14 @@ def _notes(root, directory):
         record = row['payload']
         path = safe_path(root, record['evidence'], label='retro evidence')
         if path.parent != directory / 'retro':
-            raise ValueError('retro evidence must belong to today')
+            raise ValueError('retro evidence must belong to today; capture it again with the retro session (bin/wuwei retro)')
         evidence = json.loads(path.read_text(encoding='utf-8'))
         if (not isinstance(evidence, dict) or
                 any(evidence.get(key) != record.get(key) for key in
                     ('agent_id', 'agent_type', 'fields', 'missing', 'invalid')) or
                 evidence.get('missing') != [] or evidence.get('invalid') != [] or
                 not isinstance(evidence.get('agent_type'), str)):
-            raise ValueError('invalid captured retro evidence')
+            raise ValueError(f'invalid captured retro evidence; {DAMAGED}')
         notes[record['evidence']] = evidence['agent_type'].rsplit(':', 1)[-1]
     return list(notes.values())
 
@@ -81,28 +82,28 @@ def retro(root):
             findings.append('OWED: Applied must list charter paths or exactly none')
         proposal_dir = directory / 'proposals'
         if proposal_dir.is_symlink():
-            raise ValueError('proposals directory must not be a symlink')
+            raise ValueError(f'proposals directory must not be a symlink; {SYMLINK}')
         if proposal_dir.exists() and any(proposal_dir.glob('*.json')):
             findings.append('OWED: retro proposals await wuwei promote')
         if proposal_dir.exists():
             landed = set()
             for proposal in proposal_dir.glob('*.landed'):
                 if proposal.is_symlink():
-                    raise ValueError('landed proposal must not be a symlink')
+                    raise ValueError(f'landed proposal must not be a symlink; {SYMLINK}')
                 record = json.loads(proposal.read_text(encoding='utf-8'))
                 target = record.get('target')
                 if not isinstance(target, str):
-                    raise ValueError('invalid landed proposal target')
+                    raise ValueError(f'invalid landed proposal target; {DAMAGED}')
                 landed.add(target)
                 if target.startswith('.wuwei/charters/') and target not in paths:
                     findings.append(f'OWED: Applied omits promoted charter {target}')
             for proposal in proposal_dir.glob('*.rejected'):
                 if proposal.is_symlink():
-                    raise ValueError('rejected proposal must not be a symlink')
+                    raise ValueError(f'rejected proposal must not be a symlink; {SYMLINK}')
                 record = json.loads(proposal.read_text(encoding='utf-8'))
                 target = record.get('target')
                 if not isinstance(target, str):
-                    raise ValueError('invalid rejected proposal target')
+                    raise ValueError(f'invalid rejected proposal target; {DAMAGED}')
                 if target.startswith('.wuwei/charters/') and target not in landed:
                     findings.append(f'OWED: rejected charter proposal {target} needs a landed revision')
         if paths:
@@ -114,7 +115,7 @@ def retro(root):
             local_paths = [str(Path(path).relative_to('.wuwei')) for path in paths]
             changed = obligations._read(vcs.changes_on, repo, day, root=root)
             if not isinstance(changed, list) or any(not isinstance(p, str) for p in changed):
-                raise ValueError('invalid changed paths evidence')
+                raise ValueError(f'invalid changed paths evidence; {DAMAGED}')
             for path in local_paths:
                 if path not in changed:
                     findings.append(f'OWED: retro says {path} was amended but no commit today touches it')
@@ -129,7 +130,7 @@ def retro(root):
                 findings.append(f'OWED: changelog has no committed line dated {day}')
             integrity = obligations._read(vcs.workspace_changes, repo, root=root)
             if not isinstance(integrity, list) or any(not isinstance(p, str) for p in integrity):
-                raise ValueError('invalid workspace history evidence')
+                raise ValueError(f'invalid workspace history evidence; {DAMAGED}')
             for path in [*local_paths, changelog]:
                 if path in integrity:
                     findings.append(f'OWED: {path} has unpromoted changes or history')
@@ -163,7 +164,7 @@ def unresolved(root, rows, open_items=None):
         outcomes = data.get('decision_outcomes', {})
         routes = data.get('decision_routes', {})
         if not isinstance(outcomes, dict) or not isinstance(routes, dict):
-            raise ValueError('invalid decision ledger')
+            raise ValueError(f'invalid decision ledger; {DAMAGED}')
         prs = {row['pr']: row for row in rows if row['exit'] != 2 and 'pr' in row}
         resolved = {data['pr_dispositions'][ref]['decision'] for ref, row in prs.items()
                     if row.get('disposition') in ('parked', 'carried')}
@@ -172,7 +173,7 @@ def unresolved(root, rows, open_items=None):
         identifiers = outcomes.keys() | routes.keys()
         try:
             if directory.is_symlink():
-                raise ValueError('decisions directory must belong to today')
+                raise ValueError(f'decisions directory must belong to today; {SYMLINK}')
             if directory.exists():
                 identifiers |= {p.stem for p in directory.iterdir()
                                 if p.name.startswith('D-') and p.suffix == '.md'}
@@ -210,7 +211,7 @@ def unresolved(root, rows, open_items=None):
                 tree = item.get('worktree')
                 if tree is not None and ref not in owned:
                     if not isinstance(tree, str) or not tree:
-                        raise ValueError('invalid item worktree')
+                        raise ValueError(f'invalid item worktree; {DAMAGED}')
                     vcs = registry.load('vcs', config)
                     path = str((root / tree).resolve())
                     branch = obligations._read(vcs.branch, path, root=root)['name']
@@ -218,7 +219,7 @@ def unresolved(root, rows, open_items=None):
                     if (not isinstance(branch, str) or not branch
                             or not isinstance(pushed, list)
                             or any(not isinstance(b, str) or not b for b in pushed)):
-                        raise ValueError('invalid pushed branch evidence')
+                        raise ValueError(f'invalid pushed branch evidence; {DAMAGED}')
                     if branch in pushed:
                         findings.append(f'{name}: pushed branch {branch} has no raised or claimed PR')
             except watch.ERRORS as exc:

@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 from wuwei import metrics, registry, state, workspace
+from wuwei.exits import SYMLINK, ADAPTER_DATA
 
 
 SECTIONS = ('Headline', 'Changed', 'Decided', 'At risk', 'You will be asked')
@@ -15,7 +16,7 @@ SECTIONS = ('Headline', 'Changed', 'Decided', 'At risk', 'You will be asked')
 
 def _read(result, label):
     if result.exit != 0:
-        raise ValueError(f'{label} unavailable')
+        raise ValueError(f'{label} unavailable; the owner checks adapters.{label} with bin/wuwei config check, then run bin/wuwei doctor')
     return result.data
 
 
@@ -52,12 +53,12 @@ def _meeting(root, config, secret):
     calendar = registry.load('calendar', config)
     events = _read(calendar.events(now.isoformat(), end.isoformat(), root=root), 'calendar')
     if not isinstance(events, list):
-        raise ValueError('calendar returned invalid events')
+        raise ValueError(f'calendar returned invalid events; {ADAPTER_DATA}')
     due = [event for event in events if isinstance(event, dict) and event.get('attendees')
            and isinstance(event.get('summary'), str) and isinstance(event.get('uid'), str)
            and now <= datetime.fromisoformat(event['start']) <= end]
     if not due:
-        raise ValueError('no attendee meeting in lead window')
+        raise ValueError('no attendee meeting in lead window; run bin/wuwei brief pack for the daily pack, or ask the owner to raise brief.lead_minutes')
     selected = min(due, key=lambda row: row['start'])
     return {**selected, 'summary': _clean(selected['summary'], secret)}
 
@@ -77,7 +78,7 @@ def pack(*, meeting=False, root=None):
     relative = relative_path(directory.name, key)
     output = root / relative
     if output.parent.resolve() != output.parent or output.is_symlink():
-        raise ValueError('brief pack path must not be a symlink')
+        raise ValueError(f'brief pack path must not be a symlink; {SYMLINK}')
     if output.is_file():
         return str(relative)
     changed, decided, risk = _evidence(root, secret)
@@ -85,7 +86,7 @@ def pack(*, meeting=False, root=None):
         workspace.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat(),
         root=root), 'transcripts')
     if not isinstance(recent, list):
-        raise ValueError('transcripts returned invalid records')
+        raise ValueError(f'transcripts returned invalid records; {ADAPTER_DATA}')
     changed.extend(_clean(row['summary'], secret) for row in recent
                    if isinstance(row, dict) and isinstance(row.get('summary'), str))
     measured = metrics.collect(root)
@@ -102,7 +103,7 @@ def pack(*, meeting=False, root=None):
         values = tuple(value[:120] for value in values)
     chapter_text = '\n'.join(f'{name}. {value}' for name, value in zip(SECTIONS, values))
     if len(chapter_text.split()) > 600:
-        raise ValueError('brief exceeds five-minute audio limit')
+        raise ValueError('brief exceeds five-minute audio limit; ask the owner to run bin/wuwei config set brief.style.length \'"concise"\' in a host terminal')
     questions = [
         {'question': f'What is the main risk for {event["summary"] if event else "today"}?', 'answer': danger},
         {'question': 'What changed?', 'answer': change},
@@ -124,11 +125,11 @@ def pack(*, meeting=False, root=None):
     tts = registry.load('tts', config)
     audio_path = output.with_suffix('.aiff')
     if audio_path.is_symlink():
-        raise ValueError('brief audio path must not be a symlink')
+        raise ValueError(f'brief audio path must not be a symlink; {SYMLINK}')
     output.parent.mkdir(parents=True, exist_ok=True)
     result = _read(tts.speak(chapter_text, config['brief']['style']['speed'], audio_path, root=root), 'tts')
     if not isinstance(result, dict) or type(result.get('performed')) is not bool:
-        raise ValueError('tts returned invalid result')
+        raise ValueError(f'tts returned invalid result; {ADAPTER_DATA}')
     if result['performed']:
         lines.append(f'Audio: {audio_path.name} (five chapters)')
     else:
@@ -150,12 +151,12 @@ def answer(number, text, *, meeting=False, root=None):
     if meeting:
         names = [name for name in packs if name.startswith(key)]
         if not names:
-            raise ValueError('no meeting pack')
+            raise ValueError('no meeting pack; build it with bin/wuwei brief pack --meeting, then answer')
         key = names[-1]
     if key not in packs:
-        raise ValueError('no pack to answer')
+        raise ValueError('no pack to answer; build it with bin/wuwei brief pack --meeting, then answer')
     if number not in (1, 2, 3):
-        raise ValueError('question must be 1, 2 or 3')
+        raise ValueError('question must be 1, 2 or 3; pass 1, 2 or 3, for example bin/wuwei brief answer 1 "<answer>"')
     expected = packs[key]['questions'][number - 1]['answer']
     terms = {word.lower() for word in re.findall(r'[A-Za-z0-9]{4,}', expected)}
     supplied = {word.lower() for word in re.findall(r'[A-Za-z0-9]{4,}', text)}
@@ -163,7 +164,7 @@ def answer(number, text, *, meeting=False, root=None):
     def update(data):
         entry = data['brief_packs'][key]
         if str(number) in entry['answers']:
-            raise ValueError('question already answered')
+            raise ValueError('question already answered; answer another number (1, 2 or 3), or wait for the next pack')
         score = data['brief_drill']
         score['answered'] += 1
         score['correct'] += int(correct)

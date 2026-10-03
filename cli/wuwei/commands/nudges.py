@@ -10,7 +10,7 @@ from wuwei.commands.status import attention
 ACTIONS = {
     'decision.pending': ('{reason}', 'wuwei decision show {id}'),
     'decision.answered': ('{reason}', None),  # the reason names wuwei decide D-n <option>
-    'item.escalated': ('{reason} is escalated and waits for the owner', 'wuwei why {reason}'),
+    'item.escalated': ('{reason} is escalated and waits for you', 'wuwei why {reason}'),
     'mcp.checked': ('The last MCP registry check did not pass or could not run', 'wuwei mcp check'),
     'draft.created': ('An outward draft waits for owner approval', 'bin/wuwei drafts'),
     'watch: health': ('{reason}', 'wuwei doctor'),

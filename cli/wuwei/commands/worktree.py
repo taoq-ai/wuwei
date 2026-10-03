@@ -28,7 +28,7 @@ def run(args):
     elif len(repos) > 1:
         raise ValueError('several repositories configured; pass --repo <name>')
     if not repos:
-        raise ValueError('no repository configured')
+        raise ValueError('no repository configured; the owner adds one with bin/wuwei config add-repo in a host terminal')
     repo = (root / Path(repos[0]['path']).expanduser()).resolve()
     try:
         result = workspace.create_worktree(repo, item.lower(), root / 'worktrees' / item, root,

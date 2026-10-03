@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 
 from wuwei import registry, security, sessions, state, workspace
+from wuwei.exits import ADAPTER_DATA, DAMAGED, SYMLINK
 
 
 REFERENCE_PREFIX = 'WUWEI brief: '
@@ -74,7 +75,7 @@ def events(root):
     rows = [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
     if any(not isinstance(row, dict) or not isinstance(row.get('payload'), dict)
            or not isinstance(row.get('kind'), str) for row in rows):
-        raise ValueError('invalid build event record')
+        raise ValueError(f'invalid build event record; {DAMAGED}')
     return rows
 
 
@@ -85,7 +86,7 @@ class Refused(ValueError):
 def read(call, *args, root):
     result = call(*args, root=root)
     if type(result.exit) is not int or result.exit not in (0, 1, 2):
-        raise ValueError('invalid adapter result')
+        raise ValueError(f'invalid adapter result; {ADAPTER_DATA}')
     if result.exit:
         raise ValueError(result.reason or 'adapter read unavailable')
     return result.data
@@ -93,14 +94,14 @@ def read(call, *args, root):
 
 def identifier(value):
     if not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', value):
-        raise ValueError('invalid brief role, item or name')
+        raise ValueError('invalid brief role, item or name; pass a known role, an item from today\'s plan and a safe seat name')
     return value
 
 
 def read_day(root):
     directory = workspace.day_dir(root)
     if not (directory / 'state.json').is_file():
-        raise ValueError('no state.json for this day')
+        raise ValueError('no state.json for this day; run the morning plan (/wuwei:wuwei-plan) first')
     return directory, state.read_state(root)
 
 
@@ -122,12 +123,12 @@ def transcript_reference(path):
 def seats(data):
     records = data.get('seats')
     if not isinstance(records, dict):
-        raise ValueError('seats must be an object')
+        raise ValueError(f'seats must be an object; {DAMAGED}')
     for seat in records.values():
         if (not isinstance(seat, dict) or seat.get('status') not in (*state.STATUSES, 'stopped')
                 or not isinstance(seat.get('role'), str) or not seat['role']
                 or not isinstance(seat.get('item'), str) or not seat['item']):
-            raise ValueError('invalid seat record')
+            raise ValueError(f'invalid seat record; {DAMAGED}')
     return records
 
 
@@ -147,7 +148,7 @@ def status(vcs, tree, root):
     if not isinstance(changes, list) or any(
             not isinstance(row, dict) or not isinstance(row.get('path'), str)
             or not row['path'] for row in changes):
-        raise ValueError('invalid worktree status')
+        raise ValueError(f'invalid worktree status; {DAMAGED}')
     return changes
 
 
@@ -181,7 +182,8 @@ def rulings(body, directory, tree, data):
             'ruled|accept', text, re.I) else 'RULED'
         result.append(f'Ruling {key} [{label}] {text}')
     if missing:
-        raise Refused('ruling id(s) ' + ' '.join(missing) + ' resolve in no decisions, specs or gate_policy')
+        raise Refused(('ruling id(s) ' + ' '.join(missing) + ' resolve in no decisions, specs or gate_policy'
+                     + '; correct the ids, or record the decision first (bin/wuwei decision template)'))
     return result
 
 
@@ -196,25 +198,25 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
     output = directory / 'briefs' / (name + '.md')
     output.parent.mkdir(exist_ok=True)
     if output.parent.resolve() != output.parent:
-        raise ValueError('brief directory must not be a symlink')
+        raise ValueError(f'brief directory must not be a symlink; {SYMLINK}')
     # ponytail: serialize brief publication for this day.
     with (directory / 'brief.lock').open('a') as lock:
         state.lock_ex(lock, 'brief.lock')
         if output.exists() or output.is_symlink():
-            raise Refused('brief exists (one brief per name)')
+            raise Refused('brief exists (one brief per name); use a new seat name for a new brief')
         _, data = read_day(root)
         if gate and re.search(r'return (the verdict )?inline|verdict inline|no verdict file|retro( note)? inline', body, re.I):
-            raise Refused('gate verdict goes in its verdict file, never inline')
+            raise Refused('gate verdict goes in its verdict file, never inline; remove the return-inline wording; wuwei adds the verdict file line itself')
         if gate and 'decisions/gate-' in body:
-            raise Refused('body restates a verdict path')
+            raise Refused('body restates a verdict path; remove the decisions/gate-... path from the body; wuwei adds the verdict file line itself')
         current = data['items'].get(item, {})
         track = track or current.get('track', 'SLICE')
         if track not in ('SLICE', 'FULL'):
-            raise Refused('track must be SLICE or FULL')
+            raise Refused('track must be SLICE or FULL; use SLICE or FULL')
         tree_arg = worktree or current.get('worktree')
         tree = (root / tree_arg).resolve() if tree_arg else None
         if gate and tree is None:
-            raise ValueError('gate requires a worktree')
+            raise ValueError('gate requires a worktree; pass --worktree <path>, or create one with bin/wuwei worktree add <item>')
         vcs = registry.load('vcs', config) if tree or gate else None
         now = workspace.now().isoformat()
         charter_root = Path(__file__).resolve().parents[2] / 'charters'
@@ -258,7 +260,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             header += [f'Worktree: {tree}', f'HEAD: {head}', f'Merge-base: {base} ({ref})',
                        f'Status: {json.dumps(changed)}', f'Prior branches: {json.dumps(prior)}']
             if gate and changed:
-                raise Refused('gate brief on a dirty tree: ' + ', '.join(row['path'] for row in changed))
+                raise Refused(('gate brief on a dirty tree: ' + ', '.join(row['path'] for row in changed)
+                              + '; ask the builder to commit or discard them, then write the gate brief again'))
             changed += read(vcs.diff_stat, tree, base, head, root=root)
         else:
             header += ['Worktree: none', 'HEAD: not applicable', 'Merge-base: not applicable',
@@ -313,7 +316,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                     gate_ready(fresh, item)
                     fresh_changes = status(vcs, tree, root)
                     if fresh_changes:
-                        raise Refused('gate brief on a dirty tree: ' + ', '.join(row['path'] for row in fresh_changes))
+                        raise Refused(('gate brief on a dirty tree: ' + ', '.join(row['path'] for row in fresh_changes)
+                                             + '; ask the builder to commit or discard them, then write the gate brief again'))
                 if (fresh['items'].get(item) != data['items'].get(item)
                         or fresh['seat_policy'] != data['seat_policy']
                         or fresh['gate_verdicts'] != data['gate_verdicts']

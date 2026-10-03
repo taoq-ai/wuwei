@@ -10,6 +10,7 @@ import sys
 import time
 
 from wuwei import registry, state, workspace
+from wuwei.exits import ADAPTER_DATA, DAMAGED, PAYLOAD, RACE
 
 
 def register(subparsers):
@@ -24,21 +25,21 @@ def run(args):
         if args.operation in ('next', 'check'):
             root = workspace.find_workspace()
             if len(args.arguments) not in ((1, 3) if args.operation == 'next' else (1,)):
-                raise ValueError('usage: build next <item> [<brief> <worktree>] or build check <item>')
+                raise ValueError('usage: build next <item> [<brief> <worktree>] or build check <item>; run bin/wuwei build next <item> for the next builder action, or bin/wuwei build check <item> after the builder stops')
             item, *paths = args.arguments
             if args.operation == 'check':
                 code = check(item, root=root)
                 if code == 1:
                     action = state.read_state(root).get('builds', {}).get(item, {}).get('action', {})
                     if action.get('action') == 'park':
-                        print(f'build: parked {item}: {action["reason"]}; decision {action["decision"]}', file=sys.stderr)
+                        print(f'build: parked {item}: {action["reason"]}; decision {action["decision"]}; the owner answers it with bin/wuwei decision outcome {action["decision"]} <option> in a host terminal, then resume the item', file=sys.stderr)
                     elif action.get('action') == 'continue':
                         print(action['feedback'], file=sys.stderr)
                 return code
             print(json.dumps(next_action(item, *paths, root=root)))
             return 0
         if len(args.arguments) not in (0, 2):
-            raise ValueError('usage: build next <item> or build <item> <brief> <worktree> (Codex only)')
+            raise ValueError('usage: build next <item> or build <item> <brief> <worktree> (Codex only); use bin/wuwei build next <item> for a Claude builder, or bin/wuwei build <item> <brief> <worktree> for a Codex builder')
         return run_loop(args.operation, *(args.arguments or [None, None]))
     except PortExit as exc:
         print(f'build: {exc}', file=sys.stderr)
@@ -56,7 +57,7 @@ class PortExit(Exception):
 
 def _data(response, label):
     if not isinstance(response, registry.Result) or type(response.exit) is not int or response.exit not in (0, 1, 2):
-        raise ValueError(f'invalid {label} result')
+        raise ValueError(f'invalid {label} result; {DAMAGED}')
     if response.exit:
         raise PortExit(response.exit, response.reason or f'{label} returned {response.exit}')
     return response.data
@@ -68,7 +69,7 @@ def _signature(failures):
         ids = data.get('test_ids', []) if isinstance(data, dict) else []
         error = data.get('error', '') if isinstance(data, dict) else ''
         if not isinstance(ids, list) or not all(isinstance(x, str) for x in ids) or not isinstance(error, str):
-            raise ValueError('malformed check failure data')
+            raise ValueError(f'malformed check failure data; {DAMAGED}')
         if ids:
             error = '\n'.join(line for line in error.splitlines()
                               if line.startswith(('FAILED ', 'ERROR ')))
@@ -86,7 +87,7 @@ def _repo(root, tree, config):
         from wuwei.guards.commit_push import context
         repo, _, _ = context(tree, {}, {}, root, identity=False)
     if not repo['fast_checks']:
-        raise ValueError('worktree has no configured fast checks')
+        raise ValueError('worktree has no configured fast checks; add fast_checks to its [[repos]] entry (bin/wuwei calibrate proposes them, the owner applies them with bin/wuwei config set in a host terminal), then retry')
     return repo
 
 
@@ -94,7 +95,7 @@ def _save(item, record, root, kind, expected):
     def update(data):
         builds = data.setdefault('builds', {})
         if builds.get(item) != expected:
-            raise ValueError('build changed before recording action')
+            raise ValueError(f'build changed before recording action; {RACE}')
         builds[item] = record
     state._write_state(update, root, reserved=False, kind=kind, payload={'item': item})
 
@@ -109,26 +110,26 @@ def next_action(item, brief=None, worktree=None, *, root=None):
         raise PortExit(2, f'unknown item {item}')
     record = data.get('builds', {}).get(item)
     if record is not None and record['status'] == 'running':
-        raise ValueError('builder is still running; call build next after its stop hook')
+        raise ValueError(f'builder is still running; wait for its stop hook, then run bin/wuwei build next {item}')
     config = workspace.load_config(root)
     if brief is None:
         matches = [row['payload'] for row in events(root) if row['kind'] == 'brief written'
                    and row['payload'].get('item') == item and row['payload'].get('role') == 'builder']
         if not matches:
-            raise ValueError('no logged builder brief for item')
+            raise ValueError(f'no logged builder brief for {item}; write one with bin/wuwei brief, or pass the paths: bin/wuwei build next {item} <brief> <worktree>')
         brief = root / matches[-1]['path']
         worktree = matches[-1].get('worktree') or data['items'][item].get('worktree')
     if worktree is None:
-        raise ValueError('builder brief needs a worktree')
+        raise ValueError(f'builder brief needs a worktree; create one with bin/wuwei worktree add {item} and write the brief with --worktree, or run bin/wuwei build next {item} <brief> <worktree>')
     tree = (root / worktree).resolve(strict=True)
     path = (root / brief).resolve(strict=True)
     if record is not None:
         if str(path.relative_to(root)) == record['brief'] and str(tree) == record['worktree']:
             return record['action']
         if record['status'] not in ('done', 'parked'):
-            raise ValueError('cannot replace an unfinished build with a new brief')
+            raise ValueError(f'cannot replace an unfinished build with a new brief; run bin/wuwei build next {item} to finish it first')
         if data['items'][item]['phase'] in ('parked', 'escalated'):
-            raise ValueError('resume the parked item before starting a new build')
+            raise ValueError(f'{item} is parked; resume the parked item before starting a new build (answer its decision, then run bin/wuwei build next {item})')
     repo = _repo(root, tree, config)
     action = seat_action('builder', path, tree, root)
     previous = record
@@ -150,10 +151,10 @@ def open_fix(item, feedback, *, root):
     from wuwei.brief import launch_prompt
     from wuwei.security import agent_path
     if not isinstance(feedback, str) or not feedback.strip():
-        raise ValueError('fix round needs measured feedback')
+        raise ValueError('fix round needs measured feedback; run the gates first, then pass their findings to the fix round')
     data = state.read_state(root)
     if item not in data['items']:
-        raise ValueError(f'unknown item {item}')
+        raise ValueError(f'unknown item {item}; check the name with bin/wuwei status, or admit it with bin/wuwei plan add {item}')
     record = data.get('builds', {}).get(item)
     if record is None:
         next_action(item, root=root)
@@ -165,12 +166,12 @@ def open_fix(item, feedback, *, root):
         if record['status'] in ('running', 'check'):
             return {'action': 'wait', 'item': item, 'status': record['status']}
     if record is None or record['status'] not in ('done', 'ready'):
-        raise ValueError('fix round needs a completed or ready build')
+        raise ValueError(f'fix round needs a completed or ready build; run bin/wuwei build next {item} for the current step')
     if record.get('fix_rounds', 0) >= 1:
-        raise ValueError('fix round budget exhausted')
+        raise ValueError(f'fix round budget exhausted; park {item} for the owner (bin/wuwei why {item} shows the rounds)')
     phase = data['items'][item]['phase']
     if phase not in ('gate', 'raised'):
-        raise ValueError('fix round needs a gated or raised item')
+        raise ValueError(f'fix round needs a gated or raised item; run bin/wuwei dispatch next {item} for its current step')
     brief = root / record['brief']
     resume = record.get('agent_id') or record.get('job')
     if not resume and (record['status'] == 'done' or record['runtime'] == 'codex'):
@@ -189,7 +190,7 @@ def open_fix(item, feedback, *, root):
         action['resume'] = record['agent_id']
     def update(fresh):
         if fresh.get('builds', {}).get(item) != record:
-            raise ValueError('build changed before fix round')
+            raise ValueError(f'build changed before fix round; run bin/wuwei build next {item} again')
         fresh['items'][item]['phase'] = 'fix'
         fresh['builds'][item] = {**record, 'brief': str(brief.relative_to(root)),
                                  'status': 'ready', 'action': action,
@@ -206,25 +207,25 @@ def started(data, item, name):
     if record is None:
         return
     if record['status'] != 'ready' or record['action']['action'] not in ('launch', 'continue'):
-        raise ValueError('build is not ready for a seat')
+        raise ValueError(f'build is not ready for a seat; run bin/wuwei build next {item} for the current step (bin/wuwei why {item} explains it)')
     if data['seats'][name]['brief'] != record['brief']:
-        raise ValueError('seat brief differs from active build')
+        raise ValueError(f'seat brief differs from active build; start the seat with the brief that bin/wuwei build next {item} returned')
     record.update(status='running', seat=name, started_at=workspace.now().isoformat())
 
 
 def normalize_usage(reported, model):
     """Validate reported seat usage into the five measured keys."""
     if not isinstance(reported, dict):
-        raise ValueError('malformed runtime usage')
+        raise ValueError(f'malformed runtime usage; {ADAPTER_DATA}')
     for key in ('input_tokens', 'output_tokens'):
         if key in reported and (type(reported[key]) is not int or reported[key] < 0):
-            raise ValueError('malformed runtime usage')
+            raise ValueError(f'malformed runtime usage; {ADAPTER_DATA}')
     for key in ('cost', 'duration'):
         if key in reported and (type(reported[key]) not in (int, float)
                                 or not math.isfinite(reported[key]) or reported[key] < 0):
-            raise ValueError('malformed runtime usage')
+            raise ValueError(f'malformed runtime usage; {ADAPTER_DATA}')
     if 'model' in reported and (not isinstance(reported['model'], str) or not reported['model']):
-        raise ValueError('malformed runtime usage')
+        raise ValueError(f'malformed runtime usage; {ADAPTER_DATA}')
     usage = {key: reported.get(key, 'unmeasured')
              for key in ('input_tokens', 'output_tokens', 'cost', 'model', 'duration')}
     if usage['model'] == 'unmeasured':
@@ -237,14 +238,14 @@ def record_result(item, result, *, root, agent_id=None, model=None, completion=N
     if record['status'] != 'running':
         return
     if not isinstance(result, dict):
-        raise ValueError('invalid runtime result')
+        raise ValueError(f'invalid runtime result; {ADAPTER_DATA}')
     usage = normalize_usage(result.get('usage', {}), result.get('model') or model)
     iteration = record['iteration'] + 1
     # The result and usage share the writer lock, so duplicate hooks cannot charge twice.
     def update(data):
         current = data['builds'][item]
         if current != record:
-            raise ValueError('build changed during result recording')
+            raise ValueError(f'build changed during result recording; {RACE}')
         if agent_id is not None:
             data['seats'][record['seat']]['status'] = 'stopped'
         current.update(status='check', iteration=iteration, agent_id=agent_id, completion=completion,
@@ -272,12 +273,12 @@ def stopped(item, name, payload, *, root):
         return True
     agent_id = payload.get('agent_id')
     if not isinstance(agent_id, str) or not agent_id.strip():
-        raise ValueError('SubagentStop omitted builder agent_id')
+        raise ValueError(f'SubagentStop omitted builder agent_id; {PAYLOAD}')
     if record.get('agent_id') and record['agent_id'] != agent_id:
-        raise ValueError('SubagentStop agent_id differs from resumed builder')
+        raise ValueError(f'SubagentStop agent_id differs from resumed builder; {PAYLOAD}')
     text = payload.get('last_assistant_message')
     if not isinstance(text, str):
-        raise ValueError('SubagentStop omitted builder result')
+        raise ValueError(f'SubagentStop omitted builder result; {PAYLOAD}')
     completion, message = None, None
     for index, line in enumerate(Path(payload['agent_transcript_path']).read_text().splitlines()):
         row = json.loads(line)
@@ -287,7 +288,7 @@ def stopped(item, name, payload, *, root):
                        if isinstance(content, list) else content)
             completion = [index, hashlib.sha256(line.encode()).hexdigest()]
     if completion is None or not isinstance(message, str) or message.strip() != text.strip():
-        raise ValueError('SubagentStop has no matching assistant completion')
+        raise ValueError(f'SubagentStop has no matching assistant completion; {PAYLOAD}')
     if completion == record.get('completion'):
         return True
     reported = payload.get('usage', {})
@@ -298,7 +299,7 @@ def stopped(item, name, payload, *, root):
         if 'duration' not in reported and 'duration_ms' in payload:
             milliseconds = payload['duration_ms']
             if type(milliseconds) not in (int, float) or not math.isfinite(milliseconds) or milliseconds < 0:
-                raise ValueError('malformed runtime usage')
+                raise ValueError(f'malformed runtime usage; {ADAPTER_DATA}')
             reported['duration'] = milliseconds / 1000
     expected = record_result(item, {'text': text, 'usage': reported},
                              root=root, agent_id=agent_id, completion=completion, expected=record)
@@ -323,20 +324,20 @@ def complete_checks(item, results, *, root, expected=None):
         expected = state.read_state(root)['builds'][item]
     record = dict(expected)
     if record['status'] != 'check':
-        raise ValueError('build is not awaiting checks')
+        raise ValueError(f'build is not awaiting checks; run bin/wuwei build next {item} for the current step')
     failures = []
     if len(results) != len(record['commands']):
-        raise ValueError('incomplete fast checks')
+        raise ValueError('incomplete fast checks; rerun bin/wuwei fast-checks in the worktree; if it repeats, run bin/wuwei doctor')
     for command, result in zip(record['commands'], results):
         if not isinstance(result, registry.Result) or type(result.exit) is not int or result.exit not in (0, 1, 2):
-            raise ValueError('invalid check result')
+            raise ValueError(f'invalid check result; {ADAPTER_DATA}')
         if result.exit == 2:
             raise ValueError(result.reason or 'fast check could not run')
         if result.exit == 1:
             if isinstance(result.data, dict) and 'environment' in result.data:
                 reason = result.data['environment']
                 if not isinstance(reason, str) or not reason.strip():
-                    raise ValueError('invalid environment check reason')
+                    raise ValueError(f'invalid environment check reason; {DAMAGED}')
                 _park(root, item, record, f'environment: {reason}', expected)
                 return 1
             failures.append((command, result.data))
@@ -370,12 +371,14 @@ def check(item, *, root=None):
     root = workspace.find_workspace(root)
     record = state.read_state(root).get('builds', {}).get(item)
     if record is None or record['status'] != 'check':
-        raise ValueError('build is not awaiting checks')
+        found = 'no build yet' if record is None else f'build {record["status"]}'
+        raise ValueError(f'{item} is not waiting for checks ({found}); run bin/wuwei build next {item} '
+                         'for its current step')
     from wuwei import fast_checks
     fast_checks.record(record['worktree'])
     measured = state.read_state(root).get('fast_checks', {}).get(record['repo'], {})
     if any(command not in measured for command in record['commands']):
-        raise ValueError('incomplete fast checks')
+        raise ValueError(f'incomplete fast checks; rerun bin/wuwei fast-checks in the worktree, then bin/wuwei build check {item}')
     results = [registry.Result(row['exit'], row.get('data'), row.get('reason') or '')
                for row in (measured[command] for command in record['commands'])]
     return complete_checks(item, results, root=root, expected=record)
@@ -398,7 +401,7 @@ def _park(root, item, record, reason, expected):
         f'Decided-by: seat\nOutcome: parked {item}\n')
     def update(data):
         if data['builds'][item] != expected:
-            raise ValueError('build changed before parking')
+            raise ValueError(f'build changed before parking; {RACE}')
         path = decision.write(text, root)
         data.setdefault('decision_outcomes', {})[path.stem] = decision.seat_outcome(*decision.evaluate(text))
         record.update(status='parked', action={'action': 'park', 'reason': reason,
@@ -415,13 +418,13 @@ def wait(runtime, job, config, root):
     while True:
         status = _data(runtime.status(job, root=root), 'status')
         if not isinstance(status, dict) or status.get('status') not in ('queued', 'running', 'completed', 'failed', 'cancelled'):
-            raise ValueError('invalid runtime status')
+            raise ValueError(f'invalid runtime status; {ADAPTER_DATA}')
         if status['status'] == 'completed':
             return status
         if status['status'] in ('failed', 'cancelled'):
-            raise RuntimeError(f'runtime seat {status["status"]}')
+            raise RuntimeError(f'runtime seat {status["status"]}; rerun the same bin/wuwei build command to resume, and run bin/wuwei doctor if it fails again')
         if time.monotonic() >= deadline:
-            raise TimeoutError('runtime seat timed out')
+            raise TimeoutError('runtime seat timed out; rerun the same bin/wuwei build command to resume, or raise the runtime timeout with bin/wuwei config set in a host terminal')
         time.sleep(config['build']['poll_interval_seconds'])
 
 
@@ -431,9 +434,9 @@ def run_loop(item, brief, worktree, *, root=None):
         config = workspace.load_config(root)
         runtime_config = registry.runtime_config('builder', config, root)
         if runtime_config['adapters']['runtime'] == 'claude':
-            raise ValueError('Claude builders require build next <item> in the planner session')
+            raise ValueError('Claude builders require build next <item> in the planner session; run bin/wuwei build next <item> there, or the owner switches the builder runtime to codex with bin/wuwei config set in a host terminal')
         if brief is None or worktree is None:
-            raise ValueError('usage: build <item> <brief> <worktree> (Codex only)')
+            raise ValueError('usage: build <item> <brief> <worktree> (Codex only); run bin/wuwei build <item> <brief> <worktree> with all three arguments')
         runtime = registry.load('runtime', runtime_config)
         while True:
             record = state.read_state(root).get('builds', {}).get(item)
@@ -444,7 +447,7 @@ def run_loop(item, brief, worktree, *, root=None):
                 if action['action'] == 'done':
                     return 0
                 if action['action'] == 'park':
-                    print(f'build: parked {item}: {action["reason"]}; decision {action["decision"]}', file=sys.stderr)
+                    print(f'build: parked {item}: {action["reason"]}; decision {action["decision"]}; the owner answers it with bin/wuwei decision outcome {action["decision"]} <option> in a host terminal, then resume the item', file=sys.stderr)
                     return 1
                 if action['action'] == 'check':
                     check(item, root=root)

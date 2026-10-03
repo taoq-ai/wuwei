@@ -5,6 +5,8 @@ from pathlib import Path
 import re
 import sys
 
+from wuwei.exits import DAMAGED
+
 
 # Dicts describe tables; lists contain an item rule and optional array defaults;
 # tuples are type/default/constraint.
@@ -198,7 +200,7 @@ def atomic_write(path, text, *, replace=True, mode=None):
             temporary = candidate
             break
         else:
-            raise FileExistsError(f'no unused temporary name in {path.parent}')
+            raise FileExistsError(f'no unused temporary name in {path.parent}; remove stale .tmp files in that folder, then retry')
         with open(fd, 'w', encoding='utf-8') as stream:
             if mode is not None:
                 os.fchmod(stream.fileno(), mode)
@@ -229,7 +231,7 @@ def find_workspace(start=None, *, use_environment=True):
         root = Path(override).expanduser().resolve()
         if not override or not (root / ".wuwei").is_dir():
             raise FileNotFoundError(
-                f"WUWEI_WORKSPACE={override!r} must name a root containing .wuwei/"
+                f"WUWEI_WORKSPACE={override!r} must name a root containing .wuwei/; set it to a folder that holds .wuwei/, or unset it"
             )
         if (root / '.wuwei').is_symlink():
             raise ValueError('.wuwei must not be a symlink')
@@ -259,7 +261,7 @@ def worktree_workspace(path):
             value = anchor.read_text().strip()
             root = Path(value).resolve()
             if not value or not (root / '.wuwei').is_dir():
-                raise ValueError('invalid worktree workspace anchor')
+                raise ValueError(f'invalid worktree workspace anchor; {DAMAGED}')
             return root
     return None
 
@@ -271,7 +273,7 @@ def scope(path):
         try:
             selected = find_workspace(path)
         except FileNotFoundError as exc:
-            raise ValueError('invalid WUWEI_WORKSPACE override') from exc
+            raise ValueError(f'invalid WUWEI_WORKSPACE override; {DAMAGED}') from exc
     try:
         root = find_workspace(path, use_environment=False)
     except FileNotFoundError:
@@ -292,7 +294,7 @@ def scope(path):
         actual = data(vcs.repo_context(str(path), root=root))
         common = actual.get('common_dir')
         if not isinstance(common, str) or not Path(common).is_absolute():
-            raise ValueError('missing worktree repository context')
+            raise ValueError('missing worktree repository context; run it from inside a configured repository checkout; if it is one, run bin/wuwei doctor')
         if any(data(vcs.repo_context(str(repo), root=root)).get('common_dir') == common
                for repo in repos):
             return root, config
@@ -337,7 +339,7 @@ def zone(config):
     try:
         return ZoneInfo(name)
     except (KeyError, ValueError):
-        raise ValueError(f'owner.timezone: unknown zone {name!r}') from None
+        raise ValueError(f'owner.timezone: unknown zone {name!r}; the owner sets an IANA zone such as Europe/Lisbon with bin/wuwei config set owner.timezone in a host terminal') from None
 
 
 def verbosity(config, surface):
@@ -358,7 +360,7 @@ def now():
         dt = datetime.fromisoformat(timestamp)
         return dt if dt.tzinfo else dt.astimezone()
     except ValueError as exc:
-        raise ValueError("WUWEI_NOW must be an ISO datetime with a time component") from exc
+        raise ValueError("WUWEI_NOW must be an ISO datetime with a time component; set it like 2026-10-03T09:00:00Z, or unset it") from exc
 
 
 def day_dir(root=None):
@@ -441,10 +443,10 @@ def _validate(value, schema, path, raw, unknown=None):
     ):
         line = _key_line(raw, path) or _key_line(raw, path[:-1])
         location = f' at line {line}' if line is not None else ''
-        raise ConfigError(f'{key}: required{location}')
+        raise ConfigError(f'{key}: required{location}; the owner sets it with bin/wuwei config set {key} <value> in a host terminal')
     expected = dict if isinstance(schema, dict) else list if isinstance(schema, list) else schema[0]
     if type(value) is not expected:
-        raise ConfigError(f"{key}: expected {expected.__name__}")
+        raise ConfigError(f"{key}: expected {expected.__name__}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
     if isinstance(schema, dict):
         for name in value:
             if name not in schema and "*" not in schema:
@@ -469,11 +471,11 @@ def _validate(value, schema, path, raw, unknown=None):
     if len(schema) > 2:
         constraint = schema[2]
         if expected is int and value < constraint:
-            raise ConfigError(f"{key}: expected integer >= {constraint}")
+            raise ConfigError(f"{key}: expected integer >= {constraint}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
         if expected is int and len(schema) > 3 and value > schema[3]:
-            raise ConfigError(f"{key}: expected integer <= {schema[3]}")
+            raise ConfigError(f"{key}: expected integer <= {schema[3]}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
         if expected is str and value not in constraint:
-            raise ConfigError(f"{key}: expected {' or '.join(constraint)}")
+            raise ConfigError(f"{key}: expected {' or '.join(constraint)}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
     return value
 
 
@@ -602,7 +604,7 @@ def load_config(root=None, *, raw=None, warnings=None):
                     raise ValueError
                 date.fromisoformat(since)
             except ValueError:
-                raise ConfigError('guards.shadow_since: expected YYYY-MM-DD or ""') from None
+                raise ConfigError('guards.shadow_since: expected YYYY-MM-DD or ""; the owner fixes it with bin/wuwei config set guards.shadow_since in a host terminal') from None
         for area, floor in FLOORS.items():
             value = config['security']['areas'][area]
             if value and AREA_LEVELS.index(value) < AREA_LEVELS.index(floor):
@@ -614,7 +616,7 @@ def load_config(root=None, *, raw=None, warnings=None):
                 raise ConfigError(f'decisions.cruise.levels.{name}: unknown class; use one of '
                                   + ', '.join(CLASSES))
             if value > CLASSES[name][1]:
-                raise ConfigError(f'decisions.cruise.levels.{name}: above its ceiling L{CLASSES[name][1]}')
+                raise ConfigError(f'decisions.cruise.levels.{name}: above its ceiling L{CLASSES[name][1]}; the owner lowers it with bin/wuwei config set in a host terminal')
         from wuwei import registry
         second = config['gates']['second_opinion']
         found = re.fullmatch(r'([a-z]+):([A-Za-z0-9][A-Za-z0-9._-]*)', second)
@@ -629,7 +631,7 @@ def load_config(root=None, *, raw=None, warnings=None):
             if repo['name'] in repo_names:
                 line = _key_line(raw, ('repos', index, 'name'))
                 location = f' at line {line}' if line is not None else ''
-                raise ConfigError(f'repos.{index}.name: duplicate {repo["name"]!r}{location}')
+                raise ConfigError(f'repos.{index}.name: duplicate {repo["name"]!r}{location}; the owner removes the duplicate [[repos]] entry in a host terminal (bin/wuwei config check validates)')
             repo_names.add(repo['name'])
             try:
                 resolved = (path.parent.parent / Path(repo['path']).expanduser()).resolve()
@@ -638,7 +640,7 @@ def load_config(root=None, *, raw=None, warnings=None):
             if resolved in repo_paths:
                 line = _key_line(raw, ('repos', index, 'path'))
                 location = f' at line {line}' if line is not None else ''
-                raise ConfigError(f'repos.{index}.path: duplicate {repo["path"]!r}{location}')
+                raise ConfigError(f'repos.{index}.path: duplicate {repo["path"]!r}{location}; the owner removes the duplicate [[repos]] entry in a host terminal (bin/wuwei config check validates)')
             repo_paths.add(resolved)
 
         for kind, name in config['adapters'].items():
@@ -664,7 +666,7 @@ def load_config(root=None, *, raw=None, warnings=None):
             line = _key_line(raw, ('repos',))
             if line:
                 hint = f'; repos is assigned on line {line}; delete that line before using [[repos]] tables'
-        raise ConfigError(f"config.toml: {exc}{hint}") from exc
+        raise ConfigError(f"config.toml: {exc}{hint}; run bin/wuwei config check after the fix") from exc
 
 
 def posture(config):
@@ -688,9 +690,9 @@ def create_worktree(repo, branch, path, root, vcs, identity=None):
     from wuwei import state
 
     if not (Path(root) / '.wuwei').is_dir():
-        raise ValueError('worktree creation requires a workspace')
+        raise ValueError('worktree creation requires a workspace; run bin/wuwei init <path> first, or work from inside a workspace')
     if not state.read_state(root).get('gate_approved'):
-        raise state.StateError('morning gate approval required before worktree creation')
+        raise state.StateError('morning gate approval required before worktree creation; approve the plan at the morning gate (/wuwei:wuwei-plan) first')
     from wuwei import sessions
     sessions.claim_item(Path(root), Path(path).name)
     result = data(vcs.worktree_add(str(repo), branch, str(path), root=root))

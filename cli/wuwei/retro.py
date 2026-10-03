@@ -7,6 +7,7 @@ import re
 
 from wuwei import metrics, state, verdict, watch, workspace
 from wuwei.promotion import safe_path
+from wuwei.exits import DAMAGED, SYMLINK
 
 
 def compile(root=None):
@@ -19,16 +20,16 @@ def compile(root=None):
         record = row['payload']
         path = safe_path(root, record['evidence'], label='retro evidence')
         if path.parent != day / 'retro':
-            raise ValueError('retro evidence must belong to today')
+            raise ValueError('retro evidence must belong to today; capture it again with the retro session (bin/wuwei retro)')
         evidence = json.loads(path.read_text(encoding='utf-8'))
         if any(evidence.get(key) != record.get(key) for key in
                ('agent_id', 'agent_type', 'fields', 'missing', 'invalid')):
-            raise ValueError('captured retro evidence mismatch')
+            raise ValueError('captured retro evidence mismatch; capture it again with the retro session (bin/wuwei retro)')
         if evidence['missing'] or evidence['invalid']:
-            raise ValueError('captured retro note is incomplete')
+            raise ValueError('captured retro note is incomplete; capture it again with the retro session (bin/wuwei retro)')
         roles.setdefault(record['agent_type'].rsplit(':', 1)[-1], []).append(evidence['fields'])
     if not roles:
-        raise ValueError('no captured role evidence')
+        raise ValueError(f'no captured role evidence; {DAMAGED}')
     proposals = day / 'proposals'
     proposals.mkdir(exist_ok=True)
     for row in watch.records(day / 'events.jsonl'):
@@ -45,7 +46,7 @@ def compile(root=None):
                 decision.parent.mkdir(exist_ok=True)
                 summary = change.removeprefix('Hard rule:').strip().replace('|', '/')
                 if '\n' in summary or not summary:
-                    raise ValueError('hard-rule change must be one nonempty line')
+                    raise ValueError('hard-rule change must be one nonempty line; write the change as one line')
                 workspace.atomic_write(decision, f'''Question: Should the hard rule change to {summary}?
 Context: Captured role evidence at {record['evidence']}.
 Options:
@@ -98,7 +99,7 @@ Outcome: pending
     gates = sorted((day / 'decisions').glob('[gG][aA][tT][eE]-*.[mM][dD]'))
     for path in gates:
         if path.is_symlink():
-            raise ValueError('gate verdict must not be a symlink')
+            raise ValueError(f'gate verdict must not be a symlink; {SYMLINK}')
         text = verdict.active_text(path.read_text(encoding='utf-8'))
         results = re.findall(verdict.VERDICT_ROW, text, re.M)
         if len(results) != 1:

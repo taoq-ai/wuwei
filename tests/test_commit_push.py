@@ -107,7 +107,7 @@ def payload(root, command):
 
 
 @pytest.mark.parametrize('command,code', [
-    ('git commit -m safe', 0), ('git push', 2),
+    ('git commit -m safe', 0), ('git push', 1),
     ('git push -u origin HEAD:refs/heads/feature', 0),
     ('sh -c "git commit -m safe"', 0), ('(git push origin HEAD:refs/heads/feature)', 0),
     ('env GIT_AUTHOR_EMAIL=builder@example.test git commit -m safe', 0),
@@ -138,7 +138,7 @@ def payload(root, command):
     ('git -c core.hooksPath=/dev/null push', 2),
     ('GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=user.email GIT_CONFIG_VALUE_0=x git commit', 2),
     ('git -C', 0), ('git push "', 2),
-    ('cd other; git push', 2), ('git config user.email x; git commit', 2),
+    ('cd other; git push', 1), ('git config user.email x; git commit', 2),
     ('GIT_AUTHOR_EMAIL=x; git commit', 2),
     ('npm test', 0), ('git status', 0),
     ('./push.sh', 2), ('sh push.sh', 2), ('bash push.sh', 2),
@@ -513,7 +513,7 @@ def test_unrelated_substitutions_do_not_make_commit_push_relevant(workspace_case
     ('push origin feature', 0),
     ('commit --author="Other <other@example.test>"', 1),
     ('commit -m safe', 0),
-    ('push', 2),
+    ('push', 1),
 ])
 def test_outside_cwd_targets_configured_repository(workspace_case, monkeypatch, form, action, code):
     root, fake = workspace_case
@@ -778,3 +778,74 @@ def test_issue_347_unparsed_and_read_only(workspace_case, command, expected):
         assert result[0] == 2 and 'commit/push guard could not run' in result[1], result
     else:
         assert result == ((2, UNPARSED) if expected == 'unparsed' else expected)
+
+
+@pytest.fixture
+def item_case(workspace_case):
+    """workspace_case with the repository at the item worktree <root>/worktrees/DIV-1."""
+    root, fake = workspace_case
+    tree = root / 'worktrees/DIV-1'
+    tree.mkdir(parents=True)
+    fake.results['commit_context'].data['path'] = str(tree)
+    fake.results['push_context'].data['updates'][0]['destination'] = 'refs/heads/div-1'
+    return root, fake, tree
+
+
+def item_payload(tree, command):
+    return {'cwd': str(tree), 'tool_name': 'Bash', 'tool_input': {'command': command}}
+
+
+def test_real_values_bare_push(item_case):
+    root, fake, tree = item_case
+    assert guard().check(item_payload(tree, 'git push')) == (
+        1, 'name the remote and the branch: run git push origin HEAD:refs/heads/div-1')
+    fake.results['commit_context'].data['path'] = str(root / 'repo')
+    code, reason = guard().check(payload(root, 'git push origin'))
+    assert code == 1 and 'git push origin HEAD:refs/heads/<branch>' in reason
+
+
+def test_real_values_fast_check(item_case):
+    root, _, tree = item_case
+    set_fast_checks(root, {})
+    code, reason = guard().check(item_payload(tree, 'git push origin HEAD:refs/heads/div-1'))
+    assert code == 1 and '"unit"' in reason and SHA[:12] in reason
+    assert 'bin/wuwei build check DIV-1' in reason
+    item_case[1].results['commit_context'].data['path'] = str(root / 'repo')
+    code, reason = guard().check(payload(root, 'git push origin HEAD:refs/heads/feature'))
+    assert code == 1 and 'bin/wuwei fast-checks' in reason
+
+
+def test_real_values_commit_then_push(item_case):
+    root, _, tree = item_case
+    code, reason = guard().check(item_payload(tree, 'git commit -m x && git push origin HEAD:refs/heads/div-1'))
+    assert code == 1
+    steps = [reason.index(text) for text in (
+        'commit alone', 'bin/wuwei build check DIV-1', 'git push origin HEAD:refs/heads/div-1')]
+    assert steps == sorted(steps)
+
+
+def test_real_values_default_branch(item_case):
+    root, fake, tree = item_case
+    fake.results['push_context'].data['updates'][0]['destination'] = 'refs/heads/main'
+    code, reason = guard().check(item_payload(tree, 'git push origin HEAD:refs/heads/main'))
+    assert code == 1 and 'main' in reason and 'git push origin HEAD:refs/heads/div-1' in reason
+
+
+def test_real_values_one_reason_through_hook(item_case, monkeypatch, capsys):
+    import io
+    import json
+    import sys
+    from types import SimpleNamespace
+    from wuwei.commands import hook
+    root, _, tree = item_case
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    (root / '.wuwei/config.toml').write_text((root / '.wuwei/config.toml').read_text().replace(
+        'path = "repo"', 'path = "worktrees/DIV-1"'))
+    payload_ = {'hook_event_name': 'PreToolUse', 'session_id': 'fixture', 'cwd': str(tree),
+                'transcript_path': str(root / 'transcript.jsonl'), 'tool_name': 'Bash',
+                'tool_input': {'command': 'git push'}}
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload_)))
+    assert hook.run(SimpleNamespace(event='PreToolUse')) == 2
+    err = capsys.readouterr().err.splitlines()
+    assert len(err) == 2 and 'HEAD:refs/heads/div-1' in err[0] and err[1].startswith('posture:')
+    assert 'deploy: could not inspect' not in '\n'.join(err)

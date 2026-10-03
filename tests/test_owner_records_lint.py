@@ -13,7 +13,7 @@ PATTERN = re.compile(r"\bpaste\b|\bedit the file\b|\b(?:set|sets|record|records)
                      r"\btyp(?:e|es|ing) the (?:displayed )?digest\b|To confirm, type", re.I)
 ALLOWED = {
     # Credentials are the owner's own secret file; no workflow step can answer for them.
-    'Edit the file as the owner; the existing state guard refuses agent writes to it.',
+    'Edit the file yourself; the existing state guard refuses agent writes to it.',
     # A warning against pasting secrets, not an instruction to type a record.
     'Never paste the secret or the URI into a website.',
     # config.toml tables and values that span lines are the documented exception to `config set`;

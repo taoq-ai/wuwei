@@ -6,6 +6,7 @@ from pathlib import Path
 import shlex
 
 from wuwei import state, workspace
+from wuwei.exits import PAYLOAD, DAMAGED
 
 
 ROLES = ('adhoc', 'seat-host', 'remote', 'shepherd')
@@ -46,12 +47,12 @@ def stale_seconds(root):
 def record(data, session_id, *, hook, cwd, role=None, thread=None):
     """Upsert one registry row inside the caller's state write."""
     if not isinstance(session_id, str) or not session_id.strip():
-        raise ValueError('session id must be a nonempty string')
+        raise ValueError(f'session id must be a nonempty string; {PAYLOAD}')
     if role is not None and role not in ROLES:
-        raise ValueError(f'session role must be one of {", ".join(ROLES)}')
+        raise ValueError(f'session role must be one of {", ".join(ROLES)}; pass one of those roles')
     registry = data.setdefault('sessions', {})
     if not isinstance(registry, dict):
-        raise ValueError('sessions: expected object')
+        raise ValueError(f'sessions: expected object; {DAMAGED}')
     now = workspace.now().isoformat()
     row = registry.setdefault(session_id, {'role': 'adhoc', 'started': now, 'cwd': cwd})
     row.update(last_seen=now, last_hook=hook)
@@ -125,7 +126,7 @@ def rotation(root, config, data, session_id):
 def rows(data, now, stale):
     registry, claims = data.get('sessions', {}), data.get('claims', {})
     if not isinstance(registry, dict) or not isinstance(claims, dict):
-        raise ValueError('sessions and claims: expected objects')
+        raise ValueError(f'sessions and claims: expected objects; {DAMAGED}')
     result = []
     for session_id, row in registry.items():
         started, seen = (datetime.fromisoformat(row[key]) for key in ('started', 'last_seen'))

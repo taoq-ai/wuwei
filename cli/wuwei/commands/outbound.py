@@ -4,7 +4,7 @@ import json
 import sys
 
 from wuwei import outward, workspace
-from wuwei.exits import UNRUN
+from wuwei.exits import UNRUN, DAMAGED
 
 
 def register(subparsers):
@@ -18,7 +18,7 @@ def _unique(pairs):
     result = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError('duplicate JSON field')
+            raise ValueError(f'duplicate JSON field; {DAMAGED}')
         result[key] = value
     return result
 
@@ -37,5 +37,5 @@ def run(args):
     print(json.dumps({'tier': decision, 'exit': code}))
     if code:
         reason = 'cannot classify policy, audience or message evidence; ' if code == UNRUN else ''
-        print(f'outbound: {reason}deliver as a draft for the owner to send', file=sys.stderr)
+        print(f'outbound: {reason}deliver as a draft for the owner to send; save it as a draft (bin/wuwei drafts lists it)', file=sys.stderr)
     return code

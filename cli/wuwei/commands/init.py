@@ -11,7 +11,7 @@ import sys
 import tempfile
 import tomllib
 
-from wuwei.exits import CLEAN, FINDINGS, UNRUN
+from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, SYMLINK
 from wuwei import env, security, workspace
 from wuwei.guards.deploy import PERMISSIONS_DENY
 
@@ -45,7 +45,7 @@ def run(args):
         raise ValueError(f'{flag} applies to a new workspace; set security.posture in config.toml')
     if getattr(args, 'menu_bar', False):
         if getattr(args, 'upgrade', False) or getattr(args, 'dry_run', False):
-            raise ValueError('--menu-bar cannot be combined with --upgrade or --dry-run')
+            raise ValueError('--menu-bar cannot be combined with --upgrade or --dry-run; run bin/wuwei init --menu-bar on its own')
         if sys.platform != 'darwin':
             print('SwiftBar menu bar is macOS only')
             return CLEAN
@@ -56,7 +56,7 @@ def run(args):
         print('Install SwiftBar first if it is absent. No menu bar plugin runs until installed.')
         return CLEAN
     if getattr(args, 'dry_run', False) and not getattr(args, 'upgrade', False):
-        raise ValueError('--dry-run requires --upgrade')
+        raise ValueError('--dry-run requires --upgrade; run bin/wuwei init --upgrade --dry-run')
     if getattr(args, 'upgrade', False):
         return upgrade(args)
     destination = Path(args.path).expanduser() / ".wuwei"
@@ -67,7 +67,7 @@ def run(args):
     permissions = data.setdefault('permissions', {})
     denials = permissions.setdefault('deny', [])
     if not isinstance(denials, list) or not all(isinstance(rule, str) for rule in denials):
-        raise ValueError('workspace permissions.deny must be a list of strings')
+        raise ValueError(f'workspace permissions.deny must be a list of strings; {DAMAGED}')
     permissions['deny'] = list(dict.fromkeys([*denials, *PERMISSIONS_DENY]))
     template = Path(__file__).resolve().parents[3] / "templates/workspace"
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -113,12 +113,12 @@ def settings(root):
     """(path, data) for the project's .claude/settings.json, refused when unsafe to write."""
     path = Path(root) / '.claude/settings.json'
     if path.parent.is_symlink() or path.is_symlink():
-        raise ValueError('workspace settings must not be symlinks')
+        raise ValueError(f'workspace settings must not be symlinks; {SYMLINK}')
     if Path(root).resolve() == Path.home().resolve():
-        raise ValueError('workspace settings must not be owner global settings')
+        raise ValueError('workspace settings must not be owner global settings; run bin/wuwei init in a project folder, not the home folder')
     data = json.loads(path.read_text()) if path.exists() else {}
     if not isinstance(data, dict) or not isinstance(data.get('permissions', {}), dict):
-        raise ValueError('workspace settings and permissions must be objects')
+        raise ValueError('workspace settings and permissions must be objects; fix or move .claude/settings.json in this folder, then rerun bin/wuwei init')
     return path, data
 
 
@@ -256,7 +256,7 @@ def _migrated_config(raw, template):
     result = ''.join(''.join(lines) for _, lines in target)
     upgraded = tomllib.loads(result)
     if not _preserves_values(present, upgraded):
-        raise ValueError('migration would change an owner value; cannot safely upgrade this TOML layout')
+        raise ValueError('migration would change an owner value; cannot safely upgrade this TOML layout; the owner edits config.toml by hand, then run bin/wuwei init --upgrade again')
     return result, changed
 
 
@@ -283,12 +283,12 @@ def _charter_version(raw):
 def upgrade(args):
     destination = Path(args.path).expanduser() / '.wuwei'
     if not destination.is_dir():
-        print(f'wuwei init: {destination} is not a workspace', file=sys.stderr)
+        print(f'wuwei init: {destination} is not a workspace; run bin/wuwei init <path> to create one', file=sys.stderr)
         return FINDINGS
     config_path = destination / 'config.toml'
     pointer_path = destination / 'executable'
     if config_path.is_symlink() or pointer_path.is_symlink():
-        print('wuwei init: config.toml and executable must not be symlinks', file=sys.stderr)
+        print('wuwei init: config.toml and executable must not be symlinks; replace them with regular files, then rerun bin/wuwei init --upgrade', file=sys.stderr)
         return UNRUN
     try:
         env.load(destination.parent)
@@ -298,7 +298,7 @@ def upgrade(args):
         found = []
         workspace.load_config(destination.parent, raw=text, warnings=found)
         for warning in found:
-            print(f'wuwei init: warning: {warning}', file=sys.stderr)
+            print(f'wuwei init: warning: {warning}; run bin/wuwei doctor for the fix', file=sys.stderr)
         plugin = Path(__file__).resolve().parents[3]
         template = (plugin / 'templates/workspace/config.toml').read_text(encoding='utf-8')
         migrated, added = _migrated_config(text, template)

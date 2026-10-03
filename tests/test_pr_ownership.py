@@ -391,7 +391,15 @@ def test_disposition_argv_only_blocks_text_writes(case, monkeypatch, capsys, com
     if expected:
         reason = ('cannot inspect outbound stdin' if command.endswith('--body-file -')
                   else 'owner disposition')
-        assert reason in capsys.readouterr().out
+        assert reason in refused(root)  # #362: the hook prints one reason and records all
+
+
+def refused(root):
+    """Every guard reason the hook.refusal events recorded; the hook prints one (#362)."""
+    import glob
+    return ' '.join(row['reason'] for path in glob.glob(str(root / '.wuwei/days/*/events.jsonl'))
+                    for line in open(path).read().splitlines() if json.loads(line)['kind'] == 'hook.refusal'
+                    for row in json.loads(line)['payload'].get('refusals', []))
 
 
 @pytest.mark.parametrize('kind', ['parked', 'carried'])

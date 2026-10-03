@@ -484,10 +484,11 @@ def test_owner_command_not_available_to_seats(configured, command):
 
 
 def test_workspace_flag_does_not_hide_owner_action(configured):
+    from wuwei.guards import protect_state
     from wuwei.guards.protect_state import check_bash
     def run(words):
         return check_bash({'cwd': str(configured), 'tool_input': {'command': f'bin/wuwei --workspace {configured} {words}'}})
-    assert run('mcp decide D-1 proceed') == (1, 'MCP decisions require the owner terminal, outside agent tools.')
+    assert run('mcp decide D-1 proceed') == (1, protect_state._OWNER_ACTIONS[('mcp', 'decide')])
     assert run('status') == (0, '')
 
 

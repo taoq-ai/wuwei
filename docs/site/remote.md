@@ -1,7 +1,7 @@
 # Remote operation
 
 This page sets up running a day from your phone: Claude Code Remote Control first, then
-optionally the Slack listener and the owner DM. Every step runs on the always-on host
+optionally the Slack listener and your owner DM. Every step runs on the always-on host
 that holds the workspace.
 
 ## 1. Remote Control, no setup
@@ -48,16 +48,16 @@ adapters call two Web API methods only:
 
 | Method | Used for | Bot scope |
 | --- | --- | --- |
-| `conversations.history` | reading the owner DM | `im:history` |
+| `conversations.history` | reading your owner DM | `im:history` |
 | `conversations.history` | reading mentions in public channels | `channels:history` |
 | `conversations.history` | reading mentions in private channels | `groups:history` |
-| `chat.postMessage` | sending replies to the owner DM | `chat:write` |
+| `chat.postMessage` | sending replies to your owner DM | `chat:write` |
 
 Add the scopes under OAuth & Permissions, Bot Token Scopes. In the app settings, open App
 Home and turn on the Messages Tab with 'Allow users to send Slash commands and messages
 from the messages tab', or Slack will not let you message the app.
 
-The owner DM is the direct message between you and the app. Its channel id starts with
+Your owner DM is the direct message between you and the app. Its channel id starts with
 `D` (placeholder `D0123ABC`) and is shown in the conversation's details or link. To have
 mentions read, add the app to each channel in `outbound.work_channels` and
 `outbound.external_channels` and put your Slack user id in `owner.handles`. Mentions are
@@ -100,12 +100,12 @@ exits 1; a malformed
 pin prints `control_plane.owner: invalid`. It never prints the pin.
 
 Set `owner.name` in `.wuwei/config.toml` too. The outward lint uses it for messages to
-other people; replies in the owner DM are addressed to you and send without it. Until it
+other people; replies in your owner DM are addressed to you and send without it. Until it
 is set, `bin/wuwei config check` and the listener log print
-`owner.name: not set; the outward lint refuses every outward message except replies in the owner DM`.
+`owner.name: not set; the outward lint refuses every outward message except replies in your owner DM`.
 
 Find both ids without pasting a token anywhere: leave the pin empty, send any message
-in the owner DM, and run `bin/wuwei listen --once` on the host after section 5's setup
+in your owner DM, and run `bin/wuwei listen --once` on the host after section 5's setup
 (the listener need not be installed). The output contains:
 
 ```text
@@ -189,7 +189,7 @@ apply at the next poll. More detail is in
 
 `bin/wuwei listen --once` runs one poll: exit 0 when it polled, with or without new
 messages, and exit 2 when it could not run (configuration, credentials, the pin, the
-Slack API), with the reason printed. A message in any channel other than the owner DM
+Slack API), with the reason printed. A message in any channel other than your owner DM
 logs a `listen remote.unmatched` line with its id and is never a command.
 
 The listener writes a `listen: clock` line every two minutes. Session start reports
@@ -228,7 +228,7 @@ Kill switches, strongest last:
 
 ## 6. Commands from the DM
 
-Only top-level messages in the owner DM are commands, each handled once, in order. Answer
+Only top-level messages in your owner DM are commands, each handled once, in order. Answer
 as a new message, not in a thread. Every reply passes the security check and the outward
 lint and is sent, not drafted. The command list the DM sends back:
 

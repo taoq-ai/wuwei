@@ -30,6 +30,11 @@ CLASSIC_LINE = 'acme/widget main: classic protection: none visible (404: unprote
 TRIAL = 'page: plugin integrity: .in_use/12345'
 
 
+def W(rest):
+    """A fix line as doctor prints it, with the real launcher (#362)."""
+    return f"{integrity.PLUGIN / 'bin/wuwei'} {rest}"
+
+
 class Service:
     def __init__(self):
         self.results, self.calls, self.installed, self.error = [(0, '', 30)], [], [], None
@@ -200,7 +205,7 @@ def test_install_rows(ws):
     assert row(rows, 'hooks')['value'].startswith('development checkout')
     assert row(rows, 'hooks')['status'] == 'ok'
     found = row(rows, 'integrity')
-    assert found['fix'] == 'wuwei integrity reconfirm' and found['apply'] == 'integrity-reconfirm'
+    assert found['fix'] == W('integrity reconfirm') and found['apply'] == 'integrity-reconfirm'
 
 
 def host_case(ws, change):
@@ -275,8 +280,7 @@ def test_no_workspace(ws, tmp_path, monkeypatch):
     rows = doctor.diagnose()
     assert names(rows, 'install') and names(rows, 'host')
     assert [(r['name'], r['status']) for r in rows if r['section'] == 'workspace'] == [('workspace', 'fail')]
-    # wuwei setup (#327) is not on main yet; init --shadow is the command that exists.
-    assert row(rows, 'workspace')['fix'].startswith('wuwei init --shadow')
+    assert row(rows, 'workspace')['fix'].startswith(W('setup --shadow'))
     assert names(rows, 'gates') == names(rows, 'day') == []
     assert names(rows, 'guards') == ['outside workspace']
     assert doctor.outcome(rows) == 1
@@ -298,7 +302,7 @@ def test_workspace_config_does_not_load(ws):
     found = row(rows, 'config')
     assert found['status'] == 'fail'
     assert 'delete that line before using [[repos]] tables' in found['value']
-    assert found['fix'] == 'wuwei init --upgrade' and found['apply'] == 'init-upgrade'
+    assert found['fix'] == W('init --upgrade') and found['apply'] == 'init-upgrade'
     assert names(rows, 'workspace') == ['workspace', 'config', 'template', 'executable']
     assert [(r['name'], r['status'], r['value']) for r in rows if r['section'] in ('gates', 'day')] == [
         ('gates', 'unmeasured', 'config.toml does not load'), ('day', 'unmeasured', 'config.toml does not load')]
@@ -317,7 +321,7 @@ def test_workspace_executable_pointer(ws, tmp_path):
     pointer.write_text(f'{stale}\n')
     found = row(doctor.diagnose(), 'executable')
     assert found['status'] == 'fail' and str(stale) in found['value'] and 'missing' in found['value']
-    assert found['fix'] == 'wuwei init --upgrade' and found['apply'] == 'init-upgrade'
+    assert found['fix'] == W('init --upgrade') and found['apply'] == 'init-upgrade'
     pointer.unlink()
     found = row(doctor.diagnose(), 'executable')
     assert found['status'] == 'fail' and found['apply'] == 'init-upgrade'
@@ -354,7 +358,7 @@ def test_workspace_repository_rows(ws, repo, name, status, apply):
     assert found['status'] == status, found
     assert found.get('apply') == apply
     if name.endswith('fast_checks'):
-        assert found['fix'].startswith('bin/wuwei config promote --measure')
+        assert found['fix'].startswith(W('config promote --measure'))
         assert "bin/wuwei config set repos.0.fast_checks '[\"<command>\"]'" in found['fix']
     if name.endswith('identity'):
         assert 'repos.0.identity.name = "Ada"' in found['fix']
@@ -391,7 +395,7 @@ def test_workspace_retired_shadow_mode(ws, monkeypatch):
     found = row(doctor.diagnose(), 'posture')
     assert (found['status'], found['value'], found['fix'], found['apply']) == (
         'warn', 'observe (from guards.mode = "shadow", deprecated; run doctor --fix)',
-        'wuwei init --upgrade', 'init-upgrade')
+        W('init --upgrade'), 'init-upgrade')
     monkeypatch.setattr(init, 'upgrade', UPGRADE)
     found = row(doctor.diagnose(), 'template')
     assert found['status'] == 'warn' and found['apply'] == 'init-upgrade'
@@ -420,7 +424,7 @@ def test_gates_mcp_servers(ws):
     rows = doctor.diagnose()
     found = row(rows, 'mcp docs')
     assert (found['status'], found['value']) == ('warn', 'unmeasured')
-    assert found['fix'].startswith('wuwei mcp decide proceed-unmeasured docs')
+    assert found['fix'].startswith(W('mcp decide proceed-unmeasured docs'))
     assert row(rows, 'mcp notes') == {'section': 'gates', 'name': 'mcp notes', 'status': 'ok',
                                       'value': 'proceeding unmeasured by owner decision'}
     assert row(rows, 'mcp remote')['value'] == 'not attached (unapproved)'
@@ -431,12 +435,12 @@ def test_gates_mcp_servers(ws):
     with (ws.root / '.wuwei/config.toml').open('a') as config:
         config.write('[security]\nposture = "strict"\n')
     found = row(doctor.diagnose(), 'mcp gate')
-    assert found['status'] == 'fail' and found['fix'] == 'bin/wuwei mcp decide D-1 proceed in a host terminal'
+    assert found['status'] == 'fail' and found['fix'] == W('mcp decide D-1 proceed in a host terminal')
     assert 'Outcome' not in found['fix']
 
     record(ws.root, day='2026-10-02')
     found = row(doctor.diagnose(), 'mcp gate')
-    assert found['status'] == 'unmeasured' and found['fix'] == 'wuwei mcp check'
+    assert found['status'] == 'unmeasured' and found['fix'] == W('mcp check')
 
 
 def test_day_rows(ws):
@@ -448,7 +452,7 @@ def test_day_rows(ws):
     ws.probes['state'] = {'result': 'failed', 'value': 'bad state'}
     ws.probes['planner'] = {'result': 'failed', 'value': 'planner P not registered'}
     rows = doctor.diagnose()
-    assert row(rows, 'state')['fix'] == 'wuwei state recover in a host terminal'
+    assert row(rows, 'state')['fix'] == W('state recover in a host terminal')
     assert row(rows, 'planner')['status'] == 'fail' and '--take-over' in row(rows, 'planner')['fix']
 
     workspace.watch_unit(ws.root)[1].unlink()
@@ -466,7 +470,7 @@ def test_day_rows(ws):
     rows = doctor.diagnose()
     assert row(rows, 'heartbeat')['status'] == 'fail'
     page = row(rows, 'heartbeat page')
-    assert page['status'] == 'fail' and page['fix'] == 'wuwei nudges'
+    assert page['status'] == 'fail' and page['fix'] == W('nudges')
     assert row(rows, 'nudges')['status'] == 'ok'
 
 
@@ -543,13 +547,13 @@ def test_trial_failures_then_clean(ws, monkeypatch, capsys):
 
     assert main(['doctor']) == 1
     out = capsys.readouterr().out
-    assert 'wuwei integrity reconfirm' in out and 'fix: wuwei init --upgrade' in out
+    assert 'wuwei integrity reconfirm' in out and f"fix: {W('init --upgrade')}" in out
     assert 'delete that line before using [[repos]] tables' in out
 
     config(ws.root, trial)
     assert main(['doctor']) == 1
     out = capsys.readouterr().out
-    for text in ('wuwei mcp decide proceed-unmeasured docs', 'fix: bin/wuwei config promote --measure', CLASSIC_LINE,
+    for text in ('wuwei mcp decide proceed-unmeasured docs', f"fix: {W('config promote --measure')}", CLASSIC_LINE,
                  'acme/widget main: required reviews: missing ('):
         assert text in out, text
 
@@ -580,16 +584,16 @@ def test_pr_flow_rows():
                         ('shepherd.authors', 'reviewer mentions in the review ping at pr ping')):
         assert rows[name]['status'] == 'warn' and rows[name]['value'].endswith('will block: ' + phase), name
         assert rows[name]['fix'] and rows[name]['docs']
-    assert rows['owner.handles']['fix'] == "bin/wuwei config set owner.handles '[\"<code-host login>\"]'"
-    assert rows['shepherd.lead_login']['fix'] == "bin/wuwei config set shepherd.lead_login '\"<lead login>\"'"
-    assert rows['shepherd.authors']['fix'].startswith('bin/wuwei setup')
+    assert rows['owner.handles']['fix'] == W("config set owner.handles '[\"<code-host login>\"]'")
+    assert rows['shepherd.lead_login']['fix'] == W("config set shepherd.lead_login '\"<lead login>\"'")
+    assert rows['shepherd.authors']['fix'].startswith(W('setup'))
     assert '{login = "<login>", mention = "<chat id>"}' in rows['shepherd.authors']['fix']
     for name in ('adapters.tracker', 'adapters.chat', 'adapters.review_bot'):
         assert rows[name]['status'] == 'ok' and rows[name]['value'].startswith('none: ')
     slack = pr_flow('[adapters]\nchat = "slack"\n')
     channel = slack['shepherd.review_channel']
     assert channel['status'] == 'warn' and channel['value'].endswith('will block: the review ping at pr ping')
-    assert channel['fix'] == "bin/wuwei config set shepherd.review_channel '\"<channel id>\"'"
+    assert channel['fix'] == W("config set shepherd.review_channel '\"<channel id>\"'")
     assert slack['adapters.chat'] == {'section': 'pr-flow', 'name': 'adapters.chat', 'status': 'ok',
                                       'value': 'slack'}
     solo = pr_flow('[adapters]\nchat = "slack"\n[shepherd]\nmin_reviewers = 0\n')
@@ -607,7 +611,7 @@ def test_pr_flow_in_full_report(ws, capsys):
     assert main(['doctor']) == 1
     lines = capsys.readouterr().out.splitlines()
     assert lines.index('Gates and adapters') < lines.index('PR flow') < lines.index('Day and sessions')
-    assert '      fix: bin/wuwei config set owner.handles \'["<code-host login>"]\'' in lines
+    assert '      fix: ' + W('config set owner.handles \'["<code-host login>"]\'') in lines
 
 
 def test_pr_flow_section_only(ws, monkeypatch, capsys):
@@ -987,3 +991,44 @@ def test_mcp_reports_migration_bound_to_preview(ws, capsys):
     out = capsys.readouterr().out
     assert 'changed since the preview; nothing applied' in out and 'mcp-reports: exit 1' in out
     assert (ziran / 'report-a').is_dir() and not target.exists()
+
+
+def test_no_stray_stderr(ws, monkeypatch, capsys):
+    import sys
+
+    def identity(repo, root=None):
+        print('git.identity: could not run: git exited 1', file=sys.stderr)
+        return Result(2, None, 'git.identity: could not run: git exited 1')
+    monkeypatch.setattr(ws.vcs, 'identity', identity)
+    doctor.run(Namespace(section=None, json=False, widget=False, apply=None, fix=False))
+    assert capsys.readouterr().err == ''
+
+
+def test_setup_shadow_without_workspace(ws, tmp_path, monkeypatch):
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    elsewhere = tmp_path / 'elsewhere'
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setattr(integrity, 'measure', lambda: Result(0, 'f' * 64))
+    ws.vcs.results['identity'] = Result(2, None, 'git.identity: could not run: git exited 1')
+    rows = doctor.diagnose()
+    launcher = str(ws.plugin / 'bin/wuwei')
+    assert row(rows, 'workspace')['fix'] == f'{launcher} setup --shadow in the directory that holds your repositories'
+    found = row(rows, 'git identity')
+    assert found['status'] == 'ok' and found['value'] == "not set globally; setup reads each repository's own identity"
+
+
+def test_fix_lines_use_the_launcher(ws, monkeypatch, capsys):
+    from wuwei.commands import setup
+    launcher = str(ws.plugin / 'bin/wuwei')
+    rows = [doctor._row('workspace', 'config', 'fail', 'x', 'wuwei init --upgrade'),
+            doctor._row('install', 'a', 'fail', 'x', 'run bin/wuwei integrity reconfirm in a host terminal'),
+            doctor._row('install', 'b', 'fail', 'x', '/plugin install wuwei@wuwei, then /wuwei:wuwei-plan')]
+    assert [r['fix'] for r in rows] == [
+        f'{launcher} init --upgrade', f'run {launcher} integrity reconfirm in a host terminal',
+        '/plugin install wuwei@wuwei, then /wuwei:wuwei-plan']
+    assert f'{launcher} init --upgrade' in doctor.render(rows)
+    assert setup.ending(rows, [], [])[0] == f'Next: {launcher} init --upgrade'
+    monkeypatch.setattr(doctor, 'diagnose', lambda section=None: rows)
+    doctor.run(Namespace(section=None, json=True, widget=False, apply=None, fix=False))
+    assert json.loads(capsys.readouterr().out)['rows'][0]['fix'] == f'{launcher} init --upgrade'

@@ -5,6 +5,7 @@ import re
 
 from wuwei import outward, state, workspace
 from wuwei.verdict import active_text
+from wuwei.exits import DAMAGED
 
 
 FIELDS = ('Question', 'Context', 'Options', 'Musts', 'Wants', 'Recommendation',
@@ -29,23 +30,23 @@ def table(text, columns, name):
     rows = [[cell.strip() for cell in line.removeprefix('|').removesuffix('|').split('|')]
             for line in lines]
     if len(rows) < 3 or rows[0] != columns:
-        raise ValueError(f'{name}: expected columns {", ".join(columns)} and data rows')
+        raise ValueError(f'{name}: expected columns {", ".join(columns)} and data rows; fix it in the record; bin/wuwei decision template shows a valid one')
     if (len(rows[1]) != len(columns) or
             any(not re.fullmatch(r':?-{3,}:?', cell) for cell in rows[1])):
-        raise ValueError(f'{name}: invalid table separator')
+        raise ValueError(f'{name}: invalid table separator; fix it in the record; bin/wuwei decision template shows a valid one')
     seen = set()
     for row in rows[2:]:
         if len(row) != len(columns) or not all(row):
-            raise ValueError(f'{name}: missing or extra cell')
+            raise ValueError(f'{name}: missing or extra cell; fix it in the record; bin/wuwei decision template shows a valid one')
         if row[0] in seen:
-            raise ValueError(f'{name}: duplicate {row[0]}')
+            raise ValueError(f'{name}: duplicate {row[0]}; fix it in the record; bin/wuwei decision template shows a valid one')
         seen.add(row[0])
     return rows[2:]
 
 
 def number(value, minimum, name):
     if not re.fullmatch(r'[0-9]{1,2}', value) or not minimum <= int(value) <= 10:
-        raise ValueError(f'{name}: expected integer {minimum}..10')
+        raise ValueError(f'{name}: expected integer {minimum}..10; fix it in the record; bin/wuwei decision template shows a valid one')
     return int(value)
 
 
@@ -53,15 +54,15 @@ def _scored(fields):
     """Options, the ids passing every must, the Wants rows and the weighted scores."""
     options = table(fields['Options'], ['Option', 'Description'], 'Options')
     if len(options) < 2:
-        raise ValueError('Options: expected at least two options')
+        raise ValueError('Options: expected at least two options; add another option, for example a Do nothing row; bin/wuwei decision template shows a valid record')
     if any(not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', row[0]) for row in options):
-        raise ValueError('Options: invalid option id')
+        raise ValueError('Options: invalid option id; use a letter, then letters, digits, dash or underscore, such as A or defer-1')
     if not any(re.match(r'(?i)(?:Do nothing|Defer)\b', row[1]) for row in options):
-        raise ValueError('Options: include Do nothing or Defer')
+        raise ValueError('Options: include Do nothing or Defer; add a row whose description starts with Do nothing or Defer to Options, Musts and Wants')
     ids = [row[0] for row in options]
     musts = table(fields['Musts'], ['Criterion', *ids], 'Musts')
     if any(cell.lower() not in ('pass', 'fail') for row in musts for cell in row[1:]):
-        raise ValueError('Musts: expected pass/fail for each option')
+        raise ValueError('Musts: expected pass/fail for each option; write pass or fail in every option cell')
     passing = [option for index, option in enumerate(ids, 1)
                if all(row[index].lower() == 'pass' for row in musts)]
     wants = table(fields['Wants'], ['Criterion', 'Weight', *ids], 'Wants')
@@ -81,7 +82,7 @@ def evaluate(text):
         if match:
             current, value = match.groups()
             if current in fields:
-                raise ValueError(f'duplicate {current}: field')
+                raise ValueError(f'duplicate {current}: field; {DAMAGED}')
             fields[current] = value
         elif re.match(r'^(?:#{1,6} )?(?:Consequences|Notes)(?::|$)', line):
             current = None
@@ -89,27 +90,27 @@ def evaluate(text):
             fields[current] += '\n' + line
     missing = [key for key in FIELDS if not fields.get(key, '').strip()]
     if missing:
-        raise ValueError('missing fields: ' + ', '.join(missing))
+        raise ValueError('missing fields: ' + ', '.join(missing) + '; add each one (bin/wuwei decision template shows them all)')
     for key in ('Question', 'Recommendation', 'Confidence', 'Reversibility', 'Decided-by'):
         if '\n' in fields[key]:
-            raise ValueError(f'{key}: expected one line')
+            raise ValueError(f'{key}: expected one line; {DAMAGED}')
     for key, allowed in (('Confidence', ('high', 'medium', 'low')),
                          ('Reversibility', ('one-way', 'two-way', 'unsure')),
                          ('Decided-by', ('seat', 'owner'))):
         if fields[key] not in allowed:
-            raise ValueError(f'{key}: expected {"|".join(allowed)}')
+            raise ValueError(f'{key}: expected {"|".join(allowed)}; fix it in the record; bin/wuwei decision template shows a valid one')
     options, passing, _, scores = _scored(fields)
     ids = [row[0] for row in options]
     recommendation = fields['Recommendation']
     if recommendation not in ids:
-        raise ValueError('Recommendation: must name an option id')
+        raise ValueError('Recommendation: must name an option id; write the id of one row in Options')
     if not passing:
-        raise ValueError('Musts: no passing option')
+        raise ValueError('Musts: no passing option; add an option that meets every Must, or ask the owner whether a Must is too strict')
     best = max(passing, key=scores.get)
     if recommendation not in passing or scores[recommendation] < scores[best]:
         reason = 'fails a must; ' if recommendation not in passing else ''
         raise ValueError(f'Recommendation {recommendation} ({scores[recommendation]}) '
-                         f'{reason}requires top passing option {best} ({scores[best]})')
+                         f'{reason}requires top passing option {best} ({scores[best]}); use that option as the Recommendation, or correct the Wants scores if they are wrong')
     return fields, scores
 
 
@@ -150,7 +151,7 @@ def widget(question, header, options, record, *, multi=False):
     """One AskUserQuestion question (the session passes all but `record`) and the one command
     that records its answer. options: (label, description) pairs, the recommended first."""
     if len(header) > 12 or not 2 <= len(options) <= 4:
-        raise ValueError(f'widget {header}: expected a header of at most 12 characters and 2 to 4 options')
+        raise ValueError(f'widget {header}: expected a header of at most 12 characters and 2 to 4 options; pass a shorter header and 2 to 4 options')
     return {'question': question, 'header': header, 'multiSelect': multi,
             'options': [{'label': label, 'description': text} for label, text in options],
             'record': record}
@@ -179,7 +180,7 @@ def lint(text):
         found = outward.tells(text)
         return 0, f'OK: {option} ({scores[option]})' + ('\nstyle: ' + ', '.join(found) if found else '')
     except ValueError as exc:
-        return 1, f'{exc}\nREJECT: send back to the seat'
+        return 1, f'{exc}\nREJECT: send back to the seat; fix what is named above and check again with bin/wuwei decision lint <file>'
 
 
 def record_rejection(path, code, message, *, root=None):
@@ -194,7 +195,7 @@ def record_rejection(path, code, message, *, root=None):
         state.append_event('decision.rejected', {'file': str(path),
                            'reasons': message.splitlines()}, root=root)
     except (OSError, ValueError, RuntimeError) as exc:
-        return 2, f'{message}\ndecision lint: could not record rejection: {exc}'
+        return 2, f'{message}\ndecision lint: could not record rejection: {exc}; run bin/wuwei doctor'
     return code, message
 
 
@@ -206,13 +207,13 @@ def clarification_fields(text):
         if match:
             current, value = match.groups()
             if current not in ('Question', 'Context', 'Options'):
-                raise ValueError(f'clarification: unexpected {current} field')
+                raise ValueError(f'clarification: unexpected {current} field; remove that field or fold its text into Context')
             if current in fields and current != 'Options':
-                raise ValueError(f'clarification: duplicate {current} field')
+                raise ValueError(f'clarification: duplicate {current} field; write the two as one field; only Options may repeat')
             fields.setdefault(current, []).append(value)
         elif line.strip():
             if current is None or line.startswith('#'):
-                raise ValueError('clarification: expected Question, Context and Options')
+                raise ValueError('clarification: expected Question, Context and Options; write every line under a Question, Context or Options field')
             fields[current].append(line)
     return fields
 
@@ -229,7 +230,7 @@ def lint_clarification(text, *, fields=None):
     options = [line.strip() for line in fields.get('Options', []) if line.strip()]
     if (len(question) != 1 or not question[0].strip() or not any(line.strip() for line in context)
             or len(set(options)) < 2 or any('|' in line for line in options)):
-        return 1, 'clarification: require one-line Question, Context and at least two Options lines; no table'
+        return 1, 'clarification: require one-line Question, Context and at least two Options lines; no table; write the file in that shape and save it again'
     return 0, 'OK: clarification'
 
 
@@ -245,11 +246,12 @@ def lint_file(path, *, root=None, record=True, clarification=False):
 def today_path(decision_id, root, *, clarification=False):
     pattern = r'C-[1-9][0-9]*' if clarification else DECISION_ID
     if not re.fullmatch(pattern, decision_id):
-        raise ValueError('record id must be ' + ('C' if clarification else 'D') + '-<positive integer>')
+        prefix = 'C' if clarification else 'D'
+        raise ValueError(f'record id must be {prefix}-<positive integer>; use an id such as {prefix}-1')
     directory = workspace.day_dir(Path(root).resolve()) / 'decisions'
     path = directory / f'{decision_id}.md'
     if path.resolve() != path:
-        raise ValueError(f'decision {decision_id}: record must belong to today')
+        raise ValueError(f'decision {decision_id}: record must belong to today; write the record in today\'s decisions folder')
     return path
 
 
@@ -302,7 +304,7 @@ def waits(root):
         directory = Path(root) / '.wuwei/days' / wait['day']
         path = directory / 'decisions' / f'{wait["decision"]}.md'
         if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', wait['day']) or path.is_symlink():
-            raise ValueError(f'{name}: invalid external wait record')
+            raise ValueError(f'{name}: invalid external wait record; {DAMAGED}')
         if (answered(state.read_state(directory=directory), wait['decision']) is not None
                 or weekday_hours(datetime.fromisoformat(wait['since']), now, workspace.zone(config))
                 < config['decisions']['wait_hours']):
@@ -348,7 +350,7 @@ def answered(data, identifier):
 def seat_outcome(fields, scores):
     """Snapshot a validated seat decision, including any explicit item disposition."""
     if route(fields) != 'seat' or fields['Decided-by'] != 'seat':
-        raise ValueError('Decided-by must be seat for a seat-routed decision')
+        raise ValueError('Decided-by must be seat for a seat-routed decision; use owner as Decided-by, or fix Reversibility and Blast radius (seat only for a two-way decision on its own branch or PR)')
     return {'option': fields['Recommendation'], 'score': scores[fields['Recommendation']],
             'decided_by': 'seat', 'outcome': fields['Recommendation'],
             'reversibility': fields['Reversibility'], 'blast_radius': fields['Blast radius'],

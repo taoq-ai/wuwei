@@ -625,7 +625,8 @@ def test_recorded_executable_is_protected(workspace, tool, fields):
 def test_seat_cannot_recover_state(workspace, tmp_path, command):
     from wuwei.guards.protect_state import check_bash
     assert check_bash(payload(workspace, 'Bash', command=command)) == (
-        1, 'State recovery is an owner action on the host, outside agent tools.')
+        1, 'State recovery is an owner action, outside agent tools: the owner runs bin/wuwei state recover '
+        'in a host terminal; bin/wuwei doctor shows what is damaged.')
     outside = tmp_path / 'outside'
     outside.mkdir()
     assert check_bash(payload(outside, 'Bash', command=command)) == (0, '')
@@ -635,7 +636,8 @@ def test_seat_cannot_recover_state(workspace, tmp_path, command):
 def test_seat_cannot_acknowledge_refusals(workspace, tmp_path, command):
     from wuwei.guards.protect_state import check_bash
     assert check_bash(payload(workspace, 'Bash', command=command)) == (
-        1, 'Remote acknowledgements require the owner terminal, outside agent tools.')
+        1, 'Remote acknowledgements are an owner action, outside agent tools: the owner runs bin/wuwei '
+        'remote ack in a host terminal.')
     outside = tmp_path / 'outside'
     outside.mkdir()
     assert check_bash(payload(outside, 'Bash', command=command)) == (0, '')
@@ -935,3 +937,12 @@ def test_issue_349_writes_refused_in_every_posture(records, posture, monkeypatch
 def test_issue_349_interpreter_operands_stay_refused(records, posture, command, monkeypatch, capsys):
     _posture(records, posture)
     assert _hook(records, 'Bash', monkeypatch, capsys, command=command) == 2
+
+
+def test_owner_action_reasons_name_the_command():
+    from wuwei.guards import protect_state
+    for (group, verb), reason in protect_state._OWNER_ACTIONS.items():
+        assert f'bin/wuwei {group} {verb}'.strip() in reason and 'host terminal' in reason, reason
+    import inspect
+    source = inspect.getsource(protect_state._owner_action)
+    assert source.count("'Opaque owner action: write bin/wuwei <group> <verb> as a plain command so the '") == 2

@@ -12,7 +12,7 @@ def check(payload):
         result = integrity.cached(root)
         return result.exit, result.reason
     except (OSError, ValueError, TypeError) as exc:
-        return 2, str(exc) if isinstance(exc, workspace.ConfigError) else f'integrity unmeasured: {exc}'
+        return 2, str(exc) if isinstance(exc, workspace.ConfigError) else f'integrity unmeasured: {exc}; run bin/wuwei doctor'
 
 
 def session_start(payload):
@@ -27,7 +27,7 @@ def session_start(payload):
         return max(result.exit, local.exit), '\n'.join(
             message for message in (result.reason, local.reason) if message)
     except (OSError, ValueError, TypeError) as exc:
-        return 2, str(exc) if isinstance(exc, workspace.ConfigError) else f'integrity unmeasured: {exc}'
+        return 2, str(exc) if isinstance(exc, workspace.ConfigError) else f'integrity unmeasured: {exc}; run bin/wuwei doctor'
 
 
 GUARDS = [Guard('PreToolUse', None, check), Guard('SessionStart', None, session_start)]

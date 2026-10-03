@@ -172,11 +172,36 @@ def test_status_preserves_carriage_return_in_filename(tmp_path, monkeypatch):
 
 
 def test_git_exit_is_explained(tmp_path, monkeypatch, capsys):
+    # #362: the first stderr line and the repository now reach the reason, redacted and capped.
     install_replay(monkeypatch, 'git', [{'exit': 128, 'stderr': 'private repository path'}])
     result = adapter().head('/repo')
     assert result.exit == 2 and 'git exited 128' in result.reason
     assert 'git exited 128' in capsys.readouterr().err
-    assert 'private' not in result.reason
+    assert '/repo' in result.reason and 'private repository path' in result.reason
+
+
+def test_stderr_line_and_fetch_hint(monkeypatch):
+    install_replay(monkeypatch, 'git', [{'exit': 128, 'stderr':
+                                         'fatal: Not a valid object name origin/main\nmore'}])
+    result = adapter().merge_base('/repo', 'origin/main')
+    assert result.exit == 2
+    for text in ('git exited 128', 'merge-base', '/repo', 'fatal: Not a valid object name origin/main',
+                 'run git -C /repo fetch origin'):
+        assert text in result.reason, text
+    assert 'more' not in result.reason
+
+
+def test_stderr_line_redacted_and_capped(monkeypatch):
+    secret = 'ghp_' + 'a' * 36
+    install_replay(monkeypatch, 'git', [{'exit': 128, 'stderr': f'fatal: https://x:{secret}@github.com/a/b'}])
+    result = adapter().head('/repo')
+    assert secret not in result.reason and 'git exited 128' in result.reason
+    install_replay(monkeypatch, 'git', [{'exit': 1, 'stderr': 'x' * 500}])
+    result = adapter().head('/repo')
+    assert 'x' * 200 in result.reason and 'x' * 201 not in result.reason
+    install_replay(monkeypatch, 'git', [{'exit': 1, 'stderr': '\n  \n'}])
+    result = adapter().head('/repo')
+    assert result.reason == 'git.head: could not run: git exited 1 (show in /repo)'
 
 
 def test_not_a_repository_is_named(monkeypatch):

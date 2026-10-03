@@ -7,6 +7,7 @@ from pathlib import Path
 
 from wuwei import state, workspace
 from wuwei.notes import SLUG_RE, parse_note
+from wuwei.exits import DAMAGED, SYMLINK
 
 
 def estimated_tokens(text):
@@ -21,7 +22,7 @@ def write_index(root=None):
     notes = memory / 'notes'
     if (memory.is_symlink() or notes.is_symlink() or not notes.is_dir()
             or not notes.resolve().is_relative_to(root)):
-        raise ValueError('memory notes directory must be inside the workspace and not a symlink')
+        raise ValueError(f'memory notes directory must be inside the workspace and not a symlink; {SYMLINK}')
     maximum = workspace.load_config(root)['memory']['max_notes']
     lines = []
     findings = []
@@ -32,7 +33,7 @@ def write_index(root=None):
             raise ValueError(f'note must not be a symlink: {path}')
         try:
             if not SLUG_RE.fullmatch(slug):
-                raise ValueError('invalid slug')
+                raise ValueError(f'invalid slug; {DAMAGED}')
             content = path.read_text(encoding='utf-8')
             fields, _ = parse_note(content)
         except (ValueError, UnicodeError) as exc:
@@ -141,7 +142,7 @@ def lint(root=None):
     notes = root / '.wuwei/memory/notes'
     if (notes.is_symlink() or not notes.is_dir()
             or not notes.resolve().is_relative_to(root)):
-        raise ValueError('memory notes directory must be inside the workspace and not a symlink')
+        raise ValueError(f'memory notes directory must be inside the workspace and not a symlink; {SYMLINK}')
     config = workspace.load_config(root)['memory']
     findings = []
     loads = None
@@ -229,5 +230,5 @@ def _loaded_notes(root):
                                     if isinstance(path, str):
                                         loads.add(Path(path).resolve())
                 except (KeyError, TypeError, ValueError, AttributeError) as exc:
-                    raise ValueError(f'{trace}:{number}: invalid trace: {exc}') from exc
+                    raise ValueError(f'{trace}:{number}: invalid trace: {exc}; {DAMAGED}') from exc
     return loads

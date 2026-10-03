@@ -33,7 +33,9 @@ UNLOADED = 'config.toml does not load'
 def _row(section, name, status, value, fix='', apply=None, detail=(), docs=None):
     row = {'section': section, 'name': name, 'status': status, 'value': value}
     if status != 'ok':
-        row['fix'] = fix
+        # #362: fixes name the real launcher; no wuwei shim is on PATH.
+        row['fix'] = re.sub(r'(?<![\w/@:.-])(?:bin/)?wuwei(?= [a-z-])',
+                            lambda _: str(integrity.PLUGIN / 'bin/wuwei'), fix)
         if apply:
             row['apply'] = apply
         row['docs'] = docs or DOCS[section]
@@ -128,7 +130,7 @@ def _hooks(root, config):
     try:
         hooks = json.loads((plugin / 'hooks/hooks.json').read_text())
         if not isinstance(hooks.get('hooks', {}).get('PreToolUse'), list):
-            raise ValueError('no PreToolUse hooks')
+            raise ValueError('no PreToolUse hooks; reinstall the signed release, then run bin/wuwei doctor')
     except (OSError, ValueError, AttributeError) as exc:
         return _row('install', 'hooks', 'fail', f'hooks/hooks.json: {exc}', REINSTALL)
     name = config['scanner']['mcp']['plugins_file'] if config else mcp.DEFAULTS['plugins_file']
@@ -168,11 +170,12 @@ def _host(root, config):
 
     good, result = resolved(root / '.wuwei' if root else Path.cwd())
     # Repositories set their own identity (repos.identity); a global one is needed only without it.
-    own = config['repos'] and all(
+    own = root is None or config['repos'] and all(
         (repo['identity']['name'] and repo['identity']['email'])
         or resolved((root / Path(repo['path']).expanduser()).resolve())[0] for repo in config['repos'])
     rows.append(_row('host', 'git identity', 'ok', f"{result.data['name']} <{result.data['email']}>") if good else
-                _row('host', 'git identity', 'ok', 'not set globally; repositories set their own') if own else
+                _row('host', 'git identity', 'ok', "not set globally; setup reads each repository's own identity"
+                     if root is None else 'not set globally; repositories set their own') if own else
                 _row('host', 'git identity', 'fail', result.reason or 'missing',
                      'git config --global user.name "<name>" and git config --global user.email "<email>"'))
     if adapters['scanner'] != 'ziran':
@@ -215,7 +218,7 @@ def _workspace(root, config, error, found):
     from wuwei.commands import init
     if root is None:
         return [_row('workspace', 'workspace', 'fail', error or f'no .wuwei/ found from {Path.cwd()}',
-                     'wuwei init --shadow in the directory that holds your repositories')]
+                     'bin/wuwei setup --shadow in the directory that holds your repositories')]
     rows = [_row('workspace', 'workspace', 'ok', str(root / '.wuwei'))]
     if config is not None and found:
         rows.append(_row('workspace', 'config', 'warn', f'loads; {len(found)} unknown keys',
@@ -599,7 +602,7 @@ def _promote(root, token):
 def _supersede_preview(root):
     ids = _legacy_traces(root)
     if not ids:
-        raise ValueError('nothing to supersede')
+        raise ValueError('nothing to supersede; run bin/wuwei doctor without --apply supersede')
     return ''.join(f'{ident}: Outcome: superseded ({SUPERSEDED})\n' for ident in ids), ids
 
 
@@ -725,7 +728,7 @@ def fix(rows, confirm=None, only=None, widget=False):
         print(f'wuwei doctor: {exc}', file=sys.stderr)
         return 2
     if not accepted:
-        print('wuwei doctor: declined; nothing applied', file=sys.stderr)
+        print('wuwei doctor: declined; nothing applied; run bin/wuwei doctor --fix again when you are ready', file=sys.stderr)
         return 1
     for name, _, token in batch:
         try:
@@ -754,9 +757,10 @@ def register(subparsers):
 
 def run(args, confirm=None):
     if (args.widget or args.apply) and not args.fix or args.widget and args.apply:
-        print('wuwei doctor: --widget and --apply each need --fix, not both', file=sys.stderr)
+        print('wuwei doctor: --widget and --apply each need --fix, not both; use bin/wuwei doctor --fix --widget or bin/wuwei doctor --fix --apply <labels>', file=sys.stderr)
         return 2
-    rows = diagnose(args.section)
+    with redirect_stderr(io.StringIO()):  # Adapters print their reasons; the rows carry them.
+        rows = diagnose(args.section)
     if args.json:
         print(json.dumps({'exit': outcome(rows), 'rows': rows}))
         return outcome(rows)

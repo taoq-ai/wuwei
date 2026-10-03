@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 
 from wuwei import workspace
+from wuwei.exits import DAMAGED, SYMLINK
 
 
 DEFAULT_HONEYTOKEN_PATH = 'credentials/backup.env'
@@ -15,10 +16,10 @@ def honeytoken_path(directory, value):
             or Path(value).is_absolute() or '..' in Path(value).parts
             or Path(value).parts[0] in {'generated', 'charters', 'memory', 'days', 'archive'}
             or len(Path(value).parts) < 2):
-        raise ValueError('honeytoken path must be a relative file in a private subdirectory')
+        raise ValueError('honeytoken path must be a relative file in a private subdirectory; the owner sets a relative file in a private subfolder with bin/wuwei config set in a host terminal')
     path = directory / value
     if path.resolve() != directory.resolve() / value:
-        raise ValueError('honeytoken path must not traverse symlinks')
+        raise ValueError(f'honeytoken path must not traverse symlinks; {SYMLINK}')
     return path
 
 
@@ -27,7 +28,7 @@ def initialize(directory, decoy=DEFAULT_HONEYTOKEN_PATH):
     directory = Path(directory)
     path = honeytoken_path(directory, decoy)
     if path.exists():
-        raise ValueError('honeytoken path already exists')
+        raise ValueError('honeytoken path already exists; ask the owner to remove that file or pick another honeytoken path')
     data = {'canary': secrets.token_urlsafe(32), 'honeytoken': secrets.token_urlsafe(32),
             'honeytoken_path': decoy}
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -59,13 +60,13 @@ def load(root, *, raw=None):
             if not required:
                 return None
         if path.is_symlink():
-            raise ValueError('security material must not be a symlink')
+            raise ValueError(f'security material must not be a symlink; {SYMLINK}')
         data = json.loads(path.read_text(encoding='utf-8'))
         if (not isinstance(data, dict) or set(data) != {'canary', 'honeytoken', 'honeytoken_path'}
                 or any(not isinstance(data[key], str) or not re.fullmatch(r'[A-Za-z0-9_-]{32,}', data[key])
                        for key in ('canary', 'honeytoken'))
                 or data['canary'] == data['honeytoken']):
-            raise ValueError('invalid security material')
+            raise ValueError(f'invalid security material; {DAMAGED}')
         honeytoken_path(directory, data['honeytoken_path'])
         return data
     except (OSError, ValueError, TypeError, AttributeError):
@@ -120,7 +121,7 @@ def outbound(value, root=None):
         record(findings, root, 'outbound')
         return 1, 'outward: ' + ', '.join('security.' + key for key in sorted(findings))
     except (OSError, ValueError, TypeError, RuntimeError):
-        return 2, 'outward: cannot read security material or record security evidence'
+        return 2, 'outward: cannot read security material or record security evidence; run bin/wuwei doctor, then retry'
 
 
 def redact(value, data):
@@ -164,7 +165,7 @@ def reads_honeytoken(payload, root, data):
         return path_fields(inputs)
     script = inputs.get('command')
     if not isinstance(script, str):
-        raise ValueError('invalid shell tool input')
+        raise ValueError(f'invalid shell tool input; {DAMAGED}')
     readers = ('cat', 'head', 'tail', 'less', 'more', 'grep', 'rg', 'sed', 'awk', 'cp', 'dd',
                'base64', 'strings', 'od', 'xxd', 'hexdump')
     if not shell.mentions(script, (*readers, target.name)):
@@ -173,7 +174,7 @@ def reads_honeytoken(payload, root, data):
         commands = shell.normalize(script, protected=readers)
     except shell.ParseError:
         if shell.mentions(script, (target.name,)):
-            raise ValueError('cannot inspect honeytoken read') from None
+            raise ValueError('cannot inspect honeytoken read; run the read as a plain command with a literal path') from None
         return False
     # ponytail: flattened shell groups retain possible directories conservatively.
     # Exact nested directory flow belongs in a future shell parser extension.
@@ -185,7 +186,7 @@ def reads_honeytoken(payload, root, data):
             destinations = {(base / _cd_target(command)).resolve() for base in directories}
             directories = directories | destinations if command.subshell else destinations
             if len(directories) > 64:
-                raise ValueError('too many possible read directories')
+                raise ValueError('too many possible read directories; split the command so each read has one directory')
             if not command.subshell:
                 persistent = directories
             continue
@@ -234,13 +235,13 @@ def trace_findings(payload, root, data):
 def gh_outbound(argv, cwd, root, *, api=False, text_write=False):
     """Inspect parsed arguments and file-backed bodies for protected markers."""
     if text_write and any(marker in arg for arg in argv for marker in ('WUWEI parked ', 'WUWEI carried ')):
-        return 1, 'owner disposition markers must be posted by the owner'
+        return 1, 'owner disposition markers must be posted by the owner; ask the owner to post the marker comment'
     paths = []
     for index, arg in enumerate(argv):
         flags = ('--input',) if api else ('--body-file', '-F')
         if arg in flags:
             if index + 1 >= len(argv):
-                raise ValueError('missing outbound body file')
+                raise ValueError('missing outbound body file; write the body file first, then pass it with --body-file')
             paths.append((argv[index + 1], api))
         elif any(arg.startswith(flag + '=') for flag in flags):
             paths.append((arg.partition('=')[2], api))
@@ -258,16 +259,16 @@ def gh_outbound(argv, cwd, root, *, api=False, text_write=False):
                 paths.append((field.partition('=@')[2], False))
     for name, json_body in paths:
         if not name or name == '-':
-            return 2, 'outward: cannot inspect outbound stdin or missing body file'
+            return 2, 'outward: cannot inspect outbound stdin or missing body file; pass the body as a regular --body-file'
         try:
             text = (cwd / name).read_text(encoding='utf-8')
             if json_body:
                 text = json.dumps(json.loads(text), ensure_ascii=False)
         except (OSError, ValueError):
-            return 2, 'outward: opaque request, cannot read outbound body file'
+            return 2, 'outward: opaque request, cannot read outbound body file; pass the body with --body-file <file> as a plain literal path'
         code, reason = outbound(text, root)
         if code:
             return code, reason
         if any(marker in text for marker in ('WUWEI parked ', 'WUWEI carried ')):
-            return 1, 'owner disposition markers must be posted by the owner'
+            return 1, 'owner disposition markers must be posted by the owner; ask the owner to post the marker comment'
     return 0, ''

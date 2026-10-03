@@ -402,7 +402,7 @@ def test_seat_cannot_uninstall_the_watch(root, script, code):
     result = check_bash({'cwd': str(root), 'tool_name': 'Bash', 'tool_input': {'command': script}})
     assert result[0] == code
     if code:
-        assert ('owner terminal' if code == 1 else 'host terminal') in result[1]
+        assert ('uninstall in a host terminal' if code == 1 else 'host terminal') in result[1]
 
 
 def test_watch_uninstall_outside_a_workspace_is_allowed(tmp_path, monkeypatch):

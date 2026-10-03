@@ -7,6 +7,7 @@ from pathlib import Path
 from time import monotonic as _monotonic, sleep as _sleep
 
 from wuwei import workspace
+from wuwei.exits import DAMAGED
 
 
 def lock_ex(lock, name, timeout=30):
@@ -50,11 +51,11 @@ class StateError(ValueError):
 
 def _defaults(value, defaults, path):
     if not isinstance(value, dict):
-        raise StateError(f'{path}: expected object')
+        raise StateError(f'{path}: expected object; {DAMAGED}')
     for key, default in defaults.items():
         value.setdefault(key, workspace.copy_data(default))
         if type(value[key]) is not type(default):
-            raise StateError(f'{path}.{key}: expected {type(default).__name__}')
+            raise StateError(f'{path}.{key}: expected {type(default).__name__}; {DAMAGED}')
 
 
 def _check_transition(item, target):
@@ -63,29 +64,30 @@ def _check_transition(item, target):
     if phase in ('parked', 'escalated'):
         allowed = (item['resume_phase'],)
     if target not in allowed:
-        raise StateError(f'{phase} -> {target}: legal next phases: '
+        raise StateError((f'{phase} -> {target}: legal next phases: '
                          f'{", ".join(allowed) or "none (terminal)"}'
-                         + (f'; state may already be at {target}' if phase == target else ''))
+                         + (f'; state may already be at {target}' if phase == target else '')
+                         + '; run bin/wuwei why <item> for its current phase'))
 
 
 def _validate(data, previous=None):
     _defaults(data, DAY_DEFAULTS, 'state')
     if data['cap'] < 1:
-        raise StateError('cap: expected integer >= 1')
+        raise StateError('cap: expected integer >= 1; pass a cap of 1 or more')
     if previous is not None and previous['items'].keys() - data['items'].keys():
-        raise StateError('items: removing an item is not allowed')
+        raise StateError('items: removing an item is not allowed; run bin/wuwei plan park <item> to set an item aside instead')
     for field in ('raised_prs', 'claimed_prs'):
         if previous is not None and any(ref not in data[field] for ref in previous[field]):
-            raise StateError(f'{field}: removing a PR is not allowed')
+            raise StateError(f'{field}: removing a PR is not allowed; run bin/wuwei plan park <item> to set the item aside instead')
     for name, item in data['items'].items():
         path = f'items.{name}'
         _defaults(item, ITEM_DEFAULTS, path)
         _defaults(item['flags'], ITEM_DEFAULTS['flags'], f'{path}.flags')
         if item['status'] not in STATUSES:
-            raise StateError(f'{path}.status: expected {", ".join(STATUSES)}')
+            raise StateError(f'{path}.status: expected {", ".join(STATUSES)}; {DAMAGED}')
         old = previous['items'].get(name) if previous is not None else None
         if previous is not None and old is None and item['phase'] != 'planned':
-            raise StateError(f'{path}.phase: new items must start at planned')
+            raise StateError(f'{path}.phase: new items must start at planned; {DAMAGED}')
         if old is not None:
             if old['phase'] != item['phase']:
                 _check_transition(old, item['phase'])
@@ -94,19 +96,18 @@ def _validate(data, previous=None):
                 else:
                     item.pop('resume_phase', None)
             elif item.get('resume_phase') != old.get('resume_phase'):
-                raise StateError(f'{path}.resume_phase: managed by transitions')
+                raise StateError(f'{path}.resume_phase: managed by transitions; {DAMAGED}')
         if item['phase'] not in PHASES:
-            raise StateError(f'{path}.phase: expected {", ".join(PHASES)}')
+            raise StateError(f'{path}.phase: expected {", ".join(PHASES)}; {DAMAGED}')
         if item['phase'] in ('parked', 'escalated'):
             if item.get('resume_phase') not in PHASES[item['phase']]:
-                raise StateError(f'{path}.resume_phase: expected the prior active phase')
+                raise StateError(f'{path}.resume_phase: expected the prior active phase; {DAMAGED}')
         elif 'resume_phase' in item:
-            raise StateError(f'{path}.resume_phase: only valid while paused')
+            raise StateError(f'{path}.resume_phase: only valid while paused; {DAMAGED}')
     return data
 
 
 SNAPSHOT = 'state.snapshot.json'
-RECOVER = 'run wuwei state recover in a host terminal'
 
 
 def _load(text):
@@ -123,18 +124,18 @@ def read_state(root=None, *, directory=None):
         return _load(path.read_text(encoding='utf-8'))
     except FileNotFoundError:
         if (directory / SNAPSHOT).exists():
-            raise ValueError(f'{path}: day state missing while {SNAPSHOT} exists; {RECOVER}') from None
+            raise ValueError(f'{path}: day state missing while {SNAPSHOT} exists; run bin/wuwei state recover in a host terminal') from None
         return workspace.copy_data(DAY_DEFAULTS)
     except (ValueError, TypeError) as exc:
-        raise ValueError(f'{path}: {exc}; {RECOVER}') from exc
+        raise ValueError(f'{path}: {exc}; run bin/wuwei state recover in a host terminal') from exc
 
 
 def _event_payload(kind, payload):
     if not isinstance(kind, str) or not kind.strip():
-        raise ValueError('event kind must be a nonempty string')
+        raise ValueError(f'event kind must be a nonempty string; {DAMAGED}')
     payload = {} if payload is None else payload
     if not isinstance(payload, dict):
-        raise ValueError('event payload must be an object')
+        raise ValueError(f'event payload must be an object; {DAMAGED}')
     json.dumps(payload, allow_nan=False)
     return payload
 
@@ -182,7 +183,7 @@ def _append_jsonl(path, record):
                 if previous_size and os.pread(fd, 1, previous_size - 1) != b'\n':
                     encoded = b'\n' + encoded
                 if os.write(fd, encoded) != len(encoded):
-                    raise OSError(f'short event write to {path.name}')
+                    raise OSError(f'short event write to {path.name}; free disk space, then run the same command again')
             except OSError:
                 # Discard only the failed append while holding the shared writer lock.
                 os.ftruncate(fd, previous_size)
@@ -307,7 +308,7 @@ def write_state(update, root=None, *, kind='state.write', payload=None):
 def _parts(path):
     parts = path.split('.')
     if not all(parts):
-        raise ValueError('path must contain nonempty dot-separated keys')
+        raise ValueError('path must contain nonempty dot-separated keys; pass a dotted key such as items.DIV-1.status')
     return parts
 
 
@@ -345,14 +346,14 @@ def record_pr(root, item, ref, *, raised, head=None, reviewers=None):
     ref = pull_request(ref)
     def update(data):
         if item not in data['items'] or item not in data['approved_items']:
-            raise StateError('PR item must be in the approved plan')
+            raise StateError('PR item must be in the approved plan; admit the item with bin/wuwei plan add <item> first')
         if data['items'][item].get('pr') not in (None, ref):
-            raise StateError('item already links another PR')
+            raise StateError('item already links another PR; run bin/wuwei why <item> to see the linked PR')
         if any(name != item and row.get('pr') == ref for name, row in data['items'].items()):
-            raise StateError('PR already links another item')
+            raise StateError('PR already links another item; run bin/wuwei pr state to see which item owns it')
         other = 'claimed_prs' if raised else 'raised_prs'
         if ref in data[other]:
-            raise StateError('PR is already owned today')
+            raise StateError('PR is already owned today; run bin/wuwei pr state to see its item')
         data['items'][item]['pr'] = ref
         field = 'raised_prs' if raised else 'claimed_prs'
         if ref not in data[field]:
@@ -414,7 +415,7 @@ def recover(root=None, *, confirm):
         except ValueError as exc:
             reason = str(exc)
         if reason is None:
-            raise StateError('state.json is readable; nothing to recover')
+            raise StateError('state.json is readable; nothing to recover; run bin/wuwei doctor for other problems')
         text = (directory / SNAPSHOT).read_text(encoding='utf-8')
         try:
             _load(text)
@@ -424,7 +425,7 @@ def recover(root=None, *, confirm):
 
     reason, digest, text = measure()
     if not confirm(digest[:12]):
-        raise StateError('state recovery declined')
+        raise StateError('state recovery declined; rerun bin/wuwei state recover in a host terminal and answer y')
     with (directory / 'state.lock').open('a') as lock:
         lock_ex(lock, 'state.lock')
         if measure()[1] != digest:

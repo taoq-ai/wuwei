@@ -9,6 +9,7 @@ from wuwei.guards import Guard
 from wuwei.guards.verdict import INTERPRETERS, required_text
 from wuwei.workspace import scope
 from wuwei.shell import UNPARSED, ParseError, classify, is_opaque, mentions, normalize
+from wuwei.exits import DAMAGED, PAYLOAD
 
 
 def is_decision(path):
@@ -37,7 +38,7 @@ def check_write(payload):
         if not isinstance(tool_input, dict):
             if scope(cwd) is None:
                 return 0, ''
-            raise ValueError('missing or invalid tool_input')
+            raise ValueError(f'missing or invalid tool_input; {PAYLOAD}')
         if payload.get('tool_name') != 'Bash':
             key = 'notebook_path' if payload.get('tool_name') == 'NotebookEdit' else 'file_path'
             path = cwd / required_text(tool_input, key)
@@ -168,17 +169,17 @@ def check_question(payload):
         root, _ = context
         tool_input = payload.get('tool_input')
         if not isinstance(tool_input, dict):
-            raise ValueError('missing or invalid tool_input')
+            raise ValueError(f'missing or invalid tool_input; {PAYLOAD}')
         questions = tool_input.get('questions')
         if payload.get('tool_name') != 'AskUserQuestion' and questions is None:
             questions = [tool_input]
         if not isinstance(questions, list) or not questions:
-            raise ValueError('expected nonempty questions')
+            raise ValueError(f'expected nonempty questions; {DAMAGED}')
         results = []
         checked = set()
         for question in questions:
             if not isinstance(question, dict):
-                raise ValueError('invalid question')
+                raise ValueError(f'invalid question; {DAMAGED}')
             text = required_text(question, 'question')
             if gate_question(question, root):
                 continue
@@ -196,7 +197,7 @@ def check_question(payload):
         return (max((code for code, _ in results), default=0),
                 '\n'.join(message for _, message in results))
     except (OSError, ValueError, RuntimeError, TypeError) as exc:
-        return 2, f'decision question: {exc}\n{hint}'
+        return 2, f'decision question: {exc}\n{hint}; fix the record, then check it with bin/wuwei decision lint <file>'
 
 
 # ponytail: a line ending in '?' is a question; tighten if retro gaps show false positives.

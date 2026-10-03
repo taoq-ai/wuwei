@@ -4,7 +4,7 @@ from pathlib import Path
 from fnmatch import fnmatch
 import re
 
-from wuwei.exits import CLEAN, FINDINGS, UNRUN
+from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, PAYLOAD
 from wuwei.guards import Guard
 from wuwei.verdict import lint_file, record_rejection, retro_fields
 
@@ -16,7 +16,7 @@ INTERPRETERS = ((r'(?:python|pypy)[\d.]*', 'c'), ('node', 'ep'),
 def required_text(payload, key, *, blank=False):
     value = payload.get(key)
     if not isinstance(value, str) or not blank and not value.strip():
-        raise ValueError(f'missing or invalid {key}')
+        raise ValueError(f'missing or invalid {key}; {DAMAGED}')
     return value
 
 
@@ -60,7 +60,7 @@ def check_write(payload):
             return CLEAN, ''
         cwd = required_text(payload, 'cwd')
         if not stop and not isinstance(tool_input, dict):
-            raise ValueError('missing or invalid tool_input')
+            raise ValueError(f'missing or invalid tool_input; {PAYLOAD}')
         results = []
         bash = not stop and payload.get('tool_name') == 'Bash'
         if bash:

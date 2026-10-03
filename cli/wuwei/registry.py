@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 
 from wuwei import state
-from wuwei.exits import UNRUN
+from wuwei.exits import UNRUN, ADAPTER_DATA, DAMAGED
 
 
 PARAMETERS = {
@@ -81,8 +81,8 @@ def validate(kind, name, *, for_config=False):
     """Validate installed names, allowing the reserved default in config only."""
     names = known(kind)
     if name not in names:
-        raise ValueError(f'adapters.{kind}: unknown adapter {name!r}; '
-                         f'known names: {", ".join(names)}')
+        raise ValueError((f'adapters.{kind}: unknown adapter {name!r}; '
+                         f'known names: {", ".join(names)}; the owner sets one with bin/wuwei config set in a host terminal'))
 
 
 def load(kind, config):
@@ -108,7 +108,7 @@ def runtime_config(role, config, root):
         return config
     selected = policy.get('runtime')
     if not isinstance(selected, str) or not selected:
-        raise ValueError(f'invalid runtime policy for {role}')
+        raise ValueError(f'invalid runtime policy for {role}; {ADAPTER_DATA}')
     return {**config, 'adapters': {**config['adapters'], 'runtime': selected}}
 
 
@@ -119,7 +119,7 @@ def data(result):
     if not isinstance(result, Result) or type(result.exit) is not int or result.exit != 0:
         raise ValueError(getattr(result, 'reason', '') or 'VCS operation unavailable')
     if not isinstance(result.data, dict):
-        raise ValueError('malformed VCS data')
+        raise ValueError(f'malformed VCS data; {DAMAGED}')
     return result.data
 
 
@@ -191,7 +191,7 @@ def outward_operation(kind):
                     return Result(code, inputs.get('text') if kind == 'chat' and code == 1
                                   and not reason.startswith('outward: security.') else None, reason)
             except (OSError, ValueError, TypeError, KeyError, AttributeError):
-                return Result(UNRUN, None, 'outward: cannot validate port call')
+                return Result(UNRUN, None, 'outward: cannot validate port call; run bin/wuwei config check, then retry')
             return operation(*args, **kwargs)
         return call
     return decorate

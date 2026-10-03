@@ -27,7 +27,7 @@ missing tools, malformed output and timeouts return exit 2.
 
 Store credentials in `.wuwei/env`, created empty by `wuwei init` and
 `wuwei init --upgrade`. Keep its permissions at `0600`; WUWEI adds `/env` to
-`.wuwei/.gitignore`. Never put credentials in tracked configuration. Edit the file as the owner;
+`.wuwei/.gitignore`. Never put credentials in tracked configuration. Edit the file yourself;
 the existing state guard refuses agent writes to it.
 
 Use one `KEY=value` assignment per line. Blank lines and whole-line `#` comments
@@ -55,7 +55,7 @@ the exit code.
 | code_host.github | `gh auth status --hostname github.com` must succeed. Authenticate gh separately or supply `GH_TOKEN` or `GITHUB_TOKEN`. WUWEI captures and discards gh's account output. A write-scoped `GH_TOKEN` or `GITHUB_TOKEN` in `.wuwei/env` or the environment is readable by seats, and `wuwei config check` reports it. |
 | tracker.linear | `LINEAR_API_KEY` |
 | chat.slack | `SLACK_BOT_TOKEN` or `SLACK_USER_TOKEN`, plus `SLACK_OWNER_DM_CHANNEL`. With `chat.identity = "custom_app"`, `SLACK_BOT_TOKEN` is required. Optional `SLACK_API_BASE` overrides `https://slack.com/api/` (https, or http to a loopback host). |
-| inbound.slack | `SLACK_BOT_TOKEN` or `SLACK_USER_TOKEN`, plus `SLACK_OWNER_DM_CHANNEL`. Mentions in work and external channels need your Slack user id in `owner.handles`. Commands from the owner DM need `control_plane.owner`; `plan` and `ask` with a code need `WUWEI_TOTP_SECRET`. Optional `SLACK_API_BASE` as for chat.slack. |
+| inbound.slack | `SLACK_BOT_TOKEN` or `SLACK_USER_TOKEN`, plus `SLACK_OWNER_DM_CHANNEL`. Mentions in work and external channels need your Slack user id in `owner.handles`. Commands from your owner DM need `control_plane.owner`; `plan` and `ask` with a code need `WUWEI_TOTP_SECRET`. Optional `SLACK_API_BASE` as for chat.slack. |
 | review_bot.greptile | `GREPTILE_API_KEY` |
 | calendar.ics | `WUWEI_CALENDAR_URL`, a private HTTPS feed URL |
 | runtime.codex | `codex.command`, a nonempty command array in config.toml; credentials for the companion are managed by that tool |

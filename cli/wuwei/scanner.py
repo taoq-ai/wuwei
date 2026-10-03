@@ -3,6 +3,7 @@
 import re
 
 from wuwei import redact, registry, security, state, workspace
+from wuwei.exits import ADAPTER_DATA
 
 
 # Static checks for secrets, unvalidated input, execution and data exposure.
@@ -11,15 +12,15 @@ TRUST_RULES = {'SA001', 'SA002', 'SA003', 'SA007', 'SA008', 'SA009', 'SA010'}
 
 def rows(tree, item, flags, config, root):
     if workspace.guard_scope({'cwd': str(tree)}) != root:
-        raise OSError('scanner: unmeasured: reviewed worktree is outside the workspace')
+        raise OSError('scanner: unmeasured: reviewed worktree is outside the workspace; write the gate brief with --worktree inside the workspace')
     scanner = registry.load('scanner', config)
     audit = scanner.audit(str(tree), root=root)
     if audit.exit not in (0, 1):
-        raise OSError('scanner: unmeasured: ' + audit.reason)
+        raise OSError('scanner: unmeasured: ' + audit.reason + '; run bin/wuwei doctor')
     threshold = config['scanner']['severity_threshold']
     gate = scanner.gate(audit.data, threshold, root=root)
     if gate.exit not in (0, 1):
-        raise OSError('scanner: unmeasured: ' + gate.reason)
+        raise OSError('scanner: unmeasured: ' + gate.reason + '; run bin/wuwei doctor')
     levels = ('critical', 'high', 'medium', 'low')
     markers = security.load(root)
     result = []
@@ -30,7 +31,7 @@ def rows(tree, item, flags, config, root):
             with source.open(encoding='utf-8') as stream:
                 stream.read()
         except (OSError, ValueError):
-            raise OSError('scanner: unmeasured: finding source is unreadable or outside worktree') from None
+            raise OSError('scanner: unmeasured: finding source is unreadable or outside worktree; run bin/wuwei doctor, which tests the scanner') from None
         blocks = (flags['trust_surface'] or flags['boundary_relevant']
                   or finding.get('trust_boundary', False)
                   or finding['rule'] in TRUST_RULES
@@ -133,7 +134,7 @@ def trace_sweep(root, config):
                 has_sessions = any(line.strip() for line in stream)
         except FileNotFoundError:
             if path.is_symlink():
-                raise ValueError('unreadable trace input') from None
+                raise ValueError(f'unreadable trace input; {ADAPTER_DATA}') from None
             has_sessions = False
         if not has_sessions:
             counts['scanner'] = 'no sessions'

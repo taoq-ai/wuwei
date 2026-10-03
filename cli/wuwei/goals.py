@@ -3,13 +3,15 @@
 from datetime import date
 import re
 
+from wuwei.exits import DAMAGED
+
 
 FIELDS = ('outcome', 'measure', 'target', 'date', 'priority')
 
 
 def parse(text):
     if not isinstance(text, str):
-        raise ValueError('goals: expected text')
+        raise ValueError(f'goals: expected text; {DAMAGED}')
     goals = {}
     current = None
     start = 0
@@ -24,37 +26,37 @@ def parse(text):
             if current is not None:
                 missing = [field for field in FIELDS if field not in goals[current]]
                 if missing:
-                    raise ValueError(f'goals line {start}: {current} missing {missing[0]}')
+                    raise ValueError(f'goals line {start}: {current} missing {missing[0]}; the owner fixes memory/goals.md with bin/wuwei goals edit in a host terminal')
             current = line[3:].strip()
             if not re.fullmatch(r'G-[1-9][0-9]*', current) or current in goals:
-                raise ValueError(f'goals line {number}: invalid or duplicate id')
+                raise ValueError(f'goals line {number}: invalid or duplicate id; the owner fixes memory/goals.md with bin/wuwei goals edit in a host terminal')
             goals[current] = {}
             start = number
             continue
         if current is None or ':' not in line:
-            raise ValueError(f'goals line {number}: expected goal field')
+            raise ValueError(f'goals line {number}: expected goal field; the owner fixes memory/goals.md with bin/wuwei goals edit in a host terminal')
         key, value = (part.strip() for part in line.split(':', 1))
         if key not in FIELDS or not value or key in goals[current]:
-            raise ValueError(f'goals line {number}: invalid {key}')
+            raise ValueError(f'goals line {number}: invalid {key}; the owner fixes memory/goals.md with bin/wuwei goals edit in a host terminal')
         if key == 'priority':
             try:
                 value = int(value)
                 if value < 1:
                     raise ValueError()
             except ValueError as exc:
-                raise ValueError(f'goals line {number}: invalid priority') from exc
+                raise ValueError(f'goals line {number}: invalid priority; the owner fixes memory/goals.md with bin/wuwei goals edit in a host terminal') from exc
         if key == 'date':
             try:
                 date.fromisoformat(value)
             except ValueError as exc:
-                raise ValueError(f'goals line {number}: invalid date') from exc
+                raise ValueError(f'goals line {number}: invalid date; the owner fixes memory/goals.md with bin/wuwei goals edit in a host terminal') from exc
         goals[current][key] = value
     if current is not None:
         missing = [field for field in FIELDS if field not in goals[current]]
         if missing:
-            raise ValueError(f'goals line {start}: {current} missing {missing[0]}')
+            raise ValueError(f'goals line {start}: {current} missing {missing[0]}; the owner fixes memory/goals.md with bin/wuwei goals edit in a host terminal')
     if not goals:
-        raise ValueError('goals line 1: no goals')
+        raise ValueError('goals line 1: no goals; the owner fixes memory/goals.md with bin/wuwei goals edit in a host terminal')
     return goals
 
 
@@ -72,11 +74,12 @@ def proposed(text, goals):
     blocks = ['# Goals', '']
     for goal in goals:
         if set(goal) != {'id', *FIELDS}:
-            raise ValueError('proposed goals: each needs exactly id, ' + ', '.join(FIELDS))
+            raise ValueError(('proposed goals: each needs exactly id, ' + ', '.join(FIELDS)
+                             + '; write each proposed goal with those fields'))
         for key, value in goal.items():
             kind = int if key == 'priority' else str
             if type(value) is not kind or str(value).splitlines() != [str(value)]:
-                raise ValueError(f'proposed goals: invalid {key}')
+                raise ValueError(f'proposed goals: invalid {key}; write each proposed goal with id, outcome, measure, target, date and priority')
         blocks += [f'## {goal["id"]}', *(f'{key}: {goal[key]}' for key in FIELDS), '']
     rendered = '\n'.join(blocks)
     try:

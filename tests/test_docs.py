@@ -962,3 +962,17 @@ def test_one_gate_question():
     assert '`[]`' in configuration.split('\n## Owner interview\n', 1)[1].split('\n## ', 1)[0]
     prompt = ROOT / 'evals/wuwei-plan-positive-06/prompt.md'
     assert 'once' in prompt.read_text().split('---', 2)[2]
+
+
+def test_pages_address_the_reader():
+    # #362: the pages speak to their reader ("you"); agent.md speaks to the agent, the
+    # charter page and the glossary entry define the role.
+    found = []
+    for path in sorted(SITE.glob('*.md')):
+        if path.name in ('agent.md', 'charter-overrides.md'):
+            continue
+        text = path.read_text()
+        if path.name == 'concepts.md':
+            text = re.sub(r'\n## Glossary\n.*?(?=\n## )', '\n', text, flags=re.S)
+        found += [f'{path.name}: {line}' for line in text.splitlines() if re.search(r'\bthe owner\b', line, re.I)]
+    assert not found, f'{len(found)} lines:\n' + '\n'.join(found)

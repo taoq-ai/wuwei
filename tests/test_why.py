@@ -264,9 +264,9 @@ def test_intraday_item_takes_its_score_from_discovery(root, capsys):
 
 
 @pytest.mark.parametrize('target,code,err', [
-    ('nope', 1, 'wuwei why: no recorded item nope\n'),
-    ('acme/app#9', 1, 'wuwei why: no item links acme/app#9\n'),
-    ('acme#x', 2, 'wuwei why: expected owner/repo#number\n'),
+    ('nope', 1, "wuwei why: no recorded item nope; run bin/wuwei status for today's items\n"),
+    ('acme/app#9', 1, 'wuwei why: no item links acme/app#9; run bin/wuwei pr state for the PRs owned today\n'),
+    ('acme#x', 2, 'wuwei why: expected owner/repo#number; pass owner/repo#number\n'),
 ])
 def test_missing_targets_exit_one_and_bad_refs_two(root, capsys, target, code, err):
     merged_item(root)
@@ -314,7 +314,7 @@ def test_refusal_by_event_id(root, capsys):
 def test_refusal_id_that_names_no_refusal_exits_one(root, capsys, ident):
     refusal(root, {'reason': 'other'}, kind='gate.tiered')
     refusal(root, NEW)
-    assert why(capsys, ident) == (1, [], f'wuwei why: no recorded refusal {ident}\n')
+    assert why(capsys, ident) == (1, [], f'wuwei why: no recorded refusal {ident}; run bin/wuwei why last refusal for the latest one\n')
 
 
 def test_older_refusal_record_says_not_recorded(root, capsys):
@@ -325,7 +325,7 @@ def test_older_refusal_record_says_not_recorded(root, capsys):
 
 
 def test_last_refusal_is_the_newest_across_days(root, capsys):
-    assert why(capsys, 'last', 'refusal') == (1, [], 'wuwei why: no recorded refusal\n')
+    assert why(capsys, 'last', 'refusal') == (1, [], 'wuwei why: no recorded refusal; nothing was refused today, so run bin/wuwei status for the day\n')
     refusal(root, NEW, '2026-10-01')
     assert why(capsys, 'last refusal')[1][1:] == REFUSAL
     refusal(root, {'reason': 'today'})
@@ -356,7 +356,7 @@ def test_decision_view_reads_class_and_cruise_level(root, capsys):
 
 
 def test_decision_view_without_a_record_exits_one(root, capsys):
-    assert why(capsys, 'D-9') == (1, [], 'wuwei why: no decision record D-9 today\n')
+    assert why(capsys, 'D-9') == (1, [], 'wuwei why: no decision record D-9 today; run bin/wuwei nudges for open decisions\n')
 
 
 TOKEN = 'ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8'

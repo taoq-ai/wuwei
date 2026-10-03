@@ -6,7 +6,7 @@ import re
 import sys
 
 from wuwei import state, workspace
-from wuwei.exits import CLEAN, UNRUN
+from wuwei.exits import CLEAN, UNRUN, DAMAGED, ADAPTER_DATA
 from wuwei.signal import SILENT, classify
 
 
@@ -203,7 +203,7 @@ def scan(directory, classified_state=None):
                                                  'lane': lane, 'reason': name}
     routes = classified_state.get('decision_routes', {})
     if not isinstance(routes, dict):
-        raise ValueError('invalid decision ledger')
+        raise ValueError(f'invalid decision ledger; {DAMAGED}')
     for identifier in routes:
         from wuwei.decision import answered  # Here: decision and outward cost a quiet day's line.
         if answered(classified_state, identifier) is None:
@@ -261,13 +261,13 @@ def snapshot(directory):
                                      ('meetings', 'start', 'next_meeting')):
         rows = data.get(key, [])
         if not isinstance(rows, list):
-            raise ValueError(f'{key}: expected list')
+            raise ValueError(f'{key}: expected list; {DAMAGED}')
         dates = [row[field] for row in rows if isinstance(row, dict)
                  and isinstance(row.get(field), str)]
         if dates:
             parsed = [(datetime.fromisoformat(value), value) for value in dates]
             if any(instant.tzinfo is None for instant, _ in parsed):
-                raise ValueError(f'{key}: expected timezone-aware timestamps')
+                raise ValueError(f'{key}: expected timezone-aware timestamps; {DAMAGED}')
             result[destination] = min(parsed, key=lambda row: row[0])[1]
     config_path = directory.parents[1] / 'config.toml'
     config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
@@ -286,14 +286,14 @@ def snapshot(directory):
                 now.isoformat(), (now + timedelta(days=7)).isoformat(), root=root)
             if measured.exit == 0:
                 if not isinstance(measured.data, list):
-                    raise ValueError('calendar returned invalid events')
+                    raise ValueError(f'calendar returned invalid events; {ADAPTER_DATA}')
                 upcoming = []
                 for event in measured.data:
                     if not isinstance(event, dict) or not isinstance(event.get('start'), str):
-                        raise ValueError('calendar event missing start')
+                        raise ValueError(f'calendar event missing start; {ADAPTER_DATA}')
                     start = datetime.fromisoformat(event['start'])
                     if start.tzinfo is None:
-                        raise ValueError('calendar event needs timezone')
+                        raise ValueError(f'calendar event needs timezone; {ADAPTER_DATA}')
                     if start >= now:
                         upcoming.append((start, event['start']))
                 result['next_meeting'] = min(upcoming, default=(None, None))[1]

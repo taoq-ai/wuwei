@@ -458,7 +458,7 @@ GUARDS = [Guard('PreToolUse', None, lambda p: (2, 'second reason'))]
 ''', 'second')
     payload = json.loads((ROOT / 'tests/payloads/PreToolUse/bash.json').read_text())
     result = replay(plugin, 'PreToolUse', json.dumps(payload))
-    assert_refusal(result, 'PreToolUse', 'npm test\nsecond reason')
+    assert_refusal(result, 'PreToolUse', 'npm test')  # #362: the finding, not the could-not-run
 
 
 @pytest.mark.parametrize('active', [False, True])
@@ -623,9 +623,21 @@ def check(payload):
 GUARDS = [Guard('Stop', None, check), Guard('Stop', None, lambda p: (1, 'later refusal'))]
 ''')
     result = replay(plugin, 'Stop', json.dumps(fixture('Stop')))
+    # #362: the later guard ran; its finding is the one reason printed.
+    assert result.stderr == 'later refusal\n'
+    assert_refusal(result, 'Stop', 'later refusal')
+    install(plugin, f'''
+from wuwei.guards import Guard
+
+def check(payload):
+    {body}
+
+GUARDS = [Guard('Stop', None, check)]
+''', 'alone')
+    (plugin[0] / 'cli/wuwei/guards/fake.py').unlink()
+    result = replay(plugin, 'Stop', json.dumps(fixture('Stop')))
     assert reason in result.stderr
-    assert result.stderr.endswith('later refusal\n')
-    assert_refusal(result, 'Stop', result.stderr.strip())
+    assert_refusal(result, 'Stop', result.stderr[:-1])
 
 
 @pytest.mark.parametrize('event', ['PreToolUse', 'Stop', 'SubagentStop', 'PreCompact'])
@@ -1226,9 +1238,9 @@ def test_refusal_from_two_guards_lists_both_in_order(plugin):
     install(plugin, refusing('PreToolUse', 'first; a'), 'first')
     install(plugin, refusing('PreToolUse', 'second'), 'second')
     payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
-    assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', 'first; a\nsecond')
+    assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', 'first; a')
     recorded, = events_of(plugin, 'hook.refusal')
-    assert recorded['reason'] == 'first; a\nsecond'
+    assert recorded['reason'] == 'first; a'
     assert recorded['refusals'] == [{'guard': 'first', 'reason': 'first; a'},
                                     {'guard': 'second', 'reason': 'second'}]
 

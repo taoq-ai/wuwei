@@ -16,6 +16,7 @@ from wuwei import registry, workspace
 from wuwei.commands.init import _preserves_values, _sections
 from wuwei.guards.deploy import VERBS
 from wuwei.workspace import MERGE_SCHEMA
+from wuwei.exits import DAMAGED, SYMLINK
 
 
 MAX_BYTES = 1 << 20
@@ -583,7 +584,7 @@ def survey(root, config, selected, *, style=True, measure=False):
     for index, repo in selected:
         checkout = (Path(root) / Path(repo['path']).expanduser()).resolve()
         if not checkout.is_dir():
-            raise OSError(f"{repo['name']}: checkout {repo['path']} is not a directory")
+            raise OSError(f"{repo['name']}: checkout {repo['path']} is not a directory; restore the checkout, or the owner fixes repos.<n>.path with bin/wuwei config set in a host terminal")
         result = {'index': index, 'repo': repo, 'checkout': checkout, **profile(checkout, repo)}
         result['checks'] = classify(checkout, result['facts']['fast_checks'], runner,
                                     config['calibrate']['fast_check_seconds'], root)
@@ -712,12 +713,12 @@ def approved(root):
     """The owner-approved calibration snapshot; absent is {}."""
     path = Path(root) / '.wuwei/calibration.json'
     if path.is_symlink():
-        raise ValueError('calibration.json must not be a symlink')
+        raise ValueError(f'calibration.json must not be a symlink; {SYMLINK}')
     if not path.exists():
         return {}
     data = json.loads(path.read_text(encoding='utf-8'))
     if not isinstance(data, dict) or not all(isinstance(v, dict) for v in data.values()):
-        raise ValueError('malformed calibration.json')
+        raise ValueError(f'malformed calibration.json; {DAMAGED}')
     return data
 
 
@@ -737,7 +738,7 @@ def drift(root):
         checkout = (Path(root) / Path(repo['path']).expanduser()).resolve()
         try:
             if not checkout.is_dir():
-                raise OSError('checkout is not a directory')
+                raise OSError('checkout is not a directory; restore the checkout, or the owner fixes repos.<n>.path with bin/wuwei config set in a host terminal')
             current = drift_facts(profile(checkout, repo)['facts'])
             changed = [key for key in DRIFT if current[key] != snapshot[repo['name']].get(key)]
         except OSError:

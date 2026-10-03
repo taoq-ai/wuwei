@@ -106,7 +106,7 @@ A lint checks outward text for its mechanical tells before it is drafted or sent
 
 ## Roles
 
-The shipped charters define planner, lead, builder, shepherd, steward, and four sentinels: goal, architecture, quality and security. Generated agent files in `agents/` carry the charters and tool allowlists. The planner owns the day, the lead shapes work, builders implement, sentinels check, the shepherd follows pull requests and the steward maintains procedure. `/wuwei plan` runs the day, starting with the owner's morning gate; see the [daily path](daily.md).
+The shipped charters define planner, lead, builder, shepherd, steward, and four sentinels: goal, architecture, quality and security. Generated agent files in `agents/` carry the charters and tool allowlists. The planner owns the day, the lead shapes work, builders implement, sentinels check, the shepherd follows pull requests and the steward maintains procedure. `/wuwei plan` runs the day, starting with your morning gate; see the [daily path](daily.md).
 
 ## Guards
 
@@ -116,11 +116,11 @@ Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse 
 
 `security.posture` sets what warns and what blocks per area: `observe`, `guarded` (the default) or `strict`, with per-area overrides under `[security.areas]`. A `warn` level still runs the guard, records the refusal as a `guard.would_refuse` event and lets the call through. Every enforced refusal ends with a `posture:` line naming the area, its level and the key that changes it. See [security posture](security.md#security-posture) for the table.
 
-`observe` is the old shadow mode (`guards.mode = "shadow"` still means it). Use it for the first week on a project, to see what the guards would stop in your own habits before they stop anything. Some refusals never relax, in any posture: writes to state, events, config and generated instructions, verdicts and decisions (`records`), and owner-only actions: the deployment ban, the merge policy, approvals and owner markers, and approve-tier messages and canary or honeytoken egress. Relaxing those would corrupt the records the report is built from or let a seat act as the owner. The heartbeat probe session is never relaxed either.
+`observe` is the old shadow mode (`guards.mode = "shadow"` still means it). Use it for the first week on a project, to see what the guards would stop in your own habits before they stop anything. Some refusals never relax, in any posture: writes to state, events, config and generated instructions, verdicts and decisions (`records`), and owner-only actions: the deployment ban, the merge policy, approvals and owner markers, and approve-tier messages and canary or honeytoken egress. Relaxing those would corrupt the records the report is built from or let a seat act as you. The heartbeat probe session is never relaxed either.
 
 `bin/wuwei shadow report` and the day report group the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows the posture when it is not `guarded`, each `observe` session starts with a line saying so, and after `guards.shadow_days` one nudge asks you to switch to `guarded` or extend. Under `guarded` or `strict` a warning is a nudge, one per guard per day.
 
-MCP registry findings warn by default. A finding is a heuristic over tool descriptions, and a first measurement is new information, not drift. The publishing guarantee does not rest on the registry gate; it rests on the code host protections and the credential layout (design 9.1). So a false positive must not stop the day: under `guarded` the finding is filed as an owner decision and shown on the board with `bin/wuwei mcp decide D-<n> proceed`, and seats launch. Use `strict` for a repository where a changed tool must stop seats until the owner decides.
+MCP registry findings warn by default. A finding is a heuristic over tool descriptions, and a first measurement is new information, not drift. The publishing guarantee does not rest on the registry gate; it rests on the code host protections and the credential layout (design 9.1). So a false positive must not stop the day: under `guarded` the finding is filed as an owner decision and shown on the board with `bin/wuwei mcp decide D-<n> proceed`, and seats launch. Use `strict` for a repository where a changed tool must stop seats until you decide.
 
 ## Seat launch contract
 
@@ -137,15 +137,15 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are the owner's alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei goals edit` and `voice edit` (except that the planner records goals and voice you approved at the morning gate with `--file`, outside the strict posture), `wuwei watch uninstall`, `wuwei listen uninstall`, `wuwei remote ack`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei setup`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records a decision it asked you in the session with `wuwei decide`. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
+Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei goals edit` and `voice edit` (except that the planner records goals and voice you approved at the morning gate with `--file`, outside the strict posture), `wuwei watch uninstall`, `wuwei listen uninstall`, `wuwei remote ack`, `wuwei config promote`, `config set` and `config add-repo`, and `wuwei setup`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records a decision it asked you in the session with `wuwei decide`. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
 
 ## Memory
 
-`wuwei init` creates `.wuwei/memory/` with a spine, index and changelog. Day records live under `.wuwei/days/`. Settled facts belong in notes; procedure belongs in charters. The CLI provides `note`, `index`, `consolidate`, `payload` and `promote` commands. Goals and voice are the owner's: the lead proposes, the morning gate confirms and the planner records them, and the owner can edit them later; seats propose changes for promotion. The index is generated and notes are bounded by configuration defaults.
+`wuwei init` creates `.wuwei/memory/` with a spine, index and changelog. Day records live under `.wuwei/days/`. Settled facts belong in notes; procedure belongs in charters. The CLI provides `note`, `index`, `consolidate`, `payload` and `promote` commands. Goals and voice are yours: the lead proposes, the morning gate confirms and the planner records them, and you can edit them later; seats propose changes for promotion. The index is generated and notes are bounded by configuration defaults.
 
 ## Day flow
 
-Plan, Build, Review, Close. `/wuwei plan` runs the morning gate, then the planner loops `build next` and `dispatch next` for each approved item, raises the PR and closes the day; phases move by themselves. The [daily path](daily.md) is the owner's walkthrough and the [recovery](recovery.md) page covers the rest.
+Plan, Build, Review, Close. `/wuwei plan` runs the morning gate, then the planner loops `build next` and `dispatch next` for each approved item, raises the PR and closes the day; phases move by themselves. The [daily path](daily.md) is your walkthrough and the [recovery](recovery.md) page covers the rest.
 
 ## PR ownership
 
@@ -246,7 +246,7 @@ round, and the model that raised it does the delta. Each verdict records its cos
 and the retro's `## Second opinion` section lists the findings each model raised alone, so you
 can turn it off when it stops paying.
 
-## Writing for the owner
+## Writing for you
 
 `owner.verbosity` sets how much decisions, the digest, PR nudges, the DM and the report say to you: `brief` (the default), `standard` or `full`, with one key per surface (see [configuration](configuration.md)). Anything left out is one command away: `bin/wuwei decision show D-<n> --full` on the host or `more D-n` in the DM. Seats rewrite text written for a person with the humanizer skill, version 3.1.0, MIT license, when it is installed, and otherwise follow the ten-line checklist under Writing for a person in `charters/_common-authoring.md`. The CLI counts the mechanical tells as a `style` finding on drafts and decision records and as the `ai_tells` metric in the retro and, at standard or full, the report. By default a tell warns and does not stop a send. An em dash or an emoji is always refused.
 
@@ -257,16 +257,16 @@ Outward text gets the same pass. Every tracker comment, docs page, DM, PR commen
 Cruise mode is designed in
 [design spec 5.8.1](https://github.com/taoq-ai/wuwei/blob/main/docs/specs/2026-09-24-wuwei-design.md)
 and not built: decisions would carry a class, and the CLI would answer some classes itself
-at levels L0 to L3. Today every owner decision goes to the owner.
+at levels L0 to L3. Today every owner decision comes to you.
 
 Every seat prompt ends with a mandate block built from those class levels
 (`decisions.cruise.levels`, the 5.8.1 defaults otherwise), the interview's trust-surface
 line and `deploy.deny`: what the seat decides alone, what it decides and records, and what
-goes to the owner, closing with "Nothing else is a question." The levels only shape this
+comes to you, closing with "Nothing else is a question." The levels only shape this
 text; cruise answering is not built. Assume and record: a two-way
 open question inside the item is not asked; the seat takes its recommendation and records
 it under `Assumptions:` in the spec or PR body, and gates review it as an `Assumption:`
-finding. A seat that stops on a question to the owner without a valid decision id is
+finding. A seat that stops on a question to you without a valid decision id is
 flagged by the SubagentStop guard (and by the Codex and headless paths), and `dispatch
 next` refuses until the planner acknowledges the note.
 

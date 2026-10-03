@@ -2,8 +2,8 @@
 
 WUWEI 无为 (said woo-way) means "effortless action." It is a Claude Code plugin that runs your coding agents the way a careful engineering team works: the day is planned and ranked, each change is reviewed by an agent that did not write it, merges follow a policy, and a retro at the end of the day proposes changes to the rules.
 
-<img src="assets/hero-light.svg#only-light" alt="WUWEI day loop. Calibration and the owner interview come before the first Plan. Each day is planned and ranked, and each item is built and checked, then reviewed by one gate or three by tier, with one fix round. A shepherd takes each pull request to merge under the merge policy, and Close runs a retro that carries the lessons into the next day. Guards with a heartbeat check every action, and the owner answers decisions from the phone through the DM." width="100%">
-<img src="assets/hero-dark.svg#only-dark" alt="WUWEI day loop. Calibration and the owner interview come before the first Plan. Each day is planned and ranked, and each item is built and checked, then reviewed by one gate or three by tier, with one fix round. A shepherd takes each pull request to merge under the merge policy, and Close runs a retro that carries the lessons into the next day. Guards with a heartbeat check every action, and the owner answers decisions from the phone through the DM." width="100%">
+<img src="assets/hero-light.svg#only-light" alt="WUWEI day loop. Calibration and your interview come before the first Plan. Each day is planned and ranked, and each item is built and checked, then reviewed by one gate or three by tier, with one fix round. A shepherd takes each pull request to merge under the merge policy, and Close runs a retro that carries the lessons into the next day. Guards with a heartbeat check every action, and you answer decisions from the phone through the DM." width="100%">
+<img src="assets/hero-dark.svg#only-dark" alt="WUWEI day loop. Calibration and your interview come before the first Plan. Each day is planned and ranked, and each item is built and checked, then reviewed by one gate or three by tier, with one fix round. A shepherd takes each pull request to merge under the merge policy, and Close runs a retro that carries the lessons into the next day. Guards with a heartbeat check every action, and you answer decisions from the phone through the DM." width="100%">
 
 - [Daily path](daily.md): one solo-owner path from install to close
 - [What the session knows](agent.md): the guide every session in the workspace is pointed at on start
@@ -45,7 +45,7 @@ In your project directory, in a [host terminal](concepts.md#host-terminal), set 
 ```
 
 `setup` runs `bin/wuwei init` when there is no workspace, finds the git repositories in the
-project directory, calibrates them and asks the owner interview, then applies the whole
+project directory, calibrates them and asks your interview questions, then applies the whole
 `config.toml` proposal after one [digest](concepts.md#digest), runs `doctor` and ends with
 `Ready: run /wuwei:wuwei-plan` or the one `Next:` command still required. `--shadow` starts the
 guards in the observe posture for a first week. `init` checks the installation: an intact signed

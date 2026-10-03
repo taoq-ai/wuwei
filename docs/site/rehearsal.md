@@ -50,11 +50,11 @@ python3 scripts/headless_e2e.py --rehearsal --local-login
 The runner builds and signs the plugin with a throwaway key, as the headless day
 does, and starts under a scratch HOME. It clones the test repository and keeps
 `origin`. The workspace uses the GitHub code host, auto-merge with no soak, no
-deploy on merge, no required reviewers and your GitHub login as the owner.
+deploy on merge, no required reviewers and your GitHub login as owner.
 Nothing from your own Claude or Git settings is used, and everything is removed
 on exit.
 
-## The owner decision
+## Your decision
 
 The first session ends after it raises the PR and routes decision `D-1` ("merge
 the rehearsal PR today or defer"). The runner then prints

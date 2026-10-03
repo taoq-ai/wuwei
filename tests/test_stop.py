@@ -511,7 +511,7 @@ def test_close_does_not_manufacture_empty_ownership(case, monkeypatch):
     root, _, _ = case
     monkeypatch.chdir(root)
     (workspace.day_dir(root) / 'state.json').unlink()
-    assert main(['close']) == 2
+    assert main(['close']) == 0  # #362: a state answer, and still nothing written
     assert not (workspace.day_dir(root) / 'state.json').exists()
 
 

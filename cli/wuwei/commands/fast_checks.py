@@ -14,5 +14,6 @@ def register(subparsers):
 def run(args):
     code = record(args.path)
     if code:
-        print('fast checks failed' if code == 1 else 'fast checks could not run', file=sys.stderr)
+        print(('fast checks failed; fix the failing check, then rerun bin/wuwei fast-checks' if code == 1
+               else 'fast checks could not run; run bin/wuwei doctor'), file=sys.stderr)
     return code

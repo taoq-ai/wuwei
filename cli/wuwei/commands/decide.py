@@ -17,7 +17,7 @@ def register(subparsers):
 
 def run(args):
     if args.note is not None and ('\n' in args.note or '\r' in args.note):
-        print('wuwei decide: --note must be one line', file=sys.stderr)
+        print('wuwei decide: --note must be one line; pass a single-line note', file=sys.stderr)
         return 2
     root = workspace.find_workspace()
     waiting = mcp.pending(root)
