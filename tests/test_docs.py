@@ -120,8 +120,8 @@ def test_readme_install_and_hero():
 def test_readme_compares_with_other_tools():
     readme = (ROOT / 'README.md').read_text()
     assert '## How WUWEI compares' in readme
-    assert (readme.index('## What WUWEI is and is not') < readme.index('## How WUWEI compares')
-            < readme.index('## Install'))
+    assert (readme.index('## What WUWEI is and is not') < readme.index('\n## Installation\n')
+            < readme.index('## How WUWEI compares'))
     section = readme.split('## How WUWEI compares', 1)[1].split('\n## ', 1)[0]
     assert re.search(r'As of [A-Z][a-z]+ \d{4}', section)
     for phrase in ('Spec Kit', 'OpenSpec', 'superpowers', 'BMAD Method', 'Kiro', 'Claude Code',
@@ -159,6 +159,89 @@ def test_readme_lead_and_limits():
                    'live rehearsal', 'docs/site/reference.md#hook-latency-budget',
                    'docs/site/rehearsal.md', 'docs/site/security.md', 'setup --shadow', 'observe'):
         assert phrase in flat, phrase
+
+
+def test_readme_tells_the_day_in_superpowers_shape():
+    from wuwei.__main__ import GROUPS
+    readme = _plain('README.md')
+    assert len(readme.splitlines()) <= 300
+    new = ('## How it works', '## The basic workflow', '## When something goes wrong',
+           '## What is inside', '## Philosophy', '## Installation')
+    order = [readme.index(f'\n{h}\n') for h in ('## What ships today', *new, '## Quick start',
+                                                 '## How WUWEI compares')]
+    assert order == sorted(order)
+    section = lambda h: readme.split(f'\n{h}\n', 1)[1].split('\n## ', 1)[0]
+    flat = lambda h: ' '.join(section(h).split()).lower()
+    story = section('## How it works')
+    paragraphs = [p for p in re.split(r'\n\s*\n', story) if p.strip()]
+    assert len(paragraphs) == 4
+    for paragraph in paragraphs:
+        assert re.search(r'\byou\b', paragraph, re.I) and len(paragraph.strip().splitlines()) <= 5, paragraph
+    for phrase in ('/wuwei:wuwei-plan', 'retro', 'status line', 'DM', 'safe path'):
+        assert phrase in ' '.join(story.split()), phrase
+    workflow = section('## The basic workflow')
+    assert re.findall(r'^(\d)\. \*\*', workflow, re.M) == [str(n) for n in range(1, 8)]
+    stations = [flat('## The basic workflow').index(word) for word in (
+        'calibrat', 'morning gate', 'build', 'tier', 'shepherd', 'retro', 'memory')]
+    assert stations == sorted(stations)
+    assert 'posture' in workflow and 'not built' in flat('## The basic workflow')
+    assert len(workflow.strip().splitlines()) <= 20
+    wrong = section('## When something goes wrong')
+    assert len(re.findall(r'^- ', wrong, re.M)) == 5
+    for phrase in ('why last refusal', 'doctor --fix', 'wuwei next', 'shadow report', '.wuwei/days/'):
+        assert phrase in wrong, phrase
+    inside = section('## What is inside')
+    for path in (ROOT / 'skills').glob('*/SKILL.md'):
+        assert f'(skills/{path.parent.name}/SKILL.md)' in inside, path.parent.name
+    for path in (ROOT / 'charters').glob('[!_]*.md'):
+        assert f'(charters/{path.name})' in inside, path.name
+    for event in json.loads((ROOT / 'hooks/hooks.json').read_text())['hooks']:
+        assert event in inside, event
+    assert '(docs/site/index.md)' in inside and '(docs/site/adapters.md)' in inside
+    rows = {port: {name.strip('`') for name in names.strip().split(', ')}
+            for port, names in re.findall(r'^\| `?([a-z_]+)`? \| ([^|]+) \|', inside, re.M)}
+    assert rows == {port: set(registry.known(port)) for port in registry.INTERFACES}
+    planned = next(line for line in inside.splitlines() if line.startswith('Planned:'))
+    installed = {name for port in registry.INTERFACES for name in registry.known(port)}
+    assert not {word.lower() for word in re.findall(r'\b[A-Z]\w+', planned)} & installed, planned
+    philosophy = flat('## Philosophy')
+    assert len(re.findall(r'^- ', section('## Philosophy'), re.M)) == 5
+    for phrase in ('safe path', 'records', 'cooperative mistake prevention', 'code host', 'warn',
+                   'posture', 'unmeasured', 'stdlib'):
+        assert phrase in philosophy, phrase
+    assert 'warn by default' not in philosophy and 'records always block' in philosophy
+    install =section('## Installation')
+    parts = install.split('\n### ')
+    assert [part.split('\n', 1)[0] for part in parts[1:]] == [
+        'Claude Code', 'Codex', 'Other harnesses (planned)']
+    claude, codex, others = parts[1:]
+    assert claude.index('wuwei.tar.gz') < claude.index('/plugin marketplace add ../wuwei-plugin')
+    assert '/plugin marketplace add taoq-ai/wuwei' in claude and '(#development-installs)' in claude
+    for phrase in ('adapters.runtime', 'codex.command', '(docs/specs/2026-09-30-codex-plugin-spike.md)'):
+        assert phrase in codex, phrase
+    if not (ROOT / '.codex-plugin/plugin.json').exists():
+        assert 'planned' in codex
+    assert 'https://github.com/taoq-ai/wuwei/issues/441' in others and '```' not in others
+    assert 'planned' in others and 'measured' in others
+    text = '\n'.join(section(h) for h in new)
+    assert all((ROOT / 'skills' / name).is_dir() for name in re.findall(r'/wuwei:([a-z-]+)', text))
+    commands = ' '.join(words for _, words in GROUPS).split()
+    for span in re.findall(r'`([^`\n]+)`', text):
+        for command in re.findall(r'\bwuwei ([a-z][a-z-]*)', span):
+            assert command in commands, span
+
+
+def test_docs_index_mirrors_the_readme_sections():
+    readme = (ROOT / 'README.md').read_text()
+    pairs = (('How it works', 'daily'), ('The basic workflow', 'concepts'),
+             ('When something goes wrong', 'recovery'), ('What is inside', 'adapters'),
+             ('Philosophy', 'security'), ('Installation', 'integrity'))
+    for heading, page in pairs:
+        assert f'(docs/site/{page}.md' in readme.split(f'\n## {heading}\n', 1)[1].split('\n## ', 1)[0], page
+    index = (SITE / 'index.md').read_text().split('\n## Start here\n', 1)[0]
+    pages = '\n'.join(line for line in index.splitlines() if line.startswith('- ['))
+    positions = [pages.index(f'({page}.md)') for _, page in pairs]
+    assert positions == sorted(positions)
 
 
 def test_hero_variants_share_geometry_and_motion():
@@ -846,6 +929,10 @@ def test_notice_credits_match_readme_acknowledgements():
                  'MCP Apps', 'release-please', 'ZIRAN', 'WSJF', 'RICE', 'two-way door', 'Simple Icons'):
         assert name.lower() in notice.lower(), name
     assert '16.33.0' in notice and 'CC0' in notice
+                 'MCP Apps', 'release-please', 'ZIRAN', 'WSJF', 'RICE', 'two-way door', 'superpowers'):
+        assert name.lower() in notice.lower(), name
+    superpowers = notice.split('\nsuperpowers\n', 1)[1].split('\n\n', 1)[0]
+    assert 'README' in superpowers and 'MIT' in superpowers
 
 
 def test_doctor_is_the_first_stop():
