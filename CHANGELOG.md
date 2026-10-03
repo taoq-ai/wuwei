@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.12.0](https://github.com/taoq-ai/wuwei/compare/v0.11.0...v0.12.0) (2026-10-03)
+
+
+### Features
+
+* **cli:** wuwei doctor: find every problem in the install, host, workspace, gates, day and guards, and fix the deterministic ones in one confirmed batch ([#342](https://github.com/taoq-ai/wuwei/issues/342)) ([5d4da83](https://github.com/taoq-ai/wuwei/commit/5d4da83026ea73ab5192efe9ea3b33f002643127)), closes [#339](https://github.com/taoq-ai/wuwei/issues/339)
+* **security:** posture profiles: what warns and what blocks is configurable by where the plugin runs and for what purpose ([#345](https://github.com/taoq-ai/wuwei/issues/345)) ([9568967](https://github.com/taoq-ai/wuwei/commit/956896737977275d8dab17b49310c69650768ea8))
+* **setup:** wuwei setup: discover the repositories and the host, write the configuration, calibrate and interview, promote once, and check, in one command ([#343](https://github.com/taoq-ai/wuwei/issues/343)) ([39d9961](https://github.com/taoq-ai/wuwei/commit/39d99613801e141292c02ebc1c56a1c75faa2bf4)), closes [#327](https://github.com/taoq-ai/wuwei/issues/327)
+
+
+### Bug Fixes
+
+* **calibrate:** fill an explicit empty fast_checks, and propose only genuinely fast checks ([#333](https://github.com/taoq-ai/wuwei/issues/333)) ([aa68937](https://github.com/taoq-ai/wuwei/commit/aa68937610a38bd062af669050ffc771c03ab645)), closes [#328](https://github.com/taoq-ai/wuwei/issues/328)
+* **code_host:** branch protection read falls back to rulesets on a classic 404 and reports each source ([#334](https://github.com/taoq-ai/wuwei/issues/334)) ([e5e2070](https://github.com/taoq-ai/wuwei/commit/e5e2070d27fd92a2c59958bb745c4b13869f9dcc)), closes [#329](https://github.com/taoq-ai/wuwei/issues/329)
+* **config:** a broken config.toml can be read and fixed from the session, the template cannot produce the most likely TOML error, and config check names it ([#335](https://github.com/taoq-ai/wuwei/issues/335)) ([c3681bb](https://github.com/taoq-ai/wuwei/commit/c3681bb3efc9a7d3a5f1e2cd43cea6d119872310)), closes [#326](https://github.com/taoq-ai/wuwei/issues/326)
+* **guards:** outside a WUWEI workspace every hook does nothing, including when a command cannot be parsed ([#341](https://github.com/taoq-ai/wuwei/issues/341)) ([a90cde8](https://github.com/taoq-ai/wuwei/commit/a90cde850967af3b85578cd766be4c98155e038b)), closes [#323](https://github.com/taoq-ai/wuwei/issues/323)
+* **guards:** read-only shell forms are not refused for being uninspectable, and shadow mode records them ([#338](https://github.com/taoq-ai/wuwei/issues/338)) ([22771ed](https://github.com/taoq-ai/wuwei/commit/22771ed1b0213cb3661cc5d1080513a75828a506)), closes [#330](https://github.com/taoq-ai/wuwei/issues/330)
+* **integrity:** Claude Code's .in_use process markers in the plugin cache are not a tamper finding ([#332](https://github.com/taoq-ai/wuwei/issues/332)) ([e634ce1](https://github.com/taoq-ai/wuwei/commit/e634ce1c7e6abc56d52369fff9de2bbcb9359a41)), closes [#324](https://github.com/taoq-ai/wuwei/issues/324)
+* **mcp:** the registry gate warns by default, scans only servers that attach, one server at a time, and never launches unpinned third-party code ([#336](https://github.com/taoq-ai/wuwei/issues/336)) ([4a384c5](https://github.com/taoq-ai/wuwei/commit/4a384c5aec226905c69bb5e17d6f3cf69f776f8c)), closes [#325](https://github.com/taoq-ai/wuwei/issues/325)
+
 ## [0.11.0](https://github.com/taoq-ai/wuwei/compare/v0.10.0...v0.11.0) (2026-10-02)
 
 
