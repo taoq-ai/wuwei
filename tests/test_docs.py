@@ -733,3 +733,18 @@ def test_agent_guide_ships_and_is_linked():
     for skill in sorted(ROOT.glob('skills/*/SKILL.md')):
         body = skill.read_text().split('\n# ', 1)[1].split('\n\n', 2)[1]
         assert '`wuwei next`' in body, skill.parent.name
+
+
+def test_owner_questions_use_widgets_or_the_dm():
+    for path in (ROOT / 'skills').glob('*/SKILL.md'):
+        text = path.read_text()
+        for phrase in ('AskUserQuestion', 'decision route', '--widget', 'Seats never ask the owner'):
+            assert phrase in text, (path.parent.name, phrase)
+        assert 'Decided-by: owner' not in text and 'Outcome: proceed' not in text, path.parent.name
+    plan = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+    for phrase in ('wuwei mcp check --widget', 'record', 'calibrate --answer', 'wuwei_board'):
+        assert phrase in plan, phrase
+    decisions = (SITE / 'daily.md').read_text().split('\n## 5. Owner decisions\n', 1)[1].split('\n## ', 1)[0]
+    answer = decisions.split('\n### How you answer\n', 1)[1].split('\n#', 1)[0]
+    for phrase in ('question card', 'DM', 'host terminal'):
+        assert phrase in answer, phrase

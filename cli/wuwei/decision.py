@@ -141,6 +141,37 @@ def present(identifier, fields, level):
                   *(f'{name}: {first[name]}' for name in ('Blast radius', 'Pre-mortem', 'Revisit'))]
     return '\n'.join(lines)
 
+
+# The command that records an owner's answer to a D-n widget; <label> is the chosen option.
+RECORD = 'wuwei decision outcome {id} <label>'
+
+
+def widget(question, header, options, record, *, multi=False):
+    """One AskUserQuestion question (the session passes all but `record`) and the one command
+    that records its answer. options: (label, description) pairs, the recommended first."""
+    if len(header) > 12 or not 2 <= len(options) <= 4:
+        raise ValueError(f'widget {header}: expected a header of at most 12 characters and 2 to 4 options')
+    return {'question': question, 'header': header, 'multiSelect': multi,
+            'options': [{'label': label, 'description': text} for label, text in options],
+            'record': record}
+
+
+def gate(root):
+    """The morning gate citation the question guard accepts for questions without a record."""
+    return f'Morning gate (days/{workspace.day_dir(root).name}/plan.md): '
+
+
+def record_widget(identifier, fields, record=RECORD):
+    """A validated decision as a widget: the recommendation first, the record's options."""
+    chosen = fields['Recommendation']
+    rows = sorted(table(fields['Options'], ['Option', 'Description'], 'Options'),
+                  key=lambda row: row[0] != chosen)
+    # ponytail: AskUserQuestion shows four options; the others stay answerable through Other.
+    return widget(f'{identifier}: {fields["Question"]}', identifier,
+                  [(option, f'Recommended. {text}' if option == chosen else text)
+                   for option, text in rows[:4]], record.format(id=identifier))
+
+
 def lint(text):
     try:
         fields, scores = evaluate(text)

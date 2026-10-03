@@ -400,11 +400,11 @@ def parse(pairs, repos):
 
 def widgets(root, repos):
     """The table as AskUserQuestion widgets for the morning gate."""
-    prefix = f'Morning gate (days/{workspace.day_dir(root).name}/plan.md): '
-    return [{'id': row['id'], **({'repo': repo} if repo else {}), 'header': row['header'],
-             'question': prefix + row['question'].format(repo=repo), 'multiSelect': False,
-             'options': [{'label': label, 'description': description}
-                         for label, description, _ in row['choices']]}
+    from wuwei import decision
+    return [{'id': row['id'], **({'repo': repo} if repo else {}), **decision.widget(
+                decision.gate(root) + row['question'].format(repo=repo), row['header'],
+                [(label, description) for label, description, _ in row['choices']],
+                f'wuwei calibrate --answer "{row["id"]}=<label>"' + (f' --repo {repo}' if repo else ''))}
             for row, repo in _selected([], repos)]
 
 

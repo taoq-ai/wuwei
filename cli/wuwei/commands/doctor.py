@@ -578,11 +578,34 @@ FIXES = {
 }
 
 
-def fix(rows, confirm=None):
-    """Preview the allow-listed fixes, ask for one digest, apply each bound to its preview, re-diagnose."""
+def widgets(root, batch):
+    """The batch as multi-select widgets of at most four fixes; one fix gets a Skip option."""
+    from wuwei import decision
+    options = [(name, f'{FIXES[name][0]}: {(text.strip().splitlines() or [""])[0]}')
+               for name, text, _ in batch]
+    count = -(-len(options) // 4)
+    return [decision.widget(decision.gate(root) + 'Apply these doctor fixes'
+                            + (f' ({i + 1} of {count})' if count > 1 else '') + '?', 'Fixes',
+                            options[i::count] + [('Skip', 'Apply nothing now; doctor lists it again.')]
+                            * (len(options[i::count]) == 1),
+                            'wuwei doctor --fix --apply <labels>', multi=True)
+            for i in range(count)]
+
+
+def fix(rows, confirm=None, only=None, widget=False):
+    """Preview the allow-listed fixes, ask for one digest, apply each bound to its preview, re-diagnose.
+    only narrows the batch to those fix ids; widget prints the batch as widgets and applies nothing."""
     import hashlib
     from wuwei import state
     wanted = {row['apply'] for row in rows if row.get('apply') in FIXES}
+    if only is not None:
+        only = set(only) - {'Skip'}  # the widget's Skip option picked alongside fixes
+        unknown = sorted(only - set(FIXES))
+        if unknown:
+            print(f'wuwei doctor: unknown fix {", ".join(unknown)}; use one of: {", ".join(FIXES)}',
+                  file=sys.stderr)
+            return 2
+        wanted &= only
     held = [f"{row['name']}: {row['fix']}" for row in rows
             if row['status'] != 'ok' and row.get('apply') not in FIXES]
     root = workspace.find_workspace() if wanted else None
@@ -596,6 +619,15 @@ def fix(rows, confirm=None):
             continue
         batch.append((name, text, token))
     notes = 'Not applied:\n' + ''.join(f'  {line}\n' for line in held) if held else ''
+    if widget:
+        plan = workspace.day_dir(root) / 'plan.md' if root else None
+        if batch and not (plan and plan.is_file() and plan.resolve() == plan):
+            print('wuwei doctor: no plan today for the question to cite; '
+                  'run wuwei doctor --fix in a host terminal', file=sys.stderr)
+            return 1
+        print(notes, end='', file=sys.stderr)
+        print(json.dumps(widgets(root, batch), indent=2))
+        return outcome(rows)
     if not batch:
         print(notes + 'Nothing to apply')
         return outcome(rows)
@@ -629,13 +661,21 @@ def register(subparsers):
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--fix', action='store_true', help='apply the allow-listed fixes after one host confirmation')
     mode.add_argument('--json', action='store_true', help='print {"exit", "rows"} as JSON')
+    parser.add_argument('--widget', action='store_true',
+                        help='with --fix: print the batch as AskUserQuestion widgets; apply nothing')
+    parser.add_argument('--apply', metavar='IDS', help='with --fix: apply only these comma-separated fix ids')
     parser.set_defaults(func=run)
 
 
 def run(args, confirm=None):
+    if (args.widget or args.apply) and not args.fix or args.widget and args.apply:
+        print('wuwei doctor: --widget and --apply each need --fix, not both', file=sys.stderr)
+        return 2
     rows = diagnose()
     if args.json:
         print(json.dumps({'exit': outcome(rows), 'rows': rows}))
         return outcome(rows)
-    print(render(rows))
-    return fix(rows, confirm) if args.fix else outcome(rows)
+    if not args.widget:
+        print(render(rows))
+    only = [name.strip() for name in args.apply.split(',') if name.strip()] if args.apply else None
+    return fix(rows, confirm, only=only, widget=args.widget) if args.fix else outcome(rows)

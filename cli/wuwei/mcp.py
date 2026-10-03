@@ -334,6 +334,52 @@ def unmeasured(root):
     return sorted({name for name, _ in data['unmeasured'] + data['decided']})
 
 
+# On main the accept needs the record route, the owner outcome and the gate step.
+RECORD = 'wuwei decision route {id} && wuwei decision outcome {id} <label> && wuwei mcp decide'
+
+
+def findings(root):
+    """One line per server: finding counts by severity, highest first, from today's last completed
+    check since the last owner proceed. Only validated names and severities; scanner text stays out."""
+    from collections import Counter
+    from wuwei import watch
+    rows = watch.records(workspace.day_dir(root) / 'events.jsonl')
+    # ponytail: the window is today since the last proceed; earlier days' findings stay in their logs.
+    start = max((index for index, row in enumerate(rows) if row['kind'] == 'mcp.decided'
+                 and row['payload'].get('outcome') == 'proceed'), default=-1) + 1
+    batch, last = [], []
+    for row in rows[start:]:
+        if row['kind'] == 'mcp.finding':
+            batch.append(row)
+        elif row['kind'] == 'mcp.checked':
+            batch, last = [], batch
+    counts = {}
+    for row in last:
+        name, severity = row['payload'].get('server_name'), row['payload'].get('severity')
+        name = name if isinstance(name, str) and NAME.fullmatch(name) else 'unnamed server'
+        counts.setdefault(name, Counter())[severity if severity in SEVERITIES else 'unknown'] += 1
+    return [f'{name}: ' + ', '.join(f'{counts[name][s]} {s}' for s in (*SEVERITIES, 'unknown')
+                                    if counts[name][s]) for name in sorted(counts)]
+
+
+def widget(root):
+    """Today's pending registry decision as a widget, its proceed option carrying the findings."""
+    root = Path(root).resolve()
+    data = _read(root)
+    if not data or not data['pending'] or data['day'] != workspace.now().date().isoformat():
+        return []
+    path = root / data['pending']
+    identifier = path.stem
+    if path != decision.today_path(identifier, root):
+        return []  # an earlier day's record: the question guard cannot cite it today
+    fields, _ = decision.evaluate(path.read_text(encoding='utf-8'))
+    question = decision.record_widget(identifier, fields, RECORD)
+    for option in question['options']:
+        if option['label'] == 'proceed':
+            option['description'] = '\n'.join([option['description'], *findings(root)])
+    return [question]
+
+
 def launch(root=None, path=None):
     """Scope the gate before reading evidence, also for direct runtime port calls."""
     try:

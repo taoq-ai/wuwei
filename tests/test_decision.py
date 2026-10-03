@@ -925,3 +925,85 @@ def test_unreadable_external_record_fails_closed(ws, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
     with pytest.raises(ValueError):
         decision.waits(ws)
+
+
+def ask(cwd, widget):
+    """The four AskUserQuestion keys of a widget through the question guard."""
+    from wuwei.guards.decision import check_question
+    return check_question({'cwd': str(cwd), 'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [
+        {key: widget[key] for key in ('question', 'header', 'options', 'multiSelect')}]}})
+
+
+def test_widget_shape():
+    from wuwei.decision import widget
+    built = widget('Q?', 'Head', [('a', 'one'), ('b', 'two')], 'wuwei x <label>')
+    assert built == {'question': 'Q?', 'header': 'Head', 'multiSelect': False, 'record': 'wuwei x <label>',
+                     'options': [{'label': 'a', 'description': 'one'}, {'label': 'b', 'description': 'two'}]}
+    for header, options in (('x' * 13, [('a', '1'), ('b', '2')]), ('H', [('a', '1')]),
+                            ('H', [(str(n), 'd') for n in range(5)])):
+        with pytest.raises(ValueError):
+            widget('Q?', header, options, 'r')
+
+
+FIVE = '''Question: Which fix?
+Context: tests/test_example.py records the failure.
+Options:
+| Option | Description |
+| --- | --- |
+| A | Fix one |
+| B | Defer until tomorrow |
+| C | Fix three |
+| D | Fix four |
+| E | Fix five |
+Musts:
+| Criterion | A | B | C | D | E |
+| --- | --- | --- | --- | --- | --- |
+| Safe | pass | pass | pass | pass | pass |
+Wants:
+| Criterion | Weight | A | B | C | D | E |
+| --- | --- | --- | --- | --- | --- | --- |
+| Correctness | 10 | 5 | 2 | 9 | 4 | 3 |
+Recommendation: C
+Confidence: high
+Reversibility: two-way
+Blast radius: own branch
+Pre-mortem: Regression returns.
+Revisit: Regression returns.
+Decided-by: seat
+Outcome: pending
+'''
+
+
+def test_decision_widget_passes_the_question_guard(ws):
+    from wuwei import decision
+    save(ws)
+    built = decision.record_widget('D-3', decision.evaluate(VALID)[0])
+    assert built['question'] == 'D-3: Which fix?' and built['header'] == 'D-3'
+    assert [o['label'] for o in built['options']] == ['A', 'B'] and built['multiSelect'] is False
+    assert built['options'][0]['description'] == 'Recommended. Implement fix'
+    assert built['record'] == 'wuwei decision outcome D-3 <label>'
+    assert ask(ws, built) == (0, '')
+    swapped = VALID.replace('| 10 | 8 | 2 |', '| 10 | 2 | 8 |').replace('Recommendation: A', 'Recommendation: B')
+    built = decision.record_widget('D-3', decision.evaluate(swapped)[0])
+    assert [o['label'] for o in built['options']] == ['B', 'A']
+    assert built['options'][0]['description'] == 'Recommended. Defer until tomorrow'
+    save(ws, FIVE)
+    built = decision.record_widget('D-3', decision.evaluate(FIVE)[0])
+    assert [o['label'] for o in built['options']] == ['C', 'A', 'B', 'D']
+    assert ask(ws, built) == (0, '')
+
+
+def test_decision_show_widget(ws, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    from wuwei import decision
+    monkeypatch.chdir(ws)
+    path = save(ws)
+    assert main(['decision', 'show', 'D-3', '--widget']) == 0
+    assert json.loads(capsys.readouterr().out) == [decision.record_widget('D-3', decision.evaluate(VALID)[0])]
+    path.write_text('Question: bad')
+    assert main(['decision', 'show', 'D-3', '--widget']) == 1
+    assert 'missing fields' in capsys.readouterr().err
+    path.unlink()
+    assert main(['decision', 'show', 'D-3', '--widget']) == 2
+    with pytest.raises(SystemExit, match='2'):
+        main(['decision', 'show', 'D-3', '--widget', '--full'])
