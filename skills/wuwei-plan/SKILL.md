@@ -5,7 +5,7 @@ description: Propose the day with lead discovery and run the morning gate before
 
 # /wuwei plan
 
-Run this in a WUWEI workspace. Read `.wuwei/config.toml`, `.wuwei/memory/goals.md`, `.wuwei/charters/planner.md` when present (the owner's preferences), today's state, the most recent prior day's state, report and retro, and the configured repositories. Use the executable recorded in `.wuwei/executable` for CLI calls. Never invoke Python without `-P`. Do not create a worktree, claim an item, write to a tracker or dispatch a builder before approval.
+Run `wuwei next` first and follow the step it names; run the steps below when it names this skill or the owner asked for it. Run this in a WUWEI workspace. Read `.wuwei/config.toml`, `.wuwei/memory/goals.md`, `.wuwei/charters/planner.md` when present (the owner's preferences), today's state, the most recent prior day's state, report and retro, and the configured repositories. Use the executable recorded in `.wuwei/executable` for CLI calls. Never invoke Python without `-P`. Do not create a worktree, claim an item, write to a tracker or dispatch a builder before approval.
 
 Present a pending owner decision with the text `wuwei decision show D-n` prints; the owner asks for the rest with `--full` on the host or `more D-n` in the DM. Rewrite any text written for a person with the `humanizer` skill in embedded mode when it is installed; otherwise apply the checklist in `charters/_common-authoring.md` under Writing for a person.
 

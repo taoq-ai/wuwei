@@ -10,6 +10,7 @@ import pytest
 
 from wuwei import sessions, state, workspace
 from wuwei.__main__ import main
+from wuwei.commands.next import HEADER
 
 
 NOW = '2026-09-30T10:00:00+00:00'
@@ -407,7 +408,7 @@ def test_issue_acceptance_payload_after_compaction(root, monkeypatch, capsys):
     capsys.readouterr()
     assert hook(monkeypatch, 'SessionStart', 'P', root, source='compact') == 0
     text = json.loads(capsys.readouterr().out)['hookSpecificOutput']['additionalContext']
-    assert text.startswith('Active constraints:\n')
+    assert text.startswith(HEADER) and '\nActive constraints:\n' in text
     assert 'G-1 Ship checkout v2' in text and 'plan.md (approved: ITEM-1)' in text
     assert 'Open decisions: D-2\n' in text and BRIEF in text
     assert state.read_state(root)['sessions']['P']['compactions'] == 1

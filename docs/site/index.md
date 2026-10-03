@@ -7,6 +7,7 @@ layout: default
 WUWEI 无为 means "effortless action." It is a Claude Code plugin that runs your coding agents the way a careful engineering team works: the day is planned and ranked, each change is reviewed by an agent that did not write it, merges follow a policy, and a retro at the end of the day proposes changes to the rules.
 
 - [Daily path](daily.html): one solo-owner path from install to close
+- [What the session knows](agent.html): the guide every session in the workspace is pointed at on start
 - [Remote operation](remote.html): run a day from the phone with Remote Control and the Slack owner DM
 - [Recovery](recovery.html): low-level commands for when evidence and state disagree
 - [Concepts](concepts.html): roles, guards, memory, the day flow, review tiers, sessions, the listener, the heartbeat and the board

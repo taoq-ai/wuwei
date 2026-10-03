@@ -9,7 +9,8 @@ layout: default
 One path for a solo owner through one day: install, configure, plan, build and review,
 decide, close. Every command on this page is daily use. Anything else is on the
 [recovery](recovery.html) page. `bin/wuwei` below is the executable in the plugin
-directory; the planner uses the one recorded in `.wuwei/executable`.
+directory; the planner uses the one recorded in `.wuwei/executable`. Each Claude Code
+session in the workspace gets the same flow as [what the session knows](agent.html).
 
 ## 1. Install the signed release
 
@@ -178,8 +179,9 @@ planner on a schedule.
   the old session as `rotated`, and the events record `session.rotated`. Nothing is lost:
   the day lives in `.wuwei/`, not in the transcript.
 - Re-anchoring: every SessionStart payload, after a compaction or a rotation too, opens
-  with `Active constraints:`, the day's goals, the approved plan, open decisions and the
-  briefs of running seats.
+  with the orientation block: what WUWEI is, the posture and the next step from
+  `bin/wuwei next`. `Active constraints:` follows with the day's goals, the approved plan,
+  open decisions and the briefs of running seats.
 
 You can set `owner.timezone`, `metrics.band_margin` and `sessions.rotate_after` in
 `.wuwei/config.toml` ([configuration](configuration.html)).

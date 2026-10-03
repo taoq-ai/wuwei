@@ -5,7 +5,7 @@ description: Review workspace memory weekly, fold supported duplicates, and arch
 
 # /wuwei consolidate
 
-Run inside a WUWEI workspace using the executable recorded in `.wuwei/executable`. Never invoke Python without `-P`.
+Run `wuwei next` first and follow the step it names; run the steps below when it names this skill or the owner asked for it. Run inside a WUWEI workspace using the executable recorded in `.wuwei/executable`. Never invoke Python without `-P`.
 
 1. Schedule this skill once each week as an owner task, or add it to the existing sweep cadence. Do not run a separate daemon.
 2. Run `wuwei consolidate`. Exit 0 means no findings; exit 1 means review the listed findings; exit 2 means evidence could not be read and the reason must be resolved before treating the review as complete.
