@@ -315,7 +315,9 @@ after its digest ([configuration](configuration.html)).
 The planner runs `wuwei retro` and `wuwei close --check retro`, writes the report with
 `wuwei report` (shipped, merged, pending decisions and [unmeasured](concepts.html#unmeasured) sources) and ends with
 `wuwei close`. `close` refuses while an obligation is open and names it; the Stop hook
-holds the session until close is clean. Check the day at any time with
+holds the session until close is clean. For each open item close asks: carry it to
+tomorrow (recommended), park it, or keep working, and records the answer with
+`wuwei plan carry ITEM` or `wuwei plan park ITEM`. Check the day at any time with
 `bin/wuwei status --line`.
 
 Inside a session, ask Claude for the board, or call the plugin's `wuwei_board` tool. It

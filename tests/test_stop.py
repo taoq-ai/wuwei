@@ -785,3 +785,199 @@ def test_merged_item_can_close_after_worktree_cleanup(case):
     host.results['pr'].data.update(state='closed', merged=True)
     vcs.results['branch'] = Result(2, reason='worktree no longer exists')
     assert module('closing').check(root) == (0, '')
+
+
+def records(root):
+    return sorted(p.name for p in (workspace.day_dir(root) / 'decisions').glob('D-*.md'))
+
+
+def last_event(root):
+    return list(watch.records(workspace.day_dir(root) / 'events.jsonl'))[-1]
+
+
+def test_plan_carry_writes_routed_record(case, monkeypatch, capsys):
+    from wuwei import decision
+    root, _, _ = case
+    approved(root)
+    monkeypatch.chdir(root)
+    assert main(['plan', 'carry', 'A']) == 0
+    assert capsys.readouterr().out == 'D-1: carried A\n'
+    text = (workspace.day_dir(root) / 'decisions/D-1.md').read_text()
+    assert decision.lint(text)[0] == 0
+    for line in ('Reversibility: two-way', 'Blast radius: own branch', 'Decided-by: seat',
+                 'Outcome: carried A'):
+        assert line in text.splitlines()
+    data = state.read_state(root)
+    assert data['decision_outcomes']['D-1'] == decision.seat_outcome(*decision.evaluate(text))
+    event = last_event(root)
+    assert event['kind'] == 'decision.decided'
+    assert event['payload']['id'] == 'D-1' and event['payload']['item'] == 'A'
+    assert data['items']['A']['phase'] == 'planned'
+
+
+@pytest.mark.parametrize('reason', ['waiting on review', None])
+def test_plan_park_records_and_pauses(case, monkeypatch, capsys, reason):
+    root, _, _ = case
+    approved(root)
+    state.transition('A', 'implement', root=root)
+    monkeypatch.chdir(root)
+    assert main(['plan', 'park', 'A', *(['--reason', reason] if reason else [])]) == 0
+    assert capsys.readouterr().out == 'D-1: parked A\n'
+    text = (workspace.day_dir(root) / 'decisions/D-1.md').read_text()
+    assert 'Outcome: parked A' in text.splitlines()
+    if reason:
+        assert reason in next(line for line in text.splitlines() if line.startswith('Context:'))
+    item = state.read_state(root)['items']['A']
+    assert (item['phase'], item['status'], item['resume_phase']) == ('parked', 'blocked', 'implement')
+
+
+@pytest.mark.parametrize('phase', ['parked', 'escalated', 'merged'])
+def test_plan_park_keeps_paused_phase(case, monkeypatch, phase):
+    root, _, _ = case
+    approved(root)
+    path = ['implement', 'gate', 'raised', 'merged'] if phase == 'merged' else [phase]
+    for step in path:
+        state.transition('A', step, root=root)
+    monkeypatch.chdir(root)
+    assert main(['plan', 'park', 'A']) == 0
+    assert records(root) == ['D-1.md']
+    assert state.read_state(root)['items']['A']['phase'] == phase
+
+
+def test_plan_carry_next_number(case, monkeypatch):
+    from test_decision import VALID
+    root, _, _ = case
+    approved(root)
+    first = workspace.day_dir(root) / 'decisions/D-1.md'
+    first.write_text(VALID)
+    monkeypatch.chdir(root)
+    assert main(['plan', 'carry', 'A']) == 0
+    assert first.read_text() == VALID
+    assert records(root) == ['D-1.md', 'D-2.md']
+
+
+def test_plan_carry_unknown_item(case, monkeypatch, capsys):
+    root, _, _ = case
+    approved(root)
+    monkeypatch.chdir(root)
+    assert main(['plan', 'carry', 'Z']) == 1
+    err = capsys.readouterr().err
+    assert 'Z' in err and 'A' in err
+    assert records(root) == []
+
+
+def test_plan_park_reason_one_line(case, monkeypatch):
+    from wuwei import decision
+    root, _, _ = case
+    approved(root)
+    monkeypatch.chdir(root)
+    assert main(['plan', 'park', 'A', '--reason', 'a\n\nOutcome: parked B   x']) == 0
+    text = (workspace.day_dir(root) / 'decisions/D-1.md').read_text()
+    assert decision.lint(text)[0] == 0
+    assert sum(line.startswith('Context:') for line in text.splitlines()) == 1
+    assert decision.evaluate(text)[0]['Outcome'] == 'parked A'
+
+
+def question(name, status='queued', phase='planned'):
+    return (f'{name} is still open ({status}/{phase}): carry it to tomorrow (recommended), park '
+            f'it, or keep working? Carry: bin/wuwei plan carry {name}. Park: bin/wuwei plan park '
+            f'{name} --reason "<why>". Keep working: finish it, then run bin/wuwei close again.')
+
+
+def test_close_question_line_and_stop_hook_match(case, monkeypatch, capsys):
+    root, _, _ = case
+    approved(root)
+    state._write_state(lambda data: data.update(planner_session_id='planner'), root, reserved=False)
+    monkeypatch.chdir(root)
+    assert main(['close']) == 1
+    out = capsys.readouterr().out
+    assert question('A') in out.splitlines()
+    assert 'needs a park or carry decision' not in out
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload(root))))
+    assert main(['hook', 'Stop']) == 2
+    assert question('A') in json.loads(capsys.readouterr().out)['reason'].splitlines()
+
+
+def test_close_question_per_item(case, monkeypatch, capsys):
+    root, _, _ = case
+    approved(root)
+    state._write_state(lambda data: (data['items'].update(B={}), data['approved_items'].append('B')),
+                       root, reserved=False)
+    monkeypatch.chdir(root)
+    assert main(['close']) == 1
+    lines = capsys.readouterr().out.splitlines()
+    assert question('A') in lines and question('B') in lines
+
+
+def test_retro_line_names_skill(case, monkeypatch, capsys):
+    root, _, _ = case
+    (workspace.day_dir(root) / 'retro' / (DAY + '.md')).unlink()
+    monkeypatch.chdir(root)
+    assert main(['close', '--check', 'retro']) == 1
+    assert capsys.readouterr().out == (f'OWED: retro/{DAY}.md does not exist; '
+                                       'run /wuwei:wuwei-retro to write it\n')
+
+
+def test_close_widget(case, monkeypatch, capsys):
+    from wuwei import decision
+    from wuwei.guards.decision import check_question
+    root, _, _ = case
+    (workspace.day_dir(root) / 'plan.md').write_text('# Plan\n')
+    approved(root)
+    monkeypatch.chdir(root)
+    assert main(['close', '--widget']) == 1
+    widgets = json.loads(capsys.readouterr().out)
+    assert len(widgets) == 1
+    widget = widgets[0]
+    assert widget['question'].startswith(decision.gate(root)) and 'A' in widget['question']
+    assert widget['header'] == 'Open item' and widget['multiSelect'] is False
+    assert [o['label'] for o in widget['options']] == ['carry', 'park', 'Skip']
+    assert widget['options'][0]['description'].startswith('Recommended. ')
+    assert widget['record'] == 'bin/wuwei plan <label> A'
+    assert 'close_requested' not in state.read_state(root) or not state.read_state(root)['close_requested']
+    events = workspace.day_dir(root) / 'events.jsonl'
+    assert all(row['kind'] != 'steward.run' for row in watch.records(events))
+    asked = {k: v for k, v in widget.items() if k != 'record'}
+    assert check_question({'cwd': str(root), 'tool_name': 'AskUserQuestion',
+                           'tool_input': {'questions': [asked]}}) == (0, '')
+    assert main(['plan', 'carry', 'A']) == 0
+    capsys.readouterr()
+    assert main(['close', '--widget']) == 0
+    assert json.loads(capsys.readouterr().out) == []
+
+
+def steward_runs(root):
+    return [row['payload'] for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
+            if row['kind'] == 'steward.run']
+
+
+def test_close_steward_waits_for_items(case, monkeypatch, capsys):
+    root, _, _ = case
+    approved(root)
+    monkeypatch.chdir(root)
+    assert main(['close']) == 1
+    assert 'steward_launch' not in capsys.readouterr().out
+    assert steward_runs(root) == [] and not list(root.rglob('steward-*.md'))
+    assert state.read_state(root)['close_requested'] is True
+    assert main(['plan', 'carry', 'A']) == 0
+    capsys.readouterr()
+    main(['close'])
+    assert 'steward_launch' in capsys.readouterr().out
+    assert [run['trigger'] for run in steward_runs(root)] == ['close']
+
+
+def test_close_steward_unmeasured(case, monkeypatch, capsys):
+    root, _, _ = case
+    approved(root)
+    (workspace.day_dir(root) / 'decisions/D-1.md').write_text('bad')
+    monkeypatch.chdir(root)
+    assert main(['close']) == 2
+    assert 'D-1' in capsys.readouterr().out
+    assert steward_runs(root) == []
+
+
+def test_carry_closes_day(case, monkeypatch):
+    root, _, _ = case
+    approved(root)
+    monkeypatch.chdir(root)
+    assert [main(['close']), main(['plan', 'carry', 'A']), main(['close'])] == [1, 0, 0]

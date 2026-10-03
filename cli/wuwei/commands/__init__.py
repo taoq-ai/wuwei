@@ -15,7 +15,7 @@ WRITES = frozenset({
     'drafts approve', 'drafts drop', 'event', 'fast-checks', 'git-hook', 'goals edit', 'hook',
     'index', 'init', 'integrity reconfirm', 'listen install', 'listen uninstall', 'mcp decide',
     'memory lint', 'merge', 'metrics', 'next', 'note add', 'nudges', 'outbound tier', 'payload',
-    'plan add', 'plan approve', 'plan propose', 'plan session', 'plan template', 'pr act',
+    'plan add', 'plan approve', 'plan carry', 'plan park', 'plan propose', 'plan session', 'plan template', 'pr act',
     'pr claim', 'pr disposition', 'pr ping', 'pr ping-check', 'pr raise', 'pr state', 'promote',
     'rank', 'remote ack', 'reply', 'report', 'retro', 'runtime continue', 'runtime dispatch',
     'runtime result', 'runtime status', 'setup', 'signal classify', 'state get',

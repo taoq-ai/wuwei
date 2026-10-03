@@ -24,6 +24,11 @@ def register(subparsers):
     approve.add_argument('--import-yesterday', action='store_true')
     add = actions.add_parser('add', help='Admit a discovered item after the morning gate')
     add.add_argument('item')
+    for verb, text in (('carry', 'Carry an open item to tomorrow and record the decision'),
+                       ('park', 'Park an open item and record the decision')):
+        command = actions.add_parser(verb, help=text)
+        command.add_argument('item')
+        command.add_argument('--reason', help='Why; written into the record on one line')
     parser.set_defaults(func=run)
 
 
@@ -51,6 +56,9 @@ def run(args):
             print(plan.propose(json.loads(source)))
         elif args.action == 'add':
             print(json.dumps(plan.add(args.item)))
+        elif args.action in ('carry', 'park'):
+            outcome = {'carry': 'carried', 'park': 'parked'}[args.action]
+            print(f'{plan.dispose(args.item, outcome, args.reason)}: {outcome} {args.item}')
         else:
             plan.approve(args.items, goals_confirmed=args.goals_confirmed,
                          import_yesterday=args.import_yesterday)
