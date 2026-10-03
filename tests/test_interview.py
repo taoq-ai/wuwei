@@ -79,7 +79,7 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
     table = interview().QUESTIONS
     assert [row['id'] for row in table] == ['merge', 'gates', 'quiet', 'interrupt', 'decisions', 'phone',
                                             'hours', 'avoid', 'formality', 'signature', 'risk', 'manual',
-                                            'verbosity', 'posture']
+                                            'verbosity', 'posture', 'tracker', 'chat', 'review_bot']
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / 'widget').mkdir()
     config = {'repos': [{'name': 'acme/widget'}]}
@@ -134,6 +134,35 @@ def test_free_text_parsers(qid, good, effects, bad):
         assert interview().effects(qid, good) == effects
     with pytest.raises(ValueError, match=qid):
         interview().effects(qid, bad)
+
+
+def test_adapter_questions():
+    effects = interview().effects
+    assert effects('tracker', 'Linear') == {'adapters.tracker': 'linear'}
+    assert effects('tracker', 'None') == {'adapters.tracker': 'none'}
+    assert effects('chat', 'C0123ABCD') == {'adapters.chat': 'slack', 'shepherd.review_channel': 'C0123ABCD'}
+    assert effects('chat', 'Slack') == {'adapters.chat': 'slack'}
+    assert effects('chat', 'None') == {'adapters.chat': 'none'}
+    with pytest.raises(ValueError, match='expected a Slack channel ID such as C0123ABCD'):
+        effects('chat', 'c-lower')
+    assert effects('review_bot', 'Greptile') == {'adapters.review_bot': 'greptile'}
+    assert effects('review_bot', 'none') == {'adapters.review_bot': 'none'}
+
+
+def test_adapter_answers_promote_and_name_credentials(tmp_path, monkeypatch, capsys):
+    from wuwei.workspace import load_config
+
+    monkeypatch.delenv('LINEAR_API_KEY', raising=False)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    raw = (ROOT / 'templates/workspace/config.toml').read_text()
+    rows = interview().settings({'tracker': 'Linear', 'chat': 'None'}, {})
+    additions, edits = calibrate.settle(raw, rows)
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text(calibrate.apply(raw, additions))
+    loaded = load_config(tmp_path)
+    assert edits == [] and (loaded['adapters']['tracker'], loaded['adapters']['chat']) == ('linear', 'none')
+    assert main('config', 'check') == 1
+    assert 'LINEAR_API_KEY' in capsys.readouterr().out
 
 
 def test_unknown_labels_and_ids_are_refused():
@@ -300,14 +329,14 @@ def test_interview_needs_a_host_terminal(offline, capsys, monkeypatch):
 
 def test_interview_on_the_terminal(offline, capsys, monkeypatch):
     raw = (offline / '.wuwei/config.toml').read_text()
-    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1']
+    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '2', 'C0123ABCD', '1']
     terminal(monkeypatch, replies)
     assert main('calibrate', '--interview', '--repo', 'acme/widget') == 0, capsys.readouterr().err
     out = capsys.readouterr().out
     answers = json.loads((offline / DAY / 'interview.json').read_text())
     assert answers['merge'] == {'acme/widget': 'Auto, 30 min soak'} and answers['gates'] == {
         'acme/widget': 'Standard'} and answers['phone'] == 'Summary' and answers['manual'] == 'Package publishing'
-    assert len(answers) == 14 and (offline / '.wuwei/config.toml').read_text() == raw
+    assert len(answers) == 17 and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
     for line in interview().describe(answers, config(offline)):
         assert line in out
     assert 'gates: answer one of' in out and 'hours: answer one of' in out and 'bin/wuwei config promote' in out
@@ -379,7 +408,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     raw = (f'[[repos]]\nname = "acme/widget"\npath = {json.dumps(str(FIXTURES / "python"))}\n'
            'default_branch = "main"\n\n' + PLANE + '\n[deploy]\nworkflows = []\ndeny = []\n')
     (root / '.wuwei/config.toml').write_text(raw)
-    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1'])
+    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '1', '1'])
     assert main('calibrate', '--interview') == 0, capsys.readouterr().err
     lines = interview().describe(json.loads((root / DAY / 'interview.json').read_text()), config(root))
     capsys.readouterr()

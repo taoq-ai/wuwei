@@ -15,11 +15,13 @@ import tempfile
 from wuwei import heartbeat, integrity, registry, workspace
 
 SECTIONS = {'install': 'Install', 'host': 'Host', 'workspace': 'Workspace',
-            'gates': 'Gates and adapters', 'day': 'Day and sessions', 'guards': 'Guards'}
+            'gates': 'Gates and adapters', 'pr-flow': 'PR flow', 'day': 'Day and sessions',
+            'guards': 'Guards'}
 DOCS = {'install': 'docs/site/recovery.md#integrity-reconfirm',
         'host': 'docs/site/daily.md#1-install-the-signed-release',
         'workspace': 'docs/site/configuration.md#workspace-and-repositories',
         'gates': 'docs/site/configuration.md#mcp-registry-checks-s3',
+        'pr-flow': 'docs/site/configuration.md#host-build-and-memory',
         'day': 'docs/site/reference.md#watch-state',
         'guards': 'docs/site/reference.md#heartbeat'}
 CODES = {'ok': 0, 'warn': 1, 'fail': 1, 'unmeasured': 2}
@@ -364,6 +366,43 @@ def _gates(root, config):
     return rows
 
 
+NONE = {'tracker': 'none: discovery reads no tracker backlog',
+        'chat': 'none: no review pings or chat posts; reviewers are requested on the code host only',
+        'review_bot': 'none: discovery reads no review-bot findings'}
+
+
+def pr_flow(config):
+    """The settings the PR flow reads, from config alone: empty ones warn with what they block."""
+    from wuwei.obligations import _owner_login
+
+    def quoted(key, placeholder):
+        return f"""bin/wuwei config set {key} '"{placeholder}"'"""
+
+    shepherd, solo = config['shepherd'], config['shepherd']['min_reviewers'] == 0
+    try:
+        rows = [_row('pr-flow', 'owner.handles', 'ok', _owner_login(config))]
+    except ValueError as exc:
+        rows = [_row('pr-flow', 'owner.handles', 'warn',
+                     f'{exc}; will block: reviewer selection, review replies and obligations at pr raise',
+                     """bin/wuwei config set owner.handles '["<code-host login>"]'""")]
+    checks = [('shepherd.lead_login', shepherd['lead_login'], 'the lead review request at pr raise',
+               quoted('shepherd.lead_login', '<lead login>')),
+              ('shepherd.authors', f"{len(shepherd['authors'])} mapped" if shepherd['authors'] else '',
+               'reviewer mentions in the review ping at pr ping',
+               'bin/wuwei setup (maps your git email and the bot authors), or add '
+               '"<email>" = {login = "<login>", mention = "<chat id>"} under [shepherd.authors]')]
+    if config['adapters']['chat'] != 'none':
+        checks.append(('shepherd.review_channel', shepherd['review_channel'], 'the review ping at pr ping',
+                       quoted('shepherd.review_channel', '<channel id>')))
+    for name, value, phase, fix in checks:
+        rows.append(_row('pr-flow', name, 'ok', 'not applicable: shepherd.min_reviewers = 0') if solo else
+                    _row('pr-flow', name, 'ok', value) if value else
+                    _row('pr-flow', name, 'warn', f'empty; will block: {phase}', fix))
+    return rows + [_row('pr-flow', f'adapters.{kind}', 'ok',
+                        NONE[kind] if config['adapters'][kind] == 'none' else config['adapters'][kind])
+                   for kind in NONE]
+
+
 PROBE = {'ok': 'ok', 'failed': 'fail', 'unmeasured': 'unmeasured'}
 
 
@@ -446,8 +485,8 @@ def _guards(root, probes):
     return rows
 
 
-def diagnose():
-    """Every row, in section order; reads only (heartbeat's state.lock aside)."""
+def diagnose(section=None):
+    """Every row (or one section's), in section order; reads only (heartbeat's state.lock aside)."""
     error = None
     try:
         root = workspace.find_workspace()
@@ -461,6 +500,10 @@ def diagnose():
             config = workspace.load_config(root, warnings=found)
         except workspace.ConfigError as exc:
             error = str(exc)
+    if section == 'pr-flow':
+        return pr_flow(config) if config else [
+            _row('pr-flow', 'config', 'unmeasured', error or ('no workspace' if root is None else UNLOADED),
+                 'fix config.toml first')]
     defaults = config or workspace._validate({}, workspace.SCHEMA, (), '')
     probes = heartbeat.measure(root) if root is not None else None
     rows = [*_install(root, config), *_host(root, defaults), *_workspace(root, config, error, found)]
@@ -469,7 +512,7 @@ def diagnose():
             rows += [_row('gates', 'gates', 'unmeasured', UNLOADED, 'fix config.toml first'),
                      _row('day', 'day', 'unmeasured', UNLOADED, 'fix config.toml first')]
         else:
-            rows += [*_gates(root, config), *_day(root, config, probes)]
+            rows += [*_gates(root, config), *pr_flow(config), *_day(root, config, probes)]
     return rows + _guards(root, probes)
 
 
@@ -691,6 +734,7 @@ def register(subparsers):
     parser.add_argument('--widget', action='store_true',
                         help='with --fix: print the batch as AskUserQuestion widgets; apply nothing')
     parser.add_argument('--apply', metavar='IDS', help='with --fix: apply only these comma-separated fix ids')
+    parser.add_argument('--section', choices=['pr-flow'], help='print one section only')
     parser.set_defaults(func=run)
 
 
@@ -698,7 +742,7 @@ def run(args, confirm=None):
     if (args.widget or args.apply) and not args.fix or args.widget and args.apply:
         print('wuwei doctor: --widget and --apply each need --fix, not both', file=sys.stderr)
         return 2
-    rows = diagnose()
+    rows = diagnose(args.section)
     if args.json:
         print(json.dumps({'exit': outcome(rows), 'rows': rows}))
         return outcome(rows)

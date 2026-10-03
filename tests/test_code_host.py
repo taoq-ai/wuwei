@@ -11,7 +11,8 @@ from fakes.replay import install_replay, recordings
 
 
 CASES = [c for c in recordings('code_host') if c['operation'] in
-         ('pr', 'checks', 'reviews', 'threads', 'protection', 'merged_prs', 'default_branch')]
+         ('pr', 'checks', 'reviews', 'threads', 'protection', 'merged_prs', 'default_branch',
+          'viewer_login')]
 WRITES = [c for c in recordings('code_host') if c not in CASES]
 
 

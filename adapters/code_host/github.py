@@ -24,7 +24,8 @@ _REVERT = ('mutation($id:ID!){revertPullRequest(input:{pullRequestId:$id})'
 _ETAG = r'(?:W/)?"[\x21\x23-\x7e]*"'
 
 _MERGED = ('query($o:String!,$r:String!){repository(owner:$o,name:$r){pullRequests(states:MERGED,'
-           'first:30,orderBy:{field:CREATED_AT,direction:DESC}){nodes{additions deletions createdAt mergedAt}}}}')
+           'first:50,orderBy:{field:CREATED_AT,direction:DESC}){nodes{additions deletions createdAt mergedAt '
+           'author{__typename login ...on Bot{databaseId}}}}}}')
 
 
 def _operation(function):
@@ -64,6 +65,8 @@ def _run(args, payload=None, *, json_output=True, env=None):
                        bool(_sha(sha)) and payload is None)
         case ['api', '--include', 'user']:
             allowed = payload is None and not json_output
+        case ['api', 'user']:
+            allowed = payload is None and json_output
         case ['api', 'graphql', '--input', '-']:
             allowed = isinstance(payload, dict) and payload.get('query') in (_THREADS, _REVERT, _MERGED)
         case ['api', endpoint, *options]:
@@ -303,8 +306,28 @@ def merged_prs(repo, root=None):
     value = _run(['api', 'graphql', '--input', '-'],
                  {'query': _MERGED, 'variables': {'o': owner, 'r': name}})
     return [{'additions': _field(v, 'additions', int), 'deletions': _field(v, 'deletions', int),
-             'created_at': _field(v, 'createdAt', str), 'merged_at': _field(v, 'mergedAt', str)}
+             'created_at': _field(v, 'createdAt', str), 'merged_at': _field(v, 'mergedAt', str),
+             **_author(_field(v, 'author', dict, nullable=True))}
             for v in _list(value['data']['repository']['pullRequests']['nodes'])]
+
+
+def _author(actor):
+    if actor is None:
+        return {'author': None, 'author_email': None}
+    login = _field(actor, 'login', str)
+    if _field(actor, '__typename', str) != 'Bot':
+        return {'author': login, 'author_email': None}
+    bot = login + '[bot]'  # GitHub's noreply convention for App bots.
+    email = f"{_field(actor, 'databaseId', int)}+{bot}@users.noreply.github.com"
+    return {'author': bot, 'author_email': email}
+
+
+@_operation
+def viewer_login(root=None):
+    login = _login(_run(['api', 'user']))
+    if not isinstance(login, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]*', login):
+        raise ValueError('invalid login')
+    return {'login': login}
 
 
 @_operation

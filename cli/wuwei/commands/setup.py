@@ -120,9 +120,12 @@ def discover(root, dirs, config):
     hub, vcs = registry.load('code_host', config), registry.load('vcs', config)
     tools = {name: shutil.which(name) is not None for name in TOOLS}
     auth = hub.auth_status().exit
+    viewer = hub.viewer_login() if auth == 0 else None
+    login = viewer.data['login'] if viewer and viewer.exit == 0 else None
     memory = registry.load('host', config).free_memory(root=root)
     lines = [f'Host: {sys.platform}', *(f'{name}: {"on PATH" if on else "missing"}' for name, on in tools.items()),
              f'code host auth: {("set", "missing", "unmeasured")[auth]}',
+             f'code host login: {login or "unmeasured"}',
              f'free memory: {memory.data // 1048576} MiB' if memory.exit == 0 else 'free memory: unmeasured']
     configured = {repo['name'] for repo in config['repos']} | {
         (root / Path(repo['path']).expanduser()).resolve() for repo in config['repos']}
@@ -166,7 +169,30 @@ def discover(root, dirs, config):
             else:
                 repo['identity'] = {'name': who.data['name'], 'email': who.data['email']}
         repos.append(repo)
-    return {'repos': repos, 'lines': lines, 'owed': owed, 'tools': tools}
+    return {'repos': repos, 'lines': lines, 'owed': owed, 'tools': tools, 'login': login}
+
+
+def identity(config, login, results):
+    """Settings from the measured login and bot authors; never overrides what the owner set."""
+    from wuwei import obligations
+
+    settings = []
+    handles = config['owner']['handles']
+    if login:
+        try:  # Only when no code-host login is there yet; chat IDs stay.
+            obligations._owner_login({'owner': {'handles': [*handles, login]}})
+            settings.append((('owner',), 'handles', [*handles, login]))
+        except ValueError:
+            pass
+        if not config['shepherd']['lead_login']:
+            settings.append((('shepherd',), 'lead_login', login))
+    authors = {email.strip().casefold(): login for repo in config['repos']
+               if login and (email := repo['identity']['email']).strip()}
+    for result in results:
+        authors.update(result.get('bots') or {})
+    mapped = {email.casefold() for email in config['shepherd']['authors']}
+    return settings + [(('shepherd', 'authors'), email, {'login': who})
+                       for email, who in sorted(authors.items()) if email not in mapped]
 
 
 def run(args, confirm=None):
@@ -236,6 +262,7 @@ def _setup(args, confirm):
     if found['repos'] or not snapshot_path.exists():
         interview.record(root, staged_cfg, interview.ask([], names))
     results = calibrate.survey(root, staged_cfg, list(enumerate(staged_cfg['repos'])), style=True)
+    extra += identity(staged_cfg, found['login'], results)
     text, diff, edits, summary, snapshot = config.proposal(root, raw, staged, staged_cfg, results, extra)
     if text == raw and snapshot_path.exists():
         print('Nothing to propose')

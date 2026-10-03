@@ -319,6 +319,19 @@ def test_owner_interview_is_documented_next_to_calibration():
     for phrase in ('calibrate --questions', 'calibrate --answer', '.wuwei/charters/planner.md'):
         assert phrase in skill, phrase
 
+
+def test_pr_flow_is_documented():
+    assert 'wuwei doctor --section pr-flow' in (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+    doctor = (SITE / 'reference.md').read_text().split('\n## Doctor\n', 1)[1].split('\n## ', 1)[0]
+    assert 'PR flow' in doctor and '--section pr-flow' in doctor
+    configuration = (SITE / 'configuration.md').read_text()
+    section = configuration.split('\n## Owner interview\n', 1)[1].split('\n## ', 1)[0]
+    for phrase in ('`tracker`', '`chat`', '`review_bot`'):
+        assert phrase in section, phrase
+    daily = (SITE / 'daily.md').read_text()
+    assert 'shepherd.lead_login' in daily and 'shepherd.authors' in daily
+
+
 def test_calibration_profiles_are_documented_after_the_interview():
     configuration = (SITE / 'configuration.md').read_text()
     assert configuration.split('\n## Owner interview\n', 1)[1].split('\n## ', 1)[1].startswith(
