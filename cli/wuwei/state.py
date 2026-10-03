@@ -240,7 +240,8 @@ STATE_PRODUCERS = {
     'goals': 'wuwei plan approve', 'planner_session_id': 'wuwei plan session',
     'builds': 'wuwei build and seat hooks',
     'seats': 'wuwei hook PreToolUse or wuwei dispatch opinion', 'fast_checks': 'wuwei fast-checks',
-    'reply_acks': 'wuwei reply', 'decision_outcomes': 'wuwei decision route or wuwei build or wuwei plan carry or park or owner host wuwei doctor --fix',
+    'reply_acks': 'wuwei reply', 'decision_outcomes': ('wuwei decision route or wuwei build or wuwei plan carry or park '
+                          'or owner host wuwei doctor --fix or wuwei listen (two-way DM answer)'),
     'decision_routes': 'wuwei decision route',
     'channel_posts': 'wuwei pr ping',
     'pr_reviewers': 'wuwei pr raise or ping',

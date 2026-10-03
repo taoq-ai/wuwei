@@ -109,7 +109,9 @@ def test_fixed_lines_pass_the_outward_lint(ws):
     for text in (module.VOCABULARY, module.UNAVAILABLE, module.FAILED, module.CONFIRM,
                  module.NOTHING, module.CHANGED, module.LOW_MEMORY,
                  module.ANSWERED.format(identifier='D-1', option='A'),
-                 module.NOT_PENDING.format(identifier='D-1'), module.ON_HOST.format(identifier='D-1')):
+                 module.NOT_PENDING.format(identifier='D-1'), module.ON_HOST.format(identifier='D-1'),
+                 module.RECORDED.format(identifier='D-1', option='A'),
+                 module.NOTED.format(identifier='D-1', option='A')):
         assert outward.lint(text, 'D1', config) == (0, ''), text
 
 
@@ -324,10 +326,84 @@ def test_issue_acceptance_plan_without_a_second_factor_starts_nothing(ws, text):
 
 def test_reply_without_a_remote_session_is_recorded_evidence(ws):
     identifier = routed(ws)
-    assert handled(ws, 'option B on D-1') == (0, ['Recorded D-1 option B. Confirm it on the host.'])
+    assert handled(ws, 'option B on D-1') == (0, [remote().NOTED.format(identifier='D-1', option='B')])
     assert identifier == 'D-1'
     assert [row['payload'] for row in events(ws, 'decision.replied')] == [{'id': 'D-1', 'option': 'B'}]
     assert state.read_state(ws).get('decision_outcomes', {}) == {}
+
+
+TWO_WAY = VALID.replace('Reversibility: one-way', 'Reversibility: two-way').replace(
+    'Blast radius: own branch', 'Blast radius: workspace')
+
+
+def test_two_way_answer_is_the_outcome(ws):
+    from wuwei.commands import status
+    routed(ws, TWO_WAY)
+    assert handled(ws, 'option B on D-1') == (0, [remote().RECORDED.format(identifier='D-1', option='B')])
+    outcome = state.read_state(ws)['decision_outcomes']['D-1']
+    assert (outcome['option'], outcome['decided_by'], outcome['reversibility']) == ('B', 'owner', 'two-way')
+    assert [row['decided_by'] for row in payloads(ws, 'decision.decided')] == ['owner']
+    assert payloads(ws, 'decision.replied') == [{'id': 'D-1', 'option': 'B'}]
+    record = (workspace.day_dir(ws) / 'decisions/D-1.md').read_text()
+    assert 'Outcome: B\n' in record and ' in the owner DM.\n' in record
+    assert 'phone answers' not in status.line(status.snapshot(workspace.day_dir(ws)))
+
+
+def test_two_way_answer_resumes_a_parked_item(ws):
+    routed(ws, TWO_WAY)
+    state._write_state(lambda data: data['items'].update(X={**state.ITEM_DEFAULTS, 'decision': 'D-1'}),
+                       ws, reserved=False)
+    state._write_state(lambda data: data['items']['X'].update(phase='parked', status='blocked'),
+                       ws, reserved=False)
+    assert state.read_state(ws)['items']['X']['resume_phase'] == 'planned'
+    assert handled(ws, 'option B on D-1')[0] == 0
+    item = state.read_state(ws)['items']['X']
+    assert (item['phase'], item['status']) == ('planned', 'queued')
+
+
+@pytest.mark.parametrize('text, option', [('approve D-1', 'A'), ('drop it', 'B')])
+def test_two_way_approve_and_drop_it_record(ws, text, option):
+    routed(ws, TWO_WAY)
+    assert handled(ws, text) == (0, [remote().RECORDED.format(identifier='D-1', option=option)])
+    assert state.read_state(ws)['decision_outcomes']['D-1']['option'] == option
+
+
+def test_two_way_answer_with_a_live_session_records_then_resumes(ws):
+    routed(ws, TWO_WAY)
+    remote_row(ws, S, ['D-1'])
+    runtime = Runtime(ran())
+    code, sent = handled(ws, 'option B on D-1', runtime=runtime)
+    assert code == 0
+    assert sent[0] == remote().RECORDED.format(identifier='D-1', option='B')
+    assert runtime.calls == [('Decision D-1: option B.', S, planner_tools())]
+    assert state.read_state(ws)['decision_outcomes']['D-1']['option'] == 'B'
+
+
+@pytest.mark.parametrize('door', ['one-way', 'unsure'])
+def test_one_way_answer_is_noted_with_the_host_command(ws, door):
+    routed(ws, VALID.replace('Reversibility: one-way', f'Reversibility: {door}'))
+    noted = 'Noted D-1 option B. D-1 cannot be undone, so confirm it on the host: decide D-1 B.'
+    assert remote().NOTED.format(identifier='D-1', option='B') == noted
+    assert handled(ws, 'option B on D-1') == (0, [noted])
+    assert state.read_state(ws).get('decision_outcomes', {}) == {}
+    assert payloads(ws, 'decision.replied') == [{'id': 'D-1', 'option': 'B'}]
+
+
+def test_two_way_writer_refusal_is_unrun(ws, monkeypatch, capsys):
+    from wuwei.commands import decision
+    routed(ws, TWO_WAY)
+    monkeypatch.setattr(decision, 'owner_outcome',
+                        lambda *a, **k: (1, 'decision: record changed during confirmation'))
+    assert handled(ws, 'option B on D-1') == (2, [remote().FAILED])
+    assert 'listen remote unmeasured: decision: record changed during confirmation' in capsys.readouterr().out
+    assert state.read_state(ws).get('decision_outcomes', {}) == {}
+
+
+def test_listen_is_a_named_outcome_producer():
+    from wuwei.commands.event import EVENT_PRODUCERS
+    for producer in (EVENT_PRODUCERS['decision.decided'], EVENT_PRODUCERS['decision.reversed'],
+                     state.STATE_PRODUCERS['decision_outcomes']):
+        assert 'wuwei listen' in producer
 
 
 S = '0f8fad5b-d9cb-469f-a165-70867728950e'
@@ -464,7 +540,7 @@ def test_stop_marks_remote_sessions_and_blocks_resumes(ws, open_gate):
                       'No single session matches ffffffff.', 'Stopped 1 sessions.']
     runtime = Runtime()
     assert handled(ws, 'option B on D-1', runtime=runtime) == (
-        0, ['Recorded D-1 option B. Confirm it on the host.'])
+        0, [remote().NOTED.format(identifier='D-1', option='B')])
     assert runtime.calls == []
 
 
@@ -776,7 +852,7 @@ def test_a_turn_escalates_once_and_sends_host_decisions_first(ws):
 
 def test_issue_acceptance_a_conflicting_second_answer_is_refused(ws):
     routed(ws)
-    recorded = 'Recorded D-1 option A. Confirm it on the host.'
+    recorded = remote().NOTED.format(identifier='D-1', option='A')
     refused = remote().ANSWERED.format(identifier='D-1', option='A')
     assert 'already has option A' in refused
     assert handled(ws, 'option A on D-1') == (0, [recorded])

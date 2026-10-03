@@ -287,10 +287,11 @@ the question, each option with its score, and the recommendation with one reason
 To answer from your phone, run the planner session with Claude Code Remote Control
 (`claude --remote-control`, or `/remote-control` inside the session) and turn on
 "Push when actions required" in `/config`. Each decision question then reaches the Claude
-mobile app and stays open until you answer. A phone answer is not yet your outcome: the planner
-records it with `bin/wuwei decide`, or you run it in a host terminal. To command the workspace and
-answer decisions from Slack as well, follow [remote operation](remote.md). A decision
-answered in the Slack DM is recorded as evidence, and `status --line` counts it as
+mobile app and stays open until you answer. The planner records that answer with
+`bin/wuwei decide`, or you run it in a host terminal. To command the workspace and
+answer decisions from Slack as well, run `bin/wuwei setup slack` and see
+[remote operation](remote.md). A Slack DM answer to a two-way decision is your outcome at
+once. An answer to a one-way decision is evidence, and `status --line` counts it as
 `phone answers 1` until you record it with `bin/wuwei decide`.
 
 Seats do not ask what their [mandate](concepts.md#mandate) lets them decide. You see two more things here. An item

@@ -557,9 +557,10 @@ when the listener is installed and wrote none today. A listener that is off or a
 adds nothing to session start. `wuwei status --line` shows `listen dead`,
 `listen unmeasured` or `listen off` (nothing while alive, and nothing without an inbound
 adapter), and `wuwei nudges` pages a dead listener as `listen: health`. A DM answer to a
-decision shows in `wuwei nudges` and session start as "D-n answered from the phone",
-and the status line counts them as `phone answers N`, until the owner records the
-outcome.
+two-way decision is recorded as the owner outcome by the listener. A DM answer to a
+one-way or `unsure` decision shows in `wuwei nudges` and session start as "D-n answered
+from the phone", and the status line counts them as `phone answers N`, until the owner
+records the outcome.
 
 ## Private workspace environment
 

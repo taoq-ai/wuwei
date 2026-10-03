@@ -89,6 +89,21 @@ def load(root):
         raise ValueError('.wuwei/env: cannot read credentials file') from None
 
 
+def write(root, values):
+    """Set NAME=value lines in .wuwei/env (mode 0600), keeping every other line in order."""
+    from wuwei import workspace
+    path = Path(root) / '.wuwei/env'
+    if path.is_symlink():
+        raise ValueError('.wuwei/env must not be a symlink')
+    for name, value in values.items():
+        if name not in CREDENTIALS or not re.fullmatch(r'[^\s"\'#\\]+', value):
+            raise ValueError(f'.wuwei/env: refused to write {name}')
+    lines = path.read_text(encoding='utf-8').splitlines() if path.exists() else []
+    lines = [line for line in lines if line.partition('=')[0].strip() not in values]
+    lines += [f'{name}={value}' for name, value in values.items()]
+    workspace.atomic_write(path, '\n'.join(lines) + '\n', mode=0o600)
+
+
 def initialize(directory, *, dry_run=False):
     """Provision missing credentials without replacing owner values."""
     from wuwei import workspace
