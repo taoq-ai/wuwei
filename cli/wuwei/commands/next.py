@@ -66,7 +66,12 @@ def step(root):
                         'the owner to pick an option.', f'wuwei decision show {identifier}')
     seats = brief.seats(data)
     running = {seat['item'] for seat in seats.values() if seat['status'] == 'running'}
-    items, approved = data['items'], [name for name in data['approved_items'] if name in data['items']]
+    disposed = {str(record.get('item_disposition')).split(' ', 1)[-1]
+                for record in data.get('decision_outcomes', {}).values()
+                if isinstance(record, dict) and record.get('decided_by') == 'seat'
+                and str(record.get('item_disposition')).startswith(('carried ', 'parked '))}
+    items = data['items']
+    approved = [name for name in data['approved_items'] if name in items and name not in disposed]
     building = sum(items[name]['phase'] in state.BUILD_PHASES for name in approved)
     queued = sum(items[name]['phase'] == 'planned' for name in approved)
     for name in approved:
@@ -101,8 +106,8 @@ def step(root):
     if (directory / 'report.md').is_file() and data.get('close_requested'):
         return _row('closed', 'Report written and close requested; rerun close until it exits 0. '
                     'Tomorrow starts with /wuwei:wuwei-plan.', 'wuwei close')
-    return _row('close', 'Every approved item is merged, parked or escalated; run the report '
-                'skill to retro, report and close the day.', '/wuwei:wuwei-report')
+    return _row('close', 'Every approved item is merged, parked, carried or escalated; run the '
+                'report skill to retro, report and close the day.', '/wuwei:wuwei-report')
 
 
 def line(row):

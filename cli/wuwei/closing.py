@@ -61,7 +61,7 @@ def retro(root):
         try:
             text = verdict.active_text(path.read_text(encoding='utf-8'))
         except FileNotFoundError:
-            return 1, f'OWED: retro/{day}.md does not exist; run the retro session first'
+            return 1, f'OWED: retro/{day}.md does not exist; run /wuwei:wuwei-retro to write it'
         sections = {}
         current = None
         for line in text.splitlines():
@@ -147,8 +147,9 @@ def retro(root):
         return 2, '\n'.join([*findings, f'retro unmeasured: {exc}'])
 
 
-def unresolved(root, rows):
-    """Account for approved items, owner decisions and pushed item branches."""
+def unresolved(root, rows, open_items=None):
+    """Account for approved items, owner decisions and pushed item branches; open item names
+    are appended to open_items when given."""
     findings, code = [], 0
 
     def unmeasured(label, exc):
@@ -199,8 +200,13 @@ def unresolved(root, rows):
                 if (pr.get('state') != 'merged'
                         and pr.get('disposition') not in ('parked', 'carried')
                         and not {f'parked {name}', f'carried {name}'} & dispositions):
-                    findings.append(f'{name}: approved item is {item["status"]}/{item["phase"]}; '
-                                    'needs a park or carry decision')
+                    findings.append(f'{name} is still open ({item["status"]}/{item["phase"]}): carry it '
+                                    'to tomorrow (recommended), park it, or keep working? '
+                                    f'Carry: bin/wuwei plan carry {name}. '
+                                    f'Park: bin/wuwei plan park {name} --reason "<why>". '
+                                    'Keep working: finish it, then run bin/wuwei close again.')
+                    if open_items is not None:
+                        open_items.append(name)
                 tree = item.get('worktree')
                 if tree is not None and ref not in owned:
                     if not isinstance(tree, str) or not tree:
