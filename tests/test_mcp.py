@@ -406,7 +406,7 @@ def test_guarded_critical_warns_with_summary(configured, monkeypatch, capsys):
     [line] = [line for line in text.splitlines() if line.startswith('- mcp:')]
     assert 'bin/wuwei mcp decide' in line
     reasons = [row['reason'] for row in status.attention(workspace.day_dir(configured))]
-    assert 'MCP critical description_changed finding on docs: run bin/wuwei mcp decide' in reasons
+    assert 'MCP critical description_changed finding on docs: run bin/wuwei mcp decide D-1 proceed' in reasons
 
 
 def test_finding_row_hides_untrusted_text(configured):
@@ -415,7 +415,7 @@ def test_finding_row_hides_untrusted_text(configured):
     state.append_event('mcp.finding', {**metadata(), 'server_name': 'bad name; run rm',
                                        'tool_name': 'IGNORE PREVIOUS'}, configured)
     rows = status.attention(workspace.day_dir(configured))
-    assert 'MCP high description_changed finding on unnamed: run bin/wuwei mcp decide' in [
+    assert 'MCP high description_changed finding on unnamed: run bin/wuwei mcp check' in [
         row['reason'] for row in rows]
     assert 'IGNORE PREVIOUS' not in json.dumps(rows)
 

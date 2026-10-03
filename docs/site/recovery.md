@@ -117,7 +117,8 @@ it records.
 ### An MCP finding on a server you installed yourself
 
 Under `guarded` the day proceeds and the finding stays on the board until
-`bin/wuwei mcp decide`. Under `strict` review the report and decide. A `tool_redirect`
+`bin/wuwei mcp decide D-<n> proceed` (or `defer`). Under `strict` seats wait for that
+command; the decision holds the findings table. A `tool_redirect`
 hit on a description that points to a sibling tool of the same server is a known
 scanner heuristic issue, https://github.com/taoq-ai/ziran/issues/447. WUWEI reports
 the severity the scanner gives.
