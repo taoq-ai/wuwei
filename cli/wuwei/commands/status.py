@@ -231,6 +231,8 @@ def snapshot(directory):
     config_path = directory.parents[1] / 'config.toml'
     config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
     result['posture'] = workspace.posture(config)[0] if config is not None else None
+    from wuwei import integrity
+    result['restart'] = integrity.restart(config) if config is not None else ''
     if result['listen'] == 'off' and (config is None or config['adapters']['inbound'] == 'none'):
         result['listen'] = 'none'
     if config is not None and config['adapters']['calendar'] != 'none':
@@ -280,6 +282,8 @@ def line(data):
     parts = [f'WUWEI pages {data["pages"]}', f'nudges {data["nudges"]}']
     if data.get('posture') not in (None, 'guarded'):
         parts.append(data['posture'])
+    if data.get('restart'):
+        parts.append(data['restart'])
     if data.get('loops'):
         parts.append(f'loops {data["loops"]}')
     if not data['gate_approved']:

@@ -171,6 +171,7 @@ def discover(root, dirs, config):
 
 def run(args, confirm=None):
     """Owner action: init, discover, one proposal and one digest, then the checks and what is owed."""
+    from wuwei import integrity
     try:
         return _setup(args, confirm)
     except EOFError:
@@ -182,6 +183,9 @@ def run(args, confirm=None):
     except (OSError, ValueError, UnicodeError) as exc:
         print(f'wuwei setup: {exc}', file=sys.stderr)
         return UNRUN
+    finally:
+        if integrity.other_versions():  # #353: another version's hooks still run
+            print(integrity.RESTART)
 
 
 def _setup(args, confirm):
@@ -204,7 +208,7 @@ def _setup(args, confirm):
     cfg = load_config(root, raw=raw)
     found = discover(root, args.repos or [root], cfg)
     print('\n'.join(found['lines']))
-    staged = repo_tables(raw, found['repos'])
+    staged = init._stamp(repo_tables(raw, found['repos']))
     staged_cfg = load_config(root, raw=staged)
     if not staged_cfg['repos']:
         print('Still owed:\n' + ''.join(f'  {line}\n' for line in found['owed'] or [_owed(None, '<path>', None)]),

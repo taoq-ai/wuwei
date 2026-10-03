@@ -36,11 +36,14 @@ def register(subparsers):
 
 
 def run(args):
+    found = []
     try:
-        config = load_config()
+        config = load_config(warnings=found)
     except ConfigError as exc:
         print(f"wuwei config check: {exc}", file=sys.stderr)
         return FINDINGS
+    for text in found:  # #353: unknown keys warn below strict; the exit code ignores them.
+        print(f'wuwei config check: warning: {text}', file=sys.stderr)
     print('Credentials:')
     status = CLEAN
     needed = requirements(config)

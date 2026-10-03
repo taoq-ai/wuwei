@@ -6,7 +6,7 @@ layout: default
 
 [Home](index.html)
 
-`bin/wuwei init .` creates `.wuwei/config.toml`. In a host terminal, change one value with `bin/wuwei config set <key> <value>` and add a repository with `bin/wuwei config add-repo` (see [calibration](#calibration)); edit the file by hand only for what they refuse, a table or a value that spans lines. Values below are the shipped template defaults. Omitted keys use CLI defaults, and unknown keys are errors. The optional commented examples are inactive until uncommented. Paths in repository entries are relative to the workspace unless absolute.
+`bin/wuwei init .` creates `.wuwei/config.toml`. In a host terminal, change one value with `bin/wuwei config set <key> <value>` and add a repository with `bin/wuwei config add-repo` (see [calibration](#calibration)); edit the file by hand only for what they refuse, a table or a value that spans lines. Values below are the shipped template defaults. Omitted keys use CLI defaults. Unknown keys are a warning from `wuwei config check`, `wuwei doctor` and `wuwei init --upgrade`, with the line and the nearest documented key; under `security.posture = "strict"` they are errors, unless `template_version` is newer than the running plugin. The optional commented examples are inactive until uncommented. Paths in repository entries are relative to the workspace unless absolute.
 
 ## Sections
 
@@ -28,6 +28,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `cap` | `1` | Maximum running build seats. |
+| `template_version` | `""` | Plugin version that last wrote this file. `wuwei init`, `wuwei setup` and `wuwei init --upgrade` raise it and never lower it. A plugin older than this value treats keys it does not know as unknown to it, records `config.newer_template` once per session, and `wuwei doctor` and the status line say to restart Claude Code. |
 | `prioritisation.framework` | `"wsjf"` | Ranking formula: `wsjf` or `rice`. |
 | `discovery.min_queue` | `2` | Discover again when a seat frees and the queue is below this count. |
 | `discovery.autostart` | `"strict"` | Intraday start policy: `off` carries safe items to the next morning; `strict` admits confirmed-goal SLICE items above the approved queue cut; `goal` admits confirmed-goal SLICE items under CAP and budget. Unsafe or over-budget items go to the owner. |

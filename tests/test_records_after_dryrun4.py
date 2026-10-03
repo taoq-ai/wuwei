@@ -135,7 +135,7 @@ def test_retro_skill_does_not_ask_for_second_close_review():
 
 @pytest.mark.parametrize('config', [
     'repos = []\n[[repos]]\nname = "a/b"\npath = "r"\ndefault_branch = "main"\n',
-    'nonsense = 1\n',
+    'nonsense = 1\n[security]\nposture = "strict"\n',
 ])
 def test_config_error_names_config_toml(tmp_path, monkeypatch, capsys, config):
     from wuwei.guards import integrity

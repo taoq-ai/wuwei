@@ -59,7 +59,7 @@ def test_config_check_prints_the_fix(ws, monkeypatch, capsys):
 
 
 def test_other_config_errors_have_no_repos_hint(ws):
-    (ws / '.wuwei/config.toml').write_text('nonsense = 1\n')
+    (ws / '.wuwei/config.toml').write_text('nonsense = 1\n[security]\nposture = "strict"\n')
     with pytest.raises(workspace.ConfigError) as caught:
         workspace.load_config(ws)
     assert 'unknown key nonsense' in str(caught.value)

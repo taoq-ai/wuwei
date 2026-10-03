@@ -284,7 +284,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'pr.action.decision': 'silent',
                 'retro.gap': 'nudge', 'seat stop unmatched': 'nudge',
                 'hook.post_tool_use_error': 'nudge', 'hook.refusal': 'silent',
-                'guard.would_refuse': 'silent',
+                'guard.would_refuse': 'silent', 'config.newer_template': 'nudge',
                 'hook.warning': 'nudge',
                 'verdict.rejected': 'silent', 'decision.rejected': 'nudge',
                     'decision.decided': 'silent', 'decision.routed': 'silent',
@@ -600,3 +600,11 @@ def test_status_line_counts_loops(tmp_path, monkeypatch):
 def test_status_line_without_loops(tmp_path, monkeypatch):
     data, line, _ = status_of(tmp_path, monkeypatch, [])
     assert data['loops'] == 0 and 'loops' not in line
+
+
+def test_restart_on_the_status_line(tmp_path, monkeypatch):
+    from wuwei.commands import status
+    data, line, _ = status_of(tmp_path, monkeypatch, [CLOCK])
+    assert data['restart'] == '' and 'restart' not in line
+    text = 'plugin 0.11.0 running against template 0.12.0: restart Claude Code'
+    assert f'nudges 0 | {text} |' in status.line({**data, 'restart': text})

@@ -1,7 +1,8 @@
-# Defaults apply when settings are omitted. Unknown keys are errors.
+# Defaults apply when settings are omitted. Unknown keys warn (strict posture: errors).
 # Running build seats and host limits. Integer counts must be positive.
 cap = 1
 profile = "strict" # strict or standard
+template_version = "" # Plugin version that last wrote this file; init, setup and init --upgrade set it.
 # Add one [[repos]] table per repository, for example:
 # [[repos]]
 # name = "owner/repo" # GitHub repository name used for merge_deploys matching.

@@ -31,6 +31,52 @@ def _name(name):
 MARKERS = '.in_use'  # Claude Code's per-process <pid> files, kept by its plugin cache cleanup
 
 
+RESTART = "Restart Claude Code so only this version's hooks run"
+
+
+def version():
+    """This plugin's version from .claude-plugin/plugin.json, or '' when unreadable (#353)."""
+    try:
+        found = json.loads((PLUGIN / '.claude-plugin/plugin.json').read_text())['version']
+    except (OSError, ValueError, KeyError, TypeError):
+        return ''
+    return found if isinstance(found, str) else ''
+
+
+def release(text):
+    """A dotted-integer version as a tuple, or None; nothing else ever counts as newer."""
+    found = isinstance(text, str) and re.fullmatch(r'\d+(?:\.\d+)*', text, re.ASCII)
+    return tuple(map(int, text.split('.'))) if found else None
+
+
+def newer_template(config):
+    """(plugin, template) when config.toml was written by a newer plugin than this one."""
+    mine, template = version(), config['template_version']
+    if release(mine) and release(template) and release(template) > release(mine):
+        return mine, template
+    return None
+
+
+def other_versions():
+    """Sorted names of sibling plugin versions with a Claude Code process marker."""
+    try:
+        return sorted(path.name for path in PLUGIN.parent.iterdir()
+                      if path != PLUGIN and (path / MARKERS).is_dir() and any((path / MARKERS).iterdir()))
+    except OSError:
+        return []
+
+
+def restart(config):
+    """'plugin <old> running against template <new>: restart Claude Code', or ''."""
+    old = other_versions()
+    if config is not None and newer_template(config):
+        old.append(version())
+    if not old:
+        return ''
+    new = (config or {}).get('template_version') or version()
+    return f'plugin {", ".join(old)} running against template {new}: restart Claude Code'
+
+
 def _prune(plugin, directory, dirs):
     dirs[:] = sorted(d for d in dirs if d not in ('.git', '__pycache__'))
     markers = Path(directory) / MARKERS

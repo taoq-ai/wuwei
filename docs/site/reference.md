@@ -201,6 +201,17 @@ hook probes, plus `hook PreToolUse` from a directory outside any workspace, whic
 allow). It works before there is a workspace: the Workspace section then names where to run
 `bin/wuwei init --shadow`.
 
+The config row warns, naming each unknown key, its line and the nearest documented key, when
+`config.toml` loads with keys this plugin does not know. The `.in_use` row warns with
+`plugin <old> running against template <new>: restart Claude Code` when another cached
+plugin version has a process marker, or when `template_version` is newer than this plugin;
+the status line shows the same text after the posture. A hook whose plugin is older than
+`template_version` treats keys it does not know as unknown to it, never refuses over them, and
+records one `config.newer_template` event `{plugin, template, session}` per session and day;
+only the PreToolUse hook writes it and `bin/wuwei event` refuses the kind. `bin/wuwei setup` and
+`bin/wuwei init --upgrade` end with `Restart Claude Code so only this version's hooks run` when
+another version's marker is present.
+
 Each row is `ok`, `warn`, `fail` or `unmeasured` with its value; every row that is not ok
 prints `fix:` with the exact command or edit and `docs:` with the page. A row that does not
 apply (the listener with `adapters.inbound = "none"`) is ok with the reason. Exit 1 when any

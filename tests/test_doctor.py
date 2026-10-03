@@ -298,7 +298,7 @@ def test_workspace_config_does_not_load(ws):
     assert [(r['name'], r['status'], r['value']) for r in rows if r['section'] in ('gates', 'day')] == [
         ('gates', 'unmeasured', 'config.toml does not load'), ('day', 'unmeasured', 'config.toml does not load')]
 
-    config(ws.root, '[adapters]\nbogus = "x"\n')
+    config(ws.root, '[adapters]\ntracker = "bogus"\n')
     found = row(doctor.diagnose(), 'config')
     assert found['status'] == 'fail' and found['fix'].startswith('edit .wuwei/config.toml: ')
     assert 'apply' not in found
@@ -829,3 +829,23 @@ def test_fix_apply_limits_the_batch(ws, monkeypatch, capsys):
     for changes in ({'fix': False}, {'fix': False, 'widget': False, 'apply': 'calibrate'}, {'apply': 'calibrate'}):
         assert doctor.run(widget_args(**changes), confirm=lambda digest: True) == 2
     assert applied == ['calibrate']
+def test_workspace_config_unknown_key_warns(ws):
+    config(ws.root, CONFIG.replace('[adapters]\n', '[adapters]\ncode_hst = "github"\n'))
+    found = row(doctor.diagnose(), 'config')
+    assert (found['status'], found['value']) == ('warn', 'loads; 1 unknown keys')
+    assert found['detail'] == ['config.toml: unknown key adapters.code_hst at line 2; did you mean adapters.code_host?']
+
+
+def test_in_use_row_names_the_restart(ws):
+    sibling = ws.plugin.parent / '0.10.0/.in_use'
+    sibling.mkdir(parents=True)
+    (sibling / str(os.getpid())).write_text('')
+    found = row(doctor.diagnose(), 'in_use')
+    assert (found['status'], found['value'], found['fix']) == (
+        'warn', 'plugin 0.10.0 running against template 0.11.0: restart Claude Code', integrity.RESTART)
+
+    (sibling / str(os.getpid())).unlink()
+    config(ws.root, 'template_version = "0.12.0"\n' + CONFIG)
+    found = row(doctor.diagnose(), 'in_use')
+    assert (found['status'], found['value']) == (
+        'warn', 'plugin 0.11.0 running against template 0.12.0: restart Claude Code')

@@ -52,9 +52,12 @@ def run(args):
             env.load(root)
             if args.event in CONFIG_EVENTS:
                 try:
-                    workspace.load_config(root)
+                    config = workspace.load_config(root)
                 except OSError:
                     pass  # A missing or unreadable file stays the guards' to measure, as before.
+                else:
+                    if args.event == 'PreToolUse' and payload['session_id'] != HEARTBEAT_SESSION:
+                        newer_template(root, payload, config)
         token = SELECTION.set((args.event, payload.get('tool_name', '')))
         try:
             guards = discover()
@@ -113,6 +116,22 @@ def run(args):
     if args.event == 'Stop' and context:
         print('\n'.join(context), file=sys.stderr)
     return CLEAN
+
+
+def newer_template(root, payload, config):
+    """#353: one config.newer_template event per session and day when config.toml was
+    written by a newer plugin; recording never refuses."""
+    try:
+        from wuwei import integrity, state, watch, workspace
+        found = integrity.newer_template(config)
+        if found is None or any(
+                row['kind'] == 'config.newer_template' and row['payload'].get('session') == payload['session_id']
+                for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
+            return
+        state.append_event('config.newer_template', {
+            'plugin': found[0], 'template': found[1], 'session': payload['session_id']}, root)
+    except Exception as exc:
+        print(f'wuwei hook: could not record config.newer_template: {exc}', file=sys.stderr)
 
 
 def config_failure(event, payload, reason):
