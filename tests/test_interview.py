@@ -384,7 +384,8 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
         merged_prs=lambda *a, **k: ok, auth_status=lambda *a, **k: Result(0, {}),
         workspace_changes=lambda *a, **k: ok, workspace_commit=lambda *a, **k: ok,
         protection=lambda *a, **k: Result(0, {'required_checks': [{'name': 'test'}], 'approvals': 1,
-                                              'allow_force_pushes': False, 'allow_deletions': False}))
+                                              'allow_force_pushes': False, 'allow_deletions': False,
+                                              'classic': True}))
     monkeypatch.setattr(registry, 'load', lambda kind, config: host)
     digests = []
     assert command.promote(SimpleNamespace(), confirm=lambda digest, **k: digests.append(digest) or True) == 0

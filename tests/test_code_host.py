@@ -327,10 +327,46 @@ def test_protection_requires_deletion_setting(monkeypatch):
 
 
 def test_unreadable_protection_is_not_absent(monkeypatch):
-    # A repository the token cannot see is also a 404; only gh's own message means unprotected.
-    install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Not Found (HTTP 404)'}])
+    # A repository the token cannot see 404s on the rulesets read too, so it stays unmeasured.
+    calls = install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Not Found (HTTP 404)'},
+                                               {'exit': 1, 'stderr': 'gh: Not Found (HTTP 404)'}])
     result = adapter().protection('acme/widget', 'main')
-    assert result.exit == 2 and 'branch protection absent' not in result.reason
+    assert result.exit == 2 and 'gh exited 1' in result.reason and len(calls) == 2
+
+
+def test_classic_403_is_unmeasured_without_reading_rulesets(monkeypatch):
+    calls = install_replay(monkeypatch, 'gh', [
+        {'exit': 1, 'stderr': 'gh: Must have admin rights to Repository. (HTTP 403)'}, {'stdout': '[[]]'}])
+    assert adapter().protection('acme/widget', 'main').exit == 2 and len(calls) == 1
+
+
+@pytest.mark.parametrize('stderr', ['gh: Not Found (HTTP 404)', 'gh: Branch not protected (HTTP 404)'])
+def test_classic_404_reads_rulesets(monkeypatch, stderr):
+    calls = install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': stderr}, {'stdout': '[[]]'}])
+    result = adapter().protection('acme/widget', 'main')
+    assert result.exit == 0 and len(calls) == 2
+    assert result.data == {
+        'required_checks': [], 'strict': False, 'approvals': 0, 'dismiss_stale_reviews': False,
+        'require_code_owner_reviews': False, 'require_last_push_approval': False,
+        'enforce_admins': False, 'conversation_resolution': False, 'allow_force_pushes': True,
+        'allow_deletions': True, 'merge_queue': False, 'classic': False}
+
+
+def test_classic_404_takes_rules_fields(monkeypatch):
+    rules = [{'type': 'required_status_checks', 'parameters': {
+                 'strict_required_status_checks_policy': False,
+                 'required_status_checks': [{'context': 'Security'}]}},
+             {'type': 'pull_request', 'parameters': {
+                 'required_approving_review_count': 1, 'dismiss_stale_reviews_on_push': False,
+                 'require_code_owner_review': False, 'require_last_push_approval': False,
+                 'required_review_thread_resolution': False}},
+             {'type': 'non_fast_forward'}, {'type': 'deletion'}]
+    install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Not Found (HTTP 404)'},
+                                       {'stdout': json.dumps([rules])}])
+    data = adapter().protection('acme/widget', 'main').data
+    assert data['required_checks'] == [{'name': 'Security', 'app_id': None}]
+    assert data['approvals'] == 1 and data['classic'] is False
+    assert data['allow_force_pushes'] is False and data['allow_deletions'] is False
 
 
 HEAD = 'a' * 40

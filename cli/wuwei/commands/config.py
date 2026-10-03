@@ -74,7 +74,8 @@ def run(args):
     host = registry.load('code_host', config)
     print('Host protections:')
     for repo in config['repos']:
-        status = max(status, _protection(host, repo, config['shepherd']['min_reviewers'] == 0))
+        status = max(status, _protection(host, repo, config['shepherd']['min_reviewers'] == 0,
+                                         config['shepherd']['review_gate_check']))
     print('Seat credentials:')
     for name in ('GH_TOKEN', 'GITHUB_TOKEN'):
         status = max(status, _token(host, name))
@@ -170,28 +171,30 @@ def promote(args, confirm=None):
         return UNRUN
 
 
-def _protection(host, repo, solo):
+def _protection(host, repo, solo, gate):
     branch = repo['default_branch']
     label = f"  {repo['name']} {branch}"
     result = host.protection(repo['name'], branch)
-    if result.exit and 'branch protection absent' in result.reason:
-        print(f'{label}: protected ref: missing (protect {branch}: require status checks and '
-              'at least 1 approving review, block force pushes and deletions)')
-        return FINDINGS
     try:
         if result.exit:
             raise ValueError(result.reason)
         data = result.data
-        names = {check['name'] for check in data['required_checks']}
+        names = sorted({check['name'] for check in data['required_checks']})
+        listed = ', '.join(names)
         absent = [name for name in repo['review_required_checks'] if name not in names]
         rows = [
-            ('protected ref', 'ok', ''),
-            ('required checks', 'ok' if names and not absent else None,
-             f'require status checks on {branch}' + (': ' + ', '.join(absent) if absent else '')),
+            # Information only: a 404 means unprotected or no admin; rulesets still measure below.
+            ('protected ref', 'ok', '') if data['classic'] else
+            ('classic protection', 'none visible (404: unprotected or no admin)', ''),
+            ('required checks', f'ok ({listed})' if names and not absent else None,
+             f'require status checks on {branch}' + (': ' + ', '.join(absent) if absent else '')
+             + (f'; required now: {listed}' if names else '')),
             ('required reviews', 'ok' if data['approvals'] >= 1 else
              'ok (solo owner: shepherd.min_reviewers = 0)' if solo else None,
              f'require at least 1 approving review on {branch}, '
-             'or set shepherd.min_reviewers = 0 for a solo owner'),
+             'or set shepherd.min_reviewers = 0 for a solo owner'
+             + (f'; the required check {gate} (shepherd.review_gate_check) may be satisfying it'
+                if gate in names else '')),
             ('force pushes', 'ok' if data['allow_force_pushes'] is False else None,
              f'block force pushes on {branch}'),
             ('deletions', 'ok' if data['allow_deletions'] is False else None,

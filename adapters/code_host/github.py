@@ -99,7 +99,7 @@ def _run(args, payload=None, *, json_output=True, env=None):
     if result.returncode:
         if (args[:1] == ['api'] and len(args) > 1 and
                 re.fullmatch(r'repos/[^/]+/[^/]+/branches/.+/protection', args[1]) and
-                re.search(r'Branch not protected \(HTTP 404\)', result.stderr)):
+                re.search(r'\(HTTP 404\)', result.stderr)):
             raise ValueError('branch protection absent')
         raise ValueError(f'gh exited {result.returncode}')
     if json_output:
@@ -308,7 +308,16 @@ def merged_prs(repo, root=None):
 def protection(repo, branch, root=None):
     if not isinstance(branch, str) or not branch:
         raise ValueError('missing branch')
-    value = _api(f'repos/{_repo(repo)}/branches/{quote(branch, safe="")}/protection')
+    try:
+        value, classic = _api(f'repos/{_repo(repo)}/branches/{quote(branch, safe="")}/protection'), True
+    except ValueError as exc:
+        if str(exc) != 'branch protection absent':
+            raise
+        # 404: unprotected or no admin. Read on as an unprotected branch; the rulesets read
+        # below still measures, and fails closed when the repository is not visible.
+        value, classic = {'enforce_admins': {'enabled': False},
+                          'allow_force_pushes': {'enabled': True},
+                          'allow_deletions': {'enabled': True}}, False
     # enforce_admins is always present on a successful protection response.
     admins = _field(value['enforce_admins'], 'enabled', bool)
     checks = value.get('required_status_checks')
@@ -332,7 +341,8 @@ def protection(repo, branch, root=None):
             'allow_force_pushes': _field(value['allow_force_pushes'], 'enabled', bool),
             'allow_deletions': _field(value['allow_deletions'], 'enabled', bool),
             'conversation_resolution': _field(value.get('required_conversation_resolution',
-                                                         {'enabled': False}), 'enabled', bool)}
+                                                         {'enabled': False}), 'enabled', bool),
+            'classic': classic}
 
 
     result['merge_queue'] = False
