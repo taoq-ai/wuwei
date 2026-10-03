@@ -39,7 +39,8 @@ that engagement ships in this repository.
   review and never merges with admin override; a merge happens only when the repository's
   own rules already allow it (section 4.6).
 - A hosted service or database. A long-running process is out of scope for v1; M5 adds
-  exactly one, the listener (section 15).
+  exactly one, the listener (section 15). The optional telemetry collector (5.13) is the
+  project's, outside the plugin, and the plugin never needs it.
 - Multi-user team coordination (v1 is one person's workspace).
 - Replacing the tracker, chat tool or CI. Adapters talk to them; WUWEI does not own them.
 - Runtime guardrails for production agents (use a guardrail product) or LLM evaluation.
@@ -130,6 +131,7 @@ Code repos receive only worktrees, branches and pull requests.
     plan.md  state.json  events.jsonl  traces.jsonl
     briefs/  decisions/  deliverables/  retro/  proposals/  report.md
   archive/             days older than 30, summary lines kept in the index
+  metrics/             weekly telemetry aggregates and the workspace token (5.13)
 ```
 
 ### 3.4 Three-state exits
@@ -730,7 +732,8 @@ blocks a running item, a negotiation loop on an item past its goal date, the dea
 or the budget cap hit), `nudge` (shown at the next glance, batched to the phone at most every
 two hours: an owner decision not yet blocking, an L2 cruise answer (5.8.1), a negotiation
 loop (5.8.2), a merge the policy does not clear, work outside the goals, budget
-at 80 percent, a person's ask nearing its reply window), `silent` (visible, never pushed:
+at 80 percent, a person's ask nearing its reply window, a telemetry week ready to send
+(5.13)), `silent` (visible, never pushed:
 normal progress, L3 cruise answers, auto-merges that went well). Lanes: Work (items by phase),
 Decisions (waiting on the owner), People (asks owed by the owner, 15.10). An event the
 classifier cannot read is a `nudge`, never `silent`.
@@ -877,6 +880,226 @@ Seats and owner. The builder, lead and planner charters and the plan skill name 
 configured engine's steps and the skip rule; the orientation block (`wuwei next`) shows the
 engine and mode; the docs glossary defines spec engine and strict mode, and the
 configuration page documents `[spec]`.
+### 5.13 Telemetry (owner, 2026-10-03, #421)
+
+Telemetry tells the owner, and the project when the owner agrees, whether WUWEI itself
+works: how often its guards refuse or cannot run, how long a hook takes, how often items
+loop, how many decisions reach the owner. Three layers: the signals the CLI already
+records, a weekly aggregate computed off the hook path, and proposals from it; sharing is
+optional and the owner's choice. Nothing runs in a hook and nothing derived is applied on
+its own. `[telemetry]` in `config.toml`:
+
+- `enabled` (default true): false stops the aggregate, the proposals, sharing and the
+  OpenTelemetry export; the events a day needs are recorded as before.
+- `share` (default `""`, not asked yet, which behaves as `"off"`): `"anonymous"`,
+  `"attributed"` or `"off"`. Set by the interview question below, by the owner with
+  `bin/wuwei config set telemetry.share`, or by `wuwei telemetry off`. A calibration
+  profile (#313) never carries a `telemetry` key: consent is per workspace.
+- `endpoint` (default: the project's collector URL, empty until the project deploys it):
+  where anonymous mode posts. Empty, or not `https://`, keeps every week local.
+- `repository` (default `"taoq-ai/wuwei"`): where attributed mode opens issues.
+
+The cadence is a week and is not configurable; no hook keeps a clock for telemetry.
+
+Signals. The raw layer is the events the CLI already appends, read through a fixed
+vocabulary. Telemetry adds two fields to records that already exist, and no record and no
+step to any hook:
+
+- hook outcomes: each `refusals` row of `hook.refusal` and each `guard.would_refuse`
+  gains `exit` (1 refused, 2 could not run); a `hook.refusal` without rows (a config that
+  does not load, #326) counts as guard `config`, exit 2. Allowed calls are the PostToolUse
+  rows of `traces.jsonl`. Heartbeat probe calls record nothing, as before.
+- hook latency: the heartbeat (#287) already times its four hook probes (`refused`,
+  `allowed`, `state_write`, `read_loop`) on every clock tick; each of those probe rows
+  gains `ms`, the call's wall milliseconds including interpreter start: the hook as the
+  owner feels it. The 10.6 CPU budget stays the benchmark's.
+- seats: `seat launched`, `seat stopped`, `seat.usage` (its duration).
+- items: `plan.approved`, `state.import`, `plan.added`, the `phase_changes` of state
+  writes, `gate.received`, `gate.tiered`, `build.parked`.
+- decisions: `decision.routed`, `decision.decided`, `decision.reversed`, and the record's
+  `Class:` field (5.8).
+- loops: `negotiation.loop` (5.8.2).
+- owner interactions: `decision.decided` with `decided_by` `owner`; DM commands, the
+  `remote.*` events written by `wuwei listen`; owner host actions, `remote.acknowledged`,
+  `state.recovered`, `integrity_confirmation`, `mcp.decided`, `draft.sending` and
+  `draft.dropped`.
+- configuration facts, read from `config.toml` when aggregating: `security.posture`,
+  `profile`, the adapter name per port, the number of repositories.
+- versions, read when aggregating: the plugin version, Python major.minor, the OS family
+  (`darwin`, `linux` or `other`).
+- errors: the exit-2 rows above.
+
+The vocabulary's version is `schema` in every aggregate and payload, starting at 1. Changing
+a key or a definition below raises it and amends this section.
+
+Aggregation. One step of the watch sweep (4.2), at most once per 24 hours (a `telemetry_at`
+mark, like the steward's), never in a hook and never in a seat. It reads the day
+directories under `days/` whose date falls in an ISO week (`2026-W40`, in
+`owner.timezone`) and writes `.wuwei/metrics/<week>.json`, a generated record only the CLI
+writes and that `protect_state` guards like `state.json`. Each run refreshes the current
+week (`final: false`) and finalises each earlier week, of the last four, that has day
+directories and no final file (`final: true`, with its proposals). Budget: 10 seconds of
+wall time per run and 20 MB per `events.jsonl`; past either the run stops, keeps the
+previous file and records `telemetry.skipped` with the week and the reason, and the next
+run tries again. A telemetry failure never changes the sweep's exit and is never owed work.
+`wuwei metrics --week [<week>]` prints a week's file, computing it when absent; it is a
+command, never a hook.
+
+Metrics, per week. A value that cannot be computed is `"unmeasured"`, never zero;
+percentiles as in 5.6.
+
+| Key | Definition |
+|---|---|
+| `days` | day directories in the week |
+| `tool_calls` | PostToolUse rows in `traces.jsonl` |
+| `refusals` | per guard (a hook-table module name, or `config`), refusal rows with exit 1 |
+| `unmeasured` | per guard, refusal rows with exit 2 |
+| `warnings` | per guard, `guard.would_refuse` records |
+| `refusal_rate` | refusals over tool calls plus refusals |
+| `unmeasured_rate` | unmeasured over refusals plus unmeasured plus warnings |
+| `first_hour_refusals` | refusals, unmeasured and warnings in the first hour after the first event of the workspace's earliest day; present only in that day's week |
+| `hook_latency_ms` | p50, p95 and max of the heartbeat hook probes' `ms` |
+| `seats_launched`, `seats_lost` | `seat launched` records; launches with no `seat stopped` by the end of their day |
+| `seat_minutes` | p50 and p90 of `seat.usage` durations |
+| `phase_entries` | per phase, moves into it |
+| `plan_to_merge_hours` | p50 and p75, from an item's first approval to its move to `merged`, for items merged in the week |
+| `gate_rounds_per_item` | p50 and max of `gate.received` per item with a verdict in the week |
+| `fix_rounds_per_item` | p50 and max of moves into `fix` per item with a verdict in the week |
+| `gate_tiers` | per tier, the computed tier of `gate.tiered` (#280) |
+| `long_loops` | `negotiation.loop` records: items over the loop threshold (5.8.2) |
+| `stuck_parks` | `build.parked` records (5.3) |
+| `decisions` | decision ids routed or decided in the week |
+| `decisions_by_class` | per 5.8.1 class, from the record's `Class:`; unreadable counts as `other` |
+| `decided_by` | `decision.decided` per `owner`, `seat` and `cruise` (any `cruise <class>@L<n>`) |
+| `reversals` | `decision.reversed` records |
+| `owner_wait_hours` | p50 and p90 from `decision.routed` to `decision.decided`, for decisions decided in the week |
+| `owner_asks_per_item` | mean owner routes per item that had one (5.8) |
+| `unnecessary_asks` | owner answers equal to the recommendation (5.8) |
+| `owner_actions` | DM commands and owner host actions (Signals) |
+| `escaped_by_tier` | per tier, merged items and escaped ones (#280), over the retained days |
+| `aggregation_ms` | the run's wall time |
+
+Proposals. Finalising a week evaluates a fixed list of rules against it; a new rule amends
+this section. A proposal carries its rule, one line of evidence (the numbers that met the
+rule) and one owner command. Nothing is applied on its own, as with calibration (#278).
+
+| Rule | When | Command |
+|---|---|---|
+| `floor-raise` | a tier below `full` has 5 or more merged items in `escaped_by_tier` and an escaped share of at least 0.2 | per repository whose floor is at or below that tier: `bin/wuwei config set repos.<n>.gates.floor '"<next tier>"'` |
+| `floor-lower` | `full` has 10 or more merged items and none escaped | per repository at `full`: the same command with `standard` |
+| `area-block` | a posture area running at `warn` had no `guard.would_refuse` in a week of at least 3 days | `bin/wuwei config set security.areas.<area> '"block"'` |
+| `wait-hours` | 3 or more external waits (5.8.2) answered in the week, p90 under half of `decisions.wait_hours` | `bin/wuwei config set decisions.wait_hours <max(4, ceil(p90 x 1.5))>` |
+| `fast-checks` | 5 or more items with a verdict and a `fix_rounds_per_item` p50 of 1 or more | `bin/wuwei calibrate --measure`, which proposes the fast checks itself (#328) |
+
+Cruise promotions stay the steward's (5.8.1). A finalised week's proposals reach the owner
+once, at the next morning gate: `wuwei telemetry proposals --widget` prints one yes-or-no
+question per proposal (#359, yes recommended, the command named) and records
+`telemetry.presented` for the week, so it is not asked again. Yes is the owner's command,
+which records itself like any owner command (#414); no records nothing. Without
+`--widget` the command lists the latest final week's proposals and writes nothing.
+
+Sharing. Nothing leaves the machine unless `share` is `"anonymous"` or `"attributed"`, and
+then only the payload of a final week, a JSON object with exactly these top-level keys:
+`schema`; `week`; `token` (anonymous only); `versions` (`plugin`, `python`, `os`); `config`
+(`posture`, `profile`, `adapters`, `repositories`), where `adapters` maps each port name to
+its adapter name and `repositories` is a count; and `metrics`, the keys of the table above;
+never the proposals or anything else in the file. Anonymisation, checked by
+`telemetry.validate` before every send and by the collector on receipt:
+
+- every key comes from this section; every key inside a metric is a guard module name,
+  `config`, a phase, a tier, a 5.8.1 class, a posture area, `p50`, `p75`, `p90`, `p95`,
+  `max`, `merged`, `escaped`, `owner`, `seat` or `cruise`; every key inside `adapters` is
+  a port name; an adapter name is one shipped under `adapters/<port>/`;
+- every value is a non-negative integer, a non-negative number rounded to two decimals,
+  `"unmeasured"`, a version (`^\d+\.\d+(\.\d+)?$`), a week (`^\d{4}-W\d{2}$`), a token
+  (`^[0-9a-f]{32}$`), a posture name (`observe`, `guarded`, `strict`), a profile name
+  (`strict`, `standard`), an OS family (`darwin`, `linux`, `other`) or one of those names;
+- so no repository, item, ticket, pull request, person, handle, path, branch, command,
+  reason text or time finer than the ISO week; repositories appear only as a count;
+- the serialised payload is at most 16 KB.
+
+A payload that breaks a rule is not sent; the run records `telemetry.unsent` with the rule.
+
+- `anonymous`: the sweep posts the payload as JSON over HTTPS to `endpoint` (stdlib
+  `urllib` in the watch-service adapter, beside the heartbeat ping; 5 second timeout) with
+  `token`, 32 hex characters generated once per workspace with `secrets` and kept in
+  `.wuwei/metrics/token`, the only identifier. No login and no secret in the plugin. The
+  collector, like any web server, sees the sender's IP address and does not store it. No
+  endpoint, a network error or a non-2xx answer records `telemetry.unsent` and keeps the
+  week for the next run, the four newest weeks at most; nothing waits or blocks. A 409
+  answer counts as sent: the collector already has the week. A sent week records
+  `telemetry.shared` (week and mode) and `shared` in its file.
+- `attributed`: the sweep records `telemetry.ready` once per final week (a nudge, 5.9).
+  The owner runs `bin/wuwei telemetry send`, an owner action on the host refused from agent
+  tools like `config set`, which prints the exact issue, asks yes or no (#414) and opens it
+  on `repository` with the code host adapter's `issue` (`gh issue create`). The issue comes
+  from the owner's GitHub account and shows the owner's login: that is the difference from
+  anonymous. Title `telemetry: <week>`; body the payload as a two-column Markdown table,
+  without the token, so an attributed week never ties the anonymous ones to a person. The
+  canary and honeytoken checks (7.1) apply; the outward-text lint does not, because the
+  body is the validated rendering, not authored text.
+- `off`: nothing is sent; the aggregate and the proposals continue while `enabled`.
+
+OpenTelemetry export (owner, 2026-10-03). The vocabulary maps to OpenTelemetry without
+translation: a day is a trace; each hook call and each seat run is a span with the
+attributes `wuwei.event`, `wuwei.guard`, `wuwei.outcome` (`allow`, `warn`, `refuse` or
+`unmeasured`), `wuwei.reason_code` (the guard and the exit class), `wuwei.posture` and
+`wuwei.item`; decisions, loops, gate rounds and owner interactions are span events; the
+weekly metrics are counters and histograms. A hook-call span takes its record's time and no
+duration, since no hook keeps a clock; a seat span runs from `seat launched` to `seat
+stopped`. `[telemetry.otlp]`, off by default and set only by the owner with `bin/wuwei
+config set`:
+
+- `endpoint` (default `""`, off): an `https://` OTLP/HTTP base URL on the owner's own
+  platform.
+- `headers_env` (default `""`): the name of the `.wuwei/env` variable holding the auth
+  headers as comma-separated `key=value` pairs; the value never enters config, events or
+  output.
+
+While `enabled` and `endpoint` is set, each watch sweep posts the records appended since
+the last export as OTLP/HTTP JSON to `<endpoint>/v1/traces`, and each newly finalised week
+to `<endpoint>/v1/metrics`, built with stdlib `json` and `urllib` in the watch-service
+adapter (no SDK, 5 second timeout, inside the 10-second budget above). An `otlp_at` mark
+(the day and byte offset of the last exported record) advances only on a 2xx answer; a
+failure records `telemetry.unsent` with mode `otlp` and the next sweep resends from the
+mark, so nothing waits or blocks. The export carries only the attributes and counts above,
+never command text, reasons or record bodies. It is the owner's own data, identifiers
+included, so it never goes to the project and is not the anonymous payload. `events.jsonl`
+stays the source of truth and what the aggregation reads.
+
+`wuwei telemetry preview [<week>]` prints exactly what each mode would send for that final
+week (the latest by default) and names the mode in force. `wuwei telemetry off` sets
+`share = "off"` without a confirmation, since it only narrows what leaves, and records
+`telemetry.off`; turning sharing on is the owner's (the interview or `config set`). Every
+`telemetry.*` event is written only by the CLI; `telemetry.ready` is a nudge and the rest
+are silent.
+
+Interview. One workspace question after the posture: "Share weekly usage counts with the
+WUWEI project?", choices in this order:
+
+- Anonymous: "Counts only, sent over HTTPS with a random workspace id; no account, nothing
+  about your code or people."
+- Attributed: "The same counts as a GitHub issue opened from your gh account, so it shows
+  your login."
+- Off: "Nothing leaves this machine; the counts stay local."
+
+Project side, in this repository and outside the plugin. `scripts/telemetry-worker/` holds
+the collector: a small function that checks a payload with `telemetry.validate` itself
+(the module is bundled at deploy), accepts only a `week` among the four ISO weeks before the
+week of receipt and one payload per token and week (a repeat gets 409), takes at most 10
+payloads a day per IP address kept in memory only, never written, and at most 1000 writes a
+day in all (past either limit it answers 429), and writes it to a public dataset repository as `data/<week>/<token>.json`
+with a bot token that lives only in the worker; plus a deploy note. The project's weekly
+summary comes from the dataset (`scripts/telemetry-worker/summary.py`), not from the
+plugin. Attributed issues are found by their title; a repository workflow labels an issue
+`telemetry` when its title starts with `telemetry: `.
+
+Residual risk. The token is unauthenticated, so anyone can post invented weeks; the
+collector's checks bound what is stored and the summary counts per token. Its limits bound
+how many arrive: a sender rotating IP addresses can still fill the daily cap, which spends
+no more of the bot token than the cap and delays real weeks to a later run. A process
+running as the owner can forge `.wuwei/metrics/` (9.1); the payload rules bound what such a
+forgery can carry out to numbers in the schema.
 
 ## 6. Memory
 
@@ -1023,7 +1246,7 @@ that it did nothing and returns exit 2 where a measurement was expected.
 | review_bot | `score(pr)`, `open_findings(pr)` | Greptile |
 | runtime | `dispatch(role, brief_path, worktree, write)`, `status(job)`, `result(job)` (includes usage: tokens, cost, model, duration) | Claude (default), Codex |
 | scanner | `audit(path)`, `gate(result, threshold)`, `traces(file)`, `mcp(servers)` | ZIRAN |
-| code_host | `pr(ref)`, `checks(ref, sha)`, `reviews(ref)`, `threads(ref)`, `protection(repo, branch)`, `create_pr(draft)`, `request_reviewers(ref, logins)`, `comment(ref, text, thread)`, `merge(ref, sha)`, `revert_pr(ref)` | GitHub through `gh` (default); GitLab possible later |
+| code_host | `pr(ref)`, `checks(ref, sha)`, `reviews(ref)`, `threads(ref)`, `protection(repo, branch)`, `create_pr(draft)`, `request_reviewers(ref, logins)`, `comment(ref, text, thread)`, `merge(ref, sha)`, `revert_pr(ref)`, `issue(repo, title, body)` (5.13) | GitHub through `gh` (default); GitLab possible later |
 | vcs | `identity(repo)`, `head(repo)`, `merge_base(repo, ref)`, `status(repo)`, `diff_stat(repo, base, head)`, `log_since(repo, sha)`, `worktree_add(repo, branch, path)` | git |
 | inbound (M5) | `poll(since)` or `receive(request)`, `reply(thread, text)` | Slack (poll) |
 | control_plane (M5) | `escalate(decision)`, `notify(summary)`, `poll_replies(since)` | Remote Control plus push (default), Signal, WhatsApp |
