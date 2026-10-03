@@ -38,7 +38,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei mcp` | Checks the attached MCP servers; `decide [D-<n>] <option>` records your answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
 | `bin/wuwei memory` | Checks workspace memory. | [Concepts](concepts.md#memory) |
 | `bin/wuwei merge` | Checks or merges an eligible PR. | [Retro and merge](#retro-and-merge-configuration) |
-| `bin/wuwei metrics` | Shows the recorded process metrics. | [Long sessions](daily.md#long-sessions) |
+| `bin/wuwei metrics` | Shows the recorded process metrics; `metrics --week [<week>]` prints a week's telemetry aggregate, computing it when absent. | [Telemetry](configuration.md#telemetry) |
 | `bin/wuwei next` | Prints where the day stands and the one next step with its command; `--json` prints `{state, step, command}`. | [What the session knows](agent.md) |
 | `bin/wuwei note` | Manages workspace notes. | [Concepts](concepts.md#memory) |
 | `bin/wuwei nudges` | Lists open nudges and pages. | [Watch state](#watch-state) |
@@ -60,6 +60,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei state` | Reads or updates day state; `recover` restores it. | [State recovery](#state-recovery) |
 | `bin/wuwei status` | Shows day status; `--line` is the status line. | [Watch state](#watch-state) |
 | `bin/wuwei steward` | Runs a steward review or acknowledges steering. | [Steward](#steward) |
+| `bin/wuwei telemetry` | `preview [<week>]` prints exactly what each sharing mode would send; `off` stops sharing; `send [<week>]` opens the attributed issue (owner, host terminal); `proposals [--widget]` lists or presents a final week's proposals once. | [Telemetry](configuration.md#telemetry) |
 | `bin/wuwei sweep` | Plumbing: checks day obligations. | [Concepts](concepts.md#day-flow) |
 | `bin/wuwei verdict` | Plumbing: checks a gate verdict. | [Gate verdict layout](#gate-verdict-layout) |
 | `bin/wuwei voice` | Shows or edits your voice profile. | [Owner voice](configuration.md#owner-voice) |
@@ -179,7 +180,7 @@ A clock line proves the watch runs, not that the system behaves. On every watch 
 | `planner` | today has no planner, or the planner session is registered and not stale | idle seconds |
 | `memory` | free memory is at or above `host.free_memory_mb` (unmeasured with `adapters.host = "none"`) | MiB free |
 
-The hook probes run through the real `bin/wuwei hook PreToolUse` with session id `wuwei-heartbeat` and cwd `.wuwei`, started together with `status --line`. Their refusals are not recorded as `hook.refusal` events. Probes never write outside `.wuwei/`, never touch a configured repository, make no code-host or model call and spend no tokens.
+The hook probes run through the real `bin/wuwei hook PreToolUse` with session id `wuwei-heartbeat` and cwd `.wuwei`, started together with `status --line`. Their refusals are not recorded as `hook.refusal` events. The `refused`, `allowed`, `state_write` and `read_loop` rows also carry `ms`, the call's wall milliseconds including interpreter start, which the weekly telemetry reads as hook latency; a timed-out call has no `ms`. Probes never write outside `.wuwei/`, never touch a configured repository, make no code-host or model call and spend no tokens.
 
 Each probe is `ok`, `failed` or `unmeasured` with its value. The `heartbeat: clock` record, also kept under `watch.heartbeat` in day state, carries `health`, every probe's `result` and `value`, `drift`, `page` and `ping`. Health is `degraded` when any probe failed, else `unmeasured` when any probe is unmeasured, else `ok`.
 
@@ -393,6 +394,7 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei config set <key> <value>` | yes |
 | `bin/wuwei config add-repo --name --path --branch` | yes |
 | `bin/wuwei setup` | yes |
+| `bin/wuwei telemetry send [<week>]` | yes |
 
 A command that asks y/N shows what it confirms and reads the answer from `/dev/tty`; anything but y or yes declines. Without a terminal it changes nothing and exits 2 with `this is an owner action: run it in a host terminal`. From outside the workspace, set `WUWEI_WORKSPACE=<path>` or put `--workspace <path>` first, as in `bin/wuwei --workspace <path> decide D-1 A`. `drafts approve --edit`, `goals edit` and `voice edit` open `EDITOR`. As with other host-only actions, this follows the cooperative hook threat model in spec 9.1.
 

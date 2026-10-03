@@ -90,7 +90,7 @@ def _run(args, payload=None, *, json_output=True, env=None):
                 else:
                     allowed = (options == ['--method', 'POST', '--input', '-'] and
                                re.fullmatch(r'pulls|pulls/[1-9][0-9]*/requested_reviewers|'
-                                            r'issues/[1-9][0-9]*/comments|'
+                                            r'issues|issues/[1-9][0-9]*/comments|'
                                             r'pulls/[1-9][0-9]*/comments/[1-9][0-9]*/replies',
                                             match[2]) is not None)
     if not allowed:
@@ -532,6 +532,15 @@ def comment(ref, text, thread, root=None):
         endpoint = f'repos/{repo}/pulls/{number}/comments/{thread}/replies'
     value = _api(endpoint, payload={'body': text})
     return {'id': _field(value, 'id', int), 'url': _field(value, 'html_url', str)}
+
+
+@_operation
+def issue(repo, title, body, root=None):
+    """#422: open one issue; the attributed telemetry body is a validated rendering, not authored text."""
+    if not isinstance(title, str) or not isinstance(body, str):
+        raise ValueError('expected issue title and body')
+    value = _api(f'repos/{_repo(repo)}/issues', payload={'title': title, 'body': body})
+    return {'number': _field(value, 'number', int), 'url': _field(value, 'html_url', str)}
 
 
 @_operation

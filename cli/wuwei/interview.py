@@ -203,6 +203,16 @@ QUESTIONS = (
                      'credentials (strict posture).'),
           {'security.posture': 'strict'})),
      'free': None},
+    # Design 5.13: consent is per workspace; a calibration profile never carries it.
+    {'id': 'telemetry', 'scope': 'workspace', 'header': 'Telemetry',
+     'question': 'Share weekly usage counts with the WUWEI project?',
+     'choices': (
+         ('Anonymous', 'Counts only, sent over HTTPS with a random workspace id; no account, nothing about '
+          'your code or people.', {'telemetry.share': 'anonymous'}),
+         ('Attributed', 'The same counts as a GitHub issue opened from your gh account, so it shows your login.',
+          {'telemetry.share': 'attributed'}),
+         ('Off', 'Nothing leaves this machine; the counts stay local.', {'telemetry.share': 'off'})),
+     'free': None},
     {'id': 'tracker', 'scope': 'workspace', 'header': 'Tracker', 'question': 'Where does your backlog live?',
      'choices': (
          ('None', 'Discovery reads no tracker backlog.', {'adapters.tracker': 'none'}),

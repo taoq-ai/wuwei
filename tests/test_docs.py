@@ -1111,3 +1111,17 @@ def test_pages_address_the_reader():
             text = re.sub(r'\n## Glossary\n.*?(?=\n## )', '\n', text, flags=re.S)
         found += [f'{path.name}: {line}' for line in text.splitlines() if re.search(r'\bthe owner\b', line, re.I)]
     assert not found, f'{len(found)} lines:\n' + '\n'.join(found)
+
+
+def test_telemetry_is_documented():
+    # #422: the plan skill presents proposals after the gate; the security page says what leaves.
+    plan = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+    assert 'wuwei telemetry proposals --widget' in plan
+    security = (SITE / 'security.md').read_text()
+    for phrase in ('IP address', 'your login', 'wuwei telemetry off', '`telemetry.share`'):
+        assert phrase in security, phrase
+    reference = (SITE / 'reference.md').read_text()
+    for phrase in ('metrics --week', '`ms`', 'telemetry send'):
+        assert phrase in reference, phrase
+    assert 'telemetry send' in (SITE / 'concepts.md').read_text()
+    assert 'OpenTelemetry' in (SITE / 'configuration.md').read_text()

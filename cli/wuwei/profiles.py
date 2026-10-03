@@ -32,7 +32,7 @@ DENIED = (
     ('shepherd.autostart', lambda new, old: new is True),
     ('gates.second_opinion', lambda new, old: new != 'off'),
     *((pattern, lambda new, old: True)
-      for pattern in ('adapters.*', 'calendar.url', 'watch.ping_url', 'codex.command')),
+      for pattern in ('adapters.*', 'calendar.url', 'watch.ping_url', 'codex.command', 'telemetry.*')),
 )
 OUTSIDE = 'outside what a profile may carry'
 # Private keys whose values say nothing about a person, so they are not searched for in text.

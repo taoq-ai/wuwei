@@ -153,6 +153,7 @@ def test_config_defaults_and_independence(tmp_path):
     from wuwei.workspace import load_config
     write_config(tmp_path, '')
     config = load_config(tmp_path)
+    config.pop('telemetry')  # pinned in test_telemetry_config
     outbound = config.pop('outbound')
     assert outbound['work_channels'] == outbound['company_domains'] == []
     assert outbound['people'] == {} and outbound['sensitive_keywords']
@@ -1224,3 +1225,17 @@ def test_load_config_returns_independent_copies(tmp_path):
     data['goals'].append('G-1')
     assert state.read_state(directory=tmp_path / 'day') == state.DAY_DEFAULTS
     assert state.DAY_DEFAULTS['items'] == {} and state.DAY_DEFAULTS['goals'] == []
+
+
+def test_telemetry_config(tmp_path):
+    # #422, design 5.13: sharing is not asked yet by default and only three values exist.
+    from wuwei import workspace
+    from wuwei.workspace import ConfigError, load_config
+    write_config(tmp_path, '')
+    assert load_config(tmp_path)['telemetry'] == {
+        'enabled': True, 'share': '', 'endpoint': '', 'repository': 'taoq-ai/wuwei',
+        'otlp': {'endpoint': '', 'headers_env': ''}}
+    assert workspace.CONFIG_CACHE_VERSION == 2
+    write_config(tmp_path, '[telemetry]\nshare = "maybe"\n')
+    with pytest.raises(ConfigError):
+        load_config(tmp_path)

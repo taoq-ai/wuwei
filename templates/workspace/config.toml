@@ -244,3 +244,15 @@ required = true
 [guards]
 shadow_days = 7 # Days in observe before one nudge asks to switch to guarded.
 shadow_since = "" # YYYY-MM-DD observe started; wuwei init --posture observe sets it.
+
+# Weekly usage counts (design 5.13). share: "anonymous", "attributed" or "off"; empty means
+# not asked yet and sends nothing. bin/wuwei telemetry preview prints exactly what would leave.
+# [telemetry]
+# enabled = true
+# share = ""
+# endpoint = "" # Where anonymous mode posts; empty or not https keeps every week local.
+# repository = "taoq-ai/wuwei" # Where attributed mode opens issues.
+# Your own OpenTelemetry platform, set only by you with bin/wuwei config set.
+# [telemetry.otlp]
+# endpoint = "" # https OTLP/HTTP base URL
+# headers_env = "" # Name of the .wuwei/env variable holding key=value,key=value auth headers.

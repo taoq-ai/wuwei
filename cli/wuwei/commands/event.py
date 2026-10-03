@@ -69,6 +69,8 @@ EVENT_PRODUCERS = {
     'negotiation.notified': 'wuwei listen', 'decision.waited': 'wuwei sweep',
     'doctor.fixed': 'owner host wuwei doctor --fix',
     'config.newer_template': 'wuwei hook PreToolUse',
+    **{f'telemetry.{action}': 'wuwei telemetry or wuwei sweep'
+       for action in ('skipped', 'unsent', 'shared', 'ready', 'presented', 'off')},
 }
 
 

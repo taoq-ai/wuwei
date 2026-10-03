@@ -298,3 +298,20 @@ def test_ask_metrics(root):
     value = metrics.collect(root)
     assert value['asks_per_item'] == {'alpha': 2, 'beta': 1, 'day': 1}
     assert value['unnecessary_asks'] == 1
+
+
+def test_metrics_week_prints_computes_and_refuses(root, capsys, monkeypatch):
+    # #422: the weekly aggregate on demand; bare metrics is unchanged.
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-03T12:00:00+00:00')
+    state.append_event('build.parked', {'item': 'A'}, root)
+    assert main(['metrics', '--week', '2026-W40']) == 0
+    found = json.loads(capsys.readouterr().out)
+    assert (found['week'], found['final'], found['metrics']['stuck_parks']) == ('2026-W40', False, 1)
+    assert json.loads((root / '.wuwei/metrics/2026-W40.json').read_text()) == found
+    (root / '.wuwei/metrics/2026-W40.json').write_text(json.dumps({'week': '2026-W40', 'kept': True}))
+    assert main(['metrics', '--week']) == 0
+    assert json.loads(capsys.readouterr().out) == {'week': '2026-W40', 'kept': True}
+    assert main(['metrics', '--week', 'bad']) == 2
+    assert 'invalid week' in capsys.readouterr().err
+    assert main(['metrics']) == 0
+    assert 'stuck_parks_per_item' in json.loads(capsys.readouterr().out)

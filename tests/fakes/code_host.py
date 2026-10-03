@@ -62,3 +62,6 @@ class Fake(Recorder):
 
     def probe(self, ref, tags, root=None):
         return self._call('probe', (ref, tags), root)
+
+    def issue(self, repo, title, body, root=None):
+        return self._call('issue', (repo, title, body), root)
