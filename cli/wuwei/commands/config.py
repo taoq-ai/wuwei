@@ -4,7 +4,7 @@ import os
 import re
 import sys
 
-from wuwei import env, outward, registry
+from wuwei import env, outward, registry, workspace
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
 from wuwei.workspace import ConfigError, load_config
@@ -60,6 +60,18 @@ def run(args):
             print(f'  {label}: no credential variables required')
     # Reported, not a finding: the outward lint already fails closed without a name.
     print('Owner:\n  ' + ('owner.name: set' if config['owner']['name'].strip() else outward.OWNER_UNSET))
+    # Reported, not a finding (#331): a floor violation already failed load_config above.
+    name, levels = workspace.posture(config)
+    print(f'Posture: {name}')
+    for area in workspace.AREAS:
+        mark = (' (floor)' if area in workspace.FLOORS else
+                ' (security.areas)' if config['security']['areas'][area] else '')
+        print(f'  {area}: {levels[area]}{mark}')
+    print('  owner-only actions block in every posture: deploys, merges and approvals, '
+          'approve-tier messages')
+    if config['guards']['mode'] == 'shadow':
+        print('  guards.mode = "shadow" is deprecated: set security.posture = "observe"; '
+              'guards.shadow_days and guards.shadow_since keep the time box')
     if config['adapters']['inbound'] != 'none':
         from wuwei.remote import PIN
         pin = config['control_plane']['owner']

@@ -16,6 +16,7 @@ DEFAULTS = {'project_file': '.mcp.json',
             'plugins_file': '~/.claude/plugins/installed_plugins.json',
             'user_file': '~/.claude.json'}
 COVERED = 'WUWEI plugin.json servers covered by plugin integrity (signed manifest), not scanned'
+NOT_CHECKED = 'MCP registry: not checked (security.areas.mcp = "off")'
 NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}')
 SEVERITIES = workspace.SCHEMA['scanner']['severity_threshold'][2]
 # An exact version only: @latest, ranges and 1.x are unpinned.
@@ -281,8 +282,32 @@ def _gate(record, block):
 
 
 def cached(root):
+    """The launch gate under the mcp posture level (#331)."""
     try:
         root = Path(root).resolve()
+        config = workspace.load_config(root)
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        return _failure(exc)
+    name, levels = workspace.posture(config)
+    level = levels['mcp']
+    if level == 'off':
+        return registry.Result(0, reason=NOT_CHECKED)
+    block = config['scanner']['mcp']['block']
+    if level == 'block':  # strict: the pre-#325 list
+        block = sorted({*block, 'critical', 'high', 'unmeasured'})
+    result = _cached(root, block)
+    if not result.exit:
+        return result
+    if level == 'warn' and name == 'observe':
+        return registry.Result(0, reason=f'{result.reason} (mcp: warn, security.areas.mcp)')
+    # Floor (#331): under guarded and strict, scanner.mcp.block findings and a check that
+    # could not run block whatever the mcp level is.
+    note = 'floor: scanner.mcp.block' if level == 'warn' else 'security.areas.mcp'
+    return registry.Result(result.exit, reason=f'{result.reason} (mcp: {level}, {note})')
+
+
+def _cached(root, block):
+    try:
         data = _read(root)
         if data is None:
             if discover(root, workspace.load_config(root)):
@@ -290,7 +315,7 @@ def cached(root):
             return registry.Result(0)
         if data['day'] != workspace.now().date().isoformat():
             return registry.Result(2, reason='MCP registry unmeasured: morning check is stale')
-        return _gate(data, workspace.load_config(root)['scanner']['mcp']['block'])
+        return _gate(data, block)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         return _failure(exc)
 
@@ -357,8 +382,11 @@ def _backup(root):
 def check(root):
     try:
         root = Path(root).resolve()
+        config = workspace.load_config(root)
+        if workspace.posture(config)[1]['mcp'] == 'off':
+            return registry.Result(0, reason=NOT_CHECKED)
         covered, plugins = [], set()
-        if _read(root) is None and not discover(root, workspace.load_config(root), covered):
+        if _read(root) is None and not discover(root, config, covered):
             return registry.Result(0, reason=COVERED if covered else '')
         with _lock(root):
             old = _read(root)

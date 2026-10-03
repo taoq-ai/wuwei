@@ -13,6 +13,8 @@ PROBES = {
         ('Agent', {'prompt': 'launch without brief', 'description': 'build',
                    'subagent_type': 'wuwei:builder'}, 1),
     ('agent_launch', 'SubagentStop', None, 'stop'): ('stop event', {}, 'event'),
+    ('agent_launch', 'PreToolUse', 'Agent', 'check_mcp'):
+        ('Agent', {'prompt': 'p', 'description': 'build', 'subagent_type': 'wuwei:builder'}, 2),
     ('commit_push', 'PreToolUse', 'Bash', 'check'): ('Bash', {'command': 'git push "'}, 2),
     ('decision', 'PostToolUse', 'Write|Edit|MultiEdit|NotebookEdit|Bash', 'check_write'):
         ('Write', {}, 2),
@@ -170,6 +172,8 @@ def assert_probe(check, row, root, monkeypatch):
         payload['cwd'] = 'relative'
     elif check.__module__.endswith('.traces'):
         monkeypatch.setattr(workspace, 'guard_scope', lambda _: (_ for _ in ()).throw(ValueError('scope')))
+    elif check.__name__ == 'check_mcp':
+        (root / '.mcp.json').write_text('{"mcpServers": {"docs": {"command": "fake-server"}}}')
     elif check.__name__ == 'check_stop':
         payload.update(agent_type='wuwei:builder', last_assistant_message='Add a cache?')
     elif check.__module__.endswith('.verdict') and check.__name__ == 'check_retro':

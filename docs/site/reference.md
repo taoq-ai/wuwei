@@ -33,7 +33,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei heartbeat` | Probes that hooks refuse, allow and answer in budget. | [Heartbeat](#heartbeat) |
 | `bin/wuwei hook` | Plumbing: runs the guards for a Claude Code hook. | [Hook latency budget](#hook-latency-budget) |
 | `bin/wuwei index` | Generates the memory index. | [Concepts](concepts.html#memory) |
-| `bin/wuwei init` | Creates or upgrades a workspace; `--shadow` starts the guards in [shadow mode](#shadow-mode). | [Daily path](daily.html) |
+| `bin/wuwei init` | Creates or upgrades a workspace; `--posture observe|guarded|strict` sets the [security posture](#security-posture) (`--shadow` is `--posture observe`). | [Daily path](daily.html) |
 | `bin/wuwei integrity` | Checks signed plugin integrity; `reconfirm` pins a development checkout. | [Recovery](recovery.html#integrity-reconfirm) |
 | `bin/wuwei listen` | Polls the inbound source into the workspace inbox and probes raised and claimed PRs. | [Remote](remote.html) |
 | `bin/wuwei mcp` | Checks the attached MCP servers; `decide` records the owner's answer. | [MCP registry checks](configuration.html#mcp-registry-checks-s3) |
@@ -51,7 +51,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei remote` | Owner actions for the remote control plane. | [Remote](remote.html) |
 | `bin/wuwei reply` | Replies to one unthreaded human obligation. | [Outward draft queue](#outward-draft-queue) |
 | `bin/wuwei report` | Shows the owner report. | [Day close](concepts.html#day-close) |
-| `bin/wuwei shadow` | `report` lists what the guards would have refused since `guards.shadow_since`, grouped by guard, and names likely false positives. | [Shadow mode](concepts.html#shadow-mode) |
+| `bin/wuwei shadow` | `report` lists what the guards would have refused since `guards.shadow_since`, grouped by guard, and names likely false positives. | [Security posture](concepts.html#security-posture) |
 | `bin/wuwei retro` | Compiles the steward retro. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei runtime` | Dispatches and inspects runtime jobs. | [Recovery](recovery.html#runtime-dispatch) |
 | `bin/wuwei sessions` | Lists registered sessions, roles and claims. | [Sessions](#sessions) |
@@ -315,11 +315,13 @@ Run `bin/wuwei state recover` in a host terminal. It prints a short snapshot dig
 
 Recovery is an owner action. Agent tool hooks refuse `wuwei state recover` inside a workspace and refuse writes to the snapshot. As with other host-only actions, this follows the cooperative hook threat model in spec 9.1.
 
-## Shadow mode
+## Security posture
 
-`bin/wuwei init --shadow` writes `guards.mode = "shadow"` and today's date as `guards.shadow_since` into a new workspace; with `--upgrade` it exits 2. In shadow mode a refusal from any guard module except `protect_state`, `integrity`, `deploy`, `outward` and `pr` is recorded as a `guard.would_refuse` event and the hook exits 0. The event payload is `{guard, reason, target, session, item}`: `target` is the normalised Bash command, else the file path, else the tool name, with credentials, the canary and the honeytoken redacted; `item` is the item the session claims, or null. Only the hook writes it; `bin/wuwei event` refuses the kind. If the event cannot be written, or the config cannot be read, the refusal is enforced. Refusals in the heartbeat session `wuwei-heartbeat` are always enforced.
+`bin/wuwei init --posture <name>` writes `security.posture` into a new workspace; `observe` also writes today's date as `guards.shadow_since`, and `--shadow` is `--posture observe`. With `--upgrade` either exits 2. The hook reads the posture only when a guard refused, and per refusal: an `off` area drops it; a `warn` area records a `guard.would_refuse` event and the hook exits 0; a `block` area enforces it and the reason shown gains a line `posture: <area> = block (set security.areas.<area>)`, or `(floor; no setting lowers it)` for `records`, or `(owner-only action; no setting lowers it)` for `deploy`, `pr` and the outward approval tier. `hook.refusal` keeps the guard's own reason in `refusals`. A refusal from a guard module with no area (a test stub) blocks with no posture line. The event payload is `{guard, area, level, posture, reason, target, session, item}`: `target` is the normalised Bash command, else the file path, else the tool name, with credentials, the canary and the honeytoken redacted; `item` is the item the session claims, or null. Only the hook writes it; `bin/wuwei event` refuses the kind. If the event cannot be written, or the config cannot be read, the refusal is enforced. Refusals in the heartbeat session `wuwei-heartbeat` are always enforced.
 
-`status --line` adds a `shadow` part after the nudges while the mode is on, and `status --json` carries `shadow`. Once `guards.shadow_days` calendar days have passed since `guards.shadow_since`, `bin/wuwei nudges` and the status line count one `guards.shadow` nudge asking you to switch to enforce or raise `guards.shadow_days`. With an empty `shadow_since` there is no nudge.
+`status --line` adds the posture name after the nudges when it is not `guarded`, and `status --json` carries `posture`. Under `observe`, once `guards.shadow_days` calendar days have passed since `guards.shadow_since`, `bin/wuwei nudges` and the status line count one `guards.shadow` nudge asking you to set `security.posture = "guarded"` or raise `guards.shadow_days`. With an empty `shadow_since` there is no nudge. Under `guarded` or `strict` a `guard.would_refuse` event is a nudge, one row per guard per day, naming the guard, its reason and `security.areas.<area>`; under `observe` it is silent.
+
+With `security.areas.mcp = "off"`, `bin/wuwei mcp check` exits 0 with `MCP registry: not checked (security.areas.mcp = "off")`, runs no scanner and writes no event, and the launch gate passes. A non-zero launch gate reason names the mcp level and either `floor: scanner.mcp.block` or `security.areas.mcp`.
 
 ## Why
 
@@ -329,7 +331,7 @@ An event id is `<YYYY-MM-DD>:<line>`: the day directory and the 1-based line of 
 
 For an item, `why` reads every day whose `state.json` holds it, oldest first, and prints one line per step in this order: how it entered the queue (goal and score), its gate tier and the rules that set it, each gate verdict with its blocking findings, each decision with who decided it, each phase change with the command that made it, the merge with the policy evidence that cleared it, and what it waits on now. A PR ref reads the item that links it. A step with no record prints `not recorded`, never a guess. The queue entry, the tier and the gate verdicts are always listed; the merge is listed for a merged item.
 
-For a refusal, `why` prints the guard, the rule, the normalised command and the fix. The `hook.refusal` payload is `{reason, refusals, target}`: `refusals` holds one `{guard, reason}` per enforced guard, and `target` is redacted as in shadow mode. The rule is the message before its first `; ` and the fix is the text after it. Refusals recorded before this field existed print `not recorded` for the guard and the command. In shadow mode a `guard.would_refuse` event is explained the same way, from its `guard`, `reason` and `target`, under `would have refused (shadow) at <ts>`; `last refusal` is the newest of either kind.
+For a refusal, `why` prints the guard, the rule, the normalised command and the fix. The `hook.refusal` payload is `{reason, refusals, target}`: `refusals` holds one `{guard, reason}` per enforced guard, and `target` is redacted as for a warning. The rule is the message before its first `; ` and the fix is the text after it. Refusals recorded before this field existed print `not recorded` for the guard and the command. A `guard.would_refuse` event is explained the same way, from its `guard`, `reason` and `target`, under `would have refused (shadow) at <ts>`, followed by `posture: <area> = <level> (<posture>)` when it names an area; `last refusal` is the newest of either kind.
 
 For a decision, `why D-<n>` reads today's record and prints the options with their scores, the recommendation, the weights, the margin (the recommended score minus the best other score, over 10 times the sum of the weights), the class, the cruise level and who decided. Cruise mode is not built yet, so the class and level print `not recorded` unless the record or its event names them. An owner answer records `decided_by: owner` in its `decision.decided` or `decision.reversed` event.
 

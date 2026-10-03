@@ -96,7 +96,7 @@ From the same project directory, initialize the workspace:
 ../wuwei-plugin/bin/wuwei init .
 ```
 
-For your first week on a project, `../wuwei-plugin/bin/wuwei init --shadow .` starts the guards in shadow mode: they record what they would refuse and let the call through, and `bin/wuwei shadow report` lists it. See [shadow mode](docs/site/concepts.md#shadow-mode).
+For your first week on a project, `../wuwei-plugin/bin/wuwei init --posture observe .` starts the guards in the observe posture: they record what they would refuse and let the call through, and `bin/wuwei shadow report` lists it. See [security posture](docs/site/concepts.md#security-posture).
 
 `init` ends by checking the installation. An intact signed release prints `plugin integrity: clean` and needs no reconfirmation.
 

@@ -8,7 +8,7 @@ import shlex
 import sys
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
-from wuwei.guards import EVENTS, NEVER_SHADOWED, SELECTION, discover, profile_result
+from wuwei.guards import EVENTS, SELECTION, discover, profile_result
 from wuwei.workspace import ConfigError
 
 # The watch heartbeat's probe calls; their refusals are measurements, not seat refusals.
@@ -89,14 +89,14 @@ def run(args):
             message = (f'{type(exc).__name__}: could not run PostToolUse guard'
                        if args.event == 'PostToolUse' else f'{type(exc).__name__}: {exc}')
         if code:
-            refusals.append((guard.check.__module__.rsplit('.', 1)[-1], message))
+            refusals.append((guard.check, message))
         elif message:
             context.append(message)
-    enforced = refusals
+    enforced = [(module(check), message, '') for check, message in refusals]
     if (refusals and args.event != 'SessionStart'
             and payload.get('session_id') != HEARTBEAT_SESSION):
-        enforced = shadow(payload, refusals, root)
-    reasons = [message for _, message in enforced]
+        enforced = posture(payload, refusals, root)
+    reasons = [f'{message}\n{line}' if line else message for _, message, line in enforced]
     if args.event == 'SessionStart' and (context or reasons):
         print(json.dumps({'hookSpecificOutput': {
             'hookEventName': args.event, 'additionalContext': '\n'.join(context + reasons)}}))
@@ -106,7 +106,8 @@ def run(args):
     if reasons:
         return refuse(args.event, '\n'.join(reasons), cwd=payload.get('cwd'),
                       record=payload.get('session_id') != HEARTBEAT_SESSION,
-                      refusals=enforced, payload=payload)
+                      refusals=[(guard, message) for guard, message, _ in enforced],
+                      payload=payload)
     if args.event == 'Stop' and context:
         print('\n'.join(context), file=sys.stderr)
     return CLEAN
@@ -180,27 +181,40 @@ def reaches_workspace(payload, root):
     return False
 
 
-def shadow(payload, refusals, root):
-    """Shadow mode (#308): record refusals outside NEVER_SHADOWED; return the enforced refusals."""
+def module(check):
+    return check.__module__.rsplit('.', 1)[-1]
+
+
+def posture(payload, refusals, root):
+    """#331, at the point #308 shadow mode used: per refusal, off drops it, warn records
+    guard.would_refuse and lets the call through, block enforces it with its posture line.
+    Returns (guard, reason, line); the config is read only because a guard refused."""
     from wuwei import state, workspace
+    from wuwei.guards import level
     try:
-        shadowing = root is not None and workspace.load_config(root)['guards']['mode'] == 'shadow'
-    except BaseException:
-        shadowing = False  # An unreadable config enforces, exactly as before shadow mode.
+        if root is None:
+            raise LookupError('no workspace')
+        name, levels = workspace.posture(workspace.load_config(root))
+    except BaseException:  # No workspace or an unreadable config enforces, as before #331.
+        return [(module(check), reason, '') for check, reason in refusals]
     enforced, shown = [], None
-    for guard, reason in refusals:
-        if not shadowing or guard in NEVER_SHADOWED:
-            enforced.append((guard, reason))
+    for check, reason in refusals:
+        guard, area, decided, line = level(check, levels)
+        if decided == 'off':
+            continue
+        if decided == 'block':
+            enforced.append((guard, reason, line))
             continue
         try:
             if shown is None:
                 shown = redacted_target(payload, root)
             state.append_event('guard.would_refuse', {
-                'guard': guard, 'reason': reason, 'target': shown,
-                'session': payload['session_id'], 'item': claimed(root, payload['session_id'])}, root)
+                'guard': guard, 'area': area, 'level': decided, 'posture': name,
+                'reason': reason, 'target': shown, 'session': payload['session_id'],
+                'item': claimed(root, payload['session_id'])}, root)
         except BaseException as exc:
             print(f'wuwei hook: could not record shadow refusal: {exc}', file=sys.stderr)
-            enforced.append((guard, reason))
+            enforced.append((guard, reason, line))
     return enforced
 
 
