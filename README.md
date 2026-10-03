@@ -27,13 +27,13 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for re
 
 ## What ships today
 
-- The day loop: `/wuwei plan`, the morning gate, builders, gates, PR and close ([daily path](docs/site/daily.md)).
+- The day loop: `/wuwei plan`, the morning [gate](docs/site/concepts.md#gate), builders, gates, PR and close ([daily path](docs/site/daily.md)).
 - Guards at action time, a signed release and integrity checks ([security](docs/site/security.md)).
-- Review tiers: one quality gate for a small change, three gates otherwise ([review tiers](docs/site/concepts.md#review-tiers)).
+- Review [tiers](docs/site/concepts.md#tier): one quality gate for a small change, three gates otherwise ([review tiers](docs/site/concepts.md#review-tiers)).
 - Remote operation from the phone through Remote Control and a Slack owner DM ([remote operation](docs/site/remote.md)).
 - The cockpit: a day board on loopback and inline in Claude Code ([cockpit and board](docs/site/concepts.md#cockpit-and-board)).
 - Calibration and the owner interview ([calibration](docs/site/configuration.md#calibration)).
-- Setup in one command: it finds the repositories, calibrates them, asks the owner interview and applies one proposal after its digest ([setup](docs/site/daily.md#2-configure)).
+- Setup in one command: it finds the repositories, calibrates them, asks the owner interview and applies one proposal after its [digest](docs/site/concepts.md#digest) ([setup](docs/site/daily.md#2-configure)).
 - Doctor: install, host, workspace, gate, day and guard problems, each with its fix ([doctor](docs/site/reference.md#doctor)).
 - Security posture: observe, guarded or strict per area, with floors no setting lowers. The MCP registry gate warns by default and blocks on a critical finding or a check that could not run ([security posture](docs/site/security.md#security-posture)).
 - The heartbeat: probes that prove the system behaves, with a dead-man ping ([heartbeat](docs/site/reference.md#heartbeat)).
@@ -50,7 +50,7 @@ alongside the tools below.
 
 | Tool | Who plans the day | Who reviews the work | What stops a bad merge | What is learned afterwards | Where it runs |
 |---|---|---|---|---|---|
-| **WUWEI**, chartered roles that run a working day | A planner seat ranks the work and you approve it at the morning gate | One or three gates that did not write the change, then one fix round | Shipped hooks refuse at the moment of action; the merge policy and your branch protection decide | A daily retro: seats propose rule changes and you promote them | Claude Code, across your repositories, through `gh` |
+| **WUWEI**, chartered roles that run a working day | A planner [seat](docs/site/concepts.md#seat) ranks the work and you approve it at the morning gate | One or three gates that did not write the change, then one fix round | Shipped hooks refuse at the moment of action; the merge policy and your branch protection decide | A daily retro: seats propose rule changes and you promote them | Claude Code, across your repositories, through `gh` |
 | [Spec Kit](https://github.com/github/spec-kit), a spec-driven development toolkit | You run specify, plan and tasks per feature, after a project constitution | Converge adds checklists and consistency analysis when you want them | Your repository rules | Specs and the constitution in the repository | Many coding agents through integrations |
 | [OpenSpec](https://github.com/Fission-AI/OpenSpec), spec-driven development for AI coding assistants | You propose a change and the agent writes its specs, design and tasks | An optional verify step | Your repository rules | Archiving a change updates the specs | 30+ coding tools |
 | [superpowers](https://github.com/obra/superpowers), composable skills loaded by a session-start hook | Brainstorming, then a plan of small tasks | Each task is reviewed for spec compliance, then code quality | Finishing a branch verifies tests, then you choose merge or PR | Plans and code in the repository | Claude Code, Codex, Cursor, Gemini CLI and others |
@@ -58,9 +58,9 @@ alongside the tools below.
 | [Kiro](https://kiro.dev), an agentic IDE, CLI and web app by AWS | Specs with requirements, design and tasks | Your own review | Hooks you write; a PreToolUse hook can block a tool call | Steering files you write | Kiro IDE, CLI and web |
 | [Claude Code](https://code.claude.com/docs/en/overview) plan mode, subagents, hooks, memory | Plan mode proposes a plan before any edit | Subagents you define; automatic review on pull requests | Hooks you write; a PreToolUse hook can deny a tool call | `CLAUDE.md` and auto memory | Terminal, IDE, desktop app and web |
 
-WUWEI's roles are the planner, lead, builder, shepherd, steward and four sentinels
-([concepts](docs/site/concepts.md)). It works through `gh` for the code host, with tracker
-and chat as optional adapters. Releases carry a signed manifest and an integrity check, and
+WUWEI's roles are the planner, lead, builder, [shepherd](docs/site/concepts.md#shepherd), [steward](docs/site/concepts.md#steward) and four
+[sentinels](docs/site/concepts.md#sentinel) ([concepts](docs/site/concepts.md)). It works through `gh` for the code host, with tracker
+and chat as optional adapters. Releases include a signed manifest and an integrity check, and
 ZIRAN audits the role tool grants ([security](docs/site/security.md)).
 
 ### How they compose
@@ -93,7 +93,7 @@ The second command installs `wuwei` from the local `wuwei` marketplace. The plug
 
 ## Quick start
 
-From the same project directory, in a host terminal, set up the workspace:
+From the same project directory, in a [host terminal](docs/site/concepts.md#host-terminal), set up the workspace:
 
 ```sh
 ../wuwei-plugin/bin/wuwei setup --shadow

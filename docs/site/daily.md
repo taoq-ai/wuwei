@@ -7,8 +7,8 @@ layout: default
 [Home](index.html)
 
 One path for a solo owner through one day: install, configure, plan, build and review,
-decide, close. Every command on this page is daily use. Anything else is on the
-[recovery](recovery.html) page. `bin/wuwei` below is the executable in the plugin
+decide, close. Every command here is daily use. Anything else is in
+[recovery](recovery.html). `bin/wuwei` below is the executable in the plugin
 directory; the planner uses the one recorded in `.wuwei/executable`. Each Claude Code
 session in the workspace gets the same flow as [what the session knows](agent.html).
 
@@ -30,7 +30,7 @@ In Claude Code:
 /plugin install wuwei@wuwei
 ```
 
-Then set up the workspace in a host terminal:
+Then set up the workspace in a [host terminal](concepts.html#host-terminal):
 
 ```sh
 ../wuwei-plugin/bin/wuwei setup --shadow
@@ -40,7 +40,7 @@ Then set up the workspace in a host terminal:
 for an intact signed release. A development checkout needs one host confirmation first; see
 [recovery](recovery.html).
 
-Then run `bin/wuwei doctor`. It checks the install, host, workspace, gates, day and guards in
+Then run `bin/wuwei doctor`. It checks the install, host, workspace, [gates](concepts.html#gate), day and guards in
 one pass and prints the fix for anything that is not ok; `bin/wuwei doctor --fix` applies the
 deterministic fixes after one confirmation. When something fails on the first day, see
 [troubleshooting](recovery.html#troubleshooting).
@@ -68,7 +68,7 @@ then calibrates and interviews:
   login. Values you already set are kept.
 
 It shows the `[[repos]]` tables, the calibration and the answers as one `config.toml` diff,
-applies it after you type its digest (the `bin/wuwei config promote` path), runs
+applies it after you type its [digest](concepts.html#digest) (the `bin/wuwei config promote` path), runs
 `bin/wuwei config check` and `bin/wuwei mcp check`, and prints what is still owed with the
 exact command for each: a repository it could not measure, a credential variable,
 `owner.name`, `bin/wuwei promote` for the charter proposals, an MCP decision. Run it again
@@ -78,11 +78,80 @@ proposes them at the first morning plan and the planner records the ones you app
 can change them later with
 `bin/wuwei goals edit`. [Configuration](configuration.html) lists every key.
 
+A clean first run for one repository looks like this, with the interview answered `1` each
+time (cut where it shows `...`):
+
+```text
+Created <project>/.wuwei
+{"statusLine": {"type": "command", "command": "<plugin>/bin/wuwei status --line"}}
+Status line: put the "statusLine" key above in .claude/settings.json (this project) or ~/.claude/settings.json (every project).
+Recommended publishing layout (design 4.5, 9.1):
+  ...
+Verify with: wuwei config check
+plugin integrity: clean
+Host: <platform>
+claude: on PATH
+gh: on PATH
+ziran: missing
+code host auth: set
+code host login: <login>
+free memory: <n> MiB
+
+Merges: Who merges pull requests in acme/widget?
+  1. Owner merges: You merge every pull request yourself.
+  ...
+> 1
+...
+--- config.toml
++++ config.toml (proposed)
+...
++[[repos]]
++name = "acme/widget"
++path = "widget"
++default_branch = "main"
+...
+Interview answers:
+- merge (acme/widget): Owner merges -> repos.0.merge.auto = false
+...
+- posture: Observe -> security.posture = "observe"
+- tracker: None -> adapters.tracker = "none"
+- chat: None -> adapters.chat = "none"
+- review_bot: None -> adapters.review_bot = "none"
+Approved calibration for .wuwei/calibration.json:
+...
+Review the setup above. To apply it, type:
+<digest>
+> <digest>
+Applied the setup and recorded .wuwei/calibration.json
+Credentials:
+  ...
+Owner:
+  owner.name: not set; the outward lint refuses every outward message except replies in the owner DM
+Posture: observe (from security.posture)
+  ...
+Host protections:
+  ...
+Seat credentials:
+  ...
+Still owed:
+  bin/wuwei config set owner.name '"<your name>"'
+  bin/wuwei promote
+Next: /wuwei plan
+```
+
+It worked when you see `Applied the setup and recorded .wuwei/calibration.json` and
+`Next: /wuwei plan`. On day one `owner.name` and `bin/wuwei promote` under `Still owed:` are
+normal, and exit 1 with `missing` rows under `Host protections:` means the setup was applied
+and the branch protections are still to set. It did not work when the `Applied` line is
+missing (nothing was written; the reason is on the last line) or when `Still owed:` lists
+`bin/wuwei config add-repo` (setup could not read a repository); see
+[troubleshooting](recovery.html#troubleshooting).
+
 `--shadow` starts a first week in the observe posture (on an existing workspace it proposes
 `security.posture = "observe"`), as does the `Observe` answer in the interview. The guards
 then record what they would refuse and let the call through; records and owner-only actions
-(deploys, merges, approvals, approve-tier messages) still refuse. Read
-`bin/wuwei shadow report` or the `## Shadow` section of the day report. When the nudge comes
+(deploys, merges, approvals, messages that wait for your approval) still refuse. Read
+`bin/wuwei shadow report` or the `## Shadow` section of the day report. When the [nudge](concepts.html#nudge) comes
 after `guards.shadow_days`, run `bin/wuwei config set security.posture '"guarded"'` in a host
 terminal, or keep watching with `bin/wuwei config set guards.shadow_days 14`. See [security posture](concepts.html#security-posture).
 
@@ -91,13 +160,35 @@ terminal, or keep watching with `bin/wuwei config set guards.shadow_days 14`. Se
 Run `/wuwei plan` in Claude Code. The planner registers its session
 (`wuwei plan session`), sweeps live work, asks the lead for candidates, orders them with
 `wuwei rank` and writes the proposal with `wuwei plan propose`. It then asks you one
-`Morning gate` question per decision: goals, queue, seat policy, CAP, envelope and
-carry-over. Nothing is dispatched before your answers. While `memory/goals.md` has no goals,
+`Morning gate` question per decision: goals, queue, [seat](concepts.html#seat) policy, [CAP](concepts.html#cap),
+[envelope](concepts.html#envelope) and [carry-over](concepts.html#carry). Nothing is dispatched before your answers. While `memory/goals.md` has no goals,
 the lead proposes them, `plan.md` shows them as provisional and the goals question shows the
 blocks. On approval the planner records them with
 `wuwei goals edit --file .wuwei/days/<date>/goals.md`; under the strict posture the hook
 refuses that call and prints the command for a host terminal. It then records the gate with
 `wuwei plan approve --items <ids> --goals-confirmed`.
+
+The planner asks the morning gate as question cards. After you approve, it records the goals
+and the plan, and you can run the last two commands yourself. A clean first plan with one
+goal and one item looks like this:
+
+```text
+$ wuwei plan propose .wuwei/days/<date>/lead.json
+<project>/.wuwei/days/<date>/plan.md
+$ wuwei goals edit --file .wuwei/days/<date>/goals.md
+goals: 1 goal saved (G-1)
+$ wuwei plan approve --items DIV-1 --goals-confirmed
+$ bin/wuwei status --line
+WUWEI pages 0 | nudges 0 | observe | watch off | planned 1/1 | meeting unmeasured
+$ bin/wuwei next
+dispatch: 1 planned item(s) queued, 0 of CAP 1 building; create the worktree for DIV-1, then ...
+```
+
+It worked when `goals edit` says `saved`, the status line shows `planned 1/1` and
+`bin/wuwei next` names the first item. `plan approve` prints nothing when it succeeds, and
+`meeting unmeasured` only means no calendar is set up. It did not work when the status line
+has no `planned` count after you approved, or when a command exits 1 or 2 with a reason; see
+[troubleshooting](recovery.html#troubleshooting).
 
 ## 4. Through the day
 
@@ -123,7 +214,7 @@ executes each returned action unchanged:
    (`wuwei build next <item>`). The item is already in `fix` and the stopped builder has a
    `continue` action with the FIX verdict files as feedback. The planner runs the build
    loop again until `done`, which moves the item to `delta`.
-5. Delta: `dispatch next` returns `gates` for the roles that said FIX, and `seats` holds a
+5. [Delta](concepts.html#delta): `dispatch next` returns `gates` for the roles that said FIX, and `seats` holds a
    `continue` action per seat with `resume` (the seat's agent ID) and a `receive` call
    with `--round delta`. After the delta verdicts it returns `raise` with review notes,
    or `escalate`.
@@ -143,7 +234,7 @@ The Stop hook message and `bin/wuwei nudges` list that summary first, and the st
 shows `prs <n> changed` until the planner has seen the wake. An idle interactive planner
 learns of a change at its next turn (its next Stop or session start): Claude Code cannot
 put input into an idle session. The listener covers the gap: it sends the summary to your
-DM and, with `shepherd.autostart = true`, starts a headless shepherd seat for the
+DM and, with `shepherd.autostart = true`, starts a headless [shepherd](concepts.html#shepherd) seat for the
 mechanical PR actions ([remote](remote.html), section 5). For CI events in your own
 session, the Claude Code desktop PR monitor is the complement.
 
@@ -167,12 +258,12 @@ answer decisions from Slack as well, follow [remote operation](remote.html). A d
 answered in the Slack DM is recorded as evidence, and `status --line` counts it as
 `phone answers 1` until you record it with `bin/wuwei decision outcome`.
 
-Seats do not ask what their mandate lets them decide. You see two more things here. An item
+Seats do not ask what their [mandate](concepts.html#mandate) lets them decide. You see two more things here. An item
 that goes back and forth shows as `loops N` on the status line and a `negotiation.loop`
-nudge (a page when its goal date has passed), with the counts and the last two exchanges in
+nudge (a [page](concepts.html#page) when its goal date has passed), with the counts and the last two exchanges in
 your DM when the listener runs. An external confirmation a seat routed with `--external`
 waits `decisions.wait_hours` weekday hours for your answer; then the sweep confirms the
-recommendation on a two-way door or parks the item for your `decision outcome`.
+recommendation on a two-way door or [parks](concepts.html#park) the item for your `decision outcome`.
 
 ### How you answer
 
@@ -221,7 +312,7 @@ after its digest ([configuration](configuration.html)).
 ## 6. Close
 
 The planner runs `wuwei retro` and `wuwei close --check retro`, writes the report with
-`wuwei report` (shipped, merged, pending decisions and unmeasured sources) and ends with
+`wuwei report` (shipped, merged, pending decisions and [unmeasured](concepts.html#unmeasured) sources) and ends with
 `wuwei close`. `close` refuses while an obligation is open and names it; the Stop hook
 holds the session until close is clean. Check the day at any time with
 `bin/wuwei status --line`.

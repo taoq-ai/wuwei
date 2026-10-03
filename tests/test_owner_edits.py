@@ -67,8 +67,24 @@ def test_invalid_goals_leave_history_and_target_unchanged(tmp_path):
     before = history(base)
     result = cli(tmp_path, 'goals', 'edit', '--file', str(source))
     assert result.returncode == 1 and 'goals' in result.stderr
+    assert result.stdout == ''
     assert (base / 'memory/goals.md').read_text() == GOALS
     assert history(base) == before
+
+
+def test_goals_and_voice_edit_say_what_they_saved(tmp_path, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    workspace(tmp_path)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    source = tmp_path / 'new-goals.md'
+    source.write_text(GOALS.replace('target: 1', 'target: 2'))
+    for said in ('saved', 'unchanged'):
+        assert main(['goals', 'edit', '--file', str(source)]) == 0
+        assert capsys.readouterr().out == f'goals: 1 goal {said} (G-1)\n'
+    voice = tmp_path / 'voice.md'
+    voice.write_text('## internal\n- max_length: 90\n')
+    assert main(['voice', 'edit', '--file', str(voice)]) == 0
+    assert capsys.readouterr().out == 'voice: saved\n'
 
 
 def test_seat_cannot_edit_goals(tmp_path, monkeypatch):

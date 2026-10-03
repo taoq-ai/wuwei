@@ -6,6 +6,105 @@ layout: default
 
 [Home](index.html)
 
+## Glossary
+
+The words the rest of these pages use, two lines each.
+
+### Seat
+
+One agent session with one job and its charter: the lead, a builder, a gate reviewer, the shepherd or the steward.
+The planner starts seats as the day needs them; each stops when its job is done.
+
+### Gate
+
+A review of a change by an agent that did not write it: architecture, quality or security.
+The morning gate is different: your approval of the day's plan before anything starts.
+
+### Sentinel
+
+The four reviewing roles: goal, architecture, quality and security.
+Architecture, quality and security run as the gates on each change; the goal sentinel checks work against its goal.
+
+### Shepherd
+
+The seat that takes a pull request from raised to merged: reviewers, replies and CI fixes.
+It merges only through the merge policy and never approves a pull request.
+
+### Steward
+
+The seat that watches the day for drift and loops, and compiles the retro at close.
+It proposes rule changes; you promote the ones you want.
+
+### CAP
+
+How many build seats may run at once (`cap`, default 1).
+The morning gate asks you to confirm it each day.
+
+### Envelope
+
+The day's working window: start time, end time and net build hours.
+Work admitted during the day must fit the remaining build hours.
+
+### Tier
+
+Review tier: light (one reviewer agent) or standard and full (three), set per change from its size and risk.
+Outbound tier: a message sent as you either goes out at once or waits as a draft for your approval.
+
+### Soak
+
+The wait after the last push or approval before WUWEI merges by itself (`merge.soak_minutes`, default 30).
+During it you can stop the merge from your phone.
+
+### Delta
+
+The second review after a fix round: only the gates that asked for the fix look again.
+After it the pull request is raised, or the item comes to you.
+
+### Park
+
+Stop work on an item for now, with a decision record that says why.
+Close accepts a parked item once that decision is recorded.
+
+### Carry
+
+Move an unfinished item to tomorrow's plan, with a decision record that says so.
+The next morning gate offers it again as carry-over.
+
+### Nudge
+
+A reminder that something needs you, but not right now: on the status line and in `bin/wuwei nudges`.
+Nudges wait for you; pages interrupt.
+
+### Page
+
+An alert that interrupts you at once, even outside your working hours, for example a failed heartbeat probe.
+It shows on the status line and reaches your phone.
+
+### Digest
+
+The 12-character code a host terminal command shows before it changes a file; type it to confirm.
+Also the summary of waiting decisions sent every two hours when you choose Batch in the interview.
+
+### Unmeasured
+
+A check that could not run or could not read its source; WUWEI reports it and never counts it as clean.
+On a first day some sources are unmeasured until you set them up, for example `meeting unmeasured`.
+
+### Mandate
+
+The block at the end of every seat brief: what the seat decides alone, what it decides and records, and what goes to you.
+Seats do not ask you what their mandate lets them decide.
+
+### Trust surface
+
+Code where a mistake costs most: auth, credentials, input parsing, permissions, and the areas you add in the interview.
+A change there gets three reviewer agents and is never merged without you.
+
+### Host terminal
+
+A terminal you type in yourself, outside Claude Code's agent tools.
+Owner commands such as `bin/wuwei config set` refuse to run anywhere else.
+
 ## Roles
 
 The shipped charters define planner, lead, builder, shepherd, steward, and four sentinels: goal, architecture, quality and security. Generated agent files in `agents/` carry the charters and tool allowlists. The planner owns the day, the lead shapes work, builders implement, sentinels check, the shepherd follows pull requests and the steward maintains procedure. `/wuwei plan` runs the day, starting with the owner's morning gate; see the [daily path](daily.html).
