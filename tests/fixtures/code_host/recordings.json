@@ -491,5 +491,27 @@
         "merged_at": "2026-09-28T09:00:00Z"
       }
     ]
+  },
+  {
+    "operation": "default_branch",
+    "args": [
+      "acme/widget"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget",
+          "-H",
+          "Cache-Control: no-cache",
+          "--hostname",
+          "github.com"
+        ],
+        "stdout": "{\"full_name\": \"acme/widget\", \"default_branch\": \"main\"}"
+      }
+    ],
+    "data": {
+      "branch": "main"
+    }
   }
 ]

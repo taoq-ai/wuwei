@@ -22,6 +22,17 @@ def register(subparsers):
     parser.add_argument('--measure', action='store_true',
                         help='time each test runner once through the checks port (runs repository commands)')
     parser.set_defaults(func=promote)
+    from wuwei.commands import setup
+    parser = actions.add_parser('set', help='set one config value (owner, host terminal)')
+    parser.add_argument('key', help='dotted key, for example owner.verbosity.default or repos.0.merge_deploys')
+    parser.add_argument('value', help='one TOML value, for example \'"standard"\' or false')
+    parser.set_defaults(func=setup.set_value)
+    parser = actions.add_parser('add-repo', help='add one repository (owner, host terminal)')
+    parser.add_argument('--name', required=True, help='owner/repo')
+    parser.add_argument('--path', required=True, help='relative to the workspace, or absolute')
+    parser.add_argument('--branch', required=True, help='the default branch')
+    parser.add_argument('--identity', help='commit identity, "Name <email>"')
+    parser.set_defaults(func=setup.add_repo)
 
 
 def run(args):
@@ -111,58 +122,89 @@ def missing(config):
     return names
 
 
-def promote(args, confirm=None):
-    """Owner action: recompute the calibration, show it, and apply it after a terminal digest."""
+def read(root):
+    """(path, raw text) of config.toml, refusing a symlinked config or calibration snapshot."""
+    path = root / '.wuwei/config.toml'
+    if path.is_symlink() or (root / '.wuwei/calibration.json').is_symlink():
+        raise ValueError('config.toml and calibration.json must not be symlinks')
+    return path, path.read_text(encoding='utf-8')
+
+
+def proposal(root, raw, base, config, results, extra=()):
+    """(text, diff, edits, summary, snapshot): the calibration of base, diffed against raw."""
+    import difflib
+    import json
+    from wuwei import calibrate, interview, profiles, workspace
+
+    answers = interview.load(root, config)
+    name, imported = profiles.load(root, config)
+    asked = interview.settings(answers, config)
+    # An interview answer wins over the profile for the same key, and both over a setup default.
+    imported = [s for s in imported if s[:2] not in {a[:2] for a in asked}]
+    owned = {s[:2] for s in imported + asked}
+    text, diff, edits = calibrate.propose(
+        base, results, [s for s in extra if s[:2] not in owned] + imported + asked)
+    if base != raw:
+        diff = ''.join(difflib.unified_diff(raw.splitlines(keepends=True), text.splitlines(keepends=True),
+                                            'config.toml', 'config.toml (proposed)'))
+    today = workspace.now().date().isoformat()
+    snapshot = {r['repo']['name']: {**calibrate.drift_facts(r['facts']),
+                                    'baseline': r['baseline'] or 'unmeasured', 'date': today}
+                for r in results}
+    summary = (diff or 'No config.toml changes\n') + ''.join(
+        f'Config differs; edit by hand: {key}\n' for key, _, _ in edits) + (
+        'Interview answers:\n' + ''.join(line + '\n' for line in interview.describe(answers, config))
+        if answers else '') + ''.join(
+        f"Profile {name}: {'.'.join(map(str, (*path, key)))} = {json.dumps(value)}\n"
+        for path, key, value in imported) + ''.join(
+        f"Flagged {f['kind']}: {f['source']} ({f['value']})\n" for r in results
+        for f in r['findings'] if f['kind'] in ('instruction_like', 'unsafe')) + ''.join(
+        f'CI only, not proposed as a fast check: {repo}: {command} ({note})\n'
+        for repo, command, note in calibrate.ci_only(results)) + (
+        'Approved calibration for .wuwei/calibration.json:\n'
+        + json.dumps(snapshot, indent=2, sort_keys=True) + '\n')
+    return text, diff, edits, summary, snapshot
+
+
+def offer(root, raw, text, summary, *, label, what, confirm=None, snapshot=None):
+    """The one owner digest path: print, confirm on the host terminal, re-read, write."""
     import hashlib
     import json
-    from wuwei import calibrate, integrity, interview, profiles, workspace
+    from wuwei import integrity, workspace
+
+    print(summary, end='')
+    digest = hashlib.sha256(summary.encode()).hexdigest()[:12]
+    if not (confirm or integrity._host_confirm)(
+            digest, prompt=f'Review the {what} above. To apply it, type:'):
+        print(f'wuwei {label}: declined; nothing written', file=sys.stderr)
+        return FINDINGS
+    path = root / '.wuwei/config.toml'
+    if path.read_text(encoding='utf-8') != raw:
+        raise ValueError('config.toml changed during confirmation; nothing written, run it again')
+    if text != raw:
+        workspace.atomic_write(path, text)
+    if snapshot is not None:
+        workspace.atomic_write(root / '.wuwei/calibration.json',
+                               json.dumps(snapshot, indent=2, sort_keys=True) + '\n')
+    print(f'Applied the {what}' + (' and recorded .wuwei/calibration.json' if snapshot is not None else ''))
+    return CLEAN
+
+
+def promote(args, confirm=None):
+    """Owner action: recompute the calibration, show it, and apply it after a terminal digest."""
+    from wuwei import calibrate, workspace
 
     try:
         root = workspace.find_workspace()
         config = load_config(root)
-        path, snapshot_path = root / '.wuwei/config.toml', root / '.wuwei/calibration.json'
-        if path.is_symlink() or snapshot_path.is_symlink():
-            raise ValueError('config.toml and calibration.json must not be symlinks')
-        raw = path.read_text(encoding='utf-8')
+        _, raw = read(root)
         if not config['repos']:
             raise ValueError(calibrate.NO_REPOS)
         results = calibrate.survey(root, config, list(enumerate(config['repos'])), style=False,
                                    measure=getattr(args, 'measure', False))
-        answers = interview.load(root, config)
-        name, imported = profiles.load(root, config)
-        asked = interview.settings(answers, config)
-        # An interview answer wins over the profile for the same key.
-        imported = [s for s in imported if s[:2] not in {a[:2] for a in asked}]
-        text, diff, edits = calibrate.propose(raw, results, imported + asked)
-        today = workspace.now().date().isoformat()
-        snapshot = {r['repo']['name']: {**calibrate.drift_facts(r['facts']),
-                                        'baseline': r['baseline'] or 'unmeasured', 'date': today}
-                    for r in results}
-        summary = (diff or 'No config.toml changes\n') + ''.join(
-            f'Config differs; edit by hand: {key}\n' for key, _, _ in edits) + (
-            'Interview answers:\n' + ''.join(line + '\n' for line in interview.describe(answers, config))
-            if answers else '') + ''.join(
-            f"Profile {name}: {'.'.join(map(str, (*path, key)))} = {json.dumps(value)}\n"
-            for path, key, value in imported) + ''.join(
-            f"Flagged {f['kind']}: {f['source']} ({f['value']})\n" for r in results
-            for f in r['findings'] if f['kind'] in ('instruction_like', 'unsafe')) + ''.join(
-            f'CI only, not proposed as a fast check: {repo}: {command} ({note})\n'
-            for repo, command, note in calibrate.ci_only(results)) + (
-            'Approved calibration for .wuwei/calibration.json:\n'
-            + json.dumps(snapshot, indent=2, sort_keys=True) + '\n')
-        print(summary, end='')
-        digest = hashlib.sha256(summary.encode()).hexdigest()[:12]
-        if not (confirm or integrity._host_confirm)(
-                digest, prompt='Review the calibration above. To apply it, type:'):
-            print('wuwei config promote: declined; nothing written', file=sys.stderr)
-            return FINDINGS
-        if path.read_text(encoding='utf-8') != raw:
-            raise ValueError('config.toml changed during confirmation; nothing written, run it again')
-        if text != raw:
-            workspace.atomic_write(path, text)
-        workspace.atomic_write(snapshot_path, json.dumps(snapshot, indent=2, sort_keys=True) + '\n')
-        print('Applied the calibration and recorded .wuwei/calibration.json')
-        return CLEAN
+        text, _, _, summary, snapshot = proposal(root, raw, raw, config, results)
+        return offer(root, raw, text, summary, label='config promote', what='calibration',
+                     confirm=confirm, snapshot=snapshot)
     except ConfigError as exc:
         print(f'wuwei config promote: {exc}', file=sys.stderr)
         return FINDINGS

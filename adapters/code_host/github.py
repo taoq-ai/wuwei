@@ -70,8 +70,11 @@ def _run(args, payload=None, *, json_output=True, env=None):
             if re.fullmatch(r'search/commits\?q=author-email%3A[A-Za-z0-9._%+-]+'
                             r'%20repo%3A[A-Za-z0-9._%-]+&per_page=1', endpoint):
                 allowed = payload is None and options == ['-H', 'Cache-Control: no-cache']
-            match = re.fullmatch(r'repos/([^/]+/[^/]+)/(.+)', endpoint)
-            if match:
+            match = re.fullmatch(r'repos/([^/]+/[^/]+)(?:/(.+))?', endpoint)
+            if match and match[2] is None:
+                _repo(match[1])
+                allowed = payload is None and options == ['-H', 'Cache-Control: no-cache']
+            elif match:
                 _repo(match[1])
                 if payload is None:
                     allowed = options in ([], ['-H', 'Cache-Control: no-cache'],
@@ -302,6 +305,14 @@ def merged_prs(repo, root=None):
     return [{'additions': _field(v, 'additions', int), 'deletions': _field(v, 'deletions', int),
              'created_at': _field(v, 'createdAt', str), 'merged_at': _field(v, 'mergedAt', str)}
             for v in _list(value['data']['repository']['pullRequests']['nodes'])]
+
+
+@_operation
+def default_branch(repo, root=None):
+    branch = _api(f'repos/{_repo(repo)}')['default_branch']
+    if not isinstance(branch, str) or not re.fullmatch(r'[A-Za-z0-9._/-]+', branch) or branch.startswith('-'):
+        raise ValueError('invalid default_branch')
+    return {'branch': branch}
 
 
 @_operation

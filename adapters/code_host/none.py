@@ -23,6 +23,10 @@ def threads(ref, root=None):
     return record_none("code_host", "threads", root, measurement=True)
 
 
+def default_branch(repo, root=None):
+    return record_none('code_host', 'default_branch', root, measurement=True)
+
+
 def protection(repo, branch, root=None):
     return record_none("code_host", "protection", root, measurement=True)
 

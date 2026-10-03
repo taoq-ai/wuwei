@@ -383,3 +383,11 @@ def test_recent_commits_rejects_malformed_records(stdout, monkeypatch):
     install_replay(monkeypatch, 'git', [{'stdout': stdout}])
     result = adapter().recent_commits('/repo')
     assert result.exit == 2 and result.data is None
+
+
+def test_remote_url_reads_origin(tmp_path):
+    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
+    assert adapter().remote_url(tmp_path).data == {'url': ''}
+    subprocess.run(['git', '-C', str(tmp_path), 'remote', 'add', 'origin',
+                    'https://github.com/acme/widget.git'], check=True)
+    assert adapter().remote_url(tmp_path).data == {'url': 'https://github.com/acme/widget.git'}

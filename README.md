@@ -90,24 +90,26 @@ The second command installs `wuwei` from the local `wuwei` marketplace. The plug
 
 ## Quick start
 
-From the same project directory, initialize the workspace:
+From the same project directory, in a host terminal, set up the workspace:
 
 ```sh
-../wuwei-plugin/bin/wuwei init .
+../wuwei-plugin/bin/wuwei setup --shadow
 ```
 
-For your first week on a project, `../wuwei-plugin/bin/wuwei init --shadow .` starts the guards in shadow mode: they record what they would refuse and let the call through, and `bin/wuwei shadow report` lists it. See [shadow mode](docs/site/concepts.md#shadow-mode).
+`setup` runs `init` when there is no workspace, finds the git repositories in the project
+directory (their GitHub names, default branches through `gh`, and commit identities), checks
+the host, calibrates the repositories and asks the owner interview. It shows the whole
+`config.toml` proposal once and applies it after you type its digest. Then it runs
+`config check` and `mcp check` and prints what is still owed, each with its exact command. A
+second run proposes nothing new ([calibration](docs/site/configuration.md#calibration)).
 
-`init` ends by checking the installation. An intact signed release prints `plugin integrity: clean` and needs no reconfirmation.
+`--shadow` starts the guards in shadow mode for your first week: they record what they would refuse and let the call through, and `bin/wuwei shadow report` lists it. See [shadow mode](docs/site/concepts.md#shadow-mode).
 
-`init` creates `.wuwei/` and adds workspace guard denials to `.claude/settings.json`. From another project, use the installed plugin's `bin/wuwei` path. Use `bin/wuwei` or `python3 -P -m wuwei` for CLI calls; plain `python3 -m wuwei` can import a same-named directory in the current working directory.
+`init` ends by checking the installation. An intact signed release prints `plugin integrity: clean` and needs no reconfirmation. It creates `.wuwei/` and adds workspace guard denials to `.claude/settings.json`. From another project, use the installed plugin's `bin/wuwei` path. Use `bin/wuwei` or `python3 -P -m wuwei` for CLI calls; plain `python3 -m wuwei` can import a same-named directory in the current working directory.
 
-Edit `.wuwei/config.toml` to name repositories and choose adapters. See [configuration](docs/site/configuration.md) for every setting and default. To update an existing workspace after a plugin upgrade, run `bin/wuwei init --upgrade --dry-run` and then `bin/wuwei init --upgrade`.
-
-Calibrate once: `bin/wuwei calibrate` profiles each configured repository and writes a report
-with proposed config. Read it, then run `bin/wuwei config promote` and `bin/wuwei promote` in a
-host terminal. Then answer the owner interview with `bin/wuwei calibrate --interview` in a
-host terminal and promote the answers the same way ([calibration](docs/site/configuration.md#calibration)).
+To change one value later, run `bin/wuwei config set owner.verbosity.default '"standard"'` or
+`bin/wuwei config add-repo --name acme/widget --path widget --branch main` in a host terminal;
+each shows a diff and applies it after its digest. See [configuration](docs/site/configuration.md) for every setting and default. To update an existing workspace after a plugin upgrade, run `bin/wuwei init --upgrade --dry-run` and then `bin/wuwei init --upgrade`.
 
 Run `/wuwei plan` to start the planner and morning gate. See [concepts](docs/site/concepts.md) for roles, guards and the day flow.
 

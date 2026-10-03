@@ -82,7 +82,7 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
             allowed = isinstance(value, str) and bool(value) and not value.startswith('-')
         case ('config', '--local', '--get', 'core.bare' | 'core.worktree'):
             allowed = True
-        case ('config', '--get', 'user.name' | 'user.email'):
+        case ('config', '--get', 'user.name' | 'user.email' | 'remote.origin.url'):
             allowed = True
         case ('var', 'GIT_AUTHOR_IDENT' | 'GIT_COMMITTER_IDENT'):
             allowed = True
@@ -237,6 +237,11 @@ def identity(repo, root=None):
     return {'name': name, 'email': email,
             'author': _identity(_run(repo, 'var', 'GIT_AUTHOR_IDENT')),
             'committer': _identity(_run(repo, 'var', 'GIT_COMMITTER_IDENT'))}
+
+
+@_operation
+def remote_url(repo, root=None):
+    return {'url': _run(repo, 'config', '--get', 'remote.origin.url', missing=True).strip()}
 
 
 @_operation

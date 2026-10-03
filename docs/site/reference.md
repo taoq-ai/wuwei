@@ -18,7 +18,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei build` | Selects the next builder action. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei calibrate` | Profiles the repositories and proposes config; `--measure` times each test runner once to decide whether it is a fast check; `--interview` asks the owner; `export` and `import` share a profile. | [Calibration](configuration.html#calibration) |
 | `bin/wuwei close` | Refuses day close until every obligation lands. | [Day close](concepts.html#day-close) |
-| `bin/wuwei config` | Inspects workspace configuration (`check`, `promote`). | [Configuration](configuration.html) |
+| `bin/wuwei config` | Inspects and changes workspace configuration: `check`; `promote`, `set <key> <value>` and `add-repo` apply after a digest. | [Configuration](configuration.html#calibration) |
 | `bin/wuwei consolidate` | Reviews and archives workspace memory. | [Configuration](configuration.html#host-build-and-memory) |
 | `bin/wuwei dashboard` | Serves the read-only day board on loopback. | [Cockpit and board](concepts.html#cockpit-and-board) |
 | `bin/wuwei decision` | Checks and routes decision records; `outcome` records the owner's answer. | [Decision record](#decision-record) |
@@ -51,6 +51,7 @@ Every command `bin/wuwei --help` prints; `bin/wuwei <command> --help` shows its 
 | `bin/wuwei remote` | Owner actions for the remote control plane. | [Remote](remote.html) |
 | `bin/wuwei reply` | Replies to one unthreaded human obligation. | [Outward draft queue](#outward-draft-queue) |
 | `bin/wuwei report` | Shows the owner report. | [Day close](concepts.html#day-close) |
+| `bin/wuwei setup` | Owner, host terminal: runs `init` if needed, discovers the repositories and the host, calibrates and interviews, applies one proposal after a digest, then checks and prints what is still owed; `--shadow`, `--posture <profile>`, `--repos <dir>...`. | [Daily path](daily.html) |
 | `bin/wuwei shadow` | `report` lists what the guards would have refused since `guards.shadow_since`, grouped by guard, and names likely false positives. | [Shadow mode](concepts.html#shadow-mode) |
 | `bin/wuwei retro` | Compiles the steward retro. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei runtime` | Dispatches and inspects runtime jobs. | [Recovery](recovery.html#runtime-dispatch) |
@@ -354,6 +355,9 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei listen uninstall` | no |
 | `bin/wuwei remote ack` | yes |
 | `bin/wuwei config promote` | yes |
+| `bin/wuwei config set <key> <value>` | yes |
+| `bin/wuwei config add-repo --name --path --branch` | yes |
+| `bin/wuwei setup` | yes |
 
 A command that asks for a digest reads it from `/dev/tty`. Without a terminal it changes nothing and exits 2 with `this is an owner action: run it in a host terminal`. `drafts approve --edit`, `goals edit` and `voice edit` open `EDITOR`. As with other host-only actions, this follows the cooperative hook threat model in spec 9.1.
 

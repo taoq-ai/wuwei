@@ -29,39 +29,45 @@ In Claude Code:
 /plugin install wuwei@wuwei
 ```
 
-Then initialize the workspace:
+Then set up the workspace in a host terminal:
 
 ```sh
-../wuwei-plugin/bin/wuwei init .
+../wuwei-plugin/bin/wuwei setup --shadow
 ```
 
-`init` ends with `plugin integrity: clean` for an intact signed release. A development
-checkout needs one host confirmation first; see [recovery](recovery.html).
+`setup` runs `init` when there is no workspace; `init` ends with `plugin integrity: clean`
+for an intact signed release. A development checkout needs one host confirmation first; see
+[recovery](recovery.html).
 
 ## 2. Configure
 
-Edit `.wuwei/config.toml`: your repositories (`path`, `default_branch`, `fast_checks`) and
-adapters. For a solo owner set `[shepherd] min_reviewers = 0` and `[adapters] chat = "none"`.
-Check the file with `bin/wuwei config check`. Then run `bin/wuwei doctor`; it checks the
+`setup` does the configuration in one pass. It finds the git repositories in the project
+directory (or under `--repos <dir>`), reads each one's GitHub name from its `origin` remote,
+its default branch through `gh` when `gh` is signed in, and its commit identity from its git
+config. It lists the host facts (platform, `claude`, `gh` and `ziran` on PATH, free memory),
+then calibrates and interviews:
+
+- the calibration is what `bin/wuwei calibrate` does: it reads each checkout and writes
+  `.wuwei/days/<date>/calibration.md` with its checks, CI check names, conventions and deploy
+  signals, each with the file and line it came from
+  ([calibration](configuration.html#calibration));
+- the owner interview is what `bin/wuwei calibrate --interview` asks: how much merge autonomy
+  you want, your gate floor, quiet and working hours, how decisions reach you, words to avoid
+  and which commands you run by hand ([owner interview](configuration.html#owner-interview)).
+
+It shows the `[[repos]]` tables, the calibration and the answers as one `config.toml` diff,
+applies it after you type its digest (the `bin/wuwei config promote` path), runs
+`bin/wuwei config check` and `bin/wuwei mcp check`, and prints what is still owed with the
+exact command for each: a repository it could not measure, a credential variable,
+`owner.name`, `bin/wuwei promote` for the charter proposals, an MCP decision. Run it again
+any time; with nothing new it proposes nothing. For a solo owner then run
+`bin/wuwei config set shepherd.min_reviewers 0`. Then run `bin/wuwei doctor`; it checks the
 install, host, workspace, gates and guards in one pass and prints the fix for anything that
 is not ok. Edit your goals in a host terminal with
 `bin/wuwei goals edit`. [Configuration](configuration.html) lists every key.
 
-Then calibrate: `bin/wuwei calibrate` reads each configured checkout and writes
-`.wuwei/days/<date>/calibration.md` with its checks, CI check names, conventions and deploy
-signals, each with the file and line it came from. It changes nothing else. Read the report,
-then run `bin/wuwei config promote` in a host terminal to apply the proposed `config.toml`
-additions, and `bin/wuwei promote` to land the proposed charter blocks. See
-[calibration](configuration.html#calibration).
-
-Then answer the owner interview once: `bin/wuwei calibrate --interview` in a host terminal
-asks how much merge autonomy you want, your gate floor, quiet and working hours, how
-decisions reach you, words to avoid and which commands you run by hand. Promote the answers
-the same way. If you skip it, `/wuwei plan` asks the same questions on the first day. See
-[owner interview](configuration.html#owner-interview).
-
-For a first week on a project you can start in shadow mode: `bin/wuwei init --shadow .`, or
-the `Shadow first week` answer in the interview. The guards then record what they would
+`--shadow` starts a first week in shadow mode (on an existing workspace it proposes
+`guards.mode = "shadow"`), as does the `Shadow first week` answer in the interview. The guards then record what they would
 refuse and let the call through; records, integrity, owner actions, deploys, outbound and merge-policy refusals still refuse.
 Read `bin/wuwei shadow report` or the `## Shadow` section of the day report. When the nudge
 comes after `guards.shadow_days`, set `guards.mode = "enforce"` in `config.toml`, or raise

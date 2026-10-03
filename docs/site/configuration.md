@@ -235,6 +235,13 @@ The template also shows a `"release/*"` environment example. Add any actual envi
 
 ## Calibration
 
+`bin/wuwei setup` runs the calibration and the owner interview for you: it adds a `[[repos]]` table for each repository it finds, calibrates them, and applies everything after one digest in a host terminal. The sections below describe what it proposes.
+
+Two host terminal commands change one value later, each with a diff and a digest, the same path as `config promote`. The value is parse-checked before you are asked; an invalid one is refused with the reason and nothing is written:
+
+- `bin/wuwei config set <dotted.key> <toml-value>`, for example `bin/wuwei config set owner.verbosity.default '"standard"'` or `bin/wuwei config set repos.0.merge_deploys false` (repositories by index). A table such as `owner.verbosity` is set one key at a time, and a deploy list only grows.
+- `bin/wuwei config add-repo --name acme/widget --path widget --branch main --identity "Pat Example <pat@example.test>"` appends one `[[repos]]` table; a duplicate name or path is refused.
+
 Run `bin/wuwei calibrate [--repo <name>]` after `init` and the basic `[[repos]]` entry (`name`, `path`, `default_branch`), and before the first plan. It reads each checkout and writes `.wuwei/days/<date>/calibration.md`; it never changes `config.toml`, and without `--measure` it runs nothing in the checkout. It exits 0 clean, 1 when it flagged text and 2 when it could not run or a read was unmeasured.
 
 | Detector | Reads | Proposes |

@@ -37,19 +37,19 @@ archives are unsigned. In Claude Code, run:
 /plugin install wuwei@wuwei
 ```
 
-In your project directory, initialize the workspace:
+In your project directory, in a host terminal, set up the workspace:
 
 ```sh
-../wuwei-plugin/bin/wuwei init .
+../wuwei-plugin/bin/wuwei setup --shadow
 ```
 
-`init` ends by checking the installation. An intact signed release prints
-`plugin integrity: clean` and needs no reconfirmation. Edit `.wuwei/config.toml` for your
-repositories and adapters. Use `bin/wuwei` or `python3 -P -m wuwei` for CLI calls.
-Calibrate once with `bin/wuwei calibrate`, read its report, then run
-`bin/wuwei config promote` and `bin/wuwei promote` in a host terminal. Answer the owner
-interview with `bin/wuwei calibrate --interview` in a host terminal and promote the answers
-the same way ([daily path](daily.html)).
+`setup` runs `bin/wuwei init` when there is no workspace, finds the git repositories in the
+project directory, calibrates them and asks the owner interview, then applies the whole
+`config.toml` proposal after one digest and prints what is still owed. `--shadow` starts the
+guards in shadow mode for a first week. `init` checks the installation: an intact signed
+release prints `plugin integrity: clean` and needs no reconfirmation. Use `bin/wuwei` or
+`python3 -P -m wuwei` for CLI calls. To change one value later, use `bin/wuwei config set` or
+`bin/wuwei config add-repo` in a host terminal ([daily path](daily.html)).
 Run `/wuwei plan` to start the planner and owner morning gate, followed by builders,
 review and close. The [daily path](daily.html) walks through the whole day; the linked pages describe the CLI and configuration.
 

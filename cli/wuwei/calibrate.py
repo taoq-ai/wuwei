@@ -496,7 +496,7 @@ def apply(raw, additions):
         return raw
     sections, replaced, commented = _labelled(raw), [], set()
     for path, key, value in additions:
-        line = f'{json.dumps(key) if path[0] in ("environments", "boundary") else key} = {json.dumps(value)}\n'
+        line = f'{json.dumps(key) if path[:1] in (("environments",), ("boundary",)) else key} = {json.dumps(value)}\n'
         lines = next((lines for p, lines in sections if p == path), None)
         if lines is None:
             if path[0] != 'repos':
@@ -515,7 +515,7 @@ def apply(raw, additions):
         end = len(lines)
         while end > 1 and not lines[end - 1].strip():
             end -= 1
-        if not lines[end - 1].endswith('\n'):
+        if end and not lines[end - 1].endswith('\n'):
             lines[end - 1] += '\n'
         lines[end:end] = [line] if path in commented else [COMMENT, line]
         commented.add(path)
