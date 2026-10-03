@@ -320,6 +320,9 @@ def test_one_command_three_repositories(project, host, terminal, capsys):
     assert all(r['gates']['floor'] == 'full' for r in loaded['repos'])
     assert loaded['owner']['verbosity']['default'] == 'standard'
     assert (loaded['security']['posture'], loaded['guards']['mode']) == ('observe', 'enforce')
+    import tomllib
+    raw = tomllib.loads((project / '.wuwei/config.toml').read_text())
+    assert 'mode' not in raw['guards'] and raw['guards']['shadow_since'] == '2026-10-03'
     assert sorted(json.loads((project / '.wuwei/calibration.json').read_text())) == NAMES
     assert (project / DAY / 'calibration.md').is_file()
     assert terminal.asked == [NAMES]

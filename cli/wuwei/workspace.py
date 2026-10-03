@@ -560,6 +560,12 @@ def posture(config):
                   for area, level in POSTURES[name].items()}
 
 
+def posture_source(config):
+    """The key the effective posture comes from (#355); guards.mode is retired."""
+    return ('guards.mode = "shadow", deprecated; run doctor --fix'
+            if config['guards']['mode'] == 'shadow' else 'security.posture')
+
+
 def create_worktree(repo, branch, path, root, vcs, identity=None):
     """Create and anchor a WUWEI worktree before handing it to a seat."""
     from wuwei.commands.git_hook import install

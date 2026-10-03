@@ -36,11 +36,11 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `tracker.states.in_review` | `"In Review"` | Linear workflow state name after a PR is raised. |
 | `tracker.states.done` | `"Done"` | Linear workflow state name after a confirmed merge. |
 | `profile` | `"strict"` | Guard profile: `strict` or `standard`. Standard warns for outward text lint. |
-| `guards.mode` | `"enforce"` | Deprecated: `"shadow"` means `security.posture = "observe"` whatever the posture says; `config check` prints a deprecation line. |
+| `guards.mode` | `"enforce"` | Retired. `init --upgrade` and `doctor --fix` rewrite `"shadow"` to `security.posture = "observe"` (keeping `guards.shadow_since` and `guards.shadow_days`) and remove `"enforce"`. Until then `"shadow"` still means `observe`, and `config check` and `doctor` show `posture: observe (from guards.mode = "shadow", deprecated; run doctor --fix)`. |
 | `guards.shadow_days` | `7` | Days in the `observe` posture before one status nudge asks you to switch to `guarded` or raise this number. |
 | `guards.shadow_since` | `""` | Day `observe` started, as `YYYY-MM-DD`. `init --posture observe` and the interview set it. Empty means no nudge. |
 | `security.required` | `true` | When true, a missing `.wuwei/security.json` makes guards fail closed instead of treating security as disabled. |
-| `security.posture` | `"guarded"` | What warns and what blocks: `observe`, `guarded` or `strict`. See [security posture](security.html#security-posture) for the table and its floors. |
+| `security.posture` | `"guarded"` | What warns and what blocks: `observe`, `guarded` or `strict`. `setup --shadow` and `init --shadow` set `observe` for `guards.shadow_days` days from `guards.shadow_since`, then one nudge asks you to switch to `guarded`. `config check` and `doctor` print the effective posture and the key it comes from. See [security posture](security.html#security-posture) for the table and its floors. |
 | `security.areas.<area>` | `""` | Override one area of the posture with `off`, `warn` or `block`; empty takes the posture's level. Areas: `integrity`, `mcp`, `publish`, `records`, `outward`, `seats`; for example `security.areas.mcp` = `"off"` skips the MCP registry check. `records` below `block` is a config finding. |
 | `repos` | `[]` | Configured repositories. Each `[[repos]]` entry has the fields below. |
 | `repos.name` | Required per entry | Code host name, such as `owner/repo`. |

@@ -45,7 +45,7 @@ for installation and regeneration details.
 
 ## Security posture
 
-`security.posture` says what warns and what blocks, by where the plugin runs and for what purpose. Each area has a level: `off` (not checked; a refusal is dropped and not recorded), `warn` (recorded as `guard.would_refuse` and let through) or `block` (refused, as before). `[security.areas]` overrides one area, for example `mcp = "off"`. `bin/wuwei config check` prints the effective table.
+`security.posture` says what warns and what blocks, by where the plugin runs and for what purpose. Each area has a level: `off` (not checked; a refusal is dropped and not recorded), `warn` (recorded as `guard.would_refuse` and let through) or `block` (refused, as before). `[security.areas]` overrides one area, for example `mcp = "off"`. `bin/wuwei config check` prints the effective table and the key it comes from.
 
 | Area | What it covers | observe | guarded (default) | strict |
 | --- | --- | --- | --- | --- |
@@ -62,13 +62,13 @@ Floors no posture and no override lowers:
 - Owner-only actions always block: the deployment ban (`deploy`), the merge policy, approvals and owner markers (`pr`), and approve-tier messages and canary or honeytoken egress (the outward approval tier). Under `observe`, `publish` relaxes only the commit and push rules and the PR anchor.
 - MCP: under `guarded` and `strict` a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. A finding blocks only at a severity in `scanner.mcp.block`, which is unset by default: no severity under `guarded`; `critical`, `high` and `unmeasured` under `strict`. Under `observe`, and with `mcp = "off"`, the list has no effect and `config check` says so.
 
-Runtime trace chains (S2) page and ask the owner only for seats. The planner, its subagents and other registered sessions (shepherd, remote, seat-host) get one silent `traces.noted` event per session per day. A session the registry does not know gets one `traces.unmatched` event per day, and under `strict` one owner decision per session per day. `guards.mode = "shadow"` (`init --shadow`) counts as `observe`.
+Runtime trace chains (S2) page and ask the owner only for seats. The planner, its subagents and other registered sessions (shepherd, remote, seat-host) get one silent `traces.noted` event per session per day. A session the registry does not know gets one `traces.unmatched` event per day, and under `strict` one owner decision per session per day. `setup --shadow` and `init --shadow` write `observe`.
 
 A command a Bash guard finds relevant but cannot parse (a loop, a command substitution, inline interpreter code) that names no publishing tool and writes no record is `unparsed`: it warns under `observe` and `guarded` and blocks only under `strict`, and the reason gives the one accepted form, `write the commands to a file with the Write tool and run bash <file>`. A command whose words are all read-only (`ls`, `cat`, `grep`, `head`, `tail`, `sed -n`, `wc`, `jq`, `diff`, `find`) passes. A command that names a publishing tool keeps the floors above. A top-level `cd`, `pushd` or `popd` that may leave the workspace warns in every posture; run it in a subshell, `(cd <dir> && <command>)`, or use `git -C <dir>`.
 
 Where to run each:
 
-- `observe`: a first week on a project, or a personal sandbox. You see what the guards would stop in your own habits before they stop anything; the records stay trustworthy. After `guards.shadow_days` one nudge asks you to switch to `guarded`.
+- `observe`: a first week on a project, or a personal sandbox. You see what the guards would stop in your own habits before they stop anything; the records stay trustworthy. `setup --shadow` starts here; after `guards.shadow_days` days one nudge asks you to switch to `guarded`.
 - `guarded`: a real project. Records, publishing and integrity block; seat launches, outward text and MCP findings warn, and each warning is a status nudge.
 - `strict`: a repository that deploys, or a workspace that holds shared credentials. Everything blocks.
 

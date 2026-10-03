@@ -76,7 +76,7 @@ def run(args):
     print('Owner:\n  ' + ('owner.name: set' if config['owner']['name'].strip() else outward.OWNER_UNSET))
     # Reported, not a finding (#331): a floor violation already failed load_config above.
     name, levels = workspace.posture(config)
-    print(f'Posture: {name}')
+    print(f'Posture: {name} (from {workspace.posture_source(config)})')
     for area in workspace.AREAS:
         mark = (' (floor)' if area in workspace.FLOORS else
                 ' (security.areas)' if config['security']['areas'][area] else '')
@@ -89,9 +89,6 @@ def run(args):
         print(f'  scanner.mcp.block ({", ".join(block)}): ' + (
             f'no effect under {name} (mcp: {levels["mcp"]}); remove the key' if ignored else
             f'blocks launches at these severities on top of the {name} default'))
-    if config['guards']['mode'] == 'shadow':
-        print('  guards.mode = "shadow" is deprecated: set security.posture = "observe"; '
-              'guards.shadow_days and guards.shadow_since keep the time box')
     if config['adapters']['inbound'] != 'none':
         from wuwei.remote import PIN
         pin = config['control_plane']['owner']

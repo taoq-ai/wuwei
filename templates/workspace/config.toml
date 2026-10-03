@@ -225,8 +225,11 @@ autostart = false # Start a headless shepherd seat for mechanical PR actions whe
 # "reviewer@example.test" = {login = "reviewer", mention = "UREVIEWER"}
 
 [security]
+# observe: guards record what they would refuse and let the call through; records and owner-only actions still refuse. setup --shadow starts here.
+# guarded: the default. Records, publishing and integrity block; MCP findings, outward text and seat launches warn.
+# strict: every area blocks, and unknown config keys are errors.
+posture = "guarded" # The posture table and its floors are in the security docs.
 required = true
-posture = "guarded" # observe, guarded or strict: what warns and what blocks; see the posture table in the security docs.
 # Per-area overrides of the posture: off, warn or block. records always blocks.
 # [security.areas]
 # mcp = "off" # integrity, mcp, publish, records, outward, seats
