@@ -3,6 +3,7 @@
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import re
 import shlex
@@ -100,6 +101,12 @@ def _save(item, record, root, kind, expected, extra=None):
     state._write_state(update, root, reserved=False, kind=kind, payload={'item': item, **(extra or {})})
 
 
+def _busy(item, record):
+    marker = state.check_running(record)
+    if marker:
+        raise ValueError(f'fast checks for {item} are running since {marker["started_at"][11:16]} (pid {marker["pid"]}); run bin/wuwei build next {item} when that command exits')
+
+
 def next_action(item, brief=None, worktree=None, *, root=None):
     """Return one stable action. Executing it belongs to the caller."""
     from wuwei.brief import events, identifier, seat_action
@@ -111,6 +118,8 @@ def next_action(item, brief=None, worktree=None, *, root=None):
     record = data.get('builds', {}).get(item)
     if record is not None and record['status'] == 'running':
         raise ValueError(f'builder is still running; wait for its stop hook, then run bin/wuwei build next {item}')
+    if record is not None:
+        _busy(item, record)
     config = workspace.load_config(root)
     if brief is None:
         matches = [row['payload'] for row in events(root) if row['kind'] == 'brief written'
@@ -322,6 +331,7 @@ def complete_checks(item, results, *, root, expected=None):
     if expected is None:
         expected = state.read_state(root)['builds'][item]
     record = dict(expected)
+    record.pop('check', None)
     if record['status'] != 'check':
         raise ValueError(f'build is not awaiting checks; run bin/wuwei build next {item} for the current step')
     failures = []
@@ -382,6 +392,9 @@ def check(item, *, root=None):
         found = 'no build yet' if record is None else f'build {record["status"]}'
         raise ValueError(f'{item} is not waiting for checks ({found}); run bin/wuwei build next {item} '
                          'for its current step')
+    _busy(item, record)
+    marked = {**record, 'check': {'started_at': workspace.now().isoformat(), 'pid': os.getpid()}}
+    _save(item, marked, root, 'build.check_started', record)
     from wuwei import fast_checks
     fast_checks.record(record['worktree'])
     measured = state.read_state(root).get('fast_checks', {}).get(record['repo'], {})
@@ -389,7 +402,7 @@ def check(item, *, root=None):
         raise ValueError(f'incomplete fast checks; rerun bin/wuwei fast-checks in the worktree, then bin/wuwei build check {item}')
     results = [registry.Result(row['exit'], row.get('data'), row.get('reason') or '')
                for row in (measured[command] for command in record['commands'])]
-    return complete_checks(item, results, root=root, expected=record)
+    return complete_checks(item, results, root=root, expected=marked)
 
 
 def _park(root, item, record, reason, expected):

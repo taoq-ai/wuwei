@@ -182,7 +182,7 @@ def test_next_cli_returns_one_json_action(seat, capsys):
     assert json.loads(capsys.readouterr().out)['action'] == 'launch'
 
 
-@pytest.mark.parametrize('kind', ['build.checked', 'seat.usage'])
+@pytest.mark.parametrize('kind', ['build.checked', 'build.check_started', 'seat.usage'])
 def test_build_evidence_is_producer_only(seat, kind, capsys):
     assert main(['event', kind, '{}']) == 1
     assert 'reserved' in capsys.readouterr().err
@@ -428,3 +428,48 @@ def test_checked_event_counts_passed_and_failed(seat):
     checked, = [e['payload'] for e in events(day) if e['kind'] == 'build.checked']
     assert (checked['item'], checked['passed'], checked['failed']) == ('A', 1, 1)
     assert record['status'] == 'check'
+
+
+def test_check_in_flight_refuses_next_and_a_second_check(seat, capsys):
+    import subprocess
+    import sys
+    root, _, _, _, results = seat
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat) == (0, '')
+    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+    try:
+        state._write_state(lambda data: data['builds']['A'].update(check={
+            'started_at': '2026-09-28T12:00:00+00:00', 'pid': child.pid}), root, reserved=False)
+        for args in (['build', 'next', 'A'], ['build', 'check', 'A']):
+            capsys.readouterr()
+            assert main(args) == 2
+            err = capsys.readouterr().err
+            assert 'running since 12:00' in err and 'bin/wuwei build next A' in err
+    finally:
+        child.kill()
+        child.wait()
+    assert build.next_action('A', root=root)['action'] == 'check'
+    results.append(registry.Result(0))
+    assert main(['build', 'check', 'A']) == 0
+
+
+@pytest.mark.parametrize('result, code', [
+    (registry.Result(0), 0),
+    (registry.Result(1, {'test_ids': ['t'], 'error': 'failure'}), 1),
+    (registry.Result(1, {'test_ids': [], 'error': 'x', 'environment': 'pytest not found'}), 1)])
+def test_check_in_flight_marker_is_recorded_then_cleared(seat, monkeypatch, result, code):
+    import os
+    from wuwei import fast_checks
+    root, _, _, day, results = seat
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat) == (0, '')
+    results.append(result)
+    seen, original = [], fast_checks.record
+    def record(path):
+        seen.append(state.read_state(root)['builds']['A'].get('check'))
+        return original(path)
+    monkeypatch.setattr(fast_checks, 'record', record)
+    assert main(['build', 'check', 'A']) == code
+    assert seen == [{'started_at': '2026-09-28T12:00:00+00:00', 'pid': os.getpid()}]
+    assert any(e['kind'] == 'build.check_started' for e in events(day))
+    assert 'check' not in state.read_state(root)['builds']['A']

@@ -194,6 +194,7 @@ Each probe is `ok`, `failed` or `unmeasured` with its value. The `heartbeat: clo
 
 - `status --line` adds `health ok`, `health degraded` or `health unmeasured` after the watch and listen parts once today has a heartbeat line. With no heartbeat line today there is no `health` part; with a heartbeat line while the watch is not alive, health is `unmeasured`.
 - `status --line` adds `traces: N gaps` after the health part when today has N `traces.gap` events: a tool span the trace recorder could not write records one `traces.gap` event with its `reason`, `span` (the tool name) and `session`, and the hook exit stays as before. Only the hook writes the kind. The trace recorder redacts credential-shaped values only: the tool, its subcommand and the text before the first credential stay, and message bodies keep their command words and lose their text.
+- `status --line` adds `running <role> <item> <HH:MM>, ...` while seats or fast checks run (`checks` for a `build check` in flight), oldest first; `status --json` carries the rows as `running`, and `bin/wuwei next` names them on its `wait` rows.
 - While health is degraded there is exactly one `heartbeat` page naming the first failed probe and its value, for example `heartbeat integrity failed: ...`. The next heartbeat with every probe ok clears it.
 - A probe that was ok in the previous heartbeat and failed now is `behaviour drift`: the record lists it under `drift`, the watch log prints `heartbeat: behaviour drift: <probe>`, and the page reason starts `behaviour drift: `.
 

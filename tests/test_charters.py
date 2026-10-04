@@ -220,3 +220,52 @@ def test_decision_lens_charters():
         assert phrase in texts["_common.md"], phrase
     for name in ("lead.md", "sentinel-arch.md", "builder.md"):
         assert "`design`" in texts[name] and "lens lines are mandatory" in texts[name], name
+
+
+# #477: the owner's session is never blocked by work. The lookaheads are immediate, so the
+# background phrasing puts "in the background" right after "Agent" or "Bash".
+BLOCKING = re.compile(
+    r"\bwait(?:s|ing)?\s+for\s+(?:the\s+|its\s+|each\s+|every\s+|all\s+)?(?:required\s+)?"
+    r"(?:agent|turn|seats?|builders?|sentinels?|checks?|verdicts?)\b"
+    r"|\bblock\s+until\b|\bforeground\b|\bturns?\s+returns?\b"
+    r"|\b(?:through|with)\s+bash\b(?!\s+in\s+the\s+background)"
+    r"|\bwith\s+agent\b(?!\s+in\s+the\s+background)", re.I)
+INSTRUCTIONS = ("skills/*/SKILL.md", "charters/*.md", "agents/*.md", "docs/site/agent.md")
+
+
+def test_no_blocking_instruction_in_skills_or_charters():
+    found = [(str(path.relative_to(ROOT)), match.group(0))
+             for pattern in INSTRUCTIONS for path in sorted(ROOT.glob(pattern))
+             for match in BLOCKING.finditer(path.read_text(encoding="utf-8"))]
+    assert found == []
+
+
+@pytest.mark.parametrize("sentence,blocking", [
+    ("Launch it with the rest of the launch set in one message (Parallel dispatch) and wait for the turn to return in the planner session.", True),
+    ("Wait for the Agent call to return in the planner session.", True),
+    ("execute the returned `command` through Bash, using the workspace's recorded executable", True),
+    ("Wait for all required verdicts before a fix or PR raise.", True),
+    ("When the turn returns, do each item's next step.", True),
+    ("for `continue`, do the same with Agent `resume` set to the returned `resume`", True),
+    ("launch that steward with Agent exactly as returned", True),
+    ("Block until the seat stops.", True),
+    ("Run the suite in the foreground.", True),
+    ("Launch it with Agent in the background with the rest of the launch set in one message (Parallel dispatch), then take the next ready action.", False),
+    ("run the returned `command` through Bash in the background, using the workspace's recorded executable", False),
+    ("The fix round and the PR raise start only once every required verdict is received.", False),
+    ("launch that steward with Agent in the background exactly as returned", False),
+    ("the planner stays available to the owner while seats run", False),
+    ("Never launch one and wait for it before the next.", False),
+])
+def test_blocking_pattern_samples(sentence, blocking):
+    assert bool(BLOCKING.search(sentence)) is blocking
+
+
+def test_never_blocking_rule_is_written_down():
+    for name in (".specify/memory/constitution.md", "docs/specs/2026-09-24-wuwei-design.md",
+                 "docs/site/agent.md"):
+        assert "never blocked by work" in (ROOT / name).read_text(encoding="utf-8"), name
+    assert "never by resuming or interrupting a seat" in charter_text()["planner.md"]
+    plan = (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
+    assert "wuwei status --line" in plan
+    assert "only once every required verdict is received" in plan

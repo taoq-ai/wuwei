@@ -141,6 +141,40 @@ def test_status_line_and_json_share_snapshot(tmp_path):
     assert {p.name: p.read_bytes() for p in directory.iterdir()} == before
 
 
+def test_status_line_names_running_seats_and_checks(tmp_path, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+    try:
+        directory = day(tmp_path, {'cap': 2, 'gate_approved': True, 'items': {
+            name: {'phase': 'implement'} for name in 'ABCD'}, 'seats': {
+            'builder-1': {'status': 'running', 'role': 'builder', 'item': 'A',
+                          'started_at': '2026-09-28T09:10:00+02:00'},
+            'builder-2': {'status': 'running', 'role': 'builder', 'item': 'B',
+                          'started_at': '2026-09-28T09:20:00+02:00'},
+            'checker-1': {'status': 'running', 'role': 'reviewer', 'item': 'D'}},
+            'builds': {'C': {'status': 'check', 'check': {
+                'started_at': '2026-09-28T09:25:00+02:00', 'pid': child.pid}}}})
+        assert main(['status', '--line']) == 0
+        line = capsys.readouterr().out
+        assert main(['status', '--json']) == 0
+        running = json.loads(capsys.readouterr().out)['running']
+    finally:
+        child.kill()
+        child.wait()
+    assert ('running reviewer D start unrecorded, builder A 09:10, builder B 09:20, checks C 09:25'
+            in line)
+    assert running == [['', 'reviewer', 'D'],
+                       ['2026-09-28T09:10:00+02:00', 'builder', 'A'],
+                       ['2026-09-28T09:20:00+02:00', 'builder', 'B'],
+                       ['2026-09-28T09:25:00+02:00', 'checks', 'C']]
+    state_file = directory / 'state.json'
+    state_file.write_text(json.dumps({'cap': 2, 'gate_approved': True, 'items': {}}))
+    assert main(['status', '--line']) == 0
+    assert 'running' not in capsys.readouterr().out
+
+
 def test_status_counts_every_nonzero_phase(tmp_path, monkeypatch, capsys):
     from wuwei.__main__ import main
     day(tmp_path, {'cap': 2, 'items': {'A': {'phase': 'delta'}, 'B': {'phase': 'merged'}}})

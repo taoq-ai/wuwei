@@ -428,6 +428,15 @@ answers questions (in the session, in the DM, or y/N at a terminal) and may edit
 afterwards; the planner records. The host terminal remains for the strict posture and for
 credentials.
 
+Availability (owner, 2026-10-04, #477). The owner's session is never blocked by work.
+Seats run in the background; any command that can run longer than a few seconds (fast
+checks, `dispatch opinion`, `steward run`, calibration) runs in the background, and the
+planner acts on its completion notification. The planner's turn ends with the board in one
+line (`wuwei status --line`, which names the running seats and checks with their start
+times), and the owner can speak at any time; the planner answers from the board, never by
+resuming or interrupting a seat. Owner questions are the one thing that waits, because
+they wait for the owner.
+
 ### 5.3 Rules
 
 - Tracks. SLICE (default): no contract, boundary, schema or infrastructure change and under
