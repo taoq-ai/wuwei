@@ -525,11 +525,16 @@ def test_outbound_explain(configured, monkeypatch, capsys):
 def test_outbound_tier_block(configured, monkeypatch, capsys):
     from wuwei.__main__ import main
     monkeypatch.chdir(configured[0])
+    # No default row blocks (owner, 2026-10-04); the owner's own row is the wall.
+    path = configured[0] / '.wuwei/config.toml'
+    text = path.read_text()
+    assert '[outbound]\n' in text
+    path.write_text(text.replace('[outbound]\n', '[outbound]\ntiers = [{ audience = "client", topic = "commitment", tier = "block" }]\n', 1))
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps({'text': 'I will ship it tomorrow', 'channel': 'Cclient'})))
     assert main(['outbound', 'tier']) == 1
     output = capsys.readouterr()
     assert json.loads(output.out) == {'tier': 'block', 'exit': 1}
     assert output.err.strip() == (
-        'outward: block by rule 3 (audience=client topic=commitment) for Cclient: Cclient in '
+        'outward: block by rule 1 (audience=client topic=commitment) for Cclient: Cclient in '
         'outbound.external_channels as client, outbound.commitment_patterns; the owner decides: '
         'bin/wuwei outbound tiers')

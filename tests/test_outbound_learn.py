@@ -402,7 +402,9 @@ def test_learn_classes(root, capsys, monkeypatch):
     call = {'cwd': str(root), 'tool_name': TOOL, 'hook_event_name': 'PreToolUse', 'session_id': 'test',
             'tool_use_id': 'call', 'tool_input': {'text': 'I will ship it tomorrow', 'channel': 'C02'}}
     code, reason = check_tier(call)
-    assert code == 1 and reason.startswith('outward: block by rule 3 (audience=client topic=commitment) for C02')
+    # The learned client class holds the commitment on a card (no default row blocks).
+    assert code == 1 and reason.startswith('outward: draft draft-')
+    assert 'ask by rule 3 (audience=client topic=commitment) for C02' in reason
 
 
 @pytest.mark.parametrize('option,channels,clients,people', [
