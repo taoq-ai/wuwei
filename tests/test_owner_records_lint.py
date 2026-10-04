@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MARKS = ('. ', '? ', '! ', '.\n', '?\n', '!\n', '\n\n')
 PATTERN = re.compile(r"\bpaste\b|\bedit the file\b|\b(?:set|sets|record|records)\s+`?"
                      r"(?:Outcome|Decided-by)\b|Decided-by: owner`? in\b|\badd\b[^.\n]*\bgoals\.md|"
-                     r"\bopen\s+`?\.wuwei/|replace this guide|"
+                     r"\bopen\s+`?\.wuwei/|replace this guide|\bowner fixes memory/|"
                      r"\btyp(?:e|es|ing) the (?:displayed )?digest\b|To confirm, type", re.I)
 ALLOWED = {
     # Credentials are the owner's own secret file; no workflow step can answer for them.
@@ -61,6 +61,7 @@ def test_lint_catches_planted_instruction():
     planted = ROOT / 'docs/site/planted.md'
     assert hits(planted, 'Paste these blocks into .wuwei/memory/goals.md.')
     assert hits(planted, 'Run it and type the displayed digest.')
+    assert hits(planted, 'goals line 1: no goals; the owner fixes memory/goals.md with bin/wuwei goals edit in a host terminal')
     assert not hits(planted, 'Never paste the secret or the URI into a website.')
 
 

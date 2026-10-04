@@ -103,12 +103,15 @@ def check_write(payload):
                 if root and payload.get('tool_name') != 'Bash' else (2, message))
 
 
+def _morning(question, text):
+    header = question.get('header', '')
+    return text.startswith('Morning gate') or (isinstance(header, str) and header.startswith('Morning gate'))
+
+
 def gate_question(question, root):
     """The question is marked Morning gate and cites today's plan file."""
     text = required_text(question, 'question')
-    header = question.get('header', '')
-    morning = text.startswith('Morning gate') or (
-        isinstance(header, str) and header.startswith('Morning gate'))
+    morning = _morning(question, text)
     plan = workspace.day_dir(root) / 'plan.md'
     citations = (str(plan), plan.relative_to(root).as_posix(),
                  plan.relative_to(root / '.wuwei').as_posix())
@@ -184,7 +187,11 @@ def check_question(payload):
             if gate_question(question, root):
                 continue
             ids = re.findall(r'(?<![\w-])[DC]-[1-9][0-9]*(?![\w-])', text)
-            if not ids:
+            if not ids and _morning(question, text):
+                plan = workspace.day_dir(root) / 'plan.md'
+                results.append((1, f"Morning gate questions cite {plan.relative_to(root / '.wuwei').as_posix()}"
+                                + ('' if plan.is_file() else '; run bin/wuwei plan propose <lead.json> first')))
+            elif not ids:
                 results.append((1, hint))
             for decision_id in ids:
                 if decision_id not in checked:

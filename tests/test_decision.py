@@ -301,8 +301,58 @@ def test_question_scope_and_escalation_input(ws, tmp_path, monkeypatch):
     assert check_question({'cwd': str(ws), 'tool_input': {'question': 'Choose?'}})[0] == 1
 
 
+GATE = 'Morning gate (days/2026-09-28/plan.md): Record the goals?'
+CITE = 'Morning gate questions cite days/2026-09-28/plan.md'
+
+
+def test_morning_gate_without_plan_names_plan_propose(ws):
+    from wuwei.guards.decision import check_question
+    payload = question_payload(ws, GATE)
+    payload['tool_input']['questions'][0]['header'] = 'Goals'
+    assert check_question(payload) == (1, f'{CITE}; run bin/wuwei plan propose <lead.json> first')
+    plan = ws / '.wuwei/days/2026-09-28/plan.md'
+    plan.parent.mkdir(parents=True)
+    plan.write_text('# Plan\n')
+    assert check_question(question_payload(ws, 'Morning gate: Record the goals?')) == (1, CITE)
+    assert check_question(payload) == (0, '')
+    code, message = check_question(question_payload(ws, 'Choose?'))
+    assert code == 1 and message.startswith('Cite a decision D-n')
+
+
+def gate_hook(ws, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    from fakes.integrity import seed
+    seed(ws)
+    payload = question_payload(ws, GATE)
+    payload['tool_input']['questions'][0]['header'] = 'Goals'
+    payload.update(session_id='test', transcript_path='transcript.jsonl', hook_event_name='PreToolUse')
+    monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(payload)))
+    code = main(['hook', 'PreToolUse'])
+    return code, capsys.readouterr().out
+
+
+def test_gate_question_before_plan_warns_under_guarded(ws, monkeypatch, capsys):
+    code, out = gate_hook(ws, monkeypatch, capsys)
+    assert code == 0 and 'deny' not in out
+    warned = [event for event in events(ws) if event['kind'] == 'guard.would_refuse']
+    assert len(warned) == 1
+    payload = warned[0]['payload']
+    assert (payload['guard'], payload['area']) == ('decision', 'outward') and 'plan propose' in payload['reason']
+
+
+def test_gate_question_before_plan_refused_under_strict(ws, monkeypatch, capsys):
+    (ws / '.wuwei/config.toml').write_text('[security]\nposture = "strict"\n')
+    code, out = gate_hook(ws, monkeypatch, capsys)
+    output = json.loads(out)['hookSpecificOutput']
+    assert code == 2 and output['permissionDecision'] == 'deny'
+    assert 'plan propose' in output['permissionDecisionReason']
+
+
 def test_question_hook_exit_two(ws, monkeypatch, capsys):
     from wuwei.__main__ import main
+    from fakes.integrity import seed
+    seed(ws)
+    (ws / '.wuwei/config.toml').write_text('[security]\nposture = "strict"\n')
     payload = question_payload(ws, 'Choose?')
     payload.update(session_id='test', transcript_path='transcript.jsonl', hook_event_name='PreToolUse')
     monkeypatch.setattr('sys.stdin', io.StringIO(json.dumps(payload)))

@@ -1642,7 +1642,7 @@ or `strict`, and `[security.areas]` overrides one area with `off`, `warn` or `bl
 | `publish` | Commit and push rules, the owned-PR anchor and day close (`commit_push`, `stop`); deploys and PR actions (`deploy`, `pr`) | warn | block | block |
 | `integrity` | The plugin integrity gate (`integrity`) | warn | block | block |
 | `mcp` | The MCP registry launch gate | warn | warn | block |
-| `outward` | The outward text lint (`outward`) | warn | warn | block |
+| `outward` | The outward text lint (`outward`) and the question citation check (`decision.check_question`) | warn | warn | block |
 | `seats` | The seat launch contract: logged brief, capacity, memory, clean worktree (`agent_launch`) | warn | warn | block |
 
 Floors no posture and no override lowers:

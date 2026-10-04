@@ -37,8 +37,8 @@ MODULES = {
 # pins the keys to MODULES. None: the check applies its own posture (the MCP launch gate in
 # mcp.cached; spec mode's own mode setting), so the hook enforces it as returned.
 AREAS = {'agent_launch': 'seats', 'agent_launch.check_mcp': None, 'commit_push': 'publish',
-         'decision': 'records', 'deploy': 'publish', 'integrity': 'integrity',
-         'lifecycle': 'records', 'outward': 'outward', 'pr': 'publish',
+         'decision': 'records', 'decision.check_question': 'outward', 'deploy': 'publish',
+         'integrity': 'integrity', 'lifecycle': 'records', 'outward': 'outward', 'pr': 'publish',
          'protect_state': 'records', 'spec': None, 'stop': 'publish', 'traces': 'records',
          'verdict': 'records'}
 # Owner-only actions block in every posture (#331 floor): the deployment ban (4.7), the merge

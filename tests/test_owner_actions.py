@@ -240,7 +240,8 @@ def test_split_name_in_script_body(places):
     ('nohup bin/wuwei mcp decide', 1), ('timeout 5 bin/wuwei state recover', 1),
     ('awk \'BEGIN { system("bin/wuwei decision outcome x") }\'', 2),
     ("git -c alias.x='!bin/wuwei mcp decide' x", 2),
-    ("echo 'bin/wuwei decision outcome' > notes.md", 2)])
+    # #471: a reader's redirected text is data.
+    ("echo 'bin/wuwei decision outcome' > notes.md", 0)])
 def test_regression_list(places, command, expected):
     root, outside = places
     assert bash(root, command)[0] == expected, command
@@ -338,3 +339,42 @@ def test_seat_records_a_docs_value(places, monkeypatch, capsys):
                      'echo spec=skipped | xargs bin/wuwei plan set X --reason docs=x',
                      'echo spec=skipped | xargs bin/wuwei plan set X docs=a --reason'):
         assert bash(root, smuggled)[0] != 0, smuggled
+
+
+# #471: a mention of an owner command inside data is data.
+DATA_MENTIONS = [
+    "jq '.sweep.ranking = \"wuwei rank exit 2: ... bin/wuwei goals edit ...\"' lead.json > {out}/lead.ranked.json",
+    "echo 'run bin/wuwei goals edit later' > {out}/note.txt",
+    "cat <<'EOF' > {out}/x.txt\nbin/wuwei goals edit\nEOF",
+    "grep -rn \"def set_path\\|def set(\\|'set'\" cli/wuwei/commands/state.py cli/wuwei/state.py 2>/dev/null | head"]
+
+
+@pytest.mark.parametrize('command', DATA_MENTIONS)
+def test_owner_mentions_in_data_pass(places, command):
+    root, outside = places
+    assert bash(root, command.format(out=outside)) == (0, '')
+
+
+def test_owner_mentions_in_data_leave_no_event(places, monkeypatch, capsys):
+    from wuwei.workspace import day_dir
+    root, outside = places
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
+    for command in DATA_MENTIONS[:2]:
+        code, output = hook(root, command.format(out=outside), monkeypatch, capsys)
+        assert code == 0 and output.get('permissionDecision') != 'deny', (command, output)
+    log = day_dir(root) / 'events.jsonl'
+    text = log.read_text() if log.exists() else ''
+    assert 'hook.refusal' not in text and 'guard.would_refuse' not in text
+
+
+def test_owner_commands_beside_data_stay_refused(places):
+    root, _ = places
+
+    def seat(command):
+        return check_bash({'cwd': str(root), 'tool_name': 'Bash', 'agent_id': 'a1',
+                           'tool_input': {'command': command}})[0]
+    for command in ('bin/wuwei goals edit', "sh -c 'bin/wuwei goals edit'", 'xargs bin/wuwei goals edit'):
+        assert seat(command) in (1, 2), command
+    for command in ("echo 'exec bin/wuwei goals edit' > x.tcl; tclsh x.tcl",
+                    "cat <<'EOF' | tclsh\nexec bin/wuwei goals edit\nEOF"):
+        assert seat(command) == 2, command

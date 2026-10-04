@@ -1173,3 +1173,12 @@ def test_docs_system_is_documented():
     adapters = (SITE / 'adapters.md').read_text()
     for name in ('NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN'):
         assert name in adapters, name
+
+
+def test_lead_goals_are_blocks_while_proposing():
+    """#471: the lead writes proposed goals as blocks; the question lint sits in outward."""
+    for rel in ('charters/lead.md', 'agents/lead.md', 'skills/wuwei-plan/SKILL.md'):
+        assert 'never an id alone' in (ROOT / rel).read_text(), rel
+    for path in (SITE / 'security.md', ROOT / 'docs/specs/2026-09-24-wuwei-design.md'):
+        row, = [line for line in path.read_text().splitlines() if line.startswith('| `outward` |')]
+        assert '`decision.check_question`' in row, path
