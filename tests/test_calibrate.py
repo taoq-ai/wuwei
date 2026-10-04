@@ -401,11 +401,14 @@ def test_charter_proposal_lands_through_promote(tmp_path, monkeypatch):
 @pytest.fixture
 def ports(monkeypatch):
     from fakes.code_host import Fake as Host
+    from fakes.host import Fake as Memory
     from fakes.vcs import Fake as Vcs
     from wuwei import registry
 
-    selected = {'vcs': Vcs(), 'code_host': Host()}
+    selected = {'vcs': Vcs(), 'code_host': Host(),
+                'host': Memory({'free_memory': registry.Result(0, 10240 * 2**20)})}
     monkeypatch.setattr(registry, 'load', lambda kind, config: selected[kind])
+    monkeypatch.setattr(os, 'cpu_count', lambda: 8)
     return selected
 
 
@@ -1086,3 +1089,55 @@ def test_starter_profiles_import_clean(workspace_root, capsys):
         assert main('calibrate', 'import', name[:-5]) == 0, capsys.readouterr()
         out = capsys.readouterr().out
         assert out.startswith('--- config.toml') and 'proposals/profile-builder.json' in out
+
+
+def seat_day(root, cost):
+    from wuwei import state
+    for free, running in ((10240, 0), (10240 - cost, 1)):
+        state.append_event('seat launched', {'name': f'seat-{running}', 'item': 'A',
+                                             'free_mib': free, 'running': running}, root)
+
+
+def test_host_profile_proposes_cap(workspace_root, ports, monkeypatch):
+    from wuwei import registry, workspace
+    (workspace_root / '.wuwei/config.toml').write_text('[host]\nseats = 4\n')
+    config = workspace.load_config(workspace_root)
+    assert calibrate.host(workspace_root, config) == {
+        'cores': 8, 'free_mib': 10240, 'seat_mib': 1024, 'seat_source': 'default', 'cap': 4}
+    seat_day(workspace_root, 3072)
+    profile = calibrate.host(workspace_root, config)
+    assert (profile['cap'], profile['seat_mib'], profile['seat_source']) == (3, 3072, 'measured')
+    config['host']['seats'] = 2
+    assert calibrate.host(workspace_root, config)['cap'] == 2
+    config['host']['free_memory_mb'] = 20000
+    assert calibrate.host(workspace_root, config)['cap'] == 1
+    ports['host'].results['free_memory'] = registry.Result(2, None, 'vm_stat failed')
+    assert 'vm_stat failed' in calibrate.host(workspace_root, config)['unmeasured']
+    ports['host'].results['free_memory'] = registry.Result(0, 10240 * 2**20)
+    monkeypatch.setattr(os, 'cpu_count', lambda: None)
+    assert 'cores' in calibrate.host(workspace_root, config)['unmeasured']
+
+
+def test_calibrate_proposes_cap_from_host(workspace_root, ports, capsys):
+    from wuwei import registry
+    raw = configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
+    seat_day(workspace_root, 3072)
+    assert main('calibrate') == 0, capsys.readouterr().err
+    assert '+cap = 3' in capsys.readouterr().out
+    report = (workspace_root / '.wuwei/days/2026-10-01/calibration.md').read_text()
+    host = report.split('## Host', 1)[1].split('##', 1)[0]
+    for phrase in ('cores: 8', 'free memory: 10240 MiB (floor 1024 MiB)',
+                   'seat cost: 3072 MiB (measured)', 'proposed cap: 3 (host.seats 4)'):
+        assert phrase in host, phrase
+    (workspace_root / '.wuwei/config.toml').write_text('cap = 1\n' + raw)
+    assert main('calibrate') == 0
+    assert 'Config differs; edit by hand: cap' in capsys.readouterr().out
+    assert (workspace_root / '.wuwei/config.toml').read_text() == 'cap = 1\n' + raw
+    assert promote(workspace_root, lambda digest, **kw: True) == 0
+    assert 'Config differs; edit by hand: cap' in capsys.readouterr().out
+    assert (workspace_root / '.wuwei/config.toml').read_text().startswith('cap = 1\n')
+    ports['host'].results['free_memory'] = registry.Result(2, None, 'vm_stat failed')
+    assert main('calibrate') == 2
+    assert 'host unmeasured: vm_stat failed' in capsys.readouterr().err
+    assert '- unmeasured: vm_stat failed' in (
+        workspace_root / '.wuwei/days/2026-10-01/calibration.md').read_text()

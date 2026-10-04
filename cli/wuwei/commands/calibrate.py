@@ -46,15 +46,16 @@ def run(args):
         if not selected:
             raise ValueError(f'unknown repository {args.repo!r}; use a configured repos.name')
         results = calibrate.survey(root, config, selected, measure=args.measure)
+        host = calibrate.host(root, config)
     except (OSError, ValueError) as exc:
         print(f'wuwei calibrate: {exc}', file=sys.stderr)
         return UNRUN
     error = None
     try:
-        _, diff, edits = calibrate.propose(raw, results)
+        _, diff, edits = calibrate.propose(raw, results, host=host)
     except ValueError as exc:
         diff, edits, error = '', [], str(exc)
-    evidence, _ = record(root, results, diff, edits, error)
+    evidence, _ = record(root, results, diff, edits, error, host, config)
     print(f'Wrote {evidence}')
     print(diff or ('Could not place the proposal: ' + error if error else 'No config.toml changes'))
     for key, current, detected in edits:
@@ -63,6 +64,9 @@ def run(args):
         print(f'CI only, not proposed as a fast check: {name}: {command} ({note})')
     print(f"Next: review the report, run bin/wuwei config promote{' --measure' if args.measure else ''} "
           'in a host terminal, then bin/wuwei promote for the charter proposals.')
+    if 'unmeasured' in host:
+        print(f"wuwei calibrate: host unmeasured: {host['unmeasured']}; run bin/wuwei doctor, then retry", file=sys.stderr)
+        return UNRUN
     if error or any(r['style'] is None or r['baseline'] is None for r in results):
         print('wuwei calibrate: ' + (error or 'commit style or PR baseline unmeasured') + '; run bin/wuwei doctor, then retry', file=sys.stderr)
         return UNRUN
@@ -70,7 +74,7 @@ def run(args):
     return FINDINGS if flagged else CLEAN
 
 
-def record(root, results, diff, edits, error):
+def record(root, results, diff, edits, error, host=None, config=None):
     """Write today's charter proposals and calibration.md; (evidence path, proposal paths)."""
     day = workspace.day_dir(root)
     (day / 'proposals').mkdir(parents=True, exist_ok=True)
@@ -87,7 +91,7 @@ def record(root, results, diff, edits, error):
                 'reason': f'calibration of {name}: repository conventions',
                 'evidence': evidence}, indent=2) + '\n')
             written.append(f'.wuwei/days/{day.name}/proposals/{path.name}')
-    workspace.atomic_write(day / 'calibration.md', calibrate.report(results, diff, edits, written, error))
+    workspace.atomic_write(day / 'calibration.md', calibrate.report(results, diff, edits, written, error, host, config))
     return evidence, written
 
 

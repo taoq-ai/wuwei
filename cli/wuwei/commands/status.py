@@ -247,7 +247,8 @@ def snapshot(directory):
     result = {'pages': 0, 'nudges': 0, 'cap': data['cap'], 'gate_approved': data['gate_approved'],
               'phases': {phase: count for phase in state.PHASES
                          if (count := sum(item['phase'] == phase for item in data['items'].values()))},
-              'next_reply_due': None, 'next_meeting': None, 'sessions': live}
+              'next_reply_due': None, 'next_meeting': None, 'sessions': live,
+              'seats': state.running_by_goal(data)}
     result['gates'] = {name: row['gates'] for name, row in data['items'].items() if row['gates']}
     classified_state = {**data, 'now': workspace.now().isoformat()}
     active, result['watch'], result['listen'], result['health'], result['loops'] = scan(
@@ -341,6 +342,10 @@ def line(data):
     if data.get('health'):
         parts.append(f'health {data["health"]}')
     parts.extend(f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items())
+    if data['gate_approved']:
+        seats = data.get('seats', {})
+        parts.append(f'seats {sum(seats.values())} of CAP {data["cap"]}'
+                     + (f' ({state.goal_split(seats)})' if seats else ''))
     if data['sessions']:
         parts.append(f'sessions {data["sessions"]}')
     if data['answered']:

@@ -43,6 +43,12 @@ class Runtime:
         if resume:
             tool_input['resume'] = resume
         day.hook('PreToolUse', tool_name='Agent', tool_input=tool_input)
+        return self.finish(role, path, resume)
+
+    def finish(self, role, path, resume=None):
+        """The launched seat's work and its SubagentStop; a parallel test launches first."""
+        day = self.day
+        prompt = 'WUWEI brief: ' + path.relative_to(day.root).as_posix()
         message = RETRO
         if role == 'builder':
             self.builds += 1

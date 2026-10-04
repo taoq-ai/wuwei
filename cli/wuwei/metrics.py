@@ -485,6 +485,19 @@ def _costs(events, key):
     return dict(totals) if seen else UNMEASURED
 
 
+def seat_cost(events):
+    """MiB one running seat takes: the median free-memory drop per running seat against the
+    free memory at zero running seats, from `seat launched` rows; unmeasured without both."""
+    # ponytail: free-memory deltas include other processes; a per-seat probe if this misleads.
+    rows = [(row['payload']['free_mib'], row['payload']['running']) for row in events
+            if row['kind'] == 'seat launched'
+            and type(row['payload'].get('free_mib')) is int and type(row['payload'].get('running')) is int]
+    base = max((free for free, running in rows if running == 0), default=None)
+    samples = [(base - free) / running for free, running in rows if running > 0 and base is not None]
+    cost = round(median(samples)) if samples else 0
+    return cost if cost > 0 else UNMEASURED
+
+
 def _calibration(day, data, elapsed):
     path = day / 'proposal.json'
     if not path.exists() or data is None or elapsed == UNMEASURED:
@@ -525,7 +538,7 @@ def collect(root=None, *, day=None):
             'verdict_lint_rejections', 'decisions_per_day', 'decisions_by_reversibility',
             'owner_decisions_per_day',
             'build_loop_iterations_per_item', 'stuck_parks_per_item', 'cost_per_item',
-            'cost_per_role', 'cost_per_day', 'seat_decisions_owner_reversed')}
+            'cost_per_role', 'cost_per_day', 'seat_decisions_owner_reversed', 'seat_cost_mib')}
     else:
         count = lambda kind: sum(row['kind'] == kind for row in events)
         fix = Counter(item for row in events for item, phase in
@@ -553,7 +566,7 @@ def collect(root=None, *, day=None):
             'decisions_by_reversibility': dict(reversibility),
             'build_loop_iterations_per_item': dict(iterations),
             'stuck_parks_per_item': dict(parks), 'cost_per_item': item_cost,
-            'cost_per_role': _costs(events, 'role'),
+            'cost_per_role': _costs(events, 'role'), 'seat_cost_mib': seat_cost(events),
             'cost_per_day': {directory.name: sum(item_cost.values())} if isinstance(item_cost, dict) else UNMEASURED,
             'seat_decisions_owner_reversed': (count('decision.reversed')
                                               if any(row['kind'] in ('decision.decided', 'build.parked')

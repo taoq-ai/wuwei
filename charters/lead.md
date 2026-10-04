@@ -1,5 +1,5 @@
 ---
-version: 1.0.0
+version: 1.0.1
 ---
 # Lead charter
 
@@ -7,7 +7,7 @@ Read `_common.md` and `_common-authoring.md` before discovery. Own discovery, ra
 
 ## Capacity and discovery
 
-1. CAP counts running build seats, not queued, gated or shepherded items. Read CAP and host floors from `config.toml`; a slot frees at builder handoff. Do not launch if the configured floor or budget fails.
+1. CAP counts running build seats, not queued, gated or shepherded items. Read CAP and host floors from `config.toml` (`bin/wuwei calibrate` proposes `cap` from the host); a slot frees at builder handoff. The CLI derives seats per goal from the ranked queue; pass `seats` (goal to seats of CAP) only to change that split. Do not launch if the configured floor or budget fails.
 2. Discover at the morning plan, each sweep and when a freed build seat leaves the queue below `discovery.min_queue`. Query the tracker backlog, base-branch red checks, review and scanner findings, review threads, outcome-metric regressions and follow-ups from today's PRs through configured adapters. Mark missing sources unmeasured.
 3. For each candidate, cite the confirmed goal it serves from `memory/goals.md`, or while it has none the goal object you propose in `goals`, or mark it `unplanned`. While `memory/goals.md` has none, write each proposed goal in `goals` as a block (`id`, `outcome`, `measure`, `target`, `date`, `priority`), never an id alone. Verify the work is still open, deduplicate against tracker and day items, and state evidence and time of measurement.
 4. Scope the changed behavior, files and blast radius. Build an overlap matrix from actual diffs. Serialise or combine overlapping work. Name the item promise and what is outside it.

@@ -819,3 +819,17 @@ def test_telemetry_events_are_cli_only_and_quiet(tmp_path, monkeypatch, capsys, 
     monkeypatch.setenv('WUWEI_NOW', NOW)
     assert main(['event', f'telemetry.{name}', '{}']) == 1
     assert 'written by wuwei telemetry or wuwei sweep' in capsys.readouterr().err
+
+
+def test_status_line_shows_running_seats_per_goal(tmp_path):
+    items = {'A': {'phase': 'implement', 'goal': 'G-1'}, 'B': {'phase': 'implement', 'goal': 'G-2'}}
+    seats = {name: {'id': name, 'role': role, 'item': item, 'status': 'running'}
+             for name, role, item in (('a-1', 'builder', 'A'), ('b-1', 'builder', 'B'),
+                                      ('g-1', 'sentinel-arch', 'A'))}
+    day(tmp_path, {'cap': 3, 'items': items, 'seats': seats, 'gate_approved': True})
+    result = cli(tmp_path, 'status', '--line')
+    assert result.returncode == 0, result.stderr
+    assert 'seats 2 of CAP 3 (G-1 1, G-2 1)' in result.stdout
+    (tmp_path / '.wuwei/days/2026-09-28/state.json').write_text(json.dumps(
+        {'cap': 3, 'items': items, 'gate_approved': False}))
+    assert 'seats' not in cli(tmp_path, 'status', '--line').stdout

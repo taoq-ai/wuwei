@@ -213,9 +213,9 @@ $ wuwei goals edit --file .wuwei/days/<date>/goals.md
 goals: 1 goal saved (G-1)
 $ wuwei plan approve --items DIV-1 --goals-confirmed
 $ bin/wuwei status --line
-WUWEI pages 0 | nudges 0 | observe | watch off | planned 1/1 | meeting unmeasured
+WUWEI pages 0 | nudges 0 | observe | watch off | planned 1/1 | seats 0 of CAP 1 | meeting unmeasured
 $ bin/wuwei next
-dispatch: 1 planned item(s) queued, 0 of CAP 1 building; create the worktree for DIV-1, then ...
+dispatch: 1 planned item(s) can start, 0 of CAP 1 building; run the launch set, brief each start and launch the set in one turn. Run: wuwei dispatch next --all
 ```
 
 It worked when `goals edit` says `saved`, the status line shows `planned 1/1` and
@@ -225,6 +225,14 @@ has no `planned` count after you approved, or when a command exits 1 or 2 with a
 [troubleshooting](recovery.md#troubleshooting).
 
 ## 4. Through the day
+
+The day starts in parallel. After you approve, the planner runs `wuwei dispatch next --all`,
+which lists every item that can move now: items at the gate first, then items building, then
+planned items up to CAP, each goal's share first. It briefs the new items and launches the
+whole set in one turn, so several builders, and an item's three gate seats, run at the same
+time. An item that does not fit waits and says why. The status line shows
+`seats 2 of CAP 3 (G-1 1, G-2 1)`, and `bin/wuwei next` names the waiting item and the seat
+expected to free first.
 
 Watch the status line and `bin/wuwei nudges`. The status line counts items per phase, for
 example `implement 1/1`, and later `merged 1/1`. The planner runs one loop per item and
