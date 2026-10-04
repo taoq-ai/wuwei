@@ -90,9 +90,11 @@ def tier(configured, text, context=None, kind='chat'):
     ('Thanks', {'channel': 'Cwork', 'channel_id': 'Cclient'}, (1, 'draft')),
     ('Thanks', {'channel': 'Cwork', 'is_dm': 'false'}, (2, 'draft')),
     ('Thanks', {'channel': 'Cwork', 'recipients': 'dev'}, (2, 'draft')),
-    ('Thanks', {'channel': 'Cwork', 'approved': True}, (2, 'draft')),
-    ('Thanks', {'channel': 'Cwork', 'in_scope': True}, (2, 'draft')),
-    ('', {'channel': 'Cwork'}, (2, 'draft')),
+    ('Thanks', {'channel': 'Cwork', 'approved': True}, (0, 'send')),
+    ('Thanks', {'channel': 'Cwork', 'in_scope': True}, (0, 'send')),
+    ('Thanks', {'channel': 'Cwork', 'issue_key': 'DEMO-12'}, (0, 'send')),
+    ('Thanks', {'channel': 'Cwork', 'repo': 'Dashboard'}, (0, 'send')),
+    ('', {'channel': 'Cwork'}, (1, 'draft')),
     (None, {'channel': 'Cwork'}, (2, 'draft')),
 ])
 def test_acceptance_and_audience(configured, text, context, expected):
@@ -229,8 +231,8 @@ def call(root, inputs, tool='mcp__slack__post_message'):
     ('mcp__slack__post_message', {'text': 'Thanks', 'channel': 'Cwork', 'draft': {'recipient': 'visitor'}}, 1),
     ('mcp__slack__post_message', {'draft': {'text': 'Thanks', 'channel': 'Cwork', 'recipient': 'visitor'}}, 1),
     ('mcp__slack__post_message', {'text': 'Thanks', 'channel': 'Cwork', 'draft': {'is_dm': True}}, 1),
-    ('mcp__slack__post_message', {'text': 'Thanks', 'channel': 'Cwork', 'blocks': []}, 2),
-    ('mcp__slack__post_message', {'text': 'Thanks', 'channel': 'Cwork', 'approved': True}, 2),
+    ('mcp__slack__post_message', {'text': 'Thanks', 'channel': 'Cwork', 'blocks': []}, 0),
+    ('mcp__slack__post_message', {'text': 'Thanks', 'channel': 'Cwork', 'approved': True}, 0),
     ('mcp__slack__post_message', {'text': 'Thanks', 'channel': 'Cwork', 'is_shared': 'false'}, 2),
     ('mcp__unknown__send_message', {'text': 'Thanks', 'channel': 'Cwork'}, 2),
     ('Bash', {'command': 'for x in a; do echo "$x"; done'}, 0),
@@ -285,7 +287,7 @@ def test_port_policy_no_side_effects_on_refusal(configured, kind, operation, inp
     ({'text': 'Thanks', 'channel': 'Cwork', 'recipient': 'visitor'}, 1),
     ({'kind': 'code_host', 'body': 'The cache is thread safe.', 'ref': 'acme/app#7'}, 0),
     ({'text': 'Thanks'}, 1),
-    ({'text': 'Thanks', 'approved': True}, 2),
+    ({'text': 'Thanks', 'approved': True}, 1),
     ([], 2),
 ])
 def test_cli_tier(configured, monkeypatch, capsys, inputs, expected):
@@ -327,7 +329,7 @@ def test_hook_translation(configured, monkeypatch, capsys, code):
     if code == 1:
         inputs['recipient'] = 'visitor'
     if code == 2:
-        inputs['blocks'] = []
+        inputs['is_shared'] = 'false'
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(call(configured[0], inputs))))
     assert run(SimpleNamespace(event='PreToolUse')) == (2 if code else 0)
     output = capsys.readouterr()
