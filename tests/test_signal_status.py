@@ -282,6 +282,7 @@ def test_emitted_kinds_have_intended_tiers():
     emitted.update(['remote.started', 'remote.resumed'])  # one conditional writer kind
     emitted.update(['spec.step', 'spec.skipped', 'spec.warned'])  # specmode.once(kind)
     expected = {'draft.created': 'nudge', 'draft.sending': 'silent',
+                'worktree.hooks_skipped': 'nudge',
                 'draft.sent': 'silent', 'draft.dropped': 'silent', 'draft.failed': 'nudge',
                 'mcp.finding': 'nudge', 'mcp.checked': 'nudge', 'mcp.decided': 'silent',
                 'security.canary': 'page', 'security.honeytoken': 'page',

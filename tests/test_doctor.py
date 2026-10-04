@@ -111,7 +111,7 @@ def ws(tmp_path, monkeypatch):
     code_host.results['auth_status'] = Result(0)
     code_host.auth_status = lambda root=None: code_host._call('auth_status', (), root)
     vcs = Vcs({'identity': Result(0, {'name': 'Ada', 'email': 'ada@example.com'}),
-               'branches': Result(0, ['main'])})
+               'branches': Result(0, ['main']), 'hooks_target': Result(0, {'chain': ''})})
     fakes = {'host': host, 'code_host': code_host, 'vcs': vcs}
     real = registry.load
     monkeypatch.setattr(registry, 'load', lambda kind, config: fakes.get(kind) or real(kind, config))
@@ -291,8 +291,8 @@ def test_no_workspace(ws, tmp_path, monkeypatch):
 def test_workspace_rows_healthy(ws):
     rows = doctor.diagnose()
     assert names(rows, 'workspace') == [
-        'workspace', 'config', 'template', 'executable', 'memory tiers', 'acme/widget path', 'acme/widget git', 'acme/widget branch',
-        'acme/widget identity', 'acme/widget fast_checks', 'acme/widget spec', 'calibration', 'drift',
+        'workspace', 'config', 'template', 'executable', 'memory tiers', 'acme/widget path', 'acme/widget git',
+        'acme/widget git hooks', 'acme/widget branch', 'acme/widget identity', 'acme/widget fast_checks', 'acme/widget spec', 'calibration', 'drift',
         'interview', 'profile', 'posture', 'telemetry']
     assert row(rows, 'posture')['value'] == 'guarded (from security.posture)'
     assert row(rows, 'telemetry')['value'] == 'share off'
@@ -344,6 +344,28 @@ def test_workspace_template_drift(ws, monkeypatch):
     charters = row(rows, 'charter overrides')
     assert charters['status'] == 'warn' and 'apply' not in charters
     assert charters['docs'] == 'docs/site/charter-overrides.md'
+
+
+@pytest.mark.parametrize('found, status, value', [
+    (Result(0, {'chain': '/x/hooks'}), 'ok', 'chained with /x/hooks'),
+    (Result(0, {'chain': ''}), 'ok', 'WUWEI hooks'),
+    (Result(1, None, 'git.hooks_target: core.hooksPath /x is not a directory'), 'warn', 'not a directory'),
+    (Result(2, None, 'git.hooks_target: could not run: git exited 128'), 'unmeasured', 'git exited 128'),
+])
+def test_git_hooks_row(ws, found, status, value):
+    ws.vcs.results['hooks_target'] = found
+    got = row(doctor.diagnose(), 'acme/widget git hooks')
+    assert got['status'] == status and value in got['value'], got
+    if status == 'warn':
+        assert 'init --upgrade' in got['fix'] and 'worktree.git_hooks' in got['fix']
+
+
+def test_git_hooks_row_skip_mode(ws):
+    config(ws.root, CONFIG + '[worktree]\ngit_hooks = "skip"\n')
+    ws.vcs.calls.clear()
+    got = row(doctor.diagnose(), 'acme/widget git hooks')
+    assert got['status'] == 'ok' and 'skipped' in got['value']
+    assert not any(call[0] == 'hooks_target' for call in ws.vcs.calls)
 
 
 @pytest.mark.parametrize('repo, name, status, apply', [

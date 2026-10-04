@@ -100,21 +100,146 @@ def test_hook_installer_writes_executable_safe_shims(workspace_case):
         source = hook.read_text()
         assert '.wuwei/executable' in source and 'git-hook ' + event in source
         assert 'wuwei-workspace' in source
-    assert fake.calls[-1][:2] == ('hooks_path', (str(root / 'repo'), str(root / '.wuwei/git-hooks')))
+    assert fake.calls[-1][:2] == ('hooks_path', (str(root / 'repo'), str(root / '.wuwei/git-hooks'), 'chain'))
 
 
-@pytest.mark.parametrize('existing,exit_code,expected', [('', 1, 0), ('custom\n', 0, 2), ('', 128, 2)])
-def test_hooks_path_preserves_custom_hooks(tmp_path, monkeypatch, existing, exit_code, expected):
-    assert hasattr(adapter(), 'hooks_path'), 'hook configuration port is missing'
-    calls = install_replay(monkeypatch, 'git', [
-        {'stdout': str(tmp_path / 'private-git')}, {'stdout': str(tmp_path / 'common-git')},
-        {'stdout': existing, 'exit': exit_code},
-        {'stdout': str(tmp_path / 'default-hooks') + '\n'},
-        {'stdout': 'false'}, {'exit': 1}, {'stdout': ''}, {'stdout': ''}])
-    result = adapter().hooks_path(str(tmp_path / 'repo'), str(tmp_path / 'hooks'))
-    assert result.exit == expected
-    if expected:
-        assert len(calls) == 3
+def test_hooks_path_fails_closed(tmp_path, monkeypatch):
+    calls = install_replay(monkeypatch, 'git', [{'exit': 128}])
+    result = adapter().hooks_path(str(tmp_path / 'repo'), str(tmp_path / 'hooks'), 'chain')
+    assert result.exit == 2 and result.reason
+    assert len(calls) == 1
+
+
+def git(repo, *args):
+    return subprocess.run(['git', '-C', str(repo), *args], capture_output=True, text=True)
+
+
+def hook_repo(tmp_path, monkeypatch, hooks_path=None, default_hook=False):
+    """A repository with a commit and a linked worktree, plus executable WUWEI shims."""
+    for key in list(os.environ):
+        if key.startswith('GIT_'):
+            monkeypatch.delenv(key)
+    tmp_path = tmp_path.resolve()
+    repo, tree, shims = tmp_path / 'repo', tmp_path / 'tree', tmp_path / 'shims'
+    subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
+    git(repo, 'config', 'user.name', 'Builder')
+    git(repo, 'config', 'user.email', 'builder@example.test')
+    assert git(repo, 'commit', '-q', '--allow-empty', '-m', 'start').returncode == 0
+    assert git(repo, 'worktree', 'add', '-q', '-b', 'x', str(tree)).returncode == 0
+    if default_hook:
+        (repo / '.git/hooks/pre-commit').write_text('#!/bin/sh\nexit 0\n')
+        (repo / '.git/hooks/pre-commit').chmod(0o755)
+    if hooks_path is not None:
+        git(repo, 'config', 'core.hooksPath', str(hooks_path))
+    shims.mkdir()
+    for name in ('pre-commit', 'pre-push'):
+        (shims / name).write_text('#!/bin/sh\nexit 0\n')
+        (shims / name).chmod(0o755)
+    return repo, tree, shims
+
+
+def own_hooks(tmp_path, *names):
+    own = tmp_path.resolve() / 'own'
+    own.mkdir()
+    for name in names:
+        (own / name).write_text('#!/bin/sh\nexit 0\n')
+        (own / name).chmod(0o755)
+    return own
+
+
+def test_hooks_path_chains_custom_hooks_path(tmp_path, monkeypatch):
+    own = own_hooks(tmp_path, 'pre-commit', 'post-checkout')
+    repo, tree, shims = hook_repo(tmp_path, monkeypatch, own)
+    result = adapter().hooks_path(str(tree), str(shims), 'chain')
+    assert result.exit == 0, result.reason
+    assert result.data['chained'] == str(own)
+    chain = Path(git(tree, 'rev-parse', '--absolute-git-dir').stdout.strip()) / 'wuwei-hooks'
+    assert git(tree, 'config', '--worktree', '--get', 'core.hooksPath').stdout.strip() == str(chain)
+    assert git(repo, 'config', '--local', '--get', 'core.hooksPath').stdout.strip() == str(own)
+    for name in ('pre-commit', 'pre-push', 'commit-msg', 'post-checkout'):
+        assert os.access(chain / name, os.X_OK), name
+    assert str(shims / 'pre-commit') in (chain / 'pre-commit').read_text()
+    assert str(own / 'pre-commit') in (chain / 'pre-commit').read_text()
+    assert str(shims) not in (chain / 'commit-msg').read_text()
+
+
+def test_hooks_path_chains_relative_hooks_path(tmp_path, monkeypatch):
+    _, tree, shims = hook_repo(tmp_path, monkeypatch, '.husky')
+    result = adapter().hooks_path(str(tree), str(shims), 'chain')
+    assert result.exit == 0, result.reason
+    assert result.data['chained'] == str(tree / '.husky')
+
+
+def test_hooks_path_chains_default_hooks(tmp_path, monkeypatch):
+    repo, tree, shims = hook_repo(tmp_path, monkeypatch, default_hook=True)
+    result = adapter().hooks_path(str(tree), str(shims), 'chain')
+    assert result.exit == 0, result.reason
+    assert result.data['chained'] == str(repo / '.git/hooks')
+
+
+def test_hooks_path_plain_without_custom_hooks(tmp_path, monkeypatch):
+    _, tree, shims = hook_repo(tmp_path, monkeypatch)
+    result = adapter().hooks_path(str(tree), str(shims), 'chain')
+    assert result.exit == 0, result.reason
+    assert result.data['chained'] == ''
+    assert git(tree, 'config', '--worktree', '--get', 'core.hooksPath').stdout.strip() == str(shims)
+    assert not (Path(result.data['git_dir']) / 'wuwei-hooks').exists()
+
+
+def test_hooks_path_rerun_finds_the_original(tmp_path, monkeypatch):
+    own = own_hooks(tmp_path, 'pre-commit')
+    _, tree, shims = hook_repo(tmp_path, monkeypatch, own)
+    first = adapter().hooks_path(str(tree), str(shims), 'chain')
+    script = Path(first.data['git_dir']) / 'wuwei-hooks/pre-commit'
+    script.write_text('changed')
+    again = adapter().hooks_path(str(tree), str(shims), 'chain')
+    assert again.exit == 0 and again.data['chained'] == str(own)
+    assert str(own / 'pre-commit') in script.read_text()
+
+
+def test_hooks_path_skippable_layouts(tmp_path, monkeypatch):
+    hooks_file = tmp_path.resolve() / 'hooks-file'
+    hooks_file.write_text('')
+    repo, tree, shims = hook_repo(tmp_path, monkeypatch, hooks_file)
+    result = adapter().hooks_path(str(tree), str(shims), 'chain')
+    assert result.exit == 1 and 'not a directory' in result.reason
+    assert git(repo, 'config', '--get', 'extensions.worktreeConfig').stdout.strip() == 'true'
+    assert git(tree, 'config', '--worktree', '--get', 'core.hooksPath').returncode == 1
+
+
+def test_hooks_path_skips_core_worktree(tmp_path, monkeypatch):
+    repo, tree, shims = hook_repo(tmp_path, monkeypatch)
+    git(repo, 'config', 'core.worktree', str(repo))
+    result = adapter().hooks_path(str(tree), str(shims), 'chain')
+    assert result.exit == 1 and 'core.worktree' in result.reason
+    assert git(repo, 'config', '--get', 'extensions.worktreeConfig').returncode == 1
+
+
+def test_hooks_path_modes(tmp_path, monkeypatch):
+    own = own_hooks(tmp_path, 'pre-commit')
+    repo, tree, shims = hook_repo(tmp_path, monkeypatch, own)
+    result = adapter().hooks_path(str(tree), str(shims), 'replace')
+    assert result.exit == 0 and result.data['chained'] == ''
+    assert git(tree, 'config', '--worktree', '--get', 'core.hooksPath').stdout.strip() == str(shims)
+    assert not (Path(result.data['git_dir']) / 'wuwei-hooks').exists()
+    git(tree, 'config', '--worktree', '--unset', 'core.hooksPath')
+    result = adapter().hooks_path(str(tree), str(shims), 'skip')
+    assert result.exit == 0, result.reason
+    assert git(tree, 'config', '--worktree', '--get', 'core.hooksPath').returncode == 1
+    assert git(repo, 'config', '--get', 'extensions.worktreeConfig').stdout.strip() == 'true'
+
+
+def test_hooks_target_reads_without_writing(tmp_path, monkeypatch):
+    own = own_hooks(tmp_path, 'pre-commit')
+    repo, _, _ = hook_repo(tmp_path, monkeypatch)
+    assert adapter().hooks_target(str(repo)).data == {'chain': ''}
+    git(repo, 'config', 'core.hooksPath', str(own))
+    assert adapter().hooks_target(str(repo)).data == {'chain': str(own)}
+    (tmp_path / 'file').write_text('')
+    git(repo, 'config', 'core.hooksPath', str(tmp_path.resolve() / 'file'))
+    config = (repo / '.git/config').read_text()
+    assert adapter().hooks_target(str(repo)).exit == 1
+    assert (repo / '.git/config').read_text() == config
 
 
 def test_worktree_install_failure_is_not_clean(tmp_path, monkeypatch):
@@ -151,17 +276,17 @@ def test_installed_hook_executes_cli_safely(workspace_case, monkeypatch, event):
     assert 'GIT_AUTHOR_IDENT' in result.stderr
 
 
-def test_existing_default_hook_is_not_disabled(tmp_path, monkeypatch):
-    default_hooks = tmp_path / 'default-hooks'
-    default_hooks.mkdir()
-    (default_hooks / 'pre-commit').write_text('#!/bin/sh\nexit 1\n')
-    calls = install_replay(monkeypatch, 'git', [
-        {'stdout': str(tmp_path / 'private-git')}, {'stdout': str(tmp_path / 'common-git')},
-        {'exit': 1}, {'stdout': str(default_hooks) + '\n'}, {'stdout': ''},
-    ])
-    result = adapter().hooks_path(str(tmp_path / 'repo'), str(tmp_path / 'managed'))
-    assert result.exit == 2 and 'existing' in result.reason
-    assert len(calls) == 4
+def test_git_hooks_mode_config(tmp_path):
+    from wuwei import workspace
+    (tmp_path / '.wuwei').mkdir()
+    config = tmp_path / '.wuwei/config.toml'
+    config.write_text('')
+    assert workspace.load_config(tmp_path)['worktree']['git_hooks'] == 'chain'
+    config.write_text('[worktree]\ngit_hooks = "replace"\n')
+    assert workspace.load_config(tmp_path)['worktree']['git_hooks'] == 'replace'
+    config.write_text('[worktree]\ngit_hooks = "other"\n')
+    with pytest.raises(workspace.ConfigError, match='worktree.git_hooks'):
+        workspace.load_config(tmp_path)
 
 
 def test_native_hook_rejects_common_directory_override(workspace_case, monkeypatch):
@@ -228,3 +353,34 @@ def test_managed_worktree_isolation_and_runtime_pointer(tmp_path, monkeypatch):
     replacement.chmod(0o755)
     (tmp_path / '.wuwei/executable').write_text(str(replacement) + '\n')
     assert subprocess.run([str(hook)], cwd=managed, capture_output=True).returncode == 1
+
+
+def test_init_upgrade_regenerates_worktree_hooks(tmp_path, monkeypatch, capsys):
+    from argparse import Namespace
+    from wuwei import state, workspace
+    from wuwei.commands import init
+    from test_workspace import previous_workspace
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    own = own_hooks(tmp_path, 'pre-commit')
+    repo, _, _ = hook_repo(tmp_path, monkeypatch, own)
+    root = tmp_path.resolve() / 'ws'
+    (root / '.wuwei').mkdir(parents=True)
+    (root / '.wuwei/config.toml').write_text('')
+    state._write_state(lambda data: data.update(gate_approved=True), root, reserved=False)
+    workspace.create_worktree(repo, 'item', root / 'worktrees/X', root, adapter())
+    script = Path(git(root / 'worktrees/X', 'rev-parse', '--absolute-git-dir').stdout.strip()) / 'wuwei-hooks/pre-commit'
+    script.unlink()
+    (root / 'worktrees/A').mkdir()
+    (root / 'worktrees/A/.git').write_text('gitdir: ' + str(tmp_path / 'gone') + '\n')
+    init._worktree_hooks(root)
+    assert str(own / 'pre-commit') in script.read_text()
+    assert 'wuwei init warning: A: ' in capsys.readouterr().err
+
+    upgraded = tmp_path / 'upgraded'
+    previous_workspace(upgraded)
+    seen = []
+    monkeypatch.setattr(init, '_worktree_hooks', seen.append)
+    assert init.run(Namespace(path=str(upgraded), upgrade=True, dry_run=True)) == 0
+    assert seen == []
+    assert init.run(Namespace(path=str(upgraded), upgrade=True, dry_run=False)) == 0
+    assert seen == [upgraded]

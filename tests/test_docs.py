@@ -354,6 +354,14 @@ def test_template_security_starts_with_posture_and_has_no_guards_mode():
         assert sum(line.startswith(f'# {profile}:') for line in block[:first]) == 1
 
 
+def test_worktree_git_hooks_is_documented():
+    rows = {line.split('|')[1].strip(): line for line in (SITE / 'configuration.md').read_text().splitlines()
+            if line.startswith('| `')}
+    row = rows['`worktree.git_hooks`']
+    for word in ('`chain`', '`skip`', '`replace`', 'worktree.hooks_skipped', 'strict', 'PreToolUse'):
+        assert word in row, word
+
+
 def test_docs_retire_guards_mode():
     rows = {line.split('|')[1].strip(): line for line in (SITE / 'configuration.md').read_text().splitlines()
             if line.startswith('| `')}

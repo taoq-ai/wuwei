@@ -108,14 +108,22 @@ def test_fetch_port_checks_current_host_base(monkeypatch):
 
 
 def test_worktree_identity_port(monkeypatch):
-    calls = install_replay(monkeypatch, 'git', [{'stdout': ''}, {'stdout': ''}])
+    calls = install_replay(monkeypatch, 'git', [{'stdout': 'true\n'}, {'stdout': ''}, {'stdout': ''}])
     result = adapter().worktree_identity('/repo', 'Builder', 'builder@example.test')
     assert result.exit == 0
     assert result.data == {'name': 'Builder', 'email': 'builder@example.test'}
     assert [call[-6:] for call in calls] == [
+        ['-C', '/repo', 'config', '--local', '--get', 'extensions.worktreeConfig'],
         ['-C', '/repo', 'config', '--worktree', 'user.name', 'Builder'],
         ['-C', '/repo', 'config', '--worktree', 'user.email', 'builder@example.test']]
 
+
+
+def test_worktree_identity_needs_worktree_config(monkeypatch):
+    calls = install_replay(monkeypatch, 'git', [{'exit': 1}])
+    result = adapter().worktree_identity('/repo', 'Builder', 'builder@example.test')
+    assert result.exit == 1 and 'extensions.worktreeConfig' in result.reason
+    assert len(calls) == 1
 
 @pytest.mark.parametrize('operation,args', [
     ('merge_base', ['/repo', '--help']),

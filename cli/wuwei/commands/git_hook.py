@@ -9,6 +9,11 @@ from wuwei import workspace
 from wuwei.guards import commit_push as guard
 from wuwei.exits import DAMAGED, PAYLOAD
 
+SKIPPED = ('wuwei: warning: git hooks skipped for {path}: {reason}; the Claude Code PreToolUse guard still '
+           'checks git commit and git push; run bin/wuwei doctor for the fix')
+STRICT = ('{reason}; posture strict refuses a worktree without WUWEI git hooks; after the fix, '
+          'remove {path} with git worktree remove and run bin/wuwei worktree add again')
+
 
 def register(subparsers):
     parser = subparsers.add_parser('git-hook', help='Run a native Git identity/push guard')
@@ -45,8 +50,18 @@ exec "$executable" git-hook ''' + event + ' "$@"\n')
         if target.exists() and target.read_text() != source:
             raise ValueError('managed Git hook differs; refusing to overwrite it; ask the owner to delete that hook file, then create the worktree again (bin/wuwei doctor names it)')
         workspace.atomic_write(target, source, mode=0o755)
-    installed = guard.data(vcs.hooks_path(str(path), str(directory), root=root))
-    git_dir = Path(installed['git_dir'])
+    config = workspace.load_config(root) if (root / '.wuwei/config.toml').is_file() else None
+    mode = config['worktree']['git_hooks'] if config else 'chain'
+    result = vcs.hooks_path(str(path), str(directory), mode, root=root)
+    if result.exit == 1 or (result.exit == 0 and mode == 'skip'):
+        reason = result.reason if result.exit else 'worktree.git_hooks = "skip"'
+        if result.exit and mode != 'skip' and config and workspace.posture(config)[0] == 'strict':
+            raise ValueError(STRICT.format(reason=reason, path=path))
+        from wuwei import state
+        print(SKIPPED.format(path=path, reason=reason), file=sys.stderr)
+        state.append_event('worktree.hooks_skipped', {'worktree': Path(path).name, 'reason': reason}, root)
+    git_dir = Path(guard.data(vcs.repo_context(str(path), root=root))['path'] if result.exit == 1
+                   else guard.data(result)['git_dir'])
     if not git_dir.is_absolute():
         raise ValueError(f'invalid worktree Git directory; {DAMAGED}')
     workspace.atomic_write(git_dir / 'wuwei-workspace', str(root) + '\n')

@@ -284,6 +284,23 @@ def _workspace(root, config, error, found):
                              f'clone the repository at {path}, or fix repos.{index}.path'))
             continue
         rows.append(_row('workspace', f'{name} git', 'ok', 'git repository'))
+        mode, hooks = config['worktree']['git_hooks'], f'{name} git hooks'
+        found = vcs.hooks_target(str(path)) if mode != 'skip' else None
+        if found is None:
+            rows.append(_row('workspace', hooks, 'ok', 'skipped (worktree.git_hooks = "skip"); the '
+                             'PreToolUse guard still checks git commit and git push'))
+        elif found.exit == 2:
+            rows.append(_row('workspace', hooks, 'unmeasured', found.reason,
+                             f'run git -C {path} config --show-scope --get-all core.hooksPath and fix what it names'))
+        elif found.exit:
+            rows.append(_row('workspace', hooks, 'warn', found.reason,
+                             'fix what the value names, then run wuwei init --upgrade; or set '
+                             'worktree.git_hooks = "skip" in .wuwei/config.toml'))
+        else:
+            chain = (found.data or {}).get('chain', '')
+            rows.append(_row('workspace', hooks, 'ok',
+                             f'chained with {chain}' if chain and mode == 'chain' else
+                             f'replaces {chain} (worktree.git_hooks = "replace")' if chain else 'WUWEI hooks'))
         result = vcs.branches(str(path), branch)
         rows.append(_row('workspace', f'{name} branch', 'ok', branch) if result.exit == 0 and branch in result.data
                     else _row('workspace', f'{name} branch', 'unmeasured' if result.exit == 2 else 'fail',

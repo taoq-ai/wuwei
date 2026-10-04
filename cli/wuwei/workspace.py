@@ -72,6 +72,7 @@ SCHEMA = {
                              "ci/*", "workflows/*", "deploy/*", "infra/*"]]},
                "identity": {"name": (str, ""), "email": (str, "")},
                "shepherd": {"reviewers": [(str, None)]}}],
+    "worktree": {"git_hooks": (str, "chain", ("chain", "skip", "replace"))},
     "cap": (int, 1, 1),
     "template_version": (str, ""),
     "calibrate": {"fast_check_seconds": (int, 60, 1)},
@@ -731,5 +732,9 @@ def create_worktree(repo, branch, path, root, vcs, identity=None):
     result = data(vcs.worktree_add(str(repo), branch, str(path), root=root))
     install(path, root, vcs)
     if identity and identity['name'] and identity['email']:
-        data(vcs.worktree_identity(str(path), identity['name'], identity['email'], root=root))
+        written = vcs.worktree_identity(str(path), identity['name'], identity['email'], root=root)
+        if written.exit == 1:
+            print(f'wuwei worktree warning: {written.reason}', file=sys.stderr)
+        else:
+            data(written)
     return result
