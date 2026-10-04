@@ -1,6 +1,7 @@
 """Intraday admission and discovery routing."""
 
 import json
+import pathlib
 
 import pytest
 
@@ -243,3 +244,36 @@ def test_plan_add_needs_a_ticket(root, monkeypatch, capsys):
     save_candidate(root, {**candidate('LATER'), 'ticket': 'ENG-6'})
     assert plan.add('LATER', root)['action'] == 'build next'
     assert state.read_state(root)['tickets']['LATER'] == {'id': 'ENG-6', 'source': 'candidate'}
+
+
+def test_plan_add_admits_owner_named_item_under_a_goal(root):
+    result = plan.add('OWN-1', root, goal='G-1', size=2)
+    day = state.read_state(root)
+    assert result['action'] == 'build next'
+    assert day['items']['OWN-1']['goal'] == 'G-1'
+    assert day['items']['OWN-1']['budget_size'] == 2
+    assert day['items']['OWN-1']['status'] == 'queued'
+    assert 'OWN-1' in day['approved_items']
+
+
+def test_plan_add_unknown_item_without_goal_names_the_form(root):
+    with pytest.raises(state.StateError, match='plan add OWN-2 --goal G-n'):
+        plan.add('OWN-2', root)
+    with pytest.raises(state.StateError, match="not one of today's goals"):
+        plan.add('OWN-2', root, goal='G-9')
+    assert 'OWN-2' not in state.read_state(root)['items']
+
+
+def test_owner_named_item_needs_a_ticket_when_a_tracker_is_set(root):
+    (root / '.wuwei/config.toml').write_text(
+        '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "linear"\n')
+    with pytest.raises(state.StateError, match='OWN-3 has no ticket'):
+        plan.add('OWN-3', root, goal='G-1')
+    assert plan.add('OWN-3', root, goal='G-1', ticket='ENG-7')['action'] == 'build next'
+    assert state.read_state(root)['tickets']['OWN-3'] == {'id': 'ENG-7', 'source': 'candidate'}
+
+
+def test_plan_skill_and_charter_say_how_an_item_joins_an_approved_plan():
+    top = pathlib.Path(__file__).resolve().parents[1]
+    for path in ('skills/wuwei-plan/SKILL.md', 'agents/planner.md', 'docs/site/daily.md'):
+        assert 'wuwei plan add <item> --goal G-n' in (top / path).read_text(encoding='utf-8'), path

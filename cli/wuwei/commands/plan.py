@@ -25,8 +25,13 @@ def register(subparsers):
     approve.add_argument('--items', nargs='*', required=True)
     approve.add_argument('--goals-confirmed', action='store_true')
     approve.add_argument('--import-yesterday', action='store_true')
-    add = actions.add_parser('add', help='Admit a discovered item after the morning gate')
+    add = actions.add_parser('add', help='Admit an item after the morning gate: a discovery candidate, '
+                                         'or an item the owner names with --goal')
     add.add_argument('item')
+    add.add_argument('--goal', help='Goal id for an item the owner names (not a discovery candidate)')
+    add.add_argument('--size', type=float, help="Its size in the framework's unit (default 1)")
+    add.add_argument('--title', help='Short title for the record (default: the item id)')
+    add.add_argument('--ticket', help='Existing tracker ticket id when a tracker is set')
     for verb, text in (('carry', 'Carry an open item to tomorrow and record the decision'),
                        ('park', 'Park an open item and record the decision')):
         command = actions.add_parser(verb, help=text)
@@ -65,7 +70,8 @@ def run(args):
         elif args.action == 'gate':
             print(json.dumps(plan.gate_widget(import_yesterday=args.import_yesterday), indent=2))
         elif args.action == 'add':
-            print(json.dumps(plan.add(args.item)))
+            print(json.dumps(plan.add(args.item, goal=args.goal, size=args.size,
+                                      title=args.title, ticket=args.ticket)))
         elif args.action == 'set':
             key, _, value = args.assignment.partition('=')
             if key == 'spec':

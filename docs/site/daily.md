@@ -202,6 +202,11 @@ blocks. On approval the planner records them with
 refuses that call and prints the command for a host terminal. It then records the gate with
 `wuwei plan approve --items <ids> --goals-confirmed`.
 
+An item that comes up after the gate needs no second gate. Say what it is and which goal it
+serves; the planner runs `wuwei plan add <item> --goal G-n` and the item joins today's plan. A
+candidate the discovery sweep found goes through `wuwei plan add <item>` and the intraday
+start policy.
+
 The planner asks the morning gate as question cards. After you approve, it records the goals
 and the plan, and you can run the last two commands yourself. A clean first plan with one
 goal and one item looks like this:
