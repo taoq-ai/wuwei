@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.16.1](https://github.com/taoq-ai/wuwei/compare/v0.16.0...v0.16.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **config:** config set writes list and table keys correctly in any config.toml layout (subtables after the section, inline tables, arrays of tables, missing section) and round-trips the rest of the file ([#499](https://github.com/taoq-ai/wuwei/issues/499)) ([a843ace](https://github.com/taoq-ai/wuwei/commit/a843ace5679739c5b2a560e6b7183520573f4f4d)), closes [#494](https://github.com/taoq-ai/wuwei/issues/494)
+* **outward:** a draft names the rule that forced it and its id, the owner approves it on a card, and the approved draft goes out through the same MCP tool the seat called; drafts approve keeps the adapter path for configured adapters ([#500](https://github.com/taoq-ai/wuwei/issues/500)) ([edc10e7](https://github.com/taoq-ai/wuwei/commit/edc10e719dfa6ed0a6c7ac4b94dcb70a4c21f6d4)), closes [#493](https://github.com/taoq-ai/wuwei/issues/493)
+* **outward:** any connector name resolves its channel (alias, pattern anywhere in the name, vocabulary), config lists keep their defaults, unknown connectors, work channels and people are learned from the connector and confirmed on one card, and no reason tells a seat to edit the guard's config ([#502](https://github.com/taoq-ai/wuwei/issues/502)) ([6168be8](https://github.com/taoq-ai/wuwei/commit/6168be874b8be0b8cd2269e075b9569a48e48d9e)), closes [#492](https://github.com/taoq-ai/wuwei/issues/492)
+* **plan:** the owner's session is never blocked by work: seats and long commands run in the background, the planner stays available, and a test rejects blocking instructions in skills and charters ([#497](https://github.com/taoq-ai/wuwei/issues/497)) ([e207c8f](https://github.com/taoq-ai/wuwei/commit/e207c8feeef87bd04d317418bc7919cf5fa236dd)), closes [#477](https://github.com/taoq-ai/wuwei/issues/477)
+
 ## [0.16.0](https://github.com/taoq-ai/wuwei/compare/v0.15.0...v0.16.0) (2026-10-04)
 
 
