@@ -127,7 +127,7 @@ def test_send_or_draft(configured, text, code):
     result = check(payload(configured[0], text))
     assert result[0] == code
     if code:
-        assert 'deliver as a draft for the owner to send' in result[1]
+        assert 'a draft for the owner to send' in result[1]
 
 
 def test_no_local_approval_producer():
@@ -298,17 +298,17 @@ def test_missing_workspace_and_policy(tmp_path, monkeypatch):
     ('mcp__unknown__notify', 2),
     ('mcp__gmail__draft_email', 2),
     ('mcp__unknown__respond_to_event', 2),
-    ('mcp__slack__edit_message', 2),
+    ('mcp__slack__edit_message', 1),
     ('mcp__slack__slack_add_list_record', 2),
-    ('mcp__unknown__target_lookup', 2),
-    ('mcp__unknown__anything', 2),
+    ('mcp__unknown__target_lookup', 0),
+    ('mcp__unknown__anything', 0),
 ])
 def test_real_mcp_write_names(configured, tool, code):
     from wuwei.guards.outward import check_tier as check
     result = check(payload(configured[0], 'A technical claim.', tool=tool))
     assert result[0] == code
     if code == 2:
-        assert 'configure' in result[1]
+        assert 'config set outward.tool_patterns' in result[1] and tool in result[1]
 
 
 @pytest.mark.parametrize('tool', ['Skill', 'ToolSearch', 'AskUserQuestion', 'LS', 'Read',
@@ -471,9 +471,9 @@ def test_unmatched_mcp_read_prefixes(configured, verb):
     ('mcp__search__search_items', 0),
     ('mcp__slack__slack_send_message', 1),
     ('mcp__x__notify', 2),
-    ('mcp__x__slack_read_thread', 2),
-    ('mcp__slack__slack_readwrite', 2),
-    ('mcp__x__readwrite', 2),
+    ('mcp__x__slack_read_thread', 0),
+    ('mcp__slack__slack_readwrite', 0),
+    ('mcp__x__readwrite', 0),
 ])
 def test_service_prefixed_mcp_reads(configured, tool, code):
     from wuwei.guards.outward import check_tier as check
@@ -786,3 +786,181 @@ def test_tracker_github_outside_code_host_orgs_drafts(configured, project, board
     assert outward.classify(text, root, config, {'item': 'acme/app#1', 'text': text,
                                                  'category': 'progress'},
                             kind='tracker', port=True)[1] == expected
+
+
+@pytest.mark.parametrize('name,kind', [
+    ('conversations_history', 'read'), ('channels_list', 'read'),
+    ('conversations_search_messages', 'read'), ('slack_get_channel_history', 'read'),
+    ('getConfluencePage', 'read'), ('get_message', 'read'),
+    ('conversations_add_message', 'write'), ('chat_postMessage', 'write'), ('sendEmail', 'write'),
+    ('push_files', 'write'), ('mark_all_notifications_read', 'write'),
+    ('frobnicate', 'unknown'), ('slack_readwrite', 'unknown'), ('resolve-library-id', 'unknown'),
+])
+def test_name_words(name, kind):
+    # #469: an unmatched MCP tool is a read, a write or unknown by the words of its name.
+    from wuwei.guards.outward import READS, WRITES, tool_kind
+    server = 'gmail' if name == 'get_message' else 'acme'
+    assert tool_kind(f'mcp__{server}__{name}') == kind
+    assert 'add' in WRITES and 'history' in READS
+
+
+# #469: public tool names of common Slack, Linear and GitHub MCP servers (research.md).
+RECORDED = {
+    'slack': {
+        'read': ['conversations_history', 'conversations_replies', 'conversations_search_messages',
+                 'channels_list', 'slack_list_channels', 'slack_get_channel_history',
+                 'slack_get_thread_replies', 'slack_get_users', 'slack_get_user_profile'],
+        'draft': ['conversations_add_message', 'slack_post_message', 'slack_reply_to_thread',
+                  'slack_add_reaction'],
+        'line': []},
+    'linear': {
+        'read': ['list_comments', 'list_cycles', 'get_document', 'list_documents', 'get_issue',
+                 'get_issue_git_branch_name', 'list_issues', 'list_issue_statuses',
+                 'get_issue_status', 'list_my_issues', 'list_issue_labels', 'list_projects',
+                 'get_project', 'list_project_labels', 'list_teams', 'get_team', 'list_users',
+                 'get_user', 'search_documentation'],
+        'draft': ['create_comment', 'create_issue', 'update_issue'],
+        'line': ['create_project', 'update_project', 'create_issue_label']},
+    'github': {
+        'read': ['get_me', 'get_issue', 'get_issue_comments', 'list_issues', 'search_issues',
+                 'get_pull_request', 'list_pull_requests', 'get_pull_request_files',
+                 'get_pull_request_status', 'get_pull_request_comments',
+                 'get_pull_request_reviews', 'get_pull_request_diff', 'get_file_contents',
+                 'list_commits', 'get_commit', 'list_branches', 'search_code',
+                 'search_repositories', 'search_users', 'list_tags', 'get_tag',
+                 'list_notifications', 'get_notification_details', 'list_code_scanning_alerts',
+                 'get_code_scanning_alert', 'list_secret_scanning_alerts',
+                 'get_secret_scanning_alert', 'list_workflows', 'list_workflow_runs',
+                 'get_workflow_run', 'get_job_logs'],
+        'draft': ['add_issue_comment', 'add_pull_request_review_comment_to_pending_review'],
+        'line': ['create_issue', 'update_issue', 'create_pull_request', 'update_pull_request',
+                 'merge_pull_request', 'update_pull_request_branch', 'create_pull_request_review',
+                 'create_pending_pull_request_review', 'submit_pending_pull_request_review',
+                 'delete_pending_pull_request_review', 'create_and_submit_pull_request_review',
+                 'request_copilot_review', 'assign_copilot_to_issue', 'create_branch',
+                 'create_or_update_file', 'delete_file', 'push_files', 'create_repository',
+                 'fork_repository', 'dismiss_notification', 'mark_all_notifications_read',
+                 'manage_notification_subscription',
+                 'manage_repository_notification_subscription', 'run_workflow',
+                 'rerun_workflow_run', 'cancel_workflow_run']},
+}
+
+
+@pytest.mark.parametrize('tool,outcome', [
+    (f'mcp__{server}__{name}', outcome) for server, lists in RECORDED.items()
+    for outcome, names in lists.items() for name in names])
+def test_recorded_server_tools(configured, tool, outcome):
+    from wuwei.guards.outward import check_lint, check_tier
+    call = payload(configured[0], 'A technical claim.', tool=tool)
+    tier, lint = check_tier(call), check_lint(call)
+    if outcome == 'read':
+        assert tier == lint == (0, '')
+    elif outcome == 'draft':
+        assert tier[0] == 1 and 'needs owner approval' in tier[1]
+    else:
+        assert tier[0] == lint[0] == 2
+        assert 'config set outward.tool_patterns' in tier[1] and tool in tier[1]
+    assert outcome == 'read' or not tier == lint == (0, '')
+
+
+def set_posture(root, name, outward_area=''):
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(f'\n[security]\nposture = "{name}"\n')
+        if outward_area:
+            stream.write(f'[security.areas]\noutward = "{outward_area}"\n')
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_unmatched_write_names_the_line(configured, posture):
+    # #469: a write no rule matches names the exact config line, never the bare hint.
+    from wuwei.guards.outward import check_lint, check_tier
+    root = configured[0]
+    set_posture(root, posture)
+    line = ("bin/wuwei config set outward.tool_patterns "
+            "'[{pattern = \"mcp__acme__send_email\", channel = \"acme\"}]'")
+    for check in (check_tier, check_lint):
+        code, reason = check(payload(root, 'A technical claim.', tool='mcp__acme__send_email'))
+        assert code == 2 and line in reason
+        assert 'configure outward.tool_patterns for this write tool' not in reason
+
+
+def test_invalid_mcp_name(configured):
+    from wuwei.exits import PAYLOAD
+    from wuwei.guards.outward import check_tier
+    code, reason = check_tier(payload(configured[0], 'A technical claim.', tool="mcp__acme__send'x"))
+    assert code == 2 and PAYLOAD in reason and "send'x" not in reason
+
+
+def run_hook(monkeypatch, call):
+    from wuwei.commands.hook import run
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(call)))
+    return run(SimpleNamespace(event='PreToolUse'))
+
+
+def test_why_shows_channel_and_draft(configured, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    root = configured[0]
+    monkeypatch.chdir(root)
+    call = payload(root, 'A technical claim.', tool='mcp__slack__conversations_add_message',
+                   channel_id='C1')
+    assert run_hook(monkeypatch, call) == 2
+    capsys.readouterr()
+    assert main(['why', 'last', 'refusal']) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert any('channel slack' in line for line in lines)
+    assert any('a draft for the owner to send' in line for line in lines)
+
+
+def unknown_events(root):
+    from wuwei import watch
+    return [row for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
+            if row['kind'] == 'outward.unknown_tool']
+
+
+@pytest.mark.parametrize('area,code,recorded', [('', 0, 1), ('off', 0, 0), ('block', 2, 0)])
+def test_unknown_tool_recorded_once(configured, monkeypatch, area, code, recorded):
+    # #469: under guarded an unknown tool passes with one nudge per tool per day.
+    root = configured[0]
+    set_posture(root, 'guarded', area)
+    call = payload(root, 'A technical claim.', tool='mcp__acme__frobnicate')
+    assert run_hook(monkeypatch, call) == code
+    assert run_hook(monkeypatch, call) == code
+    rows = unknown_events(root)
+    assert len(rows) == recorded
+    if rows:
+        assert rows[0]['payload']['tool'] == 'mcp__acme__frobnicate'
+        assert rows[0]['payload']['posture'] == 'guarded'
+        assert 'config set outward.tool_patterns' in rows[0]['payload']['reason']
+
+
+def test_unknown_tool_outside_workspace(tmp_path, monkeypatch):
+    from wuwei.guards.outward import check_lint, check_tier
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    call = payload(tmp_path, 'A technical claim.', tool='mcp__acme__frobnicate')
+    assert check_tier(call) == check_lint(call) == (0, '')
+    assert not (tmp_path / '.wuwei').exists()
+
+
+PROBES = ['conversations_search_messages', 'conversations_history', 'channels_list',
+          'slack_search_messages', 'slack_get_channel_history']
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+@pytest.mark.parametrize('name', [*PROBES, 'conversations_add_message', 'slack_post_message',
+                                  'acme frobnicate'])
+def test_probe_tools(configured, monkeypatch, capsys, posture, name):
+    # #469 acceptance: the owner's seven probes and an unknown name, through the hook.
+    root = configured[0]
+    set_posture(root, posture)
+    server, _, name = name.rpartition(' ')
+    tool = f'mcp__{server or "slack"}__{name}'
+    call = payload(root, 'A technical claim.', tool=tool, channel_id='C1')
+    code = run_hook(monkeypatch, call)
+    err = capsys.readouterr().err
+    if name in PROBES:
+        assert code == 0
+    elif server:
+        assert code == (2 if posture == 'strict' else 0)
+        assert posture != 'strict' or 'config set outward.tool_patterns' in err and tool in err
+    else:
+        assert code == 2 and 'a draft for the owner to send' in err and 'channel slack' in err

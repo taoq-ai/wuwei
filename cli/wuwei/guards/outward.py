@@ -15,6 +15,31 @@ NATIVE_TOOLS = {'Bash', 'Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'A
                 'TaskOutput', 'TaskStop', 'EnterPlanMode', 'ExitPlanMode',
                 'WebFetch', 'WebSearch', 'NotebookEdit'}
 
+# #469: name words of an unmatched MCP tool; tests pin both lists.
+WRITES = frozenset((
+    'send', 'post', 'reply', 'add', 'create', 'update', 'delete', 'remove', 'set', 'put',
+    'patch', 'write', 'upload', 'schedule', 'publish', 'invite', 'kick', 'archive', 'join',
+    'leave', 'react', 'pin', 'star', 'edit', 'move', 'assign', 'merge', 'close', 'open',
+    'submit', 'approve', 'comment', 'message', 'dm',
+    'save', 'notify', 'draft', 'respond', 'push', 'fork', 'request', 'dismiss', 'mark',
+    'manage', 'run'))
+LEADING = ('get', 'list', 'search', 'read', 'find', 'fetch', 'query', 'describe', 'view', 'lookup')
+READS = frozenset(LEADING + (
+    'history', 'replies', 'info', 'members', 'users', 'channels', 'conversations', 'threads',
+    'permalink', 'profile', 'count', 'status', 'exists'))
+
+
+def tool_kind(tool):
+    """'read', 'write' or 'unknown' for an MCP tool by the words of its name (#469)."""
+    server, _, name = tool[5:].rpartition('__')
+    words = [word.lower() for word in re.split(r'[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])', name) if word]
+    if words and (words[0] in LEADING
+                  or len(words) > 1 and words[0] in server.lower() and words[1] in LEADING):
+        return 'read'  # The leading-read test first: get_message stays a read.
+    if WRITES.intersection(words):
+        return 'write'
+    return 'read' if READS.intersection(words) else 'unknown'
+
 
 def check_tier(payload):
     return _check(payload, outward.check_tier)
@@ -84,13 +109,7 @@ def _check(payload, policy):
                     if isinstance(tool, str) and re.fullmatch(rule['pattern'], tool, re.IGNORECASE)}
         if not channels:
             if isinstance(tool, str) and tool.startswith('mcp__'):
-                server, _, name = tool[5:].lower().rpartition('__')
-                words = name.split('_')
-                reads = ('get', 'list', 'search', 'read', 'find', 'fetch',
-                         'query', 'describe', 'view', 'lookup')
-                if (words[0] in reads or
-                        (len(words) > 1 and words[0] and words[0] in server
-                         and words[1] in reads)):
+                if tool_kind(tool) == 'read':
                     return CLEAN, ''
             elif isinstance(tool, str) and tool.strip():
                 return CLEAN, ''
@@ -104,15 +123,50 @@ def _check(payload, policy):
             channels = {rule['channel'] for rule in config['outward']['tool_patterns']
                         if re.fullmatch(rule['pattern'], tool, re.IGNORECASE)}
         if not channels:
-            return UNRUN, 'outward: configure outward.tool_patterns for this write tool'
+            return _unmatched(tool, root, config, policy)
         if len(channels) != 1:
             return UNRUN, 'outward: ambiguous tool channel configuration; pass one channel per call'
         inputs = payload['tool_input']
         if re.search(r'(?:^|_)(?:dm|direct_message)(?:_|$)', tool, re.IGNORECASE):
             inputs = {**inputs, 'is_dm': True}
-        return policy(inputs, root, config, channels)
+        result = policy(inputs, root, config, channels)
+        if result == (FINDINGS, outward.APPROVAL_REQUIRED):
+            return FINDINGS, (f'outward: channel {next(iter(channels))} needs owner approval; '
+                              'write it as a draft for the owner to send')
+        return result
     except (OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError, re.error):
         return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'
+
+
+def _unmatched(tool, root, config, policy):
+    """#469: a tool no rule matches, inside a workspace: reads pass, writes refuse with the
+    config line, unknown names follow the outward area level in check_lint only."""
+    found = tool_kind(tool)
+    if found == 'read':  # Reached only when the scope's config differs from the cwd's.
+        return CLEAN, ''
+    if not re.fullmatch(r'mcp__[A-Za-z0-9_-]+', tool):
+        return UNRUN, f'outward: invalid MCP tool name; {PAYLOAD}'
+    server = tool[5:].rpartition('__')[0].lower()
+    line = (f"bin/wuwei config set outward.tool_patterns "
+            f"'[{{pattern = \"{tool}\", channel = \"{server}\"}}]'")
+    if found == 'write':
+        return UNRUN, f'outward: no outward.tool_patterns rule matches write tool {tool}; run {line}, then retry'
+    if policy is outward.check_tier:
+        return CLEAN, ''
+    from wuwei import workspace
+    name, levels = workspace.posture(config)
+    if levels['outward'] == 'block':
+        return UNRUN, f'outward: unknown MCP tool {tool}, not a read or a write by its name; if it writes, run {line}'
+    if levels['outward'] == 'warn':
+        from wuwei import state, watch  # Only now: watch stays off every other hook path.
+        # ponytail: reads the day's events per call of an unknown tool; two racing first
+        # calls may both record. Keep a per-day set in state if that shows in latency.
+        if not any(row['kind'] == 'outward.unknown_tool' and row['payload'].get('tool') == tool
+                   for row in watch.records(workspace.day_dir(root) / 'events.jsonl')):
+            state.append_event('outward.unknown_tool', {
+                'tool': tool, 'posture': name,
+                'reason': f'outward: unknown MCP tool {tool} passed under {name}; if it writes, run {line}'}, root)
+    return CLEAN, ''
 
 
 GUARDS = [Guard('PreToolUse', None, check_tier),
