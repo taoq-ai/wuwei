@@ -38,7 +38,8 @@ def register(subparsers):
 def run(args):
     found = []
     try:
-        config = load_config(warnings=found)
+        root = workspace.find_workspace()
+        config = load_config(root, warnings=found)
     except ConfigError as exc:
         print(f"wuwei config check: {exc}", file=sys.stderr)
         return FINDINGS
@@ -46,6 +47,10 @@ def run(args):
         print(f'wuwei config check: warning: {text}', file=sys.stderr)
     print('Credentials:')
     status = CLEAN
+    from wuwei import configtext  # Local: tomllib stays off the hook path.
+    for line in configtext.misplaced((root / '.wuwei/config.toml').read_text(encoding='utf-8')):
+        print(f'wuwei config check: {line}', file=sys.stderr)
+        status = FINDINGS
     needed = requirements(config)
     for kind, name in config['adapters'].items():
         if name == 'none':

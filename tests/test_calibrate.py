@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import tomllib
 
 import pytest
 
@@ -351,8 +352,8 @@ def test_boundary_candidates_and_inline_repos(tmp_path):
     assert parsed['boundary'] == {'/api/': 'Owner text', 'docs/*.md': 'owned by @writer'} and edits == []
     raw = 'repos = [{name = "acme/widget", path = "widget", default_branch = "main"}]\n'
     additions, _ = calibrate.proposal(raw, [(0, facts('python'))])
-    with pytest.raises(ValueError, match='edit by hand'):
-        calibrate.apply(raw, additions)
+    fast = next(value for path, key, value in additions if key == 'fast_checks')
+    assert tomllib.loads(calibrate.apply(raw, additions))['repos'][0]['fast_checks'] == fast
 
 
 STYLE = {'conventional': True, 'scopes': ['cli', 'remote'], 'sign_off': True, 'commits': 40}
