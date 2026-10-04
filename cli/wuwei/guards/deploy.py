@@ -7,7 +7,8 @@ from urllib.parse import unquote, urlsplit
 
 from wuwei import registry
 from wuwei.guards import Guard
-from wuwei.shell import ParseError, is_opaque, mentions, normalize, operands, script_text, unread
+from wuwei.shell import (UNKNOWN_GIT, ParseError, git_kind, git_runs, is_opaque, mentions, normalize,
+                         operands, script_text, unread)
 from wuwei.workspace import find_workspace, load_config
 
 
@@ -129,12 +130,13 @@ def git(args, env, config):
     if action == 'merge':
         # ponytail: block implicit targets until the vcs port exposes current branch.
         unknown('current branch cannot be established by the vcs port')
-    if action not in ('status', 'diff', 'log', 'show', 'rev-parse', 'branch', 'tag',
-                      'fetch', 'checkout', 'switch', 'add', 'commit', 'restore', 'reset',
-                      'rebase', 'stash', 'ls-files', 'ls-remote', 'remote', 'config',
-                      'worktree', 'help', 'version', 'symbolic-ref', 'describe', 'show-ref'):
+    if git_runs(action, args):
+        unknown('git option runs a program')
+    if git_kind([action, *args]) != 'unknown':
+        return 0, ''
+    if override:  # -c, --git-dir, --work-tree or GIT_*: the override can define the alias
         unknown('unknown git command or alias')
-    return 0, ''
+    return 2, f'{UNKNOWN_GIT}{action}; if it publishes, run it as a plain literal command from a host terminal'
 
 
 def api(args, config, root):

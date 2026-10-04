@@ -678,7 +678,7 @@ CLASSIFY = [
     ('sed -n 1,40p x', (True, False, False, False)),
     ('sed -i s/a/b/ x', (False, False, False, False)),
     ('cat cmds.txt | xargs git', (False, True, False, False)),
-    ('echo "gh pr merge 17"', (False, True, False, False)),
+    ('echo "gh pr merge 17"', (True, False, False, False)),
     ('grep -n "git push" notes.md', (True, False, False, False)),
     ('git show HEAD:d.py | python3', (False, True, False, False)),
     ("python3 - <<'PYEOF'\nimport subprocess\nsubprocess.run(['gh', 'pr', 'merge'])\nPYEOF\n",
@@ -703,6 +703,83 @@ def test_classify_deploy_publishers():
     from wuwei.shell import classify
     assert classify('for r in a; do kubectl apply -f $r; done', ('kubectl',)).publishes
     assert not classify('for r in a; do kubectl apply -f $r; done').publishes
+
+
+@pytest.mark.parametrize('command, readonly', [
+    ('cd .wuwei; for f in days/d/decisions/D-*.md; do echo "### $f"; cat $f; done; '
+     'cat days/d/state.json', True),
+    ('for f in a; do echo $f; done | grep x', True),
+    ('for f in a; do cat .wuwei/days/d/state.json | python3 -m json.tool; done', True),
+    ("echo 'echo x > .wuwei/days/d/state.json' | sh", False),
+    ("for i in 1; do echo 'echo x > .wuwei/days/d/state.json'; done | sh", False),
+    ('echo .wuwei/config.toml | bash -s', False),
+])
+def test_issue_470_echo_and_pipes(command, readonly):
+    # #470: echo is a read word; text piped into a non-read command counts as written.
+    from wuwei.shell import classify, unread
+    shape = classify(command)
+    if readonly:
+        assert shape.readonly and unread(command) == (0, '')
+    else:
+        assert not shape.readonly and '.wuwei' in shape.written
+
+
+def _git_kind_cases():
+    from wuwei import shell
+    forms = [(['branch'], 'read'), (['tag'], 'read'), (['remote'], 'read'),
+             (['branch', '--list'], 'read'), (['tag', '-l'], 'read'), (['remote', '-v'], 'read'),
+             (['remote', 'get-url', 'origin'], 'read'), (['stash', 'list'], 'read'),
+             (['worktree', 'list'], 'read'), (['config', '--get', 'x'], 'read'),
+             (['bisect', 'log'], 'read'), (['branch', '-D', 'x'], 'write'), (['tag', 'v1'], 'write'),
+             (['remote', 'add', 'x', 'u'], 'write'), (['stash'], 'write'),
+             (['stash', 'pop'], 'write'), (['config', 'x', 'y'], 'write')]
+    return [*(([verb], 'read') for verb in sorted(shell._GIT_READS)),
+            *(([verb], 'write') for verb in sorted(shell._GIT_WRITES - set(shell._GIT_READ_FORMS))),
+            *forms, ([], 'read'), (['-C', 'r'], 'read'),
+            (['-c', 'alias.x=log', 'x'], 'unknown'), (['--config-env=a=B', 'log'], 'unknown'),
+            (['$v', 'x'], 'unknown'), (['frobnicate'], 'unknown'), (['grep', '-Ocmd', 'x'], 'unknown'),
+            (['grep', '--open-files-in-pager=cmd', 'x'], 'unknown'),
+            (['fetch', '--upload-pack=cmd', 'o'], 'unknown'),
+            (['ls-remote', '-u', 'cmd', 'o'], 'unknown'), (['ls-remote', '-ucmd', 'o'], 'unknown'),
+            (['-C', 'r', 'grep', '-n', 'x'], 'read'), (['branch', '-a', '-D', 'x'], 'write')]
+
+
+@pytest.mark.parametrize('args, expected', _git_kind_cases())
+def test_issue_470_git_kind(args, expected):
+    from wuwei.shell import git_kind
+    assert git_kind(args) == expected
+
+
+@pytest.mark.parametrize('command, parses', [
+    ('R=widget; git -C $R log --oneline', True),
+    ('S=abc1; R=widget; git -C "${R}" log "$S"', True),
+    ('S=abc1; git log $S..origin/main', False),
+    ('R=1; gh run view $R -R o/r', True),
+    ('R=widget; git -C $R push origin main', False),
+    ("R='x push origin main'; git -C $R log", False),
+    ('R=-Ocmd; git grep $R x', False),
+    ('git -C $R log', False),
+    ('R=widget; git -C $R$S log', False),
+    ('R=1; gh pr merge $R', False),
+    ('R=pr; gh $R list', False),
+])
+def test_issue_470_variable_reads(command, parses):
+    from wuwei.shell import ParseError, normalize
+    try:
+        normalize(command)
+    except ParseError:
+        assert not parses
+    else:
+        assert parses
+
+
+def test_issue_470_git_tables():
+    from wuwei.shell import _GIT_READ_FORMS, _GIT_READS, git_kind
+    assert not _GIT_READS & set(_GIT_READ_FORMS)
+    deploy_main = ('status diff log show rev-parse branch tag fetch checkout switch add commit '
+                   'restore reset rebase stash ls-files ls-remote remote config worktree help '
+                   'version symbolic-ref describe show-ref').split()
+    assert [verb for verb in deploy_main if git_kind([verb]) == 'unknown'] == []
 
 
 @pytest.mark.parametrize('command, expected', [

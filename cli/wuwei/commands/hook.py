@@ -258,17 +258,18 @@ def posture(payload, refusals, root):
         name, levels = workspace.posture(workspace.load_config(root))
     except BaseException:  # No workspace or an unreadable config enforces, as before #331.
         return [(module(check), reason, '', code) for check, reason, code in refusals]
-    from wuwei.shell import UNPARSED, WORKSPACE_ROOT
+    from wuwei.shell import UNKNOWN_GIT, UNPARSED, WORKSPACE_ROOT
     enforced, shown, seen = [], None, set()
     for check, reason, code in refusals:
         guard, area, decided, line = level(check, levels)
         if reason == NO_REVIEWER:  # It names its own ways out; still blocked.
             line = ''
-        if reason in (UNPARSED, WORKSPACE_ROOT):  # #347: decided by the reason, not the area
+        # #347, #470: decided by the reason, not the area; only deploy says unknown git
+        if reason in (UNPARSED, WORKSPACE_ROOT) or guard == 'deploy' and reason.startswith(UNKNOWN_GIT):
             if reason in seen:
                 continue
             seen.add(reason)
-            decided = 'block' if reason == UNPARSED and name == 'strict' else 'warn'
+            decided = 'block' if reason != WORKSPACE_ROOT and name == 'strict' else 'warn'
             line = ''
         if decided == 'off':
             continue

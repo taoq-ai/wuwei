@@ -791,6 +791,7 @@ def test_issue_347_reads_warns_and_writes(workspace, script, expected):
     ([], False), (['sed', '-i', 's/a/b/', 'x'], False), (['find', 'd', '-delete'], False),
     (['awk', '1', 'x'], False), (['python3', 'x.py'], False),
     (['python3', '-m', 'json.tool', 'x'], True), (['python3', '-m', 'json.tool', 'x', 'y'], False),
+    (['python3', '-m', 'json.tool'], True),
     (['wuwei', 'config', 'set', 'k', 'v'], False),
 ])
 def test_issue_349_shared_read_predicate(argv, expected):

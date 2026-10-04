@@ -17,13 +17,16 @@ PROBES = (  # data: order is the page order; docs/site/reference.md lists every 
     ('config', 'config.toml loads and selected adapters have their credentials'),
     ('clocks', 'watch and listener clocks alive or off'),
     ('status_line', 'status --line exits 0 within 200 ms wall'),
-    ('read_loop', 'hook PreToolUse allows a for loop over cat in .wuwei (exit 0)'),
+    ('read_loop', 'hook PreToolUse allows a for loop over echo and cat in .wuwei (exit 0)'),
+    ('git_read', 'hook PreToolUse allows git grep (exit 0)'),
     ('planner', 'planner session live, or no planner today'),
     ('memory', 'free memory at or above host.free_memory_mb'),
     ('seats', 'no seat handed back or stopped unmeasured without a recorded result'),
 )
-# #347: a loop the guards cannot parse but that only reads must pass every Bash guard.
-READ_LOOP = 'for r in a b; do cat .wuwei/$r/report.json; done'
+# #347: a loop the guards cannot parse but that only reads must pass every Bash guard;
+# #470: the owner's echo shape, and a git read the old deploy list did not know.
+READ_LOOP = 'for r in a b; do echo "### $r"; cat .wuwei/$r/report.json; done'
+GIT_READ = 'git grep -n probe'
 STATUS_LINE_BUDGET_MS = 200  # ponytail: one wall sample, the p95 lives in the latency benchmarks
 CODES = {'ok': 0, 'degraded': 1, 'unmeasured': 2}
 
@@ -133,7 +136,8 @@ def measure(root):
              _hook(root, 'Bash', {'command': 'git push --force origin main'}),
              _hook(root, 'Bash', {'command': 'ls -la'}),
              _hook(root, 'Write', {'file_path': str(workspace.day_dir(root) / 'state.json'), 'content': ''}),
-             _hook(root, 'Bash', {'command': READ_LOOP})]
+             _hook(root, 'Bash', {'command': READ_LOOP}),
+             _hook(root, 'Bash', {'command': GIT_READ})]
     found = {}
 
     def during():
@@ -147,10 +151,10 @@ def measure(root):
                 found[name] = 'unmeasured', str(exc)
 
     try:
-        (status, refused, allowed, written, loop), _ = registry.watch_service().probe(calls, root / '.wuwei', during=during)
+        (status, refused, allowed, written, loop, git_read), _ = registry.watch_service().probe(calls, root / '.wuwei', during=during)
         found.update(refused=_exit(refused, 2), allowed=_exit(allowed, 0),
                      state_write=_exit(written, 2), status_line=_status_line(status),
-                     read_loop=_exit(loop, 0))
+                     read_loop=_exit(loop, 0), git_read=_exit(git_read, 0))
         # #422: the hook as the owner feels it; a timed-out call has no ms.
         timed = {name: result[2] for name, result in
                  (('refused', refused), ('allowed', allowed), ('state_write', written), ('read_loop', loop))
@@ -159,7 +163,7 @@ def measure(root):
         timed = {}
         if not found:
             during()
-        found.update({name: ('unmeasured', str(exc)) for name in ('refused', 'allowed', 'state_write', 'status_line', 'read_loop')})
+        found.update({name: ('unmeasured', str(exc)) for name in ('refused', 'allowed', 'state_write', 'status_line', 'read_loop', 'git_read')})
     return {name: {'result': found[name][0], 'value': found[name][1],
                    **({'ms': timed[name]} if name in timed else {})} for name, _ in PROBES}
 

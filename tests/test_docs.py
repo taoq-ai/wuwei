@@ -1067,7 +1067,7 @@ def test_unparsed_commands_are_documented():
     # #347: the security page names the unparsed class and the cd rule's subshell form.
     security = ' '.join((SITE / 'security.md').read_text().split())
     for phrase in ('unparsed', '(cd <dir> && <command>)', 'blocks only under `strict`',
-                   'read-only subcommands', '--help'):
+                   'read-only subcommands', '--help', 'unknown git subcommand', '`echo`'):
         assert phrase in security, phrase
 
 
