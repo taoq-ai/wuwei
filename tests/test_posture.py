@@ -135,6 +135,12 @@ def test_guard_areas_table():
     assert guards.level(stub('outward', 'check_call'), OBSERVE)[2] == 'warn'
     assert guards.level(stub('agent_launch'), GUARDED)[1:3] == ('seats', 'warn')
     assert guards.level(lambda payload: (1, 'x'), GUARDED)[1:] == (None, 'block', '')
+    # #471: the owner-question citation check warns outside strict; record writes keep the floor.
+    for levels in (GUARDED, OBSERVE):
+        assert guards.level(stub('decision', 'check_question'), levels)[1:3] == ('outward', 'warn')
+    strict = {area: 'block' for area in workspace.AREAS}
+    assert guards.level(stub('decision', 'check_question'), strict)[2] == 'block'
+    assert guards.level(stub('decision', 'check_write'), GUARDED)[:3] == ('decision', 'records', 'block')
 
 
 @pytest.mark.parametrize('posture,tier', [('guarded', 'nudge'), ('strict', 'nudge'),

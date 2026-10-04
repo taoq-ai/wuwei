@@ -115,7 +115,8 @@ _CLI_NONLITERAL = (r'(?<![\w.-])wuwei(?:\s+-\S*)*(?:\s+(?:' + '|'.join(sorted(_O
                    + r'))?(?:\s+-\S*)*\s+[$`]')
 # Programs whose arguments are patterns or text, never run (except rg --pre, checked in
 # _write_targets), and that write no file by operand or flag (sort -o, uniq's output
-# operand and tee do, so they are not here).
+# operand and tee do, so they are not here). #471: shell.reads adds the classifier's
+# read-only words (cat, jq, sed -n Np, find without an action).
 _READERS = ('grep', 'rg', 'echo', 'printf', 'head', 'tail', 'wc', 'cut', 'tr')
 
 
@@ -167,11 +168,12 @@ def _gate_edits(payload, root):
 def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(), False)):
     """One rule for every owner-only action; (code, reason) or None."""
     from wuwei.commands import read_only
-    from wuwei.shell import _launcher, is_opaque, mentions
+    from wuwei.shell import _launcher, is_opaque, mentions, reads
     # normalize unwraps xargs, so a CLI command may take its group or verb from stdin.
     xargs = relevant and mentions(text, ('xargs',), script=script)
     unseen = len(_WUWEI.findall(re.sub(r"['\"\\]", '', text)))
-    readers = [bool(c.argv) and Path(c.argv[0]).name in _READERS for c in commands]
+    readers = [bool(c.argv) and (Path(c.argv[0]).name in _READERS or reads(c.argv, cwd))
+               for c in commands]
     # A pipe feeds an executor unless every later stage is a reader with no redirect.
     feeds = [False] * len(commands)
     for index in range(len(commands) - 2, -1, -1):
@@ -193,7 +195,7 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
             action = argv[1:]
         if action is None:
             program = Path(argv[0]).name if argv else ''
-            if not relevant or program in _READERS:
+            if not relevant or readers[index]:
                 continue
             # A directory such as the cli/wuwei package is read, not run.
             words = [word for word in argv[1:]
@@ -232,7 +234,8 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
                     continue
                 return 1, f'{reason} Run it in a host terminal: {shlex.join(argv)}'
             return 1, reason
-    if relevant and unseen > 0:
+    # #471: a call made only of readers runs nothing, so a mention in its input is data.
+    if relevant and unseen > 0 and not all(readers):
         # A CLI mention sits in a heredoc, comment or other input no argv shows.
         return 2, ('Opaque owner action: write bin/wuwei <group> <verb> as a plain command so the '
                    'guard can read it; owner actions run in a host terminal.')

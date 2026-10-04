@@ -249,6 +249,12 @@ def test_propose_runs_on_provisional_goals(empty):
     assert (empty / '.wuwei/memory/goals.md').read_text() == before
 
 
+def test_propose_refuses_ids_only_goals(empty):
+    with pytest.raises(ValueError, match='the lead JSON names G-1 without its block'):
+        plan.propose({**proposal(), 'goals': ['G-1']}, empty)
+    assert not (empty / '.wuwei/days/2026-09-28/plan.md').exists()
+
+
 def test_propose_refuses_goal_objects_once_goals_exist(root):
     with pytest.raises(ValueError, match='goals must cite identifiers'):
         plan.propose(lead(), root)

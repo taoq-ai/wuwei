@@ -434,8 +434,9 @@ def test_shipped_goals_guide_fails_only_for_having_no_goals():
     from wuwei import goals
     root = Path(__file__).resolve().parents[1]
     text = (root / 'templates/workspace/memory/goals.md').read_text(encoding='utf-8')
-    with pytest.raises(ValueError, match='no goals'):  # not 'expected goal field' on the guide text
+    with pytest.raises(ValueError, match='no goals') as caught:  # not 'expected goal field' on the guide text
         goals.parse(text)
+    assert 'run /wuwei:wuwei-plan again' in str(caught.value) and 'host terminal' not in str(caught.value)
 
 
 def test_goals_preamble_is_ignored_and_indented_example_is_not_a_goal():
@@ -496,3 +497,31 @@ def test_rank_lead_json_on_provisional_goals(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     assert main(['rank', str(source)]) == 0, capsys.readouterr().err
     assert [row['id'] for row in json.loads(capsys.readouterr().out)] == ['A']
+
+
+IDS_ONLY = ('the lead JSON names {} without its block; have the lead write goals as blocks '
+            '(outcome, measure, target, date, priority), or run /wuwei:wuwei-plan again')
+
+
+@pytest.mark.parametrize('lead, named', [(['G-1'], 'G-1'), ([LEAD_GOALS[0], 'G-2'], 'G-2')])
+def test_proposed_refuses_ids_only(lead, named):
+    from wuwei import goals
+
+    with pytest.raises(ValueError) as caught:
+        goals.proposed(TEMPLATE.read_text(encoding='utf-8'), lead)
+    assert str(caught.value) == IDS_ONLY.format(named)
+
+
+def test_rank_lead_json_ids_only(tmp_path, monkeypatch, capsys):
+    from wuwei.__main__ import main
+
+    base = tmp_path / '.wuwei'
+    (base / 'memory').mkdir(parents=True)
+    (base / 'memory/goals.md').write_text(TEMPLATE.read_text(encoding='utf-8'))
+    (base / 'config.toml').write_text('')
+    source = tmp_path / 'lead.json'
+    source.write_text(json.dumps({'goals': ['G-1'], 'candidates': [candidate('A')]}))
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    assert main(['rank', str(source)]) == 2
+    err = capsys.readouterr().err
+    assert err.startswith('wuwei rank: the lead JSON names G-1 without its block;') and 'host terminal' not in err
