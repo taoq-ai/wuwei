@@ -277,6 +277,39 @@ def running_by_goal(data):
     return dict(sorted(counts.items()))
 
 
+def check_running(build):
+    """The build's fast-check marker while another live process runs it, else None.
+    The current process is never "another": a check that raised in this process is over.
+    ponytail: pid liveness; a reused pid reads as running until it exits. Upgrade: store the
+    process start time with the pid and compare it."""
+    marker = build.get('check') if isinstance(build, dict) else None
+    if not (isinstance(marker, dict) and type(marker.get('pid')) is int and marker['pid'] > 0
+            and marker['pid'] != os.getpid() and isinstance(marker.get('started_at'), str)):
+        return None
+    try:
+        os.kill(marker['pid'], 0)
+    except ProcessLookupError:
+        return None
+    except PermissionError:
+        pass
+    return marker
+
+
+def in_flight(data):
+    """(started_at, role, item) for running seats and live fast checks, oldest first."""
+    rows = [(seat.get('started_at') or '', seat.get('role'), seat.get('item'))
+            for seat in data.get('seats', {}).values()
+            if isinstance(seat, dict) and seat.get('status') == 'running']
+    rows += [(marker['started_at'], 'checks', item) for item, build in data.get('builds', {}).items()
+             if (marker := check_running(build))]
+    return sorted(rows, key=lambda row: row[0])
+
+
+def in_flight_text(rows):
+    return ', '.join(f'{role} {item} {at[11:16] if at else "start unrecorded"}'
+                     for at, role, item in rows)
+
+
 def goal_split(counts):
     return ', '.join(f'{goal} {count}' for goal, count in counts.items())
 

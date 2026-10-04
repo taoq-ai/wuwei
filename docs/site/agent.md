@@ -16,6 +16,8 @@ Each role has a charter in `charters/<role>.md` (sentinels as `sentinel-<area>.m
 - `shepherd`: follows raised pull requests; the listener can start it headless.
 - `steward`: launched once at close from `wuwei close`; it reviews the day's procedure.
 
+The owner's session is never blocked by work. Launch every seat with Agent in the background and run every command that can take longer than a few seconds (fast checks, `wuwei dispatch opinion`, `wuwei steward run`) through Bash in the background; act on each completion notification with the next `build next` or `dispatch next`. End every turn with `wuwei status --line`, which names what runs, and answer the owner from it, never by resuming a seat. Only an owner question waits.
+
 <!-- wuwei:guide:start -->
 WUWEI plugin reference, generated from the plugin tables; `wuwei guide` prints it.
 Run `wuwei next` and do the step it names; run every action a command returns unchanged.

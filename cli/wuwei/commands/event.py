@@ -15,7 +15,7 @@ EVENT_PRODUCERS = {
     'worktree.hooks_skipped': 'wuwei worktree add or wuwei init --upgrade',
     'build.started': 'wuwei build next', 'gate.tiered': 'wuwei dispatch next', 'build.launched': 'wuwei build',
     'build.fix_opened': 'wuwei pr act or wuwei dispatch next',
-    'build.checked': 'wuwei build check',
+    'build.checked': 'wuwei build check', 'build.check_started': 'wuwei build check',
     **{f'spec.{kind}': 'wuwei hook, wuwei build or wuwei dispatch next' for kind in ('step', 'skipped', 'warned')},
     'spec.override': 'owner host wuwei plan set',
     'guard.would_refuse': 'wuwei hook (shadow mode)',

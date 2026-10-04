@@ -131,11 +131,38 @@ def test_cap_waits_on_running_seat(root, capsys):
     seated(root)
     found = row(capsys)[1]
     assert (found['state'], found['command']) == ('wait', 'wuwei status --line')
-    assert 'builder-1' in found['step']
+    assert 'builder ITEM-1' in found['step']
     approved(root, {'ITEM-1': ('implement', {}), 'ITEM-2': ('planned', {})}, cap=2)
     seated(root)
     found = row(capsys)[1]
     assert (found['state'], found['command']) == ('dispatch', 'wuwei dispatch next --all')
+
+
+def running_day(root, pid):
+    """Builders on A and B, a fast check on C: the day of issue #477 Acceptance 3."""
+    approved(root, {name: ('implement', {}) for name in 'ABC'}, cap=2)
+    day(root, seats={
+        'builder-1': {'status': 'running', 'role': 'builder', 'item': 'A',
+                      'started_at': '2026-09-30T09:10:00+00:00'},
+        'builder-2': {'status': 'running', 'role': 'builder', 'item': 'B',
+                      'started_at': '2026-09-30T09:20:00+00:00'}},
+        builds={'C': {'status': 'check', 'check': {
+            'started_at': '2026-09-30T09:25:00+00:00', 'pid': pid}}})
+
+
+def test_running_names_seats_and_checks_with_start_times(root, capsys):
+    import subprocess
+    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+    try:
+        running_day(root, child.pid)
+        found = row(capsys)[1]
+    finally:
+        child.kill()
+        child.wait()
+    assert (found['state'], found['command']) == ('wait', 'wuwei status --line')
+    assert 'Running: builder A 09:10, builder B 09:20, checks C 09:25' in found['step']
+    found = row(capsys)[1]
+    assert (found['state'], found['command']) == ('build', 'wuwei build next C')
 
 
 def test_first_approved_item_wins_and_missing_is_skipped(root, capsys):

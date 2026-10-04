@@ -120,6 +120,22 @@ def validate(data, events, hooks, start=False):
     require(bool(planner) and bool(stops) and stops[-1][1] == 0 and
             any(block < close < stops[-1][0] for block, code in stops if code == 2 for close in closes),
             'planner must block, close successfully, then stop cleanly')
+
+    def yielded(start, end):
+        """#477: a clean planner Stop between a start row and the first later end row."""
+        for index, row in enumerate(hooks):
+            last = next((k for k in range(index + 1, len(hooks)) if end(hooks[k])), None) if start(row) else None
+            if last is not None and any(index < stop < last for stop, code in stops if code == 0):
+                return True
+        return False
+    require(yielded(lambda h: h['event'] == 'PreToolUse' and h['exit'] == 0 and h.get('tool') == 'Agent'
+                    and h.get('input', {}).get('subagent_type') == 'wuwei:builder',
+                    lambda h: h['event'] == 'SubagentStop' and h.get('agent_type') == 'wuwei:builder'),
+            'planner did not yield a turn between the builder launch and its stop')
+    require(yielded(lambda h: h['event'] == 'PreToolUse' and h['exit'] == 0 and h.get('tool') == 'Bash'
+                    and 'build check A' in str(h.get('input', {}).get('command', '')),
+                    lambda h: h.get('args') == ['build', 'check', 'A']),
+            'planner did not yield a turn between the check launch and its result')
     return findings
 
 
@@ -196,7 +212,7 @@ free_memory_mb = 0
 name = "fixture/demo"
 path = "repo"
 default_branch = "headless-base"
-fast_checks = ["test -s README.md"]
+fast_checks = ["sleep 5 && test -s README.md"]
 [brief]
 remote = "refs/heads"
 [adapters]
@@ -283,10 +299,11 @@ by logging the proper brief next, never bypassing the guard.
 exists and run the configured fast checks. This is a verification-only fixture;
 no tracked edits are needed. Do not commit. Report Blocked: none, Gap: none,
 Change: none on separate lines if verified. Keep the worktree clean."
-Run build next A; pass its prompt UNCHANGED to Agent and agent_type as
-subagent_type, with a description. After the real Agent returns call build next A,
-execute any returned check command, then build next A until done; done moves A
-to gate. Never imitate Agent with Bash, synthesize a transcript, or run a hook
+Run build next A; pass its prompt UNCHANGED to Agent in the background and
+agent_type as subagent_type, with a description, then end your turn. When the
+builder's completion notification arrives, call build next A; run any returned
+check command through Bash in the background and end your turn; when it exits,
+call build next A until done; done moves A to gate. Never imitate Agent with Bash, synthesize a transcript, or run a hook
 in place of Agent.
 4. Run dispatch next A. For each of arch, quality, security write brief
 sentinel-ROLE A ROLE --gate --worktree repo --body TEXT, where TEXT describes this

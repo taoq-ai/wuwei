@@ -82,7 +82,8 @@ def step(root):
         return _row('stuck', f'Seat {stuck[0]} ended with no recorded result; run the command with its '
                     'report as the file, or stop it with --unmeasured "<reason>".',
                     f'wuwei seat stop {stuck[0]} --verdict <file>')
-    running = {seat['item'] for seat in seats.values() if seat['status'] == 'running'}
+    rows = state.in_flight(data)
+    running = {item for _, _, item in rows}
     items = data['items']
     names = approved(data)
     building = sum(items[name]['phase'] in state.BUILD_PHASES for name in names)
@@ -117,17 +118,17 @@ def step(root):
                         'wuwei dispatch next --all')
         if phase == 'planned' and waiting is None:
             waiting = label
-    names = sorted(name for name, seat in seats.items() if seat['status'] == 'running')
     builders = sorted((seat.get('started_at') or '', name) for name, seat in seats.items()
                       if seat['status'] == 'running' and seat['role'] == 'builder')
+    text = state.in_flight_text(rows)
     if waiting and builders:
         return _row('wait', f'{waiting} waits: {building} of CAP {data["cap"]} building; '
                     f'{builders[0][1]} started first ({builders[0][0] or "start unrecorded"}) and '
-                    'is expected to free first; SubagentStop records each result.',
+                    f'is expected to free first; SubagentStop records each result. Running: {text}',
                     'wuwei status --line')
-    if names:
-        return _row('wait', f'Seats running: {", ".join(names)}; SubagentStop records each result.',
-                    'wuwei status --line')
+    if rows:
+        return _row('wait', f'Running: {text}; SubagentStop records each seat, and a background '
+                    'check reports when it exits.', 'wuwei status --line')
     # ponytail: health from recorded watch and heartbeat events, not a doctor run (#346 budget).
     from wuwei.commands.status import scan
     _, watch, _, beat, _ = scan(directory, {**data, 'now': workspace.now().isoformat()})

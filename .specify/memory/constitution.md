@@ -66,6 +66,11 @@ spec 4.6 and 4.7).
 - Telemetry adds no record and no step to a hook: its signals are fields on records the
   CLI already appends, and aggregation runs only in CLI commands. What it derives is a proposal the
   owner applies, never applied on its own (design 5.13).
+- The owner's session is never blocked by work (design 5.2, #477): seats run in the
+  background, any command that can run longer than a few seconds runs in the background,
+  the planner ends each turn with the board in one line, and only an owner question waits.
+  Skills and charters never tell the planner to wait for a seat or a long command; a test
+  reads them.
 - Conventional commits; release-please drives versions.
 
 ## Workflow
@@ -97,4 +102,4 @@ spec 4.6 and 4.7).
 Amendments are commits to this file with a dated line in the commit message. The design spec
 is amended only by its owner.
 
-**Version**: 1.2.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-03
+**Version**: 1.3.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-04

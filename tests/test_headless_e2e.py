@@ -96,6 +96,13 @@ def evidence():
                          'input': {'subagent_type': 'wuwei:' + role}})
         hooks.insert(-1, {'event': 'SubagentStop', 'exit': 0, 'agent_type': 'wuwei:' + role})
     hooks.insert(-1, {'event': 'cli', 'args': ['close'], 'exit': 0})
+    # #477: the planner yields a turn while the builder runs and while its check runs.
+    stop = next(i for i, h in enumerate(hooks) if h['event'] == 'SubagentStop')
+    hooks[stop:stop + 1] = [
+        {'event': 'Stop', 'exit': 0, 'session': 'planner', 'yield': 'builder'}, hooks[stop],
+        {'event': 'PreToolUse', 'exit': 0, 'tool': 'Bash', 'input': {'command': 'bin/wuwei build check A'}},
+        {'event': 'Stop', 'exit': 0, 'session': 'planner', 'yield': 'check'},
+        {'event': 'cli', 'args': ['build', 'check', 'A'], 'exit': 0}]
     return state, events, hooks
 
 
@@ -106,6 +113,7 @@ def test_complete_structured_evidence_passes():
 @pytest.mark.parametrize('mutation', [
     'no-launch', 'no-stop', 'no-skill', 'no-hooks', 'no-block', 'no-close',
     'no-gate', 'live-seat', 'incomplete-build', 'unapproved', 'no-spec-skip',
+    'no-builder-yield', 'no-check-yield',
 ])
 def test_missing_contract_evidence_fails_despite_success_prose(mutation):
     runner = load('headless_e2e')
@@ -130,6 +138,8 @@ def test_missing_contract_evidence_fails_despite_success_prose(mutation):
         data['builds']['A']['status'] = 'running'
     elif mutation == 'no-spec-skip':
         events = [e for e in events if e['kind'] != 'spec.skipped']
+    elif mutation in ('no-builder-yield', 'no-check-yield'):
+        hooks = [h for h in hooks if h.get('yield') != mutation.split('-')[1]]
     else:
         data['gate_approved'] = False
     assert runner.validate(data, events, hooks)
