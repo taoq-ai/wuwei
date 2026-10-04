@@ -1,6 +1,6 @@
 # Charters and generated agents
 
-The files under agents/ are generated from these charters; edit the sources here instead. After a reviewed change
+The files under agents/ are generated from the sources under charters/; edit those instead. After a reviewed change
 to a charter or `allowlist.json`, run these commands from the plugin repository
 root (outside an initialized WUWEI workspace):
 
