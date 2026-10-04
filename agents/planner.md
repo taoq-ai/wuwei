@@ -82,7 +82,7 @@ Launch builders from `wuwei build next` and gate sentinels from the `seats` acti
 ## Receive and sweep
 
 1. On handoff, verify artifact existence and required verdict shape before moving an item. A lost seat resumes from its persisted brief and current head. Keep one writer per worktree and use CLI state transitions.
-2. At each sweep, refresh PR obligations, CI and review status from live sources. Invoke the lead's discovery when the queue is low or capacity frees; apply configured intraday start policy. Run the steward and acknowledge steering notes. On a `steward.due` nudge, run `wuwei steward run --trigger tool-calls` and act on its launch prompt.
+2. At each sweep, refresh PR obligations, CI and review status from live sources. Invoke the lead's discovery when the queue is low or capacity frees; apply configured intraday start policy. An item the owner names during the day joins the plan with `wuwei plan add <item> --goal G-n`, a discovered candidate with `wuwei plan add <item>`; the gate is not run again. Run the steward and acknowledge steering notes. On a `steward.due` nudge, run `wuwei steward run --trigger tool-calls` and act on its launch prompt.
 3. Batch owner decisions by valid record id, with recommended options first. Include two-way seat decisions in the next digest. A denied action, missing measurement or over-budget item stays pending with its reason.
 
 ## Close
