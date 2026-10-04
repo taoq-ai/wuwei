@@ -34,7 +34,7 @@ Review and commit the generated agents and baseline together with their source
 changes. Do not re-record an unreviewed widening just to make CI green. Default
 pytest checks baseline/allowlist consistency offline; real clean and widened
 audits run when ZIRAN is on PATH, including in the audit job. See the
-[agent maintenance instructions](https://github.com/taoq-ai/wuwei/blob/main/agents/README.md)
+[agent maintenance instructions](https://github.com/taoq-ai/wuwei/blob/main/docs/charters.md)
 for installation and regeneration details.
 
 ## Security posture

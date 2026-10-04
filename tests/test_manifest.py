@@ -13,7 +13,7 @@ def test_manifest():
     # https://code.claude.com/docs/en/plugins-reference#fields
     assert plugin.keys() <= {
         "$schema", "name", "displayName", "version", "description", "author",
-        "homepage", "repository", "license", "keywords", "metadata",
+        "homepage", "repository", "license", "keywords", "icon", "metadata",  # icon: directory listing field
         "defaultEnabled", "dependencies", "settings", "userConfig", "channels",
         "commands", "agents", "skills", "hooks", "mcpServers", "lspServers",
         "outputStyles", "workflows", "experimental",
