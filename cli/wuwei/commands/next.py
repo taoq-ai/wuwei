@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import sys
 
 from wuwei import brief, integrity, state, workspace
@@ -22,6 +23,8 @@ POSTURES = {
                'accepted form: use that form, never a way around it.'),
 }
 ERRORS = (OSError, ValueError, KeyError, TypeError, UnicodeError)
+EXECUTABLE = ('wuwei is the absolute path in .wuwei/executable: read it once and use it as the '
+              'first word of a plain command, never through a variable')
 
 
 def register(subparsers):
@@ -73,7 +76,7 @@ def step(root):
     for identifier in routes:
         if answered(data, identifier) is None:
             return _row('decision', f'Decision {identifier} waits for your answer; read it and '
-                        'pick an option.', f'wuwei decision show {identifier}')
+                        'pick an option.', f'wuwei decision show {identifier} --widget')
     seats = brief.seats(data)
     if stuck := brief.stuck(data):
         return _row('stuck', f'Seat {stuck[0]} ended with no recorded result; run the command with its '
@@ -142,35 +145,57 @@ def line(row):
     return f"{row['state']}: {row['step']} Run: {row['command']}"
 
 
-def orientation(row, posture, spec=None):
-    """The SessionStart block; paths are computed, no file is read. spec: the spec engine
-    and its effective mode (5.10)."""
+def steps(skill):
+    """The first sentence of each numbered step in skills/<skill>/SKILL.md.
+    ponytail: first sentence only to keep SessionStart short; the skill path carries the rest."""
+    path = integrity.PLUGIN / 'skills' / skill / 'SKILL.md'
+    try:
+        lines = path.read_text(encoding='utf-8').splitlines()
+    except (OSError, UnicodeError) as exc:
+        return [f'steps unmeasured: {exc}; read {path}']
+    found = []
+    for text in lines:
+        if re.match(r'\d+\. ', text):
+            match = re.match(r'(\d+\. .+?\.)(?=\s|$)', text)
+            found.append(match.group(1) if match else text)
+    return found
+
+
+def orientation(row, posture, spec=None, session=None):
+    """The SessionStart block; paths are computed and only the plan or report skill is read.
+    spec: the spec engine and its effective mode (5.10). session: the payload's session id."""
     plugin = integrity.PLUGIN
     role = os.environ.get('WUWEI_SEAT_ROLE')
     if (isinstance(role, str) and role and '/' not in role and not role.startswith(('_', '.'))
             and (plugin / 'charters' / f'{role}.md').is_file()):
-        entry = (f'You are the {role} seat: follow {plugin}/charters/{role}.md and your brief; '
-                 'the planner session runs the day.')
+        entry = [f'You are the {role} seat: follow {plugin}/charters/{role}.md and your brief; '
+                 'the planner session runs the day.']
+    elif row['state'] == 'plan':
+        entry = [f'Start the day now; no command needed. Steps (full text: {plugin}/skills/wuwei-plan/SKILL.md):',
+                 f'- Register this session as the planner: `wuwei plan session {session or "<session id>"}` '
+                 '(add --take-over when it names another planner).',
+                 *steps('wuwei-plan'), 'Do this now.']
+    elif row['state'] == 'close':
+        entry = [f'The day is closable. Steps (full text: {plugin}/skills/wuwei-report/SKILL.md):',
+                 *steps('wuwei-report'), 'Do this now.']
     else:
-        entry = (f'Start or resume the day with /wuwei:wuwei-plan (steps: '
-                 f'{plugin}/skills/wuwei-plan/SKILL.md); run wuwei next whenever the next step '
-                 'is unclear.')
+        entry = []
     return '\n'.join([
         HEADER,
         "WUWEI runs this workspace's coding day the way a careful engineering team works: the "
         'planner session ranks the work, seats build and review each change in their own '
         'worktree, and merges follow a policy.',
-        'The owner answers questions and decisions; the session runs the commands (wuwei is the '
-        'absolute path in .wuwei/executable: read it once and use it as the first word of a plain '
-        'command, never through a variable) and never asks the owner to edit a file.',
+        f'The owner answers questions and decisions; the session runs the commands ({EXECUTABLE}) '
+        'and never asks the owner to edit a file.',
         'Day loop: plan, morning gate, dispatch builders, gates verify, PR and merge, report and '
         'close.',
         POSTURES[posture],
         *([f'Spec: {spec}'] if spec else []),
         f'Next: {line(row)}',
-        entry,
-        f'Guide: {plugin}/docs/site/agent.md (the whole flow for a session); owner guide: '
-        f'{plugin}/docs/site/daily.md',
+        *entry,
+        'Reference: wuwei guide (every command, the accepted forms and the rules; the same text is '
+        'the guide block in the memory.export_to file); run wuwei next when the next step is unclear; '
+        f'owner guide: {plugin}/docs/site/daily.md',
     ])
 
 

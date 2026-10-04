@@ -126,7 +126,7 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | `memory.state_entry_cap` | `3` | State entries included in memory payload. |
 | `memory.digest` | `"week"` | `"week"` writes the week digest at close and consolidate writes week and month digests; `"off"` writes none. |
 | `memory.budget_tokens` | `6000` | SessionStart memory payload budget in estimated tokens; over it today's lines are left out first. |
-| `memory.export_to` | `"CLAUDE.md"` | Workspace-relative file that receives the generated rules block; never under `.wuwei/`. |
+| `memory.export_to` | `"CLAUDE.md"` | Workspace-relative file that receives the generated rules block and the generated guide block (`init`, `init --upgrade`); never under `.wuwei/`. |
 | `retro.repo` | `"."` | Repository used for retro evidence. |
 | `retro.charter_paths` | `[".wuwei/charters"]` | Paths to charter procedures reviewed during retro. |
 | `retro.changelog` | `".wuwei/memory/CHANGELOG.md"` | Retro change log path. |

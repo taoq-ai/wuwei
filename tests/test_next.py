@@ -99,7 +99,7 @@ def test_morning_rows(root, capsys):
 def test_decision_row(root, capsys):
     approved(root, {}, decision_routes={'D-1': 'owner'})
     found = row(capsys)[1]
-    assert (found['state'], found['command']) == ('decision', 'wuwei decision show D-1')
+    assert (found['state'], found['command']) == ('decision', 'wuwei decision show D-1 --widget')
     state._write_state(lambda data: data.update(
         decision_outcomes={'D-1': {'option': 'A', 'decided_by': 'owner'}}), root, reserved=False)
     assert row(capsys)[1]['state'] != 'decision'
@@ -192,12 +192,44 @@ ROW = {'state': 'plan', 'step': 'No plan yet.', 'command': '/wuwei:wuwei-plan'}
     ('guarded', ('Posture guarded',)), ('strict', ('Posture strict',))])
 def test_orientation_block(monkeypatch, posture, phrases):
     monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
-    text = next_command.orientation(ROW, posture)
-    assert text.startswith(next_command.HEADER) and len(text.splitlines()) < 25
-    for phrase in ('Next: ' + next_command.line(ROW), '/wuwei:wuwei-plan',
-                   str(integrity.PLUGIN / 'docs/site/agent.md'), 'skills/wuwei-plan/SKILL.md',
-                   'docs/site/daily.md', 'first word of a plain command', *phrases):
+    text = next_command.orientation(ROW, posture, 'speckit strict', 'S')
+    assert text.startswith(next_command.HEADER) and len(text.splitlines()) < 30
+    for phrase in ('Next: ' + next_command.line(ROW), 'Do this now.', 'wuwei guide',
+                   str(integrity.PLUGIN / 'skills/wuwei-plan/SKILL.md'), 'wuwei plan session S',
+                   'docs/site/daily.md', 'first word of a plain command', *phrases,
+                   *next_command.steps('wuwei-plan')):
         assert phrase in text
+    assert 'docs/site/agent.md' not in text and 'Start or resume' not in text
+    assert '<session id>' in next_command.orientation(ROW, posture)
+
+
+def test_steps_come_from_the_skill_file(monkeypatch, tmp_path):
+    import re
+    for skill in ('wuwei-plan', 'wuwei-report'):
+        numbered = [line for line in (integrity.PLUGIN / 'skills' / skill / 'SKILL.md').read_text().splitlines()
+                    if re.match(r'\d+\. ', line)]
+        found = next_command.steps(skill)
+        assert len(found) == len(numbered) >= 4
+        for step, line in zip(found, numbered):
+            assert line.startswith(step) and step.endswith('.')
+    monkeypatch.setattr(integrity, 'PLUGIN', tmp_path)
+    (unmeasured,) = next_command.steps('wuwei-plan')
+    assert unmeasured.startswith('steps unmeasured:') and str(tmp_path / 'skills/wuwei-plan/SKILL.md') in unmeasured
+
+
+def test_orientation_by_state(monkeypatch):
+    monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
+    close = next_command.orientation({'state': 'close', 'step': 'Close.', 'command': '/wuwei:wuwei-report'},
+                                     'guarded')
+    for phrase in ('Do this now.', 'skills/wuwei-report/SKILL.md', *next_command.steps('wuwei-report')):
+        assert phrase in close
+    assert 'plan session' not in close
+    stuck = next_command.orientation(
+        {'state': 'stuck', 'step': 'Seat builder-1 has no process and no stop.',
+         'command': 'wuwei seat stop builder-1 --unmeasured "<reason>"'}, 'guarded', None, 'S')
+    assert 'wuwei seat stop' in stuck and 'wuwei guide' in stuck
+    for phrase in ('/wuwei:wuwei-plan', 'plan session', 'Do this now.', 'wuwei-plan/SKILL.md'):
+        assert phrase not in stuck
 
 
 @pytest.mark.parametrize('role,seat', [('shepherd', True), ('../x', False), ('nope', False),
@@ -206,7 +238,7 @@ def test_orientation_seat_entry(monkeypatch, role, seat):
     monkeypatch.setenv('WUWEI_SEAT_ROLE', role)
     text = next_command.orientation(ROW, 'guarded')
     assert ('charters/shepherd.md' in text) is seat
-    assert ('Start or resume the day with /wuwei:wuwei-plan' in text) is not seat
+    assert ('Do this now.' in text) is not seat
 
 
 def hook(monkeypatch, cwd):
@@ -234,8 +266,11 @@ def test_issue_acceptance_session_start_orients(root, monkeypatch, capsys):
     assert text.startswith(next_command.HEADER)
     assert any(line.startswith('Next: plan: ') and line.endswith('Run: /wuwei:wuwei-plan')
                for line in lines)
-    assert str(integrity.PLUGIN / 'docs/site/agent.md') in text
-    assert lines.index('Active constraints:') < 25
+    assert 'wuwei guide' in text and 'wuwei plan session S' in text
+    for step in next_command.steps('wuwei-plan'):
+        assert step in lines
+    reference = next(index for index, line in enumerate(lines) if line.startswith('Reference: wuwei guide'))
+    assert reference < 30 and lines.index('Active constraints:') == reference + 1
 
 
 def test_constraints_precede_a_long_week_digest(root, monkeypatch, capsys):
