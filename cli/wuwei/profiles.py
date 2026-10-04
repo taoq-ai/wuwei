@@ -18,7 +18,8 @@ ROLES = sorted(path.stem for path in (PLUGIN / 'charters').glob('*.md') if SLUG_
 PRIVATE = ('owner', 'control_plane.owner', 'repos.name', 'repos.path', 'repos.default_branch',
            'repos.identity', 'repos.merge.bot_login', 'voice', 'outbound.work_channels',
            'outbound.external_channels', 'outbound.company_domains', 'outbound.code_host_orgs',
-           'outbound.people', 'shepherd.review_channel', 'shepherd.lead_login', 'shepherd.authors',
+           'outbound.people', 'outbound.tiers', 'outbound.channel_classes',
+           'shepherd.review_channel', 'shepherd.lead_login', 'shepherd.authors',
            'shepherd.reviewers', 'shepherd.reviewers_exclude', 'repos.shepherd',
            'tracker.backlog_filter', 'retro.repo', 'metrics.transcripts', 'scanner.mcp', 'guards',
            'security')

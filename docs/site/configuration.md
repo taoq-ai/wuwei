@@ -13,7 +13,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[brief.style]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[grants]` | [Boundaries and deployment](#boundaries-and-deployment) |
-| `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outbound]`, `[outbound.people]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
+| `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outward.classes]`, `[outbound]`, `[outbound.people]`, `[outbound.channel_classes]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
 | `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]`, `[decisions.lenses]` | [Decisions](#decisions); cruise answering is not built |
 | `[calibrate]` | [Calibration](#calibration) |
 | `[spec]` | [Specification mode](#specification-mode) |
@@ -385,17 +385,20 @@ Two starters ship in `templates/profiles/`, derived from WUWEI's own setup: `pyt
 | `outward.banned_characters` | `emoji`, U+2014, U+2015, U+2E3A, U+2E3B | Setting a list replaces defaults. |
 | `outward.tool_patterns` | Built-in Slack, Linear, GitHub, Notion and Atlassian MCP matches | Tool regex plus policy channel. The built-in rules match the brand anywhere in the name, so `mcp__<uuid>__slack_send_message` is Slack. A list in `config.toml` replaces the defaults; `config set` adds to them. A tool nothing resolves is a read, a write or unknown by the words of its name (see security). |
 | `outward.servers` | `{}` | MCP server id to channel (`slack`, `tracker`, `code_host`, `docs`, `mail` or `other`), checked before the rules; `bin/wuwei outbound learn` proposes entries. Reads still pass. |
-| `outward.modes` | `{}` | MCP server id to its write mode: `send` (lint and the sensitive, commitment and disagreement patterns, no audience rules), `draft` (every write drafts) or `refuse`. Without one, `other` sends and every other channel follows its tier. The learn card offers each mode. |
+| `outward.modes` | `{}` | MCP server id to its write mode, the first rows of the [tier table](concepts.md#outbound-tiers): `send` (every write goes out after the lint), `draft` (`ask`, every write drafts) or `refuse` (`block`, refused with exit 1). Under `strict` a `send` mode still never reaches a client or public audience. Without one, the rest of the table decides. The learn card offers each mode. |
+| `outward.classes` | `{}` | MCP server id to the audience class (`owner`, `team`, `company`, `client` or `public`) of a channel or person it has not learned. Without one, chat, Slack, mail and the code host are `company`; a tracker, docs or `other` write with no destination is `team`. |
 | `outward.max_length.slack` | Not set | Example positive maximum for one channel under `[outward.max_length]`. |
 | `outward.humanize` | `true` | Lint outward text for AI tells before it is drafted or sent; `false` turns the lint off. |
 | `outward.humanize_kinds` | `["dm", "tracker", "docs", "pr", "review"]` | Kinds the lint checks: DMs, tracker comments, docs pages, PR comments and PR bodies, and other chat posts such as review pings. |
 | `outward.humanize_strict` | `false` | `true` refuses a text with a tell; `false` warns and records `outward.ai_tells`. |
 | `outward.draft_ttl` | `3600` | Seconds an approved draft's tool call may repeat, once; at least 60. |
-| `outbound.work_channels` | `[]` | Internal channel IDs eligible for routine auto-send. |
-| `outbound.external_channels` | `[]` | Shared or client channels; these override work channels. |
+| `outbound.tiers` | `[]` | Your tier rows, before the defaults; the first match wins. Each row has any of `tool` (regex on the tool name or the channel kind), `person` (id or `slack:<id>`), `channel` (id or class), `audience` (class) and `topic` (`sensitive`, `commitment` or `disagreement`), and the `tier`: `send`, `ask` or `block`. An unknown key or a bad `tool` regex refuses the whole file in every posture. `bin/wuwei outbound tiers` prints the effective table. |
+| `outbound.work_channels` | `[]` | Team channel IDs (class `team`), eligible for routine auto-send. |
+| `outbound.external_channels` | `[]` | Shared or client channels (class `client`); these override work channels. |
+| `outbound.channel_classes` | `{}` | Channel ID to any audience class, over both lists, for example `C4 = "public"`. |
 | `outbound.company_domains` | `[]` | Exact internal domain names. |
 | `outbound.code_host_orgs` | `[]` | Internal code host organizations. |
-| `outbound.people` | `{}` | Optional identity map using `slack:`, `github:` or `email:` keys; `bin/wuwei outbound learn` proposes `slack:` entries for the day's reviewers. |
+| `outbound.people` | `{}` | Optional identity map using `slack:`, `github:` or `email:` keys, each with `email`, `org` and `class` (`owner`, `team`, `company`, `client` or `public`); `bin/wuwei outbound learn` proposes `slack:` entries for the day's reviewers with `class = "team"`. Without a `class`, an internal person is `team` and anyone else takes the connector's default class; `doctor` warns. |
 | `outbound.learn` | `"card"` | How `bin/wuwei outbound learn` records an unknown connector, work channel or person: `card` asks you on one decision card, `auto` writes reviewers and listed channels at once under observe and guarded (strict still asks), `off` never learns and every such send stays a draft. |
 | `outbound.owner` | all empty | Your own identity: `slack.user` (U or W id), `slack.dm` (your own DM channel, D id, never the WUWEI app DM), `mail` and `code_host` (login). Setup proposes `mail`, `code_host` and `slack.user` from what it measures; `bin/wuwei outbound learn --owner` proposes `slack.user` and `slack.dm` on its card. A message only you receive (your Slack DM or user id, or a mail whose only recipient is you) is never a draft; it still passes the outward lint and records an `outward.to_owner` event. |
 | `outbound.owner_channel` | `"session"` | `session` or `dm`. With `dm` the planner also posts the digest, nudges and day report to `outbound.owner.slack.dm` (or `slack.user` when `dm` is empty). |

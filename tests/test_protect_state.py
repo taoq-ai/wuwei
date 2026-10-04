@@ -1007,7 +1007,9 @@ def _seat_hook(root, command, monkeypatch, capsys, posture, *, seat=True):
 
 @pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
 def test_guard_config_set_refused(workspace, monkeypatch, capsys, posture):
-    for key in ('outward.tool_patterns', 'outbound.work_channels', 'security.posture', 'grants.x'):
+    # #496: a seat never writes the tier table or the classes.
+    for key in ('outward.tool_patterns', 'outbound.work_channels', 'security.posture', 'grants.x',
+                'outbound.tiers', 'outbound.channel_classes', 'outward.classes'):
         code, reason = _seat_hook(workspace, f"bin/wuwei config set {key} '[]'", monkeypatch, capsys, posture)
         assert code == 2 and "owner's" in reason and 'bin/wuwei outbound learn' in reason, reason
         assert 'propose the line' not in reason and 'config set' not in reason

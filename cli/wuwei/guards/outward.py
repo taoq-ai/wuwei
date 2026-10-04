@@ -57,16 +57,7 @@ VOCABULARY = (
     ('mail', r'(?:.*_)?(?:drafts?|labels?|threads?|spam|trash|forward|inbox|e?mails?)(?:_.*)?'),
     ('docs', r'(?:.*_)?(?:pages?|blocks?|databases?)(?:_.*)?'),
     ('other', OTHER))
-# The mode a connector without an owner mode follows; None is the class's own tier rule.
-CLASS_MODES = {'other': 'send'}
-
-
-def mode(tool, config, channel):
-    """#492: the owner's mode for the tool's server, else the class default."""
-    server = tool[5:].rpartition('__')[0].casefold()
-    owned = next((value for key, value in config['outward']['modes'].items()
-                  if key.casefold() == server), None)
-    return owned or CLASS_MODES.get(channel)
+DM_TOOL = r'(?:^|_)(?:dm|direct_message)(?:_|$)'
 
 
 def resolve(tool, config):
@@ -178,19 +169,11 @@ def _check(payload, policy):
         if not isinstance(inputs, dict):
             return UNRUN, (f'outward: tool_input is not an object; got {type(inputs).__name__}; '
                            'pass the tool arguments as a JSON object')
-        if re.search(r'(?:^|_)(?:dm|direct_message)(?:_|$)', tool, re.IGNORECASE):
+        if re.search(DM_TOOL, tool, re.IGNORECASE):
             inputs = {**inputs, 'is_dm': True}
         channel = next(iter(channels))
-        found = mode(tool, config, channel) if tool.startswith('mcp__') and tool_kind(tool) != 'read' else None
-        if found in ('draft', 'refuse') and outward.owner_only(inputs, config, channel):
-            found = None  # #495, owner: nothing lowers a message only the owner reads.
-        if found == 'refuse':
-            return UNRUN, (f'outward: connector {tool[5:].rpartition("__")[0]} refuses writes by the '
-                           "owner's mode; write it as a draft for the owner to send")
-        if found == 'draft' and policy is outward.check_tier:
-            result = (FINDINGS, f'{outward.APPROVAL_REQUIRED}: connector mode draft for {channel}: outward.modes')
-        elif found == 'send' and policy is outward.check_tier:
-            result = outward.check_send(inputs, root, config, channels)
+        if policy is outward.check_tier:  # #496: the connector mode is the first row of the table.
+            result = outward.check_tier(inputs, root, config, channels, tool=tool)
         else:
             result = policy(inputs, root, config, channels)
         if result[0] == FINDINGS and result[1].startswith(outward.APPROVAL_REQUIRED):

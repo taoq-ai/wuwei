@@ -1126,7 +1126,8 @@ def test_table_set_adds_entries(workspace):
     assert config_set('outbound.people', '{"slack:U01" = {email = "ada@example.com"}}', Confirm()) == 0
     assert config_set('outbound.people', '{"slack:U02" = {org = "acme"}}', Confirm()) == 0
     assert load_config(workspace)['outbound']['people'] == {
-        'slack:U01': {'email': 'ada@example.com', 'org': ''}, 'slack:U02': {'email': '', 'org': 'acme'}}
+        'slack:U01': {'email': 'ada@example.com', 'org': '', 'class': ''},
+        'slack:U02': {'email': '', 'org': 'acme', 'class': ''}}
     assert '"slack:U02" = {org = "acme"}' in (workspace / '.wuwei/config.toml').read_text()
 
 

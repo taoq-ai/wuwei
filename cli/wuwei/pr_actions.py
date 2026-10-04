@@ -3,6 +3,7 @@
 from datetime import timedelta
 import json
 import re
+import sys
 
 from wuwei import decision, obligations, registry, state, watch, workspace
 from wuwei.references import pull_request
@@ -419,9 +420,13 @@ def _thread(root, ref, item, measured, reply=None):
             raise ValueError('reply needs a nonempty body; pass a one-line answer: bin/wuwei pr act --reply "<answer>"')
         context = {'ref': ref, 'thread': target} if thread else {'ref': ref}
         channel_kind = 'code_host'
-        code, tier = outward.classify(reply, root, config, context, kind=channel_kind)
-        if type(code) is not int or code not in (0, 1, 2) or tier not in ('send', 'draft'):
+        why = []
+        code, tier = outward.classify(reply, root, config, context, kind=channel_kind, why=why)
+        if type(code) is not int or code not in (0, 1, 2) or tier not in ('send', 'draft', 'block'):
             raise ValueError(f'invalid outward tier result; {ADAPTER_DATA}')
+        if tier == 'block':  # #496: refused with the row named; no draft.
+            print(outward.blocked(why[0]), file=sys.stderr)
+            return 1
         if code == 0 and tier == 'send':
             return obligations.reply(ref, surface,
                 thread['comments'][0]['id'] if thread else latest['id'], reply, root)

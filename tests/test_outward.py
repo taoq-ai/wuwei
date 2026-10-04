@@ -969,18 +969,20 @@ def test_probe_tools(configured, monkeypatch, capsys, posture, name):
 
 # #493: a held draft names the rule that forced it.
 RULES = [
-    ('Thanks', {'channel': 'C9'}, {}, 'unknown destination C9: not in outbound.work_channels'),
-    ('Thanks @dev', {'channel': 'C1'}, {},
-     'unknown mention @dev: not an internal person in outbound.people'),
-    ('I will ship it tomorrow', {'channel': 'C1'}, {},
-     'approval tier commitment for C1: outbound.commitment_patterns'),
+    # #496: a table decision names its row and the class evidence.
+    ('Thanks', {'channel': 'C9'}, {}, 'ask by rule 9 (audience=company) for C9: unknown destination C9, '
+     'not in outbound.work_channels, connector default class company'),
+    ('Thanks @dev', {'channel': 'C1'}, {}, 'ask by rule 9 (audience=company) for @dev: unknown mention @dev, '
+     'not an internal person in outbound.people, connector default class company'),
+    ('I will ship it tomorrow', {'channel': 'C1'}, {}, 'ask by rule 7 (topic=commitment) for C1: C1 in '
+     'outbound.work_channels as team, outbound.commitment_patterns'),
     ('Thanks', {'channel': 'C1'}, {'WUWEI_SEAT_ROLE': 'shepherd'},
      'headless seat: a headless shepherd seat posts drafts only'),
     ('Can you review my PR?', {'channel': 'C1'}, {},
      'review ping without a code-host link: the review request form with the PR link goes '
      'to shepherd.review_channel'),
     ('Thanks', {'channel': 'C1', 'is_dm': True}, {},
-     "unknown DM recipient C1: not the owner's DM or user id in outbound.owner.slack"),
+     'approval tier direct message for C1: every direct message drafts'),
     ('Thanks', {'channel': 'C1', 'thread_ts': '1.2'}, {},
      'approval tier thread for C1: chat threads draft until their participants are known'),
 ]
@@ -1007,7 +1009,7 @@ def test_check_tier_appends_the_rule(configured):
     from wuwei import outward
     root, config = configured
     inputs = {'text': 'Thanks', 'channel': 'C9'}
-    expected = (1, outward.APPROVAL_REQUIRED + ': unknown destination C9: not in outbound.work_channels')
+    expected = (1, outward.APPROVAL_REQUIRED + ': ' + RULES[0][3])
     assert outward.check_tier(inputs, root, config, {'slack'}) == expected
     assert outward.check_call(inputs, root, config, {'slack'}) == expected
 
@@ -1050,12 +1052,11 @@ def test_hook_refusal_names_draft_and_why_reads_it(configured, monkeypatch, caps
     lines = capsys.readouterr().err.splitlines()
     draft_id = lines[0].split()[2].rstrip(':')
     assert lines[:2] == [
-        f'outward: draft {draft_id}: unknown destination C9: not in outbound.work_channels; '
-        f'the owner decides: bin/wuwei drafts show {draft_id} --widget',
+        f'outward: draft {draft_id}: {RULES[0][3]}; the owner decides: bin/wuwei drafts show {draft_id} --widget',
         'posture: outward = block (owner-only action; no setting lowers it)']
     assert main(['why', 'last', 'refusal']) == 0
     out = capsys.readouterr().out.splitlines()
-    assert f'rule: outward: draft {draft_id}: unknown destination C9: not in outbound.work_channels' in out
+    assert f'rule: outward: draft {draft_id}: {RULES[0][3]}' in out
     assert f'fix: the owner decides: bin/wuwei drafts show {draft_id} --widget' in out
 
 
@@ -1208,7 +1209,7 @@ def test_class_modes(configured):
                        f'\n[outward.modes]\n"{sentry}" = "draft"\n"{UUID}" = "refuse"\n"{slack}" = "send"\n')
     assert check_tier(resolve)[0] == 1
     code, reason = check_tier(payload(root, 'A technical claim.', tool=opaque('append_block_children')))
-    assert code == 2 and 'refuse' in reason and 'config set' not in reason
+    assert code == 1 and 'block by rule 2 ' in reason and 'outward.modes' in reason and 'config set' not in reason
     assert check_tier(payload(root, tool=opaque('get_page'))) == (0, '')
     unknown = payload(root, 'thanks <@U03>', tool=opaque('send_message', slack), channel='C01')
     assert check_tier(unknown) == (0, '')
@@ -1244,13 +1245,13 @@ def test_draft_names_unknown_audience(configured, monkeypatch, capsys):
         return json.loads(capsys.readouterr().out)[0]['options'][0]['description']
 
     code, reason = check_tier_call(root, 'thanks', tool, 'C01')
-    assert code == 1 and re.fullmatch(HELD, reason)[2].startswith('unknown destination C01')
+    assert code == 1 and re.fullmatch(HELD, reason)[2].startswith('ask by rule 9 (audience=company) for C01: unknown destination C01')
     assert f'bin/wuwei outbound learn --tool {tool}' in send_now(reason)
     code, reason = check_tier_call(root, 'thanks <@U03> <@U04>', tool, 'C1')
-    assert code == 1 and re.fullmatch(HELD, reason)[2].startswith('unknown mention @u03')
+    assert code == 1 and re.fullmatch(HELD, reason)[2].startswith('ask by rule 9 (audience=company) for @u03: unknown mention @u03')
     assert f'bin/wuwei outbound learn --tool {tool}' in send_now(reason)
     code, reason = check_tier_call(root, 'I think <@U01> <@U02> agree.', tool, 'C1')
-    assert code == 1 and not re.fullmatch(HELD, reason)[2].startswith('unknown')
+    assert code == 1 and 'unknown' not in re.fullmatch(HELD, reason)[2]
     assert 'outbound learn' not in send_now(reason)
     text = (root / '.wuwei/config.toml').read_text().replace('[outbound]\n', '[outbound]\nlearn = "off"\n')
     (root / '.wuwei/config.toml').write_text(text)
@@ -1337,12 +1338,17 @@ def test_dm_recipient_rule(configured):
     why = []
     assert outward.classify('Thanks', root, config, {'text': 'Thanks', 'channel': 'U02'},
                             kind='slack', why=why) == (1, 'draft')
-    assert why == ["unknown DM recipient U02: not the owner's DM or user id in outbound.owner.slack"]
+    assert why == ["ask by rule 9 (audience=company) for U02: unknown DM recipient U02, not the owner's DM "
+                   'or user id in outbound.owner.slack, connector default class company']
     why = []
     assert outward.classify('Thanks', root, config, {'text': 'Thanks', 'is_dm': True},
                             kind='slack', why=why) == (1, 'draft')
-    assert why[0].startswith('approval tier direct message for ')
-    assert why[0].endswith(': every direct message drafts')
+    assert why == ['ask by rule 9 (audience=company) for slack: connector default class company']
+    why = []  # #496: a DM to an internal person passes the table; the kind rule drafts it.
+    config['outbound']['people']['slack:U02'] = {'email': '', 'org': '', 'class': 'team'}
+    assert outward.classify('Thanks', root, config, {'text': 'Thanks', 'channel': 'U02'},
+                            kind='slack', why=why) == (1, 'draft')
+    assert why == ['approval tier direct message for U02: every direct message drafts']
 
 
 def owner_events(root):
@@ -1391,7 +1397,7 @@ def test_guard_to_owner_floor(configured):
     set_posture(root, 'strict', 'block')
     write_config(root, f'\n[outward.modes]\n"{UUID}" = "draft"\n')
     path = root / '.wuwei/config.toml'
-    for mode, count, held, words in (('draft', 2, 1, 'connector mode draft'), ('refuse', 4, 2, 'refuses writes')):
+    for mode, count, held, words in (('draft', 2, 1, 'ask by rule 1 '), ('refuse', 4, 1, 'block by rule 1 ')):
         path.write_text(path.read_text().replace(f'"{UUID}" = "draft"', f'"{UUID}" = "{mode}"'))
         for channel in ('D01', 'U01'):
             call = payload(root, 'Your salary review is in', tool=opaque('slack_send_message'), channel=channel)
@@ -1416,7 +1422,7 @@ def test_guard_owner_mail_with_outside_cc_is_not_owner_only(configured):
     for extra in ({'cc': ['outsider@evil.test']}, {'bcc': 'outsider@evil.test'}):
         call['tool_input'] = {**mail, **extra}
         code, reason = check_tier(call)
-        assert code == 2 and 'refuses writes' in reason, (extra, reason)
+        assert code == 1 and 'block by rule 1 ' in reason and 'outward.modes' in reason, (extra, reason)
 
 
 # #501: recorded connector tool_input shapes; MESSAGE marks where the message text sits.
@@ -1446,7 +1452,8 @@ def test_text_fields_corpus(configured):
         assert ('Tests passed' in texts) == ('MESSAGE' in json.dumps(shape)), shape
         assert not {'block', 'paragraph', 'resolved', 'text', 'acme', PAGE, 'PROJ-1'} & set(texts), texts
         if 'MESSAGE' in json.dumps(shape):
-            code, reason = outward.check_send(shaped(shape, 'Your salary is set'), root, config, {channel})
+            code, reason = outward.check_tier(shaped(shape, 'Your salary is set'), root, config, {channel},
+                                              tool=opaque('write'))
             assert code == 1 and 'outbound.sensitive_keywords' in reason, (shape, reason)
 
 
@@ -1459,7 +1466,8 @@ def test_connector_writes_through_the_guard(configured):
     code, reason = check_tier(notion)
     match = re.fullmatch(HELD, reason)
     assert code == 1 and match, reason
-    assert match[2].startswith('approval tier sensitive') and 'outbound.sensitive_keywords' in match[2]
+    assert match[2].startswith('ask by rule ') and 'topic=sensitive' in match[2], match[2]
+    assert 'outbound.sensitive_keywords' in match[2]
     write_config(root, f'\n[outward.servers]\n"{UUID}" = "tracker"\n\n[outward.modes]\n"{UUID}" = "send"\n')
     jira = {**payload(root, tool=opaque('addCommentToJiraIssue')),
             'tool_input': {'issue_key': 'DEMO-12', 'comment': 'tests passed'}}
@@ -1507,3 +1515,219 @@ def test_tool_input_not_an_object(configured):
             code, reason = check(call)
             assert (code, reason) == (2, f'outward: tool_input is not an object; got {shape}; '
                                          'pass the tool arguments as a JSON object')
+
+
+# #496: outward control is one owner-configured tier table.
+def outbound_line(root, line):
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('[outbound]\n', f'[outbound]\n{line}\n', 1))
+
+
+def test_tier_config(configured):
+    root, config = configured
+    assert config['outbound']['tiers'] == [] and config['outbound']['channel_classes'] == {}
+    assert config['outward']['classes'] == {}
+    outbound_line(root, 'tiers = [{ person = "U07", tier = "send" }]')
+    write_config(root, '\n[outbound.channel_classes]\nC4 = "public"\n'
+                       '\n[outbound.people]\n"slack:U07" = { email = "dev@example.test", class = "team" }\n'
+                       f'\n[outward.classes]\n"{UUID}" = "company"\n')
+    config = workspace.load_config(root)
+    assert config['outbound']['tiers'] == [{'tool': '', 'person': 'U07', 'channel': '', 'audience': '',
+                                            'topic': '', 'tier': 'send'}]
+    assert config['outbound']['channel_classes'] == {'C4': 'public'}
+    assert config['outbound']['people']['slack:U07'] == {'email': 'dev@example.test', 'org': '', 'class': 'team'}
+    assert config['outward']['classes'] == {UUID: 'company'}
+
+
+@pytest.mark.parametrize('row,key', [
+    ('{ persn = "U07", tier = "send" }', 'outbound.tiers.0.persn'),
+    ('{ tool = "(", tier = "ask" }', 'outbound.tiers.0.tool'),
+    ('{ tier = "maybe" }', 'outbound.tiers.0.tier'),
+    ('{ audience = "boss", tier = "ask" }', 'outbound.tiers.0.audience'),
+    ('{ person = "U07" }', 'outbound.tiers.0.tier'),
+])
+def test_tier_row_validation(configured, row, key):
+    # A typo must not widen a row to match everything, so it refuses under every posture.
+    root = configured[0]
+    set_posture(root, 'guarded')
+    outbound_line(root, f'tiers = [{row}]')
+    with pytest.raises(workspace.ConfigError, match=key.replace('.', r'\.')):
+        workspace.load_config(root)
+
+
+def test_tier_table(configured):
+    import re
+    from wuwei import outward
+    root, config = configured
+    rows = outward.table(config)
+    assert [row for row, _, _ in rows] == [dict(row) for row in outward.DEFAULT_TIERS]
+    assert {source for _, source, _ in rows} == {'default'} and len(rows) == 10
+    assert rows[2][0] == {'audience': 'client', 'topic': 'commitment', 'tier': 'block'}
+    outbound_line(root, 'tiers = [{ person = "U07", tier = "send" }]')
+    write_config(root, f'\n[outward.modes]\n"{UUID}" = "refuse"\n')
+    rows = outward.table(workspace.load_config(root))
+    assert rows[0] == ({'tool': f'mcp__{re.escape(UUID)}__.*', 'tier': 'block'}, 'owner', ' (outward.modes)')
+    assert rows[1] == ({'person': 'U07', 'tier': 'send'}, 'owner', '')
+    assert rows[2] == ({'audience': 'owner', 'tier': 'send'}, 'default', '')
+    assert outward.render(rows[1][0]) == '{ person = "U07", tier = "send" }'
+
+
+def tiers_workspace(root, extra=''):
+    with_owner(root)
+    outbound_line(root, 'external_channels = ["C2"]')
+    write_config(root, f'\n[outward.servers]\n"{UUID}" = "slack"\n' + extra)
+    return workspace.load_config(root)
+
+
+BLOCK_C2 = ('outward: block by rule 3 (audience=client topic=commitment) for C2: C2 in '
+            'outbound.external_channels as client, outbound.commitment_patterns; the owner decides: '
+            'bin/wuwei outbound tiers')
+
+
+def test_tiers_acceptance(configured):
+    import re
+    from wuwei import state
+    from wuwei.guards.outward import check_tier
+    root = configured[0]
+    tiers_workspace(root)
+    tool = opaque('slack_send_message')
+    assert check_tier(payload(root, 'I will ship it tomorrow', tool=tool, channel='C2')) == (1, BLOCK_C2)
+    assert not state.read_state(root).get('drafts')
+    code, reason = check_tier(payload(root, 'I will ship it tomorrow', tool=tool, channel='C1'))
+    assert code == 1 and re.fullmatch(HELD, reason)[2] == (
+        'ask by rule 7 (topic=commitment) for C1: C1 in outbound.work_channels as team, '
+        'outbound.commitment_patterns')
+    assert check_tier(payload(root, 'Your build is green', tool=tool, channel='D01')) == (0, '')
+
+
+def tier_run(root, config, text, channel=None, kind='slack', tool=None, **context):
+    from wuwei import outward
+    why = []
+    inputs = {'text': text, **({'channel': channel} if channel else {}), **context}
+    result = outward.classify(text, root, config, inputs, kind=kind, why=why, tool=tool)
+    assert all('; ' not in rule for rule in why)
+    return result, why
+
+
+def test_tiers_defaults(configured):
+    root = configured[0]
+    config = tiers_workspace(root, '\n[outbound.channel_classes]\nC4 = "public"\n')
+    assert tier_run(root, config, 'tests passed', 'C4') == (
+        (1, 'block'), ['block by rule 2 (audience=public) for C4: C4 in outbound.channel_classes as public'])
+    result, why = tier_run(root, config, 'I disagree with the proposal.', 'C2')
+    assert result == (1, 'block') and why == [
+        'block by rule 4 (audience=client topic=disagreement) for C2: C2 in outbound.external_channels '
+        'as client, outbound.disagreement_patterns']
+    assert tier_run(root, config, 'Your salary review is in', 'C2') == (
+        (1, 'draft'), ['ask by rule 5 (audience=client) for C2: C2 in outbound.external_channels as client'])
+    assert tier_run(root, config, 'tests passed', 'C1') == ((0, 'send'), [])
+    result, why = tier_run(root, config, 'thanks <@U09>', 'C1')
+    assert result == (1, 'draft') and why == [
+        'ask by rule 9 (audience=company) for @u09: unknown mention @u09, not an internal person in '
+        'outbound.people, connector default class company']
+    from wuwei import outward
+    assert outward.classify('', root, config, {'issue_id': 'PROJ-1'}, kind='other') == (0, 'send')
+    assert tier_run(root, config, 'I disagree', kind='other') == ((1, 'draft'), [
+        'ask by rule 8 (topic=disagreement) for other: connector default class team, '
+        'outbound.disagreement_patterns'])
+
+
+def test_tier_classes(configured):
+    root = configured[0]
+    config = tiers_workspace(root, '\n[outbound.people]\n"slack:U07" = { class = "client" }\n')
+    result, why = tier_run(root, config, 'I will ship it tomorrow', 'C1', is_shared=True)
+    assert result == (1, 'block') and why[0].endswith(
+        '(audience=client topic=commitment) for C1: C1 is shared, connected, external or client, '
+        'outbound.commitment_patterns')
+    assert tier_run(root, config, 'thanks <@U07>', 'C1') == (
+        (1, 'draft'), ['ask by rule 5 (audience=client) for @u07: @u07 in outbound.people as client'])
+    assert tier_run(root, config, 'thanks', 'C1', recipient_org='other-org') == (
+        (1, 'draft'), ['ask by rule 5 (audience=client) for other-org: recipient_org other-org not in '
+                       'outbound.code_host_orgs as client'])
+    board = workspace.load_config(root)
+    board['adapters']['tracker'] = 'github'
+    board['tracker'].update(project='outside/repo', board='')
+    from wuwei import outward
+    why = []
+    text = '[2026-09-28 item-1] Phase: gate.'
+    assert outward.classify(text, root, board, {'item': 'ENG-1', 'text': text, 'category': 'progress'},
+                            kind='tracker', port=True, why=why) == (1, 'draft')
+    assert why == ['ask by rule 5 (audience=client) for board: the board is outside '
+                   'outbound.code_host_orgs as client']
+    tool = opaque('slack_send_message')
+    result, why = tier_run(root, config, 'thanks', 'C9', tool=tool)
+    assert result == (1, 'draft') and why[0].startswith('ask by rule 9 (audience=company) for C9: unknown '
+                                                         'destination C9, not in outbound.work_channels')
+    write_config(root, f'\n[outward.classes]\n"{UUID}" = "team"\n')
+    config = workspace.load_config(root)
+    assert tier_run(root, config, 'thanks', 'C9', tool=tool) == ((0, 'send'), [])
+    assert tier_run(root, config, 'thanks', 'C9')[0] == (1, 'draft')
+
+
+def test_tiers_mixed_parties(configured):
+    root = configured[0]
+    config = tiers_workspace(root)
+    result, why = tier_run(root, config, 'I will ship it tomorrow', 'C1', channel_id='C2')
+    assert result == (1, 'block') and why[0].startswith('block by rule 3 (audience=client topic=commitment) for C2')
+    result, why = tier_run(root, config, 'Your build is green', 'D01', recipients=['U09'])
+    assert result == (1, 'draft') and why[0].startswith('ask by rule 9 (audience=company) for @U09')
+    outbound_line(root, 'tiers = [{ person = "U07", tier = "send" }]')
+    config = workspace.load_config(root)
+    assert tier_run(root, config, 'Can it wait', 'U07') == ((0, 'send'), [])
+    result, why = tier_run(root, config, '<@U07> please look at the logs', 'C1')
+    assert result == (1, 'draft') and why[0].startswith('approval tier unclassified for C1')
+
+
+def test_owner_row_person(configured):
+    from wuwei import outward
+    root = configured[0]
+    config = tiers_workspace(root)
+    inputs = {'text': 'tests passed <@U07>', 'channel': 'C1'}
+    assert outward.check_tier(inputs, root, config, {'slack'}) == (1, (
+        f'{outward.APPROVAL_REQUIRED}: ask by rule 9 (audience=company) for @u07: unknown mention @u07, '
+        'not an internal person in outbound.people, connector default class company'))
+    outbound_line(root, 'tiers = [{ person = "U07", tier = "send" }]')
+    config = workspace.load_config(root)
+    assert outward.check_tier(inputs, root, config, {'slack'}) == (0, '')
+    assert outward.check_tier({'text': 'Can it wait', 'channel': 'U07'}, root, config, {'slack'}) == (0, '')
+
+
+def test_tier_floor_strict(configured, monkeypatch):
+    from wuwei import outward
+    root = configured[0]
+    tiers_workspace(root)
+    outbound_line(root, 'tiers = [{ audience = "client", tier = "send" }]')
+    guarded = workspace.load_config(root)
+    assert tier_run(root, guarded, 'thanks', 'C2') == ((0, 'send'), [])
+    set_posture(root, 'strict')
+    config = workspace.load_config(root)
+    why, trace = [], []
+    assert outward.classify('thanks', root, config, {'text': 'thanks', 'channel': 'C2'}, kind='slack',
+                            why=why, trace=trace) == (1, 'draft')
+    assert why[0].startswith('ask by rule 6 (audience=client) for C2')
+    assert '  rule 1 owner { audience = "client", tier = "send" }: ignored under strict' in trace
+    monkeypatch.setenv('WUWEI_SEAT_ROLE', 'shepherd')
+    for channel in ('D01', 'C2'):
+        assert tier_run(root, guarded, 'thanks', channel)[0] == (1, 'draft')
+
+
+def test_mode_rows(configured, monkeypatch):
+    # #496: the connector mode is the first row; refuse blocks with exit 1 and no draft.
+    import re
+    from wuwei import state
+    from wuwei.guards.outward import check_tier
+    root = configured[0]
+    tiers_workspace(root, f'\n[outward.modes]\n"{UUID}" = "refuse"\n')
+    path = root / '.wuwei/config.toml'
+    tool = opaque('slack_send_message')
+    monkeypatch.delitem(sys.modules, 'wuwei.drafts', raising=False)
+    code, reason = check_tier(payload(root, 'tests passed', tool=tool, channel='C1'))
+    assert code == 1 and reason == (f'outward: block by rule 1 (tool=mcp__{re.escape(UUID)}__.*) for C1: C1 in '
+                                    'outbound.work_channels as team, outward.modes; the owner decides: '
+                                    'bin/wuwei outbound tiers')
+    assert 'wuwei.drafts' not in sys.modules and not state.read_state(root).get('drafts')
+    path.write_text(path.read_text().replace('= "refuse"', '= "draft"'))
+    code, reason = check_tier(payload(root, 'tests passed', tool=tool, channel='C1'))
+    assert code == 1 and re.fullmatch(HELD, reason)[2].startswith('ask by rule 1 (tool=mcp__')
+    path.write_text(path.read_text().replace('= "draft"', '= "send"'))
+    assert check_tier(payload(root, 'I will ship it tomorrow', tool=tool, channel='C1')) == (0, '')

@@ -252,6 +252,20 @@ def test_unmeasured_outward_tier_keeps_draft_and_exits_two(case, monkeypatch, ca
     assert 'unmeasured' in capsys.readouterr().out
 
 
+
+def test_blocked_reply_prints_the_row_and_creates_no_draft(case, monkeypatch, capsys):
+    # #496: a reply the tier table blocks exits 1 with the row named, and no draft.
+    root, host, _, _ = linked(case)
+    host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
+        'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
+            'body': 'Please explain', 'created_at': workspace.now().isoformat()}]}]
+    fragment = 'block by rule 3 (audience=client topic=commitment) for X: X is client'
+    monkeypatch.setattr('wuwei.outward.classify',
+                        lambda *args, why=None, **kwargs: why.append(fragment) or (1, 'block'))
+    assert main(['pr', 'act', REF, '--reply', 'I will ship it tomorrow.']) == 1
+    assert capsys.readouterr().err.strip() == f'outward: {fragment}; the owner decides: bin/wuwei outbound tiers'
+    assert drafts.read(state.read_state(root)) == {}
+
 def test_draft_is_stable_and_not_duplicated(case, capsys):
     root, host, _, _ = linked(case)
     host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,

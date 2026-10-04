@@ -339,7 +339,30 @@ def _workspace(root, config, error, found):
                     _row('workspace', f'{name} spec', 'unmeasured',
                          f"{config['scanner']['mcp']['plugins_file']} is unreadable",
                          f'check scanner.mcp.plugins_file, or run {specmode.INSTALL[engine]}'))
+    rows += _outbound(config)
     rows += _calibration(root, config)
+    return rows
+
+
+def _outbound(config):
+    """#496: people without a class and owner send rows for a client or public audience;
+    information, nothing refuses on them."""
+    from wuwei import outward
+    bare = [key for key, entry in config['outbound']['people'].items() if not entry['class']]
+    rows = [_row('workspace', 'outbound classes', 'warn', f'{len(bare)} people without a class',
+                 'nothing changes until you choose: the bin/wuwei outbound learn card asks the class of '
+                 'each person it adds',
+                 detail=[f'{key}: team while internal by outbound.company_domains or outbound.code_host_orgs, '
+                         'else the connector default class' for key in bare])
+            if bare else _row('workspace', 'outbound classes', 'ok', 'every person has a class')]
+    strict = workspace.posture(config)[0] == 'strict'
+    sends = [f'rule {number} is ignored under strict' if strict
+             else f'rule {number} can send to a client or public audience'
+             for number, (row, source, _) in enumerate(outward.table(config), 1)
+             if source == 'owner' and row['tier'] == 'send' and outward.reaches_client(row, config)]
+    rows.append(_row('workspace', 'outbound tiers', 'warn', f'{len(sends)} send rows for a client or public audience',
+                     'make the row ask, or remove it', detail=sends) if sends
+                else _row('workspace', 'outbound tiers', 'ok', 'no send row for a client or public audience'))
     return rows
 
 

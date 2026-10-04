@@ -214,14 +214,19 @@ def owner_only(context, config, kind):
     owner's identity in outbound.owner for this kind. A nested draft wrapper never is."""
     if not isinstance(context, dict) or 'draft' in context:
         return False
-    found = config['outbound']['owner'].get(OWNER.get(kind), '')
-    mine = ({value.casefold() for key, value in found.items() if re.fullmatch(SLACK_SHAPE.get(key, ''), value)}
-            if isinstance(found, dict) else {found.casefold()} - {''})
+    mine = _owner_ids(config, kind)
     texts, destinations = _text(context)
     targets = [*destinations, *context.get('recipients', []), *filter(None, [context.get('recipient')])]
     if kind == 'mail':  # #501: any address in the payload (a Graph ccRecipients shape) is a reader.
         targets += [address for text in texts for address in re.findall(r'[^\s<>@]+@[^\s<>@]+', text)]
     return bool(mine and targets) and all(target.casefold() in mine for target in targets)
+
+
+def _owner_ids(config, kind):
+    """#495: the owner's casefolded identities in outbound.owner for this kind."""
+    found = config['outbound']['owner'].get(OWNER.get(kind), '')
+    return ({value.casefold() for key, value in found.items() if re.fullmatch(SLACK_SHAPE.get(key, ''), value)}
+            if isinstance(found, dict) else {found.casefold()} - {''})
 
 
 def _internal(person, rules, namespace, org=None):
@@ -337,45 +342,216 @@ def _external_tracker(config):
 MENTION = r'(?<![\w@])@([\w.-]+)'
 
 
-def _flagged(normalized, rules):
-    """(tier, config key) of the first sensitive keyword or sensitive, commitment or
-    disagreement pattern that matches; None when none does."""
+def _topics(normalized, rules):
+    """{topic: config key} of every sensitive, commitment and disagreement hit (#496)."""
     # ponytail: explicit deny lists and complete safe forms have limited language
     # coverage. Unknown prose drafts; a semantic classifier is later work.
+    found = {}
     if any(re.search(r'(?<!\w)' + re.escape(_normalize(word)) + r'(?!\w)',
                      normalized.replace('_', ' ')) for word in rules['sensitive_keywords']):
-        return 'sensitive', 'outbound.sensitive_keywords'
+        found['sensitive'] = 'outbound.sensitive_keywords'
     for key in ('sensitive_patterns', 'commitment_patterns', 'disagreement_patterns'):
         if any(re.search(pattern, normalized, re.IGNORECASE | re.DOTALL) for pattern in rules[key]):
-            return key.split('_')[0], f'outbound.{key}'
-    return None
+            found.setdefault(key.split('_')[0], f'outbound.{key}')
+    return found
 
 
-def check_send(inputs, root, config, channels):
-    """#492 connector mode send: the outbound security check and the patterns of classify,
-    without its audience rules; a write without text has nothing to hold back."""
-    try:
-        from wuwei import security
-        code, reason = security.outbound(inputs, root)
-        if code:
-            return code, reason
-        texts, _ = _text(inputs)
-        # The rule is a fragment: the guard's drafts.hold adds the draft id and the owner's next step (#493).
-        rule = ''
-        if os.environ.get('WUWEI_SEAT_ROLE') == 'shepherd':
-            rule = 'headless seat: a headless shepherd seat posts drafts only'
-        elif flag := texts and _flagged(_normalize('\n'.join(texts)).replace('’', "'"), config['outbound']):
-            rule = f'approval tier {flag[0]} for {next(iter(channels))}: {flag[1]}'
-        if rule:
-            return FINDINGS, f'{APPROVAL_REQUIRED}: {rule}'
-        return CLEAN, ''
-    except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
-        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'
+# #496: owner, 2026-10-04; contracts/outbound-tiers.md. Tracker, docs and code-host sends stay
+# with the kind rules below the table (tracker.auto, docs.auto, a measured team pull request).
+DEFAULT_TIERS = (
+    {'audience': 'owner', 'tier': 'send'},
+    {'audience': 'public', 'tier': 'block'},
+    {'audience': 'client', 'topic': 'commitment', 'tier': 'block'},
+    {'audience': 'client', 'topic': 'disagreement', 'tier': 'block'},
+    {'audience': 'client', 'tier': 'ask'},
+    {'topic': 'sensitive', 'tier': 'ask'},
+    {'topic': 'commitment', 'tier': 'ask'},
+    {'topic': 'disagreement', 'tier': 'ask'},
+    {'audience': 'company', 'tier': 'ask'},
+    {'tool': 'other', 'tier': 'send'},  # #492: a monitoring write sends after the topics.
+)
+MODE_TIERS = {'send': 'send', 'draft': 'ask', 'refuse': 'block'}
+KEYS = ('tool', 'person', 'channel', 'audience', 'topic', 'tier')
+# The class of the connector itself (a call with no destination and no person), else company.
+DEFAULT_CLASS = {'tracker': 'team', 'docs': 'team', 'other': 'team'}
+# The class of a person or destination the connector has not learned, else company: an unknown
+# mention in a tracker or docs write still asks, as it drafted before #496.
+UNLEARNED_CLASS = {'other': 'team'}
+BLOCKED = 'the owner decides: bin/wuwei outbound tiers'
 
 
-def classify(text, root, config, context=None, *, kind='chat', port=False, why=None):
-    """Return (0|1|2, send|draft); missing destination or uncertain meaning drafts.
-    A list in why gets '<rule>: <evidence>' for the draft (#493); evidence has no '; '."""
+def table(config):
+    """#496: the effective rows, first match wins: [(row, source, note)], set keys only."""
+    rows = [({'tool': f'mcp__{re.escape(server)}__.*', 'tier': MODE_TIERS[mode]}, 'owner', ' (outward.modes)')
+            for server, mode in config['outward']['modes'].items()]
+    rows += [({key: row[key] for key in KEYS if row.get(key)}, 'owner', '') for row in config['outbound']['tiers']]
+    return rows + [(dict(row), 'default', '') for row in DEFAULT_TIERS]
+
+
+def reaches_client(row, config):
+    """#496: True when a row can match a client or public party: by audience, by a channel or
+    person of that class, or with no audience, channel or person key at all."""
+    rules, outside = config['outbound'], ('client', 'public')
+    if row.get('audience'):
+        return row['audience'] in outside
+    channel, person = row.get('channel', '').casefold(), row.get('person', '').casefold()
+    if not (channel or person):
+        return True
+    return bool(channel and (channel in outside
+                             or channel in {name.casefold() for name in rules['external_channels']}
+                             or any(name.casefold() == channel and found in outside
+                                    for name, found in rules['channel_classes'].items()))
+                or person and any(person in (key.casefold(), key.casefold().partition(':')[2])
+                                  and entry['class'] in outside for key, entry in rules['people'].items()))
+
+
+def render(row):
+    import json  # Commands and explain only.
+    return '{ ' + ', '.join(f'{key} = {json.dumps(row[key])}' for key in KEYS if key in row) + ' }'
+
+
+def blocked(fragment):
+    return f'outward: {fragment}; {BLOCKED}'
+
+
+def _default(config, kind, tool, defaults=UNLEARNED_CLASS):
+    """(class, evidence) for what the connector has not seen."""
+    server = tool[5:].rpartition('__')[0].casefold() if isinstance(tool, str) and tool.startswith('mcp__') else None
+    owned = next((value for key, value in config['outward']['classes'].items() if key.casefold() == server), None)
+    if owned:
+        return owned, f'connector default class {owned} (outward.classes)'
+    found = defaults.get(kind, 'company')
+    return found, f'connector default class {found}'
+
+
+def _person(person, namespace, rules, mine, fallback, label, dm=False):
+    """A person party: owner, its outbound.people class, team when internal, else the default."""
+    key = f'{namespace}:{person}'.casefold()
+    party = {'id': label, 'kind': 'person', 'key': key, 'names': {person.casefold(), key}}
+    found = next((value.get('class') for name, value in rules['people'].items() if name.casefold() == key), '')
+    if person.casefold() in mine:
+        return {**party, 'class': 'owner', 'why': f'{label} is the owner in outbound.owner'}
+    if found:
+        return {**party, 'class': found, 'why': f'{label} in outbound.people as {found}'}
+    if _internal(person, rules, namespace):
+        return {**party, 'class': 'team',
+                'why': f'{label} internal by outbound.company_domains or outbound.code_host_orgs as team'}
+    unknown = (f"unknown DM recipient {label}, not the owner's DM or user id in outbound.owner.slack" if dm
+               else f'unknown mention {label}, not an internal person in outbound.people')
+    return {**party, 'class': fallback[0], 'why': f'{unknown}, {fallback[1]}'}
+
+
+def _parties(context, destinations, mention_text, kind, tool, config, pr):
+    """#496: who reads the call, each {id, kind, key, names, class, why}; pr is the
+    _pr_context exit of a code-host call."""
+    rules = config['outbound']
+    mine = _owner_ids(config, kind)
+    fallback = _default(config, kind, tool)
+    client = (any(context.get(key) is True for key in BOOL_FIELDS - {'is_dm'})
+              or context.get('channel_type', 'channel') not in ('channel', 'im', 'mpim'))
+    dm = context.get('is_dm') is True or context.get('channel_type') in ('im', 'mpim')
+    connector = tool[5:].rpartition('__')[0] if isinstance(tool, str) and tool.startswith('mcp__') else kind
+    parties = {}
+
+    def add(party):
+        parties.setdefault(party['key'], party)
+
+    def place(name, found, why):
+        add({'id': name, 'kind': 'channel', 'key': name.casefold(), 'names': {name.casefold()},
+             'class': found, 'why': why})
+
+    for target in destinations:
+        if target.casefold() in mine:
+            place(target, 'owner', f'{target} is the owner in outbound.owner')
+        elif client:
+            place(target, 'client', f'{target} is shared, connected, external or client')
+        elif re.fullmatch(SLACK_SHAPE['user'], target):
+            add(_person(target, 'slack', rules, mine, fallback, target, dm=True))
+        elif target in rules['channel_classes']:
+            place(target, rules['channel_classes'][target],
+                  f"{target} in outbound.channel_classes as {rules['channel_classes'][target]}")
+        elif target in rules['external_channels']:  # Before work_channels: a channel in both is client.
+            place(target, 'client', f'{target} in outbound.external_channels as client')
+        elif target in rules['work_channels']:
+            place(target, 'team', f'{target} in outbound.work_channels as team')
+        elif dm or target.startswith('D'):
+            place(target, fallback[0], f"unknown DM recipient {target}, not the owner's DM or user id "
+                                       f'in outbound.owner.slack, {fallback[1]}')
+        else:
+            place(target, fallback[0], f'unknown destination {target}, not in outbound.work_channels, {fallback[1]}')
+    if client and not destinations:
+        place(connector, 'client', f'{connector} is shared, connected, external or client')
+    # Email addresses and mentions are audience evidence, never merely message text.
+    people = [*context.get('recipients', []), *filter(None, [context.get('recipient')]),
+              *re.findall(MENTION, mention_text), *re.findall(r'[^\s<>@]+@[^\s<>@]+', mention_text)]
+    for person in people:
+        namespace = 'email' if '@' in person else 'github' if kind == 'code_host' else 'slack'
+        add(_person(person, namespace, rules, mine, fallback, person if '@' in person else '@' + person))
+    org = context.get('recipient_org')
+    if org and org.casefold() not in {name.casefold() for name in rules['code_host_orgs']}:
+        place(org, 'client', f'recipient_org {org} not in outbound.code_host_orgs as client')
+    if kind == 'tracker' and _external_tracker(config):
+        place('board', 'client', 'the board is outside outbound.code_host_orgs as client')
+    if kind == 'code_host':
+        ref = str(context.get('ref') or 'the pull request')
+        if pr == CLEAN:
+            place(ref, 'team', f'{ref} is a measured team pull request as team')
+        else:
+            place(ref, fallback[0], f'{ref} is not a measured team pull request, {fallback[1]}')
+    if not parties:
+        place(connector, *_default(config, kind, tool, DEFAULT_CLASS))
+    return list(parties.values())
+
+
+def _matches(row, party, topics, names):
+    return ((not row.get('tool') or any(re.fullmatch(row['tool'], name, re.IGNORECASE) for name in names))
+            and (not row.get('person') or party['kind'] == 'person' and row['person'].casefold() in party['names'])
+            and (not row.get('channel') or party['kind'] == 'channel'
+                 and row['channel'].casefold() in {*party['names'], party['class']})
+            and (not row.get('audience') or row['audience'] == party['class'])
+            and (not row.get('topic') or row['topic'] in topics))
+
+
+def decide(parties, topics, names, config, trace=None):
+    """#496: (tier, fragment, source) of the strictest party, or None when the kind rules decide:
+    any block, else any ask, else send when every party matched a send row."""
+    from wuwei import workspace
+    strict = workspace.posture(config)[0] == 'strict'
+    rows = table(config)
+    found = []
+    for party in parties:
+        if trace is not None:
+            trace.append(f"party {party['id']}: {party['class']}, {party['why']}")
+        hit = None
+        for number, (row, source, note) in enumerate(rows, 1):
+            line = f'  rule {number} {source} {render(row)}{note}: ' if trace is not None else ''
+            if not _matches(row, party, topics, names):
+                outcome = 'passed'
+            elif strict and row['tier'] == 'send' and party['class'] in ('client', 'public'):
+                outcome = 'ignored under strict'  # #496: strict never sends to a client or the public.
+            else:
+                match = ' '.join(f'{key}={row[key]}' for key in KEYS[:-1] if key in row) or 'any'
+                evidence = (party['why'] + (f", {topics[row['topic']]}" if 'topic' in row else '')
+                            + (', outward.modes' if note else ''))
+                hit = (number, row['tier'], f"{row['tier']} by rule {number} ({match}) for {party['id']}: {evidence}",
+                       source)
+                outcome = 'matched'
+            if trace is not None:
+                trace.append(line + outcome)
+            if hit:
+                break
+        found.append(hit)
+    for name in ('block', 'ask'):
+        hits = [hit for hit in found if hit and hit[1] == name]
+        if hits:
+            return name, *min(hits)[2:]
+    return ('send', *min(found)[2:]) if all(found) else None
+
+
+def classify(text, root, config, context=None, *, kind='chat', port=False, why=None, tool=None, trace=None):
+    """Return (0|1|2, send|draft|block); the tier table first (#496), then the kind rules,
+    where a missing destination or uncertain meaning drafts. A list in why gets the rule of a
+    draft or block (#493); evidence has no '; '. A list in trace gets the rows walked."""
     def held(rule):
         if isinstance(why, list):
             why.append(rule)
@@ -409,39 +585,25 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
                 context[key] = value
         rules = config['outbound']
         normalized = _normalize(text).replace('\u2019', "'")
-        if flag := _flagged(normalized, rules):
-            return tier(*flag)
-        if (any(context.get(key, False) for key in BOOL_FIELDS)
-                or context.get('channel_type', 'channel') != 'channel'
-                or any(channel.startswith(('D', 'U')) or channel in rules['external_channels']
-                       for channel in destinations)):
-            if (context.get('is_dm') or context.get('channel_type') in ('im', 'mpim')
-                    or any(channel.startswith(('D', 'U')) for channel in destinations)):
-                who = next(iter(destinations), None) or context.get('recipient')
-                if who:
-                    return held(f"unknown DM recipient {who}: not the owner's DM or user id in outbound.owner.slack")
-                return tier('direct message', 'every direct message drafts')
-            return tier('external', 'shared, connected, client or outbound.external_channels')
-        recipients = list(context.get('recipients', []))
-        if 'recipient' in context:
-            recipients.append(context['recipient'])
         review_match = (re.fullmatch(REVIEW_REQUEST, text) if kind in ('chat', 'slack')
                         and destinations == [config['shepherd']['review_channel']] else None)
         mention_text = re.sub(r'<@[\w.-]+>', '', normalized) if review_match else normalized
-        mentions = re.findall(MENTION, mention_text)
-        recipients.extend(mentions)
-        # Email addresses and mentions are audience evidence, never merely message text.
-        recipients.extend(re.findall(r'[^\s<>@]+@[^\s<>@]+', normalized))
-        namespace = 'github' if kind == 'code_host' else 'slack'
-        unknown = [person for person in recipients
-                   if not _internal(person, rules, 'email' if '@' in person else namespace)]
-        if unknown:
-            person = unknown[0]
-            return held(f"unknown mention {person if '@' in person else '@' + person}: "
-                        'not an internal person in outbound.people')
-        if ('recipient_org' in context and context['recipient_org'].casefold()
-                not in {org.casefold() for org in rules['code_host_orgs']}):
-            return tier('external', 'recipient_org not in outbound.code_host_orgs')
+        code, discussion = _pr_context(context, root, config) if kind == 'code_host' else (None, '')
+        if code == UNRUN:
+            return code, 'draft'
+        found = decide(_parties(context, destinations, mention_text, kind, tool, config, code),
+                       _topics(normalized, rules), [name for name in (tool, kind) if name], config, trace)
+        if found and found[0] == 'send':
+            return CLEAN, 'send'
+        if found and found[0] == 'ask':
+            return held(found[1])
+        if found:
+            if isinstance(why, list):
+                why.append(found[1])
+            return FINDINGS, 'block'
+        if (context.get('is_dm') or context.get('channel_type') in ('im', 'mpim')
+                or any(channel.startswith(('D', 'U')) for channel in destinations)):
+            return tier('direct message', 'every direct message drafts')
         if kind == 'docs':  # #419: a docs write sends only when its kind is in docs.auto.
             return ((CLEAN, 'send') if context.get('kind') in config['docs']['auto']
                     else tier('docs', 'kind not in docs.auto'))
@@ -449,26 +611,14 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
             # 5.11: record-derived tracker writes in tracker.auto send; the rest draft.
             # Only the CLI port sets category; a seat's MCP payload cannot claim it.
             return ((CLEAN, 'send') if port and context.get('category') in config['tracker']['auto']
-                    and not _external_tracker(config) else tier(
-                        'tracker', 'category not in tracker.auto, or the board is outside outbound.code_host_orgs'))
-        discussion = ''
+                    else tier('tracker', 'category not in tracker.auto'))
         # The chat port cannot prove the thread's participants are internal.
         if kind in ('chat', 'slack') and any(
                 context.get(key) is not None for key in ('thread', 'thread_ts')):
             return tier('thread', 'chat threads draft until their participants are known')
-        if kind == 'code_host':
-            code, discussion = _pr_context(context, root, config)
-            if code == FINDINGS:
-                return tier('external', 'not a measured team pull request')
-            if code:
-                return code, 'draft'
-        elif (kind not in ('chat', 'slack') or not destinations
-              or len(set(destinations)) != 1
-              or any(channel not in rules['work_channels'] for channel in destinations)):
-            if kind in ('chat', 'slack'):
-                missing = next((channel for channel in destinations
-                                if channel not in rules['work_channels']), 'none')
-                return held(f'unknown destination {missing}: not in outbound.work_channels')
+        if kind in ('chat', 'slack') and len(set(destinations)) != 1:
+            return tier('unclassified', 'one destination per chat send')
+        if kind not in ('chat', 'slack', 'code_host'):
             return tier('unclassified', f'no auto-send rule for channel {kind}')
         plain = re.sub(r'<@[\w.-]+>|(?<![\w@])@[\w.-]+', '', normalized).strip()
         if review_match:
@@ -538,7 +688,7 @@ def check_call(inputs, root, config, channels, *, port=False):
     return lint if lint[0] else (result if draft else (CLEAN, ''))
 
 
-def check_tier(inputs, root, config, channels, *, port=False):
+def check_tier(inputs, root, config, channels, *, port=False, tool=None):
     """Approval tiers are blocking under every profile."""
     try:
         from wuwei import security
@@ -552,9 +702,11 @@ def check_tier(inputs, root, config, channels, *, port=False):
         if texts and not text.strip():
             return UNRUN, 'outward: nonempty text required; pass the message text'
         why, kind = [], next(iter(channels))
-        code, decision = classify(text, root, config, inputs, kind=kind, port=port, why=why)
+        code, decision = classify(text, root, config, inputs, kind=kind, port=port, why=why, tool=tool)
         if code == UNRUN:
             return code, 'outward: cannot classify policy, audience or message evidence; deliver as a draft for the owner to send'
+        if decision == 'block':
+            return code, blocked(why[0])
         if decision == 'draft':
             return code, f'{APPROVAL_REQUIRED}: {why[0]}' if why else APPROVAL_REQUIRED
         if owner_only(inputs, config, kind):
