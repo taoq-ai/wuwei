@@ -38,6 +38,7 @@ def stored(root):
     ('claimed_prs', 'dedicated command'),
     ('raised_prs', 'dedicated command'),
     ('gate_verdicts', 'wuwei dispatch receive'),
+    ('goal_seats', 'wuwei plan approve'),
     ('items.A.gates', 'wuwei dispatch next'),
     ('items.A.tier', 'wuwei plan approve'),
     ('decision_outcomes', 'wuwei decision route or wuwei build'),

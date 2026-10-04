@@ -11,7 +11,8 @@ def register(subparsers):
     parser = subparsers.add_parser('dispatch', help='Decide planner gate and discovery work')
     actions = parser.add_subparsers(dest='action', required=True)
     step = actions.add_parser('next')
-    step.add_argument('item')
+    step.add_argument('item', nargs='?')
+    step.add_argument('--all', action='store_true', help='print the launch set for every open item')
     receive = actions.add_parser('receive')
     receive.add_argument('item')
     receive.add_argument('role')
@@ -26,6 +27,14 @@ def register(subparsers):
 def run(args):
     from wuwei.commands.build import PortExit
     try:
+        if args.action == 'next' and args.all == bool(args.item):
+            raise ValueError('pass one item or --all: bin/wuwei dispatch next <item> or '
+                             'bin/wuwei dispatch next --all')
+        if args.action == 'next' and args.all:
+            value = dispatch.launch_set()
+            print(json.dumps(value))
+            return FINDINGS if any(row['action'] in ('refused', 'escalate')
+                                   for row in value['entries']) else CLEAN
         if args.action == 'next':
             value = dispatch.next_step(args.item)
         elif args.action == 'opinion':

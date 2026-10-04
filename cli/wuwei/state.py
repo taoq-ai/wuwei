@@ -238,7 +238,8 @@ STATE_PRODUCERS = {
     'cap': 'wuwei plan approve', 'seat_policy': 'wuwei plan approve',
     'envelope': 'wuwei plan approve', 'items': 'wuwei plan approve',
     'gate_approved': 'wuwei plan approve', 'approved_items': 'wuwei plan approve',
-    'goals': 'wuwei plan approve', 'planner_session_id': 'wuwei plan session',
+    'goals': 'wuwei plan approve', 'goal_seats': 'wuwei plan approve',
+    'planner_session_id': 'wuwei plan session',
     'builds': 'wuwei build and seat hooks',
     'seats': 'wuwei hook PreToolUse or wuwei dispatch opinion', 'fast_checks': 'wuwei fast-checks',
     'reply_acks': 'wuwei reply', 'decision_outcomes': ('wuwei decision route or wuwei build or wuwei plan carry or park '
@@ -264,6 +265,20 @@ STATE_PRODUCERS = {
     'tickets': 'wuwei plan approve, add or set, wuwei tracker create or wuwei drafts approve',
     'tracker_log': 'wuwei tracker create or log',
 }
+
+
+def running_by_goal(data):
+    """{goal: running builder seats}, goals sorted; an item without a goal is unplanned."""
+    from collections import Counter
+    counts = Counter(data['items'].get(seat.get('item'), {}).get('goal', 'unplanned')
+                     for seat in data.get('seats', {}).values()
+                     if isinstance(seat, dict) and seat.get('status') == 'running'
+                     and seat.get('role') == 'builder')
+    return dict(sorted(counts.items()))
+
+
+def goal_split(counts):
+    return ', '.join(f'{goal} {count}' for goal, count in counts.items())
 
 
 def _producer_error(parts):

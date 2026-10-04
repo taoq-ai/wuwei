@@ -1429,3 +1429,91 @@ def test_issue_acceptance_ticket_then_dispatch(root, monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)['action'] == 'gates'
     row, = [line for line in board.read(root)[0].splitlines() if line.startswith('| A |')]
     assert 'ENG-7' in row
+
+
+@pytest.fixture
+def day_set(tmp_path, monkeypatch):
+    """A recorded approved day: G at the gate, B building, four planned items, C carried."""
+    from wuwei import dispatch
+    from wuwei.commands import build
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('[host]\nseats = 8\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    goals = {'G': ('gate', 'G-1'), 'B': ('implement', 'G-1'), 'R': ('raised', 'G-2'),
+             'P1': ('planned', 'G-1'), 'P2': ('planned', 'G-1'), 'C': ('planned', 'G-2'),
+             'P3': ('planned', 'G-2'), 'P4': ('planned', 'G-2')}
+    state._write_state(lambda data: data.update(
+        gate_approved=True, cap=3, approved_items=list(goals), goal_seats={'G-1': 1, 'G-2': 1},
+        decision_outcomes={'D-1': {'decided_by': 'seat', 'item_disposition': 'carried C'}},
+        items={name: {'phase': phase, 'goal': goal} for name, (phase, goal) in goals.items()}),
+        tmp_path, reserved=False)
+    gate = {'action': 'gates', 'roles': list(dispatch.ROLES),
+            'seats': [{'action': 'launch', 'agent_type': f'wuwei:sentinel-{role}'}
+                      for role in dispatch.ROLES]}
+    calls = []
+    monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: calls.append(item) or gate)
+    monkeypatch.setattr(build, 'next_action', lambda item, root=None: calls.append(item) or {
+        'action': 'launch', 'agent_type': 'wuwei:builder'})
+    return tmp_path, calls
+
+
+def test_launch_set_orders_gates_builds_then_planned_within_cap(day_set):
+    from wuwei import dispatch
+    root, calls = day_set
+    value = dispatch.launch_set(root)
+    assert (value['action'], value['cap'], value['building'], value['free_seats']) == ('set', 3, 1, 8)
+    assert [(row['item'], row['goal'], row['action']) for row in value['entries']] == [
+        ('G', 'G-1', 'gates'), ('B', 'G-1', 'launch'), ('P3', 'G-2', 'start'),
+        ('P1', 'G-1', 'start'), ('P2', 'G-1', 'wait'), ('P4', 'G-2', 'wait')]
+    assert calls == ['G', 'B']
+    start = value['entries'][2]
+    assert start['commands'][0] == 'wuwei worktree add P3' and 'brief builder P3' in start['commands'][1]
+    assert 'CAP 3' in value['entries'][4]['reason']
+    state._write_state(lambda data: data.pop('goal_seats'), root, reserved=False)
+    assert [row['item'] for row in dispatch.launch_set(root)['entries']
+            if row['action'] == 'start'] == ['P1', 'P2']
+
+
+def test_launch_set_keeps_an_items_gate_seats_together(day_set):
+    from wuwei import dispatch
+    root, _ = day_set
+    (root / '.wuwei/config.toml').write_text('[host]\nseats = 2\n')
+    entries = dispatch.launch_set(root)['entries']
+    assert entries[0]['item'] == 'G' and entries[0]['action'] == 'wait'
+    assert 'host.seats' in entries[0]['reason'] and 'seats' not in entries[0]
+    assert [row['action'] for row in entries[1:4]] == ['launch', 'start', 'wait']
+
+
+def test_launch_set_skips_running_items_and_launches_briefed_planned_items(day_set):
+    from wuwei import dispatch
+    root, calls = day_set
+    state._write_state(lambda data: data['seats'].update(b={
+        'item': 'B', 'role': 'builder', 'status': 'running', 'started_at': '2026-09-29T11:00:00+00:00'}),
+        root, reserved=False)
+    state._write_state(lambda data: None, root, reserved=False, kind='brief written', payload={
+        'name': 'p3', 'item': 'P3', 'role': 'builder', 'path': 'x.md', 'gate': False})
+    value = dispatch.launch_set(root)
+    assert value['free_seats'] == 7
+    assert [(row['item'], row['action']) for row in value['entries']][:3] == [
+        ('G', 'gates'), ('P3', 'launch'), ('P1', 'start')]
+    assert 'B' not in calls
+
+
+def test_dispatch_next_all_cli(day_set, monkeypatch, capsys):
+    from wuwei import dispatch
+    from wuwei.__main__ import main
+    assert main(['dispatch', 'next', '--all']) == 0
+    assert json.loads(capsys.readouterr().out)['action'] == 'set'
+    for argv in (['dispatch', 'next'], ['dispatch', 'next', 'G', '--all']):
+        assert main(argv) == 2
+        assert 'dispatch next --all' in capsys.readouterr().err
+
+    def refuse(item, root=None):
+        raise dispatch.Refused('steward note N-1 requires planner acknowledgement')
+    monkeypatch.setattr(dispatch, 'next_step', refuse)
+    assert main(['dispatch', 'next', '--all']) == 1
+    entries = json.loads(capsys.readouterr().out)['entries']
+    assert entries[0] == {'item': 'G', 'goal': 'G-1', 'action': 'refused',
+                          'reason': 'steward note N-1 requires planner acknowledgement'}
+    assert len(entries) == 6

@@ -64,6 +64,12 @@ def _proposal(data, goals_text, framework="wsjf"):
         raise ValueError(f'sweep must report measured or unmeasured sources; {PLAN_JSON}')
     if not isinstance(data['candidates'], list):
         raise ValueError(f'candidates must be a list; {PLAN_JSON}')
+    seats = data.get('seats', {})
+    if (not isinstance(seats, dict)
+            or any(goal not in (*data['goals'], 'unplanned') or type(count) is not int or count < 1
+                   for goal, count in seats.items())
+            or sum(seats.values()) > data['cap']):
+        raise ValueError(f'seats must map confirmed goals to seat counts within cap; {PLAN_JSON}')
     seen = set()
     for item in data['candidates']:
         if not isinstance(item, dict):
@@ -90,6 +96,22 @@ def _proposal(data, goals_text, framework="wsjf"):
             raise ValueError(f'{name}: flags must contain boolean trust_surface, boundary_relevant, agent_surface; {PLAN_JSON}')
     json.dumps(data, allow_nan=False)
     return data
+
+
+def goal_seats(candidates, cap):
+    """{goal: seats}: the first cap ranked candidates counted per goal, in queue order."""
+    from collections import Counter
+    return dict(Counter(item.get('goal', 'unplanned') for item in candidates[:cap]))
+
+
+def seats_text(seats, cap):
+    total = sum(seats.values())
+    return (f'{total} seats: ' + ', '.join(f'{goal} {count}' for goal, count in seats.items())
+            if seats else '0 seats') + f' (CAP {cap})'
+
+
+def _seats(data):
+    return data.get('seats') or goal_seats(data['candidates'], data['cap'])
 
 
 def propose(data, root=None):
@@ -133,6 +155,7 @@ def propose(data, root=None):
     data['sweep']['pr-flow'] = (f"measured: {len(warned)} warn ({', '.join(warned)}); "
                                 'wuwei doctor --section pr-flow' if warned else 'measured: ok')
     data['candidates'] = rank.rank(data['candidates'], framework, goal_list)
+    data['seats'] = _seats(data)
     directory = workspace.day_dir(root)
     if (directory / 'state.json').exists() and state.read_state(root).get('gate_approved'):
         raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei status for the approved plan')
@@ -155,6 +178,7 @@ def propose(data, root=None):
     lines += ['## Discovery intake',
               *[f'- {item["id"]}: {item.get("evidence", "evidence pending")}' for item in data['discovered']], '',
               '## Gate proposal', f'CAP: {data["cap"]}',
+              'Seats per goal: ' + seats_text(data['seats'], data['cap']),
               'Seat policy: ' + json.dumps(data['seat_policy'], sort_keys=True),
               'Envelope: ' + json.dumps(data['envelope'], sort_keys=True), '']
     directory.mkdir(parents=True, exist_ok=True)
@@ -180,7 +204,7 @@ def gate_widget(root=None, *, import_yesterday=False):
     approves = '; '.join([
         'Goals ' + ', '.join(f'{goal} ({provisional[goal]["outcome"]})' if provisional else goal
                              for goal in data['goals']),
-        'queue ' + (', '.join(ids) or 'empty'), f'CAP {data["cap"]}',
+        'queue ' + (', '.join(ids) or 'empty'), seats_text(_seats(data), data['cap']),
         'seat policy ' + json.dumps(data['seat_policy'], sort_keys=True),
         'envelope ' + json.dumps(data['envelope'], sort_keys=True),
         *(['carry-over of unfinished prior-day items'] if import_yesterday else [])])
@@ -188,8 +212,8 @@ def gate_widget(root=None, *, import_yesterday=False):
         decision.gate(root) + "Approve today's plan as proposed?",
         'Goals' if provisional else 'Plan',
         [('Approve', approves + '.'),
-         ('Change something', 'Ask the separate questions on goals, queue, seat policy, CAP, '
-                              'envelope and carry-over')],
+         ('Change something', 'Ask the separate questions on goals, queue, seat policy, '
+                              'CAP and seats per goal, envelope and carry-over')],
         ' '.join(['wuwei plan approve --items', *ids, '--goals-confirmed',
                   *(['--import-yesterday'] if import_yesterday else [])]))
 
@@ -269,7 +293,7 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
                                        **{key: candidates[name][key] for key in ('tier',)
                                           if key in candidates[name]}}
                                  for name in items})
-        current.update(cap=data['cap'], seat_policy=data['seat_policy'],
+        current.update(cap=data['cap'], seat_policy=data['seat_policy'], goal_seats=_seats(data),
                        envelope=data['envelope'], goals=data['goals'],
                        approved_items=items, gate_approved=True)
 

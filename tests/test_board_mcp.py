@@ -279,3 +279,12 @@ def test_board_shows_tickets(day):
     assert '| ENG-1, 1 folded |' in row
     created = text.split('## Tickets created', 1)[1].splitlines()
     assert '| bugs | a | ENG-2 | ENG-1 |' in created
+
+
+def test_board_shows_running_seats_per_goal(day):
+    data = json.loads((day / 'state.json').read_text())
+    data['items']['a']['goal'] = 'G-1'
+    data.update(gate_approved=True, seats={'a-1': {'id': 'a-1', 'role': 'builder', 'item': 'a',
+                                                   'status': 'running'}})
+    (day / 'state.json').write_text(json.dumps(data))
+    assert 'seats 1 of CAP 3 (G-1 1)' in board_call()['content'][0]['text'].splitlines()[0]

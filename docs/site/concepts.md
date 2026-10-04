@@ -31,8 +31,13 @@ It proposes rule changes; you promote the ones you want.
 
 ### CAP
 
-How many build seats may run at once (`cap`, default 1).
-The morning gate asks you to confirm it each day.
+How many build seats may run at once (`cap`, default 1; `bin/wuwei calibrate` proposes it from the host).
+The morning gate asks you to confirm it each day, and the launch guard refuses a builder past it.
+
+### Seats per goal
+
+How the day's CAP splits across goals, for example `3 seats: G-1 2, G-2 1 (CAP 3)`.
+The plan counts the first CAP items of the queue per goal; "Change something" at the morning gate changes it.
 
 ### Envelope
 
@@ -186,7 +191,9 @@ Memory has three tiers. A day keeps its raw records under `days/` for 30 days (`
 
 ## Day flow
 
-Plan, Build, Review, Close. `/wuwei plan` runs the morning gate, then the planner loops `build next` and `dispatch next` for each approved item, raises the PR and closes the day; phases move by themselves. The [daily path](daily.md) is your walkthrough and the [recovery](recovery.md) page covers the rest.
+Plan, Build, Review, Close. `/wuwei plan` runs the morning gate, then the planner loops `build next` and `dispatch next` for each approved item, raises the PR and closes the day; phases move by themselves.
+
+The day starts in parallel. Calibrate measures the host (cores, free memory and what one seat costs once seats have run) and proposes a CAP that fits above the memory floor with one core per seat, never above `host.seats`. The morning gate shows that CAP split into seats per goal. After you approve, `wuwei dispatch next --all` lists everything that can move now, gate items first, then building items, then planned items up to CAP with each goal's share first, and the planner launches the whole set in one turn, an item's three gate seats together. With `cap = 1` the day runs one item at a time. The [daily path](daily.md) is your walkthrough and the [recovery](recovery.md) page covers the rest.
 
 ## Tickets and comments
 
