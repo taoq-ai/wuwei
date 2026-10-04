@@ -26,6 +26,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei docs publish report\|retro` | Publishes today's report or retro page once per day under notion or confluence; `wuwei report` and `wuwei retro` call it when `docs.publish` lists the kind. | [Docs](configuration.md#docs) |
 | `bin/wuwei doctor` | Finds install, host, workspace, gate, day and guard problems and prints each fix; `--fix` applies the allow-listed ones after one host confirmation. | [Doctor](#doctor) |
 | `bin/wuwei drafts` | Lists outward drafts awaiting owner approval. | [Outward draft queue](#outward-draft-queue) |
+| `bin/wuwei grants` | Lists your standing grants and today's grants for owner-only actions; `grants revoke <n>` removes a standing one. | [Host terminal actions](#host-terminal-actions) |
 | `bin/wuwei event` | Plumbing: appends a timestamped day event. | |
 | `bin/wuwei fast-checks` | Plumbing: runs and records the configured fast checks. | [Seat briefs](#seat-briefs-and-the-build-loop) |
 | `bin/wuwei git-hook` | Plumbing: runs a native Git identity or push guard. | [Item worktrees](#item-worktrees) |
@@ -402,6 +403,7 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | `bin/wuwei mcp decide D-<n> <option>` and `mcp decide proceed-unmeasured <server>...` | yes |
 | `bin/wuwei drafts approve <id>` | yes |
 | `bin/wuwei drafts drop <id>` | no |
+| `bin/wuwei grants revoke <n>` | yes |
 | `bin/wuwei goals edit` and `voice edit` (the planner may record what the morning gate approved with `--file`, outside strict) | no |
 | `bin/wuwei watch uninstall` | no |
 | `bin/wuwei listen uninstall` | no |

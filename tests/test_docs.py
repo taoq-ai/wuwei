@@ -1233,3 +1233,17 @@ def test_draft_card_is_documented():
     assert 'You decide, on the card' in security and 'asks for a draft you send yourself' not in security
     assert any(line.startswith('| `outward.draft_ttl` | `3600` |')
                for line in (SITE / 'configuration.md').read_text().splitlines())
+
+
+def test_grants_are_documented():
+    # #478: the owner decides an owner-only action on a card; a grant is how they decide once.
+    assert '`grants.standing`' in (SITE / 'configuration.md').read_text()
+    concepts = (SITE / 'concepts.md').read_text()
+    for phrase in ('Allow once', 'Allow today', 'Always allow', 'bin/wuwei grants revoke'):
+        assert phrase in concepts, phrase
+    security = (SITE / 'security.md').read_text()
+    assert 'grant' in security and 'bin/wuwei grants revoke' in security
+    assert 'Ask when it happens' in (SITE / 'daily.md').read_text()
+    assert '`bin/wuwei grants revoke <n>`' in (SITE / 'reference.md').read_text()
+    skill = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+    assert 'decision show D-n --widget' in skill and 'prints a list' in skill

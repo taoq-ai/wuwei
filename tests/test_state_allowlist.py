@@ -57,6 +57,7 @@ def stored(root):
     ('negotiation_loops', 'wuwei steward run'),
     ('items.A.assumption', 'wuwei decision route --external'),
     ('author_logins', 'wuwei pr raise, ping or reviewers'),
+    ('grants', 'wuwei hook PreToolUse (deploy guard)'),
 ])
 def test_nonallowlisted_state_paths_refuse_without_write(root, capsys, path, producer):
     before = stored(root)
@@ -133,6 +134,9 @@ def test_approved_settings_stay_frozen_under_writer_lock(root, field, value):
     ('negotiation.notified', 'wuwei listen'),
     ('decision.waited', 'wuwei sweep'),
     ('reviewer.unresolved', 'wuwei pr raise, ping or reviewers'),
+    ('grant.asked', 'wuwei hook PreToolUse'),
+    ('grant.used', 'wuwei hook PreToolUse'),
+    ('grant.revoked', 'wuwei grants revoke'),
 ])
 def test_nonfree_events_refuse_without_append(root, capsys, kind, producer):
     before = stored(root)

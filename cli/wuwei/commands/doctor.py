@@ -388,6 +388,11 @@ def _calibration(root, config):
         rows.append(_row('workspace', 'posture', 'ok', f'{shown}, {left} days left') if left > 0 else
                     _row('workspace', 'posture', 'warn', f'{shown}: ' + SHADOW_NUDGE.format(days=days),
                          'set security.posture = "guarded" in .wuwei/config.toml, or raise guards.shadow_days'))
+    if name == 'strict':  # #478: the guard ignores standing grants under strict.
+        rows += [_row('workspace', f'grant {index}', 'warn',
+                      f"{line['action']} {line['target']} ({line['decision']}) is ignored under strict",
+                      f'bin/wuwei grants revoke {index}')
+                 for index, line in enumerate(config['grants']['standing'], 1)]
     telemetry = config['telemetry']
     rows.append(_row('workspace', 'telemetry', 'warn', 'sharing not chosen yet (pending interview question)',
                      'bin/wuwei calibrate --interview telemetry') if telemetry['enabled'] and not telemetry['share']

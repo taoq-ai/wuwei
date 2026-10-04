@@ -234,6 +234,16 @@ def test_one_reason_integrity_last(guarded, monkeypatch, capsys):
     assert out.err.splitlines()[0] == 'integrity gate'
 
 
+def test_publish_reason_has_no_posture_line(guarded, monkeypatch, capsys):
+    # #478: an owner-only deploy reason names its card; the hook adds no posture line.
+    import json
+    reason = ('publish: gh workflow run deploy.yml on fixture-org/app is a deploy (deploy.workflows), '
+              'owner-only under guarded; the owner decides: bin/wuwei decision show D-1 --widget')
+    code, out = hook_call(guarded, monkeypatch, capsys, guards=[fixed('deploy', 1, reason)])
+    assert code == 2 and out.err == reason + '\n'
+    assert json.loads(out.out)['hookSpecificOutput']['permissionDecisionReason'] == reason
+
+
 def test_one_reason_observe_keeps_floor(guarded, monkeypatch, capsys):
     (guarded / '.wuwei/config.toml').write_text('[security]\nposture = "observe"\n')
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[

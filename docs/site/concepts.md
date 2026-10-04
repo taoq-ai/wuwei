@@ -166,6 +166,17 @@ Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse 
 
 MCP registry findings warn by default. A finding is a heuristic over tool descriptions, and a first measurement is new information, not drift. The publishing guarantee does not rest on the registry gate; it rests on the code host protections and the credential layout (design 9.1). So a false positive must not stop the day: under `guarded` the finding is filed as an owner decision and shown on the board with `bin/wuwei mcp decide D-<n> proceed`, and seats launch. Use `strict` for a repository where a changed tool must stop seats until you decide.
 
+## Grants
+
+An owner-only deploy, release or `deploy.deny` publish never runs from a session on its own. When a seat or the planner tries one, the deploy guard refuses it and writes a decision card, `Allow deploy on <org>/<name>?`, with the exact command, the target, the item and the seat. The planner asks you the card; your answer is the grant:
+
+- `Keep owner-only`: nothing runs from the session; you run the command in a host terminal. Later tries today name the same card.
+- `Allow once`: the next run of that action on that repository goes through, then the guard asks again.
+- `Allow today`: every run of that action on that repository goes through until `wuwei close`.
+- `Always allow`: a standing line in `[grants]` of `config.toml`, for later days too. Not offered under `strict`, where a line in config is ignored.
+
+Only your recorded answer creates a grant: no seat, no config default and no hook does. Each run under a grant is a `grant.used` event, and the day report counts them per card. `bin/wuwei grants` lists your grants; `bin/wuwei grants revoke <n>` removes a standing one in a host terminal. When the plan already names a deploy, the morning gate asks it with the plan (`Allow today`, `Ask when it happens` or `Keep owner-only`), so the day runs without stopping for it.
+
 ## Seat launch contract
 
 The planner launches every seat from the actions `build next` and `dispatch next` return; see the [daily path](daily.md). The low-level launch contract is on the [recovery](recovery.md#seat-launch-contract) page.
@@ -181,7 +192,7 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei goals edit` and `voice edit` (except that the planner records goals and voice you approved at the morning gate with `--file`, outside the strict posture), `wuwei watch uninstall`, `wuwei listen uninstall`, `wuwei remote ack`, `wuwei config promote`, `config set` and `config add-repo`, `wuwei memory forget`, `wuwei setup`, and `wuwei telemetry send`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records a decision it asked you in the session with `wuwei decide`, and a draft it asked you on a card with `wuwei drafts approve` (only after you answer Send now, or with `--file` the exact text you typed after Send with an edit) or `drafts drop`. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
+Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei grants revoke`, `wuwei goals edit` and `voice edit` (except that the planner records goals and voice you approved at the morning gate with `--file`, outside the strict posture), `wuwei watch uninstall`, `wuwei listen uninstall`, `wuwei remote ack`, `wuwei config promote`, `config set` and `config add-repo`, `wuwei memory forget`, `wuwei setup`, and `wuwei telemetry send`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records a decision it asked you in the session with `wuwei decide`, and a draft it asked you on a card with `wuwei drafts approve` (only after you answer Send now, or with `--file` the exact text you typed after Send with an edit) or `drafts drop`. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
 
 ## Drafts and cards
 

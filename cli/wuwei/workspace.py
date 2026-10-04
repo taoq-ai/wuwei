@@ -73,6 +73,10 @@ SCHEMA = {
                "identity": {"name": (str, ""), "email": (str, "")},
                "shepherd": {"reviewers": [(str, None)]}}],
     "worktree": {"git_hooks": (str, "chain", ("chain", "skip", "replace"))},
+    # #478: standing grants, written by the owner's Always allow answer; ignored under strict.
+    "grants": {"standing": [{"action": (str, None, ("deploy", "release", "publish")),
+                             "target": (str, None), "scope": (str, "always", ("always",)),
+                             "decision": (str, None), "date": (str, None)}]},
     "cap": (int, 1, 1),
     "template_version": (str, ""),
     "calibrate": {"fast_check_seconds": (int, 60, 1)},
@@ -549,7 +553,7 @@ _CONFIGS = {}
 # copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
-CONFIG_CACHE_VERSION = 8  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 10  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor, why and the board stay read-only.
@@ -664,6 +668,13 @@ def load_config(root=None, *, raw=None, warnings=None):
         for name in config['decisions']['lenses']:
             if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', name):
                 raise ConfigError(f'decisions.lenses.{name}: use letters, digits, dash or underscore, starting with a letter; the owner fixes it with bin/wuwei config set in a host terminal')
+        for index, line in enumerate(config['grants']['standing']):
+            if not (re.fullmatch(r'repo:[A-Za-z0-9_.*?-]+/[A-Za-z0-9_.*?-]+', line['target'])
+                    and re.fullmatch(r'D-[1-9][0-9]*', line['decision'])
+                    and re.fullmatch(r'\d{4}-\d{2}-\d{2}', line['date'])):
+                raise ConfigError(f'grants.standing.{index}: expected target repo:<org>/<name>, decision '
+                                  f'D-n and date YYYY-MM-DD; the owner fixes it with bin/wuwei grants '
+                                  f'revoke {index + 1} in a host terminal')
         from wuwei import registry
         second = config['gates']['second_opinion']
         found = re.fullmatch(r'([a-z]+):([A-Za-z0-9][A-Za-z0-9._-]*)', second)

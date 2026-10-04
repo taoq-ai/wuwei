@@ -121,6 +121,12 @@ def build(root=None):
     warned = [row['payload'] for row in watch.records(day / 'events.jsonl') if row['kind'] == 'spec.warned']
     if warned:
         lines += ['', '## Spec warnings', *(f"- {row['item']}: {row['step']} ({row['where']})" for row in warned)]
+    used = Counter((row['payload']['decision'], row['payload']['action'])
+                   for row in watch.records(day / 'events.jsonl') if row['kind'] == 'grant.used')
+    if used:  # #478
+        from wuwei.grants import ACTIONS
+        lines += ['', '## Grants', *(f'- {ACTIONS[action][1]} run under grant {key}: {count}'
+                                     for (key, action), count in sorted(used.items()))]
     if level == 'brief':
         return '\n'.join([*lines, ''])
     quality = measured['quality_by_band']

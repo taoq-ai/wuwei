@@ -169,7 +169,7 @@ def test_config_defaults_and_independence(tmp_path):
                      'areas': {area: '' for area in workspace.AREAS}},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'digest': '', 'nudges': '', 'dm': '', 'report': ''}},
-        'repos': [], 'worktree': {'git_hooks': 'chain'},
+        'repos': [], 'worktree': {'git_hooks': 'chain'}, 'grants': {'standing': []},
         'cap': 1, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},

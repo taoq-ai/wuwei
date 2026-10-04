@@ -110,6 +110,12 @@ def test_parse_replies(text, expected):
     assert control_plane.parse(text, {'D-3': fields}) == expected
 
 
+def test_drop_it_picks_keep():
+    from wuwei import control_plane, decision
+    fields, _ = decision.evaluate(VALID.replace('Defer until tomorrow', 'Keep owner-only'))
+    assert control_plane.parse('drop it', {'D-3': fields}) == ('D-3', 'B')
+
+
 def test_parse_drop_it_needs_one_pending():
     from wuwei import control_plane, decision
     fields, _ = decision.evaluate(VALID)

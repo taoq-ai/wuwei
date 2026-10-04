@@ -130,12 +130,18 @@ def owner_outcome(args, note=None, *, root=None, where=None):
         from wuwei.commands import outbound  # Off every other decision path.
         if outbound.apply(root, learned, args.option, args.id):
             return 1, 'decision: the learned connector was not written; run bin/wuwei config check, then answer again'
+    grant = data.get('grants', {}).get(args.id)
+    if grant is not None and args.option == 'always':  # #478: the standing grant line first.
+        from wuwei import grants
+        if grants.standing(root, grant, args.id):
+            return 1, 'decision: the standing grant was not written; run bin/wuwei config check, then answer again'
 
     def update(current):
         if current.get('decision_outcomes', {}).get(args.id) != previous:
             raise ValueError(f'decision changed during confirmation; {RACE}')
-        if args.id in current.get('outbound_learn', {}):
-            current['outbound_learn'][args.id]['answered'] = args.option
+        for key in ('outbound_learn', 'grants'):  # #492, #478: the answer is stored on its row
+            if args.id in current.get(key, {}):
+                current[key][args.id]['answered'] = args.option
         current.setdefault('decision_outcomes', {})[args.id] = {
             'option': args.option, 'outcome': args.option, 'decided_by': 'owner',
             'reversibility': fields['Reversibility']}

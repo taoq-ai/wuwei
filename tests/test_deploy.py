@@ -55,7 +55,7 @@ def check(root, command):
     ("'to'fu apply", 1, 'tofu apply'),
     (r'to\fu apply', 1, 'tofu apply'),
     ('git status', 0, ''),
-    ('gh workflow run test.yml', 2, 'workflow'),
+    ('gh workflow run test.yml', 1, 'workflow'),
     ('gh pr view 42', 0, ''),
     ('gh --version', 0, ''),
     ('gh --help', 0, ''),
@@ -129,14 +129,14 @@ def check(root, command):
     ('gh -R acme/app workflow run .github/workflows/deploy.yml', 1, 'workflow'),
     ('gh workflow run --ref main deploy.yml', 1, 'workflow'),
     ('gh workflow rerun deploy.yml', 1, 'workflow'),
-    ('gh run rerun 123', 2, 'workflow'),
-    ('gh workflow run 123', 2, 'workflow'),
+    ('gh run rerun 123', 1, 'workflow'),
+    ('gh workflow run 123', 1, 'workflow'),
     ('gh workflow run', 2, 'workflow'),
     ('gh api repos/acme/app/deployments', 1, 'API'),
     ('gh api --method GET repos/acme/app/environments/prod', 1, 'API'),
     ('gh api https://api.github.com/repos/acme/app/%64eployments', 1, 'API'),
     ('gh api repos/acme/app/actions/workflows/deploy.yml/dispatches -X POST', 1, 'workflow'),
-    ('gh api repos/acme/app/actions/runs/123/rerun -X POST', 2, 'workflow'),
+    ('gh api repos/acme/app/actions/runs/123/rerun -X POST', 1, 'workflow'),
     ('gh api repos/acme/app/releases -f tag_name=v1', 1, 'release'),
     ('gh api repos/acme/app/git/refs -f ref=refs/tags/v1', 1, 'tag'),
     ('gh api repos/acme/app/merges -f base=production', 1, 'environment'),
@@ -505,7 +505,7 @@ def test_workflow_aliases_fail_closed(workspace, marked, target):
     (workspace / '.wuwei/config.toml').write_text(
         '[deploy]\nworkflows = ' + json.dumps(marked) + '\n')
     code, reason = check(workspace, 'gh workflow run ' + target)
-    assert code == 2 and 'workflow' in reason
+    assert code == 1 and 'deploy' in reason and 'resolution' not in reason
 
 
 def test_distinct_workflow_filenames_are_clean(workspace):
@@ -527,3 +527,13 @@ def test_issue_347_unparsed_calls(workspace, command, code, reason):
     actual, message = check(workspace, command)
     assert actual == code, message
     assert reason in message
+
+
+def test_quoted_workflow_name_is_a_deploy_on_its_target(workspace):
+    (workspace / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "fixture-org/app"\npath = "."\ndefault_branch = "main"\n'
+        '[deploy]\nworkflows = ["deploy-production.yml"]\n')
+    code, reason = check(workspace, 'gh workflow run "Deploy Production" -R fixture-org/app --ref main')
+    assert code == 1 and reason.startswith('publish: ')
+    assert 'fixture-org/app' in reason and 'is a deploy (deploy.workflows)' in reason
+    assert 'resolution' not in reason

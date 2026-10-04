@@ -276,7 +276,8 @@ DENY = {'tomllib', 'hashlib', 'argparse', 'dataclasses', 'inspect', 'typing', 'd
 
 
 INSIDE_DENY = {'argparse', 'dataclasses', 'subprocess', 'inspect', 'hashlib',
-               'glob', 'copy', 'weakref', 'wuwei.telemetry', 'secrets'}
+               'glob', 'copy', 'weakref', 'wuwei.telemetry', 'secrets',
+               'wuwei.grants', 'wuwei.merge'}  # #478: imported only on a deploy refusal
 
 
 @pytest.mark.parametrize('inside, deny, tool', [

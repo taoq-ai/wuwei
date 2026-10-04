@@ -119,7 +119,7 @@ def test_cli_propose_and_approve(root, monkeypatch):
     assert result.returncode == 0, result.stderr
     assert 'unmeasured' in next((root / '.wuwei/days').glob('*/plan.md')).read_text()
     result = subprocess.run([*command, 'gate'], env=env, capture_output=True, text=True)
-    assert json.loads(result.stdout)['record'] == 'wuwei plan approve --items A --goals-confirmed'
+    assert json.loads(result.stdout)[0]['record'] == 'wuwei plan approve --items A --goals-confirmed'
     result = subprocess.run([*command, 'approve', '--items', 'A', '--goals-confirmed'],
                             env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
@@ -514,3 +514,52 @@ def test_template_cap_is_the_configured_cap(root, monkeypatch, capsys):
     (root / '.wuwei/config.toml').write_text('cap = 3\n')
     assert main(['plan', 'template']) == 0
     assert json.loads(capsys.readouterr().out)['cap'] == 3
+
+
+DEPLOY_ACTION = [{'action': 'deploy', 'target': 'repo:fixture-org/app'}]
+
+
+def deploying():
+    data = proposal()
+    data['candidates'][0]['owner_actions'] = DEPLOY_ACTION
+    return data
+
+
+def test_propose_writes_one_planned_card(root, monkeypatch, capsys):
+    # #478: an owner-only action the lead lists becomes one card the gate question carries.
+    from wuwei.__main__ import main
+    text = plan.propose(deploying(), root).read_text()
+    assert 'Owner-only: deploy repo:fixture-org/app (D-1)\n' in text
+    day = root / '.wuwei/days/2026-09-28'
+    row = state.read_state(root)['grants']['D-1']
+    assert (row['item'], row['planned'], row['answered']) == ('A', True, None)
+    plan.propose(deploying(), root)
+    assert sorted(path.name for path in (day / 'decisions').glob('D-*.md')) == ['D-1.md']
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    capsys.readouterr()
+    assert main(['plan', 'gate']) == 0
+    gate, card = json.loads(capsys.readouterr().out)
+    assert gate == plan.gate_widget(root)
+    assert card['question'].startswith('D-1: G-1 A deploys fixture-org/app: allow today, ask when it happens, '
+                                       'or keep owner-only? ')
+    assert [option['label'] for option in card['options']] == [
+        'Allow today (Recommended)', 'Ask when it happens', 'Keep owner-only']
+
+
+def test_plan_gate_without_owner_actions_is_one_question(root, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    plan.propose(proposal(), root)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    capsys.readouterr()
+    assert main(['plan', 'gate']) == 0
+    assert json.loads(capsys.readouterr().out) == [plan.gate_widget(root)]
+
+
+@pytest.mark.parametrize('entry', [{'action': 'merge', 'target': 'repo:fixture-org/app'},
+                                   {'action': 'deploy', 'target': 'fixture-org/app'},
+                                   {'action': 'deploy', 'target': 'repo:fixture-org/app', 'when': 'now'}])
+def test_owner_actions_are_validated(root, entry):
+    data = proposal()
+    data['candidates'][0]['owner_actions'] = [entry]
+    with pytest.raises(ValueError, match='owner_actions'):
+        plan.propose(data, root)

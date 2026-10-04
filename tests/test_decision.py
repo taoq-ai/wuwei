@@ -102,7 +102,7 @@ def events(root):
     ('| Safe | pass | pass |', '| Safe | fail | fail |', 'passing'),
     ('| Safe | pass | pass |', '| Safe | yes | pass |', 'pass/fail'),
     (B_ROW + '\n', '', 'two options'),
-    ('Defer until tomorrow', 'Another fix', 'Do nothing or Defer'),
+    ('Defer until tomorrow', 'Another fix', 'Do nothing, Defer or Keep'),
     ('| B | Defer until tomorrow |', '| A | Defer until tomorrow |', 'duplicate'),
     ('| 10 | 8 | 2 |', '| 11 | 8 | 2 |', 'weight'),
     ('| 10 | 8 | 2 |', '| 0 | 8 | 2 |', 'weight'),
@@ -1456,3 +1456,8 @@ def test_record_gate_notes_the_owner_draft_answer(planner, answer, extra):
     assert record_gate(draft_question(planner, draft_id, answer=answer)) == (0, '')
     assert state.read_state(planner)['sessions']['planner-1']['gate_asked'] == sorted(
         {draft_id} | ({draft_id + extra} if extra else set()))
+
+
+def test_keep_is_a_status_quo_title():
+    from wuwei.decision import lint
+    assert lint(VALID.replace('Defer until tomorrow', 'Keep owner-only'))[0] == 0

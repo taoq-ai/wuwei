@@ -34,7 +34,8 @@ that engagement ships in this repository.
 
 - Deploying. No profile, routine or command deploys, releases or promotes anything to an
   environment (section 4.7). Owner decision 2026-09-28; supersedes the earlier non-goal that
-  merging was always a human act.
+  merging was always a human act. Amended (owner, 2026-10-04, #478): the guard refuses and
+  asks; only the owner's recorded answer (once, today, always) lets the same action through.
 - Approving pull requests, or bypassing branch protection to merge. WUWEI never approves a
   review and never merges with admin override; a merge happens only when the repository's
   own rules already allow it (section 4.6).
@@ -327,6 +328,13 @@ environment API calls, and the deploy commands of common tools (`kubectl apply`,
 upgrade`/`install`, `terraform apply`, `pulumi up`, `vercel`/`netlify` deploy, `fly deploy`,
 `gcloud`/`aws`/`az` deploy verbs, `docker push`), extendable by `deploy.deny` in config. A
 merge into a repository with `merge_deploys = true` is a deployment and goes to the owner.
+
+Amended (owner, 2026-10-04, #478): the guard refuses and asks; only the owner's recorded answer
+(once, today, always) lets the same action through. The refusal writes a decision card
+(`Keep owner-only`, `Allow once`, `Allow today`, `Always allow`; no `Always allow` under strict);
+the answer is the grant, matched on the action class and the repository. A standing grant is
+one `[grants]` line, ignored under strict and removed with `wuwei grants revoke`. No seat,
+default or hook creates a grant.
 
 ### 4.8 Voice (owner, 2026-09-28)
 
@@ -1679,7 +1687,7 @@ or `strict`, and `[security.areas]` overrides one area with `off`, `warn` or `bl
 Floors no posture and no override lowers:
 
 - `records` always blocks. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
-- Owner-only actions always block: the deployment ban (`deploy`), the merge policy, approvals and owner markers (`pr`), and approve-tier messages and canary or honeytoken egress (the outward approval tier). Under `observe`, `publish` relaxes only the commit and push rules and the PR anchor.
+- Owner-only actions always block: the deployment ban (`deploy`), the merge policy, approvals and owner markers (`pr`), and approve-tier messages and canary or honeytoken egress (the outward approval tier). Under `observe`, `publish` relaxes only the commit and push rules and the PR anchor. Amended (owner, 2026-10-04, #478): a deploy refusal asks the owner on a card, and only the owner's recorded answer (once, today, always) lets the same action through.
 - MCP: under `guarded` and `strict` a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. A finding blocks only at a severity in `scanner.mcp.block`, which is unset by default: no severity under `guarded`; `critical`, `high` and `unmeasured` under `strict`. Under `observe`, and with `mcp = "off"`, the list has no effect and `config check` says so.
 
 The posture changes what the cooperative guards refuse, never the hard boundaries above.

@@ -28,7 +28,7 @@ GROUPS = (
      'next guide status nudges plan decision worktree brief build dispatch pr merge reply discover '
      'note tracker metrics report retro close steward docs'),
     ('Owner: run these in your own host terminal',
-     'setup init config decide calibrate goals voice drafts remote mcp outbound watch listen '
+     'setup init config decide grants calibrate goals voice drafts remote mcp outbound watch listen '
      'dashboard promote consolidate telemetry'),
     ('Recovery: when something is stuck',
      'doctor why state shadow heartbeat integrity runtime sessions seat'),
