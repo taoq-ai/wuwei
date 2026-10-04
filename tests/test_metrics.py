@@ -315,3 +315,17 @@ def test_metrics_week_prints_computes_and_refuses(root, capsys, monkeypatch):
     assert 'invalid week' in capsys.readouterr().err
     assert main(['metrics']) == 0
     assert 'stuck_parks_per_item' in json.loads(capsys.readouterr().out)
+
+
+def test_seat_cost_from_seat_launched_rows(root):
+    from wuwei import metrics
+    row = lambda payload: {'kind': 'seat launched', 'payload': payload}
+    rows = [row({'name': 'old'}), row({'free_mib': 10240, 'running': 0}),
+            row({'free_mib': 7168, 'running': 1}), row({'free_mib': 4096, 'running': 2})]
+    assert metrics.seat_cost(rows) == 3072
+    assert metrics.seat_cost(rows[:2]) == metrics.UNMEASURED
+    assert metrics.seat_cost([rows[0], rows[2]]) == metrics.UNMEASURED
+    assert metrics.collect(root)['seat_cost_mib'] == metrics.UNMEASURED
+    for payload in rows[1:]:
+        state.append_event('seat launched', payload['payload'], root)
+    assert metrics.collect(root)['seat_cost_mib'] == 3072

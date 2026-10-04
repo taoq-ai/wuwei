@@ -449,7 +449,33 @@ def _assignment(key, line):
         return False
 
 
-def proposal(raw, targets):
+# ponytail: default seat cost before any seat ran (the default memory floor); measured after.
+SEAT_MIB = 1024
+
+
+def host(root, config):
+    """Host profile and the proposed cap: seats that fit above the memory floor, one core each,
+    within host.seats; {'unmeasured': reason} when the host cannot be read."""
+    from wuwei import metrics
+    from wuwei.guards.agent_launch import free_memory
+
+    try:
+        free = free_memory(config, root) // 2**20
+    except (OSError, ValueError) as exc:
+        return {'unmeasured': str(exc)}
+    cores = os.cpu_count()
+    if not cores:
+        return {'unmeasured': 'cores unmeasured (os.cpu_count gave none); run bin/wuwei calibrate again on the host'}
+    days = sorted((root / '.wuwei/days').glob('*'), reverse=True)
+    seat = next((cost for day in days
+                 if (cost := metrics.seat_cost(metrics._events(day) or [])) != metrics.UNMEASURED), None)
+    floor, ceiling = config['host']['free_memory_mb'], config['host']['seats']
+    return {'cores': cores, 'free_mib': free, 'seat_mib': seat or SEAT_MIB,
+            'seat_source': 'default' if seat is None else 'measured',
+            'cap': max(1, min((free - floor) // (seat or SEAT_MIB), cores, ceiling))}
+
+
+def proposal(raw, targets, host=None):
     """Additive config proposal for [(repo index, facts)]: (additions, hand edits).
 
     Only keys absent from the raw TOML are added, plus deploy lists and fast_checks still at a
@@ -475,13 +501,15 @@ def proposal(raw, targets):
         registers['boundary'].update(facts['boundary'])
     wanted += [(('deploy',), key, sorted(values)) for key, values in deploy.items() if values]
     wanted += [((table,), name, text) for table, names in registers.items() for name, text in names.items()]
+    if host and 'cap' in host:
+        wanted.append(((), 'cap', host['cap']))
     sections = _labelled(raw)
     additions, edits = [], []
     for path, key, value in wanted:
         table = _table(present, path)
         if table is None or key not in table:
             additions.append((path, key, value))
-        elif path[0] in registers:
+        elif path and path[0] in registers:
             continue
         elif ((path == ('deploy',) or key == 'fast_checks') and table[key] == []
               and any(_empty_list(key, l) for p, lines in sections if p == path for l in lines)):
@@ -639,9 +667,9 @@ def settle(raw, settings):
     return additions, edits
 
 
-def propose(raw, results, settings=()):
+def propose(raw, results, settings=(), host=None):
     """Return the proposed config text, its diff and the hand edits; owner settings apply last."""
-    additions, edits = proposal(raw, [(r['index'], proposed(r)) for r in results])
+    additions, edits = proposal(raw, [(r['index'], proposed(r)) for r in results], host)
     text = apply(raw, additions)
     extra, more = settle(text, settings)
     text, edits = apply(text, extra), edits + more
@@ -671,9 +699,16 @@ def _label(result, finding):
     return f"{'fast check' if fast else 'CI only'} ({note})"
 
 
-def report(results, diff, edits, written, error=None):
+def report(results, diff, edits, written, error=None, host=None, config=None):
     """Markdown report: every finding with its file and line, then the proposal and next step."""
     lines = ['# Calibration', '']
+    if host:
+        lines += ['## Host', ''] + ([f"- unmeasured: {host['unmeasured']}"] if 'unmeasured' in host else [
+            f"- cores: {host['cores']}",
+            f"- free memory: {host['free_mib']} MiB (floor {config['host']['free_memory_mb']} MiB)",
+            f"- seat cost: {host['seat_mib']} MiB ("
+            + ('measured)' if host['seat_source'] == 'measured' else 'default, unmeasured until the first seats run)'),
+            f"- proposed cap: {host['cap']} (host.seats {config['host']['seats']})"]) + ['']
     for result in results:
         lines += [f"## {result['repo']['name']}", '']
         for title, kinds in SECTIONS:

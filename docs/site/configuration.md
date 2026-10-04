@@ -24,7 +24,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `cap` | `1` | Maximum running build seats. |
+| `cap` | `1` | Maximum running build seats. `bin/wuwei calibrate` proposes it from the host (cores, free memory, measured seat cost, within `host.seats`) and adds it when absent; a present value is listed to edit by hand. The morning gate approves the day's value with seats per goal, and the launch guard enforces that value. |
 | `template_version` | `""` | Plugin version that last wrote this file. `wuwei init`, `wuwei setup` and `wuwei init --upgrade` raise it and never lower it. A plugin older than this value treats keys it does not know as unknown to it, records `config.newer_template` once per session, and `wuwei doctor` and the status line say to restart Claude Code. |
 | `prioritisation.framework` | `"wsjf"` | Ranking formula: `wsjf` or `rice`. |
 | `discovery.min_queue` | `2` | Discover again when a seat frees and the queue is below this count. |
@@ -118,7 +118,7 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `host.free_memory_mb` | `1024` | Nonnegative free memory floor in MiB. |
-| `host.seats` | `4` | Total seat ceiling: default cap plus three parallel gates. Increase with custom cap; refusals name `host.seats`. |
+| `host.seats` | `4` | Total seat ceiling: default cap plus three parallel gates. Increase with custom cap; refusals name `host.seats`. It also bounds calibrate's `cap` proposal and each turn of `wuwei dispatch next --all`. |
 | `host.reservation_timeout_seconds` | `14400` | Age at which a reservation is reported stale. |
 | `memory.max_notes` | `60` | Index note limit. |
 | `memory.note_line_cap` | `80` | Maximum lines in a note. |

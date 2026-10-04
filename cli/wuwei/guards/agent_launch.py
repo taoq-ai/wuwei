@@ -132,6 +132,7 @@ def _check(payload):
     floor = config['host']['free_memory_mb'] * 1024**2
     if available < floor:
         raise brief.Refused(f'free memory {available} bytes below floor {floor}; wait for a seat to finish, or ask the owner to lower host.free_memory_mb')
+    event = {'name': logged['name'], 'item': logged['item']}
     def reserve(data):
         existing = brief.seats(data).get(logged['name'])
         build = data.get('builds', {}).get(logged['item'])
@@ -178,9 +179,10 @@ def _check(payload):
                 raise brief.Refused(('gate launch on a dirty tree: ' + ', '.join(row['path'] for row in changes)
                                     + '; ask the builder to commit or discard them, then write the gate brief again'))
         running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
+        event.update(free_mib=available // 2**20, running=len(running))
         builders = sum(seat['role'] == 'builder' for seat in running)
-        if role == 'builder' and builders >= config['cap']:
-            raise brief.Refused(f'running build seats {builders} at CAP {config["cap"]}; wait for a build seat to finish, then retry' + stale_note)
+        if role == 'builder' and builders >= data['cap']:
+            raise brief.Refused(f'running build seats {builders} at CAP {data["cap"]}; wait for a build seat to finish, then retry' + stale_note)
         if len(running) >= config['host']['seats']:
             raise brief.Refused(f'running seats {len(running)} at host seat ceiling host.seats={config["host"]["seats"]}; wait for a seat to finish, or ask the owner to raise host.seats' + stale_note)
         if logged['item'] in data['items']:
@@ -196,8 +198,7 @@ def _check(payload):
         from wuwei.commands import build as build_command
         if role == 'builder':
             build_command.started(data, logged['item'], logged['name'])
-    state._write_state(reserve, root, reserved=False, kind='seat launched',
-                      payload={'name': logged['name'], 'item': logged['item']})
+    state._write_state(reserve, root, reserved=False, kind='seat launched', payload=event)
     return 0, ''
 
 

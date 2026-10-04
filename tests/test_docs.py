@@ -22,6 +22,7 @@ TABLE = re.compile(r'^\s*#?\s*\[\[?([\w.]+)\]\]?\s*$')
 # Issue #366: the glossary terms in concepts.md order, each with the word forms that count as a use.
 GLOSSARY = (('Seat', r'seats?'), ('Gate', r'gates?'), ('Sentinel', r'sentinels?'),
             ('Shepherd', r'shepherds?'), ('Steward', r'stewards?'), ('CAP', r'cap'),
+            ('Seats per goal', r'seats per goal'),
             ('Envelope', r'envelopes?'), ('Tier', r'tiers?'), ('Soak', r'soak'),
             ('Delta', r'deltas?'), ('Park', r'park(?:s|ed|ing)?'),
             ('Carry', r'carr(?:y|ies|ied|ying)'), ('Nudge', r'nudges?'), ('Page', r'pages?'),
@@ -101,7 +102,7 @@ def test_daily_shows_a_clean_first_day():
                                    'Ready: run /wuwei:wuwei-plan\n',
                                    '  warn       watch: not installed',
                                    'doctor: 1 fail, 1 warn, 0 unmeasured')),
-                            ('3', ('goals: 1 goal saved (G-1)', 'planned 1/1', 'planned item(s) queued'))):
+                            ('3', ('goals: 1 goal saved (G-1)', 'planned 1/1', 'planned item(s) can'))):
         section = daily.split(f'\n## {number}. ', 1)[1].split('\n## ', 1)[0]
         blocks = re.findall(r'```text\n(.*?)```', section, re.S)
         for marker in markers:
@@ -110,7 +111,7 @@ def test_daily_shows_a_clean_first_day():
     source = '\n'.join(path.read_text() for path in ROOT.glob('cli/wuwei/**/*.py'))
     for marker in ('plugin integrity: clean', 'code host login:', 'Interview answers:', 'and recorded .wuwei/calibration.json',
                    'Test runner found: ', 'Status line: added to .claude/settings.json', 'more in bin/wuwei doctor',
-                   "'Optional: '", 'Ready: run /wuwei:wuwei-plan', "'not installed'", 'planned item(s) queued'):
+                   "'Optional: '", 'Ready: run /wuwei:wuwei-plan', "'not installed'", 'planned item(s) can'):
         assert marker in source, marker
 
 

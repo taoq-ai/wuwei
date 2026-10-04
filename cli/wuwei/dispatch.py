@@ -242,6 +242,68 @@ def next_step(item, root=None):
     return {'action': 'raise', 'notes': notes}
 
 
+def launch_set(root=None):
+    """The turn's launch set: each open approved item's next action, gate items first, then
+    build, then planned; builders within CAP, launches within the free host.seats."""
+    from collections import Counter
+    from wuwei.commands import build
+    from wuwei.commands.next import approved
+    root = workspace.find_workspace(root)
+    data, config = state.read_state(root), workspace.load_config(root)
+    items, cap, ceiling = data['items'], data['cap'], config['host']['seats']
+    running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
+    free = start = ceiling - len(running)
+    builds = [name for name in approved(data) if items[name]['phase'] in state.BUILD_PHASES]
+    busy = {seat['item'] for seat in running}
+    names = [name for name in approved(data) if name not in busy]
+    goal = lambda name: items[name].get('goal', 'unplanned')
+    entries = []
+
+    def add(name, call):
+        nonlocal free
+        try:
+            value = call()
+        except (Refused, ValueError, build.PortExit) as exc:
+            value = {'action': 'refused', 'reason': str(exc)}
+        launches = len(value.get('seats', [])) if 'seats' in value else int(
+            value['action'] in ('launch', 'continue', 'start'))
+        if launches > free:
+            value = {'action': 'wait', 'reason': (
+                f'{launches} launch(es) do not fit the {max(free, 0)} free of host.seats={ceiling}; '
+                'they launch together next turn, after running seats stop')}
+        else:
+            free -= launches
+        entries.append({'item': name, 'goal': goal(name), **value})
+
+    for name in names:
+        if items[name]['phase'] in ('gate', 'delta'):
+            add(name, lambda: next_step(name, root))
+    for name in builds:
+        if name not in busy:
+            add(name, lambda: build.next_action(name, root=root))
+    building = len(builds)
+    share = Counter(data.get('goal_seats', {}))
+    share.subtract(goal(name) for name in builds)
+    first, rest = [], []
+    for name in (name for name in names if items[name]['phase'] == 'planned'):
+        (first if share[goal(name)] > 0 else rest).append(name)
+        share[goal(name)] -= 1
+    briefed = {row['payload'].get('item') for row in brief.events(root)
+               if row['kind'] == 'brief written' and row['payload'].get('role') == 'builder'}
+    for index, name in enumerate(first + rest):
+        if building + index >= cap:
+            entries.append({'item': name, 'goal': goal(name), 'action': 'wait', 'reason': (
+                f'CAP {cap} reached ({building} building); bin/wuwei next names the seat '
+                'expected to free first')})
+        elif name in briefed:
+            add(name, lambda: build.next_action(name, root=root))
+        else:
+            add(name, lambda: {'action': 'start', 'commands': [
+                f'wuwei worktree add {name}', f'wuwei brief builder {name} <name> --worktree <path>']})
+    return {'action': 'set', 'cap': cap, 'building': building, 'free_seats': start,
+            'entries': entries}
+
+
 def _seats(root, data, item, roles, round_name):
     """Ready launch or continue actions for gate seats the planner has not started."""
     actions = []

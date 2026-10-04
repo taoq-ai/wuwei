@@ -459,3 +459,58 @@ def test_plan_set_records_a_confirmed_ticket(root, monkeypatch, capsys):
     fake.results['created'] = registry.Result(1, reason='not found')
     assert main(['plan', 'set', 'A', 'ticket=ENG-5']) == 1
     assert 'owner=pat is not a spec, docs or ticket value' in capsys.readouterr().err
+
+
+def four(seats=None):
+    data = proposal()
+    data.update(goals=['G-1', 'G-2'], cap=3, **({'seats': seats} if seats is not None else {}))
+    base = data['candidates'][0]
+    data['candidates'] = [{**base, 'id': name, 'goal': goal,
+                           'score': {**base['score'], 'job_size': value}}
+                          for name, goal, value in (('A', 'G-1', 1), ('B', 'G-2', 2),
+                                                    ('C', 'G-1', 3), ('D', 'G-2', 5))]
+    return data
+
+
+@pytest.fixture
+def goals2(root):
+    path = root / '.wuwei/memory/goals.md'
+    path.write_text(path.read_text() + '## G-2\noutcome: Second\nmeasure: shipped\ntarget: 1\ndate: 2026-10-30\npriority: 2\n')
+    return root
+
+
+def test_seats_per_goal_in_plan_gate_and_state(goals2):
+    root = goals2
+    text = plan.propose(four(), root).read_text()
+    assert 'Seats per goal: 3 seats: G-1 2, G-2 1 (CAP 3)' in text
+    proposal_json = json.loads((root / '.wuwei/days/2026-09-28/proposal.json').read_text())
+    assert proposal_json['seats'] == {'G-1': 2, 'G-2': 1}
+    widget = plan.gate_widget(root)
+    assert '3 seats: G-1 2, G-2 1 (CAP 3)' in widget['options'][0]['description']
+    assert 'seats per goal' in widget['options'][1]['description']
+    plan.approve(['A', 'B', 'C', 'D'], root, goals_confirmed=True)
+    assert state.read_state(root)['goal_seats'] == {'G-1': 2, 'G-2': 1}
+    with pytest.raises(state.StateError, match='wuwei plan approve'):
+        state.set_state('goal_seats', {'G-1': 3}, root)
+
+
+def test_lead_seats_map_is_validated_and_shown(goals2):
+    root = goals2
+    text = plan.propose(four({'G-1': 1, 'G-2': 2}), root).read_text()
+    assert 'Seats per goal: 3 seats: G-1 1, G-2 2 (CAP 3)' in text
+    assert '3 seats: G-1 1, G-2 2 (CAP 3)' in plan.gate_widget(root)['options'][0]['description']
+    (root / '.wuwei/days/2026-09-28/plan.md').unlink()
+    for seats in ({'G-9': 1}, {'G-1': 0}, {'G-1': True}, {'G-1': 2, 'G-2': 2}, ['G-1']):
+        with pytest.raises(ValueError, match='seats'):
+            plan.propose(four(seats), root)
+    data = four()
+    data['candidates'] = []
+    assert 'Seats per goal: 0 seats (CAP 3)' in plan.propose(data, root).read_text()
+
+
+def test_template_cap_is_the_configured_cap(root, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    (root / '.wuwei/config.toml').write_text('cap = 3\n')
+    assert main(['plan', 'template']) == 0
+    assert json.loads(capsys.readouterr().out)['cap'] == 3

@@ -34,6 +34,15 @@ def _row(name, text, command):
     return {'state': name, 'step': text, 'command': command}
 
 
+def approved(data):
+    """Approved items in queue order, less those a seat decision carried or parked."""
+    disposed = {str(record.get('item_disposition')).split(' ', 1)[-1]
+                for record in data.get('decision_outcomes', {}).values()
+                if isinstance(record, dict) and record.get('decided_by') == 'seat'
+                and str(record.get('item_disposition')).startswith(('carried ', 'parked '))}
+    return [name for name in data['approved_items'] if name in data['items'] and name not in disposed]
+
+
 def step(root):
     """The first due step; root None means no workspace here.
     ponytail: one row, not a list; the first due item wins and status --line shows the rest."""
@@ -67,15 +76,12 @@ def step(root):
                         'pick an option.', f'wuwei decision show {identifier}')
     seats = brief.seats(data)
     running = {seat['item'] for seat in seats.values() if seat['status'] == 'running'}
-    disposed = {str(record.get('item_disposition')).split(' ', 1)[-1]
-                for record in data.get('decision_outcomes', {}).values()
-                if isinstance(record, dict) and record.get('decided_by') == 'seat'
-                and str(record.get('item_disposition')).startswith(('carried ', 'parked '))}
     items = data['items']
-    approved = [name for name in data['approved_items'] if name in items and name not in disposed]
-    building = sum(items[name]['phase'] in state.BUILD_PHASES for name in approved)
-    queued = sum(items[name]['phase'] == 'planned' for name in approved)
-    for name in approved:
+    names = approved(data)
+    building = sum(items[name]['phase'] in state.BUILD_PHASES for name in names)
+    queued = sum(items[name]['phase'] == 'planned' for name in names)
+    waiting = None
+    for name in names:
         phase = items[name]['phase']
         if phase in TERMINAL or name in running:
             continue
@@ -98,11 +104,20 @@ def step(root):
             return _row('pr', f'{label} has PR {pr} open; act on its review state.',
                         f'wuwei pr act {pr}')
         if phase == 'planned' and building < data['cap']:
-            return _row('dispatch', f'{queued} planned item(s) queued, {building} of CAP '
-                        f'{data["cap"]} building; create the worktree for {label}, then wuwei '
-                        f'brief builder {name} <name> --worktree <path> and wuwei build next {name}.',
-                        f'wuwei worktree add {name}')
+            return _row('dispatch', f'{min(queued, data["cap"] - building)} planned item(s) can '
+                        f'start, {building} of CAP {data["cap"]} building; run the launch set, '
+                        'brief each start and launch the set in one turn.',
+                        'wuwei dispatch next --all')
+        if phase == 'planned' and waiting is None:
+            waiting = label
     names = sorted(name for name, seat in seats.items() if seat['status'] == 'running')
+    builders = sorted((seat.get('started_at') or '', name) for name, seat in seats.items()
+                      if seat['status'] == 'running' and seat['role'] == 'builder')
+    if waiting and builders:
+        return _row('wait', f'{waiting} waits: {building} of CAP {data["cap"]} building; '
+                    f'{builders[0][1]} started first ({builders[0][0] or "start unrecorded"}) and '
+                    'is expected to free first; SubagentStop records each result.',
+                    'wuwei status --line')
     if names:
         return _row('wait', f'Seats running: {", ".join(names)}; SubagentStop records each result.',
                     'wuwei status --line')

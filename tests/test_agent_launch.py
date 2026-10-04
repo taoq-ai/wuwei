@@ -604,3 +604,28 @@ def test_launch_needs_the_item_ticket(launch, monkeypatch, settings, ticket, cod
     assert actual == code, message
     assert ('X has no ticket' in message) == (code == 1)
     assert bool(state.read_state(root)['seats']) == (code == 0)
+
+
+def test_seat_launched_records_free_mib_and_running(launch, monkeypatch):
+    from test_brief import events
+    from wuwei.guards import agent_launch
+    day, payload = launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 6 * 1024**3)
+    set_seats({'other': {'item': 'Y', 'role': 'builder', 'status': 'running'}}, day[0])
+    assert check(payload) == (0, '')
+    launched = [e for e in events(day[1]) if e['kind'] == 'seat launched'][-1]['payload']
+    assert launched['free_mib'] == 6144 and launched['running'] == 1
+
+
+def test_builder_cap_is_the_day_cap(day, monkeypatch):
+    from wuwei.guards import agent_launch
+    root, directory, _, _ = day
+    (root / '.wuwei/config.toml').write_text('cap = 1\n[host]\nseats = 8\n')
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    state._write_state(lambda data: data.update(cap=3), root, reserved=False)
+    for name in ('one', 'two', 'three', 'four'):
+        assert brief(monkeypatch, 'body', 'builder', 'X', name) == 0
+        relative = str((directory / f'briefs/{name}.md').relative_to(root))
+        code, reason = check({'cwd': str(root), 'tool_input': {
+            'subagent_type': 'builder', 'description': name, 'prompt': 'WUWEI brief: ' + relative}})
+        assert (code, 'CAP 3' in reason) == ((1, True) if name == 'four' else (0, False)), reason

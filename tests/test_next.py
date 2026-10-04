@@ -106,7 +106,7 @@ def test_decision_row(root, capsys):
 
 
 @pytest.mark.parametrize('phase,fields,expected,command', [
-    ('planned', {}, 'dispatch', 'wuwei worktree add ITEM-1'),
+    ('planned', {}, 'dispatch', 'wuwei dispatch next --all'),
     ('implement', {}, 'build', 'wuwei build next ITEM-1'),
     ('fix', {}, 'build', 'wuwei build next ITEM-1'),
     ('gate', {}, 'verdicts', 'wuwei dispatch next ITEM-1'),
@@ -118,7 +118,8 @@ def test_item_rows(root, capsys, phase, fields, expected, command):
     found = row(capsys)[1]
     assert (found['state'], found['command']) == (expected, command)
     if expected == 'dispatch':
-        assert 'brief builder' in found['step'] and 'build next' in found['step']
+        assert '1 planned item(s) can start, 0 of CAP 1 building' in found['step']
+        assert 'one turn' in found['step']
 
 
 def seated(root):
@@ -134,7 +135,7 @@ def test_cap_waits_on_running_seat(root, capsys):
     approved(root, {'ITEM-1': ('implement', {}), 'ITEM-2': ('planned', {})}, cap=2)
     seated(root)
     found = row(capsys)[1]
-    assert (found['state'], found['command']) == ('dispatch', 'wuwei worktree add ITEM-2')
+    assert (found['state'], found['command']) == ('dispatch', 'wuwei dispatch next --all')
 
 
 def test_first_approved_item_wins_and_missing_is_skipped(root, capsys):
@@ -350,3 +351,24 @@ def test_item_row_shows_the_ticket(root, capsys):
     approved(root, {'ITEM-1': ('implement', {})}, tickets={'ITEM-1': {'id': 'ENG-1', 'source': 'set'}})
     found = row(capsys)[1]
     assert 'ITEM-1 (ENG-1)' in found['step'] and found['command'] == 'wuwei build next ITEM-1'
+
+
+def test_seats_at_cap_name_the_waiting_item_and_the_first_seat(root, capsys):
+    items = {'ITEM-1': ('implement', {}), 'ITEM-2': ('implement', {}), 'ITEM-3': ('planned', {}),
+             'ITEM-4': ('planned', {})}
+    approved(root, items, cap=3)
+    found = row(capsys)[1]
+    assert found['state'] == 'build'
+    day(root, seats={name: {'status': 'running', 'role': 'builder', 'item': item, 'started_at': at}
+                     for name, item, at in (('b-1', 'ITEM-1', '2026-09-29T11:00:00+00:00'),
+                                            ('b-2', 'ITEM-2', '2026-09-29T10:00:00+00:00'))})
+    found = row(capsys)[1]
+    assert (found['state'], found['command']) == ('dispatch', 'wuwei dispatch next --all')
+    assert '1 planned item(s) can start, 2 of CAP 3 building' in found['step']
+    approved(root, items, cap=2)
+    day(root, seats={name: {'status': 'running', 'role': 'builder', 'item': item, 'started_at': at}
+                     for name, item, at in (('b-1', 'ITEM-1', '2026-09-29T11:00:00+00:00'),
+                                            ('b-2', 'ITEM-2', '2026-09-29T10:00:00+00:00'))})
+    found = row(capsys)[1]
+    assert found['state'] == 'wait'
+    assert 'ITEM-3 waits: 2 of CAP 2 building; b-2 started first' in found['step']

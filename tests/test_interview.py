@@ -532,6 +532,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     ok = Result(0, [])
     host = SimpleNamespace(
         merged_prs=lambda *a, **k: ok, auth_status=lambda *a, **k: Result(0, {}),
+        free_memory=lambda *a, **k: Result(0, 8 * 1024**3),
         workspace_changes=lambda *a, **k: ok, workspace_commit=lambda *a, **k: ok,
         protection=lambda *a, **k: Result(0, {'required_checks': [{'name': 'test'}], 'approvals': 1,
                                               'allow_force_pushes': False, 'allow_deletions': False,
@@ -568,7 +569,8 @@ def test_config_promote_refuses_a_forged_interview(root, capsys, monkeypatch):
     (root / DAY).mkdir(parents=True)
     (root / DAY / 'interview.json').write_text('{"merge_deploys": "false"}')
     monkeypatch.setattr(registry, 'load', lambda kind, config: SimpleNamespace(
-        merged_prs=lambda *a, **k: registry.Result(0, [])))
+        merged_prs=lambda *a, **k: registry.Result(0, []),
+        free_memory=lambda *a, **k: registry.Result(0, 8 * 1024**3)))
     assert command.promote(SimpleNamespace(), confirm=lambda digest, **k: True) == 2
     assert 'interview.json' in capsys.readouterr().err
     assert (root / '.wuwei/config.toml').read_text() == raw
