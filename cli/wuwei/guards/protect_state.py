@@ -152,8 +152,9 @@ def _owner_relevant(text, script=False):
         and (re.search(_OWNER_VERB, stripped) or mentions(text, _OWNER_VERBS, script=script))))
 
 
-# #357, #354: records the planner may write from its own answered gate question.
-_GATE_EDITS = {('goals', 'edit'), ('voice', 'edit'), ('mcp', 'decide'), ('decide', '')}
+# #357, #354, #493: records the planner may write from its own answered gate question.
+_GATE_EDITS = {('goals', 'edit'), ('voice', 'edit'), ('mcp', 'decide'), ('decide', ''),
+               ('drafts', 'approve'), ('drafts', 'drop')}
 
 
 def _gate_edits(payload, root):
@@ -228,9 +229,13 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
                 if group in edits[0] and any(word == '--file' or word.startswith('--file=')
                                              for word in action):
                     continue
-                # Every D-n word must have been asked, so a --note D-1 cannot carry another record.
-                ids = [word for word in action if re.fullmatch(r'D-[1-9][0-9]*', word)]
-                if group in ('mcp', 'decide') and ids and set(ids) <= edits[0]:
+                # Every id word must have been asked, so a --note D-1 cannot carry another record.
+                ids = [word for word in action if re.fullmatch(r'D-[1-9][0-9]*|draft-[0-9a-f]{32}', word)]
+                if (group, verb) == ('drafts', 'approve'):
+                    # #493: approve needs the owner's Send answer; --file/--edit needs Send with an edit.
+                    edited = any(word in ('--file', '--edit') or word.startswith('--file=') for word in action)
+                    ids = [word + (':edit' if edited else ':send') for word in ids]
+                if group in ('mcp', 'decide', 'drafts') and ids and set(ids) <= edits[0]:
                     continue
                 return 1, f'{reason} Run it in a host terminal: {shlex.join(argv)}'
             return 1, reason

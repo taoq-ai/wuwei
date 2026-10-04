@@ -130,9 +130,12 @@ def _check(payload, policy):
         if re.search(r'(?:^|_)(?:dm|direct_message)(?:_|$)', tool, re.IGNORECASE):
             inputs = {**inputs, 'is_dm': True}
         result = policy(inputs, root, config, channels)
-        if result == (FINDINGS, outward.APPROVAL_REQUIRED):
-            return FINDINGS, (f'outward: channel {next(iter(channels))} needs owner approval; '
-                              'write it as a draft for the owner to send')
+        if result[0] == FINDINGS and result[1].startswith(outward.APPROVAL_REQUIRED):
+            from wuwei import drafts  # Only a held call pays for the queue (#346).
+            if drafts.spend(root, tool, next(iter(channels)), inputs):
+                return CLEAN, ''  # The owner approved this call once (#493).
+            return FINDINGS, drafts.hold(root, config, next(iter(channels)), 'tool', 'mcp',
+                                         inputs, result[1], tool=tool)
         return result
     except (OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError, re.error):
         return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'

@@ -145,7 +145,7 @@ def digest(root, config):
         text = 'Two-way decisions taken:\n' + '\n'.join(
             f'- {ident}: {option}' + path.format(ident) for ident, option in pending) + '\n'
         result = registry.load('chat', config).dm(text, root=root)
-        draft = (result.exit == 1 and result.reason.startswith('outward: deliver as a draft')
+        draft = (result.exit == 1 and result.reason.startswith('outward: draft ')
                  or result.reason == 'no adapter configured')
         if draft:
             path = workspace.day_dir(root) / 'decisions' / ('two-way-digest-' + workspace.now().strftime('%H%M%S') + '.md')

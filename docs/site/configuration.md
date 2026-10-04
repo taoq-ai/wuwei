@@ -387,6 +387,7 @@ Two starters ship in `templates/profiles/`, derived from WUWEI's own setup: `pyt
 | `outward.humanize` | `true` | Lint outward text for AI tells before it is drafted or sent; `false` turns the lint off. |
 | `outward.humanize_kinds` | `["dm", "tracker", "docs", "pr", "review"]` | Kinds the lint checks: DMs, tracker comments, docs pages, PR comments and PR bodies, and other chat posts such as review pings. |
 | `outward.humanize_strict` | `false` | `true` refuses a text with a tell; `false` warns and records `outward.ai_tells`. |
+| `outward.draft_ttl` | `3600` | Seconds an approved draft's tool call may repeat, once; at least 60. |
 | `outbound.work_channels` | `[]` | Internal channel IDs eligible for routine auto-send. |
 | `outbound.external_channels` | `[]` | Shared or client channels; these override work channels. |
 | `outbound.company_domains` | `[]` | Exact internal domain names. |

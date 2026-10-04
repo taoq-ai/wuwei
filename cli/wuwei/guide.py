@@ -15,7 +15,7 @@ START, END = '<!-- wuwei:guide:start -->', '<!-- wuwei:guide:end -->'
 # tests/test_guide.py pins this to every parser that defines --widget.
 WIDGETS = ('decision show D-n --widget', 'mcp check --widget', 'doctor --fix --widget',
            'close --widget', 'consolidate --widget', 'telemetry proposals --widget',
-           'plan gate', 'calibrate --questions')
+           'plan gate', 'calibrate --questions', 'drafts show <id> --widget')
 # Paths under .wuwei/; <date> is today.
 RECORDS = (
     ('`config.toml`', '`setup`, `config set`, `config add-repo` (owner)'),

@@ -231,7 +231,7 @@ def test_docs_page_queues_a_draft(day, monkeypatch, capsys):
     calls = notion_replay(monkeypatch)
     assert main(['docs', 'page', 'X']) == 0
     row, = drafts_of(day)
-    assert f'wuwei drafts approve {row["id"]}' in capsys.readouterr().out
+    assert f'bin/wuwei drafts show {row["id"]} --widget' in capsys.readouterr().out
     draft = row['inputs']['draft']
     assert draft['title'] == 'X: Add a dry-run flag' and draft['parent'] == SPACE and draft['ref'] == ''
     for text in ('Add a dry-run flag to sync', 'Goal: Releases are safer', 'Two failed syncs',

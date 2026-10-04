@@ -270,3 +270,78 @@ def test_strict_asked_decision_prints_host_terminal_command(tmp_path, monkeypatc
     asked_decision(tmp_path, monkeypatch, 'strict')
     assert edit(tmp_path, 'bin/wuwei decide D-3 B') == (
         1, f'{DECIDE} Run it in a host terminal: bin/wuwei decide D-3 B')
+
+
+APPROVE = ("Approving a draft is the owner's decision, outside agent tools: list drafts with "
+           'bin/wuwei drafts, and the owner runs bin/wuwei drafts approve <id> in a host terminal.')
+
+
+def asked_draft(tmp_path, monkeypatch, posture='guarded', answer='Send now (Recommended)'):
+    """The planner asked the owner a Draft card for a held tool call (#493)."""
+    from test_decision import draft_question
+    from test_drafts import held
+    from wuwei.guards.decision import record_gate
+    gated(tmp_path, monkeypatch, posture, topics=())
+    _, _, row = held(tmp_path)
+    assert record_gate(draft_question(tmp_path, row['id'], answer=answer)) == (0, '')
+    return row['id']
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded'])
+def test_planner_records_asked_draft(tmp_path, monkeypatch, posture):
+    from test_decision import pending_draft
+    draft_id = asked_draft(tmp_path, monkeypatch, posture)
+    for command in (f'bin/wuwei drafts approve {draft_id}', f'bin/wuwei drafts drop {draft_id}'):
+        assert edit(tmp_path, command) == (0, '')
+    other = f'bin/wuwei drafts approve {pending_draft(tmp_path)}'
+    assert edit(tmp_path, other) == (1, f'{APPROVE} Run it in a host terminal: {other}')
+    command = f'bin/wuwei drafts approve {draft_id}'
+    assert edit(tmp_path, command, agent_id='a1') == (1, APPROVE)
+    assert check_bash({'cwd': str(tmp_path), 'session_id': 'other',
+                       'tool_input': {'command': command}}) == (1, APPROVE)
+
+
+@pytest.mark.parametrize('answer', ['Keep as draft', 'Drop', 'Send with an edit', None])
+def test_draft_approve_needs_the_owner_send_answer(tmp_path, monkeypatch, answer):
+    """A card the owner did not answer Send now, or an edit, never lets the planner approve
+    the drafted text; --file needs the Send with an edit answer (#493)."""
+    draft_id = asked_draft(tmp_path, monkeypatch, answer=answer)
+    plain, edited = f'bin/wuwei drafts approve {draft_id}', f'bin/wuwei drafts approve {draft_id} --file reply.txt'
+    assert edit(tmp_path, plain) == (1, f'{APPROVE} Run it in a host terminal: {plain}')
+    assert edit(tmp_path, edited) == ((0, '') if answer == 'Send with an edit' else
+                                      (1, f'{APPROVE} Run it in a host terminal: {edited}'))
+    assert edit(tmp_path, f'bin/wuwei drafts drop {draft_id}') == (0, '')
+
+
+def test_edited_approve_sends_only_the_owner_typed_text(tmp_path, monkeypatch):
+    """--file outside strict skips the host prompt only for the text the owner typed into a
+    Draft card citing the id (#493)."""
+    from test_decision import draft_question
+    from wuwei import drafts
+    from wuwei.guards.decision import record_gate
+
+    def no_terminal(*args, **kwargs):
+        raise OSError('this is an owner action: run it in a host terminal')
+    monkeypatch.setattr(integrity, '_host_confirm', no_terminal)
+    draft_id = asked_draft(tmp_path, monkeypatch, answer='Send with an edit')
+    config = tmp_path / '.wuwei/config.toml'
+    config.write_text('[owner]\nname = "Pat Example"\n' + config.read_text())
+    reply = tmp_path / 'reply.txt'
+    reply.write_text('Happy to help on Friday')
+    result = drafts.approve(tmp_path, draft_id, source=reply)
+    assert result.exit == 2 and 'owner action' in result.reason
+    assert state.read_state(tmp_path)['drafts'][draft_id]['status'] == 'pending'
+    assert record_gate(draft_question(tmp_path, draft_id, answer='Thanks, see you then')) == (0, '')
+    reply.write_text('Thanks, see you then\n')
+    assert drafts.approve(tmp_path, draft_id, source=reply).exit == 0
+    stored = state.read_state(tmp_path)['drafts'][draft_id]
+    assert stored['status'] == 'approved' and stored['final_text'] == 'Thanks, see you then'
+
+
+def test_strict_asked_draft_prints_host_terminal_command(tmp_path, monkeypatch):
+    from test_drafts import held
+    draft_id = asked_draft(tmp_path, monkeypatch, 'strict')
+    command = f'bin/wuwei drafts approve {draft_id}'
+    assert edit(tmp_path, command) == (1, f'{APPROVE} Run it in a host terminal: {command}')
+    code, reason, row = held(tmp_path)
+    assert code == 1 and row['id'] == draft_id

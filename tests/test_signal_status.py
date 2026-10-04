@@ -311,11 +311,12 @@ def test_emitted_kinds_have_intended_tiers():
     emitted = emitted_kinds(sorted((ROOT / 'cli/wuwei').rglob('*.py')))
     emitted.update(['retro.gap', 'retro.captured', 'security.canary', 'security.honeytoken'])
     emitted.update(['draft.sent', 'draft.failed'])  # dynamic final outcome
+    emitted.update(['draft.sending', 'draft.approved'])  # drafts.approve picks its writer kind
     emitted.add('state.write')  # default writer kind
     emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
     emitted.update(['remote.started', 'remote.resumed'])  # one conditional writer kind
     emitted.update(['spec.step', 'spec.skipped', 'spec.warned'])  # specmode.once(kind)
-    expected = {'draft.created': 'nudge', 'draft.sending': 'silent',
+    expected = {'draft.created': 'nudge', 'draft.sending': 'silent', 'draft.approved': 'silent',
                 'worktree.hooks_skipped': 'nudge',
                 'draft.sent': 'silent', 'draft.dropped': 'silent', 'draft.failed': 'nudge',
                 'mcp.finding': 'nudge', 'mcp.checked': 'nudge', 'mcp.decided': 'silent',

@@ -185,6 +185,7 @@ SCHEMA = {
         "humanize_kinds": [(str, None, ("dm", "tracker", "docs", "pr", "review")),
                            ["dm", "tracker", "docs", "pr", "review"]],
         "humanize_strict": (bool, False),
+        "draft_ttl": (int, 3600, 60),
         "tool_patterns": [{"pattern": (str, None), "channel": (str, None)}, [
             {"pattern": r"mcp__.*slack.*__.*(send|post|reply|schedule|update|add_message|add_reaction|react|chat_post|delete|edit|upload|invite|kick|archive|pin|star).*", "channel": "slack"},
             {"pattern": r"mcp__.*linear.*__(save|create|update)_(issue|comment)", "channel": "tracker"},
@@ -538,7 +539,7 @@ _CONFIGS = {}
 # copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
-CONFIG_CACHE_VERSION = 6  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 7  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor, why and the board stay read-only.

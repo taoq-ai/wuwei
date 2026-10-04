@@ -196,7 +196,7 @@ def _outcome(root, result, draft, adapter):
     if result.exit == 0:
         record(root, draft, adapter, result.data['link'])
         return 0, f"docs: wrote {draft['kind']} page {result.data['link']}"
-    if result.exit == 1 and 'stored draft' in result.reason:
+    if result.exit == 1 and result.reason.startswith('outward: draft '):
         return 0, result.reason
     return result.exit, result.reason
 

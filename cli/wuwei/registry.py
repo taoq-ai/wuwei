@@ -184,12 +184,10 @@ def outward_operation(kind):
                 root = workspace.find_workspace(start)
                 config = workspace.load_config(root)
                 code, reason = outward.check_call(inputs, root, config, {kind}, port=True)
-                if code == 1 and reason == outward.APPROVAL_REQUIRED:
+                if code == 1 and reason.startswith(outward.APPROVAL_REQUIRED):
                     from wuwei import drafts
-                    draft_id = drafts.create(root, config, kind, operation.__name__,
-                                             operation.__module__.rsplit('.', 1)[-1],
-                                             inputs, reason)
-                    reason += f'; stored draft {draft_id}; wuwei drafts approve {draft_id}'
+                    reason = drafts.hold(root, config, kind, operation.__name__,
+                                         operation.__module__.rsplit('.', 1)[-1], inputs, reason)
                 if code:
                     return Result(code, inputs.get('text') if kind == 'chat' and code == 1
                                   and not reason.startswith('outward: security.') else None, reason)

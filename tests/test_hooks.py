@@ -1396,3 +1396,25 @@ def test_posture_levels_unparsed_and_workspace_root_by_reason(plugin, name):
                        'kept\nposture: records = block (floor; no setting lowers it)')
     finally:
         forget_guards()
+
+
+@pytest.mark.parametrize('channel,held', [('C1', False), ('C9', True)])
+def test_only_a_held_call_imports_the_draft_queue(tmp_path, channel, held):
+    # #493, #346: a call classify sends imports neither the draft queue nor hashlib.
+    from fakes.integrity import seed
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text(
+        '[owner]\nname = "Pat Example"\npronouns = "they/them"\n[outbound]\nwork_channels = ["C1"]\n')
+    seed(tmp_path)
+    env = {k: v for k, v in os.environ.items() if not k.startswith(('WUWEI_', 'GIT_'))}
+    env['WUWEI_WORKSPACE'] = str(tmp_path)
+    payload = {**json.loads((ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()), 'cwd': str(tmp_path),
+               'tool_name': 'mcp__slack__post_message', 'tool_input': {'channel': channel, 'text': 'Thanks'}}
+    out = tmp_path / 'modules.json'
+    result = subprocess.run([sys.executable, '-I', '-P', '-c', LAUNCHER_MODULES, str(ROOT / 'cli'), str(ROOT),
+                             str(out), 'hook', 'PreToolUse'],
+                            input=json.dumps(payload), text=True, capture_output=True, cwd=tmp_path, env=env)
+    assert result.returncode == (2 if held else 0), result.stderr
+    modules = set(json.loads(out.read_text()))
+    assert ('wuwei.drafts' in modules) is held
+    assert held or 'hashlib' not in modules

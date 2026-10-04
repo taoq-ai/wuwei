@@ -127,7 +127,7 @@ def test_send_or_draft(configured, text, code):
     result = check(payload(configured[0], text))
     assert result[0] == code
     if code:
-        assert 'a draft for the owner to send' in result[1]
+        assert result[1].startswith('outward: draft ') and 'bin/wuwei drafts show ' in result[1]
 
 
 def test_no_local_approval_producer():
@@ -154,7 +154,7 @@ def test_local_approval_cannot_authorize_send(configured):
         'question_id': f'Approve draft draft-1 digest {digest}?'}}}))
     result = registry.load('chat', config).dm(**inputs, root=root)
     assert result.exit == 1
-    assert 'deliver as a draft for the owner to send' in result.reason
+    assert result.reason.startswith('outward: draft ')
 
 
 @pytest.mark.parametrize('text,code,decision', [
@@ -552,7 +552,7 @@ def test_shepherd_seat_drafts_what_would_send(configured, monkeypatch):
         return registry.Result(0)
 
     result = post('C1', 'fixed in abc1234', root=root)
-    assert result.exit == 1 and 'stored draft' in result.reason
+    assert result.exit == 1 and result.reason.startswith('outward: draft ')
     assert not calls
 
 
@@ -856,7 +856,7 @@ def test_recorded_server_tools(configured, tool, outcome):
     if outcome == 'read':
         assert tier == lint == (0, '')
     elif outcome == 'draft':
-        assert tier[0] == 1 and 'needs owner approval' in tier[1]
+        assert tier[0] == 1 and tier[1].startswith('outward: draft ')
     else:
         assert tier[0] == lint[0] == 2
         assert 'config set outward.tool_patterns' in tier[1] and tool in tier[1]
@@ -907,8 +907,8 @@ def test_why_shows_channel_and_draft(configured, monkeypatch, capsys):
     capsys.readouterr()
     assert main(['why', 'last', 'refusal']) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert any('channel slack' in line for line in lines)
-    assert any('a draft for the owner to send' in line for line in lines)
+    assert any(line.startswith('rule: outward: draft draft-') for line in lines)
+    assert any(line.startswith('fix: the owner decides: bin/wuwei drafts show draft-') for line in lines)
 
 
 def unknown_events(root):
@@ -963,4 +963,97 @@ def test_probe_tools(configured, monkeypatch, capsys, posture, name):
         assert code == (2 if posture == 'strict' else 0)
         assert posture != 'strict' or 'config set outward.tool_patterns' in err and tool in err
     else:
-        assert code == 2 and 'a draft for the owner to send' in err and 'channel slack' in err
+        assert code == 2 and 'outward: draft draft-' in err
+
+
+
+# #493: a held draft names the rule that forced it.
+RULES = [
+    ('Thanks', {'channel': 'C9'}, {}, 'unknown destination C9: not in outbound.work_channels'),
+    ('Thanks @dev', {'channel': 'C1'}, {},
+     'unknown mention @dev: not an internal person in outbound.people'),
+    ('I will ship it tomorrow', {'channel': 'C1'}, {},
+     'approval tier commitment for C1: outbound.commitment_patterns'),
+    ('Thanks', {'channel': 'C1'}, {'WUWEI_SEAT_ROLE': 'shepherd'},
+     'headless seat: a headless shepherd seat posts drafts only'),
+    ('Can you review my PR?', {'channel': 'C1'}, {},
+     'review ping without a code-host link: the review request form with the PR link goes '
+     'to shepherd.review_channel'),
+    ('Thanks', {'channel': 'C1', 'is_dm': True}, {},
+     'approval tier direct message for C1: every direct message drafts'),
+    ('Thanks', {'channel': 'C1', 'thread_ts': '1.2'}, {},
+     'approval tier thread for C1: chat threads draft until their participants are known'),
+]
+
+
+@pytest.mark.parametrize('text,context,env,rule', RULES)
+def test_classify_names_the_rule(configured, monkeypatch, text, context, env, rule):
+    from wuwei import outward
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    why = []
+    assert outward.classify(text, *configured, {'text': text, **context}, kind='slack', why=why) == (1, 'draft')
+    assert why == [rule] and '; ' not in why[0]
+
+
+def test_classify_send_names_no_rule(configured):
+    from wuwei import outward
+    why = []
+    assert outward.classify('fixed in abc1234', *configured, {'channel': 'C1'}, kind='slack', why=why) == (0, 'send')
+    assert why == []
+
+
+def test_check_tier_appends_the_rule(configured):
+    from wuwei import outward
+    root, config = configured
+    inputs = {'text': 'Thanks', 'channel': 'C9'}
+    expected = (1, outward.APPROVAL_REQUIRED + ': unknown destination C9: not in outbound.work_channels')
+    assert outward.check_tier(inputs, root, config, {'slack'}) == expected
+    assert outward.check_call(inputs, root, config, {'slack'}) == expected
+
+
+HELD = r'^outward: draft (draft-[0-9a-f]{32}): ([^;]*); the owner decides: bin/wuwei drafts show \1 --widget$'
+
+
+def test_guard_stores_and_names_the_draft(configured, monkeypatch):
+    import re
+    from wuwei import state
+    from wuwei.guards.outward import check_tier
+    root = configured[0]
+    seen = {}
+    for text, context, env, rule in RULES[:5]:
+        with monkeypatch.context() as patch:
+            for key, value in env.items():
+                patch.setenv(key, value)
+            code, reason = check_tier(payload(root, text, **context))
+        match = re.fullmatch(HELD, reason)
+        assert code == 1 and match and match[2] == rule, reason
+        seen[match[1]] = rule
+    assert len(seen) == 5
+    rows = state.read_state(root)['drafts']
+    for draft_id, rule in seen.items():
+        row = rows[draft_id]
+        assert (row['status'], row['operation'], row['adapter'], row['tool'], row['channel']) == (
+            'pending', 'tool', 'mcp', 'mcp__slack__post_message', 'slack')
+        assert row['tier_reason'].endswith(rule)
+    assert rows[next(iter(seen))]['destination'] == 'C9'
+    again = check_tier(payload(root, RULES[0][0], **RULES[0][1]))
+    assert re.fullmatch(HELD, again[1])[1] == next(iter(seen))
+    assert len(state.read_state(root)['drafts']) == 5
+
+
+def test_hook_refusal_names_draft_and_why_reads_it(configured, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    root = configured[0]
+    monkeypatch.chdir(root)
+    assert run_hook(monkeypatch, payload(root, 'Thanks', channel='C9')) == 2
+    lines = capsys.readouterr().err.splitlines()
+    draft_id = lines[0].split()[2].rstrip(':')
+    assert lines[:2] == [
+        f'outward: draft {draft_id}: unknown destination C9: not in outbound.work_channels; '
+        f'the owner decides: bin/wuwei drafts show {draft_id} --widget',
+        'posture: outward = block (owner-only action; no setting lowers it)']
+    assert main(['why', 'last', 'refusal']) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert f'rule: outward: draft {draft_id}: unknown destination C9: not in outbound.work_channels' in out
+    assert f'fix: the owner decides: bin/wuwei drafts show {draft_id} --widget' in out
