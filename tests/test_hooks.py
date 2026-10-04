@@ -1347,6 +1347,24 @@ GUARDS = [Guard('PreToolUse', None, lambda payload: ({code}, {reason}))]
 '''
 
 
+def test_unknown_git_reason_levels_only_from_deploy(plugin):
+    # #470: another guard's text starting with UNKNOWN_GIT keeps its own area level.
+    payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
+    set_posture(plugin, '[security]\nposture = "guarded"\n')
+    try:
+        forget_guards()
+        install(plugin, '''
+from wuwei.guards import Guard
+from wuwei.shell import UNKNOWN_GIT
+GUARDS = [Guard('PreToolUse', None, lambda payload: (2, UNKNOWN_GIT + 'x; run y'))]
+''', 'protect_state')
+        assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse',
+                       'unknown git subcommand x; run y\n'
+                       'posture: records = block (floor; no setting lowers it)')
+    finally:
+        forget_guards()
+
+
 @pytest.mark.parametrize('name', ['observe', 'guarded', 'strict'])
 def test_posture_levels_unparsed_and_workspace_root_by_reason(plugin, name):
     # #347: the two reasons are levelled by their text, not by the guard's area or floor.

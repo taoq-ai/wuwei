@@ -82,6 +82,8 @@ def test_five_shapes(workspace, posture, name, command, monkeypatch, capsys):
     'G=git; $G push origin main',
     'cat <(gh pr merge 17)',
     'diff <(git push origin main) x',
+    'for f in a b; do git push origin $f; done',
+    'for f in a b; do git commit -m $f; done',
 ])
 def test_publish_forms_still_refuse(workspace, posture, command, monkeypatch, capsys):
     configure(workspace, posture)
@@ -102,6 +104,7 @@ def test_publish_forms_still_refuse(workspace, posture, command, monkeypatch, ca
     'cd .wuwei && for i in 1; do sed -i s/a/b/ config.toml; done',
     'cd .wuwei && for i in 1; do echo x > config.toml; done',
     'cd .wuwei && for i in 1; do echo x > voice.md; done',
+    f"for i in 1; do echo 'echo x > {STATE}'; done | sh",
 ])
 def test_state_writes_still_refuse(workspace, posture, command, monkeypatch, capsys):
     configure(workspace, posture)
@@ -110,12 +113,98 @@ def test_state_writes_still_refuse(workspace, posture, command, monkeypatch, cap
 
 
 @pytest.mark.parametrize('posture', POSTURES)
-def test_heartbeat_read_loop_exits_zero(workspace, posture, monkeypatch, capsys):
+@pytest.mark.parametrize('probe', ['READ_LOOP', 'GIT_READ'])
+def test_heartbeat_read_loop_exits_zero(workspace, posture, probe, monkeypatch, capsys):
+    from wuwei import heartbeat
     from wuwei.commands.hook import HEARTBEAT_SESSION
-    from wuwei.heartbeat import READ_LOOP
     configure(workspace, posture)
-    assert hook(workspace / '.wuwei', READ_LOOP, monkeypatch, capsys,
+    assert hook(workspace / '.wuwei', getattr(heartbeat, probe), monkeypatch, capsys,
                 session=HEARTBEAT_SESSION) == (0, {}, '')
+
+
+DAY = STATE.split('/')[2]
+OWNER_LOOP = (f'cd .wuwei; for f in days/{DAY}/decisions/D-*.md; do echo "### $f"; cat $f; done; '
+              f'cat days/{DAY}/state.json')
+
+
+@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('command', [
+    "git -C ../widget grep -n -E 'foo|bar' origin/main -- a.py b.py",
+    'git -C ../widget blame -L 1,5 a.py',
+    *(f'git -C ../widget {verb}' for verb in ('log', 'show HEAD', 'diff', 'ls-files',
+                                               'rev-parse HEAD', 'fetch origin main')),
+    OWNER_LOOP,
+    f"cd .wuwei; cat days/{DAY}/lead.json; echo; echo '====='; cat config.toml; ls days/{DAY}",
+])
+def test_issue_470_owner_rows(workspace, posture, command, monkeypatch, capsys):
+    configure(workspace, posture)
+    code, out, _ = hook(workspace, command, monkeypatch, capsys)
+    warned = [event['payload']['reason'] for event in events(workspace, 'guard.would_refuse')]
+    assert code == 0, out
+    if command == OWNER_LOOP:
+        assert len(warned) == 1 and warned[0].startswith('workspace guard'), warned
+    else:
+        assert warned == []
+
+
+@pytest.mark.parametrize('posture', POSTURES)
+def test_issue_470_unknown_git(workspace, posture, monkeypatch, capsys):
+    configure(workspace, posture)
+    code, out, _ = hook(workspace, 'git -C ../widget frobnicate', monkeypatch, capsys)
+    warned = [event['payload'] for event in events(workspace, 'guard.would_refuse')]
+    prefix = 'unknown git subcommand frobnicate; if it publishes'
+    if posture == 'strict':
+        assert code == 2 and warned == []
+        assert out['permissionDecisionReason'].startswith(prefix), out
+    else:
+        assert code == 0, out
+        assert len(warned) == 1 and warned[0]['guard'] == 'deploy', warned
+        assert warned[0]['reason'].startswith(prefix)
+
+
+@pytest.mark.parametrize('posture', POSTURES)
+def test_issue_470_commit_substitution(workspace, posture, monkeypatch, capsys):
+    configure(workspace, posture)
+    code, out, _ = hook(workspace, 'x=$(git commit -m y)', monkeypatch, capsys)
+    warned = [event['payload']['guard'] for event in events(workspace, 'guard.would_refuse')]
+    if posture == 'observe':
+        assert (code, warned) == (0, ['commit_push']), out
+    else:
+        assert code == 2, out
+
+
+@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('command', [
+    'git -C ../widget grep -O\'sh -c "git push origin main"\' a',
+    "git -C ../widget grep --open-files-in-pager='gh pr merge 1' a",
+    "git -C ../widget fetch --upload-pack='gh pr merge 1' origin",
+    "git -C ../widget grep --open='gh pr merge 1' a",
+    "git -C ../widget fetch --upload='gh pr merge 1' origin",
+    'git -C ../widget ls-remote -u \'sh -c "gh pr merge 1"\' origin',
+    'R=widget; git -C $R push origin main',
+    'R=widget; git -C $R push origin main; gh run list -R o/r',
+])
+def test_issue_470_run_options_and_variable_push_refuse(workspace, posture, command, monkeypatch, capsys):
+    configure(workspace, posture)
+    code, out, _ = hook(workspace, command, monkeypatch, capsys)
+    assert code == 2, out
+
+
+SIXTH = ("gh run list -R o/r --workflow ci.yml --limit 6 --json status | python3 -c 'import sys; "
+         "print(sys.stdin.read())'; R=widget; git -C $R log --oneline HEAD..origin/main | head -20")
+
+
+@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('command', [
+    SIXTH,
+    'R=widget; git -C $R log --oneline; gh run list -R o/r',
+])
+def test_issue_470_sixth_row(workspace, posture, command, monkeypatch, capsys):
+    configure(workspace, posture)
+    code, out, _ = hook(workspace, command, monkeypatch, capsys)
+    if posture != 'strict' or command != SIXTH:  # strict blocks the unparsed python -c read
+        assert code == 0, out
+    assert 'nonliteral guarded' not in json.dumps(out)
 
 
 def test_decision_lint_warns_inline_snippet(workspace, monkeypatch, capsys):

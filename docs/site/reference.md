@@ -181,7 +181,8 @@ A clock line proves the watch runs, not that the system behaves. On every watch 
 | `config` | `config.toml` loads and every selected adapter has its credential variables (the offline part of `config check`) | the missing names |
 | `clocks` | the watch and listener clocks are alive or off | the dead or unmeasured message |
 | `status_line` | `status --line` exits 0 within 200 ms wall | milliseconds |
-| `read_loop` | `hook PreToolUse` with Bash `for r in a b; do cat .wuwei/$r/report.json; done` exits 0 | `exit N`, plus the first stderr line when not ok |
+| `read_loop` | `hook PreToolUse` with Bash `for r in a b; do echo "### $r"; cat .wuwei/$r/report.json; done` exits 0 | `exit N`, plus the first stderr line when not ok |
+| `git_read` | `hook PreToolUse` with Bash `git grep -n probe` exits 0 | `exit N`, plus the first stderr line when not ok |
 | `planner` | today has no planner, or the planner session is registered and not stale | idle seconds |
 | `memory` | free memory is at or above `host.free_memory_mb` (unmeasured with `adapters.host = "none"`) | MiB free |
 | `seats` | no seat handed back without a stop, and none was stopped unmeasured by the hook ([Stuck seats](#stuck-seats)) | `none stuck`, or `dead: <names>` with the `bin/wuwei seat stop` command |

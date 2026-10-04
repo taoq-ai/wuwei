@@ -202,7 +202,7 @@ def test_bash_scan(ws, command):
 
 @pytest.mark.parametrize('command', ['python -c "print(1)" # D-3',
     'xargs tee decisions/D-3.md', 'node --eval="1" # D-3', 'perl -e "1" # D-3', 'cat > "D-3',
-    'for x in D-3; do echo x; done'])
+    'for x in D-3; do touch x; done'])
 def test_relevant_opaque_or_unparseable_bash(ws, command):
     from wuwei.guards.decision import check_write
     save(ws)

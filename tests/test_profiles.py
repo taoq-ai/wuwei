@@ -191,7 +191,7 @@ def test_direct_port_preserves_profile_and_tiers(configured, monkeypatch, capsys
     ('terraform apply', 'terraform'),
     ('command gh release create v1', 'release'),
     ('bash -c "kubectl apply -f deployment.yml"', 'kubectl'),
-    ('echo "gh pr merge 17"', 'plain command'),
+    ('printf "gh pr merge 17"', 'plain command'),  # #470: echo is a read word
 ])
 @pytest.mark.parametrize('profile', ['strict', 'standard'])
 def test_hard_guards_under_each_profile(configured, monkeypatch, capsys, command, reason, profile):

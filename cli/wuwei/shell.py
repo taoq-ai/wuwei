@@ -484,7 +484,7 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
         if program not in ('env', 'command', 'exec', 'nohup', 'time', 'xargs',
                            'nice', 'timeout', 'sudo', 'stdbuf', 'setsid'):
             if program in protected:
-                if not all(_literal(raw) for raw in raw_argv):
+                if not all(_literal(raw) for raw in raw_argv) and not _variable_read(argv, raw_argv, words):
                     raise ParseError('nonliteral guarded arguments are unsupported; write the literal arguments')
                 return [Command(argv, subshell, env, scope=scope)]
             _reject_mentions(' '.join(raw_argv))
@@ -600,13 +600,40 @@ WORKSPACE_ROOT = ('workspace guard: a top-level cd, pushd or popd may leave the 
 UNPARSED = ('unparsed: write the commands to a file with the Write tool and run bash <file>; '
             'a plain git or gh command stays plain')
 READ_ONLY = frozenset({'ls', 'cat', 'less', 'grep', 'head', 'tail', 'sed', 'wc', 'jq', 'diff',
-                       'find', 'cd', 'pushd', 'popd'})
+                       'find', 'cd', 'pushd', 'popd', 'echo'})
 PUBLISHERS = ('gh', 'glab', 'hub')
-# git verbs that only read; any other verb, an alias included, cannot be pinned (spec A3).
-_GIT_READS = frozenset({'status', 'diff', 'log', 'show', 'rev-parse', 'ls-files', 'ls-remote',
-                        'remote', 'symbolic-ref', 'describe', 'show-ref', 'blame', 'grep',
-                        'cat-file', 'rev-list', 'for-each-ref', 'shortlog', 'fetch', 'help',
-                        'version'})
+# #470: git subcommands by outcome (data; tests/test_shell.py pins them). The deploy guard
+# passes reads and writes; the classifier publishes anything not a read; any other
+# subcommand, an alias included, is unknown (spec A3).
+# ponytail: reflog and symbolic-ref with extra operands edit local refs; a local ref is not
+# a publish, and the pre-push hook and protected refs anchor pushes (spec 4.5).
+_GIT_READS = frozenset({
+    'status', 'diff', 'log', 'show', 'rev-parse', 'ls-files', 'ls-remote', 'symbolic-ref',
+    'describe', 'show-ref', 'blame', 'annotate', 'grep', 'cat-file', 'ls-tree', 'rev-list',
+    'for-each-ref', 'shortlog', 'name-rev', 'reflog', 'merge-base', 'range-diff',
+    'merge-tree', 'check-ignore', 'count-objects', 'var', 'whatchanged', 'cherry', 'fetch',
+    'help', 'version'})
+# Read only when the first word after the subcommand ('' when bare) and every flag are among
+# these words; any other form writes.
+_GIT_READ_FORMS = {
+    'branch': ('', '--list', '-l', '-a', '--all', '-r', '--remotes', '-v', '-vv',
+               '--show-current'),
+    'tag': ('', '--list', '-l'),
+    'remote': ('', '-v', '--verbose', 'show', 'get-url'),
+    'stash': ('list', 'show'),
+    'worktree': ('list',),
+    'config': ('--get', '--get-all', '--get-regexp', '--list', '-l'),
+    'bisect': ('log',)}
+_GIT_WRITES = frozenset({
+    *_GIT_READ_FORMS, 'push', 'commit', 'merge', 'rebase', 'reset', 'checkout', 'switch',
+    'filter-branch', 'update-ref', 'am', 'cherry-pick', 'revert', 'notes', 'submodule', 'gc',
+    'prune', 'clean', 'rm', 'mv', 'apply', 'add', 'restore', 'init'})
+# Options that make a read run a program.
+_GIT_RUNS = ('-O', '--open-files-in-pager', '--upload-pack')
+# gh subcommands (second word) that only read.
+_GH_READS = ('list', 'view', 'status', 'checks', 'diff')
+# The deploy guard's reason for an unknown subcommand starts with this; the hook levels it.
+UNKNOWN_GIT = 'unknown git subcommand '
 _GIT_PUBLISH = ('push', 'commit', 'tag', 'merge', 'rebase', 'reset', 'checkout', 'switch', 'branch')
 _KEYWORDS = frozenset({'if', 'then', 'else', 'elif', 'fi', 'do', 'done', 'while', 'until', '!',
                        '{', '}', 'esac'})
@@ -779,16 +806,51 @@ def _strip(argv):
     return assignments, argv, pinned
 
 
-def _git_publishes(args):
-    args = iter(args)
+def _variable_read(argv, raw_argv, words):
+    """#470: a read-only git or gh subcommand whose only nonliteral words are plain variables
+    assigned in this command to single safe words, so no expansion splits into a verb or option."""
+    for raw in raw_argv:
+        if _literal(raw):
+            continue
+        name = re.fullmatch(r'"?\$\{?([A-Za-z_]\w*)\}?"?', raw)
+        values = [word.split('=', 1)[1] for word in words if name and word.startswith(name[1] + '=')]
+        if not values or not all(re.fullmatch(r'\w[\w./:@+-]*', value) for value in values):
+            return False
+    if PurePosixPath(argv[0]).name == 'git':
+        return git_kind(argv[1:]) == 'read'
+    return len(argv) > 2 and '$' not in argv[1] + argv[2] and argv[2] in _GH_READS
+
+
+def git_runs(verb, args):
+    """#470: True when an option makes git run a program; git accepts any unambiguous
+    prefix of a long option, so --open= and --upload= count as well."""
     for arg in args:
-        if arg in ('-c', '--config-env') or arg.startswith(('-c', '--config-env=')):
-            return True  # a config value can define an alias or run a command
-        if arg in ('-C', '--git-dir', '--work-tree', '--namespace'):
-            next(args, None)
-        elif not arg.startswith('-'):
-            return '$' in arg or arg not in _GIT_READS
+        if arg.startswith('-O') or verb == 'ls-remote' and arg.startswith('-u'):
+            return True
+        name = arg.split('=', 1)[0]
+        if name.startswith('--') and len(name) >= 5 and any(opt.startswith(name) for opt in _GIT_RUNS[1:]):
+            return True
     return False
+
+
+def git_kind(args):
+    """#470: 'read', 'write' or 'unknown' for git's argv after the program name."""
+    args = list(args)
+    while args and args[0].startswith('-'):
+        if args[0].startswith(('-c', '--config-env')):
+            return 'unknown'  # a config value can define an alias or run a command
+        args = args[2:] if args[0] in ('-C', '--git-dir', '--work-tree', '--namespace') else args[1:]
+    if not args:
+        return 'read'
+    verb, rest = args[0], args[1:]
+    if '$' in verb or git_runs(verb, rest):
+        return 'unknown'
+    if verb in _GIT_READS:
+        return 'read'
+    forms = _GIT_READ_FORMS.get(verb, ())
+    if (rest[0] if rest else '') in forms and all(arg in forms for arg in rest if arg.startswith('-')):
+        return 'read'
+    return 'write' if verb in _GIT_WRITES else 'unknown'
 
 
 def _names_publisher(text, publishers=PUBLISHERS):
@@ -819,7 +881,7 @@ def reads(argv, cwd=None):
     if name == 'find':
         return not _FIND_ACTIONS.intersection(args)
     if re.fullmatch(r'(?:python|pypy)[\d.]*', name) and args[:2] == ['-m', 'json.tool']:
-        return len(args) == 3  # a second operand is json.tool's outfile
+        return len(args) < 4  # no operand reads stdin; a second operand is json.tool's outfile
     return name in READ_ONLY or bool(not any('$' in word for word in args)
                                      and known_cli(argv[0], cwd) and commands.read_only(args))
 
@@ -903,14 +965,14 @@ def _classify(command, publishers, cwd=None):
             elif fed == 'pipe' and all(arg.startswith('-') for arg in args):
                 publishes = True  # the code comes from input, never from this text
         elif name == 'git':
-            publishes |= _git_publishes(args)
+            publishes |= git_kind(args) != 'read'
         elif name in publishers:
             publishes = True
         if writes or not safe:
             readonly = False
             text = expand(' '.join([*argv, *writes]))
             publishes |= _names_publisher(text, publishers)
-            whole |= not literal or fed == 'heredoc'
+            whole |= not literal or fed in ('heredoc', 'pipe')  # #470: piped text may be run
             written.append(text)
     if readonly and not publishes and not inline:
         return Shape(False, True, False, False, '')
