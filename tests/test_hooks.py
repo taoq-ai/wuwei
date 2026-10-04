@@ -1422,7 +1422,7 @@ def test_only_a_held_call_imports_the_draft_queue(tmp_path, channel, held):
                              str(out), 'hook', 'PreToolUse'],
                             input=json.dumps(payload), text=True, capture_output=True, cwd=tmp_path, env=env)
     assert result.returncode == (2 if held or channel == 'C2' else 0), result.stderr
-    assert channel != 'C2' or 'outward: block by rule 3 ' in result.stderr
+    assert channel != 'C2' or 'outward: block by rule 1 ' in result.stderr  # the owner's row comes first
     modules = set(json.loads(out.read_text()))
     assert ('wuwei.drafts' in modules) is held
     assert held or 'hashlib' not in modules
