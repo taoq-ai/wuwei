@@ -52,6 +52,7 @@ wuwei is the absolute path in .wuwei/executable: read it once and use it as the 
 - integrity: Check signed plugin integrity
 - runtime: Dispatch and inspect runtime jobs
 - sessions: List registered sessions, roles and claims
+- seat: Recover a stuck seat
 Read-only, never refused: board, calibrate --questions, config check, doctor, guide, heartbeat, integrity check, mcp check, memory show, memory status, plan gate, sessions, shadow report, status, why, and --help on any command.
 
 ## Owner only: ask the owner to run these in a host terminal
