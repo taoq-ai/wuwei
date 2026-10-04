@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.17.0](https://github.com/taoq-ai/wuwei/compare/v0.16.1...v0.17.0) (2026-10-04)
+
+
+### Features
+
+* **outward:** outward control is one owner-configured tier table (send, ask, block) matched by tool, person, channel, audience class and topic, with audience classes on people and channels learned on the card and client-facing defaults ([#512](https://github.com/taoq-ai/wuwei/issues/512)) ([7347b4d](https://github.com/taoq-ai/wuwei/commit/7347b4dfa3995af750e01b2e9a2ca759a7eaed82)), closes [#496](https://github.com/taoq-ai/wuwei/issues/496)
+
+
+### Bug Fixes
+
+* **outward:** a message to the owner's own DM or user id is never a draft: the owner's identity per channel is learned on the first card and the send passes under every posture ([#503](https://github.com/taoq-ai/wuwei/issues/503)) ([e6c65d6](https://github.com/taoq-ai/wuwei/commit/e6c65d695d92fe011baa05e63d6fcd22d97f59c9)), closes [#495](https://github.com/taoq-ai/wuwei/issues/495)
+* **outward:** no default tier row blocks: public and client commitment or disagreement rows ask, and only an owner row refuses ([#515](https://github.com/taoq-ai/wuwei/issues/515)) ([0dc24be](https://github.com/taoq-ai/wuwei/commit/0dc24be86051ee705be314c05b5ec88a50e97446)), closes [#496](https://github.com/taoq-ai/wuwei/issues/496)
+* **outward:** the outward lint reads text and destinations from any connector payload shape (nested rich text, Jira comment, Notion children, GitHub body) instead of failing closed on unknown fields ([#505](https://github.com/taoq-ai/wuwei/issues/505)) ([07fd33c](https://github.com/taoq-ai/wuwei/commit/07fd33ce247ea4955e732753ac16e57dbc000b6d)), closes [#501](https://github.com/taoq-ai/wuwei/issues/501)
+* **publish:** an owner-only action asks the owner instead of blocking (keep owner-only, once, today, always) and records the answer as a decision; standing grants in config with revoke; the gate question pre-approves planned deploys; the reason names the action and target ([#506](https://github.com/taoq-ai/wuwei/issues/506)) ([42deb75](https://github.com/taoq-ai/wuwei/commit/42deb75d01c4a82e42df3c5d47018e1178a31d73)), closes [#478](https://github.com/taoq-ai/wuwei/issues/478)
+
 ## [0.16.1](https://github.com/taoq-ai/wuwei/compare/v0.16.0...v0.16.1) (2026-10-04)
 
 
