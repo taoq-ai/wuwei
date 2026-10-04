@@ -359,7 +359,7 @@ def test_builder_stop_requests_discovery(launch, monkeypatch):
         'content': payload['tool_input']['prompt']}}) + '\n')
     seen = []
     monkeypatch.setattr(dispatch, 'discovery', lambda trigger, root: seen.append((trigger, root)))
-    stop = {'cwd': str(day[0]), 'agent_type': 'builder',
+    stop = {'cwd': str(day[0]), 'agent_type': 'builder', 'last_assistant_message': 'done',
             'agent_transcript_path': str(transcript)}
     assert agent_launch.stop(stop) == (0, '')
     assert seen == [('seat-free', day[0])]
@@ -379,7 +379,7 @@ def test_builder_stop_reports_unmeasured_discovery(launch, monkeypatch):
     monkeypatch.setattr(dispatch, 'discovery',
                         lambda trigger, root: (_ for _ in ()).throw(OSError('unreadable queue')))
     code, reason = agent_launch.stop({
-        'cwd': str(day[0]), 'agent_type': 'builder',
+        'cwd': str(day[0]), 'agent_type': 'builder', 'last_assistant_message': 'done',
         'agent_transcript_path': str(transcript)})
     assert (code, reason) == (2, 'discovery unmeasured: unreadable queue')
     assert state.read_state(day[0])['seats']['gate']['status'] == 'stopped'
@@ -404,7 +404,7 @@ def test_builder_stop_retry_does_not_repeat_discovery_failure(launch, monkeypatc
         calls.append(trigger)
         raise OSError('tracker down')
     monkeypatch.setattr(dispatch, 'discovery', failing_discovery)
-    stop = {'cwd': str(day[0]), 'agent_type': 'builder',
+    stop = {'cwd': str(day[0]), 'agent_type': 'builder', 'last_assistant_message': 'done',
             'agent_transcript_path': str(transcript)}
     assert agent_launch.stop(stop) == (2, 'discovery unmeasured: tracker down')
     assert agent_launch.stop({**stop, 'stop_hook_active': True}) == (0, '')
@@ -505,7 +505,7 @@ def test_delta_continues_the_stopped_sentinel_by_agent_id(launch, monkeypatch):
     transcript.write_text(json.dumps({'type': 'user', 'message': {
         'content': payload['tool_input']['prompt']}}) + '\n')
     assert agent_launch.stop({'cwd': str(day[0]), 'agent_id': 'agent-7',
-                              'agent_type': 'wuwei:sentinel-arch',
+                              'agent_type': 'wuwei:sentinel-arch', 'last_assistant_message': 'done',
                               'agent_transcript_path': str(transcript)}) == (0, '')
     assert state.read_state(day[0])['seats']['gate']['agent_id'] == 'agent-7'
     day[2].results['head'] = registry.Result(0, {'sha': 'b' * 40})

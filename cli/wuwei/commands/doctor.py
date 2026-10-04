@@ -529,12 +529,17 @@ def _day(root, config, probes):
             rows.append(_row('day', name, 'unmeasured', 'unmeasured', f'wuwei {command} names the problem'))
     rows.append(_row('day', 'heartbeat', {None: 'ok', 'ok': 'ok', 'degraded': 'fail'}.get(beat, 'unmeasured'),
                      beat or 'none today', 'wuwei heartbeat names the failed probe'))
+    rows.append(_row('day', 'stuck seats', PROBE[probes['seats']['result']], probes['seats']['value'],
+                     'wuwei seat stop <name> --verdict <file>, or wuwei seat stop <name> --unmeasured "<reason>"'))
     for page in found:
         if page['tier'] == 'page':
             rows.append(_row('day', page['source'] + (' page' if page['source'] == 'heartbeat' else ''), 'fail',
                              str(page['reason']), 'wuwei nudges'))
     nudges = sum(page['tier'] == 'nudge' for page in found)
     rows.append(_row('day', 'nudges', 'ok', f'{nudges} open (wuwei nudges lists them)'))
+    gaps = sum(page['source'] == 'traces.gap' for page in found)
+    rows.append(_row('day', 'traces', 'warn' if gaps else 'ok', f'{gaps} gaps today' if gaps else 'no gaps today',
+                     'read the traces.gap reasons in wuwei nudges, then run wuwei doctor'))
     try:
         if ids := _legacy_traces(root):
             rows.append(_row('day', 'trace decisions', 'warn', f'{", ".join(ids)} pending under the pre-#352 rule',

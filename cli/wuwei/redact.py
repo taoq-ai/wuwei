@@ -49,10 +49,14 @@ SENSITIVE_FIELD = (
     r'authorization|cookie|credential|phone|mobile|message|body|text|pass\b|pwd|auth|[_-]key\b')
 # Pattern strings: re compiles them on first use through its own cache, off the hook path.
 SENSITIVE_KEY = SENSITIVE_FIELD
+# #473: a body marker is not itself a credential; --json and -d count only with a quoted,
+# brace or @ value, or one holding =, & or : (gh field lists and git branch -d stay
+# readable, curl bodies do not).
 SECRET = (
-    rf'(?:{SENSITIVE_FIELD})[\w-]{{0,40}}(?:\\?["\'])?\s{{0,40}}[:=]\s{{0,40}}\S|'
-    rf'--(?:{SENSITIVE_FIELD})[\w-]{{0,40}}\s{{1,40}}\S|'
-    r'(?:--(?:data[\w-]{0,40}|json)|-d)(?:\s{1,40}|=)\S|'
+    rf'(?:{SENSITIVE_FIELD})[\w-]{{0,40}}(?:\\?["\'])?\s{{0,40}}[:=]\s{{0,40}}(?!\[BODY )\S|'
+    rf'--(?:{SENSITIVE_FIELD})[\w-]{{0,40}}\s{{1,40}}(?!\[BODY )\S|'
+    r'--data[\w-]{0,40}(?:\s{1,40}|=)\S|'
+    r'(?:--json|(?<![\w-])-d)(?:\s{1,40}|=)(?:[\'"{@]|[^\s=&:]{0,2048}[=&:])|'
     r'\b(?:Bearer|Basic)\s{1,40}\S{1,2048}|[a-z][a-z0-9+.-]{0,30}://[^/\s]{0,2048}@|'
     r'\b(?:gh[pousr]_|github_pat_|sk-|xox[baprs]-|[sr]k_(?:live|test)_|'
     r'glpat-|AIza|npm_|hf_)[a-z0-9_-]{1,2048}|hooks\.slack\.com/services/|'
@@ -75,7 +79,9 @@ def body_marker(value):
     return f'[BODY {len(value)} chars sha256:{hashlib.sha256(value.encode()).hexdigest()}]'
 
 
-def redact(value):
+def redact(value, *, prefix=False):
+    """prefix: keep the text before the first credential (the trace recorder, #473); elsewhere a
+    string with a credential is replaced whole, so no text around it reaches a record."""
     value = known_values(value)
     if isinstance(value, dict):
         path = value.get('file_path', '')
@@ -84,25 +90,29 @@ def redact(value):
             or path.lower().endswith(('.pem', '.key'))
             or path.replace('\\', '/').endswith('.wuwei/env')
             or 'credentials' in path.lower() or 'secret' in path.lower())
-        return {redact(key): REDACTED if (
+        return {redact(key, prefix=prefix): REDACTED if (
             len(key) > 2048 or re.search(SENSITIVE_KEY, key, re.I)
             or re.search(SENSITIVE_KEY, re.sub(r'[^a-z0-9]', '', key.lower()), re.I)
-            or private_file and key in ('content', 'new_string', 'old_string')) else redact(item)
+            or private_file and key in ('content', 'new_string', 'old_string')) else redact(item, prefix=prefix)
                 for key, item in value.items()}
     if isinstance(value, list):
-        return [redact(item) for item in value]
+        return [redact(item, prefix=prefix) for item in value]
     if isinstance(value, str) and len(value) > 2048:
         import hashlib
         digest = hashlib.sha256(value.encode()).hexdigest()
-        return redact(value[:512]) + f'[TRUNCATED {len(value)} chars sha256:{digest}]'
+        return redact(value[:512], prefix=prefix) + f'[TRUNCATED {len(value)} chars sha256:{digest}]'
     # ponytail: pattern redaction is best effort; the durable path is the M5 redactor port.
     if isinstance(value, str):
         value = re.sub(HEREDOC, lambda m: body_marker(m[2]), value)
-        value = re.sub(BODY, lambda m: body_marker(
+        value = re.sub(BODY, lambda m: m[0][:m.start(1) - m.start()] + body_marker(
             m[1].strip(m[1][0]) if m[1].startswith(('"', "'")) else m[1]), value)
         decoded = unquote(value)
-        if re.search(SECRET, decoded, re.I) or any(
-                sum(c.isdigit() for c in m[0]) >= 9 and not m[0].isdigit()
-                for m in re.finditer(PHONE, decoded)):
-            return REDACTED
+        found = re.search(SECRET, decoded, re.I)
+        starts = [found.start()] if found else []
+        starts += [m.start() for m in re.finditer(PHONE, decoded)
+                   if sum(c.isdigit() for c in m[0]) >= 9 and not m[0].isdigit()]
+        if starts:
+            # ponytail: everything from the first credential on is dropped (tool, subcommand and
+            # earlier paths stay); per-value redaction if traces need the tail.
+            return value[:min(starts)] + REDACTED if prefix and decoded == value else REDACTED
     return value

@@ -517,9 +517,14 @@ def test_gates_mcp_servers(ws):
 
 def test_day_rows(ws):
     rows = doctor.diagnose()
-    assert names(rows, 'day') == ['state', 'planner', 'watch', 'listener', 'heartbeat', 'nudges', 'tracker']
+    assert names(rows, 'day') == ['state', 'planner', 'watch', 'listener', 'heartbeat', 'stuck seats',
+                                  'nudges', 'traces', 'tracker']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'day'), rows
     assert row(rows, 'listener')['value'] == 'not used'
+    ws.probes['seats'] = {'result': 'failed', 'value': 'dead: builder; run wuwei seat stop builder --verdict <file>'}
+    found = row(doctor.diagnose(), 'stuck seats')
+    assert found['status'] == 'fail' and 'wuwei seat stop' in found['fix']
+    ws.probes['seats'] = {'result': 'ok', 'value': 'none stuck'}
 
     ws.probes['state'] = {'result': 'failed', 'value': 'bad state'}
     ws.probes['planner'] = {'result': 'failed', 'value': 'planner P not registered'}

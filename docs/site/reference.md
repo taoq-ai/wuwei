@@ -58,6 +58,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei shadow` | `report` lists what the guards would have refused since `guards.shadow_since`, grouped by guard, and names likely false positives. | [Security posture](concepts.md#security-posture) |
 | `bin/wuwei retro` | Compiles the steward retro. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei runtime` | Dispatches and inspects runtime jobs. | [Recovery](recovery.md#runtime-dispatch) |
+| `bin/wuwei seat` | Recovers a stuck seat: records its report from a file, or stops it as unmeasured. | [Stuck seats](#stuck-seats) |
 | `bin/wuwei sessions` | Lists registered sessions, roles and claims. | [Sessions](#sessions) |
 | `bin/wuwei signal` | Plumbing: classifies attention. | |
 | `bin/wuwei state` | Reads or updates day state; `recover` restores it. | [State recovery](#state-recovery) |
@@ -183,12 +184,14 @@ A clock line proves the watch runs, not that the system behaves. On every watch 
 | `read_loop` | `hook PreToolUse` with Bash `for r in a b; do cat .wuwei/$r/report.json; done` exits 0 | `exit N`, plus the first stderr line when not ok |
 | `planner` | today has no planner, or the planner session is registered and not stale | idle seconds |
 | `memory` | free memory is at or above `host.free_memory_mb` (unmeasured with `adapters.host = "none"`) | MiB free |
+| `seats` | no seat handed back without a stop, and none was stopped unmeasured by the hook ([Stuck seats](#stuck-seats)) | `none stuck`, or `dead: <names>` with the `bin/wuwei seat stop` command |
 
 The hook probes run through the real `bin/wuwei hook PreToolUse` with session id `wuwei-heartbeat` and cwd `.wuwei`, started together with `status --line`. Their refusals are not recorded as `hook.refusal` events. The `refused`, `allowed`, `state_write` and `read_loop` rows also carry `ms`, the call's wall milliseconds including interpreter start, which the weekly telemetry reads as hook latency; a timed-out call has no `ms`. Probes never write outside `.wuwei/`, never touch a configured repository, make no code-host or model call and spend no tokens.
 
 Each probe is `ok`, `failed` or `unmeasured` with its value. The `heartbeat: clock` record, also kept under `watch.heartbeat` in day state, carries `health`, every probe's `result` and `value`, `drift`, `page` and `ping`. Health is `degraded` when any probe failed, else `unmeasured` when any probe is unmeasured, else `ok`.
 
 - `status --line` adds `health ok`, `health degraded` or `health unmeasured` after the watch and listen parts once today has a heartbeat line. With no heartbeat line today there is no `health` part; with a heartbeat line while the watch is not alive, health is `unmeasured`.
+- `status --line` adds `traces: N gaps` after the health part when today has N `traces.gap` events: a tool span the trace recorder could not write records one `traces.gap` event with its `reason`, `span` (the tool name) and `session`, and the hook exit stays as before. Only the hook writes the kind. The trace recorder redacts credential-shaped values only: the tool, its subcommand and the text before the first credential stay, and message bodies keep their command words and lose their text.
 - While health is degraded there is exactly one `heartbeat` page naming the first failed probe and its value, for example `heartbeat integrity failed: ...`. The next heartbeat with every probe ok clears it.
 - A probe that was ok in the previous heartbeat and failed now is `behaviour drift`: the record lists it under `drift`, the watch log prints `heartbeat: behaviour drift: <probe>`, and the page reason starts `behaviour drift: `.
 
@@ -207,7 +210,7 @@ settings the shepherd reads: `owner.handles`, `shepherd.lead_login`, `shepherd.a
 empty one warns with `will block: <what> at <phase>` and the `config set` line, a `none`
 adapter is ok with what discovery and the shepherd skip, and with `shepherd.min_reviewers = 0`
 the reviewer rows are not applicable), Day and sessions
-(state, planner, watch, listener, heartbeat, open pages, nudges, pre-#352 trace decisions) and Guards (the heartbeat
+(state, planner, watch, listener, heartbeat, stuck seats, open pages, nudges, traces gaps, pre-#352 trace decisions) and Guards (the heartbeat
 hook probes, plus `hook PreToolUse` from a directory outside any workspace, which must
 allow). It works before there is a workspace: the Workspace section then names where to run
 `bin/wuwei init --shadow`.
@@ -282,6 +285,12 @@ Several Claude Code sessions can work in one workspace. Once today's `state.json
 | Push evidence | `wuwei build check ITEM` records fast checks through the same producer as `wuwei fast-checks`, so a passing check satisfies the push guard. |
 | Charter names | `lead`, `builder`, `shepherd`, `sentinel-arch`, `sentinel-quality`, `sentinel-security`, `sentinel-goal` or `steward`. Each seat name gets one brief. `runtime dispatch` accepts `arch`, `quality` and `security` for the sentinel roles, as `brief` does. |
 | Gate body | A gate body must not ask for an inline verdict or restate the verdict path; the brief adds it. A `Paths:` line lists extra paths for the SLICE protected-path check. |
+
+## Stuck seats
+
+A seat launched in the background ends with the harness's structured hand-back, and its SubagentStop carries no `last_assistant_message`. The hook reads the report from the seat's own transcript (the hand-back's message, or the last assistant turn's text) and every SubagentStop guard sees it, as for a foreground seat. When the report cannot be read, the hook stops the seat with status `unmeasured` and a `reason`, records `seat stopped` with both, and exits 2 naming the recovery command; the seat never stays `running`.
+
+`bin/wuwei seat stop <name> --verdict <file>` records the seat's report from the file through the same SubagentStop guards (a sentinel's file must pass the verdict lint first). `bin/wuwei seat stop <name> --unmeasured "<reason>"` stops it as unmeasured so the day can move; a builder's running build parks with that reason. Under `strict` it is an owner action: answer y at the host terminal. Under `observe` and `guarded` it runs from a host terminal or today's planner session. `bin/wuwei next`, the doctor `stuck seats` row and the heartbeat `seats` probe name it for a running seat whose transcript ends in the hand-back with no stop, and for a seat the hook stopped as unmeasured.
 
 ## Item phase order
 

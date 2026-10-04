@@ -58,6 +58,8 @@ def run(args):
                 else:
                     if args.event == 'PreToolUse' and payload['session_id'] != HEARTBEAT_SESSION:
                         newer_template(root, payload, config)
+        if args.event == 'SubagentStop' and root is not None:
+            fill_stop_text(payload)
         token = SELECTION.set((args.event, payload.get('tool_name', '')))
         try:
             guards = discover()
@@ -135,6 +137,21 @@ def run(args):
     if args.event == 'Stop' and context:
         print('\n'.join(context), file=sys.stderr)
     return CLEAN
+
+
+def fill_stop_text(payload):
+    """#473: a background seat ends with a SubagentHandback and no last_assistant_message;
+    every SubagentStop guard reads the report its transcript holds. Unreadable: left as is,
+    and agent_launch.stop stops the seat as unmeasured with the reason."""
+    from wuwei.guards import wuwei_role  # Not a guard module: hook tests replace their __path__.
+    text = payload.get('last_assistant_message')
+    if isinstance(text, str) and text.strip() or not wuwei_role(payload.get('agent_type')):
+        return
+    from wuwei.brief import stop_text  # SubagentStop of a WUWEI seat only (#346)
+    try:
+        payload['last_assistant_message'] = stop_text(payload)
+    except (OSError, ValueError):
+        pass
 
 
 def newer_template(root, payload, config):

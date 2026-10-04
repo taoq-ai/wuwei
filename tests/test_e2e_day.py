@@ -263,3 +263,26 @@ def test_shadow_mode_records_force_push_and_keeps_records_refused(day, setting):
                     tool_input={'file_path': str(day.repo / 'memory/demo.py')}) == ''
     event = day.events[-1]
     assert event['kind'] == 'guard.would_refuse' and event['payload']['area'] == 'integrity'
+
+
+def test_background_handback_day(tmp_path, monkeypatch):
+    # #473: every background seat ends with a SubagentHandback and no last_assistant_message;
+    # the day records the same seats, results and events as with the plain-text ending.
+    from fakes.day import Day
+    seen = []
+    for handback in (False, True):
+        with monkeypatch.context() as patch:
+            day = Day(tmp_path / f'handback-{handback}', patch)
+            day.runtime.handback = handback
+            day.plan()
+            day.approve()
+            day.run('plan', 'session', 'planner')
+            day.build('builder-initial')
+            for role in ('arch', 'quality', 'security'):
+                day.gate(role, 'PASS')
+            seen.append(({name: seat['status'] for name, seat in day.data['seats'].items()},
+                         day.data['builds']['A']['result']['text'],
+                         [(row['kind'], row['payload'].get('name')) for row in day.events
+                          if row['kind'] in ('seat launched', 'seat stopped', 'seat.usage', 'retro.captured')]))
+    assert seen[0] == seen[1]
+    assert all(status == 'stopped' for status in seen[1][0].values())

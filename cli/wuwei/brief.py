@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 
 from wuwei import registry, security, sessions, state, workspace
-from wuwei.exits import ADAPTER_DATA, DAMAGED, SYMLINK
+from wuwei.exits import ADAPTER_DATA, DAMAGED, PAYLOAD, SYMLINK
 
 
 REFERENCE_PREFIX = 'WUWEI brief: '
@@ -120,12 +120,76 @@ def transcript_reference(path):
     return None
 
 
+HANDBACK = 'SubagentHandback'  # the harness's structured hand-back tool (#473)
+
+
+def last_turn(path):
+    """(completion, text, handback) of a transcript's last assistant entry. completion is
+    [line index, sha256 of the line], the builder binding; text joins the text blocks, or is
+    a SubagentHandback's input.message (a background seat's report, #473); handback says
+    which. Read from the end, so a torn last line raises ValueError."""
+    lines = Path(path).read_text(encoding='utf-8').splitlines()
+    for index in range(len(lines) - 1, -1, -1):
+        if not lines[index].strip():
+            continue
+        row = json.loads(lines[index])
+        if not isinstance(row, dict) or row.get('type') != 'assistant':
+            continue
+        try:
+            content = row['message']['content']
+            if isinstance(content, str):
+                text, handback = content, None
+            else:
+                text = '\n'.join(part['text'] for part in content if part.get('type') == 'text')
+                handback = next((part['input'].get('message') for part in content
+                                 if part.get('type') == 'tool_use' and part.get('name') == HANDBACK), None)
+        except (KeyError, TypeError, AttributeError):
+            raise ValueError(f'malformed transcript entry; {PAYLOAD}') from None
+        completion = [index, hashlib.sha256(lines[index].encode()).hexdigest()]
+        if isinstance(handback, str):
+            return completion, handback, True
+        return completion, text, False
+    raise ValueError(f'transcript has no assistant turn; {PAYLOAD}')
+
+
+def stop_text(payload):
+    """A seat's final report: a non-blank last_assistant_message, else the last assistant
+    turn of agent_transcript_path (#473). OSError or ValueError when neither reads."""
+    text = payload.get('last_assistant_message')
+    if isinstance(text, str) and text.strip():
+        return text
+    path = payload.get('agent_transcript_path')
+    if not isinstance(path, str) or not path.strip():
+        raise ValueError(f'missing or invalid agent_transcript_path; {PAYLOAD}')
+    text = last_turn(path)[1]
+    if not text.strip():
+        raise ValueError(f'transcript last assistant turn has no report; {PAYLOAD}')
+    return text
+
+
+def stuck(data):
+    """Seats that need bin/wuwei seat stop (#473), sorted: running with a recorded transcript
+    whose last assistant entry is the hand-back (no process, no stop), or unmeasured by the
+    hook (by is not owner)."""
+    found = []
+    for name, seat in seats(data).items():
+        if seat['status'] == 'unmeasured' and seat.get('by') != 'owner':
+            found.append(name)
+        elif seat['status'] == 'running' and isinstance(seat.get('transcript'), str):
+            try:
+                if last_turn(seat['transcript'])[2]:
+                    found.append(name)
+            except (OSError, ValueError):
+                pass  # ponytail: an unreadable transcript is no evidence of an end; the reservation timeout still reports the seat
+    return sorted(found)
+
+
 def seats(data):
     records = data.get('seats')
     if not isinstance(records, dict):
         raise ValueError(f'seats must be an object; {DAMAGED}')
     for seat in records.values():
-        if (not isinstance(seat, dict) or seat.get('status') not in (*state.STATUSES, 'stopped')
+        if (not isinstance(seat, dict) or seat.get('status') not in (*state.STATUSES, 'stopped', 'unmeasured')
                 or not isinstance(seat.get('role'), str) or not seat['role']
                 or not isinstance(seat.get('item'), str) or not seat['item']):
             raise ValueError(f'invalid seat record; {DAMAGED}')
