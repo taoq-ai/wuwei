@@ -436,6 +436,19 @@ def test_workspace_calibration_and_shadow(ws, monkeypatch):
     assert row(doctor.diagnose(), 'posture')['value'] == 'strict (from security.posture)'
 
 
+def test_standing_grant_ignored_under_strict(ws):
+    # #478: under strict a standing grant line is ignored; doctor names it.
+    line = ('[grants]\nstanding = [{action = "deploy", target = "repo:acme/widget", scope = "always", '
+            'decision = "D-3", date = "2026-10-04"}]\n[adapters]')
+    config(ws.root, CONFIG.replace('[adapters]', line))
+    assert 'grant 1' not in names(doctor.diagnose(), 'workspace')
+    config(ws.root, CONFIG.replace('[adapters]', '[security]\nposture = "strict"\n' + line))
+    found = row(doctor.diagnose(), 'grant 1')
+    assert (found['section'], found['status']) == ('workspace', 'warn')
+    assert found['value'] == 'deploy repo:acme/widget (D-3) is ignored under strict'
+    assert found['fix'] == W('grants revoke 1')
+
+
 def test_workspace_telemetry_question_pending(ws):
     # #422: share unset behaves as off but the interview question is still owed.
     config(ws.root, CONFIG.replace('share = "off"', 'share = ""'))

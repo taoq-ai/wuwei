@@ -94,6 +94,14 @@ def _proposal(data, goals_text, framework="wsjf"):
         flags = item.get('flags')
         if not isinstance(flags, dict) or set(flags) != set(FLAGS) or any(type(v) is not bool for v in flags.values()):
             raise ValueError(f'{name}: flags must contain boolean trust_surface, boundary_relevant, agent_surface; {PLAN_JSON}')
+        actions = item.get('owner_actions', [])  # #478: owner-only steps the gate pre-approves
+        from wuwei.grants import ACTIONS, REPO
+        if not isinstance(actions, list) or any(
+                not isinstance(entry, dict) or set(entry) != {'action', 'target'}
+                or entry['action'] not in ACTIONS or not isinstance(entry['target'], str)
+                or not re.fullmatch('repo:' + REPO, entry['target']) for entry in actions):
+            raise ValueError(f'{name}: owner_actions need action deploy, release or publish and target '
+                             f'repo:<org>/<name>; {PLAN_JSON}')
     json.dumps(data, allow_nan=False)
     return data
 
@@ -159,6 +167,8 @@ def propose(data, root=None):
     directory = workspace.day_dir(root)
     if (directory / 'state.json').exists() and state.read_state(root).get('gate_approved'):
         raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei status for the approved plan')
+    from wuwei import grants
+    planned = grants.plan(root, workspace.load_config(root), data['candidates'])
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
              *(['Finding: ' + steward_finding, ''] if steward_finding else []),
              '## Goals to confirm',
@@ -174,7 +184,8 @@ def propose(data, root=None):
         lines += [f'### {number}. {item["id"]} ({item["track"]})',
                   f'Goal: {item.get("goal", "unplanned")}', f'Evidence: {item["evidence"]}',
                   f'Scope: {item["scope"]}', f'Overlap: {item["overlap"]}',
-                  'Flags: ' + ', '.join(key for key in FLAGS if item['flags'][key]) if any(item['flags'].values()) else 'Flags: none', '']
+                  'Flags: ' + ', '.join(key for key in FLAGS if item['flags'][key]) if any(item['flags'].values()) else 'Flags: none',
+                  *(f'Owner-only: {name} {target} ({key})' for name, target, key in planned.get(item['id'], [])), '']
     lines += ['## Discovery intake',
               *[f'- {item["id"]}: {item.get("evidence", "evidence pending")}' for item in data['discovered']], '',
               '## Gate proposal', f'CAP: {data["cap"]}',

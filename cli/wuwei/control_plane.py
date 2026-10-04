@@ -59,7 +59,7 @@ def parse(text, decisions):
     if reply == 'drop it' and len(decisions) == 1:
         [(identifier, fields)] = decisions.items()
         found = [row[0] for row in decision.options(fields)
-                 if re.match(r'(?i)(?:Do nothing|Defer)\b', row[1])]
+                 if re.match(decision.STATUS_QUO, row[1])]
         return (identifier, found[0]) if len(found) == 1 else None
     return None
 

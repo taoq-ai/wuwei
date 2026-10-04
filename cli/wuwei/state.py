@@ -265,6 +265,7 @@ STATE_PRODUCERS = {
     'tickets': 'wuwei plan approve, add or set, wuwei tracker create or wuwei drafts approve',
     'tracker_log': 'wuwei tracker create or log',
     'outbound_learn': 'wuwei outbound learn or wuwei decide',
+    'grants': 'wuwei hook PreToolUse (deploy guard), wuwei plan propose or wuwei decide',
 }
 
 

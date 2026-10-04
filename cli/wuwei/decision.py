@@ -25,6 +25,7 @@ LENSES = {'SOLID': 'Which SOLID principle does it keep or break?',
           'ponytail': 'Is there a simpler thing that works: stdlib before custom, native before a dependency?'}
 OPTION_COLUMNS = ['Option', 'Title', 'Rationale', 'Consequence']
 OPTIONAL = ('Class', 'Reasoning', 'Lenses')
+STATUS_QUO = r'(?i)(?:Do nothing|Defer|Keep)\b'  # #478: Keep owner-only is the status quo
 
 
 def lens_table(config):
@@ -79,8 +80,8 @@ def _scored(fields):
         raise ValueError('Options: expected at least two options; add another option, for example a Do nothing row; bin/wuwei decision template shows a valid record')
     if any(not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', row[0]) for row in rows):
         raise ValueError('Options: invalid option id; use a letter, then letters, digits, dash or underscore, such as A or defer-1')
-    if not any(re.match(r'(?i)(?:Do nothing|Defer)\b', row[1]) for row in rows):
-        raise ValueError('Options: include Do nothing or Defer; add a row whose title starts with Do nothing or Defer to Options, Musts and Wants')
+    if not any(re.match(STATUS_QUO, row[1]) for row in rows):
+        raise ValueError('Options: include Do nothing, Defer or Keep; add a row whose title starts with Do nothing, Defer or Keep to Options, Musts and Wants')
     ids = [row[0] for row in rows]
     musts = table(fields['Musts'], ['Criterion', *ids], 'Musts')
     if any(cell.lower() not in ('pass', 'fail') for row in musts for cell in row[1:]):

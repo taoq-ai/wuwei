@@ -262,8 +262,8 @@ def posture(payload, refusals, root):
     enforced, shown, seen = [], None, set()
     for check, reason, code in refusals:
         guard, area, decided, line = level(check, levels)
-        if reason == NO_REVIEWER:  # It names its own ways out; still blocked.
-            line = ''
+        if reason == NO_REVIEWER or guard == 'deploy' and reason.startswith('publish: '):
+            line = ''  # It names its own ways out (#478: the owner's card); still blocked.
         # #347, #470: decided by the reason, not the area; only deploy says unknown git
         if reason in (UNPARSED, WORKSPACE_ROOT) or guard == 'deploy' and reason.startswith(UNKNOWN_GIT):
             if reason in seen:

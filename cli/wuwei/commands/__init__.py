@@ -2,7 +2,7 @@
 
 # #348: every registered command path is in exactly one set (tests/test_cli_known_command.py).
 # A positional named `action` is part of the path (mcp check, calibrate export).
-READ_ONLY = frozenset({'board', 'calibrate', 'config check', 'config show', 'doctor', 'drafts show', 'guide',
+READ_ONLY = frozenset({'board', 'calibrate', 'config check', 'config show', 'doctor', 'drafts show', 'grants', 'guide',
                        'heartbeat',
                        'integrity check', 'mcp check', 'memory show', 'memory status', 'plan gate', 'sessions', 'shadow report', 'status',
                        'why'})
@@ -13,7 +13,7 @@ WRITES = frozenset({
     'close', 'config add-repo', 'config promote', 'config set', 'consolidate', 'dashboard',
     'decide', 'decision lint', 'decision outcome', 'decision route', 'decision show', 'decision template',
     'discover', 'dispatch discovery', 'docs page', 'docs publish', 'dispatch next', 'dispatch opinion', 'dispatch receive',
-    'drafts approve', 'drafts drop', 'event', 'fast-checks', 'git-hook', 'goals edit', 'hook',
+    'drafts approve', 'drafts drop', 'event', 'fast-checks', 'git-hook', 'goals edit', 'grants revoke', 'hook',
     'index', 'init', 'integrity reconfirm', 'listen install', 'listen uninstall', 'mcp decide',
     'memory export', 'memory forget', 'memory lint', 'merge', 'metrics', 'next', 'note add', 'nudges',
     'outbound learn', 'outbound tier', 'payload',

@@ -68,7 +68,10 @@ def run(args):
             source = sys.stdin.read() if str(args.input) == '-' else args.input.read_text(encoding='utf-8')
             print(plan.propose(json.loads(source)))
         elif args.action == 'gate':
-            print(json.dumps(plan.gate_widget(import_yesterday=args.import_yesterday), indent=2))
+            from wuwei import grants
+            root = workspace.find_workspace()
+            print(json.dumps([plan.gate_widget(root, import_yesterday=args.import_yesterday),
+                              *grants.gate_widgets(root, workspace.load_config(root))], indent=2))
         elif args.action == 'add':
             print(json.dumps(plan.add(args.item, goal=args.goal, size=args.size,
                                       title=args.title, ticket=args.ticket)))

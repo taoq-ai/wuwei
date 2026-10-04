@@ -53,8 +53,8 @@ satisfy a principle; Principle V wins a tie.
 
 Least privilege for agent tools. Guards refuse at the moment of action. Secrets, phone
 numbers and message bodies never land in traces, logs or memory unredacted. A merge happens
-only through the merge policy, never by approval or override; nothing ever deploys (design
-spec 4.6 and 4.7).
+only through the merge policy, never by approval or override; nothing deploys without the
+owner's recorded grant (design spec 4.6 and 4.7; amended 2026-10-04, #478).
 
 ## Constraints
 
@@ -102,4 +102,4 @@ spec 4.6 and 4.7).
 Amendments are commits to this file with a dated line in the commit message. The design spec
 is amended only by its owner.
 
-**Version**: 1.3.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-04
+**Version**: 1.4.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-04

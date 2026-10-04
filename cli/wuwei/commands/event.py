@@ -83,6 +83,8 @@ EVENT_PRODUCERS = {
     'docs.set': 'wuwei plan set or wuwei docs page',
     'docs.written': 'wuwei docs or wuwei drafts approve', 'docs.exempt': 'wuwei dispatch next',
     'outbound.learned': 'wuwei outbound learn or wuwei decide', 'outbound.proposed': 'wuwei outbound learn',
+    'grant.asked': 'wuwei hook PreToolUse (deploy guard) or wuwei plan propose',
+    'grant.used': 'wuwei hook PreToolUse (deploy guard)', 'grant.revoked': 'owner host wuwei grants revoke',
 }
 
 

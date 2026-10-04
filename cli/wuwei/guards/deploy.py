@@ -34,8 +34,9 @@ PERMISSIONS_DENY = [f'Bash({command})' for command in (
     'gh pr merge * --admin*')]
 
 
-def deny(rule):
-    return 1, f'deploy: refused by {rule}; deploying is an owner action: stop and ask the owner to run it'
+def deny(rule, repo=None):
+    """An owner-only rule and the repository the command names; check hands it to grants.gate."""
+    return 1, (rule, repo)
 
 
 def unknown(reason):
@@ -47,16 +48,17 @@ def environment(branch, config):
     return any(fnmatchcase(branch, pattern) for pattern in config['environments'])
 
 
-def workflow(target, config):
+def workflow(target, config, repo=None):
     if not target:
         unknown('workflow target is unresolved')
     marked = config['deploy']['workflows']
     if any(target == item or PurePosixPath(target).name == PurePosixPath(item).name
            for item in marked):
-        return deny('deploy.workflows')
+        return deny('deploy.workflows', repo)
+    # #478: a name or ID that may be a marked workflow is a deploy the owner decides.
     if marked and (not target.endswith(('.yml', '.yaml')) or
                    any(not item.endswith(('.yml', '.yaml')) for item in marked)):
-        unknown('workflow name or ID requires unavailable workflow resolution')
+        return deny('deploy.workflows', repo)
     return 0, ''
 
 
@@ -73,12 +75,12 @@ def merge(ref, config, root):
             or not data['base'] or data.get('repo') != expected_repo):
         unknown('invalid PR deployment target')
     if environment(data['base'], config):
-        return deny('environment branch merge')
+        return deny('environment branch merge', data['repo'])
     repo = next((repo for repo in config['repos'] if repo['name'] == data['repo']), None)
     if repo is None:
         unknown('repository merge_deploys is undeclared')
     if repo['merge_deploys']:
-        return deny('merge_deploys')
+        return deny('merge_deploys', data['repo'])
     return 0, ''
 
 
@@ -102,6 +104,11 @@ def git(args, env, config):
         return 0, ''
     action, *args = args
     if action == 'push':
+        # #478: a grant can clear the denies below, so the fail-closed checks run first.
+        if override:
+            unknown('git override prevents proving push destination')
+        if any(arg.startswith(('--receive-pack', '--exec')) for arg in args):
+            unknown('git executable override prevents inspection')
         if any(arg in ('--tags', '--follow-tags', '--mirror', 'tag') or
                'refs/tags/' in arg for arg in args):
             return deny('tag push')
@@ -110,8 +117,6 @@ def git(args, env, config):
                                '--all', '--dry-run', '-n', '--porcelain', '--verbose', '-v', '--quiet', '-q'))
         if '--repo' in options:
             targets.insert(0, options['--repo'])
-        if any(key in options for key in ('--receive-pack', '--exec')):
-            unknown('git executable override prevents inspection')
         if len(targets) < 2:
             unknown('push destination is unresolved; name it: git push origin HEAD:refs/heads/<branch>')
         for ref in targets[1:]:
@@ -120,8 +125,6 @@ def git(args, env, config):
                 return deny('environment branch push')
             if re.fullmatch(r'v?\d+\.\d+.*', target):
                 return deny('tag push')
-        if override:
-            unknown('git override prevents proving push destination')
         for ref in targets[1:]:
             target = ref.lstrip('+').split(':')[-1]
             if any(c in target for c in '*?['):
@@ -152,8 +155,9 @@ def api(args, config, root):
         unknown('API host is unsupported by the code_host port')
     endpoint = unquote(url.path).strip('/')
     parts = endpoint.split('/')
+    repo = '/'.join(parts[1:3]) if parts[0] == 'repos' and len(parts) > 2 else None
     if 'deployments' in parts or 'environments' in parts:
-        return deny('deployment/environment API')
+        return deny('deployment/environment API', repo)
     method = options.get('-X', options.get('--method', ''))
     writes = method.upper() not in ('GET', 'HEAD') if method else any(
         key in options for key in ('-f', '-F', '--field', '--raw-field', '--input'))
@@ -161,18 +165,18 @@ def api(args, config, root):
     if match and writes:
         return merge(f'{match[1]}#{match[2]}', config, root)
     if 'dispatches' in parts and 'workflows' in parts:
-        return workflow(parts[parts.index('workflows') + 1], config)
+        return workflow(parts[parts.index('workflows') + 1], config, repo)
     if 'rerun' in parts or 'rerun-failed-jobs' in parts:
         if config['deploy']['workflows']:
-            unknown('workflow run requires unavailable workflow resolution')
+            return deny('deploy.workflows', repo)
     if writes and 'releases' in parts:
-        return deny('release API')
+        return deny('release API', repo)
     if writes and ('refs' in parts or 'tags' in parts):
-        return deny('tag or branch ref API')
+        return deny('tag or branch ref API', repo)
     if writes and 'merges' in parts:
         for value in options.values():
             if value.startswith('base=') and environment(value[5:], config):
-                return deny('environment branch merge API')
+                return deny('environment branch merge API', repo)
         unknown('API merge target cannot be cleared')
     if endpoint == 'graphql':
         unknown('opaque GraphQL deployment or merge API')
@@ -216,17 +220,15 @@ def gh(args, env, config, root):
                 group = arg
     args = remaining
     if args[:2] == ['release', 'create']:
-        return deny('release create')
+        return deny('release create', repo)
     if args[:1] == ['api']:
         return api(args[1:], config, root)
     if args[:2] in (['workflow', 'run'], ['workflow', 'rerun'], ['run', 'rerun']):
         targets, _ = operands(args[2:], ('-R', '--repo', '-r', '--ref', '-f', '-F', '--field', '--raw-field'),
                               ('--json', '--failed', '--debug'))
         if args[:2] == ['run', 'rerun']:
-            if config['deploy']['workflows']:
-                unknown('workflow run requires unavailable workflow resolution')
-            return 0, ''
-        return workflow(targets[0] if len(targets) == 1 else '', config)
+            return deny('deploy.workflows', repo) if config['deploy']['workflows'] else (0, '')
+        return workflow(targets[0] if len(targets) == 1 else '', config, repo)
     if args[:2] == ['pr', 'merge']:
         targets, options = operands(args[2:], ('-R', '--repo', '--match-head-commit',
                                               '-t', '--subject', '-b', '--body', '-F', '--body-file'),
@@ -244,6 +246,42 @@ def gh(args, env, config, root):
     if args and args[0] not in ('pr', 'issue', 'workflow', 'run', 'release', 'repo',
                                'auth', 'status', 'search', 'browse', 'help', 'version'):
         unknown('unknown gh command or alias')
+    return 0, ''
+
+
+def command_result(argv, env, config, root):
+    """(0, ''), (1, (rule, repo)) for an owner-only command, or (2, reason)."""
+    program, *args = argv
+    program = PurePosixPath(program).name
+    text = ' '.join([program, *args])
+    for pattern in config['deploy']['deny']:
+        if fnmatchcase(text, pattern) or text.startswith(pattern + ' '):
+            return deny(f'deploy.deny: {pattern}')
+    # Matching any argv verb is conservative and also catches global options.
+    for verb in VERBS.get(program, ()):
+        if verb in args:
+            return deny(f'{program} {verb}')
+    if program == 'kubectl' and any(args[i:i + 2] == ['set', 'image']
+                                   for i in range(len(args) - 1)):
+        return deny('kubectl set image')
+    if program in ('docker', 'podman') and 'build' in args:
+        for index, arg in enumerate(args):
+            if arg == '--push' or arg.startswith('--push='):
+                return deny(f'{program} build --push')
+            output = (args[index + 1] if arg in ('--output', '-o') and index + 1 < len(args)
+                      else arg.removeprefix('--output=') if arg.startswith('--output=')
+                      else arg[2:].lstrip('=') if arg.startswith('-o') else '')
+            if 'type=registry' in output.split(','):
+                return deny(f'{program} build registry output')
+    if program in ('vercel', 'vc') and (not args or args[0] not in (
+            'ls', 'list', 'inspect', 'logs', 'whoami', 'help', '--help', '--version')):
+        return deny(f'{program} deployment')
+    if program in ('gcloud', 'aws', 'az') and CLOUD_VERBS.intersection(args):
+        return deny(f'{program} deployment')
+    if program == 'git':
+        return git(args, env, config)
+    if program == 'gh':
+        return gh(args, env, config, root)
     return 0, ''
 
 
@@ -276,44 +314,29 @@ def check(payload):
             return found
         if (found := unread(raw, protected[2:], cwd=payload['cwd'])) is not None:
             return found
+        used = []
         for index, command in enumerate(commands):
-            argv, env = command.argv, command.env
-            if not argv:
+            if not command.argv:
                 continue
             fed = bool(command.reads) or index > 0 and commands[index - 1].separator == '|'
-            if is_opaque(argv, fed) and mentions(raw, ('git', 'gh')):
-                unknown(f'opaque deployment command: {" ".join(argv)}; use a plain command')
-            program, *args = argv
-            program = PurePosixPath(program).name
-            text = ' '.join([program, *args])
-            for pattern in config['deploy']['deny']:
-                if fnmatchcase(text, pattern) or text.startswith(pattern + ' '):
-                    return deny(f'deploy.deny: {pattern}')
-            # Matching any argv verb is conservative and also catches global options.
-            for verb in VERBS.get(program, ()):
-                if verb in args:
-                    return deny(f'{program} {verb}')
-            if program == 'kubectl' and any(args[i:i + 2] == ['set', 'image']
-                                           for i in range(len(args) - 1)):
-                return deny('kubectl set image')
-            if program in ('docker', 'podman') and 'build' in args:
-                for index, arg in enumerate(args):
-                    if arg == '--push' or arg.startswith('--push='):
-                        return deny(f'{program} build --push')
-                    output = (args[index + 1] if arg in ('--output', '-o') and index + 1 < len(args)
-                              else arg.removeprefix('--output=') if arg.startswith('--output=')
-                              else arg[2:].lstrip('=') if arg.startswith('-o') else '')
-                    if 'type=registry' in output.split(','):
-                        return deny(f'{program} build registry output')
-            if program in ('vercel', 'vc') and (not args or args[0] not in (
-                    'ls', 'list', 'inspect', 'logs', 'whoami', 'help', '--help', '--version')):
-                return deny(f'{program} deployment')
-            if program in ('gcloud', 'aws', 'az') and CLOUD_VERBS.intersection(args):
-                return deny(f'{program} deployment')
-            if program in ('git', 'gh'):
-                result = git(args, env, config) if program == 'git' else gh(args, env, config, root)
-                if result[0]:
-                    return result
+            if is_opaque(command.argv, fed) and mentions(raw, ('git', 'gh')):
+                unknown(f'opaque deployment command: {" ".join(command.argv)}; use a plain command')
+            result = command_result(command.argv, command.env, config, root)
+            if result[0] == 1:
+                from wuwei import grants  # #478: off the hook path until a deploy is refused
+                # A command that may run outside payload cwd has no cwd target to grant.
+                moved = (any(item.argv and PurePosixPath(item.argv[0]).name in ('cd', 'pushd', 'popd')
+                             for item in commands[:index])
+                         or any(key.startswith('GIT_') for key in command.env)
+                         or PurePosixPath(command.argv[0]).name == 'git'
+                         and any(arg.startswith('-C') for arg in command.argv[1:]))
+                result = grants.gate(payload, root, config, command.argv, *result[1], moved=moved)
+            if result[0]:
+                return result
+            if result[1]:
+                used.append(result[1])
+        for use in used:  # #478: a grant is recorded or spent only when the whole call runs
+            use()
         return 0, ''
     except (ParseError, ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
         return 2, f'deploy: could not inspect: {exc}; write it as plain literal commands, or ask the owner to run it'

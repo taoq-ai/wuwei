@@ -204,6 +204,13 @@ blocks. On approval the planner records them with
 refuses that call and prints the command for a host terminal. It then records the gate with
 `wuwei plan approve --items <ids> --goals-confirmed`.
 
+When an item in the plan needs a deploy or a release, the lead lists it and the gate carries one
+more card per action, for example `D-2: G-1 fix-login deploys <org>/<repo>: allow today, ask when it
+happens, or keep owner-only?`. `Allow today` is the day's grant, so the deploy runs without
+stopping the day; `Ask when it happens` asks you when the seat gets there; `Keep owner-only`
+leaves the command to you. A deploy nobody planned stops on its own card, the
+[grant](concepts.md#grants) question.
+
 An item that comes up after the gate needs no second gate. Say what it is and which goal it
 serves; the planner runs `wuwei plan add <item> --goal G-n` and the item joins today's plan. A
 candidate the discovery sweep found goes through `wuwei plan add <item>` and the intraday

@@ -12,7 +12,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[host]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[brief.style]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
-| `[boundary]`, `[environments]`, `[deploy]` | [Boundaries and deployment](#boundaries-and-deployment) |
+| `[boundary]`, `[environments]`, `[deploy]`, `[grants]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outbound]`, `[outbound.people]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
 | `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]`, `[decisions.lenses]` | [Decisions](#decisions); cruise answering is not built |
 | `[calibrate]` | [Calibration](#calibration) |
@@ -298,8 +298,9 @@ The [docs system](concepts.md#docs-system) and the [docs obligation](concepts.md
 | `environments.production` | Not set | Example environment; `[environments]` accepts names and descriptions. |
 | `deploy.workflows` | `[]` | Workflow names, filenames, paths or IDs treated as deploy actions. |
 | `deploy.deny` | `[]` | Literal executable plus argument globs to refuse. |
+| `grants.standing` | `[]` | Standing grants, one per line: `{action = "deploy", target = "repo:<org>/<name>", scope = "always", decision = "D-n", date = "YYYY-MM-DD"}`. `action` is `deploy`, `release` or `publish`; `target` may use `*` and `?`. Your `Always allow` answer on a refusal card writes the line; `bin/wuwei grants revoke <n>` removes one. Ignored under `strict`, where `doctor` warns about each line. |
 
-The template also shows a `"release/*"` environment example. Add any actual environment register entries before using rules that depend on them. WUWEI does not deploy.
+The template also shows a `"release/*"` environment example. Add any actual environment register entries before using rules that depend on them. WUWEI does not deploy on its own: a deploy runs from a session only under a grant you gave (see [grants](concepts.md#grants)).
 
 ## Calibration
 

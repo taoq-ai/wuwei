@@ -49,6 +49,8 @@ _OWNER_ACTIONS = {
                               'outcome <id> <option> in a host terminal.'),
     ('drafts', 'approve'): ("Approving a draft is the owner's decision, outside agent tools: list drafts with "
                             'bin/wuwei drafts, and the owner runs bin/wuwei drafts approve <id> in a host terminal.'),
+    ('grants', 'revoke'): ("Revoking a grant is the owner's, outside agent tools: list them with bin/wuwei "
+                           'grants, and the owner runs bin/wuwei grants revoke <n> in a host terminal.'),
     ('drafts', 'drop'): ("Dropping a draft is the owner's decision, outside agent tools: list drafts with "
                          'bin/wuwei drafts, and the owner runs bin/wuwei drafts drop <id> in a host terminal.'),
     ('mcp', 'decide'): ("MCP decisions are the owner's, outside agent tools: show the request, and the owner "

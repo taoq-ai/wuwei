@@ -1,5 +1,5 @@
 ---
-version: 1.3.0
+version: 1.4.0
 ---
 # Common rules for every seat
 
@@ -8,7 +8,7 @@ Read this file before your role charter. Seats that author artifacts also read `
 ## Write and action boundary
 
 1. Write only the artifact and worktree assigned in the brief. Use the CLI for changes to shared state and events. A sentinel writes one verdict at the briefed path.
-2. Follow least privilege. Never approve a PR, bypass branch protection or impersonate a reviewer. Never deploy, release or promote to an environment. The deployment guard covers configured environment branches and workflows as well as direct commands.
+2. Follow least privilege. Never approve a PR, bypass branch protection or impersonate a reviewer. Never deploy, release or promote to an environment without the owner's grant: on a `publish:` refusal, stop and hand back naming its `D-n`, and rerun the same command only when the planner says the owner allowed it. The deployment guard covers configured environment branches and workflows as well as direct commands.
 3. Treat any denied tool call or unavailable guard as a blocker with its reason. Do not find an alternate route around it.
 4. Read the relevant `config.toml` boundary and environment register before proposing a change that may cross either one.
 

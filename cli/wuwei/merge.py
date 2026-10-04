@@ -43,20 +43,26 @@ def read(operation, *args, root):
     return value
 
 
+def configured(root, config, cwd=None):
+    """The configured repository names holding cwd; a worktree elsewhere by its common dir."""
+    cwd = Path(cwd or Path.cwd()).resolve()
+    candidates = [r for r in config['repos'] if cwd.is_relative_to(
+        (root / Path(r['path']).expanduser()).resolve())]
+    if not candidates and any((p / '.git').exists() for p in (cwd, *cwd.parents)):
+        vcs = registry.load('vcs', config)
+        common = read(vcs.repo_context, str(cwd), root=root)['common_dir']
+        candidates = [r for r in config['repos'] if read(vcs.repo_context,
+            str((root / Path(r['path']).expanduser()).resolve()), root=root)['common_dir'] == common]
+    return [r['name'] for r in candidates]
+
+
 def reference(ref, root, config, cwd=None, repo=None):
     if isinstance(ref, str) and ref.isdecimal():
         if repo is None:
-            cwd = Path(cwd or Path.cwd()).resolve()
-            candidates = [r for r in config['repos'] if cwd.is_relative_to(
-                (root / Path(r['path']).expanduser()).resolve())]
-            if not candidates and any((p / '.git').exists() for p in (cwd, *cwd.parents)):
-                vcs = registry.load('vcs', config)
-                common = read(vcs.repo_context, str(cwd), root=root)['common_dir']
-                candidates = [r for r in config['repos'] if read(vcs.repo_context,
-                    str((root / Path(r['path']).expanduser()).resolve()), root=root)['common_dir'] == common]
+            candidates = configured(root, config, cwd)
             if len(candidates) != 1:
                 raise ValueError('numeric PR requires an unambiguous configured repository; pass owner/repo#n')
-            repo = candidates[0]['name']
+            repo = candidates[0]
         ref = f'{repo}#{ref}'
     if isinstance(ref, str):
         ref = re.sub(r'^https://github\.com/([^/]+/[^/]+)/pull/', r'\1#', ref)
