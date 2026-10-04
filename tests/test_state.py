@@ -552,7 +552,7 @@ def test_pr_lists_cannot_remove_entries(workspace, field, writer):
 @pytest.mark.parametrize('kind', [
     'watch: sweep', 'reply: acknowledged', 'seat.usage', 'build.iteration',
     'build.parked', 'retro.captured', 'retro.gap', 'verdict.rejected',
-    'fast_checks.record',
+    'fast_checks.record', 'worktree.hooks_skipped',
 ])
 def test_dedicated_event_kinds_reserved(workspace, kind):
     result = cli('event', kind, '{"exit":0,"owed":0}')

@@ -147,6 +147,21 @@ def _finish(root):
     return code
 
 
+def _worktree_hooks(root):
+    """Rewrite every item worktree's git hooks; the scripts follow the repository's hooks (#472)."""
+    trees = sorted(tree for tree in (root / 'worktrees').glob('*') if (tree / '.git').is_file())
+    if not trees:
+        return
+    from wuwei import registry
+    from wuwei.commands.git_hook import install
+    vcs = registry.load('vcs', workspace.load_config(root))
+    for tree in trees:
+        try:
+            install(tree, root, vcs)
+        except ValueError as exc:
+            print(f'wuwei init warning: {tree.name}: {exc}', file=sys.stderr)
+
+
 def _register_mcp(root):
     from wuwei import mcp
     result = mcp.check(root)
@@ -352,6 +367,7 @@ def upgrade(args):
             print('No workspace changes needed')
         if args.dry_run:
             return CLEAN
+        _worktree_hooks(destination.parent)
         code = _finish(destination.parent)
         from wuwei import integrity
         if integrity.other_versions():  # #353: another version's hooks still run
