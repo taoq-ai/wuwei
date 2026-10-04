@@ -320,11 +320,14 @@ def check_send(inputs, root, config, channels):
         if code:
             return code, reason
         texts, _ = _text(inputs)
+        # The rule is a fragment: the guard's drafts.hold adds the draft id and the owner's next step (#493).
+        rule = ''
         if os.environ.get('WUWEI_SEAT_ROLE') == 'shepherd':
-            return FINDINGS, f'{APPROVAL_REQUIRED}: headless seat: a headless shepherd seat posts drafts only'
-        flag = texts and _flagged(_normalize('\n'.join(texts)).replace('’', "'"), config['outbound'])
-        if flag:
-            return FINDINGS, f'{APPROVAL_REQUIRED}: approval tier {flag[0]} for {next(iter(channels))}: {flag[1]}'
+            rule = 'headless seat: a headless shepherd seat posts drafts only'
+        elif flag := texts and _flagged(_normalize('\n'.join(texts)).replace('’', "'"), config['outbound']):
+            rule = f'approval tier {flag[0]} for {next(iter(channels))}: {flag[1]}'
+        if rule:
+            return FINDINGS, f'{APPROVAL_REQUIRED}: {rule}'
         return CLEAN, ''
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
         return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'
