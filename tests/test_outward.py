@@ -1562,7 +1562,8 @@ def test_tier_table(configured):
     rows = outward.table(config)
     assert [row for row, _, _ in rows] == [dict(row) for row in outward.DEFAULT_TIERS]
     assert {source for _, source, _ in rows} == {'default'} and len(rows) == 10
-    assert rows[2][0] == {'audience': 'client', 'topic': 'commitment', 'tier': 'block'}
+    assert rows[2][0] == {'audience': 'client', 'topic': 'commitment', 'tier': 'ask'}
+    assert not [row for row, _, _ in rows if row['tier'] == 'block']  # owner, 2026-10-04: no default blocks
     outbound_line(root, 'tiers = [{ person = "U07", tier = "send" }]')
     write_config(root, f'\n[outward.modes]\n"{UUID}" = "refuse"\n')
     rows = outward.table(workspace.load_config(root))
@@ -1579,11 +1580,6 @@ def tiers_workspace(root, extra=''):
     return workspace.load_config(root)
 
 
-BLOCK_C2 = ('outward: block by rule 3 (audience=client topic=commitment) for C2: C2 in '
-            'outbound.external_channels as client, outbound.commitment_patterns; the owner decides: '
-            'bin/wuwei outbound tiers')
-
-
 def test_tiers_acceptance(configured):
     import re
     from wuwei import state
@@ -1591,13 +1587,22 @@ def test_tiers_acceptance(configured):
     root = configured[0]
     tiers_workspace(root)
     tool = opaque('slack_send_message')
-    assert check_tier(payload(root, 'I will ship it tomorrow', tool=tool, channel='C2')) == (1, BLOCK_C2)
-    assert not state.read_state(root).get('drafts')
+    code, reason = check_tier(payload(root, 'I will ship it tomorrow', tool=tool, channel='C2'))
+    assert code == 1 and re.fullmatch(HELD, reason)[2] == (
+        'ask by rule 3 (audience=client topic=commitment) for C2: C2 in outbound.external_channels '
+        'as client, outbound.commitment_patterns')
+    assert len(state.read_state(root).get('drafts', {})) == 1  # a client commitment is a card, not a wall
     code, reason = check_tier(payload(root, 'I will ship it tomorrow', tool=tool, channel='C1'))
     assert code == 1 and re.fullmatch(HELD, reason)[2] == (
         'ask by rule 7 (topic=commitment) for C1: C1 in outbound.work_channels as team, '
         'outbound.commitment_patterns')
     assert check_tier(payload(root, 'Your build is green', tool=tool, channel='D01')) == (0, '')
+    # The owner's own row is the only way a client gets a wall.
+    outbound_line(root, 'tiers = [{ audience = "client", topic = "commitment", tier = "block" }]')
+    assert check_tier(payload(root, 'I will ship it tomorrow', tool=tool, channel='C2')) == (1, (
+        'outward: block by rule 1 (audience=client topic=commitment) for C2: C2 in '
+        'outbound.external_channels as client, outbound.commitment_patterns; the owner decides: '
+        'bin/wuwei outbound tiers'))
 
 
 def tier_run(root, config, text, channel=None, kind='slack', tool=None, **context):
@@ -1613,10 +1618,10 @@ def test_tiers_defaults(configured):
     root = configured[0]
     config = tiers_workspace(root, '\n[outbound.channel_classes]\nC4 = "public"\n')
     assert tier_run(root, config, 'tests passed', 'C4') == (
-        (1, 'block'), ['block by rule 2 (audience=public) for C4: C4 in outbound.channel_classes as public'])
+        (1, 'draft'), ['ask by rule 2 (audience=public) for C4: C4 in outbound.channel_classes as public'])
     result, why = tier_run(root, config, 'I disagree with the proposal.', 'C2')
-    assert result == (1, 'block') and why == [
-        'block by rule 4 (audience=client topic=disagreement) for C2: C2 in outbound.external_channels '
+    assert result == (1, 'draft') and why == [
+        'ask by rule 4 (audience=client topic=disagreement) for C2: C2 in outbound.external_channels '
         'as client, outbound.disagreement_patterns']
     assert tier_run(root, config, 'Your salary review is in', 'C2') == (
         (1, 'draft'), ['ask by rule 5 (audience=client) for C2: C2 in outbound.external_channels as client'])
@@ -1636,7 +1641,7 @@ def test_tier_classes(configured):
     root = configured[0]
     config = tiers_workspace(root, '\n[outbound.people]\n"slack:U07" = { class = "client" }\n')
     result, why = tier_run(root, config, 'I will ship it tomorrow', 'C1', is_shared=True)
-    assert result == (1, 'block') and why[0].endswith(
+    assert result == (1, 'draft') and why[0].startswith('ask by rule 3 ') and why[0].endswith(
         '(audience=client topic=commitment) for C1: C1 is shared, connected, external or client, '
         'outbound.commitment_patterns')
     assert tier_run(root, config, 'thanks <@U07>', 'C1') == (
@@ -1668,7 +1673,7 @@ def test_tiers_mixed_parties(configured):
     root = configured[0]
     config = tiers_workspace(root)
     result, why = tier_run(root, config, 'I will ship it tomorrow', 'C1', channel_id='C2')
-    assert result == (1, 'block') and why[0].startswith('block by rule 3 (audience=client topic=commitment) for C2')
+    assert result == (1, 'draft') and why[0].startswith('ask by rule 3 (audience=client topic=commitment) for C2')
     result, why = tier_run(root, config, 'Your build is green', 'D01', recipients=['U09'])
     assert result == (1, 'draft') and why[0].startswith('ask by rule 9 (audience=company) for @U09')
     outbound_line(root, 'tiers = [{ person = "U07", tier = "send" }]')

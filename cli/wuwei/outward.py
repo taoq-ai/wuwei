@@ -360,9 +360,11 @@ def _topics(normalized, rules):
 # with the kind rules below the table (tracker.auto, docs.auto, a measured team pull request).
 DEFAULT_TIERS = (
     {'audience': 'owner', 'tier': 'send'},
-    {'audience': 'public', 'tier': 'block'},
-    {'audience': 'client', 'topic': 'commitment', 'tier': 'block'},
-    {'audience': 'client', 'topic': 'disagreement', 'tier': 'block'},
+    # Owner, 2026-10-04 (design 4.9): an external party is always an approve, never a wall;
+    # the owner adds a block row when a client needs one.
+    {'audience': 'public', 'tier': 'ask'},
+    {'audience': 'client', 'topic': 'commitment', 'tier': 'ask'},
+    {'audience': 'client', 'topic': 'disagreement', 'tier': 'ask'},
     {'audience': 'client', 'tier': 'ask'},
     {'topic': 'sensitive', 'tier': 'ask'},
     {'topic': 'commitment', 'tier': 'ask'},

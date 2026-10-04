@@ -276,8 +276,9 @@ internal is `team`. Approving records them.
   the owner decides: bin/wuwei drafts show <id> --widget`.
 - A11 `outbound explain` recomputes the trace with today's config instead of storing it on the
   draft row; for a code-host draft that reads the pull request through the code-host port.
-- A12 Design 4.9 says every external party is an approve; the `block` rows for client
-  commitments and disagreements and for `public` come from the owner's issue of 2026-10-04.
+- A12 Design 4.9 says every external party is an approve. The owner decided on 2026-10-04,
+  after this item shipped, that the client commitment, client disagreement and `public`
+  default rows are `ask`, not `block`: no default row blocks; the owner adds a `block` row.
   The design spec is amended only by its owner; this conflict is raised here and on the pull
   request, not resolved in the design spec.
 - A13 `publish` stays owner-only (#478 grants) and is not part of this table; nothing in the
