@@ -367,7 +367,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'shepherd.dispatched': 'silent', 'shepherd.finished': 'nudge', 'pr.notified': 'silent',
                 'negotiation.loop': 'nudge', 'negotiation.notified': 'silent',
                 'decision.waited': 'nudge', 'doctor.fixed': 'silent', 'outward.ai_tells': 'silent',
-                'outward.unknown_tool': 'nudge',
+                'outward.unknown_tool': 'nudge', 'outward.to_owner': 'silent',
                 'spec.step': 'silent', 'spec.skipped': 'silent', 'spec.override': 'silent',
                 'spec.warned': 'nudge', 'docs.set': 'silent', 'docs.written': 'silent',
                 'docs.exempt': 'silent', 'outbound.proposed': 'silent', 'outbound.learned': 'silent',
@@ -839,6 +839,14 @@ def test_outward_ai_tells_is_silent_and_reserved(capsys):
     assert classify({'kind': 'outward.ai_tells', 'payload': {}}, {})[0] == 'silent'
     assert main(['event', 'outward.ai_tells', '{}']) == 1
     assert 'humanize_lint' in capsys.readouterr().err
+
+
+def test_outward_to_owner_is_silent_and_reserved(capsys):
+    from wuwei.signal import classify
+    from wuwei.__main__ import main
+    assert classify({'kind': 'outward.to_owner', 'payload': {}}, {})[0] == 'silent'
+    assert main(['event', 'outward.to_owner', '{}']) == 1
+    assert 'check_tier' in capsys.readouterr().err
 
 
 TELEMETRY = ('skipped', 'unsent', 'shared', 'ready', 'presented', 'off')

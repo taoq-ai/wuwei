@@ -1,6 +1,7 @@
 """Report outbound tiers without sending or creating drafts; learn unknown connectors (#492)."""
 
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -21,6 +22,8 @@ def register(subparsers):
                               help='the channel when the tool name does not give one')
     learn_parser.add_argument('--channels', metavar='FILE', help='JSON channel listing (slack only)')
     learn_parser.add_argument('--people', metavar='FILE', help='JSON people listing (slack only)')
+    learn_parser.add_argument('--owner', metavar='FILE',
+                              help="JSON {user, dm} from the connector's identity call (slack only)")
     learn_parser.set_defaults(func=learn)
 
 
@@ -83,6 +86,24 @@ def _rows(path, kind):
     return rows
 
 
+def _owner(path):
+    """#495: the owner's Slack identity file, validated; never the WUWEI app DM, which the
+    listener reads as owner input."""
+    text = Path(path).read_text(encoding='utf-8')  # OSError: unreadable, the caller's exit 2
+    try:
+        found = json.loads(text)
+    except ValueError:
+        found = None
+    if (not isinstance(found, dict) or set(found) != {'user', 'dm'}
+            or not all(isinstance(value, str) for value in found.values())
+            or not re.fullmatch(outward.SLACK_SHAPE['user'], found['user'])
+            or found['dm'] and not re.fullmatch(outward.SLACK_SHAPE['dm'], found['dm'])
+            or found['dm'] and found['dm'] == os.environ.get('SLACK_OWNER_DM_CHANNEL')):
+        raise ValueError(f'{path}: expected a JSON object {{"user", "dm"}} with the owner\'s Slack user id (U or W) '
+                         "and the owner's own DM id (D, or empty), not the WUWEI app DM; write the file again")
+    return found
+
+
 def _record_text(root, data):
     """Today's plan.md and decision records, symlinks skipped; learn's own cards left out."""
     day = workspace.day_dir(root)
@@ -92,9 +113,11 @@ def _record_text(root, data):
                      if path.is_file() and not path.is_symlink() and path.stem not in own)
 
 
-def propose(root, config, data, server, channel, tool, channels, people, *, card):
+def propose(root, config, data, server, channel, tool, channels, people, *, card, owner=None):
     """The proposal for one connector from today's state, or None when nothing is new."""
     rules = config['outbound']
+    new_owner = {key: value for key, value in (owner or {}).items()
+                 if value and not rules['owner']['slack'][key]}  # #495: never replaces one
     alias = server.casefold() not in {name.casefold() for name in config['outward']['servers']}
     new_channels = [{'id': row['id'], 'name': row['name'], 'members': row['members']}
                     for row in channels if not row['shared'] and not row['id'].startswith('D')
@@ -136,10 +159,10 @@ def propose(root, config, data, server, channel, tool, channels, people, *, card
     if skipped:
         print(f'not proposed: {skipped} people not internal by outbound.company_domains or '
               'outbound.code_host_orgs')
-    if not (alias or new_channels or new_people):
+    if not (alias or new_channels or new_people or new_owner):
         return None
     return {'server': server, 'channel': channel, 'tool': tool, 'alias': alias,
-            'channels': new_channels, 'people': new_people}
+            'channels': new_channels, 'people': new_people, 'owner': new_owner}
 
 
 # #492 scope addition: the default mode of a class and what each mode does, for the card.
@@ -164,23 +187,27 @@ def record(proposal):
     """The decision record text (contracts/outbound-learn.md)."""
     server, n, m = proposal['server'], len(proposal['channels']), len(proposal['people'])
     label = 'Slack' if proposal['channel'] == 'slack' else proposal['channel']
+    owner = proposal.get('owner') or {}
+    me = ', '.join(filter(None, [owner.get('user'), owner.get('dm') and f"DM {owner['dm']}"]))
+    mine = ' and your identity' if owner else ''
     parts = ([_count(n, 'work channel', 'work channels')] if n else []) + (
-        [_count(m, 'person', 'people')] if m else [])
+        [_count(m, 'person', 'people')] if m else []) + ([f'your identity {me}'] if owner else [])
     default = CLASS_MODES.get(proposal['channel'], 'send')
     question = (f'Connector {server} is {label}, mode {default}'
                 + (f'; add {" and ".join(parts)}?' if parts else '?'))
     lines = ''.join([f"- channel #{row['name']} ({row['id']}, {row['members']} members)\n"
                      for row in proposal['channels']]
-                    + [f"- person {row['name']} ({row['id']}, {row['why']})\n" for row in proposal['people']])
+                    + [f"- person {row['name']} ({row['id']}, {row['why']})\n" for row in proposal['people']]
+                    + [f"- owner {me} from the connector's identity call\n"] * bool(owner))
     # Scope addition: one option per other mode, so the owner changes the mode on this card.
-    rows = [('approve', 'Approve', f'Records the alias, {n} work channels and {m} people.',
+    rows = [('approve', 'Approve', f'Records the alias, {n} work channels and {m} people{mine}.',
              f'Mode {default}: {MODE_TEXT[proposal["channel"]]}', 9)]
     if n:
         rows.append(('channels', 'Approve channels only', f'Records the alias and {n} work channels.',
                      'Mentions of these people still draft.', 5))
     rows.append(('keep', 'Defer: keep as drafts', 'Records nothing.',
                  'Every send through this connector stays a draft today.', 1))
-    rows += [(other, f'Approve, mode {other}', f'Records the alias, {n} work channels and {m} people with mode {other}.',
+    rows += [(other, f'Approve, mode {other}', f'Records the alias, {n} work channels and {m} people{mine} with mode {other}.',
               MODE_TEXT[other], 3) for other in ('send', 'draft', 'refuse') if other != default]
     ids = ' | '.join(row[0] for row in rows)
     return f'''Question: {question}
@@ -239,7 +266,8 @@ def apply(root, proposal, option, decision_id=None):
     channels = [row['id'] for row in proposal['channels']] if option in ('approve', 'channels') or mode else []
     people = [row for row in proposal['people']] if option == 'approve' or mode else []
     alias = proposal['alias'] and (option in ('approve', 'channels') or bool(mode))
-    if not (alias or channels or people or mode):
+    owner = (proposal.get('owner') or {}) if option == 'approve' or mode else {}  # #495
+    if not (alias or channels or people or mode or owner):
         return CLEAN
 
     def change(_, raw):
@@ -249,6 +277,7 @@ def apply(root, proposal, option, decision_id=None):
         if channels:
             settings += setup.merged(config, ['outbound', 'work_channels'], channels)
         settings += [(('outbound', 'people'), f"slack:{row['id']}", row['entry']) for row in people]
+        settings += [(('outbound', 'owner', 'slack'), key, value) for key, value in owner.items()]
         return setup._settle(raw, settings)
 
     code = setup._edit('outbound learn', 'learned connector', lambda *args, **kwargs: True, change, root)
@@ -256,7 +285,8 @@ def apply(root, proposal, option, decision_id=None):
         state.append_event('outbound.learned', {
             'decision': decision_id, 'option': option, 'mode': 'card' if decision_id else 'auto',
             'server': proposal['server'], 'channel': proposal['channel'], 'alias': alias,
-            'connector_mode': mode, 'channels': channels, 'people': [row['id'] for row in people]}, root)
+            'connector_mode': mode, 'channels': channels, 'people': [row['id'] for row in people],
+            'owner': bool(owner)}, root)
     return code
 
 
@@ -297,26 +327,32 @@ def learn(args):
                  and row['server'].casefold() == server.casefold()), None)
     if kept:
         return fail(f'connector {server} was kept as drafts today ({kept}); {DRAFT}')
-    if (args.channels or args.people) and channel != 'slack':
-        return fail('listings apply to a slack connector; run it without --channels and --people')
-    if channel == 'slack' and not (args.channels or args.people):
+    if (args.channels or args.people or args.owner) and channel != 'slack':
+        return fail('listings apply to a slack connector; run it without --channels, --people and --owner')
+    if channel == 'slack' and not (args.channels or args.people or args.owner):
+        # #495: while the owner's identity is missing, the same step asks for it.
+        identity = ('' if all(config['outbound']['owner']['slack'].values()) else
+                    ", and its identity tool (auth_test, users_me, whoami, or the tool whose name says "
+                    'identity or profile); write the owner\'s user id and own DM channel id as {"user", '
+                    '"dm"} in a JSON file and add --owner <file>')
         return fail(f'connector {server} needs its listings; call its channel listing tool (channels_list, '
                     'conversations_list or slack_search_channels) and its user listing tool (users_list '
                     'or slack_search_users), write the channels the message goes to as [{"id", "name", '
                     '"members", "shared"}] and the people it mentions as [{"id", "name", "email"}] in JSON '
                     f'files under today\'s day directory, then run bin/wuwei outbound learn --tool {tool} '
-                    '--channels <file> --people <file>')
+                    f'--channels <file> --people <file>{identity}')
     try:
         channels = _rows(args.channels, 'channels') if args.channels else []
         people = _rows(args.people, 'people') if args.people else []
+        owner = _owner(args.owner) if args.owner else {}
     except OSError as exc:
         return fail(f'cannot read a listing: {exc}; write the file under today\'s day directory', UNRUN)
     except ValueError as exc:
         return fail(str(exc))
     # `other` carries mode send with no audience rules, so it is never learned without the card.
     card = (config['outbound']['learn'] == 'card' or workspace.posture(config)[0] == 'strict'
-            or channel == 'other')
-    proposal = propose(root, config, data, server, channel, tool, channels, people, card=card)
+            or channel == 'other' or bool(owner))  # #495: the owner confirms an identity on the card.
+    proposal = propose(root, config, data, server, channel, tool, channels, people, card=card, owner=owner)
     if proposal is None:
         return fail(f'nothing new to learn for connector {server}; {DRAFT}')
     try:

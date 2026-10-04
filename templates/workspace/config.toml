@@ -192,7 +192,7 @@ deny = [] # Literal executable plus argument glob, for example "make publish*".
 
 [outbound]
 # Only these internal channel IDs may auto-send routine work replies.
-# Missing/unknown destinations draft. Every DM drafts, even an acknowledgement.
+# Missing/unknown destinations draft. Every DM to anyone but you drafts, even an acknowledgement.
 # Chat threads draft until the chat port can verify all participants; tracker writes
 # draft unless their class or kind is in tracker.auto.
 work_channels = []
@@ -205,6 +205,10 @@ code_host_orgs = []
 # Unknown addressed people or PR participants draft. Any external identity wins.
 # The people table is the [outbound.people] section at the end of this section.
 # learn = "card" # outbound learn asks on a card; "auto" writes reviewers under observe and guarded; "off".
+# Your own identity per channel; a message only you receive is never a draft. Setup proposes it.
+# owner = {slack = {user = "U123", dm = "D123"}, mail = "you@example.test", code_host = "your-login"}
+# Where the planner posts the digest, nudges and day report: "session" or "dm" (your own Slack DM).
+# owner_channel = "dm"
 # Team PRs also require a configured repos.name, a known internal author and
 # internal discussion participants, verified through the code_host port.
 # GitHub identities require the PR's org; email alone cannot vouch for a login.

@@ -155,6 +155,9 @@ SCHEMA = {
         "work_channels": [(str, None)], "external_channels": [(str, None)],
         "company_domains": [(str, None)], "code_host_orgs": [(str, None)],
         "people": {"*": {"email": (str, ""), "org": (str, "")}},
+        "owner": {"slack": {"user": (str, ""), "dm": (str, "")}, "mail": (str, ""),
+                  "code_host": (str, "")},
+        "owner_channel": (str, "session", ("session", "dm")),
         "sensitive_keywords": [(str, None), [
             "performance", "feedback", "compensation", "salary", "pay", "bonus",
             "hiring", "interview", "firing", "personal", "health", "medical",
@@ -546,7 +549,7 @@ _CONFIGS = {}
 # copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
-CONFIG_CACHE_VERSION = 7  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 8  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor, why and the board stay read-only.

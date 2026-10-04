@@ -160,11 +160,16 @@ def widget(row, config):
     allowance = row['adapter'] in ('mcp', 'none')
     send = 'Send the text as it is. ' + ('The seat repeats its call and it goes out once.' if allowance
                                          else f"It goes out through the {row['adapter']} adapter.")
-    if (rule.startswith(('unknown destination', 'unknown mention'))
-            and config['outbound'].get('learn', 'off') != 'off'):
-        tool = f" --tool {row['tool']}" if row.get('tool') else ''
+    tool = f" --tool {row['tool']}" if row.get('tool') else ''
+    learning = config['outbound'].get('learn', 'off') != 'off'
+    if learning and rule.startswith(('unknown destination', 'unknown mention')):
         send += (f" Then run bin/wuwei outbound learn{tool} to record {rule.split(':')[0].split()[-1]} "
                  'for later sends.')
+    elif (learning and rule.startswith('unknown DM recipient')
+          and not all(config['outbound']['owner']['slack'].values())):
+        # #495: the DM may be the owner's own; the card learns the identity from the connector.
+        send += (f" If it is your own DM, run bin/wuwei outbound learn{tool} --owner <file> with your user "
+                 "and DM ids from the connector's identity tool, so later messages to you go out.")
     options = [('Send now', send),
                ('Send with an edit', f'I ask you for the new text in a Draft card citing {draft_id}, '
                 f'write it to a file and run bin/wuwei drafts approve {draft_id} --file <file>.'),

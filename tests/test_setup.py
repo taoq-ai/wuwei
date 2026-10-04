@@ -399,9 +399,10 @@ def settings_of(raw, login='pat-example', bots=None):
 def test_identity_settings():
     repos = ('\n[[repos]]\nname = "acme/widget"\npath = "widget"\ndefault_branch = "main"\n'
              'identity = {name = "Pat", email = "Pat@Example.test"}\n')
+    owner = {('outbound.owner', 'code_host'): 'pat-example', ('outbound.owner', 'mail'): 'Pat@Example.test'}
     assert settings_of(TEMPLATE + repos, bots={BOT: 'dependabot[bot]'}) == {
         ('owner', 'name'): 'Pat', ('owner', 'handles'): ['pat-example'], ('shepherd', 'lead_login'): 'pat-example',
-        ('shepherd.authors', 'pat@example.test'): {'login': 'pat-example'},
+        **owner, ('shepherd.authors', 'pat@example.test'): {'login': 'pat-example'},
         ('shepherd.authors', BOT): {'login': 'dependabot[bot]'}}
     chat = TEMPLATE.replace('handles = []', 'handles = ["U0123ABC"]')
     assert settings_of(chat)[('owner', 'handles')] == ['U0123ABC', 'pat-example']
@@ -411,11 +412,26 @@ def test_identity_settings():
     assert ('shepherd', 'lead_login') not in settings_of(lead)
     mapped = TEMPLATE.replace('[shepherd.authors]\n', '[shepherd.authors]\n"PAT@example.test" = {login = "p"}\n')
     assert settings_of(mapped + repos) == {
-        ('owner', 'name'): 'Pat', ('owner', 'handles'): ['pat-example'], ('shepherd', 'lead_login'): 'pat-example'}
+        ('owner', 'name'): 'Pat', ('owner', 'handles'): ['pat-example'], ('shepherd', 'lead_login'): 'pat-example',
+        **owner}
     assert settings_of(TEMPLATE + repos, None, {BOT: 'dependabot[bot]'}) == {
-        ('owner', 'name'): 'Pat', ('shepherd.authors', BOT): {'login': 'dependabot[bot]'}}
+        ('owner', 'name'): 'Pat', ('outbound.owner', 'mail'): 'Pat@Example.test',
+        ('shepherd.authors', BOT): {'login': 'dependabot[bot]'}}
     named = TEMPLATE.replace('[owner]\nname = ""', '[owner]\nname = "Pat Owner"')
     assert ('owner', 'name') not in settings_of(named + repos)
+
+
+def test_owner_identity():
+    # #495: setup proposes the owner's code-host login and mail, never over what is set.
+    repos = ('\n[[repos]]\nname = "acme/widget"\npath = "widget"\ndefault_branch = "main"\n'
+             'identity = {name = "Pat", email = "pat@example.test"}\n')
+    found = settings_of(TEMPLATE + repos)
+    assert found[('outbound.owner', 'code_host')] == 'pat-example'
+    assert found[('outbound.owner', 'mail')] == 'pat@example.test'
+    owned = TEMPLATE + repos + '\n[outbound.owner]\nmail = "me@example.test"\ncode_host = "me"\n'
+    found = settings_of(owned)
+    assert ('outbound.owner', 'code_host') not in found and ('outbound.owner', 'mail') not in found
+    assert ('outbound.owner', 'code_host') not in settings_of(TEMPLATE, None)
 
 
 def test_setup_fills_identity_end_to_end(project, host, terminal, capsys):
@@ -979,6 +995,16 @@ def test_setup_slack_refuses_an_empty_or_bad_channel(project, slack, terminal, c
     assert env_text(project) is None and (project / '.wuwei/config.toml').read_text() == TEMPLATE
 
 
+def test_setup_slack_records_the_owner_user_not_the_app_dm(project, slack, capsys):
+    # #495: the pin names the owner's user id; the app DM is never the owner's own DM.
+    config = TEMPLATE.replace('owner = ""', 'owner = "T01/U01"')
+    (project / '.wuwei/config.toml').write_text(config)
+    slack.polls = None
+    assert setup_slack(Confirm()) == 0, capsys.readouterr()
+    owner = load_config(project)['outbound']['owner']['slack']
+    assert owner == {'user': 'U01', 'dm': ''}
+
+
 def test_setup_slack_declined_writes_no_pin(project, slack):
     assert setup_slack(Confirm(False)) == 1
     assert (project / '.wuwei/config.toml').read_text() == TEMPLATE
@@ -1015,7 +1041,8 @@ def test_setup_slack_second_run_keeps_and_restarts(project, slack, capsys):
                                         'WUWEI_TOTP_SECRET=JBSWY3DPEHPK3PXP\n')
     (project / '.wuwei/env').chmod(0o600)
     config = TEMPLATE.replace('owner = ""', 'owner = "T0103ABC/U0123ABC"').replace(
-        '[adapters]\ntracker = "none"\nchat = "none"', '[adapters]\ninbound = "slack"\ntracker = "none"\nchat = "slack"')
+        '[adapters]\ntracker = "none"\nchat = "none"', '[adapters]\ninbound = "slack"\ntracker = "none"\nchat = "slack"'
+    ) + '\n[outbound.owner.slack]\nuser = "U0123ABC"\n'
     (project / '.wuwei/config.toml').write_text(config)
     unit = workspace.watch_unit(project, 'darwin', name='listen')[1]
     unit.parent.mkdir(parents=True)

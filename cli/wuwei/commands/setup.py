@@ -291,6 +291,12 @@ def identity(config, login, results):
             pass
         if not config['shepherd']['lead_login']:
             settings.append((('shepherd',), 'lead_login', login))
+    owner = config['outbound']['owner']  # #495: the owner's identity per channel class.
+    if login and not owner['code_host']:
+        settings.append((('outbound', 'owner'), 'code_host', login))
+    email = next((found for repo in config['repos'] if (found := repo['identity']['email'].strip())), '')
+    if email and not owner['mail']:
+        settings.append((('outbound', 'owner'), 'mail', email))
     authors = {email.strip().casefold(): login for repo in config['repos']
                if login and (email := repo['identity']['email']).strip()}
     for result in results:
@@ -489,7 +495,9 @@ def connect(root, confirm=None):
         env.load(root)
         print(f'Saved {" and ".join(new)} to .wuwei/env (mode 0600)')
     settings = [(('adapters',), 'chat', 'slack'), (('adapters',), 'inbound', 'slack')]
-    if re.fullmatch(remote.PIN, load_config(root)['control_plane']['owner']):
+    current = load_config(root)
+    pin = current['control_plane']['owner']
+    if re.fullmatch(remote.PIN, pin):
         print('control_plane.owner: already set, kept')
     else:
         found = _first_dm(root, os.environ['SLACK_OWNER_DM_CHANNEL'])
@@ -500,6 +508,10 @@ def connect(root, confirm=None):
         print(f'Message from {found.data}: pin it as control_plane.owner so only this sender '
               'can command WUWEI from the DM.')
         settings.append((('control_plane',), 'owner', found.data))
+        pin = found.data
+    if re.fullmatch(remote.PIN, pin) and not current['outbound']['owner']['slack']['user']:
+        # #495: the owner's user id; SLACK_OWNER_DM_CHANNEL is the app DM, never the owner's own.
+        settings.append((('outbound', 'owner', 'slack'), 'user', pin.split('/')[1]))
     code = _edit('setup slack', 'Slack settings', confirm, lambda root, raw: _settle(raw, settings))
     if code:
         return code

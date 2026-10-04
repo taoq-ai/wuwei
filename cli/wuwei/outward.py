@@ -184,6 +184,23 @@ def _text(inputs, *, nested=False):
     return texts, channels
 
 
+OWNER = {'chat': 'slack', 'slack': 'slack', 'mail': 'mail'}  # #495: kinds with a private audience.
+SLACK_SHAPE = {'user': '[UW][A-Z0-9]+', 'dm': 'D[A-Z0-9]+'}  # A channel id is never the owner.
+
+
+def owner_only(context, config, kind):
+    """#495: True when the owner alone is addressed: every destination and recipient is the
+    owner's identity in outbound.owner for this kind. A nested draft wrapper never is."""
+    if not isinstance(context, dict) or 'draft' in context:
+        return False
+    found = config['outbound']['owner'].get(OWNER.get(kind), '')
+    mine = ({value.casefold() for key, value in found.items() if re.fullmatch(SLACK_SHAPE.get(key, ''), value)}
+            if isinstance(found, dict) else {found.casefold()} - {''})
+    _, destinations = _text(context)
+    targets = [*destinations, *context.get('recipients', []), *filter(None, [context.get('recipient')])]
+    return bool(mine and targets) and all(target.casefold() in mine for target in targets)
+
+
 def _internal(person, rules, namespace, org=None):
     if not isinstance(person, str) or not person.strip():
         return False
@@ -353,6 +370,8 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
             return UNRUN, 'draft'
         context = {} if context is None else context
         _, destinations = _text(context)
+        if owner_only(context, config, kind):
+            return CLEAN, 'send'  # #495: only the owner reads it; security and the lint still run.
         # Some tracker tools wrap fields in draft even though the operation sends.
         nested = context.get('draft', {})
         context = {key: value for key, value in context.items()
@@ -372,6 +391,9 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
                        for channel in destinations)):
             if (context.get('is_dm') or context.get('channel_type') in ('im', 'mpim')
                     or any(channel.startswith(('D', 'U')) for channel in destinations)):
+                who = next(iter(destinations), None) or context.get('recipient')
+                if who:
+                    return held(f"unknown DM recipient {who}: not the owner's DM or user id in outbound.owner.slack")
                 return tier('direct message', 'every direct message drafts')
             return tier('external', 'shared, connected, client or outbound.external_channels')
         recipients = list(context.get('recipients', []))
@@ -501,12 +523,16 @@ def check_tier(inputs, root, config, channels, *, port=False):
         text = '\n'.join(texts)
         if len(channels) != 1:
             return UNRUN, 'outward: ambiguous tool channel configuration; pass one channel per call'
-        why = []
-        code, decision = classify(text, root, config, inputs, kind=next(iter(channels)), port=port, why=why)
+        why, kind = [], next(iter(channels))
+        code, decision = classify(text, root, config, inputs, kind=kind, port=port, why=why)
         if code == UNRUN:
             return code, 'outward: cannot classify policy, audience or message evidence; deliver as a draft for the owner to send'
         if decision == 'draft':
             return code, f'{APPROVAL_REQUIRED}: {why[0]}' if why else APPROVAL_REQUIRED
+        if owner_only(inputs, config, kind):
+            # ponytail: logged before check_lint, so a self-DM the lint refuses still counts; move it to the lint's clean result if the count must be exact.
+            from wuwei import state  # Only a message to the owner pays for the event (#495).
+            state.append_event('outward.to_owner', {'channel': kind}, root)
         return CLEAN, ''
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
         return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'
@@ -519,6 +545,7 @@ def check_lint(inputs, root, config, channels, *, to_owner=False):
         text = '\n'.join(texts)
         if len(channels) != 1:
             return UNRUN, 'outward: ambiguous tool channel configuration; pass one channel per call'
+        to_owner = to_owner or owner_only(inputs, config, next(iter(channels)))
         for channel in sorted(channels.union(destinations)):
             code, reason = lint(text, channel, config, root=root, to_owner=to_owner)
             if code:

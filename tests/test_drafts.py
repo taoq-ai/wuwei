@@ -714,6 +714,22 @@ def test_card_names_outbound_learn_when_on(root, capsys, monkeypatch):
     assert 'bin/wuwei outbound learn' in send and 'C9' in send
 
 
+def test_card_offers_owner_identity_for_unknown_dm(root, capsys, monkeypatch):
+    # #495: a DM held because the owner's identity is unknown offers to learn it on the card.
+    tool = 'mcp__00000000-0000-4000-8000-000000000001__slack_send_message'
+    _, reason, row = held(root, channel='U01', tool=tool)
+    assert 'unknown DM recipient U01' in reason
+    load = workspace.load_config
+
+    def learning(start=None):
+        config = load(start)
+        config['outbound']['learn'] = 'card'
+        return config
+    monkeypatch.setattr(workspace, 'load_config', learning)
+    send = card(capsys, row['id'])['options'][0]['description']
+    assert f'bin/wuwei outbound learn --tool {tool} --owner <file>' in send
+
+
 def test_show_unknown_or_decided_draft_exits_one(root, capsys):
     assert main(['drafts', 'show', 'draft-' + '0' * 32, '--widget']) == 1
     assert 'unknown draft ID' in capsys.readouterr().err
