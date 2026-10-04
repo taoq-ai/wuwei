@@ -62,3 +62,27 @@ jobs:
           files: release/wuwei.tar.gz
           append_body: true
           body: "Restart Claude Code so only this version's hooks run."
+      # The plugin directory and marketplaces point at a repository and a commit, so the dist
+      # branch holds exactly the signed asset's tree (no tests, specs or dev tooling) and its
+      # commit is the sha to submit or pin (#442).
+      - name: Publish the signed tree to the dist branch
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tree="$RUNNER_TEMP/dist-tree"
+          mkdir -p "$tree"
+          tar -xzf release/wuwei.tar.gz -C "$tree" --strip-components=1
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch -q origin dist; then
+            git checkout -q -B dist origin/dist
+          else
+            git checkout -q --orphan dist
+          fi
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R "$tree"/. .
+          git add -A
+          git commit -q -m "dist: $TAG" || echo "dist unchanged"
+          git push -q origin dist
