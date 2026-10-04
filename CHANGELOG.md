@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.16.0](https://github.com/taoq-ai/wuwei/compare/v0.15.0...v0.16.0) (2026-10-04)
+
+
+### Features
+
+* **decisions:** every option carries a title, rationale and consequence, the recommendation carries its reasoning, the Ask card shows all of it, and a configurable lens per decision class (SOLID, twelve-factor, YAGNI, ponytail for engineering) is applied and recorded ([#485](https://github.com/taoq-ai/wuwei/issues/485)) ([b400d60](https://github.com/taoq-ai/wuwei/commit/b400d607fce98b6c7923500c9e0a2a4168268f96)), closes [#475](https://github.com/taoq-ai/wuwei/issues/475)
+* **dispatch:** the day starts in parallel: CAP from the calibrated host, seats per goal in the plan and the gate question, every dispatchable item launched up to CAP in one turn, and an item's gate sentinels run together ([#487](https://github.com/taoq-ai/wuwei/issues/487)) ([0e22fac](https://github.com/taoq-ai/wuwei/commit/0e22facfd4db5829fac9410bda20f1d467604e25)), closes [#474](https://github.com/taoq-ai/wuwei/issues/474)
+* **session:** the plugin reference is exported once per version into the managed CLAUDE.md block, SessionStart injects only the day's steps, wuwei guide prints the reference, and a conformance test proves a fresh session reaches dispatch without a refusal ([#490](https://github.com/taoq-ai/wuwei/issues/490)) ([58becfc](https://github.com/taoq-ai/wuwei/commit/58becfca9e19916e55247a1cce0719c9483bb0b9)), closes [#476](https://github.com/taoq-ai/wuwei/issues/476)
+
+
+### Bug Fixes
+
+* **guards:** a quoted mention of an owner command is data, rank and propose take the lead's goals in either shape without sending the owner to a terminal, and the gate-citation lint on AskUserQuestion warns outside strict ([#482](https://github.com/taoq-ai/wuwei/issues/482)) ([7f85e79](https://github.com/taoq-ai/wuwei/commit/7f85e794f1089bf514b8f9b0b39988caf003f87d)), closes [#471](https://github.com/taoq-ai/wuwei/issues/471)
+* **guards:** every read-only git subcommand is known, unknown git subcommands warn under observe and guarded, and a read with a variable or loop target never hits the records floor ([#491](https://github.com/taoq-ai/wuwei/issues/491)) ([fd19372](https://github.com/taoq-ai/wuwei/commit/fd19372ea343afa07be30a5ea9e7bc2f1719b04a)), closes [#470](https://github.com/taoq-ai/wuwei/issues/470)
+* **outward:** read-only MCP tools are recognised by any word of their name, unknown tools warn under observe and guarded with the exact config line, and the built-in Slack write pattern covers add_message and friends ([#479](https://github.com/taoq-ai/wuwei/issues/479)) ([88359c8](https://github.com/taoq-ai/wuwei/commit/88359c86757d35158a562452c117605accf8ea59)), closes [#469](https://github.com/taoq-ai/wuwei/issues/469)
+* **plan:** plan add admits an owner-named item with --goal during the day, the reason names the form, and the plan skill says how an item joins an approved plan ([#483](https://github.com/taoq-ai/wuwei/issues/483)) ([d4c3663](https://github.com/taoq-ai/wuwei/commit/d4c36633b2ac81861f6940140a190494207135ae)), closes [#481](https://github.com/taoq-ai/wuwei/issues/481)
+* **seats:** a hand-back without last_assistant_message is read from the transcript and never leaves a seat running, traces redact only secrets, and a failed span records a gap event ([#488](https://github.com/taoq-ai/wuwei/issues/488)) ([e68db69](https://github.com/taoq-ai/wuwei/commit/e68db6922c1e7afa5f5d666fa8a98d42428bc830)), closes [#473](https://github.com/taoq-ai/wuwei/issues/473)
+* **worktree:** worktree add chains WUWEI's git hooks with a repository's own core.hooksPath instead of refusing, and skips with a warning when it cannot chain ([#484](https://github.com/taoq-ai/wuwei/issues/484)) ([b98797e](https://github.com/taoq-ai/wuwei/commit/b98797e3eb3320d5ec53e2b66d6a90c41c5a402d)), closes [#472](https://github.com/taoq-ai/wuwei/issues/472)
+
 ## [0.15.0](https://github.com/taoq-ai/wuwei/compare/v0.14.0...v0.15.0) (2026-10-03)
 
 
