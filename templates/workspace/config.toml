@@ -1,0 +1,318 @@
+# Defaults apply when settings are omitted. Unknown keys warn (strict posture: errors).
+# Running build seats and host limits. Integer counts must be positive.
+cap = 1
+profile = "strict" # strict or standard
+template_version = "" # Plugin version that last wrote this file; init, setup and init --upgrade set it.
+# Add one [[repos]] table per repository, for example:
+# [[repos]]
+# name = "owner/repo" # GitHub repository name used for merge_deploys matching.
+# path = "repos/example" # Relative to the workspace, or an absolute repository path.
+# default_branch = "main" # Required for each configured repository.
+# identity = {name = "Builder", email = "builder@example.test"} # Commit guards compare commits against it; wuwei worktree add writes it to each item worktree's Git config.
+# merge_deploys = false # Explicitly declare that merges do not deploy.
+# fast_checks = ["python3 -m pytest -q"] # Run and record with wuwei fast-checks <checkout>.
+# [repos.merge]
+# auto = false # Enable only after review, check, soak and path rules are configured.
+# [repos.shepherd]
+# reviewers = ["reviewer"] # Replaces shepherd.reviewers for this repository.
+
+[prioritisation]
+framework = "wsjf" # wsjf or rice
+
+[discovery]
+min_queue = 2
+autostart = "strict" # off: next morning; strict: ranked goal SLICE; goal: goal SLICE under CAP
+
+[tracker]
+backlog_filter = "" # Optional Linear team ID; empty reads accessible issues.
+# required = true # Every approved item needs a ticket while adapters.tracker is not none.
+# skip_tiers = [] # Gate tiers that need no ticket, for example ["light"].
+# strict_close = true # Close refuses while a merged item's ticket is not done.
+# create = ["bugs", "triage", "follow-ups"] # Ticket classes seats may open besides items.
+# log = ["decisions", "progress", "verdicts", "pr", "close"] # Comment kinds written on tickets.
+# auto = ["progress", "pr", "close"] # Classes and kinds sent without a draft.
+# max_per_item_per_day = 10 # Comments per ticket per day; the last one folds the rest.
+# project = "" # Linear team, Jira project key or GitHub owner/repo for new tickets.
+# board = "" # GitHub Projects board as owner/number; empty uses labels.
+[tracker.states]
+in_review = "In Review"
+done = "Done"
+
+# Docs system: notion, confluence, markdown or none (the default). See configuration.md#docs.
+# [docs]
+# system = "none"
+# required_tiers = ["standard", "full"]
+# space = "" # The Notion or Confluence page new pages go under.
+# root = "docs" # Markdown: the pages directory in each repository.
+# publish = ["report", "retro"]
+# auto = [] # page, report or retro: written without a draft.
+# strict_close = true
+
+[owner]
+name = ""
+pronouns = ""
+handles = [] # Bare chat IDs and code-host handles, e.g. "U12345", "pat-dev".
+# timezone = "Europe/Amsterdam" # IANA zone for quality hour bands and rotate_after.clock; empty is this machine's zone.
+[owner.verbosity]
+default = "brief" # brief, standard or full: how much decisions, the digest, nudges, the DM and the report say to you.
+# dm = "" # Per surface: decisions, digest, nudges, dm or report. Empty uses default.
+
+[host]
+free_memory_mb = 1024 # Nonnegative free-memory floor in MiB.
+seats = 4 # Default cap plus three parallel gate seats. Increase with cap.
+reservation_timeout_seconds = 14400 # Report stale reservations; never silently release them.
+
+[memory]
+max_notes = 60
+note_line_cap = 80
+probation_days = 10
+state_entry_cap = 3
+digest = "week" # "week" writes a week digest at close; "off" writes none.
+budget_tokens = 6000 # SessionStart memory payload budget; today is left out first.
+export_to = "CLAUDE.md" # Workspace-relative file that receives the generated rules block.
+
+[retro]
+repo = "." # Repository used for retro evidence.
+charter_paths = [".wuwei/charters"]
+changelog = ".wuwei/memory/CHANGELOG.md"
+
+[metrics]
+transcripts = "~/.claude/projects" # Claude Code project transcripts for this workspace.
+band_margin = 0.2 # FIX-rate lead a band needs over every other band before the retro names it.
+
+[consolidation]
+archive_after_days = 30
+similarity_threshold = 0.85
+
+[build]
+max_iterations = 8
+stuck_after = 3
+poll_interval_seconds = 5
+poll_timeout_seconds = 3600
+
+[codex]
+command = [] # Set to the companion command, for example ["node", "path/to/codex-companion.mjs"].
+timeout_seconds = 300
+
+[gates]
+# For STANDARD and FULL items, run one gate again on another runtime, for example "codex:<model>".
+# second_opinion = "off"
+# second_opinion_role = "quality"
+
+[control_plane]
+content = "summary" # summary or none; what a messaging transport sends about decisions.
+owner = "" # <team id>/<user id> pinned for commands from the owner DM; empty handles none.
+
+[adapters]
+tracker = "none"
+chat = "none"
+review_bot = "none"
+runtime = "claude"
+scanner = "none" # none or ziran; agent_surface gates require a compatible JSON CLI.
+code_host = "github"
+vcs = "git"
+host = "local"
+checks = "local"
+# tts defaults to say on macOS and none elsewhere. Set "none" to suppress audio.
+# tts = "none"
+calendar = "none" # Use "ics" for a private HTTPS feed.
+transcripts = "none"
+
+[scanner]
+severity_threshold = "high" # critical, high, medium or low; trust-boundary findings always block.
+
+[scanner.mcp]
+# Workspace and configured repository paths are checked for this project file.
+project_file = ".mcp.json"
+# Installed plugin registry v2; user installs and matching project/local installs.
+plugins_file = "~/.claude/plugins/installed_plugins.json"
+# Top-level mcpServers in user settings. Relative overrides use the workspace.
+user_file = "~/.claude.json"
+# Missing defaults and absent project/plugin MCP files mean no attachment.
+# Explicit user_file/plugins_file overrides must exist. Invalid inputs fail closed.
+# Launch gate override: critical, high, medium, low or unmeasured. Unset, the posture decides:
+# observe and guarded block no finding; strict blocks critical, high and unmeasured.
+# A check that could not run blocks under guarded and strict.
+# block = ["critical"]
+# Seconds for each server's watch-registry call.
+timeout_seconds = 60
+
+[voice]
+# Owner identifiers in [owner].handles match sent chat users and PR authors exactly.
+# review_prs = ["org/repo#123"] # PR comments use the review audience.
+review_prs = []
+[voice.sources]
+# internal = ["C123"] # Map an audience to sent chat channel IDs.
+
+[calendar]
+# url = "" # Optional private ICS URL; WUWEI_CALENDAR_URL overrides it.
+
+[brief]
+lead_minutes = 30 # Produce a meeting pack inside this window before an event with attendees.
+remote = "origin"
+prior_branch_pattern = "*{item}*" # Item is lowercased.
+full_path_patterns = [] # Owner-supplied regexes. Example: '(^|/)(infra|infrastructure|terraform|migrations?|secrets?)(/|$)'
+[brief.style]
+length = "standard" # standard or concise.
+speed = 180 # Words per minute for say.
+
+# Registers map names to descriptions.
+[boundary]
+# api = "Public HTTP interface"
+[environments]
+# production = "Live branch"
+# "release/*" = "Release branches"
+
+[deploy]
+workflows = [] # Deploying workflow names, filenames, paths or IDs.
+deny = [] # Literal executable plus argument glob, for example "make publish*".
+
+[outward]
+# Defaults block pending drafts, queues, agent/seat references and routine internals.
+# patterns = ['\binternal phrase\b'] # Replaces defaults; [] disables patterns.
+# banned_characters = ["emoji", "\u2014", "\u2015", "\u2e3a", "\u2e3b"] # [] disables character bans.
+# Tool patterns full-match names and select a policy channel. Setting the array
+# here replaces the defaults; bin/wuwei config set adds to them.
+# Adapter ports enforce the same policy independently of these patterns.
+# tool_patterns = [{pattern = 'mcp__custom__send', channel = 'customer'}]
+# Register every outward write tool used by this workspace. Unsupported payload
+# shapes fail closed. See specs/011-outward-lint/contracts/outward.md.
+# humanize = true # AI-tell lint on outward text (charters/_common-authoring.md).
+# humanize_kinds = ["dm", "tracker", "docs", "pr", "review"] # Kinds the lint checks.
+# humanize_strict = false # true refuses a text with a tell instead of warning.
+# draft_ttl = 3600 # Seconds an approved draft's tool call may repeat, once.
+# Server alias (slack, tracker, code_host, docs, mail or other), checked first, and the
+# server's mode (send, draft or refuse); bin/wuwei outbound learn proposes both on a card.
+# [outward.servers]
+# "<server id>" = "slack"
+# [outward.modes]
+# "<server id>" = "draft"
+# A connector's audience class for a channel or person it has not learned (owner, team,
+# company, client or public); without one, chat, Slack, mail and the code host are company.
+# [outward.classes]
+# "<server id>" = "company"
+[outward.max_length]
+# slack = 4000 # Positive maximum length for this channel.
+
+[outbound]
+# The tier table decides first: each destination and addressed person gets an audience class
+# (owner, team, company, client, public) and the first matching row gives send, ask (a draft
+# you confirm) or block (refused, no draft). bin/wuwei outbound tiers prints the table.
+# Your rows come before the defaults; any subset of tool, person, channel, audience and topic
+# (sensitive, commitment or disagreement) and the tier. A typo refuses the whole file.
+# tiers = [{ person = "U123", tier = "send" }, { audience = "team", tool = "tracker|docs|code_host", tier = "send" }]
+# When no row decides, the kind rules do: missing or unknown destinations draft, every DM to
+# anyone but you drafts, chat threads draft until the chat port can verify all participants,
+# and tracker writes draft unless their class or kind is in tracker.auto.
+# Team channels (class team): only these may auto-send routine work replies.
+work_channels = []
+# Client channels (class client); shared, connected and client channels override work_channels.
+external_channels = []
+# Any other class for a channel id goes in [outbound.channel_classes] at the end of this section.
+# Exact, case-insensitive identity boundaries; subdomains must be listed explicitly.
+company_domains = []
+code_host_orgs = []
+# People keys use slack:<id>, github:<login>, or email:<address> namespaces.
+# Unknown addressed people or PR participants draft. Any external identity wins.
+# The people table is the [outbound.people] section at the end of this section.
+# learn = "card" # outbound learn asks on a card; "auto" writes reviewers under observe and guarded; "off".
+# Your own identity per channel; a message only you receive is never a draft. Setup proposes it.
+# owner = {slack = {user = "U123", dm = "D123"}, mail = "you@example.test", code_host = "your-login"}
+# Where the planner posts the digest, nudges and day report: "session" or "dm" (your own Slack DM).
+# owner_channel = "dm"
+# Team PRs also require a configured repos.name, a known internal author and
+# internal discussion participants, verified through the code_host port.
+# GitHub identities require the PR's org; email alone cannot vouch for a login.
+# The auto-send allowlist is the ceiling; keyword lists are defence in depth.
+# These lists replace their defaults. Keep them conservative.
+# sensitive_keywords = ["performance", "feedback", "compensation", "salary", "pay", "bonus", "hiring", "interview", "firing", "personal", "health", "medical", "conflict", "legal", "hr", "harassment", "promotion", "illness"]
+# sensitive_patterns = ['\bmental\s+health\b']
+# commitment_patterns = ["\\b(?:i|we)\\s*(?:['\\u2019]ll|will|shall|can|promise|commit)\\b", "\\b(?:by|before|after)\\s+(?:\\w+day|tomorrow|noon|\\d)", "\\b(?:follow[ -]?up|deadline|out of scope|next (?:week|sprint))\\b"]
+# disagreement_patterns = ["\\bdisagree\\b", "\\b(?:you|that)\\s*(?:are|['\\u2019]re|is)\\s+wrong\\b", "\\b(?:i|we)\\s+(?:object|oppose)\\b"]
+# See specs/095-outbound-tiers/contracts/outbound.md for payloads and safe forms.
+# [outbound.people]
+# "slack:U123" = {email = "dev@example.test", class = "team"}
+# "github:developer" = {org = "example"}
+# Any other class for a channel id, over both lists.
+# [outbound.channel_classes]
+# "C123" = "public"
+
+[watch]
+clock_seconds = 600
+dead_seconds = 1200
+stale_seconds = 900
+sweep_seconds = 7200
+# https check URL of a hosted cron monitor, pinged by each healthy heartbeat; keep it private.
+# ping_url = ""
+
+[sessions]
+stale_seconds = 3600
+# rotate_after = { turns = 200 } # Or compactions = 1, or clock = "13:00"; off by default.
+
+[steward]
+every_tool_calls = 50
+loop_window_hours = 4
+loop_threshold = 9
+
+[decisions]
+wait_hours = 24 # Weekday hours an external confirmation waits before the sweep acts.
+# The levels feed the seat mandate; cruise answering (design 5.8.1) is not built.
+# [decisions.cruise]
+# enabled = true
+# levels = { approach = 2 }
+
+[pr]
+poll_seconds = 120
+action_minutes = 30
+review_window = 120
+
+[shepherd]
+lead_login = "" # Code host login of the lead; eligible when different from the PR author.
+reviewers = [] # Code host logins requested instead of the history ranking and the lead.
+reviewers_exclude = [] # Code host logins never picked from history, the lead included.
+review_channel = "" # Chat channel ID for review requests.
+review_gate_check = "Review Gate" # Check excluded while requesting reviewers.
+min_reviewers = 1 # Minimum eligible reviewers, including the lead; 0 is a solo owner who merges without a reviewer. A repository with no other author raises with no reviewer.
+author_windows_days = [90, 180] # Authorship lookback windows before all history.
+tie_commits = 2 # Include a third author within this commit count of second place.
+source_exclude = ["specs/*", "*.lock", "*lock.json", "*.generated.*", "generated/*"] # Paths excluded from reviewer selection.
+autostart = false # Start a headless shepherd seat for mechanical PR actions when the listener sees them (wuwei listen).
+
+[shepherd.authors]
+# Map each author email to a verified code host login and chat mention.
+# An unmapped email is resolved through the code host; one it cannot resolve is skipped.
+# "reviewer@example.test" = {login = "reviewer", mention = "UREVIEWER"}
+
+[spec]
+# The spec engine each non-trivial item is specified with before it is built: speckit, superpowers, openspec or none.
+engine = "speckit"
+# strict: the hooks refuse source edits and the gates until the engine's steps are done. advisory: warn once per item and day. off: no check.
+mode = "strict"
+# Lead tiers whose items need no spec. The owner overrides one item with wuwei plan set <item> spec=required or spec=skipped --reason <why>.
+skip_tiers = ["light"]
+
+[security]
+# observe: guards record what they would refuse and let the call through; records and owner-only actions still refuse. setup --shadow starts here.
+# guarded: the default. Records, publishing and integrity block; MCP findings, outward text and seat launches warn.
+# strict: every area blocks, and unknown config keys are errors.
+posture = "guarded" # The posture table and its floors are in the security docs.
+required = true
+# Per-area overrides of the posture: off, warn or block. records always blocks.
+# [security.areas]
+# mcp = "off" # integrity, mcp, publish, records, outward, seats
+
+[guards]
+shadow_days = 7 # Days in observe before one nudge asks to switch to guarded.
+shadow_since = "" # YYYY-MM-DD observe started; wuwei init --posture observe sets it.
+
+# Weekly usage counts (design 5.13). share: "anonymous", "attributed" or "off"; empty means
+# not asked yet and sends nothing. bin/wuwei telemetry preview prints exactly what would leave.
+# [telemetry]
+# enabled = true
+# share = ""
+# endpoint = "" # Where anonymous mode posts; empty or not https keeps every week local.
+# repository = "taoq-ai/wuwei" # Where attributed mode opens issues.
+# Your own OpenTelemetry platform, set only by you with bin/wuwei config set.
+# [telemetry.otlp]
+# endpoint = "" # https OTLP/HTTP base URL
+# headers_env = "" # Name of the .wuwei/env variable holding key=value,key=value auth headers.

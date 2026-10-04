@@ -1,0 +1,90 @@
+WUWEI
+Copyright 2026 TaoQ AI Labs
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This product includes or builds on the work below.
+
+Third-party code
+
+GitHub Spec Kit
+  Source: https://github.com/github/spec-kit
+  Licence: MIT, Copyright GitHub, Inc. Full text in .specify/LICENSE.
+  Used: the vendored .specify/ templates and scripts (spec-kit 1.0.13.dev0) and
+  .agents/skills/speckit-*, the development workflow for this repository.
+
+Simple Icons
+  Source: https://github.com/simple-icons/simple-icons
+  Licence: CC0-1.0 for the icon data; the brands remain trademarks of their owners.
+  Used: monochrome glyph path data (simple-icons 16.33.0) embedded in
+  scripts/build-hero.py for the hero.
+
+Projects whose ideas or tools WUWEI uses (no code copied)
+
+autoharness
+  Source: https://github.com/tigerless-labs/autoharness
+  Licence: MIT, Copyright (c) 2026 ryan
+  Used: propose then promote, the ledger and the adherence lifecycle (design spec 6.8).
+
+ralph-starter
+  Source: https://github.com/rubenmarcus/ralph-starter
+  Licence: MIT, Copyright (c) 2026 Ruben Marcus
+  Used: the builder loop with backpressure and stuck detection (design spec 5.3).
+
+humanizer
+  Source: https://github.com/blader/humanizer
+  Licence: MIT, Copyright (c) 2025 Siqi Chen
+  Used: the writing checklist in charters/_common-authoring.md is a condensed paraphrase
+  of it; the charters call the skill when it is installed.
+
+Wikipedia: Signs of AI writing
+  Source: https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing
+  Licence: credit only, no text copied
+  Used: the source humanizer is based on, so an indirect source of the checklist.
+
+Model Context Protocol
+  Source: https://modelcontextprotocol.io
+  Licence: Apache-2.0 for new code, MIT for legacy contributions, CC-BY-4.0 for
+  documentation, Copyright (c) 2024-2025 Model Context Protocol a Series of LF Projects, LLC.
+  Used: the protocol the board server implements (cli/wuwei/commands/board.py).
+
+MCP Apps
+  Source: https://github.com/modelcontextprotocol/ext-apps
+  Licence: Apache-2.0 for new code, MIT for legacy contributions, CC-BY-4.0 for
+  documentation, Copyright (c) 2024-2025 Model Context Protocol a Series of LF Projects, LLC.
+  Used: the ui:// resource convention the board serves (ui://wuwei/board.html).
+
+release-please
+  Source: https://github.com/googleapis/release-please
+  Licence: Apache-2.0
+  Used: as a CI tool through release-please-action (.github/workflows/release.yml).
+
+ZIRAN
+  Source: https://github.com/taoq-ai/ziran
+  Licence: Apache-2.0
+  Used: as a CI tool for the role grant audit (ziran-audit job, agents/ziran-baseline.json).
+
+superpowers
+  Source: https://github.com/obra/superpowers
+  Licence: MIT, Copyright (c) 2025 Jesse Vincent
+  Used: the section structure of README.md (how it works, the basic workflow, when
+  something goes wrong, what is inside, philosophy, installation per harness); no text
+  copied.
+
+Concepts (credited by author and source)
+
+WSJF (Weighted Shortest Job First)
+  Source: https://framework.scaledagile.com/wsjf
+  Author: Donald Reinertsen, The Principles of Product Development Flow (2009), as
+  popularised by SAFe
+  Used: the wsjf ranking (design spec 5.7).
+
+RICE
+  Source: https://www.intercom.com/blog/rice-simple-prioritization-for-product-managers/
+  Author: Sean McBride, Intercom
+  Used: the rice ranking (design spec 5.7).
+
+One-way and two-way doors
+  Source: https://s2.q4cdn.com/299287126/files/doc_financials/annual/2015-Letter-to-Shareholders.PDF
+  Author: Jeff Bezos, Amazon 2015 letter to shareholders (Type 1 and Type 2 decisions)
+  Used: the decision framework (design spec 5.3 and 5.8).

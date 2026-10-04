@@ -1,0 +1,46 @@
+{
+  "charters": {
+    "builder": {
+      "reasons": [
+        "starter profile python-library"
+      ],
+      "text": "## Profile: python library\n- Keep the red test run in the handoff next to the green one.\n- Add no runtime dependency the item does not name; prefer the standard library.\n- A change to the public API carries a test and a changelog line.\n"
+    },
+    "sentinel-quality": {
+      "reasons": [
+        "starter profile python-library"
+      ],
+      "text": "## Profile: python library\n- Block a public API change that has no test or no changelog line.\n"
+    }
+  },
+  "config": {
+    "deploy": {
+      "deny": [
+        "twine upload*",
+        "uv publish*",
+        "poetry publish*",
+        "flit publish*"
+      ]
+    },
+    "repos": {
+      "fast_checks": [
+        "python3 -m pytest -q"
+      ],
+      "gates": {
+        "trust_paths": [
+          ".github/*",
+          "ci/*",
+          "workflows/*",
+          "deploy/*",
+          "infra/*",
+          "pyproject.toml",
+          "setup.py",
+          "setup.cfg"
+        ]
+      }
+    }
+  },
+  "dropped": [],
+  "name": "python-library",
+  "wuwei_profile": 1
+}

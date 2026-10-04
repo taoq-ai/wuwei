@@ -1,0 +1,35 @@
+{
+  "name": "wuwei",
+  "version": "0.17.0",
+  "description": "Autonomous delivery where the safe path is the default one: hooks that guard records, publishing and outward messages, seats that build and review in the background, and a day the owner approves on one card.",
+  "author": {
+    "name": "TaoQ AI Labs",
+    "url": "https://github.com/taoq-ai"
+  },
+  "homepage": "https://taoq-ai.github.io/wuwei/",
+  "repository": "https://github.com/taoq-ai/wuwei",
+  "license": "Apache-2.0",
+  "keywords": [
+    "agents",
+    "delivery",
+    "hooks",
+    "guardrails",
+    "planning",
+    "code-review",
+    "slack",
+    "linear",
+    "notion"
+  ],
+  "icon": "./.claude-plugin/icon.png",
+  "mcpServers": {
+    "cockpit": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/wuwei",
+      "args": [
+        "board"
+      ],
+      "env": {
+        "CLAUDE_PROJECT_DIR": "${CLAUDE_PROJECT_DIR}"
+      }
+    }
+  }
+}

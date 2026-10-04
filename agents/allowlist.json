@@ -1,0 +1,11 @@
+{
+  "planner": ["Read", "Glob", "Grep", "Bash", "Write", "Edit", "Agent"],
+  "lead": ["Read", "Glob", "Grep", "Bash", "Write"],
+  "builder": ["Read", "Glob", "Grep", "Bash", "Write", "Edit"],
+  "sentinel-arch": ["Read", "Glob", "Grep", "Bash", "Write"],
+  "sentinel-quality": ["Read", "Glob", "Grep", "Bash", "Write"],
+  "sentinel-security": ["Read", "Glob", "Grep", "Bash", "Write"],
+  "sentinel-goal": ["Read", "Glob", "Grep", "Bash", "Write"],
+  "shepherd": ["Read", "Glob", "Grep", "Bash", "Write"],
+  "steward": ["Read", "Glob", "Grep", "Bash", "Write"]
+}
