@@ -114,6 +114,26 @@ def test_config_check_prints_the_warning(ws, monkeypatch, capsys):
     assert ('wuwei config check: warning: config.toml: ' + WARNING.format(typo_line(TYPO))) in err
 
 
+def test_config_check_reports_two_tables(ws, monkeypatch, capsys):
+    from fakes.code_host import Fake as CodeHost
+    from wuwei import registry
+    from wuwei.commands import config
+    from wuwei.registry import Result
+    code_host = CodeHost()
+    code_host.auth_status = lambda root=None: Result(0)
+    real = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, cfg: code_host if kind == 'code_host' else real(kind, cfg))
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(ws))
+    text = TEMPLATE.replace('[outward]\n', '[outward]\nwork_channels = ["C1"]\n')
+    write(ws, text)
+    lines = text.splitlines()
+    good, bad = lines.index('work_channels = []') + 1, lines.index('work_channels = ["C1"]') + 1
+    assert config.run(SimpleNamespace()) == 1
+    err = capsys.readouterr().err
+    assert (f'wuwei config check: work_channels is set in [outbound] (line {good}) and [outward] '
+            f'(line {bad})') in err
+
+
 def plugin(tmp_path, version, marker=False):
     directory = tmp_path / 'cache' / version
     (directory / '.claude-plugin').mkdir(parents=True)

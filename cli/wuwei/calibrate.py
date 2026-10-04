@@ -12,7 +12,7 @@ import statistics
 from time import monotonic
 import tomllib
 
-from wuwei import registry, workspace
+from wuwei import configtext, registry, workspace
 from wuwei.commands.init import _preserves_values, _sections
 from wuwei.guards.deploy import VERBS
 from wuwei.workspace import MERGE_SCHEMA
@@ -407,7 +407,7 @@ def baseline(prs):
 
 
 COMMENT = '# Added by wuwei config promote from calibration.\n'
-LAYOUT = 'cannot place calibration keys in this config.toml layout; edit by hand'
+LAYOUT = 'cannot place this value in this config.toml layout; edit by hand, then run bin/wuwei config check'
 
 
 def _table(value, path):
@@ -437,16 +437,6 @@ def _labelled(raw):
 
 def _empty_list(key, line):
     return re.fullmatch(rf'{key}\s*=\s*\[\]\s*(#.*)?', line.strip())
-
-
-def _assignment(key, line):
-    """A complete one-line `key = value` assignment of exactly this key."""
-    if not re.match(rf'\s*{re.escape(key)}\s*=', line):
-        return False
-    try:
-        return list(tomllib.loads(line)) == [key]
-    except tomllib.TOMLDecodeError:
-        return False
 
 
 # ponytail: default seat cost before any seat ran (the default memory floor); measured after.
@@ -520,48 +510,30 @@ def proposal(raw, targets, host=None):
 
 
 def apply(raw, additions):
-    """Place additions in their sections and prove every other owner value is unchanged."""
+    """Place additions through the config writer and prove every other owner value is unchanged."""
     if not additions:
         return raw
-    sections, replaced, commented = _labelled(raw), [], set()
+    text, commented, before = raw, set(), tomllib.loads(raw)
     for path, key, value in additions:
-        quoted = path[:1] in (("environments",), ("boundary",)) or path == ('shepherd', 'authors')
-        text = ('{' + ', '.join(f'{k} = {json.dumps(v)}' for k, v in value.items()) + '}'
-                if isinstance(value, dict) else json.dumps(value))
-        line = f'{json.dumps(key) if quoted else key} = {text}\n'
-        lines = next((lines for p, lines in sections if p == path), None)
-        if lines is None:
-            if path[0] != 'repos':
-                sections.append((path, ['\n', f'[{".".join(path)}]\n']))
-            elif len(path) == 3 and any(p[:2] == path[:2] for p, _ in sections):
-                last = max(i for i, (p, _) in enumerate(sections) if p[:2] == path[:2])
-                sections.insert(last + 1, (path, ['\n', f'[repos.{path[2]}]\n']))
-            else:
-                raise ValueError(LAYOUT)
-            lines = next(lines for p, lines in sections if p == path)
-        match = next((i for i, old in enumerate(lines) if _assignment(key, old)), None)
-        if match is not None:
-            lines[match] = line
-            replaced.append((path, key))
-            continue
-        end = len(lines)
-        while end > 1 and not lines[end - 1].strip():
-            end -= 1
-        if end and not lines[end - 1].endswith('\n'):
-            lines[end - 1] += '\n'
-        lines[end:end] = [line] if path in commented else [COMMENT, line]
-        commented.add(path)
-    text = ''.join(''.join(lines) for _, lines in sections)
-    try:
-        parsed = tomllib.loads(text)
-    except tomllib.TOMLDecodeError:
-        raise ValueError(LAYOUT) from None
-    before = tomllib.loads(raw)
-    for path, key in replaced:
-        _table(before, path).pop(key)
-    if not _preserves_values(before, parsed) or any(
-            (_table(parsed, path) or {}).get(key) != value for path, key, value in additions):
-        raise ValueError(LAYOUT)
+        dotted = '.'.join(map(str, (*path, key)))
+        absent = key not in (_table(tomllib.loads(text), path) or {})
+        try:
+            text = configtext.place(text, path, key, value,
+                                    COMMENT if absent and path not in commented else None)
+            tomllib.loads(text)
+        except tomllib.TOMLDecodeError:
+            raise ValueError(f'{dotted}: {LAYOUT}') from None
+        if absent:
+            commented.add(path)
+    parsed = tomllib.loads(text)
+    for path, key, _ in additions:
+        (_table(before, path) or {}).pop(key, None)
+    if not _preserves_values(before, parsed):
+        path, key, _ = additions[0]
+        raise ValueError(f"{'.'.join(map(str, (*path, key)))}: {LAYOUT}")
+    for path, key, value in additions:
+        if (_table(parsed, path) or {}).get(key) != value:
+            raise ValueError(f"{'.'.join(map(str, (*path, key)))}: {LAYOUT}")
     workspace._validate(parsed, workspace.SCHEMA, (), text)
     return text
 
@@ -644,11 +616,12 @@ def ci_only(results):
 
 
 def settle(raw, settings):
-    """Owner answers as (additions, hand edits): absent keys added, one-line assignments replaced.
+    """Owner answers as (additions, hand edits): absent keys added, present ones replaced in place;
+    a table answered with a non-table is a hand edit.
 
     A deploy list keeps every present item, so an answer never removes a deploy-ban pattern.
     """
-    present, sections = tomllib.loads(raw), _labelled(raw)
+    present = tomllib.loads(raw)
     additions, edits = [], []
     for path, key, value in settings:
         table = _table(present, path)
@@ -660,10 +633,10 @@ def settle(raw, settings):
             value = [*current, *(item for item in value if item not in current)]
         if current == value:
             continue
-        if any(_assignment(key, line) for p, lines in sections if p == path for line in lines):
-            additions.append((path, key, value))
-        else:
+        if isinstance(current, dict) and not isinstance(value, dict):
             edits.append(('.'.join(map(str, (*path, key))), current, value))
+        else:
+            additions.append((path, key, value))
     return additions, edits
 
 

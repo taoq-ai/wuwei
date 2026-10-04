@@ -11,7 +11,7 @@ import sys
 import time
 import tomllib
 
-from wuwei import calibrate, references, registry, workspace
+from wuwei import calibrate, configtext, references, registry, workspace
 from wuwei.commands import config
 from wuwei.exits import CLEAN, FINDINGS, UNRUN
 from wuwei.workspace import ConfigError, load_config
@@ -72,28 +72,52 @@ def _edit(label, what, confirm, change):
 
 
 def _settle(raw, settings):
-    """raw with the settings applied; a key that is not a one-line assignment raises naming it."""
+    """raw with the settings applied; a table set to a single value raises naming it."""
     additions, edits = calibrate.settle(raw, settings)
-    for dotted, current, _ in edits:
-        if isinstance(current, dict):
-            raise ValueError(f'{dotted}: a table; set one of its keys'
-                             + (f', for example {dotted}.default' if 'default' in current else ''))
-        raise ValueError(f'{dotted}: not a one-line assignment; edit config.toml by hand, then run bin/wuwei config check')
+    for dotted, current, _ in edits:  # settle lists only a table answered with a non-table
+        raise ValueError(f'{dotted}: a table; set one of its keys'
+                         + (f', for example {dotted}.default' if 'default' in current else ''))
     return calibrate.apply(raw, additions)
+
+
+def _parts(key):
+    if not KEY.fullmatch(key):
+        raise ValueError(f'{key}: expected a dotted key such as owner.name or repos.0.merge_deploys; use a dotted key such as owner.name')
+    parts = [int(p) if p.isdigit() else p for p in key.split('.')]
+    if isinstance(parts[-1], int):
+        raise ValueError(f'{key}: name a key, not a list index; use the key itself, for example repos.0.merge_deploys')
+    return parts
+
+
+def write_value(raw, key, value, mode='replace'):
+    """The one config writer entry point (#494); #492 passes mode='append' for list keys."""
+    parts = _parts(key)
+    path, name = tuple(parts[:-1]), parts[-1]
+    if mode not in ('replace', 'append'):
+        raise ValueError(f'{mode}: unknown mode; use replace or append')
+    if mode == 'append':
+        current = (calibrate._table(tomllib.loads(raw), path) or {}).get(name, [])
+        if not isinstance(current, list) or not isinstance(value, list):
+            raise ValueError(f'{key}: append needs a list; use replace')
+        value = [*current, *(v for v in value if v not in current)]
+    return _settle(raw, [(path, name, value)])
 
 
 def set_value(args, confirm=None):
     """Owner action: set one config value after a host-terminal digest."""
     def change(root, raw):
-        if not KEY.fullmatch(args.key):
-            raise ValueError(f'{args.key}: expected a dotted key such as owner.name or repos.0.merge_deploys; use a dotted key such as owner.name')
-        parts = [int(p) if p.isdigit() else p for p in args.key.split('.')]
-        if isinstance(parts[-1], int):
-            raise ValueError(f'{args.key}: name a key, not a list index; use the key itself, for example repos.0.merge_deploys')
-        parsed = tomllib.loads(f'value = {args.value}\n')
+        node = configtext.declared(tuple(_parts(args.key)))
+        try:
+            parsed = tomllib.loads(f'value = {args.value}\n')
+        except tomllib.TOMLDecodeError:
+            if node is None:
+                parsed = {}
+            else:
+                kind, example = configtext.describe(node)
+                raise ValueError(f"{args.key}: {args.value!r} is not TOML; pass {kind}, for example '{example}'") from None
         if list(parsed) != ['value']:
             raise ValueError(f'{args.value!r}: expected one TOML value; pass one TOML value, for example \'"standard"\' or false')
-        return _settle(raw, [(tuple(parts[:-1]), parts[-1], parsed['value'])])
+        return write_value(raw, args.key, parsed['value'])
 
     return _edit('config set', 'change', confirm, change)
 

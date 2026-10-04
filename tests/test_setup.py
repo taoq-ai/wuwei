@@ -111,6 +111,37 @@ def test_repository_value_lands_in_its_table(workspace):
     assert load_config(workspace)['repos'][0]['merge_deploys'] is False
 
 
+def test_owner_tool_patterns_on_template(workspace):
+    (workspace / '.wuwei/config.toml').write_text(TEMPLATE + REPO)
+    confirm = Confirm()
+    assert config_set('outward.tool_patterns', '[{pattern = "x", channel = "slack"}]', confirm) == 0
+    assert load_config(workspace)['outward']['tool_patterns'] == [{'pattern': 'x', 'channel': 'slack'}]
+    assert len(confirm.digests) == 1
+
+
+def test_same_value_twice_is_byte_identical(workspace, capsys):
+    value = '[{pattern = "x", channel = "slack"}]'
+    assert config_set('outward.tool_patterns', value, Confirm()) == 0
+    once, confirm = (workspace / '.wuwei/config.toml').read_bytes(), Confirm()
+    capsys.readouterr()
+    assert config_set('outward.tool_patterns', value, confirm) == 0
+    assert 'No config.toml changes' in capsys.readouterr().out and confirm.digests == []
+    assert (workspace / '.wuwei/config.toml').read_bytes() == once
+
+
+@pytest.mark.parametrize('key,value,kind,example', [
+    ('outward.tool_patterns', '[{pattern: "x"}]', 'a list of tables', '[{pattern = "text", channel = "text"}]'),
+    ('cap', 'many', 'an integer', '1'),
+    ('owner.verbosity.default', 'standard', 'a string', '"brief"'),
+])
+def test_not_toml_names_the_type(workspace, capsys, key, value, kind, example):
+    confirm = Confirm()
+    assert config_set(key, value, confirm) == 1
+    err = capsys.readouterr().err
+    assert confirm.digests == [] and key in err and kind in err and example in err
+    assert (workspace / '.wuwei/config.toml').read_text() == TEMPLATE
+
+
 @pytest.mark.parametrize('argv,words', [
     (['config', 'set', '--help'], ('key', 'value')),
     (['setup', '--help'], ('--shadow', '--posture', '--repos', 'slack')),

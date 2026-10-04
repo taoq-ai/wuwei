@@ -44,11 +44,10 @@ def test_settle_replaces_one_line_assignments_and_keeps_the_rest():
     ('[repos.merge]\nquiet_hours = [\n "20:00-08:00",\n]\n', 'quiet_hours', []),
     ('merge.auto = false\n', 'auto', True),
 ])
-def test_settle_turns_other_forms_into_hand_edits(extra, key, value):
+def test_settle_replaces_spans_and_dotted_keys(extra, key, value):
     raw = '[[repos]]\nname = "acme/one"\npath = "one"\ndefault_branch = "main"\n' + extra
     text, edits = placed(raw, [(('repos', 0, 'merge'), key, value)])
-    assert text == raw and edits == [(f'repos.0.merge.{key}', tomllib.loads(raw)['repos'][0]['merge'][key],
-                                      value)]
+    assert edits == [] and tomllib.loads(text)['repos'][0]['merge'][key] == value
 
 
 def test_settle_only_grows_the_deploy_deny_list():
