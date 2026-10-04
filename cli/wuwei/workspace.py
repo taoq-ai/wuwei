@@ -170,6 +170,8 @@ SCHEMA = {
             r"\bdisagree\b", r"\b(?:you|that)\s*(?:are|['\u2019]re|is)\s+wrong\b",
             r"\b(?:i|we)\s+(?:object|oppose)\b",
         ]],
+        # #492: card asks the owner, auto writes under observe and guarded, off never learns.
+        "learn": (str, "card", ("card", "auto", "off")),
     },
     "outward": {
         "patterns": [(str, ""), [
@@ -187,12 +189,17 @@ SCHEMA = {
         "humanize_strict": (bool, False),
         "draft_ttl": (int, 3600, 60),
         "tool_patterns": [{"pattern": (str, None), "channel": (str, None)}, [
-            {"pattern": r"mcp__.*slack.*__.*(send|post|reply|schedule|update|add_message|add_reaction|react|chat_post|delete|edit|upload|invite|kick|archive|pin|star).*", "channel": "slack"},
-            {"pattern": r"mcp__.*linear.*__(save|create|update)_(issue|comment)", "channel": "tracker"},
-            {"pattern": r"mcp__.*github.*__(add|create|update)_.*comment.*", "channel": "code_host"},
-            {"pattern": r"mcp__.*notion.*__.*(create|update|append|patch|post|move|duplicate).*", "channel": "docs"},
-            {"pattern": r"mcp__.*atlassian.*__(create|update)Confluence.*", "channel": "docs"},
+            # #492: the brand anywhere in the name, so mcp__<uuid>__slack_send_message matches.
+            {"pattern": r"mcp__(?=.*slack).*__.*(send|post|reply|schedule|update|add_message|add_reaction|react|chat_post|delete|edit|upload|invite|kick|archive|pin|star).*", "channel": "slack"},
+            {"pattern": r"mcp__(?=.*linear).*__(?:\w*_)?(save|create|update)_(issue|comment)", "channel": "tracker"},
+            {"pattern": r"mcp__(?=.*github).*__(?:\w*_)?(add|create|update)_.*comment.*", "channel": "code_host"},
+            {"pattern": r"mcp__(?=.*notion).*__.*(create|update|append|patch|post|move|duplicate).*", "channel": "docs"},
+            {"pattern": r"mcp__(?=.*atlassian).*__(?:\w*_)?(create|update)Confluence.*", "channel": "docs"},
         ]],
+        # #492: the owner's alias of an MCP server id to its channel.
+        "servers": {"*": (str, None, ("slack", "tracker", "code_host", "docs", "mail", "other"))},
+        # #492: the owner's approval mode of an MCP server id; absent is the class default.
+        "modes": {"*": (str, None, ("send", "draft", "refuse"))},
     },
     "telemetry": {"enabled": (bool, True),
                   "share": (str, "", ("", "off", "anonymous", "attributed")),

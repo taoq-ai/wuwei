@@ -46,8 +46,8 @@ class Confirm:
         return self.answer
 
 
-def config_set(key, value, confirm):
-    return setup().set_value(SimpleNamespace(key=key, value=value), confirm=confirm)
+def config_set(key, value, confirm, replace=False):
+    return setup().set_value(SimpleNamespace(key=key, value=value, replace=replace), confirm=confirm)
 
 
 def test_one_value_lands_after_its_digest(workspace, capsys):
@@ -114,7 +114,7 @@ def test_repository_value_lands_in_its_table(workspace):
 def test_owner_tool_patterns_on_template(workspace):
     (workspace / '.wuwei/config.toml').write_text(TEMPLATE + REPO)
     confirm = Confirm()
-    assert config_set('outward.tool_patterns', '[{pattern = "x", channel = "slack"}]', confirm) == 0
+    assert config_set('outward.tool_patterns', '[{pattern = "x", channel = "slack"}]', confirm, replace=True) == 0
     assert load_config(workspace)['outward']['tool_patterns'] == [{'pattern': 'x', 'channel': 'slack'}]
     assert len(confirm.digests) == 1
 
@@ -1076,3 +1076,49 @@ def test_discovery_prints_tracker_links(project, host, terminal):
     assert 'tracker links: atlassian.net (beta/.github/PULL_REQUEST_TEMPLATE.md)' in found['lines']
     assert not any('gamma' in line and 'tracker' in line for line in found['lines'])
     assert load_config(project)['adapters']['tracker'] == 'none'
+
+
+# #492: a list key keeps its effective items, a named-entry table keeps its entries.
+def test_list_set_appends(workspace):
+    from wuwei.workspace import SCHEMA
+    before = load_config(workspace)['outbound']['work_channels']
+    assert config_set('outbound.work_channels', '["C1"]', Confirm()) == 0
+    assert load_config(workspace)['outbound']['work_channels'] == [*before, 'C1']
+    rule = '[{pattern = "mcp__acme__send", channel = "slack"}]'
+    assert config_set('outward.tool_patterns', rule, Confirm()) == 0
+    assert load_config(workspace)['outward']['tool_patterns'] == [
+        *SCHEMA['outward']['tool_patterns'][1], {'pattern': 'mcp__acme__send', 'channel': 'slack'}]
+
+
+def test_list_set_replace(workspace):
+    assert config_set('outbound.sensitive_keywords', '["C1"]', Confirm(), replace=True) == 0
+    assert load_config(workspace)['outbound']['sensitive_keywords'] == ['C1']
+
+
+def test_table_set_adds_entries(workspace):
+    assert config_set('outbound.people', '{"slack:U01" = {email = "ada@example.com"}}', Confirm()) == 0
+    assert config_set('outbound.people', '{"slack:U02" = {org = "acme"}}', Confirm()) == 0
+    assert load_config(workspace)['outbound']['people'] == {
+        'slack:U01': {'email': 'ada@example.com', 'org': ''}, 'slack:U02': {'email': '', 'org': 'acme'}}
+    assert '"slack:U02" = {org = "acme"}' in (workspace / '.wuwei/config.toml').read_text()
+
+
+def test_replace_refused_on_scalar(workspace, capsys):
+    confirm = Confirm()
+    assert config_set('owner.verbosity.default', '"standard"', confirm, replace=True) == 1
+    assert '--replace' in capsys.readouterr().err and confirm.digests == []
+    assert (workspace / '.wuwei/config.toml').read_text() == TEMPLATE
+
+
+def test_config_show_tags(workspace, capsys):
+    from wuwei.__main__ import main
+    rule = '[{pattern = "mcp__acme__send", channel = "slack"}]'
+    assert config_set('outward.tool_patterns', rule, Confirm()) == 0
+    capsys.readouterr()
+    assert main(['config', 'show', 'outward.tool_patterns']) == 0
+    rows = capsys.readouterr().out.splitlines()
+    assert len(rows) == 6 and [row.rsplit(' ', 1)[1] for row in rows] == ['default'] * 5 + ['owner']
+    assert main(['config', 'show', 'outbound.learn']) == 0
+    assert capsys.readouterr().out.splitlines() == ['"card"  default']
+    assert main(['config', 'show', 'outbound.nonsense']) == 1
+    assert 'unknown key outbound.nonsense' in capsys.readouterr().err

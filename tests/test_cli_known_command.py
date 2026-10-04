@@ -58,7 +58,8 @@ def test_every_registered_command_is_in_exactly_one_set():
     (['mcp', 'decide', '--help'], True), (['config', 'set', '-h'], True),
     ([], False), (['doctor', '--fix'], False), (['calibrate'], False),
     (['calibrate', 'export', 'x', '--questions'], False), (['mcp', 'decide', 'D-1', 'proceed'], False),
-    (['mcp', 'decide', '--', '--help'], False), (['config', 'show'], False),
+    (['mcp', 'decide', '--', '--help'], False), (['config', 'nonsense'], False),
+    (['config', 'show', 'cap'], True),  # #492: config show prints only
     (['config', 'set', 'k', 'v'], False), (['integrity', 'reconfirm'], False), (['state', 'get'], False),
     (['--workspace', 'doctor', 'decide', 'D-1', 'proceed'], False), (['--workspace', '/w', 'doctor'], True),
     (['--workspace', '--help', 'decide', 'D-1', 'proceed'], False),

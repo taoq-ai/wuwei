@@ -172,7 +172,7 @@ deny = [] # Literal executable plus argument glob, for example "make publish*".
 # patterns = ['\binternal phrase\b'] # Replaces defaults; [] disables patterns.
 # banned_characters = ["emoji", "\u2014", "\u2015", "\u2e3a", "\u2e3b"] # [] disables character bans.
 # Tool patterns full-match names and select a policy channel. Setting the array
-# replaces defaults for Slack, Linear and GitHub MCP writes.
+# here replaces the defaults; bin/wuwei config set adds to them.
 # Adapter ports enforce the same policy independently of these patterns.
 # tool_patterns = [{pattern = 'mcp__custom__send', channel = 'customer'}]
 # Register every outward write tool used by this workspace. Unsupported payload
@@ -181,6 +181,12 @@ deny = [] # Literal executable plus argument glob, for example "make publish*".
 # humanize_kinds = ["dm", "tracker", "docs", "pr", "review"] # Kinds the lint checks.
 # humanize_strict = false # true refuses a text with a tell instead of warning.
 # draft_ttl = 3600 # Seconds an approved draft's tool call may repeat, once.
+# Server alias (slack, tracker, code_host, docs, mail or other), checked first, and the
+# server's mode (send, draft or refuse); bin/wuwei outbound learn proposes both on a card.
+# [outward.servers]
+# "<server id>" = "slack"
+# [outward.modes]
+# "<server id>" = "draft"
 [outward.max_length]
 # slack = 4000 # Positive maximum length for this channel.
 
@@ -197,7 +203,8 @@ company_domains = []
 code_host_orgs = []
 # People keys use slack:<id>, github:<login>, or email:<address> namespaces.
 # Unknown addressed people or PR participants draft. Any external identity wins.
-# people = {"slack:U123" = {email = "dev@example.test"}, "github:developer" = {org = "example"}}
+# The people table is the [outbound.people] section at the end of this section.
+# learn = "card" # outbound learn asks on a card; "auto" writes reviewers under observe and guarded; "off".
 # Team PRs also require a configured repos.name, a known internal author and
 # internal discussion participants, verified through the code_host port.
 # GitHub identities require the PR's org; email alone cannot vouch for a login.
@@ -208,6 +215,9 @@ code_host_orgs = []
 # commitment_patterns = ["\\b(?:i|we)\\s*(?:['\\u2019]ll|will|shall|can|promise|commit)\\b", "\\b(?:by|before|after)\\s+(?:\\w+day|tomorrow|noon|\\d)", "\\b(?:follow[ -]?up|deadline|out of scope|next (?:week|sprint))\\b"]
 # disagreement_patterns = ["\\bdisagree\\b", "\\b(?:you|that)\\s*(?:are|['\\u2019]re|is)\\s+wrong\\b", "\\b(?:i|we)\\s+(?:object|oppose)\\b"]
 # See specs/095-outbound-tiers/contracts/outbound.md for payloads and safe forms.
+# [outbound.people]
+# "slack:U123" = {email = "dev@example.test"}
+# "github:developer" = {org = "example"}
 
 [watch]
 clock_seconds = 600

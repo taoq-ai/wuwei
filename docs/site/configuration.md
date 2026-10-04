@@ -13,7 +13,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[brief.style]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]` | [Boundaries and deployment](#boundaries-and-deployment) |
-| `[outward]`, `[outward.max_length]`, `[outbound]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
+| `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outbound]`, `[outbound.people]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
 | `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]`, `[decisions.lenses]` | [Decisions](#decisions); cruise answering is not built |
 | `[calibrate]` | [Calibration](#calibration) |
 | `[spec]` | [Specification mode](#specification-mode) |
@@ -307,7 +307,7 @@ The template also shows a `"release/*"` environment example. Add any actual envi
 
 Two host terminal commands change one value later, each with a diff and a digest, the same path as `config promote`. The value is parse-checked before you are asked; an invalid one is refused with the reason and nothing is written:
 
-- `bin/wuwei config set <dotted.key> <toml-value>`, for example `bin/wuwei config set owner.verbosity.default '"standard"'` or `bin/wuwei config set repos.0.merge_deploys false` (repositories by index), and a list of tables such as `bin/wuwei config set outward.tool_patterns '[{pattern = "mcp__custom__send", channel = "customer"}]'`. A value that is not TOML is refused with the type the key takes and an example. A table such as `owner.verbosity` is set one key at a time, and a deploy list only grows.
+- `bin/wuwei config set <dotted.key> <toml-value>`, for example `bin/wuwei config set owner.verbosity.default '"standard"'` or `bin/wuwei config set repos.0.merge_deploys false` (repositories by index), and a list of tables such as `bin/wuwei config set outward.tool_patterns '[{pattern = "mcp__custom__send", channel = "customer"}]'`. A value that is not TOML is refused with the type the key takes and an example. A table such as `owner.verbosity` is set one key at a time, and a deploy list only grows. On a list key the value is added to the effective list, so the built-in items stay (`config set outbound.work_channels '["C1"]'` keeps the others); on a named-entry table such as `outbound.people` or `outward.servers` it adds or replaces the given entries. `--replace` writes the value as given. `bin/wuwei config show <key>` prints the effective value, one row per item or entry, each tagged `default` or `owner`.
 - `bin/wuwei config add-repo --name acme/widget --path widget --branch main --identity "Pat Example <pat@example.test>"` appends one `[[repos]]` table; a duplicate name or path is refused.
 
 Run `bin/wuwei calibrate [--repo <name>]` after `init` and the basic `[[repos]]` entry (`name`, `path`, `default_branch`), and before the first plan. It reads each checkout and writes `.wuwei/days/<date>/calibration.md`; it never changes `config.toml`, and without `--measure` it runs nothing in the checkout. It exits 0 clean, 1 when it flagged text and 2 when it could not run or a read was unmeasured.
@@ -382,7 +382,9 @@ Two starters ship in `templates/profiles/`, derived from WUWEI's own setup: `pyt
 | --- | --- | --- |
 | `outward.patterns` | Built-in internal-state patterns | Regexes; setting a list replaces defaults, `[]` disables them. |
 | `outward.banned_characters` | `emoji`, U+2014, U+2015, U+2E3A, U+2E3B | Setting a list replaces defaults. |
-| `outward.tool_patterns` | Built-in Slack, Linear and GitHub MCP matches | Tool regex plus policy channel; setting a list replaces defaults. An unmatched MCP tool is a read, a write or unknown by the words of its name (see security). |
+| `outward.tool_patterns` | Built-in Slack, Linear, GitHub, Notion and Atlassian MCP matches | Tool regex plus policy channel. The built-in rules match the brand anywhere in the name, so `mcp__<uuid>__slack_send_message` is Slack. A list in `config.toml` replaces the defaults; `config set` adds to them. A tool nothing resolves is a read, a write or unknown by the words of its name (see security). |
+| `outward.servers` | `{}` | MCP server id to channel (`slack`, `tracker`, `code_host`, `docs`, `mail` or `other`), checked before the rules; `bin/wuwei outbound learn` proposes entries. Reads still pass. |
+| `outward.modes` | `{}` | MCP server id to its write mode: `send` (lint and the sensitive, commitment and disagreement patterns, no audience rules), `draft` (every write drafts) or `refuse`. Without one, `other` sends and every other channel follows its tier. The learn card offers each mode. |
 | `outward.max_length.slack` | Not set | Example positive maximum for one channel under `[outward.max_length]`. |
 | `outward.humanize` | `true` | Lint outward text for AI tells before it is drafted or sent; `false` turns the lint off. |
 | `outward.humanize_kinds` | `["dm", "tracker", "docs", "pr", "review"]` | Kinds the lint checks: DMs, tracker comments, docs pages, PR comments and PR bodies, and other chat posts such as review pings. |
@@ -392,7 +394,8 @@ Two starters ship in `templates/profiles/`, derived from WUWEI's own setup: `pyt
 | `outbound.external_channels` | `[]` | Shared or client channels; these override work channels. |
 | `outbound.company_domains` | `[]` | Exact internal domain names. |
 | `outbound.code_host_orgs` | `[]` | Internal code host organizations. |
-| `outbound.people` | `{}` | Optional identity map using `slack:`, `github:` or `email:` keys. |
+| `outbound.people` | `{}` | Optional identity map using `slack:`, `github:` or `email:` keys; `bin/wuwei outbound learn` proposes `slack:` entries for the day's reviewers. |
+| `outbound.learn` | `"card"` | How `bin/wuwei outbound learn` records an unknown connector, work channel or person: `card` asks you on one decision card, `auto` writes reviewers and listed channels at once under observe and guarded (strict still asks), `off` never learns and every such send stays a draft. |
 | `outbound.sensitive_keywords` | Built-in sensitive topic words | Optional replacement list; see the template for the full list. |
 | `outbound.sensitive_patterns` | `['\\bmental\\s+health\\b']` | Optional replacement regex list. |
 | `outbound.commitment_patterns` | Built-in commitment regexes | Optional replacement list; see the template for exact regexes. |

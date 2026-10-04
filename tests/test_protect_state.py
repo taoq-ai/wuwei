@@ -992,3 +992,46 @@ def test_seat_cannot_send_telemetry(workspace):
     code, reason = check_bash(payload(workspace, 'Bash', command='bin/wuwei telemetry send'))
     assert code == 1 and 'bin/wuwei telemetry send in a host terminal' in reason
     assert check_bash(payload(workspace, 'Bash', command='bin/wuwei telemetry preview')) == (0, '')
+
+
+# #492: guard config is never changed from an agent tool, and learn is the planner's.
+def _seat_hook(root, command, monkeypatch, capsys, posture, *, seat=True):
+    from wuwei.commands.hook import run
+    _posture(root, posture)
+    data = {**payload(root, 'Bash', command=command), **({'agent_id': 'seat-1'} if seat else {})}
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(data)))
+    code = run(SimpleNamespace(event='PreToolUse'))
+    out = capsys.readouterr().out
+    return code, json.loads(out)['hookSpecificOutput']['permissionDecisionReason'] if out.strip() else ''
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_guard_config_set_refused(workspace, monkeypatch, capsys, posture):
+    for key in ('outward.tool_patterns', 'outbound.work_channels', 'security.posture', 'grants.x'):
+        code, reason = _seat_hook(workspace, f"bin/wuwei config set {key} '[]'", monkeypatch, capsys, posture)
+        assert code == 2 and "owner's" in reason and 'bin/wuwei outbound learn' in reason, reason
+        assert 'propose the line' not in reason and 'config set' not in reason
+    code, reason = _seat_hook(workspace, 'bin/wuwei config set owner.name \'"Pat"\'', monkeypatch, capsys, posture)
+    assert code == 2 and 'propose the line' in reason
+
+
+def _planner(root, monkeypatch):
+    from wuwei import state
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00Z')
+    state._write_state(lambda data: data.update(planner_session_id='fixture'), root, reserved=False)
+
+
+LEARN = 'bin/wuwei outbound learn --tool mcp__00000000-0000-4000-8000-000000000001__send_message'
+
+
+@pytest.mark.parametrize('posture', ['guarded', 'strict'])
+def test_outbound_learn_planner_only(workspace, monkeypatch, capsys, posture):
+    _planner(workspace, monkeypatch)
+    code, reason = _seat_hook(workspace, LEARN, monkeypatch, capsys, posture)
+    assert code == 2 and 'planner' in reason
+    assert _seat_hook(workspace, LEARN, monkeypatch, capsys, posture, seat=False) == (0, '')
+
+
+def test_config_show_outbound_learn_passes(workspace, monkeypatch, capsys):
+    for command in ('bin/wuwei config show outbound.learn', 'bin/wuwei outbound learn --help'):
+        assert _seat_hook(workspace, command, monkeypatch, capsys, 'strict') == (0, '')

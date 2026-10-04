@@ -93,10 +93,19 @@ _OWNER_ACTIONS = {
                            '<id> apply|keep in a host terminal.'),
     ('setup', ''): ('Setup writes config.toml, an owner action outside agent tools: the owner runs bin/wuwei '
                     'setup in a host terminal.'),
+    # #492: listing a connector and proposing it is the planner's; strict asks the card.
+    ('outbound', 'learn'): ('Learning a connector runs in the registered planner session, outside seats: '
+                            'hand back to the planner, which runs bin/wuwei outbound learn; the owner can '
+                            'run it in a host terminal.'),
     ('telemetry', 'send'): ('Telemetry sends are an owner action, outside agent tools: show the payload with '
                             'bin/wuwei telemetry preview, and the owner runs bin/wuwei telemetry send in a host '
                             'terminal.'),
 }
+# #492: config set on these keys gets this reason instead of the table's.
+GUARD_KEYS = ('outward', 'security', 'outbound', 'grants')
+GUARD_CONFIG = ("Guard settings (outward, outbound, security, grants) are the owner's and never change "
+                'from an agent tool: for an unknown connector, channel or person the planner runs '
+                'bin/wuwei outbound learn, and the owner answers its card.')
 _OWNER_GROUPS = {group for group, _ in _OWNER_ACTIONS}
 _OWNER_VERBS = tuple(sorted({verb for _, verb in _OWNER_ACTIONS if verb}))
 # Owner words as tokens; `_` or `.` may precede them so python snippets such as
@@ -120,10 +129,14 @@ _CLI_NONLITERAL = (r'(?<![\w.-])wuwei(?:\s+-\S*)*(?:\s+(?:' + '|'.join(sorted(_O
 _READERS = ('grep', 'rg', 'echo', 'printf', 'head', 'tail', 'wc', 'cut', 'tr')
 
 
-def _pair(words):
+def _positional(words):
     # The value after --workspace is a path, not the group (#354).
-    return tuple(([word for prev, word in zip(['', *words], words)
-                   if not word.startswith('-') and prev != '--workspace'] + ['', ''])[:2])
+    return [word for prev, word in zip(['', *words], words)
+            if not word.startswith('-') and prev != '--workspace']
+
+
+def _pair(words):
+    return tuple((_positional(words) + ['', ''])[:2])
 
 
 def _owner_reason(pair):
@@ -225,6 +238,11 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
         if read_only(action):  # #348: --help prints usage and runs nothing
             continue
         if (reason := _owner_reason((group, verb))) and not (not xargs and _seat_docs_set(action)):
+            if (group, verb) == ('outbound', 'learn') and edits[1]:
+                continue  # The registered planner session, in any posture.
+            if (group, verb) == ('config', 'set') and (
+                    _positional(action)[2:3] or [''])[0].split('.')[0] in GUARD_KEYS:
+                reason = GUARD_CONFIG
             if ((group, verb) in _GATE_EDITS or (group, '') in _GATE_EDITS) and edits[1]:
                 if group in edits[0] and any(word == '--file' or word.startswith('--file=')
                                              for word in action):

@@ -667,6 +667,8 @@ def card(capsys, draft_id):
 
 
 def test_card_for_a_held_tool_call(root, capsys):
+    path = root / '.wuwei/config.toml'  # learn off: the card names no outbound learn (#492).
+    path.write_text(path.read_text().replace('[outbound]\n', '[outbound]\nlearn = "off"\n'))
     _, _, row = held(root)
     widget = card(capsys, row['id'])
     assert widget['header'] == 'Draft' and widget['record'] == f"bin/wuwei drafts approve {row['id']}"

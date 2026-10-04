@@ -288,15 +288,15 @@ def test_missing_workspace_and_policy(tmp_path, monkeypatch):
     ('mcp__unknown__post_message', 2),
     ('mcp__unknown__reply', 2),
     ('mcp__unknown__schedule_message', 2),
-    ('mcp__unknown__create_issue', 2),
-    ('mcp__unknown__update_issue', 2),
-    ('mcp__unknown__save_issue', 2),
+    ('mcp__unknown__create_issue', 1),
+    ('mcp__unknown__update_issue', 1),
+    ('mcp__unknown__save_issue', 1),
     ('mcp__unknown__comment', 2),
     ('mcp__unknown__chat_write', 2),
     ('mcp__unknown__read', 0),
     ('mcp__unknown__message_user', 2),
     ('mcp__unknown__notify', 2),
-    ('mcp__gmail__draft_email', 2),
+    ('mcp__gmail__draft_email', 1),
     ('mcp__unknown__respond_to_event', 2),
     ('mcp__slack__edit_message', 1),
     ('mcp__slack__slack_add_list_record', 2),
@@ -308,7 +308,7 @@ def test_real_mcp_write_names(configured, tool, code):
     result = check(payload(configured[0], 'A technical claim.', tool=tool))
     assert result[0] == code
     if code == 2:
-        assert 'config set outward.tool_patterns' in result[1] and tool in result[1]
+        assert f'bin/wuwei outbound learn --tool {tool}' in result[1]
 
 
 @pytest.mark.parametrize('tool', ['Skill', 'ToolSearch', 'AskUserQuestion', 'LS', 'Read',
@@ -812,7 +812,7 @@ RECORDED = {
                  'slack_get_thread_replies', 'slack_get_users', 'slack_get_user_profile'],
         'draft': ['conversations_add_message', 'slack_post_message', 'slack_reply_to_thread',
                   'slack_add_reaction'],
-        'line': []},
+        'learn': []},
     'linear': {
         'read': ['list_comments', 'list_cycles', 'get_document', 'list_documents', 'get_issue',
                  'get_issue_git_branch_name', 'list_issues', 'list_issue_statuses',
@@ -820,7 +820,7 @@ RECORDED = {
                  'get_project', 'list_project_labels', 'list_teams', 'get_team', 'list_users',
                  'get_user', 'search_documentation'],
         'draft': ['create_comment', 'create_issue', 'update_issue'],
-        'line': ['create_project', 'update_project', 'create_issue_label']},
+        'learn': ['create_project', 'update_project', 'create_issue_label']},
     'github': {
         'read': ['get_me', 'get_issue', 'get_issue_comments', 'list_issues', 'search_issues',
                  'get_pull_request', 'list_pull_requests', 'get_pull_request_files',
@@ -832,12 +832,14 @@ RECORDED = {
                  'get_code_scanning_alert', 'list_secret_scanning_alerts',
                  'get_secret_scanning_alert', 'list_workflows', 'list_workflow_runs',
                  'get_workflow_run', 'get_job_logs'],
-        'draft': ['add_issue_comment', 'add_pull_request_review_comment_to_pending_review'],
-        'line': ['create_issue', 'update_issue', 'create_pull_request', 'update_pull_request',
+        # #492: an issue word resolves to the tracker channel by vocabulary.
+        'draft': ['add_issue_comment', 'add_pull_request_review_comment_to_pending_review',
+                  'create_issue', 'update_issue', 'assign_copilot_to_issue'],
+        'learn': ['create_pull_request', 'update_pull_request',
                  'merge_pull_request', 'update_pull_request_branch', 'create_pull_request_review',
                  'create_pending_pull_request_review', 'submit_pending_pull_request_review',
                  'delete_pending_pull_request_review', 'create_and_submit_pull_request_review',
-                 'request_copilot_review', 'assign_copilot_to_issue', 'create_branch',
+                 'request_copilot_review', 'create_branch',
                  'create_or_update_file', 'delete_file', 'push_files', 'create_repository',
                  'fork_repository', 'dismiss_notification', 'mark_all_notifications_read',
                  'manage_notification_subscription',
@@ -859,7 +861,7 @@ def test_recorded_server_tools(configured, tool, outcome):
         assert tier[0] == 1 and tier[1].startswith('outward: draft ')
     else:
         assert tier[0] == lint[0] == 2
-        assert 'config set outward.tool_patterns' in tier[1] and tool in tier[1]
+        assert f'bin/wuwei outbound learn --tool {tool}' in tier[1]
     assert outcome == 'read' or not tier == lint == (0, '')
 
 
@@ -871,17 +873,16 @@ def set_posture(root, name, outward_area=''):
 
 
 @pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
-def test_unmatched_write_names_the_line(configured, posture):
-    # #469: a write no rule matches names the exact config line, never the bare hint.
+def test_unmatched_write_names_learn(configured, posture):
+    # #492: a write nothing resolves names the connector and the learn command, never config.
     from wuwei.guards.outward import check_lint, check_tier
     root = configured[0]
     set_posture(root, posture)
-    line = ("bin/wuwei config set outward.tool_patterns "
-            "'[{pattern = \"mcp__acme__send_email\", channel = \"acme\"}]'")
     for check in (check_tier, check_lint):
-        code, reason = check(payload(root, 'A technical claim.', tool='mcp__acme__send_email'))
-        assert code == 2 and line in reason
-        assert 'configure outward.tool_patterns for this write tool' not in reason
+        code, reason = check(payload(root, 'A technical claim.', tool='mcp__acme__send_message'))
+        assert code == 2 and 'connector acme' in reason
+        assert 'bin/wuwei outbound learn --tool mcp__acme__send_message' in reason
+        assert 'config set' not in reason
 
 
 def test_invalid_mcp_name(configured):
@@ -930,7 +931,7 @@ def test_unknown_tool_recorded_once(configured, monkeypatch, area, code, recorde
     if rows:
         assert rows[0]['payload']['tool'] == 'mcp__acme__frobnicate'
         assert rows[0]['payload']['posture'] == 'guarded'
-        assert 'config set outward.tool_patterns' in rows[0]['payload']['reason']
+        assert 'bin/wuwei outbound learn --tool mcp__acme__frobnicate' in rows[0]['payload']['reason']
 
 
 def test_unknown_tool_outside_workspace(tmp_path, monkeypatch):
@@ -961,10 +962,9 @@ def test_probe_tools(configured, monkeypatch, capsys, posture, name):
         assert code == 0
     elif server:
         assert code == (2 if posture == 'strict' else 0)
-        assert posture != 'strict' or 'config set outward.tool_patterns' in err and tool in err
+        assert posture != 'strict' or f'bin/wuwei outbound learn --tool {tool}' in err
     else:
         assert code == 2 and 'outward: draft draft-' in err
-
 
 
 # #493: a held draft names the rule that forced it.
@@ -1057,3 +1057,207 @@ def test_hook_refusal_names_draft_and_why_reads_it(configured, monkeypatch, caps
     out = capsys.readouterr().out.splitlines()
     assert f'rule: outward: draft {draft_id}: unknown destination C9: not in outbound.work_channels' in out
     assert f'fix: the owner decides: bin/wuwei drafts show {draft_id} --widget' in out
+
+
+# #492: claude.ai connectors put a UUID in the server segment and the brand in the tool name.
+UUID = '00000000-0000-4000-8000-000000000001'
+
+
+def opaque(name, server=UUID):
+    return f'mcp__{server}__{name}'
+
+
+def held_channel(root, reason):
+    """The channel of the draft a #493 held reason names; None when the reason holds none."""
+    import re
+    from wuwei import state
+    match = re.fullmatch(HELD, reason)
+    return match and state.read_state(root)['drafts'][match[1]]['channel']
+
+
+@pytest.mark.parametrize('name,channels', [
+    ('conversations_add_message', {'slack'}), ('chat_postMessage', {'slack'}),
+    ('add_reaction', {'slack'}), ('create_issue', {'tracker'}), ('add_issue_comment', {'tracker'}),
+    ('create_draft', {'mail'}), ('label_message', {'mail'}), ('trash_thread', {'mail'}),
+    ('append_block', {'docs'}), ('create_page', {'docs'}),
+    ('create_issue_label', set()), ('send_message', set()), ('frobnicate_widget', set()),
+    ('conversations_search_messages', set()), ('channels_list', set()),
+    ('slack_search_public', set()),
+    # Scope addition: camelCase, PR comments, Sentry-style writes; resolve-library-id stays out.
+    ('addCommentToJiraIssue', {'tracker'}), ('createJiraIssue', {'tracker'}),
+    ('getJiraIssue', set()), ('append_block_children', {'docs'}),
+    ('add_pull_request_review_comment_to_pending_review', {'code_host'}),
+    ('resolve_issue', {'other'}), ('mute_alert', {'other'}), ('update_alert_rule', {'other'}),
+    ('resolve-library-id', set()),
+])
+def test_vocabulary(name, channels):
+    from wuwei.guards.outward import resolve
+    assert resolve(opaque(name), None) == channels
+
+
+def events_of(root, kind):
+    from wuwei import watch
+    return [row for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
+            if row['kind'] == kind]
+
+
+def test_resolve_opaque(configured, monkeypatch, capsys):
+    from wuwei.guards.outward import check_tier
+    root = configured[0]
+    monkeypatch.chdir(root)
+    assert run_hook(monkeypatch, payload(root, 'A technical claim.',
+                                         tool=opaque('conversations_search_messages'))) == 0
+    assert events_of(root, 'hook.refusal') == [] and unknown_events(root) == []
+    for name in ('slack_send_message', 'conversations_add_message'):
+        code, reason = check_tier(payload(root, 'A technical claim.', tool=opaque(name)))
+        assert code == 1 and held_channel(root, reason) == 'slack', reason
+
+
+def write_config(root, text):
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(text)
+
+
+def test_alias_resolves_and_reads_still_pass(configured):
+    from wuwei.guards.outward import check_lint, check_tier
+    root = configured[0]
+    write_config(root, f'\n[outward.servers]\n"{UUID}" = "slack"\n')
+    code, reason = check_tier(payload(root, 'A technical claim.', tool=opaque('send_message')))
+    assert code == 1 and held_channel(root, reason) == 'slack'
+    for name in ('conversations_history', 'slack_read_channel'):
+        call = payload(root, 'A technical claim.', tool=opaque(name))
+        assert check_tier(call) == check_lint(call) == (0, '')
+    write_config(root, f'"{UUID.replace("1", "2")}" = "chat"\n')
+    with pytest.raises(workspace.ConfigError):
+        workspace.load_config(root)
+
+
+RECORDED_OPAQUE = {
+    **{server: {outcome: list(names) for outcome, names in lists.items()}
+       for server, lists in RECORDED.items()},
+    'mail': {'read': ['get_thread', 'search_threads', 'list_drafts'],
+             'draft': ['create_draft', 'update_draft', 'forward', 'label_message', 'trash_thread'],
+             'learn': ['send_message']},
+}
+# Under an opaque server only the brand in the name, the alias or the vocabulary is left.
+RECORDED_OPAQUE['linear']['draft'] = ['create_issue', 'update_issue']
+RECORDED_OPAQUE['linear']['learn'] += ['create_comment']
+RECORDED_OPAQUE['github']['draft'] = ['add_issue_comment', 'create_issue', 'update_issue',
+                                      'assign_copilot_to_issue',
+                                      'add_pull_request_review_comment_to_pending_review']
+
+
+@pytest.mark.parametrize('tool,outcome', [
+    (opaque(name, f'00000000-0000-4000-8000-00000000000{index}'), outcome)
+    for index, lists in enumerate(RECORDED_OPAQUE.values(), 1)
+    for outcome, names in lists.items() for name in names])
+def test_recorded_opaque_tools(configured, tool, outcome):
+    from wuwei.guards.outward import check_lint, check_tier
+    call = payload(configured[0], 'A technical claim.', tool=tool)
+    tier, lint = check_tier(call), check_lint(call)
+    if outcome == 'read':
+        assert tier == lint == (0, '')
+    elif outcome == 'draft':
+        assert tier[0] == 1 and held_channel(configured[0], tier[1]), tier
+    else:
+        assert tier[0] == lint[0] == 2
+        assert f'bin/wuwei outbound learn --tool {tool}' in tier[1]
+    assert 'config set' not in tier[1] + lint[1]
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_learn_reasons(configured, monkeypatch, capsys, posture):
+    from wuwei.guards.outward import check_lint, check_tier
+    root = configured[0]
+    set_posture(root, posture)
+    write = opaque('send_message')
+    for check in (check_tier, check_lint):
+        code, reason = check(payload(root, 'A technical claim.', tool=write))
+        assert code == 2 and UUID in reason and f'bin/wuwei outbound learn --tool {write}' in reason
+        assert 'config set' not in reason
+    unknown = opaque('frobnicate_widget')
+    code = run_hook(monkeypatch, payload(root, 'A technical claim.', tool=unknown))
+    err = capsys.readouterr().err
+    rows = unknown_events(root)
+    reason = err if posture == 'strict' else rows[0]['payload']['reason']
+    assert code == (2 if posture == 'strict' else 0)
+    assert UUID in reason and f'bin/wuwei outbound learn --tool {unknown}' in reason
+    assert 'config set' not in reason
+    text = (root / '.wuwei/config.toml').read_text().replace(
+        '[outbound]\n', '[outbound]\nlearn = "off"\n')
+    (root / '.wuwei/config.toml').write_text(text)
+    code, reason = check_tier(payload(root, 'A technical claim.', tool=write))
+    assert code == 2 and 'a draft for the owner to send' in reason and 'outbound learn' not in reason
+
+
+def test_class_modes(configured):
+    # #492 scope addition: a Jira comment, a Notion append, a GitHub PR comment and a Sentry
+    # resolve through fixture UUID connectors follow their class mode; the owner's mode wins.
+    from wuwei.guards.outward import check_lint, check_tier
+    root = configured[0]
+    sentry, slack = (UUID.replace('1', digit) for digit in '23')
+    for name, channel in (('addCommentToJiraIssue', 'tracker'), ('append_block_children', 'docs'),
+                          ('add_pull_request_review_comment_to_pending_review', 'code_host')):
+        code, reason = check_tier(payload(root, 'A technical claim.', tool=opaque(name)))
+        assert code == 1 and held_channel(root, reason) == channel, (name, reason)
+    resolve = {**payload(root, tool=opaque('resolve_issue', sentry)), 'tool_input': {'issue_id': 'PROJ-1'}}
+    assert check_tier(resolve) == check_lint(resolve) == (0, '')
+    assert check_tier(payload(root, 'I disagree with the proposal.', tool=opaque('resolve_issue', sentry)))[0] == 1
+    assert check_lint(payload(root, 'per Pat, it is fixed', tool=opaque('resolve_issue', sentry)))[0] == 1
+    write_config(root, f'\n[outward.servers]\n"{slack}" = "slack"\n'
+                       f'\n[outward.modes]\n"{sentry}" = "draft"\n"{UUID}" = "refuse"\n"{slack}" = "send"\n')
+    assert check_tier(resolve)[0] == 1
+    code, reason = check_tier(payload(root, 'A technical claim.', tool=opaque('append_block_children')))
+    assert code == 2 and 'refuse' in reason and 'config set' not in reason
+    assert check_tier(payload(root, tool=opaque('get_page'))) == (0, '')
+    unknown = payload(root, 'thanks <@U03>', tool=opaque('send_message', slack), channel='C01')
+    assert check_tier(unknown) == (0, '')
+    with pytest.raises(workspace.ConfigError):
+        write_config(root, f'"{UUID.replace("1", "4")}" = "later"\n')
+        workspace.load_config(root)
+
+
+def test_no_config_set_in_reasons():
+    # SC-002: no reason the outward guard builds names config set (owner.name stays the
+    # owner's own setting in the lint).
+    import inspect
+    from wuwei.guards import outward as guard
+    assert 'config set' not in inspect.getsource(guard)
+
+
+def test_draft_names_unknown_audience(configured, monkeypatch, capsys):
+    # #492 on the #493 card: a held send to an unknown channel or person names it in the
+    # rule, and the card names the planner's learn command for that tool unless learn is off.
+    import re
+    from wuwei.__main__ import main
+    root = configured[0]
+    monkeypatch.chdir(root)
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('[outbound]\n', '[outbound]\ncompany_domains = ["example.com"]\n'))
+    write_config(root, f'\n[outward.servers]\n"{UUID}" = "slack"\n'
+                       '\n[outbound.people]\n"slack:U01" = {email = "ada@example.com"}\n'
+                       '"slack:U02" = {email = "bo@example.com"}\n')
+    tool = opaque('send_message')
+
+    def send_now(reason):
+        assert main(['drafts', 'show', re.fullmatch(HELD, reason)[1], '--widget']) == 0
+        return json.loads(capsys.readouterr().out)[0]['options'][0]['description']
+
+    code, reason = check_tier_call(root, 'thanks', tool, 'C01')
+    assert code == 1 and re.fullmatch(HELD, reason)[2].startswith('unknown destination C01')
+    assert f'bin/wuwei outbound learn --tool {tool}' in send_now(reason)
+    code, reason = check_tier_call(root, 'thanks <@U03> <@U04>', tool, 'C1')
+    assert code == 1 and re.fullmatch(HELD, reason)[2].startswith('unknown mention @u03')
+    assert f'bin/wuwei outbound learn --tool {tool}' in send_now(reason)
+    code, reason = check_tier_call(root, 'I think <@U01> <@U02> agree.', tool, 'C1')
+    assert code == 1 and not re.fullmatch(HELD, reason)[2].startswith('unknown')
+    assert 'outbound learn' not in send_now(reason)
+    text = (root / '.wuwei/config.toml').read_text().replace('[outbound]\n', '[outbound]\nlearn = "off"\n')
+    (root / '.wuwei/config.toml').write_text(text)
+    code, reason = check_tier_call(root, 'thanks <@U03> <@U04>', tool, 'C01')
+    assert code == 1 and 'outbound learn' not in reason + send_now(reason)
+
+
+def check_tier_call(root, text, tool, channel):
+    from wuwei.guards.outward import check_tier
+    return check_tier(payload(root, text, tool=tool, channel=channel))
