@@ -14,4 +14,4 @@ Owner questions. When the AskUserQuestion tool is available (the desktop app, th
 3. Run `wuwei report` and present the local report to the owner. It shows outcome measures beside the owner's baseline, open work, parked work and its decisions, answered decisions and carry. Keep unavailable measures as `unmeasured`.
 4. Run `wuwei close` again until it exits 0. The Stop hook is the final close guard.
 
-The report is local owner text. Any outward post must use the existing outbound tier and stay a draft when that tier requires approval.
+The report is local owner text. With `outbound.owner_channel = "dm"` in `.wuwei/config.toml`, also post it to the owner's own Slack DM (`outbound.owner.slack.dm`, or `outbound.owner.slack.user` when `dm` is empty); a message to the owner goes without a draft. Any other outward post must use the existing outbound tier and stay a draft when that tier requires approval.

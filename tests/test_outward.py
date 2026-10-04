@@ -980,7 +980,7 @@ RULES = [
      'review ping without a code-host link: the review request form with the PR link goes '
      'to shepherd.review_channel'),
     ('Thanks', {'channel': 'C1', 'is_dm': True}, {},
-     'approval tier direct message for C1: every direct message drafts'),
+     "unknown DM recipient C1: not the owner's DM or user id in outbound.owner.slack"),
     ('Thanks', {'channel': 'C1', 'thread_ts': '1.2'}, {},
      'approval tier thread for C1: chat threads draft until their participants are known'),
 ]
@@ -1261,3 +1261,117 @@ def test_draft_names_unknown_audience(configured, monkeypatch, capsys):
 def check_tier_call(root, text, tool, channel):
     from wuwei.guards.outward import check_tier
     return check_tier(payload(root, text, tool=tool, channel=channel))
+
+
+# #495: a message only the owner receives is never a draft.
+def with_owner(root):
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace(
+        'work_channels = ["chat", "C1"]\n', 'work_channels = ["chat", "C1"]\nowner_channel = "dm"\n')
+        + '\n[outbound.owner]\nmail = "pat@example.test"\n'
+        '[outbound.owner.slack]\nuser = "U01"\ndm = "D01"\n')
+    return workspace.load_config(root)
+
+
+def test_owner_config(configured):
+    root, config = configured
+    assert config['outbound']['owner'] == {'slack': {'user': '', 'dm': ''}, 'mail': '', 'code_host': ''}
+    assert config['outbound']['owner_channel'] == 'session'
+    config = with_owner(root)
+    assert config['outbound']['owner'] == {
+        'slack': {'user': 'U01', 'dm': 'D01'}, 'mail': 'pat@example.test', 'code_host': ''}
+    assert config['outbound']['owner_channel'] == 'dm'
+
+
+@pytest.mark.parametrize('context,kind,expected', [
+    ({'channel': 'D01'}, 'slack', True), ({'channel': 'U01'}, 'chat', True),
+    ({'channel': 'u01'}, 'slack', True), ({'recipient': 'U01'}, 'slack', True),
+    ({'recipients': ['U01']}, 'chat', True), ({'recipients': ['U01', 'U02']}, 'slack', False),
+    ({'channel': 'D01', 'recipient': 'U02'}, 'slack', False),
+    ({'channel': 'D01', 'draft': {'text': 'x'}}, 'slack', False),
+    ({}, 'slack', False), ({'channel': 'C1'}, 'slack', False),
+    ({'recipients': ['pat@example.test']}, 'mail', True),
+    ({'recipients': ['pat@example.test']}, 'slack', False),
+    ({'channel': 'D01'}, 'code_host', False), ({'channel': 'D01'}, 'tracker', False),
+    ({'channel': 'D01'}, 'docs', False),
+])
+def test_owner_only(configured, context, kind, expected):
+    from wuwei import outward
+    root, config = configured
+    assert outward.owner_only(context, config, kind) is False
+    assert outward.owner_only(context, with_owner(root), kind) is expected
+
+
+@pytest.mark.parametrize('user,dm,bad', [('U01', 'C1', 'C1'), ('C1', 'D01', 'C1'),
+                                         ('D01', 'U01', 'D01'), ('D01', 'U01', 'U01')])
+def test_owner_only_ignores_non_dm_shapes(configured, user, dm, bad):
+    from wuwei import outward
+    config = with_owner(configured[0])
+    config['outbound']['owner']['slack'] = {'user': user, 'dm': dm}
+    assert outward.owner_only({'channel': bad}, config, 'slack') is False
+
+
+@pytest.mark.parametrize('text', ['Your build is green', 'Your salary review is in',
+                                  'I will ship it tomorrow'])
+@pytest.mark.parametrize('channel', ['D01', 'U01'])
+def test_classify_to_owner(configured, monkeypatch, text, channel):
+    from wuwei import outward
+    root = configured[0]
+    config = with_owner(root)
+    why = []
+    assert outward.classify(text, root, config, {'text': text, 'channel': channel},
+                            kind='slack', why=why) == (0, 'send')
+    assert why == []
+    monkeypatch.setenv('WUWEI_SEAT_ROLE', 'shepherd')
+    assert outward.classify(text, root, config, {'text': text, 'channel': channel}, kind='slack') == (1, 'draft')
+
+
+def test_dm_recipient_rule(configured):
+    from wuwei import outward
+    root = configured[0]
+    config = with_owner(root)
+    why = []
+    assert outward.classify('Thanks', root, config, {'text': 'Thanks', 'channel': 'U02'},
+                            kind='slack', why=why) == (1, 'draft')
+    assert why == ["unknown DM recipient U02: not the owner's DM or user id in outbound.owner.slack"]
+    why = []
+    assert outward.classify('Thanks', root, config, {'text': 'Thanks', 'is_dm': True},
+                            kind='slack', why=why) == (1, 'draft')
+    assert why[0].startswith('approval tier direct message for ')
+    assert why[0].endswith(': every direct message drafts')
+
+
+def owner_events(root):
+    from wuwei import watch
+    path = workspace.day_dir(root) / 'events.jsonl'
+    return [row for row in (watch.records(path) if path.exists() else [])
+            if row['kind'] == 'outward.to_owner']
+
+
+def test_to_owner_event_and_lint(configured):
+    from wuwei import outward
+    root = configured[0]
+    config = with_owner(root)
+    assert outward.check_tier({'text': 'Your build is green', 'channel': 'D01'}, root, config, {'slack'}) == (0, '')
+    assert [row['payload'] for row in owner_events(root)] == [{'channel': 'slack'}]
+    assert outward.check_tier({'text': 'fixed in abc1234', 'channel': 'C1'}, root, config, {'slack'}) == (0, '')
+    assert outward.check_tier({'text': 'Thanks', 'channel': 'U02'}, root, config, {'slack'})[0] == 1
+    assert len(owner_events(root)) == 1
+    assert outward.check_lint({'text': 'Pat, your build is green', 'channel': 'D01'}, root, config, {'slack'}) == (0, '')
+    assert 'third-person' in outward.check_lint(
+        {'text': 'Pat, your build is green', 'channel': 'C1'}, root, config, {'slack'})[1]
+    assert outward.check_lint({'text': 'Ready \U0001F600', 'channel': 'D01'}, root, config, {'slack'})[0] == 1
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_guard_to_owner_every_posture(configured, posture):
+    from wuwei import state
+    from wuwei.guards.outward import check_lint, check_tier
+    root = configured[0]
+    with_owner(root)
+    set_posture(root, posture)
+    call = payload(root, 'Your build is green', tool='mcp__slack__slack_send_message', channel='D01')
+    assert check_tier(call) == (0, '')
+    assert check_lint(call) == (0, '')
+    assert len(owner_events(root)) == 1
+    assert not state.read_state(root).get('drafts')

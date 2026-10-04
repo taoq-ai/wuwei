@@ -1398,13 +1398,15 @@ def test_posture_levels_unparsed_and_workspace_root_by_reason(plugin, name):
         forget_guards()
 
 
-@pytest.mark.parametrize('channel,held', [('C1', False), ('C9', True)])
+@pytest.mark.parametrize('channel,held', [('C1', False), ('C9', True), ('D01', False)])
 def test_only_a_held_call_imports_the_draft_queue(tmp_path, channel, held):
     # #493, #346: a call classify sends imports neither the draft queue nor hashlib.
+    # #495: a send to the owner's own DM is such a call.
     from fakes.integrity import seed
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text(
-        '[owner]\nname = "Pat Example"\npronouns = "they/them"\n[outbound]\nwork_channels = ["C1"]\n')
+        '[owner]\nname = "Pat Example"\npronouns = "they/them"\n[outbound]\nwork_channels = ["C1"]\n'
+        '[outbound.owner.slack]\nuser = "U01"\ndm = "D01"\n')
     seed(tmp_path)
     env = {k: v for k, v in os.environ.items() if not k.startswith(('WUWEI_', 'GIT_'))}
     env['WUWEI_WORKSPACE'] = str(tmp_path)
