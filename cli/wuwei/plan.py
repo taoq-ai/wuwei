@@ -428,20 +428,23 @@ def dispose(item, outcome, reason=None, root=None):
         return data['items'][item]
 
     current = known(state.read_state(root))
-    action = {'carry': "Carry it to tomorrow's plan",
-              'park': 'Park it until someone resumes it'}[verb]
+    action = {'carry': 'Carry to tomorrow', 'park': 'Park the item'}[verb]
+    consequence = {'carry': "It joins tomorrow's plan and its phase does not change.",
+                   'park': 'It pauses until someone resumes it.'}[verb]
     text = (
         f'Question: {verb.title()} {item} at day close?\n'
+        f'Class: {"defer" if verb == "carry" else "park"}\n'
         f'Context: {item} is {current["status"]}/{current["phase"]} at day close.'
         f'{" Reason: " + reason if reason else ""}\n'
-        'Options:\n| Option | Description |\n| --- | --- |\n'
-        f'| {verb} | {action} |\n'
-        '| keep | Do nothing: keep it open and keep working today |\n'
+        'Options:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
+        f'| {verb} | {action} | Reversible and lets the day close. | {consequence} |\n'
+        '| keep | Do nothing, keep working | Reversible but the day cannot close. | The item stays open today. |\n'
         f'Musts:\n| Criterion | {verb} | keep |\n| --- | --- | --- |\n'
         '| Reversible | pass | pass |\n'
         f'Wants:\n| Criterion | Weight | {verb} | keep |\n| --- | --- | --- | --- |\n'
         '| Day can close | 10 | 10 | 0 |\n'
-        f'Recommendation: {verb}\nConfidence: high\nReversibility: two-way\n'
+        f'Recommendation: {verb}\nReasoning: Closing the day decided it; urgent work on the item would flip it.\n'
+        'Confidence: high\nReversibility: two-way\n'
         'Blast radius: own branch\nPre-mortem: The item needed attention today and waits a day.\n'
         "Revisit: At tomorrow's morning gate.\n"
         f'Decided-by: seat\nOutcome: {outcome} {item}\n')

@@ -263,7 +263,7 @@ def forget_proposals(root):
             continue
         try:
             fields, _ = decision.evaluate(record.read_text(encoding='utf-8'))
-            options = dict(decision.table(fields['Options'], ['Option', 'Description'], 'Options'))
+            options = {row[0]: row[1] for row in decision.options(fields)}
         except (ValueError, UnicodeError):
             continue  # decision lint owns invalid records
         chosen = fields['Outcome'].strip()

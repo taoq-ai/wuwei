@@ -825,6 +825,8 @@ def test_plan_park_records_and_pauses(case, monkeypatch, capsys, reason):
     assert capsys.readouterr().out == 'D-1: parked A\n'
     text = (workspace.day_dir(root) / 'decisions/D-1.md').read_text()
     assert 'Outcome: parked A' in text.splitlines()
+    from wuwei import decision
+    assert decision.lint(text)[0] == 0 and 'Class: park' in text
     if reason:
         assert reason in next(line for line in text.splitlines() if line.startswith('Context:'))
     item = state.read_state(root)['items']['A']

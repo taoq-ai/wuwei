@@ -15,7 +15,22 @@ DECISION_ID = r'D-[1-9][0-9]*'
 # Design 5.8.1: class -> (default cruise level, ceiling). A new class is a design amendment.
 CLASSES = {'approach': (2, 3), 'retry': (2, 3), 'park': (2, 3), 'accept-residual': (2, 3),
            'defer': (0, 3), 'scope-cut': (0, 3), 're-plan': (0, 3), 'dependency-bump': (0, 3),
+           'design': (0, 3), 'boundary': (0, 3), 'refactor': (0, 3),
            'merge': (3, 3), 'message': (0, 1), 'other': (0, 1)}
+# #475: classes whose options carry one line per configured lens.
+ENGINEERING = ('design', 'boundary', 'refactor', 'dependency-bump')
+LENSES = {'SOLID': 'Which SOLID principle does it keep or break?',
+          'twelve-factor': 'Where relevant, how does it treat config, backing services, processes and dev-prod parity?',
+          'YAGNI': 'What does it build that no item needs yet?',
+          'ponytail': 'Is there a simpler thing that works: stdlib before custom, native before a dependency?'}
+OPTION_COLUMNS = ['Option', 'Title', 'Rationale', 'Consequence']
+OPTIONAL = ('Class', 'Reasoning', 'Lenses')
+
+
+def lens_table(config):
+    """The effective lenses: the defaults, then configured names; an empty question drops one."""
+    return {name: question for name, question in
+            {**LENSES, **config['decisions']['lenses']}.items() if question}
 
 
 def level(config, name):
@@ -50,16 +65,23 @@ def number(value, minimum, name):
     return int(value)
 
 
+def options(fields):
+    """Options rows; column 2 is the title (#475) or, in an earlier record, the description."""
+    header = next((line for line in fields['Options'].splitlines() if line.strip()), '')
+    legacy = [cell.strip() for cell in header.strip().strip('|').split('|')] == ['Option', 'Description']
+    return table(fields['Options'], ['Option', 'Description'] if legacy else OPTION_COLUMNS, 'Options')
+
+
 def _scored(fields):
     """Options, the ids passing every must, the Wants rows and the weighted scores."""
-    options = table(fields['Options'], ['Option', 'Description'], 'Options')
-    if len(options) < 2:
+    rows = options(fields)
+    if len(rows) < 2:
         raise ValueError('Options: expected at least two options; add another option, for example a Do nothing row; bin/wuwei decision template shows a valid record')
-    if any(not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', row[0]) for row in options):
+    if any(not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', row[0]) for row in rows):
         raise ValueError('Options: invalid option id; use a letter, then letters, digits, dash or underscore, such as A or defer-1')
-    if not any(re.match(r'(?i)(?:Do nothing|Defer)\b', row[1]) for row in options):
-        raise ValueError('Options: include Do nothing or Defer; add a row whose description starts with Do nothing or Defer to Options, Musts and Wants')
-    ids = [row[0] for row in options]
+    if not any(re.match(r'(?i)(?:Do nothing|Defer)\b', row[1]) for row in rows):
+        raise ValueError('Options: include Do nothing or Defer; add a row whose title starts with Do nothing or Defer to Options, Musts and Wants')
+    ids = [row[0] for row in rows]
     musts = table(fields['Musts'], ['Criterion', *ids], 'Musts')
     if any(cell.lower() not in ('pass', 'fail') for row in musts for cell in row[1:]):
         raise ValueError('Musts: expected pass/fail for each option; write pass or fail in every option cell')
@@ -71,14 +93,15 @@ def _scored(fields):
         weight = number(row[1], 1, 'Wants weight')
         for option, value in zip(ids, row[2:]):
             scores[option] += weight * number(value, 0, f'Wants score for {option}')
-    return options, passing, wants, scores
+    return rows, passing, wants, scores
 
 
-def evaluate(text):
-    """Return validated fields and recomputed scores, or a content finding."""
+def evaluate(text, lenses=None):
+    """Return validated fields and recomputed scores, or a content finding. lenses (the
+    effective lens table) turns on the #475 new-record checks; history readers leave it None."""
     fields, current = {}, None
     for line in active_text(text).splitlines():
-        match = re.match(r'^(?:#{1,6} )?(' + '|'.join(map(re.escape, FIELDS)) + r'):\s*(.*)$', line)
+        match = re.match(r'^(?:#{1,6} )?(' + '|'.join(map(re.escape, FIELDS + OPTIONAL)) + r'):\s*(.*)$', line)
         if match:
             current, value = match.groups()
             if current in fields:
@@ -91,14 +114,17 @@ def evaluate(text):
     missing = [key for key in FIELDS if not fields.get(key, '').strip()]
     if missing:
         raise ValueError('missing fields: ' + ', '.join(missing) + '; add each one (bin/wuwei decision template shows them all)')
-    for key in ('Question', 'Recommendation', 'Confidence', 'Reversibility', 'Decided-by'):
-        if '\n' in fields[key]:
+    for key in ('Question', 'Recommendation', 'Confidence', 'Reversibility', 'Decided-by',
+                'Class', 'Reasoning'):
+        if '\n' in fields.get(key, ''):
             raise ValueError(f'{key}: expected one line; {DAMAGED}')
     for key, allowed in (('Confidence', ('high', 'medium', 'low')),
                          ('Reversibility', ('one-way', 'two-way', 'unsure')),
                          ('Decided-by', ('seat', 'owner'))):
         if fields[key] not in allowed:
             raise ValueError(f'{key}: expected {"|".join(allowed)}; fix it in the record; bin/wuwei decision template shows a valid one')
+    if 'Class' in fields and fields['Class'] not in CLASSES:
+        raise ValueError(f'Class: expected one of {", ".join(CLASSES)}; fix it in the record; bin/wuwei decision template shows a valid one')
     options, passing, _, scores = _scored(fields)
     ids = [row[0] for row in options]
     recommendation = fields['Recommendation']
@@ -111,7 +137,32 @@ def evaluate(text):
         reason = 'fails a must; ' if recommendation not in passing else ''
         raise ValueError(f'Recommendation {recommendation} ({scores[recommendation]}) '
                          f'{reason}requires top passing option {best} ({scores[best]}); use that option as the Recommendation, or correct the Wants scores if they are wrong')
+    if lenses is not None:
+        _explained(fields, options, ids, lenses)
     return fields, scores
+
+
+def _explained(fields, rows, ids, lenses):
+    """#475: a new record carries Class, titled and explained options, Reasoning and lens lines."""
+    hint = 'bin/wuwei decision template shows a valid one'
+    for key in ('Class', 'Reasoning'):
+        if not fields.get(key, '').strip():
+            raise ValueError(f'missing fields: {key}; add it ({hint})')
+    if len(rows[0]) != len(OPTION_COLUMNS):
+        raise ValueError(f'Options: expected columns {", ".join(OPTION_COLUMNS)}; write a title, rationale and consequence for each option; {hint}')
+    seen = set()
+    for title in (row[1] for row in rows):
+        if len(title) > 40 or re.search(r'["`$\\]', title) or title.casefold() in seen:
+            raise ValueError(f'Options: title {title} must be unique, at most 40 characters, without a quote, backtick, $ or backslash; write a different title; {hint}')
+        seen.add(title.casefold())
+    if fields['Class'] in ENGINEERING and lenses:
+        names = [row[0] for row in table(fields.get('Lenses', ''), ['Lens', *ids], 'Lenses')]
+        missing = [name for name in lenses if name not in names]
+        if missing:
+            raise ValueError(f'Lenses: missing {", ".join(missing)}; add one line per option for each configured lens; {hint}')
+        extra = [name for name in names if name not in lenses]
+        if extra:
+            raise ValueError(f'Lenses: unknown lens {", ".join(extra)}; remove it, the configured lenses are {", ".join(lenses)}')
 
 
 def present(identifier, fields, level):
@@ -130,10 +181,17 @@ def present(identifier, fields, level):
             lead = max(wants, key=lambda row: int(row[1]) * (
                 int(row[2 + ids.index(chosen)]) - int(row[2 + ids.index(other)])))
             reason = f'ahead of {other} on {lead[0]}'
-    lines = [f'{identifier}: {fields["Question"]}',
-             *(f'{option}: {text} (score {scores[option]}'
-               + ('' if option in passing else ', fails a must') + ')' for option, text in options),
-             f'Recommended: {chosen}, {reason}.']
+    lenses = lens_lines(fields) if level == 'standard' else {}
+    lines = [f'{identifier}: {fields["Question"]}']
+    for row in options:
+        option = row[0]
+        lines.append(f'{option}: {row[1]} (score {scores[option]}'
+                     + ('' if option in passing else ', fails a must') + ')'
+                     + (f'. {row[3]}' if len(row) == 4 else ''))
+        if level == 'standard' and len(row) == 4:
+            lines += [f'  Rationale: {row[2]}', *(f'  {line}' for line in lenses.get(option, []))]
+    lines.append(f'Recommended: {chosen}, {reason}.'
+                 + (f' {fields["Reasoning"]}' if fields.get('Reasoning') else ''))
     if level == 'standard':
         first = {name: next(line.strip() for line in fields[name].splitlines() if line.strip())
                  for name in ('Context', 'Blast radius', 'Pre-mortem', 'Revisit')}
@@ -144,7 +202,21 @@ def present(identifier, fields, level):
 
 
 # The command that records an owner's answer to a D-n widget; <label> is the chosen option.
-RECORD = 'wuwei decide {id} <label>'
+RECORD = 'wuwei decide {id} "<label>"'
+
+
+def first(text):
+    """The first sentence of text."""
+    return re.split(r'(?<=[.!?])\s+', text.strip(), maxsplit=1)[0]
+
+
+def lens_lines(fields):
+    """#475: option id -> its '<lens>: <line>' lines, for an engineering record with lenses."""
+    if fields.get('Class') not in ENGINEERING or not fields.get('Lenses'):
+        return {}
+    ids = [row[0] for row in options(fields)]
+    rows = table(fields['Lenses'], ['Lens', *ids], 'Lenses')
+    return {option: [f'{row[0]}: {row[index]}' for row in rows] for index, option in enumerate(ids, 1)}
 
 
 def widget(question, header, options, record, *, multi=False):
@@ -162,20 +234,30 @@ def gate(root):
     return f'Morning gate (days/{workspace.day_dir(root).name}/plan.md): '
 
 
-def record_widget(identifier, fields, record=RECORD):
-    """A validated decision as a widget: the recommendation first, the record's options."""
+def record_widget(identifier, fields, record=RECORD, level='brief'):
+    """A decision that passed the new-record check as a widget: titles as labels, the
+    recommendation first; rationale, consequence and lens lines, trimmed at brief."""
     chosen = fields['Recommendation']
-    rows = sorted(table(fields['Options'], ['Option', 'Description'], 'Options'),
-                  key=lambda row: row[0] != chosen)
+    rows = sorted(options(fields), key=lambda row: row[0] != chosen)
+    lenses = lens_lines(fields)
+    trim = first if level == 'brief' else str.strip
     # ponytail: AskUserQuestion shows four options; the others stay answerable through Other.
-    return widget(f'{identifier}: {fields["Question"]}', identifier,
-                  [(option, f'Recommended. {text}' if option == chosen else text)
-                   for option, text in rows[:4]], record.format(id=identifier))
+    return widget(f'{identifier}: {fields["Question"]} {first(fields["Reasoning"])}', identifier,
+                  [(title + (' (Recommended)' if option == chosen else ''),
+                    '\n'.join(trim(part) for part in (rationale, consequence, *lenses.get(option, []))))
+                   for option, title, rationale, consequence in rows[:4]], record.format(id=identifier))
 
 
-def lint(text):
+def option_id(fields, label):
+    """The option id a widget label (a title, maybe marked Recommended) or an id names; else
+    the label unchanged, so the caller's not-in-the-record refusal fires."""
+    wanted = label.removesuffix(' (Recommended)').casefold()
+    return next((row[0] for row in options(fields) if wanted in (row[0].casefold(), row[1].casefold())), label)
+
+
+def lint(text, lenses=LENSES):
     try:
-        fields, scores = evaluate(text)
+        fields, scores = evaluate(text, lenses)
         option = fields['Recommendation']
         found = outward.tells(text)
         return 0, f'OK: {option} ({scores[option]})' + ('\nstyle: ' + ', '.join(found) if found else '')
@@ -236,8 +318,16 @@ def lint_clarification(text, *, fields=None):
 
 def lint_file(path, *, root=None, record=True, clarification=False):
     try:
-        check = lint_clarification if clarification else lint
-        code, message = check(Path(path).read_text(encoding='utf-8'))
+        text = Path(path).read_text(encoding='utf-8')
+        if clarification:
+            code, message = lint_clarification(text)
+        else:
+            if root is None:
+                try:
+                    root = workspace.find_workspace(Path(path).parent)
+                except FileNotFoundError:
+                    pass
+            code, message = lint(text, lens_table(workspace.load_config(root)) if root else LENSES)
     except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
         code, message = 2, f'decision lint: could not read {path}: {exc}'
     return record_rejection(path, code, message, root=root) if record else (code, message)
@@ -383,7 +473,7 @@ def owner_record(text, option, where, note=None):
 
 def write(text, root):
     """Validate and allocate a numbered decision without replacing an existing record."""
-    evaluate(text)
+    evaluate(text, lens_table(workspace.load_config(root)))
     directory = workspace.day_dir(root) / 'decisions'
     directory.mkdir(parents=True, exist_ok=True)
     used = [int(path.stem[2:]) for path in directory.glob('D-*.md')

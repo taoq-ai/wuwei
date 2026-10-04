@@ -409,7 +409,7 @@ def test_builder_prompt_carries_the_mandate(day, monkeypatch):
         assert text in prompt
     record, owner = section(prompt, 'Decide and record:'), section(prompt, 'Go to the owner')
     assert 'under Assumptions:' in record and 'retry, park, accept-residual, merge' in record
-    assert 'defer, scope-cut, re-plan, dependency-bump, message, other' in owner
+    assert 'defer, scope-cut, re-plan, dependency-bump, design, boundary, refactor, message, other' in owner
     assert '\u2014' not in prompt
 
 

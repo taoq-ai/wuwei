@@ -48,12 +48,13 @@ def compile(root=None):
                 if '\n' in summary or not summary:
                     raise ValueError('hard-rule change must be one nonempty line; write the change as one line')
                 workspace.atomic_write(decision, f'''Question: Should the hard rule change to {summary}?
+Class: other
 Context: Captured role evidence at {record['evidence']}.
 Options:
-| Option | Description |
-| --- | --- |
-| A | Propose {summary} for implementation |
-| B | Defer this hard-rule change |
+| Option | Title | Rationale | Consequence |
+| --- | --- | --- | --- |
+| A | Propose the rule | Passes owner review but scores lower on evidence before a rule change. | {summary} is proposed for implementation. |
+| B | Defer the rule change | Passes owner review and waits for more evidence. | The hard rule stays as it is. |
 Musts:
 | Criterion | A | B |
 | --- | --- | --- |
@@ -63,6 +64,7 @@ Wants:
 | --- | --- | --- | --- |
 | Evidence before rule change | 5 | 5 | 8 |
 Recommendation: B
+Reasoning: Evidence before a rule change decided it; more captured evidence would flip it.
 Confidence: medium
 Reversibility: one-way
 Blast radius: Guard behavior across the workspace

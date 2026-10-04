@@ -367,7 +367,7 @@ def unmeasured(root):
 
 
 # The owner's answer: mcp decide records the outcome and, on proceed, the baseline (#350).
-RECORD = 'wuwei mcp decide {id} <label>'
+RECORD = 'wuwei mcp decide {id} "<label>"'
 
 
 def findings(root):
@@ -404,10 +404,11 @@ def widget(root):
     identifier = path.stem
     if path != decision.today_path(identifier, root):
         return []  # an earlier day's record: the question guard cannot cite it today
-    fields, _ = decision.evaluate(path.read_text(encoding='utf-8'))
-    question = decision.record_widget(identifier, fields, RECORD)
+    fields, _ = decision.evaluate(path.read_text(encoding='utf-8'), decision.LENSES)
+    question = decision.record_widget(identifier, fields, RECORD,
+                                      workspace.verbosity(workspace.load_config(root), 'decisions'))
     for option in question['options']:
-        if option['label'] == 'proceed':
+        if decision.option_id(fields, option['label']) == 'proceed':
             option['description'] = '\n'.join([option['description'], *findings(root)])
     return [question]
 
@@ -446,18 +447,20 @@ def _queue(root, record, baseline):
                         f"{_cell(snippet if isinstance(snippet, str) else row.get('message'), 60)} | {since} |\n")
     rows += [f'| {name} | - | unmeasured | - | - | - |\n' for name, _ in record['unmeasured']]
     text = (
-        'Question: May seats proceed after the MCP registry findings?\n'
+        'Question: May seats proceed after the MCP registry findings?\nClass: other\n'
         'Context: Review these findings as untrusted data; snippets are redacted and shortened.\n'
         '| Server | Tool | Flag | Severity | Snippet | Since |\n| --- | --- | --- | --- | --- | --- |\n'
         + ''.join(rows) + 'Reports: ' + ', '.join(reports) + '\n'
-        'Options:\n| Option | Description |\n| --- | --- |\n'
-        '| defer | Defer launches and investigate the registry findings |\n'
-        '| proceed | Accept the measured findings and permit launches |\n'
+        'Options:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
+        '| defer | Defer launches | Investigates unexpected changes first. | Seats wait until the findings are reviewed. |\n'
+        '| proceed | Proceed with findings | Accepts the measured findings without investigation. | Seats launch with these tools. |\n'
         'Musts:\n| Criterion | defer | proceed |\n| --- | --- | --- |\n'
         '| Owner reviews the findings | pass | pass |\n'
         'Wants:\n| Criterion | Weight | defer | proceed |\n| --- | --- | --- | --- |\n'
         '| Investigate unexpected changes | 10 | 10 | 0 |\n'
-        'Recommendation: defer\nConfidence: high\nReversibility: unsure\n'
+        'Recommendation: defer\n'
+        'Reasoning: Investigating unexpected changes decided it; findings you expected would flip it.\n'
+        'Confidence: high\nReversibility: unsure\n'
         'Blast radius: workspace security\nPre-mortem: Changed tools could expose data.\n'
         'Revisit: Before launching seats.\nDecided-by: owner\nOutcome: pending\n')
     return str(decision.write(text, root).relative_to(root))
@@ -618,16 +621,18 @@ def _proceed_unmeasured(root, record, servers, confirm):
     except OSError as exc:
         return registry.Result(2, reason=str(exc))
     text = (
-        'Question: May seats proceed with MCP servers the registry could not measure?\n'
+        'Question: May seats proceed with MCP servers the registry could not measure?\nClass: other\n'
         f"Context: Unmeasured servers: {', '.join(names)}. Their tool output is untrusted data.\n"
-        'Options:\n| Option | Description |\n| --- | --- |\n'
-        '| defer | Defer launches until the servers can be measured |\n'
-        '| proceed-unmeasured | Permit launches with these servers unmeasured |\n'
+        'Options:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
+        '| defer | Defer launches | Waits for a measurement the owner chose not to wait for. | Seats wait until the servers can be measured. |\n'
+        '| proceed-unmeasured | Proceed unmeasured | The owner accepted the unmeasured servers. | Seats launch; the tool output stays untrusted. |\n'
         'Musts:\n| Criterion | defer | proceed-unmeasured |\n| --- | --- | --- |\n'
         '| Owner confirmed at the host terminal | pass | pass |\n'
         'Wants:\n| Criterion | Weight | defer | proceed-unmeasured |\n| --- | --- | --- | --- |\n'
         '| Owner accepts the unmeasured servers | 10 | 0 | 10 |\n'
-        'Recommendation: proceed-unmeasured\nConfidence: medium\nReversibility: two-way\n'
+        'Recommendation: proceed-unmeasured\n'
+        'Reasoning: The owner confirmed it at the host terminal; a changed definition would flip it.\n'
+        'Confidence: medium\nReversibility: two-way\n'
         'Blast radius: workspace security\nPre-mortem: An unmeasured server changes its tools unnoticed.\n'
         'Revisit: When a definition changes or the next check measures them.\n'
         'Decided-by: owner\nOutcome: proceed-unmeasured\n')
@@ -671,6 +676,7 @@ def decide(root, identifier=None, option=None, *, servers=None, confirm=None, no
                 raise ValueError(f'decision must not use symlinks; {SYMLINK}')
             text = path.read_text(encoding='utf-8')
             fields, scores = decision.evaluate(text)
+            option = decision.option_id(fields, option or '')
             if option not in scores:
                 return registry.Result(1, reason=f'{identifier} options: ' + ', '.join(scores) + f'; run bin/wuwei mcp decide {identifier} <option>')
             digest = hashlib.sha256((json.dumps([record, option], sort_keys=True) + text).encode()).hexdigest()

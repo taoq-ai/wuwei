@@ -892,6 +892,7 @@ def test_trace_sweep_parks_queues_and_pages(case, mapped, agent_id):
     path = workspace.day_dir(root) / 'decisions' / (queued['id'] + '.md')
     fields, _ = decision.evaluate(path.read_text())
     assert decision.route(fields) == 'owner' and fields['Outcome'] == 'pending'
+    assert decision.lint(path.read_text())[0] == 0
     if not mapped:
         assert 'Context: Session has no item reservation and no registration.' in path.read_text()
     assert len(cockpit_snapshot(workspace.day_dir(root))['decisions']) == 1

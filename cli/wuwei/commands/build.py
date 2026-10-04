@@ -400,15 +400,17 @@ def check(item, *, root=None):
 def _park(root, item, record, reason, expected):
     from wuwei import decision
     text = (
-        f'Question: Park build {item}?\nContext: Iteration {record["iteration"]}: {reason}.\n'
-        'Options:\n| Option | Description |\n| --- | --- |\n'
-        '| defer | Defer work until the failure is investigated |\n'
-        '| retry | Continue spending the build budget |\n'
+        f'Question: Park build {item}?\nClass: park\nContext: Iteration {record["iteration"]}: {reason}.\n'
+        'Options:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
+        '| defer | Defer and investigate | Respects the iteration limits and preserves budget. | '
+        'The item parks until the failure is investigated. |\n'
+        '| retry | Retry the build | Fails the iteration limit must. | The build keeps spending budget. |\n'
         'Musts:\n| Criterion | defer | retry |\n| --- | --- | --- |\n'
         '| Respect iteration limits | pass | fail |\n'
         'Wants:\n| Criterion | Weight | defer | retry |\n| --- | --- | --- | --- |\n'
         '| Preserve budget | 10 | 10 | 0 |\n'
-        'Recommendation: defer\nConfidence: high\nReversibility: two-way\n'
+        'Recommendation: defer\nReasoning: Preserving the budget decided it; a new brief would flip it.\n'
+        'Confidence: high\nReversibility: two-way\n'
         'Blast radius: own branch\nPre-mortem: Repeated failures consume the remaining budget.\n'
         'Revisit: After investigating the failure and revising the brief.\n'
         f'Decided-by: seat\nOutcome: parked {item}\n')

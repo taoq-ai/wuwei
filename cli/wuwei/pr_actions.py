@@ -375,14 +375,17 @@ def _thread(root, ref, item, measured, reply=None):
             prior = state.read_state(root).get('pr_action_decisions', {}).get(ref, {}).get(key)
             if prior is None or prior.get('fingerprint') != fingerprint:
                 text = (
-                    f'Question: How should {ref} thread {target} change scope?\n'
-                    f'Context: Reviewer wrote: {json.dumps(text)}\nOptions:\n| Option | Description |\n'
-                    '| --- | --- |\n| change | Make the requested scope change |\n'
-                    '| defer | Defer until the owner decides |\nMusts:\n'
+                    f'Question: How should {ref} thread {target} change scope?\nClass: other\n'
+                    f'Context: Reviewer wrote: {json.dumps(text)}\nOptions:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
+                    '| change | Make the scope change | Fails the owner scope decision must. | '
+                    'The PR scope changes without owner review. |\n'
+                    '| defer | Defer to the owner | Passes every must and avoids unapproved scope. | '
+                    'The thread waits for the owner. |\nMusts:\n'
                     '| Criterion | change | defer |\n| --- | --- | --- |\n'
                     '| Owner scope decision | fail | pass |\nWants:\n'
                     '| Criterion | Weight | change | defer |\n| --- | --- | --- | --- |\n'
                     '| Avoid unapproved scope | 10 | 0 | 10 |\nRecommendation: defer\n'
+                    'Reasoning: Avoiding unapproved scope decided it; an owner approval would flip it.\n'
                     'Confidence: medium\nReversibility: unsure\nBlast radius: own PR\n'
                     'Pre-mortem: Scope changes without owner review.\n'
                     'Revisit: After owner decision.\nDecided-by: owner\nOutcome: pending\n')

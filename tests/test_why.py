@@ -333,9 +333,10 @@ def test_last_refusal_is_the_newest_across_days(root, capsys):
     assert why(capsys, 'last refusal')[1][3] == 'rule: today'
 
 
-DECIDED = ['D-3: Which fix?', 'A: Implement fix (score 86)', 'B: Defer until tomorrow (score 30)',
-           'Recommended: A, ahead of B on Correctness.', 'weights: Correctness 10, Speed 2',
-           'margin: 0.47', 'class: not recorded']
+DECIDED = ['D-3: Which fix?', 'A: Implement fix (score 86). The failure is fixed today.',
+           'B: Defer until tomorrow (score 30). Nothing changes until tomorrow.',
+           'Recommended: A, ahead of B on Correctness. Correctness decided it. A risky fix would flip it to B.',
+           'weights: Correctness 10, Speed 2', 'margin: 0.47', 'class: design']
 
 
 def test_decision_view_after_an_owner_answer(root, monkeypatch, capsys):
@@ -348,7 +349,7 @@ def test_decision_view_after_an_owner_answer(root, monkeypatch, capsys):
 
 
 def test_decision_view_reads_class_and_cruise_level(root, capsys):
-    save(root, 'Class: retry\n' + VALID)
+    save(root, VALID.replace('Class: design', 'Class: retry'))
     assert why(capsys, 'D-3')[1][-3:] == ['class: retry', 'level: not recorded', 'decided: not recorded']
     state.append_event('decision.decided', {'id': 'D-3', 'option': 'A', 'decided_by': 'cruise retry@L2'},
                        directory=day_of(root))

@@ -7,6 +7,43 @@ import pytest
 
 
 VALID = '''Question: Which fix?
+Class: design
+Context: tests/test_example.py records the failure.
+Options:
+| Option | Title | Rationale | Consequence |
+| --- | --- | --- | --- |
+| A | Implement fix | Passes every must and scores 8 on Correctness. It costs a little Speed. | The failure is fixed today. |
+| B | Defer until tomorrow | Passes every must but scores 2 on Correctness. | Nothing changes until tomorrow. |
+Lenses:
+| Lens | A | B |
+| --- | --- | --- |
+| SOLID | Keeps single responsibility. | No change. |
+| twelve-factor | No new config. | No change. |
+| YAGNI | Builds only the fix. | Builds nothing. |
+| ponytail | Smallest diff that works. | Simplest: nothing. |
+Musts:
+| Criterion | A | B |
+| --- | --- | --- |
+| Safe | pass | pass |
+Wants:
+| Criterion | Weight | A | B |
+| --- | --- | --- | --- |
+| Correctness | 10 | 8 | 2 |
+| Speed | 2 | 3 | 5 |
+Recommendation: A
+Reasoning: Correctness decided it. A risky fix would flip it to B.
+Confidence: high
+Reversibility: two-way
+Blast radius: own branch
+Pre-mortem: Regression returns.
+Revisit: Regression returns.
+Decided-by: seat
+Outcome: pending
+'''
+B_ROW = '| B | Defer until tomorrow | Passes every must but scores 2 on Correctness. | Nothing changes until tomorrow. |'
+LENS_BLOCK = VALID[VALID.index('Lenses:'):VALID.index('Musts:')]
+# A record written before #475: description column, no Class, no Reasoning.
+LEGACY = '''Question: Which fix?
 Context: tests/test_example.py records the failure.
 Options:
 | Option | Description |
@@ -63,7 +100,7 @@ def events(root):
     ('| Safe | pass | pass |', '| Safe | fail | pass |', 'must'),
     ('| Safe | pass | pass |', '| Safe | fail | fail |', 'passing'),
     ('| Safe | pass | pass |', '| Safe | yes | pass |', 'pass/fail'),
-    ('| B | Defer until tomorrow |\n', '', 'two options'),
+    (B_ROW + '\n', '', 'two options'),
     ('Defer until tomorrow', 'Another fix', 'Do nothing or Defer'),
     ('| B | Defer until tomorrow |', '| A | Defer until tomorrow |', 'duplicate'),
     ('| 10 | 8 | 2 |', '| 11 | 8 | 2 |', 'weight'),
@@ -650,6 +687,22 @@ def test_owner_outcome_rejects_bad_choice_and_declined_confirmation(ws, monkeypa
     assert path.read_bytes() == before
 
 
+@pytest.mark.parametrize('label,code', [('Implement fix (Recommended)', 0), ('implement fix', 0),
+                                        ('A', 0), ('Nope', 1)])
+def test_decide_accepts_a_title_label(ws, monkeypatch, label, code):
+    from types import SimpleNamespace
+    from wuwei import decision, state
+    from wuwei.commands.decision import owner_outcome
+    save(ws)
+    decision.route_owner('D-3', decision.evaluate(VALID)[0], ws)
+    result = owner_outcome(SimpleNamespace(id='D-3', option=label), root=ws, where='in the owner DM')
+    if code:
+        assert result == (1, 'decision: option is not in the record; pick an option id from bin/wuwei decision show <id>')
+    else:
+        assert result == (0, 'A')
+        assert state.read_state(ws)['decision_outcomes']['D-3']['option'] == 'A'
+
+
 def test_owner_outcome_takes_a_root_and_where(ws, monkeypatch, tmp_path):
     from types import SimpleNamespace
     from wuwei import decision, state
@@ -761,7 +814,23 @@ def template():
     return out.getvalue()
 
 
-THREE = VALID.replace('| B | Defer until tomorrow |', '| B | Defer until tomorrow |\n| C | Rewrite it |').replace(
+def test_template_is_a_design_record_with_lenses(ws, monkeypatch):
+    from wuwei import decision
+    text = template()
+    assert decision.lint(text) == (0, 'OK: A (80)')
+    assert 'Class: design' in text.splitlines()
+    for name, question in decision.LENSES.items():
+        assert any(line.startswith(f'| {name} |') for line in text.splitlines())
+        assert f'{name}: {question}' in text
+    monkeypatch.chdir(ws)
+    (ws / '.wuwei/config.toml').write_text('[decisions.lenses]\ncompany-rule = "Does it follow our rule?"\n')
+    text = template()
+    assert any(line.startswith('| company-rule |') for line in text.splitlines())
+    assert decision.lint(text, {**decision.LENSES, 'company-rule': 'Q?'}) == (0, 'OK: A (80)')
+
+
+THREE = VALID.replace('Class: design', 'Class: re-plan').replace(LENS_BLOCK, '').replace(
+    B_ROW, B_ROW + '\n| C | Rewrite it | Scores 9 on Correctness but fails Safe. | The module is rewritten. |').replace(
     '| Criterion | A | B |\n| --- | --- | --- |\n| Safe | pass | pass |',
     '| Criterion | A | B | C |\n| --- | --- | --- | --- |\n| Safe | pass | pass | fail |').replace(
     '| Criterion | Weight | A | B |\n| --- | --- | --- | --- |\n| Correctness | 10 | 8 | 2 |\n| Speed | 2 | 3 | 5 |',
@@ -771,29 +840,46 @@ THREE = VALID.replace('| B | Defer until tomorrow |', '| B | Defer until tomorro
 
 def test_present_brief():
     from wuwei import decision
-    fields, _ = decision.evaluate(template())
-    assert decision.present('D-3', fields, 'brief').splitlines() == [
-        'D-3: Which option should we take?', 'A: Make the scoped change (score 80)',
-        'B: Defer until more evidence exists (score 20)', 'Recommended: A, ahead of B on Outcome.']
     fields, _ = decision.evaluate(THREE)
     assert decision.present('D-3', fields, 'brief').splitlines() == [
-        'D-3: Which fix?', 'A: Implement fix (score 86)', 'B: Defer until tomorrow (score 30)',
-        'C: Rewrite it (score 92, fails a must)', 'Recommended: A, ahead of B on Correctness.']
+        'D-3: Which fix?', 'A: Implement fix (score 86). The failure is fixed today.',
+        'B: Defer until tomorrow (score 30). Nothing changes until tomorrow.',
+        'C: Rewrite it (score 92, fails a must). The module is rewritten.',
+        'Recommended: A, ahead of B on Correctness. Correctness decided it. A risky fix would flip it to B.']
     only = VALID.replace('| Safe | pass | pass |', '| Safe | pass | fail |')
-    assert decision.present('D-3', decision.evaluate(only)[0], 'brief').splitlines()[-1] == (
-        'Recommended: A, the only option that passes every must.')
+    assert decision.present('D-3', decision.evaluate(only)[0], 'brief').splitlines()[-1].startswith(
+        'Recommended: A, the only option that passes every must. ')
     tied = VALID.replace('| 8 | 2 |', '| 2 | 2 |').replace('| 3 | 5 |', '| 5 | 5 |')
-    assert decision.present('D-3', decision.evaluate(tied)[0], 'brief').splitlines()[-1] == (
-        'Recommended: A, tied with B on score.')
+    assert decision.present('D-3', decision.evaluate(tied)[0], 'brief').splitlines()[-1].startswith(
+        'Recommended: A, tied with B on score. ')
 
 
 def test_present_standard():
     from wuwei import decision
     fields, _ = decision.evaluate(VALID.replace('Context: tests', 'Context:\n\ntests')
                                   + '\n## Notes\nOnly here.')
-    brief = decision.present('D-3', fields, 'brief').splitlines()
-    standard = decision.present('D-3', fields, 'standard').splitlines()
-    assert standard == brief + [
+    assert decision.present('D-3', fields, 'standard').splitlines() == [
+        'D-3: Which fix?', 'A: Implement fix (score 86). The failure is fixed today.',
+        '  Rationale: Passes every must and scores 8 on Correctness. It costs a little Speed.',
+        '  SOLID: Keeps single responsibility.', '  twelve-factor: No new config.',
+        '  YAGNI: Builds only the fix.', '  ponytail: Smallest diff that works.',
+        'B: Defer until tomorrow (score 30). Nothing changes until tomorrow.',
+        '  Rationale: Passes every must but scores 2 on Correctness.',
+        '  SOLID: No change.', '  twelve-factor: No change.', '  YAGNI: Builds nothing.',
+        '  ponytail: Simplest: nothing.',
+        'Recommended: A, ahead of B on Correctness. Correctness decided it. A risky fix would flip it to B.',
+        'Context: tests/test_example.py records the failure.',
+        'Confidence: high. Reversibility: two-way.', 'Blast radius: own branch',
+        'Pre-mortem: Regression returns.', 'Revisit: Regression returns.']
+
+
+def test_present_legacy_unchanged():
+    from wuwei import decision
+    fields, _ = decision.evaluate(LEGACY)
+    brief = ['D-3: Which fix?', 'A: Implement fix (score 86)', 'B: Defer until tomorrow (score 30)',
+             'Recommended: A, ahead of B on Correctness.']
+    assert decision.present('D-3', fields, 'brief').splitlines() == brief
+    assert decision.present('D-3', fields, 'standard').splitlines() == brief + [
         'Context: tests/test_example.py records the failure.',
         'Confidence: high. Reversibility: two-way.', 'Blast radius: own branch',
         'Pre-mortem: Regression returns.', 'Revisit: Regression returns.']
@@ -845,8 +931,8 @@ def test_lint_reports_style_without_rejecting(ws):
 
 @pytest.mark.parametrize('config,expected', [
     ({}, {'approach': 2, 'retry': 2, 'park': 2, 'accept-residual': 2, 'defer': 0,
-          'scope-cut': 0, 're-plan': 0, 'dependency-bump': 0, 'merge': 3, 'message': 0,
-          'other': 0}),
+          'scope-cut': 0, 're-plan': 0, 'dependency-bump': 0, 'design': 0, 'boundary': 0,
+          'refactor': 0, 'merge': 3, 'message': 0, 'other': 0}),
     ({'approach': 1}, {'approach': 1}),
     ({'defer': 3}, {'defer': 0}),
 ])
@@ -872,6 +958,75 @@ def test_unrecorded_question(ws, text, record, code):
     assert result == code
     if code:
         assert 'Cite a decision D-n' in message
+
+
+@pytest.mark.parametrize('old,new,named', [
+    ('Class: design\n', '', 'Class'),
+    ('| Option | Title |', '| Option | Name |', 'Options'),
+    ('Passes every must but scores 2 on Correctness.', '', 'Options'),
+    ('Nothing changes until tomorrow.', '', 'Options'),
+    ('Reasoning: Correctness decided it. A risky fix would flip it to B.\n', '', 'Reasoning'),
+    ('flip it to B.\n', 'flip it to B.\nAnd more.\n', 'Reasoning'),
+    (LENS_BLOCK, '', 'Lenses'),
+    ('| YAGNI | Builds only the fix. | Builds nothing. |\n', '', 'YAGNI'),
+    ('| No new config. |', '|  |', 'Lenses'),
+    ('Musts:', '| Speed | Fast. | Slow. |\nMusts:', 'Speed'),
+    ('| A | Implement fix |', '| A | defer until Tomorrow |', 'title Defer until tomorrow'),
+    ('| A | Implement fix |', '| A | ' + 'x' * 41 + ' |', 'x' * 41),
+    ('| A | Implement fix |', '| A | Implement "fix" |', 'Implement "fix"'),
+    ('| A | Implement fix |', '| A | Implement $fix |', 'Implement $fix'),
+])
+def test_explained_record_fields(old, new, named):
+    from wuwei.decision import lint
+    assert old in VALID
+    code, message = lint(VALID.replace(old, new))
+    assert code == 1 and named in message, message
+
+
+def test_legacy_record_still_evaluates(ws):
+    from wuwei import decision
+    assert decision.evaluate(LEGACY)[1]['A'] == 86
+    code, message = decision.lint(LEGACY)
+    assert code == 1 and ('Options' in message or 'Class' in message)
+    with pytest.raises(ValueError):
+        decision.write(LEGACY, ws)
+
+
+def test_prioritisation_record_needs_no_lens():
+    from wuwei.decision import lint
+    assert lint(VALID.replace('Class: design', 'Class: re-plan').replace(LENS_BLOCK, '')) == (0, 'OK: A (86)')
+
+
+def test_custom_lens_is_required(ws):
+    from wuwei.decision import lint_file
+    (ws / '.wuwei/config.toml').write_text('[decisions.lenses]\ncompany-rule = "Does it follow our rule?"\n')
+    path = save(ws)
+    code, message = lint_file(path, record=False)
+    assert code == 1 and 'company-rule' in message
+    path.write_text(VALID.replace('Musts:', '| company-rule | Follows it. | Follows it. |\nMusts:'))
+    assert lint_file(path, record=False)[0] == 0
+    (ws / '.wuwei/config.toml').write_text('[decisions.lenses]\nYAGNI = ""\n')
+    path.write_text(VALID)
+    code, message = lint_file(path, record=False)
+    assert code == 1 and 'YAGNI' in message
+
+
+def test_lens_table():
+    from wuwei import decision
+    def lenses(configured):
+        return decision.lens_table({'decisions': {'lenses': configured}})
+    assert lenses({}) == decision.LENSES
+    assert list(decision.LENSES) == ['SOLID', 'twelve-factor', 'YAGNI', 'ponytail']
+    assert list(lenses({'company-rule': 'Q?'})) == [*decision.LENSES, 'company-rule']
+    assert 'YAGNI' not in lenses({'YAGNI': ''})
+
+
+def test_class_after_question_is_its_own_field():
+    from wuwei import decision
+    text = VALID.replace('Class: design', 'Class: re-plan')
+    assert decision.evaluate(text)[0]['Class'] == 're-plan'
+    with pytest.raises(ValueError, match='Class'):
+        decision.evaluate(text.replace('Class: re-plan', 'Class: desing'))
 
 
 def stop_payload(cwd, **changes):
@@ -1030,15 +1185,16 @@ def test_widget_shape():
 
 
 FIVE = '''Question: Which fix?
+Class: other
 Context: tests/test_example.py records the failure.
 Options:
-| Option | Description |
-| --- | --- |
-| A | Fix one |
-| B | Defer until tomorrow |
-| C | Fix three |
-| D | Fix four |
-| E | Fix five |
+| Option | Title | Rationale | Consequence |
+| --- | --- | --- | --- |
+| A | Fix one | Scores 5. | One changes. |
+| B | Defer until tomorrow | Scores 2. | Nothing changes. |
+| C | Fix three | Scores 9. | Three changes. |
+| D | Fix four | Scores 4. | Four changes. |
+| E | Fix five | Scores 3. | Five changes. |
 Musts:
 | Criterion | A | B | C | D | E |
 | --- | --- | --- | --- | --- | --- |
@@ -1048,6 +1204,7 @@ Wants:
 | --- | --- | --- | --- | --- | --- | --- |
 | Correctness | 10 | 5 | 2 | 9 | 4 | 3 |
 Recommendation: C
+Reasoning: Correctness decided it.
 Confidence: high
 Reversibility: two-way
 Blast radius: own branch
@@ -1062,19 +1219,46 @@ def test_decision_widget_passes_the_question_guard(ws):
     from wuwei import decision
     save(ws)
     built = decision.record_widget('D-3', decision.evaluate(VALID)[0])
-    assert built['question'] == 'D-3: Which fix?' and built['header'] == 'D-3'
-    assert [o['label'] for o in built['options']] == ['A', 'B'] and built['multiSelect'] is False
-    assert built['options'][0]['description'] == 'Recommended. Implement fix'
-    assert built['record'] == 'wuwei decide D-3 <label>'
+    assert built['question'] == 'D-3: Which fix? Correctness decided it.' and built['header'] == 'D-3'
+    assert [o['label'] for o in built['options']] == ['Implement fix (Recommended)', 'Defer until tomorrow']
+    assert built['multiSelect'] is False
+    assert built['options'][0]['description'].splitlines() == [
+        'Passes every must and scores 8 on Correctness.', 'The failure is fixed today.',
+        'SOLID: Keeps single responsibility.', 'twelve-factor: No new config.',
+        'YAGNI: Builds only the fix.', 'ponytail: Smallest diff that works.']
+    assert built['record'] == 'wuwei decide D-3 "<label>"'
     assert ask(ws, built) == (0, '')
     swapped = VALID.replace('| 10 | 8 | 2 |', '| 10 | 2 | 8 |').replace('Recommendation: A', 'Recommendation: B')
     built = decision.record_widget('D-3', decision.evaluate(swapped)[0])
-    assert [o['label'] for o in built['options']] == ['B', 'A']
-    assert built['options'][0]['description'] == 'Recommended. Defer until tomorrow'
+    assert [o['label'] for o in built['options']] == ['Defer until tomorrow (Recommended)', 'Implement fix']
     save(ws, FIVE)
     built = decision.record_widget('D-3', decision.evaluate(FIVE)[0])
-    assert [o['label'] for o in built['options']] == ['C', 'A', 'B', 'D']
+    assert [o['label'] for o in built['options']] == [
+        'Fix three (Recommended)', 'Fix one', 'Defer until tomorrow', 'Fix four']
+    assert built['options'][0]['description'] == 'Scores 9.\nThree changes.'
     assert ask(ws, built) == (0, '')
+
+
+def test_widget_trims_by_verbosity():
+    from wuwei import decision
+    fields = decision.evaluate(VALID)[0]
+    brief = decision.record_widget('D-3', fields)['options'][0]['description'].splitlines()[0]
+    full = decision.record_widget('D-3', fields, level='full')['options'][0]['description'].splitlines()[0]
+    assert brief == 'Passes every must and scores 8 on Correctness.'
+    assert full == 'Passes every must and scores 8 on Correctness. It costs a little Speed.'
+    assert decision.record_widget('D-3', fields, level='full')['question'] == (
+        'D-3: Which fix? Correctness decided it.')
+
+
+def test_custom_lens_on_the_card(ws, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    monkeypatch.chdir(ws)
+    (ws / '.wuwei/config.toml').write_text('[decisions.lenses]\ncompany-rule = "Does it follow our rule?"\n')
+    save(ws, VALID.replace('Musts:', '| company-rule | Follows it. | Follows it too. |\nMusts:'))
+    assert main(['decision', 'show', 'D-3', '--widget']) == 0
+    options = json.loads(capsys.readouterr().out)[0]['options']
+    assert [o['description'].splitlines()[-1] for o in options] == [
+        'company-rule: Follows it.', 'company-rule: Follows it too.']
 
 
 def test_decision_show_widget(ws, monkeypatch, capsys):
@@ -1084,6 +1268,9 @@ def test_decision_show_widget(ws, monkeypatch, capsys):
     path = save(ws)
     assert main(['decision', 'show', 'D-3', '--widget']) == 0
     assert json.loads(capsys.readouterr().out) == [decision.record_widget('D-3', decision.evaluate(VALID)[0])]
+    path.write_text(LEGACY)
+    assert main(['decision', 'show', 'D-3', '--widget']) == 1
+    assert 'Class' in capsys.readouterr().err
     path.write_text('Question: bad')
     assert main(['decision', 'show', 'D-3', '--widget']) == 1
     assert 'missing fields' in capsys.readouterr().err
@@ -1091,6 +1278,8 @@ def test_decision_show_widget(ws, monkeypatch, capsys):
     assert main(['decision', 'show', 'D-3', '--widget']) == 1
     with pytest.raises(SystemExit, match='2'):
         main(['decision', 'show', 'D-3', '--widget', '--full'])
+
+
 @pytest.mark.parametrize('command, expected', [
     ('python3 -P -c \'import subprocess;r=subprocess.run(["git","log","-1"]);'
      'print(open("days/x/decisions/D-1.md").read())\'', 'unparsed'),

@@ -129,7 +129,8 @@ SCHEMA = {
     "steward": {"every_tool_calls": (int, 50, 1), "loop_window_hours": (int, 4, 1),
                 "loop_threshold": (int, 9, 1)},
     "decisions": {"wait_hours": (int, 24, 1),
-                  "cruise": {"enabled": (bool, True), "levels": {"*": (int, None, 0, 3)}}},
+                  "cruise": {"enabled": (bool, True), "levels": {"*": (int, None, 0, 3)}},
+                  "lenses": {"*": (str, "")}},
     "pr": {"poll_seconds": (int, 120, 1), "action_minutes": (int, 30, 1),
            "review_window": (int, 120, 1)},
     "shepherd": {"review_channel": (str, ""), "lead_login": (str, ""),
@@ -537,7 +538,7 @@ _CONFIGS = {}
 # copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
-CONFIG_CACHE_VERSION = 5  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 6  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor, why and the board stay read-only.
@@ -649,6 +650,9 @@ def load_config(root=None, *, raw=None, warnings=None):
                                   + ', '.join(CLASSES))
             if value > CLASSES[name][1]:
                 raise ConfigError(f'decisions.cruise.levels.{name}: above its ceiling L{CLASSES[name][1]}; the owner lowers it with bin/wuwei config set in a host terminal')
+        for name in config['decisions']['lenses']:
+            if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', name):
+                raise ConfigError(f'decisions.lenses.{name}: use letters, digits, dash or underscore, starting with a letter; the owner fixes it with bin/wuwei config set in a host terminal')
         from wuwei import registry
         second = config['gates']['second_opinion']
         found = re.fullmatch(r'([a-z]+):([A-Za-z0-9][A-Za-z0-9._-]*)', second)
