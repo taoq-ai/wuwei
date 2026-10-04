@@ -201,7 +201,7 @@ def test_answers(root, capsys, monkeypatch, option):
     assert config['outbound']['work_channels'] == ['C1', 'C01']
     assert learned == [{'decision': 'D-1', 'option': option, 'mode': 'card', 'server': UUID,
                         'channel': 'slack', 'alias': True, 'connector_mode': None, 'channels': ['C01'],
-                        'people': ['U01', 'U02'] if option == 'approve' else []}]
+                        'people': ['U01', 'U02'] if option == 'approve' else [], 'owner': False}]
     if option == 'approve':
         assert set(config['outbound']['people']) == {'slack:U01', 'slack:U02'}
         assert send(root, check_tier) == send(root, check_lint) == (0, '')
@@ -274,3 +274,112 @@ def test_as_cannot_override_a_resolving_channel(root, capsys):
     assert learn(root, '--as', 'other', tool=f'mcp__{UUID}__send_email', listings=False) == 1
     assert 'already resolves to mail' in capsys.readouterr().err
     assert events(root, 'outbound.learned') == []
+
+
+# #495: the owner's own Slack identity is learned on the same card.
+SLACK = f'mcp__{UUID}__slack_send_message'
+
+
+def owner_file(root, identity):
+    path = workspace.day_dir(root) / 'owner.json'
+    path.write_text(json.dumps(identity))
+    return str(path)
+
+
+def dm(root, guard, channel='D09', text='Your build is green'):
+    return guard({'cwd': str(root), 'tool_name': SLACK, 'hook_event_name': 'PreToolUse',
+                  'session_id': 'test', 'tool_use_id': 'call',
+                  'tool_input': {'text': text, 'channel': channel}})
+
+
+def draft_card(root, capsys, reason):
+    import re
+    from wuwei.__main__ import main
+    capsys.readouterr()
+    assert main(['drafts', 'show', re.search(r'draft-[0-9a-f]{32}', reason)[0], '--widget']) == 0
+    return json.loads(capsys.readouterr().out)[0]['options'][0]['description']
+
+
+def test_dm_without_identity_names_the_rule_and_the_card(root, capsys, monkeypatch):
+    from wuwei.guards.outward import check_tier
+    monkeypatch.chdir(root)
+    code, reason = dm(root, check_tier)
+    assert code == 1 and 'unknown DM recipient D09' in reason
+    assert 'bin/wuwei drafts show draft-' in reason
+    assert f'bin/wuwei outbound learn --tool {SLACK} --owner <file>' in draft_card(root, capsys, reason)
+    configure(root, 'owner = {slack = {user = "U09", dm = "D09"}}')
+    code, reason = dm(root, check_tier, 'U02', 'Thanks')
+    assert code == 1 and 'unknown DM recipient U02' in reason
+    assert 'outbound learn' not in reason + draft_card(root, capsys, reason)
+
+
+def test_listing_step_names_the_identity_tool(root, capsys):
+    assert learn(root, tool=SLACK, listings=False) == 1
+    err = capsys.readouterr().err
+    assert 'auth_test' in err and 'whoami' in err and '--owner <file>' in err
+    configure(root, 'owner = {slack = {user = "U09", dm = "D09"}}')
+    assert learn(root, tool=SLACK, listings=False) == 1
+    assert '--owner' not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('identity', [{'user': 'x', 'dm': ''}, {'user': 'U09'},
+                                      {'user': 'U09', 'dm': 'C1'}, {'user': 'U09', 'dm': 'D08'},
+                                      {'user': 'U09', 'dm': 'D09', 'name': 'Pat'}, ['U09']])
+def test_owner_file_shape(root, capsys, monkeypatch, identity):
+    monkeypatch.setenv('SLACK_OWNER_DM_CHANNEL', 'D08')
+    before = (root / '.wuwei/config.toml').read_text()
+    assert learn(root, '--owner', owner_file(root, identity), tool=SLACK, listings=False) == 1
+    assert '"user", "dm"' in capsys.readouterr().err
+    assert (root / '.wuwei/config.toml').read_text() == before
+    assert not (workspace.day_dir(root) / 'decisions').exists()
+
+
+def test_owner_file_unreadable(root, capsys):
+    missing = str(workspace.day_dir(root) / 'missing.json')
+    assert learn(root, '--owner', missing, tool=SLACK, listings=False) == 2
+    assert 'cannot read' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('mode,name', [('card', 'guarded'), ('auto', 'observe')])
+def test_owner_card_and_answers(root, capsys, monkeypatch, mode, name):
+    from wuwei.guards.outward import check_lint, check_tier
+    configure(root, f'learn = "{mode}"')
+    posture(root, name)
+    path = owner_file(root, {'user': 'U09', 'dm': 'D09'})
+    assert learn(root, '--owner', path, tool=SLACK, listings=False) == 0
+    [question] = json.loads(capsys.readouterr().out)
+    assert 'your identity U09, DM D09' in question['question']
+    text = (workspace.day_dir(root) / 'decisions/D-1.md').read_text()
+    assert "- owner U09, DM D09 from the connector's identity call" in text
+    assert decisions(root) == ['D-1.md']
+    assert answer(root, monkeypatch, 'approve') == (0, 'approve')
+    config = workspace.load_config(root)
+    assert config['outbound']['owner']['slack'] == {'user': 'U09', 'dm': 'D09'}
+    assert events(root, 'outbound.learned')[0]['owner'] is True
+    assert dm(root, check_tier) == dm(root, check_lint) == (0, '')
+    assert len(events(root, 'outward.to_owner')) == 1
+
+
+def test_owner_keep_writes_nothing(root, capsys, monkeypatch):
+    from wuwei.guards.outward import check_tier
+    assert learn(root, '--owner', owner_file(root, {'user': 'U09', 'dm': 'D09'}),
+                 tool=SLACK, listings=False) == 0
+    before = (root / '.wuwei/config.toml').read_text()
+    assert answer(root, monkeypatch, 'keep') == (0, 'keep')
+    assert (root / '.wuwei/config.toml').read_text() == before
+    assert dm(root, check_tier)[0] == 1
+
+
+def test_owner_proposes_only_empty_fields(root, capsys):
+    from wuwei.commands.outbound import propose
+    configure(root, 'owner = {slack = {user = "U09"}}')
+    config, data = workspace.load_config(root), state.read_state(root)
+    found = propose(root, config, data, UUID, 'slack', SLACK, [], [], card=True,
+                    owner={'user': 'U09', 'dm': 'D09'})
+    assert found['owner'] == {'dm': 'D09'}
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('user = "U09"', 'user = "U09", dm = "D09"')
+                    + f'\n[outward.servers]\n"{UUID}" = "slack"\n')
+    assert learn(root, '--owner', owner_file(root, {'user': 'U09', 'dm': 'D09'}),
+                 tool=SLACK, listings=False) == 1
+    assert 'nothing new to learn' in capsys.readouterr().err

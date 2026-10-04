@@ -901,8 +901,9 @@ def test_outward_humanize_is_documented():
 def test_owner_channel_in_skills():
     # #495: the owner's own DM is where the planner posts when owner_channel = "dm".
     plan = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
-    for word in ('outbound.owner_channel', 'outbound.owner.slack.dm'):
+    for word in ('outbound.owner_channel', 'outbound.owner.slack.dm', 'outbound learn --tool', '--owner <file>'):
         assert word in plan, word
+    assert 'config set outbound.owner' not in plan  # Learned on the card, never typed (#492).
     assert 'owner_channel' in (ROOT / 'skills/wuwei-report/SKILL.md').read_text()
     configuration = (SITE / 'configuration.md').read_text()
     assert '`outbound.owner`' in configuration and '`outbound.owner_channel`' in configuration

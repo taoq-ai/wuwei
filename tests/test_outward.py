@@ -1370,8 +1370,29 @@ def test_guard_to_owner_every_posture(configured, posture):
     root = configured[0]
     with_owner(root)
     set_posture(root, posture)
-    call = payload(root, 'Your build is green', tool='mcp__slack__slack_send_message', channel='D01')
+    call = payload(root, 'Your build is green', tool=opaque('slack_send_message'), channel='D01')
     assert check_tier(call) == (0, '')
     assert check_lint(call) == (0, '')
     assert len(owner_events(root)) == 1
     assert not state.read_state(root).get('drafts')
+
+
+def test_guard_to_owner_floor(configured):
+    # #495, owner: a self-DM always sends; a strict workspace with the outward area on block,
+    # the connector in mode draft or refuse and a sensitive word do not lower it.
+    from wuwei import state
+    from wuwei.guards.outward import check_lint, check_tier
+    root = configured[0]
+    with_owner(root)
+    set_posture(root, 'strict', 'block')
+    write_config(root, f'\n[outward.modes]\n"{UUID}" = "draft"\n')
+    path = root / '.wuwei/config.toml'
+    for mode, count, held, words in (('draft', 2, 1, 'connector mode draft'), ('refuse', 4, 2, 'refuses writes')):
+        path.write_text(path.read_text().replace(f'"{UUID}" = "draft"', f'"{UUID}" = "{mode}"'))
+        for channel in ('D01', 'U01'):
+            call = payload(root, 'Your salary review is in', tool=opaque('slack_send_message'), channel=channel)
+            assert check_tier(call) == check_lint(call) == (0, ''), mode
+        assert len(owner_events(root)) == count
+        code, reason = check_tier(payload(root, 'Thanks', tool=opaque('slack_send_message'), channel='U02'))
+        assert code == held and words in reason, (mode, reason)
+    assert all(row['destination'] != 'D01' for row in state.read_state(root).get('drafts', {}).values())

@@ -154,8 +154,9 @@ owner already confirms.
   refused by `outbound learn` with exit 1 naming the shape.
 - The learn card proposes only identity fields that are empty in config; it never replaces a
   recorded identity.
-- A connector whose owner mode (#492 `outward.modes`) is `draft` drafts every write,
-  messages to the owner included; `refuse` refuses them.
+- A connector whose owner mode (#492 `outward.modes`) is `draft` or `refuse` drafts or
+  refuses every write except a message to the owner, which still sends with the event
+  (owner, 2026-10-04: nothing lowers it).
 - The headless shepherd seat rule (`WUWEI_SEAT_ROLE=shepherd`) stays first in `classify`.
 - `outbound.owner.code_host` is identity only: a code-host write is public (a pull request or
   issue), so it never passes as a message to the owner.
@@ -238,8 +239,8 @@ owner already confirms.
 - A8 "Never counted against the approval tier" means no draft row, no `draft.*` event and no
   hold: the call passes before the drafts queue, and `outward.to_owner` is a separate silent
   kind that no draft metric reads.
-- A9 An owner mode (#492 `outward.modes`) of `draft` or `refuse` is the owner's explicit
-  choice for the connector and wins over the owner pass; "every posture" is about postures.
+- A9 Owner comment on #495: a self-DM always sends under every posture and nothing lowers
+  it. An owner mode `draft` or `refuse` therefore does not hold a message to the owner.
 - A10 The `outward.to_owner` event is recorded where `check_tier` decides, so a connector in
   owner mode `send` (which skips `check_tier`, #492) sends without it.
 - A11 Slack user ids are `U...` or `W...` (Enterprise Grid), DM ids `D...`, as in

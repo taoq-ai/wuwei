@@ -179,6 +179,8 @@ def _check(payload, policy):
             inputs = {**inputs, 'is_dm': True}
         channel = next(iter(channels))
         found = mode(tool, config, channel) if tool.startswith('mcp__') and tool_kind(tool) != 'read' else None
+        if found in ('draft', 'refuse') and outward.owner_only(inputs, config, channel):
+            found = None  # #495, owner: nothing lowers a message only the owner reads.
         if found == 'refuse':
             return UNRUN, (f'outward: connector {tool[5:].rpartition("__")[0]} refuses writes by the '
                            "owner's mode; write it as a draft for the owner to send")

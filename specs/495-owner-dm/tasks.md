@@ -116,6 +116,10 @@ name `outbound learn` in `skills/wuwei-plan/SKILL.md` yet, because the command d
 on this branch; the skill shows the `config set` lines for the identity instead. T016 adds
 `outbound learn` to that paragraph and its test.
 
+Status (rebase): the branch is rebased on main with #492 and #493; Phase B is done and the
+skill paragraph names `outbound learn --tool <tool>` and `--owner <file>` instead of the
+`config set` lines.
+
 Phase B edits #492's `outbound learn`. Before T016, the branch must hold #492 (main merged
 after #492 lands; the orchestrator does that, not the builder). If
 `cli/wuwei/commands/outbound.py` has no `learn`, stop here, run the full suite, and report
@@ -123,21 +127,30 @@ Phase B as blocked on #492.
 
 ## Phase B: the identity on the #492 card (FR-007, FR-008; US2)
 
-- [ ] T016 In `tests/test_outward.py`, switch T011 to the UUID tool name. In
+- [X] T016 In `tests/test_outward.py`, switch T011 to the UUID tool name. In
   `tests/test_outbound_learn.py`, add failing tests: with no `outbound.owner`, the guard on the
   UUID send to `D01` holds it and the reason holds `unknown DM recipient D01` and `bin/wuwei
   outbound learn --tool <tool>`; with the identity recorded, a send to `U02` is held without
   `outbound learn` in the reason. Fails today: `unknown_audience` skips every `D`/`U` id.
-- [ ] T017 In `cli/wuwei/outward.py`, change `unknown_audience` per plan section 6 (last
-  bullet).
-- [ ] T018 In `tests/test_outbound_learn.py`, add failing tests: `outbound learn --tool
+  Done as merged: #492 landed without `unknown_audience`; the learn command is named on the
+  #493 draft card, not in the held reason, so the reason names the rule and the card
+  (`bin/wuwei drafts show <id> --widget`) and the card names `outbound learn --tool <tool>
+  --owner <file>` (T021a). Owner ids in the learn tests are `U09`/`D09` because the #492
+  fixture already uses `U01` for a teammate.
+- [X] T017 Not needed: no `unknown_audience` on main; T021a carries the hint.
+- [X] T017a (owner comment) In `tests/test_outward.py`, `test_guard_to_owner_floor`: strict,
+  outward area `block`, connector mode `draft` and a sensitive word still send the self-DM
+  with the event, and so does mode `refuse`; a DM to `U02` still drafts or is refused. In
+  `cli/wuwei/guards/outward.py`, mode `draft` or `refuse`
+  does not apply when `outward.owner_only` is true.
+- [X] T018 In `tests/test_outbound_learn.py`, add failing tests: `outbound learn --tool
   <uuid tool>` with no files prints a step naming `auth_test`, `whoami` and `--owner`;
   `--owner` with `{"user": "x", "dm": ""}`, `{"user": "U01"}`, `{"user": "U01", "dm": "C1"}`
   or a `dm` equal to `SLACK_OWNER_DM_CHANNEL` exits 1 naming the shape; an unreadable file
   exits 2. Fails today: no `--owner` argument.
-- [ ] T019 In `cli/wuwei/commands/outbound.py`, add `--owner`, `_owner()` and the `learn`
+- [X] T019 In `cli/wuwei/commands/outbound.py`, add `--owner`, `_owner()` and the `learn`
   steps 6 and 7 changes per plan section 6.
-- [ ] T020 In `tests/test_outbound_learn.py`, add failing tests: `--owner` with `{"user":
+- [X] T020 In `tests/test_outbound_learn.py`, add failing tests: `--owner` with `{"user":
   "U01", "dm": "D01"}` writes one decision record and prints one widget whose question holds
   `your identity U01, DM D01`, under `outbound.learn = "auto"` and the observe posture too;
   answering `approve` through `wuwei decide` writes `outbound.owner.slack.user = "U01"` and
@@ -146,13 +159,13 @@ Phase B as blocked on #492.
   the send stays held; with `user = "U01"` already recorded the proposal holds only `dm`; with
   both recorded and no channels or people, learn exits 1 with nothing new. Fails today: the
   proposal has no owner.
-- [ ] T021 In `cli/wuwei/commands/outbound.py`, change `propose`, `record`, `apply` and the
+- [X] T021 In `cli/wuwei/commands/outbound.py`, change `propose`, `record`, `apply` and the
   `card` condition in `learn` per plan section 6.
-- [ ] T021a (review F1) In `tests/test_drafts.py`, add a failing test next to
+- [X] T021a (review F1) In `tests/test_drafts.py`, add a failing test next to
   `test_card_names_outbound_learn_when_on`: a draft held for `unknown DM recipient U01` with
   learning on offers `bin/wuwei outbound learn --owner` on its card. Then in
   `cli/wuwei/drafts.py` `widget()`, add `'unknown DM recipient'` to the learn-hint prefixes and
-  name `--owner` for it. Do not close #495 until Phase B is done.
+  name `--owner` for it, only while `outbound.owner.slack` is incomplete.
 
 ## Finish
 
