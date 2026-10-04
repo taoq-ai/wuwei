@@ -295,6 +295,12 @@ stops with a line naming `bin/wuwei tracker create <item>`. The board and the lo
 ticket id beside the item, and WUWEI comments the item's phases, pull request and merge on it.
 Decisions and review results wait in `bin/wuwei drafts` until you send them.
 
+A draft is one card away from being sent. The refusal names the draft id and the rule that
+held it; the planner asks you its card (`bin/wuwei drafts show <id> --widget`) and records
+your answer with `bin/wuwei drafts approve <id>` or `drafts drop <id>`. Under strict you run
+that line in a host terminal. A draft from a connector goes out when the seat repeats its
+call, once.
+
 PR changes reach the planner without you. Every change on a raised or claimed PR is one
 `pr.changed` event with a summary, for example
 `PR owner/repo#12: 2 new review comments by alice on cli/x.py; check test (3.11) failed`.

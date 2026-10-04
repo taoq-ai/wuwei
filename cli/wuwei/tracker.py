@@ -121,7 +121,7 @@ def create(root, subject, category='items', title=None, evidence=()):
         record(draft, result.data, root=root)
         return registry.Result(0, result.data, f'{subject}: ticket {result.data["id"]} {result.data["url"]}')
     if result.exit == 1:
-        stored = re.search(r'stored draft (draft-[0-9a-f]+)', result.reason or '')
+        stored = re.search(r'outward: draft (draft-[0-9a-f]+)', result.reason or '')
         outcome = ({'outcome': 'drafted', 'draft': stored[1]} if stored
                    else {'outcome': 'refused', 'reason': result.reason or 'refused'})
         state._write_state(lambda fresh: fresh.setdefault('tracker_log', {}).update({key: outcome}),
@@ -262,7 +262,7 @@ def log(root):
                         exit=2)
                 print(f'tracker log: {result.reason}', file=sys.stderr)
                 return 2
-            stored = re.search(r'stored draft (draft-[0-9a-f]+)', result.reason or '')
+            stored = re.search(r'outward: draft (draft-[0-9a-f]+)', result.reason or '')
             outcome = ({'outcome': 'written'} if result.exit == 0 else
                        {'outcome': 'drafted', 'draft': stored[1]} if stored else
                        {'outcome': 'refused', 'reason': result.reason or 'refused'})

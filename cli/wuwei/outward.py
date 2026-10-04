@@ -294,11 +294,22 @@ def _external_tracker(config):
                for name in (project, tracker['board']) if name)
 
 
-def classify(text, root, config, context=None, *, kind='chat', port=False):
-    """Return (0|1|2, send|draft); missing destination or uncertain meaning drafts."""
+def classify(text, root, config, context=None, *, kind='chat', port=False, why=None):
+    """Return (0|1|2, send|draft); missing destination or uncertain meaning drafts.
+    A list in why gets '<rule>: <evidence>' for the draft (#493); evidence has no '; '."""
+    def held(rule):
+        if isinstance(why, list):
+            why.append(rule)
+        return FINDINGS, 'draft'
+
+    def tier(name, evidence):
+        from wuwei import voice
+        return held(f'approval tier {name} for '
+                    f'{voice.audience(destinations[0] if destinations else kind, config)}: {evidence}')
+
     try:
         if os.environ.get('WUWEI_SEAT_ROLE') == 'shepherd':
-            return FINDINGS, 'draft'  # A headless shepherd seat posts drafts only.
+            return held('headless seat: a headless shepherd seat posts drafts only')
         if not isinstance(text, str) or not text.strip() or not isinstance(kind, str):
             return UNRUN, 'draft'
         context = {} if context is None else context
@@ -310,24 +321,28 @@ def classify(text, root, config, context=None, *, kind='chat', port=False):
         for key, value in nested.items():
             if key not in TEXT_FIELDS:
                 if key in context and context[key] != value:
-                    return FINDINGS, 'draft'
+                    return tier('unclassified', 'nested draft fields disagree')
                 context[key] = value
         rules = config['outbound']
         normalized = _normalize(text).replace('\u2019', "'")
         # ponytail: explicit deny lists and complete safe forms have limited language
         # coverage. Unknown prose drafts; a semantic classifier is later work.
-        patterns = [re.compile(pattern, re.IGNORECASE | re.DOTALL)
-                    for key in ('sensitive_patterns', 'commitment_patterns', 'disagreement_patterns')
-                    for pattern in rules[key]]
-        if (any(re.search(r'(?<!\w)' + re.escape(_normalize(word)) + r'(?!\w)',
-                          normalized.replace('_', ' ')) for word in rules['sensitive_keywords'])
-                or any(pattern.search(normalized) for pattern in patterns)):
-            return FINDINGS, 'draft'
+        patterns = {key: [re.compile(pattern, re.IGNORECASE | re.DOTALL) for pattern in rules[key]]
+                    for key in ('sensitive_patterns', 'commitment_patterns', 'disagreement_patterns')}
+        if any(re.search(r'(?<!\w)' + re.escape(_normalize(word)) + r'(?!\w)',
+                         normalized.replace('_', ' ')) for word in rules['sensitive_keywords']):
+            return tier('sensitive', 'outbound.sensitive_keywords')
+        for key, compiled in patterns.items():
+            if any(pattern.search(normalized) for pattern in compiled):
+                return tier(key.split('_')[0], f'outbound.{key}')
         if (any(context.get(key, False) for key in BOOL_FIELDS)
                 or context.get('channel_type', 'channel') != 'channel'
                 or any(channel.startswith(('D', 'U')) or channel in rules['external_channels']
                        for channel in destinations)):
-            return FINDINGS, 'draft'
+            if (context.get('is_dm') or context.get('channel_type') in ('im', 'mpim')
+                    or any(channel.startswith(('D', 'U')) for channel in destinations)):
+                return tier('direct message', 'every direct message drafts')
+            return tier('external', 'shared, connected, client or outbound.external_channels')
         recipients = list(context.get('recipients', []))
         if 'recipient' in context:
             recipients.append(context['recipient'])
@@ -339,32 +354,43 @@ def classify(text, root, config, context=None, *, kind='chat', port=False):
         # Email addresses and mentions are audience evidence, never merely message text.
         recipients.extend(re.findall(r'[^\s<>@]+@[^\s<>@]+', normalized))
         namespace = 'github' if kind == 'code_host' else 'slack'
-        if any(not _internal(person, rules, 'email' if '@' in person else namespace)
-               for person in recipients):
-            return FINDINGS, 'draft'
+        unknown = [person for person in recipients
+                   if not _internal(person, rules, 'email' if '@' in person else namespace)]
+        if unknown:
+            person = unknown[0]
+            return held(f"unknown mention {person if '@' in person else '@' + person}: "
+                        'not an internal person in outbound.people')
         if ('recipient_org' in context and context['recipient_org'].casefold()
                 not in {org.casefold() for org in rules['code_host_orgs']}):
-            return FINDINGS, 'draft'
+            return tier('external', 'recipient_org not in outbound.code_host_orgs')
         if kind == 'docs':  # #419: a docs write sends only when its kind is in docs.auto.
-            return (CLEAN, 'send') if context.get('kind') in config['docs']['auto'] else (FINDINGS, 'draft')
+            return ((CLEAN, 'send') if context.get('kind') in config['docs']['auto']
+                    else tier('docs', 'kind not in docs.auto'))
         if kind == 'tracker':
             # 5.11: record-derived tracker writes in tracker.auto send; the rest draft.
             # Only the CLI port sets category; a seat's MCP payload cannot claim it.
             return ((CLEAN, 'send') if port and context.get('category') in config['tracker']['auto']
-                    and not _external_tracker(config) else (FINDINGS, 'draft'))
+                    and not _external_tracker(config) else tier(
+                        'tracker', 'category not in tracker.auto, or the board is outside outbound.code_host_orgs'))
         discussion = ''
         # The chat port cannot prove the thread's participants are internal.
         if kind in ('chat', 'slack') and any(
                 context.get(key) is not None for key in ('thread', 'thread_ts')):
-            return FINDINGS, 'draft'
+            return tier('thread', 'chat threads draft until their participants are known')
         if kind == 'code_host':
             code, discussion = _pr_context(context, root, config)
+            if code == FINDINGS:
+                return tier('external', 'not a measured team pull request')
             if code:
                 return code, 'draft'
         elif (kind not in ('chat', 'slack') or not destinations
               or len(set(destinations)) != 1
               or any(channel not in rules['work_channels'] for channel in destinations)):
-            return FINDINGS, 'draft'
+            if kind in ('chat', 'slack'):
+                missing = next((channel for channel in destinations
+                                if channel not in rules['work_channels']), 'none')
+                return held(f'unknown destination {missing}: not in outbound.work_channels')
+            return tier('unclassified', f'no auto-send rule for channel {kind}')
         plain = re.sub(r'<@[\w.-]+>|(?<![\w@])@[\w.-]+', '', normalized).strip()
         if review_match:
             from wuwei import shepherd, state
@@ -375,6 +401,8 @@ def classify(text, root, config, context=None, *, kind='chat', port=False):
             if (expected and set(mentions) == {mapped.get(login) for login in expected}
                     and len(mentions) == len(expected)):
                 gate = shepherd.ping_gate(root, ref)
+                if gate.exit == FINDINGS:
+                    return tier('review gate', (gate.reason or 'refused').split('; ')[0])
                 return (CLEAN, 'send') if gate.exit == 0 else (gate.exit, 'draft')
         if re.fullmatch(r'(?:ack|acknowledged|thanks|thank you|got it|done|'
                         r'(?:tests?|build|ci) (?:passed|failed|running|is running))[.!]?', plain):
@@ -387,7 +415,12 @@ def classify(text, root, config, context=None, *, kind='chat', port=False):
             return CLEAN, 'send'
         mechanical = re.fullmatch(r'fixed in ([0-9a-f]{7,40})\.?', plain)
         if not mechanical:
-            return FINDINGS, 'draft'
+            if review_match:
+                return tier('review ping', 'the mentions are not the requested reviewers')
+            if kind in ('chat', 'slack') and 'review' in plain:
+                return held('review ping without a code-host link: the review request form '
+                            'with the PR link goes to shepherd.review_channel')
+            return tier('unclassified', 'not an acknowledgement, status, technical or mechanical reply')
         from wuwei import registry
         vcs = registry.load('vcs', config)
         unresolved = FINDINGS
@@ -401,6 +434,8 @@ def classify(text, root, config, context=None, *, kind='chat', port=False):
                 return CLEAN, 'send'
             if result.exit == UNRUN:
                 unresolved = UNRUN
+        if unresolved == FINDINGS:
+            return tier('unresolved commit', f'{mechanical[1]} is in no configured repository')
         return unresolved, 'draft'
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
         return UNRUN, 'draft'
@@ -410,7 +445,7 @@ def check_call(inputs, root, config, channels, *, port=False):
     """Shared lint and send policy for MCP hooks and text-bearing adapter ports."""
     from wuwei.guards import profile_result
     result = check_tier(inputs, root, config, channels, port=port)
-    draft = result == (FINDINGS, APPROVAL_REQUIRED)
+    draft = result[0] == FINDINGS and result[1].startswith(APPROVAL_REQUIRED)
     if result[0] and not draft:
         return result
     try:
@@ -435,11 +470,12 @@ def check_tier(inputs, root, config, channels, *, port=False):
         text = '\n'.join(texts)
         if len(channels) != 1:
             return UNRUN, 'outward: ambiguous tool channel configuration; pass one channel per call'
-        code, decision = classify(text, root, config, inputs, kind=next(iter(channels)), port=port)
+        why = []
+        code, decision = classify(text, root, config, inputs, kind=next(iter(channels)), port=port, why=why)
         if code == UNRUN:
             return code, 'outward: cannot classify policy, audience or message evidence; deliver as a draft for the owner to send'
         if decision == 'draft':
-            return code, APPROVAL_REQUIRED
+            return code, f'{APPROVAL_REQUIRED}: {why[0]}' if why else APPROVAL_REQUIRED
         return CLEAN, ''
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
         return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'

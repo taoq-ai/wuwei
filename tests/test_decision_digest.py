@@ -17,7 +17,8 @@ def test_two_pending_decisions_make_one_digest_within_hour(tmp_path, monkeypatch
     class Chat:
         def dm(self, text, *, root=None):
             sent.append(text)
-            return Result(1, text, 'outward: deliver as a draft for the owner to send')
+            return Result(1, text, 'outward: draft draft-1: approval tier direct message for owner DM: '
+                                   'every direct message drafts; the owner decides: bin/wuwei drafts show draft-1 --widget')
 
     monkeypatch.setattr(registry, 'load', lambda kind, config: Chat() if kind == 'chat' else None)
     from test_decision import VALID
@@ -90,7 +91,8 @@ def test_digest_cooldown_crosses_midnight(tmp_path, monkeypatch):
     class Chat:
         def dm(self, text, *, root=None):
             calls.append(text)
-            return Result(1, text, 'outward: deliver as a draft for the owner to send')
+            return Result(1, text, 'outward: draft draft-1: approval tier direct message for owner DM: '
+                                   'every direct message drafts; the owner decides: bin/wuwei drafts show draft-1 --widget')
 
     monkeypatch.setattr(registry, 'load', lambda kind, config: Chat())
     state._write_state(lambda data: data.update(decision_outcomes={

@@ -1208,3 +1208,15 @@ def test_lead_goals_are_blocks_while_proposing():
     for path in (SITE / 'security.md', ROOT / 'docs/specs/2026-09-24-wuwei-design.md'):
         row, = [line for line in path.read_text().splitlines() if line.startswith('| `outward` |')]
         assert '`decision.check_question`' in row, path
+
+
+def test_draft_card_is_documented():
+    # #493: a draft names its rule, the card is how the owner decides, and the allowance is one call.
+    concepts = (SITE / 'concepts.md').read_text()
+    for phrase in ('allowance', 'card', 'bin/wuwei drafts show <id> --widget'):
+        assert phrase in concepts, phrase
+    assert 'one card away from being sent' in (SITE / 'daily.md').read_text()
+    security = (SITE / 'security.md').read_text()
+    assert 'You decide, on the card' in security and 'asks for a draft you send yourself' not in security
+    assert any(line.startswith('| `outward.draft_ttl` | `3600` |')
+               for line in (SITE / 'configuration.md').read_text().splitlines())

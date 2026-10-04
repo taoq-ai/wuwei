@@ -180,6 +180,7 @@ deny = [] # Literal executable plus argument glob, for example "make publish*".
 # humanize = true # AI-tell lint on outward text (charters/_common-authoring.md).
 # humanize_kinds = ["dm", "tracker", "docs", "pr", "review"] # Kinds the lint checks.
 # humanize_strict = false # true refuses a text with a tell instead of warning.
+# draft_ttl = 3600 # Seconds an approved draft's tool call may repeat, once.
 [outward.max_length]
 # slack = 4000 # Positive maximum length for this channel.
 

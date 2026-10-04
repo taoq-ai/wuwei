@@ -55,7 +55,7 @@ wuwei is the absolute path in .wuwei/executable: read it once and use it as the 
 - runtime: Dispatch and inspect runtime jobs
 - sessions: List registered sessions, roles and claims
 - seat: Recover a stuck seat
-Read-only, never refused: board, calibrate --questions, config check, doctor, guide, heartbeat, integrity check, mcp check, memory show, memory status, plan gate, sessions, shadow report, status, why, and --help on any command.
+Read-only, never refused: board, calibrate --questions, config check, doctor, drafts show, guide, heartbeat, integrity check, mcp check, memory show, memory status, plan gate, sessions, shadow report, status, why, and --help on any command.
 
 ## Owner only: ask the owner to run these in a host terminal
 config add-repo, config promote, config set, decide, decision outcome, drafts approve, drafts drop, goals edit, integrity reconfirm, listen uninstall, mcp decide, memory forget, plan set, remote ack, setup, state recover, telemetry send, voice edit, watch uninstall.
@@ -69,7 +69,7 @@ config add-repo, config promote, config set, decide, decision outcome, drafts ap
 ## Records and questions
 - State and config files are protected; use the wuwei CLI for state changes; owner edits run outside agent tools.
 - The workflow writes the records through the CLI; the owner answers cards and never edits a file.
-- Ask the owner with AskUserQuestion, using the widget a command prints unchanged: `wuwei decision show D-n --widget`, `wuwei mcp check --widget`, `wuwei doctor --fix --widget`, `wuwei close --widget`, `wuwei consolidate --widget`, `wuwei telemetry proposals --widget`, `wuwei plan gate`, `wuwei calibrate --questions`. Record the answer with the widget's `record` command; when it runs in a host terminal, show the owner that line. Without AskUserQuestion (a headless run), write the decision record and run `wuwei decision route D-n` so it reaches the DM.
+- Ask the owner with AskUserQuestion, using the widget a command prints unchanged: `wuwei decision show D-n --widget`, `wuwei mcp check --widget`, `wuwei doctor --fix --widget`, `wuwei close --widget`, `wuwei consolidate --widget`, `wuwei telemetry proposals --widget`, `wuwei plan gate`, `wuwei calibrate --questions`, `wuwei drafts show <id> --widget`. Record the answer with the widget's `record` command; when it runs in a host terminal, show the owner that line. Without AskUserQuestion (a headless run), write the decision record and run `wuwei decision route D-n` so it reaches the DM.
 
 ## Guard areas by posture
 | Area | observe | guarded | strict |

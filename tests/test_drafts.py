@@ -62,6 +62,15 @@ def test_approve_tier_is_stored_and_listed_without_send(root, sink, capsys):
     assert json.loads(events.splitlines()[-1])['kind'] == 'draft.created'
 
 
+def test_port_draft_reason_names_rule_and_card(root, sink):
+    adapter = registry.load('chat', workspace.load_config(root))
+    result = adapter.post('C2', 'I can deliver this tomorrow.', None, root=root)
+    row = list(state.read_state(root)['drafts'].values())[-1]
+    assert result.reason == (
+        f"outward: draft {row['id']}: approval tier commitment for external: "
+        f"outbound.commitment_patterns; the owner decides: bin/wuwei drafts show {row['id']} --widget")
+
+
 def test_queue_retains_adapter_operation_and_item(root, sink):
     state._write_state(lambda data: data['items'].update(A={'pr': 'org/repo#7'}),
                        root, reserved=False)
@@ -117,6 +126,12 @@ def port(root, monkeypatch):
     return adapter, calls
 
 
+def strict(root):
+    """The host confirmation runs under strict only (#493)."""
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text() + '[security]\nposture = "strict"\n')
+
+
 def edit_to(monkeypatch, text):
     original = registry.load
 
@@ -144,6 +159,7 @@ def test_owner_approval_sends_original_once(root, port):
 
 def test_approve_without_terminal_is_owner_action(root, port, monkeypatch, capsys):
     import builtins
+    strict(root)
     row = queued(root)
     monkeypatch.setattr(integrity, '_host_confirm', REAL_CONFIRM)
     real_open = builtins.open
@@ -161,6 +177,7 @@ def test_approve_without_terminal_is_owner_action(root, port, monkeypatch, capsy
 
 
 def test_approve_declined_digest_sends_nothing(root, port, monkeypatch, capsys):
+    strict(root)
     row = queued(root)
     monkeypatch.setattr(integrity, '_host_confirm', lambda value, **kwargs: False)
     capsys.readouterr()
@@ -172,6 +189,7 @@ def test_approve_declined_digest_sends_nothing(root, port, monkeypatch, capsys):
 
 def test_approve_digest_covers_id_and_final_text(root, port, monkeypatch):
     from hashlib import sha256
+    strict(root)
     row = queued(root)
     final = 'I can deliver this today.'
     edit_to(monkeypatch, final)
@@ -182,6 +200,17 @@ def test_approve_digest_covers_id_and_final_text(root, port, monkeypatch):
     (digest, prompt), = seen
     assert digest == sha256((row['id'] + '\n' + final).encode()).hexdigest()
     assert row['destination'] in prompt and final in prompt and 'type:' not in prompt
+
+
+def test_approve_outside_strict_needs_no_prompt(root, port, monkeypatch):
+    from hashlib import sha256
+    row = queued(root)
+    monkeypatch.setattr(integrity, '_host_confirm', lambda *a, **k: pytest.fail('prompted'))
+    assert main(['drafts', 'approve', row['id']]) == 0
+    assert len(port[1]) == 1
+    stored = state.read_state(root)['drafts'][row['id']]
+    assert stored['answer'] == 'Send now'
+    assert stored['text_sha256'] == sha256(row['text'].encode()).hexdigest()
 
 
 def test_editor_trailing_newline_counts_as_unedited(root, port, monkeypatch):
@@ -206,6 +235,20 @@ def test_owner_edit_records_before_after_and_lints(root, port, monkeypatch):
     assert stored['edit_size'] > 0 and stored['sent_unedited'] is False
     events = (workspace.day_dir(root) / 'events.jsonl').read_text()
     assert row['text'] not in events and final not in events
+
+
+def test_edit_outside_strict_still_asks_the_owner(root, port, monkeypatch):
+    # #493 verify: an editor text never comes from a card, so --edit is confirmed like --file.
+    row = queued(root)
+    edit_to(monkeypatch, 'attacker text')
+    prompts = []
+    monkeypatch.setattr(integrity, '_host_confirm', lambda value, **kwargs: prompts.append(value) or False)
+    assert main(['drafts', 'approve', row['id'], '--edit']) == 1
+    assert len(prompts) == 1 and port[1] == []
+    assert state.read_state(root)['drafts'][row['id']]['status'] == 'pending'
+    monkeypatch.setattr(integrity, '_host_confirm', lambda value, **kwargs: prompts.append(value) or True)
+    assert main(['drafts', 'approve', row['id'], '--edit']) == 0
+    assert len(prompts) == 2 and port[1][0]['text'] == 'attacker text'
 
 
 @pytest.mark.parametrize('failure,code', [('outward', 1), ('voice', 1), ('security', 1),
@@ -492,6 +535,7 @@ def test_humanize_kinds_select_dm(root, sink):
 
 
 def test_approve_shows_humanize_findings(root, port, monkeypatch, capsys):
+    strict(root)
     row = queued(root, TELLS)
     assert main(['drafts']) == 0
     assert 'not-x-but-y' in capsys.readouterr().out
@@ -524,7 +568,7 @@ def docs_queued(root, monkeypatch):
     monkeypatch.setattr('urllib.request.urlopen', lambda *a, **k: pytest.fail('network'))
     adapter = registry.load('docs', workspace.load_config(root))
     result = adapter.write(DOCS_DRAFT, root=root)
-    assert result.exit == 1 and 'stored draft' in result.reason
+    assert result.exit == 1 and result.reason.startswith('outward: draft ')
     row, = state.read_state(root)['drafts'].values()
     return row
 
@@ -605,3 +649,181 @@ def test_approved_ticket_creation_is_recorded(root, monkeypatch):
     created = [event['payload'] for event in events if event['kind'] == 'tracker.created']
     assert len(created) == 1 and created[0].items() >= {
         'class': 'items', 'subject': 'item-1', 'ticket': 'ENG-9', 'parent': None}.items()
+
+
+def held(root, text='Thanks', channel='C9', tool='mcp__slack__post_message', **fields):
+    """A Slack MCP call the outward guard holds (#493); returns its exit, reason and row."""
+    from wuwei.guards.outward import check_tier
+    code, reason = check_tier({'cwd': str(root), 'tool_name': tool, 'session_id': 'test',
+                               'tool_input': {'text': text, 'channel': channel, **fields}})
+    rows = state.read_state(root).get('drafts', {})
+    return code, reason, next((row for row in rows.values() if row['id'] in reason), None)
+
+
+def card(capsys, draft_id):
+    assert main(['drafts', 'show', draft_id, '--widget']) == 0
+    widget, = json.loads(capsys.readouterr().out)
+    return widget
+
+
+def test_card_for_a_held_tool_call(root, capsys):
+    _, _, row = held(root)
+    widget = card(capsys, row['id'])
+    assert widget['header'] == 'Draft' and widget['record'] == f"bin/wuwei drafts approve {row['id']}"
+    question = widget['question']
+    assert row['id'] in question and 'C9' in question and 'mcp__slack__post_message' in question
+    assert 'unknown destination C9: not in outbound.work_channels' in question and 'Thanks' in question
+    labels = [option['label'] for option in widget['options']]
+    assert labels == ['Send now (Recommended)', 'Send with an edit', 'Keep as draft', 'Drop']
+    text = {option['label']: option['description'] for option in widget['options']}
+    assert f"bin/wuwei drafts approve {row['id']} --file" in text['Send with an edit']
+    assert f"bin/wuwei drafts drop {row['id']}" in text['Drop']
+    assert 'outbound learn' not in text['Send now (Recommended)']
+    assert main(['drafts', 'show', row['id']]) == 0
+    assert json.loads(capsys.readouterr().out)['id'] == row['id']
+
+
+def test_card_for_a_port_draft(root, sink, capsys):
+    row = queued(root)
+    widget = card(capsys, row['id'])
+    assert 'approval tier commitment for external' in widget['question'] and 'C2' in widget['question']
+    assert widget['options'][0]['label'] == 'Send now (Recommended)'
+
+
+def test_strict_recommends_keep_for_a_tier_rule(root, sink, capsys):
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text() + '[security]\nposture = "strict"\n')
+    row = queued(root)
+    assert card(capsys, row['id'])['options'][0]['label'] == 'Keep as draft (Recommended)'
+    _, _, row = held(root)
+    assert card(capsys, row['id'])['options'][0]['label'] == 'Send now (Recommended)'
+
+
+def test_card_names_outbound_learn_when_on(root, capsys, monkeypatch):
+    _, _, row = held(root)
+    load = workspace.load_config
+
+    def learning(start=None):
+        config = load(start)
+        config['outbound']['learn'] = 'card'
+        return config
+    monkeypatch.setattr(workspace, 'load_config', learning)
+    send = card(capsys, row['id'])['options'][0]['description']
+    assert 'bin/wuwei outbound learn' in send and 'C9' in send
+
+
+def test_show_unknown_or_decided_draft_exits_one(root, capsys):
+    assert main(['drafts', 'show', 'draft-' + '0' * 32, '--widget']) == 1
+    assert 'unknown draft ID' in capsys.readouterr().err
+    _, _, row = held(root)
+    assert main(['drafts', 'drop', row['id']]) == 0
+    capsys.readouterr()
+    assert main(['drafts', 'show', row['id']]) == 1
+    assert 'draft is dropped' in capsys.readouterr().err
+
+
+def test_approve_with_a_file(root, port, capsys):
+    row = queued(root)
+    reply = root / 'reply.txt'
+    reply.write_text('I can deliver this today.')
+    assert main(['drafts', 'approve', row['id'], '--file', str(reply)]) == 0
+    assert port[1][0]['text'] == 'I can deliver this today.'
+    stored = state.read_state(root)['drafts'][row['id']]
+    assert stored['answer'] == 'Send with an edit' and stored['edit_size'] > 0
+    assert stored['sent_unedited'] is False
+
+
+def test_approve_file_is_linted_and_newline_is_unedited(root, port, capsys):
+    row = queued(root)
+    reply = root / 'reply.txt'
+    reply.write_text('I can deliver this\u2014today.')
+    assert main(['drafts', 'approve', row['id'], '--file', str(reply)]) == 1
+    assert state.read_state(root)['drafts'][row['id']]['status'] == 'pending' and port[1] == []
+    reply.write_text(row['text'] + '\n')
+    assert main(['drafts', 'approve', row['id'], '--file', str(reply)]) == 0
+    stored = state.read_state(root)['drafts'][row['id']]
+    assert stored['sent_unedited'] is True and port[1][0]['text'] == row['text']
+    with pytest.raises(SystemExit) as exit:
+        main(['drafts', 'approve', row['id'], '--file', str(reply), '--edit'])
+    assert exit.value.code == 2
+
+
+def events_of(root, kind):
+    return [{key: row['payload'][key] for key in ('id', 'tool')} for row in
+            map(json.loads, (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines())
+            if row['kind'] == kind]
+
+
+def test_approved_tool_draft_passes_its_call_once(root, capsys, monkeypatch):
+    from datetime import timedelta
+    from hashlib import sha256
+    from wuwei.guards.outward import check_tier
+    monkeypatch.setattr(integrity, '_host_confirm', lambda *a, **k: pytest.fail('prompted'))
+    _, _, row = held(root)
+    assert main(['drafts', 'approve', row['id']]) == 0
+    assert 'repeat the same call to C9 within 3600 seconds' in capsys.readouterr().out
+    stored = state.read_state(root)['drafts'][row['id']]
+    assert stored['status'] == 'approved' and stored['answer'] == 'Send now'
+    assert stored['text_sha256'] == sha256(b'Thanks').hexdigest()
+    assert stored['decided'] == workspace.now().isoformat()
+    assert stored['expires'] == (workspace.now() + timedelta(seconds=3600)).isoformat()
+    assert events_of(root, 'draft.approved') == [{'id': row['id'], 'tool': 'mcp__slack__post_message'}]
+    call = {'cwd': str(root), 'tool_name': 'mcp__slack__post_message', 'session_id': 'test',
+            'tool_input': {'text': 'Thanks', 'channel': 'C9'}}
+    assert check_tier(call) == (0, '')
+    assert events_of(root, 'draft.sent') == [{'id': row['id'], 'tool': 'mcp__slack__post_message'}]
+    assert state.read_state(root)['drafts'][row['id']]['status'] == 'sent'
+    code, reason, again = held(root)
+    assert code == 1 and again['id'] != row['id']
+
+
+@pytest.mark.parametrize('change', ['tool', 'channel', 'text', 'expired'])
+def test_allowance_matches_tool_destination_text_and_time(root, monkeypatch, change):
+    _, _, row = held(root)
+    assert main(['drafts', 'approve', row['id']]) == 0
+    call = {'text': 'Thanks', 'channel': 'C9', 'tool': 'mcp__slack__post_message'}
+    if change == 'expired':
+        monkeypatch.setenv('WUWEI_NOW', '2026-09-29T13:00:01Z')
+    else:
+        call[change] = {'tool': 'mcp__slack__send_message', 'channel': 'C8', 'text': 'Thanks!'}[change]
+    code, _, other = held(root, **call)
+    assert code == 1 and other['id'] != row['id']
+    assert state.read_state(root)['drafts'][row['id']]['status'] == 'approved'
+
+
+def test_draft_ttl_is_configured_in_seconds(root, capsys):
+    from datetime import timedelta
+    outward_config(root, 'draft_ttl = 120')
+    _, _, row = held(root)
+    assert main(['drafts', 'approve', row['id']]) == 0
+    expires = state.read_state(root)['drafts'][row['id']]['expires']
+    assert expires == (workspace.now() + timedelta(seconds=120)).isoformat()
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('draft_ttl = 120', 'draft_ttl = 30'))
+    with pytest.raises(workspace.ConfigError, match='draft_ttl'):
+        workspace.load_config(root)
+
+
+def test_approved_port_draft_passes_any_tool_once(root, sink, capsys):
+    from wuwei.guards.outward import check_tier
+    row = queued(root)
+    assert main(['drafts', 'approve', row['id']]) == 0
+    stored = state.read_state(root)['drafts'][row['id']]
+    assert stored['status'] == 'approved' and 'tool' not in stored and sink == []
+    call = {'cwd': str(root), 'tool_name': 'mcp__slack__post_message', 'session_id': 'test',
+            'tool_input': {'text': row['text'], 'channel': 'C2'}}
+    assert check_tier(call) == (0, '')
+    assert check_tier(call)[0] == 1
+
+
+def test_allowance_cannot_be_forged_or_carry_a_canary(root, monkeypatch, capsys):
+    from wuwei import security
+    assert main(['event', 'draft.approved', '{}']) == 1
+    marker = security.initialize(root / '.wuwei')['canary']
+    with monkeypatch.context() as patch:
+        patch.setattr(security, 'outbound', lambda *a, **k: (0, ''))
+        _, _, row = held(root, f'Thanks {marker}')
+        assert main(['drafts', 'approve', row['id']]) == 0
+    code, reason, _ = held(root, f'Thanks {marker}')
+    assert code == 1 and 'security' in reason
+    assert state.read_state(root)['drafts'][row['id']]['status'] == 'approved'

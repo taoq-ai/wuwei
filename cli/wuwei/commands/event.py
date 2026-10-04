@@ -10,7 +10,7 @@ from wuwei.state import append_event
 FREE_KINDS = frozenset({'note'})
 EVENT_PRODUCERS = {
     **{f'draft.{action}': 'wuwei drafts and outward adapters'
-       for action in ('created', 'sending', 'sent', 'failed', 'dropped')},
+       for action in ('created', 'sending', 'approved', 'sent', 'failed', 'dropped')},
     'outward.ai_tells': 'the outward port and hook (wuwei.outward.humanize_lint)',
     'worktree.hooks_skipped': 'wuwei worktree add or wuwei init --upgrade',
     'build.started': 'wuwei build next', 'gate.tiered': 'wuwei dispatch next', 'build.launched': 'wuwei build',

@@ -242,7 +242,7 @@ def test_guard_tiers_and_bypasses(configured, tool, inputs, code):
     result = check(call(configured[0], inputs, tool))
     assert result[0] == code
     if code == 1:
-        assert 'a draft for the owner to send' in result[1]
+        assert result[1].startswith('outward: draft ') and 'bin/wuwei drafts show' in result[1]
 
 
 @pytest.mark.parametrize('profile,expected', [('strict', 1), ('standard', 0)])

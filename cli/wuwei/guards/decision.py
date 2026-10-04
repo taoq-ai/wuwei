@@ -121,6 +121,29 @@ def gate_question(question, root):
 
 
 TOPICS = {'goals', 'voice'}
+DRAFT_ID = r'(?<![\w-])draft-[0-9a-f]{32}(?![\w-])'
+
+
+def _pending_drafts(root):
+    """Ids of today's pending drafts (#493): a card may cite only those."""
+    from wuwei import drafts, state
+    return {key for key, row in drafts.read(state.read_state(root)).items() if row['status'] == 'pending'}
+
+
+def _draft_answer(payload, text):
+    """The owner's answer to a Draft card as a topic suffix (#493): ':send' for Send now,
+    ':edit' for Send with an edit, ':text:<sha256>' for text the owner typed, else None."""
+    from hashlib import sha256
+    response = payload.get('tool_response')
+    answers = response.get('answers') if isinstance(response, dict) else None
+    answer = answers.get(text) if isinstance(answers, dict) else None
+    if not isinstance(answer, str) or not answer.strip():
+        return None
+    label = answer.strip().removesuffix(' (Recommended)')
+    if label in ('Keep as draft', 'Drop'):
+        return None
+    return {'Send now': ':send', 'Send with an edit': ':edit'}.get(
+        label, ':text:' + sha256(answer.strip().encode()).hexdigest())
 
 
 def record_gate(payload):
@@ -147,6 +170,12 @@ def record_gate(payload):
                   and re.search(rf'(?<![\w-]){header}(?![\w-])', required_text(question, 'question'))
                   and today_path(header, root).is_file()):
                 topics.add(header)
+            elif header == 'Draft':
+                text = required_text(question, 'question')
+                asked = set(re.findall(DRAFT_ID, text)) & _pending_drafts(root)
+                topics.update(asked)  # drop needs only the asked card
+                topics.update(f'{draft_id}{suffix}' for draft_id in asked
+                              if (suffix := _draft_answer(payload, text)))
         if not topics:
             return 0, ''
 
@@ -187,7 +216,12 @@ def check_question(payload):
             if gate_question(question, root):
                 continue
             ids = re.findall(r'(?<![\w-])[DC]-[1-9][0-9]*(?![\w-])', text)
-            if not ids and _morning(question, text):
+            cited = [] if ids else re.findall(DRAFT_ID, text)
+            if cited:
+                if missing := sorted(set(cited) - _pending_drafts(root)):
+                    results.append((1, f"draft {', '.join(missing)} not pending today; "
+                                       'bin/wuwei drafts lists the queue'))
+            elif not ids and _morning(question, text):
                 plan = workspace.day_dir(root) / 'plan.md'
                 results.append((1, f"Morning gate questions cite {plan.relative_to(root / '.wuwei').as_posix()}"
                                 + ('' if plan.is_file() else '; run bin/wuwei plan propose <lead.json> first')))
