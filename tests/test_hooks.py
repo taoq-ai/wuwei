@@ -275,11 +275,17 @@ def test_spec_helper_loads_only_in_item_worktrees(tmp_path, event, name, target,
 DENY = {'tomllib', 'hashlib', 'argparse', 'dataclasses', 'inspect', 'typing', 'datetime', 'subprocess'}
 
 
-@pytest.mark.parametrize('inside, deny', [(False, DENY | {'copy', 'wuwei.telemetry', 'secrets'}),
-                                          (True, {'argparse', 'dataclasses', 'subprocess', 'inspect', 'hashlib',
-                                                  'glob', 'copy', 'weakref', 'wuwei.telemetry', 'secrets'})],
-                         ids=['outside', 'workspace'])
-def test_hook_imports_no_unused_stdlib(tmp_path, inside, deny):
+INSIDE_DENY = {'argparse', 'dataclasses', 'subprocess', 'inspect', 'hashlib',
+               'glob', 'copy', 'weakref', 'wuwei.telemetry', 'secrets'}
+
+
+@pytest.mark.parametrize('inside, deny, tool', [
+    (False, DENY | {'copy', 'wuwei.telemetry', 'secrets'}, None),
+    (True, INSIDE_DENY, None),
+    # #469: a noun-first MCP read passes without widening the hook's import graph.
+    (True, INSIDE_DENY | {'wuwei.watch'}, 'mcp__slack__conversations_history')],
+    ids=['outside', 'workspace', 'mcp-read'])
+def test_hook_imports_no_unused_stdlib(tmp_path, inside, deny, tool):
     # A fresh interpreter: a hook pays only for the stdlib modules its path uses.
     cwd = tmp_path / 'project'
     cwd.mkdir()
@@ -292,6 +298,8 @@ def test_hook_imports_no_unused_stdlib(tmp_path, inside, deny):
         seed(tmp_path)
         env['WUWEI_WORKSPACE'] = str(tmp_path)
     payload = {**json.loads((ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()), 'cwd': str(cwd)}
+    if tool:
+        payload.update(tool_name=tool, tool_input={'channel': 'C1'})
     out = tmp_path / 'modules.json'
     # bin/wuwei's own launcher line, with sys.modules dumped at exit.
     script = ('import atexit, json, runpy, sys; out = sys.argv.pop(3); '

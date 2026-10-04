@@ -380,7 +380,7 @@ Two starters ship in `templates/profiles/`, derived from WUWEI's own setup: `pyt
 | --- | --- | --- |
 | `outward.patterns` | Built-in internal-state patterns | Regexes; setting a list replaces defaults, `[]` disables them. |
 | `outward.banned_characters` | `emoji`, U+2014, U+2015, U+2E3A, U+2E3B | Setting a list replaces defaults. |
-| `outward.tool_patterns` | Built-in Slack, Linear and GitHub MCP matches | Tool regex plus policy channel; setting a list replaces defaults. |
+| `outward.tool_patterns` | Built-in Slack, Linear and GitHub MCP matches | Tool regex plus policy channel; setting a list replaces defaults. An unmatched MCP tool is a read, a write or unknown by the words of its name (see security). |
 | `outward.max_length.slack` | Not set | Example positive maximum for one channel under `[outward.max_length]`. |
 | `outward.humanize` | `true` | Lint outward text for AI tells before it is drafted or sent; `false` turns the lint off. |
 | `outward.humanize_kinds` | `["dm", "tracker", "docs", "pr", "review"]` | Kinds the lint checks: DMs, tracker comments, docs pages, PR comments and PR bodies, and other chat posts such as review pings. |

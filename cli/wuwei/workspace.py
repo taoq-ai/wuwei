@@ -184,7 +184,7 @@ SCHEMA = {
                            ["dm", "tracker", "docs", "pr", "review"]],
         "humanize_strict": (bool, False),
         "tool_patterns": [{"pattern": (str, None), "channel": (str, None)}, [
-            {"pattern": r"mcp__.*slack.*__.*(send|post|reply|schedule|update).*", "channel": "slack"},
+            {"pattern": r"mcp__.*slack.*__.*(send|post|reply|schedule|update|add_message|add_reaction|react|chat_post|delete|edit|upload|invite|kick|archive|pin|star).*", "channel": "slack"},
             {"pattern": r"mcp__.*linear.*__(save|create|update)_(issue|comment)", "channel": "tracker"},
             {"pattern": r"mcp__.*github.*__(add|create|update)_.*comment.*", "channel": "code_host"},
             {"pattern": r"mcp__.*notion.*__.*(create|update|append|patch|post|move|duplicate).*", "channel": "docs"},

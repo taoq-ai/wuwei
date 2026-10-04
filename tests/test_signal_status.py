@@ -331,6 +331,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'shepherd.dispatched': 'silent', 'shepherd.finished': 'nudge', 'pr.notified': 'silent',
                 'negotiation.loop': 'nudge', 'negotiation.notified': 'silent',
                 'decision.waited': 'nudge', 'doctor.fixed': 'silent', 'outward.ai_tells': 'silent',
+                'outward.unknown_tool': 'nudge',
                 'spec.step': 'silent', 'spec.skipped': 'silent', 'spec.override': 'silent',
                 'spec.warned': 'nudge', 'docs.set': 'silent', 'docs.written': 'silent',
                 'docs.exempt': 'silent',
