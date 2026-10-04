@@ -187,17 +187,28 @@ deny = [] # Literal executable plus argument glob, for example "make publish*".
 # "<server id>" = "slack"
 # [outward.modes]
 # "<server id>" = "draft"
+# A connector's audience class for a channel or person it has not learned (owner, team,
+# company, client or public); without one, chat, Slack, mail and the code host are company.
+# [outward.classes]
+# "<server id>" = "company"
 [outward.max_length]
 # slack = 4000 # Positive maximum length for this channel.
 
 [outbound]
-# Only these internal channel IDs may auto-send routine work replies.
-# Missing/unknown destinations draft. Every DM to anyone but you drafts, even an acknowledgement.
-# Chat threads draft until the chat port can verify all participants; tracker writes
-# draft unless their class or kind is in tracker.auto.
+# The tier table decides first: each destination and addressed person gets an audience class
+# (owner, team, company, client, public) and the first matching row gives send, ask (a draft
+# you confirm) or block (refused, no draft). bin/wuwei outbound tiers prints the table.
+# Your rows come before the defaults; any subset of tool, person, channel, audience and topic
+# (sensitive, commitment or disagreement) and the tier. A typo refuses the whole file.
+# tiers = [{ person = "U123", tier = "send" }, { audience = "team", tool = "tracker|docs|code_host", tier = "send" }]
+# When no row decides, the kind rules do: missing or unknown destinations draft, every DM to
+# anyone but you drafts, chat threads draft until the chat port can verify all participants,
+# and tracker writes draft unless their class or kind is in tracker.auto.
+# Team channels (class team): only these may auto-send routine work replies.
 work_channels = []
-# Shared, connected and client channels override work_channels.
+# Client channels (class client); shared, connected and client channels override work_channels.
 external_channels = []
+# Any other class for a channel id goes in [outbound.channel_classes] at the end of this section.
 # Exact, case-insensitive identity boundaries; subdomains must be listed explicitly.
 company_domains = []
 code_host_orgs = []
@@ -220,8 +231,11 @@ code_host_orgs = []
 # disagreement_patterns = ["\\bdisagree\\b", "\\b(?:you|that)\\s*(?:are|['\\u2019]re|is)\\s+wrong\\b", "\\b(?:i|we)\\s+(?:object|oppose)\\b"]
 # See specs/095-outbound-tiers/contracts/outbound.md for payloads and safe forms.
 # [outbound.people]
-# "slack:U123" = {email = "dev@example.test"}
+# "slack:U123" = {email = "dev@example.test", class = "team"}
 # "github:developer" = {org = "example"}
+# Any other class for a channel id, over both lists.
+# [outbound.channel_classes]
+# "C123" = "public"
 
 [watch]
 clock_seconds = 600

@@ -131,15 +131,16 @@ def test_proposal_filters(root, capsys):
     config, data = workspace.load_config(root), state.read_state(root)
     found = propose(root, config, data, UUID, 'slack', TOOL, CHANNELS, people, card=True)
     assert found['alias'] is True
-    assert [row['id'] for row in found['channels']] == ['C01']
+    assert [(row['id'], row['class']) for row in found['channels']] == [('C01', 'team'), ('C02', 'client')]
     assert [(row['id'], row['entry'], row['why']) for row in found['people']] == [
-        ('U01', {'email': 'ada@example.com'}, 'reviewer'), ('U02', {'org': 'acme'}, 'reviewer'),
-        ('U04', {'email': 'di@example.com'}, "named in today's records")]
+        ('U01', {'email': 'ada@example.com', 'class': 'team'}, 'reviewer'),
+        ('U02', {'org': 'acme', 'class': 'team'}, 'reviewer'),
+        ('U04', {'email': 'di@example.com', 'class': 'team'}, "named in today's records")]
     assert 'not proposed: 1 people' in capsys.readouterr().out  # U05: named, not internal
     found = propose(root, config, data, UUID, 'slack', TOOL, CHANNELS, people, card=False)
     assert [row['id'] for row in found['people']] == ['U01', 'U02']
     (root / '.wuwei/config.toml').write_text(
-        CONFIG.replace('["C1"]', '["C1", "C01"]')
+        CONFIG.replace('["C1"]', '["C1", "C01"]').replace('["C09"]', '["C09", "C02"]')
         + '\n[outbound.people]\n"slack:U01" = {email = "ada@example.com"}\n"slack:U02" = {org = "acme"}\n'
         + f'\n[outward.servers]\n"{UUID}" = "slack"\n')
     assert propose(root, workspace.load_config(root), data, UUID, 'slack', TOOL, CHANNELS,
@@ -160,7 +161,7 @@ def test_card(root, capsys):
     assert 'D-1' in data['decision_routes'] and data['outbound_learn']['D-1']['answered'] is None
     [question] = widget
     assert question['question'].startswith(
-        f'D-1: Connector {UUID} is Slack, mode draft; add 1 work channel and 2 people? ')
+        f'D-1: Connector {UUID} is Slack, mode draft; add 1 work channel, 1 client channel and 2 people? ')
     assert [row['label'] for row in question['options']] == [
         'Approve (Recommended)', 'Approve channels only', 'Defer: keep as drafts',
         'Approve, mode send']
@@ -199,8 +200,9 @@ def test_answers(root, capsys, monkeypatch, option):
         return
     assert config['outward']['servers'] == {UUID: 'slack'}
     assert config['outbound']['work_channels'] == ['C1', 'C01']
+    assert config['outbound']['external_channels'] == ['C09', 'C02']
     assert learned == [{'decision': 'D-1', 'option': option, 'mode': 'card', 'server': UUID,
-                        'channel': 'slack', 'alias': True, 'connector_mode': None, 'channels': ['C01'],
+                        'channel': 'slack', 'alias': True, 'connector_mode': None, 'channels': ['C01', 'C02'],
                         'people': ['U01', 'U02'] if option == 'approve' else [], 'owner': False}]
     if option == 'approve':
         assert set(config['outbound']['people']) == {'slack:U01', 'slack:U02'}
@@ -383,3 +385,39 @@ def test_owner_proposes_only_empty_fields(root, capsys):
     assert learn(root, '--owner', owner_file(root, {'user': 'U09', 'dm': 'D09'}),
                  tool=SLACK, listings=False) == 1
     assert 'nothing new to learn' in capsys.readouterr().err
+
+
+def test_learn_classes(root, capsys, monkeypatch):
+    # #496: a shared channel is proposed as client, the rest team; people are team.
+    from wuwei.guards.outward import check_tier
+    card(root, capsys)
+    text = (workspace.day_dir(root) / 'decisions/D-1.md').read_text()
+    assert '- channel #partners (C02, 9 members): client, shared with an external org\n' in text
+    assert '- channel #team-review (C01, 4 members): team\n' in text
+    assert '- person Ada (U01, reviewer): team\n' in text
+    assert answer(root, monkeypatch, 'approve') == (0, 'approve')
+    config = workspace.load_config(root)
+    assert {key: row['class'] for key, row in config['outbound']['people'].items()} == {
+        'slack:U01': 'team', 'slack:U02': 'team'}
+    call = {'cwd': str(root), 'tool_name': TOOL, 'hook_event_name': 'PreToolUse', 'session_id': 'test',
+            'tool_use_id': 'call', 'tool_input': {'text': 'I will ship it tomorrow', 'channel': 'C02'}}
+    code, reason = check_tier(call)
+    assert code == 1 and reason.startswith('outward: block by rule 3 (audience=client topic=commitment) for C02')
+
+
+@pytest.mark.parametrize('option,channels,clients,people', [
+    ('C01-client', ['C1'], ['C09', 'C01', 'C02'], {'slack:U01': 'team', 'slack:U02': 'team'}),
+    ('C02-team', ['C1', 'C01', 'C02'], ['C09'], {'slack:U01': 'team', 'slack:U02': 'team'}),
+    ('U02-company', ['C1', 'C01'], ['C09', 'C02'], {'slack:U01': 'team', 'slack:U02': 'company'})])
+def test_learn_card_sets_a_class(root, capsys, monkeypatch, option, channels, clients, people):
+    # #496 review F2: the learn card asks the class of each entry; one option per entry changes it.
+    from wuwei.__main__ import main
+    card(root, capsys)
+    path = workspace.day_dir(root) / 'decisions/D-1.md'
+    assert main(['decision', 'lint', str(path)]) == 0
+    assert '| C01-client | Approve, #team-review (C01) as client |' in path.read_text()
+    assert answer(root, monkeypatch, option) == (0, option)
+    config = workspace.load_config(root)
+    assert config['outbound']['work_channels'] == channels
+    assert config['outbound']['external_channels'] == clients
+    assert {key: row['class'] for key, row in config['outbound']['people'].items()} == people

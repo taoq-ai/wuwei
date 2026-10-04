@@ -46,7 +46,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei next` | Prints where the day stands and the one next step with its command; `--json` prints `{state, step, command}`. | [What the session knows](agent.md) |
 | `bin/wuwei note` | Manages workspace notes. | [Concepts](concepts.md#memory) |
 | `bin/wuwei nudges` | Lists open nudges and pages. | [Watch state](#watch-state) |
-| `bin/wuwei outbound` | Inspects the outbound approval policy; `learn --tool <tool>` proposes an unknown connector, its work channels and people on one card (planner session). | [Outbound tiers](configuration.md#outward-text-and-outbound-tiers) |
+| `bin/wuwei outbound` | Inspects the outbound approval policy; `bin/wuwei outbound tiers` prints the effective tier table, `bin/wuwei outbound explain <draft id>` the rows a draft passed and the row that held it (both read-only), and `learn --tool <tool>` proposes an unknown connector, its channels with their class and its people on one card (planner session). | [Outbound tiers](configuration.md#outward-text-and-outbound-tiers) |
 | `bin/wuwei payload` | Plumbing: prints the session memory payload. | |
 | `bin/wuwei plan` | Proposes or approves the morning plan; `session` names the planner; `carry` and `park` record an open item's disposition at close; `set <item> ticket=<id>` records an existing ticket once the tracker confirms it, and `set <item> spec=skipped --reason <why>` skips the spec for one item. | [Lead plan JSON](#lead-plan-json) |
 | `bin/wuwei plan set <item> docs=<page>\|new\|none --reason "<why>"` | Records the item's [docs obligation](concepts.md#docs-obligation) value; a page is read through the docs adapter first, and `none` needs a reason. Under markdown, `new` is refused: write the page with `bin/wuwei docs page <item>`. | [Docs](configuration.md#docs) |
@@ -130,6 +130,7 @@ Approve-tier replies through the chat, code-host comment and tracker-create adap
 | --- | --- |
 | `bin/wuwei drafts` | List today's pending drafts with text, destination, audience and tier reason. |
 | `bin/wuwei drafts approve <id>` | Run security, outward, voice and humanize lint (the tells show in the prompt), then send the stored text once through its original adapter operation. |
+| `bin/wuwei drafts approve <id> --always` | Send as above and add the card's tier row to `outbound.tiers`: `send` for the person a row asked about, or `ask` for the destination channel. |
 | `bin/wuwei drafts approve <id> --edit` | Edit with `EDITOR` (default `vi`), lint the final text, then send it. |
 | `bin/wuwei drafts drop <id>` | Close the draft without sending. |
 

@@ -196,7 +196,23 @@ Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei 
 
 ## Drafts and cards
 
-A draft is an outward message the approval tier held back, stored with an id and the rule that held it, such as `unknown destination C9: not in outbound.work_channels`. Its card, `bin/wuwei drafts show <id> --widget`, asks you Send now, Send with an edit, Keep as draft or Drop, and names the command that records your answer. A draft from a configured adapter is sent by `wuwei drafts approve`. For a draft from a connector, approving records an allowance: the seat's same tool call, to the same place with the same text, passes once within `outward.draft_ttl` seconds (default 3600).
+A draft is an outward message the approval tier held back, stored with an id and the rule that held it, such as `ask by rule 9 (audience=company) for C9: unknown destination C9, not in outbound.work_channels, connector default class company`. Its card, `bin/wuwei drafts show <id> --widget`, asks you Send now, Send with an edit, Keep as draft or Drop, and names the command that records your answer. When a table row asked about one person or the destination channel, Always send to this person or Always ask for this channel takes the place of Drop: it sends this draft and adds the row with `bin/wuwei drafts approve <id> --always`. A draft from a configured adapter is sent by `wuwei drafts approve`. For a draft from a connector, approving records an allowance: the seat's same tool call, to the same place with the same text, passes once within `outward.draft_ttl` seconds (default 3600).
+
+## Outbound tiers
+
+Every outward message gets one of three tiers. `send` goes out after the lint. `ask` becomes a draft and its card, and you confirm or edit it. `block` is refused with the rule named, and there is no draft and no card.
+
+Who reads the message decides the tier. Each destination and each addressed person gets an audience class:
+
+- `owner`: you, by your identity in `outbound.owner`.
+- `team`: a channel in `outbound.work_channels`, or a person WUWEI knows is internal.
+- `company`: someone in the company WUWEI has not learned yet. A connector's unknown channels and people are `company` unless `outward.classes` says otherwise.
+- `client`: a channel in `outbound.external_channels`, a channel the connector marks as shared with another organisation, or a person or org outside yours.
+- `public`: anything you mark public in `outbound.channel_classes`.
+
+WUWEI walks one ordered table for each of them, and the first matching row wins. Your rows in `outbound.tiers` come first, after a row for each connector mode in `outward.modes`. The defaults follow: you `send`; public `block`; a client commitment or disagreement `block`; anything else to a client `ask`; sensitive, commitment and disagreement text `ask`; company `ask`; a monitoring write `send`. The strictest reader decides the call. When no row matches, the older kind rules decide: direct messages draft, `tracker.auto` and `docs.auto` send, chat threads draft, and a routine reply in a team channel sends.
+
+For example, a seat writes "I will ship it tomorrow". To a client channel it is blocked. The same line to a team channel asks you on a card. A status line to your own DM just goes. To let a reviewer's mentions go out, answer Always send to this person on a draft card that held one; it adds `{ person = "U123", tier = "send" }`. `bin/wuwei outbound tiers` prints the table with each row tagged `default` or `owner`, and `bin/wuwei outbound explain <draft id>` shows the rows a draft passed and the one that held it. Under `strict`, a `send` row never reaches a client or the public. The learn card proposes a class for each new channel and person, with one option per entry that approves it with the other class (a channel as client or team, a person as company or team).
 
 ## Memory
 

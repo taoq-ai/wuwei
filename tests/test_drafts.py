@@ -67,8 +67,9 @@ def test_port_draft_reason_names_rule_and_card(root, sink):
     result = adapter.post('C2', 'I can deliver this tomorrow.', None, root=root)
     row = list(state.read_state(root)['drafts'].values())[-1]
     assert result.reason == (
-        f"outward: draft {row['id']}: approval tier commitment for external: "
-        f"outbound.commitment_patterns; the owner decides: bin/wuwei drafts show {row['id']} --widget")
+        f"outward: draft {row['id']}: ask by rule 7 (topic=commitment) for C2: unknown destination C2, "
+        'not in outbound.work_channels, connector default class company, outbound.commitment_patterns; '
+        f"the owner decides: bin/wuwei drafts show {row['id']} --widget")
 
 
 def test_queue_retains_adapter_operation_and_item(root, sink):
@@ -674,12 +675,12 @@ def test_card_for_a_held_tool_call(root, capsys):
     assert widget['header'] == 'Draft' and widget['record'] == f"bin/wuwei drafts approve {row['id']}"
     question = widget['question']
     assert row['id'] in question and 'C9' in question and 'mcp__slack__post_message' in question
-    assert 'unknown destination C9: not in outbound.work_channels' in question and 'Thanks' in question
+    assert 'ask by rule 9 (audience=company) for C9: unknown destination C9, not in outbound.work_channels' in question and 'Thanks' in question
     labels = [option['label'] for option in widget['options']]
-    assert labels == ['Send now (Recommended)', 'Send with an edit', 'Keep as draft', 'Drop']
+    assert labels == ['Send now (Recommended)', 'Send with an edit', 'Keep as draft', 'Always ask for this channel']
     text = {option['label']: option['description'] for option in widget['options']}
     assert f"bin/wuwei drafts approve {row['id']} --file" in text['Send with an edit']
-    assert f"bin/wuwei drafts drop {row['id']}" in text['Drop']
+    assert f"bin/wuwei drafts drop {row['id']}" in text['Keep as draft']
     assert 'outbound learn' not in text['Send now (Recommended)']
     assert main(['drafts', 'show', row['id']]) == 0
     assert json.loads(capsys.readouterr().out)['id'] == row['id']
@@ -688,7 +689,7 @@ def test_card_for_a_held_tool_call(root, capsys):
 def test_card_for_a_port_draft(root, sink, capsys):
     row = queued(root)
     widget = card(capsys, row['id'])
-    assert 'approval tier commitment for external' in widget['question'] and 'C2' in widget['question']
+    assert 'ask by rule 7 (topic=commitment) for C2' in widget['question'] and 'C2' in widget['question']
     assert widget['options'][0]['label'] == 'Send now (Recommended)'
 
 
@@ -845,3 +846,43 @@ def test_allowance_cannot_be_forged_or_carry_a_canary(root, monkeypatch, capsys)
     code, reason, _ = held(root, f'Thanks {marker}')
     assert code == 1 and 'security' in reason
     assert state.read_state(root)['drafts'][row['id']]['status'] == 'approved'
+
+
+def test_strict_recommends_keep_for_a_client_row(root, capsys):
+    # #496: a draft a tier row held for a known audience keeps; an unknown audience is learnable.
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('[outbound]\n', '[outbound]\nexternal_channels = ["C2"]\n')
+                    + '[security]\nposture = "strict"\n')
+    _, reason, row = held(root, channel='C2')
+    assert 'ask by rule 5 (audience=client) for C2' in reason
+    assert card(capsys, row['id'])['options'][0]['label'] == 'Keep as draft (Recommended)'
+
+
+def test_card_adds_a_tier_row(root, capsys):
+    # #496 review F2: the owner adds a row from the card, never by typing config.
+    _, reason, row = held(root, text='Thanks @u07', channel='C1')
+    assert 'ask by rule 9 (audience=company) for @u07' in reason
+    options = {option['label']: option['description'] for option in card(capsys, row['id'])['options']}
+    assert list(options) == ['Send now (Recommended)', 'Send with an edit', 'Keep as draft',
+                             'Always send to this person']
+    assert f"bin/wuwei drafts approve {row['id']} --always" in options['Always send to this person']
+    assert f"bin/wuwei drafts drop {row['id']}" in options['Keep as draft']
+    assert held(root, text='@u07 thanks', channel='C1')[0] == 1
+    assert main(['drafts', 'approve', row['id'], '--always']) == 0
+    config = workspace.load_config(root)
+    assert [{key: value for key, value in tier.items() if value} for tier in config['outbound']['tiers']] == [
+        {'person': 'u07', 'tier': 'send'}]
+    code, reason, _ = held(root, text='@u07 thanks', channel='C1')
+    assert code == 0, reason
+    capsys.readouterr()
+    _, _, row = held(root)  # C9: an unknown destination.
+    options = {option['label']: option['description'] for option in card(capsys, row['id'])['options']}
+    assert 'Always ask for this channel' in options and 'Always send to this person' not in options
+    assert main(['drafts', 'approve', row['id'], '--always']) == 0
+    assert [tier['channel'] for tier in workspace.load_config(root)['outbound']['tiers']] == ['', 'C9']
+    capsys.readouterr()
+    _, _, row = held(root, text='I will ship it tomorrow @u08', channel='C1')  # A topic row: no Always.
+    labels = [option['label'] for option in card(capsys, row['id'])['options']]
+    assert not any(label.startswith('Always') for label in labels)
+    assert main(['drafts', 'approve', row['id'], '--always']) == 1
+    assert 'no Always option' in capsys.readouterr().err

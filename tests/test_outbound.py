@@ -463,3 +463,73 @@ def test_malformed_pr_reference_drafts(configured, ref):
 @pytest.mark.parametrize('kind', [None, [], {}])
 def test_malformed_transport_is_unrun(configured, kind):
     assert tier(configured, 'Thanks', kind=kind) == (2, 'draft')
+
+
+# #496: the owner sees and explains the tier table.
+def test_outbound_tiers_prints_table(configured, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    root = configured[0]
+    monkeypatch.chdir(root)
+    assert main(['outbound', 'tiers']) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[:2] == ['rule  source   row', '1     default  { audience = "owner", tier = "send" }']
+    assert lines[10] == '10    default  { tool = "other", tier = "send" }'
+    assert lines[11].startswith('-     default  no row: the kind rules decide (direct messages draft, ')
+    assert len(lines) == 12
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('[outbound]\n', '[outbound]\ntiers = [{ person = "U07", tier = "send" }, '
+                                             '{ audience = "client", tier = "send" }]\n'))
+    assert main(['outbound', 'tiers']) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[1:4] == ['1     owner    { person = "U07", tier = "send" }',
+                          '2     owner    { audience = "client", tier = "send" }',
+                          '3     default  { audience = "owner", tier = "send" }']
+    path.write_text(path.read_text() + '\n[security]\nposture = "strict"\n')
+    assert main(['outbound', 'tiers']) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[2] == '2     owner    { audience = "client", tier = "send" } (ignored under strict)'
+    assert not lines[1].endswith('(ignored under strict)')
+    # #496 review F3: a channel listed as client and a row without a party key reach a client too.
+    path.write_text(path.read_text().replace(
+        '{ audience = "client", tier = "send" }]',
+        '{ audience = "client", tier = "send" }, { channel = "C2", tier = "send" }, { topic = "commitment", tier = "send" }]')
+        + '\n[outbound.channel_classes]\nC2 = "client"\n')
+    assert main(['outbound', 'tiers']) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[3].endswith('(ignored under strict)') and lines[4].endswith('(ignored under strict)')
+    path.write_text(path.read_text().replace('tier = "send" }]', 'tier = "sned" }]'))
+    assert main(['outbound', 'tiers']) == 2
+
+
+def test_outbound_explain(configured, monkeypatch, capsys):
+    import re
+    from wuwei.__main__ import main
+    from wuwei.guards.outward import check_tier
+    root = configured[0]
+    monkeypatch.chdir(root)
+    code, reason = check_tier({'cwd': str(root), 'tool_name': 'mcp__slack__post_message', 'session_id': 't',
+                               'tool_input': {'text': 'I will ship it tomorrow', 'channel': 'Cwork'}})
+    draft_id = re.search(r'draft-[0-9a-f]{32}', reason)[0]
+    rule = ('ask by rule 7 (topic=commitment) for Cwork: Cwork in outbound.work_channels as team, '
+            'outbound.commitment_patterns')
+    assert main(['outbound', 'explain', draft_id]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[:3] == [f'{draft_id}: {rule}', 'party Cwork: team, Cwork in outbound.work_channels as team',
+                         '  rule 1 default { audience = "owner", tier = "send" }: passed']
+    assert lines[8] == '  rule 7 default { topic = "commitment", tier = "ask" }: matched'
+    assert lines[-1] == f'now: {rule}' and len(lines) == 10
+    assert main(['outbound', 'explain', 'draft-' + '0' * 32]) == 1
+    assert 'unknown draft' in capsys.readouterr().err
+
+
+def test_outbound_tier_block(configured, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    monkeypatch.chdir(configured[0])
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps({'text': 'I will ship it tomorrow', 'channel': 'Cclient'})))
+    assert main(['outbound', 'tier']) == 1
+    output = capsys.readouterr()
+    assert json.loads(output.out) == {'tier': 'block', 'exit': 1}
+    assert output.err.strip() == (
+        'outward: block by rule 3 (audience=client topic=commitment) for Cclient: Cclient in '
+        'outbound.external_channels as client, outbound.commitment_patterns; the owner decides: '
+        'bin/wuwei outbound tiers')

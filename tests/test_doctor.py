@@ -292,7 +292,8 @@ def test_workspace_rows_healthy(ws):
     rows = doctor.diagnose()
     assert names(rows, 'workspace') == [
         'workspace', 'config', 'template', 'executable', 'memory tiers', 'acme/widget path', 'acme/widget git',
-        'acme/widget git hooks', 'acme/widget branch', 'acme/widget identity', 'acme/widget fast_checks', 'acme/widget spec', 'calibration', 'drift',
+        'acme/widget git hooks', 'acme/widget branch', 'acme/widget identity', 'acme/widget fast_checks', 'acme/widget spec',
+        'outbound classes', 'outbound tiers', 'calibration', 'drift',
         'interview', 'profile', 'posture', 'telemetry']
     assert row(rows, 'posture')['value'] == 'guarded (from security.posture)'
     assert row(rows, 'telemetry')['value'] == 'share off'
@@ -1188,3 +1189,25 @@ def test_tracker_row(ws):
     assert 'bin/wuwei config set tracker.required false' in found['fix']
     tracker.results['backlog'] = Result(0, [])
     assert row(doctor.diagnose(), 'tracker')['status'] == 'ok'
+
+
+@pytest.mark.parametrize('posture,words', [('strict', 'is ignored under strict'),
+                                           ('guarded', 'can send to a client or public audience')])
+def test_outbound_tier_rows(ws, posture, words):
+    # #496: people without a class and an owner send row for a client audience warn (information).
+    # Review F3: by audience, by a client channel id, by a client person, or with no party key.
+    config(ws.root, CONFIG + '\n[outbound]\nexternal_channels = ["C2"]\ntiers = [{ audience = "client", tier = "send" }, '
+           '{ channel = "C2", tier = "send" }, { person = "U03", tier = "send" }, { topic = "commitment", tier = "send" }, '
+           '{ audience = "team", tier = "send" }, { person = "U02", tier = "send" }, { channel = "C1", tier = "send" }]\n'
+           '\n[outbound.people]\n"slack:U01" = { email = "ada@example.com" }\n'
+           '"slack:U02" = { email = "bo@example.com", class = "team" }\n'
+           '"slack:U03" = { email = "cy@client.test", class = "client" }\n'
+           f'\n[security]\nposture = "{posture}"\n')
+    rows = doctor.diagnose()
+    classes, tiers = row(rows, 'outbound classes'), row(rows, 'outbound tiers')
+    assert (classes['status'], classes['value']) == ('warn', '1 people without a class')
+    assert classes['detail'] == ['slack:U01: team while internal by outbound.company_domains or '
+                                 'outbound.code_host_orgs, else the connector default class']
+    assert 'bin/wuwei outbound learn card' in classes['fix'] and '[outbound.people]' not in classes['fix']
+    assert tiers['status'] == 'warn' and tiers['detail'] == [f'rule {n} {words}' for n in (1, 2, 3, 4)]
+    assert tiers['fix'] == 'make the row ask, or remove it'

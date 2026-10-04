@@ -15,6 +15,8 @@ def register(subparsers):
     text = approve.add_mutually_exclusive_group()
     text.add_argument('--edit', action='store_true')
     text.add_argument('--file', help='send this text instead, after the same lint')
+    approve.add_argument('--always', action='store_true',
+                         help="also add the card's tier row: always send to the person, or always ask for the channel")
     drop = actions.add_parser('drop', help='drop a draft from the owner host terminal')
     drop.add_argument('id')
     show = actions.add_parser('show', help='print a pending draft, or its card with --widget')
@@ -34,7 +36,8 @@ def run(args):
                          indent=2))
         return 0
     if args.action:
-        result = (drafts.approve(root, args.id, edit=args.edit, source=args.file) if args.action == 'approve'
+        result = (drafts.approve(root, args.id, edit=args.edit, source=args.file, always=args.always)
+                  if args.action == 'approve'
                   else drafts.drop(root, args.id))
         print(result.reason, file=sys.stderr if result.exit else sys.stdout)
         return result.exit

@@ -1247,3 +1247,23 @@ def test_grants_are_documented():
     assert '`bin/wuwei grants revoke <n>`' in (SITE / 'reference.md').read_text()
     skill = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
     assert 'decision show D-n --widget' in skill and 'prints a list' in skill
+
+
+def test_outbound_tiers_docs():
+    # #496: the tier table, the audience classes and the commands are documented.
+    concepts = (SITE / 'concepts.md').read_text()
+    section = concepts.split('## Outbound tiers\n', 1)[1].split('\n## ', 1)[0]
+    for word in ('`send`', '`ask`', '`block`', '`owner`', '`team`', '`company`', '`client`', '`public`',
+                 'client channel'):
+        assert word in section, word
+    configuration = (SITE / 'configuration.md').read_text()
+    for key in ('`outbound.tiers`', '`outbound.channel_classes`', '`outward.classes`', '`outbound.people`'):
+        assert key in configuration, key
+    assert '`class`' in configuration
+    security = (SITE / 'security.md').read_text()
+    assert 'a `send` row never reaches a client or public audience' in security
+    assert 'a seat never writes the table' in security
+    reference = (SITE / 'reference.md').read_text()
+    assert 'outbound tiers' in reference and 'outbound explain' in reference
+    template = (ROOT / 'templates/workspace/config.toml').read_text()
+    assert '# tiers = [' in template and '# [outbound.channel_classes]' in template

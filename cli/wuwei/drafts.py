@@ -154,6 +154,20 @@ def _pending(data, draft_id):
     return row
 
 
+def always_row(row):
+    """#496: (label, tier row) the card's Always option adds, or None: send for a person a
+    table row asked about with no topic, ask for the destination channel."""
+    rule = row['tier_reason'].removeprefix(outward.APPROVAL_REQUIRED + ': ')
+    found = re.match(r'ask by rule \d+ \((.*?)\) for (\S+): ', rule)
+    if not found:
+        return None
+    party = found[2]
+    if party.startswith('@') or '@' in party or re.fullmatch(outward.SLACK_SHAPE['user'], party):
+        return None if 'topic=' in found[1] else ('Always send to this person',
+                                                  {'person': party.removeprefix('@'), 'tier': 'send'})
+    return ('Always ask for this channel', {'channel': party, 'tier': 'ask'}) if party == row['destination'] else None
+
+
 def widget(row, config):
     """The draft card (#493): one #359 widget whose record is the Send now command."""
     from wuwei import decision
@@ -163,10 +177,11 @@ def widget(row, config):
                                          else f"It goes out through the {row['adapter']} adapter.")
     tool = f" --tool {row['tool']}" if row.get('tool') else ''
     learning = config['outbound'].get('learn', 'off') != 'off'
-    if learning and rule.startswith(('unknown destination', 'unknown mention')):
+    learnable = 'unknown destination' in rule or 'unknown mention' in rule  # #496: inside the row fragment.
+    if learning and learnable:
         send += (f" Then run bin/wuwei outbound learn{tool} to record {rule.split(':')[0].split()[-1]} "
                  'for later sends.')
-    elif (learning and rule.startswith('unknown DM recipient')
+    elif (learning and 'unknown DM recipient' in rule
           and not all(config['outbound']['owner']['slack'].values())):
         # #495: the DM may be the owner's own; the card learns the identity from the connector.
         send += (f" If it is your own DM, run bin/wuwei outbound learn{tool} --owner <file> with your user "
@@ -176,7 +191,19 @@ def widget(row, config):
                 f'write it to a file and run bin/wuwei drafts approve {draft_id} --file <file>.'),
                ('Keep as draft', 'Nothing is sent; it stays in bin/wuwei drafts.'),
                ('Drop', f'Nothing is sent: bin/wuwei drafts drop {draft_id}.')]
-    if rule.startswith('approval tier') and workspace.posture(config)[0] == 'strict':
+    added = always_row(row)
+    if added:  # #496: the card holds four options; Keep names the drop command instead.
+        target = added[1].get('person') or added[1]['channel']
+        later = (f'later sends that reach {target} go out without a card' if added[1]['tier'] == 'send'
+                 else f'every later send to {target} asks you first')
+        options[2:] = [('Keep as draft', f'Nothing is sent; it stays in bin/wuwei drafts, or bin/wuwei drafts '
+                                         f'drop {draft_id} drops it.'),
+                       (added[0], f'Send it now, and {later}: bin/wuwei drafts approve {draft_id} --always.')]
+    # Strict recommends keeping a tier draft; a row that held only an unknown audience is learnable.
+    unknown = learnable or 'unknown DM recipient' in rule
+    if ((rule.startswith('approval tier') or rule.startswith('ask by rule')
+         and ('topic=' in rule.partition(')')[0] or not unknown))
+            and workspace.posture(config)[0] == 'strict'):
         options.insert(0, options.pop(2))
     options[0] = (options[0][0] + ' (Recommended)', options[0][1])
     return decision.widget(f"{draft_id}: send this to {row['destination']} through "
@@ -220,8 +247,20 @@ def _edit(inputs, root, source=None):
             inputs[key] = value
 
 
-def approve(root, draft_id, *, edit=False, source=None):
-    """Host action: claim once, then send through the original adapter implementation."""
+def _add_row(root, added):
+    """#496: append the card's tier row to outbound.tiers; the card answer is the confirmation."""
+    from wuwei.commands import setup
+
+    def change(_, raw):
+        rows = [{key: value for key, value in row.items() if value}
+                for row in workspace.load_config(root, raw=raw)['outbound']['tiers']]
+        return raw if added in rows else setup._settle(raw, [(('outbound',), 'tiers', [*rows, added])])
+    return setup._edit('drafts approve', 'tier row', lambda *args, **kwargs: True, change, root)
+
+
+def approve(root, draft_id, *, edit=False, source=None, always=False):
+    """Host action: claim once, then send through the original adapter implementation;
+    always also adds the card's tier row (#496)."""
     from datetime import timedelta
     from difflib import SequenceMatcher
     from hashlib import sha256
@@ -232,6 +271,10 @@ def approve(root, draft_id, *, edit=False, source=None):
         directory = workspace.day_dir(root)
         data = state.read_state(directory=directory)
         row = _pending(data, draft_id)
+        added = always_row(row) if always else None
+        if always and not added:
+            return registry.Result(1, reason=f'drafts: no Always option for {draft_id}; run bin/wuwei drafts '
+                                             f'show {draft_id} --widget for its options')
         config = workspace.load_config(root)
         # #493: a tool draft or an adapter none draft records an allowance the seat's same
         # call spends once (spend); a configured adapter sends here.
@@ -278,6 +321,9 @@ def approve(root, draft_id, *, edit=False, source=None):
             if not confirmed:
                 return registry.Result(1, reason='drafts: owner confirmation declined; rerun it in a host terminal and answer y')
 
+        if added and _add_row(root, added[1]):
+            return registry.Result(2, reason='drafts: could not add the tier row; nothing was sent; '
+                                             'run bin/wuwei doctor, then retry')
         now = workspace.now()
         ttl = config['outward']['draft_ttl']
 

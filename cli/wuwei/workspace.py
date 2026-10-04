@@ -45,6 +45,8 @@ POSTURES = {
 FLOORS = {'records': 'block'}
 
 # 5.11: what the tracker opens (classes) and what it comments (kinds).
+AUDIENCES = ('owner', 'team', 'company', 'client', 'public')  # #496: outbound audience classes.
+TOPICS = ('sensitive', 'commitment', 'disagreement')
 TRACKER_CLASSES = ("items", "bugs", "triage", "follow-ups")
 TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
 
@@ -158,7 +160,13 @@ SCHEMA = {
     "outbound": {
         "work_channels": [(str, None)], "external_channels": [(str, None)],
         "company_domains": [(str, None)], "code_host_orgs": [(str, None)],
-        "people": {"*": {"email": (str, ""), "org": (str, "")}},
+        "people": {"*": {"email": (str, ""), "org": (str, ""), "class": (str, "", ("", *AUDIENCES))}},
+        # #496: any class for a channel id, over work_channels (team) and external_channels (client).
+        "channel_classes": {"*": (str, None, AUDIENCES)},
+        # #496: the owner's tier rows, before the defaults; the first match wins.
+        "tiers": [{"tool": (str, ""), "person": (str, ""), "channel": (str, ""),
+                   "audience": (str, "", ("", *AUDIENCES)), "topic": (str, "", ("", *TOPICS)),
+                   "tier": (str, None, ("send", "ask", "block"))}, []],
         "owner": {"slack": {"user": (str, ""), "dm": (str, "")}, "mail": (str, ""),
                   "code_host": (str, "")},
         "owner_channel": (str, "session", ("session", "dm")),
@@ -207,6 +215,8 @@ SCHEMA = {
         "servers": {"*": (str, None, ("slack", "tracker", "code_host", "docs", "mail", "other"))},
         # #492: the owner's approval mode of an MCP server id; absent is the class default.
         "modes": {"*": (str, None, ("send", "draft", "refuse"))},
+        # #496: a connector's default audience class for what it has not seen, by server id.
+        "classes": {"*": (str, None, AUDIENCES)},
     },
     "telemetry": {"enabled": (bool, True),
                   "share": (str, "", ("", "off", "anonymous", "attributed")),
@@ -553,7 +563,7 @@ _CONFIGS = {}
 # copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
-CONFIG_CACHE_VERSION = 10  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 11  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor, why and the board stay read-only.
@@ -645,6 +655,14 @@ def load_config(root=None, *, raw=None, warnings=None):
             program = pattern.split()[0]
             if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.-]*', program):
                 raise ConfigError('deploy.deny: start each pattern with a literal executable name')
+        if bad := next((text for text in unknown if text.startswith('unknown key outbound.tiers.')), None):
+            raise ConfigError(bad)  # #496: a typo would widen the row to match everything.
+        for index, row in enumerate(config['outbound']['tiers']):
+            try:
+                re.compile(row['tool'])
+            except re.error:
+                raise ConfigError(f'outbound.tiers.{index}.tool: not a regular expression; the owner fixes it '
+                                  'with bin/wuwei config set in a host terminal') from None
         since = config['guards']['shadow_since']
         if since:
             try:
