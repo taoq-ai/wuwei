@@ -125,10 +125,17 @@ def owner_outcome(args, note=None, *, root=None, where=None):
     if path.read_text(encoding='utf-8') != text:
         return 2, f'decision: record changed during confirmation; {RACE}'
     reversed_choice = previous is not None and previous['option'] != args.option
+    learned = data.get('outbound_learn', {}).get(args.id)
+    if learned is not None:  # #492: the answer writes the learned connector first.
+        from wuwei.commands import outbound  # Off every other decision path.
+        if outbound.apply(root, learned, args.option, args.id):
+            return 1, 'decision: the learned connector was not written; run bin/wuwei config check, then answer again'
 
     def update(current):
         if current.get('decision_outcomes', {}).get(args.id) != previous:
             raise ValueError(f'decision changed during confirmation; {RACE}')
+        if args.id in current.get('outbound_learn', {}):
+            current['outbound_learn'][args.id]['answered'] = args.option
         current.setdefault('decision_outcomes', {})[args.id] = {
             'option': args.option, 'outcome': args.option, 'decided_by': 'owner',
             'reversibility': fields['Reversibility']}

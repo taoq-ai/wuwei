@@ -4,7 +4,7 @@ import os
 import re
 import sys
 
-from wuwei import env, outward, registry, workspace
+from wuwei import configtext, env, outward, registry, workspace
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN, SYMLINK
 from wuwei.workspace import ConfigError, load_config
@@ -26,7 +26,12 @@ def register(subparsers):
     parser = actions.add_parser('set', help='set one config value (owner, host terminal)')
     parser.add_argument('key', help='dotted key, for example owner.verbosity.default or repos.0.merge_deploys')
     parser.add_argument('value', help='one TOML value, for example \'"standard"\' or false')
+    parser.add_argument('--replace', action='store_true',
+                        help='write the value as given instead of adding to the current list or table')
     parser.set_defaults(func=setup.set_value)
+    parser = actions.add_parser('show', help='print the effective value, each row tagged default or owner')
+    parser.add_argument('key', help='dotted key, for example outward.tool_patterns')
+    parser.set_defaults(func=show)
     parser = actions.add_parser('add-repo', help='add one repository (owner, host terminal)')
     parser.add_argument('--name', required=True, help='owner/repo')
     parser.add_argument('--path', required=True, help='relative to the workspace, or absolute')
@@ -114,6 +119,38 @@ def run(args):
     for name in ('GH_TOKEN', 'GITHUB_TOKEN'):
         status = max(status, _token(host, name))
     return status
+
+
+def show(args):
+    """#492: the effective value of one key, one row per list item or table entry."""
+    import json
+    from wuwei.commands import setup
+    try:
+        config = load_config()
+    except ConfigError as exc:
+        print(f'wuwei config show: {exc}', file=sys.stderr)
+        return FINDINGS
+    parts = [int(part) if part.isdigit() else part for part in args.key.split('.')]
+    rule = configtext.declared(parts)
+    try:
+        value = setup.effective(config, parts) if rule is not None else None
+    except (KeyError, IndexError, TypeError):
+        rule = None
+    if rule is None:
+        print(f'config show: unknown key {args.key}; run bin/wuwei config check for the documented keys',
+              file=sys.stderr)
+        return FINDINGS
+    default = workspace._default(rule)
+    if isinstance(value, dict):
+        rows = [(f'{name} = {json.dumps(item)}', name in rule and item == workspace._default(rule[name]))
+                for name, item in value.items()]
+    elif isinstance(value, list):
+        rows = [(json.dumps(item), item in default) for item in value]
+    else:
+        rows = [(json.dumps(value), value == default)]
+    for text, from_default in rows:
+        print(f"{text}  {'default' if from_default else 'owner'}")
+    return CLEAN
 
 
 def requirements(config):

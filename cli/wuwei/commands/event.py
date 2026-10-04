@@ -81,6 +81,7 @@ EVENT_PRODUCERS = {
        for action in ('skipped', 'unsent', 'shared', 'ready', 'presented', 'off')},
     'docs.set': 'wuwei plan set or wuwei docs page',
     'docs.written': 'wuwei docs or wuwei drafts approve', 'docs.exempt': 'wuwei dispatch next',
+    'outbound.learned': 'wuwei outbound learn or wuwei decide', 'outbound.proposed': 'wuwei outbound learn',
 }
 
 

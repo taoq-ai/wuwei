@@ -162,7 +162,8 @@ def widget(row, config):
                                          else f"It goes out through the {row['adapter']} adapter.")
     if (rule.startswith(('unknown destination', 'unknown mention'))
             and config['outbound'].get('learn', 'off') != 'off'):
-        send += (f" Then run bin/wuwei outbound learn to record {rule.split(':')[0].split()[-1]} "
+        tool = f" --tool {row['tool']}" if row.get('tool') else ''
+        send += (f" Then run bin/wuwei outbound learn{tool} to record {rule.split(':')[0].split()[-1]} "
                  'for later sends.')
     options = [('Send now', send),
                ('Send with an edit', f'I ask you for the new text in a Draft card citing {draft_id}, '

@@ -55,10 +55,10 @@ wuwei is the absolute path in .wuwei/executable: read it once and use it as the 
 - runtime: Dispatch and inspect runtime jobs
 - sessions: List registered sessions, roles and claims
 - seat: Recover a stuck seat
-Read-only, never refused: board, calibrate --questions, config check, doctor, drafts show, guide, heartbeat, integrity check, mcp check, memory show, memory status, plan gate, sessions, shadow report, status, why, and --help on any command.
+Read-only, never refused: board, calibrate --questions, config check, config show, doctor, drafts show, guide, heartbeat, integrity check, mcp check, memory show, memory status, plan gate, sessions, shadow report, status, why, and --help on any command.
 
 ## Owner only: ask the owner to run these in a host terminal
-config add-repo, config promote, config set, decide, decision outcome, drafts approve, drafts drop, goals edit, integrity reconfirm, listen uninstall, mcp decide, memory forget, plan set, remote ack, setup, state recover, telemetry send, voice edit, watch uninstall.
+config add-repo, config promote, config set, decide, decision outcome, drafts approve, drafts drop, goals edit, integrity reconfirm, listen uninstall, mcp decide, memory forget, outbound learn, plan set, remote ack, setup, state recover, telemetry send, voice edit, watch uninstall.
 
 ## Command forms
 - One plain command per Bash call.

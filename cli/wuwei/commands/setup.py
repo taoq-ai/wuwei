@@ -44,10 +44,10 @@ def register(subparsers):
     parser.set_defaults(func=run)
 
 
-def _edit(label, what, confirm, change):
+def _edit(label, what, confirm, change, root=None):
     """The owner edit frame: validate change(root, raw) -> text, then the digest path."""
     try:
-        root = workspace.find_workspace()
+        root = workspace.find_workspace(root)
         _, raw = config.read(root)
     except (OSError, ValueError) as exc:
         print(f'wuwei {label}: {exc}', file=sys.stderr)
@@ -103,10 +103,37 @@ def write_value(raw, key, value, mode='replace'):
     return _settle(raw, [(path, name, value)])
 
 
+def effective(config, parts):
+    """The loaded value at a dotted key's parts; KeyError or IndexError when it has none."""
+    for part in parts:
+        config = config[part]
+    return config
+
+
+def merged(config, parts, value, replace=False):
+    """#492: the settings for one key: a list gets the effective items plus the new ones, a
+    named-entry table one setting per entry; replace writes the value as given."""
+    rule = configtext.declared(parts)
+    table = isinstance(rule, dict) and '*' in rule
+    if replace and not (isinstance(rule, list) or table):
+        raise ValueError(f"{'.'.join(map(str, parts))}: --replace applies to a list or a "
+                         'named-entry table; remove --replace')
+    if not replace and isinstance(rule, list) and isinstance(value, list):
+        try:
+            current = effective(config, parts)
+        except (KeyError, IndexError):  # repos.<n> past the end: settle names the layout
+            current = []
+        return [(tuple(parts[:-1]), parts[-1], [*current, *(item for item in value if item not in current)])]
+    if not replace and table and isinstance(value, dict):
+        return [(tuple(parts), name, item) for name, item in value.items()]
+    return [(tuple(parts[:-1]), parts[-1], value)]
+
+
 def set_value(args, confirm=None):
     """Owner action: set one config value after a host-terminal digest."""
     def change(root, raw):
-        node = configtext.declared(tuple(_parts(args.key)))
+        parts = _parts(args.key)
+        node = configtext.declared(parts)
         try:
             parsed = tomllib.loads(f'value = {args.value}\n')
         except tomllib.TOMLDecodeError:
@@ -117,7 +144,8 @@ def set_value(args, confirm=None):
                 raise ValueError(f"{args.key}: {args.value!r} is not TOML; pass {kind}, for example '{example}'") from None
         if list(parsed) != ['value']:
             raise ValueError(f'{args.value!r}: expected one TOML value; pass one TOML value, for example \'"standard"\' or false')
-        return write_value(raw, args.key, parsed['value'])
+        return _settle(raw, merged(load_config(root, raw=raw), parts, parsed['value'],
+                                   getattr(args, 'replace', False)))
 
     return _edit('config set', 'change', confirm, change)
 

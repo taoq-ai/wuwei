@@ -264,6 +264,7 @@ STATE_PRODUCERS = {
     'claims': 'wuwei brief builder or wuwei worktree add',
     'tickets': 'wuwei plan approve, add or set, wuwei tracker create or wuwei drafts approve',
     'tracker_log': 'wuwei tracker create or log',
+    'outbound_learn': 'wuwei outbound learn or wuwei decide',
 }
 
 

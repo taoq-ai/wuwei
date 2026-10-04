@@ -294,6 +294,45 @@ def _external_tracker(config):
                for name in (project, tracker['board']) if name)
 
 
+MENTION = r'(?<![\w@])@([\w.-]+)'
+
+
+def _flagged(normalized, rules):
+    """(tier, config key) of the first sensitive keyword or sensitive, commitment or
+    disagreement pattern that matches; None when none does."""
+    # ponytail: explicit deny lists and complete safe forms have limited language
+    # coverage. Unknown prose drafts; a semantic classifier is later work.
+    if any(re.search(r'(?<!\w)' + re.escape(_normalize(word)) + r'(?!\w)',
+                     normalized.replace('_', ' ')) for word in rules['sensitive_keywords']):
+        return 'sensitive', 'outbound.sensitive_keywords'
+    for key in ('sensitive_patterns', 'commitment_patterns', 'disagreement_patterns'):
+        if any(re.search(pattern, normalized, re.IGNORECASE | re.DOTALL) for pattern in rules[key]):
+            return key.split('_')[0], f'outbound.{key}'
+    return None
+
+
+def check_send(inputs, root, config, channels):
+    """#492 connector mode send: the outbound security check and the patterns of classify,
+    without its audience rules; a write without text has nothing to hold back."""
+    try:
+        from wuwei import security
+        code, reason = security.outbound(inputs, root)
+        if code:
+            return code, reason
+        texts, _ = _text(inputs)
+        # The rule is a fragment: the guard's drafts.hold adds the draft id and the owner's next step (#493).
+        rule = ''
+        if os.environ.get('WUWEI_SEAT_ROLE') == 'shepherd':
+            rule = 'headless seat: a headless shepherd seat posts drafts only'
+        elif flag := texts and _flagged(_normalize('\n'.join(texts)).replace('’', "'"), config['outbound']):
+            rule = f'approval tier {flag[0]} for {next(iter(channels))}: {flag[1]}'
+        if rule:
+            return FINDINGS, f'{APPROVAL_REQUIRED}: {rule}'
+        return CLEAN, ''
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
+        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'
+
+
 def classify(text, root, config, context=None, *, kind='chat', port=False, why=None):
     """Return (0|1|2, send|draft); missing destination or uncertain meaning drafts.
     A list in why gets '<rule>: <evidence>' for the draft (#493); evidence has no '; '."""
@@ -325,16 +364,8 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
                 context[key] = value
         rules = config['outbound']
         normalized = _normalize(text).replace('\u2019', "'")
-        # ponytail: explicit deny lists and complete safe forms have limited language
-        # coverage. Unknown prose drafts; a semantic classifier is later work.
-        patterns = {key: [re.compile(pattern, re.IGNORECASE | re.DOTALL) for pattern in rules[key]]
-                    for key in ('sensitive_patterns', 'commitment_patterns', 'disagreement_patterns')}
-        if any(re.search(r'(?<!\w)' + re.escape(_normalize(word)) + r'(?!\w)',
-                         normalized.replace('_', ' ')) for word in rules['sensitive_keywords']):
-            return tier('sensitive', 'outbound.sensitive_keywords')
-        for key, compiled in patterns.items():
-            if any(pattern.search(normalized) for pattern in compiled):
-                return tier(key.split('_')[0], f'outbound.{key}')
+        if flag := _flagged(normalized, rules):
+            return tier(*flag)
         if (any(context.get(key, False) for key in BOOL_FIELDS)
                 or context.get('channel_type', 'channel') != 'channel'
                 or any(channel.startswith(('D', 'U')) or channel in rules['external_channels']
@@ -349,7 +380,7 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
         review_match = (re.fullmatch(REVIEW_REQUEST, text) if kind in ('chat', 'slack')
                         and destinations == [config['shepherd']['review_channel']] else None)
         mention_text = re.sub(r'<@[\w.-]+>', '', normalized) if review_match else normalized
-        mentions = re.findall(r'(?<![\w@])@([\w.-]+)', mention_text)
+        mentions = re.findall(MENTION, mention_text)
         recipients.extend(mentions)
         # Email addresses and mentions are audience evidence, never merely message text.
         recipients.extend(re.findall(r'[^\s<>@]+@[^\s<>@]+', normalized))

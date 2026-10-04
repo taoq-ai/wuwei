@@ -45,7 +45,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei next` | Prints where the day stands and the one next step with its command; `--json` prints `{state, step, command}`. | [What the session knows](agent.md) |
 | `bin/wuwei note` | Manages workspace notes. | [Concepts](concepts.md#memory) |
 | `bin/wuwei nudges` | Lists open nudges and pages. | [Watch state](#watch-state) |
-| `bin/wuwei outbound` | Inspects the outbound approval policy. | [Outbound tiers](configuration.md#outward-text-and-outbound-tiers) |
+| `bin/wuwei outbound` | Inspects the outbound approval policy; `learn --tool <tool>` proposes an unknown connector, its work channels and people on one card (planner session). | [Outbound tiers](configuration.md#outward-text-and-outbound-tiers) |
 | `bin/wuwei payload` | Plumbing: prints the session memory payload. | |
 | `bin/wuwei plan` | Proposes or approves the morning plan; `session` names the planner; `carry` and `park` record an open item's disposition at close; `set <item> ticket=<id>` records an existing ticket once the tracker confirms it, and `set <item> spec=skipped --reason <why>` skips the spec for one item. | [Lead plan JSON](#lead-plan-json) |
 | `bin/wuwei plan set <item> docs=<page>\|new\|none --reason "<why>"` | Records the item's [docs obligation](concepts.md#docs-obligation) value; a page is read through the docs adapter first, and `none` needs a reason. Under markdown, `new` is refused: write the page with `bin/wuwei docs page <item>`. | [Docs](configuration.md#docs) |
