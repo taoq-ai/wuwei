@@ -99,14 +99,28 @@ def run(args):
     finally:
         if os.path.exists(staging):
             shutil.rmtree(staging)
+    guide_path, _ = _guide(destination.parent)
     print(f"Created {destination.resolve()}")
     if getattr(args, 'status_line', True):
         _status_line(executable)
     if (destination.parent / '.git').exists():
         print('This project is a Git repository; add these lines to its .gitignore:')
         print('.wuwei/\n.claude/')
+    if guide_path:
+        print(f'Guide: {guide_path.relative_to(destination.parent)} block written')
     print(LAYOUT)
     return _finish(destination.parent)
+
+
+def _guide(root, **kwargs):
+    """guide.export, but a block that cannot be written warns and never stops init (#476)."""
+    from wuwei import guide
+    try:
+        return guide.export(root, **kwargs)
+    except (OSError, ValueError) as exc:
+        print(f'wuwei init: warning: guide block not written: {exc}; '
+              'run bin/wuwei doctor for the fix', file=sys.stderr)
+        return None, False
 
 
 def settings(root):
@@ -330,6 +344,7 @@ def upgrade(args):
             if local_version != base_version or base_version is None:
                 conflicts.append((local.name, local_version, base_version))
         security_data = security.load(destination.parent, raw=text)
+        guide_path, guide_changed = _guide(destination.parent, write=False, raw=text)
         config_changed = migrated != raw
         pointer_changed = pointer != str(executable) + '\n'
         env_changed = env.initialize(destination, dry_run=args.dry_run)
@@ -343,6 +358,8 @@ def upgrade(args):
                 workspace.atomic_write(config_path, migrated)
             if pointer_changed:
                 workspace.atomic_write(pointer_path, str(executable) + '\n')
+            if guide_changed:
+                guide_path, guide_changed = _guide(destination.parent, raw=text)
         if security_data is None:
             print(f'{prefix} workspace security material and instructions')
         if env_changed:
@@ -358,12 +375,15 @@ def upgrade(args):
             print(f'{prefix} config.toml: template_version {integrity.version()}')
         if pointer_changed:
             print(f'{prefix} executable pointer')
+        if guide_changed:
+            print(f'{prefix} {guide_path.relative_to(destination.parent)}: guide block')
         for name, local_version, base_version in conflicts:
             print(f'Charter override needs review: {name} '
                   f'(local {local_version or "unversioned"}, base {base_version or "missing"})')
         if not args.dry_run:
             _status_line(executable)
-        if not added and not retired and not stamp_changed and not pointer_changed and not env_changed and text == raw:
+        if (not added and not retired and not stamp_changed and not pointer_changed and not env_changed
+                and not guide_changed and text == raw):
             print('No workspace changes needed')
         if args.dry_run:
             return CLEAN

@@ -496,3 +496,56 @@ def test_fixture_item_is_light_so_its_spec_is_skipped(tmp_path):
     load('headless_e2e').fixture_plan(tmp_path, 'repo/README.md', 'Verify README exists')
     [candidate] = json.loads((tmp_path / 'proposal.json').read_text())['candidates']
     assert candidate['tier'] == 'light'
+
+
+def start_evidence():
+    """#476: the start-mode day: no refusal probe, no Skill call, no scripted Stop block."""
+    data, events, hooks = evidence()
+    hooks = [h for h in hooks if h['exit'] != 2 and h.get('tool') != 'Skill']
+    hooks.insert(-1, {'event': 'PreToolUse', 'exit': 0, 'tool': 'Bash',
+                      'input': {'command': '/plugin/bin/wuwei plan gate'}})
+    hooks.insert(-1, {'event': 'PostToolUse', 'exit': 0, 'tool': 'Bash',
+                      'input': {'command': '/plugin/bin/wuwei plan gate'}})
+    return data, events, hooks
+
+
+def test_start_prompt_names_no_skill_or_step():
+    import re
+    text = load('headless_e2e').start_prompt()
+    assert text.startswith('Start the day.')
+    for phrase in ('Skill', 'skill', 'wuwei-plan', 'wuwei-report', '--'):
+        assert phrase not in text
+    assert not re.search(r'(?m)^\s*\d+\.', text) and not re.search(r'\bwuwei [a-z]', text)
+
+
+@pytest.mark.parametrize('mutation', ['refusal', 'help-row', 'help-bash', 'no-plan', 'no-launch',
+                                      'no-close-event', 'no-close-row'])
+def test_start_mode_validation(mutation):
+    runner = load('headless_e2e')
+    data, events, hooks = start_evidence()
+    assert runner.validate(data, events, hooks, start=True) == []
+    assert runner.validate(data, events, hooks) != []
+    if mutation == 'refusal':
+        events = events + [{'kind': 'hook.refusal', 'payload': {'reason': 'unparsed'}}]
+    elif mutation == 'help-row':
+        hooks = hooks + [{'event': 'cli', 'args': ['plan', '--help'], 'exit': 0}]
+    elif mutation == 'help-bash':
+        hooks = hooks + [{'event': 'PreToolUse', 'exit': 0, 'tool': 'Bash',
+                          'input': {'command': '/plugin/bin/wuwei close -h'}}]
+    elif mutation == 'no-plan':
+        events = [e for e in events if e['kind'] != 'plan.approved']
+    elif mutation == 'no-launch':
+        events = [e for e in events if e['kind'] != 'seat launched']
+    elif mutation == 'no-close-event':
+        events = [e for e in events if e['kind'] != 'day.close_requested']
+    else:
+        hooks = [h for h in hooks if h.get('args') != ['close']]
+    assert len(runner.validate(data, events, hooks, start=True)) == 1
+
+
+def test_start_mode_needs_a_key(monkeypatch, capsys):
+    runner = load('headless_e2e')
+    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+    monkeypatch.setattr(runner, 'exercise', lambda *a, **kw: pytest.fail('must skip'))
+    assert runner.main(['--start']) == 2
+    assert 'ANTHROPIC_API_KEY is not set' in capsys.readouterr().out

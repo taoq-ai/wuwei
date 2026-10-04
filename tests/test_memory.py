@@ -362,6 +362,36 @@ def test_export_refuses_unsafe_targets_and_broken_markers(tmp_path, tmp_path_fac
         memory.export(root)
 
 
+OTHER = '<!-- other:start -->\nOther block.\n<!-- other:end -->\n'
+
+
+def test_write_block_keeps_the_rules_block_and_owner_text(tmp_path, tmp_path_factory):
+    from wuwei import memory
+    root = exporting(tmp_path)
+    path = root / 'CLAUDE.md'
+    path.write_text('# Mine\n\n' + BLOCK)
+    write = lambda block, **kw: memory.write_block(root, '<!-- other:start -->', '<!-- other:end -->',
+                                                   block, 'bin/wuwei fix-it', **kw)
+    assert write(OTHER, write=False) == (path, True) and path.read_text() == '# Mine\n\n' + BLOCK
+    assert write(OTHER) == (path, True)
+    assert path.read_text() == '# Mine\n\n' + BLOCK + '\n' + OTHER
+    before = path.stat().st_mtime_ns
+    assert write(OTHER) == (path, False) and path.stat().st_mtime_ns == before
+    assert memory.export(root) == (path, False)
+    assert write(OTHER.replace('Other', 'New')) == (path, True)
+    assert path.read_text() == '# Mine\n\n' + BLOCK + '\n' + OTHER.replace('Other', 'New')
+    for damaged in ('<!-- other:start -->\nno end\n', OTHER + OTHER):
+        path.write_text(damaged)
+        with pytest.raises(ValueError, match='bin/wuwei fix-it'):
+            write(OTHER)
+    for target in ('/etc/claude.md', '../CLAUDE.md', '.wuwei/CLAUDE.md', 'linked/CLAUDE.md'):
+        root = exporting(tmp_path_factory.mktemp('ws'), target)
+        (root / 'linked').symlink_to(tmp_path_factory.mktemp('elsewhere'))
+        with pytest.raises(ValueError, match='memory.export_to'):
+            memory.write_block(root, '<!-- other:start -->', '<!-- other:end -->', OTHER, 'x')
+        assert not (root / '.wuwei/CLAUDE.md').exists() and not list((root / 'linked').iterdir())
+
+
 def command(*argv):
     import argparse
     from wuwei.commands import memory as memory_command

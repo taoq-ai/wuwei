@@ -1025,12 +1025,22 @@ def test_security_posture_table_matches_the_code():
 
 
 def test_agent_guide_ships_and_is_linked():
+    from wuwei import guide
     page = (SITE / 'agent.md').read_text()
     assert len(page.splitlines()) <= 100
+    # #476: the reference between the markers is the printed `wuwei guide`, one source.
+    assert page.count(guide.START) == 1 and page.split(guide.START, 1)[1].split(guide.END, 1)[0] == (
+        '\n' + guide.text())
     for phrase in ('wuwei next', '/wuwei:wuwei-plan', '/wuwei:wuwei-report', '.wuwei/executable',
                    '-P', 'host terminal', 'posture:', 'planner', 'lead', 'builder', 'sentinel',
-                   'shepherd', 'steward', 'first word of a plain command'):
+                   'shepherd', 'steward', 'first word of a plain command', 'wuwei guide'):
         assert phrase in page, phrase
+    daily = (SITE / 'daily.md').read_text().split('\n## 1. ', 1)[1].split('\n## ', 1)[0]
+    assert 'open Claude Code in the workspace and say what you want; the session knows the rest' in daily
+    row = next(line for line in (SITE / 'configuration.md').read_text().splitlines()
+               if line.startswith('| `memory.export_to`'))
+    assert 'guide block' in row
+    assert '--start' in (ROOT / 'docs/headless-e2e.md').read_text()
     assert '\N{EM DASH}' not in page and not any(ord(c) >= 0x1F000 for c in page)
     for name in ('index.md', 'daily.md'):
         assert '(agent.md)' in (SITE / name).read_text(), name
@@ -1103,8 +1113,6 @@ def test_one_gate_question():
     daily = (SITE / 'daily.md').read_text().split('\n## 3. Plan and the morning gate\n', 1)[1].split('\n## ', 1)[0]
     assert "Approve today's plan as proposed?" in daily and 'Change something' in daily
     assert 'question per decision' not in daily
-    agent = next(line for line in (SITE / 'agent.md').read_text().splitlines() if line.startswith('3. Morning gate'))
-    assert "Approve today's plan as proposed?" in agent and 'per decision' not in agent
     configuration = (SITE / 'configuration.md').read_text()
     assert '`[]`' in configuration.split('\n## Owner interview\n', 1)[1].split('\n## ', 1)[0]
     prompt = ROOT / 'evals/wuwei-plan-positive-06/prompt.md'
@@ -1161,8 +1169,7 @@ def test_charters_carry_the_spec_mode():
     assert 'skip_tiers' in (ROOT / 'charters/lead.md').read_text()
     for path in (ROOT / 'charters/planner.md', ROOT / 'skills/wuwei-plan/SKILL.md'):
         assert 'spec=skipped' in path.read_text(), path
-    agent = (SITE / 'agent.md').read_text()
-    assert 'specify first' in agent and 'spec engine' in (SITE / 'daily.md').read_text().lower()
+    assert 'spec engine' in (SITE / 'daily.md').read_text().lower()
 
 
 def test_telemetry_is_documented():
