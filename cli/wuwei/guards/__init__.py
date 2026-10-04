@@ -77,6 +77,16 @@ SELECTION = ContextVar('SELECTION', default=None)
 Guard = namedtuple('Guard', 'event matcher check profile_relaxable', defaults=(False,))
 
 
+def wuwei_role(agent_type):
+    """A WUWEI seat's agent type: wuwei:<role> or a shipped charter name."""
+    if not isinstance(agent_type, str):
+        return False
+    from pathlib import Path
+    charters = Path(__file__).resolve().parents[3] / 'charters'
+    return agent_type.startswith('wuwei:') or agent_type.rsplit(':', 1)[-1] in {
+        p.stem for p in charters.glob('*.md')}
+
+
 def __getattr__(name):
     # discover() lists modules itself (_modules); guards.pkgutil stays addressable.
     if name == 'pkgutil':

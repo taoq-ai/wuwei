@@ -3,16 +3,8 @@
 import json
 from pathlib import Path
 
-from wuwei.guards import Guard
+from wuwei.guards import Guard, wuwei_role  # noqa: F401 (decision.py imports it from here)
 from wuwei.exits import DAMAGED, PAYLOAD
-
-
-def wuwei_role(agent_type):
-    if not isinstance(agent_type, str):
-        return False
-    charters = Path(__file__).resolve().parents[3] / 'charters'
-    return agent_type.startswith('wuwei:') or agent_type.rsplit(':', 1)[-1] in {
-        p.stem for p in charters.glob('*.md')}
 
 
 def free_memory(config, root):
@@ -205,13 +197,24 @@ def _check(payload):
 def stopping_seat(payload, root):
     """Resolve a stop to its registered seat and original day."""
     from datetime import date
-    from wuwei import brief, state
+    from wuwei import brief, state, workspace
 
     # Runtime IDs can repeat across days; only the transcript brief binds the stop.
     transcript = payload.get('agent_transcript_path')
     if not isinstance(transcript, str) or not transcript.strip():
         raise ValueError(f'missing or invalid agent_transcript_path; {PAYLOAD}')
-    relative = brief.transcript_reference(transcript)
+    try:
+        relative = brief.transcript_reference(transcript)
+    except OSError:
+        # #473: a missing transcript binds through the path the trace hook recorded on the seat.
+        directory = workspace.day_dir(root)
+        role = payload['agent_type'].rsplit(':', 1)[-1]
+        name = next((key for key, seat in brief.seats(state.read_state(directory=directory)).items()
+                     if seat['status'] == 'running' and seat.get('transcript') == transcript
+                     and seat['role'] == role), None)
+        if name is None:
+            raise
+        return directory, brief.identifier(name), role
     if relative is None:
         raise ValueError(f'SubagentStop has no brief reference; {PAYLOAD}')
     path = Path(relative)
@@ -243,7 +246,8 @@ def stop(payload):
     directory = None
     try:
         directory, name, role = stopping_seat(payload, root)
-        item = brief.seats(state.read_state(directory=directory))[name]['item']
+        reserved = brief.seats(state.read_state(directory=directory))[name]
+        item = reserved['item']
     except Exception as exc:
         try:
             state.append_event('seat stop unmatched',
@@ -253,6 +257,19 @@ def stop(payload):
             import sys
             print(f'seat stop could not be recorded: {log_error}', file=sys.stderr)
         return 0, ''
+    try:
+        if reserved['status'] == 'running':
+            brief.stop_text(payload)
+    except (OSError, ValueError) as exc:
+        # #473: an unreadable report never leaves the seat running; the owner records it or stops it.
+        # A refused stop (another agent, a resumed iteration) still leaves the seat as it was.
+        try:
+            state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'),
+                            reason=str(exc))
+        except Exception as error:
+            return 2, f'seat {name} could not be stopped: {exc}; {error}; run bin/wuwei doctor'
+        return 2, (f'seat {name} stopped unmeasured: {exc}; record its report with bin/wuwei seat stop '
+                   f'{name} --verdict <file>, or run bin/wuwei seat stop {name} --unmeasured "<reason>"')
     try:
         handled = False
         if role == 'builder' and directory == workspace.day_dir(root):

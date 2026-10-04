@@ -343,7 +343,9 @@ def test_post_tool_failures_report_without_refusing(trace_workspace, call_payloa
         assert not (trace_workspace / 'events.jsonl').exists()
     elif failure not in ('both', 'workspace'):
         event, = error_events(trace_workspace)
-        assert event['kind'] == 'hook.post_tool_use_error'
+        assert event['kind'] == 'traces.gap'
+        assert event['payload'].keys() >= {'reason', 'span', 'session'}
+        assert event['payload']['span'] == 'Read' and event['payload']['session'] == call_payload['session_id']
         assert secret not in json.dumps(event)
         assert event['payload']['reason'] in output.err
     else:
@@ -355,7 +357,7 @@ def test_error_logging_uses_payload_workspace(trace_workspace, call_payload, mon
     call_payload['tool_input'] = None
     code, output = run_hook(call_payload, monkeypatch, capsys)
     assert code == 0 and output.err
-    assert error_events(trace_workspace)[0]['kind'] == 'hook.post_tool_use_error'
+    assert error_events(trace_workspace)[0]['kind'] == 'traces.gap'
 
 
 @pytest.mark.parametrize('error', [OSError, SystemExit, KeyboardInterrupt])
@@ -367,7 +369,8 @@ def test_recorder_owns_failures(trace_workspace, call_payload, monkeypatch, caps
     code, output = run_hook(call_payload, monkeypatch, capsys)
     assert code == 0 and output.out == ''
     event, = error_events(trace_workspace)
-    assert event['kind'] == 'hook.post_tool_use_error'
+    assert event['kind'] == 'traces.gap'
+    assert (event['payload']['span'], event['payload']['session']) == ('Read', call_payload['session_id'])
     assert error.__name__ in output.err
     assert 'private details' not in output.err + json.dumps(event)
 
@@ -416,7 +419,10 @@ def test_review_redaction_cases(trace_workspace, call_payload, arguments):
     span, = read_spans(trace_workspace)
     actual = json.loads(span['attrs']['gen_ai.tool.arguments'])
     for key, value in arguments.items():
-        if key != 'file_path':
+        if key in ('command', 'url', 'recipient'):  # #473: the text before the first credential stays
+            assert actual[key].endswith('[REDACTED]') and len(actual[key]) <= len('https://[REDACTED]')
+            assert 'private' not in actual[key] and '555' not in actual[key] and '1234' not in actual[key]
+        elif key != 'file_path':
             assert actual[key] == '[REDACTED]'
 
 
@@ -615,3 +621,95 @@ def test_subagents_bind_separately_from_shared_planner_session(trace_workspace, 
         assert ids[1::2] == identities
     else:
         assert ids[1::2] == [hashlib.sha256(identity.encode()).hexdigest() for identity in identities]
+
+
+def test_bind_records_seat_transcript(trace_workspace, call_payload):
+    # #473: the seat's own transcript, so a hand-back with no stop can be found.
+    root = trace_workspace.parents[2]
+    relative = str((trace_workspace / 'briefs/builder.md').relative_to(root))
+    state._write_state(lambda data: data['seats'].update({'builder': {
+        'item': 'A', 'role': 'builder', 'status': 'running', 'brief': relative}}), root, reserved=False)
+    main = root / 'session.jsonl'
+    transcript = root / call_payload['session_id'] / 'subagents/agent-seat.jsonl'
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(json.dumps({'type': 'user', 'message': {'content': 'WUWEI brief: ' + relative}}) + '\n')
+    assert recorder()({**call_payload, 'transcript_path': str(main), 'agent_id': 'seat'}) == (0, '')
+    assert state.read_state(root)['seats']['builder']['transcript'] == str(transcript)
+
+
+ORDINARY = [
+    'gh pr view 12 --json state,title,body', 'gh pr list --json number,title --limit 20',
+    'gh issue view 473', 'gh api repos/acme/widget/pulls/12/comments', 'gh pr checks 12',
+    'gh auth status', 'gh run list --limit 5', 'gh pr merge 12 --squash --auto',
+    'gh issue list --json number,title,labels', 'git status --short', 'git log --oneline -5',
+    'git diff --stat main...HEAD', 'git push origin 473-handback-traces', 'git branch -d old-branch',
+    'git rev-parse HEAD', 'python -m pytest -q tests/test_traces.py',
+    'python -m pytest -q -k "text and redact"', 'curl -s https://example.com/api/status',
+    'curl -sSf -o out.json https://example.com/releases/latest', 'ls -la .wuwei/days/2026-10-04',
+]
+SECRETS = [
+    'curl -H "Authorization: Bearer abc123secretvalue" https://example.com',
+    'export GH_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz0123456789',
+    'git clone https://user:pa55word@example.com/repo.git',
+    'aws configure set aws_access_key_id AKIAABCDEFGHIJKLMNOP',
+    'run --key sk-abcdefghijklmnopqrstuvwxyz012345',
+    'curl -X POST https://hooks.slack.com/services/T000/B000/XXXXSECRET',
+    'deploy --token s3cr3tvalue123',
+    'slack send xoxb-1234567890-abcdefghij',
+    'glab auth login glpat-abcdefghijklmnopqrst',
+    'call eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.c2lnbmF0dXJlc2VjcmV0',
+]
+SECRET_TEXT = ['abc123secretvalue', 'ghp_abcdefghijklmnopqrstuvwxyz0123456789', 'pa55word',
+               'AKIAABCDEFGHIJKLMNOP', 'sk-abcdefghijklmnopqrstuvwxyz012345', 'XXXXSECRET',
+               's3cr3tvalue123', 'xoxb-1234567890-abcdefghij', 'glpat-abcdefghijklmnopqrst',
+               'c2lnbmF0dXJlc2VjcmV0']
+
+
+def test_redaction_corpus():
+    # #473: ordinary commands stay readable in the traces; credentials do not.
+    from wuwei.redact import redact
+    assert len(ORDINARY) == 20 and len(SECRETS) == 10
+    assert [redact(command, prefix=True) for command in ORDINARY] == ORDINARY
+    for command, secret in zip(SECRETS, SECRET_TEXT):
+        assert secret not in redact(command, prefix=True), command
+        assert redact(command) == '[REDACTED]'  # outside the traces a credential takes the whole string
+
+
+def test_unquoted_curl_body_redacted():
+    # #473 review F3: the -d narrowing keeps unquoted key=value bodies redacted for every caller.
+    from wuwei.redact import redact
+    for command in ('curl -d user=bob&pw=ZZZSECRET https://x', 'curl -d refresh=ZZZSECRET https://x',
+                    'curl -d otp=123456 https://x', 'curl -d sig=ZZZSECRET https://x',
+                    'curl --json a:ZZZSECRET https://x'):
+        assert redact(command) == '[REDACTED]', command
+    assert redact('git branch -d old-branch') == 'git branch -d old-branch'
+    assert redact('gh pr list --json number,title') == 'gh pr list --json number,title'
+
+
+def test_body_keeps_command_words():
+    from wuwei.redact import redact
+    assert redact('gh pr comment 12 --body "looks good"').startswith('gh pr comment 12 --body [BODY ')
+
+
+def test_trace_gap_on_status_line_and_doctor(trace_workspace, call_payload, monkeypatch, capsys):
+    # #473: a span that cannot be written is one traces.gap event, counted on the owner surfaces.
+    from wuwei.__main__ import main
+    from wuwei.commands import doctor, event, status
+
+    def broken(*args):
+        raise OSError('disk full')
+
+    with monkeypatch.context() as patch:
+        patch.setattr(state, 'append_jsonl', broken)
+        code, _ = run_hook(call_payload, monkeypatch, capsys)
+    assert code == 0
+    assert [row['kind'] for row in error_events(trace_workspace)] == ['traces.gap']
+    state._write_state(lambda data: None, trace_workspace.parents[2], reserved=False)
+    assert 'traces: 1 gaps' in status.line(status.snapshot(trace_workspace))
+    probes = {'state': {'result': 'ok', 'value': 'ok'}, 'planner': {'result': 'ok', 'value': 'ok'},
+              'seats': {'result': 'ok', 'value': 'none stuck'}}
+    config = workspace.load_config(trace_workspace.parents[2])
+    found, = [row for row in doctor._day(trace_workspace.parents[2], config, probes) if row['name'] == 'traces']
+    assert (found['status'], found['value']) == ('warn', '1 gaps today')
+    assert 'traces.gap' in event.EVENT_PRODUCERS
+    assert main(['event', 'traces.gap', '{}']) == 1

@@ -252,6 +252,7 @@ def record_result(item, result, *, root, agent_id=None, model=None, completion=N
             raise ValueError(f'build changed during result recording; {RACE}')
         if agent_id is not None:
             data['seats'][record['seat']]['status'] = 'stopped'
+            data['seats'][record['seat']].pop('reason', None)  # recovered from unmeasured (#473)
         current.update(status='check', iteration=iteration, agent_id=agent_id, completion=completion,
                        result=result, action={'action': 'check',
                        'command': 'wuwei build check ' + shlex.quote(item),
@@ -280,18 +281,12 @@ def stopped(item, name, payload, *, root):
         raise ValueError(f'SubagentStop omitted builder agent_id; {PAYLOAD}')
     if record.get('agent_id') and record['agent_id'] != agent_id:
         raise ValueError(f'SubagentStop agent_id differs from resumed builder; {PAYLOAD}')
+    from wuwei.brief import last_turn
+    completion, message, _ = last_turn(payload['agent_transcript_path'])
     text = payload.get('last_assistant_message')
-    if not isinstance(text, str):
-        raise ValueError(f'SubagentStop omitted builder result; {PAYLOAD}')
-    completion, message = None, None
-    for index, line in enumerate(Path(payload['agent_transcript_path']).read_text().splitlines()):
-        row = json.loads(line)
-        if row.get('type') == 'assistant':
-            content = row['message']['content']
-            message = ('\n'.join(part['text'] for part in content if part.get('type') == 'text')
-                       if isinstance(content, list) else content)
-            completion = [index, hashlib.sha256(line.encode()).hexdigest()]
-    if completion is None or not isinstance(message, str) or message.strip() != text.strip():
+    if not isinstance(text, str) or not text.strip():
+        text = message  # #473: a background hand-back carries no message
+    elif message.strip() != text.strip():
         raise ValueError(f'SubagentStop has no matching assistant completion; {PAYLOAD}')
     if completion == record.get('completion'):
         return True

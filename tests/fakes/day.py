@@ -33,6 +33,7 @@ class Runtime:
         self.verdict = 'PASS'
         self.builds = 0
         self.spec = True  # the builder runs the spec-kit steps (design 5.10)
+        self.handback = False  # a background seat: SubagentHandback, no last_assistant_message (#473)
 
     def dispatch(self, role, brief_path, worktree, write, *, root=None, resume=None):
         day = self.day
@@ -84,11 +85,22 @@ class Runtime:
             assert role == 'steward'
         transcript = day.root / (path.stem + '.jsonl')
         # A resumed Agent appends its new turn to the same transcript.
+        ending = {'type': 'assistant', 'message': {'content': message}}
+        fields = {'last_assistant_message': message}
+        if self.handback:
+            ending = {'type': 'assistant', 'message': {'role': 'assistant', 'content': [
+                {'type': 'tool_use', 'id': 'toolu_scripted', 'name': 'SubagentHandback',
+                 'input': {'message': message}}]}}
+            fields = {}
         with transcript.open('a' if resume else 'w') as lines:
             lines.write(json.dumps({'type': 'user', 'message': {'content': prompt}}) + '\n'
-                        + json.dumps({'type': 'assistant', 'message': {'content': message}}) + '\n')
+                        + json.dumps(ending) + '\n')
+            if self.handback:
+                lines.write(json.dumps({'type': 'user', 'toolEndsTurn': True, 'message': {'content': [
+                    {'type': 'tool_result', 'tool_use_id': 'toolu_scripted',
+                     'content': 'Report delivered to your caller.'}]}}) + '\n')
         day.hook('SubagentStop', agent_type=role, agent_id=path.stem,
-                 agent_transcript_path=str(transcript), last_assistant_message=message)
+                 agent_transcript_path=str(transcript), **fields)
         assert day.data['seats'][path.stem]['status'] == 'stopped'
         return Result(0, {'id': path.stem})
 

@@ -38,7 +38,7 @@ def _record(payload, root, findings=(), transcript_path=None):
     attributes = {
         'session.id': payload['session_id'],
         'gen_ai.tool.name': tool,
-        'gen_ai.tool.arguments': json.dumps(redact(payload['tool_input']), allow_nan=False),
+        'gen_ai.tool.arguments': json.dumps(redact(payload['tool_input'], prefix=True), allow_nan=False),
         'gen_ai.agent.name': role,
     }
     if findings:
@@ -67,6 +67,7 @@ def _record(payload, root, findings=(), transcript_path=None):
             def bind(data):
                 for seat in brief.seats(data).values():
                     if seat.get('brief') == reference:
+                        seat['transcript'] = str(transcript_path)  # brief.stuck reads it (#473)
                         sessions = seat.setdefault('trace_sessions', [])
                         if payload['session_id'] not in sessions:
                             sessions.append(payload['session_id'])
@@ -85,6 +86,8 @@ def check(payload):
     from wuwei import security, state, workspace
 
     security_data = None
+    span, session = (payload.get(key) if isinstance(payload, dict) and isinstance(payload.get(key), str)
+                     and payload[key] else 'unknown' for key in ('tool_name', 'session_id'))
     try:
         root = workspace.guard_scope(payload)
         if root is None:
@@ -124,9 +127,13 @@ def check(payload):
         reason = f'wuwei traces: {type(exc).__name__}: could not record tool span'
     print(reason, file=sys.stderr)
     try:
-        state.append_event('hook.post_tool_use_error', {'reason': reason}, root)
+        import hashlib
+        from wuwei.redact import redact
+        if redact(session) != session:  # a session id that carries a credential, as in check above
+            session = hashlib.sha256(session.encode()).hexdigest()
+        state.append_event('traces.gap', {'reason': reason, 'span': redact(span), 'session': session}, root)
     except BaseException as exc:
-        print(f'wuwei traces: {type(exc).__name__}: could not log PostToolUse error; run bin/wuwei doctor',
+        print(f'wuwei traces: {type(exc).__name__}: could not log traces.gap; run bin/wuwei doctor',
               file=sys.stderr)
     return (2, reason) if security_data is not None else (0, '')
 

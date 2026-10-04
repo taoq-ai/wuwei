@@ -20,6 +20,7 @@ PROBES = (  # data: order is the page order; docs/site/reference.md lists every 
     ('read_loop', 'hook PreToolUse allows a for loop over cat in .wuwei (exit 0)'),
     ('planner', 'planner session live, or no planner today'),
     ('memory', 'free memory at or above host.free_memory_mb'),
+    ('seats', 'no seat handed back or stopped unmeasured without a recorded result'),
 )
 # #347: a loop the guards cannot parse but that only reads must pass every Bash guard.
 READ_LOOP = 'for r in a b; do cat .wuwei/$r/report.json; done'
@@ -116,6 +117,15 @@ def _memory(root):
     return ('ok' if mib >= config['host']['free_memory_mb'] else 'failed'), f'{mib} MiB'
 
 
+def _seats(root):
+    from wuwei import brief
+    names = brief.stuck(state.read_state(root))
+    if not names:
+        return 'ok', 'none stuck'
+    return 'failed', (f'dead: {", ".join(names)}; run wuwei seat stop {names[0]} --verdict <file>, '
+                      'or --unmeasured "<reason>"')
+
+
 def measure(root):
     """Run every probe once: {name: {result: ok|failed|unmeasured, value}} in PROBES order."""
     root = Path(root)
@@ -129,7 +139,8 @@ def measure(root):
     def during():
         # In process while the launcher calls run: the tick budget holds only when they overlap.
         for name, check in (('state', _state), ('integrity', _integrity), ('config', _config),
-                            ('clocks', _clocks), ('planner', _planner), ('memory', _memory)):
+                            ('clocks', _clocks), ('planner', _planner), ('memory', _memory),
+                            ('seats', _seats)):
             try:
                 found[name] = check(root)
             except watch.ERRORS as exc:

@@ -75,6 +75,10 @@ def step(root):
             return _row('decision', f'Decision {identifier} waits for your answer; read it and '
                         'pick an option.', f'wuwei decision show {identifier}')
     seats = brief.seats(data)
+    if stuck := brief.stuck(data):
+        return _row('stuck', f'Seat {stuck[0]} ended with no recorded result; run the command with its '
+                    'report as the file, or stop it with --unmeasured "<reason>".',
+                    f'wuwei seat stop {stuck[0]} --verdict <file>')
     running = {seat['item'] for seat in seats.values() if seat['status'] == 'running'}
     items = data['items']
     names = approved(data)

@@ -161,7 +161,7 @@ def test_trace_threshold_survives_unrelated_metrics_error(root):
     assert check(payload) == (0, '')
     events = [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
     assert any(row['kind'] == 'steward.due' for row in events)
-    assert not any(row['kind'] == 'hook.post_tool_use_error' for row in events)
+    assert not any(row['kind'] == 'traces.gap' for row in events)
 
 
 def test_concurrent_reviews_record_one_note(root, monkeypatch):

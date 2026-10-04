@@ -577,7 +577,8 @@ def payload_field_cases():
                     'Edit': ['file_path', 'old_string', 'new_string'],
                     'Agent': ['prompt', 'description', 'subagent_type']}.get(payload.get('tool_name'), [])]
         for field in fields:
-            yield path, field
+            if field.split('.')[-1] in (payload['tool_input'] if field.startswith('tool_input.') else payload):
+                yield path, field  # handback.json has no last_assistant_message to remove (#473)
 
 
 @pytest.mark.parametrize('path', PAYLOADS, ids=lambda p: p.name)

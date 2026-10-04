@@ -11,6 +11,8 @@ supplied local snapshot, including its newer PreCompact schema.
 - `PreToolUse/agent.json`: common envelope plus Agent field-table examples.
 - `PostToolUse/example.json`: reference PostToolUse input example.
 - `SubagentStop/example.json`: reference SubagentStop input example.
+- `SubagentStop/handback.json`: `example.json` without `last_assistant_message`, as a background seat's stop arrives (#473).
+- `SubagentStop/handback-transcript.jsonl`: shape recorded from a background subagent transcript, neutralised: the SubagentHandback tool use and its tool result (#473).
 - `Stop/example.json`: reference Stop input example, including stop_hook_active=true.
 - `PreCompact/example.json`: reference PreCompact input example.
 

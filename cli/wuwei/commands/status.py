@@ -256,6 +256,7 @@ def snapshot(directory):
     result['pages'] = sum(row['tier'] == 'page' for row in active)
     result['answered'] = [row['reason'] for row in active if row['source'] == 'decision.answered']
     result['nudges'] = sum(row['tier'] == 'nudge' for row in active)
+    result['trace_gaps'] = sum(row['source'] == 'traces.gap' for row in active)
     result['prs_changed'] = sum(row['source'] == 'pr.changed' for row in active)
     result['solo'] = any(row == [] for row in data.get('pr_reviewers', {}).values())
     for key, field, destination in (('reply_obligations', 'due', 'next_reply_due'),
@@ -341,6 +342,8 @@ def line(data):
         parts.append(f'listen {data["listen"]}')
     if data.get('health'):
         parts.append(f'health {data["health"]}')
+    if data.get('trace_gaps'):
+        parts.append(f'traces: {data["trace_gaps"]} gaps')
     parts.extend(f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items())
     if data['gate_approved']:
         seats = data.get('seats', {})

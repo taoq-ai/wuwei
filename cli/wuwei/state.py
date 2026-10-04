@@ -411,14 +411,24 @@ def transition(item, phase, root=None):
                        payload={'item': item, 'phase': phase})
 
 
-def stop_seat(name, root=None, *, directory=None, agent_id=None):
-    """Release a reservation while preserving the used brief and seat identity."""
+def stop_seat(name, root=None, *, directory=None, agent_id=None, reason=None, by=None):
+    """Release a reservation while preserving the used brief and seat identity; with a reason
+    the seat is unmeasured: its report could not be recorded (#473)."""
+    fields = {'reason': reason} if reason else {}
+    if by:
+        fields['by'] = by
+
     def update(data):
-        data['seats'][name].update(status='stopped', stopped_at=workspace.now().isoformat())
+        seat = data['seats'][name]
+        seat.pop('reason', None)
+        seat.pop('by', None)
+        seat.update(status='unmeasured' if reason else 'stopped', stopped_at=workspace.now().isoformat(),
+                    **fields)
         if isinstance(agent_id, str) and agent_id.strip():
-            data['seats'][name]['agent_id'] = agent_id
+            seat['agent_id'] = agent_id
+    payload = {'name': name, **({'status': 'unmeasured'} if reason else {}), **fields}
     return _write_state(update, root, reserved=False, kind='seat stopped',
-                        payload={'name': name}, directory=directory)
+                        payload=payload, directory=directory)
 
 
 def recover(root=None, *, confirm):

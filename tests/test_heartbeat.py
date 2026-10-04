@@ -381,7 +381,7 @@ def test_heartbeat_command(ws, capsys, index, result, code):
     assert main(['heartbeat']) == code
     out = capsys.readouterr().out.splitlines()
     assert [line.split(':')[0] for line in out] == [name for name, _ in heartbeat.PROBES]
-    assert out[3].startswith('state: ok ') and out[-1] == 'memory: ok 8192 MiB'
+    assert out[3].startswith('state: ok ') and out[-2:] == ['memory: ok 8192 MiB', 'seats: ok none stuck']
     assert not (workspace.day_dir(root) / 'state.json').exists()
     assert events(root) == []
     assert service.pings == []
@@ -392,3 +392,16 @@ def test_heartbeat_command_outside_a_workspace(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     assert main(['heartbeat']) == 2
     assert 'wuwei heartbeat:' in capsys.readouterr().err
+
+
+def test_seats_probe(ws, tmp_path):
+    # #473: a seat that handed back with no stop is dead within one tick.
+    root = ws[0]
+    transcript = tmp_path / 'agent.jsonl'
+    transcript.write_text((ROOT / 'tests/payloads/SubagentStop/handback-transcript.jsonl').read_text())
+    state._write_state(lambda data: data['seats'].update({'builder': {
+        'role': 'builder', 'item': 'A', 'status': 'running', 'transcript': str(transcript)}}),
+        root, reserved=False)
+    probes = heartbeat.measure(root)
+    assert list(probes)[-1] == 'seats'
+    assert probes['seats']['result'] == 'failed' and 'wuwei seat stop builder' in probes['seats']['value']
