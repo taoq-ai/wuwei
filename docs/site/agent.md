@@ -1,74 +1,86 @@
 # What the session knows
 
-This page is for a Claude Code session that starts in a WUWEI workspace with no prior
-context. Every SessionStart in the workspace points here.
-
-## What WUWEI is
-
-WUWEI runs a coding day the way a careful engineering team works. The planner session
-ranks the work with the owner, seats build and review each change in their own worktree,
-and merges follow a policy. The day lives in `.wuwei/`, not in the transcript, so any
-session can pick it up.
-
-The first rule: run `wuwei next` and do the step it names. It reads the day's files and
-prints one line, `<state>: <step> Run: <command>` (`--json` gives `state`, `step` and
-`command`). `wuwei` means the absolute path in `.wuwei/executable`: read it once with
-the Read tool and use it as the first word of a plain command, never through a variable or
-a command substitution; or `python3 -P -m wuwei`. Never run Python without `-P`.
+This page is for a Claude Code session in a WUWEI workspace. Every SessionStart points at
+`wuwei guide`, which prints the reference below; `init` writes the same text into CLAUDE.md.
 
 ## Roles
 
 Each role has a charter in `charters/<role>.md` (sentinels as `sentinel-<area>.md`).
 
-- `planner`: this session, once it registers with `/wuwei:wuwei-plan`. It runs the day and
-  launches every other seat.
+- `planner`: this session, once it registers with `wuwei plan session`; it runs the day and
+  launches every other seat. `/wuwei:wuwei-plan` and `/wuwei:wuwei-report` re-run the plan or the report.
 - `lead`: launched by the planner at plan time; it proposes and ranks the candidates.
 - `builder`: one per item, launched from `wuwei build next`; it works only in its worktree.
-- `sentinel` (arch, quality, security, goal): launched from `wuwei dispatch next`;
-  each reviews a change it did not write and returns a verdict.
+- `sentinel` (arch, quality, security, goal): launched from `wuwei dispatch next`; each
+  reviews a change it did not write and returns a verdict.
 - `shepherd`: follows raised pull requests; the listener can start it headless.
 - `steward`: launched once at close from `wuwei close`; it reviews the day's procedure.
 
-## The day in order
+<!-- wuwei:guide:start -->
+WUWEI plugin reference, generated from the plugin tables; `wuwei guide` prints it.
+Run `wuwei next` and do the step it names; run every action a command returns unchanged.
 
-1. Setup, by the owner in a host terminal: `bin/wuwei setup --shadow` creates the
-   workspace, finds the repositories, calibrates them and asks the interview.
-2. Plan: `/wuwei:wuwei-plan` registers the planner (`wuwei plan session`), runs
-   `wuwei mcp check`, launches the lead, orders its JSON with `wuwei rank` and writes
-   `days/<date>/plan.md` with `wuwei plan propose`.
-3. Morning gate: one AskUserQuestion, `Morning gate (days/<date>/plan.md): Approve today's plan as proposed?`; the separate questions only after `Change something`.
-   Only on the owner's answers, `wuwei plan approve --items <ids> --goals-confirmed`.
-4. Build, per item: `wuwei worktree add <item>`, `wuwei brief builder <item> <name>
-   --worktree <path> --file -`, then `wuwei build next <item>` until it returns `done`.
-   The builder runs the spec engine's steps first (the brief's `Spec:` line); a gap
-   comes back as a failing check named `spec`.
-5. Gates: `wuwei dispatch next <item>` names the gate briefs to write and the seats to
-   launch; after each seat stops, run the `wuwei dispatch receive` call it gave you.
-6. Pull request: `wuwei pr raise`, then `wuwei pr act <ref>` for each next action;
-   `wuwei merge check` shows whether the merge policy allows it.
-7. Close: `/wuwei:wuwei-report` runs `wuwei close`, `wuwei retro`, `wuwei promote`,
-   `wuwei report` and `wuwei close` again until it exits 0.
+## Commands the session runs
+wuwei is the absolute path in .wuwei/executable: read it once and use it as the first word of a plain command, never through a variable. Exit 0 is clean, 1 is a finding to resolve with the owner, 2 means it could not run: show the reason and stop that path.
+- next: Print where the day stands and the one next step
+- guide: Print the plugin reference the session reads at start
+- status: show day status
+- nudges: List open nudges and pages
+- plan: Propose or approve the morning plan
+- decision: Check and route decision records
+- worktree: Create an anchored item worktree
+- brief: Write and log a seat brief
+- build: Select the next builder action
+- dispatch: Decide planner gate and discovery work
+- pr: Measure owned PRs or record a verified disposition
+- merge: Check or merge an eligible PR
+- reply: Reply to one unthreaded human obligation
+- discover: Discover candidate work
+- note: manage workspace notes
+- tracker: Open tickets, log comments, mark done
+- metrics: Show recorded process metrics
+- report: Show the owner report
+- retro: Compile the steward retro
+- close: Refuse day close until all obligations land
+- steward: Run a steward review or acknowledge steering
+- docs: Write an item's docs page or publish the day's page
+- doctor: Find install, host, workspace and guard problems and their fixes
+- why: Explain from records why an item, decision or refusal happened
+- state: Read or update day state
+- shadow: Show what shadow mode would have refused
+- heartbeat: Probe that hooks refuse, allow and answer in budget
+- integrity: Check signed plugin integrity
+- runtime: Dispatch and inspect runtime jobs
+- sessions: List registered sessions, roles and claims
+Read-only, never refused: board, calibrate --questions, config check, doctor, guide, heartbeat, integrity check, mcp check, memory show, memory status, plan gate, sessions, shadow report, status, why, and --help on any command.
 
-Run every action a command returns unchanged. Exit 0 is clean, 1 is a finding to resolve
-with the owner, 2 means it could not run: show the reason and stop that path.
+## Owner only: ask the owner to run these in a host terminal
+config add-repo, config promote, config set, decide, decision outcome, drafts approve, drafts drop, goals edit, integrity reconfirm, listen uninstall, mcp decide, memory forget, plan set, remote ack, setup, state recover, telemetry send, voice edit, watch uninstall.
 
-## What the hooks refuse
+## Command forms
+- One plain command per Bash call.
+- Variables, loops, pipes or substitutions: write the commands to a file with the Write tool and run bash <file>; a plain git or gh command stays plain.
+- A top-level cd, pushd or popd may leave the workspace; run it in a subshell, (cd <dir> && <command>), or use git -C <dir>.
+- Python only with -P; the CLI also runs as python3 -P -m wuwei.
 
-- Records under `.wuwei/` (state, events, config, verdicts, decisions) change only through
-  the CLI, never through Edit, Write or a shell redirect. Reading them (Read, Grep, `cat`,
-  `grep`, `jq`, `ls`) is always allowed.
-- Item worktrees come only from `wuwei worktree add`.
-- A seat launches only from a logged brief, with the returned prompt unchanged.
-- No deploys, no merge outside `wuwei merge`, no pull request approvals.
-- Python only with `-P`.
-- In an item worktree, a source edit before the spec steps are done (`specify first:
-  /speckit.specify`); only the owner skips one with `wuwei plan set <item> spec=skipped`.
+## Records and questions
+- State and config files are protected; use the wuwei CLI for state changes; owner edits run outside agent tools.
+- The workflow writes the records through the CLI; the owner answers cards and never edits a file.
+- Ask the owner with AskUserQuestion, using the widget a command prints unchanged: `wuwei decision show D-n --widget`, `wuwei mcp check --widget`, `wuwei doctor --fix --widget`, `wuwei close --widget`, `wuwei consolidate --widget`, `wuwei telemetry proposals --widget`, `wuwei plan gate`, `wuwei calibrate --questions`. Record the answer with the widget's `record` command; when it runs in a host terminal, show the owner that line. Without AskUserQuestion (a headless run), write the decision record and run `wuwei decision route D-n` so it reaches the DM.
 
-A refusal names its reason and ends with a `posture:` line. Use the accepted form it
-names; never look for a way around it.
+## Guard areas by posture
+| Area | observe | guarded | strict |
+| --- | --- | --- | --- |
+| integrity | warn | block | block |
+| mcp | warn | warn | block |
+| publish | warn | block | block |
+| records | block | block | block |
+| outward | warn | warn | block |
+| seats | warn | warn | block |
 
-## Where each record lives
+Floors in every posture: records block; the owner-only commands are refused in every posture. A refusal names its reason and the accepted form and ends with a `posture:` line: use that form, never a way around it.
 
+## Where records live
 Paths are under `.wuwei/`; `<date>` is today.
 
 | Record | Written by |
@@ -82,16 +94,4 @@ Paths are under `.wuwei/`; `<date>` is today.
 | `days/<date>/report.md` | `report` |
 | `days/<date>/retro/` | `retro` |
 | `memory/` | `note`, `promote` |
-
-## How the owner answers
-
-Ask with AskUserQuestion in this session. The owner can also answer from the phone
-through Remote Control or the Slack DM. Some commands are the owner's alone and run in a
-host terminal in every posture: `decide`, `decision outcome`, `drafts approve`, `mcp decide`,
-`config set` and `setup`. Name the exact command; never ask the owner to edit a file.
-
-## First day
-
-The owner runs `bin/wuwei setup --shadow` in a host terminal, then you run
-`/wuwei:wuwei-plan`. On the first day the plan skill also asks the calibration questions
-after the morning gate. The owner's guide to the same day is the [daily path](daily.md).
+<!-- wuwei:guide:end -->

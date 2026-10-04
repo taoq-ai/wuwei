@@ -183,3 +183,19 @@ def test_unrecognised_copy_stays_opaque(workspace, posture, monkeypatch, capsys)
     else:
         assert code == 0, out
         assert len(warned) == 1 and 'opaque interpreter command' in warned[0], warned
+
+
+@pytest.mark.parametrize('posture', POSTURES)
+def test_injected_commands_pass(workspace, posture, monkeypatch, capsys):
+    # #476: every command the SessionStart injection names passes PreToolUse as written.
+    import re
+    from wuwei.commands import next as next_command
+    monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
+    text = '\n'.join(next_command.orientation({'state': state, 'step': '.', 'command': '.'}, posture, None, 'S')
+                     for state in ('plan', 'close'))
+    found = re.findall(r'`(wuwei [^`]+)`', text) + ['wuwei guide', 'wuwei next']
+    assert 'wuwei plan session S' in found and 'wuwei close' in found
+    for command in found:
+        command = command.replace('<json-file>', 'proposal.json').replace('<approved IDs>', 'A')
+        assert '<' not in command and not {'--help', '-h'} & set(command.split()), command
+        passes(workspace, workspace.exe + command.removeprefix('wuwei'), posture, monkeypatch, capsys)

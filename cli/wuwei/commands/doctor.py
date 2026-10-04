@@ -241,6 +241,10 @@ def _workspace(root, config, error, found):
                          apply='init-upgrade', detail=upgrades))
     else:
         rows.append(_row('workspace', 'template', 'ok', 'current'))
+    for line in lines:
+        if 'guide block not written: ' in line:
+            rows.append(_row('workspace', 'guide', 'warn', line.split('not written: ', 1)[1].removesuffix('; run bin/wuwei doctor for the fix'),
+                             'fix the memory.export_to file as the reason says, then run wuwei init --upgrade'))
     launcher = integrity.PLUGIN / 'bin/wuwei'
     try:
         recorded = (root / '.wuwei/executable').read_text(encoding='utf-8').splitlines()[0]

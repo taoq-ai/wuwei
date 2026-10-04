@@ -43,8 +43,20 @@ def check_result(result):
     return data
 
 
-def validate(data, events, hooks):
-    """Return measured findings. Assistant prose cannot satisfy any assertion."""
+def conformance(events, hooks):
+    """#476: one finding per recorded refusal and per --help or -h call, CLI row or Bash command."""
+    findings = [f"refusal: {row['payload'].get('reason')}" for row in events if row['kind'] == 'hook.refusal']
+    calls = [row['args'] for row in hooks if row['event'] == 'cli' and isinstance(row.get('args'), list)]
+    calls += [str(row.get('input', {}).get('command', '')).split() for row in hooks
+              if row['event'] == 'PreToolUse' and row.get('tool') == 'Bash']
+    findings += [f"help call: {' '.join(words)}" for words in calls if {'--help', '-h'} & set(words)]
+    return findings
+
+
+def validate(data, events, hooks, start=False):
+    """Return measured findings. Assistant prose cannot satisfy any assertion. start: the
+    session got only start_prompt, so no probe, Skill call or scripted Stop block is required,
+    and any refusal or help call is a finding."""
     findings = []
     def require(condition, message):
         if not condition:
@@ -73,15 +85,16 @@ def validate(data, events, hooks):
                     and e['payload'].get('role') == role and e['payload'].get('round') == 'initial'
                     and e['payload'].get('verdict') == 'PASS' for e in events), f'{role} gate missing')
     for event, code in [('SessionStart', 0), ('PreToolUse', 0), ('PostToolUse', 0),
-                        ('SubagentStop', 0), ('Stop', 2), ('Stop', 0)]:
+                        ('SubagentStop', 0), *([] if start else [('Stop', 2)]), ('Stop', 0)]:
         require(any(h['event'] == event and h['exit'] == code for h in hooks),
                 f'missing hook exit: {event}={code}')
-    require(any(h['event'] == 'PreToolUse' and h['exit'] == 2 and h.get('tool') == 'Agent'
-                and h.get('input', {}).get('description') == 'headless refusal probe' for h in hooks),
-            'unbriefed Agent was not refused')
-    require(any(h['event'] == 'PostToolUse' and h['exit'] == 0 and h.get('tool') == 'Skill'
-                and h.get('input', {}).get('skill') == 'wuwei:wuwei-plan' for h in hooks),
-            'plan skill was not invoked')
+    if not start:
+        require(any(h['event'] == 'PreToolUse' and h['exit'] == 2 and h.get('tool') == 'Agent'
+                    and h.get('input', {}).get('description') == 'headless refusal probe' for h in hooks),
+                'unbriefed Agent was not refused')
+        require(any(h['event'] == 'PostToolUse' and h['exit'] == 0 and h.get('tool') == 'Skill'
+                    and h.get('input', {}).get('skill') == 'wuwei:wuwei-plan' for h in hooks),
+                'plan skill was not invoked')
     actions = [(i, h['result']) for i, h in enumerate(hooks)
                if h.get('args') == ['build', 'next', 'A'] and h['exit'] == 0
                and isinstance(h.get('result'), dict) and h['result'].get('action') == 'launch']
@@ -101,6 +114,9 @@ def validate(data, events, hooks):
     stops = [(i, h['exit']) for i, h in enumerate(hooks)
              if h['event'] == 'Stop' and h.get('session') == planner]
     closes = [i for i, h in enumerate(hooks) if h.get('args') == ['close'] and h['exit'] == 0]
+    if start:
+        require(bool(closes), 'close did not succeed')
+        return findings + conformance(events, hooks)
     require(bool(planner) and bool(stops) and stops[-1][1] == 0 and
             any(block < close < stops[-1][0] for block, code in stops if code == 2 for close in closes),
             'planner must block, close successfully, then stop cleanly')
@@ -294,18 +310,31 @@ error occurs, report it and stop. No prose response is used as proof of success.
 '''
 
 
-def exercise(*, local_login=False):
+def start_prompt():
+    """#476: what an owner says; the SessionStart injection has to carry the rest."""
+    return f'''Start the day.
+My answers for this fixture day, so you need not ask me: I approve proposal.json as
+supplied (goals G-1, queue A, CAP 1, the seat policy and the envelope). It is the
+lead proposal, so launch no discovery. This is a headless run: ask me nothing.
+All work stays inside this scratch workspace; no network, commits, pushes, pull
+requests, tracker or chat calls. This fixture publishes nothing: when item A has
+passed its gates, park it with the decision in park.md as today's D-1 (copy it to
+.wuwei/days/{DAY}/decisions/D-1.md). Then close the day.
+'''
+
+
+def exercise(*, local_login=False, start=False):
     with tempfile.TemporaryDirectory(prefix='wuwei-headless-') as temporary:
         root, plugin, env = prepare(Path(temporary), local_login=local_login)
         print('Headless e2e: running Claude (48 turns, USD 3, 300 seconds)', flush=True)
         result = adapter.run(adapter.claude_command(plugin), cwd=root, env=env,
-                             input=prompt(root, plugin), timeout=300)
+                             input=start_prompt() if start else prompt(root, plugin), timeout=300)
         check_result(result)
         day = root / '.wuwei/days' / DAY
         data = json.loads((day / 'state.json').read_text())
         events = [json.loads(line) for line in (day / 'events.jsonl').read_text().splitlines()]
         hooks = [json.loads(line) for line in (root / 'headless-hooks.jsonl').read_text().splitlines()]
-        findings = validate(data, events, hooks)
+        findings = validate(data, events, hooks, start=start)
         for finding in findings:
             print('headless e2e finding: ' + finding)
         if not findings:
@@ -512,6 +541,8 @@ def main(argv=None):
     parser.add_argument('--local-login', action='store_true', help='Use local Claude login without an API key')
     parser.add_argument('--rehearsal', action='store_true',
                         help='Bounded live release rehearsal against WUWEI_REHEARSAL_REPO')
+    parser.add_argument('--start', action='store_true',
+                        help='Give the session only "Start the day." and assert no refusal or help call')
     args = parser.parse_args(argv)
     if args.rehearsal:
         return rehearse(local_login=args.local_login)
@@ -519,7 +550,7 @@ def main(argv=None):
         print('headless e2e unmeasured: ANTHROPIC_API_KEY is not set')
         return 2
     try:
-        return exercise(local_login=args.local_login)
+        return exercise(local_login=args.local_login, start=args.start)
     except ERRORS as exc:
         print('headless e2e unmeasured: ' + str(exc).removeprefix('unmeasured: '))
         return 2

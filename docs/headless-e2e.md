@@ -20,6 +20,16 @@ claude auth login
 python3 scripts/headless_e2e.py --local-login
 ```
 
+`--start` runs the same fixture day as a conformance check of what a fresh session
+knows: the session gets only "Start the day." and the fixture owner's answers, with no
+skill, step or command named. The runner then asserts the day reached the gate,
+dispatch and a successful close with zero `hook.refusal` events and zero `--help` or
+`-h` calls. It is opt-in and paid like the scripted run:
+
+```sh
+python3 scripts/headless_e2e.py --start --local-login
+```
+
 The local option copies a file-based OAuth credential into a private temporary
 HOME when present. On macOS Claude can use its existing OS keychain. No user
 settings, installed plugins, MCP servers or workspace environment are inherited.

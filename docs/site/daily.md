@@ -39,6 +39,8 @@ one pass and prints the fix for anything that is not ok; `bin/wuwei doctor --fix
 deterministic fixes after one confirmation. When something fails on the first day, see
 [troubleshooting](recovery.md#troubleshooting).
 
+Then open Claude Code in the workspace and say what you want; the session knows the rest.
+
 ## 2. Configure
 
 `setup` does the configuration in one pass. It finds the git repositories in the project
