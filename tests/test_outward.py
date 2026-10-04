@@ -159,7 +159,7 @@ def test_local_approval_cannot_authorize_send(configured):
 
 @pytest.mark.parametrize('text,code,decision', [
     ('fixed in abc1234', 0, 'send'), ('A technical claim.', 1, 'draft'),
-    ('', 2, 'draft'), (None, 2, 'draft'),
+    ('', 1, 'draft'), (None, 2, 'draft'),
 ])
 def test_reusable_classification(configured, text, code, decision):
     from wuwei import outward
@@ -182,16 +182,16 @@ def test_reusable_classification(configured, text, code, decision):
     ('mcp__slack__post_message', {'message': 'drafts are with the owner'}, 1),
     ('mcp__slack__post_message', {'body': 'fixed in abc1234'}, 1),
     ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'body': 'This is thread safe.'}, 1),
-    ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'blocks': [{'text': 'per Pat'}]}, 2),
-    ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'approved': True}, 2),
-    ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'approved_draft_id': 'draft-1'}, 2),
-    ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'attachments': []}, 2),
+    ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'blocks': [{'text': 'per Pat'}]}, 1),
+    ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'approved': True}, 1),
+    ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'approved_draft_id': 'draft-1'}, 1),
+    ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'attachments': []}, 1),
     ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'channel': {'text': 'hidden'}}, 2),
     ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'draft': {'draft': {'text': 'hidden'}}}, 2),
-    ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'title': None}, 2),
-    ('mcp__slack__post_message', {'text': ['fixed in abc1234']}, 2),
+    ('mcp__slack__post_message', {'text': 'fixed in abc1234', 'title': None}, 1),
+    ('mcp__slack__post_message', {'text': ['fixed in abc1234']}, 1),
     ('mcp__slack__post_message', {'draft': 'fixed in abc1234'}, 2),
-    ('mcp__slack__post_message', {}, 2), ('mcp__slack__post_message', [], 2),
+    ('mcp__slack__post_message', {}, 1), ('mcp__slack__post_message', [], 2),
     ('tracker.claim', {'item': 'issue-1'}, 0),
     ('mcp__slack__search', {'query': 'per Pat'}, 0),
     ('other.chat.post', {'text': 'per Pat'}, 0),
@@ -253,7 +253,7 @@ def test_hook_integration(configured, monkeypatch, capsys, code):
     root, _ = configured
     call = payload(root, 'per Pat, the fix is in' if code == 1 else 'fixed in abc1234')
     if code == 2:
-        call['tool_input'] = {'blocks': []}
+        call['tool_input'] = []
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(call)))
     assert run(SimpleNamespace(event='PreToolUse')) == (2 if code else 0)
     output = capsys.readouterr()
@@ -623,7 +623,7 @@ def test_humanize_lint_kinds(configured, capsys, channel, is_dm, kind):
     ({'humanize': False}, {'text': TELL_TEXT}, 0),
     ({'humanize_kinds': ['dm']}, {'text': TELL_TEXT}, 0),
     ({}, {'text': 'We use `delve` in code.'}, 0),
-    ({}, {'text': 1}, 2),
+    ({}, {'text': 1}, 0),
 ])
 def test_humanize_lint_gates(configured, change, inputs, code):
     from wuwei import outward
@@ -1292,6 +1292,10 @@ def test_owner_config(configured):
     ({}, 'slack', False), ({'channel': 'C1'}, 'slack', False),
     ({'recipients': ['pat@example.test']}, 'mail', True),
     ({'recipients': ['pat@example.test']}, 'slack', False),
+    ({'to': 'pat@example.test'}, 'mail', True),
+    ({'to': 'pat@example.test', 'cc': ['x@other.test']}, 'mail', False),
+    ({'to': 'pat@example.test', 'bcc': 'x@other.test'}, 'mail', False),
+    ({'to': 'pat@example.test', 'ccRecipients': [{'emailAddress': {'address': 'x@other.test'}}]}, 'mail', False),
     ({'channel': 'D01'}, 'code_host', False), ({'channel': 'D01'}, 'tracker', False),
     ({'channel': 'D01'}, 'docs', False),
 ])
@@ -1396,3 +1400,110 @@ def test_guard_to_owner_floor(configured):
         code, reason = check_tier(payload(root, 'Thanks', tool=opaque('slack_send_message'), channel='U02'))
         assert code == held and words in reason, (mode, reason)
     assert all(row['destination'] != 'D01' for row in state.read_state(root).get('drafts', {}).values())
+
+
+def test_guard_owner_mail_with_outside_cc_is_not_owner_only(configured):
+    # #501 review F1: an outside cc or bcc means the owner is not the only reader.
+    from wuwei.guards.outward import check_tier
+    root = configured[0]
+    with_owner(root)
+    set_posture(root, 'strict', 'block')
+    write_config(root, f'\n[outward.modes]\n"{UUID}" = "refuse"\n')
+    mail = {'to': 'pat@example.test', 'subject': 'numbers', 'body': 'Our layoffs list'}
+    call = payload(root, tool=opaque('send_mail'))
+    call['tool_input'] = mail
+    assert check_tier(call) == (0, '')
+    for extra in ({'cc': ['outsider@evil.test']}, {'bcc': 'outsider@evil.test'}):
+        call['tool_input'] = {**mail, **extra}
+        code, reason = check_tier(call)
+        assert code == 2 and 'refuses writes' in reason, (extra, reason)
+
+
+# #501: recorded connector tool_input shapes; MESSAGE marks where the message text sits.
+PAGE = '00000000111122223333444444444444'
+CORPUS = [
+    ('slack', {'channel': 'C1', 'text': 'MESSAGE'}, ['C1']),
+    ('tracker', {'issue_key': 'DEMO-12', 'comment': 'MESSAGE'}, ['DEMO-12']),
+    ('docs', {'pageId': PAGE, 'body': {'storage': {'value': 'MESSAGE', 'representation': 'storage'}}}, [PAGE]),
+    ('docs', {'page_id': PAGE, 'children': [{'object': 'block', 'type': 'paragraph', 'paragraph': {
+        'rich_text': [{'type': 'text', 'text': {'content': 'MESSAGE'}}]}}]}, [PAGE]),
+    ('code_host', {'owner': 'acme', 'repo': 'widgets', 'pull_number': 7, 'body': 'MESSAGE'}, ['widgets', '7']),
+    ('other', {'issue_id': 'PROJ-1', 'status': 'resolved'}, ['PROJ-1']),
+    ('mail', {'to': 'someone@example.test', 'subject': 'Weekly note', 'body': 'MESSAGE'}, ['someone@example.test']),
+]
+
+
+def shaped(shape, text):
+    return json.loads(json.dumps(shape).replace('MESSAGE', text))
+
+
+def test_text_fields_corpus(configured):
+    from wuwei import outward
+    root, config = configured
+    for channel, shape, destinations in CORPUS:
+        texts, found = outward._text(shaped(shape, 'Tests passed'))
+        assert found == destinations, shape
+        assert ('Tests passed' in texts) == ('MESSAGE' in json.dumps(shape)), shape
+        assert not {'block', 'paragraph', 'resolved', 'text', 'acme', PAGE, 'PROJ-1'} & set(texts), texts
+        if 'MESSAGE' in json.dumps(shape):
+            code, reason = outward.check_send(shaped(shape, 'Your salary is set'), root, config, {channel})
+            assert code == 1 and 'outbound.sensitive_keywords' in reason, (shape, reason)
+
+
+def test_connector_writes_through_the_guard(configured):
+    import re
+    from wuwei.guards.outward import check_lint, check_tier
+    root = configured[0]
+    notion = {**payload(root, tool='mcp__notion__append_block_children'),
+              'tool_input': shaped(CORPUS[3][1], 'Your salary is set')}
+    code, reason = check_tier(notion)
+    match = re.fullmatch(HELD, reason)
+    assert code == 1 and match, reason
+    assert match[2].startswith('approval tier sensitive') and 'outbound.sensitive_keywords' in match[2]
+    write_config(root, f'\n[outward.servers]\n"{UUID}" = "tracker"\n\n[outward.modes]\n"{UUID}" = "send"\n')
+    jira = {**payload(root, tool=opaque('addCommentToJiraIssue')),
+            'tool_input': {'issue_key': 'DEMO-12', 'comment': 'tests passed'}}
+    assert check_tier(jira) == check_lint(jira) == (0, '')
+
+
+def test_text_fields_keep_known_checks():
+    from wuwei import outward
+    inputs = {'title': 'a', 'draft': {'description': 'b', 'teamId': 't'}, 'channel': 'C1',
+              'recipients': ['dev'], 'is_dm': False, 'issue_number': 3, 'thread': None}
+    assert outward._text(inputs) == (['b', 'a'], ['C1', 'dev'])
+    for bad in ({'is_dm': 'false'}, {'recipients': 'dev'}, {'channel': {'text': 'hidden'}},
+                {'issue_number': True}, {'draft': 'x'}, {'draft': {'draft': {}}},
+                {'parent': {'page_id': 'p'}}):
+        with pytest.raises(ValueError):
+            outward._text({'text': 'a', **bad})
+
+
+def test_textless_write(configured):
+    # #501: a write without text has nothing to lint; its mode and destination decide.
+    import re
+    from wuwei import drafts, outward, state
+    from wuwei.guards.outward import check_lint, check_tier
+    root, config = configured
+    resolve = {**payload(root, tool=opaque('resolve_issue')),
+               'tool_input': {'issue_id': 'PROJ-1', 'status': 'resolved'}}
+    assert check_tier(resolve) == check_lint(resolve) == (0, '')
+    assert outward.check_lint({'issue_id': 'PROJ-1'}, root, config, {'other'}) == (0, '')
+    assert outward.check_lint({'text': '', 'channel': 'C1'}, root, config, {'chat'})[0] == 2
+    code, reason = outward.check_tier({'text': ' ', 'channel': 'C1'}, root, config, {'chat'})
+    assert code == 2 and 'nonempty text required' in reason
+    write_config(root, f'\n[outward.modes]\n"{UUID}" = "draft"\n')
+    code, reason = check_tier(resolve)
+    match = re.fullmatch(HELD, reason)
+    assert code == 1 and match, reason
+    assert drafts.read(state.read_state(root))[match[1]]['text'] == ''
+
+
+def test_tool_input_not_an_object(configured):
+    from wuwei.guards.outward import check_lint, check_tier
+    root = configured[0]
+    for check in (check_tier, check_lint):
+        for inputs, shape in (([], 'list'), ('x', 'str')):
+            call = {**payload(root, tool=opaque('slack_send_message')), 'tool_input': inputs}
+            code, reason = check(call)
+            assert (code, reason) == (2, f'outward: tool_input is not an object; got {shape}; '
+                                         'pass the tool arguments as a JSON object')

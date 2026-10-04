@@ -174,7 +174,10 @@ def _check(payload, policy):
             return _unmatched(tool, root, config, policy)
         if len(channels) != 1:
             return UNRUN, 'outward: ambiguous tool channel configuration; pass one channel per call'
-        inputs = payload['tool_input']
+        inputs = payload.get('tool_input')
+        if not isinstance(inputs, dict):
+            return UNRUN, (f'outward: tool_input is not an object; got {type(inputs).__name__}; '
+                           'pass the tool arguments as a JSON object')
         if re.search(r'(?:^|_)(?:dm|direct_message)(?:_|$)', tool, re.IGNORECASE):
             inputs = {**inputs, 'is_dm': True}
         channel = next(iter(channels))
@@ -188,8 +191,6 @@ def _check(payload, policy):
             result = (FINDINGS, f'{outward.APPROVAL_REQUIRED}: connector mode draft for {channel}: outward.modes')
         elif found == 'send' and policy is outward.check_tier:
             result = outward.check_send(inputs, root, config, channels)
-        elif found == 'send' and not outward._text(inputs)[0]:
-            result = (CLEAN, '')  # Nothing to lint in a write without text.
         else:
             result = policy(inputs, root, config, channels)
         if result[0] == FINDINGS and result[1].startswith(outward.APPROVAL_REQUIRED):

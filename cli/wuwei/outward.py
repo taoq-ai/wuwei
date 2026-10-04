@@ -149,20 +149,42 @@ METADATA_FIELDS = {'ref', 'channel', 'thread', 'thread_ts', 'item', 'issue', 'is
 BOOL_FIELDS = {'is_dm', 'is_external', 'is_shared', 'is_connected', 'is_client'}
 
 
-def _text(inputs, *, nested=False):
+# #501: destination keys, in the order a draft's destination is picked from them.
+DESTINATIONS = ('channel', 'channel_id', 'recipient', 'recipients', 'to', 'issue_key',
+                'issue_id', 'page_id', 'database_id', 'repo', 'pull_number', 'cc', 'bcc')
+NOT_TEXT = METADATA_FIELDS | BOOL_FIELDS | {'issue_number', 'status', 'type', 'object'}
+
+
+def _strings(value, key, texts, found, text=True, destination=None):
+    """#501: walk one payload value; a string is text unless a key on its path is an id,
+    flag, structural or destination key; destination values go to found."""
+    name = re.sub(r'(?<=[a-z0-9])(?=[A-Z])', '_', key).lower()
+    if name in DESTINATIONS:
+        destination = name
+    if (destination or key in NOT_TEXT or name in NOT_TEXT or name == 'id'
+            or name.endswith(('_id', '_ids'))):
+        text = False
+    if isinstance(value, dict):
+        for child, item in sorted(value.items()):
+            _strings(item, child, texts, found, text, destination)
+    elif isinstance(value, list):
+        for item in value:
+            _strings(item, key, texts, found, text, destination)
+    elif destination and (isinstance(value, str) or type(value) is int):
+        found.append((DESTINATIONS.index(destination), str(value)))
+    elif text and isinstance(value, str):
+        texts.append(value)
+
+
+def _text(inputs):
+    """(texts, destinations) of a payload; known policy keys keep their type checks (#501)."""
     if not isinstance(inputs, dict):
         raise ValueError('expected input object; pass the outward input as a JSON object of fields such as text and channel')
-    texts, channels = [], []
-    for key, value in sorted(inputs.items()):
-        if key in TEXT_FIELDS:
-            if not isinstance(value, str):
-                raise ValueError('expected plain text; pass text, message, body, title and description as plain strings')
-            texts.append(value)
-        elif key == 'draft' and not nested:
-            child_texts, child_channels = _text(value, nested=True)
-            texts.extend(child_texts)
-            channels.extend(child_channels)
-        elif key in BOOL_FIELDS:
+    nested = inputs.get('draft', {})
+    if not isinstance(nested, dict) or 'draft' in nested:
+        raise ValueError('unsupported input field; remove the unknown field, or ask the owner if it is needed')
+    for key, value in [*inputs.items(), *nested.items()]:
+        if key in BOOL_FIELDS:
             if type(value) is not bool:
                 raise ValueError('expected boolean audience flag; set is_dm, is_external, is_shared, is_connected and is_client to true or false')
         elif key == 'recipients':
@@ -178,10 +200,9 @@ def _text(inputs, *, nested=False):
             if key in {'channel', 'channel_id'}:
                 if not isinstance(value, str) or not value.strip():
                     raise ValueError(f'invalid channel; {DAMAGED}')
-                channels.append(value)
-        else:
-            raise ValueError('unsupported input field; remove the unknown field, or ask the owner if it is needed')
-    return texts, channels
+    texts, found = [], []
+    _strings(inputs, '', texts, found)
+    return texts, [value for _, value in sorted(found, key=lambda pair: pair[0])]
 
 
 OWNER = {'chat': 'slack', 'slack': 'slack', 'mail': 'mail'}  # #495: kinds with a private audience.
@@ -196,8 +217,10 @@ def owner_only(context, config, kind):
     found = config['outbound']['owner'].get(OWNER.get(kind), '')
     mine = ({value.casefold() for key, value in found.items() if re.fullmatch(SLACK_SHAPE.get(key, ''), value)}
             if isinstance(found, dict) else {found.casefold()} - {''})
-    _, destinations = _text(context)
+    texts, destinations = _text(context)
     targets = [*destinations, *context.get('recipients', []), *filter(None, [context.get('recipient')])]
+    if kind == 'mail':  # #501: any address in the payload (a Graph ccRecipients shape) is a reader.
+        targets += [address for text in texts for address in re.findall(r'[^\s<>@]+@[^\s<>@]+', text)]
     return bool(mine and targets) and all(target.casefold() in mine for target in targets)
 
 
@@ -366,10 +389,13 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
     try:
         if os.environ.get('WUWEI_SEAT_ROLE') == 'shepherd':
             return held('headless seat: a headless shepherd seat posts drafts only')
-        if not isinstance(text, str) or not text.strip() or not isinstance(kind, str):
+        if not isinstance(text, str) or not isinstance(kind, str):
             return UNRUN, 'draft'
         context = {} if context is None else context
-        _, destinations = _text(context)
+        _text(context)
+        # #501: the chat rules read channel ids only; a recipient, issue or repo is no channel.
+        destinations = [part[key] for part in (context, context.get('draft', {}))
+                        for key in ('channel', 'channel_id') if key in part]
         if owner_only(context, config, kind):
             return CLEAN, 'send'  # #495: only the owner reads it; security and the lint still run.
         # Some tracker tools wrap fields in draft even though the operation sends.
@@ -523,6 +549,8 @@ def check_tier(inputs, root, config, channels, *, port=False):
         text = '\n'.join(texts)
         if len(channels) != 1:
             return UNRUN, 'outward: ambiguous tool channel configuration; pass one channel per call'
+        if texts and not text.strip():
+            return UNRUN, 'outward: nonempty text required; pass the message text'
         why, kind = [], next(iter(channels))
         code, decision = classify(text, root, config, inputs, kind=kind, port=port, why=why)
         if code == UNRUN:
@@ -545,6 +573,8 @@ def check_lint(inputs, root, config, channels, *, to_owner=False):
         text = '\n'.join(texts)
         if len(channels) != 1:
             return UNRUN, 'outward: ambiguous tool channel configuration; pass one channel per call'
+        if not texts:
+            return CLEAN, ''  # #501: a write without text has nothing to lint.
         to_owner = to_owner or owner_only(inputs, config, next(iter(channels)))
         for channel in sorted(channels.union(destinations)):
             code, reason = lint(text, channel, config, root=root, to_owner=to_owner)

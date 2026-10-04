@@ -31,8 +31,9 @@ def read(data):
                 or not (_tool_row(row) or 'tool' not in row
                         and row.get('operation') in OPERATIONS.get(row.get('channel'), set()))
                 or not isinstance(row.get('inputs'), dict)
+                or not isinstance(row.get('text'), str)
                 or any(not isinstance(row.get(field), str) or not row[field]
-                       for field in ('id', 'adapter', 'destination', 'text', 'created',
+                       for field in ('id', 'adapter', 'destination', 'created',
                                      'tier_reason', 'audience'))):
             raise ValueError(f'drafts: invalid record; {DAMAGED}')
         texts, _ = outward._text(row['inputs'])
