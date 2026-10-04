@@ -440,13 +440,16 @@ def test_sticky_findings_owner_confirmation_and_rollover(configured, monkeypatch
     fake_scanner(monkeypatch, 1, [metadata('critical')])
     assert core().check(configured).exit == 1
     pending = next((configured / '.wuwei/days').glob('*/decisions/D-*.md'))
+    from wuwei import decision as records_decision
+    assert records_decision.lint(pending.read_text())[0] == 0
     fake_scanner(monkeypatch, 0)
     assert core().check(configured).exit == 1
     pending.write_text(pending.read_text().replace('Outcome: pending', 'Outcome: proceed'))
     assert core().cached(configured).exit == 1  # Text alone cannot approve.
     assert core().decide(configured, 'D-1', 'proceed', confirm=lambda digest: False).exit == 1
     assert core().cached(configured).exit == 1
-    assert core().decide(configured, 'D-1', 'proceed', confirm=lambda digest: True).exit == 0
+    assert core().decide(configured, 'D-1', 'Proceed with findings', confirm=lambda digest: True).exit == 0
+    assert 'Outcome: proceed\n' in pending.read_text()
     assert core().cached(configured).exit == 0
     events = (workspace.day_dir(configured) / 'events.jsonl').read_text()
     assert 'PRIVATE' not in events and 'UNTRUSTED' not in events
@@ -1260,6 +1263,8 @@ def test_issue_acceptance_proceed_unmeasured(configured, monkeypatch):
     [decision] = workspace.day_dir(configured).glob('decisions/D-*.md')
     text = decision.read_text()
     assert 'Decided-by: owner' in text and 'Outcome: proceed-unmeasured' in text and 'aws' in text
+    from wuwei import decision as records_decision
+    assert records_decision.lint(text)[0] == 0
     rows = [json.loads(line) for line in (workspace.day_dir(configured) / 'events.jsonl').read_text().splitlines()]
     [event] = [row['payload'] for row in rows if row['kind'] == 'mcp.decided']
     assert event['outcome'] == 'proceed-unmeasured' and event['servers'] == ['aws']
@@ -1386,10 +1391,10 @@ def test_check_widget(configured, monkeypatch, capsys, tmp_path):
     widgets = json.loads(capsys.readouterr().out)
     pending = next((configured / '.wuwei/days').glob('*/decisions/D-*.md')).stem
     assert len(widgets) == 1 and widgets[0]['question'].startswith(f'{pending}: May seats proceed')
-    assert [o['label'] for o in widgets[0]['options']] == ['defer', 'proceed']
+    assert [o['label'] for o in widgets[0]['options']] == ['Defer launches (Recommended)', 'Proceed with findings']
     assert widgets[0]['options'][1]['description'].splitlines()[-2:] == ['alpha: 1 critical, 1 high',
                                                                           'beta: 1 medium']
-    assert widgets[0]['record'] == f'wuwei mcp decide {pending} <label>'
+    assert widgets[0]['record'] == f'wuwei mcp decide {pending} "<label>"'
     assert check_question({'cwd': str(configured), 'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [
         {key: widgets[0][key] for key in ('question', 'header', 'options', 'multiSelect')}]}}) == (0, '')
     assert main(['mcp', 'decide', '--widget']) == 2

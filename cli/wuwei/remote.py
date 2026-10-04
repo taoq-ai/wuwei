@@ -43,12 +43,13 @@ PLAN_PROMPT = ('Invoke Skill wuwei:wuwei-plan. This run is headless, started fro
 ASK_PROMPT = 'Answer from this workspace and its repositories, read-only; change nothing. Question: '
 # A refused tool is never granted from the phone: granting one stays a host change.
 DENIAL = '''Question: Session {session} was refused {tool}. How should it continue?
+Class: other
 Context: The session runs with its role tools only; {tool} is outside them.
 Options:
-| Option | Description |
-| --- | --- |
-| A | Resume the session without {tool} |
-| B | Do nothing and leave session {session} idle |
+| Option | Title | Rationale | Consequence |
+| --- | --- | --- | --- |
+| A | Resume without the tool | Stays inside the role tools and keeps progress. | Session {session} continues without {tool}. |
+| B | Do nothing, leave idle | Stays inside the role tools but makes no progress. | Session {session} stays idle. |
 Musts:
 | Criterion | A | B |
 | --- | --- | --- |
@@ -58,6 +59,7 @@ Wants:
 | --- | --- | --- | --- |
 | Progress | 5 | 5 | 1 |
 Recommendation: A
+Reasoning: Progress decided it; work that needs the refused tool would flip it.
 Confidence: medium
 Reversibility: two-way
 Blast radius: One remote session.

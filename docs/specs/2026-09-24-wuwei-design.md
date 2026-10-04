@@ -589,7 +589,7 @@ flag, touching never-auto paths (4.6), or not fitting CAP and the budget goes to
 
 Anything that does not start joins the next decision batch as a proposed item.
 
-### 5.8 Decision framework (owner, 2026-09-28; amended 2026-10-01, #282 and #301)
+### 5.8 Decision framework (owner, 2026-09-28; amended 2026-10-01, #282 and #301; amended 2026-10-04, #475)
 
 Every decision that the owner or cruise mode answers is a record
 `days/<date>/decisions/D-<n>.md` in one shape (MADR with a Kepner-Tregoe evaluation); a
@@ -597,11 +597,24 @@ two-way open question inside the item is an assumption instead (5.3):
 
 - `Question:` one line; `Context:` what forces the decision, with evidence paths
 - `Class:` one of the decision classes in 5.8.1
-- `Options:` at least two, one of them doing nothing or deferring
+- `Options:` at least two, one of them doing nothing or deferring, as the table
+  `Option | Title | Rationale | Consequence`: a short title (at most 40 characters, no quote,
+  backtick, `$` or backslash), why the option scores as it does against the musts and wants,
+  and what changes if it is chosen, what it costs and what it closes (owner, 2026-10-04, #475)
 - `Musts:` pass/fail criteria that filter options out
 - `Wants:` weighted criteria (weights 1 to 10), each option scored 0 to 10 against each
 - `Recommendation:` the option with the highest weighted score among those passing every
-  must, with `Confidence: high|medium|low`
+  must, with `Confidence: high|medium|low`, and `Reasoning:` one line naming the wants that
+  decided it and what would flip it (owner, 2026-10-04, #475)
+- `Lenses:` for an engineering class (`design`, `boundary`, `refactor`, `dependency-bump`),
+  the table `Lens | <option ids>` with one line per option for each configured lens. The
+  defaults are SOLID (which principle it keeps or breaks), twelve-factor (config, backing
+  services, processes and dev-prod parity where relevant), YAGNI (what it builds that no item
+  needs yet) and ponytail (a simpler thing that works: stdlib before custom, native before a
+  dependency). `[decisions.lenses]` maps a name to its one-line question: a name adds a lens,
+  an empty question drops one. Prioritisation keeps its framework's evidence lines (5.6) and
+  reversibility keeps the one-way or two-way test; neither is a configured lens
+  (owner, 2026-10-04, #475)
 - `Reversibility: one-way|two-way`, `Blast radius:` who or what is affected if it is wrong
 - `Pre-mortem:` the most likely way the recommendation fails
 - `Revisit:` a date or trigger that reopens it
@@ -615,7 +628,13 @@ When unsure, it is one-way.
 Enforcement. A PostToolUse decision lint on writes to `decisions/D-*.md` refuses a record
 missing any field, with an unknown class, with fewer than two options, or whose
 recommendation is not the top passing option by the stated weights (the CLI recomputes the
-score). A seat question that is not a decision record is refused, in every runtime: a
+score). A record written from 2026-10-04 on is also refused without `Class:`, the four option
+columns, unique titles, `Reasoning:` or, for an engineering class, exactly one lens row per
+configured lens; earlier records still count in the history readers (owner, 2026-10-04,
+#475). The owner's question card labels each option with its title, the recommended one first
+and marked (Recommended); each description is the rationale, the consequence and the lens
+lines, cut to their first sentence at brief verbosity; the question ends with the first
+sentence of the reasoning. A seat question that is not a decision record is refused, in every runtime: a
 PreToolUse guard refuses `AskUserQuestion` and every control-plane escalation that does not
 cite a decision id whose record passes the lint, and SubagentStop flags a seat whose last
 message asks the owner a question without one (Codex and headless runs). The steward's
@@ -648,6 +667,9 @@ Classes are a fixed list; a new class is an amendment to this section, not confi
 | `scope-cut` | dropping part of an item's agreed scope | L0 | L3 |
 | `re-plan` | changing the approved queue | L0 | L3 |
 | `dependency-bump` | changing a dependency manifest or lockfile | L0 | L3 |
+| `design` | an architecture, interface or data-shape choice that outlives the item (owner, 2026-10-04, #475) | L0 | L3 |
+| `boundary` | moving or changing a module, service or ownership boundary (owner, 2026-10-04, #475) | L0 | L3 |
+| `refactor` | restructuring code without changing behaviour (owner, 2026-10-04, #475) | L0 | L3 |
 | `merge` | merging a pull request (4.6) | L3 | L3 |
 | `message` | sending or replying to a person; the 4.9 tiers are unchanged; an external confirmation holds no reversible work (5.8.2) | L0 | L1 |
 | `other` | anything no class above covers | L0 | L1 |

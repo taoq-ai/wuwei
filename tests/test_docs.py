@@ -29,7 +29,8 @@ GLOSSARY = (('Seat', r'seats?'), ('Gate', r'gates?'), ('Sentinel', r'sentinels?'
             ('Trust surface', r'trust surfaces?'), ('Host terminal', r'host terminals?'),
             ('Humanizer', r'humanizer'), ('Spec engine', r'spec engines?'), ('Strict mode', r'strict mode'),
             ('Docs system', r'docs systems?'), ('Docs obligation', r'docs obligations?'),
-            ('Ticket', r'tickets?'), ('Tracker hygiene', r'tracker hygiene'), ('Fold', r'fold(?:s|ed)?'))
+            ('Ticket', r'tickets?'), ('Tracker hygiene', r'tracker hygiene'), ('Fold', r'fold(?:s|ed)?'),
+            ('Lens', r'lens(?:es)?'))
 
 
 def _prose(text):
@@ -61,6 +62,15 @@ def test_concepts_opens_with_the_glossary():
     assert [title for title, _ in entries] == [term for term, _ in GLOSSARY]
     for title, body in entries:
         assert len(body.splitlines()) <= 2, title
+
+
+def test_decision_lenses_documented():
+    """#475: the lens config row, the index entry and the record shape in concepts."""
+    configuration = (SITE / 'configuration.md').read_text()
+    assert '| `decisions.lenses` |' in configuration and '`[decisions.lenses]`' in configuration
+    concepts = (SITE / 'concepts.md').read_text()
+    for word in ('Title', 'Rationale', 'Consequence', 'Reasoning', '`design`', '`boundary`', '`refactor`'):
+        assert word in concepts, word
 
 
 def test_glossary_words_link_at_first_use():

@@ -168,7 +168,8 @@ def test_scope_disagreement_creates_decision(case, capsys):
     assert main(['pr', 'act', REF]) == 1
     action = json.loads(capsys.readouterr().out)
     assert action['action'] == 'owner_decision'
-    assert (root / action['decision']).is_file()
+    from wuwei import decision
+    assert decision.lint((root / action['decision']).read_text())[0] == 0
     assert main(['pr', 'act', REF]) == 1
     assert json.loads(capsys.readouterr().out.splitlines()[-1])['decision'] == action['decision']
 

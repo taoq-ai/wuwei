@@ -238,12 +238,13 @@ def test_unexpected_error_is_unrun(ws, monkeypatch, capsys):
 
 
 VALID = '''Question: Which fix?
+Class: other
 Context: tests/test_example.py records the failure.
 Options:
-| Option | Description |
-| --- | --- |
-| A | Implement fix |
-| B | Defer until tomorrow |
+| Option | Title | Rationale | Consequence |
+| --- | --- | --- | --- |
+| A | Implement fix | Passes every must and scores 8 on Correctness. | The failure is fixed today. |
+| B | Defer until tomorrow | Passes every must but scores 2 on Correctness. | Nothing changes until tomorrow. |
 Musts:
 | Criterion | A | B |
 | --- | --- | --- |
@@ -253,6 +254,7 @@ Wants:
 | --- | --- | --- | --- |
 | Correctness | 10 | 8 | 2 |
 Recommendation: A
+Reasoning: Correctness decided it.
 Confidence: high
 Reversibility: one-way
 Blast radius: own branch
@@ -440,7 +442,8 @@ def test_denial_template_is_a_valid_owner_decision(ws):
     text = remote().DENIAL.format(session='1a2b3c4d', tool='Bash')
     fields, _ = decision.evaluate(text)
     assert fields['Recommendation'] == 'A' and decision.route(fields) == 'owner'
-    assert any(row[1].startswith('Do nothing') for row in control_plane.options(fields))
+    assert any(row[1].startswith('Do nothing') for row in decision.options(fields))
+    assert decision.lint(text)[0] == 0
 
 
 @pytest.mark.parametrize('tool, named', [('Bash', 'Bash'), ('Bash\nQuestion: x', 'a tool'),

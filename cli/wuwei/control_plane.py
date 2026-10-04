@@ -45,10 +45,6 @@ def pending(root):
     return found
 
 
-def options(fields):
-    return decision.table(fields['Options'], ['Option', 'Description'], 'Options')
-
-
 def parse(text, decisions):
     """Return (id, option) for a reply that names one pending decision's option, else None."""
     reply = re.sub(r'[.!]$', '', ' '.join(text.split())).casefold()
@@ -57,12 +53,12 @@ def parse(text, decisions):
         return (identifier, decisions[identifier]['Recommendation']) if identifier in decisions else None
     if match := re.fullmatch(r'option ([a-z][a-z0-9_-]*) on (d-[1-9][0-9]*)', reply):
         identifier = match[2].upper()
-        found = [row[0] for row in (options(decisions[identifier]) if identifier in decisions else [])
+        found = [row[0] for row in (decision.options(decisions[identifier]) if identifier in decisions else [])
                  if row[0].casefold() == match[1]]
         return (identifier, found[0]) if len(found) == 1 else None
     if reply == 'drop it' and len(decisions) == 1:
         [(identifier, fields)] = decisions.items()
-        found = [row[0] for row in options(fields)
+        found = [row[0] for row in decision.options(fields)
                  if re.match(r'(?i)(?:Do nothing|Defer)\b', row[1])]
         return (identifier, found[0]) if len(found) == 1 else None
     return None
@@ -70,7 +66,7 @@ def parse(text, decisions):
 
 def render(identifier, fields, content, level, root):
     if content == 'none':
-        return f'{identifier} options: ' + ', '.join(row[0] for row in options(fields))
+        return f'{identifier} options: ' + ', '.join(row[0] for row in decision.options(fields))
     if level == 'full':  # pending() has checked the record is a regular file of today.
         return decision.today_path(identifier, root).read_text(encoding='utf-8').rstrip()
     return decision.present(identifier, fields, level)

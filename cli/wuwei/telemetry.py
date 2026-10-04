@@ -31,7 +31,7 @@ GUARDS = ('agent_launch', 'commit_push', 'decision', 'deploy', 'integrity', 'lif
 PHASES = ('planned', 'spec', 'implement', 'gate', 'fix', 'delta', 'raised', 'parked', 'escalated', 'merged')
 TIERS = ('light', 'standard', 'full')
 CLASSES = ('approach', 'retry', 'park', 'accept-residual', 'defer', 'scope-cut', 're-plan',
-           'dependency-bump', 'merge', 'message', 'other')
+           'dependency-bump', 'design', 'boundary', 'refactor', 'merge', 'message', 'other')
 AREAS = ('integrity', 'mcp', 'publish', 'records', 'outward', 'seats')
 POSTURES = ('observe', 'guarded', 'strict')
 PROFILES = ('strict', 'standard')

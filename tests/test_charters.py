@@ -211,3 +211,12 @@ def test_tracker_hygiene_commands_have_one_home():
     assert [name for name, body in texts.items() if "tracker create --bug" in body] == ["_common.md"]
     assert "tracker create --follow-up" in texts["planner.md"]
     assert "bin/wuwei tracker create <item>" in texts["planner.md"]
+
+
+def test_decision_lens_charters():
+    """#475: the record shape lives in _common.md; three roles name the design class and the lens."""
+    texts = charter_text()
+    for phrase in ("`Option | Title | Rationale | Consequence`", "`Reasoning:`", "`Lenses:`", "`Class:`"):
+        assert phrase in texts["_common.md"], phrase
+    for name in ("lead.md", "sentinel-arch.md", "builder.md"):
+        assert "`design`" in texts[name] and "lens lines are mandatory" in texts[name], name

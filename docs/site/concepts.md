@@ -138,6 +138,11 @@ and the item's decisions, progress, verdicts, pull request and close land on its
 
 One comment that stands for the rest of a ticket's updates once its daily comment cap is reached.
 
+### Lens
+
+A one-line question every option of an engineering decision answers, such as SOLID or YAGNI.
+You can add your own in `[decisions.lenses]` or drop a default.
+
 ## Roles
 
 The shipped charters define planner, lead, builder, shepherd, steward, and four sentinels: goal, architecture, quality and security. Generated agent files in `agents/` carry the charters and tool allowlists. The planner owns the day, the lead shapes work, builders implement, sentinels check, the shepherd follows pull requests and the steward maintains procedure. `/wuwei plan` runs the day, starting with your morning gate; see the [daily path](daily.md).
@@ -308,6 +313,15 @@ can turn it off when it stops paying.
 Outward text gets the same pass. Every tracker comment, docs page, DM, PR comment and review ping goes through the humanize lint before it is drafted or sent. By default a tell prints a warning and records an `outward.ai_tells` event, and sent text with tells counts in `ai_tells`. With `outward.humanize_strict` on, the text is refused with the tells it found and a hint to rewrite it. Each draft lists its tells in `bin/wuwei drafts` and in the approval prompt, and the DM status reply shows the count at full verbosity. `outward.humanize = false` turns the lint off, and `outward.humanize_kinds` picks the kinds it checks (see [configuration](configuration.md)).
 
 ## Decision classes and cruise levels
+
+A decision record gives every option a Title, a Rationale (why it scores as it does) and a
+Consequence (what changes, what it costs, what it closes), and the recommendation a
+Reasoning line (what decided it and what would flip it). It also names a class. The
+engineering classes `design`, `boundary`, `refactor` and `dependency-bump` add one
+[lens](#lens) line per option: SOLID, twelve-factor, YAGNI and ponytail by default. Your
+question card shows the titles, the recommended one first, each with its rationale,
+consequence and lens lines, and ends the question with the reasoning. `wuwei decision
+template` prints a valid record.
 
 Cruise mode is designed in
 [design spec 5.8.1](https://github.com/taoq-ai/wuwei/blob/main/docs/specs/2026-09-24-wuwei-design.md)

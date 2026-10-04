@@ -103,20 +103,25 @@ def _trace_response(finding, root, posture):
         context = 'Affected reserved items parked where active.' if items else 'Session has no item reservation and no registration.'
         body = (
             'Question: How should this critical tool sequence be investigated?\n'
+            'Class: other\n'
             f'Context: {context}\n'
             + 'Chain: ' + ' -> '.join(finding['chain']) + '\n'
             + 'Session digest: ' + digest + '\n'
-            'Options:\n| Option | Description |\n| --- | --- |\n'
-            '| investigate | Investigate the session and contain any exposure |\n'
-            '| defer | Defer investigation while affected work stays paused |\n'
+            'Options:\n| Option | Title | Rationale | Consequence |\n| --- | --- | --- | --- |\n'
+            '| investigate | Investigate the session | Resolves the potential exposure while affected work stays paused. | '
+            'The session is reviewed and any exposure contained. |\n'
+            '| defer | Defer investigation | Keeps work paused but leaves the exposure unresolved. | '
+            'Affected work stays paused until someone investigates. |\n'
             'Musts:\n| Criterion | investigate | defer |\n| --- | --- | --- |\n'
             '| Keep affected work paused | pass | pass |\n'
             'Wants:\n| Criterion | Weight | investigate | defer |\n| --- | --- | --- | --- |\n'
             '| Resolve potential exposure | 10 | 10 | 0 |\n'
-            'Recommendation: investigate\nConfidence: high\nReversibility: unsure\n'
+            'Recommendation: investigate\n'
+            'Reasoning: Resolving the potential exposure decided it; nothing safer would flip it.\n'
+            'Confidence: high\nReversibility: unsure\n'
             'Blast radius: workspace security\nPre-mortem: Further activity could expose data.\n'
             'Revisit: Before resuming affected work.\nDecided-by: owner\nOutcome: pending\n')
-        decision.evaluate(body)
+        decision.evaluate(body, decision.LENSES)
         directory.mkdir(parents=True, exist_ok=True)
         workspace.atomic_write(path, body)
 

@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Bash, Write
 ---
 
 ---
-version: 1.2.0
+version: 1.3.0
 ---
 # Common rules for every seat
 
@@ -30,7 +30,7 @@ Read this file before your role charter. Seats that author artifacts also read `
 8. A sentinel verdict has one `Verdict: PASS|FIX|PARK|ESCALATE` line and exactly one `Head: <7 to 40 hex>` row containing the reviewed sha. PARK records a decision and stops the item without interrupting the owner; quality and goal use PARK for unresolved findings. ESCALATE is for an owner-only choice or a vulnerability already on the base branch. For every finding give severity, `file:line`, a concrete failure scenario and `blocks: yes|no`. Give a `Probe:`, `Probes:` or `Mutation:` row for each claim, using `not run` when needed; state residual risk. Arch, quality and security verdicts require a class-sweep line (`CLASS: PASS|N.A.|FINDING <id>`); goal verdicts do not. A quality verdict also follows its role charter's rows.
 ## Decisions and procedure
 
-1. Assume and record: an open question on a two-way door inside the item is not asked. Take your recommendation, record it under `Assumptions:` in the item's spec or PR body (what was assumed, why, what would overturn it) and continue; gates review it as a finding. Any other decision goes through the decision record at `days/<date>/decisions/D-<n>.md`. Include `Question:`, evidence paths in `Context:`, at least two `Options:` including deferral, pass/fail `Musts:`, weighted `Wants:` with option scores, the highest-scoring passing `Recommendation:` and `Confidence:`, `Reversibility: one-way|two-way`, `Blast radius:`, `Pre-mortem:`, `Revisit:`, `Decided-by:` and `Outcome:`. Let CLI decision lint check the record.
+1. Assume and record: an open question on a two-way door inside the item is not asked. Take your recommendation, record it under `Assumptions:` in the item's spec or PR body (what was assumed, why, what would overturn it) and continue; gates review it as a finding. Any other decision goes through the decision record at `days/<date>/decisions/D-<n>.md`. Include `Question:`, evidence paths in `Context:`, at least two `Options:` including deferral, pass/fail `Musts:`, weighted `Wants:` with option scores, the highest-scoring passing `Recommendation:` and `Confidence:`, `Reversibility: one-way|two-way`, `Blast radius:`, `Pre-mortem:`, `Revisit:`, `Decided-by:` and `Outcome:`. A new record also carries `Class:` (a design 5.8.1 class), the Options table `Option | Title | Rationale | Consequence` (a short title, why the option scores as it does, and what it changes, costs and closes), `Reasoning:` under the recommendation (the wants that decided it and what would flip it) and, for an engineering class (`design`, `boundary`, `refactor`, `dependency-bump`), a `Lenses:` table with one line per option for each configured lens. A how-to-build decision is engineering: `design` for an architecture, interface or data shape that outlives the item, `boundary` for a module, service or ownership boundary, `refactor` for restructuring without a behaviour change, and `dependency-bump` for a manifest or lockfile. CLI decision template prints that shape. Let CLI decision lint check the record.
 2. A two-way decision whose blast radius stays inside the item's branch or PR can be taken by its seat, recorded and included in the next digest. Route a one-way decision, goal or agreed-scope change, trust-boundary change, spend above budget or blast radius beyond the item to the owner. When unsure, route it as one-way. The launch prompt's mandate says what you decide alone, what you decide and record, and what goes to the owner; nothing else is a question. A question to the owner cites a valid decision id in every runtime, before asking or escalating through a control plane.
 3. Charter and existing-note changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei promote` alone may lint and land them. Never edit a plugin charter, local charter override or existing note directly. A proposal may add, patch, fold or archive a rule and must resolve contradictions in the same proposal. Goals remain owner-edited.
 4. At handoff, every seat provides the three-line retro note `Blocked: / Gap: / Change:` with concrete evidence or `none`. A proposed procedure change goes through the proposal path, not a dated learned-rules section in a charter.
@@ -65,7 +65,7 @@ Text written for a person (decision records, PR bodies, drafts, retro summaries,
 10. Remove chat leftovers: greetings, praise, offers of more help and sign-offs around the content.
 
 ---
-version: 1.0.0
+version: 1.1.0
 ---
 # Lead charter
 
@@ -84,4 +84,4 @@ Read `_common.md` and `_common-authoring.md` before discovery. Own discovery, ra
 ## Launch and escalation
 
 1. Claim an approved item only at launch. Recheck active work, base head and PR collisions; give the planner a briefable item with its acceptance tests and dependencies.
-2. Resolve local blockers within the item's budget, then park or resequence with a decision record. Route beyond-item or one-way choices to the owner through the common decision rule.
+2. Resolve local blockers within the item's budget, then park or resequence with a decision record. Route beyond-item or one-way choices to the owner through the common decision rule. A resequence that settles an architecture, interface or data shape is a `design` record, and its lens lines are mandatory.

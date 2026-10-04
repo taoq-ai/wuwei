@@ -198,7 +198,7 @@ def test_config_defaults_and_independence(tmp_path):
                      'rotate_after': {'turns': 0, 'compactions': 0, 'clock': ''}},
         'listen': {'poll_seconds': 60, 'dead_seconds': 300}, 'responder': {'enabled': True},
         'steward': {'every_tool_calls': 50, 'loop_window_hours': 4, 'loop_threshold': 9},
-        'decisions': {'wait_hours': 24, 'cruise': {'enabled': True, 'levels': {}}},
+        'decisions': {'wait_hours': 24, 'cruise': {'enabled': True, 'levels': {}}, 'lenses': {}},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
             'shepherd': {'review_channel': '', 'lead_login': '', 'reviewers': [], 'reviewers_exclude': [],
                          'review_gate_check': 'Review Gate',
@@ -1118,6 +1118,19 @@ def test_decisions_config(tmp_path):
                       ('[decisions.cruise]\nmargin = 0.2', 'decisions.cruise.margin')):
         write_config(tmp_path, text + '\n[security]\nposture = "strict"\n')
         with pytest.raises(ConfigError, match=key):
+            load_config(tmp_path)
+
+
+def test_decision_lenses_config(tmp_path):
+    from wuwei.workspace import ConfigError, load_config
+    write_config(tmp_path, '')
+    assert load_config(tmp_path)['decisions']['lenses'] == {}
+    write_config(tmp_path, '[decisions.lenses]\ncompany-rule = "Does it follow our rule?"\nYAGNI = ""\n')
+    assert load_config(tmp_path)['decisions']['lenses'] == {
+        'company-rule': 'Does it follow our rule?', 'YAGNI': ''}
+    for name in ('"bad name"', '9x'):
+        write_config(tmp_path, f'[decisions.lenses]\n{name} = "Q?"\n')
+        with pytest.raises(ConfigError, match='decisions.lenses.' + name.strip('"')):
             load_config(tmp_path)
 
 

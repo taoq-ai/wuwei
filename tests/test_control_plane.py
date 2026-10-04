@@ -8,12 +8,13 @@ from wuwei.registry import Result
 
 
 VALID = '''Question: Which fix?
+Class: other
 Context: tests/test_example.py records the failure.
 Options:
-| Option | Description |
-| --- | --- |
-| A | Implement fix |
-| B | Defer until tomorrow |
+| Option | Title | Rationale | Consequence |
+| --- | --- | --- | --- |
+| A | Implement fix | Passes every must and scores 8 on Correctness. | The failure is fixed today. |
+| B | Defer until tomorrow | Passes every must but scores 2 on Correctness. | Nothing changes until tomorrow. |
 Musts:
 | Criterion | A | B |
 | --- | --- | --- |
@@ -24,6 +25,7 @@ Wants:
 | Correctness | 10 | 8 | 2 |
 | Speed | 2 | 3 | 5 |
 Recommendation: A
+Reasoning: Correctness decided it.
 Confidence: high
 Reversibility: one-way
 Blast radius: own branch

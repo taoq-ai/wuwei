@@ -5,8 +5,9 @@ import json
 import sys
 
 from wuwei import state, workspace
-from wuwei.decision import (evaluate, lint_file, owner_confirm, owner_record, present, record_rejection,
-                            record_widget, route, route_owner, seat_outcome, table, today_path)
+from wuwei.decision import (LENSES, evaluate, lens_table, lint_file, option_id, options, owner_confirm,
+                            owner_record, present, record_rejection, record_widget, route, route_owner,
+                            seat_outcome, today_path)
 from wuwei.exits import RACE, SYMLINK
 
 
@@ -73,9 +74,10 @@ def decide(args):
 def show(args):
     root = workspace.find_workspace()
     path = today_path(args.id, root)  # A symlinked record raises: it must belong to today.
+    config = workspace.load_config(root)
     try:
         text = path.read_text(encoding='utf-8')
-        fields, _ = evaluate(text)
+        fields, _ = evaluate(text, lens_table(config) if args.widget else None)
     except FileNotFoundError:  # #362: a state answer; --widget callers read JSON, so a finding there.
         return int(bool(args.widget)), f'No {args.id} today; bin/wuwei nudges lists open decisions.'
     except (OSError, UnicodeError) as exc:
@@ -83,9 +85,9 @@ def show(args):
                    'check the file is readable, then run bin/wuwei doctor')
     except ValueError as exc:
         return 1, f'decision show: {exc}'
-    if args.widget:
-        return 0, json.dumps([record_widget(args.id, fields)], indent=2)
-    level = 'full' if args.full else workspace.verbosity(workspace.load_config(root), 'decisions')
+    level = 'full' if args.full else workspace.verbosity(config, 'decisions')
+    if args.widget:  # --widget and --full exclude each other
+        return 0, json.dumps([record_widget(args.id, fields, level=level)], indent=2)
     if level == 'full':
         return 0, text.rstrip()
     return 0, present(args.id, fields, level) + f'\nFull record: wuwei decision show {args.id} --full'
@@ -102,9 +104,8 @@ def owner_outcome(args, note=None, *, root=None, where=None):
         fields, _ = evaluate(text)
     except ValueError as exc:
         return 1, str(exc)
-    options = {row[0] for row in table(
-        fields['Options'], ['Option', 'Description'], 'Options')}
-    if args.option not in options:
+    args.option = option_id(fields, args.option)
+    if args.option not in {row[0] for row in options(fields)}:
         return 1, 'decision: option is not in the record; pick an option id from bin/wuwei decision show <id>'
     data = state.read_state(root)
     previous = data.get('decision_outcomes', {}).get(args.id)
@@ -148,16 +149,25 @@ def owner_outcome(args, note=None, *, root=None, where=None):
     return 0, args.option
 
 
-def run(args):
-    if args.action == 'template':
-        print('''Question: Which option should we take?
+def template():
+    """A valid design record with one Lenses row per effective lens and their questions."""
+    try:
+        lenses = lens_table(workspace.load_config(workspace.find_workspace()))
+    except FileNotFoundError:
+        lenses = LENSES
+    rows = ''.join(f'| {name} | Replace with one line for A | Replace with one line for B |\n' for name in lenses)
+    questions = ' '.join(f'{name}: {question}' for name, question in lenses.items())
+    lens_block = (f'<!-- Lenses: one line per option for each. {questions} -->\n'
+                  f'Lenses:\n| Lens | A | B |\n| --- | --- | --- |\n{rows}') if lenses else ''
+    return f'''Question: Which option should we take?
+Class: design
 Context: Replace with the evidence file and reason for deciding.
 Options:
-| Option | Description |
-| --- | --- |
-| A | Make the scoped change |
-| B | Defer until more evidence exists |
-Musts:
+| Option | Title | Rationale | Consequence |
+| --- | --- | --- | --- |
+| A | Make the scoped change | Passes every must and scores 8 on Outcome. | Replace with what changes, what it costs and what it closes. |
+| B | Defer | Passes every must but scores 2 on Outcome. | Nothing changes until more evidence exists. |
+{lens_block}Musts:
 | Criterion | A | B |
 | --- | --- | --- |
 | Safe | pass | pass |
@@ -166,13 +176,19 @@ Wants:
 | --- | --- | --- | --- |
 | Outcome | 10 | 8 | 2 |
 Recommendation: A
+Reasoning: Outcome decided it; replace with what would flip it to B.
 Confidence: medium
 Reversibility: two-way
 Blast radius: Own branch and PR.
 Pre-mortem: The change misses an edge case.
 Revisit: Reopen if tests fail.
 Decided-by: seat
-Outcome: pending''')
+Outcome: pending'''
+
+
+def run(args):
+    if args.action == 'template':
+        print(template())
         return 0
     code, message = (lint_file(args.file) if args.action == 'lint' else
                      owner_outcome(args) if args.action == 'outcome' else

@@ -599,7 +599,7 @@ def reask(root):
                     continue
                 try:
                     fields, _ = decision.evaluate(path.read_text(encoding='utf-8'))
-                    options = dict(decision.table(fields['Options'], ['Option', 'Description'], 'Options'))
+                    options = {row[0]: row[1] for row in decision.options(fields)}
                 except ValueError:
                     continue
                 match = MERGE_QUESTION.fullmatch(fields['Question'].strip())

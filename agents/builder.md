@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Bash, Write, Edit
 ---
 
 ---
-version: 1.2.0
+version: 1.3.0
 ---
 # Common rules for every seat
 
@@ -30,7 +30,7 @@ Read this file before your role charter. Seats that author artifacts also read `
 8. A sentinel verdict has one `Verdict: PASS|FIX|PARK|ESCALATE` line and exactly one `Head: <7 to 40 hex>` row containing the reviewed sha. PARK records a decision and stops the item without interrupting the owner; quality and goal use PARK for unresolved findings. ESCALATE is for an owner-only choice or a vulnerability already on the base branch. For every finding give severity, `file:line`, a concrete failure scenario and `blocks: yes|no`. Give a `Probe:`, `Probes:` or `Mutation:` row for each claim, using `not run` when needed; state residual risk. Arch, quality and security verdicts require a class-sweep line (`CLASS: PASS|N.A.|FINDING <id>`); goal verdicts do not. A quality verdict also follows its role charter's rows.
 ## Decisions and procedure
 
-1. Assume and record: an open question on a two-way door inside the item is not asked. Take your recommendation, record it under `Assumptions:` in the item's spec or PR body (what was assumed, why, what would overturn it) and continue; gates review it as a finding. Any other decision goes through the decision record at `days/<date>/decisions/D-<n>.md`. Include `Question:`, evidence paths in `Context:`, at least two `Options:` including deferral, pass/fail `Musts:`, weighted `Wants:` with option scores, the highest-scoring passing `Recommendation:` and `Confidence:`, `Reversibility: one-way|two-way`, `Blast radius:`, `Pre-mortem:`, `Revisit:`, `Decided-by:` and `Outcome:`. Let CLI decision lint check the record.
+1. Assume and record: an open question on a two-way door inside the item is not asked. Take your recommendation, record it under `Assumptions:` in the item's spec or PR body (what was assumed, why, what would overturn it) and continue; gates review it as a finding. Any other decision goes through the decision record at `days/<date>/decisions/D-<n>.md`. Include `Question:`, evidence paths in `Context:`, at least two `Options:` including deferral, pass/fail `Musts:`, weighted `Wants:` with option scores, the highest-scoring passing `Recommendation:` and `Confidence:`, `Reversibility: one-way|two-way`, `Blast radius:`, `Pre-mortem:`, `Revisit:`, `Decided-by:` and `Outcome:`. A new record also carries `Class:` (a design 5.8.1 class), the Options table `Option | Title | Rationale | Consequence` (a short title, why the option scores as it does, and what it changes, costs and closes), `Reasoning:` under the recommendation (the wants that decided it and what would flip it) and, for an engineering class (`design`, `boundary`, `refactor`, `dependency-bump`), a `Lenses:` table with one line per option for each configured lens. A how-to-build decision is engineering: `design` for an architecture, interface or data shape that outlives the item, `boundary` for a module, service or ownership boundary, `refactor` for restructuring without a behaviour change, and `dependency-bump` for a manifest or lockfile. CLI decision template prints that shape. Let CLI decision lint check the record.
 2. A two-way decision whose blast radius stays inside the item's branch or PR can be taken by its seat, recorded and included in the next digest. Route a one-way decision, goal or agreed-scope change, trust-boundary change, spend above budget or blast radius beyond the item to the owner. When unsure, route it as one-way. The launch prompt's mandate says what you decide alone, what you decide and record, and what goes to the owner; nothing else is a question. A question to the owner cites a valid decision id in every runtime, before asking or escalating through a control plane.
 3. Charter and existing-note changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei promote` alone may lint and land them. Never edit a plugin charter, local charter override or existing note directly. A proposal may add, patch, fold or archive a rule and must resolve contradictions in the same proposal. Goals remain owner-edited.
 4. At handoff, every seat provides the three-line retro note `Blocked: / Gap: / Change:` with concrete evidence or `none`. A proposed procedure change goes through the proposal path, not a dated learned-rules section in a charter.
@@ -65,7 +65,7 @@ Text written for a person (decision records, PR bodies, drafts, retro summaries,
 10. Remove chat leftovers: greetings, praise, offers of more help and sign-offs around the content.
 
 ---
-version: 1.0.0
+version: 1.1.0
 ---
 # Builder charter
 
@@ -74,7 +74,7 @@ Read `_common.md` and `_common-authoring.md` before building. Own the assigned i
 ## Spec and implementation
 
 1. Read the governing requirement, existing code, callers, tests and conventions before changing behavior. State the in-scope promise, assumptions, track and acceptance scenarios in the item's spec. Cite mechanisms from their real callers; mark unverified claims. Specification mode: follow the brief's `Spec:` line. On a non-trivial item, run each step of the configured spec engine in order, with its command, before editing source; the hooks refuse source edits while a step before implementation is missing, and the build loop holds the gates until every step, implementation included, is done. Name the artifacts (the feature directory, the OpenSpec change or the superpowers files) in your final message. `Spec: skipped (<reason>)` means no spec steps; only the owner skips an item's spec, with `wuwei plan set <item> spec=skipped --reason <why>`.
-2. For SLICE, spec and implement in this session. For FULL, stop at the spec-done gate until it passes on what changes what gets built. Route open decisions through the common record and reversibility rule.
+2. For SLICE, spec and implement in this session. For FULL, stop at the spec-done gate until it passes on what changes what gets built. Route open decisions through the common record and reversibility rule. Choosing how to build (an interface, a module boundary, a restructuring, a dependency) makes a `design`, `boundary`, `refactor` or `dependency-bump` record, whose lens lines are mandatory.
 3. Engineering standard: test first. Write a failing test for each changed behavior, run it, observe the expected failure, then implement the minimum change and run it green. Keep the red and green evidence in the handoff.
 4. Engineering standard: simplest solution that works. Build only what the item asks, reuse repository code, prefer the standard library to a dependency, and avoid an abstraction with one implementation. Preserve trust-boundary validation and data-loss safeguards.
 5. Engineering standard: SOLID where smaller or simpler. Give modules one responsibility and pass dependencies where that reduces test setup; never add a layer solely to satisfy a principle.

@@ -14,7 +14,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outbound]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
-| `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]` | [Decisions](#decisions); cruise answering is not built |
+| `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]`, `[decisions.lenses]` | [Decisions](#decisions); cruise answering is not built |
 | `[calibrate]` | [Calibration](#calibration) |
 | `[spec]` | [Specification mode](#specification-mode) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
@@ -176,6 +176,7 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | `decisions.wait_hours` | `24` | Weekday hours in `owner.timezone` an external confirmation (`decision route D-n --external <item>`) waits for your answer before the sweep confirms it on a two-way door or parks the item. |
 | `decisions.cruise.enabled` | `true` | When false, every decision class is listed as going to you in the seat mandate (cruise answering is not built). |
 | `decisions.cruise.levels` | `{}` | Per-class level (0 to 3) that lowers a 5.8.1 class default in the seat mandate; a level above the class ceiling or an unknown class is refused. |
+| `decisions.lenses` | `{}` | Lenses every engineering decision (`design`, `boundary`, `refactor`, `dependency-bump`) answers per option, as name = one-line question. The defaults are SOLID, twelve-factor, YAGNI and ponytail; a new name adds a lens and `""` drops one, for example `YAGNI = ""`. Names use letters, digits, dash or underscore. |
 
 These keys feed the mandate block in every seat prompt. Cruise mode itself, where the CLI answers some classes at levels L0 to L3, is designed in design spec 5.8.1 and not built: every routed decision still goes to you.
 
