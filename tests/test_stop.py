@@ -679,11 +679,12 @@ def test_close_owner_decision_table(case, monkeypatch, retry, mode, expected):
 
 @pytest.mark.parametrize('mode,expected', [
     ('unpushed', 0), ('pushed', 1), ('unlinked', 1), ('raised', 0), ('claimed', 0),
-    ('read_error', 2), ('error_body', 2), ('branch_error', 2),
+    ('read_error', 0), ('error_body', 0), ('branch_error', 0),
 ])
 def test_close_pushed_branch_table(case, monkeypatch, mode, expected):
     root, host, vcs = case
     approved(root, worktree='repo')
+    (root / 'repo').mkdir()
     seat_disposition(root, monkeypatch)
     vcs.results['branch'] = Result(0, {'name': 'feature-A'})
     vcs.results['pushed_branches'] = Result(0, [] if mode == 'unpushed' else ['feature-A'])

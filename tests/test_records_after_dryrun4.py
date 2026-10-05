@@ -103,7 +103,7 @@ def test_one_close_steward_review_per_day(steward_root, monkeypatch, capsys):
     monkeypatch.setattr(workspace, 'guard_scope', lambda payload: root)
     monkeypatch.setattr(close.closing, 'check', lambda _root: (1, 'OWED: retro'))
     monkeypatch.setattr(close.pr_actions, 'evaluate', lambda _root: (0, []))
-    monkeypatch.setattr(close.closing, 'unresolved', lambda _root, _rows: (0, ''))
+    monkeypatch.setattr(close.closing, 'unresolved', lambda _root, _rows, **_: (0, ''))
 
     def briefs():
         return sorted((day_dir / 'briefs').glob('steward-*.md'))

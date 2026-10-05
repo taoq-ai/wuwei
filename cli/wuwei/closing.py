@@ -149,10 +149,12 @@ def retro(root):
         return 2, '\n'.join([*findings, f'retro unmeasured: {exc}'])
 
 
-def unresolved(root, rows, open_items=None):
+def unresolved(root, rows, open_items=None, notes=None):
     """Account for approved items, owner decisions and pushed item branches; open item names
-    are appended to open_items when given."""
+    are appended to open_items when given. A parked or carried item whose branch cannot be
+    measured is a fact appended to notes, never a gate."""
     findings, code = [], 0
+    notes = [] if notes is None else notes
 
     def unmeasured(label, exc):
         nonlocal code
@@ -169,7 +171,7 @@ def unresolved(root, rows, open_items=None):
         prs = {row['pr']: row for row in rows if row['exit'] != 2 and 'pr' in row}
         resolved = {data['pr_dispositions'][ref]['decision'] for ref, row in prs.items()
                     if row.get('disposition') in ('parked', 'carried')}
-        dispositions = set()
+        dispositions = {}
         directory = workspace.day_dir(root) / 'decisions'
         identifiers = outcomes.keys() | routes.keys()
         try:
@@ -190,7 +192,7 @@ def unresolved(root, rows, open_items=None):
                     record = outcomes[identifier]
                     if (fields['Decided-by'] == record['decided_by'] == 'seat'
                             and record.get('item_disposition') == fields['Outcome']):
-                        dispositions.add(fields['Outcome'])
+                        dispositions[fields['Outcome']] = fields['Context'].partition('Reason: ')[2]
             except watch.ERRORS as exc:
                 unmeasured(identifier, exc)
         owned = data['raised_prs'] + data['claimed_prs']
@@ -203,9 +205,11 @@ def unresolved(root, rows, open_items=None):
                 item = data['items'][name]
                 ref = item.get('pr')
                 pr = prs.get(ref, {})
-                if (pr.get('state') != 'merged'
-                        and pr.get('disposition') not in ('parked', 'carried')
-                        and not {f'parked {name}', f'carried {name}'} & dispositions):
+                key = next((k for k in (f'parked {name}', f'carried {name}') if k in dispositions), None)
+                disposed = (f'{name}: {key.split()[0]}' + (f' ({dispositions[key]})' if dispositions[key] else '')
+                            if key else f'{name}: {pr["disposition"]}'
+                            if pr.get('disposition') in ('parked', 'carried') else None)
+                if pr.get('state') != 'merged' and not disposed:
                     findings.append(f'{name} is still open ({item["status"]}/{item["phase"]}): carry it '
                                     'to tomorrow (recommended), park it, or keep working? '
                                     f'Carry: bin/wuwei plan carry {name}. '
@@ -224,14 +228,23 @@ def unresolved(root, rows, open_items=None):
                 if tree is not None and ref not in owned:
                     if not isinstance(tree, str) or not tree:
                         raise ValueError(f'invalid item worktree; {DAMAGED}')
-                    vcs = registry.load('vcs', config)
-                    path = str((root / tree).resolve())
-                    branch = obligations._read(vcs.branch, path, root=root)['name']
-                    pushed = obligations._read(vcs.pushed_branches, path, root=root)
-                    if (not isinstance(branch, str) or not branch
-                            or not isinstance(pushed, list)
-                            or any(not isinstance(b, str) or not b for b in pushed)):
-                        raise ValueError(f'invalid pushed branch evidence; {DAMAGED}')
+                    path = (root / tree).resolve()
+                    if disposed and not path.is_dir():
+                        notes.append(f'{disposed}, unmeasured: worktree missing')
+                        continue
+                    try:
+                        vcs = registry.load('vcs', config)
+                        branch = obligations._read(vcs.branch, str(path), root=root)['name']
+                        pushed = obligations._read(vcs.pushed_branches, str(path), root=root)
+                        if (not isinstance(branch, str) or not branch
+                                or not isinstance(pushed, list)
+                                or any(not isinstance(b, str) or not b for b in pushed)):
+                            raise ValueError(f'invalid pushed branch evidence; {DAMAGED}')
+                    except watch.ERRORS as exc:
+                        if not disposed:
+                            raise
+                        notes.append(f'{disposed}, unmeasured: {exc}')
+                        continue
                     if branch in pushed:
                         findings.append(f'{name}: pushed branch {branch} has no raised or claimed PR')
             except watch.ERRORS as exc:
