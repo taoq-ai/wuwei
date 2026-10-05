@@ -76,7 +76,11 @@ def tiers(args):
     for number, (row, source, note) in enumerate(outward.table(config), 1):
         ignored = strict and source == 'owner' and row['tier'] == 'send' and outward.reaches_client(row, config)
         print(f"{number:<6}{source:<9}{outward.render(row)}{note}{' (ignored under strict)' if ignored else ''}")
-    print(f"{'-':<6}{'default':<9}{KIND_RULES}")
+    umbrella = config['outbound']['default_tier']
+    print(f"{'-':<6}{'default':<9}{{ tier = \"{umbrella}\" }} (outbound.default_tier: what no row narrows, "
+          "for chat, code host, mail and other)")
+    if umbrella == 'ask':
+        print(f"{'-':<6}{'default':<9}{KIND_RULES}")
     return CLEAN
 
 

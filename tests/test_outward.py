@@ -130,6 +130,29 @@ def test_send_or_draft(configured, text, code):
         assert result[1].startswith('outward: draft ') and 'bin/wuwei drafts show ' in result[1]
 
 
+@pytest.mark.parametrize('text', ['The cache is thread safe.', 'I disagree with the proposal.',
+                                  'This is out of scope.', 'thanks <@U09>'])
+def test_send_umbrella_lets_team_talk(configured, text):
+    # #527: with outbound.default_tier = send, what no narrowing row holds goes out in a work
+    # channel; a client channel and sensitive text still ask.
+    from wuwei.guards.outward import check_tier as check
+    root = configured[0]
+    outbound_line(root, 'default_tier = "send"')
+    assert check(payload(root, text)) == (0, '')
+    outbound_line(root, 'external_channels = ["C2"]')
+    assert check(payload(root, 'I will ship it tomorrow', channel='C2'))[0] == 1
+    assert check(payload(root, 'Your salary review is in'))[0] == 1
+
+
+def test_send_umbrella_drops_the_broad_rows(configured):
+    from wuwei import outward
+    root, config = configured
+    assert len(outward.table(config)) == 10
+    outbound_line(root, 'default_tier = "send"')
+    rows = [row for row, _, _ in outward.table(workspace.load_config(root))]
+    assert len(rows) == 7 and not any(row in outward.BROAD_ROWS for row in rows)
+
+
 def test_no_local_approval_producer():
     from wuwei import outward, state
     from wuwei.guards.outward import GUARDS
