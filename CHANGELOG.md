@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.18.1](https://github.com/taoq-ai/wuwei/compare/v0.18.0...v0.18.1) (2026-10-05)
+
+
+### Bug Fixes
+
+* **outward:** the owner's own identity is recorded without a card: outbound learn --owner writes outbound.owner.slack directly outside strict, so a self-DM is never a draft the owner has to approve ([#539](https://github.com/taoq-ai/wuwei/issues/539)) ([a3422b9](https://github.com/taoq-ai/wuwei/commit/a3422b9232d6dc83297c50b29a0b0b3aefe9535e)), closes [#537](https://github.com/taoq-ai/wuwei/issues/537)
+* **outward:** the umbrella covers docs and tracker writes made through a connector; docs.auto and tracker.auto apply only to WUWEI's own adapter writes ([#536](https://github.com/taoq-ai/wuwei/issues/536)) ([34ce63b](https://github.com/taoq-ai/wuwei/commit/34ce63b59ad82418a05c5ff963bf280da7956bb1)), closes [#535](https://github.com/taoq-ai/wuwei/issues/535)
+
 ## [0.18.0](https://github.com/taoq-ai/wuwei/compare/v0.17.1...v0.18.0) (2026-10-05)
 
 
