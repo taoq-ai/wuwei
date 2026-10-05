@@ -43,7 +43,8 @@ def root(tmp_path, monkeypatch):
     base = tmp_path / '.wuwei'
     (base / 'memory/notes').mkdir(parents=True)
     (base / 'charters').mkdir()
-    write(base / 'config.toml', '')
+    # #533: the digest hides free text an owner word list flags; nothing is built in any more.
+    write(base / 'config.toml', '[outward]\npatterns = ["\\\\bseats?\\\\b", "\\\\bqueued\\\\b", "\\\\bthe owner\\\\b"]\n')
     monkeypatch.setenv('WUWEI_NOW', '2026-10-03T12:00:00+02:00')
     monkeypatch.setattr(redact, 'VALUES', {'sekrit-value'})
     day = base / 'days/2026-09-30'
