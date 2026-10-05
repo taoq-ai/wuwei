@@ -21,17 +21,12 @@ class Source:
         return self.results.pop(0) if self.results else Result(0, [])
 
 
-# #533: these tests assert the fallback line for an owner word list; nothing is built in any more.
-WORDS = '[outward]\npatterns = ["\\\\b(?:the\\\\s+)?agents?\\\\b", "\\\\bsentinel\\\\b", "\\\\bseats?\\\\b", "\\\\bwuwei\\\\b", "\\\\bqueued\\\\b", "\\\\bthe\\\\s+owner\\\\b"]\n'
-
-
 @pytest.fixture
 def case(tmp_path, monkeypatch):
     (tmp_path / '.wuwei/memory/notes').mkdir(parents=True)
     (tmp_path / '.wuwei/memory/spine.md').write_text('Memory spine\n')
     (tmp_path / '.wuwei/memory/index.md').write_text('Index\n')
-    # #533: these tests assert the fallback line for an owner word list; nothing is built in.
-    (tmp_path / '.wuwei/config.toml').write_text(WORDS + '[adapters]\ninbound = "fake"\n')
+    (tmp_path / '.wuwei/config.toml').write_text('[adapters]\ninbound = "fake"\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:00:00+00:00')
     monkeypatch.setenv('HOME', str(tmp_path / 'home'))
@@ -54,7 +49,7 @@ def event(ident, ts, text='hello'):
 
 
 def config(root, text):
-    (root / '.wuwei/config.toml').write_text(WORDS + '[adapters]\ninbound = "fake"\n' + text)
+    (root / '.wuwei/config.toml').write_text('[adapters]\ninbound = "fake"\n' + text)
 
 
 def ids(root):
@@ -778,9 +773,9 @@ def test_content_none_sends_the_fixed_line(owner_dm, monkeypatch):
 
 
 def test_lint_refusal_sends_the_fallback_line(owner_dm, monkeypatch):
-    root, host = owner_dm
+    root, host = owner_dm  # A banned character: outward.patterns skip the owner DM (#533).
     host.results['threads'].data['threads'] = [{'id': 'T', 'resolved': False, 'outdated': False,
-        'path': 'cli/wuwei/guards/deploy.py', 'comments': [{'id': 3, 'author': 'alice', 'is_bot': False,
+        'path': 'docs/a\u2014b.md', 'comments': [{'id': 3, 'author': 'alice', 'is_bot': False,
         'body': 'x', 'created_at': workspace.now().isoformat()}]}]
     change(host, monkeypatch)
     listen().tick(root, {})
@@ -822,7 +817,7 @@ def test_negotiation_loop_reaches_the_owner_dm_once(owner_dm, monkeypatch):
 
 @pytest.mark.parametrize('content,reason,expected', [
     ('none', LOOP_REASON, 'An update is waiting in the workspace.'),
-    ('summary', 'the seat keeps asking', 'Item alpha is going back and forth; details are on the host.')])
+    ('summary', 'the seat keeps asking\u2014again', 'Item alpha is going back and forth; details are on the host.')])
 def test_negotiation_loop_dm_fallbacks(owner_dm, content, reason, expected):
     root, host = owner_dm
     config(root, PR_CONFIG + f'[control_plane]\ncontent = "{content}"\n')

@@ -235,6 +235,14 @@ queues, which agent wrote what), banned characters, and a maximum length per cha
 lint also applies the mechanical checks of the owner's voice for the message's audience
 (4.8).
 
+The internal-state patterns (`outward.patterns`, empty by default) apply by kind and
+audience (#533). Tracker, docs and code-host writes are the team's records and never read
+them. On chat and mail, a client or public reader gets a card naming the audience and the
+matched word, decided with the approval tier, so one approval sends it. A team or company
+reader gets the message; under `autonomy.mode = "supervised"` an `outward.lint` event and a
+warning name the word, and under autonomous nothing is recorded. The strict posture keeps
+the refusal. A message only the owner reads is never checked.
+
 ### 4.4 Profiles
 
 - `strict` (default): every guard above blocks.

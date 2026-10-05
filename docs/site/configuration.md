@@ -175,7 +175,7 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `autonomy.mode` | `"autonomous"` | Who takes a decision record (`bin/wuwei decision route D-n`). `autonomous`: a Routine, Consequential or scoring Exploratory record is taken as recommended (`Decided-by: mandate`), listed in the digest and the day report with the reversal command; a tie, a Strategic record, a one-way record or a record written for you (a security finding) still asks you. `supervised`: every decision beyond a two-way one on its own branch or PR asks you. A calibration profile may not switch a supervised workspace to autonomous. |
+| `autonomy.mode` | `"autonomous"` | Who takes a decision record (`bin/wuwei decision route D-n`). `autonomous`: a Routine, Consequential or scoring Exploratory record is taken as recommended (`Decided-by: mandate`), listed in the digest and the day report with the reversal command; a tie, a Strategic record, a one-way record or a record written for you (a security finding) still asks you. `supervised`: every decision beyond a two-way one on its own branch or PR asks you. A calibration profile may not switch a supervised workspace to autonomous. Under `autonomous` an `outward.patterns` match in team or company chat is not reported; `supervised` records an `outward.lint` event and a warning. |
 | `decisions.wait_hours` | `24` | Weekday hours in `owner.timezone` an external confirmation (`decision route D-n --external <item>`) waits for your answer before the sweep confirms it on a two-way door or parks the item. |
 | `decisions.cruise.enabled` | `true` | When false, every decision class is listed as going to you in the seat mandate (cruise answering is not built). |
 | `decisions.cruise.levels` | `{}` | Per-class level (0 to 3) that lowers a 5.8.1 class default in the seat mandate; a level above the class ceiling or an unknown class is refused. |
@@ -383,7 +383,7 @@ Two starters ship in `templates/profiles/`, derived from WUWEI's own setup: `pyt
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `outward.patterns` | `[]` | Regexes a chat message must not contain; the reason names the matched word. Empty by default since 0.18.2: messages about agents, phases and item ids are normal work. |
+| `outward.patterns` | `[]` | Regexes for internal-state words in chat and mail; the reason names the matched word. Never applied to tracker, docs and code-host writes or to a message only you read. A client or public reader gets a card naming the audience and the word; a team or company reader gets the message (a warning under `autonomy.mode = "supervised"`); the strict posture refuses. Empty by default since 0.18.2: messages about agents, phases and item ids are normal work. |
 | `outward.banned_characters` | `emoji`, U+2014, U+2015, U+2E3A, U+2E3B | Setting a list replaces defaults. |
 | `outward.tool_patterns` | Built-in Slack, Linear, GitHub, Notion and Atlassian MCP matches | Tool regex plus policy channel. The built-in rules match the brand anywhere in the name, so `mcp__<uuid>__slack_send_message` is Slack. A list in `config.toml` replaces the defaults; `config set` adds to them. A tool nothing resolves is a read, a write or unknown by the words of its name (see security). |
 | `outward.servers` | `{}` | MCP server id to channel (`slack`, `tracker`, `code_host`, `docs`, `mail` or `other`), checked before the rules; `bin/wuwei outbound learn` proposes entries. Reads still pass. |
