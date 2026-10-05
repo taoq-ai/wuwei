@@ -155,6 +155,23 @@ def test_send_umbrella_never_sends_an_owner_marker(configured):
     assert code == 1 and 'owner disposition markers must be posted by the owner' in reason
 
 
+def test_send_umbrella_covers_connector_docs_and_tracker_writes(configured):
+    # #535: a connector docs or tracker write follows the umbrella; WUWEI's own adapter
+    # writes (the port path) keep docs.auto and tracker.auto.
+    from wuwei import outward
+    root = configured[0]
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('default_tier = "ask"', 'default_tier = "send"'))
+    config = workspace.load_config(root)
+    sheet = {'spreadsheetId': 'S1', 'range': 'Roadmap!A1', 'values': [['2026-10-21', 'Cutover note']]}
+    assert outward.classify('Cutover note', root, config, sheet, kind='docs',
+                            tool=opaque('update_values')) == (0, 'send')
+    assert outward.classify('T\nAdds a flag.', root, config, {'page_id': 'P1', 'text': 'T\nAdds a flag.'},
+                            kind='docs', port=True)[1] == 'draft'
+    assert outward.classify('Progress note', root, config, {'issue_key': 'PROJ-1', 'comment': 'Progress note'},
+                            kind='tracker', tool=opaque('addCommentToJiraIssue')) == (0, 'send')
+
+
 def test_send_umbrella_drops_the_broad_rows(configured):
     from wuwei import outward
     root, config = configured

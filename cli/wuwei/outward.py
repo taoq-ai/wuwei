@@ -608,10 +608,10 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
             if isinstance(why, list):
                 why.append(found[1])
             return FINDINGS, 'block'
-        # #527: the umbrella decides what no row narrowed, for chat, code host, mail and other
-        # writes; docs and tracker keep docs.auto and tracker.auto. With ask, the rules below
-        # say why a draft is held.
-        if kind not in ('docs', 'tracker') and rules['default_tier'] != 'ask':
+        # #527, #535: the umbrella decides what no row narrowed, every connector write included;
+        # docs.auto and tracker.auto keep deciding WUWEI's own adapter writes (the port path),
+        # which carry a kind or a category. With ask, the rules below say why a draft is held.
+        if not (port and kind in ('docs', 'tracker')) and rules['default_tier'] != 'ask':
             if rules['default_tier'] == 'send':
                 return CLEAN, 'send'
             if isinstance(why, list):
