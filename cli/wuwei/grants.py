@@ -9,6 +9,25 @@ ACTIONS = {'deploy': ('deploy', 'deploys'), 'release': ('release', 'releases'),
            'publish': ('publish action', 'publishes')}
 REPO = r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+'
 RELEASES = ('release create', 'tag push', 'release API', 'tag or branch ref API')
+# #518: every owner-only step a lead may list, with its target shape. The three in ACTIONS
+# become grant cards (the deploy guard knows them); the others are owner steps the plan lists.
+OWNER_ACTIONS = {'deploy': 'repo:' + REPO, 'release': 'repo:' + REPO, 'publish': 'repo:' + REPO,
+                 'merge': f'(?:repo:{REPO}|pr:{REPO}#[0-9]+)',
+                 'message': r'(?:channel|dm):[A-Za-z0-9_-]+',
+                 'secret-set': f'secret:{REPO}/[A-Za-z0-9_]+'}
+
+
+def understood(entry):
+    """'' for a known action with a well-formed target, else why not (never an exception)."""
+    if (not isinstance(entry, dict) or set(entry) != {'action', 'target'}
+            or not all(isinstance(value, str) for value in entry.values())):
+        return 'needs exactly action and target as strings'
+    shape = OWNER_ACTIONS.get(entry['action'])
+    if shape is None:
+        return f'action {entry["action"]} not understood; known: {", ".join(OWNER_ACTIONS)}'
+    if not re.fullmatch(shape, entry['target']):
+        return f'target {entry["target"]} is not in the shape for {entry["action"]}'
+    return ''
 
 
 def action(rule):
@@ -179,6 +198,8 @@ def plan(root, config, candidates):
     found = {}
     for item in candidates:
         for entry in item.get('owner_actions', []):
+            if understood(entry) or entry['action'] not in ACTIONS:
+                continue  # #518: an owner step the plan lists, not a grant card
             name, repo_target = entry['action'], entry['target']
             identifier = next((key for key, row in rows.items() if row['planned'] and (
                 row['item'], row['action'], row['target']) == (item['id'], name, repo_target)), None)

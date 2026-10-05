@@ -555,11 +555,42 @@ def test_plan_gate_without_owner_actions_is_one_question(root, monkeypatch, caps
     assert json.loads(capsys.readouterr().out) == [plan.gate_widget(root)]
 
 
-@pytest.mark.parametrize('entry', [{'action': 'merge', 'target': 'repo:fixture-org/app'},
-                                   {'action': 'deploy', 'target': 'fixture-org/app'},
-                                   {'action': 'deploy', 'target': 'repo:fixture-org/app', 'when': 'now'}])
-def test_owner_actions_are_validated(root, entry):
+def test_owner_actions_must_be_a_list(root):
+    data = proposal()
+    data['candidates'][0]['owner_actions'] = 'deploy'
+    with pytest.raises(ValueError, match='owner_actions must be a list'):
+        plan.propose(data, root)
+
+
+@pytest.mark.parametrize('entry,line', [
+    ({'action': 'merge', 'target': 'repo:fixture-org/app'}, 'Owner-only: merge repo:fixture-org/app (owner step)'),
+    ({'action': 'merge', 'target': 'pr:fixture-org/app#7'}, 'Owner-only: merge pr:fixture-org/app#7 (owner step)'),
+    ({'action': 'message', 'target': 'channel:C1'}, 'Owner-only: message channel:C1 (owner step)'),
+    ({'action': 'secret-set', 'target': 'secret:fixture-org/app/API_KEY'},
+     'Owner-only: secret-set secret:fixture-org/app/API_KEY (owner step)'),
+    ({'action': 'deploy', 'target': 'fixture-org/app'},
+     'Owner-only: {"action": "deploy", "target": "fixture-org/app"} (not understood: target fixture-org/app '
+     'is not in the shape for deploy; the gate asks for it as written)'),
+    ({'action': 'frobnicate', 'target': 'repo:fixture-org/app'},
+     'Owner-only: {"action": "frobnicate", "target": "repo:fixture-org/app"} (not understood: action '
+     'frobnicate not understood; known: deploy, release, publish, merge, message, secret-set; '
+     'the gate asks for it as written)'),
+    ({'action': 'deploy', 'target': 'repo:fixture-org/app', 'when': 'now'},
+     '(not understood: needs exactly action and target as strings; the gate asks for it as written)'),
+])
+def test_owner_actions_beyond_grants_never_stop_the_gate(root, entry, line):
+    # #518: the lead's vocabulary (merge, message, secret-set) and anything malformed are
+    # lines on the plan; only deploy, release and publish become grant cards.
     data = proposal()
     data['candidates'][0]['owner_actions'] = [entry]
-    with pytest.raises(ValueError, match='owner_actions'):
-        plan.propose(data, root)
+    text = plan.propose(data, root).read_text()
+    assert line in text
+    assert not (root / '.wuwei/days/2026-09-28/decisions').exists()
+
+
+def test_lead_charter_names_every_owner_action():
+    from pathlib import Path
+    from wuwei import grants
+    text = (Path(__file__).parents[1] / 'charters/lead.md').read_text()
+    for name in grants.OWNER_ACTIONS:
+        assert f'`{name}`' in text, name
