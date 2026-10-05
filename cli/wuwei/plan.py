@@ -94,16 +94,27 @@ def _proposal(data, goals_text, framework="wsjf"):
         flags = item.get('flags')
         if not isinstance(flags, dict) or set(flags) != set(FLAGS) or any(type(v) is not bool for v in flags.values()):
             raise ValueError(f'{name}: flags must contain boolean trust_surface, boundary_relevant, agent_surface; {PLAN_JSON}')
-        actions = item.get('owner_actions', [])  # #478: owner-only steps the gate pre-approves
-        from wuwei.grants import ACTIONS, REPO
-        if not isinstance(actions, list) or any(
-                not isinstance(entry, dict) or set(entry) != {'action', 'target'}
-                or entry['action'] not in ACTIONS or not isinstance(entry['target'], str)
-                or not re.fullmatch('repo:' + REPO, entry['target']) for entry in actions):
-            raise ValueError(f'{name}: owner_actions need action deploy, release or publish and target '
-                             f'repo:<org>/<name>; {PLAN_JSON}')
+        # #478, #518: owner-only steps the gate pre-approves. An entry the CLI does not
+        # understand is a warning on the plan, never a refusal before the gate.
+        if not isinstance(item.get('owner_actions', []), list):
+            raise ValueError(f'{name}: owner_actions must be a list; {PLAN_JSON}')
     json.dumps(data, allow_nan=False)
     return data
+
+
+def owner_steps(item):
+    """#518: plan lines for owner actions that are not grant cards: known owner steps (merge,
+    message, secret-set) and entries the CLI does not understand, which the gate asks as written."""
+    from wuwei import grants
+    lines = []
+    for entry in item.get('owner_actions', []):
+        reason = grants.understood(entry)
+        if reason:
+            lines.append(f'Owner-only: {json.dumps(entry, sort_keys=True)} (not understood: {reason}; '
+                         'the gate asks for it as written)')
+        elif entry['action'] not in grants.ACTIONS:
+            lines.append(f'Owner-only: {entry["action"]} {entry["target"]} (owner step)')
+    return lines
 
 
 def goal_seats(candidates, cap):
@@ -185,7 +196,8 @@ def propose(data, root=None):
                   f'Goal: {item.get("goal", "unplanned")}', f'Evidence: {item["evidence"]}',
                   f'Scope: {item["scope"]}', f'Overlap: {item["overlap"]}',
                   'Flags: ' + ', '.join(key for key in FLAGS if item['flags'][key]) if any(item['flags'].values()) else 'Flags: none',
-                  *(f'Owner-only: {name} {target} ({key})' for name, target, key in planned.get(item['id'], [])), '']
+                  *(f'Owner-only: {name} {target} ({key})' for name, target, key in planned.get(item['id'], [])),
+                  *owner_steps(item), '']
     lines += ['## Discovery intake',
               *[f'- {item["id"]}: {item.get("evidence", "evidence pending")}' for item in data['discovered']], '',
               '## Gate proposal', f'CAP: {data["cap"]}',
