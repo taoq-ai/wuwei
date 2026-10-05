@@ -344,10 +344,25 @@ def test_owner_file_unreadable(root, capsys):
 
 
 @pytest.mark.parametrize('mode,name', [('card', 'guarded'), ('auto', 'observe')])
-def test_owner_card_and_answers(root, capsys, monkeypatch, mode, name):
+def test_owner_identity_is_recorded_without_a_card(root, capsys, monkeypatch, mode, name):
+    # #537: the owner's own identity, from the connector's identity call, needs no card outside strict.
     from wuwei.guards.outward import check_lint, check_tier
     configure(root, f'learn = "{mode}"')
     posture(root, name)
+    path = owner_file(root, {'user': 'U09', 'dm': 'D09'})
+    assert learn(root, '--owner', path, tool=SLACK, listings=False) == 0
+    assert '"record"' not in capsys.readouterr().out
+    assert not (workspace.day_dir(root) / 'decisions').exists()
+    config = workspace.load_config(root)
+    assert config['outbound']['owner']['slack'] == {'user': 'U09', 'dm': 'D09'}
+    assert events(root, 'outbound.learned')[0]['owner'] is True
+    assert dm(root, check_tier) == dm(root, check_lint) == (0, '')
+    assert len(events(root, 'outward.to_owner')) == 1
+
+
+def test_owner_card_under_strict(root, capsys, monkeypatch):
+    from wuwei.guards.outward import check_tier
+    posture(root, 'strict')
     path = owner_file(root, {'user': 'U09', 'dm': 'D09'})
     assert learn(root, '--owner', path, tool=SLACK, listings=False) == 0
     [question] = json.loads(capsys.readouterr().out)
@@ -356,15 +371,14 @@ def test_owner_card_and_answers(root, capsys, monkeypatch, mode, name):
     assert "- owner U09, DM D09 from the connector's identity call" in text
     assert decisions(root) == ['D-1.md']
     assert answer(root, monkeypatch, 'approve') == (0, 'approve')
-    config = workspace.load_config(root)
-    assert config['outbound']['owner']['slack'] == {'user': 'U09', 'dm': 'D09'}
+    assert workspace.load_config(root)['outbound']['owner']['slack'] == {'user': 'U09', 'dm': 'D09'}
     assert events(root, 'outbound.learned')[0]['owner'] is True
-    assert dm(root, check_tier) == dm(root, check_lint) == (0, '')
-    assert len(events(root, 'outward.to_owner')) == 1
+    assert dm(root, check_tier) == (0, '')
 
 
 def test_owner_keep_writes_nothing(root, capsys, monkeypatch):
     from wuwei.guards.outward import check_tier
+    posture(root, 'strict')  # #537: outside strict the identity is written without a card
     assert learn(root, '--owner', owner_file(root, {'user': 'U09', 'dm': 'D09'}),
                  tool=SLACK, listings=False) == 0
     before = (root / '.wuwei/config.toml').read_text()
