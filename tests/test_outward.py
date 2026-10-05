@@ -43,14 +43,14 @@ def configured(tmp_path, monkeypatch):
     ('_They_ fixed it', 1, 'pronoun'),
     ('It is theirs', 1, 'pronoun'),
     ('The theme is ready', 0, ''),
-    ('drafts are with the owner', 1, 'internal'),
-    ('_drafts_ are with the owner', 1, 'internal'),
-    ('the _queue_ is empty', 1, 'internal'),
-    ('DRAFTS\nARE WITH THE OWNER', 1, 'internal'),
-    ('drafts pending', 1, 'internal'),
-    ('pending drafts', 1, 'internal'),
-    ('The agent wrote this', 1, 'internal'),
-    ('The build queue is empty', 1, 'internal'),
+    ('drafts are with the owner', 0, ''),
+    ('_drafts_ are with the owner', 0, ''),
+    ('the _queue_ is empty', 0, ''),
+    ('DRAFTS\nARE WITH THE OWNER', 0, ''),
+    ('drafts pending', 0, ''),
+    ('pending drafts', 0, ''),
+    ('The agent wrote this', 0, ''),
+    ('The build queue is empty', 0, ''),
     ('fixed\u2014in abc1234', 1, 'banned'),
     ('Done \U0001f600', 1, 'emoji'),
     ('Done \u2764\ufe0f', 1, 'emoji'),
@@ -98,7 +98,7 @@ def test_missing_owner_fails_closed(configured):
 
 def test_rule_defaults_and_configured_tool_patterns(configured):
     root, config = configured
-    assert config['outward']['patterns']
+    assert config['outward']['patterns'] == []  # #533: no built-in internal-state words
     assert config['outward']['banned_characters'] == ['emoji', '\u2014', '\u2015', '\u2e3a', '\u2e3b']
     assert config['outward']['tool_patterns']
     config['outward']['tool_patterns'][0]['channel'] = 'changed'
@@ -442,14 +442,34 @@ def head(result):
     return result[0], result[1].split(';')[0]
 
 
-@pytest.mark.parametrize('text', ['the agents are ready', 'an agent checked it',
-    'sentinel finished', 'two seats are ready', 'a seat finished', 'WUWEI checked it',
-    'queued for tomorrow', 'the owner approved', 'Claude checked it', 'CODEX checked it',
-    'a subagent checked it', 'subagents checked it', 'steward finished',
-    'gate verdict is ready', 'gate verdicts are ready'])
-def test_internal_state_defaults(configured, text):
+@pytest.mark.parametrize('text', ['the agents are ready', 'Phase 3 agents touch the runtime',
+    'queued for tomorrow', 'the owner approved', 'Claude checked it'])
+def test_no_internal_state_words_by_default(configured, text):
+    # #533: messages about agents, phases and ids are normal work; nothing is built in.
     from wuwei.outward import lint
-    assert head(lint(text, 'chat', configured[1])) == (1, 'outward: internal state pattern')
+    assert lint(text, 'chat', configured[1]) == (0, '')
+
+
+def test_owner_internal_state_pattern_names_the_word(configured):
+    from wuwei.outward import lint
+    config = configured[1]
+    config['outward']['patterns'] = [r'\bsentinel\b', r'\b(?:the\s+)?agents?\b']
+    code, reason = lint('the agents are ready', 'chat', config)
+    assert code == 1 and reason.startswith('outward: internal state pattern; remove "the agents" from the message')
+    assert lint('tests passed', 'chat', config) == (0, '')
+
+
+def test_send_umbrella_drops_draft_connector_modes(configured):
+    # #533: a connector learned as draft follows the send umbrella; refuse still refuses.
+    from wuwei import outward
+    root = configured[0]
+    write_config(root, f'\n[outward.modes]\n"{UUID}" = "draft"\n"other-server" = "refuse"\n')
+    rows = [row for row, _, note in outward.table(workspace.load_config(root)) if note]
+    assert [row['tier'] for row in rows] == ['ask', 'block']
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('default_tier = "ask"', 'default_tier = "send"'))
+    rows = [row for row, _, note in outward.table(workspace.load_config(root)) if note]
+    assert [row['tier'] for row in rows] == ['block']
 
 
 @pytest.mark.parametrize('char,code', [('\u2015', 1), ('\u2e3a', 1), ('\u2e3b', 1),
@@ -584,6 +604,7 @@ def test_owner_addressed_lint_skips_third_person_rules_only(tmp_path, monkeypatc
     assert outward.lint(remote.CONFIRM, 'chat', config)[0] == 1
     assert outward.lint(remote.CONFIRM, 'chat', config, to_owner=True) == (0, '')
     assert outward.lint('They look done.', 'chat', config, to_owner=True) == (0, '')
+    config['outward']['patterns'] = [r'\bwuwei\b']  # #533: an owner list, nothing built in
     assert outward.lint('wuwei is busy.', 'chat', config, to_owner=True)[0] == 1
     inputs = {'text': remote.CONFIRM, 'channel': 'D1'}
     assert outward.check_lint(inputs, tmp_path, config, {'chat'}, to_owner=True) == (0, '')

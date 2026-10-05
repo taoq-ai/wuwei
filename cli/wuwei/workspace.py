@@ -193,13 +193,9 @@ SCHEMA = {
         "default_tier": (str, "send", ("send", "ask", "block")),
     },
     "outward": {
-        "patterns": [(str, ""), [
-            r"\bdrafts?\b.*\b(?:pending|owner|approval)\b",
-            r"\bpending\s+drafts?\b", r"\bqueues?\b",
-            r"\b(?:the\s+)?agents?\b", r"\bsentinel\b", r"\bseats?\b",
-            r"\b(?:claude|codex|subagents?|steward|gate\s+verdicts?)\b",
-            r"\bwuwei\b", r"\bqueued\b", r"\bthe\s+owner\b",
-        ]],
+        # #533 (owner, 2026-10-05): no built-in internal-state words; real messages say "agents" and
+        # "phase". An owner who wants the old list adds it; the matched word is named in the reason.
+        "patterns": [(str, ""), []],
         "banned_characters": [(str, ""), ["emoji", "\u2014", "\u2015", "\u2e3a", "\u2e3b"]],
         "max_length": {"*": (int, 1, 1)},
         "humanize": (bool, True),

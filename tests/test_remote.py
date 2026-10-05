@@ -141,6 +141,8 @@ def test_dm_sends_through_the_undecorated_chat_operation(ws, chat):
 
 
 def test_dm_lint_finding_sends_nothing(ws, chat):
+    with (ws / '.wuwei/config.toml').open('a') as stream:  # #533: an owner word list, nothing built in
+        stream.write('\n[outward]\npatterns = ["\\\\bwuwei\\\\b"]\n')
     assert remote().dm('wuwei is busy.', root=ws).exit == 1
     assert chat == []
 
