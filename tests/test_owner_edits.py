@@ -155,7 +155,7 @@ def gated(tmp_path, monkeypatch, posture='guarded', topics=('goals',)):
     from wuwei.guards.decision import record_gate
 
     base = workspace(tmp_path)
-    (base / 'config.toml').write_text(f'[security]\nposture = "{posture}"\n')
+    (base / 'config.toml').write_text(f'[security]\nposture = "{posture}"\n[outbound]\ndefault_tier = "ask"\n')  # #527: these tests hold a draft
     (base / 'memory/goals.md').write_text(TEMPLATE.read_text(encoding='utf-8'))
     (base / 'executable').write_text(str(tmp_path / 'bin/wuwei') + '\n')  # the planner's CLI
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
