@@ -134,6 +134,7 @@ SCHEMA = {
     "responder": {"enabled": (bool, True)},
     "steward": {"every_tool_calls": (int, 50, 1), "loop_window_hours": (int, 4, 1),
                 "loop_threshold": (int, 9, 1)},
+    "autonomy": {"mode": (str, "autonomous", ("autonomous", "supervised"))},
     "decisions": {"wait_hours": (int, 24, 1),
                   "cruise": {"enabled": (bool, True), "levels": {"*": (int, None, 0, 3)}},
                   "lenses": {"*": (str, "")}},

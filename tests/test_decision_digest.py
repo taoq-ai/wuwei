@@ -131,3 +131,20 @@ def test_digest_lines_follow_the_digest_verbosity(tmp_path, monkeypatch):
         assert watch.digest(root, workspace.load_config(root)) == 0
     assert sent == ['Two-way decisions taken:\n- D-1: A\n- D-2: B\n',
                     'Two-way decisions taken:\n- D-1: A (decisions/D-1.md)\n- D-2: B (decisions/D-2.md)\n']
+
+
+def test_digest_lists_mandate_decisions_on_a_two_way_door(tmp_path, monkeypatch):
+    # #530: a decision taken under the mandate is listed beside the seat ones.
+    from wuwei import outward
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('')
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00+00:00')
+    monkeypatch.setattr(outward, 'check_call', lambda *args, **kwargs: (0, ''))
+    state._write_state(lambda data: data.update(decision_outcomes={
+        'D-1': {'option': 'A', 'decided_by': 'seat', 'reversibility': 'two-way'},
+        'D-2': {'option': 'B', 'decided_by': 'mandate', 'reversibility': 'two-way'},
+        'D-3': {'option': 'A', 'decided_by': 'mandate', 'reversibility': 'one-way'},
+    }), root, reserved=False)
+    assert watch.digest(root, workspace.load_config(root)) == 0
+    assert watch.saved(root)['digest_ids'] == ['D-1', 'D-2']

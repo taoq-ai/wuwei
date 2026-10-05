@@ -32,6 +32,7 @@ DENIED = (
     ('repos.merge.auto', lambda new, old: new is True),
     ('shepherd.autostart', lambda new, old: new is True),
     ('gates.second_opinion', lambda new, old: new != 'off'),
+    ('autonomy.mode', lambda new, old: new == 'autonomous' and old == 'supervised'),
     *((pattern, lambda new, old: True)
       for pattern in ('adapters.*', 'calendar.url', 'watch.ping_url', 'codex.command', 'telemetry.*')),
 )

@@ -518,7 +518,9 @@ the owner (5.8.1), one question per decision, recommended option first, pending 
 batched, pre-triaged by the steward; for work outside the goals or above the auto-start bar
 (5.7); for merges the merge policy does not clear. Never for what a seat's mandate lets it
 decide (5.2). Otherwise the session is silent, with a
-digest at most every two hours that lists the decisions cruise mode answered.
+digest at most every two hours that lists the decisions cruise mode answered. Under
+`autonomy.mode = autonomous` a decision the mandate covers (5.8, decision classes) is never a
+card (owner, 2026-10-05, #530).
 
 ### 5.5 The steward
 
@@ -642,6 +644,23 @@ Routing by class. The record's class level and the conditions in 5.8.1 decide wh
 CLI answers it or the owner does; anything cruise mode does not answer goes to the owner.
 When unsure, it is one-way.
 
+Decision classes (owner, 2026-10-05, #530). `decision route` derives an MIT CISR class from
+two axes already in the record. Risk is low when the record is two-way and its blast radius
+starts with item, own branch, own PR or day; anything else is high. Ambiguity is low when
+Confidence is not low and the 5.8.1 margin is at least 0.2. Routine is low on both,
+Consequential is high risk with low ambiguity, Exploratory is low risk with high ambiguity and
+Strategic is high on both. The 5.8.1 classes `retry` (a fix round after FIX verdicts),
+`approach` (a builder's task round, a choice between seat procedures), `park` (a parked item's
+next step) and `accept-residual` are Routine by definition. `autonomy.mode` holds the owner's
+setup answer, default `autonomous`: a Routine, Consequential or Exploratory record whose
+recommendation scores ahead is taken as recommended, written `Decided-by: mandate` by the CLI,
+listed in the digest and in the day report with the reversal command, and never a card; a tie,
+a Strategic record, a one-way record (an `unsure` one too, unless its class is Routine by
+definition) and a record written `Decided-by: owner` (a security finding) go to the owner with
+the lens lines. A one-way record is never Routine by definition. Under `supervised` routing stays
+as before this amendment. The lint OK line names the class, and a record without a
+recommendation is refused with "add the recommendation and the reasoning".
+
 Enforcement. A PostToolUse decision lint on writes to `decisions/D-*.md` refuses a record
 missing any field, with an unknown class, with fewer than two options, or whose
 recommendation is not the top passing option by the stated weights (the CLI recomputes the
@@ -714,7 +733,10 @@ Ceilings. Whatever the config says, these stay at L0 or L1: messages to people; 
 agreed with other people; deploys (never made, 4.7) and merges to a repository whose base deploys (4.6); trust-boundary
 findings (a record whose context cites a security finding); anything one-way; anything
 outside the item's goals (an `unplanned` item, or a change to a goal). The Ceiling column
-carries the class ones; the rest are checked on every record.
+carries the class ones; the rest are checked on every record. Under `autonomy.mode =
+autonomous` (5.8, decision classes) the ceilings bind a two-way record not written for the
+owner through its action's floor (merge policy 4.6, publish grants 4.7, outbound tiers 4.9),
+not the decision record (#530); one-way records and trust-boundary findings still go to the owner.
 
 Merge. The `merge` class answers only where `merge.auto = true` and the merge policy clears
 the merge; the policy's eligibility, preconditions, soak window, daily cap and breaker

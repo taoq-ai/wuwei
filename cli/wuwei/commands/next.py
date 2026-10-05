@@ -41,7 +41,7 @@ def approved(data):
     """Approved items in queue order, less those a seat decision carried or parked."""
     disposed = {str(record.get('item_disposition')).split(' ', 1)[-1]
                 for record in data.get('decision_outcomes', {}).values()
-                if isinstance(record, dict) and record.get('decided_by') == 'seat'
+                if isinstance(record, dict) and record.get('decided_by') in ('seat', 'mandate')
                 and str(record.get('item_disposition')).startswith(('carried ', 'parked '))}
     return [name for name in data['approved_items'] if name in data['items'] and name not in disposed]
 

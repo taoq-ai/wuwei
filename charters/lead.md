@@ -18,4 +18,4 @@ Read `_common.md` and `_common-authoring.md` before discovery. Own discovery, ra
 ## Launch and escalation
 
 1. Claim an approved item only at launch. Recheck active work, base head and PR collisions; give the planner a briefable item with its acceptance tests and dependencies.
-2. Resolve local blockers within the item's budget, then park or resequence with a decision record. Route beyond-item or one-way choices to the owner through the common decision rule. A resequence that settles an architecture, interface or data shape is a `design` record, and its lens lines are mandatory.
+2. Resolve local blockers within the item's budget, then park or resequence with a decision record. Route each record with the common decision rule. A resequence that settles an architecture, interface or data shape is a `design` record, and its lens lines are mandatory.

@@ -5,9 +5,9 @@ import json
 import sys
 
 from wuwei import state, workspace
-from wuwei.decision import (LENSES, evaluate, lens_table, lint_file, option_id, options, owner_confirm,
-                            owner_record, present, record_rejection, record_widget, route, route_owner,
-                            seat_outcome, today_path)
+from wuwei.decision import (LENSES, ROUTINE, cisr, decided_record, evaluate, lens_table, lint_file, margin,
+                            option_id, options, owner_confirm, owner_record, present, record_rejection,
+                            record_widget, route, route_owner, seat_outcome, today_path)
 from wuwei.exits import RACE, SYMLINK
 
 
@@ -54,6 +54,10 @@ def decide(args):
         except ValueError as exc:
             return 1, f'decision: {exc}'
         return 0, 'owner'
+    if workspace.load_config(root)['autonomy']['mode'] == 'autonomous':
+        decided = mandate(args.id, path, text, fields, scores, root)
+        if decided:
+            return 0, decided
     target = route(fields)
     if target == 'owner':
         route_owner(args.id, fields, root)
@@ -69,6 +73,34 @@ def decide(args):
     state._write_state(update, root, reserved=False, kind='decision.decided',
                        payload={'id': args.id, **record})
     return 0, target
+
+
+def mandate(ident, path, text, fields, scores, root):
+    """#530 under autonomous: who already holds ident, or 'mandate' after taking a Routine,
+    Consequential or scoring Exploratory record as recommended; None for the legacy route."""
+    data = state.read_state(root)
+    if ident in data.get('decision_routes', {}):
+        return 'owner'
+    if ident in data.get('decision_outcomes', {}):
+        return data['decision_outcomes'][ident].get('decided_by')
+    door = fields['Reversibility']
+    if fields['Decided-by'] == 'owner' or door == 'one-way' or (door != 'two-way' and fields.get('Class') not in ROUTINE):
+        return None  # one-way doors and records written for the owner still ask (review F1)
+    kind = cisr(fields, scores)
+    if kind == 'Strategic' or (kind == 'Exploratory' and margin(fields, scores) <= 0):
+        return None
+    record = seat_outcome(fields, scores, by='mandate')
+
+    def update(current):
+        if ident in current.get('decision_routes', {}) or ident in current.get('decision_outcomes', {}):
+            raise ValueError(f'decision changed during routing; {RACE}')
+        current.setdefault('decision_outcomes', {})[ident] = record
+
+    state._write_state(update, root, reserved=False, kind='decision.decided',
+                       payload={'id': ident, **record})
+    kept = fields['Outcome'].startswith(('carried ', 'parked '))  # an item disposition stays (review F2)
+    workspace.atomic_write(path, decided_record(text, fields['Outcome'] if kept else record['option'], 'mandate'))
+    return 'mandate'
 
 
 def show(args):
@@ -87,6 +119,8 @@ def show(args):
         return 1, f'decision show: {exc}'
     level = 'full' if args.full else workspace.verbosity(config, 'decisions')
     if args.widget:  # --widget and --full exclude each other
+        if state.read_state(root).get('decision_outcomes', {}).get(args.id, {}).get('decided_by') == 'mandate':
+            return 0, '[]'  # #530: taken under the mandate, nothing to ask.
         return 0, json.dumps([record_widget(args.id, fields, level=level)], indent=2)
     if level == 'full':
         return 0, text.rstrip()
@@ -101,7 +135,7 @@ def owner_outcome(args, note=None, *, root=None, where=None):
         return 2, f'decision: record must be a regular file; {SYMLINK}'
     text = path.read_text(encoding='utf-8')
     try:
-        fields, _ = evaluate(text)
+        fields, scores = evaluate(text)
     except ValueError as exc:
         return 1, str(exc)
     args.option = option_id(fields, args.option)
@@ -113,7 +147,7 @@ def owner_outcome(args, note=None, *, root=None, where=None):
         return 1, 'decision: already answered; read it with bin/wuwei decision show <id>; write a new decision record to change course'
     if previous is None and args.id not in data.get('decision_routes', {}):
         return 1, 'decision: route this pending owner decision first; route it with bin/wuwei decision route <id> first'
-    if previous is not None and previous.get('decided_by') != 'seat':
+    if previous is not None and previous.get('decided_by') not in ('seat', 'mandate'):
         return 1, 'decision: invalid prior outcome; run bin/wuwei doctor, then bin/wuwei why <id>'
     digest = hashlib.sha256((args.id + '\n' + args.option + '\n' + text).encode()).hexdigest()
     if where and fields['Reversibility'] != 'two-way':
@@ -144,7 +178,7 @@ def owner_outcome(args, note=None, *, root=None, where=None):
                 current[key][args.id]['answered'] = args.option
         current.setdefault('decision_outcomes', {})[args.id] = {
             'option': args.option, 'outcome': args.option, 'decided_by': 'owner',
-            'reversibility': fields['Reversibility']}
+            'reversibility': fields['Reversibility'], 'cisr': cisr(fields, scores)}
         for name, item in current['items'].items():
             linked = item.get('decision') == args.id
             if not linked and item['phase'] == 'parked':

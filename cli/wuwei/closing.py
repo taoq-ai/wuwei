@@ -185,12 +185,13 @@ def unresolved(root, rows, open_items=None, notes=None):
         for identifier in sorted(identifiers):
             try:
                 fields, _ = decision.evaluate(decision.today_path(identifier, root).read_text(encoding='utf-8'))
-                if identifier in routes or decision.route(fields) == 'owner':
+                mandate = outcomes.get(identifier, {}).get('decided_by') == 'mandate'  # #530
+                if not mandate and (identifier in routes or decision.route(fields) == 'owner'):
                     if identifier not in resolved and not decision.answered(data, identifier):
                         findings.append(f'{identifier}: pending owner decision: {fields["Question"]}')
                 elif identifier in outcomes:
                     record = outcomes[identifier]
-                    if (fields['Decided-by'] == record['decided_by'] == 'seat'
+                    if (fields['Decided-by'] == record['decided_by'] in ('seat', 'mandate')
                             and record.get('item_disposition') == fields['Outcome']):
                         dispositions[fields['Outcome']] = fields['Context'].partition('Reason: ')[2]
             except watch.ERRORS as exc:

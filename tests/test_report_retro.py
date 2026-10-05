@@ -304,7 +304,7 @@ def test_report_levels(tmp_path, monkeypatch):
     (day / 'decisions/D-2.md').write_text('Question: Ship?\nOutcome: Accepted\n')
     brief = report.build(root)
     sections = [line for line in brief.splitlines() if line.startswith('## ')]
-    assert sections == ['## Changed', '## Merged', '## Open at close', '## Parked',
+    assert sections == ['## Changed', '## Taken under mandate', '## Decisions by class', '## Merged', '## Open at close', '## Parked',
                         '## Decisions answered', '## Carry']
     assert brief.split('## Changed\n')[1].split('\n\n')[0] == 'none'
     (root / '.wuwei/memory/notes/baseline.md').write_text(
@@ -411,3 +411,35 @@ def test_report_counts_grant_uses(tmp_path, monkeypatch):
     assert '## Grants\n- deploys run under grant D-3: 3\n' in report.build(root)
     for kind in ('grant.asked', 'grant.used', 'grant.revoked'):
         assert signal.classify({'kind': kind, 'payload': {}}, {})[0] == 'silent'
+
+
+def test_report_lists_mandate_decisions_and_counts_by_class(tmp_path, monkeypatch):
+    # #530: decisions taken under the mandate, Consequential first, and decisions and cards per class.
+    from wuwei import report
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('[adapters]\ncode_host = "none"\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    state._write_state(lambda data: None, root, reserved=False)
+    text = report.build(root)
+    assert '## Taken under mandate\nnone\n' in text and text.index('## Decisions by class') < text.index('## Merged')
+    state._write_state(lambda data: data.update(decision_outcomes={
+        'D-1': {'option': 'A', 'decided_by': 'mandate', 'cisr': 'Routine'},
+        'D-2': {'option': 'B', 'decided_by': 'mandate', 'cisr': 'Routine'},
+        'D-3': {'option': 'A', 'decided_by': 'mandate', 'cisr': 'Consequential'},
+        'D-5': {'option': 'B', 'decided_by': 'owner', 'cisr': 'Routine'},
+    }, decision_routes={'D-4': {'reversibility': 'one-way', 'recommendation': 'A', 'cisr': 'Strategic'}}),
+        root, reserved=False)
+    for verbosity in ('brief', 'full'):
+        (root / '.wuwei/config.toml').write_text(f'[adapters]\ncode_host = "none"\n[owner.verbosity]\nreport = "{verbosity}"\n')
+        text = report.build(root)
+        assert text.index('## Decisions by class') < text.index('## Merged')
+        assert text.split('## Taken under mandate\n')[1].split('\n\n')[0].splitlines() == [
+            '- D-3 (Consequential): A, decisions/D-3.md; reverse: bin/wuwei decide D-3 <option>',
+            '- D-1 (Routine): A, decisions/D-1.md; reverse: bin/wuwei decide D-1 <option>',
+            '- D-2 (Routine): B, decisions/D-2.md; reverse: bin/wuwei decide D-2 <option>']
+        assert text.split('## Decisions by class\n')[1].split('\n\n')[0].splitlines() == [
+            '- Routine: 3 decisions, 0 cards', '- Consequential: 1 decisions, 0 cards',
+            '- Exploratory: 0 decisions, 0 cards', '- Strategic: 1 decisions, 1 cards',
+            'Target: cards only for Strategic and for floors (publish, merge).']

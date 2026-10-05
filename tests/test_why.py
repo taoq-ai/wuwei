@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from test_decision import VALID
+from test_decision import SUPERVISED, VALID
 from wuwei import state
 from wuwei.__main__ import main
 
@@ -39,6 +39,7 @@ def save(root, text, name='D-3', day=DAY):
 
 def answer(root, monkeypatch, option, text=VALID.replace('Reversibility: two-way', 'Reversibility: one-way')):
     save(root, text)
+    (root / '.wuwei/config.toml').write_text(SUPERVISED)  # #530: the owner card flow
     assert main(['decision', 'route', 'D-3']) == 0
     monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
     assert main(['decision', 'outcome', 'D-3', option]) == 0
