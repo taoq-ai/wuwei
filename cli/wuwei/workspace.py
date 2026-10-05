@@ -190,7 +190,7 @@ SCHEMA = {
         # #527: the umbrella. What no narrower row holds gets this tier (chat, code host, mail,
         # other); docs and tracker writes keep docs.auto and tracker.auto. With send, the broad
         # default rows (commitment, disagreement, company) drop out and the owner's rows narrow.
-        "default_tier": (str, "ask", ("send", "ask", "block")),
+        "default_tier": (str, "send", ("send", "ask", "block")),
     },
     "outward": {
         "patterns": [(str, ""), [

@@ -1407,7 +1407,7 @@ def test_only_a_held_call_imports_the_draft_queue(tmp_path, channel, held):
     from fakes.integrity import seed
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text(
-        '[owner]\nname = "Pat Example"\npronouns = "they/them"\n[outbound]\nwork_channels = ["C1"]\n'
+        '[owner]\nname = "Pat Example"\npronouns = "they/them"\n[outbound]\ndefault_tier = "ask"\nwork_channels = ["C1"]\n'
         'external_channels = ["C2"]\n'
         'tiers = [{ audience = "client", topic = "commitment", tier = "block" }]\n'
         '[outbound.owner.slack]\nuser = "U01"\ndm = "D01"\n')
