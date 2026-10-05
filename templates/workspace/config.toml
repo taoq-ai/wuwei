@@ -199,10 +199,10 @@ deny = [] # Literal executable plus argument glob, for example "make publish*".
 # (owner, team, company, client, public) and the first matching row gives send, ask (a draft
 # you confirm) or block (refused, no draft). bin/wuwei outbound tiers prints the table.
 # Your rows come before the defaults; any subset of tool, person, channel, audience and topic
-# (sensitive, commitment or disagreement) and the tier. A typo refuses the whole file.
+# (sensitive, commitment, disagreement or thread) and the tier. A typo refuses the whole file.
 # tiers = [{ person = "U123", tier = "send" }, { audience = "team", tool = "tracker|docs|code_host", tier = "send" }]
 # When no row decides, the kind rules do: missing or unknown destinations draft, every DM to
-# anyone but you drafts, chat threads draft until the chat port can verify all participants,
+# anyone but you drafts, a thread reply's participants come from bin/wuwei outbound learn --thread,
 # and tracker writes draft unless their class or kind is in tracker.auto.
 # Team channels (class team): only these may auto-send routine work replies.
 work_channels = []

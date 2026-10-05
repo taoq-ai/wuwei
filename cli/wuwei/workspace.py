@@ -46,7 +46,7 @@ FLOORS = {'records': 'block'}
 
 # 5.11: what the tracker opens (classes) and what it comments (kinds).
 AUDIENCES = ('owner', 'team', 'company', 'client', 'public')  # #496: outbound audience classes.
-TOPICS = ('sensitive', 'commitment', 'disagreement')
+TOPICS = ('sensitive', 'commitment', 'disagreement', 'thread')
 TRACKER_CLASSES = ("items", "bugs", "triage", "follow-ups")
 TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
 
@@ -566,7 +566,7 @@ _CONFIGS = {}
 # copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
-CONFIG_CACHE_VERSION = 12  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 13  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor, why and the board stay read-only.

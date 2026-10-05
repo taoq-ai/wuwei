@@ -886,3 +886,18 @@ def test_card_adds_a_tier_row(root, capsys):
     assert not any(label.startswith('Always') for label in labels)
     assert main(['drafts', 'approve', row['id'], '--always']) == 1
     assert 'no Always option' in capsys.readouterr().err
+
+
+def test_card_always_sends_in_the_channel_threads(root, capsys):
+    # #526: a thread held because its participants are not learned offers a channel thread row.
+    _, reason, row = held(root, channel='C1', thread_ts='1.2')
+    assert 'for C1/1.2: participants of thread 1.2 not learned' in reason
+    options = {option['label']: option['description'] for option in card(capsys, row['id'])['options']}
+    assert "Always send in this channel's threads" in options
+    assert 'later thread replies in C1 go out without a card' in options["Always send in this channel's threads"]
+    assert main(['drafts', 'approve', row['id'], '--always']) == 0
+    assert [{key: value for key, value in tier.items() if value}
+            for tier in workspace.load_config(root)['outbound']['tiers']] == [
+        {'channel': 'C1', 'topic': 'thread', 'tier': 'send'}]
+    code, reason, _ = held(root, channel='C1', thread_ts='9.9')
+    assert code == 0, reason

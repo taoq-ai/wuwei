@@ -1307,6 +1307,19 @@ def test_missing_reviewer_refusal_carries_no_posture_line(tmp_path):
         ('pr', 'other', 'posture: publish = block (owner-only action; no setting lowers it)', 1)]
 
 
+
+def test_held_draft_posture_line_names_the_card(tmp_path):
+    # #526: a held draft is one card away; security refusals of the same check keep the floor line.
+    from wuwei.commands import hook
+    from wuwei.guards.outward import check_tier
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    floor = 'posture: outward = block (owner-only action; no setting lowers it)'
+    assert hook.posture({}, [(check_tier, 'outward: draft draft-1: why; the owner decides', 1),
+                             (check_tier, 'outward: canary in the text', 1)], tmp_path) == [
+        ('outward', 'outward: draft draft-1: why; the owner decides', 'posture: outward = block; a draft is one card away', 1),
+        ('outward', 'outward: canary in the text', floor, 1)]
+
 FORCE = 'force-push is refused; push a branch instead'
 
 

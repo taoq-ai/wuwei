@@ -79,11 +79,12 @@ def decisions(root):
 
 def test_reserved(root, capsys):
     from wuwei.__main__ import main
-    for kind in ('outbound.learned', 'outbound.proposed'):
+    for kind in ('outbound.learned', 'outbound.proposed', 'outbound.thread'):
         assert main(['event', kind, '{}']) == 1
         assert 'wuwei outbound learn' in capsys.readouterr().err
-    with pytest.raises(state.StateError, match='reserved'):
-        state.set_state('outbound_learn', {}, root)
+    for key in ('outbound_learn', 'outbound_threads'):
+        with pytest.raises(state.StateError, match='reserved'):
+            state.set_state(key, {}, root)
 
 
 @pytest.mark.parametrize('case,code,text', [
@@ -438,3 +439,71 @@ def test_learn_card_sets_a_class(root, capsys, monkeypatch, option, channels, cl
     assert config['outbound']['work_channels'] == channels
     assert config['outbound']['external_channels'] == clients
     assert {key: row['class'] for key, row in config['outbound']['people'].items()} == people
+
+
+# #526: the planner records a thread's participants; the unknown ones go on the learn card.
+def thread_file(root, participants, **fields):
+    path = workspace.day_dir(root) / 'thread.json'
+    path.write_text(json.dumps({'channel': 'C1', 'thread_ts': '1.2', 'participants': participants, **fields}))
+    return str(path)
+
+
+def thread_reply(root):
+    from wuwei import outward
+    return outward.classify('Thanks', root, workspace.load_config(root),
+                            {'channel': 'C1', 'thread_ts': '1.2', 'text': 'Thanks'}, kind='slack', tool=TOOL)
+
+
+def test_thread_records_known_participants(root, capsys):
+    configure(root, '')
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('\n[outbound.people]\n"slack:U01" = { email = "ada@example.com", class = "team" }\n')
+    assert thread_reply(root) == (1, 'draft')
+    assert learn(root, '--as', 'slack', '--thread', thread_file(root, PEOPLE[:1]), listings=False) == 0
+    assert 'recorded 1 participants of thread C1/1.2; send the reply again' in capsys.readouterr().out
+    assert state.read_state(root)['outbound_threads'] == {'C1/1.2': ['U01']}
+    assert [{key: row[key] for key in ('thread', 'participants')} for row in events(root, 'outbound.thread')] == [
+        {'thread': 'C1/1.2', 'participants': 1}]
+    assert not decisions(root)
+    assert thread_reply(root) == (0, 'send')
+
+
+def test_thread_unknown_participant_card(root, capsys, monkeypatch):
+    rows = [PEOPLE[0], PEOPLE[1], {'id': 'U04', 'name': 'Cy', 'email': ''}]
+    assert learn(root, '--as', 'slack', '--thread', thread_file(root, rows), listings=False) == 0
+    assert state.read_state(root)['outbound_threads'] == {'C1/1.2': ['U01', 'U02', 'U04']}
+    assert decisions(root) == ['D-1.md']
+    text = (workspace.day_dir(root) / 'decisions/D-1.md').read_text()
+    for line in ('- person Ada (U01, in thread 1.2): team', '- person Bo (U02, in thread 1.2): client',
+                 '- person Cy (U04, in thread 1.2): company'):
+        assert line in text
+    assert answer(root, monkeypatch, 'approve')[0] == 0
+    people = workspace.load_config(root)['outbound']['people']
+    assert people['slack:U01']['class'] == 'team' and people['slack:U02']['class'] == 'client'
+    state._write_state(lambda data: data['outbound_threads'].update({'C1/1.2': ['U01']}), root, reserved=False)
+    assert thread_reply(root) == (0, 'send')
+
+
+@pytest.mark.parametrize('case,code,text', [
+    ('missing', 2, 'cannot read a listing'),
+    ('keys', 1, 'thread.json'), ('id', 1, 'thread.json'), ('ts', 1, 'thread.json'), ('empty', 1, 'thread.json'),
+    ('mail', 1, 'listings apply to a slack connector'), ('off', 1, 'outbound.learn is off'),
+])
+def test_thread_file_guards(root, capsys, case, code, text):
+    path = thread_file(root, [{**PEOPLE[0], 'id': 'u01'}] if case == 'id' else [] if case == 'empty' else PEOPLE[:1],
+                       **{'extra': 1} if case == 'keys' else {}, **{'thread_ts': 'abc'} if case == 'ts' else {})
+    if case == 'missing':
+        (workspace.day_dir(root) / 'thread.json').unlink()
+    if case == 'off':
+        configure(root, 'learn = "off"')
+    assert learn(root, '--as', 'mail' if case == 'mail' else 'slack', '--thread', path, listings=False) == code
+    assert text in capsys.readouterr().err
+    assert 'outbound_threads' not in state.read_state(root)
+
+
+def test_thread_records_with_an_open_card(root, capsys):
+    assert learn(root, '--as', 'slack') == 0
+    capsys.readouterr()
+    assert learn(root, '--as', 'slack', '--thread', thread_file(root, PEOPLE[:1]), listings=False) == 0
+    assert state.read_state(root)['outbound_threads'] == {'C1/1.2': ['U01']}
+    assert '"D-1"' in capsys.readouterr().out and decisions(root) == ['D-1.md']

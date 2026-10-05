@@ -474,10 +474,11 @@ def test_outbound_tiers_prints_table(configured, monkeypatch, capsys):
     assert main(['outbound', 'tiers']) == 0
     lines = capsys.readouterr().out.splitlines()
     assert lines[:2] == ['rule  source   row', '1     default  { audience = "owner", tier = "send" }']
-    assert lines[10] == '10    default  { tool = "other", tier = "send" }'
-    assert lines[11].startswith('-     default  no row: the kind rules decide (direct messages draft, ')
-    assert lines[12].startswith('-     default  { tier = "ask" } (outbound.default_tier: ')  # #527
-    assert len(lines) == 13
+    assert lines[10] == '10    default  { audience = "team", topic = "thread", tier = "send" }'  # #526
+    assert lines[11] == '11    default  { tool = "other", tier = "send" }'
+    assert lines[12].startswith('-     default  no row: the kind rules decide (direct messages draft, ')
+    assert lines[13].startswith('-     default  { tier = "ask" } (outbound.default_tier: ')  # #527
+    assert len(lines) == 14
     path = root / '.wuwei/config.toml'
     path.write_text(path.read_text().replace('[outbound]\ndefault_tier = "ask"\n', '[outbound]\ndefault_tier = "ask"\ntiers = [{ person = "U07", tier = "send" }, '
                                              '{ audience = "client", tier = "send" }]\n'))

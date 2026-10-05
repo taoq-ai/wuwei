@@ -370,7 +370,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'outward.unknown_tool': 'nudge', 'outward.to_owner': 'silent',
                 'spec.step': 'silent', 'spec.skipped': 'silent', 'spec.override': 'silent',
                 'spec.warned': 'nudge', 'docs.set': 'silent', 'docs.written': 'silent',
-                'docs.exempt': 'silent', 'outbound.proposed': 'silent', 'outbound.learned': 'silent',
+                'docs.exempt': 'silent', 'outbound.proposed': 'silent', 'outbound.learned': 'silent', 'outbound.thread': 'silent',
                 'grant.asked': 'silent', 'grant.used': 'silent', 'grant.revoked': 'silent',
                 **{f'telemetry.{name}': 'nudge' if name == 'ready' else 'silent' for name in TELEMETRY}}
     assert emitted == set(expected)

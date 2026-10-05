@@ -162,6 +162,9 @@ def always_row(row):
     if not found:
         return None
     party = found[2]
+    if party.startswith(row['destination'] + '/'):  # #526: a thread whose participants are not learned.
+        return ("Always send in this channel's threads",
+                {'channel': row['destination'], 'topic': 'thread', 'tier': 'send'})
     if party.startswith('@') or '@' in party or re.fullmatch(outward.SLACK_SHAPE['user'], party):
         return None if 'topic=' in found[1] else ('Always send to this person',
                                                   {'person': party.removeprefix('@'), 'tier': 'send'})
@@ -194,7 +197,8 @@ def widget(row, config):
     added = always_row(row)
     if added:  # #496: the card holds four options; Keep names the drop command instead.
         target = added[1].get('person') or added[1]['channel']
-        later = (f'later sends that reach {target} go out without a card' if added[1]['tier'] == 'send'
+        later = (f'later thread replies in {target} go out without a card' if added[1].get('topic')
+                 else f'later sends that reach {target} go out without a card' if added[1]['tier'] == 'send'
                  else f'every later send to {target} asks you first')
         options[2:] = [('Keep as draft', f'Nothing is sent; it stays in bin/wuwei drafts, or bin/wuwei drafts '
                                          f'drop {draft_id} drops it.'),

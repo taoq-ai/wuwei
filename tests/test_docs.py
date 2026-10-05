@@ -1267,3 +1267,13 @@ def test_outbound_tiers_docs():
     assert 'outbound tiers' in reference and 'outbound explain' in reference
     template = (ROOT / 'templates/workspace/config.toml').read_text()
     assert '# tiers = [' in template and '# [outbound.channel_classes]' in template
+
+
+def test_thread_reply_docs():
+    # #526: the planner learns a thread's participants; the thread row and the draft posture line.
+    skill = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+    assert 'outbound learn --tool <tool> --thread <file>' in skill and 'thread_ts' in skill
+    assert 'a draft is one card away' in (SITE / 'reference.md').read_text()
+    assert 'topic = "thread"' in (SITE / 'concepts.md').read_text()
+    assert '--thread <file>' in (SITE / 'security.md').read_text()
+    assert '`thread`' in (SITE / 'configuration.md').read_text().split('| `outbound.tiers` |', 1)[1].split('\n', 1)[0]
