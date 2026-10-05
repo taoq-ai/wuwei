@@ -372,6 +372,10 @@ DEFAULT_TIERS = (
     {'audience': 'company', 'tier': 'ask'},
     {'tool': 'other', 'tier': 'send'},  # #492: a monitoring write sends after the topics.
 )
+# #527 (owner, 2026-10-05): under the send umbrella these broad rows drop out, so a review
+# reply with a disagreement or a commitment to a colleague goes; the owner narrows with rows.
+BROAD_ROWS = ({'topic': 'commitment', 'tier': 'ask'}, {'topic': 'disagreement', 'tier': 'ask'},
+              {'audience': 'company', 'tier': 'ask'})
 MODE_TIERS = {'send': 'send', 'draft': 'ask', 'refuse': 'block'}
 KEYS = ('tool', 'person', 'channel', 'audience', 'topic', 'tier')
 # The class of the connector itself (a call with no destination and no person), else company.
@@ -387,7 +391,8 @@ def table(config):
     rows = [({'tool': f'mcp__{re.escape(server)}__.*', 'tier': MODE_TIERS[mode]}, 'owner', ' (outward.modes)')
             for server, mode in config['outward']['modes'].items()]
     rows += [({key: row[key] for key in KEYS if row.get(key)}, 'owner', '') for row in config['outbound']['tiers']]
-    return rows + [(dict(row), 'default', '') for row in DEFAULT_TIERS]
+    send = config['outbound']['default_tier'] == 'send'
+    return rows + [(dict(row), 'default', '') for row in DEFAULT_TIERS if not (send and row in BROAD_ROWS)]
 
 
 def reaches_client(row, config):
@@ -602,6 +607,15 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
         if found:
             if isinstance(why, list):
                 why.append(found[1])
+            return FINDINGS, 'block'
+        # #527: the umbrella decides what no row narrowed, for chat, code host, mail and other
+        # writes; docs and tracker keep docs.auto and tracker.auto. With ask, the rules below
+        # say why a draft is held.
+        if kind not in ('docs', 'tracker') and rules['default_tier'] != 'ask':
+            if rules['default_tier'] == 'send':
+                return CLEAN, 'send'
+            if isinstance(why, list):
+                why.append('block by outbound.default_tier: no narrower row matched')
             return FINDINGS, 'block'
         if (context.get('is_dm') or context.get('channel_type') in ('im', 'mpim')
                 or any(channel.startswith(('D', 'U')) for channel in destinations)):
