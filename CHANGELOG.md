@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.2](https://github.com/taoq-ai/wuwei/compare/v0.18.1...v0.18.2) (2026-10-05)
+
+
+### Bug Fixes
+
+* **outward:** no built-in internal-state words (the reason names the matched word of an owner list), and a connector learned as draft follows the send umbrella instead of overriding it ([#540](https://github.com/taoq-ai/wuwei/issues/540)) ([00625b0](https://github.com/taoq-ai/wuwei/commit/00625b072a9bced2a102556434ea38dfebdfd7eb)), closes [#533](https://github.com/taoq-ai/wuwei/issues/533)
+
 ## [0.18.1](https://github.com/taoq-ai/wuwei/compare/v0.18.0...v0.18.1) (2026-10-05)
 
 

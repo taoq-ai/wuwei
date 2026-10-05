@@ -1,6 +1,6 @@
 {
   "name": "wuwei",
-  "version": "0.18.1",
+  "version": "0.18.2",
   "description": "Autonomous delivery where the safe path is the default one: hooks that guard records, publishing and outward messages, seats that build and review in the background, and a day the owner approves on one card.",
   "author": {
     "name": "TaoQ AI Labs",
