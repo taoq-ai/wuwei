@@ -1012,9 +1012,9 @@ def test_guard_config_set_refused(workspace, monkeypatch, capsys, posture):
                 'outbound.tiers', 'outbound.channel_classes', 'outward.classes'):
         code, reason = _seat_hook(workspace, f"bin/wuwei config set {key} '[]'", monkeypatch, capsys, posture)
         assert code == 2 and "owner's" in reason and 'bin/wuwei outbound learn' in reason, reason
-        assert 'propose the line' not in reason and 'config set' not in reason
+        assert 'calibrate --questions' not in reason and '--from-card D-n' in reason  # #529
     code, reason = _seat_hook(workspace, 'bin/wuwei config set owner.name \'"Pat"\'', monkeypatch, capsys, posture)
-    assert code == 2 and 'propose the line' in reason
+    assert code == 2 and 'calibrate --questions' in reason
 
 
 def _planner(root, monkeypatch):

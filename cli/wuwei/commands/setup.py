@@ -1,5 +1,6 @@
 """One-shot workspace setup and the owner config edits."""
 
+from argparse import Namespace
 import difflib
 import json
 import os
@@ -71,6 +72,16 @@ def _edit(label, what, confirm, change, root=None):
         return UNRUN
 
 
+def card_write(root, label, change, keys, card):
+    """#529: the owner's answer on a card is the confirmation, as for a learned connector
+    (outbound.apply); one config.set event naming the card after the write."""
+    from wuwei import state
+    code = _edit(label, 'change', lambda *args, **kwargs: True, change, root)
+    if code == CLEAN:
+        state.append_event('config.set', {'keys': keys, 'card': card}, root)
+    return code
+
+
 def _settle(raw, settings):
     """raw with the settings applied; a table set to a single value raises naming it."""
     additions, edits = calibrate.settle(raw, settings)
@@ -129,8 +140,49 @@ def merged(config, parts, value, replace=False):
     return [(tuple(parts[:-1]), parts[-1], value)]
 
 
+def assignment(title):
+    """#529: (key, value) for a decision option title `<dotted key> = <TOML value>`, else None."""
+    key, separator, value = title.partition(' = ')
+    try:
+        _parts(key)
+        parsed = tomllib.loads(f'value = {value}\n')
+    except (ValueError, tomllib.TOMLDecodeError):
+        return None
+    return (key, parsed['value']) if separator and list(parsed) == ['value'] else None
+
+
+def _from_card(args, root, change):
+    """#529: write the value the owner picked on the decision card, then record the card."""
+    from wuwei import decision, sessions, state
+    from wuwei.commands.decision import owner_outcome
+    card = args.from_card
+    ask = (f'config set: {card} has no recorded answer "{args.key} = {args.value}"; nothing written. '
+           f'Ask the card with bin/wuwei decision show {card} --widget and run the record command '
+           'for the picked option.')
+    try:
+        fields, _ = decision.evaluate(decision.today_path(card, root).read_text(encoding='utf-8'))
+        wanted = assignment(f'{args.key} = {args.value}')
+    except (OSError, ValueError) as exc:
+        print(f'config set: {exc}; {ask}', file=sys.stderr)
+        return FINDINGS
+    option = next((row[0] for row in decision.options(fields)
+                   if wanted and assignment(row[1]) == wanted and sessions.card_answered(root, card, row[1])), None)
+    answered = decision.answered(state.read_state(root), card)
+    if option is None or answered not in (None, option):
+        print(ask, file=sys.stderr)
+        return FINDINGS
+    code = card_write(root, 'config set', change, [args.key], card)
+    if code or answered == option:
+        return code
+    code, message = owner_outcome(Namespace(id=card, option=option), root=root)
+    if code:
+        print(f'config set: {message}', file=sys.stderr)
+    return code
+
+
 def set_value(args, confirm=None):
-    """Owner action: set one config value after a host-terminal digest."""
+    """Owner action: set one config value after a host-terminal digest, or (#529) from the
+    owner's answer on a card outside strict."""
     def change(root, raw):
         parts = _parts(args.key)
         node = configtext.declared(parts)
@@ -147,6 +199,29 @@ def set_value(args, confirm=None):
         return _settle(raw, merged(load_config(root, raw=raw), parts, parsed['value'],
                                    getattr(args, 'replace', False)))
 
+    from wuwei import interview, sessions
+    try:
+        root = workspace.find_workspace()
+        posture = workspace.posture(load_config(root))[0]
+    except (OSError, ValueError):
+        return _edit('config set', 'change', confirm, change)  # it reports the reason
+    card, session = getattr(args, 'from_card', None), sessions.current() and confirm is None
+    command = shlex.join(['bin/wuwei', 'config', 'set', args.key, args.value])
+    if posture == 'strict' and session:
+        print(f'config set: under strict a card answer is not a confirmation; nothing written. '
+              f'Run {command} in a host terminal.', file=sys.stderr)
+        return FINDINGS
+    if card and posture != 'strict':
+        return _from_card(args, root, change)
+    if session:  # never a /dev/tty read that comes back empty in a session
+        qid = interview.card_for(args.key)
+        print('config set: in a session a card answer confirms the change; nothing written. ' + (
+            f'Run bin/wuwei calibrate --questions {qid}, ask the widget, then run its record '
+            f'command wuwei calibrate --answer "{qid}=<label>".' if qid else
+            f'Write a decision whose option titles read {args.key} = <value>, route it, ask it with '
+            f'bin/wuwei decision show D-n --widget, then run bin/wuwei config set {args.key} <value> '
+            '--from-card D-n.'), file=sys.stderr)
+        return FINDINGS
     return _edit('config set', 'change', confirm, change)
 
 

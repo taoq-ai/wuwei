@@ -23,8 +23,8 @@ def register(subparsers):
     interview = parser.add_mutually_exclusive_group()
     interview.add_argument('--interview', nargs='*', metavar='QUESTION',
                            help='ask the owner interview on this host terminal (all questions, or these)')
-    interview.add_argument('--questions', action='store_true',
-                           help='print the interview as AskUserQuestion widgets')
+    interview.add_argument('--questions', nargs='*', metavar='QUESTION',
+                           help='print the interview as AskUserQuestion widgets (unanswered, or these)')
     interview.add_argument('--answer', action='append', metavar='ID=VALUE',
                            help='record an interview answer relayed from the widgets')
     parser.set_defaults(func=run)
@@ -33,7 +33,7 @@ def register(subparsers):
 def run(args):
     if args.action:
         return _profile(args)
-    if args.interview is not None or args.questions or args.answer:
+    if args.interview is not None or args.questions is not None or args.answer:
         return _interview(args)
     try:
         root = workspace.find_workspace()
@@ -96,7 +96,8 @@ def record(root, results, diff, edits, error, host=None, config=None):
 
 
 def _interview(args):
-    from wuwei import integrity, interview
+    from wuwei import decision, integrity, interview, sessions
+    from wuwei.commands import setup
 
     try:
         root = workspace.find_workspace()
@@ -104,8 +105,8 @@ def _interview(args):
         repos = [repo['name'] for repo in config['repos'] if args.repo in (None, repo['name'])]
         if args.repo and not repos:
             raise ValueError(f'unknown repository {args.repo!r}; use a configured repos.name')
-        if args.questions:
-            print(json.dumps(interview.widgets(root, repos), indent=2))
+        if args.questions is not None:
+            print(json.dumps(interview.widgets(root, repos, args.questions), indent=2))
             return CLEAN
         if args.answer:
             picked = interview.parse(args.answer, repos)
@@ -121,9 +122,24 @@ def _interview(args):
     except (OSError, ValueError) as exc:
         print(f'wuwei calibrate: {exc}', file=sys.stderr)
         return UNRUN
+    # #529: a workspace answer the owner gave on its card writes its config keys now.
+    pending = False
+    for qid, answer in picked.items():
+        row = interview.question(qid)
+        settings = interview.settings({qid: answer}, config) if row['scope'] == 'workspace' else []
+        carded = bool(settings) and sessions.card_answered(
+            root, f"{row['header']}\n{decision.gate(root)}{row['question']}", answer)
+        if carded:
+            code = setup.card_write(root, 'calibrate', lambda _, raw, s=settings: setup._settle(raw, s),
+                                    ['.'.join(map(str, (*path, key))) for path, key, _ in settings], qid)
+            if code:
+                return code
+        pending = pending or not carded or any(
+            name in (*interview.ROLES, 'voice') for name in interview.effects(qid, answer))
     print('\n'.join(interview.describe(answers, config)))
-    print('Next: run bin/wuwei config promote in a host terminal for the config keys, '
-          'then bin/wuwei promote for the charter and voice proposals.')
+    if pending:
+        print('Next: run bin/wuwei config promote in a host terminal for the config keys, '
+              'then bin/wuwei promote for the charter and voice proposals.')
     return CLEAN
 
 
@@ -133,7 +149,7 @@ def _profile(args):
     try:
         if not args.target:
             raise ValueError(f'calibrate {args.action} needs a NAME or SOURCE; pass a profile NAME or SOURCE')
-        if args.interview is not None or args.questions or args.answer or (args.skip and args.action == 'export'):
+        if args.interview is not None or args.questions is not None or args.answer or (args.skip and args.action == 'export'):
             raise ValueError(f'calibrate {args.action} takes only --repo' + (' and --skip' if args.action == 'import' else '') + '; remove the other options')
         root = workspace.find_workspace()
         config = workspace.load_config(root)

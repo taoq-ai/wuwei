@@ -78,8 +78,10 @@ _OWNER_ACTIONS = {
     # config.toml holds executed commands and merge eligibility; seats run wuwei promote.
     ('config', 'promote'): ('Calibration promotion is an owner action, outside agent tools: the owner runs '
                             'bin/wuwei config promote in a host terminal.'),
-    ('config', 'set'): ("Config edits are the owner's, outside agent tools: propose the line, and the owner "
-                        'runs bin/wuwei config set <key> <value> in a host terminal.'),
+    ('config', 'set'): ("Config edits are the owner's answer on a card (#529): the planner asks bin/wuwei "
+                        'calibrate --questions <id>, or a decision whose option titles read <key> = <value>, '
+                        "and runs the card's record command; under strict the owner runs bin/wuwei config "
+                        'set <key> <value> in a host terminal.'),
     ('config', 'add-repo'): ("Config edits are the owner's, outside agent tools: propose the repository, and the "
                              'owner runs bin/wuwei config add-repo --name <owner/repo> --path <dir> --branch <branch> in a host terminal.'),
     # Only the owner lowers the spec requirement for one item (5.10) or links an existing ticket
@@ -105,9 +107,11 @@ _OWNER_ACTIONS = {
 }
 # #492: config set on these keys gets this reason instead of the table's.
 GUARD_KEYS = ('outward', 'security', 'outbound', 'grants')
-GUARD_CONFIG = ("Guard settings (outward, outbound, security, grants) are the owner's and never change "
-                'from an agent tool: for an unknown connector, channel or person the planner runs '
-                'bin/wuwei outbound learn, and the owner answers its card.')
+GUARD_CONFIG = ("Guard settings (outward, outbound, security, grants) are the owner's and change from an "
+                'agent tool only through a card the owner answered (#529): for an unknown connector, '
+                'channel or person the planner runs bin/wuwei outbound learn; for another value it asks '
+                'a decision whose option titles read <key> = <value> and runs bin/wuwei config set '
+                '<key> <value> --from-card D-n.')
 _OWNER_GROUPS = {group for group, _ in _OWNER_ACTIONS}
 _OWNER_VERBS = tuple(sorted({verb for _, verb in _OWNER_ACTIONS if verb}))
 # Owner words as tokens; `_` or `.` may precede them so python snippets such as
@@ -169,7 +173,7 @@ def _owner_relevant(text, script=False):
 
 # #357, #354, #493: records the planner may write from its own answered gate question.
 _GATE_EDITS = {('goals', 'edit'), ('voice', 'edit'), ('mcp', 'decide'), ('decide', ''),
-               ('drafts', 'approve'), ('drafts', 'drop')}
+               ('drafts', 'approve'), ('drafts', 'drop'), ('config', 'set')}
 
 
 def _gate_edits(payload, root):
@@ -256,6 +260,12 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
                     edited = any(word in ('--file', '--edit') or word.startswith('--file=') for word in action)
                     ids = [word + (':edit' if edited else ':send') for word in ids]
                 if group in ('mcp', 'decide', 'drafts') and ids and set(ids) <= edits[0]:
+                    continue
+                # #529: the card the planner asked; the CLI checks the owner's answer itself.
+                cards = [value for flag, value in zip(action, action[1:]) if flag == '--from-card']
+                cards += [word.split('=', 1)[1] for word in action if word.startswith('--from-card=')]
+                if ((group, verb) == ('config', 'set') and not xargs and len(cards) == 1
+                        and re.fullmatch(r'D-[1-9][0-9]*', cards[0]) and cards[0] in edits[0]):
                     continue
                 return 1, f'{reason} Run it in a host terminal: {shlex.join(argv)}'
             return 1, reason

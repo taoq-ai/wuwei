@@ -28,6 +28,9 @@ def register(subparsers):
     parser.add_argument('value', help='one TOML value, for example \'"standard"\' or false')
     parser.add_argument('--replace', action='store_true',
                         help='write the value as given instead of adding to the current list or table')
+    parser.add_argument('--from-card', dest='from_card', metavar='D-n',
+                        help="the decision card whose answer is this assignment (#529): the owner's "
+                             'answer is the confirmation outside strict')
     parser.set_defaults(func=setup.set_value)
     parser = actions.add_parser('show', help='print the effective value, each row tagged default or owner')
     parser.add_argument('key', help='dotted key, for example outward.tool_patterns')

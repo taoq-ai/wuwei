@@ -134,16 +134,22 @@ def _draft_answer(payload, text):
     """The owner's answer to a Draft card as a topic suffix (#493): ':send' for Send now,
     ':edit' for Send with an edit, ':text:<sha256>' for text the owner typed, else None."""
     from hashlib import sha256
-    response = payload.get('tool_response')
-    answers = response.get('answers') if isinstance(response, dict) else None
-    answer = answers.get(text) if isinstance(answers, dict) else None
-    if not isinstance(answer, str) or not answer.strip():
+    answer = _answer(payload, text)
+    if answer is None:
         return None
-    label = answer.strip().removesuffix(' (Recommended)')
+    label = answer.removesuffix(' (Recommended)')
     if label in ('Keep as draft', 'Drop'):
         return None
     return {'Send now': ':send', 'Send with an edit': ':edit'}.get(
-        label, ':text:' + sha256(answer.strip().encode()).hexdigest())
+        label, ':text:' + sha256(answer.encode()).hexdigest())
+
+
+def _answer(payload, text):
+    """The owner's answer to the question text, stripped, or None."""
+    response = payload.get('tool_response')
+    answers = response.get('answers') if isinstance(response, dict) else None
+    answer = answers.get(text) if isinstance(answers, dict) else None
+    return answer.strip() if isinstance(answer, str) and answer.strip() else None
 
 
 def record_gate(payload):
@@ -161,22 +167,31 @@ def record_gate(payload):
         session = payload.get('session_id')
         if not session or session != state.read_state(root).get('planner_session_id'):
             return 0, ''
+        from wuwei.sessions import card_topic
         topics = set()
         for question in payload['tool_input']['questions']:
             header = question.get('header')
             topic = header.strip().lower() if isinstance(header, str) else None
+            card = None
             if gate_question(question, root) and topic in TOPICS:
                 topics.add(topic)
+                card = f'{header}\n{question["question"]}'
             elif (isinstance(header, str) and re.fullmatch(DECISION_ID, header)
                   and re.search(rf'(?<![\w-]){header}(?![\w-])', required_text(question, 'question'))
                   and today_path(header, root).is_file()):
                 topics.add(header)
+                card = header
+            elif gate_question(question, root) and isinstance(header, str):
+                card = f'{header}\n{question["question"]}'  # keyed to the exact question
             elif header == 'Draft':
                 text = required_text(question, 'question')
                 asked = set(re.findall(DRAFT_ID, text)) & _pending_drafts(root)
                 topics.update(asked)  # drop needs only the asked card
                 topics.update(f'{draft_id}{suffix}' for draft_id in asked
                               if (suffix := _draft_answer(payload, text)))
+            # #529: the owner's answer to a gate or decision card confirms its record command.
+            if card and (reply := _answer(payload, question['question'])):
+                topics.add(card_topic(card, reply))
         if not topics:
             return 0, ''
 
