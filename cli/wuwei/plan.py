@@ -159,7 +159,12 @@ def propose(data, root=None):
     data = {**data, 'sweep': {**data.get('sweep', {}),
             **{f'discovery.{key}': value for key, value in found['sources'].items()}},
             'discovered': found['candidates']}
-    framework = workspace.load_config(root)['prioritisation']['framework']
+    config = workspace.load_config(root)
+    from wuwei import calibrate
+    limits = calibrate.host(root, config)  # #528: CAP derives; the lead's cap is not used
+    data = {**data, 'cap': limits['cap'],
+            'capacity': {key: limits[key] for key in ('bound', 'text', 'seats')}}
+    framework = config['prioritisation']['framework']
     data = _proposal(data, goals_text, framework)
     from wuwei import mcp
     measured = mcp.check(root)
@@ -200,7 +205,7 @@ def propose(data, root=None):
                   *owner_steps(item), '']
     lines += ['## Discovery intake',
               *[f'- {item["id"]}: {item.get("evidence", "evidence pending")}' for item in data['discovered']], '',
-              '## Gate proposal', f'CAP: {data["cap"]}',
+              '## Gate proposal', f'CAP: {data["capacity"]["text"]}; host.seats {data["capacity"]["seats"]}',
               'Seats per goal: ' + seats_text(data['seats'], data['cap']),
               'Seat policy: ' + json.dumps(data['seat_policy'], sort_keys=True),
               'Envelope: ' + json.dumps(data['envelope'], sort_keys=True), '']
@@ -228,6 +233,7 @@ def gate_widget(root=None, *, import_yesterday=False):
         'Goals ' + ', '.join(f'{goal} ({provisional[goal]["outcome"]})' if provisional else goal
                              for goal in data['goals']),
         'queue ' + (', '.join(ids) or 'empty'), seats_text(_seats(data), data['cap']),
+        *([data['capacity']['text']] if 'capacity' in data else []),
         'seat policy ' + json.dumps(data['seat_policy'], sort_keys=True),
         'envelope ' + json.dumps(data['envelope'], sort_keys=True),
         *(['carry-over of unfinished prior-day items'] if import_yesterday else [])])
@@ -236,7 +242,8 @@ def gate_widget(root=None, *, import_yesterday=False):
         'Goals' if provisional else 'Plan',
         [('Approve', approves + '.'),
          ('Change something', 'Ask the separate questions on goals, queue, seat policy, '
-                              'CAP and seats per goal, envelope and carry-over')],
+                              'CAP and seats per goal, envelope and carry-over; CAP is derived, '
+                              'a changed CAP is recorded as config cap')],
         ' '.join(['wuwei plan approve --items', *ids, '--goals-confirmed',
                   *(['--import-yesterday'] if import_yesterday else [])]))
 
@@ -316,7 +323,8 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
                                        **{key: candidates[name][key] for key in ('tier',)
                                           if key in candidates[name]}}
                                  for name in items})
-        current.update(cap=data['cap'], seat_policy=data['seat_policy'], goal_seats=_seats(data),
+        current.update(cap=data['cap'], cap_bound=data.get('capacity', {}).get('bound', ''),
+                       seat_policy=data['seat_policy'], goal_seats=_seats(data),
                        envelope=data['envelope'], goals=data['goals'],
                        approved_items=items, gate_approved=True)
 

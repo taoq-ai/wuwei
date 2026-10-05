@@ -2,6 +2,7 @@
 
 import importlib
 import json
+import os
 
 import pytest
 
@@ -464,8 +465,9 @@ def test_default_capacity_fits_builder_and_three_gates(day, monkeypatch):
     from wuwei.guards import agent_launch
     root, directory, _, _ = day
     (root / '.wuwei/config.toml').write_text('')
-    assert workspace.load_config(root)['host']['seats'] == 4
+    assert workspace.load_config(root)['host']['seats'] == 0  # derived (#528)
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    monkeypatch.setattr(os, 'cpu_count', lambda: 4)
     state._write_state(lambda data: data['items'].update({'Y': {}}), root, reserved=False)
     for role, item, name in [('builder', 'Y', 'builder'),
                              ('sentinel-arch', 'X', 'arch'),
@@ -617,12 +619,13 @@ def test_seat_launched_records_free_mib_and_running(launch, monkeypatch):
     assert launched['free_mib'] == 6144 and launched['running'] == 1
 
 
-def test_builder_cap_is_the_day_cap(day, monkeypatch):
+def test_builder_cap_is_derived_at_launch(day, monkeypatch):
+    # #528: the guard derives CAP at launch (here the owner's 3), not the day's snapshot of 1.
     from wuwei.guards import agent_launch
     root, directory, _, _ = day
-    (root / '.wuwei/config.toml').write_text('cap = 1\n[host]\nseats = 8\n')
+    (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 8\n')
     monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
-    state._write_state(lambda data: data.update(cap=3), root, reserved=False)
+    state._write_state(lambda data: data.update(cap=1), root, reserved=False)
     for name in ('one', 'two', 'three', 'four'):
         assert brief(monkeypatch, 'body', 'builder', 'X', name) == 0
         relative = str((directory / f'briefs/{name}.md').relative_to(root))

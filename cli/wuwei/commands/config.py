@@ -194,7 +194,7 @@ def read(root):
     return path, path.read_text(encoding='utf-8')
 
 
-def proposal(root, raw, base, config, results, extra=(), host=None):
+def proposal(root, raw, base, config, results, extra=()):
     """(text, diff, edits, summary, snapshot): the calibration of base, diffed against raw."""
     import difflib
     import json
@@ -207,7 +207,7 @@ def proposal(root, raw, base, config, results, extra=(), host=None):
     imported = [s for s in imported if s[:2] not in {a[:2] for a in asked}]
     owned = {s[:2] for s in imported + asked}
     text, diff, edits = calibrate.propose(
-        base, results, [s for s in extra if s[:2] not in owned] + imported + asked, host)
+        base, results, [s for s in extra if s[:2] not in owned] + imported + asked)
     if base != raw:
         diff = ''.join(difflib.unified_diff(raw.splitlines(keepends=True), text.splitlines(keepends=True),
                                             'config.toml', 'config.toml (proposed)'))
@@ -266,8 +266,7 @@ def promote(args, confirm=None):
             raise ValueError(calibrate.NO_REPOS)
         results = calibrate.survey(root, config, list(enumerate(config['repos'])), style=False,
                                    measure=getattr(args, 'measure', False))
-        text, _, _, summary, snapshot = proposal(root, raw, raw, config, results,
-                                                 host=calibrate.host(root, config))
+        text, _, _, summary, snapshot = proposal(root, raw, raw, config, results)
         return offer(root, raw, text, summary, label='config promote', what='calibration',
                      confirm=confirm, snapshot=snapshot)
     except ConfigError as exc:

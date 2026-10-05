@@ -52,7 +52,7 @@ def run(args):
         return UNRUN
     error = None
     try:
-        _, diff, edits = calibrate.propose(raw, results, host=host)
+        _, diff, edits = calibrate.propose(raw, results)
     except ValueError as exc:
         diff, edits, error = '', [], str(exc)
     evidence, _ = record(root, results, diff, edits, error, host, config)

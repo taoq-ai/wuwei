@@ -498,6 +498,13 @@ def seat_cost(events):
     return cost if cost > 0 else UNMEASURED
 
 
+def seat_tokens(events):
+    """Input plus output tokens of each measured `seat.usage` row (#528)."""
+    return [usage['input_tokens'] + usage['output_tokens'] for row in events
+            if row['kind'] == 'seat.usage' and isinstance(usage := row['payload'].get('usage'), dict)
+            and type(usage.get('input_tokens')) is int and type(usage.get('output_tokens')) is int]
+
+
 def _calibration(day, data, elapsed):
     path = day / 'proposal.json'
     if not path.exists() or data is None or elapsed == UNMEASURED:

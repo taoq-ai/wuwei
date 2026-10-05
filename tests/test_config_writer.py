@@ -195,7 +195,7 @@ def test_write_value_modes():
 
 
 @pytest.mark.parametrize('path,kind,example', [
-    (('cap',), 'an integer', '1'),
+    (('cap',), 'an integer', '0'),
     (('repos', 0, 'merge_deploys'), 'true or false', 'true'),
     (('outward', 'tool_patterns'), 'a list of tables', '[{pattern = "text", channel = "text"}]'),
     (('outbound', 'people'), 'a table', '{name = {email = "text", org = "text"}}'),

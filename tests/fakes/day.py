@@ -210,7 +210,10 @@ lead_login = "lead"
             assert (self.repo / 'memory/demo.py').read_text() == f'VALUE = {self.runtime.builds}\n'
             return Result(0)
 
-        ports = {'vcs': vcs, 'code_host': self.host, 'host': Host(),
+        # The host profile CAP derives from (#528): 8 GiB free and 4 cores on every machine.
+        self.memory = Host()
+        monkeypatch.setattr(os, 'cpu_count', lambda: 4)
+        ports = {'vcs': vcs, 'code_host': self.host, 'host': self.memory,
                  'runtime': self.runtime, 'checks': SimpleNamespace(run=check), 'chat': self.chat,
                  'integrity': SimpleNamespace(verify=lambda *args: Result(
                      1, reason='recorded unsigned installation'))}

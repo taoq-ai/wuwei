@@ -250,8 +250,15 @@ def launch_set(root=None):
     from wuwei.commands.next import approved
     root = workspace.find_workspace(root)
     data, config = state.read_state(root), workspace.load_config(root)
-    items, cap, ceiling = data['items'], data['cap'], config['host']['seats']
+    from wuwei import calibrate
+    items = data['items']
     running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
+    # #528: capacity re-derives at every sweep; the day state keeps the snapshot.
+    limits = calibrate.host(root, config, running=len(running))
+    cap, ceiling, bound = limits['cap'], limits['seats'], limits['bound']
+    if data['gate_approved'] and (data['cap'], data['cap_bound']) != (cap, bound):
+        state._write_state(lambda fresh: fresh.update(cap=cap, cap_bound=bound), root, reserved=False,
+                           kind='cap.derived', payload={'cap': cap, 'bound': bound, 'text': limits['text']})
     free = start = ceiling - len(running)
     builds = [name for name in approved(data) if items[name]['phase'] in state.BUILD_PHASES]
     busy = {seat['item'] for seat in running}
@@ -290,8 +297,12 @@ def launch_set(root=None):
         share[goal(name)] -= 1
     briefed = {row['payload'].get('item') for row in brief.events(root)
                if row['kind'] == 'brief written' and row['payload'].get('role') == 'builder'}
+    gate_waits = any(row['action'] == 'wait' for row in entries if items[row['item']]['phase'] in ('gate', 'delta'))
     for index, name in enumerate(first + rest):
-        if building + index >= cap:
+        if gate_waits:
+            entries.append({'item': name, 'goal': goal(name), 'action': 'wait', 'reason': (
+                'a gate waits for seats; gates launch before new builds so ready items merge first')})
+        elif building + index >= cap:
             entries.append({'item': name, 'goal': goal(name), 'action': 'wait', 'reason': (
                 f'CAP {cap} reached ({building} building); bin/wuwei next names the seat '
                 'expected to free first')})
@@ -300,7 +311,8 @@ def launch_set(root=None):
         else:
             add(name, lambda: {'action': 'start', 'commands': [
                 f'wuwei worktree add {name}', f'wuwei brief builder {name} <name> --worktree <path>']})
-    return {'action': 'set', 'cap': cap, 'building': building, 'free_seats': start,
+    return {'action': 'set', 'cap': cap, 'bound': bound, 'capacity': limits['text'],
+            'building': building, 'free_seats': start,
             'entries': entries}
 
 
@@ -503,8 +515,11 @@ def opinion(item, root=None):
     runtime = registry.load('runtime', {**config, 'adapters': {**config['adapters'], 'runtime': second['runtime']}})
     seat = data['seats'].get(name)
     if seat is None or seat['status'] == 'stopped':
-        if sum(other['status'] == 'running' for other in brief.seats(data).values()) >= config['host']['seats']:
-            raise Refused(f'running seats at host seat ceiling host.seats={config["host"]["seats"]}; wait for a seat to finish, or the owner raises host.seats with bin/wuwei config set in a host terminal')
+        from wuwei import calibrate
+        running = sum(other['status'] == 'running' for other in brief.seats(data).values())
+        ceiling = calibrate.host(root, config, running=running)['seats']  # #528
+        if running >= ceiling:
+            raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish, or the owner raises host.seats with bin/wuwei config set in a host terminal')
         if seat is None:
             if round_name == 'delta':
                 raise Refused(f'second-opinion seat is missing; run bin/wuwei why {item}, then bin/wuwei dispatch next {item}')

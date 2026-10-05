@@ -9,7 +9,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | Sections | Keys under |
 | --- | --- |
 | `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[security.areas]`, `[guards]`, `[worktree]` | [Workspace and repositories](#workspace-and-repositories) |
-| `[host]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
+| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[brief.style]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[grants]` | [Boundaries and deployment](#boundaries-and-deployment) |
@@ -24,7 +24,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `cap` | `1` | Maximum running build seats. `bin/wuwei calibrate` proposes it from the host (cores, free memory, measured seat cost, within `host.seats`) and adds it when absent; a present value is listed to edit by hand. The morning gate approves the day's value with seats per goal, and the launch guard enforces that value. |
+| `cap` | `0` | Maximum running build seats. `0` derives CAP at plan propose and at every sweep from the host (running seats plus the seats that fit above `host.free_memory_mb` at the measured seat cost, one per core, within `host.seats`) and `budget.tokens_per_day`; a positive number is your override, still bounded by the budget. `bin/wuwei calibrate` reports the derived value and never proposes it. The morning gate shows CAP with its measurement and seats per goal; the launch guard compares with the value derived at launch. |
 | `template_version` | `""` | Plugin version that last wrote this file. `wuwei init`, `wuwei setup` and `wuwei init --upgrade` raise it and never lower it. A plugin older than this value treats keys it does not know as unknown to it, records `config.newer_template` once per session, and `wuwei doctor` and the status line say to restart Claude Code. |
 | `prioritisation.framework` | `"wsjf"` | Ranking formula: `wsjf` or `rice`. |
 | `discovery.min_queue` | `2` | Discover again when a seat frees and the queue is below this count. |
@@ -118,7 +118,8 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `host.free_memory_mb` | `1024` | Nonnegative free memory floor in MiB. |
-| `host.seats` | `4` | Total seat ceiling: default cap plus three parallel gates. Increase with custom cap; refusals name `host.seats`. It also bounds calibrate's `cap` proposal and each turn of `wuwei dispatch next --all`. |
+| `host.seats` | `0` | Total seat ceiling, builders and gates. `0` derives it from free memory and cores like CAP; a positive number is your override. Refusals name `host.seats`; it bounds CAP and each turn of `wuwei dispatch next --all`. |
+| `budget.tokens_per_day` | `0` | Input plus output tokens a day. With a per-seat token cost measured from `seat.usage` rows, CAP is at most the seats the remaining budget fits (at least 1) and says `(budget)`. `0` is no budget. |
 | `host.reservation_timeout_seconds` | `14400` | Age at which a reservation is reported stale. |
 | `memory.max_notes` | `60` | Index note limit. |
 | `memory.note_line_cap` | `80` | Maximum lines in a note. |

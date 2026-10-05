@@ -1,6 +1,7 @@
 # Defaults apply when settings are omitted. Unknown keys warn (strict posture: errors).
-# Running build seats and host limits. Integer counts must be positive.
-cap = 1
+# Running build seats (CAP). 0 derives it at every sweep from free memory, cores and the
+# [budget] below; a positive number pins it. Integer counts must not be negative.
+cap = 0
 profile = "strict" # strict or standard
 template_version = "" # Plugin version that last wrote this file; init, setup and init --upgrade set it.
 # Add one [[repos]] table per repository, for example:
@@ -59,8 +60,11 @@ default = "brief" # brief, standard or full: how much decisions, the digest, nud
 
 [host]
 free_memory_mb = 1024 # Nonnegative free-memory floor in MiB.
-seats = 4 # Default cap plus three parallel gate seats. Increase with cap.
+seats = 0 # 0 derives the seat ceiling from free memory and cores; a number pins it.
 reservation_timeout_seconds = 14400 # Report stale reservations; never silently release them.
+
+# [budget]
+# tokens_per_day = 0 # Input plus output tokens a day; it bounds CAP with the per-seat cost. 0 is no budget.
 
 [memory]
 max_notes = 60

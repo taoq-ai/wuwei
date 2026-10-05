@@ -327,7 +327,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'brief.pack': 'silent', 'brief.answer': 'silent',
                 'session.seen': 'silent', 'session.rotated': 'silent', 'item.claimed': 'silent',
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
-                'seat.usage': 'silent', 'build.parked': 'nudge',
+                'seat.usage': 'silent', 'cap.derived': 'silent', 'build.parked': 'nudge',
                 'build.fix_opened': 'silent', 'pr.action.done': 'silent',
                 'pr.action.decision': 'silent',
                 'retro.gap': 'nudge', 'seat stop unmatched': 'nudge',
@@ -874,7 +874,7 @@ def test_status_line_shows_running_seats_per_goal(tmp_path):
     day(tmp_path, {'cap': 3, 'items': items, 'seats': seats, 'gate_approved': True})
     result = cli(tmp_path, 'status', '--line')
     assert result.returncode == 0, result.stderr
-    assert 'seats 2 of CAP 3 (G-1 1, G-2 1)' in result.stdout
+    assert 'seats 2/3 (G-1 1, G-2 1)' in result.stdout  # no cap_bound: a day state before #528
     (tmp_path / '.wuwei/days/2026-09-28/state.json').write_text(json.dumps(
         {'cap': 3, 'items': items, 'gate_approved': False}))
     assert 'seats' not in cli(tmp_path, 'status', '--line').stdout

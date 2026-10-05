@@ -37,7 +37,7 @@ PHASES = {
 }
 BUILD_PHASES = ('spec', 'implement', 'fix')
 STATUSES = ('queued', 'running', 'blocked', 'done')
-DAY_DEFAULTS = {'items': {}, 'cap': 1, 'seat_policy': {}, 'envelope': {},
+DAY_DEFAULTS = {'items': {}, 'cap': 1, 'cap_bound': '', 'seat_policy': {}, 'envelope': {},
                 'claimed_prs': [], 'raised_prs': [], 'gate_verdicts': {}, 'seats': {},
                 'gate_approved': False, 'approved_items': [], 'goals': []}
 ITEM_DEFAULTS = {'lane': 'build', 'status': 'queued', 'phase': 'planned',
@@ -241,7 +241,8 @@ STATE_PRODUCERS = {
     'mcp': 'wuwei mcp check or owner host decision',
     'integrity': 'wuwei integrity check', 'integrity_failed': 'wuwei integrity check',
     'integrity_confirmation': 'owner host re-confirmation',
-    'cap': 'wuwei plan approve', 'seat_policy': 'wuwei plan approve',
+    'cap': 'wuwei plan approve or wuwei dispatch next --all',
+    'cap_bound': 'wuwei plan approve or wuwei dispatch next --all', 'seat_policy': 'wuwei plan approve',
     'envelope': 'wuwei plan approve', 'items': 'wuwei plan approve',
     'gate_approved': 'wuwei plan approve', 'approved_items': 'wuwei plan approve',
     'goals': 'wuwei plan approve', 'goal_seats': 'wuwei plan approve',
