@@ -282,9 +282,12 @@ decision remains pending, or a pushed item branch lacks a raised or claimed PR.
 For each open item the refusal asks one question: carry it to tomorrow
 (recommended), park it, or keep working, with the command for each answer. It names
 each decision or branch. `bin/wuwei close --widget` prints the same questions as
-AskUserQuestion widgets and writes nothing. `close` launches the close steward
-review only once these item obligations are clear. Unreadable evidence returns exit
-2 with a reason; unresolved work returns exit 1. Existing PR, reply, visibility
+AskUserQuestion widgets and writes nothing. `bin/wuwei close --why` prints one line
+per approved item saying what holds it and writes nothing. `close` launches the close
+steward review once no item is open. Unreadable evidence returns exit 2 with a
+reason; unresolved work returns exit 1. A parked or carried item whose branch cannot
+be measured (a missing worktree, a branch with no commits) is printed as a note and
+never blocks the close. Existing PR, reply, visibility
 and retro requirements still apply. The Stop hook blocks once per stop attempt and
 exits 0 on Claude Code's retry, so it never traps the session; `bin/wuwei close`
 still reports every finding.
