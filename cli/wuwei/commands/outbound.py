@@ -454,8 +454,10 @@ def learn(args):
     except ValueError as exc:
         return fail(str(exc))
     # `other` carries mode send with no audience rules, so it is never learned without the card.
-    card = (config['outbound']['learn'] == 'card' or workspace.posture(config)[0] == 'strict'
-            or channel == 'other' or bool(owner))  # #495: the owner confirms an identity on the card.
+    strict = workspace.posture(config)[0] == 'strict'
+    card = config['outbound']['learn'] == 'card' or strict or channel == 'other'
+    if owner and not channels and not people and not strict:
+        card = False  # #537: the owner's own identity, from the connector's identity call, needs no card.
     proposal = propose(root, config, data, server, channel, tool, channels, people, card=card, owner=owner)
     if proposal is None:
         return fail(f'nothing new to learn for connector {server}; {DRAFT}')
