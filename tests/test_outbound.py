@@ -25,6 +25,7 @@ name = "acme/app"
 path = "repos/app"
 default_branch = "main"
 [outbound]
+default_tier = "ask"
 work_channels = ["Cwork", "Cshared", "Cclient"]
 external_channels = ["Cshared", "Cclient"]
 company_domains = ["acme.test"]
@@ -475,9 +476,10 @@ def test_outbound_tiers_prints_table(configured, monkeypatch, capsys):
     assert lines[:2] == ['rule  source   row', '1     default  { audience = "owner", tier = "send" }']
     assert lines[10] == '10    default  { tool = "other", tier = "send" }'
     assert lines[11].startswith('-     default  no row: the kind rules decide (direct messages draft, ')
-    assert len(lines) == 12
+    assert lines[12].startswith('-     default  { tier = "ask" } (outbound.default_tier: ')  # #527
+    assert len(lines) == 13
     path = root / '.wuwei/config.toml'
-    path.write_text(path.read_text().replace('[outbound]\n', '[outbound]\ntiers = [{ person = "U07", tier = "send" }, '
+    path.write_text(path.read_text().replace('[outbound]\ndefault_tier = "ask"\n', '[outbound]\ndefault_tier = "ask"\ntiers = [{ person = "U07", tier = "send" }, '
                                              '{ audience = "client", tier = "send" }]\n'))
     assert main(['outbound', 'tiers']) == 0
     lines = capsys.readouterr().out.splitlines()
@@ -528,8 +530,8 @@ def test_outbound_tier_block(configured, monkeypatch, capsys):
     # No default row blocks (owner, 2026-10-04); the owner's own row is the wall.
     path = configured[0] / '.wuwei/config.toml'
     text = path.read_text()
-    assert '[outbound]\n' in text
-    path.write_text(text.replace('[outbound]\n', '[outbound]\ntiers = [{ audience = "client", topic = "commitment", tier = "block" }]\n', 1))
+    assert '[outbound]\ndefault_tier = "ask"\n' in text
+    path.write_text(text.replace('[outbound]\ndefault_tier = "ask"\n', '[outbound]\ndefault_tier = "ask"\ntiers = [{ audience = "client", topic = "commitment", tier = "block" }]\n', 1))
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps({'text': 'I will ship it tomorrow', 'channel': 'Cclient'})))
     assert main(['outbound', 'tier']) == 1
     output = capsys.readouterr()

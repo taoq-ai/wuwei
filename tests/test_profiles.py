@@ -25,6 +25,7 @@ def configured(tmp_path, monkeypatch):
 name = "Pat Example"
 pronouns = "they/them"
 [outbound]
+default_tier = "ask"
 work_channels = ["Cwork"]
 [outward.max_length]
 slack = 3

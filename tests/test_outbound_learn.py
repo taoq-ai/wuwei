@@ -15,6 +15,7 @@ name = "Pat Example"
 pronouns = "they/them"
 
 [outbound]
+default_tier = "ask"
 work_channels = ["C1"]
 external_channels = ["C09"]
 company_domains = ["example.com"]
@@ -52,7 +53,7 @@ def root(tmp_path, monkeypatch):
 
 def configure(root, text):
     path = root / '.wuwei/config.toml'
-    path.write_text(path.read_text().replace('[outbound]\n', f'[outbound]\n{text}\n'))
+    path.write_text(path.read_text().replace('[outbound]\ndefault_tier = "ask"\n', f'[outbound]\ndefault_tier = "ask"\n{text}\n'))
 
 
 def posture(root, name):

@@ -21,7 +21,7 @@ def root(tmp_path, monkeypatch):
     private.mkdir()
     (private / 'config.toml').write_text(
         '[owner]\nname = "Pat Example"\npronouns = "they/them"\n'
-        '[outbound]\nwork_channels = ["C1"]\n'
+        '[outbound]\ndefault_tier = "ask"\nwork_channels = ["C1"]\n'
         '[voice.sources]\nexternal = ["C2"]\n')
     return tmp_path
 
@@ -669,7 +669,7 @@ def card(capsys, draft_id):
 
 def test_card_for_a_held_tool_call(root, capsys):
     path = root / '.wuwei/config.toml'  # learn off: the card names no outbound learn (#492).
-    path.write_text(path.read_text().replace('[outbound]\n', '[outbound]\nlearn = "off"\n'))
+    path.write_text(path.read_text().replace('[outbound]\ndefault_tier = "ask"\n', '[outbound]\ndefault_tier = "ask"\nlearn = "off"\n'))
     _, _, row = held(root)
     widget = card(capsys, row['id'])
     assert widget['header'] == 'Draft' and widget['record'] == f"bin/wuwei drafts approve {row['id']}"
@@ -851,7 +851,7 @@ def test_allowance_cannot_be_forged_or_carry_a_canary(root, monkeypatch, capsys)
 def test_strict_recommends_keep_for_a_client_row(root, capsys):
     # #496: a draft a tier row held for a known audience keeps; an unknown audience is learnable.
     path = root / '.wuwei/config.toml'
-    path.write_text(path.read_text().replace('[outbound]\n', '[outbound]\nexternal_channels = ["C2"]\n')
+    path.write_text(path.read_text().replace('[outbound]\ndefault_tier = "ask"\n', '[outbound]\ndefault_tier = "ask"\nexternal_channels = ["C2"]\n')
                     + '[security]\nposture = "strict"\n')
     _, reason, row = held(root, channel='C2')
     assert 'ask by rule 5 (audience=client) for C2' in reason

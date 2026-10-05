@@ -25,7 +25,7 @@ def configured(tmp_path, monkeypatch):
     with (directory / 'config.toml').open('a') as stream:
         stream.write('\n[[repos]]\nname = "demo"\npath = "demo"\ndefault_branch = "main"\n')
     with (directory / 'config.toml').open('a') as stream:
-        stream.write('\n[outbound]\nwork_channels = ["chat", "C1"]\n')
+        stream.write('\n[outbound]\ndefault_tier = "ask"\nwork_channels = ["chat", "C1"]\n')
     from fakes.integrity import seed
     seed(tmp_path)
     return tmp_path, workspace.load_config(tmp_path)
@@ -128,6 +128,41 @@ def test_send_or_draft(configured, text, code):
     assert result[0] == code
     if code:
         assert result[1].startswith('outward: draft ') and 'bin/wuwei drafts show ' in result[1]
+
+
+@pytest.mark.parametrize('text', ['The cache is thread safe.', 'I disagree with the proposal.',
+                                  'This is out of scope.', 'thanks <@U09>'])
+def test_send_umbrella_lets_team_talk(configured, text):
+    # #527: with outbound.default_tier = send, what no narrowing row holds goes out in a work
+    # channel; a client channel and sensitive text still ask.
+    from wuwei.guards.outward import check_tier as check
+    root = configured[0]
+    outbound_line(root, 'external_channels = ["C2"]')
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('default_tier = "ask"', 'default_tier = "send"'))
+    assert check(payload(root, text)) == (0, '')
+    assert check(payload(root, 'I will ship it tomorrow', channel='C2'))[0] == 1
+    assert check(payload(root, 'Your salary review is in'))[0] == 1
+
+
+def test_send_umbrella_never_sends_an_owner_marker(configured):
+    # A seat cannot post a parked or carried marker as the owner, whatever the umbrella says.
+    from wuwei.guards.outward import check_tier as check
+    root = configured[0]
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('default_tier = "ask"', 'default_tier = "send"'))
+    code, reason = check(payload(root, 'WUWEI parked acme/widget#7 D-1 2026-09-28 ' + 'a' * 64))
+    assert code == 1 and 'owner disposition markers must be posted by the owner' in reason
+
+
+def test_send_umbrella_drops_the_broad_rows(configured):
+    from wuwei import outward
+    root, config = configured
+    assert len(outward.table(config)) == 10
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('default_tier = "ask"', 'default_tier = "send"'))
+    rows = [row for row, _, _ in outward.table(workspace.load_config(root))]
+    assert len(rows) == 7 and not any(row in outward.BROAD_ROWS for row in rows)
 
 
 def test_no_local_approval_producer():
@@ -1185,7 +1220,7 @@ def test_learn_reasons(configured, monkeypatch, capsys, posture):
     assert UUID in reason and f'bin/wuwei outbound learn --tool {unknown}' in reason
     assert 'config set' not in reason
     text = (root / '.wuwei/config.toml').read_text().replace(
-        '[outbound]\n', '[outbound]\nlearn = "off"\n')
+        '[outbound]\ndefault_tier = "ask"\n', '[outbound]\ndefault_tier = "ask"\nlearn = "off"\n')
     (root / '.wuwei/config.toml').write_text(text)
     code, reason = check_tier(payload(root, 'A technical claim.', tool=write))
     assert code == 2 and 'a draft for the owner to send' in reason and 'outbound learn' not in reason
@@ -1234,7 +1269,7 @@ def test_draft_names_unknown_audience(configured, monkeypatch, capsys):
     root = configured[0]
     monkeypatch.chdir(root)
     path = root / '.wuwei/config.toml'
-    path.write_text(path.read_text().replace('[outbound]\n', '[outbound]\ncompany_domains = ["example.com"]\n'))
+    path.write_text(path.read_text().replace('[outbound]\ndefault_tier = "ask"\n', '[outbound]\ndefault_tier = "ask"\ncompany_domains = ["example.com"]\n'))
     write_config(root, f'\n[outward.servers]\n"{UUID}" = "slack"\n'
                        '\n[outbound.people]\n"slack:U01" = {email = "ada@example.com"}\n'
                        '"slack:U02" = {email = "bo@example.com"}\n')
@@ -1253,7 +1288,7 @@ def test_draft_names_unknown_audience(configured, monkeypatch, capsys):
     code, reason = check_tier_call(root, 'I think <@U01> <@U02> agree.', tool, 'C1')
     assert code == 1 and 'unknown' not in re.fullmatch(HELD, reason)[2]
     assert 'outbound learn' not in send_now(reason)
-    text = (root / '.wuwei/config.toml').read_text().replace('[outbound]\n', '[outbound]\nlearn = "off"\n')
+    text = (root / '.wuwei/config.toml').read_text().replace('[outbound]\ndefault_tier = "ask"\n', '[outbound]\ndefault_tier = "ask"\nlearn = "off"\n')
     (root / '.wuwei/config.toml').write_text(text)
     code, reason = check_tier_call(root, 'thanks <@U03> <@U04>', tool, 'C01')
     assert code == 1 and 'outbound learn' not in reason + send_now(reason)
@@ -1520,7 +1555,7 @@ def test_tool_input_not_an_object(configured):
 # #496: outward control is one owner-configured tier table.
 def outbound_line(root, line):
     path = root / '.wuwei/config.toml'
-    path.write_text(path.read_text().replace('[outbound]\n', f'[outbound]\n{line}\n', 1))
+    path.write_text(path.read_text().replace('[outbound]\ndefault_tier = "ask"\n', f'[outbound]\ndefault_tier = "ask"\n{line}\n', 1))
 
 
 def test_tier_config(configured):
