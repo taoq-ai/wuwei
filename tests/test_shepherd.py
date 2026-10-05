@@ -29,6 +29,8 @@ class Port:
 def case(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('''
+[outbound]
+default_tier = "ask"
 [owner]
 name = "Builder"
 handles = ["U12345", "builder"]

@@ -50,7 +50,8 @@ def case(tmp_path, monkeypatch):
     measured(monkeypatch)
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('[owner]\nhandles = ["U12345", "builder"]\n'
-                                                 '[adapters]\nchat = "slack"\n')
+                                                 '[adapters]\nchat = "slack"\n'
+                                                 '[outbound]\ndefault_tier = "ask"\n')  # #527: these tests hold drafts
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00Z')
     host = Fake()

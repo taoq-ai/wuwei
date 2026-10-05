@@ -145,6 +145,16 @@ def test_send_umbrella_lets_team_talk(configured, text):
     assert check(payload(root, 'Your salary review is in'))[0] == 1
 
 
+def test_send_umbrella_never_sends_an_owner_marker(configured):
+    # A seat cannot post a parked or carried marker as the owner, whatever the umbrella says.
+    from wuwei.guards.outward import check_tier as check
+    root = configured[0]
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('default_tier = "ask"', 'default_tier = "send"'))
+    code, reason = check(payload(root, 'WUWEI parked acme/widget#7 D-1 2026-09-28 ' + 'a' * 64))
+    assert code == 1 and 'owner disposition markers must be posted by the owner' in reason
+
+
 def test_send_umbrella_drops_the_broad_rows(configured):
     from wuwei import outward
     root, config = configured

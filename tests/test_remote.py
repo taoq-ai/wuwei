@@ -8,7 +8,7 @@ from wuwei import state, workspace
 from wuwei.registry import Result
 
 
-OWNER = '[owner]\nname = "Robin Example"\n[control_plane]\nowner = "T1/U1"\n'
+OWNER = '[owner]\nname = "Robin Example"\n[outbound]\ndefault_tier = "ask"\n[control_plane]\nowner = "T1/U1"\n'
 
 
 class Transport:
@@ -82,7 +82,7 @@ def remote():
 
 def test_config_and_credential(bare):
     from wuwei import env
-    (bare / '.wuwei/config.toml').write_text('[owner]\nname = "Robin Example"\n')
+    (bare / '.wuwei/config.toml').write_text('[owner]\nname = "Robin Example"\n[outbound]\ndefault_tier = "ask"\n')
     assert workspace.load_config(bare)['control_plane']['owner'] == ''
     (bare / '.wuwei/config.toml').write_text(OWNER)
     assert workspace.load_config(bare)['control_plane']['owner'] == 'T1/U1'
@@ -591,7 +591,7 @@ def test_other_senders_are_logged_once_and_never_answered(ws):
 
 
 def test_no_pin_cannot_run(ws, capsys):
-    (ws / '.wuwei/config.toml').write_text('[owner]\nname = "Robin Example"\n')
+    (ws / '.wuwei/config.toml').write_text('[owner]\nname = "Robin Example"\n[outbound]\ndefault_tier = "ask"\n')
     assert handled(ws, 'status') == (2, [remote().FAILED])
     out = capsys.readouterr().out
     assert 'control_plane.owner' in out and 'T1/U1' in out
