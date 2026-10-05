@@ -24,6 +24,8 @@ def register(subparsers):
     learn_parser.add_argument('--people', metavar='FILE', help='JSON people listing (slack only)')
     learn_parser.add_argument('--owner', metavar='FILE',
                               help="JSON {user, dm} from the connector's identity call (slack only)")
+    learn_parser.add_argument('--thread', metavar='FILE',
+                              help="JSON {channel, thread_ts, participants} from the connector's replies tool (slack only)")
     learn_parser.set_defaults(func=learn)
     actions.add_parser('tiers', help='print the effective outbound tier table').set_defaults(func=tiers)
     explain_parser = actions.add_parser('explain', help='print the rows a draft passed and the row that held it')
@@ -127,17 +129,24 @@ SHAPES = {'channels': {'id': str, 'name': str, 'members': int, 'shared': bool},
 DRAFT = 'write the message as a draft for the owner to send'
 
 
+def _problem(path, kind):
+    return ValueError(f'{path}: expected a JSON list of {{{", ".join(SHAPES[kind])}}} objects with unique '
+                      'ids of capitals and digits and names of 1 to 80 characters without a '
+                      'control character, |, backtick, $ or backslash; write the file again')
+
+
 def _rows(path, kind):
     """One listing file, validated: names reach a decision record and a card."""
-    shape = SHAPES[kind]
     text = Path(path).read_text(encoding='utf-8')  # OSError: unreadable, the caller's exit 2
-    problem = ValueError(f'{path}: expected a JSON list of {{{", ".join(shape)}}} objects with unique '
-                         'ids of capitals and digits and names of 1 to 80 characters without a '
-                         'control character, |, backtick, $ or backslash; write the file again')
     try:
         rows = json.loads(text)
     except ValueError:
-        raise problem from None
+        raise _problem(path, kind) from None
+    return _listing(rows, kind, _problem(path, kind))
+
+
+def _listing(rows, kind, problem):
+    shape = SHAPES[kind]
     if not isinstance(rows, list):
         raise problem
     seen = set()
@@ -151,6 +160,24 @@ def _rows(path, kind):
             raise problem
         seen.add(row['id'])
     return rows
+
+
+def _thread(path):
+    """#526: the thread file the planner wrote from the connector's replies tool."""
+    text = Path(path).read_text(encoding='utf-8')  # OSError: unreadable, the caller's exit 2
+    problem = ValueError(f'{path}: expected a JSON object {{"channel", "thread_ts", "participants"}} with a '
+                         'channel id of capitals and digits, a thread ts of digits dot digits and at least one participant '
+                         f'as {{{", ".join(SHAPES["people"])}}} objects; write the file again')
+    try:
+        found = json.loads(text)
+    except ValueError:
+        raise problem from None
+    if (not isinstance(found, dict) or set(found) != {'channel', 'thread_ts', 'participants'}
+            or not isinstance(found['channel'], str) or not re.fullmatch(r'[A-Z0-9]+', found['channel'])
+            or not isinstance(found['thread_ts'], str) or not re.fullmatch(r'\d+\.\d+', found['thread_ts'])
+            or not found['participants']):  # a thread has at least its parent author; empty is fail-open
+        raise problem
+    return found['channel'], found['thread_ts'], _listing(found['participants'], 'people', problem)
 
 
 def _owner(path):
@@ -180,7 +207,8 @@ def _record_text(root, data):
                      if path.is_file() and not path.is_symlink() and path.stem not in own)
 
 
-def propose(root, config, data, server, channel, tool, channels, people, *, card, owner=None):
+def propose(root, config, data, server, channel, tool, channels, people, *, card, owner=None,
+            participants=(), thread=None):
     """The proposal for one connector from today's state, or None when nothing is new."""
     rules = config['outbound']
     new_owner = {key: value for key, value in (owner or {}).items()
@@ -225,6 +253,15 @@ def propose(root, config, data, server, channel, tool, channels, people, *, card
             continue
         new_people.append({'id': row['id'], 'name': row['name'], 'entry': entry,
                            'why': 'reviewer' if login else "named in today's records"})
+    # #526: a thread's unknown participants are proposed; the email classes them.
+    for row in participants:
+        if row['id'] in {item['id'] for item in new_people}:
+            continue
+        domain = row['email'].rpartition('@')[2].casefold()
+        found = 'team' if domain and domain in domains else 'client' if domain and domains else 'company'
+        new_people.append({'id': row['id'], 'name': row['name'],
+                           'entry': {**({'email': row['email']} if row['email'] else {}), 'class': found},
+                           'why': f'in thread {thread}'})
     if skipped:
         print(f'not proposed: {skipped} people not internal by outbound.company_domains or '
               'outbound.code_host_orgs')
@@ -422,6 +459,30 @@ def learn(args):
     channel = args.channel or (next(iter(found)) if len(found) == 1 else None)
     if channel is None:
         return fail(f'connector {server} has no channel; pass --as slack, tracker, code_host, docs, mail or other')
+    unknown, thread = [], None
+    if args.thread:  # #526: record the participants before any card; known ones need none.
+        if channel != 'slack':
+            return fail('listings apply to a slack connector; run it without --channels, --people, --owner and --thread')
+        try:
+            target, thread, participants = _thread(args.thread)
+        except OSError as exc:
+            return fail(f'cannot read a listing: {exc}; write the file under today\'s day directory', UNRUN)
+        except ValueError as exc:
+            return fail(str(exc))
+        name = f'{target}/{thread}'
+        try:
+            state._write_state(lambda data: data.setdefault('outbound_threads', {}).__setitem__(
+                name, [row['id'] for row in participants]), root, reserved=False, kind='outbound.thread',
+                payload={'thread': name, 'participants': len(participants)})
+        except (OSError, ValueError) as exc:
+            return fail(f'{exc}; run bin/wuwei doctor', UNRUN)
+        known = {key.casefold() for key in config['outbound']['people']}
+        mine = config['outbound']['owner']['slack']['user'].casefold()
+        unknown = [row for row in participants
+                   if f"slack:{row['id']}".casefold() not in known and row['id'].casefold() != mine]
+        if not (unknown or args.channels or args.people or args.owner):
+            print(f'outbound learn: recorded {len(participants)} participants of thread {name}; send the reply again')
+            return CLEAN
     learned = data.get('outbound_learn', {})
     open_card = next((key for key, row in learned.items() if row.get('answered') is None), None)
     if open_card:
@@ -433,7 +494,7 @@ def learn(args):
         return fail(f'connector {server} was kept as drafts today ({kept}); {DRAFT}')
     if (args.channels or args.people or args.owner) and channel != 'slack':
         return fail('listings apply to a slack connector; run it without --channels, --people and --owner')
-    if channel == 'slack' and not (args.channels or args.people or args.owner):
+    if channel == 'slack' and not (args.channels or args.people or args.owner or args.thread):
         # #495: while the owner's identity is missing, the same step asks for it.
         identity = ('' if all(config['outbound']['owner']['slack'].values()) else
                     ", and its identity tool (auth_test, users_me, whoami, or the tool whose name says "
@@ -458,7 +519,8 @@ def learn(args):
     card = config['outbound']['learn'] == 'card' or strict or channel == 'other'
     if owner and not channels and not people and not strict:
         card = False  # #537: the owner's own identity, from the connector's identity call, needs no card.
-    proposal = propose(root, config, data, server, channel, tool, channels, people, card=card, owner=owner)
+    proposal = propose(root, config, data, server, channel, tool, channels, people, card=card, owner=owner,
+                       participants=unknown, thread=thread)
     if proposal is None:
         return fail(f'nothing new to learn for connector {server}; {DRAFT}')
     try:

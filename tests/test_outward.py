@@ -175,11 +175,11 @@ def test_send_umbrella_covers_connector_docs_and_tracker_writes(configured):
 def test_send_umbrella_drops_the_broad_rows(configured):
     from wuwei import outward
     root, config = configured
-    assert len(outward.table(config)) == 10
+    assert len(outward.table(config)) == 11
     path = root / '.wuwei/config.toml'
     path.write_text(path.read_text().replace('default_tier = "ask"', 'default_tier = "send"'))
     rows = [row for row, _, _ in outward.table(workspace.load_config(root))]
-    assert len(rows) == 7 and not any(row in outward.BROAD_ROWS for row in rows)
+    assert len(rows) == 8 and rows[6] == {'audience': 'team', 'topic': 'thread', 'tier': 'send'} and not any(row in outward.BROAD_ROWS for row in rows)
 
 
 def test_no_local_approval_producer():
@@ -1057,7 +1057,8 @@ RULES = [
     ('Thanks', {'channel': 'C1', 'is_dm': True}, {},
      'approval tier direct message for C1: every direct message drafts'),
     ('Thanks', {'channel': 'C1', 'thread_ts': '1.2'}, {},
-     'approval tier thread for C1: chat threads draft until their participants are known'),
+     'ask by rule 9 (audience=company) for C1/1.2: participants of thread 1.2 not learned, '
+     'run bin/wuwei outbound learn --tool <tool> --thread <file>, connector default class company'),
 ]
 
 
@@ -1126,7 +1127,8 @@ def test_hook_refusal_names_draft_and_why_reads_it(configured, monkeypatch, caps
     draft_id = lines[0].split()[2].rstrip(':')
     assert lines[:2] == [
         f'outward: draft {draft_id}: {RULES[0][3]}; the owner decides: bin/wuwei drafts show {draft_id} --widget',
-        'posture: outward = block (owner-only action; no setting lowers it)']
+        'posture: outward = block; a draft is one card away']
+    assert not any('no setting lowers it' in line for line in lines)
     assert main(['why', 'last', 'refusal']) == 0
     out = capsys.readouterr().out.splitlines()
     assert f'rule: outward: draft {draft_id}: {RULES[0][3]}' in out
@@ -1634,7 +1636,9 @@ def test_tier_table(configured):
     root, config = configured
     rows = outward.table(config)
     assert [row for row, _, _ in rows] == [dict(row) for row in outward.DEFAULT_TIERS]
-    assert {source for _, source, _ in rows} == {'default'} and len(rows) == 10
+    assert {source for _, source, _ in rows} == {'default'} and len(rows) == 11
+    assert rows[9][0] == {'audience': 'team', 'topic': 'thread', 'tier': 'send'}
+    assert rows[10][0] == {'tool': 'other', 'tier': 'send'}
     assert rows[2][0] == {'audience': 'client', 'topic': 'commitment', 'tier': 'ask'}
     assert not [row for row, _, _ in rows if row['tier'] == 'block']  # owner, 2026-10-04: no default blocks
     outbound_line(root, 'tiers = [{ person = "U07", tier = "send" }]')
@@ -1809,3 +1813,103 @@ def test_mode_rows(configured, monkeypatch):
     assert code == 1 and re.fullmatch(HELD, reason)[2].startswith('ask by rule 1 (tool=mcp__')
     path.write_text(path.read_text().replace('= "draft"', '= "send"'))
     assert check_tier(payload(root, 'I will ship it tomorrow', tool=tool, channel='C1')) == (0, '')
+
+
+# #526: a thread reply's readers are its participants, recorded by outbound learn --thread.
+SEND_TOOL = 'mcp__slack__slack_send_message'
+THREAD_ROW = '{ audience = "team", topic = "thread", tier = "send" }'
+NOT_LEARNED = ('ask by rule 9 (audience=company) for C1/1.2: participants of thread 1.2 not learned, '
+               'run bin/wuwei outbound learn --tool {tool} --thread <file>, connector default class company')
+
+
+def thread_workspace(root, people='', participants=None, umbrella='ask', extra=''):
+    from wuwei import state
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('default_tier = "ask"', f'default_tier = "{umbrella}"')
+                    + (f'\n[outbound.people]\n{people}' if people else '') + extra)
+    if participants is not None:
+        state._write_state(lambda data: data.setdefault('outbound_threads', {}).update({'C1/1.2': participants}),
+                           root, reserved=False)
+    return workspace.load_config(root)
+
+
+def thread_run(root, config, text='Thanks', tool=SEND_TOOL, **context):
+    from wuwei import outward
+    why, trace = [], []
+    context = {'channel': 'C1', 'thread_ts': '1.2', **context}
+    result = outward.classify(text, root, config, {'text': text, **context}, kind='slack', tool=tool,
+                              why=why, trace=trace)
+    return result, why, trace
+
+
+def test_thread_topic_row_loads(configured):
+    root = configured[0]
+    outbound_line(root, 'tiers = [{ channel = "C1", topic = "thread", tier = "send" }]')
+    assert workspace.load_config(root)['outbound']['tiers'][0]['topic'] == 'thread'
+
+
+@pytest.mark.parametrize('umbrella,number', [('ask', 10), ('send', 7)])
+def test_thread_team_participants_send(configured, umbrella, number):
+    root = configured[0]
+    config = thread_workspace(root, '"slack:U01" = { class = "team" }\n"slack:U02" = { class = "team" }\n',
+                              ['U01', 'U02'], umbrella)
+    result, why, trace = thread_run(root, config)
+    assert result == (0, 'send') and why == []
+    assert 'party U01: team, U01 in outbound.people as team' in trace
+    assert 'party U02: team, U02 in outbound.people as team' in trace
+    assert trace.count(f'  rule {number} default {THREAD_ROW}: matched') == 3
+
+
+def test_thread_owner_participant_sends(configured):
+    root = configured[0]
+    config = thread_workspace(root, '"slack:U01" = { class = "team" }\n', ['U01', 'U09'],
+                              extra='\n[outbound.owner.slack]\nuser = "U09"\n')
+    result, why, trace = thread_run(root, config)
+    assert result == (0, 'send') and 'party U09: owner, U09 is the owner in outbound.owner' in trace
+
+
+def test_thread_not_learned_names_learn(configured):
+    root = configured[0]
+    config = thread_workspace(root)
+    result, why, _ = thread_run(root, config)
+    assert result == (1, 'draft') and why == [NOT_LEARNED.format(tool=SEND_TOOL)]
+    outbound_line(root, 'learn = "off"')
+    result, why, _ = thread_run(root, workspace.load_config(root))
+    assert why == [NOT_LEARNED.format(tool=SEND_TOOL).replace(
+        ', run bin/wuwei outbound learn --tool mcp__slack__slack_send_message --thread <file>', '')]
+
+
+def test_thread_not_learned_sends_under_the_umbrella(configured):
+    root = configured[0]
+    assert thread_run(root, thread_workspace(root, umbrella='send'))[0] == (0, 'send')
+
+
+def test_thread_unknown_participant_asks(configured):
+    root = configured[0]
+    config = thread_workspace(root, '"slack:U01" = { class = "team" }\n', ['U01', 'U07'])
+    result, why, _ = thread_run(root, config)
+    assert result == (1, 'draft') and why == [
+        'ask by rule 9 (audience=company) for U07: unknown thread participant U07, not an internal person '
+        'in outbound.people, connector default class company']
+
+
+@pytest.mark.parametrize('umbrella', ['ask', 'send'])
+def test_thread_client_participant(configured, umbrella):
+    root = configured[0]
+    config = thread_workspace(root, '"slack:U01" = { class = "team" }\n"slack:U03" = { class = "client" }\n',
+                              ['U01', 'U03'], umbrella)
+    result, why, _ = thread_run(root, config)
+    assert result == (1, 'draft') and why == [
+        'ask by rule 5 (audience=client) for U03: U03 in outbound.people as client']
+
+
+def test_thread_only_for_chat(configured):
+    from wuwei import outward
+    root = configured[0]
+    config = thread_workspace(root)
+    trace = []
+    outward.classify('A technical claim.', root, config, {'ref': 'org/repo#1', 'text': 'A technical claim.',
+                                                           'thread': 3}, kind='code_host', trace=trace)
+    assert not any('not learned' in line or 'topic = "thread"' in line and 'matched' in line for line in trace)
+    result, why, _ = thread_run(root, config, channel_id='chat')
+    assert result == (1, 'draft') and why[0].startswith('approval tier thread for ')

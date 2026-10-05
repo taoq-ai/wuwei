@@ -264,6 +264,8 @@ def posture(payload, refusals, root):
         guard, area, decided, line = level(check, levels)
         if reason == NO_REVIEWER or guard == 'deploy' and reason.startswith('publish: '):
             line = ''  # It names its own ways out (#478: the owner's card); still blocked.
+        if guard == 'outward' and reason.startswith('outward: draft '):
+            line = f'posture: {area} = {decided}; a draft is one card away'  # #526: a row lowers it.
         # #347, #470: decided by the reason, not the area; only deploy says unknown git
         if reason in (UNPARSED, WORKSPACE_ROOT) or guard == 'deploy' and reason.startswith(UNKNOWN_GIT):
             if reason in seen:
