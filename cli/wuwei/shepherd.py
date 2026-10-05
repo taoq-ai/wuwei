@@ -304,6 +304,15 @@ def raise_pr(root, repo_name, base, title, body, item):
         head = merge.read(vcs.head, str(repo_path), root=root)['sha']
         merge.sha(head)
         code, reason = gate_check(root, repo_path, config, sha=head, item=item)
+        use = None
+        if code == 1:  # #530: a warning, the owner's card or (strict) the refusal
+            import shlex
+            from wuwei import grants, sessions
+            argv = ['bin/wuwei', 'pr', 'raise', repo_name, '--item', item]
+            payload = {'session_id': sessions.current() or '', 'cwd': str(repo_path),
+                       'tool_input': {'command': shlex.join(argv)}}
+            code, reason = grants.evidence(payload, root, config, argv, reason, repo_name, record=True)
+            use = reason if callable(reason) else None
         if code:
             print(reason)
             return code
@@ -342,6 +351,8 @@ def raise_pr(root, repo_name, base, title, body, item):
         if pr['head'] != head or pr['url'] != created['url']:
             raise ValueError('created PR does not match checked head and URL; run bin/wuwei pr state to read the PR before any retry')
         state.record_pr(root, item, ref, raised=True, head=head, reviewers=reviewers)
+        if use:
+            use()
         dispatch.tracker_call(item, 'in_review', root)
         if reviewers:
             requested = merge.read(host.request_reviewers, ref, reviewers, root=root)

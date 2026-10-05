@@ -55,7 +55,7 @@ def test_native_hook_rejects_non_fast_forward(workspace_case, monkeypatch):
     assert invoke(workspace_case, monkeypatch, 'pre-push', updates) == 1
 
 
-@pytest.mark.parametrize('failure', ['ancestry', 'head', 'checks'])
+@pytest.mark.parametrize('failure', ['ancestry', 'head'])
 def test_native_push_evidence_failures(workspace_case, monkeypatch, failure):
     from wuwei import state
     from wuwei.registry import Result
@@ -68,6 +68,22 @@ def test_native_push_evidence_failures(workspace_case, monkeypatch, failure):
         set_fast_checks(root, {'example/project': {'unit': {'sha': OLD, 'exit': 0}}})
     updates = f'refs/heads/feature {SHA} refs/heads/feature {OLD}\n'
     assert invoke(workspace_case, monkeypatch, 'pre-push', updates) == (2 if failure == 'ancestry' else 1)
+
+
+@pytest.mark.parametrize('posture,code', [('observe', 0), ('guarded', 0), ('strict', 1)])
+def test_native_push_missing_evidence_refuses_only_under_strict(workspace_case, monkeypatch, capsys,
+                                                                posture, code):
+    # #530: below strict the native hook warns on a missing fast check; protected refs still refuse.
+    root, _ = workspace_case
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(f'[security]\nposture = "{posture}"\n')
+    set_fast_checks(root, {'example/project': {'unit': {'sha': OLD, 'exit': 0}}})
+    updates = f'refs/heads/feature {SHA} refs/heads/feature {OLD}\n'
+    assert invoke(workspace_case, monkeypatch, 'pre-push', updates) == code
+    err = capsys.readouterr().err
+    assert 'fast check "unit" has not passed' in err and ('warning' in err) is (code == 0)
+    updates = f'refs/heads/feature {SHA} refs/heads/main {OLD}\n'
+    assert invoke(workspace_case, monkeypatch, 'pre-push', updates) == 1
 
 
 def test_native_push_reads_head_without_inventing_a_destination(workspace_case, monkeypatch):

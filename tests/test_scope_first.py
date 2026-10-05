@@ -190,6 +190,9 @@ def test_inside_verdicts_unchanged(tmp_path, outside, monkeypatch):
     (ws / '.wuwei').mkdir(parents=True)
     (ws / '.wuwei/config.toml').write_text('')
     seed(ws)
+    # #530: below strict an opaque call warns; strict keeps the refusal.
+    assert hook('PreToolUse', payload('PreToolUse', ws, tool_input={'command': TRIAL[0]}))[0] == 0
+    (ws / '.wuwei/config.toml').write_text('[security]\nposture = "strict"\n')
     code, _, err = hook('PreToolUse', payload('PreToolUse', ws, tool_input={'command': TRIAL[0]}))
     assert code == 2
     assert 'commit/push guard could not run' in err and 'PR guard could not run' not in err

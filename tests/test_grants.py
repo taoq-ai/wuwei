@@ -282,3 +282,71 @@ def test_planned_card_is_the_day_grant(root, answer, option, expected):
     assert run(root) == (expected or (1, card_reason('D-2')))
     if expected:
         assert events(root, 'grant.used')[0]['decision'] == 'D-1'
+
+
+MISSING = 'fast check "unit" has not passed for HEAD aaaaaaaaaaaa; run bin/wuwei build check DIV-1'
+PUSH = 'git push origin HEAD:refs/heads/div-1'
+
+
+def evidence(root, record=False, command=PUSH):
+    payload = {'cwd': str(root), 'session_id': 'seat-1', 'agent_type': 'wuwei:builder',
+               'hook_event_name': 'PreToolUse', 'tool_name': 'Bash', 'tool_input': {'command': command}}
+    return grants.evidence(payload, root, config(root), command.split(), MISSING, 'fixture-org/app',
+                           record=record)
+
+
+def posture(root, name):
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(f'[security]\nposture = "{name}"\n')
+
+
+@pytest.mark.parametrize('rule,action', [('evidence: ' + MISSING, 'evidence')])
+def test_evidence_action(rule, action):
+    assert grants.action(rule) == action
+
+
+def test_evidence_warns_under_observe(root, capsys):
+    # #530: a missing check warns under observe; the hook records it, a CLI caller records it here.
+    posture(root, 'observe')
+    assert evidence(root) == (1, MISSING)
+    assert evidence(root, record=True) == (0, None)
+    [event] = events(root, 'guard.would_refuse')
+    assert (event['guard'], event['level'], event['reason']) == ('pr', 'warn', MISSING)
+    assert 'warning: ' + MISSING in capsys.readouterr().err
+    assert not (workspace.day_dir(root) / 'decisions').exists()
+
+
+def test_evidence_refuses_under_strict(root):
+    posture(root, 'strict')
+    assert evidence(root) == (1, MISSING) and evidence(root, record=True) == (1, MISSING)
+    assert not (workspace.day_dir(root) / 'decisions').exists()
+
+
+def test_evidence_card_under_guarded(root, answer):
+    code, reason = evidence(root)
+    assert code == 1 and reason.startswith('publish: ') and 'bin/wuwei build check DIV-1' in reason
+    assert reason.endswith('the owner decides: bin/wuwei decision show D-1 --widget')
+    assert 'host terminal' not in reason
+    text = (workspace.day_dir(root) / 'decisions/D-1.md').read_text()
+    assert 'bin/wuwei build check DIV-1' in text and 'host terminal' not in text
+    assert labels(root) == ['Defer until the check passes (Recommended)', 'Allow once', 'Allow today']
+    assert state.read_state(root)['grants']['D-1']['action'] == 'evidence'
+    assert answer(root, 'Allow once') == (0, 'once')
+    code, use = evidence(root)
+    assert code == 0 and state.read_state(root)['grants']['D-1']['spent'] is False
+    use()
+    assert state.read_state(root)['grants']['D-1']['spent'] is True
+    # An evidence grant never lifts a deploy on the same repository.
+    assert run(root)[0] == 1
+
+
+def test_evidence_today_and_keep(root, answer):
+    evidence(root)
+    answer(root, 'Allow today')
+    assert evidence(root)[0] == 0 and evidence(root)[0] == 0
+    state._write_state(lambda data: data.update(close_requested=True), root, reserved=False)
+    evidence(root)
+    assert answer(root, 'Defer until the check passes', 'D-2') == (0, 'keep')
+    code, reason = evidence(root)
+    assert code == 1 and 'asked for the check first (D-2)' in reason
+    assert 'bin/wuwei build check DIV-1' in reason and 'host terminal' not in reason

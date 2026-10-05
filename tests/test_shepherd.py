@@ -848,3 +848,70 @@ def test_raise_body_names_the_review_tier(case, monkeypatch, gates, body):
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
     [args] = [args for name, args, _ in host.calls if name == 'create_pr']
     assert args[0]['body'] == body
+
+
+GATE_MISS = f'pre-PR gates not passed at current HEAD {SHA} for item ITEM-1: security; run the named gate for this HEAD'
+
+
+def gate_miss(case, monkeypatch, posture):
+    root, host = solo_raise(case, monkeypatch)
+    monkeypatch.setattr('wuwei.guards.pr.gate_check', lambda *a, **kw: (1, GATE_MISS))
+    if posture:
+        with (root / '.wuwei/config.toml').open('a') as stream:
+            stream.write(f'\n[security]\nposture = "{posture}"\n')
+    return root, host
+
+
+def created(host):
+    return [call for call in host.calls if call[0] == 'create_pr']
+
+
+def would_refuse(root):
+    import json
+    return [json.loads(line)['payload'] for path in root.glob('.wuwei/days/*/events.jsonl')
+            for line in path.read_text().splitlines() if json.loads(line)['kind'] == 'guard.would_refuse']
+
+
+def test_raise_gate_miss_warns_under_observe(case, monkeypatch, capsys):
+    # #530: a missing gate verdict is a warning under observe; the PR is raised.
+    from wuwei import shepherd
+    root, host = gate_miss(case, monkeypatch, 'observe')
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
+    assert len(created(host)) == 1 and 'warning: ' + GATE_MISS in capsys.readouterr().err
+    [event] = would_refuse(root)
+    assert event['reason'] == GATE_MISS and event['level'] == 'warn'
+
+
+def test_raise_gate_miss_is_a_card_under_guarded(case, monkeypatch, capsys):
+    from types import SimpleNamespace
+    from wuwei import integrity, shepherd
+    from wuwei.commands import decision
+    root, host = gate_miss(case, monkeypatch, None)
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
+    out = capsys.readouterr().out
+    assert not created(host) and 'decision show D-1' in out and 'security' in out
+    assert 'host terminal' not in out
+    monkeypatch.setattr(integrity, '_host_confirm', lambda *args, **kwargs: True)
+    assert decision.owner_outcome(SimpleNamespace(id='D-1', option='Allow once'), root=root) == (0, 'once')
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
+    assert len(created(host)) == 1 and state.read_state(root)['grants']['D-1']['spent'] is True
+
+
+def test_raise_gate_miss_refuses_under_strict(case, monkeypatch, capsys):
+    from wuwei import shepherd
+    root, host = gate_miss(case, monkeypatch, 'strict')
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 1
+    assert capsys.readouterr().out.strip() == GATE_MISS and not created(host)
+    assert 'grants' not in state.read_state(root) or not state.read_state(root)['grants']
+
+
+@pytest.mark.parametrize('where', ['.', 'docs'])
+def test_raise_from_any_directory_in_the_workspace(case, monkeypatch, where):
+    # #534: pr raise reads the recorded worktree, whatever the caller's directory.
+    from wuwei import shepherd
+    root, host = solo_raise(case, monkeypatch)
+    (root / where).mkdir(exist_ok=True)
+    monkeypatch.chdir(root / where)
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    assert shepherd.raise_pr(workspace.find_workspace(), 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
+    assert created(host)[0][1][0]['head'] == 'feature'

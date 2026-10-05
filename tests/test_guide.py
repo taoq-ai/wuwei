@@ -195,3 +195,10 @@ def test_unwritable_block_warns_and_init_and_upgrade_finish(tmp_path, monkeypatc
     rows = {row['name']: row for row in doctor._workspace(project, workspace.load_config(project), None, [])}
     assert rows['template']['status'] == 'ok'
     assert rows['guide']['status'] == 'warn' and 'symlink' in rows['guide']['value']
+
+
+def test_guide_names_the_pr_read_commands():
+    # #530: reading review comments and the reviewer list is pr state and pr ping-check.
+    from wuwei import guide
+    [line] = [line for line in guide.text().splitlines() if 'wuwei pr state' in line]
+    assert 'wuwei pr ping-check' in line and 'reviewer list' in line

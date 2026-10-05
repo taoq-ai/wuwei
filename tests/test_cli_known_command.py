@@ -178,12 +178,12 @@ def test_unrecognised_copy_stays_opaque(workspace, posture, monkeypatch, capsys)
     configure(workspace.root, posture)
     code, out = hook(workspace.root, f'{workspace.other} config check' + GREP, monkeypatch, capsys)
     warned = [event['payload']['reason'] for event in events(workspace.root, 'guard.would_refuse')]
-    if posture != 'observe':
+    if posture == 'strict':
         assert code == 2
-        assert 'opaque interpreter command' in out['permissionDecisionReason']
-    else:
+        assert 'opaque' in out['permissionDecisionReason']
+    else:  # #530: below strict an opaque call warns once
         assert code == 0, out
-        assert len(warned) == 1 and 'opaque interpreter command' in warned[0], warned
+        assert len(warned) == 1 and 'opaque' in warned[0], warned
 
 
 @pytest.mark.parametrize('posture', POSTURES)

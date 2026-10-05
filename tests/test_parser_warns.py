@@ -82,8 +82,6 @@ def test_five_shapes(workspace, posture, name, command, monkeypatch, capsys):
     'G=git; $G push origin main',
     'cat <(gh pr merge 17)',
     'diff <(git push origin main) x',
-    'for f in a b; do git push origin $f; done',
-    'for f in a b; do git commit -m $f; done',
 ])
 def test_publish_forms_still_refuse(workspace, posture, command, monkeypatch, capsys):
     configure(workspace, posture)
@@ -167,10 +165,10 @@ def test_issue_470_commit_substitution(workspace, posture, monkeypatch, capsys):
     configure(workspace, posture)
     code, out, _ = hook(workspace, 'x=$(git commit -m y)', monkeypatch, capsys)
     warned = [event['payload']['guard'] for event in events(workspace, 'guard.would_refuse')]
-    if posture == 'observe':
-        assert (code, warned) == (0, ['commit_push']), out
-    else:
+    if posture == 'strict':
         assert code == 2, out
+    else:  # #530: an opaque call that names no publish target warns below strict
+        assert (code, len(warned)) == (0, 1), out
 
 
 @pytest.mark.parametrize('posture', POSTURES)
@@ -214,3 +212,60 @@ def test_decision_lint_warns_inline_snippet(workspace, monkeypatch, capsys):
     warned = [event['payload']['reason'] for event in events(workspace, 'guard.would_refuse')]
     assert code == 0
     assert warned == [shell.UNPARSED]
+
+
+@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('command', ['for f in a b; do git push origin $f; done',
+                                     'for f in a b; do git commit -m $f; done'])
+def test_opaque_loop_without_publish_target_warns(workspace, posture, command, monkeypatch, capsys):
+    # #530: below strict an opaque call naming no publish target runs with one warning.
+    configure(workspace, posture)
+    code, out, _ = hook(workspace, command, monkeypatch, capsys)
+    warned = [event['payload'] for event in events(workspace, 'guard.would_refuse')]
+    if posture == 'strict':
+        assert code == 2 and warned == [], out
+    else:
+        assert code == 0 and len(warned) == 1 and warned[0]['reason'].startswith('opaque: '), (out, warned)
+
+
+READ_LOOP = 'gh api repos/o/r/pulls/7/comments\ngh pr view 7 --json reviewRequests\n'
+
+
+@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('command,named', [
+    ('bash loop.sh', 'loop.sh'),
+    ('gh pr view $(git rev-parse --abbrev-ref HEAD)', 'substitution'),
+    ('''python3 -c "import subprocess; print(subprocess.run(['gh','pr','view','7']).stdout)"''', 'inline'),
+])
+def test_opaque_read_warns_below_strict(workspace, posture, command, named, monkeypatch, capsys):
+    # #530 US1.1, US1.2: one guard.would_refuse naming what was opaque; strict refuses as today.
+    configure(workspace, posture)
+    (workspace / 'loop.sh').write_text(READ_LOOP)
+    code, out, _ = hook(workspace, command, monkeypatch, capsys)
+    warned = [event['payload'] for event in events(workspace, 'guard.would_refuse')]
+    if posture == 'strict':
+        assert code == 2 and warned == [], out
+        return
+    assert code == 0, out
+    [event] = warned
+    assert event['reason'].startswith('opaque: ') and named in event['reason'], event
+    assert (event['area'], event['level']) == ('publish', 'warn')
+
+
+@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('script,command', [
+    ('git push origin main\n', 'bash loop.sh'),
+    ('kubectl apply -f x\n', 'bash loop.sh'),
+    ('gh release create v1\n', 'bash loop.sh'),
+    ('gh pr review 7 --approve\n', 'bash loop.sh'),
+    ('', '''python3 -c "import subprocess; subprocess.run(['gh','pr','comment','7','--body','x'])"'''),
+    ('', '''python3 -c "import os; os.system('git push --force origin x')"'''),
+])
+def test_opaque_publish_target_still_refuses(workspace, posture, script, command, monkeypatch, capsys):
+    # #530 US1.3: the literal text names a publish target, so every posture refuses it.
+    configure(workspace, posture)
+    (workspace / 'loop.sh').write_text(script)
+    code, out, _ = hook(workspace, command, monkeypatch, capsys)
+    assert code == 2, out
+    assert not [event for event in events(workspace, 'guard.would_refuse')
+                if event['payload']['reason'].startswith('opaque')]

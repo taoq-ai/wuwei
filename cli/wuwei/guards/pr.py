@@ -9,7 +9,7 @@ import shlex
 from urllib.parse import unquote, urlsplit
 
 from wuwei import registry, shell, verdict, workspace
-from wuwei.guards import NO_REVIEWER, Guard
+from wuwei.guards import NO_REVIEWER, RAISE, Guard
 from wuwei.guards.commit_push import data
 from wuwei.guards.protect_state import _cd_target, _cwd
 from wuwei.exits import DAMAGED
@@ -188,16 +188,47 @@ def gate_check(root, cwd, config, *, sha=None, item=None):
     return 1, f'pre-PR gates not passed at current HEAD {sha}: {missing}; run the named gate for this HEAD'
 
 
-def create_check(args, command, cwd, root, config):
+def _recorded(root, config, *, path=None, repo=None, branch=None):
+    """#534: (item, worktree) of the recorded item worktree at path, or whose branch is branch
+    in repository repo; None when no recorded item matches."""
+    from wuwei import merge, state
+    vcs = registry.load('vcs', config)
+    for item, row in sorted(state.read_state(root)['items'].items()):
+        if not isinstance(row.get('worktree'), str) or not row['worktree']:
+            continue
+        tree = (root / row['worktree']).resolve()
+        if path is not None and tree == path:
+            return item, tree
+        if (branch is not None and tree.is_dir() and repo in merge.configured(root, config, tree)
+                and data(vcs.branch(str(tree), root=root)).get('name') == branch):
+            return item, tree
+    return None
+
+
+def create_check(args, command, cwd, root, config, payload):
+    from wuwei import grants, merge
     operands, found = shell.operands(args, {
         '--reviewer', '-r', '--title', '-t', '--body', '-b', '--body-file', '-F',
         '--base', '-B', '--head', '-H', '--repo', '-R', '--assignee', '-a',
         '--label', '-l', '--milestone', '-m', '--project', '-p', '--template', '-T', '--recover',
     }, {'--draft', '-d', '--fill', '--fill-first', '--fill-verbose', '--web', '-w', '--editor', '-e'})
-    if values(found, '--repo', '-R'):
-        raise ValueError('repository override cannot be tied to the checked local HEAD; run gh pr create from the item worktree without --repo')
-    if values(found, '--head', '-H'):
-        raise ValueError('explicit head cannot be tied to the checked local HEAD; run gh pr create from the item worktree without --head')
+    repos, heads, item = values(found, '--repo', '-R'), values(found, '--head', '-H'), None
+    if bool(repos) != bool(heads):
+        raise ValueError('name both --repo <org>/<name> and --head <item branch>, or run gh pr create from the item worktree with neither')
+    if repos:  # #534: from any directory, when the head is a recorded item branch
+        repo, head = repos[-1], heads[-1]
+        if repo not in [row['name'] for row in config['repos']]:
+            return 1, f'repository {repo} is not configured in this workspace; use a repository from .wuwei/config.toml'
+        recorded = _recorded(root, config, repo=repo, branch=head)
+        if recorded is None:
+            return 1, f'head {head} is not a recorded item branch of {repo}; run gh pr create from the item worktree instead'
+        item, cwd = recorded
+    else:
+        try:
+            names = merge.configured(root, config, cwd)
+        except (OSError, ValueError, KeyError, TypeError):
+            names = []
+        repo = names[0] if len(names) == 1 else None
     if any(key.startswith('GIT_CONFIG') or key in (
             'GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_NAMESPACE',
             'GH_REPO', 'GH_HOST', 'GH_CONFIG_DIR') for key in command.env.keys() | os.environ.keys()):
@@ -209,7 +240,12 @@ def create_check(args, command, cwd, root, config):
             part.strip() and not part.strip().startswith('-')
             for value in reviewers for part in value.split(','))):
         return 1, NO_REVIEWER
-    return gate_check(root, cwd, config)
+    code, reason = gate_check(root, cwd, config, item=item)
+    if not code:
+        return 0, ''
+    if heads:
+        reason = f'head {heads[-1]}: {reason}'
+    return grants.evidence(payload, root, config, command.argv, reason, repo)
 
 
 def api_check(args, cwd, root, config):
@@ -268,7 +304,7 @@ def api_check(args, cwd, root, config):
     return 0, ''
 
 
-def action(command, cwd, root, config, isolated):
+def action(command, cwd, root, config, isolated, payload):
     from wuwei.security import gh_outbound
     args = command.argv[1:]
     if args in (['--version'], ['--help'], ['-h']):
@@ -310,9 +346,15 @@ def action(command, cwd, root, config, isolated):
         return 0, ''
     verb, args = args[0], prefix + args[1:]
     if verb == 'create':
-        if not isolated:
+        if not isolated:  # owner-only: a chained create must not carry a later owner verb
             raise ValueError('run PR create separately without redirections to keep HEAD evidence current')
-        return create_check(args, command, cwd, root, config)
+        try:
+            code, reason = create_check(args, command, cwd, root, config, payload)
+        except ValueError as exc:
+            code, reason = 2, str(exc)
+        if code and not reason.startswith('publish: ') and reason != NO_REVIEWER:
+            reason = RAISE + reason  # #530: the hook levels it as publish, not owner-only
+        return code, reason
     if verb == 'merge':
         operands, found = shell.operands(args, {'--repo', '-R', '--subject', '-t', '--body', '-b',
                                         '--body-file', '-F', '--author-email', '-A', '--match-head-commit'},
@@ -355,6 +397,12 @@ def check(payload):
             return 0, ''
         try:
             commands = shell.normalize(raw)
+            # #534: cd <recorded item worktree> && <one gh command> runs in that worktree.
+            if (initial and len(commands) == 2 and commands[0].argv[:1] == ['cd']
+                    and commands[0].separator == '&&' and not commands[0].writes):
+                target = (cwd / _cd_target(commands[0])).resolve()
+                if _recorded(initial[0], initial[1], path=target):
+                    cwd, initial, commands = target, workspace.scope(target), commands[1:]
         except shell.ParseError:
             # A parse failure blocks only a call that can reach a PR effect or send a
             # body file the outbound scan must read (#330).
@@ -389,6 +437,7 @@ def check(payload):
             return found
         if script_relevant:
             raise ValueError('opaque script command; run gh as a plain command')
+        used = []
         for index, command in enumerate(commands):
             if not command.argv:
                 continue
@@ -401,9 +450,13 @@ def check(payload):
             if program == 'gh':
                 for directory, (root, config) in contexts.items():
                     result = action(command, directory, root, config,
-                                    len(commands) == 1 and not command.writes)
+                                    len(commands) == 1 and not command.writes, payload)
                     if result[0]:
                         return result
+                    if callable(result[1]):
+                        used.append(result[1])
+        for use in used:  # #478: a grant is spent only when the whole call runs
+            use()
         return 0, ''
     except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError, RuntimeError) as exc:
         return 2, f'PR guard could not run: {exc}'

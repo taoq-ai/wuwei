@@ -124,7 +124,9 @@ def check(root, command):
     ('git -C repo push origin production', 1, 'environment'),
     ('git -c push.followTags=true push origin HEAD:refs/heads/topic', 2, 'override'),
     ('GIT_DIR=elsewhere git push origin HEAD:refs/heads/topic', 2, 'override'),
-    ('git merge topic', 2, 'branch'),
+    ('git merge topic', 0, ''),  # #530: a local merge publishes nothing
+    ('git merge origin/main', 0, ''),
+    ('git -C repo merge main', 0, ''),
     ('gh workflow run deploy.yml', 1, 'workflow'),
     ('gh -R acme/app workflow run .github/workflows/deploy.yml', 1, 'workflow'),
     ('gh workflow run --ref main deploy.yml', 1, 'workflow'),
@@ -537,3 +539,30 @@ def test_quoted_workflow_name_is_a_deploy_on_its_target(workspace):
     assert code == 1 and reason.startswith('publish: ')
     assert 'fixture-org/app' in reason and 'is a deploy (deploy.workflows)' in reason
     assert 'resolution' not in reason
+
+
+@pytest.mark.parametrize('text,named', [
+    *((text, True) for text in (
+        'git push origin main', 'git push origin HEAD:refs/heads/master', 'git push -f origin x',
+        'git push --force-with-lease origin x', 'git push origin +x', 'git push --no-verify origin x',
+        'git push origin v1.2.3', 'git push origin refs/tags/a', 'git push origin HEAD:trunk',
+        'git push origin HEAD:release/next', 'kubectl apply -f x', 'ship release --prod',
+        'gh release create v1', 'gh pr merge 7', 'gh api repos/o/r/pulls/7/merge',
+        'gh pr review 7 --approve', 'gh api repos/o/r/pulls/7/reviews -f event=APPROVE',
+        'gh pr merge 7 --admin', 'gh api repos/o/r/branches/main/protection', 'gh alias set x y',
+        'gh workflow run build.yml', 'gh pr comment 7 --body x', 'gh pr create',
+        'git config core.hooksPath x', 'rm .git/hooks/wuwei-workspace',
+        "subprocess.run(['gh','pr','merge','7'])", "os.system('git push --force origin x')",
+        'git push origin "HEAD:ma"in', 'git push --no-ver""ify origin x', 'git push origin HEAD:m\\ain',
+        'git -c core.hooks""Path=/dev/null push origin x')),
+    *((text, False) for text in (
+        'gh api repos/o/r/pulls/7/comments', 'gh pr view 7 --json mergeable,reviewRequests',
+        'gh pr checks 7', 'gh run list', 'git push origin HEAD:refs/heads/div-1', 'git merge main',
+        "print(subprocess.run(['gh','pr','view','7']).stdout)", 'git status')),
+])
+def test_floor_named(workspace, text, named):
+    # #530: an opaque call keeps its refusal when its literal text names a publish target.
+    from wuwei.guards import deploy
+    config = load_config(workspace)
+    config['repos'][0]['default_branch'] = 'trunk'
+    assert deploy.floor_named(text, config) is named

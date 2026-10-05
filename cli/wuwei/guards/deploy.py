@@ -32,6 +32,12 @@ PERMISSIONS_DENY = [f'Bash({command})' for command in (
     'podman push*', 'gh release create*', 'git push --tags*', 'git push * --tags*',
     'gh pr review --approve*', 'gh pr review * --approve*', 'gh pr review * -a*',
     'gh pr merge * --admin*')]
+# #530: gh words that name an owner-only or text-write action (merges, approvals, admin,
+# protection, aliases, secrets, workflow dispatch, refs, and the writes the canary check reads).
+GH_FLOOR = ('merge', 'approve', 'APPROVE', 'admin', 'review', 'protection', 'rulesets', 'alias',
+            'secret', 'workflow', 'dispatches', 'rerun', 'environments', 'refs', 'comment',
+            'create', 'edit')
+_FORCE = re.compile(r'--force.*|--mirror|--tags|--follow-tags|--no-verify|-[a-zA-Z]*f[a-zA-Z]*|\+.*')
 
 
 def deny(rule, repo=None):
@@ -46,6 +52,30 @@ def unknown(reason):
 def environment(branch, config):
     branch = branch.removeprefix('refs/heads/')
     return any(fnmatchcase(branch, pattern) for pattern in config['environments'])
+
+
+def floor_named(text, config):
+    """#530: the literal text names a publish target or an owner-only action, so an opaque call
+    keeps its refusal below strict."""
+    # ponytail: literal words only; a branch built at run time is anchored by the pre-push hook
+    # and protected refs (spec 4.5).
+    text = re.sub(r'''["'\\]''', '', text)  # shell quoting must not hide a word
+    def named(words):
+        return mentions(text, words, script=True)
+    if named((*PROGRAMS[2:], 'deploy', 'deployments', 'release', 'releases',
+              *(pattern.split()[0] for pattern in config['deploy']['deny']))):
+        return True
+    if named(('gh',)) and named(GH_FLOOR) or 'hookspath' in text.lower() or named(('wuwei-workspace',)):
+        return True
+    if not named(('push',)):
+        return False
+    protected = {'main', 'master', *(repo['default_branch'] for repo in config['repos'])}
+    for word in re.split(r'''[\s'"`;&|()<>$=,\[\]]+''', text):
+        branch = word.lstrip('+').rsplit(':', 1)[-1].removeprefix('refs/heads/')
+        if (_FORCE.fullmatch(word) or 'refs/tags/' in word or branch in protected
+                or re.fullmatch(r'v?\d+\.\d+.*', branch) or branch and environment(branch, config)):
+            return True
+    return False
 
 
 def workflow(target, config, repo=None):
@@ -130,9 +160,6 @@ def git(args, env, config):
             if any(c in target for c in '*?['):
                 unknown('ambiguous push ref; use a literal branch destination')
         return 0, ''
-    if action == 'merge':
-        # ponytail: block implicit targets until the vcs port exposes current branch.
-        unknown('current branch cannot be established by the vcs port')
     if git_runs(action, args):
         unknown('git option runs a program')
     if git_kind([action, *args]) != 'unknown':
