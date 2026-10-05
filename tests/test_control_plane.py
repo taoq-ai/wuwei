@@ -57,6 +57,8 @@ def routed(root, name='D-3'):
     path = day_dir(root) / 'decisions' / f'{name}.md'
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(VALID)
+    settings = root / '.wuwei/config.toml'
+    settings.write_text(settings.read_text() + '[autonomy]\nmode = "supervised"\n')  # #530: the card flow
     assert main(['decision', 'route', name]) == 0
     return path
 

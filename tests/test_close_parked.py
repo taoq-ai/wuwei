@@ -90,3 +90,21 @@ def test_close_why_writes_nothing(case, monkeypatch, capsys, open_item, expected
         assert f'plan carry {open_item}' in lines[-1] and f'plan park {open_item}' in lines[-1]
     assert [(directory / f).read_bytes() for f in ('state.json', 'events.jsonl')] == before
     assert calls == []
+
+
+def test_close_does_not_report_a_mandate_decision_as_pending(tmp_path, monkeypatch):
+    # #530: a decision taken under the mandate is not a pending owner decision.
+    from test_decision import VALID
+    from wuwei import closing, state, workspace
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    directory = workspace.day_dir(root) / 'decisions'
+    directory.mkdir(parents=True)
+    (directory / 'D-1.md').write_text(VALID.replace('two-way', 'one-way').replace('Decided-by: seat', 'Decided-by: mandate'))
+    state._write_state(lambda data: data.update(decision_outcomes={
+        'D-1': {'option': 'A', 'decided_by': 'mandate', 'reversibility': 'one-way', 'cisr': 'Consequential'}}),
+        root, reserved=False)
+    assert 'D-1' not in closing.unresolved(root, [])[1]

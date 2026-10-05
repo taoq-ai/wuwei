@@ -41,6 +41,8 @@ Revisit: Regression returns.
 Decided-by: seat
 Outcome: pending
 '''
+# #530: the owner-card tests keep today's routing under supervised.
+SUPERVISED = '[autonomy]\nmode = "supervised"\n'
 B_ROW = '| B | Defer until tomorrow | Passes every must but scores 2 on Correctness. | Nothing changes until tomorrow. |'
 LENS_BLOCK = VALID[VALID.index('Lenses:'):VALID.index('Musts:')]
 # A record written before #475: description column, no Class, no Reasoning.
@@ -407,6 +409,7 @@ def test_route(ws, monkeypatch, capsys, door, radius, expected):
     from wuwei.__main__ import main
     from wuwei import state
     monkeypatch.chdir(ws)
+    (ws / '.wuwei/config.toml').write_text(SUPERVISED)
     save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: ' + door)
          .replace('Blast radius: own branch', 'Blast radius: ' + radius))
     assert main(['decision', 'route', 'D-3']) == 0
@@ -434,6 +437,7 @@ def test_seat_route_rejects_owner_decider(ws, monkeypatch, capsys):
     from wuwei.__main__ import main
     from wuwei import state
     monkeypatch.chdir(ws)
+    (ws / '.wuwei/config.toml').write_text(SUPERVISED)
     save(ws, VALID.replace('Decided-by: seat', 'Decided-by: owner'))
     assert main(['decision', 'route', 'D-3']) == 1
     assert 'Decided-by must be seat for a seat-routed decision' in capsys.readouterr().err
@@ -677,6 +681,7 @@ def test_owner_outcome_rejects_bad_choice_and_declined_confirmation(ws, monkeypa
     from wuwei.__main__ import main
     from wuwei import state
     monkeypatch.chdir(ws)
+    (ws / '.wuwei/config.toml').write_text(SUPERVISED)
     path = save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
     before = path.read_bytes()
     assert main(['decision', 'route', 'D-3']) == 0
@@ -743,6 +748,7 @@ def test_owner_outcome_without_a_terminal_names_the_owner_action(ws, monkeypatch
     from wuwei.__main__ import main
     from wuwei import state
     monkeypatch.chdir(ws)
+    (ws / '.wuwei/config.toml').write_text(SUPERVISED)
     path = save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
     assert main(['decision', 'route', 'D-3']) == 0
     before = path.read_bytes()
@@ -818,7 +824,7 @@ def template():
 def test_template_is_a_design_record_with_lenses(ws, monkeypatch):
     from wuwei import decision
     text = template()
-    assert decision.lint(text) == (0, 'OK: A (80)')
+    assert decision.lint(text) == (0, 'OK: A (80), Routine')
     assert 'Class: design' in text.splitlines()
     for name, question in decision.LENSES.items():
         assert any(line.startswith(f'| {name} |') for line in text.splitlines())
@@ -827,7 +833,7 @@ def test_template_is_a_design_record_with_lenses(ws, monkeypatch):
     (ws / '.wuwei/config.toml').write_text('[decisions.lenses]\ncompany-rule = "Does it follow our rule?"\n')
     text = template()
     assert any(line.startswith('| company-rule |') for line in text.splitlines())
-    assert decision.lint(text, {**decision.LENSES, 'company-rule': 'Q?'}) == (0, 'OK: A (80)')
+    assert decision.lint(text, {**decision.LENSES, 'company-rule': 'Q?'}) == (0, 'OK: A (80), Routine')
 
 
 THREE = VALID.replace('Class: design', 'Class: re-plan').replace(LENS_BLOCK, '').replace(
@@ -923,11 +929,11 @@ def test_decision_show(ws, monkeypatch, capsys):
 def test_lint_reports_style_without_rejecting(ws):
     from wuwei.decision import lint, lint_file
     text = VALID.replace('records the failure.', 'records the failure. It is not just a fix but a rewrite; we delve into it.')
-    assert lint(text) == (0, 'OK: A (86)\nstyle: not-x-but-y, stock-word')
-    assert lint_file(save(ws, text)) == (0, 'OK: A (86)\nstyle: not-x-but-y, stock-word')
+    assert lint(text) == (0, 'OK: A (86), Routine\nstyle: not-x-but-y, stock-word')
+    assert lint_file(save(ws, text)) == (0, 'OK: A (86), Routine\nstyle: not-x-but-y, stock-word')
     from wuwei.workspace import day_dir
     assert not (day_dir(ws) / 'events.jsonl').exists()
-    assert lint(template()) == (0, 'OK: A (80)')
+    assert lint(template()) == (0, 'OK: A (80), Routine')
 
 
 @pytest.mark.parametrize('config,expected', [
@@ -995,7 +1001,7 @@ def test_legacy_record_still_evaluates(ws):
 
 def test_prioritisation_record_needs_no_lens():
     from wuwei.decision import lint
-    assert lint(VALID.replace('Class: design', 'Class: re-plan').replace(LENS_BLOCK, '')) == (0, 'OK: A (86)')
+    assert lint(VALID.replace('Class: design', 'Class: re-plan').replace(LENS_BLOCK, '')) == (0, 'OK: A (86), Routine')
 
 
 def test_custom_lens_is_required(ws):

@@ -254,6 +254,10 @@ every_tool_calls = 50
 loop_window_hours = 4
 loop_threshold = 9
 
+# Default autonomous: decision route takes a Routine, Consequential or scoring Exploratory record as recommended.
+# [autonomy]
+# mode = "supervised" # Every decision beyond a two-way one on its own branch or PR asks the owner.
+
 [decisions]
 wait_hours = 24 # Weekday hours an external confirmation waits before the sweep acts.
 # The levels feed the seat mandate; cruise answering (design 5.8.1) is not built.

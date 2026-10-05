@@ -738,6 +738,8 @@ REVIEWED = [
     ('deploy.deny', ['twine upload*'], False, ''),
     ('gates.second_opinion', 'codex:gpt-5', True, ''), ('gates.second_opinion', 'off', False, ''),
     ('telemetry.share', 'anonymous', True, ''), ('telemetry.otlp.endpoint', 'https://x.test', True, ''),
+    ('autonomy.mode', 'autonomous', True, '[autonomy]\nmode = "supervised"\n'),
+    ('autonomy.mode', 'supervised', False, ''),
 ]
 
 
