@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/taoq-ai/wuwei/compare/v0.17.1...v0.18.0) (2026-10-05)
+
+
+### Features
+
+* **outward:** outbound.default_tier is the umbrella for outward messages, send out of the box: the broad commitment, disagreement and company rows drop out and only client, public and sensitive text ask; ask keeps the old rules ([#531](https://github.com/taoq-ai/wuwei/issues/531)) ([6d5a9ef](https://github.com/taoq-ai/wuwei/commit/6d5a9ef12d1de51e0dfd3ec9b347c3838148fc58)), closes [#527](https://github.com/taoq-ai/wuwei/issues/527)
+
 ## [0.17.1](https://github.com/taoq-ai/wuwei/compare/v0.17.0...v0.17.1) (2026-10-05)
 
 
