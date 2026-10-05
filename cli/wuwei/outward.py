@@ -123,8 +123,11 @@ def lint(text, channel, config, *, root=None, to_owner=False):
         if any(re.search(r'(?<!\w)' + re.escape(word) + r'(?!\w)', view)
                for word in words for view in views):
             return FINDINGS, f'outward: third-person {label} reference; write it in the first person, or address the owner directly'
-    if any(pattern.search(view) for pattern in patterns for view in views):
-        return FINDINGS, 'outward: internal state pattern; remove the internal state words (item ids, phases, file paths) from the message'
+    for pattern in patterns:
+        found = next((pattern.search(view) for view in views if pattern.search(view)), None)
+        if found:
+            return FINDINGS, (f'outward: internal state pattern; remove "{found.group(0)}" from the message '
+                              '(outward.patterns lists the words) or change the list')
     if 'emoji' in banned and re.search(EMOJI, text):
         return FINDINGS, 'outward: emoji is banned; remove the emoji and send again'
     if any(c in text or c in normalized for c in banned if c != 'emoji'):
@@ -388,10 +391,11 @@ BLOCKED = 'the owner decides: bin/wuwei outbound tiers'
 
 def table(config):
     """#496: the effective rows, first match wins: [(row, source, note)], set keys only."""
-    rows = [({'tool': f'mcp__{re.escape(server)}__.*', 'tier': MODE_TIERS[mode]}, 'owner', ' (outward.modes)')
-            for server, mode in config['outward']['modes'].items()]
-    rows += [({key: row[key] for key in KEYS if row.get(key)}, 'owner', '') for row in config['outbound']['tiers']]
     send = config['outbound']['default_tier'] == 'send'
+    # #533: under the send umbrella a connector learned as draft follows the umbrella; refuse stays.
+    rows = [({'tool': f'mcp__{re.escape(server)}__.*', 'tier': MODE_TIERS[mode]}, 'owner', ' (outward.modes)')
+            for server, mode in config['outward']['modes'].items() if not (send and mode == 'draft')]
+    rows += [({key: row[key] for key in KEYS if row.get(key)}, 'owner', '') for row in config['outbound']['tiers']]
     return rows + [(dict(row), 'default', '') for row in DEFAULT_TIERS if not (send and row in BROAD_ROWS)]
 
 

@@ -381,7 +381,7 @@ Two starters ship in `templates/profiles/`, derived from WUWEI's own setup: `pyt
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `outward.patterns` | Built-in internal-state patterns | Regexes; setting a list replaces defaults, `[]` disables them. |
+| `outward.patterns` | `[]` | Regexes a chat message must not contain; the reason names the matched word. Empty by default since 0.18.2: messages about agents, phases and item ids are normal work. |
 | `outward.banned_characters` | `emoji`, U+2014, U+2015, U+2E3A, U+2E3B | Setting a list replaces defaults. |
 | `outward.tool_patterns` | Built-in Slack, Linear, GitHub, Notion and Atlassian MCP matches | Tool regex plus policy channel. The built-in rules match the brand anywhere in the name, so `mcp__<uuid>__slack_send_message` is Slack. A list in `config.toml` replaces the defaults; `config set` adds to them. A tool nothing resolves is a read, a write or unknown by the words of its name (see security). |
 | `outward.servers` | `{}` | MCP server id to channel (`slack`, `tracker`, `code_host`, `docs`, `mail` or `other`), checked before the rules; `bin/wuwei outbound learn` proposes entries. Reads still pass. |
