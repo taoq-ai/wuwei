@@ -15,9 +15,9 @@ def day(tmp_path, monkeypatch):
     return Day(tmp_path / 'workspace', monkeypatch)
 
 
-def approved(day, cap):
+def approved(day, cap=None, extra=''):
     config = day.root / '.wuwei/config.toml'
-    config.write_text(f'cap = {cap}\n' + config.read_text())
+    config.write_text((f'cap = {cap}\n' if cap else '') + config.read_text() + extra)
     goals = day.root / '.wuwei/memory/goals.md'
     goals.write_text(goals.read_text() + '## G-2\noutcome: Second result\nmeasure: shipped\n'
                      'target: 1\ndate: 2026-10-30\npriority: 2\n')
@@ -30,7 +30,7 @@ def approved(day, cap):
                   for name, goal, size in GOALS]
     source = day.root / 'proposal.json'
     source.write_text(json.dumps({
-        'goals': ['G-1', 'G-2'], 'cap': cap,
+        'goals': ['G-1', 'G-2'], 'cap': 1,  # the lead's cap is not used (#528)
         'seat_policy': {'builder': {'runtime': 'claude', 'model': 'scripted'}},
         'envelope': {'start': '09:00', 'end': '17:00', 'net_build_hours': 5},
         'sweep': {'processes': 'measured: none'}, 'candidates': candidates}))
@@ -83,7 +83,7 @@ def test_first_dispatch_turn_launches_cap_builders_and_the_fourth_waits(day):
     step = json.loads(day.run('next', '--json'))
     assert step['state'] == 'wait'
     assert 'D waits' in step['step'] and 'A-builder started first' in step['step']
-    assert 'seats 3 of CAP 3 (G-1 2, G-2 1)' in day.run('status', '--line')
+    assert 'seats 3/3 (owner; G-1 2, G-2 1)' in day.run('status', '--line')
 
 
 def test_owner_cap_one_stays_sequential(day):
@@ -143,3 +143,86 @@ def test_docs_skill_and_charter_name_the_parallel_start():
                if line.startswith('| `cap`'))
     assert 'calibrate' in row and 'morning gate' in row
     assert 'seats' in (ROOT / 'charters/lead.md').read_text()
+
+
+def test_fresh_workspace_derives_cap_from_the_host_and_starts_four(day):
+    # #528 US1: 8 GiB free, 1 GiB per seat, 4 cores, no cap in config.
+    approved(day)
+    text = 'cap 4 (host): 8 GB free, 1 GB per seat, 4 cores'
+    assert f'CAP: {text}; host.seats 4' in (day.directory / 'plan.md').read_text()
+    assert json.loads((day.directory / 'proposal.json').read_text())['cap'] == 4
+    widget = json.loads(day.run('plan', 'gate'))[0]
+    options = {row['label']: row['description'] for row in widget['options']}
+    assert text in options['Approve'] and 'config cap' in options['Change something']
+    assert (day.data['cap'], day.data['cap_bound']) == (4, 'host')
+    assert 'seats 0/4 (host)' in day.run('status', '--line')
+    entries, _ = launch_set(day)
+    assert entries == [('A', 'start'), ('B', 'start'), ('C', 'start'), ('D', 'start')]
+    assert json.loads(day.run('dispatch', 'next', '--all'))['bound'] == 'host'
+
+
+def test_owner_cap_names_what_the_host_fits(day):
+    approved(day, 1)
+    assert ('CAP: cap 1 (owner): config cap; the host fits 4 (8 GB free, 1 GB per seat, 4 cores)'
+            in (day.directory / 'plan.md').read_text())
+    assert json.loads(day.run('plan', 'template'))['cap'] == 1
+    config = day.root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('cap = 1\n', ''))
+    assert json.loads(day.run('plan', 'template'))['cap'] == 4
+
+
+def test_cap_follows_free_memory_at_each_sweep(day):
+    # #528 US1 scenario 3: two seats fit at the first sweep, four once memory frees.
+    from wuwei.registry import Result
+    day.memory.results['free_memory'] = Result(0, 3 * 1024**3)
+    approved(day)
+    entries, rows = launch_set(day)
+    assert entries == [('A', 'start'), ('B', 'start'), ('C', 'wait'), ('D', 'wait')]
+    assert 'CAP 2' in rows[2]['reason'] and day.data['cap'] == 2
+    day.memory.results['free_memory'] = Result(0, 8 * 1024**3)
+    entries, _ = launch_set(day)
+    assert entries == [(item, 'start') for item in 'ABCD'] and day.data['cap'] == 4
+    launch_set(day)
+    derived = [row['payload'] for row in day.events if row['kind'] == 'cap.derived']
+    assert [(row['cap'], row['bound']) for row in derived] == [(4, 'host')]
+
+
+def test_token_budget_fitting_two_seats_starts_two(day):
+    # #528 US2: the prior day measured 100000 tokens per seat; 200000 a day fits two.
+    prior = day.root / '.wuwei/days/2026-09-28/events.jsonl'
+    prior.parent.mkdir(parents=True)
+    prior.write_text(''.join(json.dumps({'ts': '2026-09-28T10:00:00+00:00', 'kind': 'seat.usage',
+                                         'payload': {'item': 'A', 'usage': {
+                                             'input_tokens': 60000, 'output_tokens': 40000}}}) + '\n'
+                             for _ in range(2)))
+    approved(day, extra='[budget]\ntokens_per_day = 200000\n')
+    assert 'CAP: cap 2 (budget)' in (day.directory / 'plan.md').read_text()
+    entries, _ = launch_set(day)
+    assert entries == [('A', 'start'), ('B', 'start'), ('C', 'wait'), ('D', 'wait')]
+    assert 'seats 0/2 (budget)' in day.run('status', '--line')
+
+
+def test_derived_cap_records_are_reserved(day, capsys):
+    from wuwei import signal, state
+    from wuwei.__main__ import main
+    approved(day)
+    assert main(['event', 'cap.derived', '{}']) == 1
+    assert 'wuwei dispatch next --all' in capsys.readouterr().err
+    with pytest.raises(state.StateError, match='reserved'):
+        state.set_state('cap_bound', 'host', day.root)
+    assert 'cap.derived' in signal.SILENT
+
+
+def test_launch_guard_compares_with_the_cap_derived_at_launch(day):
+    # #528: the day's snapshot says 4; at D's launch the host fits only the three running.
+    from wuwei.registry import Result
+    approved(day)
+    for item in 'ABC':
+        brief(day, item)
+    _, rows = launch_set(day)
+    for minute, row in enumerate(rows[:3]):
+        day.patch.setenv('WUWEI_NOW', f'2026-09-29T12:0{minute}:00Z')
+        day.hook('PreToolUse', tool_name='Agent', tool_input=agent(day, row))
+    day.memory.results['free_memory'] = Result(0, 1024**3)
+    code, reason = guard(day, brief(day, 'D'))
+    assert code == 1 and 'CAP 3' in reason and day.data['cap'] == 4

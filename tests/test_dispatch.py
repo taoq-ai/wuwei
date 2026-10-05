@@ -1213,7 +1213,9 @@ def test_opinion_refusals(root, monkeypatch):
         logged_gate_brief(root, role, role[0] + '-1', root / 'repo')
     state._write_state(lambda data: data['seats'].update({f's{n}': {
         'item': 'B', 'role': 'builder', 'status': 'running'} for n in range(4)}), root, reserved=False)
-    with pytest.raises(dispatch.Refused, match='host seat ceiling'):
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text() + '\n[host]\nseats = 4\n')  # the owner's ceiling (#528)
+    with pytest.raises(dispatch.Refused, match='host.seats=4'):
         dispatch.opinion('A', root)
     assert runtime.calls == []
 
@@ -1437,7 +1439,7 @@ def day_set(tmp_path, monkeypatch):
     from wuwei import dispatch
     from wuwei.commands import build
     (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('[host]\nseats = 8\n')
+    (tmp_path / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 8\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
     goals = {'G': ('gate', 'G-1'), 'B': ('implement', 'G-1'), 'R': ('raised', 'G-2'),
@@ -1478,11 +1480,13 @@ def test_launch_set_orders_gates_builds_then_planned_within_cap(day_set):
 def test_launch_set_keeps_an_items_gate_seats_together(day_set):
     from wuwei import dispatch
     root, _ = day_set
-    (root / '.wuwei/config.toml').write_text('[host]\nseats = 2\n')
+    (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 2\n')
     entries = dispatch.launch_set(root)['entries']
     assert entries[0]['item'] == 'G' and entries[0]['action'] == 'wait'
     assert 'host.seats' in entries[0]['reason'] and 'seats' not in entries[0]
-    assert [row['action'] for row in entries[1:4]] == ['launch', 'start', 'wait']
+    # a waiting gate goes before new builds: no planned item starts in its seats
+    assert [row['action'] for row in entries[1:4]] == ['launch', 'wait', 'wait']
+    assert 'gate' in entries[2]['reason']
 
 
 def test_launch_set_skips_running_items_and_launches_briefed_planned_items(day_set):

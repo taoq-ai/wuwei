@@ -37,6 +37,7 @@ EVENT_PRODUCERS = {
     'state.set': 'wuwei state set', 'state.transition': 'wuwei state transition',
     'state.recovered': 'owner host wuwei state recover',
     'state.import': 'wuwei plan approve', 'plan.approved': 'wuwei plan approve',
+    'cap.derived': 'wuwei dispatch next --all',
     'plan.added': 'wuwei plan add', 'plan.proposed': 'wuwei plan add',
     'plan.session': 'wuwei plan session', 'gate.asked': 'wuwei hook PostToolUse', 'brief written': 'wuwei brief',
     'session.seen': 'wuwei hook SessionStart, Stop and SubagentStop',

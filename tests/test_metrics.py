@@ -329,3 +329,14 @@ def test_seat_cost_from_seat_launched_rows(root):
     for payload in rows[1:]:
         state.append_event('seat launched', payload['payload'], root)
     assert metrics.collect(root)['seat_cost_mib'] == 3072
+
+
+def test_seat_tokens_per_usage_row():
+    # #528: the per-seat token cost the budget bounds CAP with.
+    from wuwei import metrics
+    usage = lambda tokens: {'kind': 'seat.usage', 'payload': {'usage': tokens}}
+    rows = [usage({'input_tokens': 2, 'output_tokens': 3}),
+            usage({'input_tokens': 'unmeasured', 'output_tokens': 3}),
+            {'kind': 'seat launched', 'payload': {'usage': {'input_tokens': 1, 'output_tokens': 1}}},
+            usage({'input_tokens': 10, 'output_tokens': 0})]
+    assert metrics.seat_tokens(rows) == [5, 10]

@@ -173,10 +173,12 @@ def _check(payload):
         running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
         event.update(free_mib=available // 2**20, running=len(running))
         builders = sum(seat['role'] == 'builder' for seat in running)
-        if role == 'builder' and builders >= data['cap']:
-            raise brief.Refused(f'running build seats {builders} at CAP {data["cap"]}; wait for a build seat to finish, then retry' + stale_note)
-        if len(running) >= config['host']['seats']:
-            raise brief.Refused(f'running seats {len(running)} at host seat ceiling host.seats={config["host"]["seats"]}; wait for a seat to finish, or ask the owner to raise host.seats' + stale_note)
+        from wuwei import calibrate  # lazy: hook path (#346); #528: derived at launch
+        limits = calibrate.host(root, config, running=len(running), free=available // 2**20)
+        if role == 'builder' and builders >= limits['cap']:
+            raise brief.Refused(f'running build seats {builders} at CAP {limits["cap"]}; wait for a build seat to finish, then retry' + stale_note)
+        if len(running) >= limits['seats']:
+            raise brief.Refused(f'running seats {len(running)} at host seat ceiling host.seats={limits["seats"]}; wait for a seat to finish, or ask the owner to raise host.seats' + stale_note)
         if logged['item'] in data['items']:
             from wuwei import tracker  # lazy: hook path (#346)
             status, reason = tracker.check(data, config, logged['item'], data['items'][logged['item']])

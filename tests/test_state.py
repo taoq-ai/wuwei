@@ -64,7 +64,7 @@ def test_get_set_defaults_and_audit(workspace):
     result = cli('state', 'get')
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == {
-        'items': {}, 'cap': 1, 'seat_policy': {}, 'envelope': {},
+        'items': {}, 'cap': 1, 'cap_bound': '', 'seat_policy': {}, 'envelope': {},
         'claimed_prs': [], 'raised_prs': [], 'gate_verdicts': {}, 'seats': {},
         'gate_approved': False, 'approved_items': [], 'goals': [],
     }

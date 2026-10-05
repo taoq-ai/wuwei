@@ -468,7 +468,17 @@ they wait for the owner.
   the approach keeps leaking and what replaces it, agreed with the owner before more code,
   and the reconsideration is recorded in its spec (constitution, Cycle budget).
 - A re-gate continues the same sentinel with the delta; a fresh seat only for a lost agent.
-- CAP counts running build seats. Host floors (free memory, seat count) come from config.
+- CAP counts running build seats. The free-memory floor comes from config.
+  Amended (owner, 2026-10-05, #528): CAP and `host.seats` derive from the measured host,
+  never from a shipped number: the running seats plus the seats that fit above the memory
+  floor at the measured seat cost, one per core; `host.seats` is that fit but never under
+  one gate's three sentinels, so a gate always fits, and CAP is the fit. A sweep where a gate
+  waits for seats starts no new planned build. A damaged day log falls back to the default
+  seat cost with a warning. `[budget] tokens_per_day`, with the median input plus output tokens per
+  `seat.usage` row, bounds CAP from the other side (at least 1). A positive config `cap` or
+  `host.seats` is the owner's one-key override. Plan propose, each `dispatch next --all`
+  sweep, the agent-launch guard and `dispatch opinion` derive it live; the plan, the gate
+  card and the status line name what bound it (`host`, `budget`, `owner`, `unmeasured`).
 - Seat policy (model and runtime per role) is set at the morning gate and stored in state.
 - Boundary and environment register come from config; the arch sentinel checks against them.
 - Verdict shape: a `Verdict: PASS|FIX|PARK|ESCALATE` line; findings with severity,
@@ -493,8 +503,8 @@ they wait for the owner.
   state return the same action. The CLI never waits for a Claude seat; the old blocking
   form exits 2 naming `build next`. Codex executes the same actions through its polling
   adapter. Backpressure, signature, stuck and iteration limits, and usage events retain
-  their semantics. `host.seats` defaults to four, the default cap plus three gate seats;
-  increase it with a custom cap. A ceiling refusal names `host.seats`.
+  their semantics. `host.seats` derives from the host (#528) unless config pins it. A
+  ceiling refusal names `host.seats`.
 - Cost per iteration (owner, 2026-09-28). Every dispatch records the runtime's reported
   usage (input and output tokens, cost when the runtime reports it, model, duration) as a
   `seat.usage` event per iteration. The steward reports cost per item, per role and per

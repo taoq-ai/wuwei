@@ -171,7 +171,7 @@ def test_config_defaults_and_independence(tmp_path):
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'digest': '', 'nudges': '', 'dm': '', 'report': ''}},
         'repos': [], 'worktree': {'git_hooks': 'chain'}, 'grants': {'standing': []},
-        'cap': 1, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
+        'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
@@ -184,7 +184,7 @@ def test_config_defaults_and_independence(tmp_path):
                  'publish': ['report', 'retro'], 'auto': [], 'strict_close': True},
         'chat': {'identity': 'connector'},
         'control_plane': {'content': 'summary', 'owner': ''},
-        'host': {'free_memory_mb': 1024, 'seats': 4, 'reservation_timeout_seconds': 14400}, 'profile': 'strict',
+        'host': {'free_memory_mb': 1024, 'seats': 0, 'reservation_timeout_seconds': 14400}, 'profile': 'strict',
             'memory': {'max_notes': 60, 'note_line_cap': 80, 'probation_days': 10, 'state_entry_cap': 3,
                        'digest': 'week', 'budget_tokens': 6000, 'export_to': 'CLAUDE.md'},
             'metrics': {'transcripts': '~/.claude/projects', 'band_margin': 0.2},
@@ -308,13 +308,14 @@ def test_unknown_key_without_known_line(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize('text,key', [
-    ('cap = true', 'cap'), ('cap = 0', 'cap'), ('cap = 1.5', 'cap'),
+    ('cap = true', 'cap'), ('cap = -1', 'cap'), ('cap = 1.5', 'cap'),
+    ('[budget]\ntokens_per_day = -1', 'budget.tokens_per_day'),
     ('profile = "relaxed"', 'profile'), ('owner = "Pat"', 'owner'),
     ('repos = ["app"]', 'repos.0'),
     ('[[repos]]\nname="a"\npath="/a"\ndefault_branch="main"\nfast_checks = [1]', 'repos.0.fast_checks.0'),
     ('[owner]\npronouns = []', 'owner.pronouns'),
     ('[host]\nfree_memory_mb = -1', 'host.free_memory_mb'),
-    ('[host]\nseats = 0', 'host.seats'),
+    ('[host]\nseats = -1', 'host.seats'),
     ('[outward]\npatterns = [false]', 'outward.patterns.0'),
     ('[outward]\nbanned_characters = 1', 'outward.banned_characters'),
     ('[outward.max_length]\nchat = 0', 'outward.max_length.chat'),
@@ -884,7 +885,7 @@ def test_config_parsed_once_per_text(tmp_path, monkeypatch):
     path.write_text('cap = 3\n')
     assert workspace.load_config(tmp_path)['cap'] == 3
     assert len(parsed) == 2
-    path.write_text('cap = 0\n')
+    path.write_text('cap = -1\n')
     for _ in range(2):
         with pytest.raises(workspace.ConfigError):
             workspace.load_config(tmp_path)
@@ -1052,7 +1053,7 @@ def test_config_cache_only_for_the_file(tmp_path, monkeypatch):
     monkeypatch.setattr(workspace, 'CONFIG_CACHE_WRITES', True)
     assert workspace.load_config(tmp_path, raw='cap = 5\n')['cap'] == 5
     assert not (tmp_path / CACHE).exists()  # A candidate text is not the file.
-    write_config(tmp_path, 'cap = 0\n')
+    write_config(tmp_path, 'cap = -1\n')
     for _ in range(2):
         with pytest.raises(workspace.ConfigError):
             fresh_load(tmp_path, monkeypatch)
@@ -1326,3 +1327,11 @@ def test_tracker_hygiene_keys(tmp_path):
     (tmp_path / '.wuwei/config.toml').write_text(
         (ROOT / 'templates/workspace/config.toml').read_text(encoding='utf-8'), encoding='utf-8')
     assert workspace.load_config(tmp_path)['tracker']['required'] is True
+
+
+def test_template_derives_cap_and_seats(tmp_path):
+    # #528: 0 derives CAP and host.seats from the measured host; a number is the owner's.
+    from wuwei.workspace import load_config
+    write_config(tmp_path, (ROOT / 'templates/workspace/config.toml').read_text())
+    config = load_config(tmp_path)
+    assert (config['cap'], config['host']['seats'], config['budget']['tokens_per_day']) == (0, 0, 0)

@@ -65,7 +65,7 @@ Text written for a person (decision records, PR bodies, drafts, retro summaries,
 10. Remove chat leftovers: greetings, praise, offers of more help and sign-offs around the content.
 
 ---
-version: 1.3.0
+version: 1.4.0
 ---
 # Lead charter
 
@@ -73,7 +73,7 @@ Read `_common.md` and `_common-authoring.md` before discovery. Own discovery, ra
 
 ## Capacity and discovery
 
-1. CAP counts running build seats, not queued, gated or shepherded items. Read CAP and host floors from `config.toml` (`bin/wuwei calibrate` proposes `cap` from the host); a slot frees at builder handoff. The CLI derives seats per goal from the ranked queue; pass `seats` (goal to seats of CAP) only to change that split. Do not launch if the configured floor or budget fails.
+1. CAP counts running build seats, not queued, gated or shepherded items. CAP and `host.seats` derive from the measured host and `budget.tokens_per_day` (`plan propose` sets CAP; the lead does not choose it; a positive config `cap` is the owner's override); a slot frees at builder handoff. The CLI derives seats per goal from the ranked queue; pass `seats` (goal to seats of CAP) only to change that split. Do not launch if the configured floor or budget fails.
 2. Discover at the morning plan, each sweep and when a freed build seat leaves the queue below `discovery.min_queue`. Query the tracker backlog, base-branch red checks, review and scanner findings, review threads, outcome-metric regressions and follow-ups from today's PRs through configured adapters. Mark missing sources unmeasured.
 3. For each candidate, cite the confirmed goal it serves from `memory/goals.md`, or while it has none the goal object you propose in `goals`, or mark it `unplanned`. While `memory/goals.md` has none, write each proposed goal in `goals` as a block (`id`, `outcome`, `measure`, `target`, `date`, `priority`), never an id alone. Verify the work is still open, deduplicate against tracker and day items, and state evidence and time of measurement.
 4. Scope the changed behavior, files and blast radius. Build an overlap matrix from actual diffs. Serialise or combine overlapping work. Name the item promise and what is outside it. List an item's owner-only steps as `owner_actions`, one `{"action", "target"}` each, with these actions and target shapes: `deploy`, `release` and `publish` take `repo:<org>/<name>` and become cards the gate pre-approves; `merge` takes `repo:<org>/<name>` or `pr:<org>/<name>#<n>`; `message` takes `channel:<id>` or `dm:<id>`; `secret-set` takes `secret:<org>/<name>/<NAME>`. Those three are owner steps the plan lists. Anything else is shown on the plan as not understood and asked as written; never edit a written lead.json to fit the CLI.

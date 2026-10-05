@@ -150,7 +150,7 @@ def test_solo_daily_path(tmp_path, monkeypatch):
     assert json.loads(day.run('pr', 'state'))[0]['state'] == 'merged'
     day.run('report')
     assert f'## Merged\n- A ({day.ref})' in (day.directory / 'report.md').read_text()
-    assert 'merged 1/1' in day.run('status', '--line')
+    assert 'merged 1/4' in day.run('status', '--line')  # CAP 4 derived from the fixture host (#528)
     day.run('retro')
     day.run('close', '--check', 'retro')
     day.run('close')

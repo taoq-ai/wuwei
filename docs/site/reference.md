@@ -86,7 +86,7 @@ Run `bin/wuwei plan template` in a workspace for a complete lead JSON skeleton. 
 | `seat_policy` | Role to `{ "runtime": "claude", "model": "sonnet" }` mapping. |
 | `envelope` | `start`, `end`, and nonnegative `net_build_hours`. |
 | `sweep` | Source to measured or unmeasured status string. |
-| `cap` | Positive running build seat count, within `host.seats`. |
+| `cap` | Running build seat count; `0` derives it from the host and `budget.tokens_per_day`, a positive number is your override. |
 
 Each candidate needs a unique `id`, a confirmed `goal` or `unplanned`, `evidence`, `scope`, `overlap`, `track`, `flags`, `score`, and `evidence_lines`. `track` is `SLICE` for a small change with one pre-PR gate set, or `FULL` when a spec-done gate is needed. `flags` has exactly three booleans: `trust_surface`, `boundary_relevant`, and `agent_surface`. These affect owner routing and security gates. An optional `tier` (`light`, `standard` or `full`) raises the review tier `wuwei dispatch next` computes from the diff; a lower one is refused and recorded as a reason. `evidence_lines` has a nonempty one-line citation for every score component.
 

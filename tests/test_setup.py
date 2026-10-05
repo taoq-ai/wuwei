@@ -131,7 +131,7 @@ def test_same_value_twice_is_byte_identical(workspace, capsys):
 
 @pytest.mark.parametrize('key,value,kind,example', [
     ('outward.tool_patterns', '[{pattern: "x"}]', 'a list of tables', '[{pattern = "text", channel = "text"}]'),
-    ('cap', 'many', 'an integer', '1'),
+    ('cap', 'many', 'an integer', '0'),
     ('owner.verbosity.default', 'standard', 'a string', '"brief"'),
 ])
 def test_not_toml_names_the_type(workspace, capsys, key, value, kind, example):
