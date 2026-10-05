@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.17.1](https://github.com/taoq-ai/wuwei/compare/v0.17.0...v0.17.1) (2026-10-05)
+
+
+### Bug Fixes
+
+* **close:** a parked or carried item never blocks the close through a measurement (missing worktree, branch without commits), the retro launches once every item has a disposition, worktree records are repaired by doctor --fix, and close --why names what is missing per item ([#525](https://github.com/taoq-ai/wuwei/issues/525)) ([47be5bb](https://github.com/taoq-ai/wuwei/commit/47be5bb89a17c19b88810e8d955044b50bcfab94)), closes [#517](https://github.com/taoq-ai/wuwei/issues/517)
+* **plan:** plan propose accepts every owner action the lead charter can name (message, merge, secret-set, deploy, release, publish) with a target shape per action, and an unknown owner action is a warning on the plan, never an exit 2 before the gate ([#519](https://github.com/taoq-ai/wuwei/issues/519)) ([1716e20](https://github.com/taoq-ai/wuwei/commit/1716e208b7441ed6a8c102185408787c95d82d02)), closes [#518](https://github.com/taoq-ai/wuwei/issues/518)
+
 ## [0.17.0](https://github.com/taoq-ai/wuwei/compare/v0.16.1...v0.17.0) (2026-10-04)
 
 
