@@ -42,7 +42,7 @@ def hook(cwd, command, monkeypatch, capsys):
     ('x=$(pwd); echo $x', 0, ()),
     ('python3 -m pytest -q && git status', 0, ()),
     ('git push $(cat remote) main', 2, ('commit/push guard', 'deploy')),
-    ('git status | python3', 2, ('deploy', 'python3')),
+    ('git status | python3', 0, ()),  # #530: guarded warns; strict refuses
     ('cd $(git rev-parse --show-toplevel) && ls', 0, ()),
 ])
 def test_seat_command_forms(workspace, where, command, code, words, monkeypatch, capsys):

@@ -793,3 +793,18 @@ def test_issue_470_git_tables():
 def test_unread_table(command, expected):
     from wuwei.shell import UNPARSED, unread
     assert unread(command) == ((2, UNPARSED) if expected == 'unparsed' else expected)
+
+
+@pytest.mark.parametrize('command,expected', [
+    ('bash loop.sh', 'script loop.sh'), ('./loop.sh', 'script loop.sh'),
+    ('gh pr view $(git rev-parse --abbrev-ref HEAD)', 'command substitution is unsupported'),
+    ("python3 -c 'print(1)'", 'inline interpreter code'),
+    ('''python3 -c "print(['gh','pr','view'])"''', 'inline interpreter code'),
+    ("python3 - <<'EOF'\nprint(1)\nEOF", 'inline interpreter code'),
+    ('cat x | python3', 'python3 code from input'),
+    ('gh pr view 7', ''), ('git status', ''), ('npm test', ''),
+])
+def test_unreadable_names_what_a_guard_cannot_read(tmp_path, command, expected):
+    # #530: the opaque warning names what the guards could not read.
+    from wuwei import shell
+    assert shell.unreadable(command, tmp_path) == expected

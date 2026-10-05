@@ -273,7 +273,7 @@ STATE_PRODUCERS = {
     'tracker_log': 'wuwei tracker create or log',
     'outbound_learn': 'wuwei outbound learn or wuwei decide',
     'outbound_threads': 'wuwei outbound learn',
-    'grants': 'wuwei hook PreToolUse (deploy guard), wuwei plan propose or wuwei decide',
+    'grants': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise, wuwei plan propose or wuwei decide',
 }
 
 

@@ -170,8 +170,8 @@ WUWEI is built as ports and adapters (hexagonal).
 | Event | Trigger | Refuses when |
 |---|---|---|
 | PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor; an item without a ticket while tracker hygiene requires one (5.11) |
-| PreToolUse | `git commit`, `git push` | author or committer differs from repository config; force-push; push to the default branch; push before the fast checks passed |
-| PreToolUse | `gh pr create` | the pre-PR gate set has not all passed; no reviewer named in the same action |
+| PreToolUse | `git commit`, `git push` | author or committer differs from repository config; force-push; push to the default branch; push before the fast checks passed (owner, 2026-10-05, #530: below strict a missing fast check is a warning under observe and the owner's card under guarded, naming the check) |
+| PreToolUse | `gh pr create` | the pre-PR gate set has not all passed (#530: a warning under observe, the owner's card under guarded); no reviewer named in the same action; `--repo` and `--head` given apart, or naming a branch that is not a recorded item branch (#534: with both, or after `cd <recorded worktree> &&`, it runs from any directory) |
 | PreToolUse | `gh pr merge` | the merge policy (4.6) does not clear this PR at this head |
 | PreToolUse | `gh pr review --approve`, `--admin`, protection changes | always |
 | PreToolUse | any deploy action (4.7) | always |
@@ -249,7 +249,11 @@ Bash guard therefore matches after normalising: unwrap `sh -c`, `bash -c`, `zsh 
 overrides; treat `gh api` calls against the merge, review, branch-protection and
 deployment endpoints as the commands they implement. An interpreter one-liner (`python -c`,
 `node -e`, `perl -e`) or a script whose text invokes `git` or `gh` with a guarded verb is
-refused as opaque. Each bypass form is a test case in the guard's table.
+refused as opaque. Each bypass form is a test case in the guard's table. Amended (owner,
+2026-10-05, #530): below strict an opaque command runs with one `guard.would_refuse` warning
+naming what could not be read, unless its literal text names a publish target (a
+protected-branch, force, tag or no-verify push, a deploy, a release, a gh merge, approval,
+admin, protection or text write, a hooks path change); the records floor stays.
 
 What the normalisation guarantees depends on what the guard protects (9.1):
 
@@ -1719,7 +1723,7 @@ or `strict`, and `[security.areas]` overrides one area with `off`, `warn` or `bl
 Floors no posture and no override lowers:
 
 - `records` always blocks. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
-- Owner-only actions always block: the deployment ban (`deploy`), the merge policy, approvals and owner markers (`pr`), and approve-tier messages and canary or honeytoken egress (the outward approval tier). Under `observe`, `publish` relaxes only the commit and push rules and the PR anchor. Amended (owner, 2026-10-04, #478): a deploy refusal asks the owner on a card, and only the owner's recorded answer (once, today, always) lets the same action through.
+- Owner-only actions always block: the deployment ban (`deploy`), the merge policy, approvals and owner markers (`pr`), and approve-tier messages and canary or honeytoken egress (the outward approval tier). Under `observe`, `publish` relaxes only the commit and push rules and the PR anchor. Amended (owner, 2026-10-04, #478): a deploy refusal asks the owner on a card, and only the owner's recorded answer (once, today, always) lets the same action through. Amended (owner, 2026-10-05, #530): raising a PR and pushing a feature branch are not owner-only; they follow `publish`, and missing evidence asks on a card (once, today) under guarded.
 - MCP: under `guarded` and `strict` a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. A finding blocks only at a severity in `scanner.mcp.block`, which is unset by default: no severity under `guarded`; `critical`, `high` and `unmeasured` under `strict`. Under `observe`, and with `mcp = "off"`, the list has no effect and `config check` says so.
 
 The posture changes what the cooperative guards refuse, never the hard boundaries above.

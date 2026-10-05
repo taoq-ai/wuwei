@@ -19,7 +19,7 @@ EVENT_PRODUCERS = {
     'build.checked': 'wuwei build check', 'build.check_started': 'wuwei build check',
     **{f'spec.{kind}': 'wuwei hook, wuwei build or wuwei dispatch next' for kind in ('step', 'skipped', 'warned')},
     'spec.override': 'owner host wuwei plan set',
-    'guard.would_refuse': 'wuwei hook (shadow mode)',
+    'guard.would_refuse': 'wuwei hook (shadow mode) or wuwei pr raise',
     'traces.noted': 'wuwei sweep', 'traces.unmatched': 'wuwei sweep',
     'inbox.redacted': 'the inbox store',
     'build.requested': 'wuwei dispatch discovery',
@@ -85,8 +85,8 @@ EVENT_PRODUCERS = {
     'docs.written': 'wuwei docs or wuwei drafts approve', 'docs.exempt': 'wuwei dispatch next',
     'outbound.learned': 'wuwei outbound learn or wuwei decide', 'outbound.proposed': 'wuwei outbound learn',
     'outbound.thread': 'wuwei outbound learn',
-    'grant.asked': 'wuwei hook PreToolUse (deploy guard) or wuwei plan propose',
-    'grant.used': 'wuwei hook PreToolUse (deploy guard)', 'grant.revoked': 'owner host wuwei grants revoke',
+    'grant.asked': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise or wuwei plan propose',
+    'grant.used': 'wuwei hook PreToolUse (deploy, push and PR guards) or wuwei pr raise', 'grant.revoked': 'owner host wuwei grants revoke',
 }
 
 

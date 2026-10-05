@@ -851,3 +851,96 @@ def test_real_values_one_reason_through_hook(item_case, monkeypatch, capsys):
     err = capsys.readouterr().err.splitlines()
     assert len(err) == 2 and 'HEAD:refs/heads/div-1' in err[0] and err[1].startswith('posture:')
     assert 'deploy: could not inspect' not in '\n'.join(err)
+
+
+def through_hook(root, tree, command, monkeypatch, capsys, posture='guarded'):
+    """The full PreToolUse hook in process at the item worktree under one posture."""
+    import io
+    import json
+    import sys
+    from types import SimpleNamespace
+    from wuwei.commands import hook
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    text = (root / '.wuwei/config.toml').read_text().replace('path = "repo"', 'path = "worktrees/DIV-1"')
+    text = text.split('[security]')[0] + f'[security]\nposture = "{posture}"\n'
+    (root / '.wuwei/config.toml').write_text(text)
+    payload_ = {'hook_event_name': 'PreToolUse', 'session_id': 'fixture', 'cwd': str(tree),
+                'transcript_path': str(root / 'transcript.jsonl'), 'tool_name': 'Bash',
+                'tool_input': {'command': command}}
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(payload_)))
+    code = hook.run(SimpleNamespace(event='PreToolUse'))
+    return code, capsys.readouterr().err
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_local_merge_in_item_worktree_passes(item_case, monkeypatch, capsys, posture):
+    # #530: a local merge publishes nothing; the push to a protected branch still refuses.
+    root, fake, tree = item_case
+    assert through_hook(root, tree, 'git merge main', monkeypatch, capsys, posture) == (0, '')
+    fake.results['push_context'].data['updates'][0]['destination'] = 'refs/heads/main'
+    code, err = through_hook(root, tree, 'git push origin main', monkeypatch, capsys, posture)
+    if posture == 'observe':  # publish warns under observe; the native pre-push hook refuses it
+        assert code == 0 and 'default branch' in str(warned(root))
+    else:
+        assert code == 2 and 'default branch' in err
+
+
+def warned(root):
+    import json
+    return [json.loads(line)['payload'] for path in root.glob('.wuwei/days/*/events.jsonl')
+            for line in path.read_text().splitlines() if json.loads(line)['kind'] == 'guard.would_refuse']
+
+
+def test_fast_evidence_is_its_own_check(item_case):
+    root, _, tree = item_case
+    set_fast_checks(root, {})
+    repo = {'name': 'example/project', 'fast_checks': ['unit']}
+    assert guard().fast_evidence(repo, SHA, str(tree), root) == (
+        1, f'fast check "unit" has not passed for HEAD {SHA[:12]}; run bin/wuwei build check DIV-1')
+    set_fast_checks(root, {'example/project': {'unit': {'sha': SHA, 'exit': 0}}})
+    assert guard().fast_evidence(repo, SHA, str(tree), root) == (0, '')
+
+
+def with_posture(root, name):
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(f'[security]\nposture = "{name}"\n')
+
+
+MISSING = f'fast check "unit" has not passed for HEAD {SHA[:12]}; run bin/wuwei build check DIV-1'
+
+
+@pytest.mark.parametrize('posture', ['observe', 'strict'])
+def test_missing_evidence_outside_guarded(item_case, posture):
+    # #530: observe returns the reason for the hook to warn; strict refuses as today.
+    root, _, tree = item_case
+    set_fast_checks(root, {})
+    with_posture(root, posture)
+    assert guard().check(item_payload(tree, 'git push origin HEAD:refs/heads/div-1')) == (1, MISSING)
+
+
+def test_missing_evidence_is_a_card_under_guarded(item_case, monkeypatch):
+    from types import SimpleNamespace
+    from wuwei import integrity, state
+    from wuwei.commands import decision
+    root, _, tree = item_case
+    set_fast_checks(root, {})
+    command = 'git push origin HEAD:refs/heads/div-1'
+    code, reason = guard().check(item_payload(tree, command))
+    assert code == 1 and reason.startswith('publish: ') and 'bin/wuwei build check DIV-1' in reason
+    assert 'host terminal' not in reason and 'decision show D-1' in reason
+    monkeypatch.setattr(integrity, '_host_confirm', lambda *args, **kwargs: True)
+    assert decision.owner_outcome(SimpleNamespace(id='D-1', option='Allow once'), root=root) == (0, 'once')
+    code, reason = guard().check(item_payload(tree, f'{command} && git commit --no-verify -m x'))
+    assert code == 1 and state.read_state(root)['grants']['D-1']['spent'] is False
+    assert guard().check(item_payload(tree, command)) == (0, '')
+    assert state.read_state(root)['grants']['D-1']['spent'] is True
+
+
+@pytest.mark.parametrize('command', ['cd worktrees/DIV-1 && git push origin HEAD:refs/heads/div-1',
+                                     'git -C worktrees/DIV-1 push origin HEAD:refs/heads/div-1'])
+def test_push_into_recorded_worktree_from_root(item_case, command):
+    # #534: the planner pushes an item branch without leaving the workspace root.
+    root, fake, tree = item_case
+    assert guard().check({'cwd': str(root), 'tool_name': 'Bash',
+                          'tool_input': {'command': command}}) == (0, '')
+    assert ('push_context', (str(tree), 'origin', ['HEAD:refs/heads/div-1']), root) in fake.calls

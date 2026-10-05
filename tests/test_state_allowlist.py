@@ -57,7 +57,7 @@ def stored(root):
     ('negotiation_loops', 'wuwei steward run'),
     ('items.A.assumption', 'wuwei decision route --external'),
     ('author_logins', 'wuwei pr raise, ping or reviewers'),
-    ('grants', 'wuwei hook PreToolUse (deploy guard)'),
+    ('grants', 'wuwei hook PreToolUse (deploy, push and PR guards)'),
 ])
 def test_nonallowlisted_state_paths_refuse_without_write(root, capsys, path, producer):
     before = stored(root)

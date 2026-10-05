@@ -268,3 +268,56 @@ def test_reads_pass(guarded, monkeypatch, capsys, command):
     code, out = hook_call(guarded, monkeypatch, capsys, command=command)
     assert code == 0, out.err
     assert not events(guarded, 'hook.refusal') and not events(guarded, 'guard.would_refuse')
+
+
+def test_opaque_refusals_give_one_warning(guarded, monkeypatch, capsys):
+    # #530: owner-only guards that could not read an opaque call warn once under guarded.
+    (guarded / 'loop.sh').write_text('gh pr view 7\n')
+    code, out = hook_call(guarded, monkeypatch, capsys, command='bash loop.sh', guards=[
+        fixed('deploy', 2, 'deploy: could not inspect'), fixed('pr', 2, 'PR guard could not run'),
+        fixed('commit_push', 2, 'unparsed')])
+    assert code == 0, out.err
+    [event] = events(guarded, 'guard.would_refuse')
+    assert event['reason'].startswith('opaque: script loop.sh;') and event['level'] == 'warn'
+
+
+def test_opaque_reason_error_enforces(guarded, monkeypatch, capsys):
+    from wuwei import shell
+    def broken(*args, **kwargs):
+        raise RuntimeError('boom')
+    monkeypatch.setattr(shell, 'unreadable', broken)
+    code, out = hook_call(guarded, monkeypatch, capsys, command='bash loop.sh',
+                          guards=[fixed('deploy', 2, 'deploy: could not inspect')])
+    assert code == 2 and 'deploy: could not inspect' in out.err
+
+
+def test_opaque_records_floor_still_blocks(guarded, monkeypatch, capsys):
+    (guarded / '.wuwei/config.toml').write_text('[security]\nposture = "observe"\n')
+    code, out = hook_call(guarded, monkeypatch, capsys, command='bash loop.sh',
+                          guards=[fixed('protect_state', 2, 'state write')])
+    assert code == 2 and 'state write' in out.err
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_pr_raise_refusals_follow_publish(guarded, monkeypatch, capsys, posture):
+    # #530: a PR create refusal follows the publish area; the merge policy stays owner-only.
+    from wuwei.guards import NO_REVIEWER, RAISE
+    (guarded / '.wuwei/config.toml').write_text(f'[security]\nposture = "{posture}"\n')
+    raise_reason = RAISE + 'pre-PR gates not passed'
+    code, out = hook_call(guarded, monkeypatch, capsys, command='gh pr create',
+                          guards=[fixed('pr', 1, raise_reason)])
+    if posture == 'observe':
+        assert code == 0 and events(guarded, 'guard.would_refuse')[-1]['reason'] == raise_reason
+    else:
+        assert code == 2 and out.err.splitlines() == [
+            raise_reason, 'posture: publish = block (set security.areas.publish)']
+    code, out = hook_call(guarded, monkeypatch, capsys, command='gh pr create',
+                          guards=[fixed('pr', 1, NO_REVIEWER)])
+    assert (code, out.err) == ((0, '') if posture == 'observe' else (2, NO_REVIEWER + '\n'))
+    code, out = hook_call(guarded, monkeypatch, capsys, command='gh pr merge 7',
+                          guards=[fixed('pr', 1, 'merge policy requires an explicit PR')])
+    assert code == 2 and 'owner-only' in out.err
+    card = 'publish: git push on example/project has no recorded evidence; the owner decides'
+    code, out = hook_call(guarded, monkeypatch, capsys, guards=[fixed('commit_push', 1, card)])
+    if posture != 'observe':
+        assert out.err == card + '\n'

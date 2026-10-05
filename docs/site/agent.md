@@ -1,7 +1,6 @@
 # What the session knows
 
-This page is for a Claude Code session in a WUWEI workspace. Every SessionStart points at
-`wuwei guide`, which prints the reference below; `init` writes the same text into CLAUDE.md.
+This page is for a Claude Code session in a WUWEI workspace. Every SessionStart points at `wuwei guide`, which prints the reference below; `init` writes the same text into CLAUDE.md.
 
 ## Roles
 
@@ -62,6 +61,7 @@ config add-repo, config promote, config set, decide, decision outcome, drafts ap
 
 ## Command forms
 - One plain command per Bash call.
+- Review comments, threads and the reviewer list: `wuwei pr state <ref>` and `wuwei pr ping-check <ref>`; use them before writing a loop.
 - Variables, loops, pipes or substitutions: write the commands to a file with the Write tool and run bash <file>; a plain git or gh command stays plain.
 - A top-level cd, pushd or popd may leave the workspace; run it in a subshell, (cd <dir> && <command>), or use git -C <dir>.
 - Python only with -P; the CLI also runs as python3 -P -m wuwei.

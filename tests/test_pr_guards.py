@@ -69,8 +69,8 @@ def payload(root, command, cwd=None):
     ('gh pr create --reviewer ,', 1, 'reviewer'),
     ('gh pr create --title "--reviewer alice"', 1, 'reviewer'),
     ('gh pr create --reviewer', 2, 'value'),
-    ('gh pr create --reviewer alice --head other', 2, 'HEAD'),
-    ('gh pr create -R other/project -r alice', 2, 'repository'),
+    ('gh pr create --reviewer alice --head other', 2, 'name both --repo'),
+    ('gh pr create -R other/project -r alice', 2, 'name both --repo'),
     ('GH_REPO=other/project gh pr create -r alice', 2, 'environment'),
     ('GIT_DIR=other gh pr create -r alice', 2, 'environment'),
 ])
@@ -751,3 +751,79 @@ def test_issue_347_unparsed_calls(case, command, code, reason):
     root, _, _ = case
     result = guard().check(payload(root, command))
     assert result[0] == code and reason in result[1], result
+
+
+@pytest.fixture
+def item(case):
+    """#534: item DIV-1 with a recorded worktree on branch div-1 of example/project."""
+    from wuwei import state
+    root, fake, decisions = case
+    tree = root / 'worktrees/DIV-1'
+    tree.mkdir(parents=True)
+    (tree / '.git').write_text('gitdir: elsewhere\n')
+    fake.results['branch'] = Result(0, {'name': 'div-1'})
+    state._write_state(lambda data: data['items'].update({'DIV-1': {'worktree': 'worktrees/DIV-1'}}),
+                       root, reserved=False)
+    for gate in ('arch', 'quality', 'security'):
+        (decisions / f'gate-9-{gate}.md').rename(decisions / f'gate-DIV-1-{gate}.md')
+    return root, fake, decisions, tree
+
+
+@pytest.mark.parametrize('command', ['gh pr create -R example/project --head div-1 -r alice',
+                                     'gh -R example/project pr create -H div-1 --base main -r alice',
+                                     'cd worktrees/DIV-1 && gh pr create -r alice'])
+def test_create_from_the_workspace_root_names_a_recorded_branch(item, command):
+    # #534: the planner raises the PR without leaving the workspace root.
+    root, fake, _, tree = item
+    assert guard().check(payload(root, command, cwd=root)) == (0, '')
+    assert ('head', (str(tree),), root) in fake.calls
+
+
+@pytest.mark.parametrize('command,code,reason', [
+    ('gh pr create -R example/project --head other -r alice', 1,
+     'pr raise: head other is not a recorded item branch of example/project'),
+    ('gh pr create -R other/project --head div-1 -r alice', 1,
+     'pr raise: repository other/project is not configured in this workspace'),
+    ('gh pr create --head div-1 -r alice', 2, 'pr raise: name both --repo'),
+    ('gh pr create -R example/project -r alice', 2, 'pr raise: name both --repo'),
+])
+def test_create_selection_must_be_a_recorded_branch(item, command, code, reason):
+    root = item[0]
+    result = guard().check(payload(root, command, cwd=root))
+    assert result[0] == code and result[1].startswith(reason), result
+
+
+def test_cd_into_an_unrecorded_directory_keeps_todays_rule(item):
+    root = item[0]
+    (root / 'repo/sub').mkdir()
+    assert guard().check(payload(root, 'cd repo/sub && gh pr create -r alice', cwd=root))[0] == 2
+
+
+def test_missing_gate_names_the_branch_and_the_check(item):
+    root, _, decisions, tree = item
+    (decisions / 'gate-DIV-1-security.md').unlink()
+    code, reason = guard().check(payload(root, 'gh pr create -R example/project --head div-1 -r alice', cwd=root))
+    assert code == 1 and reason.startswith('publish: ') and 'head div-1' in reason and 'security' in reason
+    assert str(tree) not in reason and 'host terminal' not in reason
+
+
+@pytest.mark.parametrize('command', ['gh pr create --title t --body b --reviewer a; gh pr review 7 --approve',
+                                     'gh pr create -r a > /dev/null; gh pr merge 7'])
+def test_chained_create_keeps_the_owner_only_refusal_under_observe(case, monkeypatch, capsys, command):
+    # #530 review F1: a chained create is not a raise; the later owner verb must not ride it.
+    import io
+    import sys
+    from argparse import Namespace
+    import wuwei.commands.hook
+    from wuwei.commands.hook import run
+    from wuwei.guards import Guard
+    root = case[0]
+    with (root / '.wuwei/config.toml').open('a') as handle:
+        handle.write('[security]\nposture = "observe"\n')
+    data = payload(root, command)
+    data.update(session_id='test', transcript_path='transcript.jsonl',
+                hook_event_name='PreToolUse', tool_use_id='test-tool')
+    monkeypatch.setattr(wuwei.commands.hook, 'discover', lambda: [Guard('PreToolUse', 'Bash', guard().check)])
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(data)))
+    assert run(Namespace(event='PreToolUse')) == 2
+    assert 'run PR create separately' in capsys.readouterr().out

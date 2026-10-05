@@ -93,6 +93,12 @@ def run(args):
                     'remote': args.remote, 'updates': updates, 'force': False}
             result = guard.push_check(repo, actual, push, root, vcs)
             if not result[0]:
+                found = guard.fast_evidence(repo, push['head']['sha'], actual['path'], root)
+                if found[0] and workspace.posture(workspace.load_config(root))[0] == 'strict':
+                    result = found
+                elif found[0]:  # #530: below strict a missing check is a warning
+                    print(f'wuwei pre-push warning: {found[1]}', file=sys.stderr)
+            if not result[0]:
                 for older in ancestors:
                     base = guard.data(vcs.merge_base(actual['path'], older, root=root))
                     if base.get('sha') != older:
