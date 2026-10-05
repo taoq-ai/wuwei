@@ -381,8 +381,9 @@ def test_state_syncs_file_before_replace_and_directory_after(workspace, monkeypa
     monkeypatch.setattr(state.os, 'fsync', sync)
     monkeypatch.setattr(state.os, 'replace', rename)
     state.set_state('cap', 2)
-    # The state file, then its snapshot, each synced before and after the rename.
-    assert operations == ['file', 'replace', 'directory'] * 2
+    # The state file, then its snapshot, each synced before the rename; one directory sync
+    # after both renames makes both durable (#516).
+    assert operations == ['file', 'replace', 'file', 'replace', 'directory']
 
 
 @pytest.mark.parametrize('writer', [False, True])

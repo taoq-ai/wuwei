@@ -1019,6 +1019,63 @@ def test_workspace_hook_latency(seeded_workspace, capsys, path):
                           wall_budget=100, runs=runs)
 
 
+# #516: the modules the SubagentStop path runs beyond the PreToolUse Bash call's.
+SUBAGENT_STOP_MODULES = {'wuwei.guards.agent_launch', 'wuwei.guards.decision', 'wuwei.guards.lifecycle',
+                         'wuwei.guards.spec', 'wuwei.guards.verdict', 'wuwei.brief', 'wuwei.dispatch',
+                         'wuwei.sessions', 'wuwei.specmode'}
+
+
+def run_launcher(seeded_workspace, tmp_path, path, script=LAUNCHER_MODULES):
+    (root, env), payloads, reset, _ = seeded_workspace
+    event, fields = payloads[path]
+    out = tmp_path / 'launcher-out.json'
+    reset()
+    result = subprocess.run([sys.executable, '-I', '-P', '-S', '-c', script, str(root / 'cli'), str(root),
+                             str(out), 'hook', event], input=json.dumps({**fixture(event), **fields}),
+                            text=True, capture_output=True, cwd=root.parent, env=env)
+    assert result.returncode == 0 and result.stdout == '', result.stderr + result.stdout
+    return json.loads(out.read_text())
+
+
+def test_subagent_stop_loads_no_more_than_pretooluse(seeded_workspace, tmp_path):
+    # #516, in the #346 style: the common SubagentStop path (message present, seat known)
+    # loads only PreToolUse's modules and the ones it runs. Second runs: warm caches.
+    loaded = {path: [set(run_launcher(seeded_workspace, tmp_path, path)) for _ in range(2)][1]
+              for path in ('commit', 'SubagentStop')}
+    assert loaded['SubagentStop'] - loaded['commit'] - SUBAGENT_STOP_MODULES == set()
+
+
+COUNTING = (
+    'import atexit, json, os, runpy, sys\n'
+    'out = sys.argv.pop(3); sys.path[:0] = sys.argv[1:3]; del sys.argv[1:3]\n'
+    'from wuwei import state\n'
+    'counts = {"fsync": 0, "appends": 0}\n'
+    'fsync, append = os.fsync, state._append_jsonl\n'
+    'def counted_fsync(fd):\n    counts["fsync"] += 1; return fsync(fd)\n'
+    'def counted_append(*args):\n    counts["appends"] += 1; return append(*args)\n'
+    'os.fsync, state._append_jsonl = counted_fsync, counted_append\n'
+    'atexit.register(lambda: open(out, "w").write(json.dumps(counts)))\n'
+    'runpy.run_module("wuwei", run_name="__main__", alter_sys=True)\n')
+
+
+def test_subagent_stop_writes_state_once(seeded_workspace, tmp_path):
+    # #516: one state write per seat stop (the session row rides in it) and one directory
+    # fsync per state write: 3 fsyncs instead of 8, 3 appends instead of 4, same records.
+    from wuwei import state, workspace
+    root = seeded_workspace[0][0].parent
+    run_launcher(seeded_workspace, tmp_path, 'SubagentStop')  # writes the config cache, as on a warm day
+    assert run_launcher(seeded_workspace, tmp_path, 'SubagentStop', COUNTING) == {'fsync': 3, 'appends': 3}
+    data = state.read_state(root)
+    seat = data['seats']['builder-1']
+    assert (seat['status'], seat['agent_id']) == ('stopped', 'builder-agent')
+    assert data['sessions']['abc123']['last_hook'] == 'SubagentStop:wuwei:builder'
+    rows = [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+    rows = [row for row in rows if row['kind'] != 'note'][-4:]
+    assert [row['kind'] for row in rows] == ['seat stopped', 'session.seen', 'discovery.requested', 'spec.warned']
+    assert rows[0]['payload'] == {'name': 'builder-1', 'prs_seen': True}
+    assert rows[1]['payload'] == {'session_id': 'abc123', 'hook': 'SubagentStop:wuwei:builder', 'prs_seen': True}
+
+
 @pytest.mark.parametrize('session_id, recorded', [('wuwei-heartbeat', 0), ('a-session', 1)])
 def test_heartbeat_refusals_are_not_recorded(plugin, session_id, recorded):
     install(plugin, '''

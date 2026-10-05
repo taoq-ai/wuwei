@@ -1,6 +1,5 @@
 """Brief evidence and ordered source refusals shared with launch checks."""
 
-import hashlib
 import json
 from pathlib import Path
 import re
@@ -123,33 +122,63 @@ def transcript_reference(path):
 HANDBACK = 'SubagentHandback'  # the harness's structured hand-back tool (#473)
 
 
+def _entry(line):
+    """(text, handback message or None) of an assistant transcript line, else None."""
+    if not line.strip():
+        return None
+    row = json.loads(line)
+    if not isinstance(row, dict) or row.get('type') != 'assistant':
+        return None
+    try:
+        content = row['message']['content']
+        if isinstance(content, str):
+            return content, None
+        text = '\n'.join(part['text'] for part in content if part.get('type') == 'text')
+        return text, next((part['input'].get('message') for part in content
+                           if part.get('type') == 'tool_use' and part.get('name') == HANDBACK), None)
+    except (KeyError, TypeError, AttributeError):
+        raise ValueError(f'malformed transcript entry; {PAYLOAD}') from None
+
+
 def last_turn(path):
     """(completion, text, handback) of a transcript's last assistant entry. completion is
     [line index, sha256 of the line], the builder binding; text joins the text blocks, or is
     a SubagentHandback's input.message (a background seat's report, #473); handback says
     which. Read from the end, so a torn last line raises ValueError."""
+    import hashlib
     lines = Path(path).read_text(encoding='utf-8').splitlines()
     for index in range(len(lines) - 1, -1, -1):
-        if not lines[index].strip():
+        entry = _entry(lines[index])
+        if entry is None:
             continue
-        row = json.loads(lines[index])
-        if not isinstance(row, dict) or row.get('type') != 'assistant':
-            continue
-        try:
-            content = row['message']['content']
-            if isinstance(content, str):
-                text, handback = content, None
-            else:
-                text = '\n'.join(part['text'] for part in content if part.get('type') == 'text')
-                handback = next((part['input'].get('message') for part in content
-                                 if part.get('type') == 'tool_use' and part.get('name') == HANDBACK), None)
-        except (KeyError, TypeError, AttributeError):
-            raise ValueError(f'malformed transcript entry; {PAYLOAD}') from None
+        text, handback = entry
         completion = [index, hashlib.sha256(lines[index].encode()).hexdigest()]
         if isinstance(handback, str):
             return completion, handback, True
         return completion, text, False
     raise ValueError(f'transcript has no assistant turn; {PAYLOAD}')
+
+
+def tail_turn(path):
+    """(text, handback) of the last assistant entry, read from the end of the file (#516).
+    ponytail: an assistant entry far back still reads most of the file; fine for transcripts."""
+    with open(path, 'rb') as stream:
+        size = stream.seek(0, 2)
+        window = 64 * 1024
+        while True:
+            start = max(0, size - window)
+            stream.seek(start)
+            lines = stream.read(size - start).split(b'\n')
+            if start:
+                lines = lines[1:]  # a partial line; the next window reads it whole
+            for line in reversed(lines):
+                entry = _entry(line.decode('utf-8'))
+                if entry is not None:
+                    text, handback = entry
+                    return (handback, True) if isinstance(handback, str) else (text, False)
+            if not start:
+                raise ValueError(f'transcript has no assistant turn; {PAYLOAD}')
+            window *= 4
 
 
 def stop_text(payload):
@@ -161,7 +190,7 @@ def stop_text(payload):
     path = payload.get('agent_transcript_path')
     if not isinstance(path, str) or not path.strip():
         raise ValueError(f'missing or invalid agent_transcript_path; {PAYLOAD}')
-    text = last_turn(path)[1]
+    text = tail_turn(path)[0]
     if not text.strip():
         raise ValueError(f'transcript last assistant turn has no report; {PAYLOAD}')
     return text
@@ -372,6 +401,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                     header.append(f'Counterpart {other} head (no-cache): {json.dumps(read(host.pr, other, root=root))}')
         text = '\n'.join(header) + '\n\n' + body + '\n'
         relative = str(output.relative_to(root))
+        import hashlib
         payload = {'name': name, 'item': item, 'role': role, 'path': relative, 'gate': gate,
                    'worktree': str(tree) if tree else None, 'pr': pr,
                    'head': head if tree else None,

@@ -17,14 +17,24 @@ def scoped(payload):
     return workspace.scope(cwd.resolve())
 
 
-def _seen(root, payload, event):
-    """Record hook activity in the registry; guards called directly may carry no id."""
+# Set by agent_launch.stop to the workspace root whose state already holds this stop's session row.
+RECORDED = 'wuwei_session_recorded'
+
+
+def seen_row(payload, event):
+    """The registry row of a hook call, or None: guards called directly may carry no id."""
     session_id = payload.get('session_id')
     if not isinstance(session_id, str) or not session_id.strip():
         return None
     detail = payload.get('source' if event == 'SessionStart' else 'agent_type')
     hook = f'{event}:{detail}' if isinstance(detail, str) and detail.strip() else event
-    return sessions.touch(root, session_id, hook=hook, cwd=payload['cwd'])
+    return {'session_id': session_id, 'hook': hook, 'cwd': payload.get('cwd')}
+
+
+def _seen(root, payload, event):
+    """Record hook activity in the registry."""
+    row = seen_row(payload, event)
+    return None if row is None else sessions.touch(root, **row)
 
 
 def session_start(payload):
@@ -139,7 +149,7 @@ def stop(payload):
 def subagent_stop(payload):
     try:
         context = scoped(payload)
-        if context is not None:
+        if context is not None and payload.get(RECORDED) != str(context[0]):
             _seen(context[0], payload, 'SubagentStop')
         return 0, ''
     except ERRORS as exc:
