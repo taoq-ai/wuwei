@@ -246,7 +246,8 @@ def stop(payload):
     directory = None
     try:
         directory, name, role = stopping_seat(payload, root)
-        reserved = brief.seats(state.read_state(directory=directory))[name]
+        data = state.read_state(directory=directory)
+        reserved = brief.seats(data)[name]
         item = reserved['item']
     except Exception as exc:
         try:
@@ -257,6 +258,10 @@ def stop(payload):
             import sys
             print(f'seat stop could not be recorded: {log_error}', file=sys.stderr)
         return 0, ''
+    # #516: a stop of today's seat records the session row in its own write; lifecycle then skips its touch.
+    from wuwei.guards.lifecycle import RECORDED, seen_row
+    today = directory == workspace.day_dir(root)
+    session = seen_row(payload, 'SubagentStop') if today else None
     try:
         if reserved['status'] == 'running':
             brief.stop_text(payload)
@@ -265,23 +270,27 @@ def stop(payload):
         # A refused stop (another agent, a resumed iteration) still leaves the seat as it was.
         try:
             state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'),
-                            reason=str(exc))
+                            reason=str(exc), session=session)
+            if session:
+                payload[RECORDED] = str(root.resolve())
         except Exception as error:
             return 2, f'seat {name} could not be stopped: {exc}; {error}; run bin/wuwei doctor'
         return 2, (f'seat {name} stopped unmeasured: {exc}; record its report with bin/wuwei seat stop '
                    f'{name} --verdict <file>, or run bin/wuwei seat stop {name} --unmeasured "<reason>"')
     try:
         handled = False
-        if role == 'builder' and directory == workspace.day_dir(root):
+        if role == 'builder' and today and item in data.get('builds', {}):
             from wuwei.commands import build
             handled = build.stopped(item, name, payload, root=root)
         if not handled:
-            state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'))
+            state.stop_seat(name, root, directory=directory, agent_id=payload.get('agent_id'), session=session)
+            if session:
+                payload[RECORDED] = str(root.resolve())
     except (OSError, ValueError, RuntimeError, KeyError, TypeError) as exc:
         return 2, f'build result could not be recorded: {exc}'
     if payload.get('stop_hook_active'):
         return 0, ''
-    if role == 'builder' and directory == workspace.day_dir(root):
+    if role == 'builder' and today:
         try:
             from wuwei import dispatch
             dispatch.discovery('seat-free', root)

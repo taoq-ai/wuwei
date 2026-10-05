@@ -4,7 +4,6 @@ from pathlib import Path
 import re
 
 from wuwei import workspace
-from wuwei.decision import DECISION_ID, lint_file, record_rejection, today_path
 from wuwei.guards import Guard
 from wuwei.guards.verdict import INTERPRETERS, required_text
 from wuwei.workspace import scope
@@ -31,6 +30,7 @@ def opaque(argv):
 
 
 def check_write(payload):
+    from wuwei.decision import lint_file, record_rejection
     root, path = None, '<decision write>'
     try:
         cwd = Path(required_text(payload, 'cwd')).resolve()
@@ -151,6 +151,7 @@ def record_gate(payload):
     answered morning gate questions asked, by header `Goals` or `Voice` only, and which
     decisions it asked, by header `D-n` citing today's record (#354); protect_state lets the
     planner record them."""
+    from wuwei.decision import DECISION_ID, today_path
     try:
         context = scope(Path(required_text(payload, 'cwd')).resolve())
         if context is None or 'agent_id' in payload:
@@ -194,6 +195,7 @@ def check_question(payload):
     """Shared citation check for AskUserQuestion and future control-plane escalation."""
     hint = ('Cite a decision D-n or clarification C-n whose record exists today and passes lint, '
             'or mark Morning gate and cite today\'s plan file.')
+    from wuwei.decision import lint_file, today_path
     try:
         context = scope(Path(required_text(payload, 'cwd')).resolve())
         if context is None:

@@ -54,6 +54,20 @@ def test_stop_text(tmp_path):
         brief.stop_text({'agent_transcript_path': str(tool_only)})
 
 
+def test_stop_text_reads_the_tail(tmp_path):
+    # #516: a missing report is read from the transcript's end; the head is never decoded and
+    # the window grows until the last assistant entry is in it.
+    user = json.dumps({'type': 'user', 'message': {'content': 'x' * 1000}}) + '\n'
+    path = tmp_path / 'head.jsonl'
+    path.write_bytes(b'\xff\xfe not utf-8\n' + (user * 70).encode() + HANDBACK.encode())
+    assert brief.stop_text({'agent_transcript_path': str(path)}) == REPORT
+    with pytest.raises(ValueError):
+        brief.last_turn(path)
+    path = tmp_path / 'far.jsonl'
+    path.write_text(json.dumps({'type': 'assistant', 'message': {'content': 'far back'}}) + '\n' + user * 300)
+    assert brief.stop_text({'agent_transcript_path': str(path)}) == 'far back'
+
+
 from test_build_next import launch, seat, stop  # noqa: E402,F401 (the seat fixture)
 from test_build import events  # noqa: E402
 from wuwei import state  # noqa: E402
@@ -191,10 +205,27 @@ def test_hook_reads_nothing_for_other_agents(seat, monkeypatch, capsys):
     def unread(path):
         raise AssertionError('transcript read for a non-WUWEI subagent')
     monkeypatch.setattr(brief, 'last_turn', unread)
+    monkeypatch.setattr(brief, 'tail_turn', unread)
     root = seat[0]
     code, err = hook_stop(monkeypatch, capsys, cwd=str(root),
                           agent_transcript_path=str(root / 'missing.jsonl'))
     assert code == 0, err
+
+
+def test_unmatched_seat_stop_still_records_session(seat, monkeypatch, capsys):
+    # #516: the seat stop folds the session row into its own write; a stop that matches no
+    # reservation leaves the registry write to lifecycle, as before.
+    root, _, _, day, _ = seat
+    transcript = write(root / 'stray.jsonl',
+                       {'type': 'user', 'message': {'content': brief.REFERENCE_PREFIX + 'elsewhere.md'}})
+    code, err = hook_stop(monkeypatch, capsys, cwd=str(root), agent_type='wuwei:builder', agent_id='agent-stray',
+                          agent_transcript_path=str(transcript),
+                          last_assistant_message='Blocked: none\nGap: none\nChange: none')
+    assert code == 0, err
+    rows = events(day)
+    assert 'seat stop unmatched' in [row['kind'] for row in rows]
+    assert state.read_state(root)['sessions']['abc123']['last_hook'] == 'SubagentStop:wuwei:builder'
+    assert [row['kind'] for row in rows].count('session.seen') == 1
 
 
 def stuck_day(root):

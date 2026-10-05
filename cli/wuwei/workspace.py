@@ -241,8 +241,9 @@ class ConfigError(ValueError):
     """A configuration finding, rather than an inability to read the file."""
 
 
-def atomic_write(path, text, *, replace=True, mode=None):
-    """Durably write text through a temporary file in the destination directory."""
+def atomic_write(path, text, *, replace=True, mode=None, sync_dir=True):
+    """Durably write text through a temporary file in the destination directory; sync_dir=False
+    leaves the directory fsync to a later write in the same directory."""
     path = Path(path)
     temporary = None
     try:
@@ -268,14 +269,15 @@ def atomic_write(path, text, *, replace=True, mode=None):
             os.replace(temporary, path)
         else:
             os.link(temporary, path)
-        directory_fd = os.open(path.parent, os.O_RDONLY)
-        try:
+        if sync_dir:
+            directory_fd = os.open(path.parent, os.O_RDONLY)
             try:
-                os.fsync(directory_fd)
-            except OSError:
-                pass
-        finally:
-            os.close(directory_fd)
+                try:
+                    os.fsync(directory_fd)
+                except OSError:
+                    pass
+            finally:
+                os.close(directory_fd)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
