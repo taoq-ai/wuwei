@@ -136,6 +136,17 @@ def write_config(root, text):
     (workspace / 'config.toml').write_text(text)
 
 
+def test_checks_table(tmp_path):
+    from wuwei import workspace
+    write_config(tmp_path, '[checks]\npython = 1\n')
+    with pytest.raises(workspace.ConfigError, match='checks.python'):
+        workspace.load_config(tmp_path)
+    write_config(tmp_path, '[checks]\npyhton = "x"\n')
+    found = []
+    assert workspace.load_config(tmp_path, warnings=found)['checks'] == {'python': '', 'bootstrap': ''}
+    assert found and 'unknown key checks.pyhton' in found[0]
+
+
 def test_initialized_config_checks(tmp_path):
     assert cli(tmp_path, 'init').returncode == 0
     result = cli(tmp_path, 'config', 'check')
@@ -170,8 +181,8 @@ def test_config_defaults_and_independence(tmp_path):
                      'areas': {area: '' for area in workspace.AREAS}},
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'digest': '', 'nudges': '', 'dm': '', 'report': ''}},
-        'repos': [], 'worktree': {'git_hooks': 'chain'}, 'grants': {'standing': []},
-        'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
+        'repos': [], 'worktree': {'git_hooks': 'chain'}, 'checks': {'python': '', 'bootstrap': ''},
+        'grants': {'standing': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},

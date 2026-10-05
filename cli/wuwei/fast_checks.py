@@ -2,10 +2,31 @@
 
 from pathlib import Path
 import re
+import shlex
 
 from wuwei import registry, state, workspace
 from wuwei.guards.commit_push import context, data
 from wuwei.exits import ADAPTER_DATA, DAMAGED
+
+RELATIVE = ('.venv/', 'venv/', 'node_modules/.bin/')
+
+
+def interpreter(command, worktree, repo, root, config):
+    """(path, source) when the check's first word is a relative interpreter, else None.
+
+    source is checks.python, worktree, main worktree or missing (#520).
+    """
+    word = command.split(None, 1)[0] if command.strip() else ''
+    if not word.startswith(RELATIVE):
+        return None
+    main = (Path(root) / Path(repo['path']).expanduser()).resolve()
+    setting = config['checks']['python']
+    if setting and Path(word).name.startswith('python'):
+        return main / Path(setting).expanduser(), 'checks.python'
+    for path, source in ((Path(worktree) / word, 'worktree'), (main / word, 'main worktree')):
+        if path.exists():
+            return path, source
+    return Path(worktree) / word, 'missing'
 
 
 def record(path):
@@ -27,7 +48,8 @@ def record(path):
 
     # Invalidate previous successes before any read or execution can fail.
     save()
-    runner = registry.load('checks', workspace.load_config(root))
+    config = workspace.load_config(root)
+    runner = registry.load('checks', config)
     sha = data(vcs.head(actual['path'], root=root))['sha']
     if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', sha):
         raise ValueError(f'invalid HEAD for fast checks; {DAMAGED}')
@@ -35,7 +57,11 @@ def record(path):
     clean = not status(vcs, str(path), root) if binding else False
     code = 0
     for command in repo['fast_checks']:
-        result = runner.run(str(path), command, root=root)
+        found = interpreter(command, path, repo, root, config)
+        run = command
+        if found and found[1] in ('checks.python', 'main worktree'):
+            run = shlex.quote(str(found[0])) + command.lstrip()[len(command.split(None, 1)[0]):]
+        result = runner.run(str(path), run, root=root)
         if (not isinstance(result, registry.Result) or type(result.exit) is not int
                 or result.exit not in (0, 1, 2)):
             raise ValueError(f'invalid fast-check result; {ADAPTER_DATA}')
@@ -44,6 +70,8 @@ def record(path):
         records[command] = {'sha': sha, 'exit': result.exit, 'data': result.data,
                             'reason': result.reason, 'worktree': str(path), 'build': binding,
                             'clean': clean and not status(vcs, str(path), root)}
+        if found:
+            records[command]['interpreter'] = str(found[0]) if found[1] != 'missing' else None
         code = max(code, result.exit)
     save()
     return code

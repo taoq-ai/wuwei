@@ -75,6 +75,7 @@ SCHEMA = {
                "identity": {"name": (str, ""), "email": (str, "")},
                "shepherd": {"reviewers": [(str, None)]}}],
     "worktree": {"git_hooks": (str, "chain", ("chain", "skip", "replace"))},
+    "checks": {"python": (str, ""), "bootstrap": (str, "")},  # #520
     # #478: standing grants, written by the owner's Always allow answer; ignored under strict.
     "grants": {"standing": [{"action": (str, None, ("deploy", "release", "publish")),
                              "target": (str, None), "scope": (str, "always", ("always",)),
@@ -568,7 +569,7 @@ _CONFIGS = {}
 # copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
-CONFIG_CACHE_VERSION = 13  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 14  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor, why and the board stay read-only.

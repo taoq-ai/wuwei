@@ -390,6 +390,23 @@ def test_workspace_repository_rows(ws, repo, name, status, apply):
         assert 'repos.0.identity.name = "Ada"' in found['fix']
 
 
+@pytest.mark.parametrize('present', [True, False])
+def test_workspace_check_interpreter_row(ws, present):
+    # #520: a fast check naming a relative interpreter shows which one it runs.
+    config(ws.root, '[adapters]\ncode_host = "github"\n'
+           + REPO.replace('["ruff check ."]', '[".venv/bin/python -m pytest -q"]'))
+    python = ws.root / 'repo/.venv/bin/python'
+    if present:
+        python.parent.mkdir(parents=True)
+        python.write_text('')
+    found = row(doctor.diagnose(), 'acme/widget check interpreter')
+    if present:
+        assert found['status'] == 'ok' and str(python.resolve()) in found['value']
+    else:
+        assert found['status'] == 'warn'
+        assert '[checks] python' in found['fix'] and '[checks] bootstrap' in found['fix']
+
+
 @pytest.mark.parametrize('spec, plugins, status', [
     ('', None, 'ok'), ('[spec]\nengine = "none"\n', None, 'ok'),
     ('[spec]\nengine = "superpowers"\n', '{"plugins": {"superpowers@superpowers-marketplace": []}}', 'ok'),
