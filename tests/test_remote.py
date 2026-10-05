@@ -141,9 +141,12 @@ def test_dm_sends_through_the_undecorated_chat_operation(ws, chat):
 
 
 def test_dm_lint_finding_sends_nothing(ws, chat):
-    with (ws / '.wuwei/config.toml').open('a') as stream:  # #533: an owner word list, nothing built in
+    # #533: outward.patterns are for other readers; the owner DM still gets the mechanical lint.
+    with (ws / '.wuwei/config.toml').open('a') as stream:
         stream.write('\n[outward]\npatterns = ["\\\\bwuwei\\\\b"]\n')
-    assert remote().dm('wuwei is busy.', root=ws).exit == 1
+    assert remote().dm('wuwei is busy.', root=ws).exit == 0
+    chat.clear()
+    assert remote().dm('Busy \U0001f600', root=ws).exit == 1
     assert chat == []
 
 

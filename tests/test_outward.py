@@ -70,17 +70,13 @@ def test_lint_table(configured, text, code, reason):
 
 
 @pytest.mark.parametrize('change,text,channel,code', [
-    ({'patterns': ['secret\\s+routine']}, 'SECRET routine', 'chat', 1),
-    ({'patterns': ['internal_state']}, 'internal_state', 'chat', 1),
-    ({'patterns': []}, 'drafts pending', 'chat', 0),
-    ({'patterns': ['[']}, 'fixed in abc1234', 'chat', 2),
+    ({'patterns': [r'\bI-[0-9]+\b']}, 'Notes for I-12', 'chat', 0),  # #533: not lint's
     ({'banned_characters': ['!']}, 'Ready!', 'chat', 1),
     ({'banned_characters': []}, 'Ready\u2014yes \U0001f600', 'chat', 0),
     ({'max_length': {'chat': 3}}, 'abc', 'chat', 0),
     ({'max_length': {'chat': 3}}, 'abcd', 'chat', 1),
     ({'max_length': {'chat': 3}}, 'abcd', 'tracker', 0),
     ({'max_length': {'chat': 0}}, 'abc', 'chat', 2),
-    ({'patterns': [1]}, 'abc', 'chat', 2),
 ])
 def test_configured_lint(configured, change, text, channel, code):
     from wuwei.outward import lint
@@ -451,12 +447,192 @@ def test_no_internal_state_words_by_default(configured, text):
 
 
 def test_owner_internal_state_pattern_names_the_word(configured):
+    from wuwei.outward import check_lint
+    root = configured[0]
+    set_posture(root, 'strict')
+    config = workspace.load_config(root)
+    config['outward']['patterns'] = [r'\bsentinel\b', r'\b(?:the\s+)?agents?\b']
+    assert check_lint({'text': 'the agents are ready', 'channel': 'C1'}, root, config, {'slack'}) == (
+        1, 'outward: internal state word "the agents" in a slack message (outward.patterns); '
+        'remove it or change the list')
+    assert check_lint({'text': 'tests passed', 'channel': 'C1'}, root, config, {'slack'}) == (0, '')
+
+
+TEXT = 'Notes for I-12 in src/app/main.py'
+PATTERNS = "\n[outward]\npatterns = ['\\bI-[0-9]+\\b', '[a-z_]+/[a-z_/]+\\.py']\n"
+
+
+def test_internal_word(configured):
+    import re
+    from wuwei.outward import internal_word
+    config = configured[1]
+    config['outward']['patterns'] = [r'\bI-[0-9]+\b', r'[a-z_]+/[a-z_/]+\.py']
+    assert internal_word(TEXT, config) == 'i-12'
+    assert internal_word('tests passed', config) is None
+    config['outward']['patterns'] = ['secret\\s+routine']
+    assert internal_word('SECRET routine', config) == 'secret routine'
+    config['outward']['patterns'] = ['internal state']
+    assert internal_word('internal_state', config) == 'internal state'
+    config['outward']['patterns'] = [1]
+    with pytest.raises(TypeError):
+        internal_word('abc', config)
+    config['outward']['patterns'] = ['[']
+    with pytest.raises(re.error):
+        internal_word('abc', config)
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_internal_state_never_on_records(configured, posture):
+    # #533: tracker, docs and code-host writes are the team's records; the list never applies.
+    from wuwei import outward
+    from wuwei.guards.outward import check_lint
+    root = configured[0]
+    write_config(root, PATTERNS + '\n[tracker]\nauto = ["items"]\n')
+    set_posture(root, posture)
+    config = workspace.load_config(root)
+    assert outward.check_call({'title': 'Notes', 'body': TEXT, 'category': 'items'},
+                              root, config, {'tracker'}, port=True) == (0, '')
+    for tool in (opaque('createJiraIssue'), opaque('create_page'), 'mcp__github__add_issue_comment'):
+        assert check_lint(payload(root, TEXT, tool=tool)) == (0, ''), tool
+    assert events_of(root, 'outward.lint') == []
+
+
+CLIENT_WHY = 'internal state word "i-12" for the client audience of C2 (outward.patterns), rewrite that line'
+
+
+@pytest.mark.parametrize('tier', ['send', 'ask'])
+@pytest.mark.parametrize('mode', ['autonomous', 'supervised'])
+def test_internal_state_client_holds(configured, tier, mode):
+    # #533: a client reader gets a card naming the audience and the word.
+    from wuwei import outward
+    from wuwei.guards.outward import check_tier
+    root = configured[0]
+    outbound_line(root, 'external_channels = ["C2"]')
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('default_tier = "ask"', f'default_tier = "{tier}"'))
+    write_config(root, PATTERNS + f'\n[autonomy]\nmode = "{mode}"\n')
+    config = workspace.load_config(root)
+    why = []
+    assert outward.classify(TEXT, root, config, {'channel': 'C2', 'text': TEXT},
+                            kind='slack', why=why) == (1, 'draft')
+    assert why == [CLIENT_WHY]
+    code, reason = check_tier(payload(root, TEXT, channel='C2'))
+    assert code == 1 and CLIENT_WHY in reason and held_channel(root, reason) == 'slack'
+
+
+def test_internal_state_public_and_send_row_hold(configured):
+    from wuwei import outward
+    root = configured[0]
+    outbound_line(root, 'external_channels = ["C2"]\ntiers = [{ channel = "C2", tier = "send" }]')
+    write_config(root, PATTERNS + '\n[outbound.channel_classes]\nC4 = "public"\n')
+    config = workspace.load_config(root)
+    why = []
+    assert outward.classify(TEXT, root, config, {'channel': 'C4'}, kind='slack', why=why) == (1, 'draft')
+    assert why == [CLIENT_WHY.replace('client audience of C2', 'public audience of C4')]
+    why = []
+    assert outward.classify(TEXT, root, config, {'channel': 'C2'}, kind='slack', why=why) == (1, 'draft')
+    assert why == [CLIENT_WHY]
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('tier = "send" }', 'tier = "block" }'))
+    config = workspace.load_config(root)
+    assert outward.classify(TEXT, root, config, {'channel': 'C2'}, kind='slack') == (1, 'block')
+
+
+def test_internal_state_client_without_word(configured):
+    from wuwei import outward
+    root = configured[0]
+    outbound_line(root, 'external_channels = ["C2"]')
+    write_config(root, PATTERNS)
+    why = []
+    outward.classify('Thanks', root, workspace.load_config(root), {'channel': 'C2'}, kind='slack', why=why)
+    assert why and 'internal state word' not in why[0]
+
+
+def test_internal_state_client_approved_sends(configured):
+    # The hold is the tier's, so the owner's approval (drafts.approve re-runs check_lint) sends it.
+    from wuwei import outward
+    root = configured[0]
+    outbound_line(root, 'external_channels = ["C2"]')
+    write_config(root, PATTERNS)
+    config = workspace.load_config(root)
+    inputs = {'text': TEXT, 'channel': 'C2'}
+    code, reason = outward.check_call(inputs, root, config, {'chat'}, port=True)
+    assert code == 1 and reason.startswith(outward.APPROVAL_REQUIRED) and 'i-12' in reason
+    assert outward.check_lint(inputs, root, config, {'chat'}) == (0, '')
+
+
+WARNING = 'warning: outward: internal state word "i-12" in a'
+
+
+@pytest.mark.parametrize('channel', ['C1', 'C7'])
+def test_internal_state_team_warns_when_supervised(configured, monkeypatch, capsys, channel):
+    # #533: team and company readers get the message and an outward.lint event, no card.
+    from wuwei import outward
+    root = configured[0]
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('default_tier = "ask"', 'default_tier = "send"'))
+    write_config(root, PATTERNS + '\n[autonomy]\nmode = "supervised"\n')
+    monkeypatch.chdir(root)
+    assert run_hook(monkeypatch, payload(root, TEXT, channel=channel)) == 0
+    config = workspace.load_config(root)
+    assert outward.check_call({'text': TEXT, 'channel': channel}, root, config, {'chat'}, port=True) == (0, '')
+    assert [row['payload'] for row in events_of(root, 'outward.lint')] == [
+        {'kind': 'slack', 'word': 'i-12'}, {'kind': 'chat', 'word': 'i-12'}]
+    assert WARNING in capsys.readouterr().err
+    assert events_of(root, 'guard.would_refuse') == []
+
+
+def test_internal_state_team_silent_when_autonomous(configured, monkeypatch, capsys):
+    from wuwei import outward
+    root = configured[0]
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('default_tier = "ask"', 'default_tier = "send"'))
+    write_config(root, PATTERNS)
+    monkeypatch.chdir(root)
+    assert run_hook(monkeypatch, payload(root, TEXT, channel='C1')) == 0
+    config = workspace.load_config(root)
+    assert outward.check_call({'text': TEXT, 'channel': 'C1'}, root, config, {'chat'}, port=True) == (0, '')
+    assert events_of(root, 'outward.lint') == []
+    assert WARNING not in capsys.readouterr().err
+
+
+def test_internal_state_mail_warns(configured, capsys):
+    from wuwei import outward
+    root = configured[0]
+    write_config(root, PATTERNS + '\n[autonomy]\nmode = "supervised"\n')
+    config = workspace.load_config(root)
+    assert outward.check_lint({'text': TEXT, 'to': 'dev@example.test'}, root, config, {'mail'}) == (0, '')
+    assert [row['payload'] for row in events_of(root, 'outward.lint')] == [{'kind': 'mail', 'word': 'i-12'}]
+
+
+def test_internal_state_to_owner_never(configured):
+    from wuwei import outward
+    root = configured[0]
+    write_config(root, PATTERNS + '\n[autonomy]\nmode = "supervised"\n'
+                 '\n[outbound.owner.slack]\nuser = "U01"\ndm = "D01"\n')
+    config = workspace.load_config(root)
+    assert outward.check_lint({'text': TEXT, 'channel': 'D01'}, root, config, {'slack'}) == (0, '')
+    assert events_of(root, 'outward.lint') == []
+
+
+def test_internal_state_strict_refuses(configured):
+    # Strict posture keeps the refusal for team and company chat; records still pass.
+    from wuwei import outward
+    root = configured[0]
+    write_config(root, PATTERNS)
+    set_posture(root, 'strict')
+    config = workspace.load_config(root)
+    assert outward.check_lint({'text': TEXT, 'channel': 'C1'}, root, config, {'slack'}) == (
+        1, 'outward: internal state word "i-12" in a slack message (outward.patterns); '
+        'remove it or change the list')
+    assert outward.check_lint({'text': TEXT}, root, config, {'tracker'}) == (0, '')
+
+
+def test_internal_state_not_on_pr_text(configured):
     from wuwei.outward import lint
     config = configured[1]
-    config['outward']['patterns'] = [r'\bsentinel\b', r'\b(?:the\s+)?agents?\b']
-    code, reason = lint('the agents are ready', 'chat', config)
-    assert code == 1 and reason.startswith('outward: internal state pattern; remove "the agents" from the message')
-    assert lint('tests passed', 'chat', config) == (0, '')
+    config['outward']['patterns'] = [r'\bI-[0-9]+\b', r'[a-z_]+/[a-z_/]+\.py']
+    assert lint('Adds I-12\nTouches src/app/main.py', 'code_host', config) == (0, '')
 
 
 def test_send_umbrella_drops_draft_connector_modes(configured):
@@ -604,8 +780,8 @@ def test_owner_addressed_lint_skips_third_person_rules_only(tmp_path, monkeypatc
     assert outward.lint(remote.CONFIRM, 'chat', config)[0] == 1
     assert outward.lint(remote.CONFIRM, 'chat', config, to_owner=True) == (0, '')
     assert outward.lint('They look done.', 'chat', config, to_owner=True) == (0, '')
-    config['outward']['patterns'] = [r'\bwuwei\b']  # #533: an owner list, nothing built in
-    assert outward.lint('wuwei is busy.', 'chat', config, to_owner=True)[0] == 1
+    config['outward']['patterns'] = [r'\bwuwei\b']  # #533: the owner reads it; the list is for others
+    assert outward.lint('wuwei is busy.', 'chat', config, to_owner=True) == (0, '')
     inputs = {'text': remote.CONFIRM, 'channel': 'D1'}
     assert outward.check_lint(inputs, tmp_path, config, {'chat'}, to_owner=True) == (0, '')
     assert outward.check_lint(inputs, tmp_path, config, {'chat'})[0] == 1

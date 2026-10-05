@@ -13,7 +13,7 @@ WEEK = '''# Week 2026-W40 (2026-09-28 to 2026-10-04)
 
 ## Decisions
 - 2026-09-30 D-1: Retry the import with backoff? Outcome: backoff
-- 2026-10-01 D-2: decided carry
+- 2026-10-01 D-2: Should the seats carry it? Outcome: carry
 - 2026-10-02 D-4: decided keep
 
 ## Lessons
@@ -43,8 +43,8 @@ def root(tmp_path, monkeypatch):
     base = tmp_path / '.wuwei'
     (base / 'memory/notes').mkdir(parents=True)
     (base / 'charters').mkdir()
-    # #533: the digest hides free text an owner word list flags; nothing is built in any more.
-    write(base / 'config.toml', '[outward]\npatterns = ["\\\\bseats?\\\\b", "\\\\bqueued\\\\b", "\\\\bthe owner\\\\b"]\n')
+    # #533: the owner reads the digest, so an outward.patterns list does not hide its free text.
+    write(base / 'config.toml', '[outward]\npatterns = ["\\\\bseats?\\\\b"]\n')
     monkeypatch.setenv('WUWEI_NOW', '2026-10-03T12:00:00+02:00')
     monkeypatch.setattr(redact, 'VALUES', {'sekrit-value'})
     day = base / 'days/2026-09-30'
@@ -84,7 +84,7 @@ def test_build_has_the_fixed_shape_and_keeps_only_clean_free_text(root):
     _, title, dates = digest.period(date(2026, 10, 3), 'week')
     text = digest.build(root, title, dates, workspace_module.load_config(root))
     assert text == WEEK
-    for leaked in ('src/app.py', 'the seats', 'sekrit-value', 'Out of period'):
+    for leaked in ('src/app.py', 'sekrit-value', 'Out of period'):
         assert leaked not in text
 
 
