@@ -21,12 +21,17 @@ class Source:
         return self.results.pop(0) if self.results else Result(0, [])
 
 
+# #533: these tests assert the fallback line for an owner word list; nothing is built in any more.
+WORDS = '[outward]\npatterns = ["\\\\b(?:the\\\\s+)?agents?\\\\b", "\\\\bsentinel\\\\b", "\\\\bseats?\\\\b", "\\\\bwuwei\\\\b", "\\\\bqueued\\\\b", "\\\\bthe\\\\s+owner\\\\b"]\n'
+
+
 @pytest.fixture
 def case(tmp_path, monkeypatch):
     (tmp_path / '.wuwei/memory/notes').mkdir(parents=True)
     (tmp_path / '.wuwei/memory/spine.md').write_text('Memory spine\n')
     (tmp_path / '.wuwei/memory/index.md').write_text('Index\n')
-    (tmp_path / '.wuwei/config.toml').write_text('[adapters]\ninbound = "fake"\n')
+    # #533: these tests assert the fallback line for an owner word list; nothing is built in.
+    (tmp_path / '.wuwei/config.toml').write_text(WORDS + '[adapters]\ninbound = "fake"\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-30T12:00:00+00:00')
     monkeypatch.setenv('HOME', str(tmp_path / 'home'))
@@ -49,7 +54,7 @@ def event(ident, ts, text='hello'):
 
 
 def config(root, text):
-    (root / '.wuwei/config.toml').write_text('[adapters]\ninbound = "fake"\n' + text)
+    (root / '.wuwei/config.toml').write_text(WORDS + '[adapters]\ninbound = "fake"\n' + text)
 
 
 def ids(root):
