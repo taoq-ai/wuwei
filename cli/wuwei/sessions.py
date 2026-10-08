@@ -38,6 +38,18 @@ def gate_topics(root, session_id):
     return frozenset(data.get('sessions', {}).get(session_id, {}).get('gate_asked', ())), True
 
 
+def card_topic(card, answer):
+    """#529: the gate topic of the owner's answer to a card, hashed as #493 hashes drafts."""
+    from hashlib import sha256
+    text = answer.strip().removesuffix(' (Recommended)').strip()
+    return f'{card}={sha256(text.encode()).hexdigest()}'
+
+
+def card_answered(root, card, answer):
+    """The calling planner session recorded this answer on that card; never under strict."""
+    return card_topic(card, answer) in gate_topics(root, current())[0]
+
+
 def stale_seconds(root):
     if (root / '.wuwei/config.toml').is_file():
         return workspace.load_config(root)['sessions']['stale_seconds']

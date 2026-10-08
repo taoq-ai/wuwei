@@ -1277,3 +1277,17 @@ def test_thread_reply_docs():
     assert 'topic = "thread"' in (SITE / 'concepts.md').read_text()
     assert '--thread <file>' in (SITE / 'security.md').read_text()
     assert '`thread`' in (SITE / 'configuration.md').read_text().split('| `outbound.tiers` |', 1)[1].split('\n', 1)[0]
+
+
+def test_card_answer_writes_the_config_documented():
+    """#529: the owner's card answer is the confirmation of a config write outside strict."""
+    design = (ROOT / 'docs/specs/2026-09-24-wuwei-design.md').read_text()
+    records = design[design.index('Records (owner, 2026-10-03, #357)'):design.index('Availability (owner')]
+    assert '#529' in records and '--from-card' in records
+    skill = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+    assert 'wuwei calibrate --questions cap seats' in skill and '--from-card' in skill
+    assert '`config set` on guard settings is refused' not in skill
+    security = (SITE / 'security.md').read_text()
+    assert 'never change from an agent tool' not in security and '--from-card' in security
+    for name in ('concepts.md', 'configuration.md'):
+        assert '--from-card' in (SITE / name).read_text(), name

@@ -88,6 +88,7 @@ EVENT_PRODUCERS = {
     'outbound.thread': 'wuwei outbound learn',
     'grant.asked': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise or wuwei plan propose',
     'grant.used': 'wuwei hook PreToolUse (deploy, push and PR guards) or wuwei pr raise', 'grant.revoked': 'owner host wuwei grants revoke',
+    'config.set': 'wuwei config set --from-card or wuwei calibrate --answer',
 }
 
 

@@ -80,7 +80,9 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
     assert [row['id'] for row in table] == ['merge', 'gates', 'quiet', 'interrupt', 'decisions', 'phone',
                                             'hours', 'avoid', 'formality', 'signature', 'risk', 'manual',
                                             'verbosity', 'posture', 'spec', 'telemetry', 'docs', 'tracker',
-                                            'tickets', 'updates', 'chat', 'review_bot', 'reviewers']
+                                            'tickets', 'updates', 'chat', 'review_bot', 'reviewers',
+                                            'cap', 'seats', 'tier', 'learn']
+    assert len({row['header'] for row in table}) == len(table)  # #529: a header names one card
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / 'widget').mkdir()
     config = {'repos': [{'name': 'acme/widget'}]}
@@ -93,13 +95,38 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
         for label, description, effects in row['choices']:
             assert description and interview().effects(row['id'], label.upper()) == effects
             for key, value in effects.items():
-                assert '.' in key or key in (*interview().ROLES, 'voice'), key
+                assert '.' in key or key in (*interview().ROLES, 'voice', 'cap'), key
                 if key == 'voice':
                     assert interview()._items(', '.join(value)) == value
             answers = {row['id']: {'acme/widget': label} if row['scope'] == 'repo' else label}
             additions, edits = calibrate.settle(ONE + PLANE, interview().settings(answers, config))
             (tmp_path / '.wuwei/config.toml').write_text(calibrate.apply(ONE + PLANE, additions))
             assert edits == [] and load_config(tmp_path)
+
+
+def test_workspace_rows_for_the_day_keys(tmp_path):
+    # #529: cap, host.seats, outbound.default_tier and outbound.learn are asked on cards.
+    from wuwei.workspace import load_config
+    assert interview().effects('cap', '7') == {'cap': 7}
+    assert interview().effects('seats', ' 6 ') == {'host.seats': 6}
+    for qid, text in (('cap', '0'), ('cap', '1.5'), ('seats', 'x'), ('tier', 'later')):
+        with pytest.raises(ValueError):
+            interview().effects(qid, text)
+    config = {'repos': []}
+    assert interview().settings({'cap': '5'}, config) == [((), 'cap', 5)]
+    assert interview().describe({'cap': '5'}, config) == ['- cap: 5 -> cap = 5']
+    (tmp_path / '.wuwei').mkdir()
+    for qid, reply, value in (('cap', '1', 1), ('seats', '4', 4), ('tier', 'Ask', 'ask'), ('learn', 'Off', 'off')):
+        row = interview().question(qid)
+        assert row['scope'] == 'workspace' and row['choices'][0][2] == {
+            {'cap': 'cap', 'seats': 'host.seats', 'tier': 'outbound.default_tier',
+             'learn': 'outbound.learn'}[qid]: {'cap': 1, 'seats': 4, 'tier': 'send', 'learn': 'card'}[qid]}
+        additions, _ = calibrate.settle(PLANE, interview().settings({qid: reply}, config))
+        (tmp_path / '.wuwei/config.toml').write_text(calibrate.apply(PLANE, additions))
+        loaded = load_config(tmp_path)
+        assert {'cap': loaded['cap'], 'seats': loaded['host']['seats'],
+                'tier': loaded['outbound']['default_tier'], 'learn': loaded['outbound']['learn']}[qid] == value
+    assert interview().card_for('host.seats') == 'seats' and interview().card_for('owner.name') is None
 
 
 def test_telemetry_question_follows_the_posture():
@@ -399,14 +426,14 @@ def test_interview_needs_a_host_terminal(offline, capsys, monkeypatch):
 def test_interview_on_the_terminal(offline, capsys, monkeypatch):
     raw = (offline / '.wuwei/config.toml').read_text()
     replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '1', '3', '4',
-               '1', '1', '1', 'C0123ABCD', '1', 'pat-dev']
+               '1', '1', '1', 'C0123ABCD', '1', 'pat-dev', '1', '1', '1', '1']
     terminal(monkeypatch, replies)
     assert main('calibrate', '--interview', '--repo', 'acme/widget') == 0, capsys.readouterr().err
     out = capsys.readouterr().out
     answers = json.loads((offline / DAY / 'interview.json').read_text())
     assert answers['merge'] == {'acme/widget': 'Auto, 30 min soak'} and answers['gates'] == {
         'acme/widget': 'Standard'} and answers['phone'] == 'Summary' and answers['manual'] == 'Package publishing'
-    assert len(answers) == 23 and answers['telemetry'] == 'Off' and answers['docs'] == 'None' and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
+    assert len(answers) == 27 and answers['telemetry'] == 'Off' and answers['docs'] == 'None' and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
     for line in interview().describe(answers, config(offline)):
         assert line in out
     assert 'gates: answer one of' in out and 'hours: answer one of' in out and 'bin/wuwei config promote' in out
@@ -524,7 +551,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
            'default_branch = "main"\n\n' + PLANE + '\n[deploy]\nworkflows = []\ndeny = []\n')
     (root / '.wuwei/config.toml').write_text(raw)
     terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '3', '4', '4',
-                           '1', '1', '4', '1', '1'])
+                           '1', '1', '4', '1', '1', '1', '1', '1', '1'])
     assert main('calibrate', '--interview') == 0, capsys.readouterr().err
     lines = interview().describe(json.loads((root / DAY / 'interview.json').read_text()), config(root))
     capsys.readouterr()
