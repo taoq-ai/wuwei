@@ -1051,3 +1051,16 @@ def test_seen_set_is_cli_owned(records, posture, monkeypatch, capsys):
         assert _hook(records, tool, monkeypatch, capsys, **field) == 2
     code, reason = check_file(payload(records, 'Write', file_path=target))
     assert code == 1 and 'seen set' in reason and 'init --upgrade' in reason
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_rehearsal_ledger_is_cli_owned(records, posture, monkeypatch, capsys):
+    # #557: a seat cannot mark an undo rehearsed; the records floor holds under every posture.
+    from wuwei.guards.protect_state import check_file
+    _posture(records, posture)
+    target = '.wuwei/memory/rehearsals.json'
+    for tool, field in [('Write', {'file_path': target}), ('Edit', {'file_path': target}),
+                        ('Bash', {'command': f'echo {{}} > {target}'})]:
+        assert _hook(records, tool, monkeypatch, capsys, **field) == 2
+    code, reason = check_file(payload(records, 'Write', file_path=target))
+    assert code == 1 and 'wuwei undo rehearse' in reason

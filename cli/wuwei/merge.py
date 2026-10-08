@@ -478,6 +478,19 @@ def baseline(root):
     return float(values[0])
 
 
+def revert(root, directory, ref, entry, host):
+    """Open the merge's revert PR once (the red-base watch and #557 wuwei undo); its URL."""
+    if not entry.get('revert_pr'):
+        result = read(host.revert_pr, ref, root=root)
+        repo = ref.split('#')[0]
+        target = f'https://github.com/{repo}/pull/{integer(result["number"])}'
+        if result['url'] != target or result['number'] <= 0 or target.endswith('/' + ref.split('#')[1]):
+            raise ValueError(f'invalid revert PR result; {DAMAGED}')
+        entry['revert_pr'] = target
+        save_entry(root, directory, ref, entry, 'merge.revert')
+    return entry['revert_pr']
+
+
 def monitor(root, directory, ref, entry, host, settings):
     policy = settings['merge']
     repo = settings['name']
@@ -531,14 +544,7 @@ def monitor(root, directory, ref, entry, host, settings):
         trip(root, repo, policy, 'red base checks: ' + ', '.join(red), ref=ref, kind='base.red')
         entry.update(status='red', red=red)
         save_entry(root, directory, ref, entry, 'merge.red')
-        if not entry.get('revert_pr'):
-            result = read(host.revert_pr, ref, root=root)
-            target = f'https://github.com/{repo}/pull/{integer(result["number"])}'
-            if result['url'] != target or result['number'] <= 0 or target.endswith('/' + ref.split('#')[1]):
-                raise ValueError(f'invalid revert PR result; {DAMAGED}')
-            entry['revert_pr'] = target
-            save_entry(root, directory, ref, entry, 'merge.revert')
-        return 1, {'reverts': [entry['revert_pr']], 'fixes': [], 'escaped': True}
+        return 1, {'reverts': [revert(root, directory, ref, entry, host)], 'fixes': [], 'escaped': True}
     measure = age >= timedelta(days=14) and 'outcome' not in entry
     history = read(host.history, repo, merge_commit, pr['base'], measure, root=root)
     commits = obligations._list(history['commits'])

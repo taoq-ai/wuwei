@@ -30,7 +30,7 @@ WRITES = frozenset({
     'sweep obligations', 'sweep watch', 'telemetry off', 'telemetry preview', 'telemetry proposals',
     'telemetry send', 'tracker create', 'tracker done', 'tracker log', 'verdict lint', 'voice edit',
     'voice learn',
-    'watch install', 'watch uninstall', 'worktree add', 'worktree adopt'})
+    'undo', 'watch install', 'watch uninstall', 'worktree add', 'worktree adopt'})
 
 
 def read_only(args):

@@ -373,6 +373,14 @@ never touched, comes to you once even when the [mandate](concepts.md#mandate) wo
 `first time for <target>`. One answer clears the target, and the next one runs as usual. The report
 lists each target first seen today under `First time today`.
 
+A record is two-way only when WUWEI can undo it and has tried that undo once here. On the first
+day the planner runs `wuwei undo rehearse commit` and `wuwei undo rehearse decision`, which
+`wuwei next` returns after the gate; until they ran, two-way records of that kind come to you as
+cards, and a message or a merge to a repository that deploys always does. To undo, answer Undo on
+the card, reply `undo D-3` to the listener DM, or run `bin/wuwei undo D-3` (or `bin/wuwei undo
+<event id>` for a merge) in a host terminal and answer y. The report lists what was undone under
+`Undone today` and the one-way actions of the day under `Cannot be undone`.
+
 Seats do not ask what their mandate lets them decide. You see two more things here. An item
 that goes back and forth shows as `loops N` on the status line and a `negotiation.loop`
 nudge (a [page](concepts.md#page) when its goal date has passed), with the counts and the last two exchanges in

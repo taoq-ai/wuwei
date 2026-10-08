@@ -404,6 +404,18 @@ the record with `decision route D-n --external <item>` and continues. After
 recommendation on a two-way door or parks the item on a one-way door, and records
 `decision.waited`.
 
+## Measured reversibility
+
+A seat writes `Reversibility: two-way`, but the CLI decides whether that holds. A record is
+two-way only when the CLI knows the undo for its kind of action and that undo ran once in
+this workspace. The class gives the kind: code changes undo with a git revert, park, defer
+and re-plan with `wuwei undo D-n`, and a merge with a revert PR when its repository does not
+deploy on merge. A message never has an undo, and neither does `other`. Each undo is
+rehearsed once on a scratch target (`wuwei undo rehearse commit`, `wuwei undo rehearse
+decision`); `wuwei next` runs these for you after the morning gate. Until then, and for any
+kind without an undo, the CLI rewrites the record to one-way, says why, and the record comes
+to you as a card. Nothing is refused for it.
+
 Negotiation loops: when an item goes back and forth (records, verdicts, restarts and fix
 requests above `steward.loop_threshold` in `steward.loop_window_hours`, or a second fix
 round), the steward raises one `negotiation.loop` nudge per item per day, a page when the

@@ -814,3 +814,16 @@ def test_shepherd_seat_never_merges(case, monkeypatch, capsys):
     assert not any(c[0] == 'merge' for c in host.calls)
     monkeypatch.delenv('WUWEI_SEAT_ROLE')
     assert policy().execute(REF, root).exit == 0
+
+
+def test_revert_opens_the_revert_pr_once(case):
+    # #557: the merge watch and wuwei undo share one revert call.
+    root, host = merged(case)
+    directory = workspace.day_dir(root)
+    entry = state.read_state(root)['merges'][REF]
+    url = 'https://github.com/example/project/pull/8'
+    assert policy().revert(root, directory, REF, entry, host) == url
+    assert entry['revert_pr'] == url and state.read_state(root)['merges'][REF]['revert_pr'] == url
+    assert [e['kind'] for e in events(root)][-1] == 'merge.revert'
+    host.calls.clear()
+    assert policy().revert(root, directory, REF, entry, host) == url and not host.calls
