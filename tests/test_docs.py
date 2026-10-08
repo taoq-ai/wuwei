@@ -119,10 +119,13 @@ def test_daily_shows_a_clean_first_day():
 def test_readme_install_and_hero():
     readme = (ROOT / 'README.md').read_text()
     for phrase in ('prefers-color-scheme: dark', 'docs/site/assets/hero-light.svg',
-                   'docs/site/assets/hero-dark.svg', '#00C9A7', '无为',
+                   'docs/site/assets/hero-dark.svg', '无为',
                    'What WUWEI is and is not', '/plugin marketplace add taoq-ai/wuwei',
                    '/plugin install wuwei@wuwei', 'wuwei init', '/wuwei plan'):
         assert phrase in readme
+    # #561: the brand accent belongs to the art and the design spec, not the README text.
+    assert '#00C9A7' not in readme and 'brand accent' not in readme.lower()
+    assert 'deploy' not in readme.split('## What WUWEI is and is not', 1)[1].split('\n## ', 1)[0]
     index = (SITE / 'index.md').read_text()
     for variant in ('light', 'dark'):
         art = SITE / f'assets/hero-{variant}.svg'
@@ -134,29 +137,66 @@ def test_readme_install_and_hero():
         assert f'<img src="assets/hero-{variant}.svg#only-{variant}"' in index, variant
 
 
-def test_readme_compares_with_other_tools():
+# #561: the nine principles in order, each as (phrases in the item, link in the item).
+PRINCIPLES = (
+    (('model walks it', 'wuwei next', 'judgement'), '(docs/site/agent.md'),
+    (('observe', 'guarded', 'warning or a card', 'floor', 'records', 'strict'),
+     '(docs/site/security.md#security-posture)'),
+    (('moment of action', 'invariant', 'code host'), '(docs/site/concepts.md#guards)'),
+    (('mit cisr', 'routine', 'mandate', 'strategic', 'one-way', 'card'),
+     '(docs/site/concepts.md#decision-classes-and-cruise-levels)'),
+    (('ledger', 'ceiling', 'novel', 'undo', 'error budget', 'brier', 'shadow'),
+     '(docs/site/daily.md#cruise-answers)'),
+    (('records', 'card', 'confirmation', 'host terminal'), '(docs/site/concepts.md#drafts-and-cards)'),
+    (('unmeasured', 'ci is the gate', 'live source'), '(docs/site/concepts.md#unmeasured)'),
+    (('ziran', 'signed', 'posture', 'deploy', 'approve', 'admin'), '(docs/site/security.md)'),
+    (('stdlib', 'delet'), '(https://github.com/taoq-ai/wuwei/blob/main/.specify/memory/constitution.md)'),
+)
+
+
+def _principles(readme):
+    section = readme.split('\n## Principles\n', 1)[1].split('\n## ', 1)[0]
+    return [line for line in section.splitlines() if line.strip()]
+
+
+def test_readme_states_the_principles():
     readme = (ROOT / 'README.md').read_text()
-    assert '## How WUWEI compares' in readme
-    assert (readme.index('## What WUWEI is and is not') < readme.index('\n## Installation\n')
-            < readme.index('## How WUWEI compares'))
-    section = readme.split('## How WUWEI compares', 1)[1].split('\n## ', 1)[0]
-    assert re.search(r'As of [A-Z][a-z]+ \d{4}', section)
-    for phrase in ('Spec Kit', 'OpenSpec', 'superpowers', 'BMAD Method', 'Kiro', 'Claude Code',
-                   'github.com/github/spec-kit', 'github.com/Fission-AI/OpenSpec',
-                   'github.com/obra/superpowers', 'github.com/bmad-code-org/BMAD-METHOD',
-                   'kiro.dev', 'code.claude.com/docs', '### How they compose'):
-        assert phrase in section
-    rows = [line for line in section.splitlines() if line.startswith('|')]
-    for header in ('Who plans the day', 'Who reviews the work', 'What stops a bad merge',
-                   'What is learned afterwards', 'Where it runs'):
-        assert header in rows[0], header
-    assert rows[0].count('|') <= 7
-    assert 'WUWEI' in rows[2].split('|')[1]
-    assert 'Where WUWEI is worse' not in readme
+    for gone in ('## How WUWEI compares', '### How they compose', '## Philosophy', 'BMAD',
+                 'kiro.dev', 'Who plans the day'):
+        assert gone not in readme, gone
+    items = _principles(readme)
+    assert [re.match(r'^(\d)\. ', item).group(1) for item in items] == [str(n) for n in range(1, 10)]
+    for item, (phrases, link) in zip(items, PRINCIPLES, strict=True):
+        for phrase in phrases:
+            assert phrase in item.lower(), (phrase, item[:40])
+        assert link in item, link
+        assert len(re.sub(r'\]\([^)]*\)', ']', item).split()) <= 110, item[:40]
+        assert '\N{EM DASH}' not in item
+    for n in range(556, 561):
+        assert f'https://github.com/taoq-ai/wuwei/issues/{n})' in items[4], n
     for word in ('professional', 'enterprise', 'best-in-class'):
         assert word not in readme.lower(), word
-    assert len(section.splitlines()) < 70
-    assert '\N{EM DASH}' not in section
+
+
+def test_readme_landing_marks_follow_main():
+    # #561: "landing" names only issues whose feature has not landed (no specs/<n>-* yet),
+    # so the word has to go once the feature reaches main.
+    readme = (ROOT / 'README.md').read_text()
+    shipped = lambda n: any(ROOT.glob(f'specs/{n}-*'))
+    sentences = [s for line in readme.splitlines() for s in re.split(r'(?<=[.!?])\s+', line)
+                 if re.search(r'\blanding\b', s, re.I)]
+    assert sentences
+    landing = set()
+    for sentence in sentences:
+        issues = {int(n) for n in re.findall(r'taoq-ai/wuwei/issues/(\d+)\)', sentence)}
+        assert issues, sentence
+        landing |= issues
+    assert not [n for n in landing if shipped(n)], landing
+    principle = _principles(readme)[4]
+    for n in range(556, 561):
+        marked = any(f'issues/{n})' in s for s in re.split(r'(?<=[.!?])\s+', principle)
+                     if re.search(r'\blanding\b', s, re.I))
+        assert marked != shipped(n), n
 
 
 def test_readme_lead_and_limits():
@@ -182,9 +222,8 @@ def test_readme_tells_the_day_in_superpowers_shape():
     readme = _plain('README.md')
     assert len(readme.splitlines()) <= 300
     new = ('## How it works', '## The basic workflow', '## When something goes wrong',
-           '## What is inside', '## Philosophy', '## Installation')
-    order = [readme.index(f'\n{h}\n') for h in ('## What ships today', *new, '## Quick start',
-                                                 '## How WUWEI compares')]
+           '## What is inside', '## Principles', '## Installation')
+    order = [readme.index(f'\n{h}\n') for h in ('## What ships today', *new, '## Quick start')]
     assert order == sorted(order)
     section = lambda h: readme.split(f'\n{h}\n', 1)[1].split('\n## ', 1)[0]
     flat = lambda h: ' '.join(section(h).split()).lower()
@@ -227,12 +266,6 @@ def test_readme_tells_the_day_in_superpowers_shape():
     planned = next(line for line in inside.splitlines() if line.startswith('Planned:'))
     installed = {name for port in registry.INTERFACES for name in registry.known(port)}
     assert not {word.lower() for word in re.findall(r'\b[A-Z]\w+', planned)} & installed, planned
-    philosophy = flat('## Philosophy')
-    assert len(re.findall(r'^- ', section('## Philosophy'), re.M)) == 5
-    for phrase in ('safe path', 'records', 'cooperative mistake prevention', 'code host', 'warn',
-                   'posture', 'unmeasured', 'stdlib'):
-        assert phrase in philosophy, phrase
-    assert 'warn by default' not in philosophy and 'records always block' in philosophy
     install =section('## Installation')
     parts = install.split('\n### ')
     assert [part.split('\n', 1)[0] for part in parts[1:]] == [
@@ -258,7 +291,7 @@ def test_docs_index_mirrors_the_readme_sections():
     readme = (ROOT / 'README.md').read_text()
     pairs = (('How it works', 'daily'), ('The basic workflow', 'concepts'),
              ('When something goes wrong', 'recovery'), ('What is inside', 'adapters'),
-             ('Philosophy', 'security'), ('Installation', 'integrity'))
+             ('Principles', 'security'), ('Installation', 'integrity'))
     for heading, page in pairs:
         assert f'(docs/site/{page}.md' in readme.split(f'\n## {heading}\n', 1)[1].split('\n## ', 1)[0], page
     index = (SITE / 'index.md').read_text().split('\n## Start here\n', 1)[0]
@@ -773,13 +806,14 @@ def test_readme_first_day_and_shipped_areas():
         assert steps == sorted(steps), heading
         assert 'config set' in section, heading
     assert (readme.index('## What WUWEI is and is not') < readme.index('## What ships today')
-            < readme.index('## How WUWEI compares'))
+            < readme.index('## Principles'))
     ships = readme.split('\n## What ships today\n', 1)[1].split('\n## ', 1)[0]
     for link in ('docs/site/daily.md', 'docs/site/security.md', 'docs/site/concepts.md#review-tiers',
                  'docs/site/remote.md', 'docs/site/concepts.md#cockpit-and-board',
                  'docs/site/configuration.md#calibration', 'docs/site/reference.md#heartbeat',
                  'docs/specs/2026-09-24-wuwei-design.md', 'docs/site/daily.md#2-configure',
-                 'docs/site/reference.md#doctor', 'docs/site/security.md#security-posture'):
+                 'docs/site/reference.md#doctor', 'docs/site/security.md#security-posture',
+                 'docs/site/agent.md'):
         assert f'({link})' in ships, link
 
 
@@ -1127,7 +1161,7 @@ def test_notice_credits_match_readme_acknowledgements():
         assert text in notice, text
     for name in ('Spec Kit', 'autoharness', 'ralph-starter', 'humanizer', 'Model Context Protocol',
                  'MCP Apps', 'release-please', 'ZIRAN', 'WSJF', 'RICE', 'two-way door', 'Simple Icons',
-                 'superpowers'):
+                 'superpowers', 'OpenSpec', 'CISR', 'vGOAL', 'error budget', 'Brier'):
         assert name.lower() in notice.lower(), name
     assert '16.33.0' in notice and 'CC0' in notice
     superpowers = notice.split('\nsuperpowers\n', 1)[1].split('\n\n', 1)[0]
