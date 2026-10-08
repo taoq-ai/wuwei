@@ -29,7 +29,7 @@ GROUPS = (
      'note tracker metrics report retro close steward docs'),
     ('Owner: run these in your own host terminal',
      'setup init config decide grants calibrate goals voice drafts remote mcp outbound watch listen shepherd '
-     'dashboard promote consolidate telemetry'),
+     'dashboard promote cruise consolidate telemetry'),
     ('Recovery: when something is stuck',
      'doctor why state shadow heartbeat integrity runtime sessions seat'),
     ('Plumbing: hooks, seats and the plugin call these',

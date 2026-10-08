@@ -16,6 +16,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei close` | Refuses day close until every obligation lands; `--widget` asks about each open item. | [Day close](concepts.md#day-close) |
 | `bin/wuwei config` | Inspects and changes workspace configuration: `check`; `promote`, `set <key> <value>` and `add-repo` apply after a digest. | [Configuration](configuration.md#calibration) |
 | `bin/wuwei consolidate` | Reviews memory, packs old days into tarballs, rebuilds digests and proposes forgetting; `consolidate --widget` asks each pending proposal. | [Configuration](configuration.md#host-build-and-memory) |
+| `bin/wuwei cruise` | `cruise budget` prints the error budget per decision class (level, answered, spent, allowance, burn, state); exit 1 when a class warns or is spent. | [Cruise answers](daily.md#cruise-answers) |
 | `bin/wuwei dashboard` | Serves the read-only day board on loopback. | [Cockpit and board](concepts.md#cockpit-and-board) |
 | `bin/wuwei decide` | Owner: `decide D-<n> <option> [--note <text>]` records the answer to today's decision, the MCP registry one included. | [Host terminal actions](#host-terminal-actions) |
 | `bin/wuwei decision` | Checks and routes decision records; `outcome` records your answer; `undo D-<n>` reverts a cruise answer inside its undo window. | [Decision record](#decision-record) |
