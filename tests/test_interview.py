@@ -776,7 +776,7 @@ def test_allowlist_row_names_the_file_and_production_reads():
     # #530: the Allow choice says in one line that production reads stay the owner's decision.
     row = interview().question('allowlist')
     allow = dict((label, description) for label, description, _ in row['choices'])['Allow']
-    assert 'Production reads of your projects stay your decision' in allow
+    assert 'You still decide on reads of your live systems' in allow
     assert interview().describe({'allowlist': 'Allow'}, {'repos': []}) == [
         '- allowlist: Allow -> .claude/settings.local.json allow rules']
     assert interview().settings({'allowlist': 'Allow'}, {'repos': []}) == []

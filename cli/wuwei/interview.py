@@ -338,11 +338,11 @@ QUESTIONS = (
      'free': (_count('host.seats'), 'a whole number of 1 or more')},
     # #530: the harness allowlist; the answer writes .claude/settings.local.json, not a config key.
     {'id': 'allowlist', 'scope': 'workspace', 'header': 'Permissions',
-     'question': 'Let Claude Code run the WUWEI commands and the adapter reads without a permission prompt? '
+     'question': 'Let Claude Code run the WUWEI commands and the adapter reads without asking you each time? '
                  '(settings.local.json)',
      'choices': (
          ('Allow', ('Claude Code runs bin/wuwei, git and gh reads and local commits without asking; never a push, '
-                    'merge, deploy or release. Production reads of your projects stay your decision, and Claude '
+                    'merge, deploy or release. You still decide on reads of your live systems, and Claude '
                     'Code keeps asking for them (.claude/settings.local.json).'), {'allowlist': True}),
          ('Not now', 'Claude Code keeps asking before each of these commands.', {})),
      'free': None},
