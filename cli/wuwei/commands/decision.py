@@ -121,6 +121,10 @@ def mandate(ident, path, text, fields, scores, root, config):
                        payload={'id': ident, **record, 'decided_by': by})
     kept = fields['Outcome'].startswith(('carried ', 'parked '))  # an item disposition stays (review F2)
     workspace.atomic_write(path, decided_record(text, fields['Outcome'] if kept else record['option'], by))
+    try:  # #560: what a shadow level would have answered; the live route above stands either way
+        cruise.shadow(root, ident, record, fields, scores, config, data)
+    except (OSError, ValueError) as exc:
+        print(f'wuwei decision route: shadow not written: {exc}', file=sys.stderr)
     return 'mandate'
 
 

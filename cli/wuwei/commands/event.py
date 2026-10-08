@@ -82,6 +82,7 @@ EVENT_PRODUCERS = {
     'negotiation.loop': 'wuwei steward run or wuwei dispatch next',
     'negotiation.notified': 'wuwei listen', 'decision.notified': 'wuwei listen',
     'cruise.carded': 'wuwei plan propose', 'decision.waited': 'wuwei sweep',
+    'decision.shadow': 'wuwei decision route',
     'doctor.fixed': 'owner host wuwei doctor --fix',
     'config.newer_template': 'wuwei hook PreToolUse',
     'memory.folded': 'owner host wuwei memory forget', 'memory.consolidated': 'wuwei consolidate',

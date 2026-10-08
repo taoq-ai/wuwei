@@ -144,6 +144,7 @@ SCHEMA = {
                   "cruise": {"enabled": (bool, True), "margin": (float, 0.2),
                              "max_per_day": (int, 20, 0), "undo_minutes": (int, 60, 1),
                              "promote_agreements": (int, 10, 1), "promote_days": (int, 14, 1),
+                             "shadow_days": (int, 5, 1), "shadow_min": (int, 5, 1),
                              "budget_share": (float, 0.1), "budget_window_days": (int, 14, 1),
                              "burn_warn": (float, 2.0),
                              "calibration_threshold": (float, 0.15), "calibration_min": (int, 10, 1),

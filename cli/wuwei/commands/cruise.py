@@ -9,15 +9,25 @@ from wuwei.exits import CLEAN, FINDINGS, UNRUN
 
 def register(subparsers):
     parser = subparsers.add_parser('cruise', help='cruise mode: budget prints the error budget per decision class, '
-                                   'calibration the confidence calibration per class and role')
-    parser.add_argument('action', choices=('budget', 'calibration'))
+                                   'calibration the confidence calibration per class and role, '
+                                   'shadow the shadow of each class waiting for a raise')
+    parser.add_argument('action', choices=('budget', 'calibration', 'shadow'))
     parser.set_defaults(func=run)
 
 
 def run(args):
-    from wuwei import budget_classes, calibration_scores
+    from wuwei import budget_classes, calibration_scores, cruise
     try:
         root = workspace.find_workspace()
+        if args.action == 'shadow':  # #560
+            rows = cruise.running(root).get('shadow', {})
+            form = '{:<16} {:>5} {:<10} {:>6} {:>6} {}'
+            print(form.format('class', 'level', 'started', 'scored', 'agreed', 'state'))
+            for name, row in sorted(rows.items()):
+                print(form.format(name, f'L{row["level"]}', row['started'][:10], row['scored'], row['agreed'], row['state']))
+            if not rows:
+                print('none')
+            return CLEAN
         reader = budget_classes if args.action == 'budget' else calibration_scores
         rows = reader.table(root, workspace.load_config(root))
     except (OSError, UnicodeError, ValueError, KeyError, TypeError) as exc:

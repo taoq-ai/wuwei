@@ -304,7 +304,7 @@ def test_report_levels(tmp_path, monkeypatch):
     (day / 'decisions/D-2.md').write_text('Question: Ship?\nOutcome: Accepted\n')
     brief = report.build(root)
     sections = [line for line in brief.splitlines() if line.startswith('## ')]
-    assert sections == ['## Changed', '## Taken under mandate', '## Decisions by class', '## First time today', '## Undone today', '## Cannot be undone', '## Calibration', '## Merged', '## Cycle time', '## Open at close', '## Parked',
+    assert sections == ['## Changed', '## Taken under mandate', '## Decisions by class', '## First time today', '## Undone today', '## Cannot be undone', '## Calibration', '## Cruise shadow', '## Merged', '## Cycle time', '## Open at close', '## Parked',
                         '## Decisions answered', '## Carry']
     assert brief.split('## Changed\n')[1].split('\n\n')[0] == 'none'
     (root / '.wuwei/memory/notes/baseline.md').write_text(
