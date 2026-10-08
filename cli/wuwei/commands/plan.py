@@ -90,7 +90,7 @@ def run(args):
             else:
                 raise ValueError(f'plan set: {args.assignment} is not a spec, docs or ticket value; run '
                                  f'bin/wuwei plan set {args.item} spec=required|skipped, docs=<page>|new|none '
-                                 'or ticket=<id>, with --reason "<why>" for spec=skipped or docs=none')
+                                 'or ticket=<id>. Pass --reason "<why>" with spec=skipped or docs=none')
         elif args.action in ('carry', 'park'):
             outcome = {'carry': 'carried', 'park': 'parked'}[args.action]
             print(f'{plan.dispose(args.item, outcome, args.reason)}: {outcome} {args.item}')

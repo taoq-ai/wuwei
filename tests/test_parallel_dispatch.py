@@ -155,7 +155,7 @@ def test_fresh_workspace_derives_cap_from_the_host_and_starts_four(day):
     assert json.loads((day.directory / 'proposal.json').read_text())['cap'] == 4
     widget = json.loads(day.run('plan', 'gate'))[0]
     options = {row['label']: row['description'] for row in widget['options']}
-    assert text in options['Approve'] and 'config cap' in options['Change something']
+    assert text[:1].upper() + text[1:] in options['Approve'] and 'config cap' in options['Change something']
     assert (day.data['cap'], day.data['cap_bound']) == (4, 'host')
     assert 'seats 0/4 (host)' in day.run('status', '--line')
     entries, _ = launch_set(day)

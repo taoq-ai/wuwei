@@ -53,6 +53,7 @@ def test_every_registered_command_is_in_exactly_one_set():
     (['status', '--line'], True), (['why', 'last', 'refusal'], True), (['doctor'], True),
     (['doctor', '--json'], True), (['config', 'check'], True), (['mcp', 'check', '--widget'], True),
     (['integrity', 'check'], True), (['shadow', 'report'], True), (['board'], True),
+    (['lint', 'tone', 'README.md'], True),
     (['sessions'], True), (['heartbeat'], True), (['calibrate', '--questions'], True),
     (['calibrate', '--repo', 'x', '--questions'], True), (['--version'], True),
     (['mcp', 'decide', '--help'], True), (['config', 'set', '-h'], True),
@@ -159,7 +160,7 @@ def test_workspace_value_is_not_the_command(workspace, posture, form, monkeypatc
     configure(workspace.root, posture)
     code, out = hook(workspace.root, form.format(exe=workspace.exe), monkeypatch, capsys)
     assert code == 2
-    assert "Decisions are the owner's answer" in out['permissionDecisionReason']
+    assert 'The owner answers decisions' in out['permissionDecisionReason']
 
 
 @pytest.mark.parametrize('posture', POSTURES)

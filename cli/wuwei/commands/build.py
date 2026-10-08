@@ -26,7 +26,7 @@ def run(args):
         if args.operation in ('next', 'check'):
             root = workspace.find_workspace()
             if len(args.arguments) not in ((1, 3) if args.operation == 'next' else (1,)):
-                raise ValueError('usage: build next <item> [<brief> <worktree>] or build check <item>; run bin/wuwei build next <item> for the next builder action, or bin/wuwei build check <item> after the builder stops')
+                raise ValueError('usage: build next <item> [<brief> <worktree>] or build check <item>; run bin/wuwei build next <item> for the next builder action. Run bin/wuwei build check <item> after the builder stops')
             item, *paths = args.arguments
             if args.operation == 'check':
                 code = check(item, root=root)
@@ -40,7 +40,7 @@ def run(args):
             print(json.dumps(next_action(item, *paths, root=root)))
             return 0
         if len(args.arguments) not in (0, 2):
-            raise ValueError('usage: build next <item> or build <item> <brief> <worktree> (Codex only); use bin/wuwei build next <item> for a Claude builder, or bin/wuwei build <item> <brief> <worktree> for a Codex builder')
+            raise ValueError('usage: build next <item> or build <item> <brief> <worktree> (Codex only); use bin/wuwei build next <item> for a Claude builder. Use bin/wuwei build <item> <brief> <worktree> for a Codex builder')
         return run_loop(args.operation, *(args.arguments or [None, None]))
     except PortExit as exc:
         print(f'build: {exc}', file=sys.stderr)
@@ -88,7 +88,7 @@ def _repo(root, tree, config):
         from wuwei.guards.commit_push import context
         repo, _, _ = context(tree, {}, {}, root, identity=False)
     if not repo['fast_checks']:
-        raise ValueError('worktree has no configured fast checks; add fast_checks to its [[repos]] entry (bin/wuwei calibrate proposes them, the owner applies them with bin/wuwei config set in a host terminal), then retry')
+        raise ValueError('worktree has no configured fast checks; add fast_checks to its [[repos]] entry , then retry. bin/wuwei calibrate proposes them, and the owner applies them with bin/wuwei config set in a host terminal')
     return repo
 
 
@@ -129,7 +129,7 @@ def next_action(item, brief=None, worktree=None, *, root=None):
         brief = root / matches[-1]['path']
         worktree = matches[-1].get('worktree') or data['items'][item].get('worktree')
     if worktree is None:
-        raise ValueError(f'builder brief needs a worktree; create one with bin/wuwei worktree add {item} and write the brief with --worktree, or run bin/wuwei build next {item} <brief> <worktree>')
+        raise ValueError(f'builder brief needs a worktree; create one with bin/wuwei worktree add {item} and pass it with --worktree. Or run bin/wuwei build next {item} <brief> <worktree>')
     tree = (root / worktree).resolve(strict=True)
     path = (root / brief).resolve(strict=True)
     if record is not None:
@@ -457,7 +457,7 @@ def run_loop(item, brief, worktree, *, root=None):
         config = workspace.load_config(root)
         runtime_config = registry.runtime_config('builder', config, root)
         if runtime_config['adapters']['runtime'] == 'claude':
-            raise ValueError('Claude builders require build next <item> in the planner session; run bin/wuwei build next <item> there, or the owner switches the builder runtime to codex with bin/wuwei config set in a host terminal')
+            raise ValueError('Claude builders require build next <item> in the planner session; run bin/wuwei build next <item> there. Or the owner switches the builder runtime to codex with bin/wuwei config set in a host terminal')
         if brief is None or worktree is None:
             raise ValueError('usage: build <item> <brief> <worktree> (Codex only); run bin/wuwei build <item> <brief> <worktree> with all three arguments')
         runtime = registry.load('runtime', runtime_config)
