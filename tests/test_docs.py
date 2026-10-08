@@ -195,12 +195,19 @@ def test_readme_tells_the_day_in_superpowers_shape():
     for phrase in ('/wuwei:wuwei-plan', 'retro', 'status line', 'DM', 'safe path'):
         assert phrase in ' '.join(story.split()), phrase
     workflow = section('## The basic workflow')
-    assert re.findall(r'^(\d)\. \*\*', workflow, re.M) == [str(n) for n in range(1, 8)]
-    stations = [flat('## The basic workflow').index(word) for word in (
-        'calibrat', 'morning gate', 'build', 'tier', 'shepherd', 'retro', 'memory')]
-    assert stations == sorted(stations)
-    assert 'posture' in workflow and 'not built' in flat('## The basic workflow')
-    assert len(workflow.strip().splitlines()) <= 20
+    blocks = re.findall(r'^```mermaid\n(.*?)^```$', workflow, re.M | re.S)
+    assert len(blocks) == 1 and blocks[0].startswith('flowchart LR')
+    chart = blocks[0]
+    stages = [chart.index(f'["{name}') for name in (
+        'Setup and calibration', 'Plan and the morning gate', 'Build', 'Review by tier',
+        'Shepherd to merge', 'Close and retro')]
+    assert stages == sorted(stages)
+    assert re.search(r'close -- "memory into tomorrow[^"]*" --> plan', chart)
+    assert re.search(r'you\b.*-\.-> plan & review$', chart, re.M)
+    assert re.search(r'hooks\(\["hooks check every action"\]\) -\.-> build$', chart, re.M)
+    assert workflow.index('```mermaid') > workflow.index('In words:')
+    assert 'not built' not in flat('## The basic workflow')
+    assert len(workflow.strip().splitlines()) < 25
     wrong = section('## When something goes wrong')
     assert len(re.findall(r'^- ', wrong, re.M)) == 5
     for phrase in ('why last refusal', 'doctor --fix', 'wuwei next', 'shadow report', '.wuwei/days/'):
