@@ -258,6 +258,7 @@ def test_opaque_read_warns_below_strict(workspace, posture, command, named, monk
     ('kubectl apply -f x\n', 'bash loop.sh'),
     ('gh release create v1\n', 'bash loop.sh'),
     ('gh pr review 7 --approve\n', 'bash loop.sh'),
+    ('gh api -X PUT repos/o/r/branches/main/protection/x\n', 'bash loop.sh'),  # #508 review F1
     ('', '''python3 -c "import subprocess; subprocess.run(['gh','pr','comment','7','--body','x'])"'''),
     ('', '''python3 -c "import os; os.system('git push --force origin x')"'''),
 ])
@@ -269,3 +270,32 @@ def test_opaque_publish_target_still_refuses(workspace, posture, script, command
     assert code == 2, out
     assert not [event for event in events(workspace, 'guard.would_refuse')
                 if event['payload']['reason'].startswith('opaque')]
+
+
+@pytest.mark.parametrize('posture', POSTURES)
+def test_issue_508_git_in_path(tmp_path, posture, monkeypatch, capsys):
+    from pathlib import Path
+    from fakes.integrity import seed
+    base = tmp_path / '508-git-in' / 'gh' / 'github'
+    root = base / 'workspace'
+    (root / '.wuwei').mkdir(parents=True)
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    monkeypatch.delenv('CDPATH', raising=False)
+    seed(root)
+    configure(root, posture)
+    (base / 'git-tools/bin').mkdir(parents=True)
+    launcher = base / 'git-tools/bin/wuwei'
+    launcher.symlink_to(Path(__file__).resolve().parents[1] / 'bin/wuwei')
+    for command in (f'{launcher} state get', f'{launcher} plan approve --items A',
+                    'pytest -q', f'ls {root}'):
+        code, out, _ = hook(root, command, monkeypatch, capsys)
+        assert code == 0, (command, out)
+    assert events(root, 'guard.would_refuse') == []
+    code, out, _ = hook(root, 'gh</dev/null pr merge 1 --admin', monkeypatch, capsys)
+    assert code == 2, out  # review F1: a glued redirect is still a mention
+    for command in ('git push origin main', 'git</dev/null push origin main'):
+        code, out, _ = hook(root, command, monkeypatch, capsys)
+        if posture == 'observe':  # #530: a publish warns under observe
+            assert code == 0 and events(root, 'guard.would_refuse'), command
+        else:
+            assert code == 2, (command, out)
