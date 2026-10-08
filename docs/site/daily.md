@@ -384,9 +384,9 @@ lists each target first seen today under `First time today`.
 
 A record is two-way only when WUWEI can undo it and has tried that undo once here. On the first
 day the planner runs `wuwei undo rehearse commit` and `wuwei undo rehearse decision`, which
-`wuwei next` returns after the gate; until they ran, two-way records of that kind come to you as
+`wuwei next` returns after the gate. Until they ran, two-way records of that kind come to you as
 cards, and a message or a merge to a repository that deploys always does. To undo, answer Undo on
-the card, reply `undo D-3` to the listener DM, or run `bin/wuwei undo D-3` (or `bin/wuwei undo
+the card or reply `undo D-3` to the listener DM. You can also run `bin/wuwei undo D-3` (or `bin/wuwei undo
 <event id>` for a merge) in a host terminal and answer y. The report lists what was undone under
 `Undone today` and the one-way actions of the day under `Cannot be undone`.
 
