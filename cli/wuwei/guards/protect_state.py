@@ -294,7 +294,7 @@ def _protected_name(path, directories=False):
         if part != '.wuwei':
             continue
         tail = parts[index + 1:]
-        if tail in (('config.toml',), ('env',), ('security.json',), ('.gitignore',), ('merge.lock',), ('executable',), ('calibration.json',)) or tail[:1] == ('generated',):
+        if tail in (('config.toml',), ('env',), ('security.json',), ('.gitignore',), ('merge.lock',), ('executable',), ('calibration.json',), ('graph.json',)) or tail[:1] == ('generated',):
             return True
         if tail[:1] in (('integrity',), ('.git',), ('ziran',), ('inbox',), ('metrics',)):
             return True
@@ -341,6 +341,9 @@ def _hint(path):
         return ('goals.md and voice.md are protected: after the morning gate the planner runs '
                 'wuwei goals edit --file <draft> or wuwei voice edit --file <draft>; other '
                 "edits are the owner's, outside agent tools.")
+    if tail == ('graph.json',):
+        return ('graph.json is the register of people, channels and tools: bin/wuwei config set, the cards '
+                'and bin/wuwei init --upgrade write it; bin/wuwei who reads it.')
     if tail == ('memory', 'rehearsals.json'):
         return ('rehearsals.json is the undo rehearsal ledger (design 5.8 Measured reversibility): '
                 'only wuwei undo rehearse and wuwei undo write it.')

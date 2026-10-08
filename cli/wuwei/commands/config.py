@@ -249,6 +249,11 @@ def offer(root, raw, text, summary, *, label, what, confirm=None, snapshot=None)
     if path.read_text(encoding='utf-8') != raw:
         raise ValueError('config.toml changed during confirmation; nothing written, run it again')
     if text != raw:
+        from wuwei import graph  # #552: the register first, from the same validated text
+        try:
+            graph.sync(root, workspace.load_config(root, raw=text))
+        except (OSError, ValueError) as exc:  # A13: an explanation record never stops a write
+            graph.warn(label, exc)
         workspace.atomic_write(path, text)
     if snapshot is not None:
         workspace.atomic_write(root / '.wuwei/calibration.json',

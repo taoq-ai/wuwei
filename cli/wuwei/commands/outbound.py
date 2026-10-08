@@ -428,6 +428,17 @@ def apply(root, proposal, option, decision_id=None):
             'server': proposal['server'], 'channel': proposal['channel'], 'alias': alias,
             'connector_mode': mode, 'channels': channels, 'people': [row['id'] for row in people],
             'owner': bool(owner)}, root)
+        from wuwei import graph  # #552: names and a thread's members, which no config key holds
+        names = {**{f"channel:{row['id']}": row['name'] for row in rows},
+                 **{f"person:slack:{row['id']}": row['name'] for row in people}}
+        where = proposal.get('thread_channel')
+        members = [{'from': f"person:slack:{row['id']}", 'type': 'member_of', 'to': f'channel:{where}',
+                    **({'card': decision_id} if decision_id else {})}
+                   for row in people if where and row['why'].startswith('in thread')]
+        try:
+            graph.sync(root, workspace.load_config(root), members, names)
+        except (OSError, ValueError) as exc:  # A13: the config write stands
+            graph.warn('outbound learn', exc)
     return code
 
 
@@ -523,6 +534,8 @@ def learn(args):
                        participants=unknown, thread=thread)
     if proposal is None:
         return fail(f'nothing new to learn for connector {server}; {DRAFT}')
+    if args.thread:
+        proposal['thread_channel'] = target  # #552: apply records the members of this channel
     try:
         return ask(root, config, proposal) if card else apply(root, proposal, 'approve')
     except (OSError, ValueError) as exc:

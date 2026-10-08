@@ -1526,6 +1526,20 @@ def test_plan_and_report_skills_are_the_loop():
         assert phrase in text or phrase in rows, phrase
 
 
+def test_register_section_and_who():
+    # #552: one section explains the register; each modeled key points at it.
+    page = (SITE / 'configuration.md').read_text()
+    section = page.split('\n## People, channels and tools\n', 1)[1].split('\n## ', 1)[0]
+    assert 'bin/wuwei who' in section and 'bin/wuwei init --upgrade' in section and '.wuwei/graph.json' in section
+    for key in ('owner.handles', 'shepherd.authors', 'voice.sources', 'outward.servers', 'outward.modes',
+                'outward.classes', 'outbound.work_channels', 'outbound.external_channels',
+                'outbound.channel_classes', 'outbound.people', 'outbound.owner'):
+        rows = [line for line in page.replace(section, '').splitlines() if line.startswith((f'| `{key}`', f'| `{key}.'))]
+        assert rows and all('#people-channels-and-tools' in line for line in rows), key
+    reference = (SITE / 'reference.md').read_text()
+    assert '| `bin/wuwei who` |' in reference and 'edge: ' in reference.split('\n## Why\n', 1)[1]
+
+
 def test_merge_grant_documented():
     # #524: merge is a grant like deploy; merge.default_tier decides what happens with no grant.
     rows = {line.split('|')[1].strip(): line for line in (SITE / 'configuration.md').read_text().splitlines()

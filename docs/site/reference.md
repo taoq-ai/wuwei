@@ -77,6 +77,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei voice` | Shows or edits your voice profile. | [Owner voice](configuration.md#owner-voice) |
 | `bin/wuwei watch` | Supervises workspace activity and owned PRs. | [Running the watch](configuration.md#running-the-watch) |
 | `bin/wuwei why` | Explains from recorded events why an item, a decision or a refusal is where it is. | [Why](#why) |
+| `bin/wuwei who` | Shows a person, channel, connector or login from `.wuwei/graph.json`: its edges and the tier a routine message there gets. | [People, channels and tools](configuration.md#people-channels-and-tools) |
 | `bin/wuwei worktree` | Creates or adopts an anchored item worktree. | [Item worktrees](#item-worktrees) |
 
 ## Lead plan JSON
@@ -387,13 +388,15 @@ With `security.areas.mcp = "off"`, `bin/wuwei mcp check` exits 0 with `MCP regis
 
 ## Why
 
-`bin/wuwei why <target>` reads the day records and prints why something is where it is. It writes nothing. The target is, in this order: `last refusal`, an event id, a decision id `D-<n>`, a target key such as `repo:<org>/<name>`, a PR ref `owner/repo#<n>`, or an item name. For a target key, `why` prints when it was first seen and how it was cleared, `seen: configured in config.toml`, or `not seen yet`; for a decision routed as a first time it adds `novel: first time for <targets>`.
+`bin/wuwei why <target>` reads the day records and prints why something is where it is. It writes nothing. The target is, in this order: `last refusal`, an event id, a decision id `D-<n>`, a draft id `draft-<hex>`, a target key such as `repo:<org>/<name>`, a PR ref `owner/repo#<n>`, or an item name. For a target key, `why` prints when it was first seen and how it was cleared, `seen: configured in config.toml`, or `not seen yet`; for a decision routed as a first time it adds `novel: first time for <targets>`.
 
 An event id is `<YYYY-MM-DD>:<line>`: the day directory and the 1-based line of that day's append-only `events.jsonl`.
 
 For an item, `why` reads every day whose `state.json` holds it, oldest first, and prints one line per step in this order: how it entered the queue (goal and score), its gate tier and the rules that set it, each gate verdict with its blocking findings, each decision with who decided it, each phase change with the command that made it, the merge with the policy evidence that cleared it, and what it waits on now. A PR ref reads the item that links it. A step with no record prints `not recorded`, never a guess. The queue entry, the tier and the gate verdicts are always listed; the merge is listed for a merged item.
 
 For a refusal, `why` prints the guard, the rule, the normalised command and the fix. The `hook.refusal` payload is `{reason, refusals, target}`: `refusals` holds one `{guard, reason}` per enforced guard, and `target` is redacted as for a warning. The rule is the message before its first `; ` and the fix is the text after it. Refusals recorded before this field existed print `not recorded` for the guard and the command. A `guard.would_refuse` event is explained the same way, from its `guard`, `reason` and `target`, under `would have refused (shadow) at <ts>`, followed by `posture: <area> = <level> (<posture>)` when it names an area; `last refusal` is the newest of either kind.
+
+For a draft, `why draft-<hex>` prints `held: <rule>` and one `edge: <from> <type> <to> (<config key>)` line per register edge the rule names, such as `edge: channel:C01 class client (outbound.external_channels)`, or `edge: not recorded`. An outward refusal that names a draft gets the same lines after its `fix:` line. See [People, channels and tools](configuration.md#people-channels-and-tools).
 
 For a decision, `why D-<n>` reads today's record and prints the options with their scores, the recommendation, the weights, the margin (the recommended score minus the best other score, over 10 times the sum of the weights), the class, the cruise level and who decided. The level prints for a cruise answer (`Decided-by: cruise <class>@L<n>`), and `not recorded` otherwise. An owner answer records `decided_by: owner` in its `decision.decided` or `decision.reversed` event.
 

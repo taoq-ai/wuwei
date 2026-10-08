@@ -54,6 +54,7 @@ done = "Done"
 # auto = [] # page, report or retro: written without a draft.
 # strict_close = true
 
+# A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; bin/wuwei who walks it.
 [owner]
 name = ""
 pronouns = ""
@@ -150,6 +151,7 @@ timeout_seconds = 60
 # Owner identifiers in [owner].handles match sent chat users and PR authors exactly.
 # review_prs = ["org/repo#123"] # PR comments use the review audience.
 review_prs = []
+# A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; bin/wuwei who walks it.
 [voice.sources]
 # internal = ["C123"] # Map an audience to sent chat channel IDs.
 
@@ -203,6 +205,7 @@ deny = [] # Literal executable plus argument glob, for example "make publish*".
 [outward.max_length]
 # slack = 4000 # Positive maximum length for this channel.
 
+# A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; bin/wuwei who walks it.
 [outbound]
 # The tier table decides first: each destination and addressed person gets an audience class
 # (owner, team, company, client, public) and the first matching row gives send, ask (a draft
@@ -299,6 +302,7 @@ tie_commits = 2 # Include a third author within this commit count of second plac
 source_exclude = ["specs/*", "*.lock", "*lock.json", "*.generated.*", "generated/*"] # Paths excluded from reviewer selection.
 autostart = true # Start a headless shepherd seat for mechanical PR actions when the listener sees them (wuwei listen).
 
+# A view of .wuwei/graph.json: bin/wuwei config set and the cards write both; bin/wuwei who walks it.
 [shepherd.authors]
 # Map each author email to a verified code host login and chat mention.
 # An unmapped email is resolved through the code host; one it cannot resolve is skipped.

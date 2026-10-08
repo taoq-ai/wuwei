@@ -1350,3 +1350,68 @@ def test_template_derives_cap_and_seats(tmp_path):
     write_config(tmp_path, (ROOT / 'templates/workspace/config.toml').read_text())
     config = load_config(tmp_path)
     assert (config['cap'], config['host']['seats'], config['budget']['tokens_per_day']) == (0, 0, 0)
+
+
+@pytest.fixture
+def modeled(tmp_path, monkeypatch, capsys):
+    # #552: a workspace whose config.toml sets every key the register models.
+    from test_graph import CONFIG
+    from wuwei.__main__ import main
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert main(['init']) == 0
+    (tmp_path / '.wuwei/graph.json').unlink()
+    (tmp_path / '.wuwei/config.toml').write_text(CONFIG)
+    capsys.readouterr()
+    return tmp_path
+
+
+def test_a_fresh_init_has_the_empty_register(tmp_path, monkeypatch):
+    from wuwei import graph
+    from wuwei.__main__ import main
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert main(['init']) == 0
+    assert graph.load(tmp_path) == {'version': 1, 'nodes': {}, 'edges': []}
+
+
+def test_upgrade_builds_the_register_once(modeled, capsys):
+    import tomllib
+    from wuwei import graph, workspace
+    from wuwei.__main__ import main
+    before = tomllib.loads((modeled / '.wuwei/config.toml').read_text())
+    assert main(['init', '--upgrade', '--dry-run']) == 0
+    assert 'Would upgrade .wuwei/graph.json: ' in capsys.readouterr().out
+    assert not (modeled / '.wuwei/graph.json').exists()
+    assert main(['init', '--upgrade']) == 0
+    out = capsys.readouterr().out
+    register = graph.load(modeled)
+    assert (f"Upgraded .wuwei/graph.json: {len(register['nodes'])} nodes and {len(register['edges'])} edges "
+            'from config.toml') in out
+    raw = (modeled / '.wuwei/config.toml').read_text()
+    config = workspace.load_config(modeled)
+    assert graph.drift(register, config) == []
+    for node in ('person:slack:U01', 'person:github:dev', 'channel:C04', 'connector:acme', 'address:dev@example.test',
+                 'login:dev', 'person:slack:U02', 'login:pat-dev', 'voice:client', 'repo:fixture-org/app'):
+        assert node in register['nodes'], node
+    after = tomllib.loads(raw)
+    for key in ('owner', 'outbound', 'shepherd', 'voice', 'outward'):
+        for name, value in before[key].items():
+            assert after[key][name] == value, (key, name)
+    for header in ('[owner]', '[outbound]', '[outbound.people]', '[shepherd.authors]', '[voice.sources]',
+                   '[outward.servers]'):
+        assert raw.count(f'{graph.COMMENT}\n{header}\n') == 1, header
+    assert main(['init', '--upgrade']) == 0
+    out = capsys.readouterr().out
+    assert 'graph.json' not in out and 'No workspace changes needed' in out
+
+
+def test_upgrade_warns_on_a_damaged_register_and_goes_on(modeled, capsys):
+    from wuwei.__main__ import main
+    (modeled / '.wuwei/graph.json').write_text('not json')
+    assert main(['init', '--upgrade']) == 0
+    captured = capsys.readouterr()
+    assert 'wuwei init: warning: .wuwei/graph.json not updated' in captured.err
+    assert 'init --upgrade' in captured.err
+    assert 'template_version' in captured.out
+    assert (modeled / '.wuwei/graph.json').read_text() == 'not json'
