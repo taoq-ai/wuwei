@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.21.0](https://github.com/taoq-ai/wuwei/compare/v0.20.0...v0.21.0) (2026-10-08)
+
+
+### Features
+
+* **decisions:** confidence calibration: a Brier score per class and per role against outcomes gates promotion, an uncalibrated class runs at most L1, and an uncalibrated role routes with high ambiguity until it returns ([#581](https://github.com/taoq-ai/wuwei/issues/581)) ([af1a89f](https://github.com/taoq-ai/wuwei/commit/af1a89fbe99df5b62de24ebab2d2346824bfc30a))
+* **decisions:** measured reversibility: a record is two-way only when the CLI knows the undo for its action and that undo was rehearsed once, wuwei undo runs it, a message is never two-way, and the day report lists what cannot be undone ([#576](https://github.com/taoq-ai/wuwei/issues/576)) ([6b72e24](https://github.com/taoq-ai/wuwei/commit/6b72e2478a8f9d34bbe562d18681bd9b9c61e316))
+* **decisions:** shadow-before-live promotion: a proposed level raise runs in shadow for five days and lands only when every shadow answer agreed with the live one, then the morning gate asks once ([#584](https://github.com/taoq-ai/wuwei/issues/584)) ([4e23a55](https://github.com/taoq-ai/wuwei/commit/4e23a559fffcaaa26f98d2590a72588eeb3d60b4))
+* **merge:** merging a pull request is a grantable owner action like deploy: the card offers once, today or always per repository, the gate pre-approves planned merges, and the shepherd merges only at the head the gates checked with green required checks ([#575](https://github.com/taoq-ai/wuwei/issues/575)) ([fdec6cc](https://github.com/taoq-ai/wuwei/commit/fdec6cc3e35aad9acce92819378be412f789f5a2))
+* **tiers:** process depth follows the tier: a light item has no class sweep, no mutation step and no delta round, a standard item sweeps only the classes its diff touches and mutates only guard code, Routine records read as one line, and the report measures cycle time per tier ([#577](https://github.com/taoq-ai/wuwei/issues/577)) ([a2ad2d1](https://github.com/taoq-ai/wuwei/commit/a2ad2d181a4bc8da32bcf3805c950b14800318d2))
+
+
+### Bug Fixes
+
+* **latency:** SessionStart in a workspace under 75 ms wall on the runner with the 20 ms margin the latency job requires, so the job is green on main; no budget, margin, test or job changed ([#592](https://github.com/taoq-ai/wuwei/issues/592)) ([7680d25](https://github.com/taoq-ai/wuwei/commit/7680d250b1f41f178a8ba237727a4167fe976fbe))
+* **latency:** the latency job is green with headroom again: status --line and PreToolUse under 35 ms CPU and SessionStart under 75 ms wall on the runner, the invariant walk under a second with margin, and the job reports each probe against the last green run so the next regression is caught before it fails ([#582](https://github.com/taoq-ai/wuwei/issues/582)) ([7b48d0c](https://github.com/taoq-ai/wuwei/commit/7b48d0cd5c659c3e3a5fa17d2863e7a3d0b0165d))
+* **tests:** the latency budget decision test no longer writes its fixture rows into the CI latency figures ([#588](https://github.com/taoq-ai/wuwei/issues/588)) ([2715828](https://github.com/taoq-ai/wuwei/commit/271582834e0755b35d59cba063aa577e31dde6da))
+
 ## [0.20.0](https://github.com/taoq-ai/wuwei/compare/v0.19.0...v0.20.0) (2026-10-08)
 
 
