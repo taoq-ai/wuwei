@@ -38,6 +38,8 @@ def config(root):
     ('release create', 'release'), ('tag push', 'release'), ('release API', 'release'),
     ('tag or branch ref API', 'release'), ('deploy.deny: make publish*', 'publish'),
     ('deploy.workflows', 'deploy'), ('environment branch push', 'deploy'), ('tofu apply', 'deploy'),
+    ('merge: example/project#7 at ' + 'a' * 40, 'merge'), ('merge_deploys', 'deploy'),
+    ('environment branch merge', 'deploy'),
 ])
 def test_action(rule, action):
     assert grants.action(rule) == action
@@ -132,7 +134,7 @@ def test_standing_config(root):
 
 @pytest.mark.parametrize('old,new', [
     ('repo:fixture-org/app', 'fixture-org/app'), ('D-3', 'X-1'), ('2026-10-04', 'today'),
-    ('"deploy"', '"merge"')])
+    ('"deploy"', '"message"')])
 def test_standing_config_rejects(root, old, new):
     standing(root, LINE.replace(old, new))
     with pytest.raises(workspace.ConfigError, match='grants.standing.0'):
@@ -362,3 +364,24 @@ def test_refusal_names_the_seat_step_not_a_host_terminal(root, command, step):
     code, reason = run(root, command, cwd='/')
     assert code in (1, 2) and step in reason, reason
     assert not re.search(r'host terminal|ask the owner|only the owner|by hand', reason), reason
+
+
+@pytest.mark.parametrize('name,setting,tier', [
+    ('observe', '', 'ask'), ('guarded', '', 'ask'), ('strict', '', 'owner_only'),
+    ('guarded', 'owner_only', 'owner_only'), ('strict', 'ask', 'ask')])
+def test_merge_tier(root, name, setting, tier):
+    # #524: unset follows the posture; the owner's setting wins in every posture.
+    posture(root, name)
+    if setting:
+        with (root / '.wuwei/config.toml').open('a') as stream:
+            stream.write(f'[merge]\ndefault_tier = "{setting}"\n')
+    assert grants.merge_tier(config(root)) == tier
+
+
+def test_merge_standing_line(root, capsys):
+    # #524: merge is a standing-grant action like deploy; strict ignores the line.
+    standing(root, LINE.replace('"deploy"', '"merge"').replace('fixture-org/app', 'fixture-org/*'))
+    assert grants.active(config(root), {}, 'merge', 'repo:fixture-org/app') == ('always', 'D-3')
+    assert cli() == 0 and capsys.readouterr().out.startswith('1. merge repo:fixture-org/* always (D-3')
+    strict(root)
+    assert grants.active(config(root), {}, 'merge', 'repo:fixture-org/app') is None

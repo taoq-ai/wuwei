@@ -119,43 +119,84 @@ def test_daily_shows_a_clean_first_day():
 def test_readme_install_and_hero():
     readme = (ROOT / 'README.md').read_text()
     for phrase in ('prefers-color-scheme: dark', 'docs/site/assets/hero-light.svg',
-                   'docs/site/assets/hero-dark.svg', '#00C9A7', '无为',
+                   'docs/site/assets/hero-dark.svg', '无为',
                    'What WUWEI is and is not', '/plugin marketplace add taoq-ai/wuwei',
                    '/plugin install wuwei@wuwei', 'wuwei init', '/wuwei plan'):
         assert phrase in readme
+    # #561: the brand accent belongs to the art and the design spec, not the README text.
+    assert '#00C9A7' not in readme and 'brand accent' not in readme.lower()
+    assert 'deploy' not in readme.split('## What WUWEI is and is not', 1)[1].split('\n## ', 1)[0]
     index = (SITE / 'index.md').read_text()
     for variant in ('light', 'dark'):
         art = SITE / f'assets/hero-{variant}.svg'
         svg = ElementTree.parse(art).getroot()
         assert svg.tag == '{http://www.w3.org/2000/svg}svg'
         assert '#00C9A7' in art.read_text()
-        assert all(word in art.read_text() for word in ('Plan', 'Build', 'Check', 'Review', 'Merge'))
+        assert all(word in art.read_text() for word in ('Specs and plan', 'Agent team', 'Gates', 'Pull requests',
+                                                        'Review and merge'))
         assert f'<img src="assets/hero-{variant}.svg#only-{variant}"' in index, variant
 
 
-def test_readme_compares_with_other_tools():
+# #561: the nine principles in order, each as (phrases in the item, link in the item).
+PRINCIPLES = (
+    (('model walks it', 'wuwei next', 'judgement'), '(docs/site/agent.md'),
+    (('observe', 'guarded', 'warning or a card', 'floor', 'records', 'strict'),
+     '(docs/site/security.md#security-posture)'),
+    (('moment of action', 'invariant', 'code host'), '(docs/site/concepts.md#guards)'),
+    (('mit cisr', 'routine', 'mandate', 'strategic', 'one-way', 'card'),
+     '(docs/site/concepts.md#decision-classes-and-cruise-levels)'),
+    (('ledger', 'ceiling', 'novel', 'undo', 'error budget', 'brier', 'shadow'),
+     '(docs/site/daily.md#cruise-answers)'),
+    (('records', 'card', 'confirmation', 'host terminal'), '(docs/site/concepts.md#drafts-and-cards)'),
+    (('unmeasured', 'ci is the gate', 'live source'), '(docs/site/concepts.md#unmeasured)'),
+    (('ziran', 'signed', 'posture', 'deploy', 'approve', 'admin'), '(docs/site/security.md)'),
+    (('stdlib', 'delet'), '(https://github.com/taoq-ai/wuwei/blob/main/.specify/memory/constitution.md)'),
+)
+
+
+def _principles(readme):
+    section = readme.split('\n## Principles\n', 1)[1].split('\n## ', 1)[0]
+    return [line for line in section.splitlines() if line.strip()]
+
+
+def test_readme_states_the_principles():
     readme = (ROOT / 'README.md').read_text()
-    assert '## How WUWEI compares' in readme
-    assert (readme.index('## What WUWEI is and is not') < readme.index('\n## Installation\n')
-            < readme.index('## How WUWEI compares'))
-    section = readme.split('## How WUWEI compares', 1)[1].split('\n## ', 1)[0]
-    assert re.search(r'As of [A-Z][a-z]+ \d{4}', section)
-    for phrase in ('Spec Kit', 'OpenSpec', 'superpowers', 'BMAD Method', 'Kiro', 'Claude Code',
-                   'github.com/github/spec-kit', 'github.com/Fission-AI/OpenSpec',
-                   'github.com/obra/superpowers', 'github.com/bmad-code-org/BMAD-METHOD',
-                   'kiro.dev', 'code.claude.com/docs', '### How they compose'):
-        assert phrase in section
-    rows = [line for line in section.splitlines() if line.startswith('|')]
-    for header in ('Who plans the day', 'Who reviews the work', 'What stops a bad merge',
-                   'What is learned afterwards', 'Where it runs'):
-        assert header in rows[0], header
-    assert rows[0].count('|') <= 7
-    assert 'WUWEI' in rows[2].split('|')[1]
-    assert 'Where WUWEI is worse' not in readme
+    for gone in ('## How WUWEI compares', '### How they compose', '## Philosophy', 'BMAD',
+                 'kiro.dev', 'Who plans the day'):
+        assert gone not in readme, gone
+    items = _principles(readme)
+    assert [re.match(r'^(\d)\. ', item).group(1) for item in items] == [str(n) for n in range(1, 10)]
+    for item, (phrases, link) in zip(items, PRINCIPLES, strict=True):
+        for phrase in phrases:
+            assert phrase in item.lower(), (phrase, item[:40])
+        assert link in item, link
+        assert len(re.sub(r'\]\([^)]*\)', ']', item).split()) <= 110, item[:40]
+        assert '\N{EM DASH}' not in item
+    for n in range(556, 561):
+        assert f'https://github.com/taoq-ai/wuwei/issues/{n})' in items[4], n
     for word in ('professional', 'enterprise', 'best-in-class'):
         assert word not in readme.lower(), word
-    assert len(section.splitlines()) < 70
-    assert '\N{EM DASH}' not in section
+
+
+def test_readme_landing_marks_follow_main():
+    # #561: "landing" names only issues whose feature has not landed (no specs/<n>-* yet),
+    # so the word has to go once the feature reaches main.
+    readme = (ROOT / 'README.md').read_text()
+    shipped = lambda n: any(ROOT.glob(f'specs/{n}-*'))
+    sentences = [s for line in readme.splitlines() for s in re.split(r'(?<=[.!?])\s+', line)
+                 if re.search(r'\blanding\b', s, re.I)]
+    assert sentences
+    landing = set()
+    for sentence in sentences:
+        issues = {int(n) for n in re.findall(r'taoq-ai/wuwei/issues/(\d+)\)', sentence)}
+        assert issues, sentence
+        landing |= issues
+    assert not [n for n in landing if shipped(n)], landing
+    principle = _principles(readme)[4]
+    for n in range(556, 561):
+        marked = any(f'issues/{n})' in s for s in re.split(r'(?<=[.!?])\s+', principle)
+                     if re.search(r'\blanding\b', s, re.I))
+        assert marked != shipped(n), n
 
 
 def test_readme_lead_and_limits():
@@ -181,9 +222,8 @@ def test_readme_tells_the_day_in_superpowers_shape():
     readme = _plain('README.md')
     assert len(readme.splitlines()) <= 300
     new = ('## How it works', '## The basic workflow', '## When something goes wrong',
-           '## What is inside', '## Philosophy', '## Installation')
-    order = [readme.index(f'\n{h}\n') for h in ('## What ships today', *new, '## Quick start',
-                                                 '## How WUWEI compares')]
+           '## What is inside', '## Principles', '## Installation')
+    order = [readme.index(f'\n{h}\n') for h in ('## What ships today', *new, '## Quick start')]
     assert order == sorted(order)
     section = lambda h: readme.split(f'\n{h}\n', 1)[1].split('\n## ', 1)[0]
     flat = lambda h: ' '.join(section(h).split()).lower()
@@ -195,12 +235,19 @@ def test_readme_tells_the_day_in_superpowers_shape():
     for phrase in ('/wuwei:wuwei-plan', 'retro', 'status line', 'DM', 'safe path'):
         assert phrase in ' '.join(story.split()), phrase
     workflow = section('## The basic workflow')
-    assert re.findall(r'^(\d)\. \*\*', workflow, re.M) == [str(n) for n in range(1, 8)]
-    stations = [flat('## The basic workflow').index(word) for word in (
-        'calibrat', 'morning gate', 'build', 'tier', 'shepherd', 'retro', 'memory')]
-    assert stations == sorted(stations)
-    assert 'posture' in workflow and 'not built' in flat('## The basic workflow')
-    assert len(workflow.strip().splitlines()) <= 20
+    blocks = re.findall(r'^```mermaid\n(.*?)^```$', workflow, re.M | re.S)
+    assert len(blocks) == 1 and blocks[0].startswith('flowchart LR')
+    chart = blocks[0]
+    stages = [chart.index(f'["{name}') for name in (
+        'Setup and calibration', 'Plan and the morning gate', 'Build', 'Review by tier',
+        'Shepherd to merge', 'Close and retro')]
+    assert stages == sorted(stages)
+    assert re.search(r'close -- "memory into tomorrow[^"]*" --> plan', chart)
+    assert re.search(r'you\b.*-\.-> plan & review$', chart, re.M)
+    assert re.search(r'hooks\(\["hooks check every action"\]\) -\.-> build$', chart, re.M)
+    assert workflow.index('```mermaid') > workflow.index('In words:')
+    assert 'not built' not in flat('## The basic workflow')
+    assert len(workflow.strip().splitlines()) < 25
     wrong = section('## When something goes wrong')
     assert len(re.findall(r'^- ', wrong, re.M)) == 5
     for phrase in ('why last refusal', 'doctor --fix', 'wuwei next', 'shadow report', '.wuwei/days/'):
@@ -219,12 +266,6 @@ def test_readme_tells_the_day_in_superpowers_shape():
     planned = next(line for line in inside.splitlines() if line.startswith('Planned:'))
     installed = {name for port in registry.INTERFACES for name in registry.known(port)}
     assert not {word.lower() for word in re.findall(r'\b[A-Z]\w+', planned)} & installed, planned
-    philosophy = flat('## Philosophy')
-    assert len(re.findall(r'^- ', section('## Philosophy'), re.M)) == 5
-    for phrase in ('safe path', 'records', 'cooperative mistake prevention', 'code host', 'warn',
-                   'posture', 'unmeasured', 'stdlib'):
-        assert phrase in philosophy, phrase
-    assert 'warn by default' not in philosophy and 'records always block' in philosophy
     install =section('## Installation')
     parts = install.split('\n### ')
     assert [part.split('\n', 1)[0] for part in parts[1:]] == [
@@ -250,7 +291,7 @@ def test_docs_index_mirrors_the_readme_sections():
     readme = (ROOT / 'README.md').read_text()
     pairs = (('How it works', 'daily'), ('The basic workflow', 'concepts'),
              ('When something goes wrong', 'recovery'), ('What is inside', 'adapters'),
-             ('Philosophy', 'security'), ('Installation', 'integrity'))
+             ('Principles', 'security'), ('Installation', 'integrity'))
     for heading, page in pairs:
         assert f'(docs/site/{page}.md' in readme.split(f'\n## {heading}\n', 1)[1].split('\n## ', 1)[0], page
     index = (SITE / 'index.md').read_text().split('\n## Start here\n', 1)[0]
@@ -765,13 +806,14 @@ def test_readme_first_day_and_shipped_areas():
         assert steps == sorted(steps), heading
         assert 'config set' in section, heading
     assert (readme.index('## What WUWEI is and is not') < readme.index('## What ships today')
-            < readme.index('## How WUWEI compares'))
+            < readme.index('## Principles'))
     ships = readme.split('\n## What ships today\n', 1)[1].split('\n## ', 1)[0]
     for link in ('docs/site/daily.md', 'docs/site/security.md', 'docs/site/concepts.md#review-tiers',
                  'docs/site/remote.md', 'docs/site/concepts.md#cockpit-and-board',
                  'docs/site/configuration.md#calibration', 'docs/site/reference.md#heartbeat',
                  'docs/specs/2026-09-24-wuwei-design.md', 'docs/site/daily.md#2-configure',
-                 'docs/site/reference.md#doctor', 'docs/site/security.md#security-posture'):
+                 'docs/site/reference.md#doctor', 'docs/site/security.md#security-posture',
+                 'docs/site/agent.md'):
         assert f'({link})' in ships, link
 
 
@@ -848,30 +890,73 @@ def _value_at(attrs, k):
     return values[-1]
 
 
-def test_hero_is_a_day_on_a_track():
+def _hero_parts(text):
+    """(static, still, live) slices of a hero SVG: drawn first, the reduced-motion frame, the animation."""
+    static, rest = text.split('<g class="still"', 1)
+    still, live = rest.split('<g class="live"', 1)
+    return static, still, live
+
+
+def _timing(text, ident):
+    """Attributes of the <animate> that is the first child of the element with this id."""
+    attrs = re.search(rf'id="{ident}"[^>]*>\s*<animate ([^>]*)', text)[1]
+    return dict(re.findall(r'(\w[\w-]*)="([^"]*)"', attrs))
+
+
+def _popped(stops):
+    return max(k for k, p in stops if p == 'off')
+
+
+def _place(stops, k):
+    return [p for at, p in stops if at <= k][-1]
+
+
+def test_hero_shows_the_system():
     hero = _hero()
     readme = (ROOT / 'README.md').read_text()
     alts = re.findall(r'<img src="assets/hero-[^>]*alt="([^"]+)"', (SITE / 'index.md').read_text())
     assert alts == [hero.ALT, hero.ALT] and re.search(r'alt="([^"]+)"', readme)[1] == hero.ALT
     assert hero.ALT.count('. ') == 0 and hero.ALT.endswith('.') and 'treadmill' not in hero.ALT.lower()
-    stamps = [hero.clock(on) for on, _, _, _ in hero.TICKER]
-    assert stamps == sorted(set(stamps)), stamps
-    for slot in range(3):
-        spans = [(on, off) for on, off, s, _ in hero.TICKER if s == slot]
-        assert all(a[1] < b[0] for a, b in zip(spans, spans[1:])), slot
+    for part in ('queue', 'agent team', 'gates', 'pull requests', 'card', 'under the hood'):
+        assert part in hero.ALT.lower(), part
+    names = [name for name, *_ in hero.STAGES]
+    smalls = [small for _, small, *_ in hero.STAGES]
+    assert len(names) == 5 and [x for *_, x in hero.STAGES] == sorted(x for *_, x in hero.STAGES)
+    assert all(len(n.split()) <= 3 for n in names) and all(len(s.split()) <= 6 for s in smalls)
+    assert hero.STAGES[0][2] == hero.STAGES[-1][2], 'you at both ends'
     for variant in ('light', 'dark'):
         art = SITE / f'assets/hero-{variant}.svg'
         text = art.read_text()
+        static, still, live = _hero_parts(text)
         assert len(art.read_bytes()) < 40000, variant
         assert re.search(r'<desc[^>]*>(.*?)</desc>', text, re.S)[1] == hero.ALT
-        labels = re.findall(r'<text[^>]*>([^<]+)<', text)
-        assert [w for w in labels if w in hero.STATIONS] [:5] == ['Plan', 'Build', 'Check', 'Review', 'Merge']
-        for phrase in ('rate limits', 'login fix', 'docs page', 'Shipped', 'yesterday:', '4 shipped, 1 carried',
-                       'guards: 1 caught', 'cards: 1 open', 'heartbeat', 'shepherd: PR #142',
-                       'lead: 4 candidates ranked', 'steward: retro', 'Morning gate',
-                       "Approve today's plan as proposed?", 'Approved. 3 seats start (CAP 3).',
-                       'D-3: client wants Friday. Allow once?', '09:00', '18:00',
-                       *[f'{hero.clock(on)}  {line}' for on, _, _, line in hero.TICKER]):
+        labels = re.findall(r'<text[^>]*>([^<]+)<', static)
+        for row in (names, smalls):
+            at = [labels.index(word) for word in row]
+            assert at == sorted(at), (variant, row)
+        for i in range(5):
+            assert re.search(rf'<path id="icon-{i}"[^>]*fill="none"', static), (variant, i)
+        for panel in ('queue', 'lanes', 'prs', 'cards', 'band'):
+            assert f'id="panel-{panel}"' in static, (variant, panel)
+        for phrase in ('build ⟲ check', 'raise PR', 'sweep', 'overnight: sweeps, never merges',
+                       *hero.LOOPS, hero.DAY, *hero.INDICATORS):
+            assert f'>{phrase}<' in static, (variant, phrase)
+        for i, name in enumerate(hero.QUEUE, 1):
+            pill = re.search(rf'<g>(<animate [^>]*/>)<rect [^>]*/><text [^>]*>{i} · {name}</text></g>', live)
+            attrs = dict(re.findall(r'(\w[\w-]*)="([^"]*)"', pill[1]))
+            assert _value_at(attrs, 0) == 1, (variant, name)
+        for lane in range(3):
+            assert f'id="build-{lane}"' in static, (variant, lane)
+            for n in range(3):
+                assert f'id="gate-{lane}-{n}"' in static, (variant, lane, n)
+        assert 'fix ×1 → delta' in text and 'id="fix-loop"' in live and 'id="sweep"' in static
+        for loop in ('ask-loop', 'answer-loop'):
+            assert re.search(rf'id="{loop}"[^>]*stroke-dasharray', static), (variant, loop)
+        assert 'id="day-loop"' in static
+        for phrase in (*[label for label, _, _ in hero.PRS], *[d[3] for d in hero.DECISIONS],
+                       *[d[2] for d in hero.DECISIONS if d[2]], 'Approved · 3 seats',
+                       'answers a card now and then', f'{hero.clock(hero.CLOSE)} close: report written, retro done',
+                       '09:00', '18:00'):
             assert phrase in text, (variant, phrase)
         for brand in ('Linear', 'Jira', 'GitHub', 'Claude', 'Codex', 'Slack', 'Notion', 'Confluence',
                       'Discord', 'PagerDuty', 'Grafana', 'Sentry', 'Datadog', 'ZIRAN', 'pytest',
@@ -887,15 +972,10 @@ def test_hero_is_a_day_on_a_track():
                 assert len(times) == len(attrs['values'].split(';')), (tag, attrs)
         reduced = re.search(r'@media \(prefers-reduced-motion:\s*reduce\)\s*\{(.*?)\}\s*\}', text, re.S)[1]
         classes = {name for attr in re.findall(r'class="([^"]+)"', text) for name in attr.split()}
-        assert classes == {'live', 'still', 'belt', 'beat'}, classes
+        assert classes == {'live', 'still', 'spin', 'beat'}, classes
         for name in classes:
             assert f'.{name}' in reduced, (variant, name)
-        still = text.split('<g class="still"', 1)[1].split('<g class="live"', 1)[0]
-        for phrase in ('rate limits', 'login fix', 'docs page', 'quality: FIX, diverted to the fix lane',
-                       hero.SIDING_LABEL[0], 'D-3: client wants Friday. Allow once?', '14:00'):
-            assert phrase in still, (variant, phrase)
-        assert '<animate' not in still, variant
-    assert len((ROOT / 'scripts/build-hero.py').read_text().splitlines()) < 300
+    assert len((ROOT / 'scripts/build-hero.py').read_text().splitlines()) < 320
 
 
 def test_hero_only_moves_forward():
@@ -904,65 +984,75 @@ def test_hero_only_moves_forward():
         xs = [hero.PLACES[place] for _, place in stops]
         assert xs == sorted(xs), name
         assert [k for k, _ in stops] == sorted(k for k, _ in stops), name
-    fixed = [(name, lane, [p for _, p in stops]) for name, lane, stops in hero.ITEMS
-             if set(hero.SIDING) & {p for _, p in stops}]
-    assert len(fixed) == 1, fixed
-    name, lane, places = fixed[0]
-    assert lane == len(hero.LANE_Y) - 1, name
-    route = [p for i, p in enumerate(places) if i == 0 or p != places[i - 1]]
-    at = route.index('Review')
-    assert route[at:at + 4] == ['Review', *hero.SIDING, 'Merge'], route
+    name, on, off = hero.FIX
+    stops = next(s for n, _, s in hero.ITEMS if n == name)
+    assert any(a <= on and off <= b and p == q == 'gates' for (a, p), (b, q) in zip(stops, stops[1:])), stops
     for variant in ('light', 'dark'):
         text = (SITE / f'assets/hero-{variant}.svg').read_text()
-        assert 'fix lane' in text and hero.SIDING_LABEL[0] in text
         motions = [attrs for tag, attrs, _ in _smil(text) if tag == 'animateMotion']
         assert len(motions) == len(hero.ITEMS), variant
         for attrs in motions:
             xs = [float(pair.split(',')[0]) for pair in attrs['values'].split(';')]
             assert xs == sorted(xs), attrs['values']
-        lit = {m[1]: m[2] for m in re.finditer(r'id="lit-(\w+)"[^>]*>\s*<animate ([^>]*)', text)}
-        assert set(lit) == set(hero.STATIONS), lit
-        for station in hero.STATIONS:
-            attrs = dict(re.findall(r'(\w[\w-]*)="([^"]*)"', lit[station]))
-            spans = [(a, b) for _, _, stops in hero.ITEMS
-                     for (a, p), (b, q) in zip(stops, stops[1:]) if p == q == station]
-            assert spans, station
-            for a, b in spans:
-                assert _value_at(attrs, (a + b) / 2) > 0.5, (variant, station, a, b)
+        fix = _timing(text, 'fix-loop')
+        assert _value_at(fix, (on + off) / 2) > 0.5, variant
+        assert _value_at(fix, on - .02) < 0.5 and _value_at(fix, off + .02) < 0.5, variant
 
 
-def test_hero_items_wait_and_park():
+def test_hero_queue_lanes_and_cards():
     hero = _hero()
-    parked = [(name, lane, stops) for name, lane, stops in hero.ITEMS if stops[-1][1] == 'parked']
-    assert len(parked) == 1, parked
-    _, lane, stops = parked[0]
-    frees, leaves_from = [(k, p) for k, p in stops if p != 'parked'][-1]   # it leaves its lane here
-    assert lane == len(hero.LANE_Y) - 1 and leaves_from == 'Build'
-    wait = [label for label in hero.LABELS if label[1] == 'waits: CAP 3']
-    assert len(wait) == 1 and wait[0][0] == 'Plan'
-    on, off = wait[0][3:]
-    waiters = [(name, s) for name, l, s in hero.ITEMS if l == lane and stops is not s
-               and any(p == q == 'Plan' and a <= on and off <= b for (a, p), (b, q) in zip(s, s[1:]))]
-    assert len(waiters) == 1, waiters
-    leaves = max(k for k, p in waiters[0][1] if p == 'Plan')
-    assert leaves > frees, (leaves, frees)
+    order = sorted(hero.ITEMS, key=lambda i: _popped(i[2]))
+    assert [name for name, *_ in order] == hero.QUEUE
+    for lane in range(len(hero.LANE_Y)):
+        spans = [(_popped(s), s[-1][0]) for _, l, s in order if l == lane]
+        assert all(a[1] <= b[0] for a, b in zip(spans, spans[1:])), lane
+    for name, lane, stops in order[len(hero.LANE_Y):]:
+        before = max((s for n, l, s in order if l == lane and _popped(s) < _popped(stops)), key=_popped)
+        assert _popped(stops) == before[-1][0], name
+
+    def waiting(k):
+        busy = {l for _, l, s in hero.ITEMS if _popped(s) <= k < s[-1][0]}
+        return len(busy) == len(hero.LANE_Y) and any(_popped(s) > k for _, _, s in hero.ITEMS)
+    ks = [step / 1000 for step in range(1001) if waiting(step / 1000)]
+    assert ks
+    last = {name: s[-1] for name, _, s in hero.ITEMS}
+    for label, raised, merged in hero.PRS:
+        assert last[label.split(' ', 1)[1]] == (raised, 'PR'), label
+    merges = [m for *_, m in hero.PRS]
+    assert merges == sorted(merges)
+    carried = sum(1 for k, p in last.values() if p != 'PR')
+    phone = [d for d in hero.DECISIONS if d[4]]
+    assert all(any(a <= d[0] and d[1] <= b and c == 'warm' for a, b, c in hero.PHONE) for d in phone)
+    first, close = min(_popped(s) for _, _, s in hero.ITEMS), hero.CLOSE
     for variant in ('light', 'dark'):
         text = (SITE / f'assets/hero-{variant}.svg').read_text()
-        assert 'exit lane' in text and 'parked, carried to tomorrow' in text and 'waits: CAP 3' in text
-    tracks = [(stops, hero.track(stops, lane)) for _, lane, stops in hero.ITEMS]
-
-    def pos(samples, k):
-        for (k0, x0, y0), (k1, x1, y1) in zip(samples, samples[1:]):
-            if k0 <= k <= k1 and k1 > k0:
-                return x0 + (x1 - x0) * (k - k0) / (k1 - k0), y0 + (y1 - y0) * (k - k0) / (k1 - k0)
-        return samples[-1][1:]
-    for step in range(1001):
-        k = step / 1000
-        shown = [pos(samples, k) for stops, samples in tracks if k < stops[-1][0]]
-        shown = [(x, y) for x, y in shown if x > 0]
-        for i, (x0, y0) in enumerate(shown):
-            for x1, y1 in shown[i + 1:]:
-                assert abs(x0 - x1) >= 110 or abs(y0 - y1) >= 30, (k, (x0, y0), (x1, y1))
+        _, still, live = _hero_parts(text)
+        waits = _timing(text, 'waits')
+        assert _value_at(waits, (ks[0] + ks[-1]) / 2) > 0.5 and _value_at(waits, .1) < .5 and _value_at(waits, .9) < .5
+        for n in range(len(hero.PRS) + 1):
+            assert f'>shipped today: {n}<' in live, (variant, n)
+        assert f'carried to tomorrow: {carried}' in text
+        assert f'asked today: {len(phone)} of {len(hero.DECISIONS)}' in text
+        ask, answer = _timing(text, 'ask-loop-lit'), _timing(text, 'answer-loop-lit')
+        for asked, answered, *_ in hero.DECISIONS:
+            assert _value_at(ask, asked + .015) > .5 and _value_at(answer, answered + .015) > .5, (variant, asked)
+        lead, day = _timing(text, 'lead'), _timing(text, 'day-loop-lit')
+        last_pop = max(_popped(s) for _, _, s in hero.ITEMS)
+        assert _value_at(lead, last_pop + .03) > .5 and _value_at(lead, .5) < .5, variant
+        assert _value_at(day, close + .03) > .5 and _value_at(day, .5) < .5, variant
+        assert '<animate' not in still and hero.clock(hero.STILL_K) in still, variant
+        assert first < hero.STILL_K and 'waits: CAP 3 seats' in still and 'fix ×1 → delta' in still
+        for i, (name, lane, stops) in enumerate(order, 1):
+            queued, in_lane = _popped(stops) > hero.STILL_K, _popped(stops) <= hero.STILL_K < stops[-1][0]
+            assert (f'{i} · {name}<' in still) == queued, (variant, name)
+            if in_lane:
+                x, y = hero.at(_place(stops, hero.STILL_K), lane)
+                assert f'x="{x}" y="{y + 5}" text-anchor="middle">{name}<' in still, (variant, name)
+        for asked, answered, opened, closed, _ in hero.DECISIONS:
+            if opened and asked <= hero.STILL_K < answered:
+                assert opened in still and closed not in still, (variant, opened)
+            elif answered <= hero.STILL_K:
+                assert closed in still, (variant, closed)
 
 
 def test_pr_events_are_documented():
@@ -1071,7 +1161,7 @@ def test_notice_credits_match_readme_acknowledgements():
         assert text in notice, text
     for name in ('Spec Kit', 'autoharness', 'ralph-starter', 'humanizer', 'Model Context Protocol',
                  'MCP Apps', 'release-please', 'ZIRAN', 'WSJF', 'RICE', 'two-way door', 'Simple Icons',
-                 'superpowers'):
+                 'superpowers', 'OpenSpec', 'CISR', 'vGOAL', 'error budget', 'Brier'):
         assert name.lower() in notice.lower(), name
     assert '16.33.0' in notice and 'CC0' in notice
     superpowers = notice.split('\nsuperpowers\n', 1)[1].split('\n\n', 1)[0]
@@ -1448,6 +1538,20 @@ def test_register_section_and_who():
         assert rows and all('#people-channels-and-tools' in line for line in rows), key
     reference = (SITE / 'reference.md').read_text()
     assert '| `bin/wuwei who` |' in reference and 'edge: ' in reference.split('\n## Why\n', 1)[1]
+
+
+def test_merge_grant_documented():
+    # #524: merge is a grant like deploy; merge.default_tier decides what happens with no grant.
+    rows = {line.split('|')[1].strip(): line for line in (SITE / 'configuration.md').read_text().splitlines()
+            if line.startswith('| `')}
+    for word in ('`ask`', '`owner_only`', '`strict`'):
+        assert word in rows['`merge.default_tier`'], word
+    assert '`merge`' in rows['`grants.standing`']
+    grants = (SITE / 'concepts.md').read_text().split('\n## Grants\n', 1)[1].split('\n## ', 1)[0]
+    for phrase in ('merge', 'merge.default_tier', 'no grant lifts', 'bin/wuwei merge'):
+        assert phrase in grants, phrase
+    spec = (ROOT / 'docs/specs/2026-09-24-wuwei-design.md').read_text()
+    assert spec.count('(owner, 2026-10-05, #524)') >= 2
 
 
 def test_design_records_the_headless_shepherd():

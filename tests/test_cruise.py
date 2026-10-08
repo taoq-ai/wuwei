@@ -44,6 +44,11 @@ def test_cruise_config_defaults_and_ranges(ws):
         config(ws, f'[decisions.cruise]\nmargin = {value}\n')
         with pytest.raises(workspace.ConfigError, match='decisions.cruise.margin'):
             workspace.load_config(ws)
+    assert (cruise['shadow_days'], cruise['shadow_min']) == (5, 5)  # #560
+    for key in ('shadow_days', 'shadow_min'):
+        config(ws, f'[decisions.cruise]\n{key} = 0\n')
+        with pytest.raises(workspace.ConfigError, match=f'decisions.cruise.{key}'):
+            workspace.load_config(ws)
 
 
 def test_config_check_and_lint_refuse_a_level_above_its_ceiling(ws, capsys):
@@ -190,10 +195,11 @@ def test_a_failing_condition_keeps_the_mandate_answer(ws, capsys, setup, kwargs)
 
 def test_merge_no_class_and_unplanned_items_never_cruise(ws, capsys):
     from wuwei import state
+    # #557: a merge naming no repository and a record without a class have no measured undo.
     save(ws, record(cls='merge'))
-    assert route(ws, capsys) == (0, 'mandate') and 'rule' not in outcome(ws)
+    assert route(ws, capsys)[1].startswith('owner\n') and outcome(ws) is None
     save(ws, record(cls='retry').replace('Class: retry\n', ''), name='D-4.md')
-    assert route(ws, capsys, 'D-4') == (0, 'mandate') and 'rule' not in outcome(ws, 'D-4')
+    assert route(ws, capsys, 'D-4')[1].startswith('owner\n') and outcome(ws, 'D-4') is None
     state._write_state(lambda data: data.update(items={'DIV-1': {'goal': 'unplanned'}}), ws, reserved=False)
     save(ws, record(cls='retry').replace('Question: Which fix?', 'Question: Which fix for DIV-1?'), name='D-5.md')
     assert route(ws, capsys, 'D-5') == (0, 'mandate') and 'rule' not in outcome(ws, 'D-5')
@@ -406,6 +412,14 @@ def agree(root, count, cls='defer', start=100, **extra):
     state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update(rows), root, reserved=False)
 
 
+def calibrated(root, cls='defer', start=300):
+    """#559: ten taken high-confidence records of cls that stood, so promotion may raise it."""
+    from wuwei import state
+    for number in range(start, start + 10):
+        state.append_event('decision.decided', {'id': f'D-{number}', 'option': 'A', 'class': cls,
+                                                'decided_by': 'mandate', 'confidence': 'high'}, root)
+
+
 def cards(root):
     from wuwei import state
     return state.read_state(root).get('cruise_cards', {})
@@ -422,7 +436,21 @@ def test_ten_agreements_propose_a_raise(ws, monkeypatch):
     agree(ws, 4)
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
     agree(ws, 6)
-    assert propose(ws) == ['D-1']
+    assert propose(ws) == []  # #559: too few scored records
+    calibrated(ws)
+    raise_to(ws, 'defer', 1)  # #560: a raise to L2 changes routes, so it starts a shadow first
+    later(monkeypatch, '12:01')
+    agree(ws, 10, start=120)
+    lines = len(ledger(ws))
+    assert propose(ws) == [] and cards(ws) == {}
+    assert decision.running(ws)['shadow']['defer'] == {
+        'level': 2, 'started': '2026-09-28T12:01:00+00:00', 'scored': 0, 'agreed': 0, 'state': 'running'}
+    assert len(ledger(ws)) == lines + 1 and ledger(ws)[-1]['reason'] == 'shadow started: defer at L2'
+    assert propose(ws) == [] and len(ledger(ws)) == lines + 1
+    raise_to(ws, 'defer', 0)
+    later(monkeypatch, '12:02')
+    agree(ws, 10, start=140)
+    assert propose(ws) == ['D-1']  # L1 changes no route: its shadow passes at once
     card = cards(ws)['D-1']
     assert (card['kind'], card['class'], card['level']) == ('raise', 'defer', 1)
     assert 'D-1' in state.read_state(ws)['decision_routes']
@@ -432,7 +460,7 @@ def test_ten_agreements_propose_a_raise(ws, monkeypatch):
     widget, = cruise.gate_widgets(ws, workspace.load_config(ws))
     assert widget['header'] == 'D-1' and widget['options'][0]['label'] == 'Raise defer to L1 (Recommended)'
     assert propose(ws) == []  # one raise card per class per window
-    assert decision.running(ws) == {'levels': {}, 'changed': {}}
+    assert decision.running(ws)['levels'] == {'defer': 0}
 
 
 @pytest.mark.parametrize('setup', ['nine', 'changed', 'supervised', 'off', 'capped'])
@@ -456,13 +484,16 @@ def answer(root, ident, option, monkeypatch):
 def test_the_owner_raise_lands_and_keep_does_not(ws, monkeypatch):
     from wuwei import decision, workspace
     agree(ws, 10)
+    calibrated(ws)
     propose(ws)
     assert answer(ws, 'D-1', 'raise', monkeypatch) == (0, 'raise')
     assert decision.level(workspace.load_config(ws), 'defer', decision.running(ws)) == 1
     line = ledger(ws)[-1]
     assert (line['action'], line['reason'], line['evidence']) == (
-        'raise', 'raise approved D-1', '.wuwei/days/2026-09-28/decisions/D-1.md')
+        'raise', 'raise approved D-1; shadow agreed 0 of 0', '.wuwei/days/2026-09-28/decisions/D-1.md')
+    assert 'shadow' not in decision.running(ws)
     agree(ws, 10, cls='scope-cut', start=200)
+    calibrated(ws, 'scope-cut', start=400)
     propose(ws)
     assert answer(ws, 'D-2', 'keep', monkeypatch) == (0, 'keep')
     assert 'scope-cut' not in decision.running(ws)['levels']
@@ -471,6 +502,7 @@ def test_the_owner_raise_lands_and_keep_does_not(ws, monkeypatch):
 def test_a_raise_never_passes_the_configured_level(ws, monkeypatch):
     from wuwei import decision
     agree(ws, 10)
+    calibrated(ws)
     propose(ws)
     config(ws, '[decisions.cruise.levels]\ndefer = 0\n')
     answer(ws, 'D-1', 'raise', monkeypatch)
@@ -544,7 +576,7 @@ def test_status_names_the_cruise_level(ws, capsys):
     assert '\ncruise L0\nplugin ' in status_line(ws)
     (ws / '.wuwei/memory/cruise.json').write_text('not json')
     from wuwei.__main__ import main
-    assert main(['status', '--line']) == 2
+    assert main(['status']) == 2  # --line skips cruise.json since #562
     assert capsys.readouterr().out.strip() == 'WUWEI ? unmeasured'
 
 
@@ -557,3 +589,188 @@ def test_supervised_routes_as_before_and_the_mandate_sends_every_class_to_the_ow
     assert not state.read_state(ws).get('decision_outcomes')
     text = brief.mandate(ws)
     assert 'Decide and record: none.' in text and 'decision records of class approach, retry' in text
+
+
+# #560: shadow before live promotion
+
+
+def shadow_at(root, name='approach', level=3, started='2026-09-28T12:00:00+00:00', state='running', **extra):
+    from wuwei import promotion
+    row = {'level': level, 'started': started, 'scored': 0, 'agreed': 0, 'state': state, **extra}
+    promotion.cruise_shadow(root, name, row, f'shadow started: {name} at L{level}')
+    return row
+
+
+def test_the_shadow_row_has_one_writer_and_fails_closed(ws):
+    from wuwei import decision
+    row = shadow_at(ws)
+    assert decision.running(ws)['shadow'] == {'approach': row}
+    line = ledger(ws)[-1]
+    assert (line['action'], line['reason'], line['target']) == (
+        'shadow', 'shadow started: approach at L3', '.wuwei/memory/cruise.json')
+    raise_to(ws, 'approach', 3)
+    assert 'shadow' not in decision.running(ws)
+    path = ws / '.wuwei/memory/cruise.json'
+    good = dict(row)
+    for bad in ({'autopilot': good}, {'approach': {**good, 'level': 0}}, {'approach': {**good, 'level': 4}},
+                {'approach': {**good, 'scored': -1}}, {'approach': {**good, 'state': 'odd'}},
+                {'approach': {**good, 'started': 5}}, []):
+        path.write_text(json.dumps({'levels': {}, 'changed': {}, 'shadow': bad}))
+        with pytest.raises(ValueError, match='bin/wuwei doctor'):
+            decision.running(ws)
+
+
+def shadows(root):
+    from wuwei import state
+    return state.read_state(root).get('decision_shadows', {})
+
+
+def test_a_shadow_never_changes_the_live_route(ws, capsys):
+    from wuwei import state
+    from wuwei.__main__ import main
+    shadow_at(ws)
+    first = save(ws, record(cls='approach'))
+    assert route(ws, capsys) == (0, 'mandate')
+    assert shadows(ws) == {'D-3': {'class': 'approach', 'level': 3, 'option': 'A',
+                                   'at': '2026-09-28T12:00:00+00:00'}}
+    shadowed, = [e['payload'] for e in events(ws) if e['kind'] == 'decision.shadow']
+    assert shadowed.items() >= {'id': 'D-3', 'class': 'approach', 'level': 3, 'option': 'A',
+                                'at': '2026-09-28T12:00:00+00:00'}.items()
+    path = ws / '.wuwei/memory/cruise.json'
+    path.write_text(json.dumps({key: value for key, value in json.loads(path.read_text()).items() if key != 'shadow'}))
+    second = save(ws, record(cls='approach'), name='D-4.md')
+    assert route(ws, capsys, 'D-4') == (0, 'mandate')
+    assert outcome(ws, 'D-3') == outcome(ws, 'D-4') and outcome(ws, 'D-3')['rule'] == 'cruise approach@L2'
+    decided = [{k: v for k, v in e['payload'].items() if k != 'id'} for e in events(ws) if e['kind'] == 'decision.decided']
+    assert decided[0] == decided[1] and first.read_text() == second.read_text()
+    assert set(shadows(ws)) == {'D-3'}
+    shadow_at(ws)
+    save(ws, record(cls='approach', door='one-way'), name='D-5.md')
+    route(ws, capsys, 'D-5')
+    assert set(shadows(ws)) == {'D-3'}
+    before = state.read_state(ws)
+    assert main(['event', '--', 'decision.shadow', '{}']) == 1
+    assert main(['state', 'set', 'decision_shadows', '{}']) == 1
+    assert 'wuwei decision route' in capsys.readouterr().err and state.read_state(ws) == before
+
+
+def shadowed(root, capsys, count, start=3):
+    """count approach records taken at 12:00 on 2026-09-28 while approach runs in shadow at L3."""
+    for number in range(start, start + count):
+        save(root, record(cls='approach'), name=f'D-{number}.md')
+        assert route(root, capsys, f'D-{number}') == (0, 'mandate')
+
+
+def day(monkeypatch, date):
+    monkeypatch.setenv('WUWEI_NOW', f'{date}T12:00:00+00:00')
+
+
+def test_a_passed_shadow_asks_once_and_the_raise_lands(ws, capsys, monkeypatch):
+    from wuwei import cruise, decision
+    shadow_at(ws)
+    calibrated(ws, 'approach')
+    shadowed(ws, capsys, 5)
+    day(monkeypatch, '2026-10-03')
+    cruise.review_shadows(ws)
+    row = decision.running(ws)['shadow']['approach']
+    assert (row['state'], row['scored'], row['agreed']) == ('passed', 5, 5)
+    assert ledger(ws)[-1]['reason'] == 'shadow passed: approach at L3; agreed 5 of 5'
+    raised = [ident for ident in propose(ws) if cards(ws)[ident]['kind'] == 'raise']
+    assert len(raised) == 1 and cards(ws)[raised[0]]['shadow'] == row
+    assert decision.running(ws)['shadow']['approach']['state'] == 'ended'
+    assert ledger(ws)[-1]['reason'] == f'shadow asked {raised[0]}'
+    assert not [ident for ident in propose(ws) if cards(ws)[ident]['kind'] == 'raise']
+    assert answer(ws, raised[0], 'raise', monkeypatch) == (0, 'raise')
+    assert decision.running(ws)['levels']['approach'] == 3 and 'shadow' not in decision.running(ws)
+    assert ledger(ws)[-1]['reason'] == f'raise approved {raised[0]}; shadow agreed 5 of 5'
+
+
+@pytest.mark.parametrize('count,date', [(5, '2026-09-30'), (4, '2026-10-03')])
+def test_a_shadow_keeps_running_when_too_soon_or_too_few(ws, capsys, monkeypatch, count, date):
+    from wuwei import cruise, decision
+    shadow_at(ws)
+    shadowed(ws, capsys, count)
+    day(monkeypatch, date)
+    cruise.review_shadows(ws)
+    row = decision.running(ws)['shadow']['approach']
+    assert (row['state'], row['scored'], row['agreed']) == ('running', count, count)
+    assert ledger(ws)[-1]['reason'] == f'shadow scored: approach at L3; agreed {count} of {count}'
+    lines = len(ledger(ws))
+    cruise.review_shadows(ws)
+    assert len(ledger(ws)) == lines
+
+
+def test_one_disagreement_ends_the_shadow(ws, capsys, monkeypatch):
+    from types import SimpleNamespace
+    from wuwei import cruise, decision
+    from wuwei.commands.decision import owner_outcome
+    shadow_at(ws)
+    calibrated(ws, 'approach')
+    shadowed(ws, capsys, 5)
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+    undo(ws)
+    later(monkeypatch, '12:30')
+    cruise.review_shadows(ws)  # D-3 undone and not answered, the rest inside their window
+    assert decision.running(ws)['shadow']['approach']['scored'] == 0
+    assert owner_outcome(SimpleNamespace(id='D-3', option='B'), root=ws) == (0, 'B')
+    later(monkeypatch, '13:00')
+    cruise.review_shadows(ws)
+    row = decision.running(ws)['shadow']['approach']
+    assert (row['state'], row['record']) == ('ended', '.wuwei/days/2026-09-28/decisions/D-3.md')
+    assert ledger(ws)[-1]['reason'] == ('shadow ended: approach at L3: '
+                                        '.wuwei/days/2026-09-28/decisions/D-3.md answered B, shadow A; agreed 4 of 5')
+    assert 'approach' not in decision.running(ws)['levels']
+    assert not [ident for ident in propose(ws) if cards(ws)[ident]['kind'] == 'raise']
+    assert decision.running(ws)['shadow']['approach']['state'] == 'ended'
+
+
+def test_agreements_count_from_the_last_shadow_end(ws, monkeypatch):
+    from wuwei import cruise, decision, workspace
+    later(monkeypatch, '11:00')
+    agree(ws, 10, cls='scope-cut')
+    later(monkeypatch, '12:00')
+    shadow_at(ws, 'scope-cut', 1, state='ended', ended='2026-09-28T12:00:00+00:00')
+    count = lambda: cruise.agreements(ws, 'scope-cut', workspace.load_config(ws), decision.running(ws))
+    assert count() == 0
+    later(monkeypatch, '12:01')
+    agree(ws, 10, cls='scope-cut', start=200)
+    assert count() == 10
+
+
+def test_a_raise_card_without_a_passed_shadow_lands_nothing(ws, monkeypatch):
+    from wuwei import decision, state
+    agree(ws, 10)
+    calibrated(ws)
+    ident, = propose(ws)
+    state._write_state(lambda data: data['cruise_cards'][ident].pop('shadow'), ws, reserved=False)
+    assert answer(ws, ident, 'raise', monkeypatch) == (0, 'raise')
+    assert decision.running(ws)['levels'] == {}
+
+
+def test_the_owner_sees_the_shadow(ws, capsys):
+    from wuwei import commands, cruise, decision, report, state, workspace
+    from wuwei.__main__ import main
+    assert 'cruise shadow' in commands.READ_ONLY
+    state._write_state(lambda data: None, ws, reserved=False)
+    assert main(['cruise', 'shadow']) == 0
+    assert capsys.readouterr().out.splitlines()[1:] == ['none']
+    assert cruise.shadow_lines(ws) == ['none'] and '## Cruise shadow\nnone\n' in report.build(ws)
+    shadow_at(ws)
+    assert main(['cruise', 'shadow']) == 0
+    header, row = capsys.readouterr().out.splitlines()
+    assert header.split() == ['class', 'level', 'started', 'scored', 'agreed', 'state']
+    assert row.split() == ['approach', 'L3', '2026-09-28', '0', '0', 'running']
+    assert cruise.label(workspace.load_config(ws), decision.running(ws)) == 'cruise L2 · shadow approach'
+    assert 'cruise L2 · shadow approach' in status_line(ws)
+    line, = cruise.shadow_lines(ws)
+    assert '## Cruise shadow\n' + line in report.build(ws)
+    (ws / '.wuwei/memory/cruise.json').write_text('not json')
+    assert main(['cruise', 'shadow']) == 2
+
+
+def test_the_steward_scores_shadows(ws, monkeypatch):
+    from wuwei import cruise, steward
+    seen = []
+    monkeypatch.setattr(cruise, 'review_shadows', lambda root: seen.append(root))
+    steward.review(ws)
+    assert seen == [ws]

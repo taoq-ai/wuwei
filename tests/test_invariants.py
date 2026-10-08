@@ -7,14 +7,18 @@ import functools
 from importlib import import_module
 import io
 import itertools
+import math
 import re
 import time
 
 import pytest
 
 from test_commit_push import item_case, workspace_case  # noqa: F401 (fixtures)
+from test_decision import draft_question
+from test_grants import run
 from test_posture import fixed
 from test_reasons import CLI, ROOT, reasons
+from wuwei.__main__ import main
 
 # A wall: the only way out is the owner acting outside the session, and no card is named.
 WALL = re.compile(r'no setting lowers it|host terminal|ask the owner to|only the owner|by hand'
@@ -119,6 +123,7 @@ DIMENSIONS = {
     'umbrella': ('send', 'ask'),
     'mode': ('adapter', 'unlisted', 'send', 'draft', 'refuse'),
 }
+CASES = math.prod(len(values) for values in DIMENSIONS.values())
 CHANNEL = {'owner': 'D0OWNER', 'team': 'C0TEAM', 'company': 'C0CO', 'client': 'C0CLIENT',
            'public': 'C0PUB'}
 TEXT = {'none': 'Tests passed.', 'sensitive': 'Tests passed for the salary review.',
@@ -195,7 +200,6 @@ class Rules:
         """The deploy guard (grants.gate) on a seeded grant state: (exit, reason, rows before,
         rows after, standing before, standing after)."""
         def compute():
-            from test_grants import run
             from wuwei import state, workspace
             self.configure(posture, '[deploy]\nworkflows = ["deploy-production.yml"]\n'
                            + (STANDING if grant == 'always' else ''))
@@ -314,8 +318,6 @@ class Rules:
         """A held chat message, the planner's Draft card answered Send now, the approval, and the
         same call again: (planner may approve, exit of the same call after approval)."""
         def compute():
-            from test_decision import draft_question
-            from wuwei.__main__ import main
             from wuwei.guards.decision import record_gate
             from wuwei.guards.outward import check_tier
             from wuwei.guards.protect_state import check_bash
@@ -339,12 +341,16 @@ def default_has_no_grant():
     return workspace.load_config('.', raw='')['grants']['standing'] == []
 
 
-def i1(case, rules):
-    posture, grant, mode = case[0], case[4], case[6]
+def i1_outward(case, rules):
+    if case[0] != 'strict' and rules.outward(*project(case))[1] == 'block' and case[6] != 'refuse':
+        return 'classify blocks with no owner-written row'
+    return None
+
+
+def i1_grant(case, rules):
+    posture, grant = case[0], case[4]
     if posture == 'strict':
         return None
-    if rules.outward(*project(case))[1] == 'block' and mode != 'refuse':
-        return 'classify blocks with no owner-written row'
     code, reason, *_ = rules.grant(posture, grant)
     if code and not CARD.search(reason) and 'kept it owner-only' not in reason:
         return f'the deploy guard refuses with no card: {reason}'
@@ -352,6 +358,10 @@ def i1(case, rules):
     if code != expected:
         return f'the deploy guard exits {code} for grant {grant}, expected {expected}: {reason}'
     return None
+
+
+def i1(case, rules):
+    return i1_outward(case, rules) or i1_grant(case, rules)
 
 
 def i2(case, rules):
@@ -454,8 +464,67 @@ def i11(case, rules):
     return budget_rule()
 
 
+@functools.cache
+def calibration_rule():
+    """#559: the Brier states, an uncalibrated class runs at most L1 (too few is not capped), and
+    an uncalibrated role only moves a record toward the owner."""
+    from wuwei import calibration_scores, cruise, decision
+    rule = {'calibration_threshold': 0.15, 'calibration_min': 10}
+    found = [calibration_scores.measure(pairs, rule)[1] for pairs in (
+        [(0.9, 1)] * 7 + [(0.9, 0)] * 5, [(0.9, 1)] * 10, [(0.9, 1)] * 9)]
+    if found != ['uncalibrated', 'calibrated', 'too few']:
+        return f'calibration states {found}, expected uncalibrated, calibrated, too few'
+    config = {'autonomy': {'mode': 'autonomous'}, 'decisions': {'cruise': {'enabled': True, 'levels': {}}}}
+    levels = [cruise.level(config, 'defer', {'levels': {'defer': 3}, 'calibration': calibration})
+              for calibration in ({'classes': ['defer'], 'roles': []}, {})]
+    if levels != [1, 3]:
+        return f'levels {levels} for an uncalibrated and a too-few class, expected 1 and 3'
+    routine = {'Class': 'retry', 'Reversibility': 'two-way'}
+    consequential = {'Class': 'design', 'Reversibility': 'one-way', 'Blast radius': 'outside', 'Confidence': 'high'}
+    moved = [decision.cisr(fields, {}, ambiguous=True) for fields in (routine, consequential)]
+    return None if moved == ['Exploratory', 'Strategic'] else f'an uncalibrated role routes as {moved}'
+
+
+def i12(case, rules):
+    return calibration_rule()
+
+
+@functools.cache
+def shadow_rule():
+    """#560: a stored shadow never changes the level a class routes at, for any class, shadow
+    level and state, cruise on or off, autonomous or supervised."""
+    from wuwei import cruise
+    for mode, enabled in (('autonomous', True), ('autonomous', False), ('supervised', True)):
+        config = {'autonomy': {'mode': mode}, 'decisions': {'cruise': {'enabled': enabled, 'levels': {}}}}
+        for name in cruise.CLASSES:
+            for level, state in itertools.product((1, 2, 3), cruise.SHADOW):
+                run = {'levels': {}, 'changed': {}, 'shadow': {name: {'level': level, 'state': state}}}
+                if cruise.level(config, name, run) != cruise.level(config, name, {'levels': {}, 'changed': {}}):
+                    return f'a {state} shadow at L{level} moves {name} under {mode}'
+    return None
+
+
+def i13(case, rules):
+    return shadow_rule()
+
+
+def i14(case, rules):
+    """#560: a raise card answered raise lands nothing without a passed shadow."""
+    def compute():
+        from wuwei import cruise, decision, state
+        card = {'kind': 'raise', 'class': 'defer', 'level': 1}
+        before = decision.running(rules.root)['levels']
+        state._write_state(lambda data: data.setdefault('cruise_cards', {}).__setitem__('D-99', card),
+                           rules.root, reserved=False)
+        cruise.answered(rules.root, 'D-99', 'raise')
+        state._write_state(lambda data: data['cruise_cards'].pop('D-99'), rules.root, reserved=False)
+        after = decision.running(rules.root)['levels']
+        return None if after == before else f'a raise card without a passed shadow landed {after}'
+    return rules.memo(('raise card',), compute)
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
-              'I9': i9, 'I10': i10, 'I11': i11}
+              'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14}
 
 
 def project(case):
@@ -464,27 +533,64 @@ def project(case):
     return posture, audience, topic, kind, umbrella, mode
 
 
+# The case positions each invariant reads (DIMENSIONS order); it runs once per distinct
+# projection, and a read of any other position raises (#562).
+OUTWARD = (0, 1, 2, 3, 5, 6)
+READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
+         'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': ()}
+# I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
+PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
+
+
+class Unread:
+    """A dimension the invariant did not declare in READS: any use of it fails the walk."""
+
+    def __init__(self, name):
+        self.name = name
+
+    def _read(self, *args):
+        raise AssertionError(f'{self.name} reads an undeclared dimension')
+
+    __eq__ = __ne__ = __hash__ = __str__ = __format__ = __bool__ = __iter__ = _read
+
+
 def walk(world):
     """Every invariant on every case; one line per failure with the full tuple."""
-    rules, failures = Rules(*world), []
+    rules, found, keys = Rules(*world), {}, list(DIMENSIONS)
+    checks = [(name, reads, check) for name, invariant in INVARIANTS.items()
+              for reads, check in PARTS.get(name, ((READS[name], invariant),))]
+    for index, (name, reads, check) in enumerate(checks):
+        for values in itertools.product(*(DIMENSIONS[keys[i]] for i in reads)):
+            case = [Unread(name)] * len(keys)
+            for position, value in zip(reads, values):
+                case[position] = value
+            found[index, values] = check(tuple(case), rules)
+    if not any(found.values()):
+        return []
+    failures = []
     for case in itertools.product(*DIMENSIONS.values()):
-        for name, invariant in INVARIANTS.items():
-            found = invariant(case, rules)
-            if found:
+        for index, (name, reads, _) in enumerate(checks):
+            if failure := found[index, tuple(case[i] for i in reads)]:
                 failures.append(' '.join(f'{key}={value}' for key, value in zip(DIMENSIONS, case))
-                                + f': {name} {found}')
+                                + f': {name} {failure}')
     return failures
 
 
 def test_invariants_hold(world):
     cases = list(itertools.product(*DIMENSIONS.values()))
-    assert len(cases) >= 2000
+    assert len(cases) == CASES and CASES >= 18000
     start = time.process_time()  # CPU time: a busy host does not fail the walk
     failures = walk(world)
     elapsed = time.process_time() - start
     assert not failures, '\n'.join(failures[:20])
-    # ponytail: one CPU-time sample with CI headroom (runners took 1.1-1.2 s); tighten in the latency benchmarks, not here.
-    assert elapsed < 3.0, f'{len(cases)} cases took {elapsed:.2f} s'
+    assert elapsed < 1.0, f'{len(cases)} cases took {elapsed:.2f} s'
+
+
+def test_undeclared_read_raises(world, monkeypatch):
+    # #562: an invariant reading a dimension READS does not name fails loudly.
+    monkeypatch.setitem(READS, 'I4', (0, 1, 2, 5, 6))
+    with pytest.raises(AssertionError, match='I4 reads an undeclared dimension'):
+        walk(world)
 
 
 BROKEN = {

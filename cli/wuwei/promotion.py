@@ -3,8 +3,6 @@
 from datetime import date, timedelta
 import json
 from pathlib import Path
-import shutil
-from uuid import uuid4
 
 from wuwei import registry, state, workspace
 from wuwei.notes import OWNER_NOTES, SLUG_RE, parse_note
@@ -55,18 +53,46 @@ def cruise_level(root, name, level, reason, evidence, hold=None):
     data['changed'][name] = workspace.now().isoformat()
     budget = data.pop('budget', {})
     budget.pop(name, None)
+    data.get('shadow', {}).pop(name, None)  # #560: a level write ends the class's shadow
+    if not data.get('shadow', True):
+        data.pop('shadow')
     if hold is not None:
         budget[name] = hold
     if budget:
         data['budget'] = budget
+    _cruise_write(root, data, 'raise' if level > previous else 'lower', reason, evidence)
+
+
+def calibration(root, classes, roles, reason):
+    """#559: the steward stores the uncalibrated classes and roles, with a ledger line."""
+    from wuwei.decision import CRUISE, running
+    root = Path(root)
+    data = running(root)
+    data.pop('calibration', None)
+    if classes or roles:
+        data['calibration'] = {'classes': sorted(classes), 'roles': sorted(roles)}
+    _cruise_write(root, data, 'calibration', reason, CRUISE)
+
+
+def cruise_shadow(root, name, row, reason, evidence=None):
+    """#560: the one writer of a class's shadow row in cruise.json, with a ledger line."""
+    from wuwei.decision import CRUISE, running
+    root = Path(root)
+    data = running(root)
+    data.setdefault('shadow', {})[name] = row
+    _cruise_write(root, data, 'shadow', reason, evidence or CRUISE)
+
+
+def _cruise_write(root, data, action, reason, evidence):
+    from uuid import uuid4
+    from wuwei.decision import CRUISE
     path = safe_path(root, CRUISE, label='cruise levels')
     path.parent.mkdir(parents=True, exist_ok=True)
     workspace.atomic_write(path, json.dumps(data, indent=2, sort_keys=True) + '\n')
     # ponytail: not committed to workspace history here; the next promote commit carries the ledger.
     state.append_jsonl(safe_path(root, '.wuwei/memory/ledger.jsonl', label='ledger'), {
         'date': workspace.now().date().isoformat(), 'run_id': uuid4().hex, 'target': CRUISE,
-        'action': 'raise' if level > previous else 'lower', 'status': 'landed',
-        'reason': reason, 'evidence': evidence})
+        'action': action, 'status': 'landed', 'reason': reason, 'evidence': evidence})
 
 
 def safe_path(root, raw, *, label):
@@ -118,7 +144,7 @@ def _ensure_clean(root, target):
     if not isinstance(result.data, list) or not all(isinstance(p, str) for p in result.data):
         raise OSError('workspace integrity evidence unreadable; run bin/wuwei doctor, which tests the workspace history')
     if target.relative_to(root / '.wuwei').as_posix() in result.data:
-        raise ValueError('target has unpromoted changes; owner must review workspace history; the owner reviews the workspace history and runs bin/wuwei goals edit or bin/wuwei voice edit in a host terminal')
+        raise ValueError('target has unpromoted changes; the owner reviews the workspace history. Then the owner runs bin/wuwei goals edit or bin/wuwei voice edit in a host terminal')
 
 
 def _changelog(root):
@@ -127,6 +153,8 @@ def _changelog(root):
 
 def _snapshot(root):
     """Keep pre-fold memory and charters under protected workspace history."""
+    import shutil
+    from uuid import uuid4
     base = root / '.wuwei'
     target = base / 'memory/snapshots' / uuid4().hex
     for name in ('memory', 'charters'):
@@ -305,6 +333,7 @@ def land(root, proposal, *, day, run, ledger, name):
 
 
 def promote(root=None):
+    from uuid import uuid4
     root = workspace.find_workspace() if root is None else Path(root)
     if (root / '.wuwei').is_symlink():
         raise ValueError('.wuwei must not be a symlink')

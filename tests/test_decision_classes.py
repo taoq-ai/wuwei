@@ -232,7 +232,7 @@ def test_a_security_finding_still_asks_the_owner(ws, capsys):
     from wuwei import state
     from wuwei.__main__ import main
     path = save(ws, SCANNER)
-    assert route(ws, capsys) == (0, 'owner')
+    assert route(ws, capsys)[1].splitlines()[0] == 'owner'  # #557: other has no undo, one-way
     data = state.read_state(ws)
     assert 'D-3' in data['decision_routes'] and not data.get('decision_outcomes')
     assert 'Decided-by: owner' in path.read_text() and 'Outcome: pending' in path.read_text()

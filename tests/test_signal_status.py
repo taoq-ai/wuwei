@@ -136,6 +136,9 @@ def test_status_line_and_json_share_snapshot(tmp_path):
     assert 'reply 2026-09-28T13:00:00+02:00' in full.stdout
     assert 'meeting 2026-09-28T16:00:00+02:00' in full.stdout
     data = json.loads(structured.stdout)
+    # #562: the line skips these; status and --json keep them.
+    assert {'cruise', 'plugin', 'template', 'next_meeting', 'next_reply_due', 'sessions', 'seats'} <= data.keys()
+    assert 'sessions 0' in full.stdout and 'plugin ' in full.stdout
     assert data['pages'] == 1 and data['nudges'] == 1
     assert data['phases']['spec'] == 1 and data['cap'] == 2
     assert data['next_reply_due'] == '2026-09-28T13:00:00+02:00'
@@ -379,7 +382,8 @@ def test_emitted_kinds_have_intended_tiers():
                 'docs.exempt': 'silent', 'outbound.proposed': 'silent', 'outbound.learned': 'silent', 'outbound.thread': 'silent',
                 'config.set': 'silent',
                 'grant.asked': 'silent', 'grant.used': 'silent', 'grant.revoked': 'silent',
-                'decision.reversed': 'nudge', 'decision.notified': 'silent', 'cruise.carded': 'silent',
+                'decision.reversed': 'nudge', 'decision.notified': 'silent', 'cruise.carded': 'silent', 'decision.shadow': 'silent',
+                'undo.rehearsed': 'silent', 'undo.done': 'silent',
                 'cruise.burn': 'nudge',
                 **{f'telemetry.{name}': 'nudge' if name == 'ready' else 'silent' for name in TELEMETRY}}
     assert emitted == set(expected)

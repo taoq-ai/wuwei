@@ -231,6 +231,17 @@
           "github.com"
         ],
         "stdout": "[[]]"
+      },
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget",
+          "-H",
+          "Cache-Control: no-cache",
+          "--hostname",
+          "github.com"
+        ],
+        "stdout": "{\"default_branch\": \"main\", \"allow_squash_merge\": true, \"allow_merge_commit\": false}"
       }
     ],
     "data": {
@@ -254,7 +265,8 @@
       "allow_force_pushes": false,
       "allow_deletions": false,
       "merge_queue": false,
-      "classic": true
+      "classic": true,
+      "squash": true
     }
   },
   {

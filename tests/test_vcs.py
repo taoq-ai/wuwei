@@ -475,3 +475,19 @@ def test_worktrees_and_checkout_existing_branch(tmp_path):
 def test_worktrees_rejects_malformed_records(stdout, monkeypatch):
     install_replay(monkeypatch, 'git', [{'stdout': stdout}])
     assert adapter().worktrees('/repo').exit == 2
+
+
+def test_rehearse_revert_on_a_scratch_repository():
+    # #557: the one real smoke test of the commit undo rehearsal.
+    import tempfile
+    git = adapter()
+    with tempfile.TemporaryDirectory() as scratch:
+        result = git.rehearse_revert(scratch)
+        assert result.exit == 0 and result.data['reverted'] is True
+        assert result.data['tree'] and (Path(scratch) / 'rehearsal.txt').read_text() == 'before\n'
+    outside = Path(__file__).resolve().parents[1]
+    for args in (('revert', '--no-edit', 'HEAD'), ('add', '--', 'rehearsal.txt'),
+                 ('commit', '--quiet', '-m', 'WUWEI undo rehearsal'),
+                 ('rev-parse', 'HEAD^{tree}', 'HEAD~2^{tree}')):
+        with pytest.raises(ValueError, match='unsupported git command'):
+            git._run(outside, *args, local=True)

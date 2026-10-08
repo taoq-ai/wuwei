@@ -626,7 +626,7 @@ def test_recorded_executable_is_protected(workspace, tool, fields):
 def test_seat_cannot_recover_state(workspace, tmp_path, command):
     from wuwei.guards.protect_state import check_bash
     assert check_bash(payload(workspace, 'Bash', command=command)) == (
-        1, 'State recovery is an owner action, outside agent tools: the owner runs bin/wuwei state recover '
+        1, 'The owner recovers state, outside agent tools: the owner runs bin/wuwei state recover '
         'in a host terminal; bin/wuwei doctor shows what is damaged.')
     outside = tmp_path / 'outside'
     outside.mkdir()
@@ -962,9 +962,9 @@ def test_memory_tier_records_are_producer_only(workspace, path):
     assert check_bash(payload(workspace, 'Bash', command='rm -rf .wuwei/memory/digests'))[0] == 1
 
 
-FORGET = ("Forgetting memory is the owner's answer, outside agent tools: show the proposals "
-          'with bin/wuwei consolidate --widget, and the owner runs bin/wuwei memory forget '
-          '<id> apply|keep in a host terminal.')
+FORGET = ('The owner decides what memory to forget, outside agent tools; show the proposals with '
+          'bin/wuwei consolidate --widget. The owner runs bin/wuwei memory forget <id> '
+          'apply|keep in a host terminal.')
 
 
 @pytest.mark.parametrize('command,expected', [
@@ -1064,3 +1064,16 @@ def test_register_is_cli_owned(records, posture, monkeypatch, capsys):
         assert _hook(records, tool, monkeypatch, capsys, **field) == 2
     code, reason = check_file(payload(records, 'Write', file_path=target))
     assert code == 1 and 'bin/wuwei config set' in reason and 'init --upgrade' in reason and 'bin/wuwei who' in reason
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_rehearsal_ledger_is_cli_owned(records, posture, monkeypatch, capsys):
+    # #557: a seat cannot mark an undo rehearsed; the records floor holds under every posture.
+    from wuwei.guards.protect_state import check_file
+    _posture(records, posture)
+    target = '.wuwei/memory/rehearsals.json'
+    for tool, field in [('Write', {'file_path': target}), ('Edit', {'file_path': target}),
+                        ('Bash', {'command': f'echo {{}} > {target}'})]:
+        assert _hook(records, tool, monkeypatch, capsys, **field) == 2
+    code, reason = check_file(payload(records, 'Write', file_path=target))
+    assert code == 1 and 'wuwei undo rehearse' in reason

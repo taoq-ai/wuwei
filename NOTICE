@@ -64,11 +64,17 @@ ZIRAN
   Licence: Apache-2.0
   Used: as a CI tool for the role grant audit (ziran-audit job, agents/ziran-baseline.json).
 
+OpenSpec
+  Source: https://github.com/Fission-AI/OpenSpec
+  Licence: MIT
+  Used: as an external tool, the openspec spec engine option (design spec 5.10); no code
+  copied.
+
 superpowers
   Source: https://github.com/obra/superpowers
   Licence: MIT, Copyright (c) 2025 Jesse Vincent
   Used: the section structure of README.md (how it works, the basic workflow, when
-  something goes wrong, what is inside, philosophy, installation per harness); no text
+  something goes wrong, what is inside, principles, installation per harness); no text
   copied.
 
 Concepts (credited by author and source)
@@ -88,3 +94,25 @@ One-way and two-way doors
   Source: https://s2.q4cdn.com/299287126/files/doc_financials/annual/2015-Letter-to-Shareholders.PDF
   Author: Jeff Bezos, Amazon 2015 letter to shareholders (Type 1 and Type 2 decisions)
   Used: the decision framework (design spec 5.3 and 5.8).
+
+MIT CISR decision framework
+  Source: https://cisr.mit.edu/
+  Author: Sebastian, Weill, Haskamp and vom Brocke, MIT CISR, "A framework for determining
+  when AI can make decisions"
+  Used: the decision classes from reversibility, blast radius and ambiguity (design spec 5.8).
+
+Verifiably Safe Autonomous Decision-Making (vGOAL)
+  Source: https://www.kuleuven.be/
+  Author: KU Leuven
+  Used: the invariant table and its exhaustive test, without the model checker (design
+  spec 9.2).
+
+Error budgets
+  Source: https://sre.google/sre-book/embracing-risk/
+  Author: Google, Site Reliability Engineering, "Embracing Risk"
+  Used: the error budget per decision class (design spec 5.8.1).
+
+Brier score
+  Source: https://doi.org/10.1175/1520-0493%281950%29078%3C0001%3AVOFEIT%3E2.0.CO%3B2
+  Author: Glenn W. Brier, Monthly Weather Review, 1950
+  Used: confidence calibration per decision class and role (design spec 5.8.1).

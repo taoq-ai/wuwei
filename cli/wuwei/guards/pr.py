@@ -28,6 +28,8 @@ def merge_check(repo, pr, cwd, root, config):
     if pr is None:
         return 1, 'merge policy requires an explicit PR; use wuwei merge <pr>'
     result = merge.check(pr, root, cwd=cwd, repo=repo)
+    if result.exit == 1:  # #524: wuwei merge is the one way through, under a grant or a card
+        return 1, f"{result.reason}; run bin/wuwei merge {pr}: it merges under the owner's grant, or asks the owner on a card"
     if result.exit:
         return result.exit, result.reason
     return 1, 'merge policy passed; use wuwei merge <pr> to record evidence and monitor the merge'
@@ -82,12 +84,13 @@ def values(found, *keys):
 
 def _recorded_gates(root, sha, records, item, items=None):
     """Check the bounded fix and delta path recorded by the receive producer."""
-    from wuwei.dispatch import base, gate_set
+    from wuwei.dispatch import base, depth, gate_set
     candidates = [item] if item is not None else sorted({
         key.split(':', 1)[0] for key in records if isinstance(key, str) and ':' in key})
     failures = []
     for candidate in candidates:
         roles = gate_set((items or {}).get(candidate, {}))
+        light = depth((items or {}).get(candidate, {}), gate=True) == 'light'  # #567
         initial = [records.get(f'{candidate}:{role}:initial') for role in roles]
         missing = [role for role, row in zip(roles, initial) if row is None]
         if missing:
@@ -110,7 +113,7 @@ def _recorded_gates(root, sha, records, item, items=None):
             if path.parent != expected or path.is_symlink() or not path.name.startswith('gate-'):
                 raise ValueError('gate verdict path is outside the day decisions; receive the verdict again with bin/wuwei dispatch receive')
             text = path.read_text(encoding='utf-8')
-            code, reason = verdict.lint(text, quality=base(role) == 'quality', class_sweep=True)
+            code, reason = verdict.lint(text, quality=base(role) == 'quality', class_sweep=True, light=light)
             if code:
                 raise ValueError(f'{role} verdict: {reason}')
             active = verdict.active_text(text)
@@ -277,7 +280,7 @@ def api_check(args, cwd, root, config):
         return 0, ''
     if (re.fullmatch(r'repos/[^/]+/[^/]+/(?:branches/.+/protection(?:/.*)?|rulesets(?:/.*)?)', endpoint, re.I)
             or re.fullmatch(r'orgs/[^/]+/rulesets(?:/.*)?', endpoint, re.I)):
-        return 1, 'branch protection changes are refused; branch protection is the owner\'s; ask the owner to change it'
+        return 1, 'branch protection changes are refused; ask the owner, who owns branch protection, to change it'
     match = re.fullmatch(r'repos/([^/]+/[^/]+)/pulls/(\d+)/merge', endpoint, re.I)
     if match:
         return merge_check(match[1], match[2], cwd, root, config)

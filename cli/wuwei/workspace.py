@@ -76,8 +76,10 @@ SCHEMA = {
                "shepherd": {"reviewers": [(str, None)]}}],
     "worktree": {"git_hooks": (str, "chain", ("chain", "skip", "replace"))},
     "checks": {"python": (str, ""), "bootstrap": (str, "")},  # #520
+    # #524: with no grant, a merge asks on a card or names the host-terminal command; "" follows the posture.
+    "merge": {"default_tier": (str, "", ("", "ask", "owner_only"))},
     # #478: standing grants, written by the owner's Always allow answer; ignored under strict.
-    "grants": {"standing": [{"action": (str, None, ("deploy", "release", "publish")),
+    "grants": {"standing": [{"action": (str, None, ("deploy", "release", "publish", "merge")),
                              "target": (str, None), "scope": (str, "always", ("always",)),
                              "decision": (str, None), "date": (str, None)}]},
     # #528: 0 derives CAP and host.seats from the measured host; a positive value is the owner's.
@@ -142,8 +144,10 @@ SCHEMA = {
                   "cruise": {"enabled": (bool, True), "margin": (float, 0.2),
                              "max_per_day": (int, 20, 0), "undo_minutes": (int, 60, 1),
                              "promote_agreements": (int, 10, 1), "promote_days": (int, 14, 1),
+                             "shadow_days": (int, 5, 1), "shadow_min": (int, 5, 1),
                              "budget_share": (float, 0.1), "budget_window_days": (int, 14, 1),
                              "burn_warn": (float, 2.0),
+                             "calibration_threshold": (float, 0.15), "calibration_min": (int, 10, 1),
                              "levels": {"*": (int, None, 0, 3)}},
                   "lenses": {"*": (str, "")}},
     "pr": {"poll_seconds": (int, 120, 1), "action_minutes": (int, 30, 1),
@@ -696,6 +700,8 @@ def load_config(root=None, *, raw=None, warnings=None):
             raise ConfigError('decisions.cruise.margin: expected a number above 0 and at most 1; the owner fixes it with bin/wuwei config set decisions.cruise.margin <value> in a host terminal')
         if not 0 < config['decisions']['cruise']['budget_share'] <= 0.5:
             raise ConfigError('decisions.cruise.budget_share: expected a number above 0 and at most 0.5; the owner fixes it with bin/wuwei config set decisions.cruise.budget_share <value> in a host terminal')
+        if not 0 < config['decisions']['cruise']['calibration_threshold'] < 1:
+            raise ConfigError('decisions.cruise.calibration_threshold: expected a number above 0 and below 1; the owner fixes it with bin/wuwei config set decisions.cruise.calibration_threshold <value> in a host terminal')
         for name, value in config['decisions']['cruise']['levels'].items():
             from wuwei.decision import CLASSES
             if name not in CLASSES:

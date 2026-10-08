@@ -25,7 +25,7 @@ if _FAST:
 # Top-level help groups, in the order printed; plumbing shows only with --all.
 GROUPS = (
     ('Daily: the session runs these through the day',
-     'next guide status nudges plan decision worktree brief build dispatch pr merge reply discover '
+     'next guide status nudges plan decision undo worktree brief build dispatch pr merge reply discover '
      'note tracker metrics report retro close steward docs'),
     ('Owner: run these in your own host terminal',
      'setup init config decide grants calibrate goals voice drafts remote mcp outbound watch listen shepherd '
@@ -33,7 +33,7 @@ GROUPS = (
     ('Recovery: when something is stuck',
      'doctor why who state shadow heartbeat integrity runtime sessions seat'),
     ('Plumbing: hooks, seats and the plugin call these',
-     'agents board event fast-checks git-hook hook index memory payload rank signal sweep verdict'),
+     'agents board event fast-checks git-hook hook index lint memory payload rank signal sweep verdict'),
 )
 
 

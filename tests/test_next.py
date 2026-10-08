@@ -426,7 +426,7 @@ def test_constraints_precede_a_long_week_digest(root, monkeypatch, capsys):
 
 def test_orientation_precedes_integrity_line(root, monkeypatch, capsys):
     calibrated(root)
-    from wuwei.integrity import Result
+    from wuwei.registry import Result
     owner = 'plugin integrity: owner-confirmed content (local evidence)'
     monkeypatch.setattr(integrity, 'check', lambda *args, **kwargs: Result(0, None, owner))
     monkeypatch.setattr(integrity, 'workspace_check', lambda *args, **kwargs: Result(0))
@@ -729,3 +729,24 @@ def test_an_empty_close_card_does_not_hold_next(root, capsys):
     state.append_event('next.action', {'state': 'decision', 'item': 'D-1', 'action': 'pass'}, root)
     code, found = row(capsys)
     assert (code, found['state'], found['command']) == (0, 'close', 'wuwei close'), found
+
+
+def test_unrehearsed_undos_are_run_rows_before_the_cards(root, capsys, rehearsed_undo, monkeypatch):
+    # #557: two-way records of an unrehearsed kind go to the owner until the planner rehearses it.
+    from wuwei import undo
+    monkeypatch.setattr(undo, 'ledger', rehearsed_undo)
+    approved(root, {}, decision_routes={'D-1': 'owner'})
+    found = coarse(root)
+    assert (found['state'], found['action'], found['command'], found['item']) == (
+        'rehearse', 'run', 'wuwei undo rehearse commit', 'commit')
+    assert 'come to you as cards until it runs' in found['why']
+    assert next_command.step(root, [('rehearse', 'commit')])['command'] == 'wuwei undo rehearse decision'
+    assert next_command.step(root, [('rehearse', 'commit'), ('rehearse', 'decision')])['state'] == 'decision'
+    undo.record(root, 'commit', 'rehearsal')
+    undo.record(root, 'decision', 'rehearsal')
+    assert coarse(root)['state'] == 'decision'
+
+    def unread(root):
+        raise AssertionError('the ledger is not read once both rows are done')
+    monkeypatch.setattr(undo, 'ledger', unread)
+    assert next_command.step(root, [('rehearse', 'commit'), ('rehearse', 'decision')])['state'] == 'decision'

@@ -141,6 +141,17 @@ def test_session_start_exports_quoted_id(root, monkeypatch, tmp_path_factory):
     assert env_file.read_text() == "export WUWEI_SESSION_ID=A\nexport WUWEI_SESSION_ID='A B'\n"
 
 
+def test_session_start_reads_the_day_state_twice(root, monkeypatch):
+    # #587: next.step reads the day once, the registry write returns it; nothing reads it again.
+    today, reads, read = workspace.day_dir(root), [], state.read_state
+    def counting(root=None, *, directory=None):
+        reads.append(Path(directory) if directory is not None else workspace.day_dir(root))
+        return read(root, directory=directory)
+    monkeypatch.setattr(state, 'read_state', counting)
+    hook(monkeypatch, 'SessionStart', 'A', root)
+    assert reads.count(today) == 2
+
+
 def test_session_start_without_day_state_creates_none(root, monkeypatch, tmp_path_factory):
     env_file = tmp_path_factory.mktemp('env') / 'env.sh'
     monkeypatch.setenv('CLAUDE_ENV_FILE', str(env_file))
@@ -282,7 +293,7 @@ def test_registry_fault_keeps_session_start_code_two(root, monkeypatch):
     from wuwei.guards import lifecycle
     monkeypatch.setattr(memory, 'session_payload', lambda root: ('ctx', 3, 1))
     monkeypatch.setattr(memory, 'lint', lambda root: [])
-    monkeypatch.setattr(watch, 'health', lambda root, name='watch': (0, ''))
+    monkeypatch.setattr(watch, 'health', lambda root, clocks=None, name='watch': (0, ''))
 
     def broken(*args, **kwargs):
         raise ValueError('registry broken')

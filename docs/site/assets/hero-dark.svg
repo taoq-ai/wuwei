@@ -1,121 +1,156 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" role="img" aria-labelledby="title desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13">
-<title id="title">WUWEI: a day of delivery</title>
-<desc id="desc">Work items move along a track through Plan, Build, Check, Review and Merge while guards, cards and the heartbeat work under the hood; you approve the plan once and answer a card from the phone.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-labelledby="title desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13">
+<title id="title">WUWEI: agentic delivery, one day</title>
+<desc id="desc">A ranked queue you approve feeds an agent team working three parallel lanes that loop build and check, every candidate passes the gates with at most one fix round, pull requests wait in a stack the shepherd sweeps until they merge, and you answer the odd card from the phone while guards, heartbeat, lead and steward work under the hood and each day's retro feeds tomorrow's plan.</desc>
 <style><![CDATA[
 .still{display:none}
-.belt{animation:belt 1.2s linear infinite}@keyframes belt{to{stroke-dashoffset:-24}}
+.spin{animation:spin 2s linear infinite;transform-box:fill-box;transform-origin:center}@keyframes spin{to{transform:rotate(360deg)}}
 .beat{animation:beat 2s ease-in-out infinite}@keyframes beat{50%{opacity:.25}}
-@media (prefers-reduced-motion:reduce){.live{display:none}.still{display:inline}.belt,.beat{animation:none}}
+@media (prefers-reduced-motion:reduce){.live{display:none}.still{display:inline}.spin,.beat{animation:none}}
 ]]></style>
-<rect width="1200" height="600" rx="28" fill="#102622"/>
-<text x="40" y="58" fill="#ECF8F5" font-size="38" font-weight="700">无为 <tspan fill="#00C9A7">WUWEI</tspan></text>
-<text x="40" y="86" fill="#B1CBC4" font-size="16">A team of agents runs your delivery day. You approve the plan and answer the odd card.</text>
+<defs>
+<marker id="m-muted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#B1CBC4"/></marker>
+<marker id="m-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#00C9A7"/></marker>
+<marker id="m-warm" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#F2B65E"/></marker>
+</defs>
+<rect width="1200" height="640" rx="28" fill="#102622"/>
+<text x="40" y="54" fill="#ECF8F5" font-size="38" font-weight="700">无为 <tspan fill="#00C9A7">WUWEI</tspan></text>
+<text x="40" y="84" fill="#B1CBC4" font-size="16">A team of agents runs your delivery day. You set the work and keep the final say.</text>
 <rect x="960" y="70" width="200" height="4" rx="2" fill="#B1CBC4" opacity="0.25"/>
 <text x="960" y="92" fill="#B1CBC4" font-size="12">09:00</text>
 <text x="1160" y="92" fill="#B1CBC4" font-size="12" text-anchor="end">18:00</text>
-<rect x="316" y="104" width="30" height="52" rx="6" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.45" stroke-width="1.5"/>
-<rect x="321" y="111" width="20" height="34" rx="3" fill="#B1CBC4" opacity="0.2"/>
-<text x="358" y="124" fill="#B1CBC4" font-size="12">you, on the phone</text>
-<rect x="40" y="194" width="960" height="214" rx="14" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.25"/>
-<line x1="40" y1="256" x2="1000" y2="256" stroke="#B1CBC4" stroke-opacity="0.18"/>
-<line x1="40" y1="308" x2="1000" y2="308" stroke="#B1CBC4" stroke-opacity="0.18"/>
-<line x1="40" y1="360" x2="1000" y2="360" stroke="#B1CBC4" stroke-opacity="0.18"/>
-<line x1="125" y1="206" x2="125" y2="408" stroke="#B1CBC4" stroke-opacity="0.25" stroke-dasharray="3 5"/>
-<line x1="318" y1="206" x2="318" y2="408" stroke="#B1CBC4" stroke-opacity="0.25" stroke-dasharray="3 5"/>
-<line x1="515" y1="206" x2="515" y2="408" stroke="#B1CBC4" stroke-opacity="0.25" stroke-dasharray="3 5"/>
-<line x1="708" y1="206" x2="708" y2="408" stroke="#B1CBC4" stroke-opacity="0.25" stroke-dasharray="3 5"/>
-<line x1="900" y1="206" x2="900" y2="408" stroke="#B1CBC4" stroke-opacity="0.25" stroke-dasharray="3 5"/>
-<line class="belt" x1="56" y1="230" x2="984" y2="230" stroke="#B1CBC4" stroke-opacity="0.35" stroke-width="2" stroke-dasharray="10 14" style="animation-duration:1.2s"/>
-<line class="belt" x1="56" y1="282" x2="984" y2="282" stroke="#B1CBC4" stroke-opacity="0.35" stroke-width="2" stroke-dasharray="10 14" style="animation-duration:1.4s"/>
-<line class="belt" x1="56" y1="334" x2="984" y2="334" stroke="#B1CBC4" stroke-opacity="0.35" stroke-width="2" stroke-dasharray="10 14" style="animation-duration:1.1s"/>
-<path class="belt" d="M 708 334 C 728.7 334 749.3 384 770 384 L 840 384 C 860 384 880 334 900 334" fill="none" stroke="#F2B65E" stroke-opacity="0.7" stroke-width="2" stroke-dasharray="6 6"/>
-<path class="belt" d="M 318 334 C 358.7 334 399.3 384 440 384 L 540 384" fill="none" stroke="#B1CBC4" stroke-opacity="0.6" stroke-width="2" stroke-dasharray="6 6"/>
-<line x1="546" y1="374" x2="546" y2="394" stroke="#B1CBC4" stroke-opacity="0.6" stroke-width="2"/>
-<text x="556" y="388" fill="#B1CBC4" font-size="12">exit lane</text>
-<text x="698" y="388" fill="#F2B65E" font-size="12" text-anchor="end">fix lane</text>
-<rect x="92" y="180" width="66" height="26" rx="13" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.45" stroke-width="1.5"/><text x="125" y="198" text-anchor="middle" font-weight="600" fill="#ECF8F5">Plan</text>
-<rect x="280.5" y="180" width="75" height="26" rx="13" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.45" stroke-width="1.5"/><text x="318" y="198" text-anchor="middle" font-weight="600" fill="#ECF8F5">Build</text>
-<rect x="477.5" y="180" width="75" height="26" rx="13" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.45" stroke-width="1.5"/><text x="515" y="198" text-anchor="middle" font-weight="600" fill="#ECF8F5">Check</text>
-<rect x="666" y="180" width="84" height="26" rx="13" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.45" stroke-width="1.5"/><text x="708" y="198" text-anchor="middle" font-weight="600" fill="#ECF8F5">Review</text>
-<rect x="862.5" y="180" width="75" height="26" rx="13" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.45" stroke-width="1.5"/><text x="900" y="198" text-anchor="middle" font-weight="600" fill="#ECF8F5">Merge</text>
-<text x="1030" y="198" fill="#ECF8F5" font-size="14" font-weight="600">Shipped</text>
-<text x="1095" y="376" fill="#B1CBC4" font-size="12" text-anchor="middle">yesterday:</text>
-<text x="1095" y="394" fill="#B1CBC4" font-size="12" text-anchor="middle">4 shipped, 1 carried</text>
-<rect x="40" y="436" width="1120" height="150" rx="14" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.25"/>
-<text x="56" y="460" fill="#B1CBC4" font-size="12" letter-spacing="1">UNDER THE HOOD</text>
-<circle cx="64" cy="482" r="7" fill="#B1CBC4" opacity="0.3"/><text x="78" y="486" fill="#ECF8F5" font-size="12">guards: 1 caught</text>
-<circle cx="244" cy="482" r="7" fill="#B1CBC4" opacity="0.3"/><text x="258" y="486" fill="#ECF8F5" font-size="12">cards: 1 open</text>
-<circle cx="404" cy="482" r="7" fill="#00C9A7" opacity="1" class="beat"/><text x="418" y="486" fill="#ECF8F5" font-size="12">heartbeat</text>
-<circle cx="544" cy="482" r="7" fill="#B1CBC4" opacity="0.3"/><text x="558" y="486" fill="#ECF8F5" font-size="12">shepherd: PR #142</text>
-<circle cx="724" cy="482" r="7" fill="#B1CBC4" opacity="0.3"/><text x="738" y="486" fill="#ECF8F5" font-size="12">lead: 4 candidates ranked</text>
-<circle cx="944" cy="482" r="7" fill="#B1CBC4" opacity="0.3"/><text x="958" y="486" fill="#ECF8F5" font-size="12">steward: retro</text>
-<g class="still" fill="#ECF8F5">
-<rect x="653" y="215" width="110" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="1.5"></rect><text x="708" y="235" text-anchor="middle">rate limits</text>
-<rect x="460" y="267" width="110" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="1.5"></rect><text x="515" y="287" text-anchor="middle">docs page</text>
-<rect x="715" y="369" width="110" height="30" rx="15" fill="#193B35" stroke="#F2B65E" stroke-width="1.5"></rect><text x="770" y="389" text-anchor="middle">login fix</text>
-<rect id="lit-Check" x="477.5" y="180" width="75" height="26" rx="13" fill="#00C9A7" fill-opacity="0.18" stroke="#00C9A7" stroke-width="2" opacity="1"></rect>
-<rect id="lit-Review" x="666" y="180" width="84" height="26" rx="13" fill="#00C9A7" fill-opacity="0.18" stroke="#00C9A7" stroke-width="2" opacity="1"></rect>
-<text x="708" y="172" fill="#F2B65E" font-size="13" text-anchor="middle" font-weight="600">quality: FIX, diverted to the fix lane</text>
-<text x="805" y="426" fill="#F2B65E" font-size="12" text-anchor="middle">one fix round, then a delta check; forward only</text>
-<rect x="321" y="111" width="20" height="34" rx="3" fill="#F2B65E"/>
-<text x="358" y="146" fill="#F2B65E" font-size="12">D-3: client wants Friday. Allow once?</text>
-<circle cx="244" cy="482" r="7" fill="#F2B65E"/>
-<text x="56" y="560" fill="#B1CBC4" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">13:00  decision D-2 (Routine) taken under mandate: keep the retry, recorded for you</text>
-<text x="56" y="512" fill="#B1CBC4" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">13:55  review: quality FIX on login fix; diverted to the fix lane, one round, then a delta check</text>
-<text x="1160" y="58" fill="#ECF8F5" font-size="26" text-anchor="end" font-weight="700">14:00</text>
-<rect x="960" y="70" width="111" height="4" rx="2" fill="#00C9A7"/>
+<path id="day-loop" d="M 1082 124 V 114 H 130 V 122" fill="none" stroke-width="1.5" stroke="#B1CBC4" marker-end="url(#m-muted)"/>
+<rect x="464" y="105" width="272" height="18" fill="#102622"/>
+<text x="600" y="118" fill="#B1CBC4" font-size="12" text-anchor="middle">tomorrow's plan carries what was learned</text>
+<path id="icon-0" d="M12 11a4 4 0 1 0 0-8a4 4 0 1 0 0 8M4 21c0-4 4-6 8-6s8 2 8 6" transform="translate(115 126) scale(1.25)" fill="none" stroke="#00C9A7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="49" y="160" width="162" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="2"/><text x="130" y="181" fill="#ECF8F5" font-size="15" text-anchor="middle" font-weight="700">Specs and plan</text><text x="130" y="207" fill="#B1CBC4" font-size="12" text-anchor="middle">you approve, the lead ranks</text>
+<path id="icon-1" d="M5 9h14v10H5zM12 5v4M9 13v1M15 13v1M9 16.5h6M3 13v3M21 13v3" transform="translate(383 126) scale(1.25)" fill="none" stroke="#00C9A7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="335" y="160" width="126" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="2"/><text x="398" y="181" fill="#ECF8F5" font-size="15" text-anchor="middle" font-weight="700">Agent team</text><text x="398" y="207" fill="#B1CBC4" font-size="12" text-anchor="middle">3 seats in parallel lanes</text>
+<path id="icon-2" d="M12 3l7 3v5c0 5-3 8-7 10c-4-2-7-5-7-10V6zM9 12l2 2l4-4" transform="translate(557 126) scale(1.25)" fill="none" stroke="#00C9A7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="531.5" y="160" width="81" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="2"/><text x="572" y="181" fill="#ECF8F5" font-size="15" text-anchor="middle" font-weight="700">Gates</text><text x="572" y="207" fill="#B1CBC4" font-size="12" text-anchor="middle">arch · quality · security</text>
+<path id="icon-3" d="M6 4v12M6 20a2 2 0 1 0 0-4a2 2 0 1 0 0 4M18 8a2 2 0 1 0 0-4a2 2 0 1 0 0 4M18 8c0 5-12 4-12 8" transform="translate(872 126) scale(1.25)" fill="none" stroke="#00C9A7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="810.5" y="160" width="153" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="2"/><text x="887" y="181" fill="#ECF8F5" font-size="15" text-anchor="middle" font-weight="700">Pull requests</text><text x="887" y="207" fill="#B1CBC4" font-size="12" text-anchor="middle">the shepherd sweeps</text>
+<path id="icon-4" d="M12 11a4 4 0 1 0 0-8a4 4 0 1 0 0 8M4 21c0-4 4-6 8-6s8 2 8 6" transform="translate(1067 126) scale(1.25)" fill="none" stroke="#00C9A7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><rect x="992" y="160" width="180" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="2"/><text x="1082" y="181" fill="#ECF8F5" font-size="15" text-anchor="middle" font-weight="700">Review and merge</text><text x="1082" y="207" fill="#B1CBC4" font-size="12" text-anchor="middle">cards: your final say</text>
+<rect id="panel-queue" x="40" y="222" width="180" height="218" rx="14" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.25"/>
+<rect id="panel-lanes" x="240" y="222" width="530" height="218" rx="14" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.25"/>
+<rect id="panel-prs" x="790" y="222" width="195" height="218" rx="14" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.25"/>
+<rect id="panel-cards" x="1005" y="222" width="155" height="218" rx="14" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.25"/>
+<rect id="panel-band" x="40" y="526" width="1120" height="96" rx="14" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.25"/>
+<path d="M 222 331 H 236" fill="none" stroke-width="1.5" stroke="#B1CBC4" marker-end="url(#m-muted)"/>
+<path d="M 772 331 H 786" fill="none" stroke-width="1.5" stroke="#B1CBC4" marker-end="url(#m-muted)"/>
+<path d="M 987 331 H 1001" fill="none" stroke-width="1.5" stroke="#B1CBC4" marker-end="url(#m-muted)"/>
+<text x="400" y="242" fill="#B1CBC4" font-size="12" text-anchor="middle" font-weight="600">build ⟲ check</text>
+<text x="710" y="242" fill="#B1CBC4" font-size="12" text-anchor="middle" font-weight="600">raise PR</text>
+<line x1="240" y1="307" x2="770" y2="307" stroke="#B1CBC4" stroke-opacity="0.18"/>
+<line x1="240" y1="361" x2="770" y2="361" stroke="#B1CBC4" stroke-opacity="0.18"/>
+<path id="build-0" d="M 454 280 A 9 9 0 1 1 445 271 M 441 267 L 445 271 L 441 275" fill="none" stroke="#B1CBC4" stroke-opacity="0.5" stroke-width="2"/>
+<path id="build-1" d="M 454 334 A 9 9 0 1 1 445 325 M 441 321 L 445 325 L 441 329" fill="none" stroke="#B1CBC4" stroke-opacity="0.5" stroke-width="2"/>
+<path id="build-2" d="M 454 388 A 9 9 0 1 1 445 379 M 441 375 L 445 379 L 441 383" fill="none" stroke="#B1CBC4" stroke-opacity="0.5" stroke-width="2"/>
+<circle id="gate-0-0" cx="600" cy="280" r="6" fill="#B1CBC4" opacity="0.25"/>
+<circle id="gate-0-1" cx="620" cy="280" r="6" fill="#B1CBC4" opacity="0.25"/>
+<circle id="gate-0-2" cx="640" cy="280" r="6" fill="#B1CBC4" opacity="0.25"/>
+<circle id="gate-1-0" cx="600" cy="334" r="6" fill="#B1CBC4" opacity="0.25"/>
+<circle id="gate-1-1" cx="620" cy="334" r="6" fill="#B1CBC4" opacity="0.25"/>
+<circle id="gate-1-2" cx="640" cy="334" r="6" fill="#B1CBC4" opacity="0.25"/>
+<circle id="gate-2-0" cx="600" cy="388" r="6" fill="#B1CBC4" opacity="0.25"/>
+<circle id="gate-2-1" cx="620" cy="388" r="6" fill="#B1CBC4" opacity="0.25"/>
+<circle id="gate-2-2" cx="640" cy="388" r="6" fill="#B1CBC4" opacity="0.25"/>
+<path id="sweep" class="spin" d="M 824 344 A 10 10 0 1 1 814 334 M 810 330 L 814 334 L 810 338" fill="none" stroke="#00C9A7" stroke-width="2"/>
+<text x="832" y="348" fill="#ECF8F5" font-size="12" font-weight="600">sweep</text>
+<text x="802" y="370" fill="#B1CBC4" font-size="11">overnight: sweeps, never merges</text>
+<rect x="1017" y="304" width="30" height="52" rx="6" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.45" stroke-width="1.5"/>
+<rect x="1022" y="311" width="20" height="34" rx="3" fill="#B1CBC4" opacity="0.2"/>
+<path id="ask-loop" stroke-dasharray="6 5" d="M 640 440 V 462 H 1050 V 446" fill="none" stroke-width="1.5" stroke="#B1CBC4" marker-end="url(#m-muted)"/>
+<path id="answer-loop" stroke-dasharray="6 5" d="M 1120 440 V 494 H 520 V 446" fill="none" stroke-width="1.5" stroke="#B1CBC4" marker-end="url(#m-muted)"/>
+<text x="845" y="480" fill="#B1CBC4" font-size="12" text-anchor="middle">a seat asks through a decision record</text>
+<text x="820" y="512" fill="#B1CBC4" font-size="12" text-anchor="middle">you answer from the phone, or the mandate answers</text>
+<text x="56" y="548" fill="#B1CBC4" font-size="11" letter-spacing="1">UNDER THE HOOD</text>
+<circle cx="63" cy="570" r="6" fill="#B1CBC4" opacity="0.3"/><text x="76" y="574" fill="#ECF8F5" font-size="12">guards: every call checked, 1 caught</text>
+<circle cx="329" cy="570" r="6" fill="#00C9A7" opacity="1" class="beat"/><text x="342" y="574" fill="#ECF8F5" font-size="12">heartbeat</text>
+<circle cx="459" cy="570" r="6" fill="#B1CBC4" opacity="0.3"/><text x="472" y="574" fill="#ECF8F5" font-size="12">lead: discovery when the queue runs low</text>
+<circle cx="779" cy="570" r="6" fill="#B1CBC4" opacity="0.3"/><text x="792" y="574" fill="#ECF8F5" font-size="12">steward: retro at close, you promote</text>
+<g class="still">
+<rect x="52" y="330" width="156" height="26" rx="13" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.5"/><text x="66" y="347" fill="#ECF8F5">4 · retry policy</text>
+<rect x="52" y="362" width="156" height="26" rx="13" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.5"/><text x="66" y="379" fill="#ECF8F5">5 · cache keys</text>
+<text x="66" y="412" fill="#F2B65E" font-size="12" font-weight="600">waits: CAP 3 seats</text>
+<text x="52" y="430" fill="#B1CBC4" font-size="11">answers a card now and then</text>
+<circle cx="600" cy="280" r="6" fill="#00C9A7"></circle>
+<circle cx="620" cy="280" r="6" fill="#00C9A7"></circle>
+<circle cx="640" cy="280" r="6" fill="#00C9A7"></circle>
+<circle cx="600" cy="334" r="6" fill="#00C9A7"></circle>
+<circle cx="620" cy="334" r="6" fill="#00C9A7"></circle>
+<circle cx="640" cy="334" r="6" fill="#00C9A7"></circle>
+<path class="spin" d="M 454 388 A 9 9 0 1 1 445 379 M 441 375 L 445 379 L 441 383" fill="none" stroke="#00C9A7" stroke-width="2"></path>
+<circle cx="620" cy="334" r="6" fill="#F2B65E"></circle>
+<g><path d="M 620 325 C 620 302 530 302 530 315" fill="none" stroke-width="2" stroke="#F2B65E" marker-end="url(#m-warm)" stroke-dasharray="5 4"/><text x="652" y="339" fill="#F2B65E" font-size="12" font-weight="600">fix ×1 → delta</text></g>
+<g fill="#ECF8F5"><rect x="475" y="265" width="110" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="1.5"></rect><text x="530" y="285" text-anchor="middle">rate limits</text></g>
+<g fill="#ECF8F5"><rect x="475" y="319" width="110" height="30" rx="15" fill="#193B35" stroke="#F2B65E" stroke-width="1.5"></rect><text x="530" y="339" text-anchor="middle">login fix</text></g>
+<g fill="#ECF8F5"><rect x="305" y="373" width="110" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="1.5"></rect><text x="360" y="393" text-anchor="middle">docs page</text></g>
+<text x="802" y="412" fill="#00C9A7" font-size="12" font-weight="600">shipped today: 0</text>
+<text x="1015" y="248" fill="#ECF8F5" font-size="11">D-1 under mandate</text>
+<text x="1015" y="268" fill="#ECF8F5" font-size="11">D-2 under mandate</text>
+<text x="1015" y="288" fill="#F2B65E" font-size="11" font-weight="600">D-3 client wants Friday?</text>
+<rect x="1022" y="311" width="20" height="34" rx="3" fill="#F2B65E"></rect>
+<text x="1015" y="380" fill="#ECF8F5" font-size="12" font-weight="600">asked today: 1 of 3</text>
+<text x="1160" y="58" fill="#ECF8F5" font-size="26" text-anchor="end" font-weight="700">13:55</text>
+<rect x="960" y="70" width="110" height="4" rx="2" fill="#00C9A7"/>
 </g>
 <g class="live">
-<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.02;0.03;0.2;0.21;1" dur="16s" repeatCount="indefinite"/><rect x="40" y="104" width="256" height="56" rx="10" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.45"/>
-<text x="56" y="126" fill="#ECF8F5" font-size="14" font-weight="600">Morning gate</text>
-<text x="56" y="148" fill="#B1CBC4" font-size="12" opacity="0">Approve today's plan as proposed?<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0;0.01;0.125;0.135;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="56" y="148" fill="#00C9A7" font-size="12" opacity="0" font-weight="600">Approved. 3 seats start (CAP 3).<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.125;0.135;0.2;0.21;1" dur="16s" repeatCount="indefinite"/></text>
-</g>
-<rect x="321" y="111" width="20" height="34" rx="3" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.02;0.03;0.12;0.13;1" dur="16s" repeatCount="indefinite"/></rect>
-<rect x="321" y="111" width="20" height="34" rx="3" fill="#F2B65E" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.56;0.57;0.66;0.67;1" dur="16s" repeatCount="indefinite"/></rect>
-<text x="358" y="146" fill="#F2B65E" font-size="12" opacity="0">D-3: client wants Friday. Allow once?<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.56;0.57;0.66;0.67;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="125" y="172" fill="#F2B65E" font-size="13" opacity="0" text-anchor="middle" font-weight="600">waits: CAP 3<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.23;0.24;0.31;0.32;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="318" y="172" fill="#00C9A7" font-size="13" opacity="0" text-anchor="middle" font-weight="600">tests first, then the code<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.2;0.21;0.3;0.31;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="515" y="172" fill="#00C9A7" font-size="13" opacity="0" text-anchor="middle" font-weight="600">fast checks green<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.33;0.34;0.4;0.41;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="708" y="172" fill="#00C9A7" font-size="13" opacity="0" text-anchor="middle" font-weight="600">arch · quality · security<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.43;0.44;0.52;0.53;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="708" y="172" fill="#F2B65E" font-size="13" opacity="0" text-anchor="middle" font-weight="600">quality: FIX, diverted to the fix lane<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.54;0.55;0.63;0.64;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="900" y="172" fill="#00C9A7" font-size="13" opacity="0" text-anchor="middle" font-weight="600">merged at the gated head<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.7;0.71;0.78;0.79;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="805" y="426" fill="#F2B65E" font-size="12" opacity="0" text-anchor="middle">one fix round, then a delta check; forward only<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.6;0.61;0.78;0.79;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="440" y="426" fill="#B1CBC4" font-size="12" opacity="0" text-anchor="middle">parked, carried to tomorrow<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.29;0.3;0.4;0.41;1" dur="16s" repeatCount="indefinite"/></text>
-<rect id="lit-Plan" x="92" y="180" width="66" height="26" rx="13" fill="#00C9A7" fill-opacity="0.18" stroke="#00C9A7" stroke-width="2" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.15;0.16;0.31;0.32;1" dur="16s" repeatCount="indefinite"/></rect>
-<rect id="lit-Build" x="280.5" y="180" width="75" height="26" rx="13" fill="#00C9A7" fill-opacity="0.18" stroke="#00C9A7" stroke-width="2" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.22;0.23;0.27;0.28;0.3;0.31;0.33;0.34;0.36;0.37;0.42;0.43;1" dur="16s" repeatCount="indefinite"/></rect>
-<rect id="lit-Check" x="477.5" y="180" width="75" height="26" rx="13" fill="#00C9A7" fill-opacity="0.18" stroke="#00C9A7" stroke-width="2" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.4;0.41;0.47;0.48;0.5;0.51;0.53;0.54;1" dur="16s" repeatCount="indefinite"/></rect>
-<rect id="lit-Review" x="666" y="180" width="84" height="26" rx="13" fill="#00C9A7" fill-opacity="0.18" stroke="#00C9A7" stroke-width="2" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.52;0.53;0.74;0.75;1" dur="16s" repeatCount="indefinite"/></rect>
-<rect id="lit-Merge" x="862.5" y="180" width="75" height="26" rx="13" fill="#00C9A7" fill-opacity="0.18" stroke="#00C9A7" stroke-width="2" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.78;0.79;0.88;0.89;1" dur="16s" repeatCount="indefinite"/></rect>
-<g opacity="0" fill="#ECF8F5"><animateMotion values="-140,0;-140,0;125,0;125,0;318,0;318,0;515,0;515,0;708,0;708,0;900,0;900,0;1095,0;1095,0" keyTimes="0;0.13;0.17;0.2;0.3;0.33;0.4;0.43;0.52;0.7;0.78;0.8;0.86;1" calcMode="linear" dur="16s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.13;0.14;0.86;0.87;1" dur="16s" repeatCount="indefinite"/><rect x="-55" y="215" width="110" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="1.5"></rect><text x="0" y="235" text-anchor="middle">rate limits</text></g>
-<g opacity="0" fill="#ECF8F5"><animateMotion values="-140,0;-140,0;125,0;125,0;318,0;318,0;515,0;515,0;708,0;708,0;900,0;900,0;1095,0;1095,0" keyTimes="0;0.17;0.21;0.28;0.38;0.42;0.5;0.53;0.6;0.74;0.82;0.84;0.9;1" calcMode="linear" dur="16s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.17;0.18;0.9;0.91;1" dur="16s" repeatCount="indefinite"/><rect x="-55" y="267" width="110" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="1.5"></rect><text x="0" y="287" text-anchor="middle">docs page</text></g>
-<g opacity="0" fill="#ECF8F5"><animateMotion values="-140,0;-140,0;125,0;125,0;318,0;318,0;333.2,2.1;348.5,7.8;363.8,15.8;379,25;394.2,34.2;409.5,42.2;424.8,47.9;440,50;440,50;440,50" keyTimes="0;0.11;0.15;0.18;0.22;0.27;0.275;0.28;0.285;0.29;0.295;0.3;0.305;0.31;0.38;1" calcMode="linear" dur="16s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.11;0.12;0.38;0.39;1" dur="16s" repeatCount="indefinite"/><rect x="-55" y="319" width="110" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="1.5"><animate attributeName="stroke" values="#00C9A7;#00C9A7;#B1CBC4;#B1CBC4;#00C9A7;#00C9A7" keyTimes="0;0.31;0.32;0.38;0.39;1" dur="16s" repeatCount="indefinite"/></rect><text x="0" y="339" text-anchor="middle">csv export</text></g>
-<g opacity="0" fill="#ECF8F5"><animateMotion values="-140,0;-140,0;125,0;125,0;318,0;318,0;515,0;515,0;708,0;708,0;715.8,2.1;723.5,7.8;731.2,15.8;739,25;746.8,34.2;754.5,42.2;762.2,47.9;770,50;770,50;840,50;840,50;847.5,47.9;855,42.2;862.5,34.2;870,25;877.5,15.8;885,7.8;892.5,2.1;900,0;900,0;1095,0;1095,0" keyTimes="0;0.19;0.23;0.31;0.36;0.38;0.44;0.47;0.53;0.56;0.5638;0.5675;0.5713;0.575;0.5787;0.5825;0.5862;0.59;0.66;0.69;0.78;0.7875;0.795;0.8025;0.81;0.8175;0.825;0.8325;0.84;0.88;0.93;1" calcMode="linear" dur="16s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.19;0.2;0.93;0.94;1" dur="16s" repeatCount="indefinite"/><rect x="-55" y="319" width="110" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="1.5"><animate attributeName="stroke" values="#00C9A7;#00C9A7;#F2B65E;#F2B65E;#00C9A7;#00C9A7" keyTimes="0;0.54;0.55;0.8;0.81;1" dur="16s" repeatCount="indefinite"/><animate attributeName="stroke-dasharray" values="none;none;4 4;4 4;none;none" keyTimes="0;0.23;0.24;0.31;0.32;1" dur="16s" repeatCount="indefinite"/></rect><text x="0" y="339" text-anchor="middle">login fix</text></g>
-<g opacity="0" fill="#ECF8F5"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.86;0.87;1" dur="16s" repeatCount="indefinite"/><rect x="1030" y="215" width="130" height="30" rx="15" fill="#00C9A7" fill-opacity="0.14" stroke="#00C9A7" stroke-width="1.5"/><text x="1095" y="235" text-anchor="middle">rate limits</text></g>
-<g opacity="0" fill="#ECF8F5"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.9;0.91;1" dur="16s" repeatCount="indefinite"/><rect x="1030" y="267" width="130" height="30" rx="15" fill="#00C9A7" fill-opacity="0.14" stroke="#00C9A7" stroke-width="1.5"/><text x="1095" y="287" text-anchor="middle">docs page</text></g>
-<g opacity="0" fill="#ECF8F5"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.93;0.94;1" dur="16s" repeatCount="indefinite"/><rect x="1030" y="319" width="130" height="30" rx="15" fill="#00C9A7" fill-opacity="0.14" stroke="#00C9A7" stroke-width="1.5"/><text x="1095" y="339" text-anchor="middle">login fix</text></g>
-<circle cx="64" cy="482" r="7" fill="#F2B65E" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.36;0.37;0.39;0.4;1" dur="16s" repeatCount="indefinite"/></circle>
-<circle cx="244" cy="482" r="7" fill="#F2B65E" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.56;0.57;0.66;0.67;1" dur="16s" repeatCount="indefinite"/></circle>
-<circle cx="544" cy="482" r="7" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.68;0.69;0.8;0.81;1" dur="16s" repeatCount="indefinite"/></circle>
-<circle cx="724" cy="482" r="7" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.1;0.11;0.17;0.18;1" dur="16s" repeatCount="indefinite"/></circle>
-<circle cx="944" cy="482" r="7" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.94;0.95;0.98;0.99;1" dur="16s" repeatCount="indefinite"/></circle>
-<text x="56" y="512" fill="#B1CBC4" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" opacity="0">10:15  plan approved: 4 items, 3 seats (CAP 3), queue ranked by WSJF<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.14;0.15;0.3;0.31;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="56" y="560" fill="#B1CBC4" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" opacity="0">11:40  csv export parked: blocked on a client answer, carried to tomorrow<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.3;0.31;0.44;0.45;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="56" y="536" fill="#B1CBC4" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" opacity="0">12:15  guard caught a force push; the seat pushed the branch without --force<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.37;0.38;0.52;0.53;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="56" y="560" fill="#B1CBC4" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" opacity="0">13:00  decision D-2 (Routine) taken under mandate: keep the retry, recorded for you<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.45;0.46;0.56;0.57;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="56" y="512" fill="#B1CBC4" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" opacity="0">13:55  review: quality FIX on login fix; diverted to the fix lane, one round, then a delta check<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.55;0.56;0.7;0.71;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="56" y="560" fill="#B1CBC4" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" opacity="0">15:00  decision D-3 (Consequential) answered from the phone: Allow once<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.67;0.68;0.82;0.83;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="56" y="536" fill="#B1CBC4" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" opacity="0">15:20  PR #142 merged at the gated head; required checks green; branch deleted<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.71;0.72;0.86;0.87;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="56" y="512" fill="#B1CBC4" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" opacity="0">17:25  close: report written, retro done, 2 rule changes proposed for you<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.94;0.95;0.98;0.99;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700">09:00<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0;0.01;0.1111;0.1211;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700">10:00<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.1111;0.1211;0.2222;0.2322;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700">11:00<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.2222;0.2322;0.3333;0.3433;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700">12:00<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.3333;0.3433;0.4444;0.4544;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700">13:00<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.4444;0.4544;0.5556;0.5656;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700">14:00<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.5556;0.5656;0.6667;0.6767;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700">15:00<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.6667;0.6767;0.7778;0.7878;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700">16:00<animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.7778;0.7878;0.8889;0.8989;1" dur="16s" repeatCount="indefinite"/></text>
-<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700">17:00<animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.8889;0.8989;1" dur="16s" repeatCount="indefinite"/></text>
+<g><animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.16;0.17;1" dur="16s" repeatCount="indefinite"/><rect x="52" y="234" width="156" height="26" rx="13" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.5"/><text x="66" y="251" fill="#ECF8F5">1 · rate limits</text></g>
+<g><animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.19;0.2;1" dur="16s" repeatCount="indefinite"/><rect x="52" y="266" width="156" height="26" rx="13" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.5"/><text x="66" y="283" fill="#ECF8F5">2 · login fix</text></g>
+<g><animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.22;0.23;1" dur="16s" repeatCount="indefinite"/><rect x="52" y="298" width="156" height="26" rx="13" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.5"/><text x="66" y="315" fill="#ECF8F5">3 · docs page</text></g>
+<g><animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.64;0.65;1" dur="16s" repeatCount="indefinite"/><rect x="52" y="330" width="156" height="26" rx="13" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.5"/><text x="66" y="347" fill="#ECF8F5">4 · retry policy</text></g>
+<g><animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.74;0.75;1" dur="16s" repeatCount="indefinite"/><rect x="52" y="362" width="156" height="26" rx="13" fill="#193B35" stroke="#B1CBC4" stroke-opacity="0.5"/><text x="66" y="379" fill="#ECF8F5">5 · cache keys</text></g>
+<text id="waits" x="66" y="412" fill="#F2B65E" font-size="12" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.22;0.23;0.74;0.75;1" dur="16s" repeatCount="indefinite"/>waits: CAP 3 seats</text>
+<text x="52" y="430" fill="#B1CBC4" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.17;0.18;1" dur="16s" repeatCount="indefinite"/>answers a card now and then</text>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.02;0.03;0.17;0.18;1" dur="16s" repeatCount="indefinite"/><rect x="52" y="394" width="156" height="42" rx="10" fill="#193B35" stroke="#00C9A7"/><text x="62" y="410" fill="#ECF8F5" font-size="12" font-weight="600">Morning gate</text><text x="62" y="428" fill="#B1CBC4" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0;0.01;0.12;0.13;1" dur="16s" repeatCount="indefinite"/>Approve today's plan?</text><text x="62" y="428" fill="#00C9A7" font-size="11" opacity="0" font-weight="600"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.12;0.13;0.17;0.18;1" dur="16s" repeatCount="indefinite"/>Approved · 3 seats</text></g>
+<path class="spin" d="M 454 280 A 9 9 0 1 1 445 271 M 441 267 L 445 271 L 441 275" fill="none" stroke="#00C9A7" stroke-width="2" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.19;0.2;0.4;0.41;0.67;0.68;0.86;0.87;1" dur="16s" repeatCount="indefinite"/></path>
+<circle cx="600" cy="280" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0;1;1" keyTimes="0;0.43;0.44;0.58;0.59;0.89;0.9;1" dur="16s" repeatCount="indefinite"/></circle>
+<circle cx="620" cy="280" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0;1;1" keyTimes="0;0.43;0.44;0.58;0.59;0.89;0.9;1" dur="16s" repeatCount="indefinite"/></circle>
+<circle cx="640" cy="280" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0;1;1" keyTimes="0;0.43;0.44;0.58;0.59;0.89;0.9;1" dur="16s" repeatCount="indefinite"/></circle>
+<path class="spin" d="M 454 334 A 9 9 0 1 1 445 325 M 441 321 L 445 325 L 441 329" fill="none" stroke="#00C9A7" stroke-width="2" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.22;0.23;0.44;0.45;1" dur="16s" repeatCount="indefinite"/></path>
+<circle cx="600" cy="334" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.47;0.48;0.72;0.73;1" dur="16s" repeatCount="indefinite"/></circle>
+<circle cx="620" cy="334" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.47;0.48;0.72;0.73;1" dur="16s" repeatCount="indefinite"/></circle>
+<circle cx="640" cy="334" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.47;0.48;0.72;0.73;1" dur="16s" repeatCount="indefinite"/></circle>
+<path class="spin" d="M 454 388 A 9 9 0 1 1 445 379 M 441 375 L 445 379 L 441 383" fill="none" stroke="#00C9A7" stroke-width="2" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0;1;1" keyTimes="0;0.25;0.26;0.58;0.59;0.77;0.78;1" dur="16s" repeatCount="indefinite"/></path>
+<circle cx="600" cy="388" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.61;0.62;0.68;0.69;1" dur="16s" repeatCount="indefinite"/></circle>
+<circle cx="620" cy="388" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.61;0.62;0.68;0.69;1" dur="16s" repeatCount="indefinite"/></circle>
+<circle cx="640" cy="388" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.61;0.62;0.68;0.69;1" dur="16s" repeatCount="indefinite"/></circle>
+<circle cx="620" cy="334" r="6" fill="#F2B65E" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.5;0.51;0.7;0.71;1" dur="16s" repeatCount="indefinite"/></circle>
+<g id="fix-loop" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.5;0.51;0.7;0.71;1" dur="16s" repeatCount="indefinite"/><path d="M 620 325 C 620 302 530 302 530 315" fill="none" stroke-width="2" stroke="#F2B65E" marker-end="url(#m-warm)" stroke-dasharray="5 4"/><text x="652" y="339" fill="#F2B65E" font-size="12" font-weight="600">fix ×1 → delta</text></g>
+<g opacity="0" fill="#ECF8F5"><animateMotion values="295,0;295,0;360,0;360,0;530,0;530,0;710,0;710,0;710,0" keyTimes="0;0.16;0.19;0.4;0.43;0.58;0.61;0.64;1" calcMode="linear" dur="16s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.16;0.17;0.64;0.65;1" dur="16s" repeatCount="indefinite"/><rect x="-55" y="265" width="110" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="1.5"></rect><text x="0" y="285" text-anchor="middle">rate limits</text></g>
+<g opacity="0" fill="#ECF8F5"><animateMotion values="295,0;295,0;360,0;360,0;530,0;530,0;710,0;710,0;710,0" keyTimes="0;0.19;0.22;0.44;0.47;0.72;0.75;0.78;1" calcMode="linear" dur="16s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.19;0.2;0.78;0.79;1" dur="16s" repeatCount="indefinite"/><rect x="-55" y="319" width="110" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="1.5"><animate attributeName="stroke" values="#00C9A7;#00C9A7;#F2B65E;#F2B65E;#00C9A7;#00C9A7" keyTimes="0;0.5;0.51;0.7;0.71;1" dur="16s" repeatCount="indefinite"/></rect><text x="0" y="339" text-anchor="middle">login fix</text></g>
+<g opacity="0" fill="#ECF8F5"><animateMotion values="295,0;295,0;360,0;360,0;530,0;530,0;710,0;710,0;710,0" keyTimes="0;0.22;0.25;0.58;0.61;0.68;0.71;0.74;1" calcMode="linear" dur="16s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.22;0.23;0.74;0.75;1" dur="16s" repeatCount="indefinite"/><rect x="-55" y="373" width="110" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="1.5"></rect><text x="0" y="393" text-anchor="middle">docs page</text></g>
+<g opacity="0" fill="#ECF8F5"><animateMotion values="295,0;295,0;360,0;360,0;530,0;530,0" keyTimes="0;0.64;0.67;0.86;0.89;1" calcMode="linear" dur="16s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.64;0.65;1" dur="16s" repeatCount="indefinite"/><rect x="-55" y="265" width="110" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="1.5"></rect><text x="0" y="285" text-anchor="middle">retry policy</text></g>
+<g opacity="0" fill="#ECF8F5"><animateMotion values="295,0;295,0;360,0;360,0" keyTimes="0;0.74;0.77;1" calcMode="linear" dur="16s" repeatCount="indefinite"/><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.74;0.75;1" dur="16s" repeatCount="indefinite"/><rect x="-55" y="373" width="110" height="30" rx="15" fill="#193B35" stroke="#00C9A7" stroke-width="1.5"></rect><text x="0" y="393" text-anchor="middle">cache keys</text></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.64;0.65;0.8;0.81;1" dur="16s" repeatCount="indefinite"/><rect x="802" y="234" width="170" height="26" rx="13" fill="#00C9A7" fill-opacity="0.14" stroke="#00C9A7" stroke-width="1.5"/><text x="816" y="251" fill="#ECF8F5" font-size="12">#142 rate limits</text></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.74;0.75;0.86;0.87;1" dur="16s" repeatCount="indefinite"/><rect x="802" y="264" width="170" height="26" rx="13" fill="#00C9A7" fill-opacity="0.14" stroke="#00C9A7" stroke-width="1.5"/><text x="816" y="281" fill="#ECF8F5" font-size="12">#143 docs page</text></g>
+<g opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.78;0.79;0.9;0.91;1" dur="16s" repeatCount="indefinite"/><rect x="802" y="294" width="170" height="26" rx="13" fill="#00C9A7" fill-opacity="0.14" stroke="#00C9A7" stroke-width="1.5"/><text x="816" y="311" fill="#ECF8F5" font-size="12">#144 login fix</text></g>
+<text x="802" y="392" fill="#B1CBC4" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.65;0.66;0.78;0.79;1" dur="16s" repeatCount="indefinite"/>ping reviewer · CI green?</text>
+<text x="802" y="392" fill="#00C9A7" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.8;0.81;0.91;0.92;1" dur="16s" repeatCount="indefinite"/>merge at the gated head</text>
+<text x="802" y="412" fill="#00C9A7" font-size="12" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0;0.01;0.8;0.81;1" dur="16s" repeatCount="indefinite"/>shipped today: 0</text>
+<text x="802" y="412" fill="#00C9A7" font-size="12" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.8;0.81;0.86;0.87;1" dur="16s" repeatCount="indefinite"/>shipped today: 1</text>
+<text x="802" y="412" fill="#00C9A7" font-size="12" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.86;0.87;0.9;0.91;1" dur="16s" repeatCount="indefinite"/>shipped today: 2</text>
+<text x="802" y="412" fill="#00C9A7" font-size="12" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.9;0.91;1" dur="16s" repeatCount="indefinite"/>shipped today: 3</text>
+<text x="802" y="430" fill="#F2B65E" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.92;0.93;1" dur="16s" repeatCount="indefinite"/>carried to tomorrow: 2</text>
+<text x="1015" y="248" fill="#ECF8F5" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.31;0.32;1" dur="16s" repeatCount="indefinite"/>D-1 under mandate</text>
+<text x="1015" y="268" fill="#ECF8F5" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.45;0.46;1" dur="16s" repeatCount="indefinite"/>D-2 under mandate</text>
+<text x="1015" y="288" fill="#F2B65E" font-size="11" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.52;0.53;0.62;0.63;1" dur="16s" repeatCount="indefinite"/>D-3 client wants Friday?</text>
+<text x="1015" y="288" fill="#ECF8F5" font-size="11" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.62;0.63;1" dur="16s" repeatCount="indefinite"/>D-3 answered: Allow once</text>
+<rect x="1022" y="311" width="20" height="34" rx="3" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.02;0.03;0.12;0.13;1" dur="16s" repeatCount="indefinite"/></rect>
+<rect x="1022" y="311" width="20" height="34" rx="3" fill="#F2B65E" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.52;0.53;0.62;0.63;1" dur="16s" repeatCount="indefinite"/></rect>
+<text x="1015" y="380" fill="#ECF8F5" font-size="12" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.52;0.53;1" dur="16s" repeatCount="indefinite"/>asked today: 1 of 3</text>
+<path id="ask-loop-lit" d="M 640 440 V 462 H 1050 V 446" fill="none" stroke-width="2.5" stroke="#00C9A7" marker-end="url(#m-accent)" stroke-dasharray="6 5" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.3;0.31;0.32;0.33;0.44;0.45;0.46;0.47;0.52;0.53;0.54;0.55;1" dur="16s" repeatCount="indefinite"/></path>
+<path id="answer-loop-lit" d="M 1120 440 V 494 H 520 V 446" fill="none" stroke-width="2.5" stroke="#00C9A7" marker-end="url(#m-accent)" stroke-dasharray="6 5" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0;1;1;0;0;1;1;0;0" keyTimes="0;0.31;0.32;0.33;0.34;0.45;0.46;0.47;0.48;0.62;0.63;0.64;0.65;1" dur="16s" repeatCount="indefinite"/></path>
+<path id="day-loop-lit" d="M 1082 124 V 114 H 130 V 122" fill="none" stroke-width="2.5" stroke="#00C9A7" marker-end="url(#m-accent)" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.92;0.93;1" dur="16s" repeatCount="indefinite"/></path>
+<circle cx="63" cy="570" r="6" fill="#F2B65E" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.36;0.37;0.4;0.41;1" dur="16s" repeatCount="indefinite"/></circle>
+<circle id="lead" cx="459" cy="570" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.74;0.75;0.8;0.81;1" dur="16s" repeatCount="indefinite"/></circle>
+<circle cx="779" cy="570" r="6" fill="#00C9A7" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.92;0.93;1" dur="16s" repeatCount="indefinite"/></circle>
+<text x="1144" y="604" fill="#00C9A7" font-size="12" text-anchor="end" font-weight="600" opacity="0"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.92;0.93;1" dur="16s" repeatCount="indefinite"/>17:15 close: report written, retro done</text>
+<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0;0.01;0.1111;0.1211;1" dur="16s" repeatCount="indefinite"/>09:00</text>
+<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.1111;0.1211;0.2222;0.2322;1" dur="16s" repeatCount="indefinite"/>10:00</text>
+<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.2222;0.2322;0.3333;0.3433;1" dur="16s" repeatCount="indefinite"/>11:00</text>
+<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.3333;0.3433;0.4444;0.4544;1" dur="16s" repeatCount="indefinite"/>12:00</text>
+<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.4444;0.4544;0.5556;0.5656;1" dur="16s" repeatCount="indefinite"/>13:00</text>
+<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.5556;0.5656;0.6667;0.6767;1" dur="16s" repeatCount="indefinite"/>14:00</text>
+<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.6667;0.6767;0.7778;0.7878;1" dur="16s" repeatCount="indefinite"/>15:00</text>
+<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.7778;0.7878;0.8889;0.8989;1" dur="16s" repeatCount="indefinite"/>16:00</text>
+<text x="1160" y="58" fill="#ECF8F5" font-size="26" opacity="0" text-anchor="end" font-weight="700"><animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.8889;0.8989;1" dur="16s" repeatCount="indefinite"/>17:00</text>
 <rect x="960" y="70" width="0" height="4" rx="2" fill="#00C9A7"><animate attributeName="width" values="0;200" keyTimes="0;1" dur="16s" repeatCount="indefinite"/></rect>
 </g>
 </svg>

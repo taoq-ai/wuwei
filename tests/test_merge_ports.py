@@ -33,7 +33,7 @@ def test_rulesets_union_checks_and_reviews(monkeypatch, source):
             'require_code_owner_review': True, 'require_last_push_approval': True,
             'required_review_thread_resolution': True}},
         {'type': 'merge_queue'},
-    ])]
+    ])] + case['steps'][2:]
     install_replay(monkeypatch, 'gh', case['steps'])
     result = adapter().protection(*case['args'])
     assert result.exit == 0, result
@@ -128,7 +128,7 @@ def test_rulesets_block_force_pushes_and_deletions(monkeypatch, rule, key):
     body = json.loads(case['steps'][0]['stdout'])
     body['allow_force_pushes'] = body['allow_deletions'] = {'enabled': True}
     case['steps'][0]['stdout'] = json.dumps(body)
-    case['steps'] = case['steps'][:1] + [rules_step([{'type': rule}])]
+    case['steps'] = case['steps'][:1] + [rules_step([{'type': rule}])] + case['steps'][2:]
     install_replay(monkeypatch, 'gh', case['steps'])
     result = adapter().protection(*case['args'])
     assert result.exit == 0, result

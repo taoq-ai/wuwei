@@ -255,7 +255,7 @@ def test_the_status_line_names_held_classes(ws):
     path = ws / '.wuwei/memory/cruise.json'
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({'levels': {'defer': 1}, 'changed': {}, 'budget': {'defer': 2}}))
-    assert '| cruise L2 · budget defer spent | meeting' in status_line(ws)
+    assert '\ncruise L2 · budget defer spent\nplugin ' in status_line(ws)
     path.write_text(json.dumps({'levels': {'defer': 1, 'retry': 1}, 'changed': {},
                                 'budget': {'retry': 2, 'defer': 2}}))
-    assert '| cruise L2 · budget defer, retry spent | meeting' in status_line(ws)
+    assert '\ncruise L2 · budget defer, retry spent\nplugin ' in status_line(ws)

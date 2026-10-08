@@ -82,6 +82,7 @@ EVENT_PRODUCERS = {
     'negotiation.loop': 'wuwei steward run or wuwei dispatch next',
     'negotiation.notified': 'wuwei listen', 'decision.notified': 'wuwei listen',
     'cruise.carded': 'wuwei plan propose', 'decision.waited': 'wuwei sweep',
+    'decision.shadow': 'wuwei decision route',
     'doctor.fixed': 'owner host wuwei doctor --fix',
     'config.newer_template': 'wuwei hook PreToolUse',
     'memory.folded': 'owner host wuwei memory forget', 'memory.consolidated': 'wuwei consolidate',
@@ -94,6 +95,7 @@ EVENT_PRODUCERS = {
     'grant.asked': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise or wuwei plan propose',
     'grant.used': 'wuwei hook PreToolUse (deploy, push and PR guards) or wuwei pr raise', 'grant.revoked': 'owner host wuwei grants revoke',
     'config.set': 'wuwei config set --from-card or wuwei calibrate --answer',
+    'undo.rehearsed': 'wuwei undo rehearse', 'undo.done': 'wuwei undo',
 }
 
 

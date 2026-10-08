@@ -352,7 +352,22 @@ def _workspace(root, config, error, found):
     rows += _outbound(config)
     rows.append(_register(root, config))
     rows += _calibration(root, config)
-    return rows
+    return rows + [_undo(root)]
+
+
+def _undo(root):
+    """#557: the kinds whose undo ran once in this workspace."""
+    from wuwei import undo
+    try:
+        done = undo.ledger(root)
+    except ValueError as exc:
+        return _row('workspace', 'undo rehearsals', 'fail', str(exc),
+                    'move .wuwei/memory/rehearsals.json aside, then run wuwei undo rehearse commit '
+                    'and wuwei undo rehearse decision')
+    rehearsed = [kind for kind in undo.REGISTRY if kind in done]
+    missing = [kind for kind in undo.REGISTRY if kind not in done]
+    return _row('workspace', 'undo rehearsals', 'ok', f'rehearsed: {", ".join(rehearsed) or "none"}; '
+                f'not rehearsed: {", ".join(missing) or "none"} (wuwei undo rehearse <kind>)')
 
 
 def _outbound(config):
