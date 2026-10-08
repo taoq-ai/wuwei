@@ -398,8 +398,16 @@ mandate and its class runs at L2 or L3, the record is two-way, inside its own br
 the workspace, its margin reaches `decisions.cruise.margin` and the daily budget allows,
 it is a cruise answer: `Decided-by: cruise <class>@L<n>`. At L2 you get a nudge and can undo
 it for `decisions.cruise.undo_minutes`; at L3 it is in the digest. Levels move only through
-the CLI: down on an undo, a reversal, an escaped defect or three thin margins in a row, up
-when you answer a raise card ([cruise answers](daily.md#cruise-answers)).
+the CLI: down one level when the class's error budget is spent, back when its window
+refills, up when you answer a raise card ([cruise answers](daily.md#cruise-answers)).
+
+Error budget. One unlucky reversal no longer drops a class. Each class may spend
+`decisions.cruise.budget_share` (10 percent) of its cruise answers over
+`budget_window_days` (14) on undos, reversals, weekly samples answered differently and
+escaped defects. The budget is spent with more events than that and at least two; the class
+then runs one level lower until the window refills, and gets no raise card meanwhile. A
+fast burn (`burn_warn`, the last 48 hours against the window's pace) sends a nudge naming
+the events first. `bin/wuwei cruise budget` prints the table.
 
 Every seat prompt ends with a mandate block built from those class levels
 (`decisions.cruise.levels`, the 5.8.1 defaults otherwise), the interview's trust-surface
