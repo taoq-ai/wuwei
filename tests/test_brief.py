@@ -526,3 +526,27 @@ def test_builder_brief_has_the_docs_rule(day, monkeypatch):
 @pytest.mark.parametrize('role,system', [('arch', 'notion'), ('quality', 'none'), ('builder', 'none')])
 def test_no_docs_line(day, monkeypatch, role, system):
     assert docs_brief(day, monkeypatch, role, system=system) == []
+
+
+@pytest.mark.parametrize('check,args,line', [
+    ('.venv/bin/python -m pytest -q', ('builder', 'X', 'b'), True),
+    ('.venv/bin/python -m pytest -q', ('quality', 'X', 'b', '--gate'), False),
+    ('python3 -m pytest -q', ('builder', 'X', 'b'), False),
+])
+def test_builder_brief_names_the_check_interpreter(day, monkeypatch, check, args, line):
+    # #520: the builder is told which interpreter its checks run with, so it never builds one.
+    root = day[0]
+    (root / '.wuwei/config.toml').write_text(
+        f'[[repos]]\nname = "app"\npath = "app"\ndefault_branch = "main"\nfast_checks = ["{check}"]\n')
+    (root / 'app/.git').mkdir(parents=True)
+    python = root / 'app/.venv/bin/python'
+    python.parent.mkdir(parents=True)
+    python.write_text('')
+    (root / 'worktrees/X').mkdir(parents=True)
+    day[2].results['repo_context'] = registry.Result(0, {
+        'path': str(root / 'worktrees/X'), 'common_dir': str((root / 'app/.git').resolve())})
+    assert brief(monkeypatch, 'Review it.', *args, '--worktree', 'worktrees/X') == 0
+    text = (day[1] / 'briefs/b.md').read_text()
+    expected = f'Check interpreter: {check} runs with {python.resolve()} (main worktree)'
+    assert (expected in text) == line
+    assert text.count('Check interpreter:') == int(line)

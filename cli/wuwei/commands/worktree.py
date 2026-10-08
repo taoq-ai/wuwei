@@ -47,6 +47,23 @@ def add(args, root, config, item):
     if not repos:
         raise ValueError('no repository configured; the owner adds one with bin/wuwei config add-repo in a host terminal')
     repo = (root / Path(repos[0]['path']).expanduser()).resolve()
-    return workspace.create_worktree(repo, args.branch or item.lower(), root / 'worktrees' / item, root,
-                                     registry.load('vcs', config), identity=repos[0]['identity'],
-                                     existing=args.branch is not None)
+    tree = root / 'worktrees' / item
+    result = workspace.create_worktree(repo, args.branch or item.lower(), tree, root,
+                                       registry.load('vcs', config), identity=repos[0]['identity'],
+                                       existing=args.branch is not None)
+    # #520: a fresh worktree has no untracked venv; build one or say which interpreter checks use.
+    bootstrap = config['checks']['bootstrap']
+    if bootstrap:
+        found = registry.load('checks', config).run(str(tree), bootstrap, root=root)
+        if found.exit != 0:
+            reason = f': {found.reason}' if found.reason else ''
+            print(f'wuwei worktree warning: checks.bootstrap exited {found.exit}{reason}', file=sys.stderr)
+    else:
+        from wuwei import fast_checks
+        for command in repos[0]['fast_checks']:
+            found = fast_checks.interpreter(command, tree, repos[0], root, config)
+            if found and found[1] == 'main worktree':
+                print(f'wuwei worktree warning: {command.split()[0]} is not in this worktree; fast checks will run '
+                      f'{found[0]} from the main worktree (set [checks] bootstrap to build one per worktree)',
+                      file=sys.stderr)
+    return result

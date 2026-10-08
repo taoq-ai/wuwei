@@ -488,3 +488,64 @@ def test_claimed_pr_fix_round_after_adoption(tmp_path, monkeypatch, capsys):
     committed, _ = commit_and_push(tree)
     assert committed.returncode == 0, committed.stderr
     assert (root / 'marker.txt').read_text().split() == ['pre-commit']
+
+
+def test_worktree_add_runs_checks_bootstrap_once(tmp_path, monkeypatch, capsys):
+    # #520: the bootstrap builds the new worktree's own venv; the check then runs in it.
+    boot = tmp_path / 'boot.sh'
+    boot.write_text(f'echo run >> "{tmp_path / "count.txt"}"\nmkdir -p .venv/bin\n'
+                    "printf '#!/bin/sh\\nexit 0\\n' > .venv/bin/python\nchmod +x .venv/bin/python\n")
+    root, repo = hooked_workspace(tmp_path, monkeypatch, 'fast_checks = [".venv/bin/python -m pytest -q"]\n'
+                                  f'[checks]\nbootstrap = "sh {boot}"\n')
+    assert main(['worktree', 'add', 'X']) == 0
+    tree = root / 'worktrees/X'
+    assert (root / 'count.txt').read_text() == 'run\n'
+    assert (tree / '.venv/bin/python').exists()
+    assert 'warning' not in capsys.readouterr().err
+    assert main(['fast-checks', str(tree)]) == 0
+    row = state.read_state(root)['fast_checks']['app']['.venv/bin/python -m pytest -q']
+    assert row['exit'] == 0 and row['interpreter'] == str(tree / '.venv/bin/python')
+
+
+def checked(root, vcs, monkeypatch, check, bootstrap='', result=registry.Result(0)):
+    (root / '.wuwei/config.toml').write_text(
+        f'[[repos]]\nname = "app"\npath = "app"\ndefault_branch = "main"\nfast_checks = ["{check}"]\n'
+        + (f'[checks]\nbootstrap = "{bootstrap}"\n' if bootstrap else ''))
+    runs = []
+    port = SimpleNamespace(run=lambda path, command, root=None: runs.append((path, command)) or result)
+    monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'checks' else vcs)
+    return runs
+
+
+@pytest.mark.parametrize('result,line', [
+    (registry.Result(1, {'error': 'install output'}), 'wuwei worktree warning: checks.bootstrap exited 1'),
+    (registry.Result(2, reason='fast check could not run: TimeoutExpired'),
+     'wuwei worktree warning: checks.bootstrap exited 2: fast check could not run: TimeoutExpired'),
+])
+def test_worktree_add_failed_bootstrap_warns(fake, monkeypatch, capsys, result, line):
+    root, vcs = fake
+    runs = checked(root, vcs, monkeypatch, '.venv/bin/python -m pytest -q', 'make venv', result)
+    assert main(['worktree', 'add', 'X']) == 0
+    assert runs == [(str(root / 'worktrees/X'), 'make venv')]
+    out = capsys.readouterr()
+    assert json.loads(out.out) == {'branch': 'x', 'path': 'p'}
+    lines = out.err.splitlines()
+    assert len(lines) == 1 and lines[0].startswith(line) and 'install output' not in out.err
+
+
+@pytest.mark.parametrize('check,warned', [('.venv/bin/python -m pytest -q', True), ('python3 -m pytest -q', False)])
+def test_worktree_add_warns_when_the_check_uses_the_main_worktree(fake, monkeypatch, capsys, check, warned):
+    root, vcs = fake
+    runs = checked(root, vcs, monkeypatch, check)
+    python = root / 'app/.venv/bin/python'
+    python.parent.mkdir(parents=True)
+    python.write_text('')
+    assert main(['worktree', 'add', 'X']) == 0
+    err = capsys.readouterr().err
+    assert not runs
+    if warned:
+        lines = err.splitlines()
+        assert len(lines) == 1 and lines[0].startswith('wuwei worktree warning:')
+        assert str(python.resolve()) in err and '[checks] bootstrap' in err
+    else:
+        assert 'warning' not in err

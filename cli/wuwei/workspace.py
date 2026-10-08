@@ -75,6 +75,7 @@ SCHEMA = {
                "identity": {"name": (str, ""), "email": (str, "")},
                "shepherd": {"reviewers": [(str, None)]}}],
     "worktree": {"git_hooks": (str, "chain", ("chain", "skip", "replace"))},
+    "checks": {"python": (str, ""), "bootstrap": (str, "")},  # #520
     # #478: standing grants, written by the owner's Always allow answer; ignored under strict.
     "grants": {"standing": [{"action": (str, None, ("deploy", "release", "publish")),
                              "target": (str, None), "scope": (str, "always", ("always",)),

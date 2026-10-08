@@ -376,6 +376,15 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             line = specmode.brief_line(config, item, current, tree, gate)
             if line:
                 header.append(line)
+        if role == 'builder' and tree and repo:
+            from wuwei import fast_checks  # #520: the builder never improvises an interpreter
+            for command in repo.get('fast_checks', []):
+                found = fast_checks.interpreter(command, tree, repo, root, config)
+                if found and found[1] == 'missing':
+                    header.append(f'Check interpreter: {command} has no interpreter in the worktree or '
+                                  'the main worktree; report it, do not build one')
+                elif found:
+                    header.append(f'Check interpreter: {command} runs with {found[0]} ({found[1]})')
         host = registry.load('code_host', config) if pr else None
         header.append('PR head (no-cache): ' + (json.dumps(read(host.pr, pr, root=root)) if pr else 'not applicable'))
         if gate:

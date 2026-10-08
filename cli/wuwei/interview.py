@@ -92,6 +92,15 @@ def _docs_link(text):
                      'such as https://www.notion.so/<page> or https://<site>.atlassian.net/wiki/<page>')
 
 
+def _count(key):
+    """#529: free text for a count key: a whole number of 1 or more."""
+    def parse(text):
+        if not text.strip().isdecimal() or int(text) < 1:
+            raise ValueError('expected a whole number of 1 or more; write the number, for example 5')
+        return {key: int(text)}
+    return parse
+
+
 def _tracker(text):
     name, _, project = text.strip().partition(' ')
     if name.lower() not in ('linear', 'jira', 'github') or not re.fullmatch(r'[\w./#-]+', project.strip()):
@@ -113,7 +122,7 @@ QUESTIONS = (
            f'(soak); {SOAK}.'),
           {'repos.merge.auto': True, 'repos.merge.soak_minutes': 120})),
      'free': None},
-    {'id': 'gates', 'scope': 'repo', 'header': 'Reviewers',
+    {'id': 'gates', 'scope': 'repo', 'header': 'Review depth',
      'question': 'How many reviewer agents check each change in {repo}? (gate floor)',
      'choices': (
          ('Standard', 'Every change gets three reviewer agents: architecture, quality and security '
@@ -311,6 +320,32 @@ QUESTIONS = (
          ('Code authors', 'Whoever touched the changed code is asked; at least one review before merge.',
           {'shepherd.min_reviewers': 1})),
      'free': (_login, "a teammate's code-host login, for example pat-dev")},
+    # #529: the keys the day needs, asked on a card; the first choice is the shipped default.
+    {'id': 'cap', 'scope': 'workspace', 'header': 'At once',
+     'question': 'How many items may build at once by default? (CAP)',
+     'choices': tuple((str(n), f'{n} {"item builds" if n == 1 else "items build"} at once unless the morning '
+                       'plan says otherwise (CAP).', {'cap': n}) for n in (1, 2, 3)),
+     'free': (_count('cap'), 'a whole number of 1 or more')},
+    {'id': 'seats', 'scope': 'workspace', 'header': 'Agents',
+     'question': 'How many agents may run on this machine at once? (host.seats)',
+     # Labels carry a word: a bare 6 would read as the sixth choice at the setup terminal.
+     'choices': tuple((f'{n} agents', f'At most {n} agents run at once on this machine (host.seats).', {'host.seats': n})
+                      for n in (4, 6, 8)),
+     'free': (_count('host.seats'), 'a whole number of 1 or more')},
+    {'id': 'tier', 'scope': 'workspace', 'header': 'Outbound',
+     'question': 'What happens to a message no rule narrows? (outbound.default_tier)',
+     'choices': (
+         ('Send', 'It goes out after the outward lint.', {'outbound.default_tier': 'send'}),
+         ('Ask', 'It waits for your answer as a draft.', {'outbound.default_tier': 'ask'}),
+         ('Block', 'It is refused.', {'outbound.default_tier': 'block'})),
+     'free': None},
+    {'id': 'learn', 'scope': 'workspace', 'header': 'Connectors',
+     'question': 'How does WUWEI learn a connector it does not know? (outbound.learn)',
+     'choices': (
+         ('Card', 'The planner asks you on a card before it learns one.', {'outbound.learn': 'card'}),
+         ('Auto', 'It learns one without asking, except under strict.', {'outbound.learn': 'auto'}),
+         ('Off', 'It never learns one; unknown connectors stay drafts.', {'outbound.learn': 'off'})),
+     'free': None},
 )
 
 
@@ -356,10 +391,21 @@ def _path(name, repo, config):
     return tuple(parts[:-1]), parts[-1]
 
 
+def _setting(name):
+    """An effect is a config key unless it is a charter role or the voice list."""
+    return name not in (*ROLES, 'voice')
+
+
+def card_for(key):
+    """#529: the workspace row whose card sets this config key, or None."""
+    return next((row['id'] for row in QUESTIONS if row['scope'] == 'workspace'
+                 and any(key in result for _, _, result in row['choices'])), None)
+
+
 def settings(answers, config):
     """Config effects as calibrate (path, key, value) settings."""
     rows = [(*_path(name, repo, config), value) for _, repo, _, result in _answered(answers)
-            for name, value in result.items() if '.' in name]
+            for name, value in result.items() if _setting(name)]
     if (('security',), 'posture', 'observe') in rows and not config.get('guards', {}).get('shadow_since'):
         rows.append((('guards',), 'shadow_since', workspace.now().date().isoformat()))
     return rows
@@ -376,7 +422,7 @@ def describe(answers, config):
     for row, repo, answer, result in _answered(answers):
         parts = []
         for name, value in result.items():
-            if '.' in name:
+            if _setting(name):
                 path, key = _path(name, repo, config)
                 parts.append(f"{'.'.join(map(str, (*path, key)))} = {json.dumps(value)}")
             elif name == 'voice':
@@ -569,15 +615,16 @@ def _recorded(root):
     return found
 
 
-def widgets(root, repos):
-    """The unanswered questions as AskUserQuestion widgets for the morning gate."""
+def widgets(root, repos, ids=()):
+    """The unanswered questions, or the named ones answered or not (#529), as
+    AskUserQuestion widgets for the morning gate."""
     from wuwei import decision
-    done = _recorded(root)
+    done = set() if ids else _recorded(root)
     return [{'id': row['id'], **({'repo': repo} if repo else {}), **decision.widget(
                 decision.gate(root) + row['question'].format(repo=repo), row['header'],
                 [(label, description) for label, description, _ in row['choices']],
                 f'wuwei calibrate --answer "{row["id"]}=<label>"' + (f' --repo {repo}' if repo else ''))}
-            for row, repo in _selected([], repos) if (row['id'], repo) not in done]
+            for row, repo in _selected(ids, repos) if (row['id'], repo) not in done]
 
 
 def reask(root):

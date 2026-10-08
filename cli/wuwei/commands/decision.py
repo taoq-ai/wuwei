@@ -5,10 +5,13 @@ import json
 import sys
 
 from wuwei import state, workspace
-from wuwei.decision import (LENSES, ROUTINE, cisr, decided_record, evaluate, lens_table, lint_file, margin,
+from wuwei.decision import (LENSES, RECORD, ROUTINE, cisr, decided_record, evaluate, lens_table, lint_file, margin,
                             option_id, options, owner_confirm, owner_record, present, record_rejection,
                             record_widget, route, route_owner, seat_outcome, today_path)
 from wuwei.exits import RACE, SYMLINK
+
+
+CONFIG_RECORD = 'wuwei config set <key> <value> --from-card {id}'
 
 
 def register(subparsers):
@@ -121,7 +124,9 @@ def show(args):
     if args.widget:  # --widget and --full exclude each other
         if state.read_state(root).get('decision_outcomes', {}).get(args.id, {}).get('decided_by') == 'mandate':
             return 0, '[]'  # #530: taken under the mandate, nothing to ask.
-        return 0, json.dumps([record_widget(args.id, fields, level=level)], indent=2)
+        from wuwei.commands.setup import assignment  # #529: a config card records through config set
+        record = CONFIG_RECORD if any(assignment(row[1]) for row in options(fields)) else RECORD
+        return 0, json.dumps([record_widget(args.id, fields, record, level=level)], indent=2)
     if level == 'full':
         return 0, text.rstrip()
     return 0, present(args.id, fields, level) + f'\nFull record: wuwei decision show {args.id} --full'

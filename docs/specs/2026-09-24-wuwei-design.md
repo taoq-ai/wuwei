@@ -446,7 +446,12 @@ Records (owner, 2026-10-03, #357). The records under `.wuwei/` are written by th
 from the owner's answers; no step asks the owner to create or edit a file by hand. The owner
 answers questions (in the session, in the DM, or y/N at a terminal) and may edit any record
 afterwards; the planner records. The host terminal remains for the strict posture and for
-credentials.
+credentials. (owner, 2026-10-05, #529) Outside strict the owner's answer on a card is the
+confirmation of the config write its record command makes: `calibrate --answer` for an
+interview card, `config set KEY VALUE --from-card D-n` for a decision whose option titles
+read `KEY = VALUE`. The answer is recorded hashed on the planner's session row when the card
+is answered, and the command writes only that answer. A `config set` in a session without a
+card exits 1 naming the card; under strict the command is printed for a host terminal.
 
 Availability (owner, 2026-10-04, #477). The owner's session is never blocked by work.
 Seats run in the background; any command that can run longer than a few seconds (fast
