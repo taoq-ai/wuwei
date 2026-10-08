@@ -805,7 +805,8 @@ def test_cruise_mode_ships():
                 assert 'not built' not in ' '.join(paragraph.split()), (path.name, paragraph)
     assert 'cruise' in readme.split('\n## What ships today\n', 1)[1].split('\n## ', 1)[0]
     configuration = (SITE / 'configuration.md').read_text()
-    for key in ('margin', 'max_per_day', 'undo_minutes', 'promote_agreements', 'promote_days'):
+    for key in ('margin', 'max_per_day', 'undo_minutes', 'promote_agreements', 'promote_days',
+                'budget_share', 'budget_window_days', 'burn_warn'):
         assert f'`decisions.cruise.{key}`' in configuration, key
     daily = (SITE / 'daily.md').read_text()
     assert 'decision undo' in daily and 'cruise off' in daily

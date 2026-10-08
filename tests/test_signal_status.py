@@ -375,6 +375,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'config.set': 'silent',
                 'grant.asked': 'silent', 'grant.used': 'silent', 'grant.revoked': 'silent',
                 'decision.reversed': 'nudge', 'decision.notified': 'silent', 'cruise.carded': 'silent',
+                'cruise.burn': 'nudge',
                 **{f'telemetry.{name}': 'nudge' if name == 'ready' else 'silent' for name in TELEMETRY}}
     assert emitted == set(expected)
     for kind, tier in expected.items():

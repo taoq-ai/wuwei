@@ -35,7 +35,7 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for re
 - Doctor: install, host, workspace, gate, day and guard problems, each with its fix ([doctor](docs/site/reference.md#doctor)).
 - Security posture: observe, guarded or strict per area, with floors no setting lowers. The MCP registry gate warns by default and blocks on a critical finding or a check that could not run ([security posture](docs/site/security.md#security-posture)).
 - The heartbeat: probes that prove the system behaves, with a dead-man ping ([heartbeat](docs/site/reference.md#heartbeat)).
-- Cruise mode: the CLI answers clear two-way decisions of a class at its level, tells you, and lets you undo for an hour; a reversal lowers the class and agreement raises it on your card ([cruise answers](docs/site/daily.md#cruise-answers), [design spec](docs/specs/2026-09-24-wuwei-design.md) section 5.8.1).
+- Cruise mode: the CLI answers clear two-way decisions of a class at its level, tells you, and lets you undo for an hour; reversals spend the class's error budget, a spent budget lowers it until the window refills, and agreement raises it on your card ([cruise answers](docs/site/daily.md#cruise-answers), [design spec](docs/specs/2026-09-24-wuwei-design.md) section 5.8.1).
 
 ## How it works
 

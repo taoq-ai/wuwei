@@ -142,6 +142,8 @@ SCHEMA = {
                   "cruise": {"enabled": (bool, True), "margin": (float, 0.2),
                              "max_per_day": (int, 20, 0), "undo_minutes": (int, 60, 1),
                              "promote_agreements": (int, 10, 1), "promote_days": (int, 14, 1),
+                             "budget_share": (float, 0.1), "budget_window_days": (int, 14, 1),
+                             "burn_warn": (float, 2.0),
                              "levels": {"*": (int, None, 0, 3)}},
                   "lenses": {"*": (str, "")}},
     "pr": {"poll_seconds": (int, 120, 1), "action_minutes": (int, 30, 1),
@@ -687,6 +689,8 @@ def load_config(root=None, *, raw=None, warnings=None):
                                   f'{area} always blocks, remove the override')
         if not 0 < config['decisions']['cruise']['margin'] <= 1:
             raise ConfigError('decisions.cruise.margin: expected a number above 0 and at most 1; the owner fixes it with bin/wuwei config set decisions.cruise.margin <value> in a host terminal')
+        if not 0 < config['decisions']['cruise']['budget_share'] <= 0.5:
+            raise ConfigError('decisions.cruise.budget_share: expected a number above 0 and at most 0.5; the owner fixes it with bin/wuwei config set decisions.cruise.budget_share <value> in a host terminal')
         for name, value in config['decisions']['cruise']['levels'].items():
             from wuwei.decision import CLASSES
             if name not in CLASSES:

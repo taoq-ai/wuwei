@@ -185,10 +185,13 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | `decisions.cruise.undo_minutes` | `60` | Minutes an L2 cruise answer can be undone, from the answer. |
 | `decisions.cruise.promote_agreements` | `10` | Agreeing answers of a class since its last level change that make `plan propose` ask you to raise it. |
 | `decisions.cruise.promote_days` | `14` | Days those agreements are counted over; one raise card per class in that window. |
+| `decisions.cruise.budget_share` | `0.1` | Error budget of a class: the share of its cruise answers in the window that may be undone, reversed, sampled differently or attributed an escaped defect. Above 0, at most 0.5. The budget is spent with more events than that and at least two. |
+| `decisions.cruise.budget_window_days` | `14` | Days the error budget is counted over; a spent class runs one level lower until the window refills. |
+| `decisions.cruise.burn_warn` | `2.0` | Burn rate (events of the last 48 hours against the window's allowance) that writes a nudge naming the events. |
 | `decisions.cruise.levels` | `{}` | Per-class level (0 to 3) that caps the level a class runs at; a level above the class ceiling or an unknown class is refused. |
 | `decisions.lenses` | `{}` | Lenses every engineering decision (`design`, `boundary`, `refactor`, `dependency-bump`) answers per option, as name = one-line question. The defaults are SOLID, twelve-factor, YAGNI and ponytail; a new name adds a lens and `""` drops one, for example `YAGNI = ""`. Names use letters, digits, dash or underscore. |
 
-These keys feed the mandate block in every seat prompt and cruise mode (design spec 5.8.1). The level a class runs at is the lowest of its running level in `.wuwei/memory/cruise.json` (the 5.8.1 default until a level moves), its configured level and its ceiling; `autonomy.mode = "supervised"` runs every class at L0. Only the CLI writes `cruise.json`, with a ledger line: your raise card, an undo, a reversal, a weekly sample answered differently, an escaped defect or three thin-margin escalations in a row. See [cruise answers](daily.md#cruise-answers).
+These keys feed the mandate block in every seat prompt and cruise mode (design spec 5.8.1). The level a class runs at is the lowest of its running level in `.wuwei/memory/cruise.json` (the 5.8.1 default until a level moves), its configured level and its ceiling; `autonomy.mode = "supervised"` runs every class at L0. Only the CLI writes `cruise.json`, with a ledger line: your raise card, or the error budget (undos, reversals, weekly samples answered differently and escaped defects) spent or refilled. See [cruise answers](daily.md#cruise-answers).
 
 ## Telemetry
 

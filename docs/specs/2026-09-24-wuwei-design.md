@@ -739,11 +739,12 @@ Classes are a fixed list; a new class is an amendment to this section, not confi
 
 The L2 defaults are the two-way, inside-the-item decisions seats took on their own before
 cruise mode. `[decisions.cruise]` in `config.toml`: `enabled` (default true), `margin`
-(default 0.2), `max_per_day` (default 20), `undo_minutes` (default 60), and
-`levels.<class>`, which only lowers a class. The config check refuses an unknown class, a
+(default 0.2), `max_per_day` (default 20), `undo_minutes` (default 60), `budget_share`
+(default 0.1, above 0 and at most 0.5), `budget_window_days` (default 14), `burn_warn`
+(default 2.0), and `levels.<class>`, which only lowers a class. The config check refuses an unknown class, a
 level outside 0 to 3, or a level above the class's ceiling. The running level lives in
 `memory/cruise.json`, starts at the default, and is written only by `wuwei promote` (raises
-with ledger evidence and morning-gate approval, lowers at once). A class runs at the lowest
+with ledger evidence and morning-gate approval, lowers when the error budget is spent). A class runs at the lowest
 of the running level, the config level and the ceiling.
 
 Conditions. The CLI answers a record only when all hold: the class runs at L2 or L3;
@@ -773,21 +774,40 @@ appears in the digest; at L2 a nudge also goes out when the soak window opens; a
 every merge goes to the owner.
 
 Promotion and demotion. The steward proposes raising a class one level through propose and
-promote (6.8) after 10 agreements and no reversal in that class over 14 days; an agreement
-is an owner answer equal to the recommendation, or a cruise answer whose undo window closed
-without an undo. `wuwei promote` lands a raise only when the owner approved it at the
-morning gate, and never above the ceiling. The CLI lowers a class one level at once,
-without approval, on a reversal (an undo, or a later owner answer that differs from a
-cruise answer), on an escaped defect (5.6) in a PR whose item carries a cruise answer of
-that class, or on three thin-margin escalations in a row in that class; it lands the change
-through the promote writer and the ledger line records why. Once a week the steward
+promote (6.8) after 10 agreements and no reversal in that class over 14 days, with its error
+budget unspent; an agreement is an owner answer equal to the recommendation, or a cruise
+answer whose undo window closed without an undo. `wuwei promote` lands a raise only when the
+owner approved it at the morning gate, and never above the ceiling. Once a week the steward
 re-asks the owner one cruise-answered record per class from the past seven days, with the
 answer hidden; a different choice counts as a reversal.
+
+Error budget (owner, 2026-10-08, #558). A single event no longer lowers a class: one unlucky
+reversal dropped a class, and a slow drift of bad calls never tripped anything. Each class
+has a budget per `budget_window_days` window. Its events are reversals (an undo, a later
+owner answer that differs from a cruise answer, a weekly sample answered differently) and
+escaped defects (5.6) attributed to a cruise answer of the class; the allowance is
+`budget_share` times the cruise answers of the class in the window. The budget is spent
+when the events exceed the allowance and number at least two. The burn rate is the events
+of the last 48 hours against the window's allowance, scaled to the window
+(`events x window_days / (2 x allowance)`); at `burn_warn` or above the steward writes one
+`cruise.burn` nudge a day naming the events, whose action is `wuwei cruise budget`. The
+steward review (every `steward run` and `dispatch next`) evaluates the budgets. A spent
+class runs one level lower, never below L0, through the promote writer, with a ledger line
+that starts `budget spent: <class>` and names every event; `cruise.json` holds the level it
+took away. When the window refills (the class is no longer spent) the CLI restores the held
+level through the same writer with a `budget refilled` ledger line. That restore is the one
+level raise without a morning-gate card, and it goes only back to the held level, never
+above it or the ceiling; any other level write, such as an approved raise, clears the hold.
+Thin-margin escalations still go to the owner and are flagged on the route, but no longer
+lower a class. A class with a spent budget, or with a budget event since its last level
+change, gets no raise card. `wuwei cruise budget` prints class, level, answered, spent,
+allowance, burn and state, and exits 1 when any class is not ok.
 
 Kill switch. `decisions.cruise.enabled = false` runs every class at L0 without changing any
 running or configured level, so turning it back on restores them. The status line (5.9) then
 shows `cruise off | L<max>`, the highest level a class would run at, and `cruise L<max>`
-while it is on.
+while it is on, followed by `· budget <classes> spent` while an error budget holds a class
+lower.
 
 Novelty (owner, 2026-10-08, #556). Blast radius is only known for targets the workspace
 has touched. A decision or guarded action whose target is novel runs one level lower than
@@ -1786,6 +1806,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I8 | A record command runs from the planner only after a card answer outside strict | per case, `bin/wuwei decide D-1 once` through `protect_state` from the planner and a seat | #529 extends it to `config set` |
 | I9 | A branch push and a PR raise with recorded evidence succeed from the planner and the builder below strict, and a tag push with a release grant or an Allow once release card passes | per posture, through the hook | #547; below strict the deploy guard's release card and grants gate a tag and `push_check` passes it; under strict `push_check` refuses it |
 | I10 | Under observe and guarded no opaque read-only command is refused | per posture, a script read, a `$(...)` read and a `python3 -c` print through the hook | #547 |
+| I11 | A class runs lower only when its error budget is spent (more events than the allowance and at least two), never on a single event and never through a refusal | `budget_classes.measure` on 3 of 20, 2 of 20 within 48 hours, none, and 1 of 5; no single-trigger lowering left in `cruise` | #558; the lowered class routes its records to a card and is restored when the window refills |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 
