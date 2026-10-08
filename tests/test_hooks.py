@@ -371,7 +371,7 @@ def test_status_line_skips_parser_and_hashlib(tmp_path):
     result = subprocess.run([sys.executable, '-I', '-P', '-c', script, str(ROOT / 'cli'), str(ROOT), str(out),
                              'status', '--line'], text=True, capture_output=True, cwd=tmp_path, env=env)
     assert result.returncode == 0, result.stderr
-    assert result.stdout.startswith('WUWEI no plan yet | pages 0 | nudges 0 | watch off')
+    assert result.stdout == 'WUWEI no plan yet | pages 0 · nudges 0\n'
     assert {'argparse', 'hashlib', 'shutil', 'wuwei.decision', 'copy', 'weakref',
             'wuwei.sessions', 'shlex'} & set(json.loads(out.read_text())) == set()
 

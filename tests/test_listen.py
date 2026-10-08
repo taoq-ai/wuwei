@@ -494,7 +494,7 @@ def test_issue_acceptance_stop_all_stops_every_session_in_one_tick(case, monkeyp
 
 def status_of(capsys):
     capsys.readouterr()
-    assert main(['status', '--line']) == 0
+    assert main(['status']) == 0
     text = capsys.readouterr().out
     assert main(['status', '--json']) == 0
     data = json.loads(capsys.readouterr().out)
@@ -535,7 +535,7 @@ def test_listener_states_in_the_status_line(case, monkeypatch, capsys, setup, pa
         (root / '.wuwei/config.toml').write_text('')
     text, measured, rows = status_of(capsys)
     assert measured == listening
-    assert (part in text) if part else ('listen' not in text)
+    assert f'listen {listening}' in text
     assert [row['tier'] for row in rows] == ([tier] if tier else [])
 
 

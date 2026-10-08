@@ -280,6 +280,9 @@ wait_hours = 24 # Weekday hours an external confirmation waits before the sweep 
 # undo_minutes = 60 # undo window of an L2 answer
 # promote_agreements = 10 # agreements before a raise card
 # promote_days = 14 # days the agreements are counted over
+# budget_share = 0.1 # error budget: events allowed per cruise answer (at most 0.5)
+# budget_window_days = 14 # days the error budget is counted over
+# burn_warn = 2.0 # burn rate that writes a nudge
 # levels = { approach = 2 } # caps a class level
 
 [pr]

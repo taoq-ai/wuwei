@@ -68,14 +68,15 @@ def other_versions():
 
 
 def restart(config):
-    """'plugin <old> running against template <new>: restart Claude Code', or ''."""
+    """'restart Claude Code: hooks <old> still running (plugin <new> installed)', or '' (#521)."""
     old = other_versions()
     if config is not None and newer_template(config):
         old.append(version())
     if not old:
         return ''
     new = (config or {}).get('template_version') or version()
-    return f'plugin {", ".join(old)} running against template {new}: restart Claude Code'
+    names = old[0] if len(old) == 1 else f'{", ".join(old[:-1])} and {old[-1]}'
+    return f'restart Claude Code: hooks {names} still running (plugin {new} installed)'
 
 
 def _prune(plugin, directory, dirs):

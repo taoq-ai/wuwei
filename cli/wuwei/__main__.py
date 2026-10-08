@@ -29,7 +29,7 @@ GROUPS = (
      'note tracker metrics report retro close steward docs'),
     ('Owner: run these in your own host terminal',
      'setup init config decide grants calibrate goals voice drafts remote mcp outbound watch listen shepherd '
-     'dashboard promote consolidate telemetry'),
+     'dashboard promote cruise consolidate telemetry'),
     ('Recovery: when something is stuck',
      'doctor why who state shadow heartbeat integrity runtime sessions seat'),
     ('Plumbing: hooks, seats and the plugin call these',
@@ -80,7 +80,8 @@ def _main(argv=None):
         print(f"wuwei: {str(exc) or type(exc).__name__}", file=sys.stderr)
         return UNRUN
     if argv == ['status', '--line']:
-        return _call(status.run, SimpleNamespace(command='status', line=True, json=False))
+        return _call(status.run, SimpleNamespace(command='status', line=True, json=False,
+                                                  width=status.WIDTH))
     import argparse
     from importlib import import_module
     import json

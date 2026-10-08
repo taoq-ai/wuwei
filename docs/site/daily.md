@@ -228,7 +228,7 @@ $ wuwei goals edit --file .wuwei/days/<date>/goals.md
 goals: 1 goal saved (G-1)
 $ wuwei plan approve --items DIV-1 --goals-confirmed
 $ bin/wuwei status --line
-WUWEI pages 0 | nudges 0 | observe | watch off | planned 1/1 | seats 0 of CAP 1 | meeting unmeasured
+WUWEI planned 1/1 · seats 0/1 | pages 0 · nudges 0 · observe
 $ bin/wuwei next
 dispatch: 1 planned item(s) can start, 0 of CAP 1 building; run the launch set, brief each start and launch the set in one turn. Run: wuwei dispatch next --all
 ```
@@ -394,18 +394,25 @@ At L2 you have `undo_minutes` (60 by default) to undo it. `bin/wuwei nudges` lis
 --widget` asks Keep or Undo on a card. The planner records your answer with `wuwei decision
 undo D-3 --answer "<label>"`; run `bin/wuwei decision undo D-3` in a host terminal and answer
 y, or reply `undo D-3` to the listener DM. An undo puts the record back to you as `Outcome:
-pending` and lowers the class one level. After the window, reverse it with `bin/wuwei decide
-D-3 <option>`, which lowers the class too. An L3 answer has no window; the batched
+pending` and spends the class's error budget. After the window, reverse it with `bin/wuwei
+decide D-3 <option>`, which spends it too. An L3 answer has no window; the batched
 two-way summary from the watch lists it, cruise answers first.
 
-Levels move only through the CLI, each move a line in `.wuwei/memory/ledger.jsonl`. Three
-thin-margin escalations of a class in a row, an escaped defect on an item a cruise answer
-named, or a weekly sample you answer differently lower it. `plan propose` asks you to raise a
-class after `promote_agreements` agreeing answers, and once a week asks one recent cruise
-answer again without its recommendation; both cards come after the morning gate.
+Levels move only through the CLI, each move a line in `.wuwei/memory/ledger.jsonl`. Undos,
+reversals, a weekly sample you answer differently and an escaped defect on an item a cruise
+answer named spend the class's error budget: `budget_share` of its cruise answers over
+`budget_window_days`. One event never lowers a class. When the events exceed the allowance
+and number at least two, the CLI lowers the class one level, with a ledger line that
+names every event, and restores it when the window refills. A fast burn sends a nudge
+first: `nudge: defer burns its error budget at 7.0x: ... Run: wuwei cruise budget`.
+`bin/wuwei cruise budget` prints class, level, answered, spent, allowance, burn and state.
+`plan propose` asks you to raise a class after `promote_agreements` agreeing answers with
+its budget unspent, and once a week asks one recent cruise answer again without its
+recommendation; both cards come after the morning gate.
 
 The status line shows the highest level a class runs at, `cruise L2`, or `cruise off | L2`
-when `decisions.cruise.enabled = false`. Under `supervised` every class runs at L0.
+when `decisions.cruise.enabled = false`, and `cruise L2 · budget defer spent` while a spent
+budget holds a class lower. Under `supervised` every class runs at L0.
 
 ### How you answer
 

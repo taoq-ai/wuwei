@@ -57,7 +57,7 @@ def test_merged_item_and_answered_decision_read_the_same_everywhere(tmp_path, mo
 
     assert main(['status', '--line']) == 0
     line = capsys.readouterr().out
-    assert 'pages 0 | nudges 0' in line and 'merged 1/' in line
+    assert 'pages 0 · nudges 0' in line and 'merged 1/' in line
 
     assert main(['brief', 'pack']) == 0
     pack = (root / capsys.readouterr().out.strip()).read_text()

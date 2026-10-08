@@ -21,8 +21,8 @@ def pending(data, item=None):
 def review(root=None):
     """Record a third-round note once, without touching item state."""
     root = workspace.find_workspace(root)
-    from wuwei import cruise
-    cruise.escaped(root)  # #283: an escaped defect on a cruise answer lowers its class
+    from wuwei import budget_classes
+    budget_classes.evaluate(root)  # #558: the error budget lowers, restores and warns
     rounds = metrics.collect(root)['fix_rounds_per_item']
     if rounds == metrics.UNMEASURED:
         return []

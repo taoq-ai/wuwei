@@ -1059,13 +1059,13 @@ def test_in_use_row_names_the_restart(ws):
     (sibling / str(os.getpid())).write_text('')
     found = row(doctor.diagnose(), 'in_use')
     assert (found['status'], found['value'], found['fix']) == (
-        'warn', 'plugin 0.10.0 running against template 0.11.0: restart Claude Code', integrity.RESTART)
+        'warn', 'restart Claude Code: hooks 0.10.0 still running (plugin 0.11.0 installed)', integrity.RESTART)
 
     (sibling / str(os.getpid())).unlink()
     config(ws.root, 'template_version = "0.12.0"\n' + CONFIG)
     found = row(doctor.diagnose(), 'in_use')
     assert (found['status'], found['value']) == (
-        'warn', 'plugin 0.11.0 running against template 0.12.0: restart Claude Code')
+        'warn', 'restart Claude Code: hooks 0.11.0 still running (plugin 0.12.0 installed)')
 
 
 def legacy_reports(root):
