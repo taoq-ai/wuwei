@@ -391,6 +391,16 @@ def _fix(root, ref, item, tree, measured, feedback=None):
     return 1
 
 
+def _latest(measured, surface, target):
+    """(thread or None, the comment an owed reply answers) for one owed key's surface and id."""
+    thread = (next(row for row in measured['threads']['threads'] if row['id'] == target)
+              if surface in ('thread', 'bot-p1') else None)
+    latest = (thread['comments'][-1] if thread else next(row for row in
+              (measured['reviews'] if surface == 'review' else measured['threads']['comments'])
+              if str(row['id']) == target))
+    return thread, latest
+
+
 def _thread(root, ref, item, tree, measured, reply=None):
     from wuwei import drafts, outward, registry
     config = workspace.load_config(root)
@@ -402,11 +412,7 @@ def _thread(root, ref, item, tree, measured, reply=None):
         surface, target = key.split(':', 1)
         if surface not in ('thread', 'review', 'comment'):
             continue
-        thread = (next(row for row in measured['threads']['threads'] if row['id'] == target)
-                  if surface == 'thread' else None)
-        latest = (thread['comments'][-1] if thread else next(row for row in
-                  (measured['reviews'] if surface == 'review' else measured['threads']['comments'])
-                  if str(row['id']) == target))
+        thread, latest = _latest(measured, surface, target)
         text, answer = latest['body'], {}
         if re.search(r'\b(scope|out of scope|disagree|instead)\b', text, re.I):
             fingerprint = obligations._fingerprint(latest)

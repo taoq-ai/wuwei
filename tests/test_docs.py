@@ -1350,3 +1350,10 @@ def test_register_section_and_who():
         assert rows and all('#people-channels-and-tools' in line for line in rows), key
     reference = (SITE / 'reference.md').read_text()
     assert '| `bin/wuwei who` |' in reference and 'edge: ' in reference.split('\n## Why\n', 1)[1]
+
+
+def test_design_records_the_headless_shepherd():
+    """#511: 4.2.1 names the overnight sweep."""
+    design = (Path(__file__).resolve().parents[1] / 'docs/specs/2026-09-24-wuwei-design.md').read_text()
+    section = design.split('#### 4.2.1', 1)[1].split('\n### ', 1)[0]
+    assert '#511' in section and 'sweep obligations --headless' in section
