@@ -46,7 +46,7 @@ Work admitted during the day must fit the remaining build hours.
 
 ### Tier
 
-Review tier: light (one reviewer agent) or standard and full (three), set per change from its size and risk.
+Review tier: light (one reviewer agent) or standard and full (three), set per change from its size and risk. The tier also sets the process depth: see [review tiers](#review-tiers).
 Outbound tier: a message sent as you either goes out at once or waits as a draft for your approval.
 
 ### Soak
@@ -186,6 +186,8 @@ An owner-only deploy, release or `deploy.deny` publish never runs from a session
 - `Always allow`: a standing line in `[grants]` of `config.toml`, for later days too. Not offered under `strict`, where a line in config is ignored.
 
 Only your recorded answer creates a grant: no seat, no config default and no hook does. Each run under a grant is a `grant.used` event, and the day report counts them per card. `bin/wuwei grants` lists your grants; `bin/wuwei grants revoke <n>` removes a standing one in a host terminal. When the plan already names a deploy, the morning gate asks it with the plan (`Allow today`, `Ask when it happens` or `Keep owner-only`), so the day runs without stopping for it.
+
+A merge works the same way. When the merge policy does not clear a pull request, `bin/wuwei merge <pr>` (or `bin/wuwei pr act <pr>`) asks you on a card, `Allow merge on <org>/<name>?`, and a merge the plan lists is a planned card per repository or per pull request. The grant replaces only the auto-merge switch and its pacing (risk flags, never-auto paths, size, soak, daily cap, quiet hours, breaker). The gates must still pass at the current head. Required checks must be green, with approvals at that head and no changes requested. Threads and obligations must be clear, `merge_deploys = false` must hold, and the repository must allow squash merges. When one fails, the reason names it and says no grant lifts this. With no grant, `merge.default_tier` decides: `ask` writes the card, `owner_only` prints the exact `gh pr merge` command for a host terminal. A `gh pr merge` typed in a session is refused with the reason and `bin/wuwei merge <pr>`, which journals and watches the merge.
 
 ## Seat launch contract
 
@@ -353,6 +355,20 @@ tier below the computed one is refused and recorded as a reason, and the returne
 carries the `tier`. See [configuration](configuration.md#workspace-and-repositories) and
 the [lead plan JSON](reference.md#lead-plan-json).
 
+The tier also decides how much process an item gets (design 5.3). Every brief and launch
+prompt carries a `Depth:` line, so no seat decides it:
+
+| | light | standard | full |
+|---|---|---|---|
+| Builder class sweep | none | the classes `wuwei sweep classes <worktree>` lists | every class |
+| Gate step zero (mutation) | none | only when the diff touches guard code, grants, outward, a hook or a trust path | always |
+| After a fix | the same sentinel re-reads and rewrites `Verdict:` and `Head:` | delta round | delta round |
+| Verdict | `Verdict:`, `Head:`, findings | full shape | full shape |
+| Retro note | only when a line is not `none` | always | always |
+
+A Routine decision taken under mandate prints as one line in `decision show` at every tier.
+The default `repos.gates.floor` is `standard`, so light depth needs `floor = "light"`.
+
 With `gates.second_opinion = "<runtime>:<model>"`, standard and full items get one more gate:
 the role in `gates.second_opinion_role` (quality by default) runs again on that runtime and
 model, named `<role>@<runtime>`. Its verdict goes through the same lint and receive. A blocking
@@ -433,6 +449,18 @@ requests go above `steward.loop_threshold` in `steward.loop_window_hours`, or on
 round. Then the steward raises one `negotiation.loop` nudge per item per day, and a page when the
 goal date has passed. The listener sends the summary to your DM. It reports; the
 negotiation budget in the charters is what stops the rounds.
+
+## Measured reversibility
+
+A seat writes `Reversibility: two-way`, but the CLI decides whether that holds. A record is
+two-way only when the CLI knows the undo for its kind of action and that undo ran once in
+this workspace. The class gives the kind: code changes undo with a git revert, park, defer
+and re-plan with `wuwei undo D-n`, and a merge with a revert PR when its repository does not
+deploy on merge. A message never has an undo, and neither does `other`. Each undo is
+rehearsed once on a scratch target (`wuwei undo rehearse commit`, `wuwei undo rehearse
+decision`); `wuwei next` runs these for you after the morning gate. Until then, and for any
+kind without an undo, the CLI rewrites the record to one-way, says why, and the record comes
+to you as a card. Nothing is refused for it.
 
 ## Sessions
 

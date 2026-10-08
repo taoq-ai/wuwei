@@ -59,6 +59,9 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
     match args:
         case ('init', '--quiet'):
             allowed = local
+        case (('add', '--', 'rehearsal.txt') | ('commit', '--quiet', '-m', 'WUWEI undo rehearsal')
+              | ('revert', '--no-edit', 'HEAD') | ('rev-parse', 'HEAD^{tree}', 'HEAD~2^{tree}')):
+            allowed = local and _scratch(repo)
         case ('add', '-A', '--', *paths):
             allowed = local and bool(paths) and all(_workspace_path(p) for p in paths)
         case ('commit', '--only', '-m', message, '--', *paths):
@@ -794,6 +797,28 @@ def read_tree(repo, ref, paths, root=None):
 _WORKSPACE_DIRS = ('charters', 'memory', 'goals', 'voice')
 _PROMOTION_MESSAGE = 'WUWEI promotion\n\nPromoted-by: wuwei'
 _OWNER_EDIT_MESSAGE = _PROMOTION_MESSAGE + '\nEdited-by: owner'
+
+
+def _scratch(path):
+    """#557: a rehearsal runs only under the system temporary directory."""
+    import tempfile
+    return Path(path).resolve().is_relative_to(Path(tempfile.gettempdir()).resolve())
+
+
+@_operation
+def rehearse_revert(path, root=None):
+    """#557: in an empty scratch directory, commit a change, revert it and compare the trees."""
+    if not _scratch(path) or any(Path(path).iterdir()):
+        raise ValueError('rehearsal needs an empty directory under the system temporary directory')
+    _run(path, 'init', '--quiet', local=True)
+    file = Path(path) / 'rehearsal.txt'
+    for text in ('before\n', 'after\n'):
+        file.write_text(text)
+        _run(path, 'add', '--', 'rehearsal.txt', local=True)
+        _run(path, 'commit', '--quiet', '-m', 'WUWEI undo rehearsal', local=True)
+    _run(path, 'revert', '--no-edit', 'HEAD', local=True)
+    reverted, original = _run(path, 'rev-parse', 'HEAD^{tree}', 'HEAD~2^{tree}', local=True).split()
+    return {'reverted': reverted == original, 'tree': reverted}
 
 
 def _workspace_repository(repo):

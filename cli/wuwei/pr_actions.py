@@ -525,7 +525,7 @@ def act(root, ref, *, run=False, complete=False, reply=None):
         from wuwei import merge
         result = merge.execute(ref, root=root)
         if result.exit:
-            print(f'{ref}: owner merge decision required: {result.reason}')
+            print(f'{ref}: {result.reason}')  # #524: the card, the owner's command or the missing condition
         return result.exit
     if row['state'] == 'review_stale':
         from wuwei import shepherd

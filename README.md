@@ -1,7 +1,7 @@
 <p align="center"><picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/site/assets/hero-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/site/assets/hero-light.svg">
-    <img src="docs/site/assets/hero-light.svg" alt="Work items move along a track through Plan, Build, Check, Review and Merge while guards, cards and the heartbeat work under the hood; you approve the plan once and answer a card from the phone." width="100%">
+    <img src="docs/site/assets/hero-light.svg" alt="A ranked queue you approve feeds an agent team working three parallel lanes that loop build and check, every candidate passes the gates with at most one fix round, pull requests wait in a stack the shepherd sweeps until they merge, and you answer the odd card from the phone while guards, heartbeat, lead and steward work under the hood and each day's retro feeds tomorrow's plan." width="100%">
 </picture></p>
 
 <h1 align="center">WUWEI 无为</h1>
@@ -19,9 +19,9 @@ proposes changes to the rules.
 
 ## What WUWEI is and is not
 
-WUWEI is a Claude Code plugin for a chartered team of agents. It gives each role a bounded job, keeps workspace memory, and checks actions through guards. The brand accent is `#00C9A7`.
+WUWEI is a Claude Code plugin. It runs a chartered team of agents across your repositories, keeps workspace memory under `.wuwei/`, and works through `gh` for the code host, with tracker and chat as optional adapters.
 
-WUWEI is not a hosted service, a tracker, a chat system, or a replacement for repository rules. It does not deploy, approve pull requests, or bypass branch protection.
+WUWEI is not a hosted service, a tracker, a chat system, or a replacement for your repository rules.
 
 ## What ships today
 
@@ -35,7 +35,10 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for re
 - Doctor: install, host, workspace, gate, day and guard problems, each with its fix ([doctor](docs/site/reference.md#doctor)).
 - Security posture: observe, guarded or strict per area, with floors no setting lowers. The MCP registry gate warns by default and blocks on a critical finding or a check that could not run ([security posture](docs/site/security.md#security-posture)).
 - The heartbeat: probes that prove the system behaves, with a dead-man ping ([heartbeat](docs/site/reference.md#heartbeat)).
-- Cruise mode: the CLI answers clear two-way decisions of a class at its level, tells you, and lets you undo for an hour. Reversals spend the class's error budget, and a spent budget lowers the class until the window refills. Agreement raises it on your card ([cruise answers](docs/site/daily.md#cruise-answers), [design spec](docs/specs/2026-09-24-wuwei-design.md) section 5.8.1).
+- The path: `bin/wuwei next` returns the exact next action for each step of the day, and Claude walks it ([what the session knows](docs/site/agent.md)).
+- Cruise mode: the CLI answers clear two-way decisions of a class at its level, tells you, and lets you undo for an hour. Reversals spend the class's error budget, and a spent budget lowers the class until the window refills. Agreement raises it on your card. A target the workspace has never touched asks you once, and a class that keeps being more sure than right runs at most L1. A raise runs in shadow first and goes live only on your card ([cruise answers](docs/site/daily.md#cruise-answers), [design spec](docs/specs/2026-09-24-wuwei-design.md) section 5.8.1).
+
+Landing next: one register of people, channels and tools ([#552](https://github.com/taoq-ai/wuwei/issues/552)), a day pace ([#579](https://github.com/taoq-ai/wuwei/issues/579)) and [#586](https://github.com/taoq-ai/wuwei/issues/586).
 
 ## How it works
 
@@ -55,15 +58,16 @@ day the hooks make the safe path the default one, so you have nothing special to
 
 ## The basic workflow
 
-1. **Setup and calibration**: `bin/wuwei setup` in a [host terminal](docs/site/concepts.md#host-terminal) calibrates your repositories and leaves `.wuwei/` with its config.
-2. **Plan and the morning gate**: `/wuwei:wuwei-plan` ranks the work; your answer leaves the approved plan.
-3. **Build**: an approved item starts a builder in its own worktree; it leaves a branch with tests written first and green fast checks. Specification mode, where hooks hold each spec-kit step, is designed, not built ([design spec](docs/specs/2026-09-24-wuwei-design.md), section 5.10).
-4. **Review by tier**: a finished change gets one gate or three by its tier, then one fix round; it leaves verdicts.
-5. **Shepherd to merge**: a raised pull request merges when your merge policy and branch protection allow it; the shepherd records the outcome.
-6. **Close and retro**: at the end of the day, `/wuwei:wuwei-report` or `/wuwei:wuwei-retro` leaves the report and the rule proposals.
-7. **Memory into tomorrow**: proposals you promote and `/wuwei:wuwei-consolidate` update memory, and [carried](docs/site/concepts.md#carry) items open the next plan.
-
-The hooks hold every step at the moment of action, and warn or block by the posture you configured ([concepts](docs/site/concepts.md)).
+In words: setup, plan, build, review, shepherd to merge, then close with a retro that feeds tomorrow.
+```mermaid
+flowchart LR
+    setup["Setup and calibration"] --> plan["Plan and the morning gate"] --> build["Build: a builder per item, tests first"]
+    build --> review["Review by tier: one gate or three"] --> merge["Shepherd to merge"] --> close["Close and retro"]
+    close -- "memory into tomorrow: promoted rules and carried items" --> plan
+    you(["you: approve the plan, answer a card"]) -.-> plan & review
+    hooks(["hooks check every action"]) -.-> build
+```
+Setup runs in a [host terminal](docs/site/concepts.md#host-terminal), [carried](docs/site/concepts.md#carry) items open the next plan, and the hooks warn or block by your posture ([concepts](docs/site/concepts.md)).
 
 ## When something goes wrong
 
@@ -102,13 +106,17 @@ The hooks hold every step at the moment of action, and warn or block by the post
 
 Planned: Signal and WhatsApp as owner channels (design spec, section 15).
 
-## Philosophy
+## Principles
 
-- The safe path is the default one, so you never have to remember it.
-- The workflow writes its own records; you answer questions.
-- The hooks are cooperative mistake prevention. Your code host carries the guarantee with protected branches, required checks and reviews ([security](docs/site/security.md)).
-- Each guard area warns or blocks by the posture you choose; records always block, and the default posture blocks publishing and integrity.
-- Evidence over claims: [unmeasured](docs/site/concepts.md#unmeasured) is never a pass. The runtime is Python stdlib only.
+1. The CLI owns the path and the model walks it. `bin/wuwei next` returns the one next action: the exact command or Agent call, why, and what comes after. Skills and charters hold judgement, never a step list ([agent guide](docs/site/agent.md), [design spec](docs/specs/2026-09-24-wuwei-design.md) 5.2 and 5.3).
+2. Autonomous by default, with floors. Under observe and guarded a guard gives you a warning or a card, and the work goes on. The one floor is records: the workflow writes them and you answer. Under strict, refusals stay ([posture](docs/site/security.md#security-posture), design spec 9.2).
+3. Rules hold at the moment of action. A rule written only as a prompt can be skipped, so hooks check each call against the invariant table in design spec 9.2, and a test walks every case of it. Your code host's protected branches and required checks still carry the guarantee ([guards](docs/site/concepts.md#guards)).
+4. Who decides follows from what is decided. Each record gets an MIT CISR class from how reversible it is, how far it reaches and how unclear it is. A Routine two-way decision is taken under the [mandate](docs/site/concepts.md#mandate); a Strategic or one-way one comes to you on a card ([classes and levels](docs/site/concepts.md#decision-classes-and-cruise-levels), design spec 5.8).
+5. Autonomy is earned from the ledger, never by copying you. Each class runs at a level up to its ceiling; your agreements raise it and your reversals lower it ([cruise answers](docs/site/daily.md#cruise-answers), design spec 5.8.1). A [novel](docs/site/concepts.md#novel) target asks you once on a card ([#556](https://github.com/taoq-ai/wuwei/issues/556)). A record counts as two-way only once its undo was rehearsed ([measured reversibility](docs/site/concepts.md#measured-reversibility), [#557](https://github.com/taoq-ai/wuwei/issues/557)). Reversals spend an error budget, so one bad call does not drop a class ([#558](https://github.com/taoq-ai/wuwei/issues/558)). How sure a record says it is gets scored against what happened, with a Brier score ([#559](https://github.com/taoq-ai/wuwei/issues/559)). A raise runs in shadow before it goes live ([#560](https://github.com/taoq-ai/wuwei/issues/560)).
+6. The workflow writes its records and you answer cards. Outside strict, your answer on a card is the confirmation; no step asks you for a hash or a command in a host terminal ([drafts and cards](docs/site/concepts.md#drafts-and-cards), design spec 5.2).
+7. Evidence over claims. [Unmeasured](docs/site/concepts.md#unmeasured) is never a pass, CI is the gate, and every count comes from its live source ([concepts](docs/site/concepts.md)).
+8. Security first, with least privilege. ZIRAN audits each role's tool grants in CI, releases are signed, and you choose the posture per area. WUWEI never deploys, never approves a pull request and never merges past branch protection as admin ([what the guards cover](docs/site/security.md), design spec 1 and 7).
+9. Keep it simple. The runtime is Python stdlib only, nothing is built for a need that has not come, and deleting code beats adding it ([constitution](https://github.com/taoq-ai/wuwei/blob/main/.specify/memory/constitution.md)).
 
 ## Installation
 
@@ -182,34 +190,6 @@ Run `/wuwei plan` to start the planner and morning gate. See [concepts](docs/sit
 
 Every Claude Code session in the workspace orients itself on start: what WUWEI is, where the day stands and the next step from `bin/wuwei next` ([what the session knows](docs/site/agent.md)).
 
-## How WUWEI compares
-
-As of October 2026. Each other tool is described from its own README or docs. These
-projects change often, so follow the links. WUWEI keeps its process in hooks that refuse at
-the moment of action, since a model can skip a process written only as prompts. It runs
-alongside the tools below.
-
-| Tool | Who plans the day | Who reviews the work | What stops a bad merge | What is learned afterwards | Where it runs |
-|---|---|---|---|---|---|
-| **WUWEI**, chartered roles that run a working day | A planner [seat](docs/site/concepts.md#seat) ranks the work and you approve it at the morning gate | One or three gates that did not write the change, then one fix round | Shipped hooks refuse at the moment of action; the merge policy and your branch protection decide | A daily retro: seats propose rule changes and you promote them | Claude Code, across your repositories, through `gh` |
-| [Spec Kit](https://github.com/github/spec-kit), a spec-driven development toolkit | You run specify, plan and tasks per feature, after a project constitution | Converge adds checklists and consistency analysis when you want them | Your repository rules | Specs and the constitution in the repository | Many coding agents through integrations |
-| [OpenSpec](https://github.com/Fission-AI/OpenSpec), spec-driven development for AI coding assistants | You propose a change and the agent writes its specs, design and tasks | An optional verify step | Your repository rules | Archiving a change updates the specs | 30+ coding tools |
-| [superpowers](https://github.com/obra/superpowers), composable skills loaded by a session-start hook | Brainstorming, then a plan of small tasks | Each task is reviewed for spec compliance, then code quality | Finishing a branch verifies tests, then you choose merge or PR | Plans and code in the repository | Claude Code, Codex, Cursor, Gemini CLI and others |
-| [BMAD Method](https://github.com/bmad-code-org/BMAD-METHOD), agile AI-driven development with agent personas | Analyst, product manager and architect agents write the brief, PRD and architecture | A code review skill with several independent reviewers | Your repository rules | A retrospective reviews each finished epic, and the loop goes back to planning | Coding tools that support skills; Claude Code and Codex plugins |
-| [Kiro](https://kiro.dev), an agentic IDE, CLI and web app by AWS | Specs with requirements, design and tasks | Your own review | Hooks you write; a PreToolUse hook can block a tool call | Steering files you write | Kiro IDE, CLI and web |
-| [Claude Code](https://code.claude.com/docs/en/overview) plan mode, subagents, hooks, memory | Plan mode proposes a plan before any edit | Subagents you define; automatic review on pull requests | Hooks you write; a PreToolUse hook can deny a tool call | `CLAUDE.md` and auto memory | Terminal, IDE, desktop app and web |
-
-WUWEI's roles are the planner, lead, builder, [shepherd](docs/site/concepts.md#shepherd), [steward](docs/site/concepts.md#steward) and four
-[sentinels](docs/site/concepts.md#sentinel) ([concepts](docs/site/concepts.md)). It works through `gh` for the code host, with tracker
-and chat as optional adapters. Releases include a signed manifest and an integrity check, and
-ZIRAN audits the role tool grants ([security](docs/site/security.md)).
-
-### How they compose
-
-An item's spec can be written with Spec Kit or OpenSpec (this repository builds WUWEI with
-Spec Kit, see `specs/`), and a seat can run superpowers' skills inside its worktree. Claude
-Code's hooks, subagents, skills and plugins are what WUWEI is made of.
-
 ## Limits
 
 - WUWEI needs Claude Code. Codex can run seats as an optional runtime.
@@ -276,6 +256,7 @@ WUWEI builds on the work below. [NOTICE](NOTICE) has the licence of each.
   (CC0).
 - [superpowers](https://github.com/obra/superpowers): the shape of this README's sections
   (MIT, structure only).
+- [OpenSpec](https://github.com/Fission-AI/OpenSpec): the `openspec` [spec engine](docs/site/concepts.md#spec-engine) option (MIT, run as an external tool).
 - [autoharness](https://github.com/tigerless-labs/autoharness): propose then promote, the
   ledger and the adherence lifecycle (MIT, ideas only).
 - [ralph-starter](https://github.com/rubenmarcus/ralph-starter): the builder loop with
@@ -297,3 +278,7 @@ WUWEI builds on the work below. [NOTICE](NOTICE) has the licence of each.
   Sean McBride, Intercom; the `rice` ranking.
 - [One-way and two-way doors](https://s2.q4cdn.com/299287126/files/doc_financials/annual/2015-Letter-to-Shareholders.PDF):
   Jeff Bezos, Amazon 2015 letter to shareholders; the decision framework.
+- [MIT CISR decision framework](https://cisr.mit.edu/): Sebastian, Weill, Haskamp and vom Brocke, "A framework for determining when AI can make decisions"; the decision classes.
+- [Verifiably Safe Autonomous Decision-Making (vGOAL)](https://www.kuleuven.be/): KU Leuven; the invariant table and its exhaustive test, without the model checker.
+- [Error budgets](https://sre.google/sre-book/embracing-risk/): Google, Site Reliability Engineering, "Embracing Risk"; the error budget of each class.
+- [Brier score](https://doi.org/10.1175/1520-0493%281950%29078%3C0001%3AVOFEIT%3E2.0.CO%3B2): Glenn W. Brier, Monthly Weather Review, 1950; scoring how sure a record says it is.

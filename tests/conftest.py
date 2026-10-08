@@ -27,3 +27,14 @@ def quiet_heartbeat(monkeypatch):
     real = heartbeat.beat
     monkeypatch.setattr(heartbeat, 'beat', lambda root: 0)
     return real
+
+
+@pytest.fixture(autouse=True)
+def rehearsed_undo(monkeypatch):
+    # #557: a workspace after its first two rehearsals: commit and decision undos ran once. A test
+    # of the ledger itself requests this fixture, whose value is the real reader, and restores it.
+    from wuwei import undo
+    real = undo.ledger
+    monkeypatch.setattr(undo, 'ledger', lambda root: {kind: {'at': '2026-09-28T12:00:00+00:00', 'by': 'rehearsal'}
+                                                      for kind in undo.SCRATCH})
+    return real

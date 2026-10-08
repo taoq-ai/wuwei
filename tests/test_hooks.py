@@ -744,6 +744,7 @@ GUARDS = [Guard({event!r}, {matcher!r}, lambda p: (0, ''))]
 ])
 def test_latency_budget_decision(monkeypatch, capsys, ci, bench, load, expected, wall_budget):
     monkeypatch.delenv('CI', raising=False)
+    monkeypatch.delenv('WUWEI_LATENCY_OUT', raising=False)  # its fixture rows are not probe figures
     monkeypatch.delenv('WUWEI_BENCH', raising=False)
     if ci:
         monkeypatch.setenv('CI', '1')
@@ -1058,7 +1059,7 @@ SUBAGENT_STOP_MODULES = {'wuwei.guards.agent_launch', 'wuwei.guards.decision', '
                          'wuwei.sessions', 'wuwei.specmode'}
 
 
-def run_launcher(seeded_workspace, tmp_path, path, script=LAUNCHER_MODULES):
+def run_launcher(seeded_workspace, tmp_path, path, script=LAUNCHER_MODULES, printed=False):
     (root, env), payloads, reset, _ = seeded_workspace
     event, fields = payloads[path]
     out = tmp_path / 'launcher-out.json'
@@ -1066,7 +1067,7 @@ def run_launcher(seeded_workspace, tmp_path, path, script=LAUNCHER_MODULES):
     result = subprocess.run([sys.executable, '-I', '-P', '-S', '-c', script, str(root / 'cli'), str(root),
                              str(out), 'hook', event], input=json.dumps({**fixture(event), **fields}),
                             text=True, capture_output=True, cwd=root.parent, env=env)
-    assert result.returncode == 0 and result.stdout == '', result.stderr + result.stdout
+    assert result.returncode == 0 and (printed or result.stdout == ''), result.stderr + result.stdout
     return json.loads(out.read_text())
 
 
@@ -1076,6 +1077,14 @@ def test_subagent_stop_loads_no_more_than_pretooluse(seeded_workspace, tmp_path)
     loaded = {path: [set(run_launcher(seeded_workspace, tmp_path, path)) for _ in range(2)][1]
               for path in ('commit', 'SubagentStop')}
     assert loaded['SubagentStop'] - loaded['commit'] - SUBAGENT_STOP_MODULES == set()
+
+
+def test_session_start_loads_only_what_it_prints(seeded_workspace, tmp_path):
+    # #587: the block needs no promotion writes (shutil, uuid), no digest months (calendar),
+    # no temp-file module in the ssh adapter and, with no decision routes, no decision ledger.
+    loaded = [set(run_launcher(seeded_workspace, tmp_path, 'SessionStart', printed=True)) for _ in range(2)][1]
+    assert loaded & {'shutil', 'tempfile', 'bz2', 'lzma', 'random', 'uuid', 'calendar',
+                     'wuwei.decision', 'wuwei.cruise', 'wuwei.novelty'} == set()
 
 
 COUNTING = (

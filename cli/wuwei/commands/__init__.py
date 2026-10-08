@@ -5,6 +5,7 @@
 READ_ONLY = frozenset({'board', 'calibrate', 'config check', 'config show', 'cruise budget', 'cruise calibration', 'cruise shadow', 'doctor', 'drafts show', 'grants', 'guide',
                        'heartbeat', 'outbound explain', 'outbound tiers',
                        'integrity check', 'lint tone', 'mcp check', 'memory show', 'memory status', 'plan gate', 'sessions', 'shadow report', 'status',
+                       'sweep classes',
                        'why'})
 # calibrate only prints with --questions; doctor --fix writes (checked below).
 _NEEDS = {'calibrate': '--questions'}
@@ -30,7 +31,7 @@ WRITES = frozenset({
     'sweep obligations', 'sweep watch', 'telemetry off', 'telemetry preview', 'telemetry proposals',
     'telemetry send', 'tracker create', 'tracker done', 'tracker log', 'verdict lint', 'voice edit',
     'voice learn',
-    'watch install', 'watch uninstall', 'worktree add', 'worktree adopt'})
+    'undo', 'watch install', 'watch uninstall', 'worktree add', 'worktree adopt'})
 
 
 def read_only(args):

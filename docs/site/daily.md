@@ -301,12 +301,20 @@ executes each returned action unchanged:
 5. [Delta](concepts.md#delta): `dispatch next` returns `gates` for the roles that said FIX, and `seats` holds a
    `continue` action per seat with `resume` (the seat's agent ID) and a `receive` call
    with `--round delta`. After the delta verdicts it returns `raise` with review notes,
-   or `escalate`.
+   or `escalate`. A light item has no delta review: its `continue` feedback starts
+   `Re-read:` and the same [sentinel](concepts.md#sentinel) rewrites its `Verdict:` and `Head:` lines.
 6. Pull request: `wuwei pr raise <owner/repo> --base main --title <title> --body-file
    <file> --item <item>` opens the PR and moves the item to `raised`. `wuwei pr state`
    reads the host; `wuwei pr act <ref>` returns the next PR action, including a post-PR fix
    round. When the host reports the PR merged, the item is `merged`, whatever round it
    was in.
+
+Process depth follows the [tier](concepts.md#tier). A light item skips the class sweep, gate step zero and
+the long verdict rows. A standard item sweeps only the classes `wuwei sweep classes
+<worktree>` lists and mutates only when its diff touches guard code or a trust path. Each
+brief's `Depth:` line says which. The report's `## Cycle time` section shows how long each
+merged item took and the median per tier against the targets (light 60, standard 180
+minutes).
 
 On a non-trivial item the builder first runs every step of the configured [spec engine](concepts.md#spec-engine)
 (spec-kit by default: specify, clarify, plan, tasks, analyze, checklist, then implement) in
@@ -373,6 +381,14 @@ A record, a chat send or a deploy on a [novel](concepts.md#novel) target, one th
 never touched, comes to you once even when the [mandate](concepts.md#mandate) would take it. The card says
 `first time for <target>`. One answer clears the target, and the next one runs as usual. The report
 lists each target first seen today under `First time today`.
+
+A record is two-way only when WUWEI can undo it and has tried that undo once here. On the first
+day the planner runs `wuwei undo rehearse commit` and `wuwei undo rehearse decision`, which
+`wuwei next` returns after the gate. Until they ran, two-way records of that kind come to you as
+cards, and a message or a merge to a repository that deploys always does. To undo, answer Undo on
+the card or reply `undo D-3` to the listener DM. You can also run `bin/wuwei undo D-3` (or `bin/wuwei undo
+<event id>` for a merge) in a host terminal and answer y. The report lists what was undone under
+`Undone today` and the one-way actions of the day under `Cannot be undone`.
 
 Seats do not ask what their mandate lets them decide. You see two more things here. An item
 that goes back and forth shows as `loops N` on the status line and a `negotiation.loop`

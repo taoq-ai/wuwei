@@ -97,6 +97,7 @@ Outcome: pending
     for name, item in sorted(data['items'].items()):
         lines.append(f"| {name} | {item['phase']} | {item['status']} | "
                      f"{rounds.get(name, 0) if isinstance(rounds, dict) else 'unmeasured'} |")
+    lines += ['', metrics.cycle_moved(metrics.cycles(root), workspace.now())]  # #567
     lines += ['', '## Gate verdicts', '| Record | Verdict |', '| --- | --- |']
     gates = sorted((day / 'decisions').glob('[gG][aA][tT][eE]-*.[mM][dD]'))
     for path in gates:

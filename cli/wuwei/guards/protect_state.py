@@ -313,7 +313,7 @@ def _protected_name(path, directories=False):
             return True
         if len(tail) == 3 and tail[0] == 'days' and tail[2] in ('state.json', 'state.snapshot.json', 'events.jsonl', 'traces.jsonl', 'undo.jsonl', 'proposal.json', 'plan.md', 'goals.md', 'steward-decisions.json', 'interview.json', 'profile.json'):
             return True
-        if tail in (('memory', 'ledger.jsonl'), ('memory', 'targets.json')):
+        if tail in (('memory', 'ledger.jsonl'), ('memory', 'targets.json'), ('memory', 'rehearsals.json')):
             return True
         if len(tail) == 2 and tail[0] == 'charters' and tail[1].endswith('.md'):
             return True
@@ -341,6 +341,9 @@ def _hint(path):
         return ('goals.md and voice.md are protected: after the morning gate the planner runs '
                 'wuwei goals edit --file <draft> or wuwei voice edit --file <draft>; other '
                 "edits are the owner's, outside agent tools.")
+    if tail == ('memory', 'rehearsals.json'):
+        return ('rehearsals.json is the undo rehearsal ledger (design 5.8 Measured reversibility): '
+                'only wuwei undo rehearse and wuwei undo write it.')
     if tail == ('memory', 'targets.json'):
         return ('targets.json is the seen set (design 5.8.1 Novelty): the CLI writes it from owner '
                 'answers, drafts approve and init --upgrade.')

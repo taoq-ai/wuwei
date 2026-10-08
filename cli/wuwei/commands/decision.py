@@ -54,24 +54,27 @@ def decide(args):
         fields, scores = evaluate(text)
     except ValueError as exc:
         return record_rejection(path, 1, str(exc), root=root)
+    from wuwei import undo
+    text, fields, said = undo.correct(args.id, path, text, fields, root)  # #557: first route only
+    said = '\n' + said if said else ''
     if args.external:
         from wuwei.brief import identifier
         try:
             route_owner(args.id, fields, root, item=identifier(args.external))
         except ValueError as exc:
             return 1, f'decision: {exc}'
-        return 0, 'owner'
+        return 0, 'owner' + said
     config = workspace.load_config(root)
     if config['autonomy']['mode'] == 'autonomous':
         decided = mandate(args.id, path, text, fields, scores, root, config)
         if decided:
-            return 0, decided
+            return 0, decided + said
     target = route(fields)
     if target == 'owner':
         from wuwei import cruise
         thin = cruise.thin(root, fields, scores, config)
         route_owner(args.id, fields, root, thin=thin)
-        return 0, target
+        return 0, target + said
     try:
         record = seat_outcome(fields, scores)
     except ValueError as exc:
@@ -162,6 +165,10 @@ def show(args):
         return 0, json.dumps([card], indent=2)
     if level == 'full':
         return 0, text.rstrip()
+    outcome = state.read_state(root).get('decision_outcomes', {}).get(args.id, {})
+    if outcome.get('decided_by') == 'mandate' and outcome.get('cisr') == 'Routine':  # #567
+        return 0, (f"{args.id} (Routine, mandate): {fields['Question']} Took {outcome.get('option')}. "
+                   f'Full record: wuwei decision show {args.id} --full')
     return 0, present(args.id, fields, level) + f'\nFull record: wuwei decision show {args.id} --full'
 
 
@@ -294,6 +301,8 @@ def undo(args, *, root=None, where=None):
     stamp = workspace.now().isoformat(timespec='seconds')
     workspace.atomic_write(path, decided_record(text, 'pending', 'owner').rstrip('\n')
                            + f'\nNotes: Undone at {stamp} {where}.\n')
+    from wuwei import undo as undo_ledger
+    undo_ledger.record(root, 'decision', 'undo')  # #557: a real undo exercises the decision kind
     return 0, f'owner: ask with wuwei decision show {args.id} --widget'
 
 

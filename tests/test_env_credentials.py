@@ -448,8 +448,11 @@ def check_through_github(case, monkeypatch, steps, extra=''):
     return main(['config', 'check'])
 
 
+SQUASH = {'stdout': '{"allow_squash_merge": true}'}  # #524: the repository read
+
+
 def test_classic_404_with_no_rulesets_is_a_finding(case, monkeypatch, capsys):
-    assert check_through_github(case, monkeypatch, [CLASSIC_404, {'stdout': '[[]]'}]) == 1
+    assert check_through_github(case, monkeypatch, [CLASSIC_404, {'stdout': '[[]]'}, SQUASH]) == 1
     output = capsys.readouterr().out
     assert CLASSIC_LINE in output
     for line in ('required checks: missing (require status checks on main)',
@@ -468,7 +471,7 @@ def test_ruleset_only_protection_is_clean(case, monkeypatch, capsys):
                  'require_code_owner_review': False, 'require_last_push_approval': False,
                  'required_review_thread_resolution': False}},
              {'type': 'non_fast_forward'}, {'type': 'deletion'}]
-    steps = [CLASSIC_404, {'stdout': json.dumps([rules])}]
+    steps = [CLASSIC_404, {'stdout': json.dumps([rules])}, SQUASH]
     assert check_through_github(case, monkeypatch, steps, 'review_required_checks = ["unit"]\n') == 0
     output = capsys.readouterr().out
     assert CLASSIC_LINE in output

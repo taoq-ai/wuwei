@@ -294,7 +294,7 @@ def test_workspace_rows_healthy(ws):
         'workspace', 'config', 'template', 'executable', 'memory tiers', 'acme/widget path', 'acme/widget git',
         'acme/widget git hooks', 'acme/widget branch', 'acme/widget identity', 'acme/widget fast_checks', 'acme/widget spec',
         'outbound classes', 'outbound tiers', 'calibration', 'drift',
-        'interview', 'profile', 'posture', 'telemetry']
+        'interview', 'profile', 'posture', 'telemetry', 'undo rehearsals']
     assert row(rows, 'posture')['value'] == 'guarded (from security.posture)'
     assert row(rows, 'telemetry')['value'] == 'share off'
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'workspace'), rows
@@ -1228,6 +1228,22 @@ def test_outbound_tier_rows(ws, posture, words):
     assert 'bin/wuwei outbound learn card' in classes['fix'] and '[outbound.people]' not in classes['fix']
     assert tiers['status'] == 'warn' and tiers['detail'] == [f'rule {n} {words}' for n in (1, 2, 3, 4)]
     assert tiers['fix'] == 'make the row ask, or remove it'
+
+
+def test_undo_rehearsals_row(ws, rehearsed_undo):
+    # #557: the kinds whose undo ran once here, and a damaged ledger with its fix.
+    found = row(doctor.diagnose(), 'undo rehearsals')
+    assert found['status'] == 'ok' and found['value'] == (
+        'rehearsed: commit, decision; not rehearsed: merge (wuwei undo rehearse <kind>)')
+    from wuwei import undo
+    ws.mp.setattr(undo, 'ledger', rehearsed_undo)
+    path = ws.root / '.wuwei/memory/rehearsals.json'
+    path.parent.mkdir(exist_ok=True)
+    path.write_text('{')
+    found = row(doctor.diagnose(), 'undo rehearsals')
+    assert found['status'] == 'fail' and 'memory/rehearsals.json is damaged' in found['value']
+    assert found['fix'] == ('move .wuwei/memory/rehearsals.json aside, then run ' + W('undo rehearse commit')
+                            + ' and ' + W('undo rehearse decision'))
 
 
 def test_day_shepherd_row(ws):
