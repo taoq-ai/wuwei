@@ -502,3 +502,46 @@ def test_issue_opens_through_the_allowlisted_api(tmp_path, monkeypatch):
     assert adapter().issue('../widget', 't', 'b').exit == 2
     none = importlib.import_module('adapters.code_host.none')
     assert none.issue('acme/widget', 't', 'b', root=tmp_path).exit == 2
+
+
+SINCE = '2026-09-10T00:00:00+00:00'
+DEPLOYS = ['api', 'repos/acme/widget/deployments?per_page=100', '-H', 'Cache-Control: no-cache',
+           '--paginate', '--slurp', '--hostname', 'github.com']
+
+
+def test_deployments_read_in_the_window(monkeypatch):
+    # #586: creation times at or after since, sorted; every environment counts.
+    calls = install_replay(monkeypatch, 'gh', [{'argv': DEPLOYS, 'stdout': json.dumps([[
+        {'created_at': '2026-09-12T10:00:00Z'}, {'created_at': '2026-09-01T10:00:00Z'},
+        {'created_at': '2026-09-11T10:00:00Z'}]])}])
+    result = adapter().deployments('acme/widget', SINCE)
+    assert (result.exit, result.data) == (0, {'source': 'deployments', 'at': [
+        '2026-09-11T10:00:00Z', '2026-09-12T10:00:00Z']})
+    assert len(calls) == 1
+
+
+def test_deployments_fall_back_to_published_releases(monkeypatch):
+    install_replay(monkeypatch, 'gh', [{'argv': DEPLOYS, 'stdout': '[[]]'}, {'stdout': json.dumps([[
+        {'draft': True, 'published_at': None}, {'draft': False, 'published_at': None},
+        {'draft': False, 'published_at': '2026-09-13T08:00:00Z'},
+        {'draft': False, 'published_at': '2026-09-14T08:00:00Z'}]])}])
+    result = adapter().deployments('acme/widget', SINCE)
+    assert result.data == {'source': 'releases', 'at': ['2026-09-13T08:00:00Z', '2026-09-14T08:00:00Z']}
+
+
+def test_deployments_none_recorded(monkeypatch):
+    install_replay(monkeypatch, 'gh', [{'stdout': '[[]]'}, {'stdout': '[[]]'}])
+    assert adapter().deployments('acme/widget', SINCE).data == {'source': None, 'at': []}
+
+
+@pytest.mark.parametrize('steps,since', [
+    ([{'stdout': '{"message":"Not Found","documentation_url":"url"}'}], SINCE),
+    ([{'exit': 1, 'stderr': 'gh: Not Found (HTTP 404)'}], SINCE),
+    ([{'stdout': '[[{"id": 1}]]'}], SINCE),
+    ([{'stdout': '[[{"created_at": "2026-09-12T10:00:00"}]]'}], SINCE),
+    ([], '2026-09-10T00:00:00'),
+])
+def test_deployments_fail_closed(steps, since, monkeypatch):
+    install_replay(monkeypatch, 'gh', steps)
+    result = adapter().deployments('acme/widget', since)
+    assert result.exit == 2 and result.data is None and result.reason

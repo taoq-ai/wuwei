@@ -467,6 +467,77 @@ def by_pace(root):
     return result
 
 
+DORA = (('lead_time_merge_hours', 'Lead time to merge', '{:.1f} hours'),
+        ('lead_time_deploy_hours', 'Lead time to deploy', '{:.1f} hours'),
+        ('deploys_per_week', 'Deployment frequency', '{:.1f} per week'),
+        ('change_failure_rate', 'Change failure rate', '{:.2f}'),
+        ('time_to_restore_hours', 'Time to restore', '{:.1f} hours'))
+DORA_WINDOW = 28  # #586: days, the window of wuwei dora, the report and the retro
+
+
+def week_window(config, monday):
+    """#586: [Monday 00:00, next Monday) in the owner's zone."""
+    since = datetime.combine(monday, time.min, tzinfo=workspace.zone(config) or workspace.now().tzinfo)
+    return since, since + timedelta(days=7)
+
+
+def _deploys(root, config, since):
+    """#586: ({repo: (source, [deploy times])}, reason when none, whether the code host failed)."""
+    if config['adapters']['code_host'] == 'none':
+        return {}, 'code host adapter is none', False
+    if not config['repos']:
+        return {}, 'no repository configured', False
+    host, found = registry.load('code_host', config), {}
+    for repo in config['repos']:
+        result = host.deployments(repo['name'], since.isoformat(), root=root)
+        if result.exit:
+            return {}, f'code host could not run: {result.reason}', True
+        if result.data['source']:
+            found[repo['name']] = (result.data['source'], [datetime.fromisoformat(at) for at in result.data['at']])
+    return found, '' if found else 'the code host reports no deployments or releases', False
+
+
+def dora(root, config, since, until, host=True):
+    """#586: the four keys in DORA order, each {value, source} or {unmeasured, reason}."""
+    rows = [row for row in cycles(root) if since <= row['merged_at'] < until]
+    unmeasured = lambda reason, **extra: {'value': UNMEASURED, 'reason': reason, **extra}
+    result = dict.fromkeys(key for key, _, _ in DORA)
+    if rows:
+        _, escaped = _escaped(root)
+        failures = sum(row['item'] in escaped for row in rows)
+        result['lead_time_merge_hours'] = {'value': median(row['cycle_minutes'] for row in rows) / 60,
+                                           'source': f'cycle_minutes of {len(rows)} merged items (#567)'}
+        result['change_failure_rate'] = {
+            'value': failures / len(rows),
+            'source': f'{failures} of {len(rows)} merged items named by a later fix brief (5.6)'}
+    else:
+        result['lead_time_merge_hours'] = result['change_failure_rate'] = unmeasured('no item merged in the window')
+    deploys, reason, failed = _deploys(root, config, since) if host else ({}, 'read when the week is final', False)
+    if deploys:
+        days = (until - since).total_seconds() / 86400
+        count = sum(since <= at < until for _, times in deploys.values() for at in times)
+        kinds = ' and '.join(sorted({source for source, _ in deploys.values()}))
+        result['deploys_per_week'] = {'value': count * 7 / days, 'source': f'{count} {kinds} in {days:g} days'}
+        prs = {}
+        for directory in watch.days(root):  # newest first: the first pull request found wins
+            for name, item in ((_state(directory) or {}).get('items') or {}).items():
+                if item.get('pr'):
+                    prs.setdefault(name, item['pr'])
+        leads = []
+        for row in rows:
+            for repo, (_, times) in deploys.items():
+                after = [at for at in times if at >= row['merged_at']]
+                if str(prs.get(row['item'], '')).startswith(repo + '#') and after:
+                    leads.append(row['cycle_minutes'] / 60 + (min(after) - row['merged_at']).total_seconds() / 3600)
+        result['lead_time_deploy_hours'] = ({'value': median(leads), 'source': f'{len(leads)} merged items reached a deploy'}
+                                            if leads else unmeasured('no merged item reached a deploy yet'))
+    else:
+        flag = {'failed': True} if failed else {}
+        result['deploys_per_week'] = result['lead_time_deploy_hours'] = unmeasured(reason, **flag)
+    result['time_to_restore_hours'] = unmeasured('no on-call incident signal yet (#415)')
+    return result
+
+
 def cycle_moved(rows, today):
     """The retro line naming the tier whose median cycle moved most week over week."""
     week = lambda when: when.isocalendar()[:2]

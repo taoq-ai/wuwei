@@ -102,6 +102,7 @@ Outcome: pending
     card = data.get('pace_card', {}).get('id')  # #579
     lines += ['', '## Pace', *report.pace_lines(root, data),
               *([f'Pace proposal: {card}'] if card and decision.answered(data, card) is None else [])]
+    lines += ['', *report.dora_section(root, workspace.load_config(root))]  # #586
     lines += ['', '## Gate verdicts', '| Record | Verdict |', '| --- | --- |']
     gates = sorted((day / 'decisions').glob('[gG][aA][tT][eE]-*.[mM][dD]'))
     for path in gates:

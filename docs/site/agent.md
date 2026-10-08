@@ -53,7 +53,7 @@ wuwei is the absolute path in .wuwei/executable: read it once and use it as the 
 - runtime: Dispatch and inspect runtime jobs
 - sessions: List registered sessions, roles and claims
 - seat: Recover a stuck seat
-Read-only, never refused: board, calibrate --questions, config check, config show, cruise budget, cruise calibration, cruise shadow, doctor, drafts show, grants, guide, heartbeat, integrity check, lint tone, mcp check, memory show, memory status, outbound explain, outbound tiers, pace, plan gate, sessions, shadow report, status, sweep classes, who, why, and --help on any command.
+Read-only, never refused: board, calibrate --questions, config check, config show, cruise budget, cruise calibration, cruise shadow, doctor, dora, drafts show, grants, guide, heartbeat, integrity check, lint tone, mcp check, memory show, memory status, outbound explain, outbound tiers, pace, plan gate, sessions, shadow report, status, sweep classes, who, why, and --help on any command.
 
 ## Owner only: ask the owner to run these in a host terminal
 config add-repo, config promote, config set, decide, decision outcome, drafts approve, drafts drop, goals edit, grants revoke, integrity reconfirm, listen uninstall, mcp decide, memory forget, outbound learn, plan set, remote ack, setup, state recover, telemetry send, voice edit, watch uninstall.

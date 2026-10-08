@@ -42,6 +42,7 @@ CALLS = [
     ('code_host', 'open_prs', ('repo',), True),
     ('code_host', 'probe', ('ref', 'tags'), True),
     ('code_host', 'default_branch', ('repo',), True),
+    ('code_host', 'deployments', ('repo', 'since'), True),
     ('code_host', 'issue', ('repo', 'title', 'body'), False),
     ('vcs', 'workspace_init', ('repo',), False),
     ('vcs', 'workspace_changes', ('repo',), True),

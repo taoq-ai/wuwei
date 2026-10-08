@@ -467,6 +467,17 @@ decision`); `wuwei next` runs these for you after the morning gate. Until then, 
 kind without an undo, the CLI rewrites the record to one-way, says why, and the record comes
 to you as a card. Nothing is refused for it.
 
+## DORA keys
+
+`bin/wuwei dora` prints the four DORA keys over the last 28 days (`--window <days>` changes
+that). Lead time to merge is the median cycle time of the items merged in the window, from
+plan approval to merge. Lead time to deploy adds the hours from each merge to the first
+deployment after it. Deployment frequency counts the code host's deployments, or its
+published releases when a repository never deployed. Change failure rate is the share of
+merged items that a later fix brief names. Time to restore waits for on-call incidents. A
+key without evidence says `unmeasured` and why, never zero. The report, the retro and the
+week digest show the same table.
+
 ## Sessions
 
 Several Claude Code sessions can share a workspace. Hooks register each one in day state

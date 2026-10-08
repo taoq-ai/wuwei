@@ -38,3 +38,13 @@ def rehearsed_undo(monkeypatch):
     monkeypatch.setattr(undo, 'ledger', lambda root: {kind: {'at': '2026-09-28T12:00:00+00:00', 'by': 'rehearsal'}
                                                       for kind in undo.SCRATCH})
     return real
+
+
+@pytest.fixture(autouse=True)
+def unread_deploys(monkeypatch):
+    # #586: no test spawns gh for deployments. A test of the deploy rows requests this fixture,
+    # whose value is the real reader, and restores it.
+    from wuwei import metrics
+    real = metrics._deploys
+    monkeypatch.setattr(metrics, '_deploys', lambda root, config, since: ({}, 'code host not read in tests', False))
+    return real

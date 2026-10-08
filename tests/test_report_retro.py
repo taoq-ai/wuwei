@@ -38,6 +38,10 @@ def test_retro_compiles_role_evidence_and_cycle(tmp_path, monkeypatch):
     assert '## Applied\nnone' in text and '.wuwei/charters/builder.md' in text
     assert '## Owner preferences\nnone\n' in text
     assert '"asks_per_item"' in text and '"unnecessary_asks"' in text
+    # #586: the DORA table follows the pace lines
+    pace, dora = text.index('## Pace'), text.index('## DORA (last 28 days)\n| Key | Value | Source |')
+    assert pace < dora < text.index('## Gate verdicts')
+    assert '| Time to restore | unmeasured | no on-call incident signal yet (#415) |' in text
     proposals = list((day / 'proposals').glob('*.json'))
     assert len(proposals) == 1
     assert json.loads(proposals[0].read_text())['evidence'] == evidence.relative_to(root).as_posix()
@@ -304,7 +308,7 @@ def test_report_levels(tmp_path, monkeypatch):
     (day / 'decisions/D-2.md').write_text('Question: Ship?\nOutcome: Accepted\n')
     brief = report.build(root)
     sections = [line for line in brief.splitlines() if line.startswith('## ')]
-    assert sections == ['## Changed', '## Taken under mandate', '## Decisions by class', '## First time today', '## Undone today', '## Cannot be undone', '## Calibration', '## Cruise shadow', '## Merged', '## Cycle time', '## Pace', '## Open at close', '## Parked',
+    assert sections == ['## Changed', '## Taken under mandate', '## Decisions by class', '## First time today', '## Undone today', '## Cannot be undone', '## Calibration', '## Cruise shadow', '## Merged', '## Cycle time', '## Pace', '## DORA (last 28 days)', '## Open at close', '## Parked',
                         '## Decisions answered', '## Carry']
     assert brief.split('## Changed\n')[1].split('\n\n')[0] == 'none'
     (root / '.wuwei/memory/notes/baseline.md').write_text(
@@ -318,6 +322,7 @@ def test_report_levels(tmp_path, monkeypatch):
     assert '- D-2: Accepted\n' in standard
     (root / '.wuwei/config.toml').write_text('[owner.verbosity]\nreport = "full"\n')
     full = report.build(root)
+    assert '## Pace' in full and '## DORA (last 28 days)' in full.split('## Pace')[1]
     assert full == standard.replace('- D-2: Accepted\n', '- D-2: Accepted (decisions/D-2.md)\n')
     (root / '.wuwei/config.toml').write_text(
         '[owner]\nname = "Robin Example"\n[control_plane]\nowner = "T1/U1"\n[adapters]\ncode_host = "none"\n')
