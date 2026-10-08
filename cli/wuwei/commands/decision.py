@@ -131,7 +131,7 @@ def show(args):
         from wuwei.commands.setup import assignment  # #529: a config card records through config set
         record = CONFIG_RECORD if any(assignment(row[1]) for row in options(fields)) else RECORD
         widget = record_widget(args.id, fields, record, level=level)
-        novel = state.read_state(root).get('decision_routes', {}).get(args.id, {}).get('novel')
+        novel = novelty.routed(state.read_state(root), args.id)
         if novel:
             widget['question'] += f' First time for {", ".join(novel)}: your answer clears it.'
         return 0, json.dumps([widget], indent=2)
@@ -208,7 +208,7 @@ def owner_outcome(args, note=None, *, root=None, where=None):
     workspace.atomic_write(path, owner_record(text, args.option, where, note))
     if not (grant is not None and args.option == 'keep'):  # #556: Keep owner-only leaves it novel
         try:
-            for key in data.get('decision_routes', {}).get(args.id, {}).get('novel', []):
+            for key in novelty.routed(data, args.id):
                 novelty.clear(root, key, args.id)
         except (OSError, ValueError) as exc:
             return 2, f'decision: {args.id} recorded; the seen set was not updated ({exc}); run bin/wuwei doctor'

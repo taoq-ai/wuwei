@@ -212,7 +212,7 @@ def decided(root, ident):
              'weights: ' + ', '.join(f'{row[0]} {row[1]}' for row in wants),
              f'margin: {margin:.2f}', f'class: {kind}']
     steps = [(line, None, [str(path.relative_to(root))]) for line in lines]
-    novel = state.read_state(root).get('decision_routes', {}).get(ident, {}).get('novel')
+    novel = novelty.routed(state.read_state(root), ident)
     if novel:  # #556
         steps.append((f'novel: first time for {", ".join(novel)}', None, []))
     rows = list(enumerate(watch.records(workspace.day_dir(root) / 'events.jsonl'), 1))

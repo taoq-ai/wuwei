@@ -189,6 +189,12 @@ def seed(root, write=True):
     return len(new)
 
 
+def routed(data, ident):
+    """The novel keys a decision route recorded; a route that is not a mapping names none."""
+    row = data.get('decision_routes', {}).get(ident)
+    return row.get('novel', []) if isinstance(row, dict) else []
+
+
 def line(found, how=CLEARS):
     return f'first time for {", ".join(found)}; {how}'
 
