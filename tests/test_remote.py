@@ -804,10 +804,10 @@ def test_issue_acceptance_stop_all_drops_the_live_session_count(ws, capsys):
     remote_row(ws, T, [])
     state._write_state(lambda data: data['sessions'].update(A={**data['sessions'][T], 'role': 'adhoc'}),
                        ws, reserved=False)
-    assert main(['status', '--line']) == 0
+    assert main(['status']) == 0
     assert 'sessions 3' in capsys.readouterr().out
     remote().stop(ws, 'all', transport=Transport())
-    assert main(['status', '--line']) == 0
+    assert main(['status']) == 0
     assert 'sessions 1' in capsys.readouterr().out
     assert main(['status', '--json']) == 0
     assert json.loads(capsys.readouterr().out)['sessions'] == 1

@@ -515,20 +515,20 @@ def test_an_escaped_defect_lowers_the_class_once(ws, capsys, monkeypatch):
 def status_line(root):
     from wuwei import workspace
     from wuwei.commands import status
-    return status.line(status.snapshot(workspace.day_dir(root)))
+    return status.full(status.snapshot(workspace.day_dir(root)))
 
 
-def test_the_status_line_names_the_cruise_level(ws, capsys):
+def test_status_names_the_cruise_level(ws, capsys):
     from wuwei import state
     state._write_state(lambda data: None, ws, reserved=False)
-    assert status_line(ws).endswith('| cruise L2 | meeting unmeasured')
+    assert '\ncruise L2\nplugin ' in status_line(ws)
     config(ws, '[decisions.cruise]\nenabled = false\n')
-    assert '| cruise off | L2 | meeting' in status_line(ws)
+    assert '\ncruise off, L2\nplugin ' in status_line(ws)
     config(ws, '')
     raise_to(ws, 'defer', 3)
-    assert '| cruise L3 | meeting' in status_line(ws)
+    assert '\ncruise L3\nplugin ' in status_line(ws)
     config(ws, SUPERVISED)
-    assert '| cruise L0 | meeting' in status_line(ws)
+    assert '\ncruise L0\nplugin ' in status_line(ws)
     (ws / '.wuwei/memory/cruise.json').write_text('not json')
     from wuwei.__main__ import main
     assert main(['status', '--line']) == 2

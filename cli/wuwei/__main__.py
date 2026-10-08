@@ -80,7 +80,8 @@ def _main(argv=None):
         print(f"wuwei: {str(exc) or type(exc).__name__}", file=sys.stderr)
         return UNRUN
     if argv == ['status', '--line']:
-        return _call(status.run, SimpleNamespace(command='status', line=True, json=False))
+        return _call(status.run, SimpleNamespace(command='status', line=True, json=False,
+                                                  width=status.WIDTH))
     import argparse
     from importlib import import_module
     import json

@@ -652,7 +652,7 @@ def test_remote_runbook_matches_the_code():
                  'Allow users to send Slash commands and messages from the messages tab',
                  'OAuth & Permissions', 'Bot Token Scopes', 'Agent tools are refused these commands',
                  'answered from the phone', remote.ANSWERED.format(identifier='D-3', option='B'),
-                 'WUWEI_TOTP_SECRET: set', 'status --line` shows `listen dead`', 'phone answers 1',
+                 'WUWEI_TOTP_SECRET: set', '`wuwei status` shows `listen dead`', 'phone answers 1',
                  'bin/wuwei remote ack', 'remote.acknowledged'):
         assert text in flat, text
     section = ' '.join(pin.split())
