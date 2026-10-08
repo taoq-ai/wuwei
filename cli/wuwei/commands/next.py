@@ -12,12 +12,13 @@ HEADER = 'WUWEI orientation'
 TERMINAL = ('merged', 'parked', 'escalated')
 POSTURES = {
     'observe': ('Observe posture is on: guards record what they would refuse and let the call '
-                'through. Records (state, events, config, verdicts, decisions) and owner-only actions '
-                '(deploys, merges, approvals, approve-tier messages) still refuse. bin/wuwei shadow '
-                'report lists the would-be refusals.'),
-    'guarded': ('Posture guarded: records, publishing and plugin integrity block; seat launches, '
-                'outward text and MCP findings below the floor warn. A refusal names its reason and '
-                'the accepted form: use that form, never a way around it.'),
+                'through. Records (state, events, config, verdicts, decisions) still refuse; deploys, '
+                'releases and approve-tier messages ask on a card; merges and approvals stay '
+                'owner-only. bin/wuwei shadow report lists the would-be refusals.'),
+    'guarded': ('Posture guarded: records, publishing and plugin integrity block; deploys, releases '
+                'and approve-tier messages ask on a card; merges and approvals stay owner-only; seat '
+                'launches, outward text and MCP findings below the floor warn. A refusal names its '
+                'reason and the accepted form: use that form, never a way around it.'),
     'strict': ('Posture strict: every guard area blocks. A refusal names its reason and the '
                'accepted form: use that form, never a way around it.'),
 }

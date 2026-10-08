@@ -1742,6 +1742,11 @@ configurable by where the plugin runs: `security.posture` is `observe`, `guarded
 or `strict`, and `[security.areas]` overrides one area with `off`, `warn` or `block`.
 `guards.mode = "shadow"` (#308) is deprecated and means `observe`.
 
+Autonomy (owner, 2026-10-05, #530): under `observe` and `guarded` a guard is a warning or a
+card, never a wall, with one floor: records are written by the workflow and answered by the
+owner. A refusal that names the plain form the seat runs itself is coaching, not a wall.
+Under `strict`, refusals stay.
+
 | Area | What it covers | observe | guarded (default) | strict |
 | --- | --- | --- | --- | --- |
 | `records` | State, events, config, generated instructions, verdicts, decisions, traces, session records (`protect_state`, `decision`, `verdict`, `traces`, `lifecycle`) | block | block | block |
@@ -1751,13 +1756,38 @@ or `strict`, and `[security.areas]` overrides one area with `off`, `warn` or `bl
 | `outward` | The outward text lint (`outward`) and the question citation check (`decision.check_question`) | warn | warn | block |
 | `seats` | The seat launch contract: logged brief, capacity, memory, clean worktree (`agent_launch`) | warn | warn | block |
 
+Below strict a `block` is a card (deploy, release, publish, evidence; merge with #524) or a
+fix the seat runs; only `records` is a wall.
+
 Floors no posture and no override lowers:
 
-- `records` always blocks. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
-- Owner-only actions always block: the deployment ban (`deploy`), the merge policy, approvals and owner markers (`pr`), and approve-tier messages and canary or honeytoken egress (the outward approval tier). Under `observe`, `publish` relaxes only the commit and push rules and the PR anchor. Amended (owner, 2026-10-04, #478): a deploy refusal asks the owner on a card, and only the owner's recorded answer (once, today, always) lets the same action through. Amended (owner, 2026-10-05, #530): raising a PR and pushing a feature branch are not owner-only; they follow `publish`, and missing evidence asks on a card (once, today) under guarded.
+- `records` always blocks, with canary and honeytoken egress and owner disposition markers, whose refusal reads `posture: records = block (floor; no setting lowers it)`. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
+- Owner-only actions (`deploy`, `pr`, and approve-tier messages through `outward`) block, and below strict they ask on a card: a deploy, release or publish asks the owner, and only the owner's recorded answer (once, today, always) lets the same action through (#478); a held message is a draft card (#526). Below strict such a refusal carries no `owner-only action` line; under strict it keeps it. The merge policy, admin merge, approvals, branch protection and the shepherd's no-merge stay owner-only until #524. Raising a PR and pushing a feature branch are not owner-only: they follow `publish`, and missing evidence asks on a card (once, today) under guarded (#530).
 - MCP: under `guarded` and `strict` a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. A finding blocks only at a severity in `scanner.mcp.block`, which is unset by default: no severity under `guarded`; `critical`, `high` and `unmeasured` under `strict`. Under `observe`, and with `mcp = "off"`, the list has no effect and `config check` says so.
 
 The posture changes what the cooperative guards refuse, never the hard boundaries above.
+
+### 9.2 Safety invariants (owner, 2026-10-05, #530)
+
+The hooks are the runtime monitor; this table is the property list they are checked
+against. `tests/test_invariants.py` checks every row on every case of posture x audience x
+topic x kind x grant state x umbrella x connector mode, and walks every guard reason under
+`observe` and `guarded`.
+
+| Id | Invariant | Checked by | Notes |
+| --- | --- | --- | --- |
+| I1 | Under observe and guarded no path reaches a wall except the records floor | the reason corpus levelled by `hook.posture`; per case, `classify` and the deploy guard | Owned: the merge family (#524); config and integrity re-confirmation through the card record (#529). Exempt: the heartbeat probe, `permissions.deny` (deferred), the owner's own Keep answer, owner-written block rows, day state recovery, unknown git (the hook levels it to a warning below strict); a broken config is records |
+| I2 | Every held message has a card path that leads to a send | per case, a held `classify` result; per posture, hold, the Draft card answered Send now, approve, the same call sends | Under strict the owner approves at the host |
+| I3 | A merge happens only at the head the gates checked with green required checks | per posture, the `pr` guard on `gh pr merge` and `--admin` | #524; asserted today as gh pr merge refused in every posture, so `wuwei merge` is the only path |
+| I4 | A message to the owner's own DM always sends | per case, chat to the owner DM | |
+| I5 | No seat, default or hook creates a grant | per case, grant rows and `grants.standing` before and after the deploy guard and the record gate; the shipped config | A once grant is spent, never created |
+| I6 | A seat never posts an owner disposition marker | per posture, an MCP payload and `gh pr comment` carrying `WUWEI parked ` | Records floor |
+| I7 | Docs and tracker writes follow `docs.auto` and `tracker.auto` | per case, WUWEI's own adapter write; a connector write under the send umbrella | #535 |
+| I8 | A record command runs from the planner only after a card answer outside strict | per case, `bin/wuwei decide D-1 once` through `protect_state` from the planner and a seat | #529 extends it to `config set` |
+| I9 | A branch push and a PR raise with recorded evidence succeed from the planner and the builder below strict, and a tag push with a release grant or an Allow once release card passes | per posture, through the hook | #547; below strict the deploy guard's release card and grants gate a tag and `push_check` passes it; under strict `push_check` refuses it |
+| I10 | Under observe and guarded no opaque read-only command is refused | per posture, a script read, a `$(...)` read and a `python3 -c` print through the hook | #547 |
+
+A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 
 ## 10. Testing
 

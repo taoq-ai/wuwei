@@ -109,7 +109,17 @@ def test_push_settings_parse_git_booleans(tmp_path, monkeypatch, settings, code,
         assert result.data['force'] is force
 
 
-@pytest.mark.parametrize('refs', [[], ['HEAD:refs/tags/v1'], [':feature'], [':'],
+@pytest.mark.parametrize('refs,source', [(['HEAD:refs/tags/v1'], SHA), (['refs/tags/v1'], 'c' * 40)])
+def test_push_context_measures_a_tag_destination(tmp_path, monkeypatch, refs, source):
+    # #530: a tag push is measured, so push_check can gate it on the release grant.
+    steps = push_steps(tmp_path) + [{'stdout': 'c' * 40 + '\n', 'when': ['rev-parse']}]
+    install_replay(monkeypatch, 'git', steps)
+    result = adapter().push_context(str(tmp_path), 'origin', refs)
+    assert result.exit == 0, result.reason
+    assert result.data['updates'] == [{'source': source, 'destination': 'refs/tags/v1'}]
+
+
+@pytest.mark.parametrize('refs', [[], [':feature'], [':'],
                                   ['other:feature'], ['HEAD:topic']])
 def test_ambiguous_push_context_fails_closed(tmp_path, monkeypatch, refs):
     install_replay(monkeypatch, 'git', push_steps(tmp_path))

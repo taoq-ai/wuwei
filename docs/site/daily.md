@@ -184,8 +184,9 @@ could not read shows on the `Optional:` line as `bin/wuwei config add-repo ...`;
 
 `--shadow` starts a first week in the observe posture (on an existing workspace it proposes
 `security.posture = "observe"`), as does the `Observe` answer in the interview. The guards
-then record what they would refuse and let the call through; records and owner-only actions
-(deploys, merges, approvals, messages that wait for your approval) still refuse. Read
+then record what they would refuse and let the call through; records still refuse, deploys,
+releases and messages that wait for your approval ask you on a card, and merges and approvals
+stay yours. Read
 `bin/wuwei shadow report` or the `## Shadow` section of the day report. When the [nudge](concepts.md#nudge) comes
 after `guards.shadow_days`, run `bin/wuwei config set security.posture '"guarded"'` in a host
 terminal, or keep watching with `bin/wuwei config set guards.shadow_days 14`. See [security posture](concepts.md#security-posture).
