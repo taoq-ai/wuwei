@@ -187,6 +187,8 @@ An owner-only deploy, release or `deploy.deny` publish never runs from a session
 
 Only your recorded answer creates a grant: no seat, no config default and no hook does. Each run under a grant is a `grant.used` event, and the day report counts them per card. `bin/wuwei grants` lists your grants; `bin/wuwei grants revoke <n>` removes a standing one in a host terminal. When the plan already names a deploy, the morning gate asks it with the plan (`Allow today`, `Ask when it happens` or `Keep owner-only`), so the day runs without stopping for it.
 
+A merge works the same way. When the merge policy does not clear a pull request, `bin/wuwei merge <pr>` (or `bin/wuwei pr act <pr>`) asks you on a card, `Allow merge on <org>/<name>?`, and a merge the plan lists is a planned card per repository or per pull request. The grant replaces only the auto-merge switch and its pacing (risk flags, never-auto paths, size, soak, daily cap, quiet hours, breaker). The gates must still pass at the current head, required checks must be green, approvals at that head and no changes requested, threads and obligations clear, `merge_deploys = false`, and the repository must allow squash merges: when one fails, the reason names it and says no grant lifts this. With no grant, `merge.default_tier` decides: `ask` writes the card, `owner_only` prints the exact `gh pr merge` command for a host terminal. A `gh pr merge` typed in a session is refused with the reason and `bin/wuwei merge <pr>`, which journals and watches the merge.
+
 ## Seat launch contract
 
 The planner launches every seat from the actions `build next` and `dispatch next` return; see the [daily path](daily.md). The low-level launch contract is on the [recovery](recovery.md#seat-launch-contract) page.

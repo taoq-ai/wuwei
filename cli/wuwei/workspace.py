@@ -76,8 +76,10 @@ SCHEMA = {
                "shepherd": {"reviewers": [(str, None)]}}],
     "worktree": {"git_hooks": (str, "chain", ("chain", "skip", "replace"))},
     "checks": {"python": (str, ""), "bootstrap": (str, "")},  # #520
+    # #524: with no grant, a merge asks on a card or names the host-terminal command; "" follows the posture.
+    "merge": {"default_tier": (str, "", ("", "ask", "owner_only"))},
     # #478: standing grants, written by the owner's Always allow answer; ignored under strict.
-    "grants": {"standing": [{"action": (str, None, ("deploy", "release", "publish")),
+    "grants": {"standing": [{"action": (str, None, ("deploy", "release", "publish", "merge")),
                              "target": (str, None), "scope": (str, "always", ("always",)),
                              "decision": (str, None), "date": (str, None)}]},
     # #528: 0 derives CAP and host.seats from the measured host; a positive value is the owner's.

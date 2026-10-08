@@ -602,8 +602,6 @@ def test_owner_actions_must_be_a_list(root):
 
 
 @pytest.mark.parametrize('entry,line', [
-    ({'action': 'merge', 'target': 'repo:fixture-org/app'}, 'Owner-only: merge repo:fixture-org/app (owner step)'),
-    ({'action': 'merge', 'target': 'pr:fixture-org/app#7'}, 'Owner-only: merge pr:fixture-org/app#7 (owner step)'),
     ({'action': 'message', 'target': 'channel:C1'}, 'Owner-only: message channel:C1 (owner step)'),
     ({'action': 'secret-set', 'target': 'secret:fixture-org/app/API_KEY'},
      'Owner-only: secret-set secret:fixture-org/app/API_KEY (owner step)'),
@@ -618,13 +616,33 @@ def test_owner_actions_must_be_a_list(root):
      '(not understood: needs exactly action and target as strings; the gate asks for it as written)'),
 ])
 def test_owner_actions_beyond_grants_never_stop_the_gate(root, entry, line):
-    # #518: the lead's vocabulary (merge, message, secret-set) and anything malformed are
-    # lines on the plan; only deploy, release and publish become grant cards.
+    # #518: the lead's vocabulary (message, secret-set) and anything malformed are lines on
+    # the plan; deploy, release, publish and (#524) merge become grant cards.
     data = proposal()
     data['candidates'][0]['owner_actions'] = [entry]
     text = plan.propose(data, root).read_text()
     assert line in text
     assert not (root / '.wuwei/days/2026-09-28/decisions').exists()
+
+
+def test_planned_merges_are_gate_cards(root, monkeypatch, capsys):
+    # #524: a merge the lead lists is a planned card like a deploy, per repository or per PR.
+    from wuwei.__main__ import main
+    data = proposal()
+    data['candidates'][0]['owner_actions'] = [{'action': 'merge', 'target': 'repo:fixture-org/app'},
+                                              {'action': 'merge', 'target': 'pr:fixture-org/app#7'}]
+    text = plan.propose(data, root).read_text()
+    assert 'Owner-only: merge repo:fixture-org/app (D-1)\n' in text
+    assert 'Owner-only: merge pr:fixture-org/app#7 (D-2)\n' in text and '(owner step)' not in text
+    rows = state.read_state(root)['grants']
+    assert [(rows[key]['action'], rows[key]['target']) for key in ('D-1', 'D-2')] == [
+        ('merge', 'repo:fixture-org/app'), ('merge', 'pr:fixture-org/app#7')]
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    capsys.readouterr()
+    assert main(['plan', 'gate']) == 0
+    _, first, second = json.loads(capsys.readouterr().out)
+    assert first['question'].startswith('D-1: G-1 A merges fixture-org/app: allow today')
+    assert second['question'].startswith('D-2: G-1 A merges fixture-org/app#7: allow today')
 
 
 def test_lead_charter_names_every_owner_action():

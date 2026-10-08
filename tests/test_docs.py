@@ -1336,3 +1336,17 @@ def test_plan_and_report_skills_are_the_loop():
     for phrase in ('--import-yesterday', 'publish:', 'Keep owner-only', 'continue the seat',
                    'assume-and-record', 'negotiation.loop', '<item>-question-<agent>'):
         assert phrase in text or phrase in rows, phrase
+
+
+def test_merge_grant_documented():
+    # #524: merge is a grant like deploy; merge.default_tier decides what happens with no grant.
+    rows = {line.split('|')[1].strip(): line for line in (SITE / 'configuration.md').read_text().splitlines()
+            if line.startswith('| `')}
+    for word in ('`ask`', '`owner_only`', '`strict`'):
+        assert word in rows['`merge.default_tier`'], word
+    assert '`merge`' in rows['`grants.standing`']
+    grants = (SITE / 'concepts.md').read_text().split('\n## Grants\n', 1)[1].split('\n## ', 1)[0]
+    for phrase in ('merge', 'merge.default_tier', 'no grant lifts', 'bin/wuwei merge'):
+        assert phrase in grants, phrase
+    spec = (ROOT / 'docs/specs/2026-09-24-wuwei-design.md').read_text()
+    assert spec.count('(owner, 2026-10-05, #524)') >= 2

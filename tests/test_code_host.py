@@ -341,16 +341,19 @@ def test_classic_403_is_unmeasured_without_reading_rulesets(monkeypatch):
     assert adapter().protection('acme/widget', 'main').exit == 2 and len(calls) == 1
 
 
+REPO = {'stdout': json.dumps({'allow_squash_merge': True})}
+
+
 @pytest.mark.parametrize('stderr', ['gh: Not Found (HTTP 404)', 'gh: Branch not protected (HTTP 404)'])
 def test_classic_404_reads_rulesets(monkeypatch, stderr):
-    calls = install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': stderr}, {'stdout': '[[]]'}])
+    calls = install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': stderr}, {'stdout': '[[]]'}, REPO])
     result = adapter().protection('acme/widget', 'main')
-    assert result.exit == 0 and len(calls) == 2
+    assert result.exit == 0 and len(calls) == 3
     assert result.data == {
         'required_checks': [], 'strict': False, 'approvals': 0, 'dismiss_stale_reviews': False,
         'require_code_owner_reviews': False, 'require_last_push_approval': False,
         'enforce_admins': False, 'conversation_resolution': False, 'allow_force_pushes': True,
-        'allow_deletions': True, 'merge_queue': False, 'classic': False}
+        'allow_deletions': True, 'merge_queue': False, 'classic': False, 'squash': True}
 
 
 def test_classic_404_takes_rules_fields(monkeypatch):
@@ -363,11 +366,29 @@ def test_classic_404_takes_rules_fields(monkeypatch):
                  'required_review_thread_resolution': False}},
              {'type': 'non_fast_forward'}, {'type': 'deletion'}]
     install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Not Found (HTTP 404)'},
-                                       {'stdout': json.dumps([rules])}])
+                                       {'stdout': json.dumps([rules])}, REPO])
     data = adapter().protection('acme/widget', 'main').data
     assert data['required_checks'] == [{'name': 'Security', 'app_id': None}]
     assert data['approvals'] == 1 and data['classic'] is False
     assert data['allow_force_pushes'] is False and data['allow_deletions'] is False
+
+
+@pytest.mark.parametrize('repository,methods,squash', [
+    ({'allow_squash_merge': True}, None, True), ({'allow_squash_merge': False}, None, False),
+    ({'allow_squash_merge': True}, ['merge'], False), ({'allow_squash_merge': True}, ['merge', 'squash'], True),
+    ({}, None, None), ({'allow_squash_merge': 'yes'}, None, None)])
+def test_protection_measures_squash(monkeypatch, repository, methods, squash):
+    # #524: WUWEI merges only with --squash, so the repository and its rulesets must allow it.
+    params = {'required_approving_review_count': 0, 'dismiss_stale_reviews_on_push': False,
+              'require_code_owner_review': False, 'require_last_push_approval': False,
+              'required_review_thread_resolution': False}
+    if methods is not None:
+        params['allowed_merge_methods'] = methods
+    install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Not Found (HTTP 404)'},
+                                       {'stdout': json.dumps([[{'type': 'pull_request', 'parameters': params}]])},
+                                       {'stdout': json.dumps(repository)}])
+    result = adapter().protection('acme/widget', 'main')
+    assert (result.exit, result.data and result.data['squash']) == ((0, squash) if squash is not None else (2, None))
 
 
 HEAD = 'a' * 40

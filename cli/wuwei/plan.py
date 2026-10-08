@@ -103,8 +103,8 @@ def _proposal(data, goals_text, framework="wsjf"):
 
 
 def owner_steps(item):
-    """#518: plan lines for owner actions that are not grant cards: known owner steps (merge,
-    message, secret-set) and entries the CLI does not understand, which the gate asks as written."""
+    """#518: plan lines for owner actions that are not grant cards: known owner steps (message,
+    secret-set) and entries the CLI does not understand, which the gate asks as written."""
     from wuwei import grants
     lines = []
     for entry in item.get('owner_actions', []):

@@ -7,11 +7,12 @@ import re
 
 ACTIONS = {'deploy': ('deploy', 'deploys'), 'release': ('release', 'releases'),
            'publish': ('publish action', 'publishes'),
-           'evidence': ('publish without evidence', 'publishes without evidence')}  # #530
+           'evidence': ('publish without evidence', 'publishes without evidence'),  # #530
+           'merge': ('merge', 'merges')}  # #524
 REPO = r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+'
 RELEASES = ('release create', 'tag push', 'release API', 'tag or branch ref API')
-# #518: every owner-only step a lead may list, with its target shape. The three in ACTIONS
-# become grant cards (the deploy guard knows them); the others are owner steps the plan lists.
+# #518: every owner-only step a lead may list, with its target shape. Those in ACTIONS (deploy,
+# release, publish and, #524, merge) become grant cards; message and secret-set are owner steps.
 OWNER_ACTIONS = {'deploy': 'repo:' + REPO, 'release': 'repo:' + REPO, 'publish': 'repo:' + REPO,
                  'merge': f'(?:repo:{REPO}|pr:{REPO}#[0-9]+)',
                  'message': r'(?:channel|dm):[A-Za-z0-9_-]+',
@@ -35,6 +36,8 @@ def action(rule):
     """The action class a deploy guard rule refuses; #530: an evidence miss of a push or PR raise."""
     if rule.startswith('evidence: '):
         return 'evidence'
+    if rule.startswith('merge: '):  # #524: wuwei merge; merge_deploys and environment rules stay deploy
+        return 'merge'
     return 'release' if rule in RELEASES else 'publish' if rule.startswith('deploy.deny: ') else 'deploy'
 
 
@@ -108,11 +111,18 @@ def active(config, data, name, found, standing=True):
     return min(hits, key=lambda hit: hit[0] != 'today', default=None)
 
 
-def gate(payload, root, config, argv, rule, repo, moved=False):
+def merge_tier(config):
+    """#524: with no grant, ask (a card) or owner_only (the host-terminal command); unset follows the posture."""
+    from wuwei import workspace
+    return config['merge']['default_tier'] or (
+        'owner_only' if workspace.posture(config)[0] == 'strict' else 'ask')
+
+
+def gate(payload, root, config, argv, rule, repo, moved=False, pr=None):
     """The deploy guard's owner-only result: (0, use) on a matching grant, where the caller
     calls use() to record or spend it once the whole call passes, else exit 1 with the reason
     naming the action, the target and the card the owner answers. A moved command (cd, git -C,
-    GIT_*) gets no cwd target."""
+    GIT_*) gets no cwd target. #524: pr (org/name#n) also matches a planned pr: card."""
     from wuwei import state, workspace
     from wuwei.commands import hook
     from wuwei.exits import RACE
@@ -143,10 +153,12 @@ def gate(payload, root, config, argv, rule, repo, moved=False):
     if novel:  # #556: a standing line never covers a target the workspace never touched
         head += f'; {novelty.line(novel)}'
     data = state.read_state(root)
-    hit = active(config, data, name, found, standing=not novel)
+    hit, where = active(config, data, name, found, standing=not novel), found
+    if not hit and pr:
+        hit, where = active(config, data, name, f'pr:{pr}', standing=False), f'pr:{pr}'
     if hit:
         scope, identifier = hit
-        used = {'decision': identifier, 'action': name, 'target': found, 'scope': scope,
+        used = {'decision': identifier, 'action': name, 'target': where, 'scope': scope,
                 'session': payload.get('session_id'), 'item': hook.claimed(root, payload.get('session_id'))}
         if scope != 'once':
             return 0, lambda: state.append_event('grant.used', used, root)
@@ -252,7 +264,7 @@ def plan(root, config, candidates):
                 row['item'], row['action'], row['target']) == (item['id'], name, repo_target)), None)
             if identifier is None:
                 noun, verb = ACTIONS[name]
-                repo_name, goal = repo_target[5:], item.get('goal', 'unplanned')
+                repo_name, goal = repo_target.split(':', 1)[1], item.get('goal', 'unplanned')  # #524: pr: too
                 score = (3, 5, 9) if strict else (9, 5, 1)
                 identifier = ask(root, {
                     'action': name, 'target': repo_target, 'rule': 'planned', 'command': None,
