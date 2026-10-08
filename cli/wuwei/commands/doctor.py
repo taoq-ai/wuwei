@@ -430,9 +430,9 @@ def _calibration(root, config):
     except watch.ERRORS as exc:
         rows.append(_row('workspace', 'drift', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
     try:
-        answers = interview.load(root, config)
-        rows.append(_row('workspace', 'interview', 'ok', f'{len(answers)} answers today' if answers else
-                         'none today (wuwei calibrate --interview asks again)'))
+        count = len(interview.unanswered(root, [repo['name'] for repo in config['repos']]))  # #530
+        rows.append(_row('workspace', 'interview', 'warn', f'{count} questions unanswered', interview.HOW)
+                    if count else _row('workspace', 'interview', 'ok', 'all setup questions answered'))
     except (OSError, ValueError) as exc:
         rows.append(_row('workspace', 'interview', 'unmeasured', str(exc), 'wuwei calibrate --interview'))
     try:

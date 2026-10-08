@@ -338,7 +338,8 @@ class Rules:
 
 def default_has_no_grant():
     from wuwei import workspace
-    return workspace.load_config('.', raw='')['grants']['standing'] == []
+    config = workspace.load_config('.', raw='')
+    return config['grants']['standing'] == [] and config['merge']['default_tier'] == ''  # #530
 
 
 def i1_outward(case, rules):
@@ -595,9 +596,31 @@ def i17(case, rules):
     return green_rule()
 
 
+def i18(case, rules):
+    """#530: the setup answers never allow a publish target: merge.default_tier = "today" covers
+    only a merge on a configured repository below strict, and no allowlist rule matches a deploy,
+    release, protected-branch push or force push."""
+    def compute(posture):
+        from test_workspace import publishes
+        from wuwei import grants, workspace
+        from wuwei.commands import init
+        config = workspace.load_config(rules.root, raw=rules.base + f'[security]\nposture = "{posture}"\n'
+                                       '[merge]\ndefault_tier = "today"\n')
+        own = config['repos'][0]['name']
+        for name in grants.ACTIONS:
+            for target in (f'repo:{own}', f'pr:{own}#7', 'repo:other/elsewhere'):
+                expected = ('today', grants.DEFAULT) if (
+                    name == 'merge' and 'elsewhere' not in target and posture != 'strict') else None
+                if grants.active(config, {}, name, target) != expected:
+                    return f'merge.default_tier covers {name} on {target}'
+        found = publishes(init.allow_rules(config, 'bin/wuwei'))
+        return f'an allowlist rule allows a publish target: {found}' if found else None
+    return rules.memo(('setup answers', case[0]), lambda: compute(case[0]))
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
-              'I15': i15, 'I16': i16, 'I17': i17}
+              'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18}
 
 
 def project(case):
@@ -611,7 +634,7 @@ def project(case):
 OUTWARD = (0, 1, 2, 3, 5, 6)
 READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
-         'I15': (), 'I16': (0,), 'I17': ()}
+         'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,)}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 

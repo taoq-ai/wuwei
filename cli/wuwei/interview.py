@@ -112,6 +112,21 @@ def _tracker(text):
 # The only definition of the interview. Effects: a dotted config key (`repos.` means each
 # answered repository), a charter override role with one fixed sentence, or voice never phrases.
 QUESTIONS = (
+    # #530: one answer sets the posture, the outbound umbrella, the merge default, the learn mode and
+    # the autonomy mode; strict is set by hand. Observe here is the chosen posture, not a trial.
+    {'id': 'autonomy', 'scope': 'workspace', 'header': 'Autonomy',
+     'question': 'How much should WUWEI do without asking you?',
+     'choices': (
+         ('Autonomous', ('WUWEI acts and reports: guards warn instead of stopping, messages no rule holds go out, '
+                         'merges on your own repositories run once checks and reviews pass, and new connectors '
+                         'are learned without asking. Recommended (observe posture, autonomy.mode).'),
+          {'security.posture': 'observe', 'outbound.default_tier': 'send', 'merge.default_tier': 'today',
+           'outbound.learn': 'auto', 'autonomy.mode': 'autonomous'}),
+         ('Supervised', ('WUWEI asks you first: owner-only actions, held messages, merges and new connectors wait '
+                         'for your answer on a card (guarded posture, autonomy.mode).'),
+          {'security.posture': 'guarded', 'outbound.default_tier': 'ask', 'merge.default_tier': 'ask',
+           'outbound.learn': 'card', 'autonomy.mode': 'supervised'})),
+     'free': None},
     {'id': 'merge', 'scope': 'repo', 'header': 'Merges', 'question': 'Who merges pull requests in {repo}?',
      'choices': (
          ('Owner merges', 'You merge every pull request yourself.', {'repos.merge.auto': False}),
@@ -219,17 +234,6 @@ QUESTIONS = (
           {'owner.verbosity.default': 'standard'}),
          ('Full', 'Every field of each record.', {'owner.verbosity.default': 'full'})),
      'free': None},
-    {'id': 'posture', 'scope': 'workspace', 'header': 'Posture',
-     'question': 'Where does WUWEI run here, and how hard should the guards stop it?',
-     'choices': (
-         ('Observe', 'Records what it would refuse and lets the call through; records and owner-only actions '
-          'still refuse. For a first week or a sandbox (observe posture).', {'security.posture': 'observe'}),
-         ('Guarded', 'Refuses changes to records, publishing and a changed plugin; warns on agents, outgoing '
-          'text and MCP tools. For a real project (guarded posture).', {'security.posture': 'guarded'}),
-         ('Strict', ('Refuses everything a guard would refuse. For a repository that deploys or shares '
-                     'credentials (strict posture).'),
-          {'security.posture': 'strict'})),
-     'free': None},
     {'id': 'spec', 'scope': 'workspace', 'header': 'Spec',
      'question': 'Which spec engine do your repositories use?',
      'choices': (
@@ -332,21 +336,20 @@ QUESTIONS = (
      'choices': tuple((f'{n} agents', f'At most {n} agents run at once on this machine (host.seats).', {'host.seats': n})
                       for n in (4, 6, 8)),
      'free': (_count('host.seats'), 'a whole number of 1 or more')},
-    {'id': 'tier', 'scope': 'workspace', 'header': 'Outbound',
-     'question': 'What happens to a message no rule narrows? (outbound.default_tier)',
+    # #530: the harness allowlist; the answer writes .claude/settings.local.json, not a config key.
+    {'id': 'allowlist', 'scope': 'workspace', 'header': 'Permissions',
+     'question': 'Let Claude Code run the WUWEI commands and the adapter reads without a permission prompt? '
+                 '(settings.local.json)',
      'choices': (
-         ('Send', 'It goes out after the outward lint.', {'outbound.default_tier': 'send'}),
-         ('Ask', 'It waits for your answer as a draft.', {'outbound.default_tier': 'ask'}),
-         ('Block', 'It is refused.', {'outbound.default_tier': 'block'})),
-     'free': None},
-    {'id': 'learn', 'scope': 'workspace', 'header': 'Connectors',
-     'question': 'How does WUWEI learn a connector it does not know? (outbound.learn)',
-     'choices': (
-         ('Card', 'The planner asks you on a card before it learns one.', {'outbound.learn': 'card'}),
-         ('Auto', 'It learns one without asking, except under strict.', {'outbound.learn': 'auto'}),
-         ('Off', 'It never learns one; unknown connectors stay drafts.', {'outbound.learn': 'off'})),
+         ('Allow', ('Claude Code runs bin/wuwei, git and gh reads and local commits without asking; never a push, '
+                    'merge, deploy or release. Production reads of your projects stay your decision, and Claude '
+                    'Code keeps asking for them (.claude/settings.local.json).'), {'allowlist': True}),
+         ('Not now', 'Claude Code keeps asking before each of these commands.', {})),
      'free': None},
 )
+
+# #530: ids the old table asked; a day file written before a mid-day upgrade still loads.
+RETIRED = ('posture', 'tier', 'learn')
 
 
 def question(qid):
@@ -393,22 +396,19 @@ def _path(name, repo, config):
 
 def _setting(name):
     """An effect is a config key unless it is a charter role or the voice list."""
-    return name not in (*ROLES, 'voice')
+    return name not in (*ROLES, 'voice', 'allowlist')
 
 
 def card_for(key):
     """#529: the workspace row whose card sets this config key, or None."""
-    return next((row['id'] for row in QUESTIONS if row['scope'] == 'workspace'
+    return next((row['id'] for row in QUESTIONS if row['scope'] == 'workspace' and row['id'] != 'autonomy'
                  and any(key in result for _, _, result in row['choices'])), None)
 
 
 def settings(answers, config):
     """Config effects as calibrate (path, key, value) settings."""
-    rows = [(*_path(name, repo, config), value) for _, repo, _, result in _answered(answers)
+    return [(*_path(name, repo, config), value) for _, repo, _, result in _answered(answers)
             for name, value in result.items() if _setting(name)]
-    if (('security',), 'posture', 'observe') in rows and not config.get('guards', {}).get('shadow_since'):
-        rows.append((('guards',), 'shadow_since', workspace.now().date().isoformat()))
-    return rows
 
 
 def _role(row):
@@ -425,6 +425,8 @@ def describe(answers, config):
             if _setting(name):
                 path, key = _path(name, repo, config)
                 parts.append(f"{'.'.join(map(str, (*path, key)))} = {json.dumps(value)}")
+            elif name == 'allowlist':
+                parts.append('.claude/settings.local.json allow rules')
             elif name == 'voice':
                 parts.append('.wuwei/memory/voice.md never: ' + ', '.join(value))
             else:
@@ -447,6 +449,7 @@ def load(root, config):
         answers = json.loads(path.read_text(encoding='utf-8'))
         if not isinstance(answers, dict):
             raise ValueError(f'expected an object; {DAMAGED}')
+        answers = {qid: value for qid, value in answers.items() if qid not in RETIRED}
         names = {repo['name'] for repo in config['repos']}
         for qid, value in answers.items():
             if question(qid)['scope'] == 'repo':
@@ -615,16 +618,26 @@ def _recorded(root):
     return found
 
 
+HOW = 'bin/wuwei setup, or the planner asks them on cards'
+
+
+def unanswered(root, repos):
+    """#530: (row, repository or None) for each question no day's answer covers, in table order;
+    the one count init --upgrade, doctor and the planner's cards read."""
+    done = _recorded(root)
+    return [(row, repo) for row in QUESTIONS for repo in (repos if row['scope'] == 'repo' else [None])
+            if (row['id'], repo) not in done]
+
+
 def widgets(root, repos, ids=()):
     """The unanswered questions, or the named ones answered or not (#529), as
     AskUserQuestion widgets for the morning gate."""
     from wuwei import decision
-    done = set() if ids else _recorded(root)
     return [{'id': row['id'], **({'repo': repo} if repo else {}), **decision.widget(
                 decision.gate(root) + row['question'].format(repo=repo), row['header'],
                 [(label, description) for label, description, _ in row['choices']],
                 f'wuwei calibrate --answer "{row["id"]}=<label>"' + (f' --repo {repo}' if repo else ''))}
-            for row, repo in _selected(ids, repos) if (row['id'], repo) not in done]
+            for row, repo in (_selected(ids, repos) if ids else unanswered(root, repos))]
 
 
 def reask(root):

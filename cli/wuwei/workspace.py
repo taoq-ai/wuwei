@@ -78,7 +78,8 @@ SCHEMA = {
     "worktree": {"git_hooks": (str, "chain", ("chain", "skip", "replace"))},
     "checks": {"python": (str, ""), "bootstrap": (str, "")},  # #520
     # #524: with no grant, a merge asks on a card or names the host-terminal command; "" follows the posture.
-    "merge": {"default_tier": (str, "", ("", "ask", "owner_only"))},
+    # #530: "today" (the owner's autonomous answer) lets a merge on a configured repository through below strict.
+    "merge": {"default_tier": (str, "", ("", "ask", "owner_only", "today"))},
     # #478: standing grants, written by the owner's Always allow answer; ignored under strict.
     "grants": {"standing": [{"action": (str, None, ("deploy", "release", "publish", "merge")),
                              "target": (str, None), "scope": (str, "always", ("always",)),

@@ -99,6 +99,7 @@ def ws(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', NOW)
     record(root)
+    answered(root)
     unit = workspace.watch_unit(root)[1]
     unit.parent.mkdir(parents=True, exist_ok=True)
     unit.write_text('')
@@ -119,6 +120,16 @@ def ws(tmp_path, monkeypatch):
     monkeypatch.setattr(registry, 'load', lambda kind, config: fakes.get(kind) or real(kind, config))
     return SimpleNamespace(root=root, plugin=plugin, bin=bin_dir, probes=probes, service=service,
                            host=host, code_host=code_host, vcs=vcs, installed=installed, mp=monkeypatch)
+
+
+def answered(root):
+    """An earlier day's interview.json answering every setup question (#530)."""
+    from wuwei import interview
+    path = root / '.wuwei/days/2026-09-29/interview.json'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({row['id']: ({'acme/widget': row['choices'][0][0]} if row['scope'] == 'repo'
+                                            else row['choices'][0][0]) for row in interview.QUESTIONS}))
+    return path
 
 
 def record(root, day=TODAY, **changes):
@@ -454,6 +465,20 @@ def test_workspace_calibration_and_shadow(ws, monkeypatch):
     assert found['status'] == 'warn' and found['apply'] == 'init-upgrade'
     config(ws.root, CONFIG.replace('[adapters]', '[security]\nposture = "strict"\n[adapters]'))
     assert row(doctor.diagnose(), 'posture')['value'] == 'strict (from security.posture)'
+
+
+def test_workspace_interview_counts_the_unanswered(ws):
+    # #530: the same count init --upgrade prints; a workspace past day one still owes them.
+    from wuwei import interview
+    assert row(doctor.diagnose(), 'interview')['value'] == 'all setup questions answered'
+    path = answered(ws.root)
+    path.write_text(json.dumps({'cap': '2'}))
+    count = len(interview.unanswered(ws.root, ['acme/widget']))
+    found = row(doctor.diagnose(), 'interview')
+    assert (found['status'], found['value'], found['fix']) == (
+        'warn', f'{count} questions unanswered', W('setup, or the planner asks them on cards'))
+    path.write_text('not json')
+    assert row(doctor.diagnose(), 'interview')['status'] == 'unmeasured'
 
 
 def test_standing_grant_ignored_under_strict(ws):

@@ -758,3 +758,17 @@ def test_plan_set_pace(root, capsys, monkeypatch):
     assert 'careful, steady or fast' in capsys.readouterr().err
     assert main(['plan', 'set', 'A', 'spec=required']) == 0
     assert main(['event', 'pace.set', '{}']) == 1
+
+
+def test_merge_default_today_writes_no_planned_merge_card(root):
+    # #530: a planned merge on a configured repository the merge default covers asks nothing.
+    (root / '.wuwei/config.toml').write_text(
+        '[[repos]]\nname = "fixture-org/app"\npath = "."\ndefault_branch = "main"\n'
+        '[merge]\ndefault_tier = "today"\n')
+    data = proposal()
+    data['candidates'][0]['owner_actions'] = [{'action': 'merge', 'target': 'repo:fixture-org/app'},
+                                              *DEPLOY_ACTION]
+    text = plan.propose(data, root).read_text()
+    assert 'Owner-only: merge repo:fixture-org/app (merge.default_tier)\n' in text
+    assert 'Owner-only: deploy repo:fixture-org/app (D-1)\n' in text
+    assert [row['action'] for row in state.read_state(root)['grants'].values()] == ['deploy']

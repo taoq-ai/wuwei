@@ -1228,7 +1228,7 @@ def test_upgrade_retires_shadow_mode(tmp_path, monkeypatch, capsys):
     before = path.read_text()
     code, out = upgraded(tmp_path, capsys, dry_run=True)
     assert code == 0 and path.read_text() == before
-    assert [line for line in out.out.splitlines() if not line.startswith('Undo not rehearsed')] == [
+    assert [line for line in out.out.splitlines() if not line.startswith(('Undo not rehearsed', 'setup:'))] == [
         'Would upgrade config.toml: guards.mode = "shadow" becomes security.posture = "observe"']
     code, out = upgraded(tmp_path, capsys)
     assert code == 0, out.err
@@ -1245,7 +1245,7 @@ def test_upgrade_removes_enforce_mode(tmp_path, monkeypatch, capsys):
     import tomllib
     path = trial(tmp_path, monkeypatch, 'enforce')
     code, out = upgraded(tmp_path, capsys, dry_run=True)
-    assert [line for line in out.out.splitlines() if not line.startswith('Undo not rehearsed')] == [
+    assert [line for line in out.out.splitlines() if not line.startswith(('Undo not rehearsed', 'setup:'))] == [
         'Would upgrade config.toml: remove guards.mode = "enforce" (the default)']
     assert upgraded(tmp_path, capsys)[0] == 0
     config = tomllib.loads(path.read_text())
@@ -1415,3 +1415,79 @@ def test_upgrade_warns_on_a_damaged_register_and_goes_on(modeled, capsys):
     assert 'init --upgrade' in captured.err
     assert 'template_version' in captured.out
     assert (modeled / '.wuwei/graph.json').read_text() == 'not json'
+
+
+def test_upgrade_counts_the_unanswered_setup_questions(tmp_path, monkeypatch, capsys):
+    # #530: a workspace on day 5 that never answered the interview hears it on upgrade.
+    import json
+    from wuwei import interview
+    path = trial(tmp_path, monkeypatch, 'enforce')
+    with path.open('a') as stream:
+        stream.write('\n[[repos]]\nname = "example/project"\npath = "project"\ndefault_branch = "main"\n')
+    for day in ('2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28'):
+        (tmp_path / '.wuwei/days' / day).mkdir(parents=True)
+    count = len(interview.unanswered(tmp_path, ['example/project']))
+    line = f'setup: {count} questions unanswered: bin/wuwei setup, or the planner asks them on cards'
+    for dry_run in (True, False):
+        code, out = upgraded(tmp_path, capsys, dry_run=dry_run)
+        assert code == 0 and line in out.out.splitlines(), out
+    answers = {row['id']: ({'example/project': row['choices'][0][0]} if row['scope'] == 'repo'
+                           else row['choices'][0][0]) for row in interview.QUESTIONS}
+    (tmp_path / '.wuwei/days/2026-09-28/interview.json').write_text(json.dumps(answers))
+    assert 'setup:' not in upgraded(tmp_path, capsys)[1].out
+    (tmp_path / '.wuwei/days/2026-09-27/interview.json').mkdir()  # an unreadable day: warn, finish
+    code, out = upgraded(tmp_path, capsys)
+    assert code == 0 and 'setup: unanswered questions unmeasured:' in out.out
+
+
+PUBLISH_SAMPLES = ('git push origin main', 'git push --force', 'git push --tags', 'gh release create v1',
+                   'gh pr merge 1 --admin', 'gh api repos/o/r/releases',
+                   # not publishes, but just as unsafe without a prompt: a token in the transcript, a program run
+                   'gh auth status --show-token', 'git fetch --upload-pack=touch .')
+
+
+def publishes(rules):
+    """The rules whose pattern matches a deploy, release, protected-branch push or force push."""
+    from fnmatch import fnmatchcase
+    from wuwei.guards.deploy import PERMISSIONS_DENY
+    samples = [*PUBLISH_SAMPLES, *(rule[5:-1].rstrip('*') for rule in PERMISSIONS_DENY)]
+    return [rule for rule in rules for sample in samples if fnmatchcase(sample, rule[5:-1])]
+
+
+def test_allow_rules_never_allow_a_publish_target(tmp_path):
+    # #530: the harness allowlist covers WUWEI's own commands and the adapters' reads and commits.
+    from wuwei import workspace
+    from wuwei.commands import init
+    write_config(tmp_path, '')
+    config = workspace.load_config(tmp_path)
+    rules = init.allow_rules(config, 'bin/wuwei')
+    assert rules[0] == 'Bash(bin/wuwei *)' and {'Bash(git status*)', 'Bash(git commit *)', 'Bash(gh pr view*)',
+                                                  'Bash(git fetch)'} <= set(rules)
+    assert publishes(rules) == [] and not [rule for rule in rules if 'push' in rule or 'api' in rule]
+    config['adapters'].update(vcs='none', code_host='none')
+    assert init.allow_rules(config, 'bin/wuwei') == ['Bash(bin/wuwei *)']
+
+
+def test_allow_writes_only_the_missing_rules(tmp_path):
+    import json
+    from wuwei import workspace
+    from wuwei.commands import init
+    write_config(tmp_path, '')
+    (tmp_path / '.wuwei/executable').write_text('bin/wuwei\n')
+    path = tmp_path / '.claude/settings.local.json'
+    path.parent.mkdir()
+    path.write_text(json.dumps({'env': {'A': '1'}, 'permissions': {'allow': ['Bash(git status*)', 'Read']}}))
+    rules = init.allow_rules(workspace.load_config(tmp_path), 'bin/wuwei')
+    added = init.allow(tmp_path)
+    assert added == [rule for rule in rules if rule != 'Bash(git status*)']
+    assert json.loads(path.read_text()) == {'env': {'A': '1'}, 'permissions': {
+        'allow': ['Bash(git status*)', 'Read', *added]}}
+    assert init.allow(tmp_path) == []
+    path.write_text(json.dumps({'permissions': {'allow': 'Bash(*)'}}))
+    with pytest.raises(ValueError, match='permissions.allow must be a list of strings'):
+        init.allow(tmp_path)
+    path.unlink()
+    (tmp_path / 'elsewhere.json').write_text('{}')
+    path.symlink_to(tmp_path / 'elsewhere.json')
+    with pytest.raises(ValueError, match='must not be symlinks'):
+        init.allow(tmp_path)

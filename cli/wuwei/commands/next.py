@@ -56,8 +56,8 @@ THEN = {
               'a host terminal; then run wuwei next.'),
     'calibrate': ('Ask the widget list with AskUserQuestion, record each answer with its record '
                   'command (outside strict the answer writes its config key); when it prints a Next: '
-                  'line, show the owner bin/wuwei config promote for a host terminal. Then run '
-                  'wuwei next.'),
+                  'line, show the owner that line for a host terminal (bin/wuwei config promote, or '
+                  'bin/wuwei calibrate --interview allowlist). Then run wuwei next.'),
     'pr': ('Run it and do any action it prints; when it prints nothing the PR waits on people: end '
            'the turn with wuwei status --line, the watch wakes you when it changes.'),
     'close': 'On exit 1 show the owner what it names and end the turn; then run wuwei next.',
@@ -199,9 +199,8 @@ def step(root, ran=()):
     if (directory / 'goals.md').is_file() and ('goals', '') not in returned:
         return _row('goals', 'Record the goals you approved at the gate.',
                     f'wuwei goals edit --file {days}/goals.md', then=THEN['goals'])
-    earlier = any(path.name < directory.name for path in (root / '.wuwei/days').glob('????-??-??'))
-    if not earlier and ('calibrate', '') not in returned:
-        return _row('calibrate', 'First day: ask the calibration questions setup did not cover.',
+    if ('calibrate', '') not in returned:  # #530: any day; the list is [] once all are answered
+        return _row('calibrate', 'Ask the setup questions not answered yet; the list is empty when all are.',
                     'wuwei calibrate --questions', 'card', THEN['calibrate'])
     if ('telemetry', '') not in returned:
         return _row('telemetry', "Ask this week's telemetry proposals.",
