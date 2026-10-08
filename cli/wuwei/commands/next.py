@@ -205,6 +205,15 @@ def step(root, ran=()):
     if ('telemetry', '') not in returned:
         return _row('telemetry', "Ask this week's telemetry proposals.",
                     'wuwei telemetry proposals --widget', 'card')
+    todo = [kind for kind in ('commit', 'decision') if ('rehearse', kind) not in returned]  # undo.SCRATCH
+    if todo:  # #557: the ledger is read only while a rehearse row is not done
+        from wuwei import undo
+        unrehearsed = [kind for kind in todo if kind in undo.missing(root)]
+        if unrehearsed:
+            kind = unrehearsed[0]
+            return _row('rehearse', f'The {kind} undo was never rehearsed here, so two-way {kind} records '
+                        'come to you as cards until it runs; run it once on a scratch target.',
+                        f'wuwei undo rehearse {kind}', item=kind)
     routes = data.get('decision_routes', {})
     if not isinstance(routes, dict):
         raise ValueError(f'invalid decision ledger; {DAMAGED}')

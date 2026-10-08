@@ -443,6 +443,18 @@ round. Then the steward raises one `negotiation.loop` nudge per item per day, an
 goal date has passed. The listener sends the summary to your DM. It reports; the
 negotiation budget in the charters is what stops the rounds.
 
+## Measured reversibility
+
+A seat writes `Reversibility: two-way`, but the CLI decides whether that holds. A record is
+two-way only when the CLI knows the undo for its kind of action and that undo ran once in
+this workspace. The class gives the kind: code changes undo with a git revert, park, defer
+and re-plan with `wuwei undo D-n`, and a merge with a revert PR when its repository does not
+deploy on merge. A message never has an undo, and neither does `other`. Each undo is
+rehearsed once on a scratch target (`wuwei undo rehearse commit`, `wuwei undo rehearse
+decision`); `wuwei next` runs these for you after the morning gate. Until then, and for any
+kind without an undo, the CLI rewrites the record to one-way, says why, and the record comes
+to you as a card. Nothing is refused for it.
+
 ## Sessions
 
 Several Claude Code sessions can share a workspace. Hooks register each one in day state

@@ -259,12 +259,17 @@ def option_id(fields, label):
     return next((row[0] for row in options(fields) if wanted in (row[0].casefold(), row[1].casefold())), label)
 
 
-def lint(text, lenses=LENSES):
+def lint(text, lenses=LENSES, root=None):
     try:
         fields, scores = evaluate(text, lenses)
         option = fields['Recommendation']
         found = outward.tells(text)
-        return 0, f'OK: {option} ({scores[option]}), {cisr(fields, scores)}' + ('\nstyle: ' + ', '.join(found) if found else '')
+        said = ''
+        if root is not None and fields['Reversibility'] != 'one-way':  # #557: report, never refuse
+            from wuwei import undo
+            reason = undo.measured(fields, root, workspace.load_config(root))[1]
+            said = '\n' + undo.line(fields['Reversibility'], reason) if reason else ''
+        return 0, f'OK: {option} ({scores[option]}), {cisr(fields, scores)}' + ('\nstyle: ' + ', '.join(found) if found else '') + said
     except ValueError as exc:
         return 1, f'{exc}\nREJECT: send back to the seat; fix what is named above and check again with bin/wuwei decision lint <file>'
 
@@ -331,7 +336,7 @@ def lint_file(path, *, root=None, record=True, clarification=False):
                     root = workspace.find_workspace(Path(path).parent)
                 except FileNotFoundError:
                     pass
-            code, message = lint(text, lens_table(workspace.load_config(root)) if root else LENSES)
+            code, message = lint(text, lens_table(workspace.load_config(root)), root) if root else lint(text)
     except (OSError, UnicodeError, ValueError, RuntimeError) as exc:
         code, message = 2, f'decision lint: could not read {path}: {exc}'
     return record_rejection(path, code, message, root=root) if record else (code, message)

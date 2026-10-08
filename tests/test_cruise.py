@@ -190,10 +190,11 @@ def test_a_failing_condition_keeps_the_mandate_answer(ws, capsys, setup, kwargs)
 
 def test_merge_no_class_and_unplanned_items_never_cruise(ws, capsys):
     from wuwei import state
+    # #557: a merge naming no repository and a record without a class have no measured undo.
     save(ws, record(cls='merge'))
-    assert route(ws, capsys) == (0, 'mandate') and 'rule' not in outcome(ws)
+    assert route(ws, capsys)[1].startswith('owner\n') and outcome(ws) is None
     save(ws, record(cls='retry').replace('Class: retry\n', ''), name='D-4.md')
-    assert route(ws, capsys, 'D-4') == (0, 'mandate') and 'rule' not in outcome(ws, 'D-4')
+    assert route(ws, capsys, 'D-4')[1].startswith('owner\n') and outcome(ws, 'D-4') is None
     state._write_state(lambda data: data.update(items={'DIV-1': {'goal': 'unplanned'}}), ws, reserved=False)
     save(ws, record(cls='retry').replace('Question: Which fix?', 'Question: Which fix for DIV-1?'), name='D-5.md')
     assert route(ws, capsys, 'D-5') == (0, 'mandate') and 'rule' not in outcome(ws, 'D-5')

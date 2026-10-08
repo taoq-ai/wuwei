@@ -1228,7 +1228,7 @@ def test_upgrade_retires_shadow_mode(tmp_path, monkeypatch, capsys):
     before = path.read_text()
     code, out = upgraded(tmp_path, capsys, dry_run=True)
     assert code == 0 and path.read_text() == before
-    assert out.out.splitlines() == [
+    assert [line for line in out.out.splitlines() if not line.startswith('Undo not rehearsed')] == [
         'Would upgrade config.toml: guards.mode = "shadow" becomes security.posture = "observe"']
     code, out = upgraded(tmp_path, capsys)
     assert code == 0, out.err
@@ -1245,7 +1245,7 @@ def test_upgrade_removes_enforce_mode(tmp_path, monkeypatch, capsys):
     import tomllib
     path = trial(tmp_path, monkeypatch, 'enforce')
     code, out = upgraded(tmp_path, capsys, dry_run=True)
-    assert out.out.splitlines() == [
+    assert [line for line in out.out.splitlines() if not line.startswith('Undo not rehearsed')] == [
         'Would upgrade config.toml: remove guards.mode = "enforce" (the default)']
     assert upgraded(tmp_path, capsys)[0] == 0
     config = tomllib.loads(path.read_text())

@@ -737,6 +737,21 @@ the lens lines. A one-way record is never Routine by definition. Under `supervis
 as before this amendment. The lint OK line names the class, and a record without a
 recommendation is refused with "add the recommendation and the reasoning".
 
+Measured reversibility (owner, 2026-10-08, #557). A record counts as two-way only when the CLI
+knows the undo for its action and that undo ran once in this workspace. The class gives the
+action kind. The commit classes (`approach`, `retry`, `accept-residual`, `scope-cut` and the
+engineering classes) undo with a git revert on the item branch. `park`, `defer` and `re-plan`
+undo with `wuwei undo D-n`. `merge` undoes with a revert PR through `wuwei undo <event id>`,
+and only when every repository the record names declares `merge_deploys = false` (4.6). A
+message has no undo (4.9), and `other` or a record without a class has none registered, so
+each of them is one-way. `wuwei undo rehearse commit` and `wuwei undo rehearse decision` run
+the undo once on a scratch target and write `memory/rehearsals.json`, which only those
+commands write; a merge counts after its first real `wuwei undo`. The CLI only lowers a door.
+`decision lint` prints the correction and keeps its exit code, and `decision route` writes
+`Reversibility: one-way` and a Notes line into the record on its first route, so the record
+comes to the owner as a card. `wuwei next` returns each missing rehearsal as a run row after
+the gate. The day report lists what was undone today and what cannot be undone.
+
 Enforcement. A PostToolUse decision lint on writes to `decisions/D-*.md` refuses a record
 missing any field, with an unknown class, with fewer than two options, or whose
 recommendation is not the top passing option by the stated weights (the CLI recomputes the
