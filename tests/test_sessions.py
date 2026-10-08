@@ -282,7 +282,7 @@ def test_registry_fault_keeps_session_start_code_two(root, monkeypatch):
     from wuwei.guards import lifecycle
     monkeypatch.setattr(memory, 'session_payload', lambda root: ('ctx', 3, 1))
     monkeypatch.setattr(memory, 'lint', lambda root: [])
-    monkeypatch.setattr(watch, 'health', lambda root, name='watch': (0, ''))
+    monkeypatch.setattr(watch, 'health', lambda root, clocks=None, name='watch': (0, ''))
 
     def broken(*args, **kwargs):
         raise ValueError('registry broken')

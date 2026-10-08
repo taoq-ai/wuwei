@@ -544,7 +544,7 @@ def test_status_names_the_cruise_level(ws, capsys):
     assert '\ncruise L0\nplugin ' in status_line(ws)
     (ws / '.wuwei/memory/cruise.json').write_text('not json')
     from wuwei.__main__ import main
-    assert main(['status', '--line']) == 2
+    assert main(['status']) == 2  # --line skips cruise.json since #562
     assert capsys.readouterr().out.strip() == 'WUWEI ? unmeasured'
 
 
