@@ -191,7 +191,8 @@ def unresolved(root, rows, open_items=None, notes=None):
                         findings.append(f'{identifier}: pending owner decision: {fields["Question"]}')
                 elif identifier in outcomes:
                     record = outcomes[identifier]
-                    if (fields['Decided-by'] == record['decided_by'] in ('seat', 'mandate')
+                    if (fields['Decided-by'] == record.get('rule', record['decided_by'])
+                            and record['decided_by'] in ('seat', 'mandate')
                             and record.get('item_disposition') == fields['Outcome']):
                         dispositions[fields['Outcome']] = fields['Context'].partition('Reason: ')[2]
             except watch.ERRORS as exc:

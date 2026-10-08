@@ -206,6 +206,8 @@ def propose(data, root=None):
         raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei status for the approved plan')
     from wuwei import grants
     planned = grants.plan(root, workspace.load_config(root), data['candidates'])
+    from wuwei import cruise
+    cruise.propose(root, workspace.load_config(root))  # #283: raise and weekly sample cards
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
              *(['Finding: ' + steward_finding, ''] if steward_finding else []),
              '## Goals to confirm',

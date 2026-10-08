@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 
 from wuwei import outward, state, workspace
+from wuwei.cruise import CLASSES, CRUISE, level, running  # noqa: F401 (#283: kept light for the status line)
 from wuwei.verdict import active_text
 from wuwei.exits import DAMAGED
 
@@ -12,11 +13,6 @@ FIELDS = ('Question', 'Context', 'Options', 'Musts', 'Wants', 'Recommendation',
           'Confidence', 'Reversibility', 'Blast radius', 'Pre-mortem', 'Revisit',
           'Decided-by', 'Outcome')
 DECISION_ID = r'D-[1-9][0-9]*'
-# Design 5.8.1: class -> (default cruise level, ceiling). A new class is a design amendment.
-CLASSES = {'approach': (2, 3), 'retry': (2, 3), 'park': (2, 3), 'accept-residual': (2, 3),
-           'defer': (0, 3), 'scope-cut': (0, 3), 're-plan': (0, 3), 'dependency-bump': (0, 3),
-           'design': (0, 3), 'boundary': (0, 3), 'refactor': (0, 3),
-           'merge': (3, 3), 'message': (0, 1), 'other': (0, 1)}
 # #475: classes whose options carry one line per configured lens.
 ENGINEERING = ('design', 'boundary', 'refactor', 'dependency-bump')
 LENSES = {'SOLID': 'Which SOLID principle does it keep or break?',
@@ -28,7 +24,7 @@ OPTIONAL = ('Class', 'Reasoning', 'Lenses')
 STATUS_QUO = r'(?i)(?:Do nothing|Defer|Keep)\b'  # #478: Keep owner-only is the status quo
 # #530: two-way by definition (fix round, task round, seat procedure, parked item's next step).
 ROUTINE = ('approach', 'retry', 'park', 'accept-residual')
-# ponytail: the design 5.8.1 default margin as a constant; decisions.cruise.margin is not in the schema.
+# Design 5.8: the ambiguity threshold of cisr; the cruise margin is decisions.cruise.margin.
 MARGIN = 0.2
 NO_RECOMMENDATION = 'add the recommendation and the reasoning'
 
@@ -37,13 +33,6 @@ def lens_table(config):
     """The effective lenses: the defaults, then configured names; an empty question drops one."""
     return {name: question for name, question in
             {**LENSES, **config['decisions']['lenses']}.items() if question}
-
-
-def level(config, name):
-    """The cruise level a class runs at; config only lowers the default."""
-    # ponytail: memory/cruise.json (running level, #283) does not exist yet; the default stands in.
-    cruise = config['decisions']['cruise']
-    return min(CLASSES[name][0], cruise['levels'].get(name, 3)) if cruise['enabled'] else 0
 
 
 def table(text, columns, name):
@@ -125,10 +114,11 @@ def evaluate(text, lenses=None):
                 'Class', 'Reasoning'):
         if '\n' in fields.get(key, ''):
             raise ValueError(f'{key}: expected one line; {DAMAGED}')
+    cruise = re.fullmatch(r'cruise ([a-z-]+)@L[23]', fields['Decided-by'])  # #283: a cruise answer
     for key, allowed in (('Confidence', ('high', 'medium', 'low')),
                          ('Reversibility', ('one-way', 'two-way', 'unsure')),
                          ('Decided-by', ('seat', 'owner', 'mandate'))):
-        if fields[key] not in allowed:
+        if fields[key] not in allowed and not (key == 'Decided-by' and cruise and cruise[1] in CLASSES):
             raise ValueError(f'{key}: expected {"|".join(allowed)}; fix it in the record; bin/wuwei decision template shows a valid one')
     if 'Class' in fields and fields['Class'] not in CLASSES:
         raise ValueError(f'Class: expected one of {", ".join(CLASSES)}; fix it in the record; bin/wuwei decision template shows a valid one')
@@ -242,17 +232,20 @@ def gate(root):
     return f'Morning gate (days/{workspace.day_dir(root).name}/plan.md): '
 
 
-def record_widget(identifier, fields, record=RECORD, level='brief'):
+def record_widget(identifier, fields, record=RECORD, level='brief', hidden=False):
     """A decision that passed the new-record check as a widget: titles as labels, the
-    recommendation first; rationale, consequence and lens lines, trimmed at brief."""
+    recommendation first; rationale, consequence and lens lines, trimmed at brief. hidden (the
+    #283 weekly sample) keeps record order and shows neither the recommendation nor its reasons."""
     chosen = fields['Recommendation']
-    rows = sorted(options(fields), key=lambda row: row[0] != chosen)
-    lenses = lens_lines(fields)
+    rows = options(fields) if hidden else sorted(options(fields), key=lambda row: row[0] != chosen)
+    lenses = {} if hidden else lens_lines(fields)
     trim = first if level == 'brief' else str.strip
     # ponytail: AskUserQuestion shows four options; the others stay answerable through Other.
-    return widget(f'{identifier}: {fields["Question"]} {first(fields["Reasoning"])}', identifier,
-                  [(title + (' (Recommended)' if option == chosen else ''),
-                    '\n'.join(trim(part) for part in (rationale, consequence, *lenses.get(option, []))))
+    return widget(f'{identifier}: {fields["Question"]}' + ('' if hidden else f' {first(fields["Reasoning"])}'),
+                  identifier,
+                  [(title + (' (Recommended)' if option == chosen and not hidden else ''),
+                    '\n'.join(trim(part) for part in ((consequence,) if hidden else
+                                                       (rationale, consequence, *lenses.get(option, [])))))
                    for option, title, rationale, consequence in rows[:4]], record.format(id=identifier))
 
 
@@ -375,7 +368,7 @@ def route(fields):
             and fields['Blast radius'] in ('own branch', 'own PR') else 'owner')
 
 
-def route_owner(identifier, fields, root, item=None):
+def route_owner(identifier, fields, root, item=None, thin=False):
     """Record an owner route once; a repeat route is a no-op. An item marks an external wait."""
     def mark(data):
         data.setdefault('decision_routes', {}).setdefault(identifier, data_row)
@@ -391,8 +384,10 @@ def route_owner(identifier, fields, root, item=None):
             item is None or data['items'].get(item, {}).get('assumption', {}).get('decision') == identifier):
         return
     kind = cisr(fields, _scored(fields)[3])
-    data_row = {'reversibility': fields['Reversibility'], 'recommendation': fields['Recommendation'], 'cisr': kind}
-    payload = {'id': identifier, 'reversibility': fields['Reversibility'], 'cisr': kind}
+    extra = {'class': fields.get('Class'), 'thin': thin, 'at': workspace.now().isoformat()}  # #283
+    data_row = {'reversibility': fields['Reversibility'], 'recommendation': fields['Recommendation'],
+                'cisr': kind, **extra}
+    payload = {'id': identifier, 'reversibility': fields['Reversibility'], 'cisr': kind, **extra}
     state._write_state(mark, root, reserved=False, kind='decision.routed',
                        payload=payload if item is None else {**payload, 'item': item})
 
@@ -470,7 +465,8 @@ def seat_outcome(fields, scores, by='seat'):
     return {'option': fields['Recommendation'], 'score': scores[fields['Recommendation']],
             'decided_by': by, 'outcome': fields['Recommendation'],
             'reversibility': fields['Reversibility'], 'blast_radius': fields['Blast radius'],
-            'item_disposition': fields['Outcome'], 'cisr': cisr(fields, scores)}
+            'item_disposition': fields['Outcome'], 'cisr': cisr(fields, scores),
+            'class': fields.get('Class')}
 
 
 def set_outcome(text, option):

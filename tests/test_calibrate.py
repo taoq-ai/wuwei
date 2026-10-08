@@ -740,6 +740,8 @@ REVIEWED = [
     ('telemetry.share', 'anonymous', True, ''), ('telemetry.otlp.endpoint', 'https://x.test', True, ''),
     ('autonomy.mode', 'autonomous', True, '[autonomy]\nmode = "supervised"\n'),
     ('autonomy.mode', 'supervised', False, ''),
+    ('decisions.cruise.margin', 0.1, True, ''), ('decisions.cruise.margin', 0.3, False, ''),
+    ('decisions.cruise.max_per_day', 40, True, ''), ('decisions.cruise.max_per_day', 5, False, ''),
 ]
 
 

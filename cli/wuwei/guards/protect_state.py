@@ -301,7 +301,7 @@ def _protected_name(path, directories=False):
             return True
         if tail[:1] in (('integrity',), ('.git',), ('ziran',), ('inbox',), ('metrics',)):
             return True
-        if tail in (('memory', 'voice.md'), ('memory', 'goals.md')):
+        if tail in (('memory', 'voice.md'), ('memory', 'goals.md'), ('memory', 'cruise.json')):
             return True
         if tail and tail[0] == 'archive':
             return True

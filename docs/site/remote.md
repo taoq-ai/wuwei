@@ -260,7 +260,7 @@ as a new message, not in a thread. Every reply passes the security check and the
 lint and is sent, not drafted. The command list the DM sends back:
 
 ```text
-Commands: plan, status, report, ask <question>, stop <session>, stop all. Decisions: approve D-n, option X on D-n, more D-n, drop it.
+Commands: plan, status, report, ask <question>, stop <session>, stop all. Decisions: approve D-n, option X on D-n, more D-n, undo D-n, drop it.
 ```
 
 One exchange per command (you, then the DM):
@@ -294,7 +294,7 @@ confirm
 Nothing to confirm from the last 2 minutes.
 
 deploy now
-Commands: plan, status, report, ask <question>, stop <session>, stop all. Decisions: approve D-n, option X on D-n, more D-n, drop it.
+Commands: plan, status, report, ask <question>, stop <session>, stop all. Decisions: approve D-n, option X on D-n, more D-n, undo D-n, drop it.
 ```
 
 With `control_plane.content = "none"`, `status`, `report` and the answer to `ask` arrive as
@@ -401,7 +401,7 @@ use your own remote shell to the host, for example SSH. See
 - Slack DM only: no Signal, no WhatsApp, and no responder drafting replies to people.
 - `run <routine>` and `cloud <repo> <task>` answer "Not available in this version.
   Commands: plan, status, report, ask <question>, stop <session>, stop all. Decisions:
-  approve D-n, option X on D-n, more D-n, drop it." There are no routines, no cloud sessions, no
+  approve D-n, option X on D-n, more D-n, undo D-n, drop it." There are no routines, no cloud sessions, no
   budget governor and no owner quiet hours. `listen dead` at session start and in
   `status --line` are the listener's liveness signals, seen only on the host; the off-host
   signal is the watch heartbeat's dead-man ping (`watch.ping_url`, see the reference).

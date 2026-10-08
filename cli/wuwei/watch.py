@@ -131,19 +131,21 @@ def digest(root, config):
             if age < DIGEST_SECONDS:
                 return 0
         sent = set(prior.get('digest_ids', []))
-        pending = sorted((ident, value['option']) for ident, value in
-                         data.get('decision_outcomes', {}).items()
-                         if ident not in sent and value.get('decided_by') in ('seat', 'mandate')
-                         and value.get('reversibility') == 'two-way')
+        pending = sorted(((ident, value['option'], value.get('rule', '')) for ident, value in
+                          data.get('decision_outcomes', {}).items()
+                          if ident not in sent and value.get('decided_by') in ('seat', 'mandate')
+                          and value.get('reversibility') == 'two-way'), key=lambda row: (not row[2], row[0]))
         if not pending:
             return 0
         from wuwei import decision
-        for ident, option in pending:
-            if not re.fullmatch(decision.DECISION_ID, ident) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', option):
+        for ident, option, rule in pending:  # #283: cruise answers first, with their rule
+            if (not re.fullmatch(decision.DECISION_ID, ident) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]*', option)
+                    or rule and not re.fullmatch(r'cruise [a-z-]+@L[23]', rule)):
                 raise ValueError(f'invalid two-way decision evidence; {DAMAGED}')
         path = ' (decisions/{}.md)' if workspace.verbosity(config, 'digest') == 'full' else ''
         text = 'Two-way decisions taken:\n' + '\n'.join(
-            f'- {ident}: {option}' + path.format(ident) for ident, option in pending) + '\n'
+            f'- {ident}: {option}' + (f' ({rule})' if rule else '') + path.format(ident)
+            for ident, option, rule in pending) + '\n'
         result = registry.load('chat', config).dm(text, root=root)
         draft = (result.exit == 1 and result.reason.startswith('outward: draft ')
                  or result.reason == 'no adapter configured')
@@ -154,8 +156,8 @@ def digest(root, config):
         elif result.exit != 0:
             raise ValueError(f'chat digest unavailable: {result.reason or "unknown error"}')
         save(root, {'digest_at': workspace.now().isoformat(),
-                    'digest_ids': sorted(sent | {ident for ident, _ in pending})},
-             kind='decision.digest', payload={'ids': [ident for ident, _ in pending],
+                    'digest_ids': sorted(sent | {ident for ident, *_ in pending})},
+             kind='decision.digest', payload={'ids': [ident for ident, *_ in pending],
                                               'draft': draft})
         return 0
     except ERRORS as exc:
