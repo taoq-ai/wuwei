@@ -66,7 +66,10 @@ _TOKEN = re.compile(r'(?P<space>[ \t\r]+)|(?P<comment>\#[^\n]*)|'
                     r'(?P<operator>\&\&|\|\||[;&|()\n])')
 _ASSIGNMENT = re.compile(r'[A-Za-z_][A-Za-z_0-9]*=')
 _PATH_COMMANDS = ('cd', 'pushd', 'popd', 'tee', 'cp', 'mv', 'sed', 'dd', 'truncate')
-_GUARDED = re.compile(r'(?<![.\w])(?:git|gh)\b')
+
+# #508: a whole word, never a directory component (a '/' later in the same path segment),
+# so a path such as 508-git-in/bin/wuwei or ~/git/x is no mention.
+_GUARDED = re.compile(r'(?<![.\w])(?:git|gh)\b(?![\w.-]*/)')
 # git and gh options whose value is a directory or repository, never a verb.
 _VALUES = ('-C', '-R', '--repo', '--git-dir', '--work-tree')
 _QUOTED_PART = re.compile(r''' '[^']*'|"(?:\\[\s\S]|[^"\\])*"|\\[\s\S]|[^'"\\]+ ''', re.VERBOSE)
