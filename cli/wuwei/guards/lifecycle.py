@@ -63,9 +63,11 @@ def session_start(payload):
     except ERRORS as exc:
         code = 2
         lines.append(f'session registry unmeasured: {exc}')
+    day = None
     try:
         # Constraints are orientation (#358), outside the memory budget.
-        lines.append(memory.constraints(root, state.read_state(root)))
+        day = state.read_state(root)
+        lines.append(memory.constraints(root, day))
         content, size, tokens = memory.session_payload(root)
         lines.extend([content, f'Size: {size} bytes, {tokens} estimated tokens'])
         budget = config['memory']['budget_tokens']
@@ -79,11 +81,18 @@ def session_start(payload):
     except ERRORS as exc:
         code = 2
         lines.append(f'memory unmeasured: {exc}')
-    health_code, message = watch.health(root)
+    # One events read for both clocks (#562); a broken file goes to health, which reports it.
+    try:
+        rows = watch._day_rows(workspace.day_dir(root) / 'events.jsonl')
+        clocks = {name: [row['ts'] for row in rows if row['kind'] == f'{name}: clock']
+                  for name in ('watch', 'listen')}
+    except ERRORS:
+        clocks = {}
+    health_code, message = watch.health(root, clocks.get('watch'))
     code = max(code, health_code)
     if message:
         lines.append(message)
-    listen_code, message = watch.health(root, name='listen')
+    listen_code, message = watch.health(root, clocks.get('listen'), name='listen')
     if listen_code:
         code = max(code, listen_code)
         lines.append(message)
@@ -93,7 +102,7 @@ def session_start(payload):
             lines.append(notice)
         # Phone answers exist only for routed decisions: a day without routes skips the second
         # decode of its events (#346); health above already refused a broken events file.
-        day = state.read_state(root)
+        day = state.read_state(root) if day is None else day
         if day.get('decision_routes', {}) != {}:
             from wuwei.commands.status import attention
             lines.extend(row['reason'] for row in attention(

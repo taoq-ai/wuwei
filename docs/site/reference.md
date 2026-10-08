@@ -486,4 +486,6 @@ Each benchmark prints one report line:
 
 Read the hook figure against the startup floor on the same line. A hook that keeps its usual distance above the floor is the runner; a hook whose distance above the floor grows from one run to the next got slower.
 
+The job also writes each probe's figures as one JSON row to `latency.jsonl` (`WUWEI_LATENCY_OUT`), before the budget check, so a red run keeps them. It uploads the file as the `latency` artifact, fetches the same artifact from the last successful `Tests` run on `main`, and runs `python scripts/latency_report.py latency.jsonl previous/latency.jsonl`. The report prints each probe against that run, names the probe that moved most (the largest relative rise of its budgeted figure), and lists every probe within 10 ms CPU or 20 ms wall of its budget as `margin short`. Like the rest of the job it never blocks a merge.
+
 In a source checkout, `WUWEI_BENCH=1 python -m pytest -q tests/test_hooks.py -k latency` asserts the budgets. Without `WUWEI_BENCH=1` the benchmarks print the same lines and skip, because wall time on a busy host is load-bound.

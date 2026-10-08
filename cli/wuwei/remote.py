@@ -313,7 +313,7 @@ def handle(root, event, *, transport=TRANSPORT, runtime=None):
             return _say(transport, root, UNAVAILABLE, 1)
         if verb == 'status':
             from wuwei.commands import status
-            text = status.line(status.snapshot(workspace.day_dir(root))).removeprefix('WUWEI ')
+            text = status.line(status.snapshot(workspace.day_dir(root), line=True)).removeprefix('WUWEI ')
             if control_plane._level(root) == 'full':
                 from wuwei import drafts
                 count = sum(len(row.get('style') or []) for row in drafts.read(state.read_state(root)).values()

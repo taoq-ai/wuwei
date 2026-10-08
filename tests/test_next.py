@@ -426,7 +426,7 @@ def test_constraints_precede_a_long_week_digest(root, monkeypatch, capsys):
 
 def test_orientation_precedes_integrity_line(root, monkeypatch, capsys):
     calibrated(root)
-    from wuwei.integrity import Result
+    from wuwei.registry import Result
     owner = 'plugin integrity: owner-confirmed content (local evidence)'
     monkeypatch.setattr(integrity, 'check', lambda *args, **kwargs: Result(0, None, owner))
     monkeypatch.setattr(integrity, 'workspace_check', lambda *args, **kwargs: Result(0))

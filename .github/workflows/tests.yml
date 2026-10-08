@@ -50,8 +50,12 @@ jobs:
     # Measures the hook budgets on the quiet runner every push. Informational: it never blocks a merge.
     runs-on: ubuntu-latest
     continue-on-error: true
+    permissions:
+      contents: read
+      actions: read
     env:
       WUWEI_BENCH: "1"
+      WUWEI_LATENCY_OUT: latency.jsonl
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -60,6 +64,23 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install pytest
       - run: python -m pytest -q tests/test_hooks.py -k latency
+      # Every probe's figures, red runs included, and the last green main run's to compare (#562).
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: latency
+          path: latency.jsonl
+          if-no-files-found: ignore
+      - name: Fetch the last green figures
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh run list -R "$GITHUB_REPOSITORY" -w tests.yml -b main -s success -L 1 --json databaseId -q '.[0].databaseId')
+          if [ -n "$id" ]; then gh run download "$id" -R "$GITHUB_REPOSITORY" -n latency -D previous || echo "no last green figures"; fi
+      - name: Compare with the last green run
+        if: always()
+        run: python scripts/latency_report.py latency.jsonl previous/latency.jsonl
 
   skill-evals:
     runs-on: ubuntu-latest
