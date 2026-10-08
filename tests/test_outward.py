@@ -1659,6 +1659,20 @@ def test_guard_to_owner_floor(configured):
     assert all(row['destination'] != 'D01' for row in state.read_state(root).get('drafts', {}).values())
 
 
+@pytest.mark.parametrize('mode', ['send', 'draft', 'refuse'])
+def test_guard_to_owner_every_mode(configured, mode):
+    # #509: the connector mode never decides a message to the owner; each mode records the event.
+    from wuwei import state
+    from wuwei.guards.outward import check_lint, check_tier
+    root = configured[0]
+    with_owner(root)
+    write_config(root, f'\n[outward.modes]\n"{UUID}" = "{mode}"\n')
+    call = payload(root, 'Your build is green', tool=opaque('slack_send_message'), channel='D01')
+    assert check_tier(call) == check_lint(call) == (0, '')
+    assert [row['payload'] for row in owner_events(root)] == [{'channel': 'slack'}]
+    assert not state.read_state(root).get('drafts')
+
+
 def test_guard_owner_mail_with_outside_cc_is_not_owner_only(configured):
     # #501 review F1: an outside cc or bcc means the owner is not the only reader.
     from wuwei.guards.outward import check_tier
