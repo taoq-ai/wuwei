@@ -88,8 +88,22 @@ def tier(root, config, row):
         reasons.append(f'lead tier {lead}')
     elif lead and TIERS.index(lead) < TIERS.index(effective):
         reasons.append(f'lead tier {lead} refused: below {effective}')
+    from wuwei import pace  # #579: the day's pace adjusts the tier and depth once, here
+    guard = None
+    if repo is not None:
+        run, why = step_zero('standard', [change['path'] for change in changes], repo['gates']['trust_paths'])
+        guard = why if run else None
+    try:
+        current = pace.current(state.read_state(root), config)
+    except (OSError, ValueError, KeyError, TypeError):
+        current = 'steady'  # an unreadable day never changes today's record
+    flagged = row.get('track') == 'FULL' or any(row['flags'].values())
+    effective, lighter, more = pace.adjust(current, effective, guard, flagged, repo is not None)
+    reasons += more
     record = {'tier': effective, 'computed': computed, 'reasons': reasons,
               'roles': ['quality'] if effective == 'light' else list(ROLES)}
+    if lighter != effective:
+        record['depth'] = lighter
     second = config['gates']['second_opinion']
     if effective != 'light' and second != 'off':
         runtime, _, model = second.partition(':')
@@ -112,9 +126,10 @@ def _changes(root, config, row):
 
 
 def depth(row, *, gate=False):
-    """#567: the item's process depth (design 5.3): the tier dispatch recorded, else the
-    builder brief's prediction (never for a gate reader), else standard."""
-    return (row.get('gates') or {}).get('tier') or (None if gate else row.get('depth')) or 'standard'
+    """#567: the item's process depth (design 5.3): the depth dispatch recorded (#579, the pace),
+    else its tier, else the builder brief's prediction (never for a gate reader), else standard."""
+    gates = row.get('gates') or {}
+    return gates.get('depth') or gates.get('tier') or (None if gate else row.get('depth')) or 'standard'
 
 
 # #567: the builder's class sweep at standard covers the classes whose files the diff touches.
@@ -140,7 +155,7 @@ def classes(root, config, row):
     every class at full. ValueError when the diff cannot be read."""
     from wuwei import merge
     record = tier(root, config, row)
-    if record['tier'] == 'light':
+    if record.get('depth', record['tier']) == 'light':
         return record, {}
     _, changes = _changes(root, config, row)
     found = {name: [change['path'] for change in changes if merge.matched(change['path'], globs)]
@@ -317,7 +332,9 @@ def launch_set(root=None):
     running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
     # #528: capacity re-derives at every sweep; the day state keeps the snapshot.
     limits = calibrate.host(root, config, running=len(running))
-    cap, ceiling, bound = limits['cap'], limits['seats'], limits['bound']
+    from wuwei import pace  # #579: the day's pace sets the seats, never a refusal
+    cap, bound, hold = pace.seats(pace.current(data, config), limits)
+    ceiling = limits['seats']
     if data['gate_approved'] and (data['cap'], data['cap_bound']) != (cap, bound):
         state._write_state(lambda fresh: fresh.update(cap=cap, cap_bound=bound), root, reserved=False,
                            kind='cap.derived', payload={'cap': cap, 'bound': bound, 'text': limits['text']})
@@ -336,7 +353,9 @@ def launch_set(root=None):
             value = {'action': 'refused', 'reason': str(exc)}
         launches = len(value.get('seats', [])) if 'seats' in value else int(
             value['action'] in ('launch', 'continue', 'start'))
-        if launches > free:
+        if launches and hold:
+            value = {'action': 'wait', 'reason': hold}
+        elif launches > free:
             value = {'action': 'wait', 'reason': (
                 f'{launches} launch(es) do not fit the {max(free, 0)} free of host.seats={ceiling}; '
                 'they launch together next turn, after running seats stop')}

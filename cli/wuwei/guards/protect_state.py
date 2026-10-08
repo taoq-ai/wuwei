@@ -158,6 +158,22 @@ def _seat_docs_set(action):
             and not any(re.search(r'[$`*?\[{]', word) for word in action))
 
 
+def _planner_pace_set(action):
+    """#579: the literal plan set pace=<word>, nothing after it; the planner's two-way choice."""
+    return (len(action) == 3 and list(action[:2]) == ['plan', 'set']
+            and re.fullmatch(r'pace=[a-z]+', action[2]) is not None)
+
+
+def _strict(cwd):
+    """The workspace posture is strict; an unreadable one counts as strict (the owner runs it)."""
+    from wuwei import workspace
+    try:
+        root = _workspace(cwd) or worktree_workspace(cwd)
+        return root is None or workspace.posture(workspace.load_config(root))[0] == 'strict'
+    except (OSError, ValueError):
+        return True
+
+
 def _owner_relevant(text, script=False):
     """Text only: the CLI word plus an owner group and verb, a non-literal CLI word, or xargs."""
     from wuwei.shell import mentions
@@ -243,6 +259,9 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
         if (reason := _owner_reason((group, verb))) and not (not xargs and _seat_docs_set(action)):
             if (group, verb) == ('outbound', 'learn') and edits[1]:
                 continue  # The registered planner session, in any posture.
+            # #579: the registered planner changes the day's pace below strict; strict asks nothing.
+            if not xargs and _planner_pace_set(action) and edits[1] and not _strict(cwd):
+                continue
             if (group, verb) == ('config', 'set') and (
                     _positional(action)[2:3] or [''])[0].split('.')[0] in GUARD_KEYS:
                 reason = GUARD_CONFIG

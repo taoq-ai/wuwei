@@ -20,7 +20,7 @@ def classes(args):
     except (OSError, ValueError, KeyError, TypeError) as exc:
         print(f'wuwei sweep classes: {exc}', file=sys.stderr)
         return 2
-    if record['tier'] == 'light':
+    if record.get('depth', record['tier']) == 'light':
         print('Depth: light; no class sweep')
         return 0
     print(f"Depth: {record['tier']}")

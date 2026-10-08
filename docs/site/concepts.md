@@ -49,6 +49,11 @@ Work admitted during the day must fit the remaining build hours.
 Review tier: light (one reviewer agent) or standard and full (three), set per change from its size and risk. The tier also sets the process depth: see [review tiers](#review-tiers).
 Outbound tier: a message sent as you either goes out at once or waits as a draft for your approval.
 
+### Pace
+
+How hard the day pushes: `careful`, `steady` (the default) or `fast`, picked on the morning gate card and changed with `wuwei plan set pace=<p>`.
+Careful lifts light items to standard and keeps one seat free. Fast runs plain standard items at light depth with only the tests the diff changes, and CI is the gate. Guard code runs full at both. No pace moves a floor or changes who decides; `wuwei pace` shows the advice.
+
 ### Soak
 
 The wait after the last push or approval before WUWEI merges by itself (`merge.soak_minutes`, default 30).

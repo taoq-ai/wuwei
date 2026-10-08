@@ -407,8 +407,9 @@ def cycles(root):
     """#567: one row per merged item: its tier, the minutes from its plan approve or add to its
     merge, and from its first sentinel launch to its last gate verdict, across days."""
     from wuwei.dispatch import depth
-    starts, launches, received, merged, tiers, sentinels = {}, {}, {}, {}, {}, {}
+    starts, launches, received, merged, tiers, sentinels, paces = {}, {}, {}, {}, {}, {}, {}
     for directory in reversed(watch.days(root)):  # oldest first
+        fresh = set(merged)
         for row in _events(directory) or []:
             kind, payload, ts = row['kind'], row['payload'], datetime.fromisoformat(row['ts'])
             names = (payload.get('items', []) if kind == 'plan.approved'
@@ -427,8 +428,10 @@ def cycles(root):
                     merged.setdefault(name, ts)
         data = _state(directory)
         tiers.update({name: depth(row) for name, row in (data['items'] if data else {}).items()})
+        # #579: the pace of the day the merge was seen; a day without one ran steady
+        paces.update(dict.fromkeys(set(merged) - fresh, (data or {}).get('pace') or 'steady'))
     minutes = lambda start, end: (end - start).total_seconds() / 60
-    return [{'item': name, 'tier': tiers.get(name, 'standard'), 'merged_at': end,
+    return [{'item': name, 'tier': tiers.get(name, 'standard'), 'pace': paces[name], 'merged_at': end,
              'cycle_minutes': minutes(starts[name], end),
              'gate_minutes': (minutes(launches[name], received[name])
                               if name in launches and name in received else UNMEASURED)}
@@ -443,6 +446,25 @@ def cycle_by_tier(rows):
     return {tier: {'median_minutes': median(values), 'items': len(values),
                    **({'target': CYCLE_TARGETS[tier]} if tier in CYCLE_TARGETS else {})}
             for tier, values in sorted(found.items())} or UNMEASURED
+
+
+def by_pace(root):
+    """#579: per pace: days, items merged, cycle minutes per tier, escaped defects (5.6) and
+    cards asked; unmeasured until a day records a pace. A day counts at its final pace."""
+    days = [data for data in map(_state, watch.days(root)) if data and data.get('pace')]
+    if not days:
+        return UNMEASURED
+    rows, (_, escaped) = cycles(root), _escaped(root)
+    result = {}
+    for data in days:
+        row = result.setdefault(data['pace'], {'days': 0, 'merged': 0, 'escaped': 0, 'cards': 0})
+        row['days'] += 1
+        row['cards'] += len(data.get('decision_routes', {}))
+    for pace, row in result.items():
+        mine = [cycle for cycle in rows if cycle['pace'] == pace]
+        row.update(merged=len(mine), escaped=sum(cycle['item'] in escaped for cycle in mine),
+                   cycle_by_tier=cycle_by_tier(mine))
+    return result
 
 
 def cycle_moved(rows, today):
@@ -738,6 +760,7 @@ def collect(root=None, *, day=None):
     event_metrics['cycle_minutes'] = {row['item']: row['cycle_minutes'] for row in rows} or UNMEASURED
     event_metrics['gate_minutes'] = {row['item']: row['gate_minutes'] for row in rows} or UNMEASURED
     event_metrics['cycle_by_tier'] = cycle_by_tier(rows)
+    event_metrics['by_pace'] = by_pace(root)
     event_metrics['brief_drill_score'] = (data.get('brief_drill', UNMEASURED)
                                           if data is not None else UNMEASURED)
     event_metrics['voice_drafts'] = {

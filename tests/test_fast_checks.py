@@ -49,7 +49,9 @@ def test_recorder_runs_configured_check_and_records_derived_evidence(workspace_c
         SimpleNamespace(run=run) if kind == 'checks' else vcs))
     assert main(['fast-checks', str(root / 'repo')]) == exit_code
     assert calls == [(str(root / 'repo'), 'unit')]
-    assert state.read_state(root)['fast_checks'] == {
+    recorded = state.read_state(root)['fast_checks']
+    assert type(recorded['example/project']['unit'].pop('seconds')) is float  # #579
+    assert recorded == {
         'example/project': {'unit': {'sha': SHA, 'exit': exit_code, 'data': None,
             'reason': 'check unavailable' if exit_code == 2 else '',
             'worktree': str(root / 'repo'), 'build': None, 'clean': False}}}

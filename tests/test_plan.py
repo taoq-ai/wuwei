@@ -128,7 +128,7 @@ def test_cli_propose_and_approve(root, monkeypatch):
     assert result.returncode == 0, result.stderr
     assert 'unmeasured' in next((root / '.wuwei/days').glob('*/plan.md')).read_text()
     result = subprocess.run([*command, 'gate'], env=env, capture_output=True, text=True)
-    assert json.loads(result.stdout)[0]['record'] == 'wuwei plan approve --items A --goals-confirmed'
+    assert json.loads(result.stdout)[0]['record'] == 'wuwei plan approve --items A --goals-confirmed --pace "<label>"'
     result = subprocess.run([*command, 'approve', '--items', 'A', '--goals-confirmed'],
                             env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
@@ -338,7 +338,7 @@ def test_owner_open_prs_are_proposed_and_claimed_at_the_gate(root, monkeypatch):
     assert '## Open PRs to claim\n- PR-12: acme/widget#12 Add a cache (claimed under G-1)\n' in text
     assert 'PR-13' not in text
     widget = plan.gate_widget(root)
-    assert widget['record'] == 'wuwei plan approve --items A PR-12 --goals-confirmed'
+    assert widget['record'] == 'wuwei plan approve --items A PR-12 --goals-confirmed --pace "<label>"'
     assert 'Claims PR-12 (acme/widget#12)' in widget['options'][0]['description']
     claimed = []
     monkeypatch.setattr(shepherd, 'claim_pr', lambda *args: claimed.append(args) or 0)
@@ -363,15 +363,16 @@ def test_gate_widget_is_the_one_approval_question(root):
                                   "Approve today's plan as proposed?")
     assert gate_question(widget, root)
     assert widget['header'] == 'Plan'
-    assert [row['label'] for row in widget['options']] == ['Approve', 'Change something']
+    assert [row['label'] for row in widget['options']] == [
+        'Approve', 'Approve at careful', 'Approve at fast', 'Change something']  # #579: pace rows
     approve = widget['options'][0]['description']
     assert all(part in approve for part in ('G-1', 'A, B', 'CAP 4', 'claude', '09:00',
                                             'Cap 4 (host): 8 GB free, 1 GB per seat, 4 cores'))
     assert 'carry' not in approve.lower()
-    assert widget['record'] == 'wuwei plan approve --items A B --goals-confirmed'
+    assert widget['record'] == 'wuwei plan approve --items A B --goals-confirmed --pace "<label>"'
     carry = plan.gate_widget(root, import_yesterday=True)
     assert 'carry-over' in carry['options'][0]['description'].lower()
-    assert carry['record'].endswith(' --goals-confirmed --import-yesterday')
+    assert carry['record'].endswith(' --goals-confirmed --import-yesterday --pace "<label>"')
     (root / '.wuwei/memory/goals.md').write_text(TEMPLATE.read_text(encoding='utf-8'))
     plan.propose(lead(), root)
     assert plan.gate_widget(root)['header'] == 'Goals'
@@ -526,7 +527,7 @@ def test_seats_per_goal_in_plan_gate_and_state(goals2):
     assert proposal_json['seats'] == {'G-1': 2, 'G-2': 1}
     widget = plan.gate_widget(root)
     assert '3 seats: G-1 2, G-2 1 (CAP 3)' in widget['options'][0]['description']
-    assert 'seats per goal' in widget['options'][1]['description']
+    assert 'seats per goal' in widget['options'][-1]['description']
     plan.approve(['A', 'B', 'C', 'D'], root, goals_confirmed=True)
     assert state.read_state(root)['goal_seats'] == {'G-1': 2, 'G-2': 1}
     with pytest.raises(state.StateError, match='wuwei plan approve'):
@@ -689,3 +690,71 @@ def test_propose_writes_the_cruise_raise_card_the_gate_carries(root, monkeypatch
     assert main(['plan', 'gate']) == 0
     gate, card = json.loads(capsys.readouterr().out)
     assert card['header'] == 'D-1' and card['options'][0]['label'] == 'Raise defer to L1 (Recommended)'
+
+
+# #579: the day pace at the morning gate.
+
+def test_candidate_paths_are_validated(root):
+    data = proposal()
+    data['candidates'][0]['paths'] = ['cli/wuwei/report.py']
+    assert plan._proposal(data, (root / '.wuwei/memory/goals.md').read_text())
+    data['candidates'][0]['paths'] = 'cli/wuwei/report.py'
+    with pytest.raises(ValueError, match='paths must be a list of strings'):
+        plan._proposal(data, (root / '.wuwei/memory/goals.md').read_text())
+
+
+def test_propose_records_the_pace_advice_and_the_gate_offers_each_pace(root):
+    path = plan.propose(proposal(), root)
+    data = json.loads((path.parent / 'proposal.json').read_text())
+    assert data['pace'] == 'steady' and data['pace_advice']['pace'] == 'steady'
+    assert data['pace_reasoning'] == data['pace_advice']['lines'] and len(data['pace_reasoning']) == 2
+    text = path.read_text()
+    assert 'Pace: steady (recommended)' in text and data['pace_reasoning'][0] in text
+    widget = plan.gate_widget(root)
+    approve, careful = widget['options'][0]['description'], widget['options'][1]['description']
+    assert 'Pace steady.' in approve and data['pace_reasoning'][1] in approve
+    assert 'Pace careful.' in careful and data['pace_reasoning'][0] not in careful
+
+
+def pace_events(root, kind):
+    return [row['payload'] for row in events(root) if row['kind'] == kind]
+
+
+@pytest.mark.parametrize('label,expected', [('Approve', 'steady'), ('Approve (Recommended)', 'steady'),
+                                            ('Approve at careful', 'careful'), (None, 'steady')])
+def test_approve_records_the_chosen_pace(root, label, expected):
+    plan.propose(proposal(), root)
+    plan.approve(['A'], root, goals_confirmed=True, pace_label=label)
+    assert state.read_state(root)['pace'] == expected
+    [payload] = pace_events(root, 'plan.approved')
+    assert (payload['pace'], payload['recommended'], payload['wish']) == (expected, 'steady', 'steady')
+
+
+def test_approve_refuses_change_something_and_old_proposals_take_the_default(root):
+    plan.propose(proposal(), root)
+    with pytest.raises(ValueError, match='Change something asks the separate questions'):
+        plan.approve(['A'], root, goals_confirmed=True, pace_label='Change something')
+    assert not state.read_state(root)['gate_approved']
+    proposal_path = root / '.wuwei/days/2026-09-28/proposal.json'
+    data = json.loads(proposal_path.read_text())
+    del data['pace']
+    proposal_path.write_text(json.dumps(data))
+    (root / '.wuwei/config.toml').write_text('[pace]\ndefault = "careful"\n')
+    plan.approve(['A'], root, goals_confirmed=True)
+    assert state.read_state(root)['pace'] == 'careful'
+
+
+def test_plan_set_pace(root, capsys, monkeypatch):
+    from wuwei.__main__ import main
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    plan.propose(proposal(), root)
+    assert main(['plan', 'approve', '--items', 'A', '--goals-confirmed', '--pace', 'Approve at fast']) == 0
+    assert main(['plan', 'set', 'pace=careful']) == 0
+    assert 'pace careful (was fast)' in capsys.readouterr().out
+    assert state.read_state(root)['pace'] == 'careful'
+    assert [{key: row[key] for key in ('pace', 'previous')} for row in pace_events(root, 'pace.set')] == [
+        {'pace': 'careful', 'previous': 'fast'}]
+    assert main(['plan', 'set', 'pace=quick']) == 2
+    assert 'careful, steady or fast' in capsys.readouterr().err
+    assert main(['plan', 'set', 'A', 'spec=required']) == 0
+    assert main(['event', 'pace.set', '{}']) == 1

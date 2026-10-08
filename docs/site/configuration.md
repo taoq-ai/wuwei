@@ -9,7 +9,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | Sections | Keys under |
 | --- | --- |
 | `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[security.areas]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
-| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
+| `[host]`, `[budget]`, `[pace]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[brief.style]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[grants]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
@@ -61,6 +61,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `repos.gates.trust_paths` | `["guards/*", "state.py", "adapters/*", ".claude-plugin/*", ".github/*", "ci/*", "workflows/*", "deploy/*", "infra/*"]` | Path globs, matched on any path suffix, that force at least STANDARD. `repos.merge.never_auto_paths` and `brief.full_path_patterns` force it too. |
 | `repos.shepherd.reviewers` | `[]` | Code host logins requested for this repository's PRs; when set it replaces `shepherd.reviewers` here. |
 | `repos.fast_checks` | `[]` | Commands for `wuwei fast-checks` on this checkout. A command whose first word starts with `.venv/`, `venv/` or `node_modules/.bin/` resolves that interpreter in the item worktree first, then in the repository's main worktree (its `path`); the check record names the interpreter it ran with. `worktree add` warns when a new worktree will use the main worktree's, `doctor` shows a `check interpreter` row, and the builder brief names it. |
+| `repos.tests` | `""` | The repository's test runner, for example `python3 -m pytest -q`. At pace careful `wuwei build check` runs it after the fast checks; at fast it runs it on the test files the diff changes, and the push guard takes that record as the evidence. Empty: every pace runs `fast_checks`. |
 | `checks.python` | `""` | Interpreter for fast checks whose first word is a relative Python such as `.venv/bin/python`; absolute or relative to the repository's path. It wins in every worktree. |
 | `checks.bootstrap` | `""` | One command `worktree add` runs in each new worktree through the checks runner (capped at 300 seconds), for example `python3 -m venv .venv && .venv/bin/python -m pip install -q -e .`. A failure is one warning line and the worktree is still created. Use it when the package is installed editable in the main worktree's venv: that interpreter can import the main worktree's code instead of the item's. |
 | `owner.name` | `""` | Name used by outward text checks. |
@@ -122,6 +123,7 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | `host.free_memory_mb` | `1024` | Nonnegative free memory floor in MiB. |
 | `host.seats` | `0` | Total seat ceiling, builders and gates. `0` derives it from free memory and cores like CAP; a positive number is your override. Refusals name `host.seats`; it bounds CAP and each turn of `wuwei dispatch next --all`. |
 | `budget.tokens_per_day` | `0` | Input plus output tokens a day. With a per-seat token cost measured from `seat.usage` rows, CAP is at most the seats the remaining budget fits (at least 1) and says `(budget)`. `0` is no budget. |
+| `pace.default` | `"steady"` | The day's [pace](concepts.md#pace) when the gate records none: `careful`, `steady` or `fast`. The gate card shows it beside the advice and never overrides it; after ten days at two paces the steward proposes a value on a card. |
 | `host.reservation_timeout_seconds` | `14400` | Age at which a reservation is reported stale. |
 | `memory.max_notes` | `60` | Index note limit. |
 | `memory.note_line_cap` | `80` | Maximum lines in a note. |

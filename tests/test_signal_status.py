@@ -382,7 +382,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'docs.exempt': 'silent', 'outbound.proposed': 'silent', 'outbound.learned': 'silent', 'outbound.thread': 'silent',
                 'config.set': 'silent',
                 'grant.asked': 'silent', 'grant.used': 'silent', 'grant.revoked': 'silent',
-                'decision.reversed': 'nudge', 'decision.notified': 'silent', 'cruise.carded': 'silent', 'decision.shadow': 'silent',
+                'decision.reversed': 'nudge', 'decision.notified': 'silent', 'cruise.carded': 'silent', 'pace.set': 'silent', 'pace.carded': 'silent', 'decision.shadow': 'silent',
                 'undo.rehearsed': 'silent', 'undo.done': 'silent',
                 'cruise.burn': 'nudge',
                 **{f'telemetry.{name}': 'nudge' if name == 'ready' else 'silent' for name in TELEMETRY}}

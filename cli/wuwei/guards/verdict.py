@@ -113,7 +113,7 @@ def _light(payload, root):
         row = data['items'][seat['item']]
         if seat['role'] == 'builder' and not (row.get('gates') or {}).get('tier'):
             # The brief's prediction saw an empty diff; judge the diff the builder leaves.
-            return dispatch.tier(root, workspace.load_config(root), {'flags': {}, **row})['tier'] == 'light'
+            return dispatch.depth({'gates': dispatch.tier(root, workspace.load_config(root), {'flags': {}, **row})}) == 'light'
         return dispatch.depth(row, gate=seat['role'].startswith('sentinel-')) == 'light'
     except (OSError, ValueError, KeyError, TypeError, RuntimeError):
         return False

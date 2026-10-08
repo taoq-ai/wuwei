@@ -523,8 +523,81 @@ def i14(case, rules):
     return rules.memo(('raise card',), compute)
 
 
+@functools.cache
+def pace_rule():
+    """#579: no pace lowers a floor: a tier never drops, depth is light only for a light tier or
+    fast on a measured, unflagged standard item without guard code, and no pace plans more seats
+    than the host fits."""
+    from wuwei import dispatch, pace
+    for case in itertools.product(pace.PACES, dispatch.TIERS, (None, 'x matches guards/*'), (False, True), (False, True)):
+        tier, depth, _ = pace.adjust(*case)
+        if dispatch.TIERS.index(tier) < dispatch.TIERS.index(case[1]):
+            return f'pace {case[0]} lowers {case[1]} to {tier}'
+        if depth == 'light' and tier != 'light' and case != ('fast', 'standard', None, False, True):
+            return f'pace {case[0]} runs {case} at light depth'
+    for value, load in itertools.product(pace.PACES, (None, 1.0, 34.0)):
+        cap = pace.seats(value, {'cap': 4, 'seats': 4, 'bound': 'host', 'cores': 10, 'load': load})[0]
+        if cap > 4:
+            return f'pace {value} plans {cap} seats on a host that fits 4'
+    return None
+
+
+def i15(case, rules):
+    return pace_rule()
+
+
+def i16(case, rules):
+    """#579: no pace changes who decides: the cruise levels and the decision route are the same
+    at every pace, and only the planner sets the pace below strict, never a seat."""
+    def routes():
+        from wuwei import cruise, decision, pace, state, workspace
+        config = workspace.load_config(rules.root)
+        fields = [{'Reversibility': 'two-way', 'Blast radius': 'own branch'},
+                  {'Reversibility': 'one-way', 'Blast radius': 'outside'}]
+        seen = set()
+        for value in pace.PACES:
+            state._write_state(lambda data: data.__setitem__('pace', value), rules.root, reserved=False)
+            run = cruise.running(rules.root)
+            seen.add((tuple(cruise.level(config, name, run) for name in cruise.CLASSES),
+                      tuple(map(decision.route, fields))))
+        state._write_state(lambda data: data.pop('pace'), rules.root, reserved=False)
+        return None if len(seen) == 1 else f'the pace moves a level or a route: {seen}'
+
+    def setter():
+        from wuwei.guards.protect_state import check_bash
+        rules.configure(case[0])
+        call = rules.bash('bin/wuwei plan set pace=fast')
+        return check_bash(call)[0], check_bash({**call, 'agent_id': 'seat-1'})[0]
+    found = rules.memo(('pace routes',), routes)
+    planner, seat = rules.memo(('pace set', case[0]), setter)
+    if (planner == 0) != (case[0] != 'strict') or seat == 0:
+        return found or f'plan set pace=fast passes for the planner {planner == 0}, for a seat {seat == 0}'
+    return found
+
+
+@functools.cache
+def green_rule():
+    """#579: fast merges only at green required checks: the merge policy and the launch guard
+    never read the pace, and a pending required check is never green."""
+    from wuwei import merge
+    for rel in ('merge.py', 'guards/pr.py', 'guards/agent_launch.py'):
+        if re.search(r'\bpace\.|import pace|[\'"]pace[\'"]', (CLI / rel).read_text()):
+            return f'{rel} reads the pace'
+    try:
+        merge.green([{'name': 'ci', 'state': 'in_progress', 'conclusion': None}],
+                    {'required_checks': [{'name': 'ci', 'app_id': None}]})
+    except ValueError:
+        return None
+    return 'a pending required check is green'
+
+
+def i17(case, rules):
+    return green_rule()
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
-              'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14}
+              'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
+              'I15': i15, 'I16': i16, 'I17': i17}
 
 
 def project(case):
@@ -537,7 +610,8 @@ def project(case):
 # projection, and a read of any other position raises (#562).
 OUTWARD = (0, 1, 2, 3, 5, 6)
 READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
-         'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': ()}
+         'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
+         'I15': (), 'I16': (0,), 'I17': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
@@ -600,6 +674,17 @@ BROKEN = {
     'grant for every target': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.grants'), 'active', lambda *args: ('today', 'D-1')),
 }
+
+
+def test_a_pace_that_lowers_a_tier_is_caught(world, monkeypatch):
+    # #579: a pace rule that drops a tier fails I15 on every case.
+    monkeypatch.setattr(import_module('wuwei.pace'), 'adjust', lambda pace, tier, *args: ('light', 'light', []))
+    pace_rule.cache_clear()
+    try:
+        failures = walk(world)
+    finally:
+        pace_rule.cache_clear()
+    assert failures and 'I15 pace' in failures[0]
 
 
 @pytest.mark.parametrize('broken', BROKEN)
