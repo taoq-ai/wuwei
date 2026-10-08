@@ -94,6 +94,11 @@ On a first day some sources are unmeasured until you set them up, for example `m
 The block at the end of every seat brief: what the seat decides alone, what it decides and records, and what goes to you.
 Seats do not ask you what their mandate lets them decide.
 
+### Novel
+
+A repository, channel, person, tool, dependency, environment or workflow the workspace has never touched.
+A decision or send on it asks you once on a card, even when the mandate would take it; your answer clears it.
+
 ### Trust surface
 
 Code where a mistake costs most: auth, credentials, input parsing, permissions, and the areas you add in the interview.
@@ -143,6 +148,11 @@ and the item's decisions, progress, verdicts, pull request and close land on its
 
 One comment that stands for the rest of a ticket's updates once its daily comment cap is reached.
 
+### Adopted
+
+An item made from work begun outside WUWEI: `pr claim` on an open PR with no item creates it,
+and `worktree adopt` registers an existing worktree as its checkout.
+
 ### Lens
 
 A one-line question every option of an engineering decision answers, such as SOLID or YAGNI.
@@ -160,7 +170,7 @@ Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse 
 
 `security.posture` sets what warns and what blocks per area: `observe`, `guarded` (the default) or `strict`, with per-area overrides under `[security.areas]`. A `warn` level still runs the guard, records the refusal as a `guard.would_refuse` event and lets the call through. Every enforced refusal ends with a `posture:` line naming the area, its level and the key that changes it. See [security posture](security.md#security-posture) for the table.
 
-`observe` is the old shadow mode (`guards.mode = "shadow"` still means it). Use it for the first week on a project, to see what the guards would stop in your own habits before they stop anything. Some refusals never relax, in any posture: writes to state, events, config and generated instructions, verdicts and decisions (`records`), and owner-only actions: the deployment ban, the merge policy, approvals and owner markers, and approve-tier messages and canary or honeytoken egress. Relaxing those would corrupt the records the report is built from or let a seat act as you. The heartbeat probe session is never relaxed either.
+`observe` is the old shadow mode (`guards.mode = "shadow"` still means it). Use it for the first week on a project, to see what the guards would stop in your own habits before they stop anything. Records never relax, in any posture: writes to state, events, config and generated instructions, verdicts and decisions (`records`), owner disposition markers, and canary or honeytoken egress. Relaxing those would corrupt the records the report is built from or let a seat act as you. Below `strict` an owner-only action asks you on a card instead: a deploy, release or publish, and a message that waits for your approval. The merge policy and approvals stay yours. The heartbeat probe session is never relaxed either.
 
 `bin/wuwei shadow report` and the day report group the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows the posture when it is not `guarded`, each `observe` session starts with a line saying so, and after `guards.shadow_days` one nudge asks you to switch to `guarded` or extend. Under `guarded` or `strict` a warning is a nudge, one per guard per day.
 
@@ -251,7 +261,9 @@ ticket that never reached done; `bin/wuwei tracker done <item>` moves it.
 
 `bin/wuwei pr raise` links a newly raised PR to its approved item. To take
 ownership of an existing open PR, run
-`bin/wuwei pr claim owner/repo#number --item ITEM`. Both commands record the
+`bin/wuwei pr claim owner/repo#number --item ITEM`. Without `--item` the claim uses the item
+already linked to the PR, else creates an [adopted](#adopted) item `PR-<number>` under
+`--goal` (default: the day's only goal). Both commands record the
 item link and the day's owned PR set.
 The item link lets merge checks and lead-time metrics find the same work.
 `wuwei state set items.ITEM.pr` is reserved for these commands.
@@ -366,16 +378,28 @@ question card shows the titles, the recommended one first, each with its rationa
 consequence and lens lines, and ends the question with the reasoning. `wuwei decision
 template` prints a valid record.
 
-Cruise mode is designed in
-[design spec 5.8.1](https://github.com/taoq-ai/wuwei/blob/main/docs/specs/2026-09-24-wuwei-design.md)
-and not built: decisions would carry a class, and the CLI would answer some classes itself
-at levels L0 to L3. Today every owner decision comes to you.
+Cruise mode ([design spec 5.8.1](https://github.com/taoq-ai/wuwei/blob/main/docs/specs/2026-09-24-wuwei-design.md))
+runs each class at a level from L0 to L3. When `decision route` takes a record under the
+mandate and its class runs at L2 or L3, the record is two-way, inside its own branch, PR or
+the workspace, its margin reaches `decisions.cruise.margin` and the daily budget allows,
+it is a cruise answer: `Decided-by: cruise <class>@L<n>`. At L2 you get a nudge and can undo
+it for `decisions.cruise.undo_minutes`; at L3 it is in the digest. Levels move only through
+the CLI: down one level when the class's error budget is spent, back when its window
+refills, up when you answer a raise card ([cruise answers](daily.md#cruise-answers)).
+
+Error budget. One unlucky reversal no longer drops a class. Each class may spend
+`decisions.cruise.budget_share` (10 percent) of its cruise answers over
+`budget_window_days` (14) on undos, reversals, weekly samples answered differently and
+escaped defects. The budget is spent with more events than that and at least two; the class
+then runs one level lower until the window refills, and gets no raise card meanwhile. A
+fast burn (`burn_warn`, the last 48 hours against the window's pace) sends a nudge naming
+the events first. `bin/wuwei cruise budget` prints the table.
 
 Every seat prompt ends with a mandate block built from those class levels
 (`decisions.cruise.levels`, the 5.8.1 defaults otherwise), the interview's trust-surface
 line and `deploy.deny`: what the seat decides alone, what it decides and records, and what
 comes to you, closing with "Nothing else is a question." The levels only shape this
-text; cruise answering is not built. Assume and record: a two-way
+text and pick which taken records are cruise answers. Assume and record: a two-way
 open question inside the item is not asked; the seat takes its recommendation and records
 it under `Assumptions:` in the spec or PR body, and gates review it as an `Assumption:`
 finding. A seat that stops on a question to you without a valid decision id is
@@ -407,8 +431,8 @@ See [sessions](reference.md#sessions) and [long sessions](daily.md#long-sessions
 `bin/wuwei listen` polls the inbound source, such as a Slack DM, into the workspace inbox.
 The responder wakes the planner and handles commands only from the pinned owner, with a
 second factor where a command needs one. While running it also probes raised and claimed
-PRs with conditional requests, sends each `pr.changed` summary to the DM and, with
-`shepherd.autostart = true`, starts a headless shepherd seat that never merges. See
+PRs with conditional requests, sends each `pr.changed` summary to the DM and,
+unless `shepherd.autostart = false`, starts a headless shepherd seat that never merges. See
 [remote operation](remote.md) and
 [running the listener](configuration.md#running-the-listener).
 

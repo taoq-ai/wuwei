@@ -69,10 +69,11 @@ def run(args):
             source = sys.stdin.read() if str(args.input) == '-' else args.input.read_text(encoding='utf-8')
             print(plan.propose(json.loads(source)))
         elif args.action == 'gate':
-            from wuwei import grants
+            from wuwei import cruise, grants
             root = workspace.find_workspace()
+            config = workspace.load_config(root)
             print(json.dumps([plan.gate_widget(root, import_yesterday=args.import_yesterday),
-                              *grants.gate_widgets(root, workspace.load_config(root))], indent=2))
+                              *grants.gate_widgets(root, config), *cruise.gate_widgets(root, config)], indent=2))
         elif args.action == 'add':
             print(json.dumps(plan.add(args.item, goal=args.goal, size=args.size,
                                       title=args.title, ticket=args.ticket)))

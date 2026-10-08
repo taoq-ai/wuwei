@@ -75,7 +75,7 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
         case ('symbolic-ref', '--quiet', '--short', 'HEAD' | 'refs/remotes/origin/HEAD'):
             allowed = True
         case ('check-ref-format', ref):
-            allowed = isinstance(ref, str) and ref.startswith('refs/heads/')
+            allowed = isinstance(ref, str) and ref.startswith(('refs/heads/', 'refs/tags/'))
         case ('config', '-z', '--get-regexp', pattern):
             remote = re.fullmatch(r'\^\(push\\\.followtags\|remote\\\.(.+)\\\.\(mirror\|push\)\)\$', pattern)
             allowed = bool(remote) and pattern == _push_settings(remote[1].replace('\\.', '.'))
@@ -101,7 +101,7 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
             allowed = True
         case ('rev-parse', '--verify', '--quiet', rev):
             allowed = isinstance(rev, str) and (bool(re.fullmatch(r'[0-9a-fA-F]{7,64}\^\{commit\}', rev))
-                    or rev.startswith('refs/remotes/') and rev.endswith('^{commit}'))
+                    or rev.startswith(('refs/remotes/', 'refs/tags/')) and rev.endswith('^{commit}'))
         case ('merge-base', 'HEAD', rev):
             allowed = bool(_revision(rev))
         case ('status', '--porcelain=v1', '-z', '--untracked-files=all'):
@@ -134,6 +134,11 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
             allowed = format_arg == _RECENT_FORMAT
         case ('cat-file', '--batch'):
             allowed = True
+        case ('worktree', 'list', '--porcelain', '-z'):
+            allowed = True
+        case ('worktree', 'add', '--', path, branch):
+            allowed = (bool(_revision(branch)) and isinstance(path, str) and
+                       bool(path) and '\0' not in path)
         case ('worktree', 'add', '-b', branch, '--', path):
             allowed = (bool(_revision(branch)) and isinstance(path, str) and
                        bool(path) and '\0' not in path)
@@ -361,6 +366,45 @@ def worktree_add(repo, branch, path, root=None):
 
 
 @_operation
+def worktree_checkout(repo, branch, path, root=None):
+    """A worktree on an existing branch (#510); worktree_add creates a new one."""
+    branch = _revision(branch)
+    path = os.fspath(path)
+    if not path:
+        raise ValueError('missing worktree path')
+    _run(repo, 'worktree', 'add', '--', path, branch)
+    return {'branch': branch, 'path': path}
+
+
+@_operation
+def worktrees(repo, root=None):
+    """Every worktree of the repository: path, HEAD and short branch (None when detached)."""
+    rows, row = [], None
+    for field in _records(_run(repo, 'worktree', 'list', '--porcelain', '-z')):
+        key, _, value = field.partition(' ')
+        if not field:
+            if not row or 'head' not in row and not row.get('bare'):
+                raise ValueError('invalid worktree record')
+            rows.append({'path': row['path'], 'head': row.get('head'), 'branch': row.get('branch')})
+            row = None
+        elif key == 'worktree':
+            if row or not value:
+                raise ValueError('invalid worktree record')
+            row = {'path': value}
+        elif row is None:
+            raise ValueError('invalid worktree record')
+        elif key == 'HEAD':
+            row['head'] = _sha(value)
+        elif key == 'branch':
+            row['branch'] = value.removeprefix('refs/heads/')
+        elif key == 'bare':
+            row['bare'] = True
+    if row:
+        raise ValueError('unterminated worktree record')
+    return rows
+
+
+@_operation
 def resolve(repo, sha, root=None):
     if not isinstance(sha, str) or not re.fullmatch('[0-9a-fA-F]{7,64}', sha):
         raise ValueError('invalid commit ID')
@@ -491,16 +535,20 @@ def push_context(repo, remote, refspecs, root=None):
         if ref.startswith('+'):
             force, ref = True, ref[1:]
         source, sep, destination = ref.partition(':')
-        if source not in ('HEAD', branch, 'refs/heads/' + branch):
-            raise ValueError('only current HEAD branch pushes are supported')
-        if not sep:
+        tag = source.startswith('refs/tags/') and not sep  # #530: a tag push is measured, then gated
+        if source not in ('HEAD', branch, 'refs/heads/' + branch) and not tag:
+            raise ValueError('only current HEAD branch pushes or refs/tags/<tag> pushes are supported')
+        if tag:
+            destination = source
+        elif not sep:
             if configured or source == 'HEAD':
                 raise ValueError('use an explicit HEAD:refs/heads/branch refspec')
             destination = 'refs/heads/' + branch
         _used(checked[destination]) if destination in checked else read('check-ref-format', destination)
-        if not destination.startswith('refs/heads/') or destination == 'refs/heads/':
-            raise ValueError('only branch pushes are supported')
-        updates.append({'source': head_data['sha'], 'destination': destination})
+        if not destination.startswith(('refs/heads/', 'refs/tags/')) or destination in ('refs/heads/', 'refs/tags/'):
+            raise ValueError('only branch or tag pushes are supported')
+        sha = read('rev-parse', '--verify', '--quiet', source + '^{commit}').strip() if tag else head_data['sha']
+        updates.append({'source': sha, 'destination': destination})
     return {'head': head_data, 'updates': updates, 'force': force, 'remote': remote}
 
 

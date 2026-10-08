@@ -16,7 +16,7 @@ from wuwei.registry import Result
 # Every fixed line passes the default outward lint: messages to the owner DM are linted,
 # without the third-person owner rules, since they are addressed to the owner.
 VOCABULARY = ('Commands: plan, status, report, ask <question>, stop <session>, stop all. '
-              'Decisions: approve D-n, option X on D-n, more D-n, drop it.')
+              'Decisions: approve D-n, option X on D-n, more D-n, undo D-n, drop it.')
 UNAVAILABLE = 'Not available in this version. ' + VOCABULARY
 FAILED = 'That command could not run; see the listener log on the host.'
 CHANGED = 'Refused: this sender does not match the pinned identity. Confirm it on the host.'
@@ -31,6 +31,7 @@ NOTED = ('Noted {identifier} option {option}. {identifier} cannot be undone, so 
          'the host: decide {identifier} {option}.')
 NOT_PENDING = '{identifier} is not waiting on you.'
 ON_HOST = 'The full record of {identifier} is on the host.'
+UNDONE = 'Undone {identifier}; it waits for your answer.'
 FACTOR = frozenset({'plan', 'ask'})  # commands that need a code or a confirm reply
 WINDOW = 120  # seconds a code or a confirmation counts
 PIN = r'[A-Z0-9]+/[UW][A-Z0-9]+'  # control_plane.owner: <team id>/<user id>
@@ -90,8 +91,8 @@ def parse(text):
         return 'cloud', ''
     if match := re.fullmatch(r'stop ([0-9a-f][0-9a-f-]{7,35})', lower):
         return 'stop', match[1]
-    if match := re.fullmatch(r'more (d-[1-9][0-9]*)', lower):
-        return 'more', match[1].upper()
+    if match := re.fullmatch(r'(more|undo) (d-[1-9][0-9]*)', lower):
+        return match[1], match[2].upper()
     return None
 
 
@@ -301,6 +302,13 @@ def handle(root, event, *, transport=TRANSPORT, runtime=None):
         verb, argument = command
         if verb == 'more':
             return more(root, argument, transport=transport)
+        if verb == 'undo':  # #283: the pinned DM sender confirms an undo, as a two-way answer
+            from wuwei.commands import decision as decision_command
+            code, reason = decision_command.undo(SimpleNamespace(id=argument, answer='Undo'),
+                                                 root=root, where='in the owner DM')
+            if code == 2:
+                raise RuntimeError(reason)
+            return _say(transport, root, UNDONE.format(identifier=argument) if code == 0 else reason, code)
         if verb in ('run', 'cloud'):
             return _say(transport, root, UNAVAILABLE, 1)
         if verb == 'status':

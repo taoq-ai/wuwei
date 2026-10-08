@@ -219,6 +219,14 @@ it. Ownership is enforced by three mechanisms, none of which depends on the mode
   120; head, CI, mergeability, reviews, comments, threads) and, on any change, records a
   `pr.changed` event and wakes the planner session (and, in M5, launches a headless shepherd
   run). Nothing needs to be re-armed by a seat.
+- Overnight, without a session (owner, 2026-10-08, #511). `wuwei sweep obligations --headless`
+  (and `wuwei shepherd`, every 15 minutes, installed with `wuwei shepherd schedule`, from the
+  Shepherd card in a session or, under strict, by the owner in a host terminal) sweeps the
+  owning day: the newest day, today included, whose plan is approved. It does nothing while a
+  planner session is live. It checks an `approved` PR against the 4.6 policy and queues it;
+  until #524 lands the merge waits for the morning `wuwei pr act`. It sends a `review_stale` ping through 4.9, and
+  queues every other state with its evidence as `shepherd.overnight` events, which open the
+  next morning plan. It never replies, fixes, rebases, starts a seat or calls a model.
 - Anchor at every turn. The Stop hook refuses to end a planner turn while any owned PR has an
   action past its deadline and no decision record parking it, naming the PR, its state and the
   action. The day close additionally requires every owned PR merged, parked or explicitly
@@ -457,8 +465,8 @@ Availability (owner, 2026-10-04, #477). The owner's session is never blocked by 
 Seats run in the background; any command that can run longer than a few seconds (fast
 checks, `dispatch opinion`, `steward run`, calibration) runs in the background, and the
 planner acts on its completion notification. The planner's turn ends with the board in one
-line (`wuwei status --line`, which names the running seats and checks with their start
-times), and the owner can speak at any time; the planner answers from the board, never by
+line (`wuwei status --line`, which names the running seats by role; `wuwei status` and
+`wuwei next` give each seat's item and start time), and the owner can speak at any time; the planner answers from the board, never by
 resuming or interrupting a seat. Owner questions are the one thing that waits, because
 they wait for the owner.
 
@@ -739,11 +747,12 @@ Classes are a fixed list; a new class is an amendment to this section, not confi
 
 The L2 defaults are the two-way, inside-the-item decisions seats took on their own before
 cruise mode. `[decisions.cruise]` in `config.toml`: `enabled` (default true), `margin`
-(default 0.2), `max_per_day` (default 20), `undo_minutes` (default 60), and
-`levels.<class>`, which only lowers a class. The config check refuses an unknown class, a
+(default 0.2), `max_per_day` (default 20), `undo_minutes` (default 60), `budget_share`
+(default 0.1, above 0 and at most 0.5), `budget_window_days` (default 14), `burn_warn`
+(default 2.0), and `levels.<class>`, which only lowers a class. The config check refuses an unknown class, a
 level outside 0 to 3, or a level above the class's ceiling. The running level lives in
 `memory/cruise.json`, starts at the default, and is written only by `wuwei promote` (raises
-with ledger evidence and morning-gate approval, lowers at once). A class runs at the lowest
+with ledger evidence and morning-gate approval, lowers when the error budget is spent). A class runs at the lowest
 of the running level, the config level and the ceiling.
 
 Conditions. The CLI answers a record only when all hold: the class runs at L2 or L3;
@@ -773,21 +782,58 @@ appears in the digest; at L2 a nudge also goes out when the soak window opens; a
 every merge goes to the owner.
 
 Promotion and demotion. The steward proposes raising a class one level through propose and
-promote (6.8) after 10 agreements and no reversal in that class over 14 days; an agreement
-is an owner answer equal to the recommendation, or a cruise answer whose undo window closed
-without an undo. `wuwei promote` lands a raise only when the owner approved it at the
-morning gate, and never above the ceiling. The CLI lowers a class one level at once,
-without approval, on a reversal (an undo, or a later owner answer that differs from a
-cruise answer), on an escaped defect (5.6) in a PR whose item carries a cruise answer of
-that class, or on three thin-margin escalations in a row in that class; it lands the change
-through the promote writer and the ledger line records why. Once a week the steward
+promote (6.8) after 10 agreements and no reversal in that class over 14 days, with its error
+budget unspent; an agreement is an owner answer equal to the recommendation, or a cruise
+answer whose undo window closed without an undo. `wuwei promote` lands a raise only when the
+owner approved it at the morning gate, and never above the ceiling. Once a week the steward
 re-asks the owner one cruise-answered record per class from the past seven days, with the
 answer hidden; a different choice counts as a reversal.
+
+Error budget (owner, 2026-10-08, #558). A single event no longer lowers a class: one unlucky
+reversal dropped a class, and a slow drift of bad calls never tripped anything. Each class
+has a budget per `budget_window_days` window. Its events are reversals (an undo, a later
+owner answer that differs from a cruise answer, a weekly sample answered differently) and
+escaped defects (5.6) attributed to a cruise answer of the class; the allowance is
+`budget_share` times the cruise answers of the class in the window. The budget is spent
+when the events exceed the allowance and number at least two. The burn rate is the events
+of the last 48 hours against the window's allowance, scaled to the window
+(`events x window_days / (2 x allowance)`); at `burn_warn` or above the steward writes one
+`cruise.burn` nudge a day naming the events, whose action is `wuwei cruise budget`. The
+steward review (every `steward run` and `dispatch next`) evaluates the budgets. A spent
+class runs one level lower, never below L0, through the promote writer, with a ledger line
+that starts `budget spent: <class>` and names every event; `cruise.json` holds the level it
+took away. When the window refills (the class is no longer spent) the CLI restores the held
+level through the same writer with a `budget refilled` ledger line. That restore is the one
+level raise without a morning-gate card, and it goes only back to the held level, never
+above it or the ceiling; any other level write, such as an approved raise, clears the hold.
+Thin-margin escalations still go to the owner and are flagged on the route, but no longer
+lower a class. A class with a spent budget, or with a budget event since its last level
+change, gets no raise card. `wuwei cruise budget` prints class, level, answered, spent,
+allowance, burn and state, and exits 1 when any class is not ok.
 
 Kill switch. `decisions.cruise.enabled = false` runs every class at L0 without changing any
 running or configured level, so turning it back on restores them. The status line (5.9) then
 shows `cruise off | L<max>`, the highest level a class would run at, and `cruise L<max>`
-while it is on.
+while it is on, followed by `· budget <classes> spent` while an error budget holds a class
+lower.
+
+Novelty (owner, 2026-10-08, #556). Blast radius is only known for targets the workspace
+has touched. A decision or guarded action whose target is novel runs one level lower than
+its class level, never below L0 and never above the ceiling. A target is a repository
+(`repo:<org>/<name>`), channel (`channel:<id>`), person (`person:<ns>:<id>`), connector
+tool (`tool:<server>/<name>`), dependency (`dependency:<ecosystem>/<name>`), environment
+(`env:<name>`) or workflow (`workflow:<name>`). Under `autonomy.mode = "autonomous"` with no
+cruise levels, one level lower means a card: `decision route` sends a record naming a novel
+target to the owner (Routine included), an outward chat send to a novel channel holds as a
+draft, and a standing grant pattern does not apply to a novel repository. Under supervised
+routing does not change. A target is seen when config names it, or after the owner answered
+one card for it (a Keep owner-only grant answer leaves it novel; for a draft only an
+approval counts), or after an action on it was taken under mandate and not reversed within
+the undo window, whichever comes first; the mandate form arrives with the cruise levels.
+`init --upgrade` seeds the seen set from the CLI-written events and sent chat drafts of the
+last 30 days, so an upgraded workspace is not asked about what it already uses. The CLI
+keeps the first-seen date and the clearing in `memory/targets.json`, which no seat can
+write (the records floor). A novel target never creates a grant on its own.
 
 #### 5.8.2 External waits and negotiation loops (owner, 2026-10-01, #301)
 
@@ -833,9 +879,15 @@ classifier cannot read is a `nudge`, never `silent`.
 
 Surfaces, all reading the same classification:
 
-- Status line. `wuwei status --line` for the Claude Code status line: one line with pages,
-  nudges, items per phase against CAP, the next person reply due, the next meeting, the
-  cruise level (5.8.1) and the day's negotiation loops (5.8.2). It shares the hook latency
+- Status line. `wuwei status --line` for the Claude Code status line (#521): one line of at
+  most 100 columns (`--width <n>`), read left to right by importance. First the one thing to
+  do now when there is one (`restart Claude Code: hooks <old> still running`, `no plan yet`,
+  `gate waiting`, `decision D-n waiting`), then items per phase against CAP and the running
+  seats by role (`seats 4/1 (lead, arch, +2 more)`, cut at whole names), then pages, nudges
+  and the posture when it is not guarded. `wuwei status` prints the same groups one per line
+  with the detail: each running seat with role, item and start time, watch, listen,
+  sessions, the next person reply due, the next meeting, the day's negotiation loops (5.8.2)
+  and the plugin and template versions. It shares the hook latency
   budget (10.6) and shows `WUWEI ? unmeasured` rather than a false green when it cannot read state.
 - Cockpit. The dashboard (#28) grows into the three lanes plus the briefing pack, served on
   127.0.0.1 and opened in the desktop app's browser pane or any browser. Approving a
@@ -1724,6 +1776,11 @@ configurable by where the plugin runs: `security.posture` is `observe`, `guarded
 or `strict`, and `[security.areas]` overrides one area with `off`, `warn` or `block`.
 `guards.mode = "shadow"` (#308) is deprecated and means `observe`.
 
+Autonomy (owner, 2026-10-05, #530): under `observe` and `guarded` a guard is a warning or a
+card, never a wall, with one floor: records are written by the workflow and answered by the
+owner. A refusal that names the plain form the seat runs itself is coaching, not a wall.
+Under `strict`, refusals stay.
+
 | Area | What it covers | observe | guarded (default) | strict |
 | --- | --- | --- | --- | --- |
 | `records` | State, events, config, generated instructions, verdicts, decisions, traces, session records (`protect_state`, `decision`, `verdict`, `traces`, `lifecycle`) | block | block | block |
@@ -1733,13 +1790,39 @@ or `strict`, and `[security.areas]` overrides one area with `off`, `warn` or `bl
 | `outward` | The outward text lint (`outward`) and the question citation check (`decision.check_question`) | warn | warn | block |
 | `seats` | The seat launch contract: logged brief, capacity, memory, clean worktree (`agent_launch`) | warn | warn | block |
 
+Below strict a `block` is a card (deploy, release, publish, evidence; merge with #524) or a
+fix the seat runs; only `records` is a wall.
+
 Floors no posture and no override lowers:
 
-- `records` always blocks. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
-- Owner-only actions always block: the deployment ban (`deploy`), the merge policy, approvals and owner markers (`pr`), and approve-tier messages and canary or honeytoken egress (the outward approval tier). Under `observe`, `publish` relaxes only the commit and push rules and the PR anchor. Amended (owner, 2026-10-04, #478): a deploy refusal asks the owner on a card, and only the owner's recorded answer (once, today, always) lets the same action through. Amended (owner, 2026-10-05, #530): raising a PR and pushing a feature branch are not owner-only; they follow `publish`, and missing evidence asks on a card (once, today) under guarded.
+- `records` always blocks, with canary and honeytoken egress and owner disposition markers, whose refusal reads `posture: records = block (floor; no setting lowers it)`. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
+- Owner-only actions (`deploy`, `pr`, and approve-tier messages through `outward`) block, and below strict they ask on a card: a deploy, release or publish asks the owner, and only the owner's recorded answer (once, today, always) lets the same action through (#478); a held message is a draft card (#526). Below strict such a refusal carries no `owner-only action` line; under strict it keeps it. The merge policy, admin merge, approvals, branch protection and the shepherd's no-merge stay owner-only until #524. Raising a PR and pushing a feature branch are not owner-only: they follow `publish`, and missing evidence asks on a card (once, today) under guarded (#530).
 - MCP: under `guarded` and `strict` a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. A finding blocks only at a severity in `scanner.mcp.block`, which is unset by default: no severity under `guarded`; `critical`, `high` and `unmeasured` under `strict`. Under `observe`, and with `mcp = "off"`, the list has no effect and `config check` says so.
 
 The posture changes what the cooperative guards refuse, never the hard boundaries above.
+
+### 9.2 Safety invariants (owner, 2026-10-05, #530)
+
+The hooks are the runtime monitor; this table is the property list they are checked
+against. `tests/test_invariants.py` checks every row on every case of posture x audience x
+topic x kind x grant state x umbrella x connector mode, and walks every guard reason under
+`observe` and `guarded`.
+
+| Id | Invariant | Checked by | Notes |
+| --- | --- | --- | --- |
+| I1 | Under observe and guarded no path reaches a wall except the records floor | the reason corpus levelled by `hook.posture`; per case, `classify` and the deploy guard | Owned: the merge family (#524); config and integrity re-confirmation through the card record (#529). Exempt: the heartbeat probe, `permissions.deny` (deferred), the owner's own Keep answer, owner-written block rows, day state recovery, unknown git (the hook levels it to a warning below strict); a broken config is records |
+| I2 | Every held message has a card path that leads to a send | per case, a held `classify` result; per posture, hold, the Draft card answered Send now, approve, the same call sends | Under strict the owner approves at the host |
+| I3 | A merge happens only at the head the gates checked with green required checks | per posture, the `pr` guard on `gh pr merge` and `--admin` | #524; asserted today as gh pr merge refused in every posture, so `wuwei merge` is the only path |
+| I4 | A message to the owner's own DM always sends | per case, chat to the owner DM | |
+| I5 | No seat, default or hook creates a grant | per case, grant rows and `grants.standing` before and after the deploy guard and the record gate; the shipped config | A once grant is spent, never created |
+| I6 | A seat never posts an owner disposition marker | per posture, an MCP payload and `gh pr comment` carrying `WUWEI parked ` | Records floor |
+| I7 | Docs and tracker writes follow `docs.auto` and `tracker.auto` | per case, WUWEI's own adapter write; a connector write under the send umbrella | #535 |
+| I8 | A record command runs from the planner only after a card answer outside strict | per case, `bin/wuwei decide D-1 once` through `protect_state` from the planner and a seat | #529 extends it to `config set` |
+| I9 | A branch push and a PR raise with recorded evidence succeed from the planner and the builder below strict, and a tag push with a release grant or an Allow once release card passes | per posture, through the hook | #547; below strict the deploy guard's release card and grants gate a tag and `push_check` passes it; under strict `push_check` refuses it |
+| I10 | Under observe and guarded no opaque read-only command is refused | per posture, a script read, a `$(...)` read and a `python3 -c` print through the hook | #547 |
+| I11 | A class runs lower only when its error budget is spent (more events than the allowance and at least two), never on a single event and never through a refusal | `budget_classes.measure` on 3 of 20, 2 of 20 within 48 hours, none, and 1 of 5; no single-trigger lowering left in `cruise` | #558; the lowered class routes its records to a card and is restored when the window refills |
+
+A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 
 ## 10. Testing
 

@@ -9,7 +9,9 @@ from wuwei.commands.status import attention
 # source: (text, command); {reason} is the row reason, {id} its first word.
 ACTIONS = {
     'decision.pending': ('{reason}', 'wuwei decision show {id}'),
-    'decision.answered': ('{reason}', None),  # the reason names wuwei decide D-n <option>
+    'decision.answered': ('{reason}', None),
+    'decision.cruise': ('{reason}', 'wuwei decision show {id} --widget'),  # #283: Keep or Undo  # the reason names wuwei decide D-n <option>
+    'cruise.burn': ('{reason}', 'wuwei cruise budget'),  # #558: the error budget table
     'item.escalated': ('{reason} is escalated and waits for you', 'wuwei why {reason}'),
     'mcp.checked': ('The last MCP registry check did not pass or could not run', 'wuwei mcp check'),
     'draft.created': ('An outward draft waits for owner approval', 'bin/wuwei drafts'),

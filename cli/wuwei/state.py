@@ -24,7 +24,7 @@ def lock_ex(lock, name, timeout=30):
 
 
 PHASES = {
-    'planned': ('spec', 'implement', 'parked', 'escalated'),
+    'planned': ('spec', 'implement', 'raised', 'parked', 'escalated'),
     'spec': ('implement', 'parked', 'escalated'),
     'implement': ('gate', 'parked', 'escalated'),
     'gate': ('raised', 'fix', 'parked', 'escalated'),
@@ -274,6 +274,7 @@ STATE_PRODUCERS = {
     'outbound_learn': 'wuwei outbound learn or wuwei decide',
     'outbound_threads': 'wuwei outbound learn',
     'grants': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise, wuwei plan propose or wuwei decide',
+    'cruise_cards': 'wuwei plan propose',
 }
 
 
@@ -331,7 +332,9 @@ def _producer_error(parts):
         producer = {'phase': 'wuwei state transition',
                     'resume_phase': 'wuwei state transition',
                     'flags': 'wuwei plan approve', 'track': 'wuwei brief',
-                    'worktree': 'wuwei brief',
+                    'worktree': 'wuwei brief, wuwei worktree adopt or wuwei worktree add --branch',
+                    'source': 'wuwei plan add or wuwei pr claim',
+                    'title': 'wuwei plan add or wuwei pr claim',
                     'pr': 'wuwei pr raise or wuwei pr claim',
                     'goal': 'wuwei plan approve', 'tier': 'wuwei plan approve',
                     'gates': 'wuwei dispatch next', 'spec': 'wuwei plan set',
@@ -424,6 +427,8 @@ def record_pr(root, item, ref, *, raised, head=None, reviewers=None):
             data.setdefault('pr_reviewers', {})[ref] = reviewers
         if raised and data['items'][item]['phase'] in ('gate', 'delta'):
             _move(data, item, 'raised')
+        if not raised and data['items'][item]['phase'] == 'planned':
+            _move(data, item, 'raised')  # #510: a claimed PR is never built afresh.
     payload = {'pr': ref, 'item': item}
     if head is not None:
         payload['head'] = head
@@ -432,6 +437,27 @@ def record_pr(root, item, ref, *, raised, head=None, reviewers=None):
     if raised:
         return _write_state(update, root, reserved=False, kind='pr.raised', payload=payload)
     return _write_state(update, root, reserved=False, kind='pr.claimed', payload=payload)
+
+
+def record_worktree(root, item, path, head, *, check=False):
+    """Record an adopted or checked-out worktree as the item's (#510); check=True only
+    reads the preconditions, before any side effect."""
+    path = str(path)
+    def update(data):
+        if item not in data['items'] or item not in data['approved_items']:
+            raise StateError('worktree item must be in the approved plan; admit the item with bin/wuwei plan add <item> first')
+        recorded = data['items'][item].get('worktree')
+        if recorded and Path(recorded).resolve() != Path(path).resolve():
+            raise StateError(f'item already records another worktree ({recorded}); run bin/wuwei why {item}')
+        other = next((name for name, row in data['items'].items() if name != item and row.get('worktree')
+                      and Path(row['worktree']).resolve() == Path(path).resolve()), None)
+        if other:
+            raise StateError(f'item {other} already records worktree {path}; run bin/wuwei why {other}')
+        data['items'][item]['worktree'] = path
+    if check:
+        return update(read_state(root))
+    return _write_state(update, root, reserved=False, kind='worktree.adopted',
+                        payload={'item': item, 'worktree': path, 'head': head})
 
 
 def _move(data, item, phase):

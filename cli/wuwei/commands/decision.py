@@ -4,10 +4,10 @@ import hashlib
 import json
 import sys
 
-from wuwei import state, workspace
+from wuwei import novelty, state, workspace
 from wuwei.decision import (LENSES, RECORD, ROUTINE, cisr, decided_record, evaluate, lens_table, lint_file, margin,
                             option_id, options, owner_confirm, owner_record, present, record_rejection,
-                            record_widget, route, route_owner, seat_outcome, today_path)
+                            record_widget, route, route_owner, seat_outcome, today_path, widget)
 from wuwei.exits import RACE, SYMLINK
 
 
@@ -37,6 +37,10 @@ def register(subparsers):
     form.add_argument('--widget', action='store_true',
                       help='Print the decision as an AskUserQuestion widget with its recording command')
     show.set_defaults(func=run)
+    undo = commands.add_parser('undo', help='Undo a cruise answer inside its window and ask the owner')
+    undo.add_argument('id')
+    undo.add_argument('--answer', help='the owner answer on the undo card: Keep or Undo')
+    undo.set_defaults(func=run)
 
 
 def decide(args):
@@ -57,13 +61,16 @@ def decide(args):
         except ValueError as exc:
             return 1, f'decision: {exc}'
         return 0, 'owner'
-    if workspace.load_config(root)['autonomy']['mode'] == 'autonomous':
-        decided = mandate(args.id, path, text, fields, scores, root)
+    config = workspace.load_config(root)
+    if config['autonomy']['mode'] == 'autonomous':
+        decided = mandate(args.id, path, text, fields, scores, root, config)
         if decided:
             return 0, decided
     target = route(fields)
     if target == 'owner':
-        route_owner(args.id, fields, root)
+        from wuwei import cruise
+        thin = cruise.thin(root, fields, scores, config)
+        route_owner(args.id, fields, root, thin=thin)
         return 0, target
     try:
         record = seat_outcome(fields, scores)
@@ -78,31 +85,39 @@ def decide(args):
     return 0, target
 
 
-def mandate(ident, path, text, fields, scores, root):
+def mandate(ident, path, text, fields, scores, root, config):
     """#530 under autonomous: who already holds ident, or 'mandate' after taking a Routine,
-    Consequential or scoring Exploratory record as recommended; None for the legacy route."""
+    Consequential or scoring Exploratory record as recommended; None for the legacy route.
+    #283: a taken record whose class cruises is written with its rule and undo window."""
     data = state.read_state(root)
     if ident in data.get('decision_routes', {}):
         return 'owner'
     if ident in data.get('decision_outcomes', {}):
         return data['decision_outcomes'][ident].get('decided_by')
+    novel = novelty.novel(root, workspace.load_config(root), novelty.record_keys(fields))
+    if novel:  # #556: a target the workspace never touched asks once (design 5.8.1)
+        route_owner(ident, fields, root)
+        return 'owner\n' + novelty.line(novel)
     door = fields['Reversibility']
     if fields['Decided-by'] == 'owner' or door == 'one-way' or (door != 'two-way' and fields.get('Class') not in ROUTINE):
         return None  # one-way doors and records written for the owner still ask (review F1)
     kind = cisr(fields, scores)
     if kind == 'Strategic' or (kind == 'Exploratory' and margin(fields, scores) <= 0):
         return None
-    record = seat_outcome(fields, scores, by='mandate')
+    from wuwei import cruise
+    found = cruise.rule(root, ident, fields, scores, config, data) or {}
+    record = {**seat_outcome(fields, scores, by='mandate'), **found}
 
     def update(current):
         if ident in current.get('decision_routes', {}) or ident in current.get('decision_outcomes', {}):
             raise ValueError(f'decision changed during routing; {RACE}')
         current.setdefault('decision_outcomes', {})[ident] = record
 
+    by = found.get('rule', 'mandate')
     state._write_state(update, root, reserved=False, kind='decision.decided',
-                       payload={'id': ident, **record})
+                       payload={'id': ident, **record, 'decided_by': by})
     kept = fields['Outcome'].startswith(('carried ', 'parked '))  # an item disposition stays (review F2)
-    workspace.atomic_write(path, decided_record(text, fields['Outcome'] if kept else record['option'], 'mandate'))
+    workspace.atomic_write(path, decided_record(text, fields['Outcome'] if kept else record['option'], by))
     return 'mandate'
 
 
@@ -122,11 +137,25 @@ def show(args):
         return 1, f'decision show: {exc}'
     level = 'full' if args.full else workspace.verbosity(config, 'decisions')
     if args.widget:  # --widget and --full exclude each other
-        if state.read_state(root).get('decision_outcomes', {}).get(args.id, {}).get('decided_by') == 'mandate':
+        row = state.read_state(root).get('decision_outcomes', {}).get(args.id, {})
+        if row.get('decided_by') == 'mandate':
+            from wuwei import cruise
+            until = cruise.window(row)
+            if until:  # #283: an open undo window asks Keep or Undo
+                title = next(r[1] for r in options(fields) if r[0] == row['option'])
+                return 0, json.dumps([widget(
+                    f'{args.id}: Taken as {title} by {row["rule"]}. Undo it before {cruise.clock(until)}?',
+                    args.id, [('Keep (Recommended)', 'Leave the answer as taken.'),
+                              ('Undo', 'Revert the answer and ask you instead.')],
+                    f'wuwei decision undo {args.id} --answer "<label>"')], indent=2)
             return 0, '[]'  # #530: taken under the mandate, nothing to ask.
         from wuwei.commands.setup import assignment  # #529: a config card records through config set
         record = CONFIG_RECORD if any(assignment(row[1]) for row in options(fields)) else RECORD
-        return 0, json.dumps([record_widget(args.id, fields, record, level=level)], indent=2)
+        card = record_widget(args.id, fields, record, level=level)
+        novel = novelty.routed(state.read_state(root), args.id)
+        if novel:
+            card['question'] += f' First time for {", ".join(novel)}: your answer clears it.'
+        return 0, json.dumps([card], indent=2)
     if level == 'full':
         return 0, text.rstrip()
     return 0, present(args.id, fields, level) + f'\nFull record: wuwei decision show {args.id} --full'
@@ -183,7 +212,9 @@ def owner_outcome(args, note=None, *, root=None, where=None):
                 current[key][args.id]['answered'] = args.option
         current.setdefault('decision_outcomes', {})[args.id] = {
             'option': args.option, 'outcome': args.option, 'decided_by': 'owner',
-            'reversibility': fields['Reversibility'], 'cisr': cisr(fields, scores)}
+            'reversibility': fields['Reversibility'], 'cisr': cisr(fields, scores),
+            'class': fields.get('Class'), 'recommendation': fields['Recommendation'],
+            'at': workspace.now().isoformat()}
         for name, item in current['items'].items():
             linked = item.get('decision') == args.id
             if not linked and item['phase'] == 'parked':
@@ -196,9 +227,70 @@ def owner_outcome(args, note=None, *, root=None, where=None):
     state._write_state(update, root, reserved=False,
                        kind='decision.reversed' if reversed_choice else 'decision.decided',
                        payload={'id': args.id, 'option': args.option, 'decided_by': 'owner',
-                                'reversibility': fields['Reversibility']})
+                                'reversibility': fields['Reversibility'], 'class': fields.get('Class')})
     workspace.atomic_write(path, owner_record(text, args.option, where, note))
+    from wuwei import cruise
+    cruise.answered(root, args.id, args.option)
+    if not (grant is not None and args.option == 'keep'):  # #556: Keep owner-only leaves it novel
+        try:
+            for key in novelty.routed(data, args.id):
+                novelty.clear(root, key, args.id)
+        except (OSError, ValueError) as exc:
+            return 2, f'decision: {args.id} recorded; the seen set was not updated ({exc}); run bin/wuwei doctor'
     return 0, args.option
+
+
+def undo(args, *, root=None, where=None):
+    """#283: revert a cruise answer inside its undo window, after the owner's Undo, and ask
+    the owner; where is given only by the DM listener."""
+    from wuwei import cruise, sessions
+    root = workspace.find_workspace(root)
+    path = today_path(args.id, root)
+    if path.is_symlink() or path.parent.is_symlink():
+        return 2, f'decision undo: record must be a regular file; {SYMLINK}'
+    try:
+        text = path.read_text(encoding='utf-8')
+        fields, _ = evaluate(text)
+    except (OSError, UnicodeError) as exc:
+        return 2, f'decision undo: could not read {args.id}: {type(exc).__name__}; run bin/wuwei doctor'
+    except ValueError as exc:
+        return 1, f'decision undo: {exc}'
+    row = state.read_state(root).get('decision_outcomes', {}).get(args.id)
+    if not isinstance(row, dict) or row.get('decided_by') != 'mandate' or not row.get('undo_until'):
+        return 1, f'{args.id} has no undo window; reverse it with wuwei decide {args.id} <option>'
+    if not cruise.window(row):
+        return 1, (f'undo window closed at {cruise.clock(row["undo_until"])}; '
+                   f'reverse it with wuwei decide {args.id} <option>')
+    answer = (args.answer or 'Undo').strip().removesuffix(' (Recommended)').strip().casefold()
+    if answer == 'keep':
+        return 0, 'kept'
+    if answer != 'undo':
+        return 1, f'decision undo: answer Keep or Undo; rerun wuwei decision undo {args.id} --answer Undo'
+    digest = hashlib.sha256((args.id + '\nundo\n' + text).encode()).hexdigest()
+    where = where or owner_confirm(root, sessions.card_topic(args.id, 'Undo'), digest,
+                                   f'{args.id}: {fields["Question"]}\nUndo {row["rule"]}.')
+    if not where:
+        return 1, f'decision undo: owner confirmation declined; rerun wuwei decision undo {args.id} in a host terminal and answer y'
+    if path.read_text(encoding='utf-8') != text:
+        return 2, f'decision undo: record changed during confirmation; {RACE}'
+    now = workspace.now().isoformat()
+
+    def update(current):
+        if current.get('decision_outcomes', {}).get(args.id) != row:
+            raise ValueError(f'decision changed during confirmation; {RACE}')
+        del current['decision_outcomes'][args.id]
+        current.setdefault('decision_routes', {})[args.id] = {
+            'reversibility': fields['Reversibility'], 'recommendation': fields['Recommendation'],
+            'cisr': row['cisr'], 'class': row['class'], 'thin': False, 'at': now, 'undone': True}
+
+    state._write_state(update, root, reserved=False, kind='decision.reversed',
+                       payload={'id': args.id, 'option': row['option'], 'decided_by': 'owner', 'undo': True,
+                                'rule': row['rule'], 'class': row['class'],
+                                'reversibility': fields['Reversibility']})
+    stamp = workspace.now().isoformat(timespec='seconds')
+    workspace.atomic_write(path, decided_record(text, 'pending', 'owner').rstrip('\n')
+                           + f'\nNotes: Undone at {stamp} {where}.\n')
+    return 0, f'owner: ask with wuwei decision show {args.id} --widget'
 
 
 def template():
@@ -213,7 +305,7 @@ def template():
                   f'Lenses:\n| Lens | A | B |\n| --- | --- | --- |\n{rows}') if lenses else ''
     return f'''Question: Which option should we take?
 Class: design
-Context: Replace with the evidence file and reason for deciding.
+Context: Replace with the evidence file and reason for deciding; name a repository, channel, person, dependency, environment or workflow outside this item's repository as repo:<org>/<name>, channel:<id>, person:<ns>:<id>, dependency:<ecosystem>/<name>, env:<name> or workflow:<name>.
 Options:
 | Option | Title | Rationale | Consequence |
 | --- | --- | --- | --- |
@@ -244,6 +336,7 @@ def run(args):
         return 0
     code, message = (lint_file(args.file) if args.action == 'lint' else
                      owner_outcome(args) if args.action == 'outcome' else
-                     show(args) if args.action == 'show' else decide(args))
+                     show(args) if args.action == 'show' else
+                     undo(args) if args.action == 'undo' else decide(args))
     print(message, file=sys.stderr if code else sys.stdout)
     return code

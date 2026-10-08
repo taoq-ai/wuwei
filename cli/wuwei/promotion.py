@@ -42,6 +42,33 @@ def owner_edit(root, name, text):
     return True
 
 
+def cruise_level(root, name, level, reason, evidence, hold=None):
+    """#283: the one writer of the running cruise levels, with a ledger line as evidence. #558: a
+    budget lowering passes hold, the level it took away; any other write clears the hold."""
+    from wuwei.decision import CLASSES, CRUISE, running
+    if name not in CLASSES or type(level) is not int or not 0 <= level <= CLASSES[name][1]:
+        raise ValueError(f'cruise level: {name} at L{level} is outside its class range; pass a known class and a level from 0 to its ceiling')
+    root = Path(root)
+    data = running(root)
+    previous = data['levels'].get(name, CLASSES[name][0])
+    data['levels'][name] = level
+    data['changed'][name] = workspace.now().isoformat()
+    budget = data.pop('budget', {})
+    budget.pop(name, None)
+    if hold is not None:
+        budget[name] = hold
+    if budget:
+        data['budget'] = budget
+    path = safe_path(root, CRUISE, label='cruise levels')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    workspace.atomic_write(path, json.dumps(data, indent=2, sort_keys=True) + '\n')
+    # ponytail: not committed to workspace history here; the next promote commit carries the ledger.
+    state.append_jsonl(safe_path(root, '.wuwei/memory/ledger.jsonl', label='ledger'), {
+        'date': workspace.now().date().isoformat(), 'run_id': uuid4().hex, 'target': CRUISE,
+        'action': 'raise' if level > previous else 'lower', 'status': 'landed',
+        'reason': reason, 'evidence': evidence})
+
+
 def safe_path(root, raw, *, label):
     """Resolve a workspace-relative path without following symlinked components."""
     if not isinstance(raw, str) or not raw or Path(raw).is_absolute():

@@ -43,6 +43,8 @@ AREAS = {'agent_launch': 'seats', 'agent_launch.check_mcp': None, 'commit_push':
          'verdict': 'records'}
 # Owner-only actions block in every posture (#331 floor): the deployment ban (4.7), the merge
 # policy, approvals and owner markers (4.6), and approve-tier messages and canary egress (4.9).
+# #530: below strict hook.posture drops their owner-only line (the reason names its card or
+# fix), except MERGE; RECORDS_FLOOR reasons read as the records floor in every posture.
 OWNER_ONLY = frozenset({'deploy', 'pr', 'outward.check_tier'})
 # The missing-reviewer refusal names its ways out, so the hook adds no posture line to it.
 REVIEWER_WAYS_OUT = ("bin/wuwei config set shepherd.min_reviewers 0, or "
@@ -54,6 +56,11 @@ NO_REVIEWER = ('PR create requires a named --reviewer in the same command; or '
 
 # #530: the prefix of every PR create refusal; the hook levels it as publish, not owner-only.
 RAISE = 'pr raise: '
+# #530: owner-only until #524 makes merging grantable; listed in design 9.2.
+MERGE = ('merge policy', 'admin merge', 'PR approval', 'branch protection',
+         'a shepherd seat never merges')
+# #530: canary and honeytoken egress and owner disposition markers are the records floor.
+RECORDS_FLOOR = ('outward: security.', 'owner disposition markers must be posted by the owner')
 
 
 def level(check, levels):

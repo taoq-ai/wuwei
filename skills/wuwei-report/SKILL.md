@@ -5,13 +5,16 @@ description: Complete the steward retro and present the daily owner report.
 
 # /wuwei report
 
-Run `wuwei next` first and follow the step it names; run the steps below when it names this skill or the owner asked for it. Run inside a WUWEI workspace. For CLI calls, read `.wuwei/executable` once with the Read tool and use the absolute path it holds as the first word of a plain command, for example `/opt/wuwei/bin/wuwei mcp check` when the file holds `/opt/wuwei/bin/wuwei`; never through a shell variable or a command substitution. Never invoke Python without `-P`.
+Loop on `wuwei next`: run `wuwei next --json`, do the one action it returns, and run it again when the result or a completion notification arrives; it walks the close, the retro, the report and the final close. For CLI calls, read `.wuwei/executable` once with the Read tool and use the absolute path it holds as the first word of a plain command, never through a shell variable or a command substitution; never invoke Python without `-P`.
 
-Owner questions. When the AskUserQuestion tool is available (the desktop app, the terminal and the IDE all have it), ask every owner question with the widget a command prints: `wuwei decision show D-n --widget`, `wuwei mcp check --widget`, `wuwei doctor --fix --widget`, `wuwei close --widget` or `wuwei calibrate --questions`. Ask at most four per call and pass `question`, `header`, `options` and `multiSelect` unchanged. Record the answer with the widget's `record` command, `<label>` replaced by the chosen label (labels joined by commas for a multi-select, or the Other text); `Skip` records nothing. When that command says it runs in a host terminal, show the owner that line. Without AskUserQuestion (a headless run), write the decision record, run `wuwei decision route D-n` so it reaches the DM, and keep working with assume-and-record where the mandate allows. Seats never ask the owner.
+Each action has a `why` and a `then`; do what `then` says. `wuwei guide` holds every command and rule.
 
-1. Run `wuwei close`. For each open item it names, ask the owner with `wuwei close --widget` (carry is recommended) and run the widget's `record` command with the chosen label; `Skip` means keep working on that item. Without AskUserQuestion, run `wuwei plan carry <item>` yourself and say so in the report. Pending owner decisions it names go through `wuwei decision show D-n --widget`. Rerun `wuwei close` until it prints `steward_launch`, and launch that steward with Agent in the background exactly as returned.
-2. Follow `/wuwei retro` through the close check. Do not count a proposal as applied until `wuwei promote` lands it.
-3. Run `wuwei report` and present the local report to the owner. It shows outcome measures beside the owner's baseline, open work, parked work and its decisions, answered decisions and carry. Keep unavailable measures as `unmeasured`.
-4. Run `wuwei close` again until it exits 0. The Stop hook is the final close guard.
+- `run`, `check`: run the `command` as one plain Bash call, through Bash in the background when `then` says so.
+- `launch`: pass `prompt` unchanged to Agent in the background, `agent_type` as `subagent_type`, with a short description.
+- `continue`: the same, with `resume` set to the returned `resume`.
+- `set`, `gates`: do every entry this turn: run each of its `commands` in order, and pass every `launch` and `continue` to Agent in the background in one message so they run concurrently.
+- `card`: each widget command (`wuwei close --widget`, `wuwei decision show D-n --widget` and the rest) prints a list; ask the action's `widget` list with AskUserQuestion, at most four per call, passing `question`, `header`, `options` and `multiSelect` unchanged. Record each answer with its `record` command, `<label>` replaced by the chosen label (labels joined by commas for a multi-select, or the Other text); `Skip` records nothing. A card without a widget is one line to show the owner. Without AskUserQuestion (a headless run), run `wuwei decision route D-n` so it reaches the DM. Seats never ask the owner.
+- `wait`: end the turn with the output of `wuwei status --line`.
+- `done`: the day is closed.
 
-The report is local owner text. With `outbound.owner_channel = "dm"` in `.wuwei/config.toml`, also post it to the owner's own Slack DM (`outbound.owner.slack.dm`, or `outbound.owner.slack.user` when `dm` is empty); a message to the owner goes without a draft. Any other outward post must use the existing outbound tier and stay a draft when that tier requires approval.
+The report is local owner text; present it in one short message. Keep unavailable measures as `unmeasured`.

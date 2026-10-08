@@ -25,7 +25,7 @@ def mandate(root):
     from wuwei.interview import BLOCK
     from wuwei.promotion import safe_path
     config = workspace.load_config(root)
-    levels = {name: decision.level(config, name) for name in decision.CLASSES}
+    levels = {name: decision.level(config, name, decision.running(root)) for name in decision.CLASSES}
     assumed = levels.pop('approach') >= 2
     recorded = [name for name, value in levels.items() if value >= 2]
     owner = ([] if assumed else ['approach']) + [name for name, value in levels.items() if value < 2]

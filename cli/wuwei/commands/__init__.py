@@ -2,7 +2,7 @@
 
 # #348: every registered command path is in exactly one set (tests/test_cli_known_command.py).
 # A positional named `action` is part of the path (mcp check, calibrate export).
-READ_ONLY = frozenset({'board', 'calibrate', 'config check', 'config show', 'doctor', 'drafts show', 'grants', 'guide',
+READ_ONLY = frozenset({'board', 'calibrate', 'config check', 'config show', 'cruise budget', 'doctor', 'drafts show', 'grants', 'guide',
                        'heartbeat', 'outbound explain', 'outbound tiers',
                        'integrity check', 'mcp check', 'memory show', 'memory status', 'plan gate', 'sessions', 'shadow report', 'status',
                        'why'})
@@ -11,7 +11,7 @@ _NEEDS = {'calibrate': '--questions'}
 WRITES = frozenset({
     'agents build', 'agents check', 'brief', 'build', 'calibrate export', 'calibrate import',
     'close', 'config add-repo', 'config promote', 'config set', 'consolidate', 'dashboard',
-    'decide', 'decision lint', 'decision outcome', 'decision route', 'decision show', 'decision template',
+    'decide', 'decision lint', 'decision outcome', 'decision route', 'decision show', 'decision template', 'decision undo',
     'discover', 'dispatch discovery', 'docs page', 'docs publish', 'dispatch next', 'dispatch opinion', 'dispatch receive',
     'drafts approve', 'drafts drop', 'event', 'fast-checks', 'git-hook', 'goals edit', 'grants revoke', 'hook',
     'index', 'init', 'integrity reconfirm', 'listen install', 'listen uninstall', 'mcp decide',
@@ -25,12 +25,12 @@ WRITES = frozenset({
     'pr act', 'pr claim', 'pr disposition', 'pr ping', 'pr ping-check', 'pr raise', 'pr reviewers', 'pr state',
     'promote',
     'rank', 'remote ack', 'reply', 'report', 'retro', 'runtime continue', 'runtime dispatch',
-    'runtime result', 'runtime status', 'seat stop', 'setup', 'signal classify', 'state get',
+    'runtime result', 'runtime status', 'seat stop', 'setup', 'shepherd schedule', 'shepherd unschedule', 'signal classify', 'state get',
     'state recover', 'state set', 'state transition', 'steward ack', 'steward run',
     'sweep obligations', 'sweep watch', 'telemetry off', 'telemetry preview', 'telemetry proposals',
     'telemetry send', 'tracker create', 'tracker done', 'tracker log', 'verdict lint', 'voice edit',
     'voice learn',
-    'watch install', 'watch uninstall', 'worktree add'})
+    'watch install', 'watch uninstall', 'worktree add', 'worktree adopt'})
 
 
 def read_only(args):

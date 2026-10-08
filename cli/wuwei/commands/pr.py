@@ -19,9 +19,10 @@ def register(subparsers):
     raise_cmd.add_argument('--body-file', required=True)
     raise_cmd.add_argument('--item', required=True)
     raise_cmd.set_defaults(func=run_raise)
-    claim = commands.add_parser('claim', help='Claim an existing PR for an item')
+    claim = commands.add_parser('claim', help='Claim an existing PR; with no item, create one (adopted)')
     claim.add_argument('ref')
-    claim.add_argument('--item', required=True)
+    claim.add_argument('--item', help='Default: the item linked to the PR, else PR-<number>')
+    claim.add_argument('--goal', help="Goal of a new item; default: the day's only goal")
     claim.set_defaults(func=run_claim)
     ping = commands.add_parser('ping', help='Request reviewers and post when gates clear')
     ping.add_argument('ref')
@@ -69,7 +70,7 @@ def run_raise(args):
 
 
 def run_claim(args):
-    return shepherd.claim_pr(workspace.find_workspace(), args.ref, args.item)
+    return shepherd.claim_pr(workspace.find_workspace(), args.ref, args.item, args.goal)
 
 
 def run_ping(args):

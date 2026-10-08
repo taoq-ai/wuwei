@@ -14,7 +14,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[grants]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outward.classes]`, `[outbound]`, `[outbound.people]`, `[outbound.channel_classes]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
-| `[autonomy]`, `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]`, `[decisions.lenses]` | [Decisions](#decisions); cruise answering is not built |
+| `[autonomy]`, `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]`, `[decisions.lenses]` | [Decisions](#decisions) |
 | `[calibrate]` | [Calibration](#calibration) |
 | `[spec]` | [Specification mode](#specification-mode) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
@@ -157,17 +157,17 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | `shepherd.author_windows_days` | `[90, 180]` | Authorship lookback windows, then all history. |
 | `shepherd.tie_commits` | `2` | Include a third author within this many commits of second place. |
 | `shepherd.source_exclude` | `specs/*`, lock files and generated files | Changed paths excluded from reviewer selection. |
-| `shepherd.autostart` | `false` | Start one headless shepherd seat per mechanical PR action (conflicted, red CI, review comments, stale review) when the listener sees it. The seat never merges and every post it makes is a draft. |
+| `shepherd.autostart` | `true` | Start one headless shepherd seat per mechanical PR action (conflicted, red CI, review comments, stale review) when the listener sees it. The seat never merges and every post it makes is a draft. |
 | `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity; `mention` is optional (default `""`) and a review ping refuses a reviewer without one. `bin/wuwei setup` maps your repositories' git emails to your code-host login and each bot author seen on the last 50 merged pull requests to its `[bot]` login. An unmapped email is resolved to the code host login for that email and cached for the day; one the code host cannot resolve is skipped with a `reviewer.unresolved` event, never a refusal. |
 | `watch.clock_seconds` | `600` | Interval between watch clock events. |
 | `watch.dead_seconds` | `1200` | Clock age after which the watch is reported dead. |
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
 | `watch.ping_url` | `""` | https check URL of a hosted cron monitor; each healthy watch heartbeat pings it (see the heartbeat reference). Keep it private. |
-| `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `status --line`, its item claims lapse, and a stale planner is nudged. |
+| `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `wuwei status`, its item claims lapse, and a stale planner is nudged. |
 | `sessions.rotate_after` | `{ turns = 0, compactions = 0, clock = "" }` | Scheduled planner rotation, off by default. `turns` (Stop hooks since the session started today), `compactions` (compactions seen) or `clock` (`"HH:MM"` in `owner.timezone`): when one is reached, the Stop hook asks the planner once, at a turn with no running seat and no unanswered owner decision, to end the session and run `wuwei plan session "$WUWEI_SESSION_ID" --take-over` in a fresh one. |
 | `listen.poll_seconds` | `60` | Interval between listener polls of the inbound source. The listener ticks at least every 30 s to probe owned PRs. |
-| `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start and in `status --line`. |
+| `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start and in `wuwei status`. |
 | `responder.enabled` | `true` | Kill switch: when `false` the listener still stores events but does not wake the planner or handle commands. |
 | `steward.every_tool_calls` | `50` | Completed tool calls between steward reviews. |
 | `steward.loop_window_hours` | `4` | Window, in hours, over which a steward review counts an item's exchanges for a negotiation loop. |
@@ -179,11 +179,19 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | --- | --- | --- |
 | `autonomy.mode` | `"autonomous"` | Who takes a decision record (`bin/wuwei decision route D-n`). `autonomous`: a Routine, Consequential or scoring Exploratory record is taken as recommended (`Decided-by: mandate`), listed in the digest and the day report with the reversal command; a tie, a Strategic record, a one-way record or a record written for you (a security finding) still asks you. `supervised`: every decision beyond a two-way one on its own branch or PR asks you. A calibration profile may not switch a supervised workspace to autonomous. Under `autonomous` an `outward.patterns` match in team or company chat is not reported; `supervised` records an `outward.lint` event and a warning. |
 | `decisions.wait_hours` | `24` | Weekday hours in `owner.timezone` an external confirmation (`decision route D-n --external <item>`) waits for your answer before the sweep confirms it on a two-way door or parks the item. |
-| `decisions.cruise.enabled` | `true` | When false, every decision class is listed as going to you in the seat mandate (cruise answering is not built). |
-| `decisions.cruise.levels` | `{}` | Per-class level (0 to 3) that lowers a 5.8.1 class default in the seat mandate; a level above the class ceiling or an unknown class is refused. |
+| `decisions.cruise.enabled` | `true` | Kill switch: when false every class runs at L0, nothing is a cruise answer and the status line says `cruise off \| L<n>`. The running levels are kept. |
+| `decisions.cruise.margin` | `0.2` | Least margin (above 0, at most 1) a record needs to be a cruise answer; a lower one at L2 or L3 is a thin margin. A profile may not lower it. |
+| `decisions.cruise.max_per_day` | `20` | Cruise answers a day; past it a record the mandate takes is a plain `mandate` answer. A profile may not raise it. |
+| `decisions.cruise.undo_minutes` | `60` | Minutes an L2 cruise answer can be undone, from the answer. |
+| `decisions.cruise.promote_agreements` | `10` | Agreeing answers of a class since its last level change that make `plan propose` ask you to raise it. |
+| `decisions.cruise.promote_days` | `14` | Days those agreements are counted over; one raise card per class in that window. |
+| `decisions.cruise.budget_share` | `0.1` | Error budget of a class: the share of its cruise answers in the window that may be undone, reversed, sampled differently or attributed an escaped defect. Above 0, at most 0.5. The budget is spent with more events than that and at least two. |
+| `decisions.cruise.budget_window_days` | `14` | Days the error budget is counted over; a spent class runs one level lower until the window refills. |
+| `decisions.cruise.burn_warn` | `2.0` | Burn rate (events of the last 48 hours against the window's allowance) that writes a nudge naming the events. |
+| `decisions.cruise.levels` | `{}` | Per-class level (0 to 3) that caps the level a class runs at; a level above the class ceiling or an unknown class is refused. |
 | `decisions.lenses` | `{}` | Lenses every engineering decision (`design`, `boundary`, `refactor`, `dependency-bump`) answers per option, as name = one-line question. The defaults are SOLID, twelve-factor, YAGNI and ponytail; a new name adds a lens and `""` drops one, for example `YAGNI = ""`. Names use letters, digits, dash or underscore. |
 
-These keys feed the mandate block in every seat prompt. Cruise mode itself, where the CLI answers some classes at levels L0 to L3, is designed in design spec 5.8.1 and not built: every routed decision still goes to you.
+These keys feed the mandate block in every seat prompt and cruise mode (design spec 5.8.1). The level a class runs at is the lowest of its running level in `.wuwei/memory/cruise.json` (the 5.8.1 default until a level moves), its configured level and its ceiling; `autonomy.mode = "supervised"` runs every class at L0. Only the CLI writes `cruise.json`, with a ledger line: your raise card, or the error budget (undos, reversals, weekly samples answered differently and escaped defects) spent or refilled. See [cruise answers](daily.md#cruise-answers).
 
 ## Telemetry
 
@@ -373,7 +381,7 @@ A profile carries a promoted calibration to another workspace of the same kind. 
 
 `bin/wuwei calibrate import <source>` reads a starter name, an `https` URL (30 seconds, 1 MiB) or a file. It is a proposal like any calibration:
 
-- A profile that sets `repos.merge.auto = true` or `shepherd.autostart = true`, raises a `decisions.cruise` level above the level the class runs at, turns `decisions.cruise.enabled` on (cruise answering is not built; the levels still bound the mandate), lowers `repos.gates.floor`, turns on `gates.second_opinion`, sets any `adapters` key, `calendar.url`, `watch.ping_url` or `codex.command`, or carries a personal key is refused: exit 1, each key named, nothing written.
+- A profile that sets `repos.merge.auto = true` or `shepherd.autostart = true`, raises a `decisions.cruise` level above the level the class runs at, turns `decisions.cruise.enabled` on, lowers `decisions.cruise.margin`, raises `decisions.cruise.max_per_day`, lowers `repos.gates.floor`, turns on `gates.second_opinion`, sets any `adapters` key, `calendar.url`, `watch.ping_url` or `codex.command`, or carries a personal key is refused: exit 1, each key named, nothing written.
 - Instruction-like text in a config value, a charter line or a reason is flagged by line and rule and that key or role block is not proposed; the rest is (exit 1).
 - `--skip <key>` (a dotted config key or `charters.<role>`) leaves a change out; `--repo <name>` limits the `repos` part to one repository.
 
@@ -645,8 +653,8 @@ command is handled; stored commands are handled once it is back on.
 The listener writes a `listen: clock` line every two minutes. Session start reports
 `listen dead` when today's latest clock line is older than `listen.dead_seconds`, or
 when the listener is installed and wrote none today. A listener that is off or alive
-adds nothing to session start. `wuwei status --line` shows `listen dead`,
-`listen unmeasured` or `listen off` (nothing while alive, and nothing without an inbound
+adds nothing to session start. `wuwei status` shows `listen dead`,
+`listen unmeasured` or `listen off` (`listen alive` while alive, and nothing without an inbound
 adapter), and `wuwei nudges` pages a dead listener as `listen: health`. A DM answer to a
 two-way decision is recorded as your outcome by the listener. A DM answer to a
 one-way or `unsure` decision shows in `wuwei nudges` and session start as "D-n answered

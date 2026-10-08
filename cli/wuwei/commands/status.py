@@ -28,6 +28,7 @@ def _alternation(words):
 SHADOW_NUDGE = ('Observe posture has run {days} days. To enforce, set '
                 'security.posture = "guarded" in config.toml; to keep observing, raise guards.shadow_days. '
                 'bin/wuwei shadow report lists what would have been refused.')
+WIDTH = 100  # status --line columns unless --width says otherwise (#521)
 # Silent kinds scan drops with no action; the rest of SILENT is read (clocks, replies,
 # draft and decision closures, wake, steward and acknowledgements).
 SKIP = frozenset(SILENT) - {
@@ -43,9 +44,10 @@ LINES = (r'(?:\{"kind": "' + _alternation(sorted(SKIP))
 
 def register(subparsers):
     parser = subparsers.add_parser('status', help='show day status')
-    output = parser.add_mutually_exclusive_group(required=True)
+    output = parser.add_mutually_exclusive_group()
     output.add_argument('--line', action='store_true')
     output.add_argument('--json', action='store_true')
+    parser.add_argument('--width', type=int, default=WIDTH)
     parser.set_defaults(func=run)
 
 
@@ -214,6 +216,14 @@ def scan(directory, classified_state=None):
                     f'confirm with wuwei decide {identifier} {option}')
             current[('decision.pending', identifier)] = {
                 'tier': 'nudge', 'source': source, 'lane': 'Decisions', 'reason': reason}
+    for identifier, row in classified_state.get('decision_outcomes', {}).items():
+        if isinstance(row, dict) and row.get('undo_until'):  # #283: an open undo window
+            from wuwei import cruise
+            if cruise.window(row, datetime.fromisoformat(classified_state['now'])):
+                current[('decision.cruise', identifier)] = {
+                    'tier': 'nudge', 'source': 'decision.cruise', 'lane': 'Decisions',
+                    'reason': f'{identifier} taken as {row["option"]} by {row["rule"]}, '
+                              f'undo until {cruise.clock(row["undo_until"])}'}
     planner = classified_state.get('planner_session_id')
     if planner and planner in classified_state.get('sessions', {}):
         from wuwei import sessions  # Here and in snapshot: only a day with sessions pays for it.
@@ -233,7 +243,7 @@ def scan(directory, classified_state=None):
             if days >= guards['shadow_days']:
                 current[('guards.shadow',)] = {'tier': 'nudge', 'source': 'guards.shadow', 'lane': 'Work',
                                                'reason': SHADOW_NUDGE.format(days=days)}
-    rows = sorted(current.values(), key=lambda row: row['source'] != 'pr.changed')
+    rows = sorted(current.values(), key=lambda row: (row['source'] != 'decision.cruise', row['source'] != 'pr.changed'))
     return rows, health['watch'], health['listen'], beat_health, loops
 
 
@@ -260,6 +270,11 @@ def snapshot(directory):
     result['trace_gaps'] = sum(row['source'] == 'traces.gap' for row in active)
     result['prs_changed'] = sum(row['source'] == 'pr.changed' for row in active)
     result['solo'] = any(row == [] for row in data.get('pr_reviewers', {}).values())
+    result['plan'] = (directory / 'plan.md').is_file()
+    result['decisions'] = []
+    if routes := data.get('decision_routes'):  # scan checked it is a dict
+        from wuwei.decision import answered
+        result['decisions'] = [name for name in routes if answered(data, name) is None]
     for key, field, destination in (('reply_obligations', 'due', 'next_reply_due'),
                                      ('meetings', 'start', 'next_meeting')):
         rows = data.get(key, [])
@@ -275,8 +290,13 @@ def snapshot(directory):
     config_path = directory.parents[1] / 'config.toml'
     config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
     result['posture'] = workspace.posture(config)[0] if config is not None else None
+    if config is not None:  # #283: the cruise level; a damaged cruise.json is unmeasured
+        from wuwei import cruise
+        result['cruise'] = cruise.label(config, cruise.running(directory.parents[2]))
     from wuwei import integrity
     result['restart'] = integrity.restart(config) if config is not None else ''
+    result['plugin'] = integrity.version()
+    result['template'] = config['template_version'] if config is not None else None
     if result['listen'] == 'off' and (config is None or config['adapters']['inbound'] == 'none'):
         result['listen'] = 'none'
     if config is not None and config['adapters']['calendar'] != 'none':
@@ -309,54 +329,92 @@ def run(args):
     try:
         data = snapshot(workspace.day_dir())
     except (OSError, ValueError, KeyError, TypeError, RecursionError, UnicodeError) as exc:
-        if args.line:
-            print('WUWEI ? unmeasured')
-        else:
+        if args.json:
             print(json.dumps({'status': 'unmeasured'}))
+        else:
+            print('WUWEI ? unmeasured')
         print(f'wuwei status: {exc}', file=sys.stderr)
         return UNRUN
     if args.json:
         print(json.dumps(data))
+    elif args.line:
+        print(line(data, args.width))
     else:
-        print(line(data))
+        print(full(data))
     return CLEAN
 
 
-def line(data):
-    parts = [f'WUWEI pages {data["pages"]}', f'nudges {data["nudges"]}']
-    if data.get('posture') not in (None, 'guarded'):
-        parts.append(data['posture'])
+def _roles(data):
+    """Roles of the running seats, oldest first; a fast check is not a seat."""
+    return [role for _, role, _ in data.get('running', []) if role != 'checks']
+
+
+def _groups(data, shown=None):
+    """[now, work, attention] token lists: the one source of the line and of status (#521)."""
+    now = []
     if data.get('restart'):
-        parts.append(data['restart'])
-    if data.get('loops'):
-        parts.append(f'loops {data["loops"]}')
-    if not data['gate_approved']:
-        parts[0] = 'WUWEI no plan yet | ' + parts[0][6:]
-    if data.get('prs_changed'):
-        parts.append(f'prs {data["prs_changed"]} changed')
+        now = [data['restart'].split(' (plugin ', 1)[0]]
+    elif not data['gate_approved']:
+        now = ['gate waiting' if data.get('plan') else 'no plan yet']
+    elif data.get('decisions'):
+        now = [f'decision {data["decisions"][0]} waiting']
+    work = [f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items()]
+    roles = _roles(data)
+    if data['gate_approved'] or roles:
+        names = roles[:shown] + ([f'+{len(roles) - shown} more'] if shown is not None and shown < len(roles) else [])
+        work.append(f'seats {len(roles)}/{data["cap"]}' + (f' ({", ".join(names)})' if names else ''))
+    attention = [f'pages {data["pages"]}', f'nudges {data["nudges"]}']
+    if data.get('posture') not in (None, 'guarded'):
+        attention.append(data['posture'])
+    return [now, work, attention]
+
+
+def _render(groups):
+    return 'WUWEI ' + ' | '.join(' · '.join(group) for group in groups if group)
+
+
+def line(data, width=WIDTH):
+    """The groups that fit width: roles cut into +N more first, then whole tokens dropped from
+    the right of work, then of attention; now and the first token always stay (#521)."""
+    for shown in range(len(_roles(data)), -1, -1):
+        groups = _groups(data, shown)
+        if len(_render(groups)) <= width:
+            return _render(groups)
+    first = next((group for group in groups if group), [])
+    while len(_render(groups)) > width:
+        # work before attention, never now, and the first token stays
+        victim = next((g for g in groups[1:] if g and (g is not first or len(g) > 1)), None)
+        if victim is None:
+            break
+        victim.pop()
+    return _render(groups)
+
+
+def full(data):
+    """The line's groups one per line with the detail the line drops (#521)."""
+    now, work, attention = _groups(data)
+    if data.get('restart'):
+        now = [data['restart']]
+    if data.get('cap_bound'):
+        work.append(f'bound {data["cap_bound"]}')
+    if split := state.goal_split(data.get('seats', {})):
+        work.append(f'builders {split}')
+    running = [[f'running {state.in_flight_text([row])}'] for row in data.get('running', [])]
+    for shown, text in ((data.get('answered'), f'phone answers {len(data.get("answered") or [])}'),
+                        (data.get('loops'), f'loops {data.get("loops")}'),
+                        (data.get('prs_changed'), f'prs {data.get("prs_changed")} changed'),
+                        (data.get('trace_gaps'), f'traces: {data.get("trace_gaps")} gaps')):
+        if shown:
+            attention.append(text)
     if data.get('solo'):
-        from wuwei.obligations import SOLO  # Imported only when shown: the status line stays light.
-        parts.append(SOLO)
-    if data['watch'] != 'alive':
-        parts.append(f'watch {data["watch"]}')
-    if data['listen'] not in ('alive', 'none'):
-        parts.append(f'listen {data["listen"]}')
-    if data.get('health'):
-        parts.append(f'health {data["health"]}')
-    if data.get('trace_gaps'):
-        parts.append(f'traces: {data["trace_gaps"]} gaps')
-    parts.extend(f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items())
-    if data['gate_approved']:
-        seats = data.get('seats', {})
-        label = '; '.join(part for part in (data.get('cap_bound'), state.goal_split(seats)) if part)
-        parts.append(f'seats {sum(seats.values())}/{data["cap"]}' + (f' ({label})' if label else ''))
-    if data.get('running'):
-        parts.append('running ' + state.in_flight_text(data['running']))
-    if data['sessions']:
-        parts.append(f'sessions {data["sessions"]}')
-    if data['answered']:
-        parts.append(f'phone answers {len(data["answered"])}')
-    if data['next_reply_due']:
-        parts.append(f'reply {data["next_reply_due"]}')
-    parts.append(f'meeting {data["next_meeting"] or "unmeasured"}')
-    return ' | '.join(parts)
+        from wuwei.obligations import SOLO
+        attention.insert(-1 if data.get('trace_gaps') else len(attention), SOLO)
+    health = [f'watch {data["watch"]}', f'listen {data["listen"]}']
+    health += [f'health {data["health"]}'] if data.get('health') else []
+    health.append(f'sessions {data["sessions"]}')
+    calendar = [f'reply {data["next_reply_due"]}'] if data.get('next_reply_due') else []
+    calendar.append(f'meeting {data["next_meeting"] or "unmeasured"}')
+    cruise = [data['cruise'].replace(' | ', ', ')] if data.get('cruise') else []  # #283, status only
+    versions = [f'plugin {data.get("plugin") or "unmeasured"}', f'template {data.get("template") or "none"}']
+    return 'WUWEI ' + '\n'.join(' · '.join(group) for group in (
+        now, work, *running, attention, health, calendar, cruise, versions) if group)

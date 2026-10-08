@@ -10,6 +10,7 @@ from wuwei.exits import ADAPTER_DATA, DAMAGED, RACE
 
 
 ROLES = ('arch', 'quality', 'security')
+GATE_BODY = 'Review {item} at its HEAD against its spec and acceptance criteria.'
 TIERS = ('light', 'standard', 'full')
 
 
@@ -221,8 +222,11 @@ def next_step(item, root=None):
         return {'action': 'escalate', 'reason': 'gate parked or escalated'}
     missing = [role for role in roles if _record(data, item, role, round_name) is None]
     if missing:
+        commands = []
         action = {'action': 'gates', 'roles': missing,
-                  'seats': _seats(root, data, item, missing, round_name)}
+                  'seats': _seats(root, data, item, missing, round_name, commands)}
+        if commands:  # #551: the exact brief and receive steps, never a remembered action
+            action['commands'] = commands
         return {**action, 'tier': row['gates']} if phase == 'gate' and row['gates'] else action
     results = [_record(data, item, role, round_name) for role in roles]
     if any(result['verdict'] in ('PARK', 'ESCALATE') for result in results):
@@ -309,15 +313,29 @@ def launch_set(root=None):
         elif name in briefed:
             add(name, lambda: build.next_action(name, root=root))
         else:
-            add(name, lambda: {'action': 'start', 'commands': [
-                f'wuwei worktree add {name}', f'wuwei brief builder {name} <name> --worktree <path>']})
+            add(name, lambda: {'action': 'start', 'commands': _start(root, name)})
     return {'action': 'set', 'cap': cap, 'bound': bound, 'capacity': limits['text'],
             'building': building, 'free_seats': start,
             'entries': entries}
 
 
-def _seats(root, data, item, roles, round_name):
-    """Ready launch or continue actions for gate seats the planner has not started."""
+def _start(root, name):
+    """The exact commands that start a planned item: its worktree, then its builder brief."""
+    import json
+    path = workspace.day_dir(root) / 'proposal.json'
+    candidates = json.loads(path.read_text(encoding='utf-8'))['candidates'] if path.is_file() else []
+    row = next((row for row in candidates if row.get('id') == name), None)
+    body = (f"Implement {name}: {row['scope']}. Evidence: {row['evidence']}." if row and row.get('scope')
+            else f"Implement {name} as today's plan records it.")
+    tree = f'worktrees/{name}'
+    return ([] if (root / tree).exists() else [f'wuwei worktree add {name}']) + [
+        f'wuwei brief builder {name} builder-{name} --worktree {tree} --body ' + shlex.quote(body)]
+
+
+def _seats(root, data, item, roles, round_name, commands):
+    """Ready launch or continue actions for gate seats the planner has not started; the brief
+    and receive commands still due go to commands."""
+    worktree = data['items'][item].get('worktree')
     actions = []
     rows = brief.events(root) if round_name == 'initial' else []
     for role in roles:
@@ -332,6 +350,11 @@ def _seats(root, data, item, roles, round_name):
             continue
         if round_name == 'initial':
             logged = _first_briefs(rows, item, role)
+            if not logged and worktree:
+                commands.append(f'wuwei brief {role} {item} {role}-{item} --gate --worktree '
+                                f'{shlex.quote(worktree)} --body ' + shlex.quote(GATE_BODY.format(item=item)))
+            if logged and data['seats'].get(logged[-1].get('name'), {}).get('status') == 'stopped':
+                commands.append('wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, logged[-1]['name']))))
             if not logged or logged[-1].get('name') in data['seats']:
                 continue
             name = logged[-1]['name']
@@ -342,6 +365,10 @@ def _seats(root, data, item, roles, round_name):
             first = _record(data, item, role, 'initial')
             name = Path(first['file']).stem.removeprefix('gate-')
             seat = data['seats'].get(name)
+            if (seat and seat['status'] == 'stopped' and seat.get('agent_id')
+                    and not str(seat.get('head') or '').lower().startswith(first['head'].lower())):
+                commands.append('wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, name)))
+                                + ' --round delta')
             if (not seat or seat['status'] != 'stopped' or not seat.get('agent_id')
                     or not str(seat.get('head') or '').lower().startswith(first['head'].lower())):
                 continue

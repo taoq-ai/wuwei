@@ -51,7 +51,8 @@ def target(root, config, cwd, repo):
     return f'repo:{repo}' if isinstance(repo, str) and re.fullmatch(REPO, repo) else None
 
 
-def _record(question, context, rows, criterion, recommendation, reasoning, blast, premortem):
+def _record(question, context, rows, criterion, recommendation, reasoning, blast, premortem,
+            revisit='Revoke a standing grant with bin/wuwei grants revoke.'):
     """A decision record from (id, title, rationale, consequence, score) rows."""
     ids, cells = ' | '.join(row[0] for row in rows), ' --- |' * len(rows)
     return f'''Question: {question}
@@ -74,7 +75,7 @@ Confidence: medium
 Reversibility: one-way
 Blast radius: {blast}
 Pre-mortem: {premortem}
-Revisit: Revoke a standing grant with bin/wuwei grants revoke.
+Revisit: {revisit}
 Decided-by: owner
 Outcome: pending
 '''
@@ -92,10 +93,11 @@ def ask(root, row, text):
     return identifier
 
 
-def active(config, data, name, found):
-    """(scope, D-n) of the grant that lets this action on this target through, else None."""
+def active(config, data, name, found, standing=True):
+    """(scope, D-n) of the grant that lets this action on this target through, else None;
+    standing=False leaves the [grants] lines out (#556: a novel target)."""
     from wuwei import workspace
-    if workspace.posture(config)[0] != 'strict':
+    if standing and workspace.posture(config)[0] != 'strict':
         for line in config['grants']['standing']:
             if line['action'] == name and fnmatchcase(found, line['target']):
                 return 'always', line['decision']
@@ -133,11 +135,15 @@ def gate(payload, root, config, argv, rule, repo, moved=False):
         return 1, missing
     if found is None:
         return 1, (f'publish: {command} {tail}; name the repository with -R <org>/<repo> or run it from '
-                   'a configured repository so the owner can decide on a card, or the owner runs it '
-                   'in a host terminal')
+                   'a configured repository so the owner can decide on a card')
     head = f'publish: {command} on {found[5:]} {tail}'
+    from wuwei import novelty
+    novel = (novelty.novel(root, config, [found])
+             if name != 'evidence' and config['autonomy']['mode'] == 'autonomous' else [])
+    if novel:  # #556: a standing line never covers a target the workspace never touched
+        head += f'; {novelty.line(novel)}'
     data = state.read_state(root)
-    hit = active(config, data, name, found)
+    hit = active(config, data, name, found, standing=not novel)
     if hit:
         scope, identifier = hit
         used = {'decision': identifier, 'action': name, 'target': found, 'scope': scope,

@@ -184,8 +184,9 @@ could not read shows on the `Optional:` line as `bin/wuwei config add-repo ...`;
 
 `--shadow` starts a first week in the observe posture (on an existing workspace it proposes
 `security.posture = "observe"`), as does the `Observe` answer in the interview. The guards
-then record what they would refuse and let the call through; records and owner-only actions
-(deploys, merges, approvals, messages that wait for your approval) still refuse. Read
+then record what they would refuse and let the call through; records still refuse, deploys,
+releases and messages that wait for your approval ask you on a card, and merges and approvals
+stay yours. Read
 `bin/wuwei shadow report` or the `## Shadow` section of the day report. When the [nudge](concepts.md#nudge) comes
 after `guards.shadow_days`, run `bin/wuwei config set security.posture '"guarded"'` in a host
 terminal, or keep watching with `bin/wuwei config set guards.shadow_days 14`. See [security posture](concepts.md#security-posture).
@@ -227,7 +228,7 @@ $ wuwei goals edit --file .wuwei/days/<date>/goals.md
 goals: 1 goal saved (G-1)
 $ wuwei plan approve --items DIV-1 --goals-confirmed
 $ bin/wuwei status --line
-WUWEI pages 0 | nudges 0 | observe | watch off | planned 1/1 | seats 0 of CAP 1 | meeting unmeasured
+WUWEI planned 1/1 · seats 0/1 | pages 0 · nudges 0 · observe
 $ bin/wuwei next
 dispatch: 1 planned item(s) can start, 0 of CAP 1 building; run the launch set, brief each start and launch the set in one turn. Run: wuwei dispatch next --all
 ```
@@ -237,6 +238,32 @@ It worked when `goals edit` says `saved`, the status line shows `planned 1/1` an
 `meeting unmeasured` only means no calendar is set up. It did not work when the status line
 has no `planned` count after you approved, or when a command exits 1 or 2 with a reason; see
 [troubleshooting](recovery.md#troubleshooting).
+
+## Starting with work in progress
+
+Your open pull requests, branches and worktrees stay as they are; nothing is recreated. The
+morning sweep lists the open PRs you authored in the configured repositories (by
+`owner.handles`) under `## Open PRs to claim` in the plan, and the gate card names them:
+`claims PR-12 (owner/repo#12)`. Approving the gate claims each one under the first goal.
+
+Each claim creates an [adopted](concepts.md#adopted) item (`PR-12`, titled from the PR), links the PR and
+makes it one of the day's owned PRs. When a clean worktree is already on the PR branch, the
+claim adopts it too. The board shows the item as `PR-12 (adopted)`. A PR opened after the
+gate is claimed with `bin/wuwei pr claim owner/repo#12 --goal G-1`; with one configured
+repository a bare `12` works, and with one goal for the day `--goal` can go.
+
+The [shepherd](concepts.md#shepherd) needs no checkout. `bin/wuwei pr act` pings reviewers, reads CI, answers review
+threads and takes the merge decision through the code host. Only a fix round or a rebase needs a
+checkout, and then `pr act` returns an `adopt` action with the exact command and `then` to run
+after it:
+
+- `bin/wuwei worktree adopt <path> --item <item>` registers a worktree you already have. It
+  chains the hooks, writes the pre-push anchor at the current HEAD and records the path. It
+  refuses a tree with uncommitted or untracked files and names them.
+- `bin/wuwei worktree add <item> --branch <branch>` checks the existing branch out in
+  `worktrees/<item>` and records it as the item's.
+
+Run `bin/wuwei pr act <ref>` again and the fix round starts in that worktree.
 
 ## 4. Through the day
 
@@ -315,7 +342,7 @@ The Stop hook message and `bin/wuwei nudges` list that summary first, and the st
 shows `prs <n> changed` until the planner has seen the wake. An idle interactive planner
 learns of a change at its next turn (its next Stop or session start): Claude Code cannot
 put input into an idle session. The listener covers the gap: it sends the summary to your
-DM and, with `shepherd.autostart = true`, starts a headless [shepherd](concepts.md#shepherd) seat for the
+DM and, unless `shepherd.autostart = false`, starts a headless [shepherd](concepts.md#shepherd) seat for the
 mechanical PR actions ([remote](remote.md), section 5). For CI events in your own
 session, the Claude Code desktop PR monitor is the complement.
 
@@ -341,12 +368,51 @@ answer decisions from Slack as well, run `bin/wuwei setup slack` and see
 once. An answer to a one-way decision is evidence, and `status --line` counts it as
 `phone answers 1` until you record it with `bin/wuwei decide`.
 
-Seats do not ask what their [mandate](concepts.md#mandate) lets them decide. You see two more things here. An item
+A record, a chat send or a deploy on a [novel](concepts.md#novel) target, one the workspace has
+never touched, comes to you once even when the [mandate](concepts.md#mandate) would take it. The card says
+`first time for <target>`. One answer clears the target, and the next one runs as usual. The report
+lists each target first seen today under `First time today`.
+
+Seats do not ask what their mandate lets them decide. You see two more things here. An item
 that goes back and forth shows as `loops N` on the status line and a `negotiation.loop`
 nudge (a [page](concepts.md#page) when its goal date has passed), with the counts and the last two exchanges in
 your DM when the listener runs. An external confirmation a seat routed with `--external`
 waits `decisions.wait_hours` weekday hours for your answer; then the sweep confirms the
 recommendation on a two-way door or [parks](concepts.md#park) the item for your `decide`.
+
+### Cruise answers
+
+Under `autonomy.mode = "autonomous"` the CLI already takes clear records as recommended (the
+mandate). Cruise mode marks the ones whose class runs at L2 or L3: the record is two-way,
+inside its own branch, PR or the workspace, its margin reaches `decisions.cruise.margin` and
+fewer than `max_per_day` were answered today. Such a record reads `Decided-by: cruise
+defer@L2` (class and level). A thin margin on an L2 or L3 class that the mandate does not
+take still comes to you.
+
+At L2 you have `undo_minutes` (60 by default) to undo it. `bin/wuwei nudges` lists it first,
+`D-3 taken as A by cruise defer@L2, undo until 13:00`, and `bin/wuwei decision show D-3
+--widget` asks Keep or Undo on a card. The planner records your answer with `wuwei decision
+undo D-3 --answer "<label>"`; run `bin/wuwei decision undo D-3` in a host terminal and answer
+y, or reply `undo D-3` to the listener DM. An undo puts the record back to you as `Outcome:
+pending` and spends the class's error budget. After the window, reverse it with `bin/wuwei
+decide D-3 <option>`, which spends it too. An L3 answer has no window; the batched
+two-way summary from the watch lists it, cruise answers first.
+
+Levels move only through the CLI, each move a line in `.wuwei/memory/ledger.jsonl`. Undos,
+reversals, a weekly sample you answer differently and an escaped defect on an item a cruise
+answer named spend the class's error budget: `budget_share` of its cruise answers over
+`budget_window_days`. One event never lowers a class. When the events exceed the allowance
+and number at least two, the CLI lowers the class one level, with a ledger line that
+names every event, and restores it when the window refills. A fast burn sends a nudge
+first: `nudge: defer burns its error budget at 7.0x: ... Run: wuwei cruise budget`.
+`bin/wuwei cruise budget` prints class, level, answered, spent, allowance, burn and state.
+`plan propose` asks you to raise a class after `promote_agreements` agreeing answers with
+its budget unspent, and once a week asks one recent cruise answer again without its
+recommendation; both cards come after the morning gate.
+
+The status line shows the highest level a class runs at, `cruise L2`, or `cruise off | L2`
+when `decisions.cruise.enabled = false`, and `cruise L2 · budget defer spent` while a spent
+budget holds a class lower. Under `supervised` every class runs at L0.
 
 ### How you answer
 

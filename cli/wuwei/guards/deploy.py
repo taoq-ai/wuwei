@@ -366,7 +366,7 @@ def check(payload):
             use()
         return 0, ''
     except (ParseError, ValueError, OSError, KeyError, TypeError, AttributeError) as exc:
-        return 2, f'deploy: could not inspect: {exc}; write it as plain literal commands, or ask the owner to run it'
+        return 2, f'deploy: could not inspect: {exc}; write it as plain literal commands; a publish step then asks the owner on a card'
 
 
 GUARDS = [Guard('PreToolUse', 'Bash', check)]

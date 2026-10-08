@@ -3,6 +3,7 @@
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, time
 import json
+import shlex
 from pathlib import Path
 import re
 from statistics import mean, median
@@ -366,6 +367,19 @@ def _lead_time(root, config, items, prs):
 
 def _escaped_by_tier(root):
     """Merged items per computed tier, and how many a later builder brief names."""
+    merged, escaped = _escaped(root)
+    if not merged:
+        return UNMEASURED
+    result = {}
+    for name, computed in merged.items():
+        row = result.setdefault(computed, {'merged': 0, 'escaped': 0})
+        row['merged'] += 1
+        row['escaped'] += name in escaped
+    return result
+
+
+def _escaped(root):
+    """Design 5.6: merged items {name: computed tier} and those a later builder brief names."""
     merged, briefs = {}, []
     for directory in watch.days(root):
         data = _state(directory)
@@ -374,10 +388,8 @@ def _escaped_by_tier(root):
                 merged.setdefault(name, row['gates']['computed'])
         briefs += [row['payload'] for row in _events(directory) or []
                    if row['kind'] == 'brief written' and row['payload'].get('role') == 'builder']
-    if not merged:
-        return UNMEASURED
     escaped = set()
-    for payload in briefs:
+    for payload in briefs if merged else ():
         path = root / payload['path']
         # ponytail: an archived or missing brief is not read; its fix goes uncounted.
         if payload.get('item') not in merged or not path.is_file():
@@ -385,12 +397,7 @@ def _escaped_by_tier(root):
         text = path.read_text(encoding='utf-8')
         escaped |= {name for name in merged if name != payload['item']
                     and re.search(r'(?<![\w-])' + re.escape(name) + r'(?![\w-])', text)}
-    result = {}
-    for name, computed in merged.items():
-        row = result.setdefault(computed, {'merged': 0, 'escaped': 0})
-        row['merged'] += 1
-        row['escaped'] += name in escaped
-    return result
+    return merged, escaped
 
 
 def _events(day):
@@ -518,6 +525,60 @@ def _calibration(day, data, elapsed):
             for item, phases in elapsed.items() if item in sizes and sizes[item] is not None}
 
 
+def _matches(command, pattern):
+    """One planner command against one named command: the launcher's basename is wuwei, the
+    --body text is the planner's to write (and redacted in traces), and a widget's <label>
+    takes any value."""
+    from fnmatch import fnmatchcase
+
+    def words(text):
+        argv = shlex.split(text)
+        if argv and argv[0].rsplit('/', 1)[-1] == 'wuwei':
+            argv[0] = 'wuwei'
+        if '--body' in argv[:-1]:
+            del argv[argv.index('--body'):argv.index('--body') + 2]
+        return [word for word in argv if word != '[REDACTED]']  # traces redact the --body text
+    have, want = words(command), words(pattern)
+    return len(have) == len(want) and all(
+        fnmatchcase(word, expected.replace('<label>', '*')) for word, expected in zip(have, want))
+
+
+def path(events, traces, planner):
+    """#551: the planner's turns (Stop), owner asks (AskUserQuestion spans) and the Bash commands
+    it ran that the governing next.action did not name; unmeasured without the evidence."""
+    if planner is None:
+        return dict.fromkeys(('planner_turns', 'planner_asks', 'off_path'), UNMEASURED)
+    turns = UNMEASURED if events is None else sum(
+        row['kind'] == 'session.seen' and row['payload'].get('session_id') == planner
+        and row['payload'].get('hook') == 'Stop' for row in events)
+    if traces is None or events is None:
+        return {'planner_turns': turns, 'planner_asks': UNMEASURED, 'off_path': UNMEASURED}
+    actions = [row['payload'] for row in events if row['kind'] == 'next.action'
+               and row['payload'].get('action') != 'pass']
+    asks, off = 0, []
+    for index, row in enumerate(traces):
+        found = row['resourceSpans'][0]['scopeSpans'][0]['spans'][0]
+        attributes = {pair['key']: pair['value']['stringValue'] for pair in found['attributes']}
+        if attributes.get('session.id') != planner or attributes.get('gen_ai.agent.name') != 'unknown':
+            continue
+        if found['name'] == 'AskUserQuestion':
+            asks += 1
+        if found['name'] != 'Bash':
+            continue
+        command = json.loads(attributes['gen_ai.tool.arguments']).get('command', '')
+        named = next((action.get('named', []) for action in reversed(actions)
+                      if action.get('traces', 0) <= index), [])
+        try:
+            # The loop's own commands; registration runs before the day has state to record in.
+            exempt = any(_matches(command, form) for form in (
+                'wuwei status --line', 'wuwei plan session <label>', 'wuwei next', 'wuwei next --json'))
+            if not exempt and not any(_matches(command, pattern) for pattern in named):
+                off.append(command)
+        except ValueError:
+            off.append(command)
+    return {'planner_turns': turns, 'planner_asks': asks, 'off_path': off}
+
+
 def collect(root=None, *, day=None):
     """Return named measurements; missing evidence never becomes a zero."""
     root = workspace.find_workspace(root)
@@ -531,9 +592,9 @@ def collect(root=None, *, day=None):
             voice[row['audience']].append(row)
         if isinstance(row.get('style'), list):
             ai_tells[row['id']] = len(row['style'])
-    for path in sorted((directory / 'decisions').glob('D-*.md')):
-        if not path.is_symlink():
-            ai_tells[path.stem] = len(outward.tells(path.read_text(encoding='utf-8')))
+    for record in sorted((directory / 'decisions').glob('D-*.md')):
+        if not record.is_symlink():
+            ai_tells[record.stem] = len(outward.tells(record.read_text(encoding='utf-8')))
     for index, row in enumerate(events or []):  # drafts count from their rows
         if row['kind'] == 'outward.ai_tells' and row['payload'].get('draft') is False:
             ai_tells[f'outward-{index}'] = len(row['payload']['tells'])
@@ -597,6 +658,9 @@ def collect(root=None, *, day=None):
             for identifier, route in routes.items())
     event_metrics['size_calibration'] = _calibration(directory, data, event_metrics['time_in_phase_seconds'])
     event_metrics['tool_calls'] = len(traces) if traces is not None else UNMEASURED
+    walked = path(events, traces, data.get('planner_session_id') if data is not None else None)
+    event_metrics.update(walked, off_path=len(walked['off_path']) if isinstance(walked['off_path'], list)
+                         else UNMEASURED)
     event_metrics['baseline'] = _baseline(root)
     turns = _human_times(root, config)
     event_metrics['owner_intervention'] = _owner_intervention(turns, now)

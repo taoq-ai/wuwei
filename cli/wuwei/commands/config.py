@@ -94,8 +94,8 @@ def run(args):
         mark = (' (floor)' if area in workspace.FLOORS else
                 ' (security.areas)' if config['security']['areas'][area] else '')
         print(f'  {area}: {levels[area]}{mark}')
-    print('  owner-only actions block in every posture: deploys, merges and approvals, '
-          'approve-tier messages')
+    print('  owner-only actions ask on a card below strict (deploys, releases, approve-tier '
+          'messages); merges and approvals stay owner-only; records always block')
     block = config['scanner']['mcp']['block']
     if block:  # Reported, not a finding (#351): the list against the posture default.
         ignored = levels['mcp'] == 'off' or name == 'observe' and levels['mcp'] == 'warn'
