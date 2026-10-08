@@ -8,9 +8,10 @@ from pathlib import Path
 from wuwei import state, watch, workspace
 
 
-def select(root, days, now=None):
+def select(root, days, now=None, every=False):
     """(answers, events) of the last `days` days, oldest first. answers are the cruise answers
-    {day, id, class, at, items, option}; events are what spends a class's budget {class, at,
+    {day, id, class, at, items, option, confidence, role, undo_until}, and with every (#559) also
+    the records a seat or the mandate took; events are what spends a class's budget {class, at,
     kind, label, day, id}, day and id naming the answer: an undo, an owner reversal, a weekly
     sample answered differently and an escaped defect (dated at its answer). A damaged event
     stream raises ValueError."""
@@ -21,10 +22,12 @@ def select(root, days, now=None):
     answers, events, cards = {}, [], {}
     for day, row in rows:
         kind, payload = row['kind'], row['payload']
-        if kind == 'decision.decided' and str(payload.get('rule', '')).startswith('cruise '):
-            answers[day, payload['id']] = {'day': day, 'id': payload['id'], 'class': payload['class'],
+        if kind == 'decision.decided' and (str(payload.get('rule', '')).startswith('cruise ')
+                                           or every and payload.get('decided_by') in ('seat', 'mandate')):
+            answers[day, payload['id']] = {'day': day, 'id': payload['id'], 'class': payload.get('class'),
                                            'at': row['ts'], 'items': payload.get('items', []),
-                                           'option': payload['option']}
+                                           'option': payload['option'], 'confidence': payload.get('confidence'),
+                                           'role': payload.get('role'), 'undo_until': payload.get('undo_until')}
         elif kind == 'decision.reversed' and (day, payload.get('id')) in answers:
             kind = 'undo' if payload.get('undo') else 'reversal'
             answer = answers[day, payload['id']]

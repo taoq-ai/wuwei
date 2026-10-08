@@ -188,6 +188,8 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | `decisions.cruise.budget_share` | `0.1` | Error budget of a class: the share of its cruise answers in the window that may be undone, reversed, sampled differently or attributed an escaped defect. Above 0, at most 0.5. The budget is spent with more events than that and at least two. |
 | `decisions.cruise.budget_window_days` | `14` | Days the error budget is counted over; a spent class runs one level lower until the window refills. |
 | `decisions.cruise.burn_warn` | `2.0` | Burn rate (events of the last 48 hours against the window's allowance) that writes a nudge naming the events. |
+| `decisions.cruise.calibration_threshold` | `0.15` | Brier score above which a class or role is uncalibrated: the class runs at most L1, the role's records go to you as cards. Above 0, below 1. |
+| `decisions.cruise.calibration_min` | `10` | Scored records a class or role needs before it is judged; fewer is `too few`, which only blocks a raise card. |
 | `decisions.cruise.levels` | `{}` | Per-class level (0 to 3) that caps the level a class runs at; a level above the class ceiling or an unknown class is refused. |
 | `decisions.lenses` | `{}` | Lenses every engineering decision (`design`, `boundary`, `refactor`, `dependency-bump`) answers per option, as name = one-line question. The defaults are SOLID, twelve-factor, YAGNI and ponytail; a new name adds a lens and `""` drops one, for example `YAGNI = ""`. Names use letters, digits, dash or underscore. |
 

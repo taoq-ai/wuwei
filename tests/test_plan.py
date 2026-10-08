@@ -661,6 +661,9 @@ def test_propose_writes_the_cruise_raise_card_the_gate_carries(root, monkeypatch
     rows = {f'D-{100 + index}': {'option': 'A', 'outcome': 'A', 'decided_by': 'owner', 'class': 'defer',
                                  'recommendation': 'A', 'at': workspace.now().isoformat()} for index in range(10)}
     state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update(rows), root, reserved=False)
+    for number in range(300, 310):  # #559: the class is calibrated
+        state.append_event('decision.decided', {'id': f'D-{number}', 'option': 'A', 'class': 'defer',
+                                                'decided_by': 'mandate', 'confidence': 'high'}, root)
     plan.propose(proposal(), root)
     assert state.read_state(root)['cruise_cards']['D-1']['kind'] == 'raise'
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))

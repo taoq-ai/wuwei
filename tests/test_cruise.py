@@ -406,6 +406,14 @@ def agree(root, count, cls='defer', start=100, **extra):
     state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update(rows), root, reserved=False)
 
 
+def calibrated(root, cls='defer', start=300):
+    """#559: ten taken high-confidence records of cls that stood, so promotion may raise it."""
+    from wuwei import state
+    for number in range(start, start + 10):
+        state.append_event('decision.decided', {'id': f'D-{number}', 'option': 'A', 'class': cls,
+                                                'decided_by': 'mandate', 'confidence': 'high'}, root)
+
+
 def cards(root):
     from wuwei import state
     return state.read_state(root).get('cruise_cards', {})
@@ -422,6 +430,8 @@ def test_ten_agreements_propose_a_raise(ws, monkeypatch):
     agree(ws, 4)
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
     agree(ws, 6)
+    assert propose(ws) == []  # #559: too few scored records
+    calibrated(ws)
     assert propose(ws) == ['D-1']
     card = cards(ws)['D-1']
     assert (card['kind'], card['class'], card['level']) == ('raise', 'defer', 1)
@@ -456,6 +466,7 @@ def answer(root, ident, option, monkeypatch):
 def test_the_owner_raise_lands_and_keep_does_not(ws, monkeypatch):
     from wuwei import decision, workspace
     agree(ws, 10)
+    calibrated(ws)
     propose(ws)
     assert answer(ws, 'D-1', 'raise', monkeypatch) == (0, 'raise')
     assert decision.level(workspace.load_config(ws), 'defer', decision.running(ws)) == 1
@@ -463,6 +474,7 @@ def test_the_owner_raise_lands_and_keep_does_not(ws, monkeypatch):
     assert (line['action'], line['reason'], line['evidence']) == (
         'raise', 'raise approved D-1', '.wuwei/days/2026-09-28/decisions/D-1.md')
     agree(ws, 10, cls='scope-cut', start=200)
+    calibrated(ws, 'scope-cut', start=400)
     propose(ws)
     assert answer(ws, 'D-2', 'keep', monkeypatch) == (0, 'keep')
     assert 'scope-cut' not in decision.running(ws)['levels']
@@ -471,6 +483,7 @@ def test_the_owner_raise_lands_and_keep_does_not(ws, monkeypatch):
 def test_a_raise_never_passes_the_configured_level(ws, monkeypatch):
     from wuwei import decision
     agree(ws, 10)
+    calibrated(ws)
     propose(ws)
     config(ws, '[decisions.cruise.levels]\ndefer = 0\n')
     answer(ws, 'D-1', 'raise', monkeypatch)

@@ -13,7 +13,7 @@ CLASSES = {'approach': (2, 3), 'retry': (2, 3), 'park': (2, 3), 'accept-residual
            'defer': (0, 3), 'scope-cut': (0, 3), 're-plan': (0, 3), 'dependency-bump': (0, 3),
            'design': (0, 3), 'boundary': (0, 3), 'refactor': (0, 3),
            'merge': (3, 3), 'message': (0, 1), 'other': (0, 1)}
-CRUISE = '.wuwei/memory/cruise.json'  # running levels; promotion.cruise_level is the one writer
+CRUISE = '.wuwei/memory/cruise.json'  # running levels; written only by promotion.py (cruise_level, calibration)
 BLAST = re.compile(r'(?i)\s*(?:own branch|own pr|workspace)\b')
 
 
@@ -36,6 +36,12 @@ def running(root):
             or any(name not in CLASSES or type(value) is not int or not 0 <= value <= 3
                    for name, value in [*data['levels'].items(), *data.get('budget', {}).items()])):
         raise ValueError(f'{CRUISE}: expected levels of known classes at 0 to 3; {DAMAGED}')
+    stored = data.get('calibration', {})  # #559: the uncalibrated classes and roles
+    if (not isinstance(stored, dict) or not isinstance(stored.get('classes', []), list)
+            or not isinstance(stored.get('roles', []), list)
+            or any(name not in CLASSES for name in stored.get('classes', []))
+            or any(not isinstance(role, str) for role in stored.get('roles', []))):
+        raise ValueError(f'{CRUISE}: expected calibration classes of known classes and roles as names; {DAMAGED}')
     return data
 
 
@@ -46,6 +52,8 @@ def level(config, name, running=None):
     if not cruise['enabled'] or config['autonomy']['mode'] == 'supervised':
         return 0
     default, ceiling = CLASSES[name]
+    if name in (running or {}).get('calibration', {}).get('classes', []):
+        ceiling = min(ceiling, 1)  # #559: an uncalibrated class runs at most L1
     return min((running or {}).get('levels', {}).get(name, default),
                cruise['levels'].get(name, ceiling), ceiling)
 
@@ -90,6 +98,8 @@ def label(config, running):
     on = {**config, 'decisions': {**config['decisions'], 'cruise': {**cruise, 'enabled': True}}}
     top = max(level(on, name, running) for name in CLASSES if name != 'merge')
     held = f' · budget {", ".join(sorted(running["budget"]))} spent' if running.get('budget') else ''
+    roles = running.get('calibration', {}).get('roles')
+    held += f' · uncalibrated {", ".join(roles)}' if roles else ''  # #559
     return (f'cruise L{top}' if cruise['enabled'] else f'cruise off | L{top}') + held
 
 
@@ -150,9 +160,10 @@ def _card(root, text, row):
 
 def propose(root, config):
     """Design 5.8.1 promotion as owner cards: a raise after promote_agreements agreements with the
-    error budget unspent and no budget event since the class's last change (#558), and once a
-    week one sample per class with a recent cruise answer. Returns the new D-n."""
-    from wuwei import budget_classes, decision, promotion
+    error budget unspent and no budget event since the class's last change (#558) and the class
+    calibrated (#559), and once a week one sample per class with a recent cruise answer. Returns
+    the new D-n."""
+    from wuwei import budget_classes, calibration_scores, decision, promotion
     from wuwei import grants
     cruise = config['decisions']['cruise']
     if config['autonomy']['mode'] != 'autonomous' or not cruise['enabled']:
@@ -162,6 +173,8 @@ def propose(root, config):
     blocked = {row['class'] for row in budget_classes.table(root, config) if row['state'] == 'spent'}
     blocked |= {event['class'] for event in budget_classes.select(root, window_days)[1]
               if event['at'] > run['changed'].get(event['class'], '')}
+    blocked |= {row['name'] for row in calibration_scores.table(root, config)  # #559
+                if row['kind'] == 'class' and row['state'] != 'calibrated'}
     carded = [(day.name, row) for day, data in _days(root, max(week, window_days))
               for row in data.get('cruise_cards', {}).values()]
     cutoff = {count: (workspace.now().date() - timedelta(days=count)).isoformat() for count in (week, window_days)}
@@ -181,7 +194,7 @@ def propose(root, config):
             [('raise', f'Raise {name} to L{level + 1}', 'The recent answers agreed with the recommendation.',
               f'{name} records are answered at L{level + 1}.', 9),
              ('keep', f'Keep {name} at L{level}', 'Nothing changes.', f'{name} records keep their route.', 3)],
-            'Owner time saved', 'raise', 'The ledger shows agreement and its error budget is unspent.',
+            'Owner time saved', 'raise', 'The ledger shows agreement, its error budget is unspent and its confidence is calibrated.',
             f'cruise level of {name}.', 'A later answer of this class is wrong and lands without you.',
             'Reversals and escaped defects spend its error budget; a spent budget lowers it one level.'),
             {'kind': 'raise', 'class': name, 'level': level + 1}))
