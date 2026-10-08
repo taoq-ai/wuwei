@@ -507,3 +507,47 @@ def test_thread_records_with_an_open_card(root, capsys):
     assert learn(root, '--as', 'slack', '--thread', thread_file(root, PEOPLE[:1]), listings=False) == 0
     assert state.read_state(root)['outbound_threads'] == {'C1/1.2': ['U01']}
     assert '"D-1"' in capsys.readouterr().out and decisions(root) == ['D-1.md']
+
+
+# #552: an approved learn card writes the register: names and the thread's members.
+def learn_thread(root):
+    day = workspace.day_dir(root)
+    (day / 'channels.json').write_text(json.dumps(CHANNELS[:1]))
+    path = thread_file(root, [PEOPLE[0], {'id': 'U03', 'name': 'Cy', 'email': 'cy@example.com'}], channel='C01')
+    return learn(root, '--as', 'slack', '--thread', path, '--channels', str(day / 'channels.json'), listings=False)
+
+
+def test_learn_card_writes_the_register(root, capsys, monkeypatch):
+    from wuwei import graph
+    assert learn_thread(root) == 0
+    assert answer(root, monkeypatch, 'approve')[0] == 0
+    register = graph.load(root)
+    assert register['nodes']['channel:C01']['name'] == 'team-review'
+    assert register['nodes']['person:slack:U03']['name'] == 'Cy'
+    assert f'connector:{UUID}' in register['nodes']
+    for person in ('U01', 'U03'):
+        assert {'from': f'person:slack:{person}', 'type': 'member_of', 'to': 'channel:C01',
+                'card': 'D-1'} in register['edges']
+    assert {'from': 'channel:C01', 'type': 'class', 'to': 'team', 'view': 'outbound.work_channels'} in register['edges']
+    assert graph.drift(register, workspace.load_config(root)) == []
+    [learned] = events(root, 'outbound.learned')
+    assert set(learned) == {'decision', 'option', 'mode', 'server', 'channel', 'alias', 'connector_mode',
+                            'channels', 'people', 'owner'}
+    assert 'thread_channel' not in (workspace.day_dir(root) / 'decisions/D-1.md').read_text()
+
+
+def test_learn_auto_member_edges_name_no_card(root, capsys):
+    from wuwei import graph
+    configure(root, 'learn = "auto"')
+    assert learn_thread(root) == 0
+    assert {'from': 'person:slack:U03', 'type': 'member_of', 'to': 'channel:C01'} in graph.load(root)['edges']
+
+
+def test_learn_with_a_damaged_register_still_applies(root, capsys, monkeypatch):
+    assert learn_thread(root) == 0
+    (root / '.wuwei/graph.json').write_text('not json')
+    capsys.readouterr()
+    assert answer(root, monkeypatch, 'approve')[0] == 0
+    assert 'warning: .wuwei/graph.json not updated' in capsys.readouterr().err
+    assert 'slack:U03' in workspace.load_config(root)['outbound']['people']
+    assert (root / '.wuwei/graph.json').read_text() == 'not json'

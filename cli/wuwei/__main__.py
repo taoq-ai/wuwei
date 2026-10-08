@@ -31,7 +31,7 @@ GROUPS = (
      'setup init config decide grants calibrate goals voice drafts remote mcp outbound watch listen '
      'dashboard promote consolidate telemetry'),
     ('Recovery: when something is stuck',
-     'doctor why state shadow heartbeat integrity runtime sessions seat'),
+     'doctor why who state shadow heartbeat integrity runtime sessions seat'),
     ('Plumbing: hooks, seats and the plugin call these',
      'agents board event fast-checks git-hook hook index memory payload rank signal sweep verdict'),
 )

@@ -224,3 +224,45 @@ def test_line_separator_inside_a_string():
     raw = '[owner]\nname = "a b"\n'
     text = configtext.place(raw, ('owner',), 'pronouns', 'they')
     check(raw, text, ('owner',), 'pronouns', 'they')
+
+
+@pytest.fixture
+def owned(tmp_path, monkeypatch):
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-08T12:00:00+00:00')
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('[outbound]\nwork_channels = ["C01"]\n')
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+def _set(key, value):
+    from argparse import Namespace
+    from wuwei.commands import setup
+    return setup.set_value(Namespace(key=key, value=value, replace=False, from_card=None),
+                           confirm=lambda *args, **kwargs: True)
+
+
+def test_a_config_write_writes_the_register(owned, capsys):
+    # #552: the one writer keeps the register and its views together.
+    from wuwei import graph, workspace
+    from wuwei.commands import setup
+    assert _set('outbound.work_channels', '["C05"]') == 0
+    register = graph.load(owned)
+    assert {'from': 'channel:C05', 'type': 'class', 'to': 'team', 'view': 'outbound.work_channels'} in register['edges']
+    assert graph.drift(register, workspace.load_config(owned)) == []
+    assert setup.card_write(owned, 'config set', lambda root, raw: raw + 'external_channels = ["C06"]\n',
+                            ['outbound.external_channels'], 'D-1') == 0
+    assert 'channel:C06' in graph.load(owned)['nodes']
+
+
+def test_a_damaged_register_never_stops_a_config_write(owned, capsys):
+    from wuwei import workspace
+    (owned / '.wuwei/graph.json').write_text('not json')
+    capsys.readouterr()
+    assert _set('outbound.work_channels', '["C05"]') == 0
+    err = capsys.readouterr().err
+    assert err.count('warning: .wuwei/graph.json not updated') == 1 and 'init --upgrade' in err
+    assert 'C05' in workspace.load_config(owned)['outbound']['work_channels']
+    assert (owned / '.wuwei/graph.json').read_text() == 'not json'

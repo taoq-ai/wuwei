@@ -93,6 +93,8 @@ def ws(tmp_path, monkeypatch):
     (root / '.wuwei/config.toml').write_text(CONFIG)
     (root / '.wuwei/calibration.json').write_text(json.dumps({'acme/widget': {'date': TODAY}}))
     (root / '.wuwei/executable').write_text(f"{plugin / 'bin/wuwei'}\n")
+    from wuwei import graph
+    graph.sync(root, workspace.load_config(root))  # #552: a current workspace has its register
     seed(root)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', NOW)
@@ -293,7 +295,7 @@ def test_workspace_rows_healthy(ws):
     assert names(rows, 'workspace') == [
         'workspace', 'config', 'template', 'executable', 'memory tiers', 'acme/widget path', 'acme/widget git',
         'acme/widget git hooks', 'acme/widget branch', 'acme/widget identity', 'acme/widget fast_checks', 'acme/widget spec',
-        'outbound classes', 'outbound tiers', 'calibration', 'drift',
+        'outbound classes', 'outbound tiers', 'register', 'calibration', 'drift',
         'interview', 'profile', 'posture', 'telemetry']
     assert row(rows, 'posture')['value'] == 'guarded (from security.posture)'
     assert row(rows, 'telemetry')['value'] == 'share off'
@@ -760,6 +762,8 @@ def empty_checks(ws, monkeypatch, repos=1):
         text += REPO.replace('acme/widget', f'acme/widget{index}').replace('"repo"', f'"repo{index}"').replace(
             '["ruff check ."]', '[]')
     config(ws.root, text)
+    from wuwei import graph
+    graph.sync(ws.root, workspace.load_config(ws.root))
     calls, applied = [], []
 
     def promote(args, confirm=None):
@@ -1228,3 +1232,31 @@ def test_outbound_tier_rows(ws, posture, words):
     assert 'bin/wuwei outbound learn card' in classes['fix'] and '[outbound.people]' not in classes['fix']
     assert tiers['status'] == 'warn' and tiers['detail'] == [f'rule {n} {words}' for n in (1, 2, 3, 4)]
     assert tiers['fix'] == 'make the row ask, or remove it'
+
+
+def test_register_row(ws):
+    # #552: ok when the register matches config.toml; drift, a missing or damaged one is warn, never fail.
+    from wuwei import graph
+    found = row(doctor.diagnose(), 'register')
+    assert found['status'] == 'ok' and 'matches config.toml' in found['value'], found
+    config(ws.root, CONFIG + '\n[outbound]\nwork_channels = ["C09"]\n')
+    found = row(doctor.diagnose(), 'register')
+    assert found['status'] == 'warn' and found['detail'] == ['outbound.work_channels'], found
+    assert found['fix'] == W('init --upgrade') and found['apply'] == 'init-upgrade'
+    graph.sync(ws.root, workspace.load_config(ws.root))
+    assert row(doctor.diagnose(), 'register')['status'] == 'ok'
+    (ws.root / '.wuwei/graph.json').write_text('not json')
+    found = row(doctor.diagnose(), 'register')
+    assert found['status'] == 'warn' and 'damaged' in found['value'] and 'apply' not in found, found
+    (ws.root / '.wuwei/graph.json').unlink()
+    found = row(doctor.diagnose(), 'register')
+    assert found['status'] == 'warn' and found['apply'] == 'init-upgrade', found
+
+
+def test_template_row_leaves_the_register_to_its_row(ws):
+    def upgrade(args):
+        print('Would upgrade .wuwei/graph.json: 3 nodes and 2 edges from config.toml')
+        print('Would upgrade config.toml: name .wuwei/graph.json above 2 sections')
+        return 0
+    ws.mp.setattr(init, 'upgrade', upgrade)
+    assert row(doctor.diagnose(), 'template')['status'] == 'ok'

@@ -1051,3 +1051,16 @@ def test_seen_set_is_cli_owned(records, posture, monkeypatch, capsys):
         assert _hook(records, tool, monkeypatch, capsys, **field) == 2
     code, reason = check_file(payload(records, 'Write', file_path=target))
     assert code == 1 and 'seen set' in reason and 'init --upgrade' in reason
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_register_is_cli_owned(records, posture, monkeypatch, capsys):
+    # #552: the register of people, channels and tools is written only by the CLI.
+    from wuwei.guards.protect_state import check_file
+    _posture(records, posture)
+    target = '.wuwei/graph.json'
+    for tool, field in [('Write', {'file_path': target}), ('Edit', {'file_path': target}),
+                        ('Bash', {'command': f'echo {{}} > {target}'})]:
+        assert _hook(records, tool, monkeypatch, capsys, **field) == 2
+    code, reason = check_file(payload(records, 'Write', file_path=target))
+    assert code == 1 and 'bin/wuwei config set' in reason and 'init --upgrade' in reason and 'bin/wuwei who' in reason

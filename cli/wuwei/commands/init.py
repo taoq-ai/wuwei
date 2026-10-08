@@ -334,6 +334,16 @@ def upgrade(args):
         migrated, retired = _retired_mode(migrated)
         stamped = _stamp(migrated)
         stamp_changed, migrated = stamped != migrated, stamped
+        from wuwei import graph  # #552: the register the modeled sections are views of
+        annotated = graph.annotate(migrated)
+        named, migrated = annotated.count(graph.COMMENT) - migrated.count(graph.COMMENT), annotated
+        try:
+            previous = graph.load(destination.parent)
+            register = graph.build(workspace.load_config(destination.parent, raw=migrated), previous)
+        except ValueError as exc:  # A13: the register decides nothing, so it never stops the upgrade.
+            graph.warn('init', exc)
+            previous = register = None
+        graph_changed = register != previous
         executable = plugin / 'bin/wuwei'
         pointer = pointer_path.read_text(encoding='utf-8') if pointer_path.exists() else ''
         conflicts = []
@@ -356,6 +366,8 @@ def upgrade(args):
                 security.initialize(destination, getattr(args, 'honeytoken_path', security.DEFAULT_HONEYTOKEN_PATH))
             from wuwei.commands.agents import write_workspace
             write_workspace(plugin, destination)
+            if graph_changed:
+                graph.save(destination.parent, register)
             if config_changed:
                 workspace.atomic_write(config_path, migrated)
             if pointer_changed:
@@ -375,6 +387,11 @@ def upgrade(args):
         if stamp_changed:
             from wuwei import integrity
             print(f'{prefix} config.toml: template_version {integrity.version()}')
+        if named:
+            print(f'{prefix} config.toml: name .wuwei/{graph.NAME} above {named} sections')
+        if graph_changed:
+            print(f"{prefix} .wuwei/{graph.NAME}: {len(register['nodes'])} nodes and "
+                  f"{len(register['edges'])} edges from config.toml")
         if pointer_changed:
             print(f'{prefix} executable pointer')
         if seeded:
@@ -387,7 +404,7 @@ def upgrade(args):
         if not args.dry_run:
             _status_line(executable)
         if (not added and not retired and not stamp_changed and not pointer_changed and not env_changed
-                and not guide_changed and not seeded and text == raw):
+                and not guide_changed and not seeded and not named and not graph_changed and text == raw):
             print('No workspace changes needed')
         if args.dry_run:
             return CLEAN
