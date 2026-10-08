@@ -400,6 +400,68 @@ def _escaped(root):
     return merged, escaped
 
 
+CYCLE_TARGETS = {'light': 60, 'standard': 180}  # #567: minutes; a target, never a refusal
+
+
+def cycles(root):
+    """#567: one row per merged item: its tier, the minutes from its plan approve or add to its
+    merge, and from its first sentinel launch to its last gate verdict, across days."""
+    from wuwei.dispatch import depth
+    starts, launches, received, merged, tiers, sentinels = {}, {}, {}, {}, {}, {}
+    for directory in reversed(watch.days(root)):  # oldest first
+        for row in _events(directory) or []:
+            kind, payload, ts = row['kind'], row['payload'], datetime.fromisoformat(row['ts'])
+            names = (payload.get('items', []) if kind == 'plan.approved'
+                     else [payload.get('item')] if kind == 'plan.added' else [])
+            for name in names:
+                if isinstance(name, str):
+                    starts.setdefault(name, ts)
+            if kind == 'brief written' and str(payload.get('role')).startswith('sentinel-'):
+                sentinels[payload.get('name')] = payload.get('item')
+            elif kind == 'seat launched' and payload.get('name') in sentinels:
+                launches.setdefault(sentinels[payload['name']], ts)
+            elif kind == 'gate.received':
+                received[payload.get('item')] = ts
+            for name, phase in (payload.get('phase_changes') or {}).items():
+                if phase == 'merged':
+                    merged.setdefault(name, ts)
+        data = _state(directory)
+        tiers.update({name: depth(row) for name, row in (data['items'] if data else {}).items()})
+    minutes = lambda start, end: (end - start).total_seconds() / 60
+    return [{'item': name, 'tier': tiers.get(name, 'standard'), 'merged_at': end,
+             'cycle_minutes': minutes(starts[name], end),
+             'gate_minutes': (minutes(launches[name], received[name])
+                              if name in launches and name in received else UNMEASURED)}
+            for name, end in sorted(merged.items()) if name in starts]
+
+
+def cycle_by_tier(rows):
+    """{tier: median minutes, items, target}, else unmeasured."""
+    found = defaultdict(list)
+    for row in rows:
+        found[row['tier']].append(row['cycle_minutes'])
+    return {tier: {'median_minutes': median(values), 'items': len(values),
+                   **({'target': CYCLE_TARGETS[tier]} if tier in CYCLE_TARGETS else {})}
+            for tier, values in sorted(found.items())} or UNMEASURED
+
+
+def cycle_moved(rows, today):
+    """The retro line naming the tier whose median cycle moved most week over week."""
+    week = lambda when: when.isocalendar()[:2]
+    this = week(today)
+    last = week(today - timedelta(days=7))
+    medians = [cycle_by_tier([row for row in rows if week(row['merged_at']) == wanted])
+               for wanted in (last, this)]
+    shared = [tier for tier in (medians[1] if medians[1] != UNMEASURED else {})
+              if medians[0] != UNMEASURED and tier in medians[0]]
+    if not shared:
+        return 'Cycle time: unmeasured (no tier merged in both weeks)'
+    before, after = medians
+    tier = max(shared, key=lambda name: abs(after[name]['median_minutes'] - before[name]['median_minutes']))
+    return (f"Cycle time: {tier} moved most, median {before[tier]['median_minutes']:.0f} to "
+            f"{after[tier]['median_minutes']:.0f} minutes week over week")
+
+
 def _events(day):
     path = day / 'events.jsonl'
     if not path.exists():
@@ -672,6 +734,10 @@ def collect(root=None, *, day=None):
     event_metrics['escaped_defects_per_tier'] = _escaped_by_tier(root)
     event_metrics['review_rework'] = _review_rework(root, config, refs, prs)
     event_metrics['lead_time'] = _lead_time(root, config, items, prs)
+    rows = cycles(root)
+    event_metrics['cycle_minutes'] = {row['item']: row['cycle_minutes'] for row in rows} or UNMEASURED
+    event_metrics['gate_minutes'] = {row['item']: row['gate_minutes'] for row in rows} or UNMEASURED
+    event_metrics['cycle_by_tier'] = cycle_by_tier(rows)
     event_metrics['brief_drill_score'] = (data.get('brief_drill', UNMEASURED)
                                           if data is not None else UNMEASURED)
     event_metrics['voice_drafts'] = {

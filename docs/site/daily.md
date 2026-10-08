@@ -300,12 +300,20 @@ executes each returned action unchanged:
 5. [Delta](concepts.md#delta): `dispatch next` returns `gates` for the roles that said FIX, and `seats` holds a
    `continue` action per seat with `resume` (the seat's agent ID) and a `receive` call
    with `--round delta`. After the delta verdicts it returns `raise` with review notes,
-   or `escalate`.
+   or `escalate`. A light item has no delta review: its `continue` feedback starts
+   `Re-read:` and the same [sentinel](concepts.md#sentinel) rewrites its `Verdict:` and `Head:` lines.
 6. Pull request: `wuwei pr raise <owner/repo> --base main --title <title> --body-file
    <file> --item <item>` opens the PR and moves the item to `raised`. `wuwei pr state`
    reads the host; `wuwei pr act <ref>` returns the next PR action, including a post-PR fix
    round. When the host reports the PR merged, the item is `merged`, whatever round it
    was in.
+
+Process depth follows the [tier](concepts.md#tier). A light item skips the class sweep, gate step zero and
+the long verdict rows; a standard item sweeps only the classes `wuwei sweep classes
+<worktree>` lists and mutates only when its diff touches guard code or a trust path. Each
+brief's `Depth:` line says which. The report's `## Cycle time` section shows how long each
+merged item took and the median per tier against the targets (light 60, standard 180
+minutes).
 
 On a non-trivial item the builder first runs every step of the configured [spec engine](concepts.md#spec-engine)
 (spec-kit by default: specify, clarify, plan, tasks, analyze, checklist, then implement) in

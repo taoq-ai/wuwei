@@ -124,7 +124,7 @@ def answered(thread, me):
     return bool(humans) and humans[-1]['author'] == me
 
 
-def _gate_recorded(directory, head):
+def _gate_recorded(directory, head, data=None):
     if not isinstance(head, str) or not re.fullmatch(r'[0-9a-fA-F]{40}|[0-9a-fA-F]{64}', head):
         raise ValueError(f'invalid PR head; {DAMAGED}')
     for path in sorted((directory / 'decisions').glob('gate-*.md')):
@@ -132,7 +132,7 @@ def _gate_recorded(directory, head):
         code, _ = verdict.lint(text,
             quality=verdict.is_quality(path) or verdict.is_quality(path.resolve()), class_sweep=any(
             {'arch', 'quality', 'security'} & set(re.split(r'[-_.]', p.name.lower()))
-            for p in (path, path.resolve())))
+            for p in (path, path.resolve())), light=verdict.light(path, data))
         if code:
             continue
         active = verdict.active_text(text)
@@ -181,7 +181,7 @@ def _visibility(ref, pr, reviews, data, me, directory, config):
             posted = True
     if not posted and 'channel-post' not in skip:
         owed.append('channel-post')
-    if not _gate_recorded(directory, pr['head']):
+    if not _gate_recorded(directory, pr['head'], data):
         owed.append('verdict')
     return owed
 

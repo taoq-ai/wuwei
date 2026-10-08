@@ -84,7 +84,9 @@ def finding_blocks(text):
     return blocks
 
 
-def lint(text, *, quality=False, class_sweep=False):
+def lint(text, *, quality=False, class_sweep=False, light=False):
+    """light (#567, a light item's gate): Verdict:, Head: and findings; no probe row, class
+    line, Simplicity or Design row, and no retro note unless one of its lines is written."""
     text = active_text(text)
     failures = []
     verdicts = re.findall(VERDICT_ROW, text, re.M)
@@ -103,11 +105,13 @@ def lint(text, *, quality=False, class_sweep=False):
         ):
             if not re.search(pattern, text, re.I):
                 failures.append(message)
-    if not re.search(r'^(?:Probes?|Mutation):[ \t]*\S[^\n]*$', text, re.M | re.I):
+    if not light and not re.search(r'^(?:Probes?|Mutation):[ \t]*\S[^\n]*$', text, re.M | re.I):
         failures.append("no mutation/probe line (say 'not run' if the seat could not run them)")
-    if (class_sweep or quality) and not re.search(CLASSES, text):
+    if not light and (class_sweep or quality) and not re.search(CLASSES, text):
         failures.append('no class-sweep line (CLASS: PASS|N.A.|FINDING <id>)')
     _, missing, invalid = retro_fields(text)
+    if light and len(missing) == len(RETRO_KEYS):
+        missing = []
     for key in RETRO_KEYS:
         if key in missing:
             failures.append(f"retro note missing '{key}:' line")
@@ -126,7 +130,7 @@ def lint(text, *, quality=False, class_sweep=False):
                                (SCENARIO, 'failure scenario')):
             if not re.search(pattern, block, re.I):
                 failures.append(f'finding {number}: missing {field}')
-    if quality:
+    if quality and not light:
         for key in ('Simplicity', 'Design'):
             values = rows(text, key)
             if len(values) != 1 or not values[0].strip():
@@ -167,11 +171,32 @@ def record_rejection(path, code, message, *, root=None):
     return code, message
 
 
+def light(path, data):
+    """#567: whether a gate file belongs to a seat whose item dispatch tiered light; False
+    whenever the seat or item cannot be resolved (today's full shape)."""
+    from wuwei import brief, dispatch
+    try:
+        seat = brief.seats(data).get(Path(path).stem[len('gate-'):]) if data else None
+        return seat is not None and dispatch.depth(data['items'][seat['item']], gate=True) == 'light'
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return False
+
+
+def day_state(path):
+    """The day state beside a decisions/gate-*.md file, else None."""
+    from wuwei import state
+    day = Path(path).parent.parent
+    try:
+        return state.read_state(directory=day) if (day / 'state.json').is_file() else None
+    except (OSError, ValueError):
+        return None
+
+
 def lint_file(path, *, role='', root=None):
     try:
         path = Path(path)
         role = role.rsplit(':', 1)[-1]
-        code, message = lint(path.read_text(encoding='utf-8'),
+        code, message = lint(path.read_text(encoding='utf-8'), light=light(path, day_state(path)),
                     quality=role == 'sentinel-quality' or is_quality(path) or is_quality(path.resolve()),
                     class_sweep=role in ('sentinel-arch', 'sentinel-quality', 'sentinel-security') or any(
                         {'arch', 'quality', 'security'} & set(re.split(r'[-_.]', p.name.lower()))

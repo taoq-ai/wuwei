@@ -493,6 +493,25 @@ they wait for the owner.
   the approach keeps leaking and what replaces it, agreed with the owner before more code,
   and the reconsideration is recorded in its spec (constitution, Cycle budget).
 - A re-gate continues the same sentinel with the delta; a fresh seat only for a lost agent.
+- Process depth follows the tier (owner, 2026-10-08, #567). The tier (#280, from the diff,
+  the repository floor and the lead tier) decides the process depth, not only the gate
+  count. The brief and the launch prompt carry a `Depth:` line, so a seat never decides it;
+  the gate seats read the tier `dispatch next` recorded, never the builder's prediction.
+
+  | | light | standard | full |
+  |---|---|---|---|
+  | Spec engine | none (#280) | the engine's steps | the engine's steps |
+  | Builder class sweep | none | the classes `wuwei sweep classes <worktree>` lists from the changed files | every class |
+  | Gates | quality | arch, quality, security | arch, quality, security, goal when docs |
+  | Mutation step (gate step zero) | none | only when the diff touches `guards/`, `grants`, `outward`, a hook or a `trust_paths` entry | always |
+  | After a fix | the same sentinel re-reads the diff and rewrites its `Verdict:` and `Head:` lines | the delta round | the delta round |
+  | Verdict shape | `Verdict:`, `Head:`, findings | as below | as below |
+  | Decision records | a Routine record under mandate prints one line in `decision show` (`--full` prints it) | the same | the same |
+  | Retro note | only when a line is not `none` | every seat | every seat |
+
+  A skipped step zero at standard writes `Mutation: skipped (depth standard)`. No step adds
+  a refusal: the light shape is an acceptance, and a verdict whose seat or item cannot be
+  resolved is linted at the standard shape.
 - CAP counts running build seats. The free-memory floor comes from config.
   Amended (owner, 2026-10-05, #528): CAP and `host.seats` derive from the measured host,
   never from a shipped number: the running seats plus the seats that fit above the memory
@@ -506,10 +525,11 @@ they wait for the owner.
   card and the status line name what bound it (`host`, `budget`, `owner`, `unmeasured`).
 - Seat policy (model and runtime per role) is set at the morning gate and stored in state.
 - Boundary and environment register come from config; the arch sentinel checks against them.
-- Verdict shape: a `Verdict: PASS|FIX|PARK|ESCALATE` line; findings with severity,
+- Verdict shape (at light, see Process depth above): a `Verdict: PASS|FIX|PARK|ESCALATE` line; findings with severity,
   `file:line`, failure scenario and `blocks: yes|no`; a probe or mutation line per claim (or
   "not run"); residual risk; the retro note.
-- Retro note, every seat: three lines prefixed `Blocked:`, `Gap:`, `Change:`.
+- Retro note, every seat: three lines prefixed `Blocked:`, `Gap:`, `Change:` (at light, only
+  when a line is not `none`; an absent note is recorded as `none` on every line).
 - Build loop (owner, 2026-09-28; adapted from ralph-starter). The runtime adapter runs a
   builder seat as a loop rather than a single dispatch: dispatch, run the item's fast checks
   (backpressure), feed failures back into the same seat, repeat until green or until
@@ -594,6 +614,12 @@ beside the owner's baseline:
 - lead time: from the tracker item moving to In Progress (the tracker adapter's `claim`) to
   its first merged PR; median, p75 and p90; creation to merge and PR open to merge as
   secondary figures
+- cycle time (owner, 2026-10-08, #567): `cycle_minutes` per item, from its first
+  `plan.approved` or `plan.added` to its merge, across days; `gate_minutes` from its first
+  sentinel launch to its last received verdict; `cycle_by_tier`, the median per tier against
+  the targets light under 60 and standard under 180 minutes on the fixture day. The report
+  shows them under `## Cycle time`; the retro names the tier whose median moved most week
+  over week. A missed target is a reading, never a refusal.
 
 The baseline is the owner's hand-run month before WUWEI, recorded once in the workspace at
 `memory/notes/baseline.md` (type `reference`), never in this repository. A metric that

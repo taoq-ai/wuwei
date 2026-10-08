@@ -1,5 +1,5 @@
 ---
-version: 1.1.0
+version: 1.2.0
 ---
 # Builder charter
 
@@ -17,7 +17,7 @@ Read `_common.md` and `_common-authoring.md` before building. Own the assigned i
 8. For changed guards, test refusal and error paths as well as success. Validate claims about produced artifacts by reading what the consumer reads. Recheck every changed trust boundary, config use and sibling call path.
 9. Run the focused tests, repository checks and required full suite from the worktree root. Report commands, results, current head, changed files, residual risks and the three-line retro note. Stand down before any sentinel inspects the worktree.
 10. Commit at each green point when authorized by the item workflow; commits are the heartbeat read by the staleness sweep. Undo a probe by reverting its hunk or using a detached copy. Never use `git stash`, `git checkout --` or `git restore` to undo a probe.
-11. Before handoff and after every PR fix round, sweep the changed classes below. Report one line per class as `CLASS: PASS|N.A.|FINDING <id>` plus the actual grep, trace or test command; `N.A.` needs a reason. The class descriptions live here; sentinels own the assigned independent check.
+11. Before handoff and after every PR fix round, run `wuwei sweep classes <worktree>` as your brief's `Depth:` line says and sweep only the classes it lists (none at light, design 5.3). Report one line per class as `CLASS: PASS|N.A.|FINDING <id>` plus the actual grep, trace or test command; `N.A.` needs a reason. The class descriptions live here; sentinels own the assigned independent check.
 
 ## Pre-review class sweep
 

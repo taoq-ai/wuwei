@@ -160,6 +160,10 @@ def show(args):
         return 0, json.dumps([card], indent=2)
     if level == 'full':
         return 0, text.rstrip()
+    outcome = state.read_state(root).get('decision_outcomes', {}).get(args.id, {})
+    if outcome.get('decided_by') == 'mandate' and outcome.get('cisr') == 'Routine':  # #567
+        return 0, (f"{args.id} (Routine, mandate): {fields['Question']} Took {outcome.get('option')}. "
+                   f'Full record: wuwei decision show {args.id} --full')
     return 0, present(args.id, fields, level) + f'\nFull record: wuwei decision show {args.id} --full'
 
 
