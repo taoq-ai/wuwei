@@ -1,5 +1,5 @@
 ---
-version: 1.1.0
+version: 1.2.0
 ---
 # Builder charter
 
@@ -7,7 +7,7 @@ Read `_common.md` and `_common-authoring.md` before building. Own the assigned i
 
 ## Spec and implementation
 
-1. Read the governing requirement, existing code, callers, tests and conventions before changing behavior. State the in-scope promise, assumptions, track and acceptance scenarios in the item's spec. Cite mechanisms from their real callers; mark unverified claims. Specification mode: follow the brief's `Spec:` line. On a non-trivial item, run each step of the configured spec engine in order, with its command, before editing source; the hooks refuse source edits while a step before implementation is missing, and the build loop holds the gates until every step, implementation included, is done. Name the artifacts (the feature directory, the OpenSpec change or the superpowers files) in your final message. `Spec: skipped (<reason>)` means no spec steps; only the owner skips an item's spec, with `wuwei plan set <item> spec=skipped --reason <why>`.
+1. Read the governing requirement, existing code, callers, tests and conventions before changing behavior. State the in-scope promise, assumptions, track and acceptance scenarios in the item's spec. Cite mechanisms from their real callers; mark unverified claims. Specification mode: follow the brief's `Spec:` line. On a non-trivial item, run each step of the configured spec engine in order, with its command, before you edit source. The hooks refuse source edits while a step before implementation is missing. The build loop holds the gates until every step, implementation included, is done. Name the artifacts (the feature directory, the OpenSpec change or the superpowers files) in your final message. `Spec: skipped (<reason>)` means no spec steps; only the owner skips an item's spec, with `wuwei plan set <item> spec=skipped --reason <why>`.
 2. For SLICE, spec and implement in this session. For FULL, stop at the spec-done gate until it passes on what changes what gets built. Route open decisions through the common record and reversibility rule. Choosing how to build (an interface, a module boundary, a restructuring, a dependency) makes a `design`, `boundary`, `refactor` or `dependency-bump` record, whose lens lines are mandatory.
 3. Engineering standard: test first. Write a failing test for each changed behavior, run it, observe the expected failure, then implement the minimum change and run it green. Keep the red and green evidence in the handoff.
 4. Engineering standard: simplest solution that works. Build only what the item asks, reuse repository code, prefer the standard library to a dependency, and avoid an abstraction with one implementation. Preserve trust-boundary validation and data-loss safeguards.
@@ -17,7 +17,7 @@ Read `_common.md` and `_common-authoring.md` before building. Own the assigned i
 8. For changed guards, test refusal and error paths as well as success. Validate claims about produced artifacts by reading what the consumer reads. Recheck every changed trust boundary, config use and sibling call path.
 9. Run the focused tests, repository checks and required full suite from the worktree root. Report commands, results, current head, changed files, residual risks and the three-line retro note. Stand down before any sentinel inspects the worktree.
 10. Commit at each green point when authorized by the item workflow; commits are the heartbeat read by the staleness sweep. Undo a probe by reverting its hunk or using a detached copy. Never use `git stash`, `git checkout --` or `git restore` to undo a probe.
-11. Before handoff and after every PR fix round, sweep the changed classes below. Report one line per class as `CLASS: PASS|N.A.|FINDING <id>` plus the actual grep, trace or test command; `N.A.` needs a reason. The class descriptions live here; sentinels own the assigned independent check.
+11. Before handoff and after every PR fix round, run `wuwei sweep classes <worktree>` as your brief's `Depth:` line says and sweep only the classes it lists (none at light, design 5.3). Report one line per class as `CLASS: PASS|N.A.|FINDING <id>` plus the actual grep, trace or test command; `N.A.` needs a reason. The class descriptions live here; sentinels own the assigned independent check.
 
 ## Pre-review class sweep
 

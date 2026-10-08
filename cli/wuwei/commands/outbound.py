@@ -194,7 +194,7 @@ def _owner(path):
             or found['dm'] and not re.fullmatch(outward.SLACK_SHAPE['dm'], found['dm'])
             or found['dm'] and found['dm'] == os.environ.get('SLACK_OWNER_DM_CHANNEL')):
         raise ValueError(f'{path}: expected a JSON object {{"user", "dm"}} with the owner\'s Slack user id (U or W) '
-                         "and the owner's own DM id (D, or empty), not the WUWEI app DM; write the file again")
+                         "and the owner's own DM id (D, or empty). Do not use the WUWEI app DM; write the file again")
     return found
 
 

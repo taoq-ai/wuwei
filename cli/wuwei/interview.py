@@ -71,8 +71,8 @@ def _chat(text):
         return {'adapters.chat': 'slack', 'shepherd.review_channel': text}
     if re.fullmatch(r'[A-Za-z][A-Za-z0-9 .+-]{0,39}', text) and not calibrate.instruction_like(text):
         return {'adapters.chat': 'none'}
-    raise ValueError('expected a Slack channel ID such as C0123ABCD, or the name of another tool such as Email; '
-                     'use the channel ID from the channel details, or the tool name')
+    raise ValueError('expected a Slack channel ID such as C0123ABCD or another tool such as Email; '
+                     'use the channel ID from the channel details or the tool name')
 
 
 def _login(text):

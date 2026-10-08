@@ -338,6 +338,19 @@ when a merged PR is reverted or red on the base branch, or when the rolling 14-d
 defect rate for auto-merged PRs (5.6) exceeds the owner's baseline. Any precondition that
 cannot be read is exit 2: not cleared, so the merge goes to the owner.
 
+Amended (owner, 2026-10-05, #524): a merge the policy does not clear is a grantable owner
+action like a deploy (4.7). `wuwei merge` (and `wuwei pr act`) asks the owner on a decision card
+(Keep owner-only, Allow once, Allow today, Always allow per repository; no Always under
+`strict`), and a merge the plan lists is a planned card the morning gate asks, per repository
+or per PR. The recorded answer replaces only eligibility and pacing (`merge.auto`, risk flags,
+never-auto paths, size, cycle budget, soak, daily cap, quiet hours, breaker); every
+precondition above still holds at the current head, and the repository must allow squash
+merges. A precondition that fails names the condition: no grant lifts it. With no grant,
+`[merge] default_tier` decides: `ask` writes the card, `owner_only` prints the exact
+`gh pr merge <url> --squash --match-head-commit <sha>` for a host terminal; unset, it is
+`owner_only` under `strict` and `ask` otherwise. Granted merges are journaled, watched and
+undo-logged like auto-merges.
+
 ### 4.7 Deployment ban (owner, 2026-09-28)
 
 WUWEI never deploys, in any profile, routine or remote command. Refused always, after the
@@ -493,6 +506,25 @@ they wait for the owner.
   the approach keeps leaking and what replaces it, agreed with the owner before more code,
   and the reconsideration is recorded in its spec (constitution, Cycle budget).
 - A re-gate continues the same sentinel with the delta; a fresh seat only for a lost agent.
+- Process depth follows the tier (owner, 2026-10-08, #567). The tier (#280, from the diff,
+  the repository floor and the lead tier) decides the process depth, not only the gate
+  count. The brief and the launch prompt carry a `Depth:` line, so a seat never decides it;
+  the gate seats read the tier `dispatch next` recorded, never the builder's prediction.
+
+  | | light | standard | full |
+  |---|---|---|---|
+  | Spec engine | none (#280) | the engine's steps | the engine's steps |
+  | Builder class sweep | none | the classes `wuwei sweep classes <worktree>` lists from the changed files | every class |
+  | Gates | quality | arch, quality, security | arch, quality, security, goal when docs |
+  | Mutation step (gate step zero) | none | only when the diff touches `guards/`, `grants`, `outward`, a hook or a `trust_paths` entry | always |
+  | After a fix | the same sentinel re-reads the diff and rewrites its `Verdict:` and `Head:` lines | the delta round | the delta round |
+  | Verdict shape | `Verdict:`, `Head:`, findings | as below | as below |
+  | Decision records | a Routine record under mandate prints one line in `decision show` (`--full` prints it) | the same | the same |
+  | Retro note | only when a line is not `none` | every seat | every seat |
+
+  A skipped step zero at standard writes `Mutation: skipped (depth standard)`. No step adds
+  a refusal: the light shape is an acceptance, and a verdict whose seat or item cannot be
+  resolved is linted at the standard shape.
 - CAP counts running build seats. The free-memory floor comes from config.
   Amended (owner, 2026-10-05, #528): CAP and `host.seats` derive from the measured host,
   never from a shipped number: the running seats plus the seats that fit above the memory
@@ -506,10 +538,11 @@ they wait for the owner.
   card and the status line name what bound it (`host`, `budget`, `owner`, `unmeasured`).
 - Seat policy (model and runtime per role) is set at the morning gate and stored in state.
 - Boundary and environment register come from config; the arch sentinel checks against them.
-- Verdict shape: a `Verdict: PASS|FIX|PARK|ESCALATE` line; findings with severity,
+- Verdict shape (at light, see Process depth above): a `Verdict: PASS|FIX|PARK|ESCALATE` line; findings with severity,
   `file:line`, failure scenario and `blocks: yes|no`; a probe or mutation line per claim (or
   "not run"); residual risk; the retro note.
-- Retro note, every seat: three lines prefixed `Blocked:`, `Gap:`, `Change:`.
+- Retro note, every seat: three lines prefixed `Blocked:`, `Gap:`, `Change:` (at light, only
+  when a line is not `none`; an absent note is recorded as `none` on every line).
 - Build loop (owner, 2026-09-28; adapted from ralph-starter). The runtime adapter runs a
   builder seat as a loop rather than a single dispatch: dispatch, run the item's fast checks
   (backpressure), feed failures back into the same seat, repeat until green or until
@@ -594,6 +627,12 @@ beside the owner's baseline:
 - lead time: from the tracker item moving to In Progress (the tracker adapter's `claim`) to
   its first merged PR; median, p75 and p90; creation to merge and PR open to merge as
   secondary figures
+- cycle time (owner, 2026-10-08, #567): `cycle_minutes` per item, from its first
+  `plan.approved` or `plan.added` to its merge, across days; `gate_minutes` from its first
+  sentinel launch to its last received verdict; `cycle_by_tier`, the median per tier against
+  the targets light under 60 and standard under 180 minutes on the fixture day. The report
+  shows them under `## Cycle time`; the retro names the tier whose median moved most week
+  over week. A missed target is a reading, never a refusal.
 
 The baseline is the owner's hand-run month before WUWEI, recorded once in the workspace at
 `memory/notes/baseline.md` (type `reference`), never in this repository. A metric that
@@ -651,6 +690,8 @@ two-way open question inside the item is an assumption instead (5.3):
 
 - `Question:` one line; `Context:` what forces the decision, with evidence paths
 - `Class:` one of the decision classes in 5.8.1
+- `Role:` optional, one line: the role (charter name) that wrote the record; its confidence is
+  scored per role (5.8.1, Calibration)
 - `Options:` at least two, one of them doing nothing or deferring, as the table
   `Option | Title | Rationale | Consequence`: a short title (at most 40 characters, no quote,
   backtick, `$` or backslash), why the option scores as it does against the musts and wants,
@@ -695,6 +736,21 @@ definition) and a record written `Decided-by: owner` (a security finding) go to 
 the lens lines. A one-way record is never Routine by definition. Under `supervised` routing stays
 as before this amendment. The lint OK line names the class, and a record without a
 recommendation is refused with "add the recommendation and the reasoning".
+
+Measured reversibility (owner, 2026-10-08, #557). A record counts as two-way only when the CLI
+knows the undo for its action and that undo ran once in this workspace. The class gives the
+action kind. The commit classes (`approach`, `retry`, `accept-residual`, `scope-cut` and the
+engineering classes) undo with a git revert on the item branch. `park`, `defer` and `re-plan`
+undo with `wuwei undo D-n`. `merge` undoes with a revert PR through `wuwei undo <event id>`,
+and only when every repository the record names declares `merge_deploys = false` (4.6). A
+message has no undo (4.9), and `other` or a record without a class has none registered, so
+each of them is one-way. `wuwei undo rehearse commit` and `wuwei undo rehearse decision` run
+the undo once on a scratch target and write `memory/rehearsals.json`, which only those
+commands write; a merge counts after its first real `wuwei undo`. The CLI only lowers a door.
+`decision lint` prints the correction and keeps its exit code, and `decision route` writes
+`Reversibility: one-way` and a Notes line into the record on its first route, so the record
+comes to the owner as a card. `wuwei next` returns each missing rehearsal as a run row after
+the gate. The day report lists what was undone today and what cannot be undone.
 
 Enforcement. A PostToolUse decision lint on writes to `decisions/D-*.md` refuses a record
 missing any field, with an unknown class, with fewer than two options, or whose
@@ -749,10 +805,11 @@ The L2 defaults are the two-way, inside-the-item decisions seats took on their o
 cruise mode. `[decisions.cruise]` in `config.toml`: `enabled` (default true), `margin`
 (default 0.2), `max_per_day` (default 20), `undo_minutes` (default 60), `budget_share`
 (default 0.1, above 0 and at most 0.5), `budget_window_days` (default 14), `burn_warn`
-(default 2.0), and `levels.<class>`, which only lowers a class. The config check refuses an unknown class, a
+(default 2.0), `calibration_threshold` (default 0.15, above 0 and below 1),
+`calibration_min` (default 10), `shadow_days` (default 5), `shadow_min` (default 5), and `levels.<class>`, which only lowers a class. The config check refuses an unknown class, a
 level outside 0 to 3, or a level above the class's ceiling. The running level lives in
 `memory/cruise.json`, starts at the default, and is written only by `wuwei promote` (raises
-with ledger evidence and morning-gate approval, lowers when the error budget is spent). A class runs at the lowest
+with ledger evidence after a passed shadow and morning-gate approval, lowers when the error budget is spent). A class runs at the lowest
 of the running level, the config level and the ceiling.
 
 Conditions. The CLI answers a record only when all hold: the class runs at L2 or L3;
@@ -789,6 +846,21 @@ owner approved it at the morning gate, and never above the ceiling. Once a week 
 re-asks the owner one cruise-answered record per class from the past seven days, with the
 answer hidden; a different choice counts as a reversal.
 
+Shadow promotion (owner, 2026-10-08, #560). Agreement alone said nothing about what the next
+level would do on live records, so a raise is shadowed first. When a class reaches its
+agreements, propose starts a shadow at the next level in `memory/cruise.json` instead of a
+card. While it runs, each record the mandate takes for that class also gets the answer the
+shadow level would have given (`decision_shadows`, written only by `wuwei decision route`);
+the live route never changes. The steward scores each shadow answer against the record's final
+outcome: an owner answer, or a cruise answer whose undo window closed. One disagreement ends
+the shadow, and the ledger names the record and both options. The shadow passes after
+`shadow_days` with at least `shadow_min` scored answers, all agreeing. Only a passed shadow
+gets the raise card, the card ends the shadow so it asks once, and `wuwei promote` lands a
+raise only from a card that carries a passed shadow. A raise to L1 changes no route, so its
+shadow passes at once. After an ended shadow the agreements count again from its end.
+`bin/wuwei cruise shadow` prints the shadows and the day report has a `## Cruise shadow`
+section.
+
 Error budget (owner, 2026-10-08, #558). A single event no longer lowers a class: one unlucky
 reversal dropped a class, and a slow drift of bad calls never tripped anything. Each class
 has a budget per `budget_window_days` window. Its events are reversals (an undo, a later
@@ -811,11 +883,29 @@ lower a class. A class with a spent budget, or with a budget event since its las
 change, gets no raise card. `wuwei cruise budget` prints class, level, answered, spent,
 allowance, burn and state, and exits 1 when any class is not ok.
 
+Calibration (owner, 2026-10-08, #559). A record's stated Confidence is scored against what
+happened. The CLI stores `confidence` and `role` (from the optional `Role:` field) in the
+`decision.decided` payload of every record a seat, the mandate or a cruise rule takes. Over
+the `budget_window_days` window each taken record with a stored confidence and a closed undo
+window is scored: forecast high 0.9, medium 0.6, low 0.3; outcome 0 when an undo, a reversal,
+a weekly sample answered differently or an escaped defect names it, else 1. The Brier score
+(mean squared difference) is computed per class and per role. Fewer than `calibration_min`
+scored records is `too few`; above `calibration_threshold` is `uncalibrated`; else
+`calibrated`. The steward review stores the uncalibrated classes and roles in `cruise.json`
+under `calibration` through the promote writer, with one ledger line naming the broken
+records, only when the sets change. An uncalibrated class runs at most L1. A record whose
+`Role:` is stored uncalibrated routes with high ambiguity, so Routine becomes Exploratory and
+Consequential becomes Strategic (a card); this never refuses. A class gets a raise card only
+when its live state is `calibrated`. `too few` blocks promotion only. `wuwei cruise
+calibration` prints kind, name, scored, brier and state, and exits 1 when any row is
+uncalibrated. The day report and the retro carry a `## Calibration` section.
+
 Kill switch. `decisions.cruise.enabled = false` runs every class at L0 without changing any
 running or configured level, so turning it back on restores them. The status line (5.9) then
 shows `cruise off | L<max>`, the highest level a class would run at, and `cruise L<max>`
 while it is on, followed by `· budget <classes> spent` while an error budget holds a class
-lower.
+lower, `· uncalibrated <roles>` while a role is stored uncalibrated (#559), and
+`· shadow <classes>` while a class runs in shadow or waits for its raise card (#560).
 
 Novelty (owner, 2026-10-08, #556). Blast radius is only known for targets the workspace
 has touched. A decision or guarded action whose target is novel runs one level lower than
@@ -1796,7 +1886,7 @@ fix the seat runs; only `records` is a wall.
 Floors no posture and no override lowers:
 
 - `records` always blocks, with canary and honeytoken egress and owner disposition markers, whose refusal reads `posture: records = block (floor; no setting lowers it)`. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
-- Owner-only actions (`deploy`, `pr`, and approve-tier messages through `outward`) block, and below strict they ask on a card: a deploy, release or publish asks the owner, and only the owner's recorded answer (once, today, always) lets the same action through (#478); a held message is a draft card (#526). Below strict such a refusal carries no `owner-only action` line; under strict it keeps it. The merge policy, admin merge, approvals, branch protection and the shepherd's no-merge stay owner-only until #524. Raising a PR and pushing a feature branch are not owner-only: they follow `publish`, and missing evidence asks on a card (once, today) under guarded (#530).
+- Owner-only actions (`deploy`, `pr`, and approve-tier messages through `outward`) block, and below strict they ask on a card: a deploy, release or publish asks the owner, and only the owner's recorded answer (once, today, always) lets the same action through (#478); a held message is a draft card (#526). Below strict such a refusal carries no `owner-only action` line; under strict it keeps it. Admin merge, approvals and branch protection stay owner-only. Amended (owner, 2026-10-05, #524): a merge the merge policy does not clear asks the owner on a card like a deploy, and the grant never lifts a 4.6 precondition. Raising a PR and pushing a feature branch are not owner-only: they follow `publish`, and missing evidence asks on a card (once, today) under guarded (#530).
 - MCP: under `guarded` and `strict` a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. A finding blocks only at a severity in `scanner.mcp.block`, which is unset by default: no severity under `guarded`; `critical`, `high` and `unmeasured` under `strict`. Under `observe`, and with `mcp = "off"`, the list has no effect and `config check` says so.
 
 The posture changes what the cooperative guards refuse, never the hard boundaries above.
@@ -1821,6 +1911,9 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I9 | A branch push and a PR raise with recorded evidence succeed from the planner and the builder below strict, and a tag push with a release grant or an Allow once release card passes | per posture, through the hook | #547; below strict the deploy guard's release card and grants gate a tag and `push_check` passes it; under strict `push_check` refuses it |
 | I10 | Under observe and guarded no opaque read-only command is refused | per posture, a script read, a `$(...)` read and a `python3 -c` print through the hook | #547 |
 | I11 | A class runs lower only when its error budget is spent (more events than the allowance and at least two), never on a single event and never through a refusal | `budget_classes.measure` on 3 of 20, 2 of 20 within 48 hours, none, and 1 of 5; no single-trigger lowering left in `cruise` | #558; the lowered class routes its records to a card and is restored when the window refills |
+| I12 | A class or role is uncalibrated only when its Brier score over at least calibration_min scored records is above calibration_threshold; an uncalibrated class runs at most L1, an uncalibrated role only moves a record toward the owner, never through a refusal | `calibration_scores.measure` on 12 high with 5 broken, 10 high stood and 9 high stood; `cruise.level` with and without a stored class; `cisr(..., ambiguous=True)` on a Routine and a Consequential record | #559; too few blocks promotion only |
+| I13 | A shadow never changes a live route | `cruise.level` with and without a stored shadow row, for every class, shadow level and state, cruise on, off and supervised; the full route equality in `tests/test_cruise.py` | #560 |
+| I14 | A raise lands only after a passed shadow | a raise card with no shadow answered `raise` leaves the running levels unchanged | #560; the #558 budget restore is the one raise with no card |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

@@ -183,7 +183,7 @@ def _check(payload, policy):
             return FINDINGS, drafts.hold(root, config, channel, 'tool', 'mcp', inputs, result[1], tool=tool)
         return result
     except (OSError, ValueError, TypeError, KeyError, AttributeError, RuntimeError, re.error):
-        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'
+        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check. If the config is clean, save this as a draft for the owner to send'
 
 
 def _unmatched(tool, root, config, policy):

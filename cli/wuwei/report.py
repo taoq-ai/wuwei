@@ -4,7 +4,7 @@ from collections import Counter
 import json
 import re
 
-from wuwei import metrics, novelty, signal, state, watch, workspace
+from wuwei import calibration_scores, cruise, metrics, novelty, signal, state, undo, watch, workspace
 from wuwei.exits import SYMLINK
 
 FALSE_POSITIVE_AFTER = 3  # A form refused more often than this with no later page is a candidate.
@@ -75,6 +75,19 @@ def class_lines(data):
             'Target: cards only for Strategic and for floors (publish, merge).']
 
 
+def cycle_lines(root):
+    """#567: median cycle minutes per tier against its target, then one line per merged item."""
+    rows = metrics.cycles(root)
+    tiers = metrics.cycle_by_tier(rows)
+    if tiers == metrics.UNMEASURED:
+        return ['unmeasured']
+    gates = lambda value: value if value == metrics.UNMEASURED else f'{value:.0f} minutes'
+    return [*(f"- {tier}: median {row['median_minutes']:.0f} minutes over {row['items']} items"
+              + (f" (target {row['target']})" if 'target' in row else '') for tier, row in tiers.items()),
+            *(f"- {row['item']} ({row['tier']}): {row['cycle_minutes']:.0f} minutes, gates "
+              f"{gates(row['gate_minutes'])}" for row in rows)]
+
+
 def build(root=None):
     root = workspace.find_workspace(root)
     day = workspace.day_dir(root)
@@ -99,13 +112,18 @@ def build(root=None):
     else:
         lines = ['# WUWEI report ' + day.name, '', '## Outcome',
                  *(f'- {title}: {shown(key)}' for title, key in headline)]
+    undone, one_way = undo.report_lines(day, data)  # #557
     lines += ['', '## Taken under mandate', *mandate_lines(data), '', '## Decisions by class',
-              *class_lines(data), '', '## First time today', *novelty.today_lines(root), '', '## Merged']
+              *class_lines(data), '', '## First time today', *novelty.today_lines(root),
+              '', '## Undone today', *undone, '', '## Cannot be undone', *one_way, '', '## Calibration',
+              *calibration_scores.lines(root, workspace.load_config(root)), '', '## Cruise shadow',
+              *cruise.shadow_lines(root), '', '## Merged']
     items = data['items']
     lines.extend(f"- {name} ({item['pr']})" if item.get('pr') else f'- {name}'
                  for name, item in sorted(items.items()) if item['phase'] == 'merged')
     if lines[-1] == '## Merged':
         lines.append('none')
+    lines += ['', '## Cycle time', *cycle_lines(root)]
     lines += ['', '## Open at close']
     lines.extend(f"- {name}: {item['phase']} ({item['status']})" for name, item in sorted(items.items())
                  if item['phase'] not in ('merged', 'parked'))

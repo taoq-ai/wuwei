@@ -381,6 +381,11 @@ def upgrade(args):
             print(f'{prefix} {novelty.NAME}: {seeded} targets seen in the last {novelty.DAYS} days')
         if guide_changed:
             print(f'{prefix} {guide_path.relative_to(destination.parent)}: guide block')
+        from wuwei import undo
+        unrehearsed = undo.missing(destination.parent)  # #557: not a change, so not counted below
+        if unrehearsed:
+            print(f'Undo not rehearsed: {", ".join(unrehearsed)}; run wuwei undo rehearse <kind> '
+                  '(a merge counts after its first wuwei undo)')
         for name, local_version, base_version in conflicts:
             print(f'Charter override needs review: {name} '
                   f'(local {local_version or "unversioned"}, base {base_version or "missing"})')

@@ -6,8 +6,7 @@ This page is for a Claude Code session in a WUWEI workspace. Every SessionStart 
 
 Each role has a charter in `charters/<role>.md` (sentinels as `sentinel-<area>.md`).
 
-- `planner`: this session, once it registers with `wuwei plan session`; it runs the day and
-  launches every other seat. `/wuwei:wuwei-plan` and `/wuwei:wuwei-report` re-run the plan or the report.
+- `planner`: this session, once it registers with `wuwei plan session`; it runs the day and launches every other seat. `/wuwei:wuwei-plan` and `/wuwei:wuwei-report` re-run the plan or the report.
 - `lead`: launched by the planner at plan time; it proposes and ranks the candidates.
 - `builder`: one per item, launched from `wuwei build next`; it works only in its worktree.
 - `sentinel` (arch, quality, security, goal): launched from `wuwei dispatch next`; each reviews a change it did not write and returns a verdict.
@@ -28,6 +27,7 @@ wuwei is the absolute path in .wuwei/executable: read it once and use it as the 
 - nudges: List open nudges and pages
 - plan: Propose or approve the morning plan
 - decision: Check and route decision records
+- undo: Undo a decision or a merge event, or rehearse an undo
 - worktree: Create or adopt an anchored item worktree
 - brief: Write and log a seat brief
 - build: Select the next builder action
@@ -53,7 +53,7 @@ wuwei is the absolute path in .wuwei/executable: read it once and use it as the 
 - runtime: Dispatch and inspect runtime jobs
 - sessions: List registered sessions, roles and claims
 - seat: Recover a stuck seat
-Read-only, never refused: board, calibrate --questions, config check, config show, cruise budget, doctor, drafts show, grants, guide, heartbeat, integrity check, mcp check, memory show, memory status, outbound explain, outbound tiers, plan gate, sessions, shadow report, status, why, and --help on any command.
+Read-only, never refused: board, calibrate --questions, config check, config show, cruise budget, cruise calibration, cruise shadow, doctor, drafts show, grants, guide, heartbeat, integrity check, lint tone, mcp check, memory show, memory status, outbound explain, outbound tiers, plan gate, sessions, shadow report, status, sweep classes, why, and --help on any command.
 
 ## Owner only: ask the owner to run these in a host terminal
 config add-repo, config promote, config set, decide, decision outcome, drafts approve, drafts drop, goals edit, grants revoke, integrity reconfirm, listen uninstall, mcp decide, memory forget, outbound learn, plan set, remote ack, setup, state recover, telemetry send, voice edit, watch uninstall.

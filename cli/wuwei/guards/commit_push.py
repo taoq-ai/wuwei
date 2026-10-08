@@ -28,7 +28,7 @@ def identity_check(expected, actual, head=None):
         for kind in ('author', 'committer'):
             if _identity(actual[kind]) != owner:
                 return 1, (f'GIT_{kind.upper()}_IDENT differs from configured identity; '
-                           'create item worktrees with wuwei worktree add, or run '
+                           'create item worktrees with wuwei worktree add. Or run '
                            f'git config user.name {shlex.quote(owner[0])} and then '
                            f'git config user.email {shlex.quote(owner[1])} in this worktree')
         if head is not None:
@@ -88,7 +88,7 @@ def _context(cwd, settings, env, root, config, vcs, identity):
         configured = data(vcs.repo_context(str(path), root=root))
         if configured.get('common_dir') == actual['common_dir']:
             return repo, actual, vcs
-    raise ValueError('repository is not configured in this workspace; work in a configured repository, or the owner adds this one with bin/wuwei config add-repo in a host terminal')
+    raise ValueError('repository is not configured in this workspace; work in a configured repository. Or the owner adds this one with bin/wuwei config add-repo in a host terminal')
 
 
 def push_check(repo, actual, push, root, vcs):
