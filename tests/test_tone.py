@@ -13,8 +13,8 @@ from wuwei.commands.lint import AVERAGE, LONGEST, line, measure, sentences
 
 # #522: per class, the sentences over 35 words it may keep and its nominalisations per 100
 # words (the after-pass rate rounded up to one decimal). docs keeps the 75 long sentences of
-# the pages outside the pass (research.md).
-BUDGETS = {'reasons': (0, 3.1), 'cards': (0, 3.1), 'skills': (0, 2.9), 'charters': (0, 4.3), 'docs': (75, 3.0)}
+# the pages outside the pass (research.md), plus the two hero image lines (#574), whose alt is one sentence.
+BUDGETS = {'reasons': (0, 3.1), 'cards': (0, 3.1), 'skills': (0, 2.9), 'charters': (0, 4.3), 'docs': (77, 3.0)}
 
 
 def _cards():
