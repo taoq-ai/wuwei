@@ -662,6 +662,7 @@ def i20(case, rules):
         from unittest import mock
         from wuwei import calibrate, workspace
 
+        @functools.cache  # calibrate.host only reads the config; parse each of the four once
         def config(cap, budget):
             return workspace.load_config(rules.root, raw=f'cap = {cap}\n' + rules.base + (
                 f'[budget]\ntokens_per_day = {budget}\n' if budget else ''))
