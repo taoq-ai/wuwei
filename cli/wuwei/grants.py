@@ -93,10 +93,11 @@ def ask(root, row, text):
     return identifier
 
 
-def active(config, data, name, found):
-    """(scope, D-n) of the grant that lets this action on this target through, else None."""
+def active(config, data, name, found, standing=True):
+    """(scope, D-n) of the grant that lets this action on this target through, else None;
+    standing=False leaves the [grants] lines out (#556: a novel target)."""
     from wuwei import workspace
-    if workspace.posture(config)[0] != 'strict':
+    if standing and workspace.posture(config)[0] != 'strict':
         for line in config['grants']['standing']:
             if line['action'] == name and fnmatchcase(found, line['target']):
                 return 'always', line['decision']
@@ -137,8 +138,13 @@ def gate(payload, root, config, argv, rule, repo, moved=False):
                    'a configured repository so the owner can decide on a card, or the owner runs it '
                    'in a host terminal')
     head = f'publish: {command} on {found[5:]} {tail}'
+    from wuwei import novelty
+    novel = (novelty.novel(root, config, [found])
+             if name != 'evidence' and config['autonomy']['mode'] == 'autonomous' else [])
+    if novel:  # #556: a standing line never covers a target the workspace never touched
+        head += f'; {novelty.line(novel)}'
     data = state.read_state(root)
-    hit = active(config, data, name, found)
+    hit = active(config, data, name, found, standing=not novel)
     if hit:
         scope, identifier = hit
         used = {'decision': identifier, 'action': name, 'target': found, 'scope': scope,

@@ -328,6 +328,11 @@ def approve(root, draft_id, *, edit=False, source=None, always=False):
         if added and _add_row(root, added[1]):
             return registry.Result(2, reason='drafts: could not add the tier row; nothing was sent; '
                                              'run bin/wuwei doctor, then retry')
+        if row['channel'] in ('chat', 'slack'):  # #556: the owner's approval clears a first-time channel
+            from wuwei import novelty
+            key = f"channel:{row['destination']}"
+            if re.fullmatch(novelty.KEY, key):
+                novelty.clear(root, key, draft_id)
         now = workspace.now()
         ttl = config['outward']['draft_ttl']
 
