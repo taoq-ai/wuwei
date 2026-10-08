@@ -56,7 +56,7 @@ def attention(directory, classified_state=None):
     return scan(directory, classified_state)[0]
 
 
-def scan(directory, classified_state=None):
+def scan(directory, classified_state=None, *, config=None):
     """Attention rows, watch and listen state (alive, off, dead, unmeasured), heartbeat health and negotiation loops from one read of the day."""
     classified_state = classified_state or {**state.read_state(directory=directory),
                                               'now': workspace.now().isoformat()}
@@ -235,8 +235,9 @@ def scan(directory, classified_state=None):
                     'reason': f'planner session {planner} stale: no hook activity for '
                               f'{row["idle_seconds"]}s; take over from the live session with: '
                               'wuwei plan session <session id> --take-over'}
-    if (directory.parents[1] / 'config.toml').is_file():
+    if config is None and (directory.parents[1] / 'config.toml').is_file():
         config = workspace.load_config(directory.parents[2])
+    if config is not None:
         guards = config['guards']
         if workspace.posture(config)[0] == 'observe' and guards['shadow_since']:
             days = (today - date.fromisoformat(guards['shadow_since'])).days
@@ -247,10 +248,11 @@ def scan(directory, classified_state=None):
     return rows, health['watch'], health['listen'], beat_health, loops
 
 
-def snapshot(directory):
+def snapshot(directory, line=False):
+    """The day's figures; line=True skips the fields status --line never renders (#562)."""
     data = state.read_state(directory=directory)
     live = 0
-    if data.get('sessions'):
+    if data.get('sessions') and not line:
         from wuwei import sessions
         live = sum(not row['stale'] and 'stopped' not in row for row in sessions.rows(
             data, workspace.now(), sessions.stale_seconds(directory.parents[2])))
@@ -259,11 +261,13 @@ def snapshot(directory):
               'phases': {phase: count for phase in state.PHASES
                          if (count := sum(item['phase'] == phase for item in data['items'].values()))},
               'next_reply_due': None, 'next_meeting': None, 'sessions': live,
-              'seats': state.running_by_goal(data), 'running': state.in_flight(data)}
+              'seats': {} if line else state.running_by_goal(data), 'running': state.in_flight(data)}
     result['gates'] = {name: row['gates'] for name, row in data['items'].items() if row['gates']}
+    config_path = directory.parents[1] / 'config.toml'
+    config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
     classified_state = {**data, 'now': workspace.now().isoformat()}
     active, result['watch'], result['listen'], result['health'], result['loops'] = scan(
-        directory, classified_state)
+        directory, classified_state, config=config)
     result['pages'] = sum(row['tier'] == 'page' for row in active)
     result['answered'] = [row['reason'] for row in active if row['source'] == 'decision.answered']
     result['nudges'] = sum(row['tier'] == 'nudge' for row in active)
@@ -275,8 +279,8 @@ def snapshot(directory):
     if routes := data.get('decision_routes'):  # scan checked it is a dict
         from wuwei.decision import answered
         result['decisions'] = [name for name in routes if answered(data, name) is None]
-    for key, field, destination in (('reply_obligations', 'due', 'next_reply_due'),
-                                     ('meetings', 'start', 'next_meeting')):
+    for key, field, destination in () if line else (('reply_obligations', 'due', 'next_reply_due'),
+                                                    ('meetings', 'start', 'next_meeting')):
         rows = data.get(key, [])
         if not isinstance(rows, list):
             raise ValueError(f'{key}: expected list; {DAMAGED}')
@@ -287,14 +291,14 @@ def snapshot(directory):
             if any(instant.tzinfo is None for instant, _ in parsed):
                 raise ValueError(f'{key}: expected timezone-aware timestamps; {DAMAGED}')
             result[destination] = min(parsed, key=lambda row: row[0])[1]
-    config_path = directory.parents[1] / 'config.toml'
-    config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
     result['posture'] = workspace.posture(config)[0] if config is not None else None
+    from wuwei import integrity
+    result['restart'] = integrity.restart(config) if config is not None else ''
+    if line:
+        return result
     if config is not None:  # #283: the cruise level; a damaged cruise.json is unmeasured
         from wuwei import cruise
         result['cruise'] = cruise.label(config, cruise.running(directory.parents[2]))
-    from wuwei import integrity
-    result['restart'] = integrity.restart(config) if config is not None else ''
     result['plugin'] = integrity.version()
     result['template'] = config['template_version'] if config is not None else None
     if result['listen'] == 'off' and (config is None or config['adapters']['inbound'] == 'none'):
@@ -327,7 +331,7 @@ def snapshot(directory):
 
 def run(args):
     try:
-        data = snapshot(workspace.day_dir())
+        data = snapshot(workspace.day_dir(), line=args.line and not args.json)
     except (OSError, ValueError, KeyError, TypeError, RecursionError, UnicodeError) as exc:
         if args.json:
             print(json.dumps({'status': 'unmeasured'}))

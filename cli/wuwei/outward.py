@@ -1,5 +1,6 @@
 """Shared outward approval tiers and mechanical text lint."""
 
+import functools
 import os
 import re
 from pathlib import Path
@@ -349,13 +350,19 @@ def _external_tracker(config):
 MENTION = r'(?<![\w@])@([\w.-]+)'
 
 
+@functools.lru_cache(maxsize=64)
+def _keyword_pattern(words):
+    """One compiled pattern for a keyword list, built once per process (#562); None when empty."""
+    return re.compile(r'(?<!\w)(?:' + '|'.join(re.escape(_normalize(word)) for word in words) + r')(?!\w)') if words else None
+
+
 def _topics(normalized, rules):
     """{topic: config key} of every sensitive, commitment and disagreement hit (#496)."""
     # ponytail: explicit deny lists and complete safe forms have limited language
     # coverage. Unknown prose drafts; a semantic classifier is later work.
     found = {}
-    if any(re.search(r'(?<!\w)' + re.escape(_normalize(word)) + r'(?!\w)',
-                     normalized.replace('_', ' ')) for word in rules['sensitive_keywords']):
+    pattern = _keyword_pattern(tuple(rules['sensitive_keywords']))
+    if pattern and pattern.search(normalized.replace('_', ' ')):
         found['sensitive'] = 'outbound.sensitive_keywords'
     for key in ('sensitive_patterns', 'commitment_patterns', 'disagreement_patterns'):
         if any(re.search(pattern, normalized, re.IGNORECASE | re.DOTALL) for pattern in rules[key]):

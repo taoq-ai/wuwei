@@ -2113,3 +2113,22 @@ def test_thread_only_for_chat(configured):
     assert not any('not learned' in line or 'topic = "thread"' in line and 'matched' in line for line in trace)
     result, why, _ = thread_run(root, config, channel_id='chat')
     assert result == (1, 'draft') and why[0].startswith('approval tier thread for ')
+
+
+@pytest.mark.parametrize('text,words', [
+    ('salary', ['salary']), ('salaryman', ['salary']), ('the_salary_review', ['salary']),
+    ('Gehälter', ['gehalter']), ('a raise and a bonus', ['bonus', 'raise']), ('raise', []),
+    ('c++ rocks', ['c++']), ('nothing', ['salary', 'layoff'])])
+def test_keyword_pattern_matches_the_per_word_search(text, words):
+    # #562: one cached pattern per keyword list, the same hits as a search per word.
+    import re
+    from wuwei import outward
+    normalized = outward._normalize(text)
+    expected = any(re.search(r'(?<!\w)' + re.escape(outward._normalize(word)) + r'(?!\w)',
+                             normalized.replace('_', ' ')) for word in words)
+    rules = {'sensitive_keywords': words, 'sensitive_patterns': [], 'commitment_patterns': [],
+             'disagreement_patterns': []}
+    assert ('sensitive' in outward._topics(normalized, rules)) is expected
+    misses = outward._keyword_pattern.cache_info().misses
+    outward._topics(normalized, rules)
+    assert outward._keyword_pattern.cache_info().misses == misses

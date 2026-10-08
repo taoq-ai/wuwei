@@ -1043,3 +1043,34 @@ def test_negotiation_loop_names_the_ticket(owner_dm):
     loop_event(root)
     assert listen().tick(root, {}) == 0
     assert host.chat.sent == [LOOP_REASON + ' Ticket: ENG-1.']
+
+
+def test_session_start_reads_the_day_once(case, monkeypatch):
+    # #562: one state read and one events read of its own, beyond next.step's.
+    import sys
+    root, _ = case
+    state.append_event('listen: clock', {}, root)
+    counts = {}
+
+    def counting(module, name):
+        original = getattr(module, name)
+
+        def wrapper(*args, **kwargs):
+            caller = sys._getframe(1).f_code.co_name
+            counts[name, caller] = counts.get((name, caller), 0) + 1
+            return original(*args, **kwargs)
+        monkeypatch.setattr(module, name, wrapper)
+    before = lifecycle.session_start({'cwd': str(root)})
+    counting(state, 'read_state')
+    counting(watch, '_day_rows')
+    assert lifecycle.session_start({'cwd': str(root)}) == before
+    assert counts.get(('read_state', 'session_start')) == 1
+    assert counts.get(('_day_rows', 'session_start'), 0) + counts.get(('_day_rows', 'health'), 0) == 1
+
+
+def test_session_start_reports_a_broken_events_file(case):
+    root, _ = case
+    workspace.day_dir(root).mkdir(parents=True, exist_ok=True)
+    (workspace.day_dir(root) / 'events.jsonl').write_bytes(b'\xff\n')
+    code, message = lifecycle.session_start({'cwd': str(root)})
+    assert code == 2 and 'watch health unmeasured' in message
