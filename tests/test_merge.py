@@ -1056,3 +1056,23 @@ def test_shepherd_seat_never_merges_under_a_grant(case, owner, monkeypatch):
     standing_merge(root)
     monkeypatch.setenv('WUWEI_SEAT_ROLE', 'shepherd')
     assert policy().execute(REF, root).exit == 1 and not merged_calls(host)
+
+
+@pytest.mark.parametrize('posture', ['guarded', 'observe'])
+def test_merge_default_today_runs_without_a_card(case, posture):
+    # #530: the autonomous answer's merge default; the 4.6 preconditions still hold.
+    root, host = granted_case(case, posture, 'today')
+    result = policy().execute(REF, root)
+    assert result.exit == 0, result
+    assert merged_calls(host) == [(REF, SHA)] and not (workspace.day_dir(root) / 'decisions' / 'D-1.md').exists()
+    assert not [row for row in events(root) if row['kind'] == 'grant.asked']
+    used = [row['payload'] for row in events(root) if row['kind'] == 'grant.used']
+    assert [(row['decision'], row['scope'], row['target']) for row in used] == [
+        ('merge.default_tier', 'today', 'repo:example/project')]
+
+
+def test_merge_default_today_never_deploys(case):
+    root, host = granted_case(case, 'observe', 'today')
+    config_change(root, 'merge_deploys = false', 'merge_deploys = true')
+    result = policy().execute(REF, root)
+    assert result.exit == 1 and 'merge_deploys' in result.reason and not merged_calls(host)

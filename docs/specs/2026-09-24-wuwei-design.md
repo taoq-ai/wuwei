@@ -1946,7 +1946,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I2 | Every held message has a card path that leads to a send | per case, a held `classify` result; per posture, hold, the Draft card answered Send now, approve, the same call sends | Under strict the owner approves at the host |
 | I3 | A merge happens only at the head the gates checked with green required checks | per posture, the `pr` guard on `gh pr merge` and `--admin` | #524; asserted today as gh pr merge refused in every posture, so `wuwei merge` is the only path |
 | I4 | A message to the owner's own DM always sends | per case, chat to the owner DM | |
-| I5 | No seat, default or hook creates a grant | per case, grant rows and `grants.standing` before and after the deploy guard and the record gate; the shipped config | A once grant is spent, never created |
+| I5 | No seat, default or hook creates a grant | per case, grant rows and `grants.standing` before and after the deploy guard and the record gate; the shipped config | A once grant is spent, never created; the shipped `merge.default_tier` is empty; `today` is written only by the owner's autonomy answer (#530) |
 | I6 | A seat never posts an owner disposition marker | per posture, an MCP payload and `gh pr comment` carrying `WUWEI parked ` | Records floor |
 | I7 | Docs and tracker writes follow `docs.auto` and `tracker.auto` | per case, WUWEI's own adapter write; a connector write under the send umbrella | #535 |
 | I8 | A record command runs from the planner only after a card answer outside strict | per case, `bin/wuwei decide D-1 once` through `protect_state` from the planner and a seat | #529 extends it to `config set` |
@@ -1959,6 +1959,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I15 | No pace lowers a floor: a tier never drops, depth is light only for a light tier or fast on a measured, unflagged standard item without guard code, and no pace plans more seats than the host fits | `pace.adjust` on every pace, tier, guard, flag and measurement; `pace.seats` on every pace and load | #579 |
 | I16 | No pace changes who decides | `cruise.level` for every class and `decision.route` on a two-way and a one-way record with the day at each pace; `plan set pace=fast` through `protect_state` passes for the planner below strict, never for a seat | #579 |
 | I17 | Fast merges only at green required checks | the merge policy, the PR guard and the launch guard never read the pace; `merge.green` on a pending required check is not green | #579; I3 keeps the gated head |
+| I18 | The setup answers never allow a publish target | per posture, `grants.active` with `merge.default_tier = "today"` covers only a merge on a configured repository below strict; no `init.allow_rules` rule matches a deploy, release, protected-branch push or force push | #530 |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

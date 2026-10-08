@@ -77,11 +77,11 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
     from wuwei.workspace import load_config
 
     table = interview().QUESTIONS
-    assert [row['id'] for row in table] == ['merge', 'gates', 'quiet', 'interrupt', 'decisions', 'phone',
-                                            'hours', 'avoid', 'formality', 'signature', 'risk', 'manual',
-                                            'verbosity', 'posture', 'spec', 'telemetry', 'docs', 'tracker',
+    assert [row['id'] for row in table] == ['autonomy', 'merge', 'gates', 'quiet', 'interrupt', 'decisions',
+                                            'phone', 'hours', 'avoid', 'formality', 'signature', 'risk',
+                                            'manual', 'verbosity', 'spec', 'telemetry', 'docs', 'tracker',
                                             'tickets', 'updates', 'chat', 'review_bot', 'reviewers',
-                                            'cap', 'seats', 'tier', 'learn']
+                                            'cap', 'seats', 'allowlist']
     assert len({row['header'] for row in table}) == len(table)  # #529: a header names one card
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / 'widget').mkdir()
@@ -95,7 +95,7 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
         for label, description, effects in row['choices']:
             assert description and interview().effects(row['id'], label.upper()) == effects
             for key, value in effects.items():
-                assert '.' in key or key in (*interview().ROLES, 'voice', 'cap'), key
+                assert '.' in key or key in (*interview().ROLES, 'voice', 'cap', 'allowlist'), key
                 if key == 'voice':
                     assert interview()._items(', '.join(value)) == value
             answers = {row['id']: {'acme/widget': label} if row['scope'] == 'repo' else label}
@@ -109,24 +109,25 @@ def test_workspace_rows_for_the_day_keys(tmp_path):
     from wuwei.workspace import load_config
     assert interview().effects('cap', '7') == {'cap': 7}
     assert interview().effects('seats', ' 6 ') == {'host.seats': 6}
-    for qid, text in (('cap', '0'), ('cap', '1.5'), ('seats', 'x'), ('tier', 'later')):
+    for qid, text in (('cap', '0'), ('cap', '1.5'), ('seats', 'x'), ('autonomy', 'later')):
         with pytest.raises(ValueError):
             interview().effects(qid, text)
     config = {'repos': []}
     assert interview().settings({'cap': '5'}, config) == [((), 'cap', 5)]
     assert interview().describe({'cap': '5'}, config) == ['- cap: 5 -> cap = 5']
     (tmp_path / '.wuwei').mkdir()
-    for qid, reply, value in (('cap', '1', 1), ('seats', '4', 4), ('tier', 'Ask', 'ask'), ('learn', 'Off', 'off')):
+    for qid, reply, value in (('cap', '1', 1), ('seats', '4', 4), ('autonomy', 'Supervised', 'ask')):
         row = interview().question(qid)
-        assert row['scope'] == 'workspace' and row['choices'][0][2] == {
-            {'cap': 'cap', 'seats': 'host.seats', 'tier': 'outbound.default_tier',
-             'learn': 'outbound.learn'}[qid]: {'cap': 1, 'seats': 4, 'tier': 'send', 'learn': 'card'}[qid]}
+        assert row['scope'] == 'workspace'
         additions, _ = calibrate.settle(PLANE, interview().settings({qid: reply}, config))
         (tmp_path / '.wuwei/config.toml').write_text(calibrate.apply(PLANE, additions))
         loaded = load_config(tmp_path)
         assert {'cap': loaded['cap'], 'seats': loaded['host']['seats'],
-                'tier': loaded['outbound']['default_tier'], 'learn': loaded['outbound']['learn']}[qid] == value
+                'autonomy': loaded['outbound']['default_tier']}[qid] == value
     assert interview().card_for('host.seats') == 'seats' and interview().card_for('owner.name') is None
+    # #530: the autonomy row sets five keys at once, so a single key names no card.
+    for key in AUTONOMY_KEYS:
+        assert interview().card_for(key) is None, key
 
 
 def test_telemetry_question_follows_the_posture():
@@ -142,16 +143,24 @@ def test_telemetry_question_follows_the_posture():
         ('Off', 'Nothing leaves this machine; the counts stay local.', {'telemetry.share': 'off'}))
 
 
-def test_observe_answer_sets_the_start_day(monkeypatch):
+AUTONOMY_KEYS = ('security.posture', 'outbound.default_tier', 'merge.default_tier', 'outbound.learn',
+                 'autonomy.mode')
+
+
+def test_one_autonomy_answer_sets_five_keys(monkeypatch):
+    # #530: one answer, five keys; observe is the chosen posture, so no shadow clock starts.
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
-    assert interview().settings({'posture': 'Observe'}, {}) == [
-        (('security',), 'posture', 'observe'), (('guards',), 'shadow_since', '2026-09-29')]
-    for label in ('Guarded', 'Strict'):
-        assert interview().settings({'posture': label}, {}) == [
-            (('security',), 'posture', label.lower())]
-    started = {'guards': {'shadow_since': '2026-09-24'}}
-    assert interview().settings({'posture': 'Observe'}, started) == [
-        (('security',), 'posture', 'observe')]
+    assert interview().settings({'autonomy': 'Autonomous'}, {}) == [
+        (('security',), 'posture', 'observe'), (('outbound',), 'default_tier', 'send'),
+        (('merge',), 'default_tier', 'today'), (('outbound',), 'learn', 'auto'),
+        (('autonomy',), 'mode', 'autonomous')]
+    assert interview().settings({'autonomy': 'Supervised'}, {}) == [
+        (('security',), 'posture', 'guarded'), (('outbound',), 'default_tier', 'ask'),
+        (('merge',), 'default_tier', 'ask'), (('outbound',), 'learn', 'card'),
+        (('autonomy',), 'mode', 'supervised')]
+    for row in interview().QUESTIONS[1:]:
+        for _, _, result in row['choices']:
+            assert not set(result) & set(AUTONOMY_KEYS), row['id']
 
 
 @pytest.mark.parametrize('qid,good,effects,bad', [
@@ -264,7 +273,7 @@ def test_adapter_answers_promote_and_name_credentials(tmp_path, monkeypatch, cap
 def test_unknown_labels_and_ids_are_refused():
     with pytest.raises(ValueError, match='answer one of: Owner merges'):
         interview().effects('merge', 'sometimes')
-    with pytest.raises(ValueError, match='use one of: merge, gates'):
+    with pytest.raises(ValueError, match='use one of: autonomy, merge'):
         interview().question('nope')
 
 
@@ -358,6 +367,14 @@ def test_invalid_answers_write_nothing_and_load_rejects_forgeries(root):
         module.load(root, config(root))
 
 
+def test_load_skips_the_retired_ids(root):
+    # #530: an interview.json the old plugin wrote earlier today still loads after a mid-day upgrade.
+    path = root / DAY / 'interview.json'
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({'posture': 'Observe', 'tier': 'Ask', 'learn': 'On', 'cap': '2'}))
+    assert interview().load(root, config(root)) == {'cap': '2'}
+
+
 def test_proposals_land_and_a_reask_patches_the_block(root, monkeypatch):
     from wuwei import promotion
     from wuwei.voice import parse_profile
@@ -425,15 +442,16 @@ def test_interview_needs_a_host_terminal(offline, capsys, monkeypatch):
 
 def test_interview_on_the_terminal(offline, capsys, monkeypatch):
     raw = (offline / '.wuwei/config.toml').read_text()
-    replies = ['2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '1', '3', '4',
-               '1', '1', '1', 'C0123ABCD', '1', 'pat-dev', '1', '1', '1', '1']
+    replies = ['1', '2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '3', '4',
+               '1', '1', '1', 'C0123ABCD', '1', 'pat-dev', '1', '1', '2']
     terminal(monkeypatch, replies)
     assert main('calibrate', '--interview', '--repo', 'acme/widget') == 0, capsys.readouterr().err
     out = capsys.readouterr().out
     answers = json.loads((offline / DAY / 'interview.json').read_text())
     assert answers['merge'] == {'acme/widget': 'Auto, 30 min soak'} and answers['gates'] == {
         'acme/widget': 'Standard'} and answers['phone'] == 'Summary' and answers['manual'] == 'Package publishing'
-    assert len(answers) == 27 and answers['telemetry'] == 'Off' and answers['docs'] == 'None' and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
+    assert answers['autonomy'] == 'Autonomous' and answers['allowlist'] == 'Not now'
+    assert len(answers) == 26 and answers['telemetry'] == 'Off' and answers['docs'] == 'None' and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
     for line in interview().describe(answers, config(offline)):
         assert line in out
     assert 'gates: answer one of' in out and 'hours: answer one of' in out and 'bin/wuwei config promote' in out
@@ -456,7 +474,7 @@ def test_interview_reasks_one_question_and_end_of_input_writes_nothing(offline, 
     assert main('calibrate', '--interview', 'phone') == 0
     assert set(json.loads((offline / DAY / 'interview.json').read_text())) == {'merge', 'phone'}
     assert main('calibrate', '--interview', 'nope') == 2
-    assert 'use one of: merge, gates' in capsys.readouterr().err
+    assert 'use one of: autonomy, merge' in capsys.readouterr().err
 
 
 def test_answers_from_the_widget_path(offline, capsys):
@@ -550,8 +568,8 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     raw = (f'[[repos]]\nname = "acme/widget"\npath = {json.dumps(str(FIXTURES / "python"))}\n'
            'default_branch = "main"\n\n' + PLANE + '\n[deploy]\nworkflows = []\ndeny = []\n')
     (root / '.wuwei/config.toml').write_text(raw)
-    terminal(monkeypatch, ['2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '1', '3', '4', '4',
-                           '1', '1', '4', '1', '1', '1', '1', '1', '1'])
+    terminal(monkeypatch, ['1', '2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '3', '4', '4',
+                           '1', '1', '4', '1', '1', '1', '1', '2'])
     assert main('calibrate', '--interview') == 0, capsys.readouterr().err
     lines = interview().describe(json.loads((root / DAY / 'interview.json').read_text()), config(root))
     capsys.readouterr()
@@ -578,7 +596,8 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     assert parsed['owner']['verbosity'] == {'default': 'full'}
     assert parsed['security']['posture'] == 'observe'
     assert parsed['telemetry']['share'] == 'off'
-    assert parsed['guards'] == {'shadow_since': '2026-10-01'}
+    assert 'guards' not in parsed and parsed['merge'] == {'default_tier': 'today'}  # #530: no shadow clock
+    assert parsed['autonomy'] == {'mode': 'autonomous'} and parsed['outbound']['learn'] == 'auto'
     assert parsed['deploy']['deny'] == ['npm publish*', 'twine upload*', 'cargo publish*', 'gem push*']
     assert [r['status'] for r in promotion.promote(root)] == ['landed'] * 4
     assert main('config', 'check') == 0, capsys.readouterr()
@@ -735,3 +754,29 @@ def test_tracker_questions():
     assert effects('tickets', 'Optional') == {'tracker.required': False}
     assert effects('updates', 'Nothing') == {'tracker.auto': []}
     assert effects('updates', 'Progress and close') == {'tracker.auto': ['progress', 'pr', 'close']}
+
+
+def test_unanswered_is_the_one_count(root):
+    # #530: init --upgrade, doctor and the planner's widgets read the same list.
+    rows = interview().QUESTIONS
+    every = [(row['id'], repo) for row in rows for repo in (['acme/widget'] if row['scope'] == 'repo' else [None])]
+    pairs = lambda found: [(row['id'], repo) for row, repo in found]
+    assert pairs(interview().unanswered(root, ['acme/widget'])) == every and every[0] == ('autonomy', None)
+    earlier = root / '.wuwei/days/2026-09-28/interview.json'
+    earlier.parent.mkdir(parents=True)
+    earlier.write_text(json.dumps({'cap': '2', 'posture': 'Observe'}))
+    assert pairs(interview().unanswered(root, ['acme/widget'])) == [pair for pair in every if pair[0] != 'cap']
+    assert pairs(interview().unanswered(root, [])) == [pair for pair in every if pair[1] is None and pair[0] != 'cap']
+    assert [(w['id'], w.get('repo')) for w in interview().widgets(root, ['acme/widget'])] == [
+        pair for pair in every if pair[0] != 'cap']
+    assert interview().HOW == 'bin/wuwei setup, or the planner asks them on cards'
+
+
+def test_allowlist_row_names_the_file_and_production_reads():
+    # #530: the Allow choice says in one line that production reads stay the owner's decision.
+    row = interview().question('allowlist')
+    allow = dict((label, description) for label, description, _ in row['choices'])['Allow']
+    assert 'You still decide on reads of your live systems' in allow
+    assert interview().describe({'allowlist': 'Allow'}, {'repos': []}) == [
+        '- allowlist: Allow -> .claude/settings.local.json allow rules']
+    assert interview().settings({'allowlist': 'Allow'}, {'repos': []}) == []

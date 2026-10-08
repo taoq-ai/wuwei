@@ -26,8 +26,12 @@ def day(tmp_path, monkeypatch):
         path.symlink_to(day.repo)
         return {'path': str(path), 'branch': branch}
     monkeypatch.setattr(workspace, 'create_worktree', worktree)
-    # Not the first day: the calibration questions were asked on an earlier one.
+    # Not the first day: the calibration questions were answered on an earlier one (#530 asks
+    # them any day until answered).
+    from wuwei import interview
     (day.root / '.wuwei/days/2026-09-28').mkdir(parents=True)
+    (day.root / '.wuwei/days/2026-09-28/interview.json').write_text(json.dumps(
+        {row['id']: {'acme/widget': ''} if row['scope'] == 'repo' else '' for row in interview.QUESTIONS}))
     return day
 
 

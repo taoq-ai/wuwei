@@ -190,10 +190,10 @@ def test_cards_after_the_gate_come_once(root, capsys):
     assert found['command'] == 'wuwei goals edit --file .wuwei/days/2026-09-30/goals.md'
     ran(root, found['command'])
     found = row(capsys)[1]
-    # The first day: calibration asks what setup did not cover; this fixture has every answer
-    # unasked, so the card carries the printed questions.
+    # Calibration asks what setup did not cover, whatever the day (#530); this fixture has every
+    # answer unasked, so the card carries the printed questions.
     assert (found['state'], found['action']) == ('calibrate', 'card') and found['widget']
-    assert 'config promote' in found['then']
+    assert 'Next: line' in found['then'] and 'calibrate --interview allowlist' in found['then']
     ran(root, found['widget'][0]['record'].replace('<label>', 'x'))
     # Telemetry prints [] here: passed in the same call, so the decision comes next.
     found = row(capsys)[1]
@@ -750,3 +750,25 @@ def test_unrehearsed_undos_are_run_rows_before_the_cards(root, capsys, rehearsed
         raise AssertionError('the ledger is not read once both rows are done')
     monkeypatch.setattr(undo, 'ledger', unread)
     assert next_command.step(root, [('rehearse', 'commit'), ('rehearse', 'decision')])['state'] == 'decision'
+
+
+@pytest.mark.parametrize('answered', [False, True])
+def test_unanswered_setup_questions_are_asked_on_any_day(root, capsys, answered):
+    # #530: a workspace on day 5 that never answered the interview gets the cards at the next plan.
+    from wuwei import interview
+    for name in ('2026-09-26', '2026-09-27', '2026-09-28', '2026-09-29'):
+        (root / '.wuwei/days' / name).mkdir(parents=True)
+    if answered:
+        (root / '.wuwei/days/2026-09-29/interview.json').write_text(json.dumps({
+            row['id']: ({'example/project': row['choices'][0][0]} if row['scope'] == 'repo' else row['choices'][0][0])
+            for row in interview.QUESTIONS}))
+    planned(root)
+    day(root, gate_approved=True, planner_session_id='S')
+    found = row(capsys)[1]
+    if answered:  # the list is []: the row passes in the same call, as the telemetry row does
+        assert found['state'] != 'calibrate'
+        return
+    assert (found['state'], found['action'], found['command']) == ('calibrate', 'card', 'wuwei calibrate --questions')
+    assert found['widget'][0]['id'] == 'autonomy'
+    ran(root, found['widget'][0]['record'].replace('<label>', 'Autonomous'))
+    assert row(capsys)[1]['state'] != 'calibrate'

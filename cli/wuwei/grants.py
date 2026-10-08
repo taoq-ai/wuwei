@@ -9,6 +9,7 @@ ACTIONS = {'deploy': ('deploy', 'deploys'), 'release': ('release', 'releases'),
            'publish': ('publish action', 'publishes'),
            'evidence': ('publish without evidence', 'publishes without evidence'),  # #530
            'merge': ('merge', 'merges')}  # #524
+DEFAULT = 'merge.default_tier'  # #530: the owner's autonomous answer, read like a standing line
 REPO = r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+'
 RELEASES = ('release create', 'tag push', 'release API', 'tag or branch ref API')
 # #518: every owner-only step a lead may list, with its target shape. Those in ACTIONS (deploy,
@@ -98,7 +99,8 @@ def ask(root, row, text):
 
 def active(config, data, name, found, standing=True):
     """(scope, D-n) of the grant that lets this action on this target through, else None;
-    standing=False leaves the [grants] lines out (#556: a novel target)."""
+    standing=False leaves the [grants] lines out (#556: a novel target). #530: with
+    merge.default_tier = "today", a merge on a configured repository below strict, unless kept."""
     from wuwei import workspace
     if standing and workspace.posture(config)[0] != 'strict':
         for line in config['grants']['standing']:
@@ -108,7 +110,15 @@ def active(config, data, name, found, standing=True):
             if (row['action'], row['target']) == (name, found) and (
                 row['answered'] == 'today' and not data.get('close_requested')
                 or row['answered'] == 'once' and not row['spent'])]
-    return min(hits, key=lambda hit: hit[0] != 'today', default=None)
+    if hits or name != 'merge' or config['merge']['default_tier'] != 'today' or data.get('close_requested'):
+        return min(hits, key=lambda hit: hit[0] != 'today', default=None)
+    own = re.fullmatch(rf'(?:repo|pr):({REPO})(?:#[0-9]+)?', found)
+    kept = any((row['action'], row['target'], row['answered']) == (name, found, 'keep')
+               for row in data.get('grants', {}).values())
+    if (own and not kept and workspace.posture(config)[0] != 'strict'
+            and own[1] in {repo['name'] for repo in config['repos']}):
+        return 'today', DEFAULT
+    return None
 
 
 def merge_tier(config):
@@ -253,13 +263,17 @@ def plan(root, config, candidates):
     A planned card already written today for the same item, action and target is reused."""
     from wuwei import state, workspace
     strict = workspace.posture(config)[0] == 'strict'
-    rows = state.read_state(root).get('grants', {})
+    data = state.read_state(root)
+    rows = data.get('grants', {})
     found = {}
     for item in candidates:
         for entry in item.get('owner_actions', []):
             if understood(entry) or entry['action'] not in ACTIONS:
                 continue  # #518: an owner step the plan lists, not a grant card
             name, repo_target = entry['action'], entry['target']
+            if (active(config, data, name, repo_target) or (None, None))[1] == DEFAULT:
+                found.setdefault(item['id'], []).append((name, repo_target, DEFAULT))  # #530: no card
+                continue
             identifier = next((key for key, row in rows.items() if row['planned'] and (
                 row['item'], row['action'], row['target']) == (item['id'], name, repo_target)), None)
             if identifier is None:

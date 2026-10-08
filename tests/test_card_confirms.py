@@ -144,8 +144,7 @@ def test_questions_with_ids_reprint_answered_rows(ws, capsys):
 
 
 @pytest.mark.parametrize('qid,reply,key,value', [
-    ('cap', '5', ('cap',), 5), ('seats', '6', ('host', 'seats'), 6),
-    ('tier', 'Ask', ('outbound', 'default_tier'), 'ask'), ('learn', 'Off', ('outbound', 'learn'), 'off')])
+    ('cap', '5', ('cap',), 5), ('seats', '6', ('host', 'seats'), 6)])
 def test_calibrate_answer_writes_the_card_answer(ws, monkeypatch, capsys, qid, reply, key, value):
     no_terminal(monkeypatch)
     interview_card(ws, qid, reply)
@@ -180,12 +179,65 @@ def test_calibrate_answer_without_the_card_answer_keeps_promote(ws, monkeypatch,
 def test_unrelated_gate_question_with_the_header_confirms_nothing(ws, monkeypatch, capsys):
     no_terminal(monkeypatch)
     text = decision.gate(ws) + 'Should the deploy seat keep watching the logs today?'
-    assert answer(ws, 'Posture', text, 'Observe') == (0, '')
+    assert answer(ws, 'Autonomy', text, 'Autonomous') == (0, '')
     monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
     before = (ws / '.wuwei/config.toml').read_text()
-    assert main('calibrate', '--answer', 'posture=Observe') == 0
+    assert main('calibrate', '--answer', 'autonomy=Autonomous') == 0
     assert (ws / '.wuwei/config.toml').read_text() == before
     assert 'bin/wuwei config promote' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('reply,values', [
+    ('Autonomous', ('observe', 'send', 'today', 'auto', 'autonomous')),
+    ('Supervised', ('guarded', 'ask', 'ask', 'card', 'supervised'))])
+def test_one_autonomy_answer_writes_five_keys(ws, monkeypatch, capsys, reply, values):
+    # #530 acceptance 1: one card answer writes the five keys through the #529 path.
+    no_terminal(monkeypatch)
+    interview_card(ws, 'autonomy', reply)
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
+    assert main('calibrate', '--answer', f'autonomy={reply}') == 0, capsys.readouterr().err
+    written = config(ws)
+    assert (written['security']['posture'], written['outbound']['default_tier'], written['merge']['default_tier'],
+            written['outbound']['learn'], written['autonomy']['mode']) == values
+    assert not written.get('guards', {}).get('shadow_since')
+    assert events(ws, 'config.set') == [{'keys': ['security.posture', 'outbound.default_tier', 'merge.default_tier',
+                                                  'outbound.learn', 'autonomy.mode'], 'card': 'autonomy'}]
+    assert 'Next:' not in capsys.readouterr().out
+
+
+def test_allowlist_card_writes_exactly_the_proposed_rules(ws, monkeypatch, capsys):
+    # #530 acceptance 3: the answered card writes settings.local.json and no config key.
+    from wuwei.commands import init
+    no_terminal(monkeypatch)
+    (ws / '.wuwei/executable').write_text('bin/wuwei\n')
+    before = (ws / '.wuwei/config.toml').read_text()
+    interview_card(ws, 'allowlist', 'Allow')
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
+    assert main('calibrate', '--answer', 'allowlist=Allow') == 0, capsys.readouterr().err
+    rules = init.allow_rules(workspace.load_config(ws), 'bin/wuwei')
+    assert json.loads((ws / '.claude/settings.local.json').read_text()) == {'permissions': {'allow': rules}}
+    out = capsys.readouterr().out
+    assert all(f'Wrote .claude/settings.local.json: {rule}' in out for rule in rules)
+    assert 'config promote' not in out and (ws / '.wuwei/config.toml').read_text() == before
+    assert 'config.set' not in [json.loads(line)['kind'] for line in
+                                (workspace.day_dir(ws) / 'events.jsonl').read_text().splitlines()]
+
+
+@pytest.mark.parametrize('case', ['not now', 'no card', 'strict'])
+def test_allowlist_without_the_card_answer_writes_nothing(ws, monkeypatch, capsys, case):
+    no_terminal(monkeypatch)
+    (ws / '.wuwei/executable').write_text('bin/wuwei\n')
+    reply = 'Not now' if case == 'not now' else 'Allow'
+    if case != 'no card':
+        interview_card(ws, 'allowlist', reply)
+    if case == 'strict':
+        strict(ws)
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
+    assert main('calibrate', '--answer', f'allowlist={reply}') == 0, capsys.readouterr().err
+    assert not (ws / '.claude/settings.local.json').exists()
+    out = capsys.readouterr().out
+    assert ('Next: run bin/wuwei calibrate --interview allowlist in a host terminal' in out) is (reply == 'Allow')
+    assert 'config promote' not in out
 
 
 # Phase 3: decision cards.

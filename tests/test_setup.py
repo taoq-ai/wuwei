@@ -458,21 +458,41 @@ def test_setup_proposes_owner_name(project, host, terminal, capsys):
 
 
 @pytest.mark.parametrize('shadow', [True, False])
-def test_shadow_skips_the_posture_question(project, host, terminal, shadow):
+def test_shadow_skips_the_autonomy_question(project, host, terminal, shadow):
     run_setup(Confirm(), shadow=shadow)
     [ids] = terminal.ids
-    assert 'reviewers' in ids and ('posture' in ids) is not shadow
+    assert 'reviewers' in ids and ('autonomy' in ids) is not shadow
 
 
 @pytest.mark.parametrize('shadow', [True, False])
-def test_shadow_records_posture_answer(project, host, terminal, capsys, shadow):
+def test_shadow_records_autonomy_answer(project, host, terminal, capsys, shadow):
     import json
 
     assert run_setup(Confirm(), shadow=shadow) == 0, capsys.readouterr().err
     answers = json.loads((project / DAY / 'interview.json').read_text())
-    assert answers.get('posture') == ('Observe' if shadow else None)
+    assert answers.get('autonomy') == ('Autonomous' if shadow else None)
     if shadow:
-        assert load_config(project)['security']['posture'] == 'observe'
+        loaded = load_config(project)
+        assert (loaded['security']['posture'], loaded['autonomy']['mode']) == ('observe', 'autonomous')
+        assert loaded['guards']['shadow_since'] == '2026-10-03'  # the flag starts it, not the answer
+
+
+@pytest.mark.parametrize('reply', ['Allow', 'Not now'])
+def test_setup_writes_the_allowlist_on_allow(project, host, terminal, capsys, reply):
+    # #530: the terminal answer is the confirmation; Not now leaves settings.local.json absent.
+    import json
+    from wuwei.commands import init
+
+    terminal.answers['allowlist'] = reply
+    assert run_setup(Confirm()) == 0, capsys.readouterr().err
+    path = project / '.claude/settings.local.json'
+    if reply == 'Not now':
+        assert not path.exists()
+        return
+    rules = init.allow_rules(load_config(project), (project / '.wuwei/executable').read_text().strip())
+    assert json.loads(path.read_text()) == {'permissions': {'allow': rules}}
+    out = capsys.readouterr().out
+    assert all(f'Wrote .claude/settings.local.json: {rule}' in out for rule in rules)
 
 
 def test_teammate_login_wins_over_setup_lead(project, host, terminal, capsys):

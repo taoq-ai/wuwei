@@ -385,3 +385,33 @@ def test_merge_standing_line(root, capsys):
     assert cli() == 0 and capsys.readouterr().out.startswith('1. merge repo:fixture-org/* always (D-3')
     strict(root)
     assert grants.active(config(root), {}, 'merge', 'repo:fixture-org/app') is None
+
+
+TODAY = '[merge]\ndefault_tier = "today"\n'
+DEFAULT_HIT = ('today', 'merge.default_tier')
+
+
+@pytest.mark.parametrize('name', ['observe', 'guarded'])
+def test_merge_default_today_covers_own_repositories(root, name):
+    # #530: the autonomous answer lets a merge on a configured repository through below strict.
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(TODAY + f'[security]\nposture = "{name}"\n')
+    assert grants.active(config(root), {}, 'merge', 'repo:fixture-org/app') == DEFAULT_HIT
+    assert grants.active(config(root), {}, 'merge', 'pr:fixture-org/app#7') == DEFAULT_HIT
+    assert grants.active(config(root), {}, 'merge', 'repo:other/elsewhere') is None
+    assert grants.active(config(root), {}, 'merge', 'pr:other/elsewhere#7') is None
+    for other in ('deploy', 'release', 'publish', 'evidence'):
+        assert grants.active(config(root), {}, other, 'repo:fixture-org/app') is None
+    assert grants.active(config(root), {'close_requested': True}, 'merge', 'repo:fixture-org/app') is None
+    row = {'action': 'merge', 'target': 'repo:fixture-org/app', 'spent': False}
+    kept = {'grants': {'D-1': {**row, 'answered': 'keep'}}}
+    assert grants.active(config(root), kept, 'merge', 'repo:fixture-org/app') is None
+    once = {'grants': {'D-2': {**row, 'answered': 'once'}}}
+    assert grants.active(config(root), once, 'merge', 'repo:fixture-org/app') == ('once', 'D-2')
+
+
+def test_merge_default_today_not_under_strict(root):
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(TODAY)
+    strict(root)
+    assert grants.active(config(root), {}, 'merge', 'repo:fixture-org/app') is None
