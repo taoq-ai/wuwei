@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.20.0](https://github.com/taoq-ai/wuwei/compare/v0.19.0...v0.20.0) (2026-10-08)
+
+
+### Features
+
+* **adopt:** gradual adoption: the shepherd and pr act work on a pull request without a WUWEI worktree, wuwei worktree adopt registers an existing worktree or branch as an item's, and a PR opened outside WUWEI can be claimed ([#553](https://github.com/taoq-ai/wuwei/issues/553)) ([27cae0c](https://github.com/taoq-ai/wuwei/commit/27cae0ceb859a1298f213d42d728f3bdef77d06e))
+* **decisions:** cruise mode: decision classes run at graduated levels, the CLI answers a wide-margin two-way record at L2 or L3 with an undo window, and the steward promotes or demotes a class from the ledger ([#566](https://github.com/taoq-ai/wuwei/issues/566)) ([58c9324](https://github.com/taoq-ai/wuwei/commit/58c9324be28b28cf03964979da5ac620d13865be))
+* **decisions:** error budget per decision class: reversals and escaped defects spend a 14-day budget, a burn rate warns early, a spent budget lowers the class until the window refills, and promotion needs the budget unspent ([#571](https://github.com/taoq-ai/wuwei/issues/571)) ([aee2509](https://github.com/taoq-ai/wuwei/commit/aee2509b8c23a1cdc0953861aef4aaaf628478b4))
+* **decisions:** novelty gate: a decision or guarded action on a target the workspace never touched runs one level lower (a card under autonomous), the target clears after one owner answer or one unreversed mandate action, and init --upgrade seeds the seen set from config and events ([#565](https://github.com/taoq-ai/wuwei/issues/565)) ([a3ca047](https://github.com/taoq-ai/wuwei/commit/a3ca04730b8122b1976861ad3f4e6b8ffbce83f9))
+* **path:** the CLI owns the path and the model walks it: wuwei next returns the exact next action for every step of the day (command or Agent call, why, then), the plan and report skills shrink to the loop, and a smaller model closes the fixture day with no off-path step ([#564](https://github.com/taoq-ai/wuwei/issues/564)) ([9261d41](https://github.com/taoq-ai/wuwei/commit/9261d41da78f5bba990a52ab8774a55e6bb9ef02))
+* **posture:** under observe and guarded a guard is a warning or a card, never a wall except the records floor, with the invariant table and an exhaustive invariant test ([#555](https://github.com/taoq-ai/wuwei/issues/555)) ([352e621](https://github.com/taoq-ai/wuwei/commit/352e621a0a9b0014cfa88e4df2c9c7c233d8f978))
+* **shepherd:** the shepherd runs without a live session: a scheduled run (launchd or systemd) sweeps PR obligations and review pings overnight, queues what needs a decision for the morning plan, and never merges or calls a model at night ([#568](https://github.com/taoq-ai/wuwei/issues/568)) ([520abbf](https://github.com/taoq-ai/wuwei/commit/520abbf3232d5c36e5f5cdd2967694a085bd8eba))
+* **status:** status --line is one readable line (counts, posture, running seats by role, and the one thing to do now), the detail moves to status, and a stale hook version says restart Claude Code in plain words ([#578](https://github.com/taoq-ai/wuwei/issues/578)) ([b6daa42](https://github.com/taoq-ai/wuwei/commit/b6daa42c357cf078dbfbeb3ac4a1bd1528b9621f))
+
+
+### Bug Fixes
+
+* **outward:** a message to the owner sent under connector mode send writes the outward.to_owner event like every other owner message ([#554](https://github.com/taoq-ai/wuwei/issues/554)) ([e33b90a](https://github.com/taoq-ai/wuwei/commit/e33b90a760f6dcc2b4710758de01f5842c57dac2))
+* **tests:** a worktree or repository path containing the word git makes the hook read the launcher path as a git mention and fails 16 tests on main ([#572](https://github.com/taoq-ai/wuwei/issues/572)) ([20605fb](https://github.com/taoq-ai/wuwei/commit/20605fba2589426861891dae828cc3ae006a614e))
+* **tests:** the error-budget status test reads the status line in its one-group-per-line form ([#580](https://github.com/taoq-ai/wuwei/issues/580)) ([a0e4a50](https://github.com/taoq-ai/wuwei/commit/a0e4a50c29a90833a666a8fa86acbac5bff7267b))
+
 ## [0.19.0](https://github.com/taoq-ai/wuwei/compare/v0.18.2...v0.19.0) (2026-10-08)
 
 
