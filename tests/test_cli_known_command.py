@@ -192,9 +192,11 @@ def test_injected_commands_pass(workspace, posture, monkeypatch, capsys):
     import re
     from wuwei.commands import next as next_command
     monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
-    text = '\n'.join(next_command.orientation({'state': state, 'step': '.', 'command': '.'}, posture, None, 'S')
-                     for state in ('plan', 'close'))
-    found = re.findall(r'`(wuwei [^`]+)`', text) + ['wuwei guide', 'wuwei next']
+    rows = (next_command._row('session', '.', 'wuwei plan session <session id>'),
+            next_command._row('close', '.', 'wuwei close'))
+    text = '\n'.join(next_command.orientation(row, posture, None, 'S') for row in rows)
+    # #551: the action's command is on its own line.
+    found = re.findall(r'^(wuwei .+)$', text, re.M) + ['wuwei guide', 'wuwei next']
     assert 'wuwei plan session S' in found and 'wuwei close' in found
     for command in found:
         command = command.replace('<json-file>', 'proposal.json').replace('<approved IDs>', 'A')

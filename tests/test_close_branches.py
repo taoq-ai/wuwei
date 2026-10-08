@@ -51,6 +51,9 @@ def test_passing_close_writes_the_week_digest(tmp_path, monkeypatch, passing):
     digest = tmp_path / '.wuwei/memory/digests/2026-W40.md'
     assert close.run(args) == (0 if passing else 1)
     assert digest.is_file() == passing
+    closed = [row for row in (tmp_path / '.wuwei/days/2026-10-03/events.jsonl').read_text().splitlines()
+              if '"day.closed"' in row]
+    assert len(closed) == int(passing)  # #551: next reads it to say the day is done
     if passing:
         before = digest.read_bytes()
         assert close.run(args) == 0 and digest.read_bytes() == before

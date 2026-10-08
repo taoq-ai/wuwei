@@ -630,6 +630,7 @@ def test_logged_gate_brief_becomes_launch_action(root):
     assert action['agent_type'] == 'wuwei:sentinel-arch'
     outcome = dispatch.next_step('A', root)
     tier = outcome.pop('tier')
+    assert [command.split()[2] for command in outcome.pop('commands')] == ['quality', 'security']
     assert outcome == {'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': [action]}
     assert tier['tier'] == 'standard' and tier['roles'] == ['arch', 'quality', 'security']
     state._write_state(lambda data: data['seats'].update({'arch-1': {
@@ -658,7 +659,9 @@ def test_delta_offers_one_continuation_of_the_stopped_seat(root):
     assert action['receive'] == 'wuwei dispatch receive A quality quality-1 --round delta'
     state._write_state(lambda data: data['seats']['quality-1'].update(head='def5678'),
                        root, reserved=False)
-    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality'], 'seats': []}
+    # continued and stopped on the new HEAD: its delta verdict waits for receive
+    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality'], 'seats': [],
+                                             'commands': [action['receive']]}
     state._write_state(lambda data: data['seats']['quality-1'].update(head='abc1234'),
                        root, reserved=False)
     state._write_state(lambda data: data['seats']['quality-1'].pop('agent_id'), root, reserved=False)
@@ -745,7 +748,11 @@ def test_issue_acceptance_docs_only_light_floor_runs_quality_only(root, monkeypa
     fake = tiered(root, monkeypatch, [('docs/guide.md', 3, 1)])
     record = {'tier': 'light', 'computed': 'light', 'roles': ['quality'],
               'reasons': ['4 changed lines within light_max_lines 100']}
-    action = {'action': 'gates', 'roles': ['quality'], 'seats': [], 'tier': record}
+    import shlex
+    tree = state.read_state(root)['items']['A']['worktree']
+    action = {'action': 'gates', 'roles': ['quality'], 'seats': [], 'tier': record, 'commands': [
+        f'wuwei brief quality A quality-A --gate --worktree {shlex.quote(tree)} --body '
+        + shlex.quote(dispatch.GATE_BODY.format(item='A'))]}
     assert dispatch.next_step('A', root) == action
     assert state.read_state(root)['items']['A']['gates'] == record
     assert [{k: v for k, v in row['payload'].items() if k != 'prs_seen'}
@@ -1470,7 +1477,10 @@ def test_launch_set_orders_gates_builds_then_planned_within_cap(day_set):
         ('P1', 'G-1', 'start'), ('P2', 'G-1', 'wait'), ('P4', 'G-2', 'wait')]
     assert calls == ['G', 'B']
     start = value['entries'][2]
-    assert start['commands'][0] == 'wuwei worktree add P3' and 'brief builder P3' in start['commands'][1]
+    import shlex
+    assert start['commands'] == ['wuwei worktree add P3', 'wuwei brief builder P3 builder-P3 --worktree '
+                                 'worktrees/P3 --body ' + shlex.quote("Implement P3 as today's plan records it.")]
+    assert '<' not in json.dumps(value)
     assert 'CAP 3' in value['entries'][4]['reason']
     state._write_state(lambda data: data.pop('goal_seats'), root, reserved=False)
     assert [row['item'] for row in dispatch.launch_set(root)['entries']
@@ -1521,3 +1531,31 @@ def test_dispatch_next_all_cli(day_set, monkeypatch, capsys):
     assert entries[0] == {'item': 'G', 'goal': 'G-1', 'action': 'refused',
                           'reason': 'steward note N-1 requires planner acknowledgement'}
     assert len(entries) == 6
+
+
+def test_start_names_the_worktree_and_the_builder_brief(day_set):
+    from wuwei import dispatch
+    root, _ = day_set
+    directory = workspace.day_dir(root)
+    (directory / 'proposal.json').write_text(json.dumps({'candidates': [
+        {'id': 'P3', 'scope': 'one value', 'evidence': 'recorded issue P3'}]}))
+    (root / 'worktrees/P3').mkdir(parents=True)
+    [start] = [row for row in dispatch.launch_set(root)['entries'] if row['item'] == 'P3']
+    assert start['commands'] == ['wuwei brief builder P3 builder-P3 --worktree worktrees/P3 --body '
+                                 "'Implement P3: one value. Evidence: recorded issue P3.'"]
+
+
+def test_gates_name_each_brief_and_receive(root):
+    import shlex
+    from wuwei import dispatch
+    tree = built(root)
+    body = shlex.quote(dispatch.GATE_BODY.format(item='A'))
+    brief = lambda role: f'wuwei brief {role} A {role}-A --gate --worktree {shlex.quote(str(tree))} --body {body}'
+    assert dispatch.next_step('A', root)['commands'] == [brief(role) for role in dispatch.ROLES]
+    logged_gate_brief(root, 'arch', 'arch-A', tree)
+    state._write_state(lambda data: data['seats'].update({'arch-A': {
+        'item': 'A', 'role': 'sentinel-arch', 'status': 'running'}}), root, reserved=False)
+    assert dispatch.next_step('A', root)['commands'] == [brief('quality'), brief('security')]
+    state._write_state(lambda data: data['seats']['arch-A'].update(status='stopped'), root, reserved=False)
+    assert dispatch.next_step('A', root)['commands'] == [
+        'wuwei dispatch receive A arch arch-A', brief('quality'), brief('security')]

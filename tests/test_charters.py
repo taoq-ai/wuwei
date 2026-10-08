@@ -267,5 +267,4 @@ def test_never_blocking_rule_is_written_down():
         assert "never blocked by work" in (ROOT / name).read_text(encoding="utf-8"), name
     assert "never by resuming or interrupting a seat" in charter_text()["planner.md"]
     plan = (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
-    assert "wuwei status --line" in plan
-    assert "only once every required verdict is received" in plan
+    assert "wuwei status --line" in plan  # #551: dispatch.next_step enforces the verdict order

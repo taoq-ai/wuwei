@@ -76,6 +76,8 @@ def run(args):
                     print(f'tracker log: {exc}', file=sys.stderr)
         if notes:
             print('\n'.join(notes))
+        if code == 0:
+            state.append_event('day.closed', {}, root)  # #551: next says the day is done
     if reason:
         print(reason)
     return code
