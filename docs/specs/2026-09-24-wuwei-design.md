@@ -219,6 +219,14 @@ it. Ownership is enforced by three mechanisms, none of which depends on the mode
   120; head, CI, mergeability, reviews, comments, threads) and, on any change, records a
   `pr.changed` event and wakes the planner session (and, in M5, launches a headless shepherd
   run). Nothing needs to be re-armed by a seat.
+- Overnight, without a session (owner, 2026-10-08, #511). `wuwei sweep obligations --headless`
+  (and `wuwei shepherd`, every 15 minutes, installed with `wuwei shepherd schedule`, from the
+  Shepherd card in a session or, under strict, by the owner in a host terminal) sweeps the
+  owning day: the newest day, today included, whose plan is approved. It does nothing while a
+  planner session is live. It checks an `approved` PR against the 4.6 policy and queues it;
+  until #524 lands the merge waits for the morning `wuwei pr act`. It sends a `review_stale` ping through 4.9, and
+  queues every other state with its evidence as `shepherd.overnight` events, which open the
+  next morning plan. It never replies, fixes, rebases, starts a seat or calls a model.
 - Anchor at every turn. The Stop hook refuses to end a planner turn while any owned PR has an
   action past its deadline and no decision record parking it, naming the PR, its state and the
   action. The day close additionally requires every owned PR merged, parked or explicitly

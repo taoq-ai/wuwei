@@ -584,6 +584,16 @@ def _day(root, config, probes):
                              f'install (read .wuwei/{command}.stderr.log first)'))
         else:
             rows.append(_row('day', name, 'unmeasured', 'unmeasured', f'wuwei {command} names the problem'))
+    try:  # #511: an ok row either way; scheduling is the owner's choice.
+        from wuwei import shepherd
+        last = shepherd.last_swept(root)
+        rows.append(_row('day', 'shepherd', 'ok', (
+            f'scheduled ({"launchd" if sys.platform == "darwin" else "systemd"}), last swept {last or "not yet"}'
+            if workspace.unit_installed(root, name='shepherd') else
+            'runs only in a session; bin/wuwei shepherd schedule runs it overnight'
+            + (f'; last headless sweep {last}' if last else ''))))
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        rows.append(_row('day', 'shepherd', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
     rows.append(_row('day', 'heartbeat', {None: 'ok', 'ok': 'ok', 'degraded': 'fail'}.get(beat, 'unmeasured'),
                      beat or 'none today', 'wuwei heartbeat names the failed probe'))
     rows.append(_row('day', 'stuck seats', PROBE[probes['seats']['result']], probes['seats']['value'],

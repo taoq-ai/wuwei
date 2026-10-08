@@ -429,10 +429,15 @@ def now():
         raise ValueError("WUWEI_NOW must be an ISO datetime with a time component; set it like 2026-10-03T09:00:00Z, or unset it") from exc
 
 
+# ponytail: process-wide day pin for the headless sweep, which is its own process; pass the
+# directory through if a long-lived caller ever needs two days. Never read from the environment.
+_DAY = None
+
+
 def day_dir(root=None):
-    """Return today's day directory without creating it."""
+    """Return today's day directory (or the pinned day) without creating it."""
     root = find_workspace() if root is None else Path(root)
-    return root / ".wuwei/days" / now().date().isoformat()
+    return root / ".wuwei/days" / (_DAY or now().date().isoformat())
 
 
 def _unit_directory(platform):

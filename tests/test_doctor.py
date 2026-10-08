@@ -548,7 +548,7 @@ def test_gates_mcp_servers(ws):
 
 def test_day_rows(ws):
     rows = doctor.diagnose()
-    assert names(rows, 'day') == ['state', 'planner', 'watch', 'listener', 'heartbeat', 'stuck seats',
+    assert names(rows, 'day') == ['state', 'planner', 'watch', 'listener', 'shepherd', 'heartbeat', 'stuck seats',
                                   'nudges', 'traces', 'tracker']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'day'), rows
     assert row(rows, 'listener')['value'] == 'not used'
@@ -1244,3 +1244,21 @@ def test_undo_rehearsals_row(ws, rehearsed_undo):
     assert found['status'] == 'fail' and 'memory/rehearsals.json is damaged' in found['value']
     assert found['fix'] == ('move .wuwei/memory/rehearsals.json aside, then run ' + W('undo rehearse commit')
                             + ' and ' + W('undo rehearse decision'))
+
+
+def test_day_shepherd_row(ws):
+    """#511: where the shepherd runs; never changes the doctor exit."""
+    import sys
+    rows = doctor.diagnose()
+    assert row(rows, 'shepherd') == {'section': 'day', 'name': 'shepherd', 'status': 'ok',
+        'value': 'runs only in a session; bin/wuwei shepherd schedule runs it overnight'}
+    unit = workspace.watch_unit(ws.root, name='shepherd')[1]
+    unit.parent.mkdir(parents=True, exist_ok=True)
+    unit.write_text('unit\n')
+    service = 'launchd' if sys.platform == 'darwin' else 'systemd'
+    assert row(doctor.diagnose(), 'shepherd')['value'] == f'scheduled ({service}), last swept not yet'
+    state.append_event('shepherd.swept', {'exit': 0}, ws.root)
+    assert row(doctor.diagnose(), 'shepherd')['value'].endswith('not yet')  # review F2: unapproved day
+    state._write_state(lambda data: data.update(gate_approved=True), ws.root, reserved=False)
+    found = row(doctor.diagnose(), 'shepherd')
+    assert found['status'] == 'ok' and found['value'] == f'scheduled ({service}), last swept {workspace.now().isoformat()}'

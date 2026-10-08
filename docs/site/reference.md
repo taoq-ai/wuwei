@@ -64,10 +64,11 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei sessions` | Lists registered sessions, roles and claims. | [Sessions](#sessions) |
 | `bin/wuwei signal` | Plumbing: classifies attention. | |
 | `bin/wuwei state` | Reads or updates day state; `recover` restores it. | [State recovery](#state-recovery) |
+| `bin/wuwei shepherd` | Sweeps owned PRs without a session every 15 minutes: checks approved PRs with `wuwei merge check` (the merge itself waits for the morning until #524), sends due review pings under the outbound tiers and queues the rest, with evidence, at the top of the next morning plan. No model runs. `schedule [--dry-run]` and `unschedule` install or remove it as a user service; in a session `schedule` returns the Shepherd card and its answer runs `schedule --yes` (under strict, you run both in a host terminal). | [Doctor](#doctor) |
 | `bin/wuwei status` | Shows day status; `--line` is the status line. | [Watch state](#watch-state) |
 | `bin/wuwei steward` | Runs a steward review or acknowledges steering. | [Steward](#steward) |
 | `bin/wuwei telemetry` | `preview [<week>]` prints exactly what each sharing mode would send; `off` stops sharing; `send [<week>]` opens the attributed issue (owner, host terminal); `proposals [--widget]` lists or presents a final week's proposals once. | [Telemetry](configuration.md#telemetry) |
-| `bin/wuwei sweep` | Plumbing: checks day obligations. | [Concepts](concepts.md#day-flow) |
+| `bin/wuwei sweep` | Plumbing: checks day obligations; `sweep obligations --headless` runs one `shepherd` sweep. | [Concepts](concepts.md#day-flow) |
 | `bin/wuwei tracker` | `create <item>` opens the item's ticket from its record; `create --bug, --triage or --follow-up <subject> "<title>" --evidence "<file:line>"` opens a linked ticket; `log` writes today's decisions, progress, verdicts, pull request and close as ticket comments; `done <item>` moves the ticket to done. | [Tickets and comments](concepts.md#tickets-and-comments) |
 | `bin/wuwei undo` | `undo D-<n>` reverts a cruise answer inside its window (`decision undo` is the same command); `undo <YYYY-MM-DD:N>` opens the revert PR of a `merge.completed` event after your y at a host terminal; `undo rehearse commit` and `undo rehearse decision` run an undo once on a scratch target. | [Decision record](#decision-record) |
 | `bin/wuwei verdict` | Plumbing: checks a gate verdict. | [Gate verdict layout](#gate-verdict-layout) |
@@ -222,7 +223,7 @@ settings the shepherd reads: `owner.handles`, `shepherd.lead_login`, `shepherd.a
 empty one warns with `will block: <what> at <phase>` and the `config set` line, a `none`
 adapter is ok with what discovery and the shepherd skip, and with `shepherd.min_reviewers = 0`
 the reviewer rows are not applicable), Day and sessions
-(state, planner, watch, listener, heartbeat, stuck seats, open pages, nudges, traces gaps, pre-#352 trace decisions) and Guards (the heartbeat
+(state, planner, watch, listener, shepherd, heartbeat, stuck seats, open pages, nudges, traces gaps, pre-#352 trace decisions) and Guards (the heartbeat
 hook probes, plus `hook PreToolUse` from a directory outside any workspace, which must
 allow). It works before there is a workspace: the Workspace section then names where to run
 `bin/wuwei init --shadow`.
