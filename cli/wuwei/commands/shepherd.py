@@ -7,7 +7,7 @@ from wuwei import decision, sessions, shepherd, workspace
 from wuwei.commands import watch as service
 
 QUESTION = ('Schedule the overnight shepherd on this machine? Every 15 minutes while no planner '
-            'session is live it checks approved PRs against the merge policy, sends due review pings '
+            'is live it checks approved PRs against the merge policy, sends due review pings '
             'under the outbound tiers and queues the rest for your morning plan. No model runs.')
 RECORD = 'bin/wuwei shepherd schedule --yes'
 
@@ -40,8 +40,8 @@ def run(args):
             action = {'action': 'ask', 'command': RECORD, 'then': 'bin/wuwei doctor shows the shepherd row'}
             if (workspace.day_dir(root) / 'plan.md').is_file():
                 action['widget'] = decision.widget(decision.gate(root) + QUESTION, 'Shepherd', [
-                    ('Schedule (Recommended)', f'The session runs {RECORD} and installs the user service.'),
-                    ('Not now', 'The shepherd keeps running only in a session.')], RECORD)
+                    ('Schedule (Recommended)', f'Claude runs {RECORD} and installs the user service.'),
+                    ('Not now', 'The shepherd runs only while a planner is live.')], RECORD)
             print(json.dumps(action))
             return 0
     action = {'schedule': 'install', 'unschedule': 'uninstall'}.get(verb)
