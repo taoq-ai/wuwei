@@ -129,7 +129,8 @@ def test_readme_install_and_hero():
         svg = ElementTree.parse(art).getroot()
         assert svg.tag == '{http://www.w3.org/2000/svg}svg'
         assert '#00C9A7' in art.read_text()
-        assert all(word in art.read_text() for word in ('Plan', 'Build', 'Check', 'Review', 'Merge'))
+        assert all(word in art.read_text() for word in ('Specs and plan', 'Agent team', 'Gates', 'Pull requests',
+                                                        'Review and merge'))
         assert f'<img src="assets/hero-{variant}.svg#only-{variant}"' in index, variant
 
 
@@ -855,30 +856,73 @@ def _value_at(attrs, k):
     return values[-1]
 
 
-def test_hero_is_a_day_on_a_track():
+def _hero_parts(text):
+    """(static, still, live) slices of a hero SVG: drawn first, the reduced-motion frame, the animation."""
+    static, rest = text.split('<g class="still"', 1)
+    still, live = rest.split('<g class="live"', 1)
+    return static, still, live
+
+
+def _timing(text, ident):
+    """Attributes of the <animate> that is the first child of the element with this id."""
+    attrs = re.search(rf'id="{ident}"[^>]*>\s*<animate ([^>]*)', text)[1]
+    return dict(re.findall(r'(\w[\w-]*)="([^"]*)"', attrs))
+
+
+def _popped(stops):
+    return max(k for k, p in stops if p == 'off')
+
+
+def _place(stops, k):
+    return [p for at, p in stops if at <= k][-1]
+
+
+def test_hero_shows_the_system():
     hero = _hero()
     readme = (ROOT / 'README.md').read_text()
     alts = re.findall(r'<img src="assets/hero-[^>]*alt="([^"]+)"', (SITE / 'index.md').read_text())
     assert alts == [hero.ALT, hero.ALT] and re.search(r'alt="([^"]+)"', readme)[1] == hero.ALT
     assert hero.ALT.count('. ') == 0 and hero.ALT.endswith('.') and 'treadmill' not in hero.ALT.lower()
-    stamps = [hero.clock(on) for on, _, _, _ in hero.TICKER]
-    assert stamps == sorted(set(stamps)), stamps
-    for slot in range(3):
-        spans = [(on, off) for on, off, s, _ in hero.TICKER if s == slot]
-        assert all(a[1] < b[0] for a, b in zip(spans, spans[1:])), slot
+    for part in ('queue', 'agent team', 'gates', 'pull requests', 'card', 'under the hood'):
+        assert part in hero.ALT.lower(), part
+    names = [name for name, *_ in hero.STAGES]
+    smalls = [small for _, small, *_ in hero.STAGES]
+    assert len(names) == 5 and [x for *_, x in hero.STAGES] == sorted(x for *_, x in hero.STAGES)
+    assert all(len(n.split()) <= 3 for n in names) and all(len(s.split()) <= 6 for s in smalls)
+    assert hero.STAGES[0][2] == hero.STAGES[-1][2], 'you at both ends'
     for variant in ('light', 'dark'):
         art = SITE / f'assets/hero-{variant}.svg'
         text = art.read_text()
+        static, still, live = _hero_parts(text)
         assert len(art.read_bytes()) < 40000, variant
         assert re.search(r'<desc[^>]*>(.*?)</desc>', text, re.S)[1] == hero.ALT
-        labels = re.findall(r'<text[^>]*>([^<]+)<', text)
-        assert [w for w in labels if w in hero.STATIONS] [:5] == ['Plan', 'Build', 'Check', 'Review', 'Merge']
-        for phrase in ('rate limits', 'login fix', 'docs page', 'Shipped', 'yesterday:', '4 shipped, 1 carried',
-                       'guards: 1 caught', 'cards: 1 open', 'heartbeat', 'shepherd: PR #142',
-                       'lead: 4 candidates ranked', 'steward: retro', 'Morning gate',
-                       "Approve today's plan as proposed?", 'Approved. 3 seats start (CAP 3).',
-                       'D-3: client wants Friday. Allow once?', '09:00', '18:00',
-                       *[f'{hero.clock(on)}  {line}' for on, _, _, line in hero.TICKER]):
+        labels = re.findall(r'<text[^>]*>([^<]+)<', static)
+        for row in (names, smalls):
+            at = [labels.index(word) for word in row]
+            assert at == sorted(at), (variant, row)
+        for i in range(5):
+            assert re.search(rf'<path id="icon-{i}"[^>]*fill="none"', static), (variant, i)
+        for panel in ('queue', 'lanes', 'prs', 'cards', 'band'):
+            assert f'id="panel-{panel}"' in static, (variant, panel)
+        for phrase in ('build ⟲ check', 'raise PR', 'sweep', 'overnight: sweeps, never merges',
+                       *hero.LOOPS, hero.DAY, *hero.INDICATORS):
+            assert f'>{phrase}<' in static, (variant, phrase)
+        for i, name in enumerate(hero.QUEUE, 1):
+            pill = re.search(rf'<g>(<animate [^>]*/>)<rect [^>]*/><text [^>]*>{i} · {name}</text></g>', live)
+            attrs = dict(re.findall(r'(\w[\w-]*)="([^"]*)"', pill[1]))
+            assert _value_at(attrs, 0) == 1, (variant, name)
+        for lane in range(3):
+            assert f'id="build-{lane}"' in static, (variant, lane)
+            for n in range(3):
+                assert f'id="gate-{lane}-{n}"' in static, (variant, lane, n)
+        assert 'fix ×1 → delta' in text and 'id="fix-loop"' in live and 'id="sweep"' in static
+        for loop in ('ask-loop', 'answer-loop'):
+            assert re.search(rf'id="{loop}"[^>]*stroke-dasharray', static), (variant, loop)
+        assert 'id="day-loop"' in static
+        for phrase in (*[label for label, _, _ in hero.PRS], *[d[3] for d in hero.DECISIONS],
+                       *[d[2] for d in hero.DECISIONS if d[2]], 'Approved · 3 seats',
+                       'answers a card now and then', f'{hero.clock(hero.CLOSE)} close: report written, retro done',
+                       '09:00', '18:00'):
             assert phrase in text, (variant, phrase)
         for brand in ('Linear', 'Jira', 'GitHub', 'Claude', 'Codex', 'Slack', 'Notion', 'Confluence',
                       'Discord', 'PagerDuty', 'Grafana', 'Sentry', 'Datadog', 'ZIRAN', 'pytest',
@@ -894,15 +938,10 @@ def test_hero_is_a_day_on_a_track():
                 assert len(times) == len(attrs['values'].split(';')), (tag, attrs)
         reduced = re.search(r'@media \(prefers-reduced-motion:\s*reduce\)\s*\{(.*?)\}\s*\}', text, re.S)[1]
         classes = {name for attr in re.findall(r'class="([^"]+)"', text) for name in attr.split()}
-        assert classes == {'live', 'still', 'belt', 'beat'}, classes
+        assert classes == {'live', 'still', 'spin', 'beat'}, classes
         for name in classes:
             assert f'.{name}' in reduced, (variant, name)
-        still = text.split('<g class="still"', 1)[1].split('<g class="live"', 1)[0]
-        for phrase in ('rate limits', 'login fix', 'docs page', 'quality: FIX, diverted to the fix lane',
-                       hero.SIDING_LABEL[0], 'D-3: client wants Friday. Allow once?', '14:00'):
-            assert phrase in still, (variant, phrase)
-        assert '<animate' not in still, variant
-    assert len((ROOT / 'scripts/build-hero.py').read_text().splitlines()) < 300
+    assert len((ROOT / 'scripts/build-hero.py').read_text().splitlines()) < 320
 
 
 def test_hero_only_moves_forward():
@@ -911,65 +950,75 @@ def test_hero_only_moves_forward():
         xs = [hero.PLACES[place] for _, place in stops]
         assert xs == sorted(xs), name
         assert [k for k, _ in stops] == sorted(k for k, _ in stops), name
-    fixed = [(name, lane, [p for _, p in stops]) for name, lane, stops in hero.ITEMS
-             if set(hero.SIDING) & {p for _, p in stops}]
-    assert len(fixed) == 1, fixed
-    name, lane, places = fixed[0]
-    assert lane == len(hero.LANE_Y) - 1, name
-    route = [p for i, p in enumerate(places) if i == 0 or p != places[i - 1]]
-    at = route.index('Review')
-    assert route[at:at + 4] == ['Review', *hero.SIDING, 'Merge'], route
+    name, on, off = hero.FIX
+    stops = next(s for n, _, s in hero.ITEMS if n == name)
+    assert any(a <= on and off <= b and p == q == 'gates' for (a, p), (b, q) in zip(stops, stops[1:])), stops
     for variant in ('light', 'dark'):
         text = (SITE / f'assets/hero-{variant}.svg').read_text()
-        assert 'fix lane' in text and hero.SIDING_LABEL[0] in text
         motions = [attrs for tag, attrs, _ in _smil(text) if tag == 'animateMotion']
         assert len(motions) == len(hero.ITEMS), variant
         for attrs in motions:
             xs = [float(pair.split(',')[0]) for pair in attrs['values'].split(';')]
             assert xs == sorted(xs), attrs['values']
-        lit = {m[1]: m[2] for m in re.finditer(r'id="lit-(\w+)"[^>]*>\s*<animate ([^>]*)', text)}
-        assert set(lit) == set(hero.STATIONS), lit
-        for station in hero.STATIONS:
-            attrs = dict(re.findall(r'(\w[\w-]*)="([^"]*)"', lit[station]))
-            spans = [(a, b) for _, _, stops in hero.ITEMS
-                     for (a, p), (b, q) in zip(stops, stops[1:]) if p == q == station]
-            assert spans, station
-            for a, b in spans:
-                assert _value_at(attrs, (a + b) / 2) > 0.5, (variant, station, a, b)
+        fix = _timing(text, 'fix-loop')
+        assert _value_at(fix, (on + off) / 2) > 0.5, variant
+        assert _value_at(fix, on - .02) < 0.5 and _value_at(fix, off + .02) < 0.5, variant
 
 
-def test_hero_items_wait_and_park():
+def test_hero_queue_lanes_and_cards():
     hero = _hero()
-    parked = [(name, lane, stops) for name, lane, stops in hero.ITEMS if stops[-1][1] == 'parked']
-    assert len(parked) == 1, parked
-    _, lane, stops = parked[0]
-    frees, leaves_from = [(k, p) for k, p in stops if p != 'parked'][-1]   # it leaves its lane here
-    assert lane == len(hero.LANE_Y) - 1 and leaves_from == 'Build'
-    wait = [label for label in hero.LABELS if label[1] == 'waits: CAP 3']
-    assert len(wait) == 1 and wait[0][0] == 'Plan'
-    on, off = wait[0][3:]
-    waiters = [(name, s) for name, l, s in hero.ITEMS if l == lane and stops is not s
-               and any(p == q == 'Plan' and a <= on and off <= b for (a, p), (b, q) in zip(s, s[1:]))]
-    assert len(waiters) == 1, waiters
-    leaves = max(k for k, p in waiters[0][1] if p == 'Plan')
-    assert leaves > frees, (leaves, frees)
+    order = sorted(hero.ITEMS, key=lambda i: _popped(i[2]))
+    assert [name for name, *_ in order] == hero.QUEUE
+    for lane in range(len(hero.LANE_Y)):
+        spans = [(_popped(s), s[-1][0]) for _, l, s in order if l == lane]
+        assert all(a[1] <= b[0] for a, b in zip(spans, spans[1:])), lane
+    for name, lane, stops in order[len(hero.LANE_Y):]:
+        before = max((s for n, l, s in order if l == lane and _popped(s) < _popped(stops)), key=_popped)
+        assert _popped(stops) == before[-1][0], name
+
+    def waiting(k):
+        busy = {l for _, l, s in hero.ITEMS if _popped(s) <= k < s[-1][0]}
+        return len(busy) == len(hero.LANE_Y) and any(_popped(s) > k for _, _, s in hero.ITEMS)
+    ks = [step / 1000 for step in range(1001) if waiting(step / 1000)]
+    assert ks
+    last = {name: s[-1] for name, _, s in hero.ITEMS}
+    for label, raised, merged in hero.PRS:
+        assert last[label.split(' ', 1)[1]] == (raised, 'PR'), label
+    merges = [m for *_, m in hero.PRS]
+    assert merges == sorted(merges)
+    carried = sum(1 for k, p in last.values() if p != 'PR')
+    phone = [d for d in hero.DECISIONS if d[4]]
+    assert all(any(a <= d[0] and d[1] <= b and c == 'warm' for a, b, c in hero.PHONE) for d in phone)
+    first, close = min(_popped(s) for _, _, s in hero.ITEMS), hero.CLOSE
     for variant in ('light', 'dark'):
         text = (SITE / f'assets/hero-{variant}.svg').read_text()
-        assert 'exit lane' in text and 'parked, carried to tomorrow' in text and 'waits: CAP 3' in text
-    tracks = [(stops, hero.track(stops, lane)) for _, lane, stops in hero.ITEMS]
-
-    def pos(samples, k):
-        for (k0, x0, y0), (k1, x1, y1) in zip(samples, samples[1:]):
-            if k0 <= k <= k1 and k1 > k0:
-                return x0 + (x1 - x0) * (k - k0) / (k1 - k0), y0 + (y1 - y0) * (k - k0) / (k1 - k0)
-        return samples[-1][1:]
-    for step in range(1001):
-        k = step / 1000
-        shown = [pos(samples, k) for stops, samples in tracks if k < stops[-1][0]]
-        shown = [(x, y) for x, y in shown if x > 0]
-        for i, (x0, y0) in enumerate(shown):
-            for x1, y1 in shown[i + 1:]:
-                assert abs(x0 - x1) >= 110 or abs(y0 - y1) >= 30, (k, (x0, y0), (x1, y1))
+        _, still, live = _hero_parts(text)
+        waits = _timing(text, 'waits')
+        assert _value_at(waits, (ks[0] + ks[-1]) / 2) > 0.5 and _value_at(waits, .1) < .5 and _value_at(waits, .9) < .5
+        for n in range(len(hero.PRS) + 1):
+            assert f'>shipped today: {n}<' in live, (variant, n)
+        assert f'carried to tomorrow: {carried}' in text
+        assert f'asked today: {len(phone)} of {len(hero.DECISIONS)}' in text
+        ask, answer = _timing(text, 'ask-loop-lit'), _timing(text, 'answer-loop-lit')
+        for asked, answered, *_ in hero.DECISIONS:
+            assert _value_at(ask, asked + .015) > .5 and _value_at(answer, answered + .015) > .5, (variant, asked)
+        lead, day = _timing(text, 'lead'), _timing(text, 'day-loop-lit')
+        last_pop = max(_popped(s) for _, _, s in hero.ITEMS)
+        assert _value_at(lead, last_pop + .03) > .5 and _value_at(lead, .5) < .5, variant
+        assert _value_at(day, close + .03) > .5 and _value_at(day, .5) < .5, variant
+        assert '<animate' not in still and hero.clock(hero.STILL_K) in still, variant
+        assert first < hero.STILL_K and 'waits: CAP 3 seats' in still and 'fix ×1 → delta' in still
+        for i, (name, lane, stops) in enumerate(order, 1):
+            queued, in_lane = _popped(stops) > hero.STILL_K, _popped(stops) <= hero.STILL_K < stops[-1][0]
+            assert (f'{i} · {name}<' in still) == queued, (variant, name)
+            if in_lane:
+                x, y = hero.at(_place(stops, hero.STILL_K), lane)
+                assert f'x="{x}" y="{y + 5}" text-anchor="middle">{name}<' in still, (variant, name)
+        for asked, answered, opened, closed, _ in hero.DECISIONS:
+            if opened and asked <= hero.STILL_K < answered:
+                assert opened in still and closed not in still, (variant, opened)
+            elif answered <= hero.STILL_K:
+                assert closed in still, (variant, closed)
 
 
 def test_pr_events_are_documented():
