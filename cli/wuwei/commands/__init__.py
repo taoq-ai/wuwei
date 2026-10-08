@@ -4,7 +4,7 @@
 # A positional named `action` is part of the path (mcp check, calibrate export).
 READ_ONLY = frozenset({'board', 'calibrate', 'config check', 'config show', 'cruise budget', 'doctor', 'drafts show', 'grants', 'guide',
                        'heartbeat', 'outbound explain', 'outbound tiers',
-                       'integrity check', 'mcp check', 'memory show', 'memory status', 'plan gate', 'sessions', 'shadow report', 'status',
+                       'integrity check', 'lint tone', 'mcp check', 'memory show', 'memory status', 'plan gate', 'sessions', 'shadow report', 'status',
                        'why'})
 # calibrate only prints with --questions; doctor --fix writes (checked below).
 _NEEDS = {'calibrate': '--questions'}

@@ -257,7 +257,7 @@ def gate_widget(root=None, *, import_yesterday=False):
     provisional = goals.parse(draft.read_text(encoding='utf-8')) if draft.is_file() else None
     adopt = data.get('adopt', [])
     ids = [item['id'] for item in data['candidates']] + [row['id'] for row in adopt]
-    approves = '; '.join([
+    approves = '. '.join(part[:1].upper() + part[1:] for part in [
         'Goals ' + ', '.join(f'{goal} ({provisional[goal]["outcome"]})' if provisional else goal
                              for goal in data['goals']),
         'queue ' + (', '.join(item['id'] for item in data['candidates']) or 'empty'),
@@ -272,8 +272,8 @@ def gate_widget(root=None, *, import_yesterday=False):
         'Goals' if provisional else 'Plan',
         [('Approve', approves + '.'),
          ('Change something', 'Ask the separate questions on goals, queue, seat policy, '
-                              'CAP and seats per goal, envelope and carry-over; CAP is derived, '
-                              'a changed CAP is recorded as config cap')],
+                              'CAP and seats per goal, envelope and carry-over. CAP is derived. '
+                              'A changed CAP is recorded as config cap.')],
         ' '.join(['wuwei plan approve --items', *ids, '--goals-confirmed',
                   *(['--import-yesterday'] if import_yesterday else [])]))
 

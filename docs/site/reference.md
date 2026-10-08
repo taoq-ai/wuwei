@@ -37,6 +37,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei index` | Plumbing: generates the memory index. | [Concepts](concepts.md#memory) |
 | `bin/wuwei init` | Creates or upgrades a workspace; `--posture observe|guarded|strict` sets the [security posture](#security-posture) (`--shadow` is `--posture observe`). | [Daily path](daily.md) |
 | `bin/wuwei integrity` | Checks signed plugin integrity; `reconfirm` pins a development checkout. | [Recovery](recovery.md#integrity-reconfirm) |
+| `bin/wuwei lint` | Plumbing: `lint tone <path>...` reports each file's average and longest sentence, its sentences over 35 words and its nominalisations. It exits 1 when a file is over the plain tone rule. | |
 | `bin/wuwei listen` | Polls the inbound source into the workspace inbox and probes raised and claimed PRs. | [Remote](remote.md) |
 | `bin/wuwei mcp` | Checks the attached MCP servers; `decide D-<n> <option>` records your answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
 | `bin/wuwei mcp` | Checks the attached MCP servers; `decide [D-<n>] <option>` records your answer. | [MCP registry checks](configuration.md#mcp-registry-checks-s3) |
@@ -65,7 +66,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei sessions` | Lists registered sessions, roles and claims. | [Sessions](#sessions) |
 | `bin/wuwei signal` | Plumbing: classifies attention. | |
 | `bin/wuwei state` | Reads or updates day state; `recover` restores it. | [State recovery](#state-recovery) |
-| `bin/wuwei shepherd` | Sweeps owned PRs without a session every 15 minutes: checks approved PRs with `wuwei merge check` (the merge itself waits for the morning until #524), sends due review pings under the outbound tiers and queues the rest, with evidence, at the top of the next morning plan. No model runs. `schedule [--dry-run]` and `unschedule` install or remove it as a user service; in a session `schedule` returns the Shepherd card and its answer runs `schedule --yes` (under strict, you run both in a host terminal). | [Doctor](#doctor) |
+| `bin/wuwei shepherd` | Sweeps owned PRs every 15 minutes while no planner is live. It checks approved PRs with `wuwei merge check`; the merge itself waits for the morning until #524. It sends due review pings under the outbound tiers and queues the rest, with evidence, at the top of the next morning plan. No model runs. `schedule [--dry-run]` and `unschedule` install or remove it as a user service; in a session `schedule` returns the Shepherd card and its answer runs `schedule --yes` (under strict, you run both in a host terminal). | [Doctor](#doctor) |
 | `bin/wuwei status` | Shows day status; `--line` is the status line. | [Watch state](#watch-state) |
 | `bin/wuwei steward` | Runs a steward review or acknowledges steering. | [Steward](#steward) |
 | `bin/wuwei telemetry` | `preview [<week>]` prints exactly what each sharing mode would send; `off` stops sharing; `send [<week>]` opens the attributed issue (owner, host terminal); `proposals [--widget]` lists or presents a final week's proposals once. | [Telemetry](configuration.md#telemetry) |
@@ -202,7 +203,7 @@ Each probe is `ok`, `failed` or `unmeasured` with its value. The `heartbeat: clo
 
 - `status` adds `health ok`, `health degraded` or `health unmeasured` after the watch and listen parts once today has a heartbeat line. With no heartbeat line today there is no `health` part; with a heartbeat line while the watch is not alive, health is `unmeasured`.
 - `status` adds `traces: N gaps` after the health part when today has N `traces.gap` events: a tool span the trace recorder could not write records one `traces.gap` event with its `reason`, `span` (the tool name) and `session`, and the hook exit stays as before. Only the hook writes the kind. The trace recorder redacts credential-shaped values only: the tool, its subcommand and the text before the first credential stay, and message bodies keep their command words and lose their text.
-- `status` prints one `running <role> <item> <HH:MM>` line per seat or fast check in flight (`checks` for a `build check`), oldest first, and `status --line` names only the roles in `seats N/CAP (lead, arch, +2 more)`; `status --json` carries the rows as `running`, and `bin/wuwei next` names them on its `wait` rows.
+- `status` prints one `running <role> <item> <HH:MM>` line per seat or fast check in flight (`checks` for a `build check`), oldest first. `status --line` names only the roles in `seats N/CAP (lead, arch, +2 more)`. `status --json` carries the rows as `running`, and `bin/wuwei next` names them on its `wait` rows.
 - While health is degraded there is exactly one `heartbeat` page naming the first failed probe and its value, for example `heartbeat integrity failed: ...`. The next heartbeat with every probe ok clears it.
 - A probe that was ok in the previous heartbeat and failed now is `behaviour drift`: the record lists it under `drift`, the watch log prints `heartbeat: behaviour drift: <probe>`, and the page reason starts `behaviour drift: `.
 

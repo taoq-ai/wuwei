@@ -35,7 +35,7 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for re
 - Doctor: install, host, workspace, gate, day and guard problems, each with its fix ([doctor](docs/site/reference.md#doctor)).
 - Security posture: observe, guarded or strict per area, with floors no setting lowers. The MCP registry gate warns by default and blocks on a critical finding or a check that could not run ([security posture](docs/site/security.md#security-posture)).
 - The heartbeat: probes that prove the system behaves, with a dead-man ping ([heartbeat](docs/site/reference.md#heartbeat)).
-- Cruise mode: the CLI answers clear two-way decisions of a class at its level, tells you, and lets you undo for an hour; reversals spend the class's error budget, a spent budget lowers it until the window refills, and agreement raises it on your card ([cruise answers](docs/site/daily.md#cruise-answers), [design spec](docs/specs/2026-09-24-wuwei-design.md) section 5.8.1).
+- Cruise mode: the CLI answers clear two-way decisions of a class at its level, tells you, and lets you undo for an hour. Reversals spend the class's error budget, and a spent budget lowers the class until the window refills. Agreement raises it on your card ([cruise answers](docs/site/daily.md#cruise-answers), [design spec](docs/specs/2026-09-24-wuwei-design.md) section 5.8.1).
 
 ## How it works
 
@@ -77,7 +77,7 @@ The hooks hold every step at the moment of action, and warn or block by the post
 
 - Skills: [wuwei-plan](skills/wuwei-plan/SKILL.md), [wuwei-report](skills/wuwei-report/SKILL.md), [wuwei-retro](skills/wuwei-retro/SKILL.md) and [wuwei-consolidate](skills/wuwei-consolidate/SKILL.md).
 - Seats, each with its charter: [planner](charters/planner.md), [lead](charters/lead.md), [builder](charters/builder.md), [shepherd](charters/shepherd.md), [steward](charters/steward.md) and four [sentinels](docs/site/concepts.md#sentinel): [architecture](charters/sentinel-arch.md), [goal](charters/sentinel-goal.md), [quality](charters/sentinel-quality.md) and [security](charters/sentinel-security.md).
-- Guards by hook event: PreToolUse checks a call before it runs (seat launches, commits, pushes, pull requests, merges, state writes); PostToolUse traces each call and lints gate verdicts; SubagentStop checks each seat's retro note; SessionStart prints the memory payload; PreCompact flushes state and events; Stop checks overdue PR actions and, at close, the retro.
+- Guards by hook event: PreToolUse checks a call before it runs (seat launches, commits, pushes, pull requests, merges, state writes). PostToolUse traces each call and lints gate verdicts; SubagentStop checks each seat's retro note. SessionStart prints the memory payload; PreCompact flushes state and events; Stop checks overdue PR actions and, at close, the retro.
 - Adapters by port ([adapters and ports](docs/site/adapters.md)); the [documentation site](docs/site/index.md) covers the rest:
 
 | Port | Shipped |
@@ -151,8 +151,8 @@ From the same project directory, in a [host terminal](docs/site/concepts.md#host
 ../wuwei-plugin/bin/wuwei setup --shadow
 ```
 
-`setup` runs `init` when there is no workspace, finds the git repositories in the project
-directory (their GitHub names, default branches through `gh`, and commit identities), checks
+`setup` runs `init` when there is no workspace and finds the git repositories in the project
+directory (their GitHub names, default branches through `gh`, and commit identities). It checks
 the host, calibrates the repositories and asks the owner interview. It shows the whole
 `config.toml` proposal once and applies it after you answer y. Then it runs
 `doctor` and `mcp check` and ends with one line: `Ready: run /wuwei:wuwei-plan`, or `Next:`

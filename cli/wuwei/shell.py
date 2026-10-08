@@ -444,7 +444,7 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
                 'case', 'esac', 'function', '{', '}', '!', 'trap',
                 'alias', 'unalias', '.', 'source', 'shopt', 'enable',
                 'export', 'readonly', 'unset', 'declare', 'typeset'):
-            raise ParseError('dynamic command or shell control flow is unsupported; run plain simple commands, one per call, or write the commands to a file and run bash <file>')
+            raise ParseError('dynamic command or shell control flow is unsupported; run plain simple commands, one per call. Or write the commands to a file and run bash <file>')
         if program == 'eval':
             if any(_expands(raw) for raw in raw_argv[1:]):
                 raise ParseError('expanding eval is unsupported; run the command directly, or give eval a literal string')

@@ -115,7 +115,7 @@ def tracker_call(item, action, root=None):
         config = workspace.load_config(root)
         ticket = recorded(state.read_state(root), item) or item
         if config['adapters']['tracker'] == 'none':
-            result = registry.Result(2, reason='tracker adapter is none; tracker updates are skipped; the owner sets adapters.tracker with bin/wuwei config set in a host terminal if they should reach the tracker')
+            result = registry.Result(2, reason='tracker adapter is none, so tracker updates are skipped; to reach the tracker, the owner sets adapters.tracker with bin/wuwei config set in a host terminal')
         else:
             tracker = registry.load('tracker', config)
             if action == 'claim':
@@ -546,7 +546,7 @@ def opinion(item, root=None):
         running = sum(other['status'] == 'running' for other in brief.seats(data).values())
         ceiling = calibrate.host(root, config, running=running)['seats']  # #528
         if running >= ceiling:
-            raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish, or the owner raises host.seats with bin/wuwei config set in a host terminal')
+            raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish. Or the owner raises host.seats with bin/wuwei config set in a host terminal')
         if seat is None:
             if round_name == 'delta':
                 raise Refused(f'second-opinion seat is missing; run bin/wuwei why {item}, then bin/wuwei dispatch next {item}')
@@ -563,7 +563,7 @@ def opinion(item, root=None):
             # continue_job resumes the latest thread of this runtime in the worktree, which is
             # the builder's own thread when the builder runs on the same runtime.
             if data['seat_policy'].get('builder', {}).get('runtime') == second['runtime']:
-                raise Refused('second opinion cannot resume on the builder runtime; set gates.second_opinion to a runtime other than the builder (the owner runs bin/wuwei config set in a host terminal)')
+                raise Refused('second opinion cannot resume on the builder runtime; set gates.second_opinion to a runtime other than the builder. The owner runs bin/wuwei config set in a host terminal')
             feedback = (_delta_feedback(first) if round_name == 'delta' else
                         'Your verdict file was rejected by the verdict lint; rewrite '
                         f'{directory.relative_to(root)}/decisions/gate-{name}.md to the verdict '

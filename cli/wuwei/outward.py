@@ -74,7 +74,7 @@ def humanize_lint(inputs, root, config, channels, *, draft=False):
         print(f'warning: {reason}', file=sys.stderr)
         return CLEAN, reason
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
-        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'
+        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check. If the config is clean, save this as a draft for the owner to send'
 
 
 # ponytail: cross-script confusables remain distinct; add a Unicode confusable table if needed.
@@ -780,7 +780,7 @@ def check_tier(inputs, root, config, channels, *, port=False, tool=None):
             state.append_event('outward.to_owner', {'channel': kind}, root)
         return CLEAN, ''
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
-        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'
+        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check. If the config is clean, save this as a draft for the owner to send'
 
 
 def check_lint(inputs, root, config, channels, *, to_owner=False):
@@ -816,4 +816,4 @@ def check_lint(inputs, root, config, channels, *, to_owner=False):
                 print(f'warning: {reason}', file=sys.stderr)
         return CLEAN, ''
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
-        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'
+        return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check. If the config is clean, save this as a draft for the owner to send'
