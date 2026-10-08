@@ -6,7 +6,7 @@ import re
 
 from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED, PAYLOAD
 from wuwei.guards import Guard
-from wuwei.verdict import lint_file, record_rejection, retro_fields
+from wuwei.verdict import RETRO_KEYS, lint_file, record_rejection, retro_fields
 
 
 INTERPRETERS = ((r'(?:python|pypy)[\d.]*', 'c'), ('node', 'ep'),
@@ -97,6 +97,28 @@ def check_write(payload):
         return record_rejection(path, UNRUN, message, root=root) if root else (UNRUN, message)
 
 
+def _light(payload, root):
+    """#567: whether the stopping seat's item runs at light depth; False when unresolved."""
+    from wuwei import brief, dispatch, state, workspace
+    from wuwei.guards.agent_launch import stopping_seat
+    try:
+        try:
+            directory, name, _ = stopping_seat(payload, root)
+            data = state.read_state(directory=directory)
+        except (OSError, ValueError, KeyError, TypeError):
+            data = state.read_state(root)
+            name = next((key for key, seat in brief.seats(data).items()
+                         if seat.get('agent_id') == payload['agent_id']), None)
+        seat = brief.seats(data)[name]
+        row = data['items'][seat['item']]
+        if seat['role'] == 'builder' and not (row.get('gates') or {}).get('tier'):
+            # The brief's prediction saw an empty diff; judge the diff the builder leaves.
+            return dispatch.tier(root, workspace.load_config(root), {'flags': {}, **row})['tier'] == 'light'
+        return dispatch.depth(row, gate=seat['role'].startswith('sentinel-')) == 'light'
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+        return False
+
+
 def check_retro(payload, *, root=None):
     # Keep persistence imports off unrelated hooks' startup path.
     import json
@@ -114,6 +136,8 @@ def check_retro(payload, *, root=None):
         agent_id = required_text(payload, 'agent_id')
         text = required_text(payload, 'last_assistant_message', blank=True)
         fields, missing, invalid = retro_fields(text)
+        if len(missing) == len(RETRO_KEYS) and _light(payload, root):
+            fields, missing = dict.fromkeys(RETRO_KEYS, 'none'), []  # #567: optional as a whole
         record = {'agent_id': agent_id, 'agent_type': agent_type, 'fields': fields,
                   'missing': missing, 'invalid': invalid}
         encoded = json.dumps(record, sort_keys=True) + '\n'

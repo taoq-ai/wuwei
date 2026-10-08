@@ -222,9 +222,9 @@ logs a `listen remote.unmatched` line with its id and is never a command.
 The listener writes a `listen: clock` line every two minutes. Session start reports
 `listen dead` when today's latest clock line is older than `listen.dead_seconds`, or when
 the listener is installed and wrote none today. The same rule drives the status line:
-`status --line` shows `listen dead` (and `bin/wuwei nudges` a page), `listen unmeasured`
+`wuwei status` shows `listen dead` (and `bin/wuwei nudges` a page), `listen unmeasured`
 when the clock cannot be read, `listen off` when the listener has not run today, and
-nothing while it is alive.
+`listen alive` while it is alive.
 
 While it runs, the listener also takes over PR polling from the watch. Every tick (at most
 30 s apart) it sends conditional requests (`If-None-Match` with the last ETag) for each
@@ -308,7 +308,7 @@ With `control_plane.content = "none"`, `status`, `report` and the answer to `ask
 is read-only). A refused tool arrives as a decision; granting it stays a host change. No
 session starts while free memory is below `host.free_memory_mb`. `bin/wuwei sessions`
 on the host lists them with role `remote` and a `stopped` field once stopped; the
-`sessions` count in `status --line` counts live sessions only.
+`sessions` count in `wuwei status` counts live sessions only.
 
 ## 7. Decisions on the phone
 
@@ -384,7 +384,7 @@ Not recorded: D-3 already has option B from this DM. Record the outcome on the h
 Record a one-way outcome in a host terminal with `bin/wuwei decide D-3 B`.
 Until then `bin/wuwei nudges` and session start show
 `D-3 answered from the phone: option B, confirm with wuwei decide D-3 B`,
-`status --line` and the DM `status` reply count it as `phone answers 1`, and the report
+`wuwei status` and the DM `status` reply count it as `phone answers 1`, and the report
 lists it as pending. Drafts are the same:
 `bin/wuwei drafts approve <id>` or `bin/wuwei drafts drop <id>`. Agent tools are refused
 these commands, and `decide` and `drafts approve` also ask y/N on
@@ -403,7 +403,7 @@ use your own remote shell to the host, for example SSH. See
   Commands: plan, status, report, ask <question>, stop <session>, stop all. Decisions:
   approve D-n, option X on D-n, more D-n, undo D-n, drop it." There are no routines, no cloud sessions, no
   budget governor and no owner quiet hours. `listen dead` at session start and in
-  `status --line` are the listener's liveness signals, seen only on the host; the off-host
+  `wuwei status` are the listener's liveness signals, seen only on the host; the off-host
   signal is the watch heartbeat's dead-man ping (`watch.ping_url`, see the reference).
 - Thread replies are not read, and a turn blocks the listener poll while it runs; so does
   a shepherd turn, one per tick.

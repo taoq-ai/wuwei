@@ -105,7 +105,7 @@ def test_status_shows_posture_and_nudges_once(root, config, posture, nudged):
     data = status.snapshot(directory)
     assert data['posture'] == posture
     for name in ('observe', 'strict'):
-        assert (f' | {name}' in status.line(data)) is (name == posture)
+        assert (f' · {name}' in status.line(data)) is (name == posture)
     assert 'guarded' not in status.line(data)
     rows = [row for row in status.attention(directory) if row['source'] == 'guards.shadow']
     assert data['nudges'] == len(rows) == int(nudged)

@@ -548,7 +548,7 @@ def test_gates_mcp_servers(ws):
 
 def test_day_rows(ws):
     rows = doctor.diagnose()
-    assert names(rows, 'day') == ['state', 'planner', 'watch', 'listener', 'heartbeat', 'stuck seats',
+    assert names(rows, 'day') == ['state', 'planner', 'watch', 'listener', 'shepherd', 'heartbeat', 'stuck seats',
                                   'nudges', 'traces', 'tracker']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'day'), rows
     assert row(rows, 'listener')['value'] == 'not used'
@@ -1055,13 +1055,13 @@ def test_in_use_row_names_the_restart(ws):
     (sibling / str(os.getpid())).write_text('')
     found = row(doctor.diagnose(), 'in_use')
     assert (found['status'], found['value'], found['fix']) == (
-        'warn', 'plugin 0.10.0 running against template 0.11.0: restart Claude Code', integrity.RESTART)
+        'warn', 'restart Claude Code: hooks 0.10.0 still running (plugin 0.11.0 installed)', integrity.RESTART)
 
     (sibling / str(os.getpid())).unlink()
     config(ws.root, 'template_version = "0.12.0"\n' + CONFIG)
     found = row(doctor.diagnose(), 'in_use')
     assert (found['status'], found['value']) == (
-        'warn', 'plugin 0.11.0 running against template 0.12.0: restart Claude Code')
+        'warn', 'restart Claude Code: hooks 0.11.0 still running (plugin 0.12.0 installed)')
 
 
 def legacy_reports(root):
@@ -1228,3 +1228,21 @@ def test_outbound_tier_rows(ws, posture, words):
     assert 'bin/wuwei outbound learn card' in classes['fix'] and '[outbound.people]' not in classes['fix']
     assert tiers['status'] == 'warn' and tiers['detail'] == [f'rule {n} {words}' for n in (1, 2, 3, 4)]
     assert tiers['fix'] == 'make the row ask, or remove it'
+
+
+def test_day_shepherd_row(ws):
+    """#511: where the shepherd runs; never changes the doctor exit."""
+    import sys
+    rows = doctor.diagnose()
+    assert row(rows, 'shepherd') == {'section': 'day', 'name': 'shepherd', 'status': 'ok',
+        'value': 'runs only in a session; bin/wuwei shepherd schedule runs it overnight'}
+    unit = workspace.watch_unit(ws.root, name='shepherd')[1]
+    unit.parent.mkdir(parents=True, exist_ok=True)
+    unit.write_text('unit\n')
+    service = 'launchd' if sys.platform == 'darwin' else 'systemd'
+    assert row(doctor.diagnose(), 'shepherd')['value'] == f'scheduled ({service}), last swept not yet'
+    state.append_event('shepherd.swept', {'exit': 0}, ws.root)
+    assert row(doctor.diagnose(), 'shepherd')['value'].endswith('not yet')  # review F2: unapproved day
+    state._write_state(lambda data: data.update(gate_approved=True), ws.root, reserved=False)
+    found = row(doctor.diagnose(), 'shepherd')
+    assert found['status'] == 'ok' and found['value'] == f'scheduled ({service}), last swept {workspace.now().isoformat()}'

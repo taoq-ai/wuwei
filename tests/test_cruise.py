@@ -112,6 +112,20 @@ def test_the_level_writer_records_a_ledger_line(ws):
             promotion.cruise_level(ws, name, level, 'r', 'x')
 
 
+def test_the_level_writer_keeps_a_budget_hold(ws):
+    # #558: a budget lowering holds the level it took away; any other write clears the hold.
+    from wuwei import decision, promotion
+    promotion.cruise_level(ws, 'defer', 1, 'budget spent: defer', 'x', hold=2)
+    assert decision.running(ws)['budget'] == {'defer': 2}
+    promotion.cruise_level(ws, 'defer', 2, 'budget refilled: defer back to L2', 'x')
+    assert set(json.loads((ws / '.wuwei/memory/cruise.json').read_text())) == {'levels', 'changed'}
+    path = ws / '.wuwei/memory/cruise.json'
+    for budget in ('{"autopilot": 1}', '{"defer": 4}', '{"defer": "2"}', '[]'):
+        path.write_text('{"levels": {}, "changed": {}, "budget": %s}' % budget)
+        with pytest.raises(ValueError, match='bin/wuwei doctor'):
+            decision.running(ws)
+
+
 def test_promote_rejects_a_proposal_for_the_cruise_levels(ws):
     from wuwei import promotion
     proposal = {'target': '.wuwei/memory/cruise.json', 'action': 'patch', 'reason': 'raise',
@@ -216,8 +230,9 @@ def test_a_thin_margin_goes_to_the_owner(ws, capsys):
     assert 'Decided-by: mandate' in path.read_text() and 'rule' not in outcome(ws, 'D-4')
 
 
-def test_three_thin_escalations_lower_the_class(ws, capsys, monkeypatch):
-    from wuwei import decision, workspace
+def test_thin_escalations_keep_the_level(ws, capsys, monkeypatch):
+    # #558: thin routes are flagged; only the error budget lowers a class.
+    from wuwei import decision, state, workspace
     later(monkeypatch, '11:00')
     raise_to(ws, 'defer', 2)
     later(monkeypatch, '12:00')
@@ -230,15 +245,11 @@ def test_three_thin_escalations_lower_the_class(ws, capsys, monkeypatch):
     for number in (6, 7):
         save(ws, record(cls='defer', radius='workspace', wants=LEAD), name=f'D-{number}.md')
         route(ws, capsys, f'D-{number}')
-    assert decision.running(ws)['levels']['defer'] == 2
     save(ws, record(cls='defer', radius='workspace', wants=LEAD), name='D-8.md')
     route(ws, capsys, 'D-8')
-    assert decision.level(workspace.load_config(ws), 'defer', decision.running(ws)) == 1
-    assert ledger(ws)[-1]['reason'] == 'three thin-margin escalations'
-    lowered = len(ledger(ws))
-    save(ws, record(cls='defer', radius='workspace', wants=LEAD), name='D-9.md')
-    route(ws, capsys, 'D-9')
-    assert len(ledger(ws)) == lowered
+    assert state.read_state(ws)['decision_routes']['D-8']['thin'] is True
+    assert decision.level(workspace.load_config(ws), 'defer', decision.running(ws)) == 2
+    assert ledger(ws)[-1]['reason'] == 'test setup'
 
 
 def test_closing_collects_a_cruise_park_disposition(ws, capsys):
@@ -297,7 +308,7 @@ def undo(root, ident='D-3', answer=None, where=None):
     return undo(SimpleNamespace(id=ident, answer=answer), root=root, where=where)
 
 
-def test_undo_reverts_the_answer_and_lowers_the_class(ws, answered, capsys, monkeypatch):
+def test_undo_reverts_the_answer_and_keeps_the_level(ws, answered, capsys, monkeypatch):
     from wuwei import decision, state, workspace
     from wuwei.commands.decision import owner_outcome
     from types import SimpleNamespace
@@ -309,8 +320,9 @@ def test_undo_reverts_the_answer_and_lowers_the_class(ws, answered, capsys, monk
     assert 'Decided-by: owner' in text and 'Outcome: pending' in text and 'Notes: Undone at ' in text
     reversed_, = [e['payload'] for e in events(ws) if e['kind'] == 'decision.reversed']
     assert reversed_['undo'] is True and reversed_['rule'] == 'cruise defer@L2' and reversed_['class'] == 'defer'
-    assert decision.level(workspace.load_config(ws), 'defer', decision.running(ws)) == 1
-    assert ledger(ws)[-1]['reason'] == 'undo D-3'
+    # #558: the undo spends the error budget instead of lowering the class at once.
+    assert decision.level(workspace.load_config(ws), 'defer', decision.running(ws)) == 2
+    assert ledger(ws)[-1]['reason'] == 'test setup'
     assert owner_outcome(SimpleNamespace(id='D-3', option='B'), root=ws) == (0, 'B')
 
 
@@ -360,7 +372,7 @@ def test_the_digest_lists_cruise_answers_first(ws, capsys, monkeypatch):
     assert sent == ['Two-way decisions taken:\n- D-2: A (cruise defer@L2)\n- D-1: A\n']
 
 
-def test_the_owner_reversing_a_cruise_answer_lowers_the_class(ws, answered, monkeypatch):
+def test_the_owner_reversing_a_cruise_answer_keeps_the_level(ws, answered, monkeypatch):
     from types import SimpleNamespace
     from wuwei import decision, state, workspace
     from wuwei.commands.decision import owner_outcome
@@ -369,7 +381,7 @@ def test_the_owner_reversing_a_cruise_answer_lowers_the_class(ws, answered, monk
     row = state.read_state(ws)['decision_outcomes']['D-3']
     assert (row['class'], row['recommendation']) == ('defer', 'A')
     assert [e['payload']['class'] for e in events(ws) if e['kind'] == 'decision.reversed'] == ['defer']
-    assert decision.running(ws)['levels']['defer'] == 1 and ledger(ws)[-1]['reason'] == 'reversal D-3'
+    assert decision.running(ws)['levels']['defer'] == 2 and ledger(ws)[-1]['reason'] == 'test setup'
 
 
 def test_the_owner_confirming_a_cruise_answer_keeps_the_level(ws, answered, monkeypatch):
@@ -394,6 +406,14 @@ def agree(root, count, cls='defer', start=100, **extra):
     state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update(rows), root, reserved=False)
 
 
+def calibrated(root, cls='defer', start=300):
+    """#559: ten taken high-confidence records of cls that stood, so promotion may raise it."""
+    from wuwei import state
+    for number in range(start, start + 10):
+        state.append_event('decision.decided', {'id': f'D-{number}', 'option': 'A', 'class': cls,
+                                                'decided_by': 'mandate', 'confidence': 'high'}, root)
+
+
 def cards(root):
     from wuwei import state
     return state.read_state(root).get('cruise_cards', {})
@@ -410,6 +430,8 @@ def test_ten_agreements_propose_a_raise(ws, monkeypatch):
     agree(ws, 4)
     monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
     agree(ws, 6)
+    assert propose(ws) == []  # #559: too few scored records
+    calibrated(ws)
     assert propose(ws) == ['D-1']
     card = cards(ws)['D-1']
     assert (card['kind'], card['class'], card['level']) == ('raise', 'defer', 1)
@@ -444,6 +466,7 @@ def answer(root, ident, option, monkeypatch):
 def test_the_owner_raise_lands_and_keep_does_not(ws, monkeypatch):
     from wuwei import decision, workspace
     agree(ws, 10)
+    calibrated(ws)
     propose(ws)
     assert answer(ws, 'D-1', 'raise', monkeypatch) == (0, 'raise')
     assert decision.level(workspace.load_config(ws), 'defer', decision.running(ws)) == 1
@@ -451,6 +474,7 @@ def test_the_owner_raise_lands_and_keep_does_not(ws, monkeypatch):
     assert (line['action'], line['reason'], line['evidence']) == (
         'raise', 'raise approved D-1', '.wuwei/days/2026-09-28/decisions/D-1.md')
     agree(ws, 10, cls='scope-cut', start=200)
+    calibrated(ws, 'scope-cut', start=400)
     propose(ws)
     assert answer(ws, 'D-2', 'keep', monkeypatch) == (0, 'keep')
     assert 'scope-cut' not in decision.running(ws)['levels']
@@ -459,6 +483,7 @@ def test_the_owner_raise_lands_and_keep_does_not(ws, monkeypatch):
 def test_a_raise_never_passes_the_configured_level(ws, monkeypatch):
     from wuwei import decision
     agree(ws, 10)
+    calibrated(ws)
     propose(ws)
     config(ws, '[decisions.cruise.levels]\ndefer = 0\n')
     answer(ws, 'D-1', 'raise', monkeypatch)
@@ -466,7 +491,7 @@ def test_a_raise_never_passes_the_configured_level(ws, monkeypatch):
 
 
 def test_weekly_sample_card(ws, capsys, monkeypatch):
-    from wuwei import cruise, decision, workspace
+    from wuwei import budget_classes, cruise, decision, workspace
     answered_ = save(ws, record(cls='retry'))
     assert route(ws, capsys) == (0, 'mandate')
     assert propose(ws) == ['D-4']
@@ -481,8 +506,10 @@ def test_weekly_sample_card(ws, capsys, monkeypatch):
     assert 'Correctness decided it' not in widget['question']
     assert propose(ws) == []
     assert answer(ws, 'D-4', 'B', monkeypatch) == (0, 'B')
-    assert decision.level(workspace.load_config(ws), 'retry', decision.running(ws)) == 1
-    assert ledger(ws)[-1]['reason'] == 'weekly sample D-4'
+    # #558: a different sample answer spends the error budget; the level stays.
+    assert decision.level(workspace.load_config(ws), 'retry', decision.running(ws)) == 2
+    assert [row['label'] for row in budget_classes.select(ws, 14)[1]] == [
+        'sample 2026-09-28 D-4 of 2026-09-28 D-3']
 
 
 def test_a_sample_answered_the_same_keeps_the_level(ws, capsys, monkeypatch):
@@ -494,19 +521,18 @@ def test_a_sample_answered_the_same_keeps_the_level(ws, capsys, monkeypatch):
     assert decision.running(ws)['levels'] == {}
 
 
-def test_an_escaped_defect_lowers_the_class_once(ws, capsys, monkeypatch):
-    from wuwei import cruise, decision, state, workspace
+def test_an_escaped_defect_spends_the_budget(ws, capsys, monkeypatch):
+    from wuwei import budget_classes, cruise, decision, state, workspace
     state._write_state(lambda data: data.update(items={'DIV-1': {
         'goal': 'G-1', 'status': 'queued', 'phase': 'planned'}}), ws, reserved=False)
     save(ws, record(cls='retry').replace('Question: Which fix?', 'Question: Which fix for DIV-1?'))
     assert route(ws, capsys) == (0, 'mandate')
     assert outcome(ws)['items'] == ['DIV-1']
     monkeypatch.setattr('wuwei.metrics._escaped', lambda root: ({'DIV-1': 'standard'}, {'DIV-1'}))
-    cruise.escaped(ws)
-    assert decision.level(workspace.load_config(ws), 'retry', decision.running(ws)) == 1
-    assert ledger(ws)[-1]['reason'] == 'escaped defect DIV-1 D-3'
-    cruise.escaped(ws)
-    assert decision.running(ws)['levels']['retry'] == 1
+    assert [row['label'] for row in budget_classes.select(ws, 14)[1]] == ['escaped DIV-1 2026-09-28 D-3']
+    budget_classes.evaluate(ws)  # one event against one answer: under two events, not spent
+    assert decision.level(workspace.load_config(ws), 'retry', decision.running(ws)) == 2
+    assert not any(hasattr(cruise, name) for name in ('lower', 'streak', 'escaped'))
 
 
 # Phase 5: the status line, supervised and the steward
@@ -515,23 +541,23 @@ def test_an_escaped_defect_lowers_the_class_once(ws, capsys, monkeypatch):
 def status_line(root):
     from wuwei import workspace
     from wuwei.commands import status
-    return status.line(status.snapshot(workspace.day_dir(root)))
+    return status.full(status.snapshot(workspace.day_dir(root)))
 
 
-def test_the_status_line_names_the_cruise_level(ws, capsys):
+def test_status_names_the_cruise_level(ws, capsys):
     from wuwei import state
     state._write_state(lambda data: None, ws, reserved=False)
-    assert status_line(ws).endswith('| cruise L2 | meeting unmeasured')
+    assert '\ncruise L2\nplugin ' in status_line(ws)
     config(ws, '[decisions.cruise]\nenabled = false\n')
-    assert '| cruise off | L2 | meeting' in status_line(ws)
+    assert '\ncruise off, L2\nplugin ' in status_line(ws)
     config(ws, '')
     raise_to(ws, 'defer', 3)
-    assert '| cruise L3 | meeting' in status_line(ws)
+    assert '\ncruise L3\nplugin ' in status_line(ws)
     config(ws, SUPERVISED)
-    assert '| cruise L0 | meeting' in status_line(ws)
+    assert '\ncruise L0\nplugin ' in status_line(ws)
     (ws / '.wuwei/memory/cruise.json').write_text('not json')
     from wuwei.__main__ import main
-    assert main(['status', '--line']) == 2
+    assert main(['status']) == 2  # --line skips cruise.json since #562
     assert capsys.readouterr().out.strip() == 'WUWEI ? unmeasured'
 
 
@@ -544,11 +570,3 @@ def test_supervised_routes_as_before_and_the_mandate_sends_every_class_to_the_ow
     assert not state.read_state(ws).get('decision_outcomes')
     text = brief.mandate(ws)
     assert 'Decide and record: none.' in text and 'decision records of class approach, retry' in text
-
-
-def test_the_steward_review_checks_escaped_defects(ws, monkeypatch):
-    from wuwei import cruise, steward
-    calls = []
-    monkeypatch.setattr(cruise, 'escaped', calls.append)
-    steward.review(ws)
-    assert calls == [ws]

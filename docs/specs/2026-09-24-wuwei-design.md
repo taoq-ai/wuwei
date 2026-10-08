@@ -219,6 +219,14 @@ it. Ownership is enforced by three mechanisms, none of which depends on the mode
   120; head, CI, mergeability, reviews, comments, threads) and, on any change, records a
   `pr.changed` event and wakes the planner session (and, in M5, launches a headless shepherd
   run). Nothing needs to be re-armed by a seat.
+- Overnight, without a session (owner, 2026-10-08, #511). `wuwei sweep obligations --headless`
+  (and `wuwei shepherd`, every 15 minutes, installed with `wuwei shepherd schedule`, from the
+  Shepherd card in a session or, under strict, by the owner in a host terminal) sweeps the
+  owning day: the newest day, today included, whose plan is approved. It does nothing while a
+  planner session is live. It checks an `approved` PR against the 4.6 policy and queues it;
+  until #524 lands the merge waits for the morning `wuwei pr act`. It sends a `review_stale` ping through 4.9, and
+  queues every other state with its evidence as `shepherd.overnight` events, which open the
+  next morning plan. It never replies, fixes, rebases, starts a seat or calls a model.
 - Anchor at every turn. The Stop hook refuses to end a planner turn while any owned PR has an
   action past its deadline and no decision record parking it, naming the PR, its state and the
   action. The day close additionally requires every owned PR merged, parked or explicitly
@@ -470,8 +478,8 @@ Availability (owner, 2026-10-04, #477). The owner's session is never blocked by 
 Seats run in the background; any command that can run longer than a few seconds (fast
 checks, `dispatch opinion`, `steward run`, calibration) runs in the background, and the
 planner acts on its completion notification. The planner's turn ends with the board in one
-line (`wuwei status --line`, which names the running seats and checks with their start
-times), and the owner can speak at any time; the planner answers from the board, never by
+line (`wuwei status --line`, which names the running seats by role; `wuwei status` and
+`wuwei next` give each seat's item and start time), and the owner can speak at any time; the planner answers from the board, never by
 resuming or interrupting a seat. Owner questions are the one thing that waits, because
 they wait for the owner.
 
@@ -498,6 +506,25 @@ they wait for the owner.
   the approach keeps leaking and what replaces it, agreed with the owner before more code,
   and the reconsideration is recorded in its spec (constitution, Cycle budget).
 - A re-gate continues the same sentinel with the delta; a fresh seat only for a lost agent.
+- Process depth follows the tier (owner, 2026-10-08, #567). The tier (#280, from the diff,
+  the repository floor and the lead tier) decides the process depth, not only the gate
+  count. The brief and the launch prompt carry a `Depth:` line, so a seat never decides it;
+  the gate seats read the tier `dispatch next` recorded, never the builder's prediction.
+
+  | | light | standard | full |
+  |---|---|---|---|
+  | Spec engine | none (#280) | the engine's steps | the engine's steps |
+  | Builder class sweep | none | the classes `wuwei sweep classes <worktree>` lists from the changed files | every class |
+  | Gates | quality | arch, quality, security | arch, quality, security, goal when docs |
+  | Mutation step (gate step zero) | none | only when the diff touches `guards/`, `grants`, `outward`, a hook or a `trust_paths` entry | always |
+  | After a fix | the same sentinel re-reads the diff and rewrites its `Verdict:` and `Head:` lines | the delta round | the delta round |
+  | Verdict shape | `Verdict:`, `Head:`, findings | as below | as below |
+  | Decision records | a Routine record under mandate prints one line in `decision show` (`--full` prints it) | the same | the same |
+  | Retro note | only when a line is not `none` | every seat | every seat |
+
+  A skipped step zero at standard writes `Mutation: skipped (depth standard)`. No step adds
+  a refusal: the light shape is an acceptance, and a verdict whose seat or item cannot be
+  resolved is linted at the standard shape.
 - CAP counts running build seats. The free-memory floor comes from config.
   Amended (owner, 2026-10-05, #528): CAP and `host.seats` derive from the measured host,
   never from a shipped number: the running seats plus the seats that fit above the memory
@@ -511,10 +538,11 @@ they wait for the owner.
   card and the status line name what bound it (`host`, `budget`, `owner`, `unmeasured`).
 - Seat policy (model and runtime per role) is set at the morning gate and stored in state.
 - Boundary and environment register come from config; the arch sentinel checks against them.
-- Verdict shape: a `Verdict: PASS|FIX|PARK|ESCALATE` line; findings with severity,
+- Verdict shape (at light, see Process depth above): a `Verdict: PASS|FIX|PARK|ESCALATE` line; findings with severity,
   `file:line`, failure scenario and `blocks: yes|no`; a probe or mutation line per claim (or
   "not run"); residual risk; the retro note.
-- Retro note, every seat: three lines prefixed `Blocked:`, `Gap:`, `Change:`.
+- Retro note, every seat: three lines prefixed `Blocked:`, `Gap:`, `Change:` (at light, only
+  when a line is not `none`; an absent note is recorded as `none` on every line).
 - Build loop (owner, 2026-09-28; adapted from ralph-starter). The runtime adapter runs a
   builder seat as a loop rather than a single dispatch: dispatch, run the item's fast checks
   (backpressure), feed failures back into the same seat, repeat until green or until
@@ -599,6 +627,12 @@ beside the owner's baseline:
 - lead time: from the tracker item moving to In Progress (the tracker adapter's `claim`) to
   its first merged PR; median, p75 and p90; creation to merge and PR open to merge as
   secondary figures
+- cycle time (owner, 2026-10-08, #567): `cycle_minutes` per item, from its first
+  `plan.approved` or `plan.added` to its merge, across days; `gate_minutes` from its first
+  sentinel launch to its last received verdict; `cycle_by_tier`, the median per tier against
+  the targets light under 60 and standard under 180 minutes on the fixture day. The report
+  shows them under `## Cycle time`; the retro names the tier whose median moved most week
+  over week. A missed target is a reading, never a refusal.
 
 The baseline is the owner's hand-run month before WUWEI, recorded once in the workspace at
 `memory/notes/baseline.md` (type `reference`), never in this repository. A metric that
@@ -656,6 +690,8 @@ two-way open question inside the item is an assumption instead (5.3):
 
 - `Question:` one line; `Context:` what forces the decision, with evidence paths
 - `Class:` one of the decision classes in 5.8.1
+- `Role:` optional, one line: the role (charter name) that wrote the record; its confidence is
+  scored per role (5.8.1, Calibration)
 - `Options:` at least two, one of them doing nothing or deferring, as the table
   `Option | Title | Rationale | Consequence`: a short title (at most 40 characters, no quote,
   backtick, `$` or backslash), why the option scores as it does against the musts and wants,
@@ -752,11 +788,13 @@ Classes are a fixed list; a new class is an amendment to this section, not confi
 
 The L2 defaults are the two-way, inside-the-item decisions seats took on their own before
 cruise mode. `[decisions.cruise]` in `config.toml`: `enabled` (default true), `margin`
-(default 0.2), `max_per_day` (default 20), `undo_minutes` (default 60), and
-`levels.<class>`, which only lowers a class. The config check refuses an unknown class, a
+(default 0.2), `max_per_day` (default 20), `undo_minutes` (default 60), `budget_share`
+(default 0.1, above 0 and at most 0.5), `budget_window_days` (default 14), `burn_warn`
+(default 2.0), `calibration_threshold` (default 0.15, above 0 and below 1),
+`calibration_min` (default 10), and `levels.<class>`, which only lowers a class. The config check refuses an unknown class, a
 level outside 0 to 3, or a level above the class's ceiling. The running level lives in
 `memory/cruise.json`, starts at the default, and is written only by `wuwei promote` (raises
-with ledger evidence and morning-gate approval, lowers at once). A class runs at the lowest
+with ledger evidence and morning-gate approval, lowers when the error budget is spent). A class runs at the lowest
 of the running level, the config level and the ceiling.
 
 Conditions. The CLI answers a record only when all hold: the class runs at L2 or L3;
@@ -786,21 +824,57 @@ appears in the digest; at L2 a nudge also goes out when the soak window opens; a
 every merge goes to the owner.
 
 Promotion and demotion. The steward proposes raising a class one level through propose and
-promote (6.8) after 10 agreements and no reversal in that class over 14 days; an agreement
-is an owner answer equal to the recommendation, or a cruise answer whose undo window closed
-without an undo. `wuwei promote` lands a raise only when the owner approved it at the
-morning gate, and never above the ceiling. The CLI lowers a class one level at once,
-without approval, on a reversal (an undo, or a later owner answer that differs from a
-cruise answer), on an escaped defect (5.6) in a PR whose item carries a cruise answer of
-that class, or on three thin-margin escalations in a row in that class; it lands the change
-through the promote writer and the ledger line records why. Once a week the steward
+promote (6.8) after 10 agreements and no reversal in that class over 14 days, with its error
+budget unspent; an agreement is an owner answer equal to the recommendation, or a cruise
+answer whose undo window closed without an undo. `wuwei promote` lands a raise only when the
+owner approved it at the morning gate, and never above the ceiling. Once a week the steward
 re-asks the owner one cruise-answered record per class from the past seven days, with the
 answer hidden; a different choice counts as a reversal.
+
+Error budget (owner, 2026-10-08, #558). A single event no longer lowers a class: one unlucky
+reversal dropped a class, and a slow drift of bad calls never tripped anything. Each class
+has a budget per `budget_window_days` window. Its events are reversals (an undo, a later
+owner answer that differs from a cruise answer, a weekly sample answered differently) and
+escaped defects (5.6) attributed to a cruise answer of the class; the allowance is
+`budget_share` times the cruise answers of the class in the window. The budget is spent
+when the events exceed the allowance and number at least two. The burn rate is the events
+of the last 48 hours against the window's allowance, scaled to the window
+(`events x window_days / (2 x allowance)`); at `burn_warn` or above the steward writes one
+`cruise.burn` nudge a day naming the events, whose action is `wuwei cruise budget`. The
+steward review (every `steward run` and `dispatch next`) evaluates the budgets. A spent
+class runs one level lower, never below L0, through the promote writer, with a ledger line
+that starts `budget spent: <class>` and names every event; `cruise.json` holds the level it
+took away. When the window refills (the class is no longer spent) the CLI restores the held
+level through the same writer with a `budget refilled` ledger line. That restore is the one
+level raise without a morning-gate card, and it goes only back to the held level, never
+above it or the ceiling; any other level write, such as an approved raise, clears the hold.
+Thin-margin escalations still go to the owner and are flagged on the route, but no longer
+lower a class. A class with a spent budget, or with a budget event since its last level
+change, gets no raise card. `wuwei cruise budget` prints class, level, answered, spent,
+allowance, burn and state, and exits 1 when any class is not ok.
+
+Calibration (owner, 2026-10-08, #559). A record's stated Confidence is scored against what
+happened. The CLI stores `confidence` and `role` (from the optional `Role:` field) in the
+`decision.decided` payload of every record a seat, the mandate or a cruise rule takes. Over
+the `budget_window_days` window each taken record with a stored confidence and a closed undo
+window is scored: forecast high 0.9, medium 0.6, low 0.3; outcome 0 when an undo, a reversal,
+a weekly sample answered differently or an escaped defect names it, else 1. The Brier score
+(mean squared difference) is computed per class and per role. Fewer than `calibration_min`
+scored records is `too few`; above `calibration_threshold` is `uncalibrated`; else
+`calibrated`. The steward review stores the uncalibrated classes and roles in `cruise.json`
+under `calibration` through the promote writer, with one ledger line naming the broken
+records, only when the sets change. An uncalibrated class runs at most L1. A record whose
+`Role:` is stored uncalibrated routes with high ambiguity, so Routine becomes Exploratory and
+Consequential becomes Strategic (a card); this never refuses. A class gets a raise card only
+when its live state is `calibrated`. `too few` blocks promotion only. `wuwei cruise
+calibration` prints kind, name, scored, brier and state, and exits 1 when any row is
+uncalibrated. The day report and the retro carry a `## Calibration` section.
 
 Kill switch. `decisions.cruise.enabled = false` runs every class at L0 without changing any
 running or configured level, so turning it back on restores them. The status line (5.9) then
 shows `cruise off | L<max>`, the highest level a class would run at, and `cruise L<max>`
-while it is on.
+while it is on, followed by `· budget <classes> spent` while an error budget holds a class
+lower, and `· uncalibrated <roles>` while a role is stored uncalibrated (#559).
 
 Novelty (owner, 2026-10-08, #556). Blast radius is only known for targets the workspace
 has touched. A decision or guarded action whose target is novel runs one level lower than
@@ -864,9 +938,15 @@ classifier cannot read is a `nudge`, never `silent`.
 
 Surfaces, all reading the same classification:
 
-- Status line. `wuwei status --line` for the Claude Code status line: one line with pages,
-  nudges, items per phase against CAP, the next person reply due, the next meeting, the
-  cruise level (5.8.1) and the day's negotiation loops (5.8.2). It shares the hook latency
+- Status line. `wuwei status --line` for the Claude Code status line (#521): one line of at
+  most 100 columns (`--width <n>`), read left to right by importance. First the one thing to
+  do now when there is one (`restart Claude Code: hooks <old> still running`, `no plan yet`,
+  `gate waiting`, `decision D-n waiting`), then items per phase against CAP and the running
+  seats by role (`seats 4/1 (lead, arch, +2 more)`, cut at whole names), then pages, nudges
+  and the posture when it is not guarded. `wuwei status` prints the same groups one per line
+  with the detail: each running seat with role, item and start time, watch, listen,
+  sessions, the next person reply due, the next meeting, the day's negotiation loops (5.8.2)
+  and the plugin and template versions. It shares the hook latency
   budget (10.6) and shows `WUWEI ? unmeasured` rather than a false green when it cannot read state.
 - Cockpit. The dashboard (#28) grows into the three lanes plus the briefing pack, served on
   127.0.0.1 and opened in the desktop app's browser pane or any browser. Approving a
@@ -1799,6 +1879,8 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I8 | A record command runs from the planner only after a card answer outside strict | per case, `bin/wuwei decide D-1 once` through `protect_state` from the planner and a seat | #529 extends it to `config set` |
 | I9 | A branch push and a PR raise with recorded evidence succeed from the planner and the builder below strict, and a tag push with a release grant or an Allow once release card passes | per posture, through the hook | #547; below strict the deploy guard's release card and grants gate a tag and `push_check` passes it; under strict `push_check` refuses it |
 | I10 | Under observe and guarded no opaque read-only command is refused | per posture, a script read, a `$(...)` read and a `python3 -c` print through the hook | #547 |
+| I11 | A class runs lower only when its error budget is spent (more events than the allowance and at least two), never on a single event and never through a refusal | `budget_classes.measure` on 3 of 20, 2 of 20 within 48 hours, none, and 1 of 5; no single-trigger lowering left in `cruise` | #558; the lowered class routes its records to a card and is restored when the window refills |
+| I12 | A class or role is uncalibrated only when its Brier score over at least calibration_min scored records is above calibration_threshold; an uncalibrated class runs at most L1, an uncalibrated role only moves a record toward the owner, never through a refusal | `calibration_scores.measure` on 12 high with 5 broken, 10 high stood and 9 high stood; `cruise.level` with and without a stored class; `cisr(..., ambiguous=True)` on a Routine and a Consequential record | #559; too few blocks promotion only |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

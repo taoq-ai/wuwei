@@ -75,9 +75,12 @@ class Runtime:
             text = f'Verdict: {self.verdict}\nHead: {day.head}\n'
             if self.verdict == 'FIX':
                 text += '- P1 | memory/demo.py:1 | fails when value is one | blocks: yes\n'
-            text += 'Probe: not run\nVAL: PASS\n' + RETRO
-            # SubagentStop validates all gate files with the stopping seat's role.
-            text += 'Simplicity: none\nDesign: none\n'
+            if 'Depth: light;' in path.read_text():  # #567: three rows and no retro note
+                message = 'Verdict written.\n'
+            else:
+                text += 'Probe: not run\nVAL: PASS\n' + RETRO
+                # SubagentStop validates all gate files with the stopping seat's role.
+                text += 'Simplicity: none\nDesign: none\n'
             target = day.directory / 'decisions' / f'gate-{path.stem}.md'
             target.parent.mkdir(exist_ok=True)
             target.write_text(text)

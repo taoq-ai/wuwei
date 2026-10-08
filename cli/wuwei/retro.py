@@ -97,6 +97,7 @@ Outcome: pending
     for name, item in sorted(data['items'].items()):
         lines.append(f"| {name} | {item['phase']} | {item['status']} | "
                      f"{rounds.get(name, 0) if isinstance(rounds, dict) else 'unmeasured'} |")
+    lines += ['', metrics.cycle_moved(metrics.cycles(root), workspace.now())]  # #567
     lines += ['', '## Gate verdicts', '| Record | Verdict |', '| --- | --- |']
     gates = sorted((day / 'decisions').glob('[gG][aA][tT][eE]-*.[mM][dD]'))
     for path in gates:
@@ -140,6 +141,8 @@ Outcome: pending
     def targets(paths):
         return [json.loads(path.read_text(encoding='utf-8'))['target'] for path in paths]
     from wuwei import interview
+    from wuwei import calibration_scores
+    lines += ['', '## Calibration', *calibration_scores.lines(root, workspace.load_config(root))]
     lines += ['', '## Owner preferences', *(interview.reask(root) or ['none'])]
     lines += ['', '## Metrics', json.dumps(measured, sort_keys=True), '',
               '## Applied', *(['- `' + p + '`' for p in targets(applied)] or ['none']),

@@ -122,4 +122,4 @@ def test_no_tracker_lifecycle_is_unmeasured(tmp_path):
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('')
     result = dispatch.tracker_call('ABC-1', 'claim', tmp_path)
-    assert result.exit == 2 and result.reason.startswith('tracker adapter is none;')
+    assert result.exit == 2 and result.reason.startswith('tracker adapter is none, so tracker updates are skipped;')

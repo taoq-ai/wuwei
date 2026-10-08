@@ -1,5 +1,5 @@
 ---
-version: 1.0.0
+version: 1.0.1
 ---
 # Common authoring rules
 
@@ -14,7 +14,7 @@ Read `_common.md` first. These rules apply whenever a seat drafts, posts, commit
 
 ## Writing for a person
 
-Text written for a person (decision records, PR bodies, drafts, retro summaries, digests and briefing packs) and every outward text (tracker comments, docs pages, DMs, PR comments and review pings) is rewritten with the `humanizer` skill in embedded mode before it is saved, drafted or posted, when the skill is installed. Without it, check the text against this list. The CLI lint flags the mechanical tells: a `style` finding on drafts and decision records and, on outward text, a warning and an `outward.ai_tells` event, or a refusal when `outward.humanize_strict` is on. An em dash or an emoji is always refused.
+When the `humanizer` skill is installed, rewrite with it in embedded mode before you save, draft or post. That holds for text written for a person (decision records, PR bodies, drafts, retro summaries, digests and briefing packs). It holds for every outward text too (tracker comments, docs pages, DMs, PR comments and review pings). Without it, check the text against this list. The CLI lint flags the mechanical tells: a `style` finding on drafts and decision records and, on outward text, a warning and an `outward.ai_tells` event, or a refusal when `outward.humanize_strict` is on. An em dash or an emoji is always refused.
 
 1. Lead with the decision or the fact the reader needs; leave out background the reader already has.
 2. State the point directly. Do not deny a claim nobody made so that the real point sounds larger.
@@ -26,3 +26,13 @@ Text written for a person (decision records, PR bodies, drafts, retro summaries,
 8. Prefer the plain word to the showy one models overuse, and is, are or has to serves as or stands as.
 9. No bold label on every list item and no decorative headings; write headings in sentence case.
 10. Remove chat leftovers: greetings, praise, offers of more help and sign-offs around the content.
+
+## Plain tone
+
+Text in WUWEI's voice follows five rules. `bin/wuwei lint tone <path>` measures the first.
+
+1. Keep sentences under 20 words on average and none over 35.
+2. Put one idea in each sentence.
+3. Use the verb, not a noun made from it: "close measures it", not "the measurement by close".
+4. Use the plain word (use, run, send, ask) and drop chains of qualifiers.
+5. Call the owner "you" in docs and cards, and "the owner" in reasons a seat reads (#362).

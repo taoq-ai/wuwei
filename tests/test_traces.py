@@ -705,7 +705,7 @@ def test_trace_gap_on_status_line_and_doctor(trace_workspace, call_payload, monk
     assert code == 0
     assert [row['kind'] for row in error_events(trace_workspace)] == ['traces.gap']
     state._write_state(lambda data: None, trace_workspace.parents[2], reserved=False)
-    assert 'traces: 1 gaps' in status.line(status.snapshot(trace_workspace))
+    assert 'traces: 1 gaps' in status.full(status.snapshot(trace_workspace))
     probes = {'state': {'result': 'ok', 'value': 'ok'}, 'planner': {'result': 'ok', 'value': 'ok'},
               'seats': {'result': 'ok', 'value': 'none stuck'}}
     config = workspace.load_config(trace_workspace.parents[2])

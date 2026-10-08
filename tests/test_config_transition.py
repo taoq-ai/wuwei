@@ -185,12 +185,15 @@ def test_restart_text(tmp_path, installed):
     assert integrity.restart({'template_version': '0.12.0'}) == ''
     assert integrity.restart(None) == ''
     assert integrity.restart({'template_version': '0.13.0'}) == (
-        'plugin 0.12.0 running against template 0.13.0: restart Claude Code')
+        'restart Claude Code: hooks 0.12.0 still running (plugin 0.13.0 installed)')
     plugin(tmp_path, '0.11.0', marker=True)
     assert integrity.restart({'template_version': '0.12.0'}) == (
-        'plugin 0.11.0 running against template 0.12.0: restart Claude Code')
+        'restart Claude Code: hooks 0.11.0 still running (plugin 0.12.0 installed)')
     assert integrity.restart(None) == (
-        'plugin 0.11.0 running against template 0.12.0: restart Claude Code')
+        'restart Claude Code: hooks 0.11.0 still running (plugin 0.12.0 installed)')
+    plugin(tmp_path, '0.10.0', marker=True)
+    assert integrity.restart({'template_version': '0.13.0'}) == (
+        'restart Claude Code: hooks 0.10.0, 0.11.0 and 0.12.0 still running (plugin 0.13.0 installed)')
 
 
 NEWER = STRICT.replace('template_version = ""', 'template_version = "0.13.0"')

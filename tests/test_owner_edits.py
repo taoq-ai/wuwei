@@ -173,8 +173,8 @@ def edit(tmp_path, command, **extra):
                        'tool_input': {'command': command}, **extra})
 
 
-OLD = ('Owner memory edits are an owner action on the host, outside agent tools: propose the '
-       'change, and the owner runs bin/wuwei goals edit in a host terminal.')
+OLD = ('The owner edits owner memory on the host, outside agent tools; propose the change. '
+       'The owner runs bin/wuwei goals edit in a host terminal.')
 
 
 @pytest.mark.parametrize('posture', ['observe', 'guarded'])
@@ -232,8 +232,8 @@ def test_voice_edit_after_voice_gate(tmp_path, monkeypatch):
     assert edit(tmp_path, 'bin/wuwei voice edit --file voice-draft.md') == (0, '')
 
 
-DECIDE = ("Decisions are the owner's answer, outside agent tools: show it with bin/wuwei decision "
-          'show <id> --widget, and the owner runs bin/wuwei decide <id> <option> in a host terminal.')
+DECIDE = ('The owner answers decisions, outside agent tools; show it with bin/wuwei decision show '
+          '<id> --widget. The owner runs bin/wuwei decide <id> <option> in a host terminal.')
 
 
 def asked_decision(tmp_path, monkeypatch, posture='guarded', ask=True):
@@ -272,8 +272,8 @@ def test_strict_asked_decision_prints_host_terminal_command(tmp_path, monkeypatc
         1, f'{DECIDE} Run it in a host terminal: bin/wuwei decide D-3 B')
 
 
-APPROVE = ("Approving a draft is the owner's decision, outside agent tools: list drafts with "
-           'bin/wuwei drafts, and the owner runs bin/wuwei drafts approve <id> in a host terminal.')
+APPROVE = ('The owner approves a draft, outside agent tools; list drafts with bin/wuwei drafts. '
+           'The owner runs bin/wuwei drafts approve <id> in a host terminal.')
 
 
 def asked_draft(tmp_path, monkeypatch, posture='guarded', answer='Send now (Recommended)'):

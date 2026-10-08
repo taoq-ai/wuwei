@@ -5,7 +5,7 @@ import json
 import sys
 
 from wuwei import novelty, state, workspace
-from wuwei.decision import (LENSES, RECORD, ROUTINE, cisr, decided_record, evaluate, lens_table, lint_file, margin,
+from wuwei.decision import (LENSES, RECORD, ROUTINE, cisr, uncalibrated, decided_record, evaluate, lens_table, lint_file, margin,
                             option_id, options, owner_confirm, owner_record, present, record_rejection,
                             record_widget, route, route_owner, seat_outcome, today_path, widget)
 from wuwei.exits import RACE, SYMLINK
@@ -71,8 +71,6 @@ def decide(args):
         from wuwei import cruise
         thin = cruise.thin(root, fields, scores, config)
         route_owner(args.id, fields, root, thin=thin)
-        if thin:
-            cruise.streak(root, fields['Class'], args.id)
         return 0, target
     try:
         record = seat_outcome(fields, scores)
@@ -103,12 +101,12 @@ def mandate(ident, path, text, fields, scores, root, config):
     door = fields['Reversibility']
     if fields['Decided-by'] == 'owner' or door == 'one-way' or (door != 'two-way' and fields.get('Class') not in ROUTINE):
         return None  # one-way doors and records written for the owner still ask (review F1)
-    kind = cisr(fields, scores)
+    kind = cisr(fields, scores, ambiguous=bool(uncalibrated(root, fields)))  # #559
     if kind == 'Strategic' or (kind == 'Exploratory' and margin(fields, scores) <= 0):
         return None
     from wuwei import cruise
     found = cruise.rule(root, ident, fields, scores, config, data) or {}
-    record = {**seat_outcome(fields, scores, by='mandate'), **found}
+    record = {**seat_outcome(fields, scores, by='mandate'), 'cisr': kind, **found}
 
     def update(current):
         if ident in current.get('decision_routes', {}) or ident in current.get('decision_outcomes', {}):
@@ -160,6 +158,10 @@ def show(args):
         return 0, json.dumps([card], indent=2)
     if level == 'full':
         return 0, text.rstrip()
+    outcome = state.read_state(root).get('decision_outcomes', {}).get(args.id, {})
+    if outcome.get('decided_by') == 'mandate' and outcome.get('cisr') == 'Routine':  # #567
+        return 0, (f"{args.id} (Routine, mandate): {fields['Question']} Took {outcome.get('option')}. "
+                   f'Full record: wuwei decision show {args.id} --full')
     return 0, present(args.id, fields, level) + f'\nFull record: wuwei decision show {args.id} --full'
 
 
@@ -232,7 +234,7 @@ def owner_outcome(args, note=None, *, root=None, where=None):
                                 'reversibility': fields['Reversibility'], 'class': fields.get('Class')})
     workspace.atomic_write(path, owner_record(text, args.option, where, note))
     from wuwei import cruise
-    cruise.answered(root, args.id, args.option, previous)
+    cruise.answered(root, args.id, args.option)
     if not (grant is not None and args.option == 'keep'):  # #556: Keep owner-only leaves it novel
         try:
             for key in novelty.routed(data, args.id):
@@ -292,7 +294,6 @@ def undo(args, *, root=None, where=None):
     stamp = workspace.now().isoformat(timespec='seconds')
     workspace.atomic_write(path, decided_record(text, 'pending', 'owner').rstrip('\n')
                            + f'\nNotes: Undone at {stamp} {where}.\n')
-    cruise.lower(root, row['class'], f'undo {args.id}', cruise.evidence(root, args.id))
     return 0, f'owner: ask with wuwei decision show {args.id} --widget'
 
 
@@ -308,6 +309,7 @@ def template():
                   f'Lenses:\n| Lens | A | B |\n| --- | --- | --- |\n{rows}') if lenses else ''
     return f'''Question: Which option should we take?
 Class: design
+Role: builder
 Context: Replace with the evidence file and reason for deciding; name a repository, channel, person, dependency, environment or workflow outside this item's repository as repo:<org>/<name>, channel:<id>, person:<ns>:<id>, dependency:<ecosystem>/<name>, env:<name> or workflow:<name>.
 Options:
 | Option | Title | Rationale | Consequence |

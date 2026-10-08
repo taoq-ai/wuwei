@@ -54,12 +54,21 @@ def launch(day, action):
     if action['agent_type'].startswith('wuwei:sentinel-'):
         # Quality asks for one fix in the initial round; every other verdict passes.
         initial = action['action'] == 'launch'
+        if not initial:  # #567: a light fix is re-read by the same seat, never a delta review
+            light = day.data['items']['A']['gates']['tier'] == 'light'
+            assert action['feedback'].startswith('Re-read:' if light else 'Delta review:'), action
         day.runtime.verdict = 'FIX' if initial and action['agent_type'] == 'wuwei:sentinel-quality' else 'PASS'
     day.execute(action)
 
 
-@pytest.mark.parametrize('looks', [1, 2])
-def test_the_day_closes_walking_only_next(day, looks):
+@pytest.mark.parametrize('looks,tier', [(1, 'standard'), (2, 'standard'), (1, 'light')])
+def test_the_day_closes_walking_only_next(day, looks, tier):
+    if tier == 'light':  # #567: the repository floor and the lead allow light
+        from functools import partial
+        with (day.root / '.wuwei/config.toml').open('a') as config:
+            config.write('[repos.gates]\nfloor = "light"\n')
+        day.proposal = partial(day.proposal, tier='light')
+        day.runtime.spec = False  # no spec engine at light (#280)
     # looks 2: the planner asks next again before each action; asking is not doing (#551 review).
     started, asks, merged = time.monotonic(), 0, False
     for _ in range(80):
@@ -110,4 +119,10 @@ def test_the_day_closes_walking_only_next(day, looks):
     assert value['off_path'] == 0, metrics.path(metrics._events(day.directory),
                                                 metrics._traces(day.directory), 'planner')
     assert value['planner_asks'] == asks and value['planner_turns'] > 0
+    assert value['cycle_minutes']['A'] >= 0
+    assert value['cycle_by_tier'][tier]['median_minutes'] < metrics.CYCLE_TARGETS[tier]
+    assert day.data['items']['A']['gates']['tier'] == tier
+    builder = next(row['payload']['path'] for row in day.events if row['kind'] == 'brief written'
+                   and row['payload']['role'] == 'builder')
+    assert f'Depth: {tier};' in (day.root / builder).read_text()
     assert time.monotonic() - started < 60

@@ -204,12 +204,13 @@ def propose(data, root=None):
     directory = workspace.day_dir(root)
     if (directory / 'state.json').exists() and state.read_state(root).get('gate_approved'):
         raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei status for the approved plan')
-    from wuwei import grants
+    from wuwei import grants, shepherd
     planned = grants.plan(root, workspace.load_config(root), data['candidates'])
     from wuwei import cruise
     cruise.propose(root, workspace.load_config(root))  # #283: raise and weekly sample cards
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
              *(['Finding: ' + steward_finding, ''] if steward_finding else []),
+             *(shepherd.overnight_lines(swept) if (swept := shepherd.owning_day(root, day.name)) else []),  # #511
              '## Goals to confirm',
              *([f'Provisional: proposed by the lead; the planner records days/{directory.name}/'
                 'goals.md on approval.'] if provisional else []),
@@ -256,7 +257,7 @@ def gate_widget(root=None, *, import_yesterday=False):
     provisional = goals.parse(draft.read_text(encoding='utf-8')) if draft.is_file() else None
     adopt = data.get('adopt', [])
     ids = [item['id'] for item in data['candidates']] + [row['id'] for row in adopt]
-    approves = '; '.join([
+    approves = '. '.join(part[:1].upper() + part[1:] for part in [
         'Goals ' + ', '.join(f'{goal} ({provisional[goal]["outcome"]})' if provisional else goal
                              for goal in data['goals']),
         'queue ' + (', '.join(item['id'] for item in data['candidates']) or 'empty'),
@@ -271,8 +272,8 @@ def gate_widget(root=None, *, import_yesterday=False):
         'Goals' if provisional else 'Plan',
         [('Approve', approves + '.'),
          ('Change something', 'Ask the separate questions on goals, queue, seat policy, '
-                              'CAP and seats per goal, envelope and carry-over; CAP is derived, '
-                              'a changed CAP is recorded as config cap')],
+                              'CAP and seats per goal, envelope and carry-over. CAP is derived. '
+                              'A changed CAP is recorded as config cap.')],
         ' '.join(['wuwei plan approve --items', *ids, '--goals-confirmed',
                   *(['--import-yesterday'] if import_yesterday else [])]))
 

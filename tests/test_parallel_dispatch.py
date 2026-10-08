@@ -85,7 +85,8 @@ def test_first_dispatch_turn_launches_cap_builders_and_the_fourth_waits(day):
         step = json.loads(day.run('next', '--json'))
     assert step['state'] == 'wait'
     assert 'D waits' in step['why'] and 'A-builder started first' in step['why']
-    assert 'seats 3/3 (owner; G-1 2, G-2 1)' in day.run('status', '--line')
+    assert 'seats 3/3 (builder, builder, builder)' in day.run('status', '--line')
+    assert 'bound owner · builders G-1 2, G-2 1' in day.run('status')
 
 
 def test_owner_cap_one_stays_sequential(day):
@@ -155,9 +156,9 @@ def test_fresh_workspace_derives_cap_from_the_host_and_starts_four(day):
     assert json.loads((day.directory / 'proposal.json').read_text())['cap'] == 4
     widget = json.loads(day.run('plan', 'gate'))[0]
     options = {row['label']: row['description'] for row in widget['options']}
-    assert text in options['Approve'] and 'config cap' in options['Change something']
+    assert text[:1].upper() + text[1:] in options['Approve'] and 'config cap' in options['Change something']
     assert (day.data['cap'], day.data['cap_bound']) == (4, 'host')
-    assert 'seats 0/4 (host)' in day.run('status', '--line')
+    assert 'seats 0/4 |' in day.run('status', '--line') and 'bound host' in day.run('status')
     entries, _ = launch_set(day)
     assert entries == [('A', 'start'), ('B', 'start'), ('C', 'start'), ('D', 'start')]
     assert json.loads(day.run('dispatch', 'next', '--all'))['bound'] == 'host'
@@ -201,7 +202,7 @@ def test_token_budget_fitting_two_seats_starts_two(day):
     assert 'CAP: cap 2 (budget)' in (day.directory / 'plan.md').read_text()
     entries, _ = launch_set(day)
     assert entries == [('A', 'start'), ('B', 'start'), ('C', 'wait'), ('D', 'wait')]
-    assert 'seats 0/2 (budget)' in day.run('status', '--line')
+    assert 'seats 0/2 |' in day.run('status', '--line') and 'bound budget' in day.run('status')
 
 
 def test_derived_cap_records_are_reserved(day, capsys):

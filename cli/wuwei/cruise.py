@@ -13,12 +13,13 @@ CLASSES = {'approach': (2, 3), 'retry': (2, 3), 'park': (2, 3), 'accept-residual
            'defer': (0, 3), 'scope-cut': (0, 3), 're-plan': (0, 3), 'dependency-bump': (0, 3),
            'design': (0, 3), 'boundary': (0, 3), 'refactor': (0, 3),
            'merge': (3, 3), 'message': (0, 1), 'other': (0, 1)}
-CRUISE = '.wuwei/memory/cruise.json'  # running levels; promotion.cruise_level is the one writer
+CRUISE = '.wuwei/memory/cruise.json'  # running levels; written only by promotion.py (cruise_level, calibration)
 BLAST = re.compile(r'(?i)\s*(?:own branch|own pr|workspace)\b')
 
 
 def running(root):
-    """#283: the running levels {levels, changed} from memory/cruise.json; damage fails closed."""
+    """#283: the running levels {levels, changed} from memory/cruise.json, and #558 budget, the
+    levels a spent error budget holds; damage fails closed."""
     import json
     path = Path(root) / CRUISE
     if any(part.is_symlink() for part in (path, path.parent, path.parent.parent)):
@@ -31,9 +32,16 @@ def running(root):
         raise ValueError(f'{CRUISE}: unreadable ({type(exc).__name__}); {DAMAGED}') from None
     if (not isinstance(data, dict) or not isinstance(data.get('levels'), dict)
             or not isinstance(data.get('changed'), dict)
+            or not isinstance(data.get('budget', {}), dict)
             or any(name not in CLASSES or type(value) is not int or not 0 <= value <= 3
-                   for name, value in data['levels'].items())):
+                   for name, value in [*data['levels'].items(), *data.get('budget', {}).items()])):
         raise ValueError(f'{CRUISE}: expected levels of known classes at 0 to 3; {DAMAGED}')
+    stored = data.get('calibration', {})  # #559: the uncalibrated classes and roles
+    if (not isinstance(stored, dict) or not isinstance(stored.get('classes', []), list)
+            or not isinstance(stored.get('roles', []), list)
+            or any(name not in CLASSES for name in stored.get('classes', []))
+            or any(not isinstance(role, str) for role in stored.get('roles', []))):
+        raise ValueError(f'{CRUISE}: expected calibration classes of known classes and roles as names; {DAMAGED}')
     return data
 
 
@@ -44,6 +52,8 @@ def level(config, name, running=None):
     if not cruise['enabled'] or config['autonomy']['mode'] == 'supervised':
         return 0
     default, ceiling = CLASSES[name]
+    if name in (running or {}).get('calibration', {}).get('classes', []):
+        ceiling = min(ceiling, 1)  # #559: an uncalibrated class runs at most L1
     return min((running or {}).get('levels', {}).get(name, default),
                cruise['levels'].get(name, ceiling), ceiling)
 
@@ -81,33 +91,16 @@ def thin(root, fields, scores, config):
             and decision.margin(fields, scores) < config['decisions']['cruise']['margin'])
 
 
-def lower(root, name, reason, evidence):
-    """Lower a class one level below where it runs; nothing at L0."""
-    from wuwei import decision, promotion
-    level = decision.level(workspace.load_config(root), name, decision.running(root))
-    if level:
-        promotion.cruise_level(root, name, level - 1, reason, evidence)
-
-
-def streak(root, name, ident):
-    """Three thin routes in a row of one class today, after its last change, lower it."""
-    from wuwei import decision
-    # ponytail: the streak is counted within one day's state.
-    since = decision.running(root)['changed'].get(name, '')
-    data = state.read_state(root)
-    rows = sorted((row['at'], int(key[2:]), kind == 'route' and row.get('thin') is True)
-                  for kind in ('route', 'outcome') for key, row in data.get(f'decision_{kind}s', {}).items()
-                  if isinstance(row, dict) and row.get('class') == name and 'at' in row and row['at'] > since)
-    if len(rows) >= 3 and all(row[2] for row in rows[-3:]):
-        lower(root, name, 'three thin-margin escalations', evidence(root, ident))
-
-
 def label(config, running):
-    """The status line part: the highest level a class but merge runs at with cruise on."""
+    """The status line part: the highest level a class but merge runs at with cruise on, and
+    the classes a spent error budget holds lower (#558)."""
     cruise = config['decisions']['cruise']
     on = {**config, 'decisions': {**config['decisions'], 'cruise': {**cruise, 'enabled': True}}}
     top = max(level(on, name, running) for name in CLASSES if name != 'merge')
-    return f'cruise L{top}' if cruise['enabled'] else f'cruise off | L{top}'
+    held = f' · budget {", ".join(sorted(running["budget"]))} spent' if running.get('budget') else ''
+    roles = running.get('calibration', {}).get('roles')
+    held += f' · uncalibrated {", ".join(roles)}' if roles else ''  # #559
+    return (f'cruise L{top}' if cruise['enabled'] else f'cruise off | L{top}') + held
 
 
 def clock(stamp):
@@ -123,9 +116,9 @@ def window(row, now=None):
     return until if until and datetime.fromisoformat(until) > (now or workspace.now()) else None
 
 
-def answered(root, ident, option, previous):
-    """The owner answered ident: a raise card lands its level, a weekly sample answered
-    differently or a cruise answer reversed with another option lowers its class."""
+def answered(root, ident, option):
+    """The owner answered ident: a raise card lands its level. #558: a weekly sample answered
+    differently and a reversed cruise answer spend the class's error budget (budget_classes)."""
     from wuwei import decision, promotion
     card = state.read_state(root).get('cruise_cards', {}).get(ident)
     if isinstance(card, dict) and card['kind'] == 'raise' and option == 'raise':
@@ -133,10 +126,6 @@ def answered(root, ident, option, previous):
         ceiling = decision.CLASSES[name][1]
         if card['level'] <= min(ceiling, config['decisions']['cruise']['levels'].get(name, ceiling)):
             promotion.cruise_level(root, name, card['level'], f'raise approved {ident}', evidence(root, ident))
-    elif isinstance(card, dict) and card['kind'] == 'sample' and option != card['option']:
-        lower(root, card['class'], f'weekly sample {ident}', evidence(root, ident))
-    if isinstance(previous, dict) and previous.get('rule') and previous['option'] != option:
-        lower(root, previous['class'], f'reversal {ident}', evidence(root, ident))
 
 
 def _days(root, count):
@@ -170,22 +159,29 @@ def _card(root, text, row):
 
 
 def propose(root, config):
-    """Design 5.8.1 promotion as owner cards: a raise after promote_agreements agreements, and
-    once a week one sample per class with a recent cruise answer. Returns the new D-n."""
-    from wuwei import decision, promotion
+    """Design 5.8.1 promotion as owner cards: a raise after promote_agreements agreements with the
+    error budget unspent and no budget event since the class's last change (#558) and the class
+    calibrated (#559), and once a week one sample per class with a recent cruise answer. Returns
+    the new D-n."""
+    from wuwei import budget_classes, calibration_scores, decision, promotion
     from wuwei import grants
     cruise = config['decisions']['cruise']
     if config['autonomy']['mode'] != 'autonomous' or not cruise['enabled']:
         return []
     run = decision.running(root)
     week, window_days = 7, cruise['promote_days']
+    blocked = {row['class'] for row in budget_classes.table(root, config) if row['state'] == 'spent'}
+    blocked |= {event['class'] for event in budget_classes.select(root, window_days)[1]
+              if event['at'] > run['changed'].get(event['class'], '')}
+    blocked |= {row['name'] for row in calibration_scores.table(root, config)  # #559
+                if row['kind'] == 'class' and row['state'] != 'calibrated'}
     carded = [(day.name, row) for day, data in _days(root, max(week, window_days))
               for row in data.get('cruise_cards', {}).values()]
     cutoff = {count: (workspace.now().date() - timedelta(days=count)).isoformat() for count in (week, window_days)}
     written = []
     for name, (_, ceiling) in decision.CLASSES.items():
         level, cap = decision.level(config, name, run), min(ceiling, cruise['levels'].get(name, ceiling))
-        if (name == 'merge' or level >= cap
+        if (name == 'merge' or level >= cap or name in blocked
                 or any(row['kind'] == 'raise' and row['class'] == name and day > cutoff[window_days]
                        for day, row in carded)):
             continue
@@ -198,9 +194,9 @@ def propose(root, config):
             [('raise', f'Raise {name} to L{level + 1}', 'The recent answers agreed with the recommendation.',
               f'{name} records are answered at L{level + 1}.', 9),
              ('keep', f'Keep {name} at L{level}', 'Nothing changes.', f'{name} records keep their route.', 3)],
-            'Owner time saved', 'raise', 'The ledger shows agreement; an undo or a reversal lowers it again.',
+            'Owner time saved', 'raise', 'The ledger shows agreement, its error budget is unspent and its confidence is calibrated.',
             f'cruise level of {name}.', 'A later answer of this class is wrong and lands without you.',
-            'An undo, a reversal or three thin-margin escalations lower it again.'),
+            'Reversals and escaped defects spend its error budget; a spent budget lowers it one level.'),
             {'kind': 'raise', 'class': name, 'level': level + 1}))
     if any(row['kind'] == 'sample' and day > cutoff[week] for day, row in carded):
         return written
@@ -228,23 +224,6 @@ def gate_widgets(root, config):
             fields, _ = decision.evaluate(decision.today_path(ident, root).read_text(encoding='utf-8'))
             widgets.append(decision.record_widget(ident, fields, level=level, hidden=row['kind'] == 'sample'))
     return widgets
-
-
-def escaped(root):
-    """Design 5.6 escaped defects: a cruise answer naming an escaped item after its class's last
-    change lowers that class once."""
-    from wuwei import decision
-    from wuwei import metrics, watch
-    found = metrics._escaped(root)[1]
-    if not found:
-        return
-    for day in watch.days(Path(root)):
-        data = state.read_state(directory=day) if (day / 'state.json').exists() else {}
-        for ident, row in sorted(data.get('decision_outcomes', {}).items()):
-            hit = next((item for item in row.get('items', []) if item in found), None) if isinstance(row, dict) else None
-            if (hit and row.get('rule')
-                    and row['at'] > decision.running(root)['changed'].get(row['class'], '')):
-                lower(root, row['class'], f'escaped defect {hit} {ident}', f'.wuwei/days/{day.name}/decisions/{ident}.md')
 
 
 def evidence(root, ident):
