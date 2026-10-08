@@ -651,6 +651,8 @@ two-way open question inside the item is an assumption instead (5.3):
 
 - `Question:` one line; `Context:` what forces the decision, with evidence paths
 - `Class:` one of the decision classes in 5.8.1
+- `Role:` optional, one line: the role (charter name) that wrote the record; its confidence is
+  scored per role (5.8.1, Calibration)
 - `Options:` at least two, one of them doing nothing or deferring, as the table
   `Option | Title | Rationale | Consequence`: a short title (at most 40 characters, no quote,
   backtick, `$` or backslash), why the option scores as it does against the musts and wants,
@@ -749,7 +751,8 @@ The L2 defaults are the two-way, inside-the-item decisions seats took on their o
 cruise mode. `[decisions.cruise]` in `config.toml`: `enabled` (default true), `margin`
 (default 0.2), `max_per_day` (default 20), `undo_minutes` (default 60), `budget_share`
 (default 0.1, above 0 and at most 0.5), `budget_window_days` (default 14), `burn_warn`
-(default 2.0), and `levels.<class>`, which only lowers a class. The config check refuses an unknown class, a
+(default 2.0), `calibration_threshold` (default 0.15, above 0 and below 1),
+`calibration_min` (default 10), and `levels.<class>`, which only lowers a class. The config check refuses an unknown class, a
 level outside 0 to 3, or a level above the class's ceiling. The running level lives in
 `memory/cruise.json`, starts at the default, and is written only by `wuwei promote` (raises
 with ledger evidence and morning-gate approval, lowers when the error budget is spent). A class runs at the lowest
@@ -811,11 +814,28 @@ lower a class. A class with a spent budget, or with a budget event since its las
 change, gets no raise card. `wuwei cruise budget` prints class, level, answered, spent,
 allowance, burn and state, and exits 1 when any class is not ok.
 
+Calibration (owner, 2026-10-08, #559). A record's stated Confidence is scored against what
+happened. The CLI stores `confidence` and `role` (from the optional `Role:` field) in the
+`decision.decided` payload of every record a seat, the mandate or a cruise rule takes. Over
+the `budget_window_days` window each taken record with a stored confidence and a closed undo
+window is scored: forecast high 0.9, medium 0.6, low 0.3; outcome 0 when an undo, a reversal,
+a weekly sample answered differently or an escaped defect names it, else 1. The Brier score
+(mean squared difference) is computed per class and per role. Fewer than `calibration_min`
+scored records is `too few`; above `calibration_threshold` is `uncalibrated`; else
+`calibrated`. The steward review stores the uncalibrated classes and roles in `cruise.json`
+under `calibration` through the promote writer, with one ledger line naming the broken
+records, only when the sets change. An uncalibrated class runs at most L1. A record whose
+`Role:` is stored uncalibrated routes with high ambiguity, so Routine becomes Exploratory and
+Consequential becomes Strategic (a card); this never refuses. A class gets a raise card only
+when its live state is `calibrated`. `too few` blocks promotion only. `wuwei cruise
+calibration` prints kind, name, scored, brier and state, and exits 1 when any row is
+uncalibrated. The day report and the retro carry a `## Calibration` section.
+
 Kill switch. `decisions.cruise.enabled = false` runs every class at L0 without changing any
 running or configured level, so turning it back on restores them. The status line (5.9) then
 shows `cruise off | L<max>`, the highest level a class would run at, and `cruise L<max>`
 while it is on, followed by `· budget <classes> spent` while an error budget holds a class
-lower.
+lower, and `· uncalibrated <roles>` while a role is stored uncalibrated (#559).
 
 Novelty (owner, 2026-10-08, #556). Blast radius is only known for targets the workspace
 has touched. A decision or guarded action whose target is novel runs one level lower than
@@ -1821,6 +1841,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I9 | A branch push and a PR raise with recorded evidence succeed from the planner and the builder below strict, and a tag push with a release grant or an Allow once release card passes | per posture, through the hook | #547; below strict the deploy guard's release card and grants gate a tag and `push_check` passes it; under strict `push_check` refuses it |
 | I10 | Under observe and guarded no opaque read-only command is refused | per posture, a script read, a `$(...)` read and a `python3 -c` print through the hook | #547 |
 | I11 | A class runs lower only when its error budget is spent (more events than the allowance and at least two), never on a single event and never through a refusal | `budget_classes.measure` on 3 of 20, 2 of 20 within 48 hours, none, and 1 of 5; no single-trigger lowering left in `cruise` | #558; the lowered class routes its records to a card and is restored when the window refills |
+| I12 | A class or role is uncalibrated only when its Brier score over at least calibration_min scored records is above calibration_threshold; an uncalibrated class runs at most L1, an uncalibrated role only moves a record toward the owner, never through a refusal | `calibration_scores.measure` on 12 high with 5 broken, 10 high stood and 9 high stood; `cruise.level` with and without a stored class; `cisr(..., ambiguous=True)` on a Routine and a Consequential record | #559; too few blocks promotion only |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

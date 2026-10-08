@@ -140,6 +140,8 @@ Outcome: pending
     def targets(paths):
         return [json.loads(path.read_text(encoding='utf-8'))['target'] for path in paths]
     from wuwei import interview
+    from wuwei import calibration_scores
+    lines += ['', '## Calibration', *calibration_scores.lines(root, workspace.load_config(root))]
     lines += ['', '## Owner preferences', *(interview.reask(root) or ['none'])]
     lines += ['', '## Metrics', json.dumps(measured, sort_keys=True), '',
               '## Applied', *(['- `' + p + '`' for p in targets(applied)] or ['none']),

@@ -454,8 +454,33 @@ def i11(case, rules):
     return budget_rule()
 
 
+@functools.cache
+def calibration_rule():
+    """#559: the Brier states, an uncalibrated class runs at most L1 (too few is not capped), and
+    an uncalibrated role only moves a record toward the owner."""
+    from wuwei import calibration_scores, cruise, decision
+    rule = {'calibration_threshold': 0.15, 'calibration_min': 10}
+    found = [calibration_scores.measure(pairs, rule)[1] for pairs in (
+        [(0.9, 1)] * 7 + [(0.9, 0)] * 5, [(0.9, 1)] * 10, [(0.9, 1)] * 9)]
+    if found != ['uncalibrated', 'calibrated', 'too few']:
+        return f'calibration states {found}, expected uncalibrated, calibrated, too few'
+    config = {'autonomy': {'mode': 'autonomous'}, 'decisions': {'cruise': {'enabled': True, 'levels': {}}}}
+    levels = [cruise.level(config, 'defer', {'levels': {'defer': 3}, 'calibration': calibration})
+              for calibration in ({'classes': ['defer'], 'roles': []}, {})]
+    if levels != [1, 3]:
+        return f'levels {levels} for an uncalibrated and a too-few class, expected 1 and 3'
+    routine = {'Class': 'retry', 'Reversibility': 'two-way'}
+    consequential = {'Class': 'design', 'Reversibility': 'one-way', 'Blast radius': 'outside', 'Confidence': 'high'}
+    moved = [decision.cisr(fields, {}, ambiguous=True) for fields in (routine, consequential)]
+    return None if moved == ['Exploratory', 'Strategic'] else f'an uncalibrated role routes as {moved}'
+
+
+def i12(case, rules):
+    return calibration_rule()
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
-              'I9': i9, 'I10': i10, 'I11': i11}
+              'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12}
 
 
 def project(case):
