@@ -55,15 +55,16 @@ day the hooks make the safe path the default one, so you have nothing special to
 
 ## The basic workflow
 
-1. **Setup and calibration**: `bin/wuwei setup` in a [host terminal](docs/site/concepts.md#host-terminal) calibrates your repositories and leaves `.wuwei/` with its config.
-2. **Plan and the morning gate**: `/wuwei:wuwei-plan` ranks the work; your answer leaves the approved plan.
-3. **Build**: an approved item starts a builder in its own worktree; it leaves a branch with tests written first and green fast checks. Specification mode, where hooks hold each spec-kit step, is designed, not built ([design spec](docs/specs/2026-09-24-wuwei-design.md), section 5.10).
-4. **Review by tier**: a finished change gets one gate or three by its tier, then one fix round; it leaves verdicts.
-5. **Shepherd to merge**: a raised pull request merges when your merge policy and branch protection allow it; the shepherd records the outcome.
-6. **Close and retro**: at the end of the day, `/wuwei:wuwei-report` or `/wuwei:wuwei-retro` leaves the report and the rule proposals.
-7. **Memory into tomorrow**: proposals you promote and `/wuwei:wuwei-consolidate` update memory, and [carried](docs/site/concepts.md#carry) items open the next plan.
-
-The hooks hold every step at the moment of action, and warn or block by the posture you configured ([concepts](docs/site/concepts.md)).
+In words: setup, plan, build, review, shepherd to merge, then close with a retro that feeds tomorrow.
+```mermaid
+flowchart LR
+    setup["Setup and calibration"] --> plan["Plan and the morning gate"] --> build["Build: a builder per item, tests first"]
+    build --> review["Review by tier: one gate or three"] --> merge["Shepherd to merge"] --> close["Close and retro"]
+    close -- "memory into tomorrow: promoted rules and carried items" --> plan
+    you(["you: approve the plan, answer a card"]) -.-> plan & review
+    hooks(["hooks check every action"]) -.-> build
+```
+Setup runs in a [host terminal](docs/site/concepts.md#host-terminal), [carried](docs/site/concepts.md#carry) items open the next plan, and the hooks warn or block by your posture ([concepts](docs/site/concepts.md)).
 
 ## When something goes wrong
 
