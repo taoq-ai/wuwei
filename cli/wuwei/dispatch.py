@@ -42,7 +42,6 @@ def base(gate):
 def tier(root, config, row):
     """Compute the item's gate tier from its diff, flags, track, floor and lead tier."""
     from wuwei import merge
-    from wuwei.guards import commit_push
     computed, reasons = 'light', []
 
     def rise(level, reason):
@@ -55,14 +54,7 @@ def tier(root, config, row):
         if value:
             rise('standard', f'lead flag {name}')
     try:
-        if not row.get('worktree'):
-            raise ValueError('no worktree; create one with bin/wuwei worktree add <item> before dispatching gates')
-        tree = (root / row['worktree']).resolve()
-        repo, _, vcs = commit_push.context(tree, {}, {}, root, identity=False)
-        head = brief.read(vcs.head, str(tree), root=root)['sha']
-        base = brief.read(vcs.merge_base, str(tree), config['brief']['remote'] + '/'
-                          + repo['default_branch'], root=root)['sha']
-        changes = brief.read(vcs.diff_stat, str(tree), base, head, root=root)
+        repo, changes = _changes(root, config, row)
         total = sum(change['additions'] or 0 for change in changes) + sum(
             change['deletions'] or 0 for change in changes)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
@@ -106,6 +98,72 @@ def tier(root, config, row):
     return record
 
 
+def _changes(root, config, row):
+    """(repository settings, diff stat rows) of the item's worktree against its merge base."""
+    from wuwei.guards import commit_push
+    if not row.get('worktree'):
+        raise ValueError('no worktree; create one with bin/wuwei worktree add <item> before dispatching gates')
+    tree = (root / row['worktree']).resolve()
+    repo, _, vcs = commit_push.context(tree, {}, {}, root, identity=False)
+    head = brief.read(vcs.head, str(tree), root=root)['sha']
+    base = brief.read(vcs.merge_base, str(tree), config['brief']['remote'] + '/'
+                      + repo['default_branch'], root=root)['sha']
+    return repo, brief.read(vcs.diff_stat, str(tree), base, head, root=root)
+
+
+def depth(row, *, gate=False):
+    """#567: the item's process depth (design 5.3): the tier dispatch recorded, else the
+    builder brief's prediction (never for a gate reader), else standard."""
+    return (row.get('gates') or {}).get('tier') or (None if gate else row.get('depth')) or 'standard'
+
+
+# #567: the builder's class sweep at standard covers the classes whose files the diff touches.
+# ponytail: a glob heuristic per class; sentinels still own their classes.
+CLASS_PATHS = (
+    ('AUTH', ('guards/*', '*auth*', 'grants*', '*permission*', 'security*')),
+    ('VAL', ('*pars*', '*valid*', '*schema*', 'config*', '*normal*')),
+    ('DOC', ('*.md', 'docs/*', '*.rst')),
+    ('TEST', ('tests/*', 'test_*', '*_test.*')),
+    ('INF', ('.github/*', 'workflows/*', 'hooks/*', 'bin/*', '*.toml', '*.yml', '*.yaml',
+             'Dockerfile*', '*.json')),
+    ('RET', ('registry*', 'adapters/*', '*retry*')),
+    ('ERR', ('exits*', '*error*', 'adapters/*', 'guards/*')),
+    ('STATE', ('state*', '*lock*', '*journal*', 'events*')),
+    ('CON', ('commands/*', '__main__*', '*contract*', '*schema*', '*api*')),
+    ('BUD', ('adapters/*', '*runtime*', '*dispatch*', '*timeout*')),
+)
+GUARD_CODE = ('guards/*', 'grants*', 'outward*', 'hooks/*')
+
+
+def classes(root, config, row):
+    """(tier record, {class: changed paths}): none at light, the touched classes at standard,
+    every class at full. ValueError when the diff cannot be read."""
+    from wuwei import merge
+    record = tier(root, config, row)
+    if record['tier'] == 'light':
+        return record, {}
+    _, changes = _changes(root, config, row)
+    found = {name: [change['path'] for change in changes if merge.matched(change['path'], globs)]
+             for name, globs in CLASS_PATHS}
+    return record, {name: paths for name, paths in found.items()
+                    if paths or record['tier'] == 'full'}
+
+
+def step_zero(value, paths, trust_paths):
+    """#567: None at light; (run, reason) otherwise. At standard step zero runs only when a
+    changed path is guard code or a repository trust path."""
+    from wuwei import merge
+    if value == 'light':
+        return None
+    if value == 'full':
+        return True, ''
+    for path in paths:
+        pattern = merge.matched(path, (*trust_paths, *GUARD_CODE))
+        if pattern is not None:
+            return True, f'{path} matches {pattern}'
+    return False, 'no guard code or trust path in the diff'
+
+
 def tracker_call(item, action, root=None):
     """Record the tracker measurement without blocking the local build loop."""
     from wuwei.tracker import ticket as recorded
@@ -115,7 +173,7 @@ def tracker_call(item, action, root=None):
         config = workspace.load_config(root)
         ticket = recorded(state.read_state(root), item) or item
         if config['adapters']['tracker'] == 'none':
-            result = registry.Result(2, reason='tracker adapter is none; tracker updates are skipped; the owner sets adapters.tracker with bin/wuwei config set in a host terminal if they should reach the tracker')
+            result = registry.Result(2, reason='tracker adapter is none, so tracker updates are skipped; to reach the tracker, the owner sets adapters.tracker with bin/wuwei config set in a host terminal')
         else:
             tracker = registry.load('tracker', config)
             if action == 'claim':
@@ -374,7 +432,7 @@ def _seats(root, data, item, roles, round_name, commands):
                 continue
             action = brief.seat_action('sentinel-' + role, root / seat['brief'],
                                        data['items'][item]['worktree'], root)
-            feedback = _delta_feedback(first)
+            feedback = _delta_feedback(first, depth(data['items'][item], gate=True) == 'light')
             extra = {'action': 'continue', 'resume': seat['agent_id'], 'feedback': feedback,
                      'prompt': action['prompt'] + '\n\n' + feedback}
         receive = 'wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, name)))
@@ -399,7 +457,11 @@ def _opinion_name(data, rows, item, gate, round_name):
     return logged[-1]['name'] + '-' + gate.partition('@')[2] if logged else None
 
 
-def _delta_feedback(first):
+def _delta_feedback(first, light=False):
+    if light:  # #567: no delta procedure at light; the same seat re-reads its findings
+        return (f'Re-read: the fix round changed {first["head"]}..HEAD. Re-read the diff for your '
+                f'blocking findings and rewrite only the Verdict: and Head: lines of {first["file"]}; '
+                'mark each finding the fix closed blocks: no.')
     return (f'Delta review: the fix round changed {first["head"]}..HEAD. Re-check your '
             f'findings at the current HEAD and rewrite {first["file"]}.')
 
@@ -546,7 +608,7 @@ def opinion(item, root=None):
         running = sum(other['status'] == 'running' for other in brief.seats(data).values())
         ceiling = calibrate.host(root, config, running=running)['seats']  # #528
         if running >= ceiling:
-            raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish, or the owner raises host.seats with bin/wuwei config set in a host terminal')
+            raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish. Or the owner raises host.seats with bin/wuwei config set in a host terminal')
         if seat is None:
             if round_name == 'delta':
                 raise Refused(f'second-opinion seat is missing; run bin/wuwei why {item}, then bin/wuwei dispatch next {item}')
@@ -563,7 +625,7 @@ def opinion(item, root=None):
             # continue_job resumes the latest thread of this runtime in the worktree, which is
             # the builder's own thread when the builder runs on the same runtime.
             if data['seat_policy'].get('builder', {}).get('runtime') == second['runtime']:
-                raise Refused('second opinion cannot resume on the builder runtime; set gates.second_opinion to a runtime other than the builder (the owner runs bin/wuwei config set in a host terminal)')
+                raise Refused('second opinion cannot resume on the builder runtime; set gates.second_opinion to a runtime other than the builder. The owner runs bin/wuwei config set in a host terminal')
             feedback = (_delta_feedback(first) if round_name == 'delta' else
                         'Your verdict file was rejected by the verdict lint; rewrite '
                         f'{directory.relative_to(root)}/decisions/gate-{name}.md to the verdict '

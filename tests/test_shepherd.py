@@ -720,9 +720,11 @@ def test_uncleared_merge_keeps_owner_decision_due(case, monkeypatch, capsys):
     monkeypatch.setattr(pr_actions, 'evaluate', lambda root, refs=None: (1, [
         {'pr': REF, 'state': 'approved', 'action': 'wuwei merge or merge decision',
          'exit': 1, 'parked': False}]))
-    monkeypatch.setattr('wuwei.merge.execute', lambda ref, root=None: Result(1, reason='soak window'))
+    card = 'publish: bin/wuwei merge x on y is a merge; the owner decides: bin/wuwei decision show D-1 --widget'
+    monkeypatch.setattr('wuwei.merge.execute', lambda ref, root=None: Result(1, reason=card))
     assert pr_actions.act(root, REF) == 1
-    assert 'owner merge decision' in capsys.readouterr().out
+    # #524: the merge's own reason (the card or the owner's command), never a generic owner wall.
+    assert capsys.readouterr().out == f'{REF}: {card}\n'
 
 
 def test_review_request_outbound_tier_uses_fresh_gate(case):
@@ -791,7 +793,7 @@ def test_missing_branch_protection_reads_rulesets_for_fallback(monkeypatch):
     from adapters.code_host import github
     from fakes.replay import install_replay
     install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Branch not protected (HTTP 404)'},
-                                       {'stdout': '[[]]'}])
+                                       {'stdout': '[[]]'}, {'stdout': '{"allow_squash_merge": true}'}])
     result = github.protection('acme/widget', 'feature-base')
     assert result.exit == 0
     assert result.data['required_checks'] == [] and result.data['classic'] is False

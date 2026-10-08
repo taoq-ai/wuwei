@@ -339,7 +339,7 @@ def test_owner_open_prs_are_proposed_and_claimed_at_the_gate(root, monkeypatch):
     assert 'PR-13' not in text
     widget = plan.gate_widget(root)
     assert widget['record'] == 'wuwei plan approve --items A PR-12 --goals-confirmed'
-    assert 'claims PR-12 (acme/widget#12)' in widget['options'][0]['description']
+    assert 'Claims PR-12 (acme/widget#12)' in widget['options'][0]['description']
     claimed = []
     monkeypatch.setattr(shepherd, 'claim_pr', lambda *args: claimed.append(args) or 0)
     plan.approve(['A', 'PR-12'], root, goals_confirmed=True)
@@ -366,11 +366,11 @@ def test_gate_widget_is_the_one_approval_question(root):
     assert [row['label'] for row in widget['options']] == ['Approve', 'Change something']
     approve = widget['options'][0]['description']
     assert all(part in approve for part in ('G-1', 'A, B', 'CAP 4', 'claude', '09:00',
-                                            'cap 4 (host): 8 GB free, 1 GB per seat, 4 cores'))
+                                            'Cap 4 (host): 8 GB free, 1 GB per seat, 4 cores'))
     assert 'carry' not in approve.lower()
     assert widget['record'] == 'wuwei plan approve --items A B --goals-confirmed'
     carry = plan.gate_widget(root, import_yesterday=True)
-    assert 'carry-over' in carry['options'][0]['description']
+    assert 'carry-over' in carry['options'][0]['description'].lower()
     assert carry['record'].endswith(' --goals-confirmed --import-yesterday')
     (root / '.wuwei/memory/goals.md').write_text(TEMPLATE.read_text(encoding='utf-8'))
     plan.propose(lead(), root)
@@ -602,8 +602,6 @@ def test_owner_actions_must_be_a_list(root):
 
 
 @pytest.mark.parametrize('entry,line', [
-    ({'action': 'merge', 'target': 'repo:fixture-org/app'}, 'Owner-only: merge repo:fixture-org/app (owner step)'),
-    ({'action': 'merge', 'target': 'pr:fixture-org/app#7'}, 'Owner-only: merge pr:fixture-org/app#7 (owner step)'),
     ({'action': 'message', 'target': 'channel:C1'}, 'Owner-only: message channel:C1 (owner step)'),
     ({'action': 'secret-set', 'target': 'secret:fixture-org/app/API_KEY'},
      'Owner-only: secret-set secret:fixture-org/app/API_KEY (owner step)'),
@@ -618,13 +616,33 @@ def test_owner_actions_must_be_a_list(root):
      '(not understood: needs exactly action and target as strings; the gate asks for it as written)'),
 ])
 def test_owner_actions_beyond_grants_never_stop_the_gate(root, entry, line):
-    # #518: the lead's vocabulary (merge, message, secret-set) and anything malformed are
-    # lines on the plan; only deploy, release and publish become grant cards.
+    # #518: the lead's vocabulary (message, secret-set) and anything malformed are lines on
+    # the plan; deploy, release, publish and (#524) merge become grant cards.
     data = proposal()
     data['candidates'][0]['owner_actions'] = [entry]
     text = plan.propose(data, root).read_text()
     assert line in text
     assert not (root / '.wuwei/days/2026-09-28/decisions').exists()
+
+
+def test_planned_merges_are_gate_cards(root, monkeypatch, capsys):
+    # #524: a merge the lead lists is a planned card like a deploy, per repository or per PR.
+    from wuwei.__main__ import main
+    data = proposal()
+    data['candidates'][0]['owner_actions'] = [{'action': 'merge', 'target': 'repo:fixture-org/app'},
+                                              {'action': 'merge', 'target': 'pr:fixture-org/app#7'}]
+    text = plan.propose(data, root).read_text()
+    assert 'Owner-only: merge repo:fixture-org/app (D-1)\n' in text
+    assert 'Owner-only: merge pr:fixture-org/app#7 (D-2)\n' in text and '(owner step)' not in text
+    rows = state.read_state(root)['grants']
+    assert [(rows[key]['action'], rows[key]['target']) for key in ('D-1', 'D-2')] == [
+        ('merge', 'repo:fixture-org/app'), ('merge', 'pr:fixture-org/app#7')]
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    capsys.readouterr()
+    assert main(['plan', 'gate']) == 0
+    _, first, second = json.loads(capsys.readouterr().out)
+    assert first['question'].startswith('D-1: G-1 A merges fixture-org/app: allow today')
+    assert second['question'].startswith('D-2: G-1 A merges fixture-org/app#7: allow today')
 
 
 def test_lead_charter_names_every_owner_action():
@@ -661,6 +679,9 @@ def test_propose_writes_the_cruise_raise_card_the_gate_carries(root, monkeypatch
     rows = {f'D-{100 + index}': {'option': 'A', 'outcome': 'A', 'decided_by': 'owner', 'class': 'defer',
                                  'recommendation': 'A', 'at': workspace.now().isoformat()} for index in range(10)}
     state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update(rows), root, reserved=False)
+    for number in range(300, 310):  # #559: the class is calibrated
+        state.append_event('decision.decided', {'id': f'D-{number}', 'option': 'A', 'class': 'defer',
+                                                'decided_by': 'mandate', 'confidence': 'high'}, root)
     plan.propose(proposal(), root)
     assert state.read_state(root)['cruise_cards']['D-1']['kind'] == 'raise'
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))

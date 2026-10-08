@@ -402,7 +402,7 @@ def protection(repo, branch, root=None):
             'classic': classic}
 
 
-    result['merge_queue'] = False
+    result['merge_queue'], result['squash'] = False, True
     for rule in _pages(f'repos/{_repo(repo)}/rules/branches/{quote(branch, safe="")}'):
         kind = _field(rule, 'type', str)
         if kind == 'merge_queue':
@@ -430,6 +430,10 @@ def protection(repo, branch, root=None):
                 ('conversation_resolution', 'required_review_thread_resolution'),
             ):
                 result[target] |= _field(params, source, bool)
+            if params.get('allowed_merge_methods') is not None:  # #524: a ruleset narrows the methods
+                result['squash'] &= 'squash' in _list(params['allowed_merge_methods'])
+    # #524: WUWEI merges only with --squash; a repository that does not allow it is refused.
+    result['squash'] &= _field(_api(f'repos/{_repo(repo)}'), 'allow_squash_merge', bool)
     return result
 
 

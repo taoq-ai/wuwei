@@ -66,7 +66,7 @@ def _passthrough(node):
 
 
 def _code(node):
-    return (isinstance(node, ast.Constant) and node.value in (1, 2)
+    return (isinstance(node, ast.Constant) and type(node.value) is int and node.value in (1, 2)
             or isinstance(node, ast.Name) and node.id in ('FINDINGS', 'UNRUN'))
 
 
@@ -311,3 +311,7 @@ def test_before_plan_dispatch_next(fresh, capsys):
 def test_before_plan_approve(fresh, capsys):
     code, text = run(capsys, 'plan', 'approve', '--items', 'DIV-1', '--goals-confirmed')
     assert code == 1 and '/wuwei:wuwei-plan' in text
+
+
+def test_bool_tuple_is_not_an_exit_reason():
+    assert reasons("def f():\n    return True, 'a b'\n") == []

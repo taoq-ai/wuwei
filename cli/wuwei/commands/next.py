@@ -5,7 +5,6 @@ import os
 import sys
 
 from wuwei import brief, integrity, state, workspace
-from wuwei.decision import answered
 from wuwei.exits import CLEAN, FINDINGS, UNRUN, DAMAGED
 
 HEADER = 'WUWEI orientation'
@@ -218,6 +217,7 @@ def step(root, ran=()):
     routes = data.get('decision_routes', {})
     if not isinstance(routes, dict):
         raise ValueError(f'invalid decision ledger; {DAMAGED}')
+    from wuwei.decision import answered
     pending = [identifier for identifier in routes if answered(data, identifier) is None]
     for identifier in pending:
         if ('decision', identifier) not in returned:

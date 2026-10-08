@@ -23,7 +23,7 @@ def _verify(root, host, ref, record, config):
     data = state.read_state(root)
     if (decision.route(fields) != 'owner' or fields['Decided-by'] != 'owner'
             or identifier in data.get('decision_outcomes', {}) and not decision.answered(data, identifier)):
-        raise ValueError('disposition needs an owner-routed decision without a seat outcome; route it with bin/wuwei decision route D-n, wait for the owner answer, then rerun bin/wuwei pr disposition')
+        raise ValueError('disposition needs an owner-routed decision without a seat outcome; route it with bin/wuwei decision route D-n. Wait for the owner answer, then rerun bin/wuwei pr disposition')
     if obligations._fingerprint(text) != record['decision_fingerprint']:
         raise ValueError('disposition decision changed; verify again; the owner posts a fresh marker comment, then rerun bin/wuwei pr disposition with its --comment id')
     discussion = obligations._read(host.threads, ref, root=root)
@@ -300,7 +300,7 @@ def _rebase(root, ref, item, tree, *, resume=False):
         fetched = commit_push.data(vcs.fetch(str(tree), config['brief']['remote'],
                                              pr['base'], base_sha, root=root))
         if fetched.get('sha') != base_sha:
-            raise ValueError('fetched base differs from current PR base; rerun bin/wuwei pr act --run; if it repeats, the owner checks brief.remote with bin/wuwei config set in a host terminal')
+            raise ValueError('fetched base differs from current PR base; rerun bin/wuwei pr act --run. If it repeats, the owner checks brief.remote with bin/wuwei config set in a host terminal')
         result = vcs.rebase(str(tree), base_sha, root=root)
         if isinstance(result, registry.Result) and result.exit == 1:
             print(result.reason or 'rebase did not complete')
@@ -525,7 +525,7 @@ def act(root, ref, *, run=False, complete=False, reply=None):
         from wuwei import merge
         result = merge.execute(ref, root=root)
         if result.exit:
-            print(f'{ref}: owner merge decision required: {result.reason}')
+            print(f'{ref}: {result.reason}')  # #524: the card, the owner's command or the missing condition
         return result.exit
     if row['state'] == 'review_stale':
         from wuwei import shepherd

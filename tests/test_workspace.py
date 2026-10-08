@@ -182,7 +182,7 @@ def test_config_defaults_and_independence(tmp_path):
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'digest': '', 'nudges': '', 'dm': '', 'report': ''}},
         'repos': [], 'worktree': {'git_hooks': 'chain'}, 'checks': {'python': '', 'bootstrap': ''},
-        'grants': {'standing': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
+        'merge': {'default_tier': ''}, 'grants': {'standing': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
@@ -214,6 +214,7 @@ def test_config_defaults_and_independence(tmp_path):
         'decisions': {'wait_hours': 24, 'cruise': {'enabled': True, 'margin': 0.2, 'max_per_day': 20, 'undo_minutes': 60,
                                                       'promote_agreements': 10, 'promote_days': 14,
                                                       'budget_share': 0.1, 'budget_window_days': 14, 'burn_warn': 2.0,
+                                                      'calibration_threshold': 0.15, 'calibration_min': 10,
                                                       'levels': {}}, 'lenses': {}},
         'pr': {'poll_seconds': 120, 'action_minutes': 30, 'review_window': 120},
             'shepherd': {'review_channel': '', 'lead_login': '', 'reviewers': [], 'reviewers_exclude': [],

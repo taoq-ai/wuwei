@@ -97,8 +97,10 @@ def constraints(root, data):
     plan = (f'{(workspace.day_dir(root) / "plan.md").relative_to(root).as_posix()} '
             f'(approved: {", ".join(data["approved_items"]) or "none"})'
             if data['gate_approved'] else 'not approved')
-    from wuwei.decision import answered
-    open_ids = sorted(ident for ident in data.get('decision_routes', {}) if answered(data, ident) is None)
+    routes = data.get('decision_routes', {})
+    if routes:
+        from wuwei.decision import answered
+    open_ids = sorted(ident for ident in routes if answered(data, ident) is None)
     briefs = [f'{seat.get("item")} {name} {seat.get("brief")}' for name, seat in data['seats'].items()
               if seat.get('status') == 'running']
     briefs += [f'{item} build {build.get("brief")}' for item, build in data.get('builds', {}).items()

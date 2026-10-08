@@ -20,7 +20,7 @@ LENSES = {'SOLID': 'Which SOLID principle does it keep or break?',
           'YAGNI': 'What does it build that no item needs yet?',
           'ponytail': 'Is there a simpler thing that works: stdlib before custom, native before a dependency?'}
 OPTION_COLUMNS = ['Option', 'Title', 'Rationale', 'Consequence']
-OPTIONAL = ('Class', 'Reasoning', 'Lenses')
+OPTIONAL = ('Class', 'Reasoning', 'Lenses', 'Role')
 STATUS_QUO = r'(?i)(?:Do nothing|Defer|Keep)\b'  # #478: Keep owner-only is the status quo
 # #530: two-way by definition (fix round, task round, seat procedure, parked item's next step).
 ROUTINE = ('approach', 'retry', 'park', 'accept-residual')
@@ -111,7 +111,7 @@ def evaluate(text, lenses=None):
         fix = NO_RECOMMENDATION if 'Recommendation' in missing else 'add each one'
         raise ValueError('missing fields: ' + ', '.join(missing) + f'; {fix} (bin/wuwei decision template shows them all)')
     for key in ('Question', 'Recommendation', 'Confidence', 'Reversibility', 'Decided-by',
-                'Class', 'Reasoning'):
+                'Class', 'Reasoning', 'Role'):
         if '\n' in fields.get(key, ''):
             raise ValueError(f'{key}: expected one line; {DAMAGED}')
     cruise = re.fullmatch(r'cruise ([a-z-]+)@L[23]', fields['Decided-by'])  # #283: a cruise answer
@@ -122,6 +122,9 @@ def evaluate(text, lenses=None):
             raise ValueError(f'{key}: expected {"|".join(allowed)}; fix it in the record; bin/wuwei decision template shows a valid one')
     if 'Class' in fields and fields['Class'] not in CLASSES:
         raise ValueError(f'Class: expected one of {", ".join(CLASSES)}; fix it in the record; bin/wuwei decision template shows a valid one')
+    from wuwei.profiles import ROLES
+    if 'Role' in fields and fields['Role'] not in ROLES:  # #559: the role whose confidence is scored
+        raise ValueError(f'Role: expected one of {", ".join(ROLES)}; fix it in the record; bin/wuwei decision template shows a valid one')
     options, passing, _, scores = _scored(fields)
     ids = [row[0] for row in options]
     recommendation = fields['Recommendation']
@@ -358,14 +361,21 @@ def margin(fields, scores):
             / (10 * sum(int(row[1]) for row in _scored(fields)[2])))
 
 
-def cisr(fields, scores):
-    """#530: the MIT CISR class from risk (door and blast radius) and ambiguity (confidence, margin)."""
+def cisr(fields, scores, ambiguous=False):
+    """#530: the MIT CISR class from risk (door and blast radius) and ambiguity (confidence, margin).
+    #559: ambiguous (an uncalibrated role) makes ambiguity high, so a record only moves toward the owner."""
     if fields.get('Class') in ROUTINE and fields['Reversibility'] != 'one-way':
-        return 'Routine'  # two-way by definition unless the seat wrote one-way
+        return 'Exploratory' if ambiguous else 'Routine'  # two-way by definition unless the seat wrote one-way
     low_risk = (fields['Reversibility'] == 'two-way'
                 and re.match(r'(?i)\s*(?:item|own branch|own pr|day)\b', fields['Blast radius']))
-    clear = fields['Confidence'] != 'low' and margin(fields, scores) >= MARGIN
+    clear = not ambiguous and fields['Confidence'] != 'low' and margin(fields, scores) >= MARGIN
     return ('Routine' if clear else 'Exploratory') if low_risk else ('Consequential' if clear else 'Strategic')
+
+
+def uncalibrated(root, fields):
+    """#559: the record's Role when the steward stored it uncalibrated, else None."""
+    role = fields.get('Role')
+    return role if role in running(root).get('calibration', {}).get('roles', []) else None
 
 
 def route(fields):
@@ -389,7 +399,8 @@ def route_owner(identifier, fields, root, item=None, thin=False):
             item is None or data['items'].get(item, {}).get('assumption', {}).get('decision') == identifier):
         return
     from wuwei import novelty
-    kind = cisr(fields, _scored(fields)[3])
+    role = uncalibrated(root, fields)
+    kind = cisr(fields, _scored(fields)[3], ambiguous=bool(role))
     extra = {'class': fields.get('Class'), 'thin': thin, 'at': workspace.now().isoformat()}  # #283
     data_row = {'reversibility': fields['Reversibility'], 'recommendation': fields['Recommendation'],
                 'cisr': kind, **extra}
@@ -397,6 +408,8 @@ def route_owner(identifier, fields, root, item=None, thin=False):
     novel = novelty.novel(root, workspace.load_config(root), novelty.record_keys(fields))
     if novel:  # #556: the owner's answer clears these
         data_row['novel'] = payload['novel'] = novel
+    if role:  # #559: the record went to the owner because its role is uncalibrated
+        data_row['uncalibrated'] = payload['uncalibrated'] = role
     state._write_state(mark, root, reserved=False, kind='decision.routed',
                        payload=payload if item is None else {**payload, 'item': item})
 
@@ -470,12 +483,12 @@ def answered(data, identifier):
 def seat_outcome(fields, scores, by='seat'):
     """Snapshot a validated seat (or #530 mandate) decision, including any item disposition."""
     if by == 'seat' and (route(fields) != 'seat' or fields['Decided-by'] != 'seat'):
-        raise ValueError('Decided-by must be seat for a seat-routed decision; use owner as Decided-by, or fix Reversibility and Blast radius (seat only for a two-way decision on its own branch or PR)')
+        raise ValueError('Decided-by must be seat for a seat-routed decision; use owner as Decided-by, or fix Reversibility and Blast radius. A seat decides only a two-way decision on its own branch or PR')
     return {'option': fields['Recommendation'], 'score': scores[fields['Recommendation']],
             'decided_by': by, 'outcome': fields['Recommendation'],
             'reversibility': fields['Reversibility'], 'blast_radius': fields['Blast radius'],
             'item_disposition': fields['Outcome'], 'cisr': cisr(fields, scores),
-            'class': fields.get('Class')}
+            'class': fields.get('Class'), 'confidence': fields['Confidence'], 'role': fields.get('Role')}
 
 
 def set_outcome(text, option):

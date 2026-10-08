@@ -2,8 +2,8 @@
 
 WUWEI 无为 (said woo-way) means "effortless action." It is a Claude Code plugin that runs your coding agents the way a careful engineering team works: the day is planned and ranked, each change is reviewed by an agent that did not write it, merges follow a policy, and a retro at the end of the day proposes changes to the rules.
 
-<img src="assets/hero-light.svg#only-light" alt="Work items move along a track through Plan, Build, Check, Review and Merge while guards, cards and the heartbeat work under the hood; you approve the plan once and answer a card from the phone." width="100%">
-<img src="assets/hero-dark.svg#only-dark" alt="Work items move along a track through Plan, Build, Check, Review and Merge while guards, cards and the heartbeat work under the hood; you approve the plan once and answer a card from the phone." width="100%">
+<img src="assets/hero-light.svg#only-light" alt="A ranked queue you approve feeds an agent team working three parallel lanes that loop build and check, every candidate passes the gates with at most one fix round, pull requests wait in a stack the shepherd sweeps until they merge, and you answer the odd card from the phone while guards, heartbeat, lead and steward work under the hood and each day's retro feeds tomorrow's plan." width="100%">
+<img src="assets/hero-dark.svg#only-dark" alt="A ranked queue you approve feeds an agent team working three parallel lanes that loop build and check, every candidate passes the gates with at most one fix round, pull requests wait in a stack the shepherd sweeps until they merge, and you answer the odd card from the phone while guards, heartbeat, lead and steward work under the hood and each day's retro feeds tomorrow's plan." width="100%">
 
 - [Daily path](daily.md): one solo-owner path from install to close
 - [What the session knows](agent.md): the guide every session in the workspace is pointed at on start

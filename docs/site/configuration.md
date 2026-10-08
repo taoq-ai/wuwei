@@ -12,7 +12,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[brief.style]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
-| `[boundary]`, `[environments]`, `[deploy]`, `[grants]` | [Boundaries and deployment](#boundaries-and-deployment) |
+| `[boundary]`, `[environments]`, `[deploy]`, `[grants]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outward.classes]`, `[outbound]`, `[outbound.people]`, `[outbound.channel_classes]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
 | `[autonomy]`, `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]`, `[decisions.lenses]` | [Decisions](#decisions) |
 | `[calibrate]` | [Calibration](#calibration) |
@@ -188,6 +188,8 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | `decisions.cruise.budget_share` | `0.1` | Error budget of a class: the share of its cruise answers in the window that may be undone, reversed, sampled differently or attributed an escaped defect. Above 0, at most 0.5. The budget is spent with more events than that and at least two. |
 | `decisions.cruise.budget_window_days` | `14` | Days the error budget is counted over; a spent class runs one level lower until the window refills. |
 | `decisions.cruise.burn_warn` | `2.0` | Burn rate (events of the last 48 hours against the window's allowance) that writes a nudge naming the events. |
+| `decisions.cruise.calibration_threshold` | `0.15` | Brier score above which a class or role is uncalibrated: the class runs at most L1, the role's records go to you as cards. Above 0, below 1. |
+| `decisions.cruise.calibration_min` | `10` | Scored records a class or role needs before it is judged; fewer is `too few`, which only blocks a raise card. |
 | `decisions.cruise.levels` | `{}` | Per-class level (0 to 3) that caps the level a class runs at; a level above the class ceiling or an unknown class is refused. |
 | `decisions.lenses` | `{}` | Lenses every engineering decision (`design`, `boundary`, `refactor`, `dependency-bump`) answers per option, as name = one-line question. The defaults are SOLID, twelve-factor, YAGNI and ponytail; a new name adds a lens and `""` drops one, for example `YAGNI = ""`. Names use letters, digits, dash or underscore. |
 
@@ -310,7 +312,8 @@ The [docs system](concepts.md#docs-system) and the [docs obligation](concepts.md
 | `environments.production` | Not set | Example environment; `[environments]` accepts names and descriptions. |
 | `deploy.workflows` | `[]` | Workflow names, filenames, paths or IDs treated as deploy actions. |
 | `deploy.deny` | `[]` | Literal executable plus argument globs to refuse. |
-| `grants.standing` | `[]` | Standing grants, one per line: `{action = "deploy", target = "repo:<org>/<name>", scope = "always", decision = "D-n", date = "YYYY-MM-DD"}`. `action` is `deploy`, `release` or `publish`; `target` may use `*` and `?`. Your `Always allow` answer on a refusal card writes the line; `bin/wuwei grants revoke <n>` removes one. Ignored under `strict`, where `doctor` warns about each line. |
+| `grants.standing` | `[]` | Standing grants, one per line: `{action = "deploy", target = "repo:<org>/<name>", scope = "always", decision = "D-n", date = "YYYY-MM-DD"}`. `action` is `deploy`, `release`, `publish` or `merge`; `target` may use `*` and `?`. Your `Always allow` answer on a refusal card writes the line; `bin/wuwei grants revoke <n>` removes one. Ignored under `strict`, where `doctor` warns about each line. |
+| `merge.default_tier` | `""` | What a merge the merge policy does not clear does when no grant matches: `ask` writes the decision card, `owner_only` prints the exact `gh pr merge <url> --squash --match-head-commit <sha>` for a host terminal. Empty means `owner_only` under `strict` and `ask` otherwise. A grant you already recorded counts either way. |
 
 The template also shows a `"release/*"` environment example. Add any actual environment register entries before using rules that depend on them. WUWEI does not deploy on its own: a deploy runs from a session only under a grant you gave (see [grants](concepts.md#grants)).
 

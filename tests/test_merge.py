@@ -73,7 +73,7 @@ auto = true
             'approvals': 1, 'strict': True, 'merge_queue': False,
             'require_code_owner_reviews': False, 'require_last_push_approval': False,
             'dismiss_stale_reviews': True, 'conversation_resolution': True,
-            'enforce_admins': True}),
+            'enforce_admins': True, 'squash': True}),
         'reviews': Result(0, [{'id': 1, 'author': 'reviewer', 'is_bot': False, 'sha': SHA,
             'state': 'approved', 'body': '', 'submitted_at': '2026-09-29T10:00:00Z'}]),
         'threads': Result(0, {'comments': [], 'threads': []}),
@@ -146,6 +146,17 @@ def test_config_eligibility(case, change, hint):
     config_change(case[0], *change)
     result = check(case)
     assert result.exit == 1 and hint in result.reason, result
+
+
+@pytest.mark.parametrize('value,code', [(False, 1), ('yes', 2)])
+def test_squash_must_be_allowed(case, value, code):
+    # #524: WUWEI merges only with --squash, so a repository without it is the owner's merge.
+    case[1].results['protection'].data['squash'] = value
+    result = check(case)
+    assert result.exit == code, result
+    if code == 1:
+        assert 'example/project does not allow squash merges into main' in result.reason
+        assert 'host terminal' in result.reason
 
 
 @pytest.mark.parametrize('field,value,hint', [
@@ -827,3 +838,221 @@ def test_revert_opens_the_revert_pr_once(case):
     assert [e['kind'] for e in events(root)][-1] == 'merge.revert'
     host.calls.clear()
     assert policy().revert(root, directory, REF, entry, host) == url and not host.calls
+
+
+def auto_only(root, host, name):
+    """#524: make the PR fail one auto-merge eligibility or pacing rule, and nothing else."""
+    if name == 'auto': config_change(root, 'auto = true', 'auto = false')
+    elif name == 'breaker': policy().trip(root, 'example/project', workspace.load_config(root)['repos'][0]['merge'], 'test')
+    elif name == 'cap':
+        config_change(root, 'auto = true', 'auto = true\nmax_per_day = 1')
+        state._write_state(lambda d: d.update(merges={'example/project#6': {
+            'head': SHA, 'status': 'intent', 'at': workspace.now().isoformat()}}), root, reserved=False)
+    elif name == 'quiet': config_change(root, 'auto = true', 'auto = true\nquiet_hours = ["11:00-13:00"]')
+    elif name == 'plan': state._write_state(lambda d: d.update(approved_items=[]), root, reserved=False)
+    elif name == 'risk': state._write_state(lambda d: d['items']['item-7']['flags'].update(agent_surface=True), root, reserved=False)
+    elif name == 'cycle':
+        for _ in range(2): state.append_event('state.transition', {'item': 'item-7', 'phase': 'fix'}, root)
+    elif name == 'size': config_change(root, 'auto = true', 'auto = true\nmax_changed_lines = 5')
+    elif name == 'path': host.results['files'].data[0]['path'] = '.github/workflows/test.yml'
+    elif name == 'soak': config_change(root, 'auto = true', 'auto = true\nsoak_minutes = 180')
+
+
+@pytest.mark.parametrize('name,hint', [
+    ('auto', 'merge.auto'), ('breaker', 'breaker'), ('cap', 'cap'), ('quiet', 'quiet'),
+    ('plan', 'approved plan'), ('risk', 'risk'), ('cycle', 'cycle'), ('size', 'lines'),
+    ('path', 'never-auto'), ('soak', 'soak')])
+def test_grant_lifts_only_auto_eligibility_and_pacing(case, name, hint):
+    auto_only(*case, name)
+    result = check(case)
+    assert result.exit == 1 and hint in result.reason, result
+    granted = policy().check(REF, root=case[0], granted=True)
+    assert granted.exit == 0 and granted.data['head'] == SHA, granted
+
+
+@pytest.mark.parametrize('change,hint', [
+    ('gates', 'pre-PR gates not passed at current HEAD'), ('red', 'required check tests is not green'),
+    ('approval', 'required human approvals missing at head'), ('changes', 'outstanding changes requested'),
+    ('thread', 'thread:t1'), ('deploys', 'merge_deploys'), ('environment', 'ineligible base branch'),
+    ('draft', 'PR is a draft'), ('squash', 'does not allow squash')])
+def test_grant_never_lifts_a_precondition(case, change, hint):
+    root, host = case
+    config_change(root, 'auto = true', 'auto = false')
+    if change == 'gates':
+        for gate in ('arch', 'quality', 'security'):
+            (workspace.day_dir(root) / 'decisions' / f'gate-item-7-{gate}.md').write_text(evidence(BASE))
+    elif change == 'red': host.results['checks'].data[0]['conclusion'] = 'failure'
+    elif change == 'approval': host.results['reviews'].data[0]['sha'] = BASE
+    elif change == 'changes': host.results['reviews'].data[0]['state'] = 'changes_requested'
+    elif change == 'thread': host.results['threads'].data['threads'] = [
+        {'id': 't1', 'resolved': False, 'outdated': False, 'comments': [
+            {'id': 2, 'author': 'reviewer', 'is_bot': False, 'body': 'Please fix',
+             'created_at': '2026-09-29T10:00:00Z'}]}]
+    elif change == 'deploys': config_change(root, 'merge_deploys = false', 'merge_deploys = true')
+    elif change == 'environment': host.results['pr'].data['base'] = 'production'
+    elif change == 'draft': host.results['pr'].data['draft'] = True
+    elif change == 'squash': host.results['protection'].data['squash'] = False
+    result = policy().check(REF, root=root, granted=True)
+    assert result.exit == 1 and hint in result.reason, result
+    assert result.reason.endswith('; no grant lifts this; run bin/wuwei pr act example/project#7 once it holds')
+    assert 'ask the owner;' not in result.reason and 'the owner merges' not in result.reason
+
+
+@pytest.fixture
+def owner(monkeypatch):
+    """#524: the owner answers a merge card (the #478 decide path)."""
+    from fakes.integrity import seed
+    from wuwei import integrity
+    from wuwei.commands import decision
+    monkeypatch.setattr(integrity, '_host_confirm', lambda *args, **kwargs: True)
+
+    def answer(root, option, identifier='D-1'):
+        seed(root)
+        return decision.owner_outcome(SimpleNamespace(id=identifier, option=option), root=root)
+    return answer
+
+
+def merged_calls(host):
+    return [call[1] for call in host.calls if call[0] == 'merge']
+
+
+def cards(root):
+    return sorted(path.name for path in (workspace.day_dir(root) / 'decisions').glob('D-*.md'))
+
+
+def granted_case(case, posture=None, tier=None):
+    root, host = case
+    config_change(root, 'auto = true', 'auto = false')
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        if posture:
+            stream.write(f'\n[security]\nposture = "{posture}"\n')
+        if tier:
+            stream.write(f'\n[merge]\ndefault_tier = "{tier}"\n')
+    return root, host
+
+
+@pytest.mark.parametrize('posture', ['guarded', 'observe'])
+def test_merge_asks_on_a_card_then_runs_under_today(case, owner, posture):
+    root, host = granted_case(case, posture)
+    result = policy().execute(REF, root)
+    assert result.exit == 1 and result.reason.endswith('the owner decides: bin/wuwei decision show D-1 --widget'), result
+    assert 'ask the owner' not in result.reason and not merged_calls(host)
+    row = state.read_state(root)['grants']['D-1']
+    assert (row['action'], row['target'], row['answered']) == ('merge', 'repo:example/project', None)
+    assert policy().execute(REF, root).exit == 1 and cards(root) == ['D-1.md']
+    assert owner(root, 'Allow today') == (0, 'today')
+    result = policy().execute(REF, root)
+    assert result.exit == 0, result
+    assert merged_calls(host) == [(REF, SHA)]
+    kinds = [row['kind'] for row in events(root) if row['kind'] in ('grant.used', 'merge.intent', 'merge.auto')]
+    assert kinds == ['grant.used', 'merge.intent', 'merge.auto']
+    used = next(row['payload'] for row in events(root) if row['kind'] == 'grant.used')
+    assert (used['action'], used['scope'], used['target'], used['decision']) == (
+        'merge', 'today', 'repo:example/project', 'D-1')
+
+
+def test_merge_allow_once_is_spent(case, owner):
+    root, host = granted_case(case)
+    policy().execute(REF, root)
+    owner(root, 'Allow once')
+    assert policy().execute(REF, root).exit == 0
+    assert state.read_state(root)['grants']['D-1']['spent'] is True
+    # The next ready PR on the repository asks again.
+    state._write_state(lambda d: d.update(merges={}), root, reserved=False)
+    result = policy().execute(REF, root)
+    assert result.exit == 1 and 'decision show D-2' in result.reason and len(merged_calls(host)) == 1
+
+
+@pytest.mark.parametrize('target,code', [('pr:example/project#7', 0), ('pr:example/project#8', 1)])
+def test_planned_pr_card_answered_today(case, target, code):
+    root, host = granted_case(case)
+    state._write_state(lambda d: d.setdefault('grants', {}).update({'D-9': {
+        'action': 'merge', 'target': target, 'rule': 'planned', 'command': None, 'item': 'item-7',
+        'goal': 'G-1', 'seat': None, 'planned': True, 'answered': 'today', 'spent': False}}),
+        root, reserved=False)
+    assert policy().execute(REF, root).exit == code
+    assert len(merged_calls(host)) == (1 - code)
+    if code == 0:
+        used = next(row['payload'] for row in events(root) if row['kind'] == 'grant.used')
+        assert (used['decision'], used['target']) == ('D-9', target)
+
+
+def standing_merge(root):
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('\n[grants]\nstanding = [{action = "merge", target = "repo:example/*", scope = "always", '
+                     'decision = "D-3", date = "2026-09-28"}]\n')
+
+
+def test_standing_merge_line_under_guarded(case):
+    root, host = granted_case(case)
+    standing_merge(root)
+    assert policy().execute(REF, root).exit == 0 and merged_calls(host) == [(REF, SHA)]
+    used = next(row['payload'] for row in events(root) if row['kind'] == 'grant.used')
+    assert used['scope'] == 'always'
+
+
+def test_kept_merge_card(case, owner):
+    root, host = granted_case(case)
+    policy().execute(REF, root)
+    owner(root, 'Keep owner-only')
+    result = policy().execute(REF, root)
+    assert result.exit == 1 and 'the owner kept it owner-only (D-1)' in result.reason and not merged_calls(host)
+
+
+COMMAND = f'gh pr merge https://github.com/example/project/pull/7 --squash --match-head-commit {SHA}'
+
+
+@pytest.mark.parametrize('standing', [False, True])
+def test_strict_without_grant_names_the_owner_command(case, standing):
+    root, host = granted_case(case, 'strict')
+    if standing:
+        standing_merge(root)
+    result = policy().execute(REF, root)
+    assert result.exit == 1 and 'merge.default_tier = owner_only' in result.reason and COMMAND in result.reason
+    assert cards(root) == []
+    assert not merged_calls(host)
+
+
+def test_strict_ask_tier_offers_no_always(case, owner):
+    root, host = granted_case(case, 'strict', 'ask')
+    assert 'decision show D-1' in policy().execute(REF, root).reason
+    text = (workspace.day_dir(root) / 'decisions/D-1.md').read_text()
+    assert 'Allow today' in text and 'Always allow' not in text
+
+
+def test_strict_honours_a_recorded_answer(case, owner):
+    root, host = granted_case(case, 'strict', 'ask')
+    policy().execute(REF, root)
+    config_change(root, 'default_tier = "ask"', 'default_tier = "owner_only"')
+    owner(root, 'Allow today')
+    assert policy().execute(REF, root).exit == 0
+
+
+def test_moved_head_merges_under_no_grant(case, owner):
+    root, host = granted_case(case)
+    policy().execute(REF, root)
+    owner(root, 'Allow today')
+    for gate in ('arch', 'quality', 'security'):
+        (workspace.day_dir(root) / 'decisions' / f'gate-item-7-{gate}.md').write_text(evidence(BASE))
+    result = policy().execute(REF, root)
+    assert result.exit == 1 and 'pre-PR gates not passed at current HEAD' in result.reason
+    assert 'no grant lifts this; run bin/wuwei pr act example/project#7' in result.reason
+    assert 'ask the owner' not in result.reason
+    assert not merged_calls(host) and not any(row['kind'] == 'grant.used' for row in events(root))
+    assert cards(root) == ['D-1.md']
+
+
+def test_unmeasured_auto_policy_never_reaches_the_grant(case, owner):
+    root, host = granted_case(case)
+    policy().execute(REF, root)
+    owner(root, 'Allow today')
+    host.results['checks'] = Result(2, None, 'offline')
+    assert policy().execute(REF, root).exit == 2
+    assert not merged_calls(host) and not any(row['kind'] == 'grant.used' for row in events(root))
+
+
+def test_shepherd_seat_never_merges_under_a_grant(case, owner, monkeypatch):
+    root, host = granted_case(case)
+    standing_merge(root)
+    monkeypatch.setenv('WUWEI_SEAT_ROLE', 'shepherd')
+    assert policy().execute(REF, root).exit == 1 and not merged_calls(host)

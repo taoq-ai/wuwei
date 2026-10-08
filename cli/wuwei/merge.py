@@ -140,11 +140,13 @@ def quiet(policy, now):
     return False
 
 
-def item_evidence(root, ref, data):
+def item_evidence(root, ref, data, granted=False):
     from wuwei.watch import records, days
     items = [(name, value) for name, value in data['items'].items() if value.get('pr') == ref]
     require(len(items) == 1, 'PR needs one linked item')
     name, item = items[0]
+    if granted:  # #524: the plan, risk and cycle rules are auto-merge eligibility
+        return name
     require(name in data['approved_items'], 'item is not in the approved plan')
     rows = [row for directory in days(root) for row in records(directory / 'events.jsonl')]
     approved = [row['payload']['flags'][name] for row in rows
@@ -195,8 +197,9 @@ def matched(path, patterns):
                  if fnmatchcase('/'.join(parts[i:]), pattern)), None)
 
 
-def check(ref, root=None, *, cwd=None, repo=None):
-    """Return 0 and evidence, 1 findings, or 2 unmeasured; never authorize overrides."""
+def check(ref, root=None, *, cwd=None, repo=None, granted=False):
+    """Return 0 and evidence, 1 findings, or 2 unmeasured; never authorize overrides. #524:
+    granted (the owner's merge grant) skips only auto-merge eligibility and pacing."""
     try:
         root = workspace.find_workspace(root)
         config = workspace.load_config(root)
@@ -205,20 +208,20 @@ def check(ref, root=None, *, cwd=None, repo=None):
         settings = next((r for r in config['repos'] if r['name'] == repo_name), None)
         require(settings is not None, 'merge policy requires a configured repository')
         policy = settings['merge']
-        require(policy['auto'], 'merge.auto is off')
+        require(granted or policy['auto'], 'merge.auto is off')
         require(settings['merge_deploys'] is False, 'explicit merge_deploys = false is required')
         entries, breakers = journals(root)
         breaker = breakers.get(repo_name)
-        require(not breaker or policy['reset_epoch'] > integer(breaker['epoch']), 'repository circuit breaker is tripped')
+        require(granted or not breaker or policy['reset_epoch'] > integer(breaker['epoch']), 'repository circuit breaker is tripped')
         if any(r.split('#')[0] == repo_name and entry.get('monitor_error') for _, r, entry in entries):
             raise ValueError('post-merge observations are unmeasured; run the watch')
         require(not any(r == ref and entry['status'] != 'failed' for _, r, entry in entries), 'PR already has a merge intent')
-        require(sum(directory == workspace.day_dir(root) and r.split('#')[0] == repo_name
+        require(granted or sum(directory == workspace.day_dir(root) and r.split('#')[0] == repo_name
                     for directory, r, entry in entries if entry['status'] != 'failed') < policy['max_per_day'],
                 'repository daily merge cap reached')
-        require(not quiet(policy, workspace.now()), 'merge is in quiet hours')
+        require(granted or not quiet(policy, workspace.now()), 'merge is in quiet hours')
         data = state.read_state(root)
-        item = item_evidence(root, ref, data)
+        item = item_evidence(root, ref, data, granted)
         host = registry.load('code_host', config)
         pr = checked_pr(host, ref, root)
         head = pr['head']
@@ -231,9 +234,11 @@ def check(ref, root=None, *, cwd=None, repo=None):
         require(pr['merge_state'] != 'dirty', 'mergeable_state=dirty')
         protection = read(host.protection, repo_name, pr['base'], root=root)
         for key in ('strict', 'merge_queue', 'require_code_owner_reviews', 'require_last_push_approval',
-                    'dismiss_stale_reviews', 'conversation_resolution', 'enforce_admins'):
+                    'dismiss_stale_reviews', 'conversation_resolution', 'enforce_admins', 'squash'):
             if type(protection[key]) is not bool:
                 raise ValueError(f'invalid branch protection evidence; {DAMAGED}')
+        require(protection['squash'], f'{repo_name} does not allow squash merges into {pr["base"]}; WUWEI '
+                                      'merges only with --squash: ask the owner to merge it in a host terminal')
         require(pr['merge_state'] != 'behind' or protection['merge_queue'], 'mergeable_state=behind')
         if pr['mergeable'] is None or pr['merge_state'] == 'unknown':
             raise ValueError('mergeability unmeasured; wait a minute and retry; if it persists, run bin/wuwei doctor')
@@ -244,7 +249,7 @@ def check(ref, root=None, *, cwd=None, repo=None):
         deletions = sum(integer(f['deletions']) for f in files)
         if additions != integer(pr['additions']) or deletions != integer(pr['deletions']):
             raise ValueError('incomplete diff size; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
-        require(additions + deletions <= policy['max_changed_lines'], 'diff exceeds max changed lines')
+        require(granted or additions + deletions <= policy['max_changed_lines'], 'diff exceeds max changed lines')
         for file in files:
             if not isinstance(file['path'], str) or not file['path']:
                 raise ValueError(f'invalid changed file path; {DAMAGED}')
@@ -253,7 +258,7 @@ def check(ref, root=None, *, cwd=None, repo=None):
                     continue
                 if not isinstance(path, str) or not path or path.startswith('/') or '..' in Path(path).parts:
                     raise ValueError(f'invalid changed file path; {DAMAGED}')
-                require(matched(path, policy['never_auto_paths']) is None, f'never-auto path: {path}')
+                require(granted or matched(path, policy['never_auto_paths']) is None, f'never-auto path: {path}')
         from wuwei.dispatch import gate_set
         from wuwei.guards.pr import gate_check
         code, reason = gate_check(root, root / settings['path'], config, sha=head, item=item)
@@ -293,7 +298,7 @@ def check(ref, root=None, *, cwd=None, repo=None):
         bot = bot_evidence(config, policy, discussion, ref, head, root)
         last = max([obligations._time(pr['updated_at']),
                     *[obligations._time(r['submitted_at']) for r in approvals]])
-        require(workspace.now() - last >= timedelta(minutes=policy['soak_minutes']), 'soak window has not passed')
+        require(granted or workspace.now() - last >= timedelta(minutes=policy['soak_minutes']), 'soak window has not passed')
         fresh = checked_pr(host, ref, root)
         require(all(fresh[key] == pr[key] for key in ('head', 'base_sha', 'base', 'updated_at',
                     'merge_state', 'mergeable', 'state', 'draft')), 'PR changed during check')
@@ -304,6 +309,8 @@ def check(ref, root=None, *, cwd=None, repo=None):
             'protection': protection, 'bot': bot,
             'files': [{k: v for k, v in file.items() if k != 'patch'} for file in files]})
     except Refused as exc:
+        if granted:  # #524: never the owner wall; the condition, then the retry
+            return Result(1, None, f'merge: {exc}; no grant lifts this; run bin/wuwei pr act {ref} once it holds')
         return Result(1, None, f'merge policy: {exc}; the owner merges; ask the owner')
     except ERRORS as exc:
         return Result(2, None, f'merge policy unmeasured: {exc}; route to owner; run bin/wuwei doctor if it repeats')
@@ -337,6 +344,33 @@ def undo(root, directory, ref, entry):
             'payload': {'pr': ref, 'head': entry['head'], 'operation': 'revert_pr'}})
 
 
+def by_grant(ref, root, cwd=None):
+    """#524: the owner's merge grant replaces auto-merge eligibility and pacing, never the 4.6
+    preconditions; with no grant, the card (ask) or the host-terminal command (owner_only)."""
+    import shlex
+    from wuwei import grants, sessions
+    result = check(ref, root, cwd=cwd, granted=True)
+    if result.exit:
+        return result
+    config, ref, head = workspace.load_config(root), result.data['pr'], result.data['head']
+    repo, number = ref.split('#')
+    if grants.merge_tier(config) == 'owner_only' and not any(
+            grants.active(config, state.read_state(root), 'merge', target)
+            for target in (f'repo:{repo}', f'pr:{ref}')):
+        return Result(1, None, f'merge: {ref} is ready at {head}; merges are owner-only here '
+                               f'(merge.default_tier = owner_only): ask the owner to run gh pr merge '
+                               f'https://github.com/{repo}/pull/{number} --squash --match-head-commit {head} '
+                               'in a host terminal')
+    argv = ['bin/wuwei', 'merge', ref]
+    payload = {'session_id': sessions.current() or '', 'cwd': str(Path(cwd or Path.cwd())),
+               'tool_input': {'command': shlex.join(argv)}}
+    code, use = grants.gate(payload, root, config, argv, f'merge: {ref} at {head}', repo, pr=ref)
+    if code:
+        return Result(1, None, use)
+    use()
+    return result
+
+
 def execute(ref, root=None, *, cwd=None):
     """Check and merge under one lock; persist intent before any external write."""
     if os.environ.get('WUWEI_SEAT_ROLE') == 'shepherd':
@@ -346,6 +380,8 @@ def execute(ref, root=None, *, cwd=None):
         root = workspace.find_workspace(root)
         with locked(root):
             result = check(ref, root, cwd=cwd)
+            if result.exit == 1:  # #524: the auto policy refused; the owner's grant may still clear it
+                result = by_grant(ref, root, cwd)
             if result.exit:
                 state.append_event('merge.policy_blocked', {'pr': str(ref), 'exit': result.exit,
                                                             'reason': result.reason}, root)
