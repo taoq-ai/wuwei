@@ -395,6 +395,15 @@ then runs one level lower until the window refills, and gets no raise card meanw
 fast burn (`burn_warn`, the last 48 hours against the window's pace) sends a nudge naming
 the events first. `bin/wuwei cruise budget` prints the table.
 
+Calibration. A record's `Confidence:` is checked against what happened. Each taken record
+with a stored confidence (high 0.9, medium 0.6, low 0.3) whose undo window closed scores 1
+when it stood and 0 when it was undone, reversed, sampled differently or escaped a defect.
+The Brier score per class and per role (the optional `Role:` field) over the error budget
+window is uncalibrated above `calibration_threshold` once `calibration_min` records are
+scored. An uncalibrated class runs at most L1, an uncalibrated role's records go to you as a
+card, and a class gets a raise card only when it is calibrated. `bin/wuwei cruise
+calibration` prints the table.
+
 Every seat prompt ends with a mandate block built from those class levels
 (`decisions.cruise.levels`, the 5.8.1 defaults otherwise), the interview's trust-surface
 line and `deploy.deny`: what the seat decides alone, what it decides and records, and what

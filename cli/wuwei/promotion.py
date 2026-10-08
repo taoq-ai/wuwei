@@ -59,14 +59,29 @@ def cruise_level(root, name, level, reason, evidence, hold=None):
         budget[name] = hold
     if budget:
         data['budget'] = budget
+    _cruise_write(root, data, 'raise' if level > previous else 'lower', reason, evidence)
+
+
+def calibration(root, classes, roles, reason):
+    """#559: the steward stores the uncalibrated classes and roles, with a ledger line."""
+    from wuwei.decision import CRUISE, running
+    root = Path(root)
+    data = running(root)
+    data.pop('calibration', None)
+    if classes or roles:
+        data['calibration'] = {'classes': sorted(classes), 'roles': sorted(roles)}
+    _cruise_write(root, data, 'calibration', reason, CRUISE)
+
+
+def _cruise_write(root, data, action, reason, evidence):
+    from wuwei.decision import CRUISE
     path = safe_path(root, CRUISE, label='cruise levels')
     path.parent.mkdir(parents=True, exist_ok=True)
     workspace.atomic_write(path, json.dumps(data, indent=2, sort_keys=True) + '\n')
     # ponytail: not committed to workspace history here; the next promote commit carries the ledger.
     state.append_jsonl(safe_path(root, '.wuwei/memory/ledger.jsonl', label='ledger'), {
         'date': workspace.now().date().isoformat(), 'run_id': uuid4().hex, 'target': CRUISE,
-        'action': 'raise' if level > previous else 'lower', 'status': 'landed',
-        'reason': reason, 'evidence': evidence})
+        'action': action, 'status': 'landed', 'reason': reason, 'evidence': evidence})
 
 
 def safe_path(root, raw, *, label):

@@ -412,7 +412,11 @@ recommendation; both cards come after the morning gate.
 
 The status line shows the highest level a class runs at, `cruise L2`, or `cruise off | L2`
 when `decisions.cruise.enabled = false`, and `cruise L2 · budget defer spent` while a spent
-budget holds a class lower. Under `supervised` every class runs at L0.
+budget holds a class lower, then `· uncalibrated builder` while a role's stated confidence
+is uncalibrated: its records come to you as cards until it recovers. `bin/wuwei cruise
+calibration` shows the Brier score per class and role, and the day report and the retro
+carry a `## Calibration` section naming the records that broke a forecast. A raise card
+also needs the class calibrated. Under `supervised` every class runs at L0.
 
 ### How you answer
 

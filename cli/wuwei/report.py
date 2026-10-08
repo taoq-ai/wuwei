@@ -4,7 +4,7 @@ from collections import Counter
 import json
 import re
 
-from wuwei import metrics, novelty, signal, state, watch, workspace
+from wuwei import calibration_scores, metrics, novelty, signal, state, watch, workspace
 from wuwei.exits import SYMLINK
 
 FALSE_POSITIVE_AFTER = 3  # A form refused more often than this with no later page is a candidate.
@@ -100,7 +100,8 @@ def build(root=None):
         lines = ['# WUWEI report ' + day.name, '', '## Outcome',
                  *(f'- {title}: {shown(key)}' for title, key in headline)]
     lines += ['', '## Taken under mandate', *mandate_lines(data), '', '## Decisions by class',
-              *class_lines(data), '', '## First time today', *novelty.today_lines(root), '', '## Merged']
+              *class_lines(data), '', '## First time today', *novelty.today_lines(root), '', '## Calibration',
+              *calibration_scores.lines(root, workspace.load_config(root)), '', '## Merged']
     items = data['items']
     lines.extend(f"- {name} ({item['pr']})" if item.get('pr') else f'- {name}'
                  for name, item in sorted(items.items()) if item['phase'] == 'merged')
