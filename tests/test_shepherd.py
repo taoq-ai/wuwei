@@ -68,7 +68,7 @@ review_gate_check = "Review Gate"
     host.results['files'] = Result(0, [{'path': 'src/app.py'}])
     bot = Port(score=Result(0, 5), open_findings=Result(0, []))
     chat = Port(post=Result(0, {'channel': 'CREVIEW', 'ts': '1.1'}))
-    vcs = Port(authorship=Result(0, [
+    vcs = Port(worktrees=Result(0, []), authorship=Result(0, [
         {'email': 'alice@example.test', 'commits': 4},
         {'email': 'bob@example.test', 'commits': 3},
     ]))
@@ -109,6 +109,63 @@ def test_claim_links_existing_pr_for_ownership_and_metrics(case):
     assert metrics._references(root)[1] == {'A': {claimed}}
     assert main(['pr', 'claim', claimed, '--item', 'A']) == 0
     assert state.read_state(root)['claimed_prs'] == [claimed]
+
+
+def adopted_day(root, goals):
+    state._write_state(lambda data: data.update(gate_approved=True, goals=goals), root, reserved=False)
+
+
+def test_claim_creates_an_adopted_item(case, capsys):
+    from wuwei.__main__ import main
+    root, host, _, _, _ = case
+    host.results['pr'].data.update(number=8, url='https://github.com/acme/widget/pull/8')
+    adopted_day(root, ['G-1', 'G-2'])
+    before = state.read_state(root)
+    assert main(['pr', 'claim', 'acme/widget#8']) == 1
+    assert '--goal' in capsys.readouterr().out and state.read_state(root) == before
+    assert main(['pr', 'claim', 'acme/widget#8', '--goal', 'G-1']) == 0
+    data = state.read_state(root)
+    item = data['items']['PR-8']
+    assert {key: item[key] for key in ('source', 'title', 'phase', 'pr', 'goal')} == {
+        'source': 'adopted', 'title': 'Add a widget option', 'phase': 'raised',
+        'pr': 'acme/widget#8', 'goal': 'G-1'}
+    assert 'PR-8' in data['approved_items'] and data['claimed_prs'] == ['acme/widget#8']
+    assert main(['pr', 'claim', '8']) == 0
+    assert [name for name in state.read_state(root)['items']] == ['PR-8']
+
+
+def test_claim_bare_number_takes_the_only_goal(case):
+    from wuwei.__main__ import main
+    root, host, _, _, _ = case
+    host.results['pr'].data.update(number=8, url='https://github.com/acme/widget/pull/8')
+    adopted_day(root, ['G-1'])
+    assert main(['pr', 'claim', '8']) == 0
+    assert state.read_state(root)['items']['PR-8']['goal'] == 'G-1'
+
+
+def test_claim_adopts_the_branch_worktree(case, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    root, host, _, _, vcs = case
+    host.results['pr'].data.update(number=8, url='https://github.com/acme/widget/pull/8')
+    adopted_day(root, ['G-1'])
+    adopted = []
+
+    def adopt(root, item, path, vcs):
+        adopted.append((item, path))
+        if path == 'dirty':
+            raise state.StateError('worktree has unrecorded changes: a.txt')
+        return {'item': item, 'path': path, 'head': SHA}
+    monkeypatch.setattr(workspace, 'adopt_worktree', adopt)
+    vcs.responses['worktrees'] = Result(0, [{'path': 'main', 'branch': 'main', 'head': SHA},
+                                            {'path': 'house', 'branch': 'feature', 'head': SHA}])
+    assert main(['pr', 'claim', '8']) == 0
+    assert adopted == [('PR-8', 'house')] and '"path": "house"' in capsys.readouterr().out
+    vcs.responses['worktrees'] = Result(0, [{'path': 'dirty', 'branch': 'feature', 'head': SHA}])
+    assert main(['pr', 'claim', '8']) == 0
+    assert 'worktree not adopted: worktree has unrecorded changes' in capsys.readouterr().err
+    vcs.responses['worktrees'] = Result(2, reason='git.worktrees: could not run')
+    assert main(['pr', 'claim', '8']) == 2
+    assert state.read_state(root)['items']['PR-8']['pr'] == 'acme/widget#8'
 
 
 def test_claim_refuses_pr_already_raised_today(case):

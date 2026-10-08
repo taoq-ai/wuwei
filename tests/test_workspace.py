@@ -216,7 +216,7 @@ def test_config_defaults_and_independence(tmp_path):
             'shepherd': {'review_channel': '', 'lead_login': '', 'reviewers': [], 'reviewers_exclude': [],
                          'review_gate_check': 'Review Gate',
                          'min_reviewers': 1,
-                         'author_windows_days': [90, 180], 'tie_commits': 2, 'autostart': False,
+                         'author_windows_days': [90, 180], 'tie_commits': 2, 'autostart': True,
                      'source_exclude': ['specs/*', '*.lock', '*lock.json', '*.generated.*', 'generated/*'],
                      'authors': {}},
         'retro': {'repo': '.', 'charter_paths': ['.wuwei/charters'],
@@ -1114,12 +1114,12 @@ def test_config_missing_is_the_offline_check(tmp_path, monkeypatch, text, expect
     assert missing(load_config(tmp_path)) == expected
 
 
-def test_shepherd_autostart_defaults_off(tmp_path):
+def test_shepherd_autostart_defaults_on(tmp_path):
     from wuwei.workspace import load_config
     write_config(tmp_path, '')
-    assert load_config(tmp_path)['shepherd']['autostart'] is False
-    write_config(tmp_path, '[shepherd]\nautostart = true')
     assert load_config(tmp_path)['shepherd']['autostart'] is True
+    write_config(tmp_path, '[shepherd]\nautostart = false')
+    assert load_config(tmp_path)['shepherd']['autostart'] is False
 
 
 def test_decisions_config(tmp_path):

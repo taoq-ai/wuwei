@@ -73,7 +73,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei voice` | Shows or edits your voice profile. | [Owner voice](configuration.md#owner-voice) |
 | `bin/wuwei watch` | Supervises workspace activity and owned PRs. | [Running the watch](configuration.md#running-the-watch) |
 | `bin/wuwei why` | Explains from recorded events why an item, a decision or a refusal is where it is. | [Why](#why) |
-| `bin/wuwei worktree` | Creates an anchored item worktree. | [Item worktrees](#item-worktrees) |
+| `bin/wuwei worktree` | Creates or adopts an anchored item worktree. | [Item worktrees](#item-worktrees) |
 
 ## Lead plan JSON
 
@@ -146,7 +146,11 @@ A successful send closes the draft. Repeated or competing approvals cannot send 
 
 After the morning gate, create each code item's worktree with `bin/wuwei worktree add <item>`. Pass `--repo <name>` when `.wuwei/config.toml` configures more than one `[[repos]]` entry. The command creates `worktrees/<item>` in the workspace on a new branch named after the item in lower case, starting from the repository's current HEAD. It installs the managed pre-commit and pre-push hooks, chained with the repository's own hooks (see [`worktree.git_hooks`](configuration.md#workspace-and-repositories)), and the workspace anchor, then prints JSON with `branch` and `path`. Pass that `path` to `bin/wuwei brief ... --worktree`. Without gate approval it exits 1 and creates nothing.
 
-A worktree made with raw `git worktree add` has no anchor. Its commits and pushes outside the Claude Bash hook skip the WUWEI guards.
+`bin/wuwei worktree add <item> --branch <name>` checks an existing branch out in `worktrees/<item>` instead of creating one, and records the path as the item's worktree (event `worktree.adopted`). The item must be in the approved plan.
+
+`bin/wuwei worktree adopt <path> --item <item>` registers an existing worktree: it chains the hooks, writes the anchor and the configured identity, records the path and the current HEAD (`worktree.adopted`) and prints JSON with `item`, `path` and `head`. It exits 1 and changes nothing when the path is not a linked worktree of a configured repository (for the main checkout it names `worktree add <item> --branch`), when the tree has uncommitted or untracked files (it names them and the `git stash push --include-untracked` command), when the item is not in the approved plan or already records another worktree, and before gate approval. `bin/wuwei pr claim` runs it for a clean worktree on the PR branch, and `bin/wuwei pr act` returns it as an `adopt` action when a fix round finds no worktree.
+
+A worktree made with raw `git worktree add` and never adopted has no anchor. Its commits and pushes outside the Claude Bash hook skip the WUWEI guards.
 
 ## Raising a PR
 
@@ -285,7 +289,7 @@ Several Claude Code sessions can work in one workspace. Once today's `state.json
 | --- | --- |
 | Brief body | `wuwei brief ROLE ITEM NAME --body TEXT` or `--file PATH`; `--file -` reads stdin. With neither, the command exits 2 and never reads stdin. |
 | Gate role names | `arch`, `quality` and `security`, as returned by `wuwei dispatch next`, write briefs against the `sentinel-<role>` charter. A second opinion is named `<role>@<runtime>`; `wuwei dispatch opinion` writes its brief from the first-model brief and receives it as one more gate. |
-| Automatic phases | The first `build next` launch moves `planned` to `implement`. When checks pass, `implement` moves to `gate` and `fix` moves to `delta`. `dispatch next` moves `gate` to `fix` when it returns `fix`, and opens the builder's fix round. `bin/wuwei pr raise` moves `gate` or `delta` to `raised`; an observed merge (`pr state`, `pr act`, the watch) moves `raised`, `fix` or `delta` to `merged`. |
+| Automatic phases | The first `build next` launch moves `planned` to `implement`. When checks pass, `implement` moves to `gate` and `fix` moves to `delta`. `dispatch next` moves `gate` to `fix` when it returns `fix`, and opens the builder's fix round. `bin/wuwei pr raise` moves `gate` or `delta` to `raised`, and `bin/wuwei pr claim` moves `planned` to `raised`; an observed merge (`pr state`, `pr act`, the watch) moves `raised`, `fix` or `delta` to `merged`. |
 | Delta continuation | SubagentStop records the sentinel's agent ID on its seat. `dispatch next` returns a `continue` action in `seats` with that ID as `resume`. Agent `resume` with that ID continues the same brief at the current HEAD; any other reuse of the brief is refused. The continued seat rewrites its own verdict file. |
 | Push evidence | `wuwei build check ITEM` records fast checks through the same producer as `wuwei fast-checks`, so a passing check satisfies the push guard. |
 | Charter names | `lead`, `builder`, `shepherd`, `sentinel-arch`, `sentinel-quality`, `sentinel-security`, `sentinel-goal` or `steward`. Each seat name gets one brief. `runtime dispatch` accepts `arch`, `quality` and `security` for the sentinel roles, as `brief` does. |
@@ -303,7 +307,7 @@ Phases move by themselves on the daily path. `bin/wuwei state transition` is a [
 
 | Phase | Legal next phases |
 | --- | --- |
-| `planned` | spec, implement, parked, escalated |
+| `planned` | spec, implement, raised, parked, escalated |
 | `spec` | implement, parked, escalated |
 | `implement` | gate, parked, escalated |
 | `gate` | raised, fix, parked, escalated |

@@ -236,7 +236,7 @@ the full read at once. Each `pr.changed` reaches your DM once with its summary, 
 is the fixed update line. A summary the outward lint refuses becomes
 `PR #12 changed; details are on the host.`
 
-With `shepherd.autostart` set to `true`, the listener tries one headless shepherd
+With `shepherd.autostart` on (the default; set it to `false` to stop), the listener tries one headless shepherd
 seat per mechanical PR state (a launch the guard refuses is not retried until the state
 changes): a logged brief, the seat launch guard (memory floor,
 `host.seats`, MCP gate) and one headless Claude Code turn registered with role `shepherd`.

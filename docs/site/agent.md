@@ -29,7 +29,7 @@ wuwei is the absolute path in .wuwei/executable: read it once and use it as the 
 - nudges: List open nudges and pages
 - plan: Propose or approve the morning plan
 - decision: Check and route decision records
-- worktree: Create an anchored item worktree
+- worktree: Create or adopt an anchored item worktree
 - brief: Write and log a seat brief
 - build: Select the next builder action
 - dispatch: Decide planner gate and discovery work

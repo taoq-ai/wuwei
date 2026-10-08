@@ -86,3 +86,9 @@ class Fake(Recorder):
 
     def recent_commits(self, repo, root=None):
         return self._call('recent_commits', (repo,), root)
+
+    def worktrees(self, repo, root=None):
+        return self._call('worktrees', (repo,), root)
+
+    def worktree_checkout(self, repo, branch, path, root=None):
+        return self._call('worktree_checkout', (repo, branch, path), root)

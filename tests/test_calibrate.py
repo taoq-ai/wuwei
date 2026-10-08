@@ -1059,7 +1059,7 @@ def test_profile_export_edges(workspace_root, monkeypatch, ports, capsys):
     assert 'merge' not in profile['config']['repos'] and 'gates' not in profile['config']['repos']
     assert 'autostart' not in profile['config'].get('shepherd', {})
     dropped = {row['where']: row['why'] for row in profile['dropped']}
-    for key in ('config.repos.merge.auto', 'config.repos.gates.floor', 'config.shepherd.autostart'):
+    for key in ('config.repos.merge.auto', 'config.repos.gates.floor'):
         assert dropped[key] == 'outside what a profile may carry', key
     assert main('calibrate', 'export', 'gadget', '--repo', 'acme/gadget') == 0
     assert json.loads((out / 'gadget.json').read_text())['config']['repos']['fast_checks'] == ['npm test']

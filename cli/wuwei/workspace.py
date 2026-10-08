@@ -148,7 +148,7 @@ SCHEMA = {
                  "review_gate_check": (str, "Review Gate"),
                  "min_reviewers": (int, 1, 0),
                  "author_windows_days": [(int, None, 1), [90, 180]],
-                 "tie_commits": (int, 2, 0), "autostart": (bool, False),
+                 "tie_commits": (int, 2, 0), "autostart": (bool, True),
                  "source_exclude": [(str, None), ["specs/*", "*.lock", "*lock.json",
                                                     "*.generated.*", "generated/*"]],
                  "authors": {"*": {"login": (str, None), "mention": (str, "")}}},
@@ -767,19 +767,18 @@ def posture_source(config):
             if config['guards']['mode'] == 'shadow' else 'security.posture')
 
 
-def create_worktree(repo, branch, path, root, vcs, identity=None):
-    """Create and anchor a WUWEI worktree before handing it to a seat."""
-    from wuwei.commands.git_hook import install
-    from wuwei.registry import data
+def _require_gate(root):
     from wuwei import state
-
     if not (Path(root) / '.wuwei').is_dir():
         raise ValueError('worktree creation requires a workspace; run bin/wuwei init <path> first, or work from inside a workspace')
     if not state.read_state(root).get('gate_approved'):
         raise state.StateError('morning gate approval required before worktree creation; approve the plan at the morning gate (/wuwei:wuwei-plan) first')
-    from wuwei import sessions
-    sessions.claim_item(Path(root), Path(path).name)
-    result = data(vcs.worktree_add(str(repo), branch, str(path), root=root))
+
+
+def _anchor(path, root, vcs, identity):
+    """Hooks (chained, #472), the pre-push anchor and the commit identity of an item worktree."""
+    from wuwei.commands.git_hook import install
+    from wuwei.registry import data
     install(path, root, vcs)
     if identity and identity['name'] and identity['email']:
         written = vcs.worktree_identity(str(path), identity['name'], identity['email'], root=root)
@@ -787,4 +786,67 @@ def create_worktree(repo, branch, path, root, vcs, identity=None):
             print(f'wuwei worktree warning: {written.reason}', file=sys.stderr)
         else:
             data(written)
+
+
+def create_worktree(repo, branch, path, root, vcs, identity=None, existing=False):
+    """Create and anchor a WUWEI worktree before handing it to a seat; existing checks out
+    an existing branch and records the worktree as the item's (#510)."""
+    from wuwei.registry import data
+    from wuwei import sessions, state
+
+    _require_gate(root)
+    if existing:
+        state.record_worktree(root, Path(path).name, str(path), None, check=True)
+    sessions.claim_item(Path(root), Path(path).name)
+    add = vcs.worktree_checkout if existing else vcs.worktree_add
+    result = data(add(str(repo), branch, str(path), root=root))
+    _anchor(path, root, vcs, identity)
+    if existing:
+        state.record_worktree(root, Path(path).name, str(path), data(vcs.head(str(path), root=root))['sha'])
     return result
+
+
+def adopt_worktree(root, item, path, vcs):
+    """Register an existing clean linked worktree of a configured repository as the item's (#510)."""
+    from wuwei.guards import commit_push
+    from wuwei.registry import data
+    from wuwei import sessions, state
+
+    _require_gate(root)
+    path = Path(path).resolve()
+    try:
+        repo, actual, _ = commit_push.context(path, {}, {}, root, identity=False)
+    except ValueError as exc:
+        raise state.StateError(f'{path} is not a worktree of a configured repository: {exc}') from exc
+    if actual['path'] == actual['common_dir']:
+        raise state.StateError(f'{path} is the main checkout; run bin/wuwei worktree add {item} --branch <branch> '
+                               f'--repo {repo["name"]} to check the branch out in its own worktree')
+    from wuwei import brief
+    rows = brief.read(vcs.worktrees, str(path), root=root)
+    tops = [Path(row['path']).resolve() for row in rows if isinstance(row, dict) and isinstance(row.get('path'), str)] \
+        if isinstance(rows, list) else []
+    if path not in tops:
+        top = max((top for top in tops if path.is_relative_to(top)), key=lambda top: len(top.parts), default=None)
+        raise state.StateError(f'{path} is not a worktree root; rerun bin/wuwei worktree adopt '
+                               f'{top or "<worktree root>"} --item {item}')
+    changes = brief.status(vcs, str(path), root)
+    if changes:
+        raise state.StateError(
+            'worktree has unrecorded changes: ' + ', '.join(row['path'] for row in changes)
+            + f'; commit them, or run git -C {path} stash push --include-untracked, then rerun '
+            f'bin/wuwei worktree adopt {path} --item {item}')
+    state.record_worktree(root, item, path, None, check=True)
+    sessions.claim_item(Path(root), item)
+    _anchor(path, root, vcs, repo['identity'])
+    head = data(vcs.head(str(path), root=root))['sha']
+    state.record_worktree(root, item, path, head)
+    return {'item': item, 'path': str(path), 'head': head}
+
+
+def branch_worktree(vcs, repo, branch, root):
+    """The path of the repository's worktree on branch, else None."""
+    from wuwei import brief
+    rows = brief.read(vcs.worktrees, str(repo), root=root)
+    if not isinstance(rows, list):
+        raise ValueError(f'invalid worktree listing; {DAMAGED}')
+    return next((row['path'] for row in rows if isinstance(row, dict) and row.get('branch') == branch), None)
