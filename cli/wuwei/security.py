@@ -16,7 +16,7 @@ def honeytoken_path(directory, value):
             or Path(value).is_absolute() or '..' in Path(value).parts
             or Path(value).parts[0] in {'generated', 'charters', 'memory', 'days', 'archive'}
             or len(Path(value).parts) < 2):
-        raise ValueError('honeytoken path must be a relative file in a private subdirectory; the owner sets a relative file in a private subfolder with bin/wuwei config set in a host terminal')
+        raise ValueError('honeytoken path must be a relative file in a private subdirectory; the owner sets one with bin/wuwei config set in a host terminal')
     path = directory / value
     if path.resolve() != directory.resolve() / value:
         raise ValueError(f'honeytoken path must not traverse symlinks; {SYMLINK}')

@@ -268,3 +268,14 @@ def test_never_blocking_rule_is_written_down():
     assert "never by resuming or interrupting a seat" in charter_text()["planner.md"]
     plan = (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
     assert "wuwei status --line" in plan  # #551: dispatch.next_step enforces the verdict order
+
+
+def test_plain_tone_rule_has_five_items_and_ships_in_every_agent():
+    body = (CHARTERS / "_common-authoring.md").read_text(encoding="utf-8")
+    section = "## Plain tone" + body.split("## Plain tone", 1)[1].split("\n## ", 1)[0]
+    assert [int(line.split(".")[0]) for line in section.splitlines() if re.match(r"\d+\. ", line)] == [1, 2, 3, 4, 5]
+    for phrase in ("`bin/wuwei lint tone <path>`", "20", "35", "one idea", "the owner", "#362"):
+        assert phrase in section, phrase
+    for role in ("planner", "lead", "builder", "sentinel-arch", "sentinel-quality", "sentinel-security",
+                 "sentinel-goal", "shepherd", "steward"):
+        assert section.strip() in (ROOT / "agents" / f"{role}.md").read_text(encoding="utf-8"), role

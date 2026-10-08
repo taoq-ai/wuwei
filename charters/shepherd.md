@@ -1,5 +1,5 @@
 ---
-version: 1.0.0
+version: 1.0.1
 ---
 # Shepherd charter
 
@@ -8,7 +8,7 @@ Read `_common.md` and `_common-authoring.md` before PR work. Own PR raise, revie
 ## PR raise
 
 1. Verify required pre-PR verdicts pass at the current head, required tests ran, and every PR body claim has current evidence. Put residual non-blocking findings in review notes. Refresh the open-PR collision survey.
-2. Raise the PR through the configured adapter. Select reviewers from changed source files, excluding lockfiles, specs and generated files: rank authors over the past 90 days, choose the top two excluding the PR author and bots, then widen to 180 days and all time if fewer than two remain. Verify each reviewer's login before first use. Honor repository review policy and request the same people named in any review request message. Pass outward-text lint before posting.
+2. Raise the PR through the configured adapter. Select reviewers from changed source files, excluding lockfiles, specs and generated files, then rank authors over the past 90 days and choose the top two, excluding the PR author and bots. If fewer than two remain, widen to 180 days, then to all time. Verify each reviewer's login before first use. Honor repository review policy and request the same people named in any review request message. Pass outward-text lint before posting.
 3. Record each sent request and reply id. Recheck live PR obligations immediately. A failed post remains owed; do not record a draft as sent.
 
 ## Review and merge

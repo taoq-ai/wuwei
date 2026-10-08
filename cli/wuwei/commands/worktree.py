@@ -64,6 +64,6 @@ def add(args, root, config, item):
             found = fast_checks.interpreter(command, tree, repos[0], root, config)
             if found and found[1] == 'main worktree':
                 print(f'wuwei worktree warning: {command.split()[0]} is not in this worktree; fast checks will run '
-                      f'{found[0]} from the main worktree (set [checks] bootstrap to build one per worktree)',
+                      f'{found[0]} from the main worktree. Set [checks] bootstrap to build one per worktree',
                       file=sys.stderr)
     return result

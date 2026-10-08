@@ -478,7 +478,7 @@ def answered(data, identifier):
 def seat_outcome(fields, scores, by='seat'):
     """Snapshot a validated seat (or #530 mandate) decision, including any item disposition."""
     if by == 'seat' and (route(fields) != 'seat' or fields['Decided-by'] != 'seat'):
-        raise ValueError('Decided-by must be seat for a seat-routed decision; use owner as Decided-by, or fix Reversibility and Blast radius (seat only for a two-way decision on its own branch or PR)')
+        raise ValueError('Decided-by must be seat for a seat-routed decision; use owner as Decided-by, or fix Reversibility and Blast radius. A seat decides only a two-way decision on its own branch or PR')
     return {'option': fields['Recommendation'], 'score': scores[fields['Recommendation']],
             'decided_by': by, 'outcome': fields['Recommendation'],
             'reversibility': fields['Reversibility'], 'blast_radius': fields['Blast radius'],
