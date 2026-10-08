@@ -27,6 +27,7 @@ GLOSSARY = (('Seat', r'seats?'), ('Gate', r'gates?'), ('Sentinel', r'sentinels?'
             ('Delta', r'deltas?'), ('Park', r'park(?:s|ed|ing)?'),
             ('Carry', r'carr(?:y|ies|ied|ying)'), ('Nudge', r'nudges?'), ('Page', r'pages?'),
             ('Digest', r'digests?'), ('Unmeasured', r'unmeasured'), ('Mandate', r'mandates?'),
+            ('Novel', r'novel'),
             ('Trust surface', r'trust surfaces?'), ('Host terminal', r'host terminals?'),
             ('Humanizer', r'humanizer'), ('Spec engine', r'spec engines?'), ('Strict mode', r'strict mode'),
             ('Docs system', r'docs systems?'), ('Docs obligation', r'docs obligations?'),

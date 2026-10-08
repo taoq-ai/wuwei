@@ -94,6 +94,11 @@ On a first day some sources are unmeasured until you set them up, for example `m
 The block at the end of every seat brief: what the seat decides alone, what it decides and records, and what goes to you.
 Seats do not ask you what their mandate lets them decide.
 
+### Novel
+
+A repository, channel, person, tool, dependency, environment or workflow the workspace has never touched.
+A decision or send on it asks you once on a card, even when the mandate would take it; your answer clears it.
+
 ### Trust surface
 
 Code where a mistake costs most: auth, credentials, input parsing, permissions, and the areas you add in the interview.

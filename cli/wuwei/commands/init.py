@@ -349,6 +349,8 @@ def upgrade(args):
         pointer_changed = pointer != str(executable) + '\n'
         env_changed = env.initialize(destination, dry_run=args.dry_run)
         prefix = 'Would upgrade' if args.dry_run else 'Upgraded'
+        from wuwei import novelty
+        seeded = novelty.seed(destination.parent, write=not args.dry_run)  # #556
         if not args.dry_run:
             if security_data is None:
                 security.initialize(destination, getattr(args, 'honeytoken_path', security.DEFAULT_HONEYTOKEN_PATH))
@@ -375,6 +377,8 @@ def upgrade(args):
             print(f'{prefix} config.toml: template_version {integrity.version()}')
         if pointer_changed:
             print(f'{prefix} executable pointer')
+        if seeded:
+            print(f'{prefix} {novelty.NAME}: {seeded} targets seen in the last {novelty.DAYS} days')
         if guide_changed:
             print(f'{prefix} {guide_path.relative_to(destination.parent)}: guide block')
         for name, local_version, base_version in conflicts:
@@ -383,7 +387,7 @@ def upgrade(args):
         if not args.dry_run:
             _status_line(executable)
         if (not added and not retired and not stamp_changed and not pointer_changed and not env_changed
-                and not guide_changed and text == raw):
+                and not guide_changed and not seeded and text == raw):
             print('No workspace changes needed')
         if args.dry_run:
             return CLEAN

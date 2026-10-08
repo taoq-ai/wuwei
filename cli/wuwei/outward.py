@@ -573,6 +573,12 @@ def decide(parties, topics, names, config, trace=None):
     return ('send', *min(found)[2:]) if all(found) else None
 
 
+def channel_ids(context):
+    """The chat channel ids of a payload, also inside a draft wrapper."""
+    return [part[key] for part in (context, context.get('draft', {}))
+            for key in ('channel', 'channel_id') if key in part]
+
+
 def classify(text, root, config, context=None, *, kind='chat', port=False, why=None, tool=None, trace=None):
     """Return (0|1|2, send|draft|block); the tier table first (#496), then the kind rules,
     where a missing destination or uncertain meaning drafts. A list in why gets the rule of a
@@ -595,8 +601,7 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
         context = {} if context is None else context
         _text(context)
         # #501: the chat rules read channel ids only; a recipient, issue or repo is no channel.
-        destinations = [part[key] for part in (context, context.get('draft', {}))
-                        for key in ('channel', 'channel_id') if key in part]
+        destinations = channel_ids(context)
         if owner_only(context, config, kind):
             return CLEAN, 'send'  # #495: only the owner reads it; security and the lint still run.
         # Some tracker tools wrap fields in draft even though the operation sends.
@@ -757,6 +762,18 @@ def check_tier(inputs, root, config, channels, *, port=False, tool=None):
             return code, blocked(why[0])
         if decision == 'draft':
             return code, f'{APPROVAL_REQUIRED}: {why[0]}' if why else APPROVAL_REQUIRED
+        if (config['autonomy']['mode'] == 'autonomous' and kind in ('chat', 'slack')
+                and not owner_only(inputs, config, kind)):  # #556: a first-time channel asks once
+            from wuwei import novelty
+            try:
+                found = novelty.novel(root, config, [key for key in (f'channel:{value}' for value in channel_ids(inputs)
+                                                                    if isinstance(value, str))
+                                                     if re.fullmatch(novelty.KEY, key)])
+            except ValueError as exc:
+                return UNRUN, f'outward: {exc}'
+            if found:
+                return FINDINGS, f'{APPROVAL_REQUIRED}: ' + novelty.line(
+                    found, 'approving this draft clears it, then the tier table decides')
         if owner_only(inputs, config, kind):
             # ponytail: logged before check_lint, so a self-DM the lint refuses still counts; move it to the lint's clean result if the count must be exact.
             from wuwei import state  # Only a message to the owner pays for the event (#495).
