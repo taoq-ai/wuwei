@@ -54,7 +54,7 @@ def test_every_registered_command_is_in_exactly_one_set():
     (['doctor', '--json'], True), (['config', 'check'], True), (['mcp', 'check', '--widget'], True),
     (['integrity', 'check'], True), (['shadow', 'report'], True), (['board'], True),
     (['lint', 'tone', 'README.md'], True),
-    (['sessions'], True), (['heartbeat'], True), (['calibrate', '--questions'], True),
+    (['sessions'], True), (['heartbeat'], True), (['dora'], True), (['dora', '--window', '7'], True), (['calibrate', '--questions'], True),
     (['calibrate', '--repo', 'x', '--questions'], True), (['--version'], True),
     (['mcp', 'decide', '--help'], True), (['config', 'set', '-h'], True),
     ([], False), (['doctor', '--fix'], False), (['calibrate'], False),

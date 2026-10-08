@@ -1,6 +1,7 @@
 """Build the local owner report from recorded day evidence."""
 
 from collections import Counter
+from datetime import timedelta
 import json
 import re
 
@@ -112,6 +113,21 @@ def pace_lines(root, data):
                     for pace in costly(table)]
 
 
+def dora_lines(rows):
+    """#586: the DORA table, one row per key in metrics.DORA order."""
+    def cells(label, form, row):
+        value = row['value'] if row['value'] == metrics.UNMEASURED else form.format(row['value'])
+        return f"| {label} | {value} | {row.get('source', row.get('reason', '')).replace('|', '/')} |"
+    return ['| Key | Value | Source |', '| --- | --- | --- |',
+            *(cells(label, form, rows[key]) for key, label, form in metrics.DORA)]
+
+
+def dora_section(root, config, days=metrics.DORA_WINDOW):
+    until = workspace.now()
+    return [f'## DORA (last {days} days)',
+            *dora_lines(metrics.dora(root, config, until - timedelta(days=days), until))]
+
+
 def build(root=None):
     root = workspace.find_workspace(root)
     day = workspace.day_dir(root)
@@ -149,6 +165,7 @@ def build(root=None):
         lines.append('none')
     lines += ['', '## Cycle time', *cycle_lines(root)]
     lines += ['', '## Pace', *pace_lines(root, data)]
+    lines += ['', *dora_section(root, workspace.load_config(root))]  # #586
     lines += ['', '## Open at close']
     lines.extend(f"- {name}: {item['phase']} ({item['status']})" for name, item in sorted(items.items())
                  if item['phase'] not in ('merged', 'parked'))

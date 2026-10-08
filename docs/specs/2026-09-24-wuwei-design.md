@@ -661,6 +661,15 @@ beside the owner's baseline:
   final pace. The report and the retro show them under `## Pace` and name a pace that costs
   escaped defects. After ten days at two paces the steward proposes `pace.default` on one
   config card, at most once per ten days.
+- DORA keys (owner, 2026-10-08, #586): `wuwei dora [--window 28]` prints five rows, each with
+  its source or the reason it is unmeasured. Lead time to merge is the median
+  `cycle_minutes` of items merged in the window; change failure rate is the escaped share
+  of those items (the measure above); deployment frequency and lead time to deploy read the
+  code host's deployments, or its published releases when a repository never deployed;
+  time to restore stays unmeasured until on-call incidents exist (#415). The report and the
+  retro show the table under `## DORA (last 28 days)`, the week digest ends its Metrics with
+  it, and `wuwei dora` exits 2 when the code host could not run. A key is a reading, never a
+  refusal.
 
 The baseline is the owner's hand-run month before WUWEI, recorded once in the workspace at
 `memory/notes/baseline.md` (type `reference`), never in this repository. A metric that
@@ -1240,6 +1249,11 @@ percentiles as in 5.6.
 | `unnecessary_asks` | owner answers equal to the recommendation (5.8) |
 | `owner_actions` | DM commands and owner host actions (Signals) |
 | `escaped_by_tier` | per tier, merged items and escaped ones (#280), over the retained days |
+| `lead_time_merge_hours` | median `cycle_minutes` over 60 of items merged in the week (5.6, #586) |
+| `lead_time_deploy_hours` | median of that plus the hours from merge to the first deploy at or after it, for items whose pull request is in a deploying repository; read from the code host once, when the week is final |
+| `deploys_per_week` | deployments (or published releases) created in the week; read from the code host once, when the week is final |
+| `change_failure_rate` | escaped items (5.6) over items merged in the week |
+| `time_to_restore_hours` | unmeasured until on-call incidents exist (#415) |
 | `aggregation_ms` | the run's wall time |
 
 Proposals. Finalising a week evaluates a fixed list of rules against it; a new rule amends

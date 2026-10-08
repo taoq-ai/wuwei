@@ -32,6 +32,11 @@ WEEK = '''# Week 2026-W40 (2026-09-28 to 2026-10-04)
 - 2026-09-30 closed: ITEM-1, ITEM-2; carried: ITEM-3; parked: ITEM-4
 '''
 
+# #586: digest.write ends a week's Metrics with the DORA table; these loose fixture records
+# fail the state check the keys need, so the table is one unmeasured line.
+WEEK_DORA = WEEK.replace('- 2026-10-02 unmeasured\n', '- 2026-10-02 unmeasured\n'
+                         '- DORA unmeasured: a day record failed its check; run bin/wuwei doctor\n')
+
 
 def write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -44,7 +49,7 @@ def root(tmp_path, monkeypatch):
     (base / 'memory/notes').mkdir(parents=True)
     (base / 'charters').mkdir()
     # #533: the owner reads the digest, so an outward.patterns list does not hide its free text.
-    write(base / 'config.toml', '[outward]\npatterns = ["\\\\bseats?\\\\b"]\n')
+    write(base / 'config.toml', '[outward]\npatterns = ["\\\\bseats?\\\\b"]\n[adapters]\ncode_host = "none"\n')
     monkeypatch.setenv('WUWEI_NOW', '2026-10-03T12:00:00+02:00')
     monkeypatch.setattr(redact, 'VALUES', {'sekrit-value'})
     day = base / 'days/2026-09-30'
@@ -98,10 +103,10 @@ def test_build_writes_none_for_empty_sections(root):
 def test_write_is_idempotent_reads_tarballs_and_honours_off(root, monkeypatch):
     from wuwei import digest
     path = digest.write(root, date(2026, 10, 3), 'week')
-    assert path == root / '.wuwei/memory/digests/2026-W40.md' and path.read_text() == WEEK
+    assert path == root / '.wuwei/memory/digests/2026-W40.md' and path.read_text() == WEEK_DORA
     before = path.stat().st_mtime_ns
     assert digest.write(root, date(2026, 10, 3), 'week') == path
-    assert path.stat().st_mtime_ns == before and path.read_text() == WEEK
+    assert path.stat().st_mtime_ns == before and path.read_text() == WEEK_DORA
     day = root / '.wuwei/days/2026-09-30'
     target = root / '.wuwei/archive/2026/2026-09-30.tar.gz'
     target.parent.mkdir(parents=True)
@@ -110,9 +115,10 @@ def test_write_is_idempotent_reads_tarballs_and_honours_off(root, monkeypatch):
     import shutil
     shutil.rmtree(day)
     path.unlink()
-    assert digest.write(root, date(2026, 10, 3), 'week').read_text() == WEEK
+    assert digest.write(root, date(2026, 10, 3), 'week').read_text() == WEEK_DORA
     month = digest.write(root, date(2026, 10, 3), 'month')
     assert month.name == '2026-10.md' and month.read_text().startswith('# Month 2026-10\n')
+    assert 'DORA' not in month.read_text()  # #586: the DORA table is weekly
     assert digest.latest(root) == (month, path)
     write(root / '.wuwei/config.toml', '[memory]\ndigest = "off"\n')
     path.unlink()

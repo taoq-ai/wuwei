@@ -1,5 +1,6 @@
 """GitHub mechanics and normalization, with no policy or override capability."""
 
+from datetime import datetime
 from functools import wraps
 import json
 import os
@@ -332,6 +333,27 @@ def merged_prs(repo, root=None):
 def open_prs(repo, root=None):
     return [{'number': _field(v, 'number', int), 'title': _field(v, 'title', str), 'author': _login(v['user'])}
             for v in _pages(f'repos/{_repo(repo)}/pulls')]
+
+
+def _aware(text):
+    value = datetime.fromisoformat(text)
+    if value.tzinfo is None:
+        raise ValueError('timestamp needs a timezone')
+    return value
+
+
+@_operation
+def deployments(repo, since, root=None):
+    """#586: deployment creation times at or after since; releases when the repo never deployed."""
+    repo, start = _repo(repo), _aware(since)
+    # ponytail: every environment counts at creation, statuses unread; filter on
+    # production_environment or read statuses when preview deployments inflate the count.
+    times, source = [_field(v, 'created_at', str) for v in _pages(f'repos/{repo}/deployments')], 'deployments'
+    if not times:
+        times = [at for v in _pages(f'repos/{repo}/releases') if not _field(v, 'draft', bool)
+                 and (at := _field(v, 'published_at', str, nullable=True)) is not None]
+        source = 'releases' if times else None
+    return {'source': source, 'at': sorted(at for at in times if _aware(at) >= start)}
 
 
 def _author(actor):

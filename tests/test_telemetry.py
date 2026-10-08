@@ -97,6 +97,8 @@ EXPECTED = {
     'decided_by': {'owner': 2, 'cruise': 1, 'seat': 1}, 'reversals': 1,
     'owner_wait_hours': {'p50': 25, 'p90': 25.8}, 'owner_asks_per_item': 1, 'unnecessary_asks': 1,
     'owner_actions': 2, 'escaped_by_tier': {'standard': {'merged': 1, 'escaped': 0}},
+    'lead_time_merge_hours': 33, 'lead_time_deploy_hours': 'unmeasured', 'deploys_per_week': 'unmeasured',
+    'change_failure_rate': 0, 'time_to_restore_hours': 'unmeasured',
 }
 
 
@@ -197,6 +199,45 @@ def test_step_refreshes_and_finalises_once_a_day(ws, monkeypatch):
     assert telemetry.step(ws, cfg) == 'not due'
     monkeypatch.setenv('WUWEI_NOW', '2026-10-04T13:00:00+00:00')
     assert telemetry.step(ws, cfg) == '2026-W40'
+
+
+def deploying(root, monkeypatch, unread_deploys, result):
+    # #586: the real deploy reader over a fake code host; A's pull request is in acme/widget.
+    from fakes.code_host import Fake
+    from wuwei import metrics, registry
+    monkeypatch.setattr(metrics, '_deploys', unread_deploys)
+    fake = Fake({'deployments': result})
+    monkeypatch.setattr(registry, 'load', lambda kind, settings: fake)
+    path = root / '.wuwei/days/2026-09-22/state.json'
+    data = json.loads(path.read_text())
+    data['items']['A']['pr'] = 'acme/widget#1'
+    path.write_text(json.dumps(data))
+    return fake, config(root, '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n')
+
+
+def test_final_week_reads_the_code_host_once_per_repository(ws, monkeypatch, unread_deploys):
+    from wuwei.registry import Result
+    seed_week(ws)
+    fake, cfg = deploying(ws, monkeypatch, unread_deploys, Result(0, {'source': 'deployments', 'at': [
+        '2026-09-22T20:00:00Z', '2026-09-23T09:00:00Z']}))
+    found = telemetry.week_file(ws, cfg, '2026-W39', write=False)
+    assert [call[0] for call in fake.calls] == ['deployments']
+    metrics = found['metrics']
+    assert (metrics['deploys_per_week'], metrics['lead_time_deploy_hours']) == (2, 35)
+    found['versions']['plugin'] = '0.12.0'
+    telemetry.validate(telemetry.payload(found))
+    current = telemetry.week_file(ws, cfg, '2026-W40', write=False)['metrics']
+    assert len(fake.calls) == 1 and current['deploys_per_week'] == 'unmeasured'
+
+
+def test_failed_code_host_leaves_the_deploy_keys_unmeasured(ws, monkeypatch, unread_deploys):
+    from wuwei.registry import Result
+    seed_week(ws)
+    _, cfg = deploying(ws, monkeypatch, unread_deploys, Result(2, None, 'offline'))
+    assert telemetry.step(ws, cfg) == '2026-W40' and events(ws) == []
+    metrics = telemetry.load_week(ws, '2026-W39')['metrics']
+    assert metrics['deploys_per_week'] == metrics['lead_time_deploy_hours'] == 'unmeasured'
+    assert metrics['lead_time_merge_hours'] == 33
 
 
 def test_step_off_writes_nothing(ws):
