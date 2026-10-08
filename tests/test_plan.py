@@ -633,3 +633,23 @@ def test_lead_charter_names_every_owner_action():
     text = (Path(__file__).parents[1] / 'charters/lead.md').read_text()
     for name in grants.OWNER_ACTIONS:
         assert f'`{name}`' in text, name
+
+
+def test_the_overnight_report_leads_the_next_morning_plan(root, monkeypatch):
+    """#511: the newest earlier approved day's producer-only shepherd events, before the goals;
+    review F2: an unapproved day with watch clock state in between does not hide them."""
+    yesterday = root / '.wuwei/days/2026-09-26'
+    without = plan.propose(proposal(), root).read_text()
+    assert '## Overnight' not in without
+    state._write_state(lambda data: data.update(gate_approved=True), directory=yesterday, reserved=False)
+    state._write_state(lambda data: None, directory=root / '.wuwei/days/2026-09-27')
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T02:00:00+02:00')
+    state.append_event('shepherd.overnight', {'pr': 'acme/widget#7', 'state': 'threads_unanswered',
+        'outcome': 'queued', 'reason': 'triage review threads',
+        'evidence': ['thread T17 by bob on src/app.py: Why this name?']}, directory=yesterday)
+    state.append_event('shepherd.swept', {'exit': 1}, directory=yesterday)
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T09:00:00+02:00')
+    text = plan.propose(proposal(), root).read_text()
+    assert text.index('Status: PROPOSED') < text.index('## Overnight (days/2026-09-26') < text.index('## Goals to confirm')
+    assert ('1. acme/widget#7 threads_unanswered: triage review threads. Run: bin/wuwei pr act acme/widget#7\n'
+            '   - thread T17 by bob on src/app.py: Why this name?\n') in text

@@ -204,10 +204,11 @@ def propose(data, root=None):
     directory = workspace.day_dir(root)
     if (directory / 'state.json').exists() and state.read_state(root).get('gate_approved'):
         raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei status for the approved plan')
-    from wuwei import grants
+    from wuwei import grants, shepherd
     planned = grants.plan(root, workspace.load_config(root), data['candidates'])
     lines = ['# Morning plan', '', 'Status: PROPOSED', '',
              *(['Finding: ' + steward_finding, ''] if steward_finding else []),
+             *(shepherd.overnight_lines(swept) if (swept := shepherd.owning_day(root, day.name)) else []),  # #511
              '## Goals to confirm',
              *([f'Provisional: proposed by the lead; the planner records days/{directory.name}/'
                 'goals.md on approval.'] if provisional else []),

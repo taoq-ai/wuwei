@@ -595,3 +595,10 @@ def test_adopted_fix_round_needs_the_ticket(case, capsys):
     host.results['checks'] = Result(0, RED)
     assert main(['pr', 'act', REF]) == 1
     assert 'ticket' in capsys.readouterr().out
+
+
+def test_latest_finds_the_last_comment_of_a_bot_thread():
+    measured = {'reviews': [], 'threads': {'comments': [], 'threads': [{'id': 'T1', 'comments': [
+        {'id': 1, 'body': 'first'}, {'id': 2, 'body': '**P1** last'}]}]}}
+    thread, latest = pr_actions._latest(measured, 'bot-p1', 'T1')
+    assert thread['id'] == 'T1' and latest['body'] == '**P1** last'
