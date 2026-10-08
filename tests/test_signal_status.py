@@ -348,7 +348,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'watch: read-failed': 'nudge', 'pr.changed': 'nudge',
                 'session: compact': 'silent', 'session: wake-seen': 'silent',
                 'plan.session': 'silent', 'gate.asked': 'silent', 'pr.disposition': 'silent', 'pr.action': 'nudge',
-                'day.close_requested': 'silent', 'merge.unmeasured': 'nudge',
+                'day.close_requested': 'silent', 'day.closed': 'silent', 'next.action': 'silent', 'merge.unmeasured': 'nudge',
                 'merge.metric': 'silent', 'merge.policy_blocked': 'nudge', 'base.red': 'page',
                 'gate.received': 'silent', 'gate.tiered': 'silent', 'discovery.requested': 'silent',
                 'discovery.intake': 'silent', 'plan.added': 'silent',

@@ -559,3 +559,42 @@ def test_start_mode_needs_a_key(monkeypatch, capsys):
     monkeypatch.setattr(runner, 'exercise', lambda *a, **kw: pytest.fail('must skip'))
     assert runner.main(['--start']) == 2
     assert 'ANTHROPIC_API_KEY is not set' in capsys.readouterr().out
+
+
+def test_claude_command_takes_the_model():
+    # #551: the eval runs the planner on a smaller model.
+    adapter = load('headless_adapter')
+    command = adapter.claude_command(Path('plugin'), model='haiku')
+    assert command[command.index('--model') + 1] == 'haiku'
+    default = adapter.claude_command(Path('plugin'))
+    assert default[default.index('--model') + 1] == 'sonnet'
+
+
+def test_start_mode_passes_the_model(monkeypatch):
+    runner = load('headless_e2e')
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'test-key')
+    seen = {}
+    monkeypatch.setattr(runner, 'exercise', lambda **kwargs: seen.update(kwargs) or 0)
+    assert runner.main(['--start', '--model', 'haiku']) == 0
+    assert seen['model'] == 'haiku' and seen['start'] is True
+
+
+def bash_span(command, session='P'):
+    attributes = {'session.id': session, 'gen_ai.agent.name': 'unknown',
+                  'gen_ai.tool.arguments': json.dumps({'command': command})}
+    return {'resourceSpans': [{'scopeSpans': [{'spans': [{'name': 'Bash', 'attributes': [
+        {'key': key, 'value': {'stringValue': value}} for key, value in attributes.items()]}]}]}]}
+
+
+@pytest.mark.parametrize('command,findings', [
+    ('/plugin/bin/wuwei plan park A --reason "fixture publishes nothing"', 0),
+    ('/plugin/bin/wuwei rank lead.json', 1),
+])
+def test_start_mode_fails_on_an_off_path_command(command, findings):
+    runner = load('headless_e2e')
+    data, events, hooks = start_evidence()
+    data = {**data, 'planner_session_id': 'P'}
+    events = events + [{'kind': 'next.action', 'payload': {'state': 'close', 'action': 'run', 'traces': 0,
+                                                           'named': ['wuwei close']}}]
+    found = runner.validate(data, events, hooks, start=True, traces=[bash_span(command)])
+    assert len(found) == findings and (not findings or 'off the path: ' + command in found[0])

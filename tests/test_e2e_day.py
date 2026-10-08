@@ -26,6 +26,8 @@ def test_scripted_day(day):
     assert day.data['seats']['builder-initial']['status'] == 'stopped'
     action = day.next()
     tier = action.pop('tier')
+    assert [command.split()[:3] for command in action.pop('commands')] == [
+        ['wuwei', 'brief', role] for role in ('arch', 'quality', 'security')]
     assert action == {'action': 'gates', 'roles': ['arch', 'quality', 'security'], 'seats': []}
     assert tier['tier'] == 'standard' and tier['roles'] == ['arch', 'quality', 'security']
     day.raise_pr(expected=1)
@@ -199,6 +201,8 @@ def test_agent_surface_without_scanner_is_unmeasured(day):
     assert 'A:security:initial' not in day.data['gate_verdicts']
     action = day.next()
     tier = action.pop('tier')
+    # The security seat stopped with a rejected verdict: its receive is still due.
+    assert action.pop('commands') == ['wuwei dispatch receive A security security-initial']
     assert action == {'action': 'gates', 'roles': ['security'], 'seats': []}
     assert tier['tier'] == 'standard' and tier['roles'] == ['arch', 'quality', 'security']
     day.raise_pr(expected=1)

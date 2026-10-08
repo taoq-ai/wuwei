@@ -81,8 +81,10 @@ def test_first_dispatch_turn_launches_cap_builders_and_the_fourth_waits(day):
     assert code == 1 and 'CAP 3' in reason
     (day.root / '.wuwei/calibration.json').write_text('{"acme/widget": {"date": "2026-09-29"}}\n')
     step = json.loads(day.run('next', '--json'))
+    while step['state'] in ('calibrate', 'telemetry'):  # the first day's cards come once (#551)
+        step = json.loads(day.run('next', '--json'))
     assert step['state'] == 'wait'
-    assert 'D waits' in step['step'] and 'A-builder started first' in step['step']
+    assert 'D waits' in step['why'] and 'A-builder started first' in step['why']
     assert 'seats 3/3 (owner; G-1 2, G-2 1)' in day.run('status', '--line')
 
 
@@ -136,7 +138,7 @@ def test_gate_seats_wait_when_host_seats_cannot_hold_them_together(day):
 
 def test_docs_skill_and_charter_name_the_parallel_start():
     skill = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
-    assert 'wuwei dispatch next --all' in skill
+    assert 'wuwei dispatch next --all' in (ROOT / 'cli/wuwei/commands/next.py').read_text()  # #551
     assert 'in one message' in skill and 'concurrently' in skill
     assert '### Seats per goal' in (ROOT / 'docs/site/concepts.md').read_text()
     row = next(line for line in (ROOT / 'docs/site/configuration.md').read_text().splitlines()
