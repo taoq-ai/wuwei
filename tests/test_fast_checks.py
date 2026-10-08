@@ -161,3 +161,114 @@ def test_build_check_writes_the_record_the_push_guard_reads(workspace_case, monk
     assert state.read_state(root)['fast_checks']['example/project']['unit']['sha'] == SHA
     assert guard().check(payload(root, 'git push origin feature'))[0] == (
         2 if not identity else 0 if exit_code == 0 else 1)
+
+
+def stub(path, code=0):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f'#!/bin/sh\nexit {code}\n')
+    path.chmod(0o755)
+    return path
+
+
+VENV = '.venv/bin/python -m pytest -q'
+
+
+@pytest.mark.parametrize('command,where,setting,expected', [
+    ('python3 -m pytest -q', ['tree', 'main'], '', None),
+    (VENV, ['tree', 'main'], '', ('tree', 'worktree')),
+    (VENV, ['main'], '', ('main', 'main worktree')),
+    (VENV, [], '', ('tree', 'missing')),
+    (VENV, ['broken', 'main'], '', ('main', 'main worktree')),
+    (VENV, ['tree'], 'ABS', ('abs', 'checks.python')),
+    (VENV, ['tree'], 'envs/py/bin/python', ('setting', 'checks.python')),
+    ('node_modules/.bin/jest', ['main'], 'ABS', ('main', 'main worktree')),
+])
+def test_interpreter_resolution(tmp_path, command, where, setting, expected):
+    from wuwei import fast_checks
+    tree, main_tree = tmp_path / 'worktrees/A', tmp_path / 'repo'
+    word = command.split()[0]
+    tree.mkdir(parents=True)
+    main_tree.mkdir()
+    if 'tree' in where:
+        stub(tree / word)
+    if 'main' in where:
+        stub(main_tree / word)
+    if 'broken' in where:
+        (tree / word).parent.mkdir(parents=True)
+        (tree / word).symlink_to(tmp_path / 'gone')
+    absolute = stub(tmp_path / 'abs/python')
+    config = {'checks': {'python': str(absolute) if setting == 'ABS' else setting, 'bootstrap': ''}}
+    paths = {'tree': tree / word, 'main': main_tree.resolve() / word, 'abs': absolute,
+             'setting': main_tree.resolve() / 'envs/py/bin/python'}
+    found = fast_checks.interpreter(command, tree, {'path': 'repo'}, tmp_path, config)
+    assert found == (expected and (paths[expected[0]], expected[1]))
+
+
+def item_worktree(root, vcs, checks):
+    """An item worktree without .venv whose build waits for checks."""
+    tree = root / 'worktrees/A'
+    tree.mkdir(parents=True)
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('fast_checks = ["unit"]', f'fast_checks = {json.dumps(checks)}'))
+    vcs.results['repo_context'] = Result(0, {'path': str(tree), 'common_dir': str(root / 'repo/.git')})
+    clear(root)
+    (root / 'brief.md').write_text('Build it')
+    state._write_state(lambda data: data['items'].update(A={'phase': 'planned'}), root, reserved=False)
+    state.transition('A', 'implement', root)
+    state._write_state(lambda data: data.setdefault('builds', {}).update(A={
+        'brief': 'brief.md', 'worktree': str(tree), 'runtime': 'claude', 'repo': 'example/project',
+        'commands': checks, 'iteration': 1, 'repeats': 0, 'signature': None,
+        'status': 'check', 'action': {'action': 'check'}}), root, reserved=False)
+    return tree
+
+
+def real_checks(monkeypatch, vcs, calls=None):
+    adapter = importlib.import_module('adapters.checks.local')
+
+    def run(path, command, root=None):
+        if calls is not None:
+            calls.append(command)
+        return adapter.run(path, command, root=root)
+    monkeypatch.setattr(registry, 'load', lambda kind, config: (
+        SimpleNamespace(run=run) if kind == 'checks' else vcs))
+
+
+def test_build_check_runs_the_main_worktree_interpreter(workspace_case, monkeypatch):
+    root, vcs = workspace_case
+    item_worktree(root, vcs, [VENV])
+    stub(root / 'repo/.venv/bin/python')
+    real_checks(monkeypatch, vcs)
+    assert main(['build', 'check', 'A']) == 0
+    row = state.read_state(root)['fast_checks']['example/project'][VENV]
+    assert row['exit'] == 0 and row['interpreter'] == str(root.resolve() / 'repo/.venv/bin/python')
+
+
+@pytest.mark.parametrize('folder', ['py', 'with space'])
+def test_checks_python_wins_in_every_worktree(workspace_case, monkeypatch, folder):
+    root, vcs = workspace_case
+    tree = item_worktree(root, vcs, [VENV])
+    setting = stub(root / folder / 'python')
+    stub(root / 'repo/.venv/bin/python', 1)
+    stub(tree / '.venv/bin/python', 1)
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text() + f'[checks]\npython = "{setting}"\n')
+    real_checks(monkeypatch, vcs)
+    for path, context in ((tree, tree), (root / 'repo', root / 'repo')):
+        vcs.results['repo_context'] = Result(0, {'path': str(context), 'common_dir': str(root / 'repo/.git')})
+        assert main(['fast-checks', str(path)]) == 0
+        row = state.read_state(root)['fast_checks']['example/project'][VENV]
+        assert row['exit'] == 0 and row['interpreter'] == str(setting)
+
+
+@pytest.mark.parametrize('present', [True, False])
+def test_worktree_interpreter_runs_the_command_unchanged(workspace_case, monkeypatch, present):
+    root, vcs = workspace_case
+    tree = item_worktree(root, vcs, [VENV])
+    if present:
+        stub(tree / '.venv/bin/python')
+    calls = []
+    real_checks(monkeypatch, vcs, calls)
+    assert main(['fast-checks', str(tree)]) == (0 if present else 1)
+    assert calls == [VENV]
+    row = state.read_state(root)['fast_checks']['example/project'][VENV]
+    assert row['interpreter'] == (str(tree.resolve() / '.venv/bin/python') if present else None)

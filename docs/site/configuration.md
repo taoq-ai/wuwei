@@ -8,7 +8,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 
 | Sections | Keys under |
 | --- | --- |
-| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[security.areas]`, `[guards]`, `[worktree]` | [Workspace and repositories](#workspace-and-repositories) |
+| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[security.areas]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
 | `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[brief.style]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
@@ -60,7 +60,9 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `repos.gates.light_max_lines` | `100` | A diff with more changed lines is at least STANDARD. Binary changes, any lead flag and track FULL also raise the tier. |
 | `repos.gates.trust_paths` | `["guards/*", "state.py", "adapters/*", ".claude-plugin/*", ".github/*", "ci/*", "workflows/*", "deploy/*", "infra/*"]` | Path globs, matched on any path suffix, that force at least STANDARD. `repos.merge.never_auto_paths` and `brief.full_path_patterns` force it too. |
 | `repos.shepherd.reviewers` | `[]` | Code host logins requested for this repository's PRs; when set it replaces `shepherd.reviewers` here. |
-| `repos.fast_checks` | `[]` | Commands for `wuwei fast-checks` on this checkout. |
+| `repos.fast_checks` | `[]` | Commands for `wuwei fast-checks` on this checkout. A command whose first word starts with `.venv/`, `venv/` or `node_modules/.bin/` resolves that interpreter in the item worktree first, then in the repository's main worktree (its `path`); the check record names the interpreter it ran with. `worktree add` warns when a new worktree will use the main worktree's, `doctor` shows a `check interpreter` row, and the builder brief names it. |
+| `checks.python` | `""` | Interpreter for fast checks whose first word is a relative Python such as `.venv/bin/python`; absolute or relative to the repository's path. It wins in every worktree. |
+| `checks.bootstrap` | `""` | One command `worktree add` runs in each new worktree through the checks runner (capped at 300 seconds), for example `python3 -m venv .venv && .venv/bin/python -m pip install -q -e .`. A failure is one warning line and the worktree is still created. Use it when the package is installed editable in the main worktree's venv: that interpreter can import the main worktree's code instead of the item's. |
 | `owner.name` | `""` | Name used by outward text checks. |
 | `owner.pronouns` | `""` | Owner pronouns for outward text checks. |
 | `owner.handles` | `[]` | Bare chat IDs and code host handles. |
