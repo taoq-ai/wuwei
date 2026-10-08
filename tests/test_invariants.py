@@ -503,7 +503,7 @@ def project(case):
 # projection, and a read of any other position raises (#562).
 OUTWARD = (0, 1, 2, 3, 5, 6)
 READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
-         'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': ()}
+         'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
