@@ -3,8 +3,6 @@
 from datetime import date, timedelta
 import json
 from pathlib import Path
-import shutil
-from uuid import uuid4
 
 from wuwei import registry, state, workspace
 from wuwei.notes import OWNER_NOTES, SLUG_RE, parse_note
@@ -74,6 +72,7 @@ def calibration(root, classes, roles, reason):
 
 
 def _cruise_write(root, data, action, reason, evidence):
+    from uuid import uuid4
     from wuwei.decision import CRUISE
     path = safe_path(root, CRUISE, label='cruise levels')
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -142,6 +141,8 @@ def _changelog(root):
 
 def _snapshot(root):
     """Keep pre-fold memory and charters under protected workspace history."""
+    import shutil
+    from uuid import uuid4
     base = root / '.wuwei'
     target = base / 'memory/snapshots' / uuid4().hex
     for name in ('memory', 'charters'):
@@ -320,6 +321,7 @@ def land(root, proposal, *, day, run, ledger, name):
 
 
 def promote(root=None):
+    from uuid import uuid4
     root = workspace.find_workspace() if root is None else Path(root)
     if (root / '.wuwei').is_symlink():
         raise ValueError('.wuwei must not be a symlink')
