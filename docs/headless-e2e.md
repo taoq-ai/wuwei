@@ -30,6 +30,17 @@ dispatch and a successful close with zero `hook.refusal` events and zero `--help
 python3 scripts/headless_e2e.py --start --local-login
 ```
 
+`--model` picks the planner's model (default `sonnet`). Run the start check with a
+smaller model to see that it walks the path `wuwei next` returns:
+
+```sh
+python3 scripts/headless_e2e.py --start --model haiku --local-login
+```
+
+In start mode the run also fails on any off-path command: a planner Bash command the
+governing `wuwei next` action did not name (`wuwei next` and `wuwei status --line`
+themselves are exempt, and so is the fixture's own park of item A).
+
 The local option copies a file-based OAuth credential into a private temporary
 HOME when present. On macOS Claude can use its existing OS keychain. No user
 settings, installed plugins, MCP servers or workspace environment are inherited.

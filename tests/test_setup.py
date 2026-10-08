@@ -879,7 +879,7 @@ def test_first_day_on_defaults_without_github_remote(project, host, terminal, mo
         shutil.rmtree(project / name)
     make_repo(project / 'widget', None)
     (project / 'widget/.specify').mkdir()  # spec-kit set up, so doctor's spec row is ok (5.10)
-    host.merged_prs = host.protection = lambda *a, **k: Result(2, reason='unmeasured')
+    host.merged_prs = host.protection = host.open_prs = lambda *a, **k: Result(2, reason='unmeasured')
     monkeypatch.setattr(doctor, 'diagnose', DIAGNOSE)
     monkeypatch.setattr(integrity, 'fresh', lambda root: Result(0))
     monkeypatch.setattr(heartbeat, 'measure', lambda root: {name: {'result': 'ok', 'value': 'ok'}

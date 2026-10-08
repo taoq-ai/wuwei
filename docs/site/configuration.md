@@ -157,7 +157,7 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | `shepherd.author_windows_days` | `[90, 180]` | Authorship lookback windows, then all history. |
 | `shepherd.tie_commits` | `2` | Include a third author within this many commits of second place. |
 | `shepherd.source_exclude` | `specs/*`, lock files and generated files | Changed paths excluded from reviewer selection. |
-| `shepherd.autostart` | `false` | Start one headless shepherd seat per mechanical PR action (conflicted, red CI, review comments, stale review) when the listener sees it. The seat never merges and every post it makes is a draft. |
+| `shepherd.autostart` | `true` | Start one headless shepherd seat per mechanical PR action (conflicted, red CI, review comments, stale review) when the listener sees it. The seat never merges and every post it makes is a draft. |
 | `shepherd.authors` | `{}` | Map author email to verified `{login, mention}` reviewer identity; `mention` is optional (default `""`) and a review ping refuses a reviewer without one. `bin/wuwei setup` maps your repositories' git emails to your code-host login and each bot author seen on the last 50 merged pull requests to its `[bot]` login. An unmapped email is resolved to the code host login for that email and cached for the day; one the code host cannot resolve is skipped with a `reviewer.unresolved` event, never a refusal. |
 | `watch.clock_seconds` | `600` | Interval between watch clock events. |
 | `watch.dead_seconds` | `1200` | Clock age after which the watch is reported dead. |

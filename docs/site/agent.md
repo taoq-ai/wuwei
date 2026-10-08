@@ -10,26 +10,25 @@ Each role has a charter in `charters/<role>.md` (sentinels as `sentinel-<area>.m
   launches every other seat. `/wuwei:wuwei-plan` and `/wuwei:wuwei-report` re-run the plan or the report.
 - `lead`: launched by the planner at plan time; it proposes and ranks the candidates.
 - `builder`: one per item, launched from `wuwei build next`; it works only in its worktree.
-- `sentinel` (arch, quality, security, goal): launched from `wuwei dispatch next`; each
-  reviews a change it did not write and returns a verdict.
+- `sentinel` (arch, quality, security, goal): launched from `wuwei dispatch next`; each reviews a change it did not write and returns a verdict.
 - `shepherd`: follows raised pull requests; the listener can start it headless.
 - `steward`: launched once at close from `wuwei close`; it reviews the day's procedure.
 
-The owner's session is never blocked by work. Launch every seat with Agent in the background and run every command that can take longer than a few seconds (fast checks, `wuwei dispatch opinion`, `wuwei steward run`) through Bash in the background; act on each completion notification with the next `build next` or `dispatch next`. End every turn with `wuwei status --line`, which names what runs, and answer the owner from it, never by resuming a seat. Only an owner question waits.
+The owner's session is never blocked by work. Launch every seat with Agent in the background and run every command that can take longer than a few seconds (fast checks, `wuwei dispatch opinion`, `wuwei steward run`) through Bash in the background; act on each completion notification with `wuwei next`, which returns the next action. End every turn with `wuwei status --line`, which names what runs, and answer the owner from it, never by resuming a seat. Only an owner question waits.
 
 <!-- wuwei:guide:start -->
 WUWEI plugin reference, generated from the plugin tables; `wuwei guide` prints it.
-Run `wuwei next` and do the step it names; run every action a command returns unchanged.
+Loop: run wuwei next --json, do the one action it returns, and run it again when the result or a completion notification arrives. Run every action a command returns unchanged.
 
 ## Commands the session runs
 wuwei is the absolute path in .wuwei/executable: read it once and use it as the first word of a plain command, never through a variable. Exit 0 is clean, 1 is a finding to resolve with the owner, 2 means it could not run: show the reason and stop that path.
-- next: Print where the day stands and the one next step
+- next: Print where the day stands and the one next action
 - guide: Print the plugin reference the session reads at start
 - status: show day status
 - nudges: List open nudges and pages
 - plan: Propose or approve the morning plan
 - decision: Check and route decision records
-- worktree: Create an anchored item worktree
+- worktree: Create or adopt an anchored item worktree
 - brief: Write and log a seat brief
 - build: Select the next builder action
 - dispatch: Decide planner gate and discovery work
@@ -69,7 +68,8 @@ config add-repo, config promote, config set, decide, decision outcome, drafts ap
 ## Records and questions
 - State and config files are protected; use the wuwei CLI for state changes; owner edits run outside agent tools.
 - The workflow writes the records through the CLI; the owner answers cards and never edits a file.
-- Ask the owner with AskUserQuestion, using the widget a command prints unchanged: `wuwei decision show D-n --widget`, `wuwei mcp check --widget`, `wuwei doctor --fix --widget`, `wuwei close --widget`, `wuwei consolidate --widget`, `wuwei telemetry proposals --widget`, `wuwei plan gate`, `wuwei calibrate --questions`, `wuwei drafts show <id> --widget`. Record the answer with the widget's `record` command; when it runs in a host terminal, show the owner that line. Without AskUserQuestion (a headless run), write the decision record and run `wuwei decision route D-n` so it reaches the DM.
+- Ask the owner with AskUserQuestion, using the widget a command prints unchanged: `wuwei decision show D-n --widget`, `wuwei mcp check --widget`, `wuwei doctor --fix --widget`, `wuwei close --widget`, `wuwei consolidate --widget`, `wuwei telemetry proposals --widget`, `wuwei plan gate`, `wuwei calibrate --questions`, `wuwei drafts show <id> --widget`. Record the answer with the widget's `record` command (for example `wuwei calibrate --answer`); when it runs in a host terminal, show the owner that line. Without AskUserQuestion (a headless run), write the decision record and run `wuwei decision route D-n` so it reaches the DM, and keep working with assume-and-record where the mandate allows. A seat refusal that starts `publish:` and names `wuwei decision show D-n --widget` is a card: ask it and record the answer; on an allow answer continue the seat so it runs the same command, on `Keep owner-only` show the owner the command for a host terminal. Never ask the owner what a seat's mandate lets it decide: a `negotiation.loop` nudge is a report, and a SubagentStop question note (`<item>-question-<agent>`) is acknowledged only after its decision record exists.
+- With `outbound.owner_channel = "dm"`, also post each digest, nudge and report shown to the owner to the owner's own DM with the connector's send tool: `outbound.owner.slack.dm`, or `outbound.owner.slack.user` when `dm` is empty. A held send or refusal that names `bin/wuwei outbound learn --tool <tool>` (with `--owner <file>`, `--channels`, `--people` or `--thread <file>`): run it and do what it prints; for a thread, write the replies tool's `channel`, `thread_ts` and `participants` as the JSON file it names.
 
 ## Guard areas by posture
 | Area | observe | guarded | strict |

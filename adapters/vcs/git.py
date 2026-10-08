@@ -134,6 +134,11 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
             allowed = format_arg == _RECENT_FORMAT
         case ('cat-file', '--batch'):
             allowed = True
+        case ('worktree', 'list', '--porcelain', '-z'):
+            allowed = True
+        case ('worktree', 'add', '--', path, branch):
+            allowed = (bool(_revision(branch)) and isinstance(path, str) and
+                       bool(path) and '\0' not in path)
         case ('worktree', 'add', '-b', branch, '--', path):
             allowed = (bool(_revision(branch)) and isinstance(path, str) and
                        bool(path) and '\0' not in path)
@@ -358,6 +363,45 @@ def worktree_add(repo, branch, path, root=None):
         raise ValueError('missing worktree path')
     _run(repo, 'worktree', 'add', '-b', branch, '--', path)
     return {'branch': branch, 'path': path}
+
+
+@_operation
+def worktree_checkout(repo, branch, path, root=None):
+    """A worktree on an existing branch (#510); worktree_add creates a new one."""
+    branch = _revision(branch)
+    path = os.fspath(path)
+    if not path:
+        raise ValueError('missing worktree path')
+    _run(repo, 'worktree', 'add', '--', path, branch)
+    return {'branch': branch, 'path': path}
+
+
+@_operation
+def worktrees(repo, root=None):
+    """Every worktree of the repository: path, HEAD and short branch (None when detached)."""
+    rows, row = [], None
+    for field in _records(_run(repo, 'worktree', 'list', '--porcelain', '-z')):
+        key, _, value = field.partition(' ')
+        if not field:
+            if not row or 'head' not in row and not row.get('bare'):
+                raise ValueError('invalid worktree record')
+            rows.append({'path': row['path'], 'head': row.get('head'), 'branch': row.get('branch')})
+            row = None
+        elif key == 'worktree':
+            if row or not value:
+                raise ValueError('invalid worktree record')
+            row = {'path': value}
+        elif row is None:
+            raise ValueError('invalid worktree record')
+        elif key == 'HEAD':
+            row['head'] = _sha(value)
+        elif key == 'branch':
+            row['branch'] = value.removeprefix('refs/heads/')
+        elif key == 'bare':
+            row['bare'] = True
+    if row:
+        raise ValueError('unterminated worktree record')
+    return rows
 
 
 @_operation

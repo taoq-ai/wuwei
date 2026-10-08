@@ -264,11 +264,15 @@ def test_next_names_stuck_seat(seat):
     root, _, _, day, _ = seat
     (root / '.wuwei/calibration.json').write_text('{"calibrated": true}')
     (day / 'plan.md').write_text('# Plan\n')
-    state._write_state(lambda data: data.update(gate_approved=True, approved_items=['A']), root, reserved=False)
+    state._write_state(lambda data: data.update(gate_approved=True, approved_items=['A'],
+                                                planner_session_id='S'), root, reserved=False)
+    for name in ('calibrate', 'telemetry'):  # #551: the morning cards already done
+        state.append_event('next.action', {'state': 'x', 'done': [[name, '']]}, root)
     assert next_command.step(root)['state'] == 'build'
     stuck_day(root)
     row = next_command.step(root)
-    assert row['state'] == 'stuck' and row['command'] == 'wuwei seat stop stuck --verdict <file>'
+    assert row['state'] == 'stuck'
+    assert row['command'] == 'wuwei seat stop stuck --unmeasured "seat ended with no recorded result"'
 
 
 def test_heartbeat_seats_probe(seat):

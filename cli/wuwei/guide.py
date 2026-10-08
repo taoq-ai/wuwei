@@ -48,7 +48,7 @@ def text():
     postures = tuple(workspace.POSTURES)
     lines = [
         'WUWEI plugin reference, generated from the plugin tables; `wuwei guide` prints it.',
-        'Run `wuwei next` and do the step it names; run every action a command returns unchanged.',
+        next_command.LOOP + ' Run every action a command returns unchanged.',
         '',
         '## Commands the session runs',
         f'{next_command.EXECUTABLE}. Exit 0 is clean, 1 is a finding to resolve with the owner, '
@@ -72,9 +72,21 @@ def text():
         '- The workflow writes the records through the CLI; the owner answers cards and never edits a file.',
         '- Ask the owner with AskUserQuestion, using the widget a command prints unchanged: '
         + ', '.join(f'`wuwei {entry}`' for entry in WIDGETS) + '. Record the answer with the '
-        "widget's `record` command; when it runs in a host terminal, show the owner that line. Without "
-        'AskUserQuestion (a headless run), write the decision record and run `wuwei decision route D-n` '
-        'so it reaches the DM.',
+        "widget's `record` command (for example `wuwei calibrate --answer`); when it runs in a host "
+        'terminal, show the owner that line. Without AskUserQuestion (a headless run), write the '
+        'decision record and run `wuwei decision route D-n` so it reaches the DM, and keep working '
+        'with assume-and-record where the mandate allows. A seat refusal that starts `publish:` and '
+        'names `wuwei decision show D-n --widget` is a card: ask it and record the answer; on an '
+        'allow answer continue the seat so it runs the same command, on `Keep owner-only` show the '
+        "owner the command for a host terminal. Never ask the owner what a seat's mandate lets it "
+        'decide: a `negotiation.loop` nudge is a report, and a SubagentStop question note '
+        '(`<item>-question-<agent>`) is acknowledged only after its decision record exists.',
+        '- With `outbound.owner_channel = "dm"`, also post each digest, nudge and report shown to the '
+        "owner to the owner's own DM with the connector's send tool: `outbound.owner.slack.dm`, or "
+        '`outbound.owner.slack.user` when `dm` is empty. A held send or refusal that names '
+        '`bin/wuwei outbound learn --tool <tool>` (with `--owner <file>`, `--channels`, `--people` or '
+        '`--thread <file>`): run it and do what it prints; for a thread, write the replies tool\'s '
+        '`channel`, `thread_ts` and `participants` as the JSON file it names.',
         '',
         '## Guard areas by posture',
         '| Area | ' + ' | '.join(postures) + ' |',

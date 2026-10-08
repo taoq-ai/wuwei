@@ -2,7 +2,9 @@
 
 from datetime import timedelta
 import json
+from pathlib import Path
 import re
+import shlex
 import sys
 
 from wuwei import decision, obligations, registry, state, watch, workspace
@@ -257,8 +259,10 @@ def _item(root, ref):
         raise ValueError('owned PR needs exactly one linked item; link exactly one item with bin/wuwei pr claim (bin/wuwei why shows duplicates)')
     name, item = matches[0]
     tree = item.get('worktree')
-    if not isinstance(tree, str) or not tree:
-        raise ValueError('linked item has no worktree; create one with bin/wuwei worktree add <item> and write the builder brief with --worktree')
+    if not tree:
+        return name, None  # #510: shepherding needs no checkout; a fix round asks for one.
+    if not isinstance(tree, str):
+        raise ValueError(f'invalid item worktree; {DAMAGED}')
     path = (root / tree).resolve(strict=True)
     if not path.is_dir():
         raise ValueError('linked item worktree is missing; create it again with bin/wuwei worktree add <item>, then retry')
@@ -335,7 +339,22 @@ def _rebase(root, ref, item, tree, *, resume=False):
     return 0
 
 
-def _fix(root, ref, item, measured, feedback=None):
+def _adopt(root, ref, item, pr, why):
+    """The exact command that gives the item a checkout of the PR branch (#510, #551)."""
+    from wuwei.shepherd import _settings
+    config = workspace.load_config(root)
+    repo = _settings(config, ref)
+    path = workspace.branch_worktree(registry.load('vcs', config),
+                                     (root / Path(repo['path']).expanduser()).resolve(), pr['branch'], root)
+    command = (['bin/wuwei', 'worktree', 'adopt', path, '--item', item] if path else
+               ['bin/wuwei', 'worktree', 'add', item, '--branch', pr['branch'], '--repo', repo['name']])
+    print(json.dumps({'action': 'adopt', 'pr': ref, 'item': item, 'command': shlex.join(command),
+                      'why': f'{why} needs a checkout of {pr["branch"]}; the item has no worktree',
+                      'then': f'bin/wuwei pr act {ref}'}))
+    return 1
+
+
+def _fix(root, ref, item, tree, measured, feedback=None):
     from wuwei.commands import build
     if state.read_state(root)['items'][item]['phase'] == 'delta':
         print(json.dumps({'action': 'gate', 'item': item, 'gate': 'arch_delta'}))
@@ -349,12 +368,30 @@ def _fix(root, ref, item, measured, feedback=None):
                              if row['state'] == 'changes_requested' and row['body'].strip())
         if not feedback:
             raise ValueError('review fix request has no feedback; pass the review findings to the fix round, or run bin/wuwei pr state for a fresh action')
+    if tree is None:
+        return _adopt(root, ref, item, measured['pr'], 'a fix round')
+    if item not in state.read_state(root).get('builds', {}):
+        # #510: an adopted item has no build to resume; its first builder brief is the fix.
+        from wuwei import brief
+        try:
+            if not (workspace.day_dir(root) / 'briefs' / f'{item}-adopted-fix.md').exists():
+                brief.write('builder', item, f'{item}-adopted-fix', f'Fix round on {ref}, an adopted PR.\n\n'
+                            f'Fix feedback:\n{feedback}', worktree=str(tree), pr=ref, root=root)
+            action = build.next_action(item, root=root)
+        except brief.Refused as exc:
+            print(exc)
+            return 1
+        except build.PortExit as exc:
+            print(f'{ref}: {exc}')
+            return exc.code
+        print(json.dumps(action, sort_keys=True))
+        return 1
     action = build.open_fix(item, feedback, root=root)
     print(json.dumps(action, sort_keys=True))
     return 1
 
 
-def _thread(root, ref, item, measured, reply=None):
+def _thread(root, ref, item, tree, measured, reply=None):
     from wuwei import drafts, outward, registry
     config = workspace.load_config(root)
     me = obligations._owner_login(config)
@@ -408,10 +445,10 @@ def _thread(root, ref, item, measured, reply=None):
                 pending = pending or ({'action': 'owner_decision', 'decision': prior['path']}, 1)
                 continue
             if option == 'change':
-                return _fix(root, ref, item, measured, feedback=text)
+                return _fix(root, ref, item, tree, measured, feedback=text)
             answer = {'decision': prior['path'], 'option': option}
         elif re.search(r'\b(fix|change|update|correct)\b', text, re.I):
-            return _fix(root, ref, item, measured, feedback=text)
+            return _fix(root, ref, item, tree, measured, feedback=text)
         if reply is None:
             print(json.dumps({'action': 'reply', 'pr': ref, 'surface': surface,
                               'thread': target, 'question': text, **answer}))
@@ -490,6 +527,10 @@ def act(root, ref, *, run=False, complete=False, reply=None):
     if row['state'] in ('conflicted', 'ci_red', 'changes_requested', 'threads_unanswered'):
         try:
             item, tree = _item(root, ref)
+            config = workspace.load_config(root)
+            if row['state'] == 'conflicted' and tree is None:
+                measured = watch.evidence(registry.load('code_host', config), ref, root)
+                return _adopt(root, ref, item, measured['pr'], 'a rebase')
             if row['state'] == 'conflicted':
                 if run or complete:
                     return _rebase(root, ref, item, tree, resume=complete)
@@ -500,11 +541,10 @@ def act(root, ref, *, run=False, complete=False, reply=None):
                 return 1
             if run or complete:
                 raise ValueError(f'--run and --complete apply only to a conflicted PR; run bin/wuwei pr act {ref} without them')
-            config = workspace.load_config(root)
             measured = watch.evidence(registry.load('code_host', config), ref, root)
             if row['state'] == 'ci_red':
-                return _fix(root, ref, item, measured)
-            return _thread(root, ref, item, measured, reply)
+                return _fix(root, ref, item, tree, measured)
+            return _thread(root, ref, item, tree, measured, reply)
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
             print(f'{ref}: PR action unmeasured: {exc}')
             return 2

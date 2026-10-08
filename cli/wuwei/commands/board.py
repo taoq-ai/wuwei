@@ -142,7 +142,8 @@ def read(root):
                           for v in data['gate_verdicts'].values() if v.get('item') == name)
         ticket = data.get('tickets', {}).get(name, {}).get('id')
         folded = sum(row.get('ticket') == ticket and row.get('outcome') == 'folded' for row in log)
-        work.append((name, item['phase'], item['status'],
+        work.append((name + (' (adopted)' if item.get('source') == 'adopted' else ''),
+                     item['phase'], item['status'],
                      (ticket + (f', {folded} folded' if folded else '')) if ticket else 'none',
                      gates or 'none', item.get('pr_url') or 'none', docs.shown(config, item)))
     created = [json.loads(line).get('payload', {}) for line in events.splitlines()

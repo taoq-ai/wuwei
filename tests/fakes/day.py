@@ -81,6 +81,10 @@ class Runtime:
             target = day.directory / 'decisions' / f'gate-{path.stem}.md'
             target.parent.mkdir(exist_ok=True)
             target.write_text(text)
+        elif role == 'lead':
+            message = json.dumps(day.proposal(['A'])) + '\n' + RETRO  # the lead answers with its proposal JSON
+        elif role == 'shepherd':
+            day.raise_pr()  # the shepherd raises the PR it owns (#551)
         else:
             assert role == 'steward'
         transcript = day.root / (path.stem + '.jsonl')
@@ -270,7 +274,8 @@ lead_login = "lead"
                    'hook_event_name': event, 'stop_hook_active': False, **fields}
         return self._main(('hook', event), expected, json.dumps(payload), ('hook', event, fields))
 
-    def plan(self, *, agent_surface=False, tier=None):
+    def proposal(self, ids=('B', 'A'), *, agent_surface=False, tier=None):
+        """The lead's proposal JSON: candidate A, and B ranked below it."""
         from copy import deepcopy
         candidate = {'id': 'A', 'goal': 'G-1', 'evidence': 'recorded issue A',
             'scope': 'one value', 'overlap': 'none', 'track': 'SLICE', **({'tier': tier} if tier else {}),
@@ -280,14 +285,18 @@ lead_login = "lead"
                                ('value', 'time_criticality', 'risk_reduction', 'job_size')}}
         lower = deepcopy(candidate)
         lower['id'], lower['score']['job_size'] = 'B', 5
-        candidates = [lower, candidate]
-        source = self.root / 'candidates.json'
-        source.write_text(json.dumps(candidates))
-        assert [row['id'] for row in json.loads(self.run('rank', source))] == ['A', 'B']
-        proposal = {'goals': ['G-1'], 'cap': 1,
+        candidates = [row for row in (lower, candidate) if row['id'] in ids]
+        return {'goals': ['G-1'], 'cap': 1,
             'seat_policy': {'builder': {'runtime': 'claude', 'model': 'scripted'}},
             'envelope': {'start': '09:00', 'end': '17:00', 'net_build_hours': 5},
             'sweep': {'processes': 'measured: none'}, 'candidates': candidates}
+
+    def plan(self, *, agent_surface=False, tier=None):
+        proposal = self.proposal(agent_surface=agent_surface, tier=tier)
+        candidates = proposal['candidates']
+        source = self.root / 'candidates.json'
+        source.write_text(json.dumps(candidates))
+        assert [row['id'] for row in json.loads(self.run('rank', source))] == ['A', 'B']
         source = self.root / 'proposal.json'
         source.write_text(json.dumps(proposal))
         self.run('plan', 'propose', source)

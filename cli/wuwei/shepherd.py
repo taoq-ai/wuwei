@@ -370,18 +370,41 @@ def raise_pr(root, repo_name, base, title, body, item):
         return 2
 
 
-def claim_pr(root, ref, item):
-    """Claim a fresh, externally verified PR for an approved item."""
+def claim_pr(root, ref, item=None, goal=None):
+    """Claim a fresh, externally verified PR. With no item in the plan, create one (source
+    adopted, #510) and adopt the PR branch's worktree when a clean one exists."""
+    import json
+    from pathlib import Path
+    import sys
+    from wuwei import plan
     try:
         root = workspace.find_workspace(root)
         config = workspace.load_config(root)
-        ref = pull_request(ref)
-        _settings(config, ref)
+        only = config['repos'][0]['name'] if len(config['repos']) == 1 else None
+        ref = merge.reference(ref, root, config, repo=only)
+        repo = _settings(config, ref)
         host = registry.load('code_host', config)
         pr = merge.checked_pr(host, ref, root)
         merge.require(pr['state'] == 'open' and not pr['merged'], 'PR is not open')
+        data = state.read_state(root)
+        linked = next((name for name, row in data['items'].items() if row.get('pr') == ref), None)
+        item = item or linked or f'PR-{pr["number"]}'
+        if item not in data['items']:
+            goal = goal or (data['goals'][0] if len(data['goals']) == 1 else None)
+            merge.require(goal, f'name the goal: bin/wuwei pr claim {ref} --goal <one of '
+                                f'{", ".join(data["goals"]) or "the approved goals"}>')
+            plan.add(item, root, goal=goal, title=pr['title'], source='adopted')
         state.record_pr(root, item, ref, raised=False, head=pr['head'])
         print(ref)
+        if not state.read_state(root)['items'][item].get('worktree'):
+            vcs = registry.load('vcs', config)
+            path = workspace.branch_worktree(vcs, (root / Path(repo['path']).expanduser()).resolve(),
+                                             pr['branch'], root)
+            if path:
+                try:
+                    print(json.dumps(workspace.adopt_worktree(root, item, path, vcs)))
+                except state.StateError as exc:
+                    print(f'worktree not adopted: {exc}', file=sys.stderr)
         return 0
     except (merge.Refused, state.StateError) as exc:
         print(exc)
@@ -444,7 +467,7 @@ def headless(root, ref, episode, *, runtime=None):
                                pr=ref, root=root)
         # Fixed selection, as remote commands: headless sessions exist only in the Claude adapter.
         runtime = runtime or registry.load('runtime', {'adapters': {'runtime': 'claude'}})
-        job = runtime.dispatch('shepherd', str(root / relative), str(tree), True, root=root)
+        job = runtime.dispatch('shepherd', str(root / relative), str(tree or root), True, root=root)
         if job.exit or not isinstance(job.data, dict):
             reason = job.reason or 'invalid dispatch result'
             return finish(job.exit or 2, f'not started: {reason}', reason=reason)

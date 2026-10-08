@@ -38,7 +38,7 @@ PARAMETERS = {
                   'author_login': ('repo', 'email'), 'token_scopes': ('variable',),
                   'create_pr': ('draft',), 'request_reviewers': ('ref', 'logins'),
                   'comment': ('ref', 'text', 'thread'), 'merge': ('ref', 'sha'),
-                  'revert_pr': ('ref',), 'merged_prs': ('repo',), 'probe': ('ref', 'tags'),
+                  'revert_pr': ('ref',), 'merged_prs': ('repo',), 'open_prs': ('repo',), 'probe': ('ref', 'tags'),
                   'default_branch': ('repo',), 'issue': ('repo', 'title', 'body')},
     'vcs': {'workspace_init': ('repo',),
             'workspace_changes': ('repo',),
@@ -57,7 +57,8 @@ PARAMETERS = {
             'hooks_target': ('repo',),
             'worktree_identity': ('repo', 'name', 'email'),
             'push_commits': ('repo', 'remote', 'destination', 'local_sha', 'remote_sha', 'default_branch'),
-            'recent_commits': ('repo',), 'default_branch': ('repo',)},
+            'recent_commits': ('repo',), 'default_branch': ('repo',),
+            'worktrees': ('repo',), 'worktree_checkout': ('repo', 'branch', 'path')},
     'docs': {'read': ('ref',), 'write': ('draft',)},
 }
 INTERFACES = {kind: tuple(operations) for kind, operations in PARAMETERS.items()}

@@ -545,5 +545,38 @@
     "data": {
       "login": "pat-example"
     }
+  },
+  {
+    "operation": "open_prs",
+    "args": [
+      "acme/widget"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget/pulls?per_page=100",
+          "-H",
+          "Cache-Control: no-cache",
+          "--paginate",
+          "--slurp",
+          "--hostname",
+          "github.com"
+        ],
+        "stdout": "[[{\"number\": 12, \"title\": \"Add a cache\", \"user\": {\"login\": \"builder\", \"type\": \"User\"}}, {\"number\": 13, \"title\": \"Bump deps\", \"user\": {\"login\": \"renovate[bot]\", \"type\": \"Bot\"}}], []]"
+      }
+    ],
+    "data": [
+      {
+        "number": 12,
+        "title": "Add a cache",
+        "author": "builder"
+      },
+      {
+        "number": 13,
+        "title": "Bump deps",
+        "author": "renovate[bot]"
+      }
+    ]
   }
 ]

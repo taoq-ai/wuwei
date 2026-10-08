@@ -27,11 +27,12 @@ GLOSSARY = (('Seat', r'seats?'), ('Gate', r'gates?'), ('Sentinel', r'sentinels?'
             ('Delta', r'deltas?'), ('Park', r'park(?:s|ed|ing)?'),
             ('Carry', r'carr(?:y|ies|ied|ying)'), ('Nudge', r'nudges?'), ('Page', r'pages?'),
             ('Digest', r'digests?'), ('Unmeasured', r'unmeasured'), ('Mandate', r'mandates?'),
+            ('Novel', r'novel'),
             ('Trust surface', r'trust surfaces?'), ('Host terminal', r'host terminals?'),
             ('Humanizer', r'humanizer'), ('Spec engine', r'spec engines?'), ('Strict mode', r'strict mode'),
             ('Docs system', r'docs systems?'), ('Docs obligation', r'docs obligations?'),
             ('Ticket', r'tickets?'), ('Tracker hygiene', r'tracker hygiene'), ('Fold', r'fold(?:s|ed)?'),
-            ('Lens', r'lens(?:es)?'))
+            ('Adopted', r'adopted'), ('Lens', r'lens(?:es)?'))
 
 
 def _prose(text):
@@ -415,7 +416,7 @@ def test_shepherd_settings_are_visible_in_template_and_site():
     assert settings['reviewers'] == settings['reviewers_exclude'] == []
     assert '`repos.shepherd.reviewers`' in page and '`[repos.shepherd]`' in page
     assert '# [repos.shepherd]' in template
-    assert settings['autostart'] is False
+    assert settings['autostart'] is True
     row = next(line for line in page.splitlines() if line.startswith('| `shepherd.min_reviewers`'))
     assert '`0`' in row.split('|')[3]
 
@@ -468,7 +469,7 @@ def test_reference_verdict_example_and_phase_table():
                                                       'refuses `watch uninstall`'))
     clears = 'clears at the next clock line, or after `watch uninstall` when no clock line was written today'
     assert clears in ' '.join(configuration.split()) and clears in ' '.join(reference.split())
-    assert 'wuwei worktree add' in (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+    assert 'wuwei worktree add' in (ROOT / 'cli/wuwei/dispatch.py').read_text()  # #551: the start entry
 
 
 def test_host_terminal_actions_and_morning_references():
@@ -483,7 +484,6 @@ def test_host_terminal_actions_and_morning_references():
     for phrase in ('run it in a host terminal', 'no plan yet', 'proposal.json', 'pr raise',
                    '--base', '--title', '--body-file', '--item'):
         assert phrase in reference
-    assert 'wuwei rank .wuwei/days/' in (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
 
 
 def test_reference_states_hook_latency_budget():
@@ -558,13 +558,14 @@ def test_owner_interview_is_documented_next_to_calibration():
     for phrase in ('calibrate --interview', '--questions', '--answer', 'interview.json', 'config promote',
                    'wuwei promote', '--interview merge'):
         assert phrase in section, phrase
-    skill = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
-    for phrase in ('calibrate --questions', 'calibrate --answer', '.wuwei/charters/planner.md'):
-        assert phrase in skill, phrase
+    from wuwei import guide
+    assert '.wuwei/charters/planner.md' in (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+    for phrase in ('calibrate --questions', 'calibrate --answer'):  # #551: next asks, the guide records
+        assert phrase in guide.text(), phrase
 
 
 def test_pr_flow_is_documented():
-    assert 'wuwei doctor --section pr-flow' in (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+    assert 'wuwei doctor --section pr-flow' in (ROOT / 'cli/wuwei/commands/next.py').read_text()
     doctor = (SITE / 'reference.md').read_text().split('\n## Doctor\n', 1)[1].split('\n## ', 1)[0]
     assert 'PR flow' in doctor and '--section pr-flow' in doctor
     configuration = (SITE / 'configuration.md').read_text()
@@ -900,11 +901,12 @@ def test_outward_humanize_is_documented():
 
 def test_owner_channel_in_skills():
     # #495: the owner's own DM is where the planner posts when owner_channel = "dm".
-    plan = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
+    from wuwei import guide
+    plan = guide.text()  # #551: the guide holds the rule, next names the DM on the report row
     for word in ('outbound.owner_channel', 'outbound.owner.slack.dm', 'outbound learn --tool', '--owner <file>'):
         assert word in plan, word
     assert 'config set outbound.owner' not in plan  # Learned on the card, never typed (#492).
-    assert 'owner_channel' in (ROOT / 'skills/wuwei-report/SKILL.md').read_text()
+    assert 'owner_channel' in (ROOT / 'cli/wuwei/commands/next.py').read_text()
     configuration = (SITE / 'configuration.md').read_text()
     assert '`outbound.owner`' in configuration and '`outbound.owner_channel`' in configuration
     security = (SITE / 'security.md').read_text()
@@ -1079,9 +1081,12 @@ def test_owner_questions_use_widgets_or_the_dm():
         for phrase in ('AskUserQuestion', 'decision route', '--widget', 'Seats never ask the owner'):
             assert phrase in text, (path.parent.name, phrase)
         assert 'Decided-by: owner' not in text and 'Outcome: proceed' not in text, path.parent.name
+    from wuwei import guide
     plan = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
-    for phrase in ('wuwei mcp check --widget', 'record', 'calibrate --answer', 'wuwei_board'):
+    for phrase in ('record', 'wuwei_board'):
         assert phrase in plan, phrase
+    for phrase in ('wuwei mcp check --widget', 'calibrate --answer'):
+        assert phrase in guide.text(), phrase
     decisions = (SITE / 'daily.md').read_text().split('\n## 5. Owner decisions\n', 1)[1].split('\n## ', 1)[0]
     answer = decisions.split('\n### How you answer\n', 1)[1].split('\n#', 1)[0]
     for phrase in ('question card', 'DM', 'host terminal'):
@@ -1095,10 +1100,12 @@ def test_unparsed_commands_are_documented():
 
 
 def test_close_carry_skill_and_docs():
+    from wuwei import guide
+    from wuwei.commands import close
     report = (ROOT / 'skills/wuwei-report/SKILL.md').read_text()
-    step = next(line for line in report.splitlines() if line.startswith('1. '))
-    for phrase in ('wuwei close', 'wuwei close --widget', 'record', 'steward_launch', 'plan carry'):
-        assert phrase in step, phrase
+    # #551: next returns the close, its card and the steward launch; the card records the carry.
+    assert 'wuwei close --widget' in report and 'record' in report and 'wuwei close --widget' in guide.text()
+    assert 'bin/wuwei plan <label>' in (ROOT / 'cli/wuwei/commands/close.py').read_text() and close.widget
     assert 'Outcome: carried' not in report and 'Outcome: parked' not in report
     retro = (ROOT / 'skills/wuwei-retro/SKILL.md').read_text()
     step = next(line for line in retro.splitlines() if line.startswith('1. '))
@@ -1110,19 +1117,15 @@ def test_close_carry_skill_and_docs():
 
 def test_one_gate_question():
     # #365: the morning gate is one approval; the separate questions come only on Change something.
-    plan = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text().splitlines()
-    gate = next(line for line in plan if line.startswith('4. '))
-    for phrase in ("Approve today's plan as proposed?", '`Change something`', 'header `Goals`', '`Plan`',
-                   'calibrate --questions', '`[]`', '`wuwei plan gate`', '`record` command'):
-        assert phrase in gate, phrase
-    assert 'one AskUserQuestion per decision' not in gate and 'Ask separately' not in gate
-    after = gate.split('Only on `Change something`', 1)[1]
-    for phrase in ('goals', 'queue', 'seat policy', 'CAP', 'envelope', 'carry-over'):
-        assert phrase in after, phrase
-    approve = next(line for line in plan if line.startswith('5. '))
-    assert '--import-yesterday' in approve and 'carry-over' in approve
+    # #551: next returns the gate card (plan gate's widget) and its then line; the charter keeps the rule.
+    from wuwei.commands import next as next_command
+    assert "'wuwei plan gate'" in (ROOT / 'cli/wuwei/commands/next.py').read_text()
+    assert 'Change something ask the owner what to change' in next_command.THEN['gate']
     charter = (ROOT / 'charters/planner.md').read_text()
     assert "Approve today's plan as proposed?" in charter and 'Change something' in charter
+    after = charter.split('on `Change something`', 1)[1]
+    for phrase in ('goals', 'queue', 'seat policy', 'CAP', 'envelope', 'carry-over'):
+        assert phrase in after, phrase
     daily = (SITE / 'daily.md').read_text().split('\n## 3. Plan and the morning gate\n', 1)[1].split('\n## ', 1)[0]
     assert "Approve today's plan as proposed?" in daily and 'Change something' in daily
     assert 'question per decision' not in daily
@@ -1180,15 +1183,14 @@ def test_charters_carry_the_spec_mode():
     builder = (ROOT / 'charters/builder.md').read_text()
     assert 'Spec:' in builder and 'plan set' in builder
     assert 'skip_tiers' in (ROOT / 'charters/lead.md').read_text()
-    for path in (ROOT / 'charters/planner.md', ROOT / 'skills/wuwei-plan/SKILL.md'):
-        assert 'spec=skipped' in path.read_text(), path
+    assert 'spec=skipped' in (ROOT / 'charters/planner.md').read_text()
     assert 'spec engine' in (SITE / 'daily.md').read_text().lower()
 
 
 def test_telemetry_is_documented():
     # #422: the plan skill presents proposals after the gate; the security page says what leaves.
-    plan = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
-    assert 'wuwei telemetry proposals --widget' in plan
+    from wuwei import guide
+    assert 'wuwei telemetry proposals --widget' in guide.text()  # #551: next returns the card
     security = (SITE / 'security.md').read_text()
     for phrase in ('IP address', 'your login', 'wuwei telemetry off', '`telemetry.share`'):
         assert phrase in security, phrase
@@ -1216,8 +1218,10 @@ def test_docs_system_is_documented():
 
 def test_lead_goals_are_blocks_while_proposing():
     """#471: the lead writes proposed goals as blocks; the question lint sits in outward."""
-    for rel in ('charters/lead.md', 'agents/lead.md', 'skills/wuwei-plan/SKILL.md'):
+    from wuwei.commands import next as next_command
+    for rel in ('charters/lead.md', 'agents/lead.md'):
         assert 'never an id alone' in (ROOT / rel).read_text(), rel
+    assert 'never an id alone' in next_command.LEAD_BODY  # #551: the lead brief next returns
     for path in (SITE / 'security.md', ROOT / 'docs/specs/2026-09-24-wuwei-design.md'):
         row, = [line for line in path.read_text().splitlines() if line.startswith('| `outward` |')]
         assert '`decision.check_question`' in row, path
@@ -1271,12 +1275,23 @@ def test_outbound_tiers_docs():
 
 def test_thread_reply_docs():
     # #526: the planner learns a thread's participants; the thread row and the draft posture line.
-    skill = (ROOT / 'skills/wuwei-plan/SKILL.md').read_text()
-    assert 'outbound learn --tool <tool> --thread <file>' in skill and 'thread_ts' in skill
+    from wuwei import guide
+    skill = guide.text()  # #551: the learn step lives in the guide
+    assert 'outbound learn --tool <tool>' in skill and '--thread <file>' in skill and 'thread_ts' in skill
     assert 'a draft is one card away' in (SITE / 'reference.md').read_text()
     assert 'topic = "thread"' in (SITE / 'concepts.md').read_text()
     assert '--thread <file>' in (SITE / 'security.md').read_text()
     assert '`thread`' in (SITE / 'configuration.md').read_text().split('| `outbound.tiers` |', 1)[1].split('\n', 1)[0]
+
+
+def test_gradual_adoption_is_documented():
+    daily = (SITE / 'daily.md').read_text()
+    section = daily.split('## Starting with work in progress', 1)[1].split('\n## ', 1)[0]
+    for phrase in ('pr claim', 'worktree adopt', 'worktree add <item> --branch'):
+        assert phrase in section
+    assert '### Adopted' in (SITE / 'concepts.md').read_text()
+    reference = (SITE / 'reference.md').read_text()
+    assert 'worktree adopt' in reference and '--branch' in reference
 
 
 def test_card_answer_writes_the_config_documented():
@@ -1291,3 +1306,26 @@ def test_card_answer_writes_the_config_documented():
     assert 'never change from an agent tool' not in security and '--from-card' in security
     for name in ('concepts.md', 'configuration.md'):
         assert '--from-card' in (SITE / name).read_text(), name
+
+
+def test_plan_and_report_skills_are_the_loop():
+    # #551: the CLI owns the path; each skill is the loop plus the Agent and AskUserQuestion mechanics.
+    from wuwei import guide
+    from wuwei.commands import next as next_command
+    for name in ('wuwei-plan', 'wuwei-report'):
+        text = (ROOT / 'skills' / name / 'SKILL.md').read_text()
+        assert len(text.splitlines()) < 25, name
+        for phrase in ('`launch`', '`continue`', '`resume`', '`subagent_type`', 'in one message',
+                       'AskUserQuestion', '`record`', 'wuwei next --json'):
+            assert phrase in text, (name, phrase)
+        assert not re.search(r'^\d+\. ', text, re.M), name  # no step list for a model to interpret
+    text = guide.text()
+    for phrase in (next_command.LOOP, 'outbound.owner_channel', 'outbound.owner.slack.dm',
+                   'outbound learn --tool', '--owner <file>'):
+        assert phrase in text, phrase
+    assert 'config set outbound.owner' not in text
+    # Each rule removed from the plan skill lives in the guide or in a next row (#551 review).
+    rows = Path(next_command.__file__).read_text()
+    for phrase in ('--import-yesterday', 'publish:', 'Keep owner-only', 'continue the seat',
+                   'assume-and-record', 'negotiation.loop', '<item>-question-<agent>'):
+        assert phrase in text or phrase in rows, phrase

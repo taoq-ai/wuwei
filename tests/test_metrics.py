@@ -340,3 +340,53 @@ def test_seat_tokens_per_usage_row():
             {'kind': 'seat launched', 'payload': {'usage': {'input_tokens': 1, 'output_tokens': 1}}},
             usage({'input_tokens': 10, 'output_tokens': 0})]
     assert metrics.seat_tokens(rows) == [5, 10]
+
+
+def span(session, tool, arguments, agent=None):
+    payload = {'session_id': session, 'cwd': '.', 'tool_name': tool, 'tool_input': arguments}
+    if agent:
+        payload['agent_type'] = agent
+    return payload
+
+
+def test_path_metrics_count_the_planner_walk(root):
+    from wuwei import metrics
+    from wuwei.guards import traces
+    state._write_state(lambda data: data.update(planner_session_id='P'), root, reserved=False)
+    record = lambda *args, **kwargs: traces._record(span(*args, **kwargs), root)
+    for hook in ('Stop', 'Stop', 'SubagentStop:builder'):
+        state.append_event('session.seen', {'session_id': 'P', 'hook': hook}, root)
+    state.append_event('session.seen', {'session_id': 'X', 'hook': 'Stop'}, root)
+    state.append_event('next.action', {'state': 'lead', 'action': 'run', 'item': '', 'traces': 0, 'named': [
+        'wuwei brief lead day lead --body \'Propose today.\'',
+        'wuwei calibrate --answer "merge=<label>" --repo example/project']}, root)
+    record('P', 'Bash', {'command': '/opt/x/bin/wuwei brief lead day lead --body "other words"'})
+    record('P', 'Bash', {'command': 'wuwei calibrate --answer "merge=Owner merges" --repo example/project'})
+    record('P', 'Bash', {'command': 'wuwei next --json'})
+    record('P', 'Bash', {'command': 'wuwei status --line'})
+    record('P', 'Bash', {'command': 'wuwei plan session P'})
+    record('P', 'Bash', {'command': 'wuwei rank lead.json'})
+    record('P', 'AskUserQuestion', {'questions': []})
+    record('X', 'Bash', {'command': 'git status'})
+    record('P', 'Bash', {'command': 'git status'}, agent='builder')
+    state.append_event('next.action', {'state': 'mcp', 'action': 'run', 'item': '', 'traces': 9,
+                                       'named': ['wuwei mcp check']}, root)
+    record('P', 'Bash', {'command': 'wuwei brief lead day lead --body x'})
+    value = metrics.collect(root)
+    found = metrics.path(metrics._events(workspace.day_dir(root)), metrics._traces(workspace.day_dir(root)), 'P')
+    assert (value['planner_turns'], value['planner_asks'], value['off_path']) == (2, 1, 2), found
+    events = metrics._events(workspace.day_dir(root))
+    found = metrics.path(events, metrics._traces(workspace.day_dir(root)), 'P')
+    assert found['off_path'][0] == 'wuwei rank lead.json'
+    assert found['off_path'][1].startswith('wuwei brief lead day lead ')  # after next named mcp
+    assert metrics.path(events, None, 'P')['off_path'] == metrics.UNMEASURED
+    assert set(metrics.path(events, [], None).values()) == {metrics.UNMEASURED}
+
+
+def test_only_the_loop_itself_is_exempt_from_off_path(root):
+    from wuwei import metrics
+    from wuwei.guards import traces
+    for command in ('wuwei next --json', 'wuwei next --json; wuwei plan park A'):
+        traces._record(span('P', 'Bash', {'command': command}), root)
+    found = metrics.path([], metrics._traces(workspace.day_dir(root)), 'P')
+    assert found['off_path'] == ['wuwei next --json; wuwei plan park A']

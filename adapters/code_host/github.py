@@ -328,6 +328,12 @@ def merged_prs(repo, root=None):
             for v in _list(value['data']['repository']['pullRequests']['nodes'])]
 
 
+@_operation
+def open_prs(repo, root=None):
+    return [{'number': _field(v, 'number', int), 'title': _field(v, 'title', str), 'author': _login(v['user'])}
+            for v in _pages(f'repos/{_repo(repo)}/pulls')]
+
+
 def _author(actor):
     if actor is None:
         return {'author': None, 'author_email': None}
