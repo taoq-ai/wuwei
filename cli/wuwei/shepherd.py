@@ -1,6 +1,7 @@
 """Raise and shepherd PRs through the existing ports and policies."""
 
 from fnmatch import fnmatchcase
+import json
 import re
 
 from wuwei import merge, obligations, registry, state, workspace
@@ -496,3 +497,167 @@ def headless(root, ref, episode, *, runtime=None):
         return finish(1, f'not started: {exc}', reason=str(exc))
     except watch.ERRORS as exc:
         return finish(2, f'not started: {exc}', reason=str(exc))
+
+
+# #511: the CLI-only shepherd that runs without a session (no model, no seat, no reply).
+HEADLESS_SECONDS = 900  # ponytail: fixed interval; a config key if an owner needs another
+
+
+def owning_day(root, before=None):
+    """The newest approved day directory (today included), or the newest one before that name.
+    The watch writes clock state into every day, so state alone never makes a day the owner."""
+    from wuwei import watch
+    return next((day for day in watch.days(root) if (before is None or day.name < before)
+                 and (day / 'state.json').is_file() and state.read_state(directory=day).get('gate_approved')), None)
+
+
+def _live(root):
+    """True when a registered, fresh planner session owns this day's state (heartbeat's rule)."""
+    from wuwei import heartbeat
+    return bool(state.read_state(root).get('planner_session_id')) and heartbeat._planner(root)[0] == 'ok'
+
+
+def _evidence(root, config, ref, current):
+    """The lines a morning seat needs for a queued PR: owed replies, red checks, conflict, closed."""
+    from wuwei import pr_actions, watch
+    if current in ('conflicted', 'closed'):
+        return ['conflicts with its base' if current == 'conflicted' else 'closed without merge']
+    measured = watch.evidence(registry.load('code_host', config), ref, root)
+    if current == 'ci_red':
+        return [f'check {row["name"]}: {row["conclusion"]}' for row in measured['checks']
+                if row['state'] == 'completed' and row['conclusion'] not in ('success', 'neutral', 'skipped')]
+    acks = obligations._ledger(state.read_state(root)).get(ref, {})
+    lines = []
+    for key in obligations._replies(measured['reviews'], measured['threads'],
+                                    obligations._owner_login(config), acks):
+        surface, target = key.split(':', 1)
+        thread, latest = pr_actions._latest(measured, surface, target)
+        path = (thread or {}).get('path')
+        lines.append(f'{surface} {target} by {latest["author"]}' + (f' on {path}' if path else '')
+                     + ': ' + ' '.join(str(latest['body']).split()))
+    return lines
+
+
+def overnight(root):
+    """One CLI-only sweep of the owning day's PRs: check approved ones against the merge policy,
+    ping stale reviews under the outward tiers, queue the rest for the morning. 0 clean, 1 queued,
+    2 unmeasured."""
+    from collections import Counter
+    from wuwei import pr_actions, watch
+    from wuwei.commands.doctor import _capture
+    live = 'shepherd: planner live; the session shepherd owns the PRs'
+    try:
+        if _live(root):
+            print(live)
+            return 0
+        day = owning_day(root)
+        if day is None:
+            print('shepherd: no owned PRs')
+            return 0
+        workspace._DAY = day.name
+        try:
+            if _live(root):
+                print(live)
+                return 0
+            config = workspace.load_config(root)
+            if not watch.owned(root, config)[1]:
+                print('shepherd: no owned PRs')
+                return 0
+            _, rows = pr_actions.evaluate(root)
+            last = {row['payload']['pr']: row['payload'] for row in watch.records(day / 'events.jsonl')
+                    if row['kind'] == 'shepherd.overnight'}
+            counts = Counter()
+            for row in rows:
+                if 'pr' not in row:
+                    print(row['reason'])
+                    counts['unmeasured'] += 1
+                    continue
+                ref, current, reason, evidence = row['pr'], row.get('state', 'unmeasured'), '', []
+                if row['exit'] == 2:
+                    outcome, reason = 'unmeasured', row['reason']
+                elif row['parked'] or current == 'waiting' or last.get(ref, {}).get('outcome') == 'merged':
+                    continue
+                elif current == 'merged':
+                    outcome = 'merged'
+                elif current == 'approved':
+                    # ponytail: check only, the morning merges; merge.execute comes back here once
+                    # #524 (merge grants) is on main.
+                    result = merge.check(ref, root)
+                    outcome = ('queued', 'queued', 'unmeasured')[result.exit]
+                    reason = result.reason or 'merge cleared by policy; merge waits for the morning (#524)'
+                elif current == 'review_stale':
+                    code, text = _capture(post_review_request, root, ref)
+                    outcome, reason = ('pinged', 'queued', 'unmeasured')[code], text.strip()
+                else:
+                    try:
+                        outcome, reason = 'queued', row['action']
+                        evidence = _evidence(root, config, ref, current)
+                    except watch.ERRORS as exc:
+                        outcome, reason = 'unmeasured', f'evidence unmeasured: {exc}'
+                counts[outcome] += 1
+                if (last.get(ref, {}).get('state'), last.get(ref, {}).get('outcome')) != (current, outcome):
+                    state.append_event('shepherd.overnight', {'pr': ref, 'state': current, 'outcome': outcome,
+                                                              'reason': reason, 'evidence': evidence}, root)
+            code = 2 if counts['unmeasured'] else 1 if _queue(watch.records(day / 'events.jsonl')) else 0
+            summary = {'prs': len(rows), **{key: counts[key] for key in
+                       ('merged', 'pinged', 'queued', 'unmeasured')}, 'exit': code}
+            state.append_event('shepherd.swept', summary, root)
+            workspace.atomic_write(day / 'overnight.md', '\n'.join(overnight_lines(day)) + '\n')
+            print('shepherd: sweep ' + json.dumps(summary, sort_keys=True))
+            return code
+        finally:
+            workspace._DAY = None
+    except watch.ERRORS as exc:
+        print(f'shepherd: sweep unmeasured: {exc}')
+        return 2
+
+
+def _queue(rows):
+    """The latest overnight event per PR still owed to the owner, oldest first."""
+    latest = {}
+    for row in rows:
+        if row['kind'] == 'shepherd.overnight':
+            latest.pop(row['payload']['pr'], None)
+            latest[row['payload']['pr']] = row
+    return [row for row in latest.values() if row['payload']['outcome'] in ('queued', 'unmeasured')]
+
+
+def overnight_lines(directory):
+    """The Overnight report of one day, from producer-only events; [] when nothing ran."""
+    from wuwei import watch
+    rows = watch.records(directory / 'events.jsonl')
+    events = [row for row in rows if row['kind'] == 'shepherd.overnight']
+    if not events:
+        return []
+    sweeps = [row['ts'] for row in rows if row['kind'] == 'shepherd.swept']
+    lines = [f'## Overnight (days/{directory.name}: {len(sweeps)} sweeps'
+             + (f', last {sweeps[-1]})' if sweeps else ')'), '']
+    for row in events:
+        event = row['payload']
+        lines.append(f'- {row["ts"]} {event["pr"]} {event["state"]}: {event["outcome"]}'
+                     + (f': {event["reason"]}' if event['reason'] else ''))
+    queue = _queue(rows)
+    if queue:
+        lines += ['', 'Morning queue (first items today):']
+    for number, row in enumerate(queue, 1):
+        event = row['payload']
+        lines.append(f'{number}. {event["pr"]} {event["state"]}: {event["reason"] or event["outcome"]}. '
+                     f'Run: bin/wuwei pr act {event["pr"]}')
+        lines += [f'   - {line}' for line in event['evidence']]
+    return lines + ['']
+
+
+def loop(root=None, *, once=False):
+    """The scheduled shepherd: one sweep every HEADLESS_SECONDS under .wuwei/shepherd.lock."""
+    from wuwei import watch
+    return watch.serve(workspace.find_workspace(root), 'shepherd', overnight,
+                       0 if once else HEADLESS_SECONDS, once=once)
+
+
+def last_swept(root):
+    """The newest shepherd.swept time on the owning day, where the sweep writes, or None."""
+    from wuwei import watch
+    day = owning_day(root)
+    stamps = [row['ts'] for row in (watch.records(day / 'events.jsonl') if day else ())
+              if row['kind'] == 'shepherd.swept']
+    return max(stamps, key=obligations._time, default=None)

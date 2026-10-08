@@ -32,6 +32,8 @@ EVENT_PRODUCERS = {
     'decision.escalated': 'wuwei listen',
     'pr.changed': 'wuwei watch or wuwei listen', 'pr.notified': 'wuwei listen',
     'shepherd.dispatched': 'wuwei listen', 'shepherd.finished': 'wuwei listen',
+    **{f'shepherd.{kind}': 'wuwei sweep obligations --headless or wuwei shepherd'
+       for kind in ('overnight', 'swept')},
     **{f'remote.{action}': 'wuwei listen' for action in ('pending', 'started', 'resumed', 'stopped', 'ignored', 'refused', 'confirmed')},
     'remote.acknowledged': 'owner host wuwei remote ack',
     'integrity': 'wuwei integrity check', 'integrity_failed': 'wuwei integrity check',

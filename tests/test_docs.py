@@ -1433,3 +1433,10 @@ def test_plan_and_report_skills_are_the_loop():
     for phrase in ('--import-yesterday', 'publish:', 'Keep owner-only', 'continue the seat',
                    'assume-and-record', 'negotiation.loop', '<item>-question-<agent>'):
         assert phrase in text or phrase in rows, phrase
+
+
+def test_design_records_the_headless_shepherd():
+    """#511: 4.2.1 names the overnight sweep."""
+    design = (Path(__file__).resolve().parents[1] / 'docs/specs/2026-09-24-wuwei-design.md').read_text()
+    section = design.split('#### 4.2.1', 1)[1].split('\n### ', 1)[0]
+    assert '#511' in section and 'sweep obligations --headless' in section
