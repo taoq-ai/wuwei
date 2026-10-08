@@ -203,7 +203,23 @@ the lead proposes them, `plan.md` shows them as provisional and the approval que
 blocks. On approval the planner records them with
 `wuwei goals edit --file .wuwei/days/<date>/goals.md`; under the strict posture the hook
 refuses that call and prints the command for a host terminal. It then records the gate with
-`wuwei plan approve --items <ids> --goals-confirmed`.
+`wuwei plan approve --items <ids> --goals-confirmed --pace "<label>"`.
+
+The gate card also carries the day's [pace](concepts.md#pace). `Approve` takes the
+recommended pace; `Approve at careful`, `Approve at steady` or `Approve at fast` approves the
+same plan at another pace. The recommendation's reasoning is in the Approve description, two
+lines, plus a third when it differs from your `[pace] default`:
+
+```text
+9 items, 7 light, 2 standard, G-2 due 2026-10-10: fast, 4 seats, expected close 14:30
+Host 10 cores, load 3.2, last suite 14 min; budget covers the queue at fast; binding: queue
+Your default is steady; the advice is fast (binding: queue)
+```
+
+`binding:` names the input that set the advice (queue, host or budget) and, when a faster
+pace is held back, what unlocks it. To change the pace during the day, the planner runs
+`wuwei plan set pace=careful`; items already under review keep their review depth. `wuwei pace` prints the
+pace, the advice and its inputs at any time.
 
 When an item in the plan needs a deploy or a release, the lead lists it and the gate carries one
 more card per action, for example

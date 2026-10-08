@@ -140,12 +140,25 @@ def merged(config, parts, value, replace=False):
     return [(tuple(parts[:-1]), parts[-1], value)]
 
 
+def _choice(parts, value):
+    """#579: a bare word is the string it names when the key is a string with fixed choices
+    (pace.default = fast), since a decision title cannot carry a quote."""
+    node = configtext.declared(parts)
+    return ({'value': value} if isinstance(node, tuple) and node[0] is str and len(node) > 2
+            and value in node[2] else None)
+
+
 def assignment(title):
     """#529: (key, value) for a decision option title `<dotted key> = <TOML value>`, else None."""
     key, separator, value = title.partition(' = ')
     try:
-        _parts(key)
-        parsed = tomllib.loads(f'value = {value}\n')
+        parts = _parts(key)
+        try:
+            parsed = tomllib.loads(f'value = {value}\n')
+        except tomllib.TOMLDecodeError:
+            parsed = _choice(parts, value)
+            if parsed is None:
+                raise
     except (ValueError, tomllib.TOMLDecodeError):
         return None
     return (key, parsed['value']) if separator and list(parsed) == ['value'] else None

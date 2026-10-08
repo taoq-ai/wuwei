@@ -393,9 +393,14 @@ def check(item, *, root=None):
         raise ValueError(f'{item} is not waiting for checks ({found}); run bin/wuwei build next {item} '
                          'for its current step')
     _busy(item, record)
-    marked = {**record, 'check': {'started_at': workspace.now().isoformat(), 'pid': os.getpid()}}
+    from wuwei import fast_checks  # #579: complete on the checks the day's pace runs
+    config = workspace.load_config(root)
+    repo = next((row for row in config['repos'] if row['name'] == record['repo']), None)
+    commands = fast_checks.commands(root, config, repo, record['worktree']) if repo else record['commands']
+    marked = {**record, 'commands': commands,
+              'check': {'started_at': workspace.now().isoformat(), 'pid': os.getpid()}}
     _save(item, marked, root, 'build.check_started', record)
-    from wuwei import fast_checks
+    record = marked
     fast_checks.record(record['worktree'])
     measured = state.read_state(root).get('fast_checks', {}).get(record['repo'], {})
     if any(command not in measured for command in record['commands']):

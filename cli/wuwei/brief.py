@@ -45,6 +45,18 @@ def depth_line(role, value, worktree, paths=(), trust_paths=()):
     return f'Depth: {value}; step zero: run' + (f' ({reason})' if reason else '')
 
 
+def checks_line(pace, tests):
+    """#579: what the day's pace checks locally; None at steady (today's brief)."""
+    if pace == 'careful':
+        return ('Checks: careful; the fast checks and ' + (f'{tests} before the PR' if tests else
+                'the full suite, which is not configured locally (repos.tests); CI runs it')
+                + '; bin/wuwei build check runs them')
+    if pace == 'fast' and tests:
+        return (f'Checks: fast; {tests} on the test files your diff changes, never the full suite; '
+                'CI is the gate; bin/wuwei build check runs them')
+    return None
+
+
 def mandate(root):
     """Design 5.2: what a seat decides alone, records, or sends to the owner."""
     from wuwei import decision
@@ -405,13 +417,13 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         depth = None
         if role == 'builder' or gate:
             from wuwei import dispatch
-            depth = (dispatch.depth(current, gate=True) if gate else dispatch.tier(
-                root, config, {'flags': {}, **current, 'worktree': str(tree) if tree else None})['tier'])
+            depth = (dispatch.depth(current, gate=True) if gate else dispatch.depth({'gates': dispatch.tier(
+                root, config, {'flags': {}, **current, 'worktree': str(tree) if tree else None})}))
             header.append(depth_line(role, depth, str(tree) if tree else '<worktree>',
                                      [row['path'] for row in changed],
                                      (repo or {}).get('gates', {}).get('trust_paths', []) if tree else []))
         if role == 'builder' and tree and repo:
-            from wuwei import fast_checks  # #520: the builder never improvises an interpreter
+            from wuwei import fast_checks, pace  # #520: the builder never improvises an interpreter
             for command in repo.get('fast_checks', []):
                 found = fast_checks.interpreter(command, tree, repo, root, config)
                 if found and found[1] == 'missing':
@@ -419,6 +431,9 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                                   'the main worktree; report it, do not build one')
                 elif found:
                     header.append(f'Check interpreter: {command} runs with {found[0]} ({found[1]})')
+            line = checks_line(pace.current(data, config), repo.get('tests', ''))
+            if line:
+                header.append(line)
         host = registry.load('code_host', config) if pr else None
         header.append('PR head (no-cache): ' + (json.dumps(read(host.pr, pr, root=root)) if pr else 'not applicable'))
         if gate:

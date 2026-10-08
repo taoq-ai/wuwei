@@ -29,7 +29,7 @@ SILENT = ('item.progress', 'traces.noted', 'remote.acknowledged', 'state.write',
           'telemetry.presented', 'telemetry.off', 'docs.set', 'docs.written', 'docs.exempt',
           'outbound.proposed', 'outbound.learned', 'outbound.thread', 'config.set', 'grant.asked', 'grant.used', 'grant.revoked',
           'tracker.created', 'tracker.skipped', 'tracker.folded', 'tracker.logged', 'plan.set',
-          'cap.derived')
+          'cap.derived', 'pace.set', 'pace.carded')
 
 
 def classify(event, state):

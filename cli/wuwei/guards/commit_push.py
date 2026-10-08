@@ -152,7 +152,8 @@ def fast_evidence(repo, sha, path, root):
     evidence = state.read_state(root).get('fast_checks', {})
     if not isinstance(evidence, dict) or not isinstance(evidence.get(repo['name'], {}), dict):
         raise ValueError(f'malformed fast-check evidence; {DAMAGED}')
-    for check in repo['fast_checks']:
+    from wuwei import fast_checks, workspace  # #579: the evidence the day's pace runs
+    for check in fast_checks.commands(root, workspace.load_config(root), repo, path):
         if not check.strip():
             raise ValueError('empty configured fast check; the owner removes the empty entry with bin/wuwei config set repos.<n>.fast_checks in a host terminal')
         record = evidence.get(repo['name'], {}).get(check)

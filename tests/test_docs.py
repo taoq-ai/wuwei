@@ -23,7 +23,7 @@ TABLE = re.compile(r'^\s*#?\s*\[\[?([\w.]+)\]\]?\s*$')
 GLOSSARY = (('Seat', r'seats?'), ('Gate', r'gates?'), ('Sentinel', r'sentinels?'),
             ('Shepherd', r'shepherds?'), ('Steward', r'stewards?'), ('CAP', r'cap'),
             ('Seats per goal', r'seats per goal'),
-            ('Envelope', r'envelopes?'), ('Tier', r'tiers?'), ('Soak', r'soak'),
+            ('Envelope', r'envelopes?'), ('Tier', r'tiers?'), ('Pace', r'paces?'), ('Soak', r'soak'),
             ('Delta', r'deltas?'), ('Park', r'park(?:s|ed|ing)?'),
             ('Carry', r'carr(?:y|ies|ied|ying)'), ('Nudge', r'nudges?'), ('Page', r'pages?'),
             ('Digest', r'digests?'), ('Unmeasured', r'unmeasured'), ('Mandate', r'mandates?'),
