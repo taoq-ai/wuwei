@@ -56,7 +56,8 @@ NO_REVIEWER = ('PR create requires a named --reviewer in the same command; or '
 
 # #530: the prefix of every PR create refusal; the hook levels it as publish, not owner-only.
 RAISE = 'pr raise: '
-# #530: owner-only until #524 makes merging grantable; listed in design 9.2.
+# #530, #524: a session merge goes through bin/wuwei merge; approval and override stay
+# the owner's (design 9.2, I1 exempt).
 MERGE = ('merge policy', 'admin merge', 'PR approval', 'branch protection',
          'a shepherd seat never merges')
 # #530: canary and honeytoken egress and owner disposition markers are the records floor.
