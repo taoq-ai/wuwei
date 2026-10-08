@@ -49,6 +49,11 @@ Work admitted during the day must fit the remaining build hours.
 Review tier: light (one reviewer agent) or standard and full (three), set per change from its size and risk. The tier also sets the process depth: see [review tiers](#review-tiers).
 Outbound tier: a message sent as you either goes out at once or waits as a draft for your approval.
 
+### Pace
+
+How hard the day pushes: `careful`, `steady` (the default) or `fast`, picked on the morning gate card and changed with `wuwei plan set pace=<p>`.
+Careful lifts light items to standard and keeps one seat free. Fast runs plain standard items at light depth with only the tests the diff changes, and CI is the gate. Guard code runs full at both. No pace moves a floor or changes who decides; `wuwei pace` shows the advice.
+
 ### Soak
 
 The wait after the last push or approval before WUWEI merges by itself (`merge.soak_minutes`, default 30).
@@ -461,6 +466,17 @@ rehearsed once on a scratch target (`wuwei undo rehearse commit`, `wuwei undo re
 decision`); `wuwei next` runs these for you after the morning gate. Until then, and for any
 kind without an undo, the CLI rewrites the record to one-way, says why, and the record comes
 to you as a card. Nothing is refused for it.
+
+## DORA keys
+
+`bin/wuwei dora` prints the four DORA keys over the last 28 days (`--window <days>` changes
+that). Lead time to merge is the median cycle time of the items merged in the window, from
+plan approval to merge. Lead time to deploy adds the hours from each merge to the first
+deployment after it. Deployment frequency counts the code host's deployments, or its
+published releases when a repository never deployed. Change failure rate is the share of
+merged items that a later fix brief names. Time to restore waits for on-call incidents. A
+key without evidence says `unmeasured` and why, never zero. The report, the retro and the
+week digest show the same table.
 
 ## Sessions
 

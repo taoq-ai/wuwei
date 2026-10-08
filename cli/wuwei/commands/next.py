@@ -48,7 +48,8 @@ THEN = {
              "the lead's JSON answer to {days}/lead.json with the Write tool, then run wuwei next."),
     'propose': ("If that file is missing, first save the lead's JSON answer there with the Write "
                 'tool. On exit 1 or 2 show the owner the reason; then run wuwei next.'),
-    'gate': ('Ask the widget list with AskUserQuestion. On Approve run its record command; on Change '
+    'gate': ('Ask the widget list with AskUserQuestion. On any Approve option run its record command with '
+             '<label> replaced by the chosen label (the pace, #579); on Change '
              'something ask the owner what to change, edit {days}/lead.json and run wuwei plan propose '
              '{days}/lead.json again; then run wuwei next.'),
     'goals': ('Under strict the hook refuses and prints the command: show that line to the owner for '

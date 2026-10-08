@@ -407,8 +407,9 @@ def cycles(root):
     """#567: one row per merged item: its tier, the minutes from its plan approve or add to its
     merge, and from its first sentinel launch to its last gate verdict, across days."""
     from wuwei.dispatch import depth
-    starts, launches, received, merged, tiers, sentinels = {}, {}, {}, {}, {}, {}
+    starts, launches, received, merged, tiers, sentinels, paces = {}, {}, {}, {}, {}, {}, {}
     for directory in reversed(watch.days(root)):  # oldest first
+        fresh = set(merged)
         for row in _events(directory) or []:
             kind, payload, ts = row['kind'], row['payload'], datetime.fromisoformat(row['ts'])
             names = (payload.get('items', []) if kind == 'plan.approved'
@@ -427,8 +428,10 @@ def cycles(root):
                     merged.setdefault(name, ts)
         data = _state(directory)
         tiers.update({name: depth(row) for name, row in (data['items'] if data else {}).items()})
+        # #579: the pace of the day the merge was seen; a day without one ran steady
+        paces.update(dict.fromkeys(set(merged) - fresh, (data or {}).get('pace') or 'steady'))
     minutes = lambda start, end: (end - start).total_seconds() / 60
-    return [{'item': name, 'tier': tiers.get(name, 'standard'), 'merged_at': end,
+    return [{'item': name, 'tier': tiers.get(name, 'standard'), 'pace': paces[name], 'merged_at': end,
              'cycle_minutes': minutes(starts[name], end),
              'gate_minutes': (minutes(launches[name], received[name])
                               if name in launches and name in received else UNMEASURED)}
@@ -443,6 +446,96 @@ def cycle_by_tier(rows):
     return {tier: {'median_minutes': median(values), 'items': len(values),
                    **({'target': CYCLE_TARGETS[tier]} if tier in CYCLE_TARGETS else {})}
             for tier, values in sorted(found.items())} or UNMEASURED
+
+
+def by_pace(root):
+    """#579: per pace: days, items merged, cycle minutes per tier, escaped defects (5.6) and
+    cards asked; unmeasured until a day records a pace. A day counts at its final pace."""
+    days = [data for data in map(_state, watch.days(root)) if data and data.get('pace')]
+    if not days:
+        return UNMEASURED
+    rows, (_, escaped) = cycles(root), _escaped(root)
+    result = {}
+    for data in days:
+        row = result.setdefault(data['pace'], {'days': 0, 'merged': 0, 'escaped': 0, 'cards': 0})
+        row['days'] += 1
+        row['cards'] += len(data.get('decision_routes', {}))
+    for pace, row in result.items():
+        mine = [cycle for cycle in rows if cycle['pace'] == pace]
+        row.update(merged=len(mine), escaped=sum(cycle['item'] in escaped for cycle in mine),
+                   cycle_by_tier=cycle_by_tier(mine))
+    return result
+
+
+DORA = (('lead_time_merge_hours', 'Lead time to merge', '{:.1f} hours'),
+        ('lead_time_deploy_hours', 'Lead time to deploy', '{:.1f} hours'),
+        ('deploys_per_week', 'Deployment frequency', '{:.1f} per week'),
+        ('change_failure_rate', 'Change failure rate', '{:.2f}'),
+        ('time_to_restore_hours', 'Time to restore', '{:.1f} hours'))
+DORA_WINDOW = 28  # #586: days, the window of wuwei dora, the report and the retro
+
+
+def week_window(config, monday):
+    """#586: [Monday 00:00, next Monday) in the owner's zone."""
+    since = datetime.combine(monday, time.min, tzinfo=workspace.zone(config) or workspace.now().tzinfo)
+    return since, since + timedelta(days=7)
+
+
+def _deploys(root, config, since):
+    """#586: ({repo: (source, [deploy times])}, reason when none, whether the code host failed)."""
+    if config['adapters']['code_host'] == 'none':
+        return {}, 'code host adapter is none', False
+    if not config['repos']:
+        return {}, 'no repository configured', False
+    host, found = registry.load('code_host', config), {}
+    for repo in config['repos']:
+        result = host.deployments(repo['name'], since.isoformat(), root=root)
+        if result.exit:
+            return {}, f'code host could not run: {result.reason}', True
+        if result.data['source']:
+            found[repo['name']] = (result.data['source'], [datetime.fromisoformat(at) for at in result.data['at']])
+    return found, '' if found else 'the code host reports no deployments or releases', False
+
+
+def dora(root, config, since, until, host=True):
+    """#586: the four keys in DORA order, each {value, source} or {unmeasured, reason}."""
+    rows = [row for row in cycles(root) if since <= row['merged_at'] < until]
+    unmeasured = lambda reason, **extra: {'value': UNMEASURED, 'reason': reason, **extra}
+    result = dict.fromkeys(key for key, _, _ in DORA)
+    if rows:
+        _, escaped = _escaped(root)
+        failures = sum(row['item'] in escaped for row in rows)
+        result['lead_time_merge_hours'] = {'value': median(row['cycle_minutes'] for row in rows) / 60,
+                                           'source': f'cycle_minutes of {len(rows)} merged items (#567)'}
+        result['change_failure_rate'] = {
+            'value': failures / len(rows),
+            'source': f'{failures} of {len(rows)} merged items named by a later fix brief (5.6)'}
+    else:
+        result['lead_time_merge_hours'] = result['change_failure_rate'] = unmeasured('no item merged in the window')
+    deploys, reason, failed = _deploys(root, config, since) if host else ({}, 'read when the week is final', False)
+    if deploys:
+        days = (until - since).total_seconds() / 86400
+        count = sum(since <= at < until for _, times in deploys.values() for at in times)
+        kinds = ' and '.join(sorted({source for source, _ in deploys.values()}))
+        result['deploys_per_week'] = {'value': count * 7 / days, 'source': f'{count} {kinds} in {days:g} days'}
+        prs = {}
+        for directory in watch.days(root):  # newest first: the first pull request found wins
+            for name, item in ((_state(directory) or {}).get('items') or {}).items():
+                if item.get('pr'):
+                    prs.setdefault(name, item['pr'])
+        leads = []
+        for row in rows:
+            for repo, (_, times) in deploys.items():
+                after = [at for at in times if at >= row['merged_at']]
+                if str(prs.get(row['item'], '')).startswith(repo + '#') and after:
+                    leads.append(row['cycle_minutes'] / 60 + (min(after) - row['merged_at']).total_seconds() / 3600)
+        result['lead_time_deploy_hours'] = ({'value': median(leads), 'source': f'{len(leads)} merged items reached a deploy'}
+                                            if leads else unmeasured('no merged item reached a deploy yet'))
+    else:
+        flag = {'failed': True} if failed else {}
+        result['deploys_per_week'] = result['lead_time_deploy_hours'] = unmeasured(reason, **flag)
+    result['time_to_restore_hours'] = unmeasured('no on-call incident signal yet (#415)')
+    return result
 
 
 def cycle_moved(rows, today):
@@ -738,6 +831,7 @@ def collect(root=None, *, day=None):
     event_metrics['cycle_minutes'] = {row['item']: row['cycle_minutes'] for row in rows} or UNMEASURED
     event_metrics['gate_minutes'] = {row['item']: row['gate_minutes'] for row in rows} or UNMEASURED
     event_metrics['cycle_by_tier'] = cycle_by_tier(rows)
+    event_metrics['by_pace'] = by_pace(root)
     event_metrics['brief_drill_score'] = (data.get('brief_drill', UNMEASURED)
                                           if data is not None else UNMEASURED)
     event_metrics['voice_drafts'] = {

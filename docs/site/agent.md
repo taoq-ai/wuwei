@@ -3,7 +3,6 @@
 This page is for a Claude Code session in a WUWEI workspace. Every SessionStart points at `wuwei guide`, which prints the reference below; `init` writes the same text into CLAUDE.md.
 
 ## Roles
-
 Each role has a charter in `charters/<role>.md` (sentinels as `sentinel-<area>.md`).
 
 - `planner`: this session, once it registers with `wuwei plan session`; it runs the day and launches every other seat. `/wuwei:wuwei-plan` and `/wuwei:wuwei-report` re-run the plan or the report.
@@ -46,6 +45,7 @@ wuwei is the absolute path in .wuwei/executable: read it once and use it as the 
 - docs: Write an item's docs page or publish the day's page
 - doctor: Find install, host, workspace and guard problems and their fixes
 - why: Explain from records why an item, decision or refusal happened
+- who: Show a person, channel, connector or login, its edges and its tier
 - state: Read or update day state
 - shadow: Show what shadow mode would have refused
 - heartbeat: Probe that hooks refuse, allow and answer in budget
@@ -53,7 +53,7 @@ wuwei is the absolute path in .wuwei/executable: read it once and use it as the 
 - runtime: Dispatch and inspect runtime jobs
 - sessions: List registered sessions, roles and claims
 - seat: Recover a stuck seat
-Read-only, never refused: board, calibrate --questions, config check, config show, cruise budget, cruise calibration, cruise shadow, doctor, drafts show, grants, guide, heartbeat, integrity check, lint tone, mcp check, memory show, memory status, outbound explain, outbound tiers, plan gate, sessions, shadow report, status, sweep classes, why, and --help on any command.
+Read-only, never refused: board, calibrate --questions, config check, config show, cruise budget, cruise calibration, cruise shadow, doctor, dora, drafts show, grants, guide, heartbeat, integrity check, lint tone, mcp check, memory show, memory status, outbound explain, outbound tiers, pace, plan gate, sessions, shadow report, status, sweep classes, who, why, and --help on any command.
 
 ## Owner only: ask the owner to run these in a host terminal
 config add-repo, config promote, config set, decide, decision outcome, drafts approve, drafts drop, goals edit, grants revoke, integrity reconfirm, listen uninstall, mcp decide, memory forget, outbound learn, plan set, remote ack, setup, state recover, telemetry send, voice edit, watch uninstall.

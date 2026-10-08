@@ -98,6 +98,11 @@ Outcome: pending
         lines.append(f"| {name} | {item['phase']} | {item['status']} | "
                      f"{rounds.get(name, 0) if isinstance(rounds, dict) else 'unmeasured'} |")
     lines += ['', metrics.cycle_moved(metrics.cycles(root), workspace.now())]  # #567
+    from wuwei import decision, report
+    card = data.get('pace_card', {}).get('id')  # #579
+    lines += ['', '## Pace', *report.pace_lines(root, data),
+              *([f'Pace proposal: {card}'] if card and decision.answered(data, card) is None else [])]
+    lines += ['', *report.dora_section(root, workspace.load_config(root))]  # #586
     lines += ['', '## Gate verdicts', '| Record | Verdict |', '| --- | --- |']
     gates = sorted((day / 'decisions').glob('[gG][aA][tT][eE]-*.[mM][dD]'))
     for path in gates:

@@ -483,6 +483,29 @@ line (`wuwei status --line`, which names the running seats by role; `wuwei statu
 resuming or interrupting a seat. Owner questions are the one thing that waits, because
 they wait for the owner.
 
+Pace (owner, 2026-10-08, #579). A day runs at one pace, chosen on the morning gate card and
+recorded in day state (`pace`); `wuwei plan set pace=<p>` changes it during the day for items
+tiered afterwards. The pace sets the inputs that tiers (#280), process depth (#567) and CAP
+(#528) already read; it never adds a second tier or depth table:
+
+| | careful | steady (default) | fast |
+| --- | --- | --- | --- |
+| Tier | light rises to standard; guard code or trust paths run full | the computed tier | the computed tier; guard code or trust paths run full; a standard item with a measured diff, no guard code, trust path, lead flag or FULL track runs at light depth |
+| Fix rounds | follow the depth (#567) | as today | follow the depth: light depth is re-read by the same sentinel |
+| Checks | the fast checks and `repos.tests` before the PR | the fast checks; CI runs the suite | `repos.tests` on the test files the diff changes; CI is the gate |
+| Seats | CAP minus one | CAP | CAP; every launch waits while the load average is at or over the core count |
+| Cards | as the classes say | as the classes say | as the classes say |
+
+`wuwei plan propose` advises the pace from three inputs and names the one that binds: the
+queue (predicted tiers, items whose `paths` touch guard code, expected cycle minutes from the
+#567 medians against the envelope end, the nearest goal date), the host (cores, load average,
+the last `repos.tests` duration) and the token budget (items the budget reaches at that
+pace). When inputs disagree the advice takes the slower pace and says what unlocks the faster
+one; the budget only advises against a pace. The owner's default (`[pace] default`) is shown
+in one line and never overridden. The pace never moves a floor: records, publish grants,
+strict refusals, trust-boundary findings, merge only at the gated head with green required
+checks, decision routing and every 9.2 invariant hold at every pace (I15 to I17).
+
 ### 5.3 Rules
 
 - Tracks. SLICE (default): no contract, boundary, schema or infrastructure change and under
@@ -633,6 +656,20 @@ beside the owner's baseline:
   the targets light under 60 and standard under 180 minutes on the fixture day. The report
   shows them under `## Cycle time`; the retro names the tier whose median moved most week
   over week. A missed target is a reading, never a refusal.
+- per pace (owner, 2026-10-08, #579): `by_pace`, per pace the days, items merged, cycle
+  minutes per tier, escaped defects (the measure above) and cards asked; a day counts at its
+  final pace. The report and the retro show them under `## Pace` and name a pace that costs
+  escaped defects. After ten days at two paces the steward proposes `pace.default` on one
+  config card, at most once per ten days.
+- DORA keys (owner, 2026-10-08, #586): `wuwei dora [--window 28]` prints five rows, each with
+  its source or the reason it is unmeasured. Lead time to merge is the median
+  `cycle_minutes` of items merged in the window; change failure rate is the escaped share
+  of those items (the measure above); deployment frequency and lead time to deploy read the
+  code host's deployments, or its published releases when a repository never deployed;
+  time to restore stays unmeasured until on-call incidents exist (#415). The report and the
+  retro show the table under `## DORA (last 28 days)`, the week digest ends its Metrics with
+  it, and `wuwei dora` exits 2 when the code host could not run. A key is a reading, never a
+  refusal.
 
 The baseline is the owner's hand-run month before WUWEI, recorded once in the workspace at
 `memory/notes/baseline.md` (type `reference`), never in this repository. A metric that
@@ -1212,6 +1249,11 @@ percentiles as in 5.6.
 | `unnecessary_asks` | owner answers equal to the recommendation (5.8) |
 | `owner_actions` | DM commands and owner host actions (Signals) |
 | `escaped_by_tier` | per tier, merged items and escaped ones (#280), over the retained days |
+| `lead_time_merge_hours` | median `cycle_minutes` over 60 of items merged in the week (5.6, #586) |
+| `lead_time_deploy_hours` | median of that plus the hours from merge to the first deploy at or after it, for items whose pull request is in a deploying repository; read from the code host once, when the week is final |
+| `deploys_per_week` | deployments (or published releases) created in the week; read from the code host once, when the week is final |
+| `change_failure_rate` | escaped items (5.6) over items merged in the week |
+| `time_to_restore_hours` | unmeasured until on-call incidents exist (#415) |
 | `aggregation_ms` | the run's wall time |
 
 Proposals. Finalising a week evaluates a fixed list of rules against it; a new rule amends
@@ -1914,6 +1956,9 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I12 | A class or role is uncalibrated only when its Brier score over at least calibration_min scored records is above calibration_threshold; an uncalibrated class runs at most L1, an uncalibrated role only moves a record toward the owner, never through a refusal | `calibration_scores.measure` on 12 high with 5 broken, 10 high stood and 9 high stood; `cruise.level` with and without a stored class; `cisr(..., ambiguous=True)` on a Routine and a Consequential record | #559; too few blocks promotion only |
 | I13 | A shadow never changes a live route | `cruise.level` with and without a stored shadow row, for every class, shadow level and state, cruise on, off and supervised; the full route equality in `tests/test_cruise.py` | #560 |
 | I14 | A raise lands only after a passed shadow | a raise card with no shadow answered `raise` leaves the running levels unchanged | #560; the #558 budget restore is the one raise with no card |
+| I15 | No pace lowers a floor: a tier never drops, depth is light only for a light tier or fast on a measured, unflagged standard item without guard code, and no pace plans more seats than the host fits | `pace.adjust` on every pace, tier, guard, flag and measurement; `pace.seats` on every pace and load | #579 |
+| I16 | No pace changes who decides | `cruise.level` for every class and `decision.route` on a two-way and a one-way record with the day at each pace; `plan set pace=fast` through `protect_state` passes for the planner below strict, never for a seat | #579 |
+| I17 | Fast merges only at green required checks | the merge policy, the PR guard and the launch guard never read the pace; `merge.green` on a pending required check is not green | #579; I3 keeps the gated head |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

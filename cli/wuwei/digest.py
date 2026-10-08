@@ -37,7 +37,7 @@ def _field(name, text):
     return match.group(1).strip() if match else None
 
 
-def build(root, title, dates, config):
+def build(root, title, dates, config, dora=()):
     from wuwei import signal
     from wuwei.consolidation import day_records
     root = Path(root)
@@ -93,6 +93,7 @@ def build(root, title, dates, config):
                 reason = row.get('reason')
                 sections['Lessons'].append(f'{structured}: {reason}' if isinstance(reason, str) and reason
                                            and _clean(reason, config) else structured)
+    sections['Metrics'] += dora  # #586: the week's DORA table
     return title + '\n' + ''.join(f'\n## {name}\n' + ('\n'.join(lines) or 'none') + '\n'
                                   for name, lines in sections.items())
 
@@ -107,7 +108,14 @@ def write(root, day, kind):
     if directory.is_symlink() or directory.parent.is_symlink():
         raise ValueError(f'memory/digests must not be a symlink; {SYMLINK}')
     name, title, dates = period(day, kind)
-    text = build(root, title, dates, config)
+    dora = ()
+    if kind == 'week':
+        from wuwei import metrics, report
+        try:
+            dora = report.dora_lines(metrics.dora(root, config, *metrics.week_window(config, dates[0])))
+        except (OSError, ValueError):  # a digest reads loose day records; the keys need valid ones
+            dora = ['- DORA unmeasured: a day record failed its check; run bin/wuwei doctor']
+    text = build(root, title, dates, config, dora)
     path = directory / f'{name}.md'
     if path.is_symlink():
         raise ValueError(f'digest must not be a symlink: {path.name}')

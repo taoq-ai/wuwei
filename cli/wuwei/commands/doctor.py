@@ -231,7 +231,7 @@ def _workspace(root, config, error, found):
         rows.append(_row('workspace', 'config', 'fail', error, f'edit .wuwei/config.toml: {error}'))
     code, text = _capture(init.upgrade, Namespace(path=str(root), dry_run=True))
     lines = text.splitlines()
-    upgrades = [line for line in lines if line.startswith('Would upgrade')]
+    upgrades = [line for line in lines if line.startswith('Would upgrade') and 'graph.json' not in line]
     charters = [line for line in lines if line.startswith('Charter override needs review')]
     if code:
         rows.append(_row('workspace', 'template', 'unmeasured', f'init --upgrade --dry-run exit {code}',
@@ -350,6 +350,7 @@ def _workspace(root, config, error, found):
                          f"{config['scanner']['mcp']['plugins_file']} is unreadable",
                          f'check scanner.mcp.plugins_file, or run {specmode.INSTALL[engine]}'))
     rows += _outbound(config)
+    rows.append(_register(root, config))
     rows += _calibration(root, config)
     return rows + [_undo(root)]
 
@@ -389,6 +390,24 @@ def _outbound(config):
                      'make the row ask, or remove it', detail=sends) if sends
                 else _row('workspace', 'outbound tiers', 'ok', 'no send row for a client or public audience'))
     return rows
+
+
+def _register(root, config):
+    """#552: the register against its config views; warn at most, it decides nothing (A13)."""
+    from wuwei import graph
+    try:
+        register = graph.load(root)
+    except ValueError as exc:
+        return _row('workspace', 'register', 'warn', str(exc), f'{graph.FIX.replace("bin/wuwei", "wuwei")}')
+    if register is None:
+        return _row('workspace', 'register', 'warn', 'no .wuwei/graph.json', 'wuwei init --upgrade',
+                    apply='init-upgrade')
+    drifted = graph.drift(register, config)
+    if drifted:
+        return _row('workspace', 'register', 'warn', f'config.toml differs from graph.json in {len(drifted)} keys',
+                    'wuwei init --upgrade', apply='init-upgrade', detail=drifted)
+    return _row('workspace', 'register', 'ok',
+                f"{len(register['nodes'])} nodes, {len(register['edges'])} edges; matches config.toml")
 
 
 def _calibration(root, config):

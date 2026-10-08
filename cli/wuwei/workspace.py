@@ -65,6 +65,7 @@ SCHEMA = {
                             **{name: (str, "", ("", *LEVELS)) for name in SURFACES}}},
     "repos": [{"name": (str, None), "path": (str, None),
                "default_branch": (str, None), "fast_checks": [(str, "")],
+               "tests": (str, ""),  # #579: the test runner the pace runs (full suite or touched files)
                "review_required_checks": [(str, None)],
                "merge_deploys": (bool, True), "merge": MERGE_SCHEMA,
                "gates": {"floor": (str, "standard", ("light", "standard", "full")),
@@ -85,6 +86,7 @@ SCHEMA = {
     # #528: 0 derives CAP and host.seats from the measured host; a positive value is the owner's.
     "cap": (int, 0, 0),
     "budget": {"tokens_per_day": (int, 0, 0)},
+    "pace": {"default": (str, "steady", ("careful", "steady", "fast"))},  # #579
     "template_version": (str, ""),
     "calibrate": {"fast_check_seconds": (int, 60, 1)},
     "prioritisation": {"framework": (str, "wsjf", ("wsjf", "rice"))},

@@ -24,7 +24,8 @@ METRICS = ('days', 'tool_calls', 'refusals', 'unmeasured', 'warnings', 'refusal_
            'phase_entries', 'plan_to_merge_hours', 'gate_rounds_per_item', 'fix_rounds_per_item',
            'gate_tiers', 'long_loops', 'stuck_parks', 'decisions', 'decisions_by_class', 'decided_by',
            'reversals', 'owner_wait_hours', 'owner_asks_per_item', 'unnecessary_asks', 'owner_actions',
-           'escaped_by_tier', 'aggregation_ms')
+           'escaped_by_tier', 'lead_time_merge_hours', 'lead_time_deploy_hours', 'deploys_per_week',
+           'change_failure_rate', 'time_to_restore_hours', 'aggregation_ms')
 # Vocabularies as literals; tests/test_telemetry.py pins each to its source in the wuwei package.
 GUARDS = ('agent_launch', 'commit_push', 'decision', 'deploy', 'integrity', 'lifecycle', 'outward', 'pr',
           'protect_state', 'spec', 'stop', 'traces', 'verdict')
@@ -202,6 +203,11 @@ def aggregate(root, config, week, days, start):
     found['unnecessary_asks'] = unnecessary
     found['owner_actions'] = sum(row['kind'].startswith('remote.') or row['kind'] in OWNER_KINDS for _, row in rows)
     found['escaped_by_tier'] = day_metrics._escaped_by_tier(root)
+    # #586: the code host is read once, when the week is final, never on the daily refresh
+    year, number = map(int, week.split('-W'))
+    window = day_metrics.week_window(config, date.fromisocalendar(year, number, 1))
+    found.update({key: row['value'] for key, row in day_metrics.dora(
+        root, config, *window, host=week < current_week(root)).items()})
     found['aggregation_ms'] = round((time.monotonic() - start) * 1000)
     plugin = integrity.version()
     return {'schema': SCHEMA, 'week': week,

@@ -37,8 +37,8 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for yo
 - The heartbeat: probes that prove the system behaves, with a dead-man ping ([heartbeat](docs/site/reference.md#heartbeat)).
 - The path: `bin/wuwei next` returns the exact next action for each step of the day, and Claude walks it ([what the session knows](docs/site/agent.md)).
 - Cruise mode: the CLI answers clear two-way decisions of a class at its level, tells you, and lets you undo for an hour. Reversals spend the class's error budget, and a spent budget lowers the class until the window refills. Agreement raises it on your card. A target the workspace has never touched asks you once, and a class that keeps being more sure than right runs at most L1. A raise runs in shadow first and goes live only on your card ([cruise answers](docs/site/daily.md#cruise-answers), [design spec](docs/specs/2026-09-24-wuwei-design.md) section 5.8.1).
-
-Landing next: one register of people, channels and tools ([#552](https://github.com/taoq-ai/wuwei/issues/552)), a day pace ([#579](https://github.com/taoq-ai/wuwei/issues/579)) and [#586](https://github.com/taoq-ai/wuwei/issues/586).
+- One register of people, channels and tools: `bin/wuwei who` reads it ([people, channels and tools](docs/site/configuration.md#people-channels-and-tools)).
+- The DORA four keys: `bin/wuwei dora` prints lead time, deployment frequency, change failure rate and time to restore, each with its source or the reason it has no reading yet ([DORA keys](docs/site/concepts.md#dora-keys)).
 
 ## How it works
 
