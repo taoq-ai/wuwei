@@ -2,6 +2,7 @@
 
 import importlib
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -187,7 +188,7 @@ def test_push_checks_head_identity(workspace_case, head_field):
 @pytest.mark.parametrize('change,code', [
     ({'updates': [{'source': SHA, 'destination': 'refs/heads/main'}]}, 1),
     ({'updates': [{'source': OLD, 'destination': 'refs/heads/feature'}]}, 1),
-    ({'updates': [{'source': SHA, 'destination': 'refs/tags/v1'}]}, 2),
+    ({'updates': [{'source': SHA, 'destination': 'refs/tags/v1'}]}, 0),  # the deploy guard's release card gates it
     ({'updates': []}, 2), ({'updates': None}, 2), ({'force': True}, 1),
     ({'head': {}}, 2), ({'force': 'false'}, 2),
 ])
@@ -944,3 +945,14 @@ def test_push_into_recorded_worktree_from_root(item_case, command):
     assert guard().check({'cwd': str(root), 'tool_name': 'Bash',
                           'tool_input': {'command': command}}) == (0, '')
     assert ('push_context', (str(tree), 'origin', ['HEAD:refs/heads/div-1']), root) in fake.calls
+
+
+@pytest.mark.parametrize('command,step', [
+    ('git config core.hooksPath x', 'git config --get'),
+    ('GIT_TRACE=1 git commit -m safe', 'remove it from the command')])
+def test_refusal_names_the_seat_step_not_the_owner(workspace_case, command, step):
+    # #530: the seat has a path, so the reason never sends it to the owner outside the session.
+    root, _ = workspace_case
+    code, reason = guard().check(payload(root, command))
+    assert code in (1, 2) and step in reason, reason
+    assert not re.search(r'host terminal|ask the owner|only the owner|by hand', reason), reason

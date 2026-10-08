@@ -367,6 +367,19 @@ def _lead_time(root, config, items, prs):
 
 def _escaped_by_tier(root):
     """Merged items per computed tier, and how many a later builder brief names."""
+    merged, escaped = _escaped(root)
+    if not merged:
+        return UNMEASURED
+    result = {}
+    for name, computed in merged.items():
+        row = result.setdefault(computed, {'merged': 0, 'escaped': 0})
+        row['merged'] += 1
+        row['escaped'] += name in escaped
+    return result
+
+
+def _escaped(root):
+    """Design 5.6: merged items {name: computed tier} and those a later builder brief names."""
     merged, briefs = {}, []
     for directory in watch.days(root):
         data = _state(directory)
@@ -375,10 +388,8 @@ def _escaped_by_tier(root):
                 merged.setdefault(name, row['gates']['computed'])
         briefs += [row['payload'] for row in _events(directory) or []
                    if row['kind'] == 'brief written' and row['payload'].get('role') == 'builder']
-    if not merged:
-        return UNMEASURED
     escaped = set()
-    for payload in briefs:
+    for payload in briefs if merged else ():
         path = root / payload['path']
         # ponytail: an archived or missing brief is not read; its fix goes uncounted.
         if payload.get('item') not in merged or not path.is_file():
@@ -386,12 +397,7 @@ def _escaped_by_tier(root):
         text = path.read_text(encoding='utf-8')
         escaped |= {name for name in merged if name != payload['item']
                     and re.search(r'(?<![\w-])' + re.escape(name) + r'(?![\w-])', text)}
-    result = {}
-    for name, computed in merged.items():
-        row = result.setdefault(computed, {'merged': 0, 'escaped': 0})
-        row['merged'] += 1
-        row['escaped'] += name in escaped
-    return result
+    return merged, escaped
 
 
 def _events(day):

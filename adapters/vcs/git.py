@@ -75,7 +75,7 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
         case ('symbolic-ref', '--quiet', '--short', 'HEAD' | 'refs/remotes/origin/HEAD'):
             allowed = True
         case ('check-ref-format', ref):
-            allowed = isinstance(ref, str) and ref.startswith('refs/heads/')
+            allowed = isinstance(ref, str) and ref.startswith(('refs/heads/', 'refs/tags/'))
         case ('config', '-z', '--get-regexp', pattern):
             remote = re.fullmatch(r'\^\(push\\\.followtags\|remote\\\.(.+)\\\.\(mirror\|push\)\)\$', pattern)
             allowed = bool(remote) and pattern == _push_settings(remote[1].replace('\\.', '.'))
@@ -101,7 +101,7 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
             allowed = True
         case ('rev-parse', '--verify', '--quiet', rev):
             allowed = isinstance(rev, str) and (bool(re.fullmatch(r'[0-9a-fA-F]{7,64}\^\{commit\}', rev))
-                    or rev.startswith('refs/remotes/') and rev.endswith('^{commit}'))
+                    or rev.startswith(('refs/remotes/', 'refs/tags/')) and rev.endswith('^{commit}'))
         case ('merge-base', 'HEAD', rev):
             allowed = bool(_revision(rev))
         case ('status', '--porcelain=v1', '-z', '--untracked-files=all'):
@@ -535,16 +535,20 @@ def push_context(repo, remote, refspecs, root=None):
         if ref.startswith('+'):
             force, ref = True, ref[1:]
         source, sep, destination = ref.partition(':')
-        if source not in ('HEAD', branch, 'refs/heads/' + branch):
-            raise ValueError('only current HEAD branch pushes are supported')
-        if not sep:
+        tag = source.startswith('refs/tags/') and not sep  # #530: a tag push is measured, then gated
+        if source not in ('HEAD', branch, 'refs/heads/' + branch) and not tag:
+            raise ValueError('only current HEAD branch pushes or refs/tags/<tag> pushes are supported')
+        if tag:
+            destination = source
+        elif not sep:
             if configured or source == 'HEAD':
                 raise ValueError('use an explicit HEAD:refs/heads/branch refspec')
             destination = 'refs/heads/' + branch
         _used(checked[destination]) if destination in checked else read('check-ref-format', destination)
-        if not destination.startswith('refs/heads/') or destination == 'refs/heads/':
-            raise ValueError('only branch pushes are supported')
-        updates.append({'source': head_data['sha'], 'destination': destination})
+        if not destination.startswith(('refs/heads/', 'refs/tags/')) or destination in ('refs/heads/', 'refs/tags/'):
+            raise ValueError('only branch or tag pushes are supported')
+        sha = read('rev-parse', '--verify', '--quiet', source + '^{commit}').strip() if tag else head_data['sha']
+        updates.append({'source': sha, 'destination': destination})
     return {'head': head_data, 'updates': updates, 'force': force, 'remote': remote}
 
 

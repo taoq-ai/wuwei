@@ -251,7 +251,7 @@ def posture(payload, refusals, root):
     guard.would_refuse and lets the call through, block enforces it with its posture line.
     Returns (guard, reason, line, exit); the config is read only because a guard refused."""
     from wuwei import state, workspace
-    from wuwei.guards import NO_REVIEWER, RAISE, level
+    from wuwei.guards import MERGE, NO_REVIEWER, RAISE, RECORDS_FLOOR, level
     try:
         if root is None:
             raise LookupError('no workspace; run bin/wuwei init')
@@ -276,6 +276,11 @@ def posture(payload, refusals, root):
             return ''
     for check, reason, code in refusals:
         guard, area, decided, line = level(check, levels)
+        if reason.startswith(RECORDS_FLOOR):
+            line = 'posture: records = block (floor; no setting lowers it)'
+        elif line.endswith('(owner-only action; no setting lowers it)') and name != 'strict' \
+                and not reason.startswith(MERGE):
+            line = ''  # #530: below strict an owner-only refusal names its card or its fix
         if guard == 'pr' and (reason == NO_REVIEWER or reason.startswith(RAISE)):
             # #530: raising a PR is gated by evidence under the publish area, never owner-only.
             decided, line = levels['publish'], f'posture: publish = {levels["publish"]} (set security.areas.publish)'

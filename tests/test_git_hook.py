@@ -36,7 +36,7 @@ def invoke(case, monkeypatch, event, updates=''):
     ('pre-push', False, f'refs/heads/feature {SHA} refs/heads/main {OLD}\n', 1),
     ('pre-push', False, f'refs/heads/feature {OLD} refs/heads/feature {OLD}\n', 1),
     ('pre-push', False, f'refs/heads/feature {SHA} refs/heads/feature {"0"*40}\n', 0),
-    ('pre-push', False, f'refs/heads/feature {SHA} refs/tags/v1 {OLD}\n', 2),
+    ('pre-push', False, f'refs/heads/feature {SHA} refs/tags/v1 {OLD}\n', 0),
     ('pre-push', False, '(delete) ' + '0'*40 + f' refs/heads/feature {OLD}\n', 1),
     ('pre-push', False, '', 2), ('pre-push', False, 'malformed\n', 2),
 ])
@@ -84,6 +84,23 @@ def test_native_push_missing_evidence_refuses_only_under_strict(workspace_case, 
     assert 'fast check "unit" has not passed' in err and ('warning' in err) is (code == 0)
     updates = f'refs/heads/feature {SHA} refs/heads/main {OLD}\n'
     assert invoke(workspace_case, monkeypatch, 'pre-push', updates) == 1
+
+
+@pytest.mark.parametrize('posture,granted,code', [
+    ('observe', False, 0), ('guarded', False, 0), ('strict', False, 1),
+    ('observe', True, 0), ('guarded', True, 0), ('strict', True, 1)])
+def test_native_tag_push_is_refused_only_under_strict(workspace_case, monkeypatch, capsys,
+                                                                    posture, granted, code):
+    # #530: a tag push is a release; below strict the deploy guard's release card gates it.
+    root, _ = workspace_case
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(f'[security]\nposture = "{posture}"\n')
+        if granted:
+            stream.write('[grants]\nstanding = [{action = "release", target = "repo:example/project", '
+                         'scope = "always", decision = "D-9", date = "2026-09-28"}]\n')
+    updates = f'refs/tags/v1 {OLD} refs/tags/v1 {"0"*40}\n'
+    assert invoke(workspace_case, monkeypatch, 'pre-push', updates) == code
+    assert code == 0 or 'release' in capsys.readouterr().err
 
 
 def test_native_push_reads_head_without_inventing_a_destination(workspace_case, monkeypatch):

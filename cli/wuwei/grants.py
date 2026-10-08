@@ -51,7 +51,8 @@ def target(root, config, cwd, repo):
     return f'repo:{repo}' if isinstance(repo, str) and re.fullmatch(REPO, repo) else None
 
 
-def _record(question, context, rows, criterion, recommendation, reasoning, blast, premortem):
+def _record(question, context, rows, criterion, recommendation, reasoning, blast, premortem,
+            revisit='Revoke a standing grant with bin/wuwei grants revoke.'):
     """A decision record from (id, title, rationale, consequence, score) rows."""
     ids, cells = ' | '.join(row[0] for row in rows), ' --- |' * len(rows)
     return f'''Question: {question}
@@ -74,7 +75,7 @@ Confidence: medium
 Reversibility: one-way
 Blast radius: {blast}
 Pre-mortem: {premortem}
-Revisit: Revoke a standing grant with bin/wuwei grants revoke.
+Revisit: {revisit}
 Decided-by: owner
 Outcome: pending
 '''
@@ -134,8 +135,7 @@ def gate(payload, root, config, argv, rule, repo, moved=False):
         return 1, missing
     if found is None:
         return 1, (f'publish: {command} {tail}; name the repository with -R <org>/<repo> or run it from '
-                   'a configured repository so the owner can decide on a card, or the owner runs it '
-                   'in a host terminal')
+                   'a configured repository so the owner can decide on a card')
     head = f'publish: {command} on {found[5:]} {tail}'
     from wuwei import novelty
     novel = (novelty.novel(root, config, [found])

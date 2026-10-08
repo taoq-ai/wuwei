@@ -88,7 +88,8 @@ def test_config_check_prints_posture(checked, capsys):
     assert '  mcp: off (security.areas)\n' in out.out
     assert '  records: block (floor)\n' in out.out
     assert '  seats: warn\n' in out.out
-    assert 'owner-only actions block in every posture' in out.out
+    assert 'owner-only actions ask on a card below strict' in out.out  # #530
+    assert 'block in every posture' not in out.out
     assert 'deprecated' not in out.out
     code, out = checked('[security]\nposture = "guarded"\n[guards]\nmode = "shadow"\n', capsys)
     assert code == plain
@@ -228,8 +229,7 @@ def test_one_reason_most_specific(guarded, monkeypatch, capsys):
 def test_one_reason_integrity_last(guarded, monkeypatch, capsys):
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[
         fixed('integrity', 2, 'integrity gate'), fixed('deploy', 2, 'deploy generic')])
-    assert out.err.splitlines() == [
-        'deploy generic', 'posture: publish = block (owner-only action; no setting lowers it)']
+    assert out.err.splitlines() == ['deploy generic']  # #530: no owner-only line below strict
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[fixed('integrity', 2, 'integrity gate')])
     assert out.err.splitlines()[0] == 'integrity gate'
 
@@ -248,8 +248,7 @@ def test_one_reason_observe_keeps_floor(guarded, monkeypatch, capsys):
     (guarded / '.wuwei/config.toml').write_text('[security]\nposture = "observe"\n')
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[
         fixed('commit_push', 1, 'commit_push specific'), fixed('deploy', 2, 'deploy generic')])
-    assert code == 2 and out.err.splitlines() == [
-        'deploy generic', 'posture: publish = block (owner-only action; no setting lowers it)']
+    assert code == 2 and out.err.splitlines() == ['deploy generic']
     [event] = events(guarded, 'guard.would_refuse')
     assert event['reason'] == 'commit_push specific'
 
@@ -321,3 +320,36 @@ def test_pr_raise_refusals_follow_publish(guarded, monkeypatch, capsys, posture)
     code, out = hook_call(guarded, monkeypatch, capsys, guards=[fixed('commit_push', 1, card)])
     if posture != 'observe':
         assert out.err == card + '\n'
+
+
+def test_owner_only_line_below_strict(tmp_path):
+    # #530: below strict an owner-only refusal names its card or its fix, so the hook drops the
+    # owner-only line, except the #524 merge family; the records floor is labelled in every posture.
+    from wuwei.commands import hook
+    (tmp_path / '.wuwei').mkdir()
+    merge = 'merge policy requires an explicit PR; use wuwei merge <pr>'
+    owner = 'posture: publish = block (owner-only action; no setting lowers it)'
+    records = 'posture: records = block (floor; no setting lowers it)'
+    canary = fixed('outward', 1, 'outward: security.canary')
+    canary.__name__ = 'check_tier'
+    marker = ('owner disposition markers must be posted by the owner; '
+              'ask the owner to post the marker comment')
+    rows = [(fixed('deploy', 1, 'deploy generic'), 'deploy generic', 1),
+            (fixed('pr', 1, 'other'), 'other', 1), (fixed('pr', 1, merge), merge, 1),
+            (canary, 'outward: security.canary', 1), (fixed('pr', 1, marker), marker, 1)]
+    for posture in ('observe', 'guarded', 'strict'):
+        (tmp_path / '.wuwei/config.toml').write_text(f'[security]\nposture = "{posture}"\n')
+        below = '' if posture != 'strict' else owner
+        assert hook.posture({}, rows, tmp_path) == [
+            ('deploy', 'deploy generic', below, 1), ('pr', 'other', below, 1),
+            ('pr', merge, owner, 1), ('outward', 'outward: security.canary', records, 1),
+            ('pr', marker, records, 1)]
+
+
+def test_orientation_says_owner_only_asks_below_strict():
+    # #530: no orientation text says owner-only actions refuse with no way through below strict.
+    from wuwei import guide
+    from wuwei.commands.next import POSTURES
+    for text in (POSTURES['observe'], POSTURES['guarded'], guide.text()):
+        assert 'on a card' in text and 'merges and approvals stay owner-only' in text, text
+        assert 'owner-only commands are refused in every posture' not in text

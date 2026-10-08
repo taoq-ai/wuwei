@@ -112,15 +112,23 @@ def push_check(repo, actual, push, root, vcs):
         raise ValueError(f'push destinations are unmeasured; run git push origin HEAD:refs/heads/{branch}')
     if not repo['default_branch'].strip():
         raise ValueError('missing default branch; the owner sets repos.<n>.default_branch with bin/wuwei config set in a host terminal')
+    config = workspace.load_config(root)
     for update in updates:
         destination = update['destination']
+        if isinstance(destination, str) and destination.startswith('refs/tags/'):
+            # #530: a tag is a release. Below strict the deploy guard's release card and grants
+            # (once, today, always) are the gate; strict refuses it from the session.
+            if workspace.posture(config)[0] != 'strict':
+                continue
+            return 1, (f'tag push {destination} is a release; posture strict refuses it from the session; '
+                       f'run git push origin HEAD:refs/heads/{branch} without the tag')
         if not isinstance(destination, str) or not destination.startswith('refs/heads/'):
-            raise ValueError(f'only branch pushes are supported; tags require deployment policy; run git push origin HEAD:refs/heads/{branch} and leave tagging to the owner')
+            raise ValueError(f'only branch and tag pushes are supported; run git push origin HEAD:refs/heads/{branch}')
         if destination == 'refs/heads/' + repo['default_branch']:
             return 1, (f'push to the default branch {repo["default_branch"]} is refused; run git push '
                        f'origin HEAD:refs/heads/{branch} for the item branch instead')
         if any(fnmatchcase(destination.removeprefix('refs/heads/'), pattern)
-               for pattern in workspace.load_config(root)['environments']):
+               for pattern in config['environments']):
             return 1, f'push to an environment branch is refused; deploying is an owner action, so run git push origin HEAD:refs/heads/{branch} for the item branch'
         if update['source'] != sha:
             return 1, 'push must use the checked current HEAD; run git push <remote> HEAD:<branch> from the item worktree'
@@ -408,7 +416,7 @@ def check(payload):
                 protected |= section_change and any(arg.lower() in ('core', 'extensions') for arg in args)
                 if protected and action not in (
                         '--get', '--get-all', '--get-regexp', '--list', '-l', 'get', 'list'):
-                    return 1, 'changing Git hook configuration is refused; use git config --get to read them; only the owner changes them, by hand'
+                    return 1, "changing Git hook configuration is refused; read it with git config --get; WUWEI's hooks stay as bin/wuwei worktree add set them"
                 if len(commands) > 1:
                     raise ValueError('run configuration changes separately')
             overrides = settings or any(key in IDENTITY_ENV or key.startswith('GIT_CONFIG')
@@ -421,7 +429,7 @@ def check(payload):
                 raise ValueError('unsupported Git configuration or executable environment override; remove the override and run git with the normal environment')
             allowed_env = IDENTITY_ENV | REPO_ENV | {'GIT_EDITOR', 'GIT_PAGER'}
             if any(key.startswith('GIT_') and key not in allowed_env for key in env):
-                raise ValueError('unsupported GIT_* override; remove it from the command; if it is truly needed, ask the owner')
+                raise ValueError('unsupported GIT_* override; remove it from the command')
             try:
                 early, remote, refs = push_options(args) if verb == 'push' else ((1, ''), None, [])
             except ValueError:

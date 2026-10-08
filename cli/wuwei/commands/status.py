@@ -214,6 +214,14 @@ def scan(directory, classified_state=None):
                     f'confirm with wuwei decide {identifier} {option}')
             current[('decision.pending', identifier)] = {
                 'tier': 'nudge', 'source': source, 'lane': 'Decisions', 'reason': reason}
+    for identifier, row in classified_state.get('decision_outcomes', {}).items():
+        if isinstance(row, dict) and row.get('undo_until'):  # #283: an open undo window
+            from wuwei import cruise
+            if cruise.window(row, datetime.fromisoformat(classified_state['now'])):
+                current[('decision.cruise', identifier)] = {
+                    'tier': 'nudge', 'source': 'decision.cruise', 'lane': 'Decisions',
+                    'reason': f'{identifier} taken as {row["option"]} by {row["rule"]}, '
+                              f'undo until {cruise.clock(row["undo_until"])}'}
     planner = classified_state.get('planner_session_id')
     if planner and planner in classified_state.get('sessions', {}):
         from wuwei import sessions  # Here and in snapshot: only a day with sessions pays for it.
@@ -233,7 +241,7 @@ def scan(directory, classified_state=None):
             if days >= guards['shadow_days']:
                 current[('guards.shadow',)] = {'tier': 'nudge', 'source': 'guards.shadow', 'lane': 'Work',
                                                'reason': SHADOW_NUDGE.format(days=days)}
-    rows = sorted(current.values(), key=lambda row: row['source'] != 'pr.changed')
+    rows = sorted(current.values(), key=lambda row: (row['source'] != 'decision.cruise', row['source'] != 'pr.changed'))
     return rows, health['watch'], health['listen'], beat_health, loops
 
 
@@ -275,6 +283,9 @@ def snapshot(directory):
     config_path = directory.parents[1] / 'config.toml'
     config = workspace.load_config(directory.parents[2]) if config_path.is_file() else None
     result['posture'] = workspace.posture(config)[0] if config is not None else None
+    if config is not None:  # #283: the cruise level; a damaged cruise.json is unmeasured
+        from wuwei import cruise
+        result['cruise'] = cruise.label(config, cruise.running(directory.parents[2]))
     from wuwei import integrity
     result['restart'] = integrity.restart(config) if config is not None else ''
     if result['listen'] == 'off' and (config is None or config['adapters']['inbound'] == 'none'):
@@ -358,5 +369,7 @@ def line(data):
         parts.append(f'phone answers {len(data["answered"])}')
     if data['next_reply_due']:
         parts.append(f'reply {data["next_reply_due"]}')
+    if data.get('cruise'):
+        parts.append(data['cruise'])
     parts.append(f'meeting {data["next_meeting"] or "unmeasured"}')
     return ' | '.join(parts)

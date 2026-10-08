@@ -170,7 +170,7 @@ Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse 
 
 `security.posture` sets what warns and what blocks per area: `observe`, `guarded` (the default) or `strict`, with per-area overrides under `[security.areas]`. A `warn` level still runs the guard, records the refusal as a `guard.would_refuse` event and lets the call through. Every enforced refusal ends with a `posture:` line naming the area, its level and the key that changes it. See [security posture](security.md#security-posture) for the table.
 
-`observe` is the old shadow mode (`guards.mode = "shadow"` still means it). Use it for the first week on a project, to see what the guards would stop in your own habits before they stop anything. Some refusals never relax, in any posture: writes to state, events, config and generated instructions, verdicts and decisions (`records`), and owner-only actions: the deployment ban, the merge policy, approvals and owner markers, and approve-tier messages and canary or honeytoken egress. Relaxing those would corrupt the records the report is built from or let a seat act as you. The heartbeat probe session is never relaxed either.
+`observe` is the old shadow mode (`guards.mode = "shadow"` still means it). Use it for the first week on a project, to see what the guards would stop in your own habits before they stop anything. Records never relax, in any posture: writes to state, events, config and generated instructions, verdicts and decisions (`records`), owner disposition markers, and canary or honeytoken egress. Relaxing those would corrupt the records the report is built from or let a seat act as you. Below `strict` an owner-only action asks you on a card instead: a deploy, release or publish, and a message that waits for your approval. The merge policy and approvals stay yours. The heartbeat probe session is never relaxed either.
 
 `bin/wuwei shadow report` and the day report group the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows the posture when it is not `guarded`, each `observe` session starts with a line saying so, and after `guards.shadow_days` one nudge asks you to switch to `guarded` or extend. Under `guarded` or `strict` a warning is a nudge, one per guard per day.
 
@@ -378,16 +378,20 @@ question card shows the titles, the recommended one first, each with its rationa
 consequence and lens lines, and ends the question with the reasoning. `wuwei decision
 template` prints a valid record.
 
-Cruise mode is designed in
-[design spec 5.8.1](https://github.com/taoq-ai/wuwei/blob/main/docs/specs/2026-09-24-wuwei-design.md)
-and not built: decisions would carry a class, and the CLI would answer some classes itself
-at levels L0 to L3. Today every owner decision comes to you.
+Cruise mode ([design spec 5.8.1](https://github.com/taoq-ai/wuwei/blob/main/docs/specs/2026-09-24-wuwei-design.md))
+runs each class at a level from L0 to L3. When `decision route` takes a record under the
+mandate and its class runs at L2 or L3, the record is two-way, inside its own branch, PR or
+the workspace, its margin reaches `decisions.cruise.margin` and the daily budget allows,
+it is a cruise answer: `Decided-by: cruise <class>@L<n>`. At L2 you get a nudge and can undo
+it for `decisions.cruise.undo_minutes`; at L3 it is in the digest. Levels move only through
+the CLI: down on an undo, a reversal, an escaped defect or three thin margins in a row, up
+when you answer a raise card ([cruise answers](daily.md#cruise-answers)).
 
 Every seat prompt ends with a mandate block built from those class levels
 (`decisions.cruise.levels`, the 5.8.1 defaults otherwise), the interview's trust-surface
 line and `deploy.deny`: what the seat decides alone, what it decides and records, and what
 comes to you, closing with "Nothing else is a question." The levels only shape this
-text; cruise answering is not built. Assume and record: a two-way
+text and pick which taken records are cruise answers. Assume and record: a two-way
 open question inside the item is not asked; the seat takes its recommendation and records
 it under `Assumptions:` in the spec or PR body, and gates review it as an `Assumption:`
 finding. A seat that stops on a question to you without a valid decision id is

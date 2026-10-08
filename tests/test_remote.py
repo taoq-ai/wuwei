@@ -976,3 +976,44 @@ def test_more_that_the_lint_refuses_points_to_the_host(ws):
     routed(ws, VALID.replace('Pre-mortem: Regression returns.', 'Pre-mortem: Robin rejects it.'))
     assert remote().escalate_new(ws, (t := Transport())) == 0 and 'Robin' not in t.sent[0]
     assert handled(ws, 'more D-1') == (0, ['The full record of D-1 is on the host.'])
+
+
+def cruise_answer(root):
+    """#283: D-1 taken at 12:00 as a cruise answer of class retry, undo until 13:00."""
+    from test_decision_classes import record
+    from wuwei.commands.decision import decide
+    from types import SimpleNamespace
+    path = workspace.day_dir(root) / 'decisions/D-1.md'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(record(cls='retry'))
+    assert decide(SimpleNamespace(id='D-1', external=None)) == (0, 'mandate')
+    return path
+
+
+def test_listen_sends_each_cruise_answer_once(ws, monkeypatch):
+    from wuwei import listen
+    cruise_answer(ws)
+    transport = Transport()
+    monkeypatch.setattr(remote(), 'TRANSPORT', transport)
+    assert listen.notify(ws, workspace.load_config(ws), []) == 0
+    assert listen.notify(ws, workspace.load_config(ws), []) == 0
+    assert transport.sent == ['D-1 taken as A by cruise retry@L2. Reply undo D-1 by 13:00 to ask again.']
+    assert payloads(ws, 'decision.notified') == [{'id': 'D-1'}]
+
+
+def test_owner_dm_undo_runs_the_undo(ws):
+    path = cruise_answer(ws)
+    assert remote().parse('undo d-1') == ('undo', 'D-1')
+    assert handled(ws, 'undo D-1') == (0, [remote().UNDONE.format(identifier='D-1')])
+    assert 'D-1' not in state.read_state(ws).get('decision_outcomes', {})
+    assert ' in the owner DM.' in path.read_text()
+    assert handled(ws, 'undo D-1', ident='D1/1.000002')[0] == 1
+
+
+def test_undo_lines_pass_the_outward_lint(ws):
+    from wuwei import outward
+    config = workspace.load_config(ws)
+    for text in (remote().UNDONE.format(identifier='D-1'), remote().VOCABULARY,
+                 'D-1 taken as A by cruise retry@L2. Reply undo D-1 by 13:00 to ask again.',
+                 'D-1 has no undo window; reverse it with wuwei decide D-1 <option>'):
+        assert outward.lint(text, 'D1', config) == (0, ''), text

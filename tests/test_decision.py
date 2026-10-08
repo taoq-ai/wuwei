@@ -945,7 +945,7 @@ def test_lint_reports_style_without_rejecting(ws):
 ])
 def test_class_levels(config, expected):
     from wuwei import decision
-    settings = {'decisions': {'cruise': {'enabled': True, 'levels': config}}}
+    settings = {'decisions': {'cruise': {'enabled': True, 'levels': config}}, 'autonomy': {'mode': 'autonomous'}}
     assert {name: decision.level(settings, name) for name in expected} == expected
     settings['decisions']['cruise']['enabled'] = False
     assert {decision.level(settings, name) for name in decision.CLASSES} == {0}

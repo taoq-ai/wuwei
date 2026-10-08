@@ -52,9 +52,13 @@ satisfy a principle; Principle V wins a tie.
 ### VII. Security first
 
 Least privilege for agent tools. Guards refuse at the moment of action. Secrets, phone
-numbers and message bodies never land in traces, logs or memory unredacted. A merge happens
-only through the merge policy, never by approval or override; nothing deploys without the
-owner's recorded grant (design spec 4.6 and 4.7; amended 2026-10-04, #478).
+numbers and message bodies never land in traces, logs or memory unredacted. Autonomy (owner,
+2026-10-05, #530): under `observe` and `guarded` a guard is a warning or a card, never a
+wall, with one floor: records are written by the workflow and answered by the owner. A
+refusal that names the plain form the seat runs itself is coaching, not a wall. Under
+`strict`, refusals stay. A merge happens only through the merge policy, never by approval or
+override; an owner-only action runs only on the owner's recorded answer (design spec 4.6,
+4.7 and 9.2).
 
 ## Constraints
 
@@ -96,10 +100,12 @@ owner's recorded grant (design spec 4.6 and 4.7; amended 2026-10-04, #478).
   the parent (recorded under Deferred in the feature's spec until it is filed), never
   silent scope; decisions, verdicts and the pull request link are recorded on the issue or
   its pull request.
+- Any item that adds or changes a guard or decision rule adds its invariant to the design
+  spec 9.2 table and to `tests/test_invariants.py`, or the review refuses it (#530).
 
 ## Governance
 
 Amendments are commits to this file with a dated line in the commit message. The design spec
 is amended only by its owner.
 
-**Version**: 1.4.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-04
+**Version**: 1.5.0 | **Ratified**: 2026-09-28 | **Last Amended**: 2026-10-05

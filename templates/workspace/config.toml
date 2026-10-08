@@ -269,10 +269,15 @@ loop_threshold = 9
 
 [decisions]
 wait_hours = 24 # Weekday hours an external confirmation waits before the sweep acts.
-# The levels feed the seat mandate; cruise answering (design 5.8.1) is not built.
+# Cruise mode (design 5.8.1): the CLI answers clear two-way records of a class at L2 or L3.
 # [decisions.cruise]
-# enabled = true
-# levels = { approach = 2 }
+# enabled = true # false runs every class at L0
+# margin = 0.2 # least margin of a cruise answer
+# max_per_day = 20 # cruise answers a day
+# undo_minutes = 60 # undo window of an L2 answer
+# promote_agreements = 10 # agreements before a raise card
+# promote_days = 14 # days the agreements are counted over
+# levels = { approach = 2 } # caps a class level
 
 [pr]
 poll_seconds = 120
