@@ -31,7 +31,7 @@ GLOSSARY = (('Seat', r'seats?'), ('Gate', r'gates?'), ('Sentinel', r'sentinels?'
             ('Humanizer', r'humanizer'), ('Spec engine', r'spec engines?'), ('Strict mode', r'strict mode'),
             ('Docs system', r'docs systems?'), ('Docs obligation', r'docs obligations?'),
             ('Ticket', r'tickets?'), ('Tracker hygiene', r'tracker hygiene'), ('Fold', r'fold(?:s|ed)?'),
-            ('Lens', r'lens(?:es)?'))
+            ('Adopted', r'adopted'), ('Lens', r'lens(?:es)?'))
 
 
 def _prose(text):
@@ -415,7 +415,7 @@ def test_shepherd_settings_are_visible_in_template_and_site():
     assert settings['reviewers'] == settings['reviewers_exclude'] == []
     assert '`repos.shepherd.reviewers`' in page and '`[repos.shepherd]`' in page
     assert '# [repos.shepherd]' in template
-    assert settings['autostart'] is False
+    assert settings['autostart'] is True
     row = next(line for line in page.splitlines() if line.startswith('| `shepherd.min_reviewers`'))
     assert '`0`' in row.split('|')[3]
 
@@ -1277,3 +1277,13 @@ def test_thread_reply_docs():
     assert 'topic = "thread"' in (SITE / 'concepts.md').read_text()
     assert '--thread <file>' in (SITE / 'security.md').read_text()
     assert '`thread`' in (SITE / 'configuration.md').read_text().split('| `outbound.tiers` |', 1)[1].split('\n', 1)[0]
+
+
+def test_gradual_adoption_is_documented():
+    daily = (SITE / 'daily.md').read_text()
+    section = daily.split('## Starting with work in progress', 1)[1].split('\n## ', 1)[0]
+    for phrase in ('pr claim', 'worktree adopt', 'worktree add <item> --branch'):
+        assert phrase in section
+    assert '### Adopted' in (SITE / 'concepts.md').read_text()
+    reference = (SITE / 'reference.md').read_text()
+    assert 'worktree adopt' in reference and '--branch' in reference

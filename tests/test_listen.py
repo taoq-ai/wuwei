@@ -706,6 +706,7 @@ def test_failed_full_read_forgets_the_tags(prs, monkeypatch):
 def test_new_review_comment_reaches_wake_and_nudges_in_one_tick(prs, monkeypatch):
     from wuwei.commands import status
     root, host = prs
+    config(root, PR_CONFIG + '[shepherd]\nautostart = false\n')
     tags = {}
     listen().tick(root, tags)
     assert main(['plan', 'session', 'planner']) == 0
@@ -759,6 +760,7 @@ def test_full_nudges_name_the_changed_fields(owner_dm, monkeypatch):
 
 def test_dm_says_autostart_is_off_for_a_mechanical_action(owner_dm, monkeypatch):
     root, host = owner_dm
+    config(root, PR_CONFIG + '[shepherd]\nautostart = false\n')
     change(host, monkeypatch, mergeable=False)
     assert listen().tick(root, {}) == 0
     assert host.chat.sent == [f'PR {REF}: conflicts with its base. Shepherd autostart is off; nothing started.']
@@ -948,6 +950,19 @@ def test_headless_shepherd_runs_one_logged_seat(seat):
     assert f'PR {REF}: shepherd conflicted: turn ended (exit 0, session {SID[:8]})' in watch.wake(root)
 
 
+def test_headless_shepherd_without_a_worktree_runs_in_the_workspace(seat):
+    from wuwei import shepherd
+    root, host, runtime = seat
+    state._write_state(lambda data: data['items']['A'].pop('worktree'), root, reserved=False)
+    seen = []
+    dispatch = runtime.dispatch
+    runtime.dispatch = lambda role, brief_path, worktree, write, root=None: (
+        seen.append(worktree) or dispatch(role, brief_path, worktree, write, root=root))
+    (ref, episode), = shepherd.pending(root)
+    assert shepherd.headless(root, ref, episode, runtime=runtime) == 0
+    assert seen == [str(root)]
+
+
 def test_headless_question_without_record_is_flagged(seat):
     from wuwei import shepherd
     root, host, _ = seat
@@ -1007,7 +1022,7 @@ def test_listener_dispatches_once_and_the_planner_sees_it(seat, monkeypatch):
     assert code == 1 and f'PR {REF}: shepherd conflicted: turn ended' in message
 
 
-@pytest.mark.parametrize('text', ['', '[shepherd]\nautostart = true\n[responder]\nenabled = false\n'])
+@pytest.mark.parametrize('text', ['[shepherd]\nautostart = false\n', '[shepherd]\nautostart = true\n[responder]\nenabled = false\n'])
 def test_listener_dispatches_nothing_when_off(seat, monkeypatch, text):
     root, host, runtime = seat
     config(root, PR_CONFIG + text)

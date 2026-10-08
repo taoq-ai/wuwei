@@ -133,6 +133,26 @@ def _seats(data):
     return data.get('seats') or goal_seats(data['candidates'], data['cap'])
 
 
+def _owner_prs(config, root, candidates):
+    """#510: the owner's open PRs in the configured repositories, as rows the gate claims."""
+    from wuwei import registry
+    logins = {login.casefold() for login in (*config['owner']['handles'],
+                                             config['outbound']['owner']['code_host']) if login}
+    if not config['repos'] or not logins:
+        return [], 'unmeasured: no configured repository or owner.handles'
+    host = registry.load('code_host', config)
+    taken, rows = {item['id'] for item in candidates}, []
+    for repo in config['repos']:
+        result = host.open_prs(repo['name'], root=root)
+        if result.exit:
+            return [], f'unmeasured: {result.reason}'
+        # ponytail: one PR number in two repositories gives one id; the second claim refuses.
+        rows += [{'id': f'PR-{pr["number"]}', 'pr': f'{repo["name"]}#{pr["number"]}', 'title': pr['title']}
+                 for pr in result.data if (pr['author'] or '').casefold() in logins
+                 and f'PR-{pr["number"]}' not in taken]
+    return rows, f'measured: {len(rows)} open PR{"" if len(rows) == 1 else "s"} by the owner'
+
+
 def propose(data, root=None):
     root = workspace.find_workspace() if root is None else Path(root)
     from wuwei import steward
@@ -180,6 +200,7 @@ def propose(data, root=None):
                                 'wuwei doctor --section pr-flow' if warned else 'measured: ok')
     data['candidates'] = rank.rank(data['candidates'], framework, goal_list)
     data['seats'] = _seats(data)
+    data['adopt'], data['sweep']['open-prs'] = _owner_prs(config, root, data['candidates'])
     directory = workspace.day_dir(root)
     if (directory / 'state.json').exists() and state.read_state(root).get('gate_approved'):
         raise state.StateError('morning gate already approved; run bin/wuwei plan add <item> to admit a new item, or bin/wuwei status for the approved plan')
@@ -205,6 +226,9 @@ def propose(data, root=None):
                   *owner_steps(item), '']
     lines += ['## Discovery intake',
               *[f'- {item["id"]}: {item.get("evidence", "evidence pending")}' for item in data['discovered']], '',
+              *(['## Open PRs to claim', *(f'- {row["id"]}: {row["pr"]} {row["title"]} (claimed under '
+                                           f'{data["goals"][0]})' for row in data['adopt']), '']
+                if data['adopt'] else []),
               '## Gate proposal', f'CAP: {data["capacity"]["text"]}; host.seats {data["capacity"]["seats"]}',
               'Seats per goal: ' + seats_text(data['seats'], data['cap']),
               'Seat policy: ' + json.dumps(data['seat_policy'], sort_keys=True),
@@ -228,11 +252,14 @@ def gate_widget(root=None, *, import_yesterday=False):
     data = json.loads((directory / 'proposal.json').read_text(encoding='utf-8'))
     draft = directory / 'goals.md'  # propose writes it only for provisional goals
     provisional = goals.parse(draft.read_text(encoding='utf-8')) if draft.is_file() else None
-    ids = [item['id'] for item in data['candidates']]
+    adopt = data.get('adopt', [])
+    ids = [item['id'] for item in data['candidates']] + [row['id'] for row in adopt]
     approves = '; '.join([
         'Goals ' + ', '.join(f'{goal} ({provisional[goal]["outcome"]})' if provisional else goal
                              for goal in data['goals']),
-        'queue ' + (', '.join(ids) or 'empty'), seats_text(_seats(data), data['cap']),
+        'queue ' + (', '.join(item['id'] for item in data['candidates']) or 'empty'),
+        *(['claims ' + ', '.join(f'{row["id"]} ({row["pr"]})' for row in adopt)] if adopt else []),
+        seats_text(_seats(data), data['cap']),
         *([data['capacity']['text']] if 'capacity' in data else []),
         'seat policy ' + json.dumps(data['seat_policy'], sort_keys=True),
         'envelope ' + json.dumps(data['envelope'], sort_keys=True),
@@ -266,6 +293,8 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
                      framework)
     if not isinstance(items, list) or len(items) != len(set(items)):
         raise ValueError(f'approved items must be a unique list; {PLAN_JSON}')
+    adopted = {row['id']: row for row in data.get('adopt', [])}  # #510: claimed after the gate
+    claims, items = [name for name in items if name in adopted], [name for name in items if name not in adopted]
     candidates = {item['id']: item for item in data['candidates']}
     if any(name not in candidates for name in items):
         raise state.StateError('approved item is absent from proposal; approve only ids from the proposal (bin/wuwei status lists them), or run bin/wuwei plan propose again')
@@ -335,10 +364,13 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False):
                                           'flags': {name: candidates[name]['flags'] for name in items}})
     for name in skipped:
         state.append_event('tracker.skipped', {'item': name, 'tier': candidates[name]['tier']}, root)
+    from wuwei import shepherd
+    for name in claims:  # claim_pr prints the claim or its refusal; the gate stays approved.
+        shepherd.claim_pr(root, adopted[name]['pr'], name, data['goals'][0])
     return written
 
 
-def add(item, root=None, goal=None, size=None, title=None, ticket=None):
+def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=None):
     """Admit one item after the gate: a discovered candidate through the intraday
     policy, or an item the owner names under a goal (the owner naming it is the decision)."""
     root = workspace.find_workspace(root)
@@ -356,7 +388,7 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None):
         if goal not in day['goals']:
             raise state.StateError(f"{goal} is not one of today's goals ({', '.join(day['goals'])}); "
                                    f'run bin/wuwei plan add {item} --goal <one of them>')
-        candidate = {'id': item, 'goal': goal, 'track': 'SLICE', 'source': 'owner',
+        candidate = {'id': item, 'goal': goal, 'track': 'SLICE', 'source': source or 'owner',
                      'flags': {key: False for key in FLAGS},
                      'title': title or item, 'score': {size_key: 1 if size is None else size},
                      **({'ticket': ticket} if ticket else {})}
@@ -412,7 +444,8 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None):
             raise state.StateError(f'item {item} is already in the plan; run bin/wuwei build next {item}')
         current['items'][item] = {'goal': candidate['goal'], 'track': candidate['track'],
                                   'flags': candidate['flags'], 'budget_size': size,
-                                  **{key: candidate[key] for key in ('tier',) if key in candidate}}
+                                  **{key: candidate[key] for key in ('tier',) if key in candidate},
+                                  **({'source': source, 'title': candidate['title']} if source else {})}
         current['approved_items'].append(item)
         if chosen and not tracker.ticket(current, item):
             current.setdefault('tickets', {})[item] = chosen

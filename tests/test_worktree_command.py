@@ -344,3 +344,147 @@ def test_worktree_identity_skip_warns(fake, capsys):
         1, None, 'git.worktree_identity: extensions.worktreeConfig is off')
     assert main(['worktree', 'add', 'X']) == 0
     assert 'extensions.worktreeConfig is off' in capsys.readouterr().err
+
+
+def test_worktree_adopted_event_is_reserved(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    (tmp_path / '.wuwei').mkdir()
+    assert main(['event', 'worktree.adopted', '{}']) == 1
+    assert 'wuwei worktree adopt' in capsys.readouterr().err
+
+
+def adopt_workspace(tmp_path, monkeypatch, config=''):
+    """A configured repository with husky-style hooks, a house worktree on feature-x and item A."""
+    root, repo = hooked_workspace(tmp_path, monkeypatch, config)
+    (repo / '.husky').mkdir()
+    marker_hooks(repo / '.husky/_', root / 'marker.txt', 'pre-commit')
+    (repo / 'a.txt').write_text('a\n')
+    git(repo, 'add', '.husky', 'a.txt')
+    assert git(repo, 'commit', '-qm', 'husky').returncode == 0
+    git(repo, 'config', 'core.hooksPath', '.husky/_')
+    git(repo, 'branch', 'feature-x')
+    tree = root / 'house/feature-x'
+    assert git(repo, 'worktree', 'add', '-q', str(tree), 'feature-x').returncode == 0
+    state._write_state(lambda data: data.update(items={'A': {}, 'B': {}},
+                                                approved_items=['A', 'B']), root, reserved=False)
+    return root, repo, tree
+
+
+def day_events(root):
+    return [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+
+
+def test_worktree_adopt_chains_hooks_and_anchors(tmp_path, monkeypatch, capsys):
+    root, repo, tree = adopt_workspace(
+        tmp_path, monkeypatch, 'identity = {name = "Builder", email = "builder@example.test"}\n')
+    assert main(['worktree', 'adopt', str(tree), '--item', 'A']) == 0, capsys.readouterr().err
+    head = git(tree, 'rev-parse', 'HEAD').stdout.strip()
+    assert json.loads(capsys.readouterr().out) == {'item': 'A', 'path': str(tree), 'head': head}
+    assert state.read_state(root)['items']['A']['worktree'] == str(tree)
+    event = day_events(root)[-1]
+    assert event['kind'] == 'worktree.adopted' and event['payload']['head'] == head
+    git_dir = Path(git(tree, 'rev-parse', '--absolute-git-dir').stdout.strip())
+    assert (git_dir / 'wuwei-workspace').read_text().strip() == str(root)
+    assert git(tree, 'config', '--worktree', '--get', 'user.email').stdout.strip() == 'builder@example.test'
+    committed, _ = commit_and_push(tree)
+    assert committed.returncode == 0, committed.stderr
+    assert 'git-hook pre-commit' in (root / 'record.txt').read_text()
+    assert (root / 'marker.txt').read_text().split() == ['pre-commit']
+
+
+def test_worktree_adopt_refuses_a_dirty_tree(tmp_path, monkeypatch, capsys):
+    root, repo, tree = adopt_workspace(tmp_path, monkeypatch)
+    (tree / 'a.txt').write_text('changed\n')
+    (tree / 'b.txt').write_text('new\n')
+    before = (workspace.day_dir(root) / 'state.json').read_bytes(), len(day_events(root))
+    assert main(['worktree', 'adopt', str(tree), '--item', 'A']) == 1
+    err = capsys.readouterr().err
+    assert 'a.txt' in err and 'b.txt' in err and 'stash push --include-untracked' in err
+    assert ((workspace.day_dir(root) / 'state.json').read_bytes(), len(day_events(root))) == before
+    assert git(repo, 'config', '--local', '--get', 'extensions.worktreeConfig').returncode == 1
+
+
+def test_worktree_adopt_preconditions(tmp_path, monkeypatch, capsys):
+    root, repo, tree = adopt_workspace(tmp_path, monkeypatch)
+    (root / 'plain').mkdir()
+    other = root / 'other'
+    subprocess.run(['git', 'init', '-q', '-b', 'main', str(other)], check=True)
+    git(other, '-c', 'user.name=B', '-c', 'user.email=b@example.test', 'commit', '-q', '--allow-empty', '-m', 'x')
+    git(other, 'worktree', 'add', '-q', '-b', 'y', str(root / 'other-y'))
+    before = (workspace.day_dir(root) / 'state.json').read_bytes()
+    for path in (root / 'plain', root / 'other-y', repo):
+        assert main(['worktree', 'adopt', str(path), '--item', 'A']) == 1
+    assert 'worktree add A --branch' in capsys.readouterr().err
+    assert (workspace.day_dir(root) / 'state.json').read_bytes() == before
+    assert main(['worktree', 'adopt', str(tree), '--item', 'A']) == 0
+    git(repo, 'worktree', 'add', '-q', '-b', 'z', str(root / 'house/z'))
+    assert main(['worktree', 'adopt', str(root / 'house/z'), '--item', 'A']) == 1
+    assert 'another worktree' in capsys.readouterr().err
+    state._write_state(lambda data: data.update(gate_approved=False), root, reserved=False)
+    assert main(['worktree', 'adopt', str(root / 'house/z'), '--item', 'B']) == 1
+    assert 'gate' in capsys.readouterr().err
+
+
+def test_worktree_adopt_refuses_a_subdirectory_and_a_shared_tree(tmp_path, monkeypatch, capsys):
+    root, repo, tree = adopt_workspace(tmp_path, monkeypatch)
+    assert main(['worktree', 'adopt', str(tree / '.husky'), '--item', 'A']) == 1
+    assert str(tree) in capsys.readouterr().err
+    assert 'worktree' not in state.read_state(root)['items']['A']
+    assert main(['worktree', 'adopt', str(tree), '--item', 'A']) == 0
+    capsys.readouterr()
+    assert main(['worktree', 'adopt', str(tree), '--item', 'B']) == 1
+    assert 'item A already records' in capsys.readouterr().err
+    assert 'worktree' not in state.read_state(root)['items']['B']
+
+
+def test_worktree_add_on_an_existing_branch(tmp_path, monkeypatch, capsys):
+    root, repo, _ = adopt_workspace(tmp_path, monkeypatch)
+    git(repo, 'worktree', 'remove', str(root / 'house/feature-x'))
+    assert main(['worktree', 'add', 'A', '--branch', 'feature-x']) == 0, capsys.readouterr().err
+    tree = root / 'worktrees/A'
+    assert git(tree, 'branch', '--show-current').stdout.strip() == 'feature-x'
+    assert git(repo, 'branch', '--list', 'a').stdout == ''
+    assert state.read_state(root)['items']['A']['worktree'] == str(tree)
+    committed, _ = commit_and_push(tree)
+    assert committed.returncode == 0, committed.stderr
+    assert 'git-hook pre-commit' in (root / 'record.txt').read_text()
+    assert main(['worktree', 'add', 'B']) == 0
+    assert git(repo, 'branch', '--list', '--format=%(refname:short)', 'b').stdout.strip() == 'b'
+    assert 'worktree' not in state.read_state(root)['items']['B']
+
+
+def test_claimed_pr_fix_round_after_adoption(tmp_path, monkeypatch, capsys):
+    import shlex
+    from fakes.code_host import Fake as Host
+    root, repo, house = adopt_workspace(tmp_path, monkeypatch, 'fast_checks = ["true"]\n')
+    config = root / '.wuwei/config.toml'
+    config.write_text('[owner]\nhandles = ["builder"]\n'
+                      + config.read_text().replace('name = "app"', 'name = "acme/widget"'))
+    git(repo, 'worktree', 'remove', str(house))
+    git(repo, 'push', '-q', 'origin', 'main')
+    git(repo, 'fetch', '-q', 'origin')
+    state._write_state(lambda data: data.update(goals=['G-1']), root, reserved=False)
+    host = Host()
+    host.results['pr'].data.update(branch='feature-x', merged=False,
+                                   head=git(repo, 'rev-parse', 'feature-x').stdout.strip())
+    host.results['reviews'] = registry.Result(0, [])
+    host.results['threads'] = registry.Result(0, {'comments': [], 'threads': []})
+    host.results['checks'] = registry.Result(0, [{'name': 'tests', 'sha': host.results['pr'].data['head'],
+        'state': 'completed', 'conclusion': 'failure', 'url': 'https://example.test/check'}])
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: host if kind == 'code_host' else load(kind, config))
+    ref = 'acme/widget#7'
+    assert main(['pr', 'claim', ref, '--goal', 'G-1']) == 0, capsys.readouterr()
+    capsys.readouterr()
+    assert main(['pr', 'act', ref]) == 1
+    action = json.loads(capsys.readouterr().out)
+    assert action['command'] == 'bin/wuwei worktree add PR-7 --branch feature-x --repo acme/widget'
+    assert main(shlex.split(action['command'])[1:]) == 0, capsys.readouterr().err
+    capsys.readouterr()
+    assert main(['pr', 'act', ref]) == 1
+    tree = root / 'worktrees/PR-7'
+    launched = json.loads(capsys.readouterr().out)
+    assert launched['action'] == 'launch' and launched['worktree'] == str(tree)
+    committed, _ = commit_and_push(tree)
+    assert committed.returncode == 0, committed.stderr
+    assert (root / 'marker.txt').read_text().split() == ['pre-commit']

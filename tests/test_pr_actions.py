@@ -500,3 +500,98 @@ def test_stop_reads_live_unless_watch_proves_clean(case, monkeypatch, change):
     monkeypatch.setattr(pr_actions, 'evaluate', lambda *args: called.append(1) or (0, []))
     pr_actions.check(root, closing=change == 'closing')
     assert called == [1]
+
+
+def adopted(case, fast_checks='', worktree=False, extra=''):
+    """An item linked to the owned PR the way pr claim leaves it: raised, no build (#510)."""
+    root, host, vcs = case
+    own(root)
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write(extra + '[[repos]]\nname = "acme/widget"\npath = "repo"\ndefault_branch = "main"\n'
+                     + fast_checks)
+    tree = root / 'repo'
+    tree.mkdir()
+    def update(data):
+        data['items']['A'] = {**state.ITEM_DEFAULTS, 'phase': 'planned', 'pr': REF, 'goal': 'G-1',
+                              **({'worktree': str(tree)} if worktree else {})}
+        data['approved_items'] = ['A']
+        data['gate_approved'] = True
+    state._write_state(update, root, reserved=False)
+    state.transition('A', 'raised', root)
+    vcs.results['worktrees'] = Result(0, [])
+    for name, value in (('status', []), ('head', {'sha': 'a' * 40}), ('merge_base', {'sha': 'b' * 40}),
+                        ('branches', []), ('diff_stat', [])):
+        vcs.results[name] = Result(0, value)
+    return root, host, vcs, tree
+
+
+RED = [{'name': 'tests', 'sha': 'a' * 40, 'state': 'completed', 'conclusion': 'failure',
+        'url': 'https://example.test/check'}]
+
+
+def test_pr_act_shepherds_without_a_worktree(case, monkeypatch, capsys):
+    root, host, _, _ = adopted(case)
+    host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
+        'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
+            'body': 'Please explain', 'created_at': workspace.now().isoformat()}]}]
+    assert main(['pr', 'act', REF]) == 1
+    assert json.loads(capsys.readouterr().out)['action'] == 'reply'
+    assert main(['pr', 'act', REF, '--reply', 'It keeps the option stable.']) == 1
+    assert json.loads(capsys.readouterr().out)['action'] == 'draft_reply'
+    assert main(['pr', 'state', REF]) == 1
+    assert json.loads(capsys.readouterr().out)[0]['state'] == 'threads_unanswered'
+
+
+@pytest.mark.parametrize('listing,command', [
+    ([], 'bin/wuwei worktree add A --branch feature --repo acme/widget'),
+    ([{'path': 'HOUSE', 'branch': 'feature', 'head': 'a' * 40}], 'bin/wuwei worktree adopt HOUSE --item A'),
+])
+@pytest.mark.parametrize('change', ['ci_red', 'conflicted', 'review_fix'])
+def test_fix_without_a_worktree_returns_the_adopt_command(case, capsys, listing, command, change):
+    root, host, vcs, _ = adopted(case)
+    vcs.results['worktrees'] = Result(0, listing)
+    if change == 'ci_red':
+        host.results['checks'] = Result(0, RED)
+    elif change == 'conflicted':
+        host.results['pr'].data['mergeable'] = False
+    else:
+        host.results['reviews'] = Result(0, [{'id': 5, 'author': 'reviewer', 'is_bot': False,
+            'state': 'changes_requested', 'sha': 'a' * 40, 'body': 'Please fix the parser',
+            'submitted_at': workspace.now().isoformat()}])
+    assert main(['pr', 'act', REF]) == 1
+    action = json.loads(capsys.readouterr().out)
+    assert {key: action[key] for key in ('action', 'item', 'command', 'then')} == {
+        'action': 'adopt', 'item': 'A', 'command': command, 'then': f'bin/wuwei pr act {REF}'}
+    assert 'checkout' in action['why']
+
+
+def test_adopted_fix_round_writes_the_builder_brief(case, capsys):
+    root, host, _, tree = adopted(case, 'fast_checks = ["python -m pytest -q"]\n', worktree=True)
+    host.results['checks'] = Result(0, RED)
+    assert main(['pr', 'act', REF]) == 1
+    action = json.loads(capsys.readouterr().out)
+    assert action['action'] == 'launch' and action['worktree'] == str(tree)
+    events = [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+    brief = next(e['payload'] for e in events if e['kind'] == 'brief written')
+    assert brief['name'] == 'A-adopted-fix' and brief['worktree'] == str(tree)
+    assert 'tests: failure' in (root / brief['path']).read_text()
+    assert state.read_state(root)['items']['A']['phase'] == 'raised'
+
+
+def test_adopted_fix_round_without_fast_checks_names_them(case, capsys):
+    root, host, _, _ = adopted(case, worktree=True)
+    host.results['checks'] = Result(0, RED)
+    assert main(['pr', 'act', REF]) == 2
+    assert 'fast_checks' in capsys.readouterr().out
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write('fast_checks = ["python -m pytest -q"]\n')
+    assert main(['pr', 'act', REF]) == 1
+    assert json.loads(capsys.readouterr().out)['action'] == 'launch'
+
+
+def test_adopted_fix_round_needs_the_ticket(case, capsys):
+    root, host, _, _ = adopted(case, 'fast_checks = ["python -m pytest -q"]\n', worktree=True,
+                               extra='[adapters]\ntracker = "linear"\n')
+    host.results['checks'] = Result(0, RED)
+    assert main(['pr', 'act', REF]) == 1
+    assert 'ticket' in capsys.readouterr().out

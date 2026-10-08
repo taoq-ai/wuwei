@@ -238,6 +238,32 @@ It worked when `goals edit` says `saved`, the status line shows `planned 1/1` an
 has no `planned` count after you approved, or when a command exits 1 or 2 with a reason; see
 [troubleshooting](recovery.md#troubleshooting).
 
+## Starting with work in progress
+
+Your open pull requests, branches and worktrees stay as they are; nothing is recreated. The
+morning sweep lists the open PRs you authored in the configured repositories (by
+`owner.handles`) under `## Open PRs to claim` in the plan, and the gate card names them:
+`claims PR-12 (owner/repo#12)`. Approving the gate claims each one under the first goal.
+
+Each claim creates an [adopted](concepts.md#adopted) item (`PR-12`, titled from the PR), links the PR and
+makes it one of the day's owned PRs. When a clean worktree is already on the PR branch, the
+claim adopts it too. The board shows the item as `PR-12 (adopted)`. A PR opened after the
+gate is claimed with `bin/wuwei pr claim owner/repo#12 --goal G-1`; with one configured
+repository a bare `12` works, and with one goal for the day `--goal` can go.
+
+The [shepherd](concepts.md#shepherd) needs no checkout. `bin/wuwei pr act` pings reviewers, reads CI, answers review
+threads and takes the merge decision through the code host. Only a fix round or a rebase needs a
+checkout, and then `pr act` returns an `adopt` action with the exact command and `then` to run
+after it:
+
+- `bin/wuwei worktree adopt <path> --item <item>` registers a worktree you already have. It
+  chains the hooks, writes the pre-push anchor at the current HEAD and records the path. It
+  refuses a tree with uncommitted or untracked files and names them.
+- `bin/wuwei worktree add <item> --branch <branch>` checks the existing branch out in
+  `worktrees/<item>` and records it as the item's.
+
+Run `bin/wuwei pr act <ref>` again and the fix round starts in that worktree.
+
 ## 4. Through the day
 
 The day starts in parallel. After you approve, the planner runs `wuwei dispatch next --all`,
@@ -315,7 +341,7 @@ The Stop hook message and `bin/wuwei nudges` list that summary first, and the st
 shows `prs <n> changed` until the planner has seen the wake. An idle interactive planner
 learns of a change at its next turn (its next Stop or session start): Claude Code cannot
 put input into an idle session. The listener covers the gap: it sends the summary to your
-DM and, with `shepherd.autostart = true`, starts a headless [shepherd](concepts.md#shepherd) seat for the
+DM and, unless `shepherd.autostart = false`, starts a headless [shepherd](concepts.md#shepherd) seat for the
 mechanical PR actions ([remote](remote.md), section 5). For CI events in your own
 session, the Claude Code desktop PR monitor is the complement.
 

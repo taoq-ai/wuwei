@@ -143,6 +143,11 @@ and the item's decisions, progress, verdicts, pull request and close land on its
 
 One comment that stands for the rest of a ticket's updates once its daily comment cap is reached.
 
+### Adopted
+
+An item made from work begun outside WUWEI: `pr claim` on an open PR with no item creates it,
+and `worktree adopt` registers an existing worktree as its checkout.
+
 ### Lens
 
 A one-line question every option of an engineering decision answers, such as SOLID or YAGNI.
@@ -251,7 +256,9 @@ ticket that never reached done; `bin/wuwei tracker done <item>` moves it.
 
 `bin/wuwei pr raise` links a newly raised PR to its approved item. To take
 ownership of an existing open PR, run
-`bin/wuwei pr claim owner/repo#number --item ITEM`. Both commands record the
+`bin/wuwei pr claim owner/repo#number --item ITEM`. Without `--item` the claim uses the item
+already linked to the PR, else creates an [adopted](#adopted) item `PR-<number>` under
+`--goal` (default: the day's only goal). Both commands record the
 item link and the day's owned PR set.
 The item link lets merge checks and lead-time metrics find the same work.
 `wuwei state set items.ITEM.pr` is reserved for these commands.
@@ -407,8 +414,8 @@ See [sessions](reference.md#sessions) and [long sessions](daily.md#long-sessions
 `bin/wuwei listen` polls the inbound source, such as a Slack DM, into the workspace inbox.
 The responder wakes the planner and handles commands only from the pinned owner, with a
 second factor where a command needs one. While running it also probes raised and claimed
-PRs with conditional requests, sends each `pr.changed` summary to the DM and, with
-`shepherd.autostart = true`, starts a headless shepherd seat that never merges. See
+PRs with conditional requests, sends each `pr.changed` summary to the DM and,
+unless `shepherd.autostart = false`, starts a headless shepherd seat that never merges. See
 [remote operation](remote.md) and
 [running the listener](configuration.md#running-the-listener).
 

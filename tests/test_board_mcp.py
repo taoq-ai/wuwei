@@ -265,6 +265,15 @@ def test_board_work_table_has_a_docs_column(day, tmp_path):
     assert next(line for line in lines if line.startswith('| b |')).endswith('| n/a |')
 
 
+def test_board_marks_adopted_items(day):
+    data = json.loads((day / 'state.json').read_text())
+    data['items']['PR-8'] = {'phase': 'raised', 'source': 'adopted'}
+    (day / 'state.json').write_text(json.dumps(data))
+    lines = board_call()['content'][0]['text'].splitlines()
+    assert any(line.startswith('| PR-8 (adopted) | raised |') for line in lines)
+    assert any(line.startswith('| a | implement |') for line in lines)
+
+
 def test_board_shows_tickets(day):
     data = json.loads((day / 'state.json').read_text())
     data['tickets'] = {'a': {'id': 'ENG-1', 'source': 'create'}}
