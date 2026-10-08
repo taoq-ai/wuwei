@@ -4,7 +4,7 @@ import json
 import re
 import sys
 
-from wuwei import decision, references, security, state, verdict, watch, workspace
+from wuwei import decision, novelty, references, security, state, verdict, watch, workspace
 from wuwei.commands.event import EVENT_PRODUCERS
 from wuwei.exits import CLEAN, FINDINGS
 from wuwei.redact import redact
@@ -22,7 +22,7 @@ class Missing(Exception):
 
 def register(subparsers):
     parser = subparsers.add_parser('why', help='Explain from records why an item, decision or refusal happened')
-    parser.add_argument('target', nargs='+', help='an item, owner/repo#n, D-n, an event id or "last refusal"')
+    parser.add_argument('target', nargs='+', help='an item, owner/repo#n, D-n, a target key, an event id or "last refusal"')
     parser.add_argument('--full', action='store_true', help='add event ids and evidence paths')
     parser.set_defaults(func=run)
 
@@ -39,6 +39,8 @@ def run(args):
             steps = refusal(root, target)
         elif re.fullmatch(decision.DECISION_ID, target):
             steps = decided(root, target)
+        elif re.fullmatch(novelty.KEY, target):  # #556
+            steps = [(line, None, []) for line in novelty.explain(root, workspace.load_config(root), target)]
         else:
             steps = item(root, target)
     except Missing as exc:
@@ -210,6 +212,9 @@ def decided(root, ident):
              'weights: ' + ', '.join(f'{row[0]} {row[1]}' for row in wants),
              f'margin: {margin:.2f}', f'class: {kind}']
     steps = [(line, None, [str(path.relative_to(root))]) for line in lines]
+    novel = novelty.routed(state.read_state(root), ident)
+    if novel:  # #556
+        steps.append((f'novel: first time for {", ".join(novel)}', None, []))
     rows = list(enumerate(watch.records(workspace.day_dir(root) / 'events.jsonl'), 1))
     last = next(((number, event['payload']) for number, event in reversed(rows)
                  if event['kind'] in ('decision.decided', 'decision.reversed')

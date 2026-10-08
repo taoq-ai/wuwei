@@ -367,7 +367,12 @@ answer decisions from Slack as well, run `bin/wuwei setup slack` and see
 once. An answer to a one-way decision is evidence, and `status --line` counts it as
 `phone answers 1` until you record it with `bin/wuwei decide`.
 
-Seats do not ask what their [mandate](concepts.md#mandate) lets them decide. You see two more things here. An item
+A record, a chat send or a deploy on a [novel](concepts.md#novel) target, one the workspace has
+never touched, comes to you once even when the [mandate](concepts.md#mandate) would take it. The card says
+`first time for <target>`. One answer clears the target, and the next one runs as usual. The report
+lists each target first seen today under `First time today`.
+
+Seats do not ask what their mandate lets them decide. You see two more things here. An item
 that goes back and forth shows as `loops N` on the status line and a `negotiation.loop`
 nudge (a [page](concepts.md#page) when its goal date has passed), with the counts and the last two exchanges in
 your DM when the listener runs. An external confirmation a seat routed with `--external`

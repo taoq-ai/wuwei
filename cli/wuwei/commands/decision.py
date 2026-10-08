@@ -4,7 +4,7 @@ import hashlib
 import json
 import sys
 
-from wuwei import state, workspace
+from wuwei import novelty, state, workspace
 from wuwei.decision import (LENSES, RECORD, ROUTINE, cisr, decided_record, evaluate, lens_table, lint_file, margin,
                             option_id, options, owner_confirm, owner_record, present, record_rejection,
                             record_widget, route, route_owner, seat_outcome, today_path)
@@ -86,6 +86,10 @@ def mandate(ident, path, text, fields, scores, root):
         return 'owner'
     if ident in data.get('decision_outcomes', {}):
         return data['decision_outcomes'][ident].get('decided_by')
+    novel = novelty.novel(root, workspace.load_config(root), novelty.record_keys(fields))
+    if novel:  # #556: a target the workspace never touched asks once (design 5.8.1)
+        route_owner(ident, fields, root)
+        return 'owner\n' + novelty.line(novel)
     door = fields['Reversibility']
     if fields['Decided-by'] == 'owner' or door == 'one-way' or (door != 'two-way' and fields.get('Class') not in ROUTINE):
         return None  # one-way doors and records written for the owner still ask (review F1)
@@ -126,7 +130,11 @@ def show(args):
             return 0, '[]'  # #530: taken under the mandate, nothing to ask.
         from wuwei.commands.setup import assignment  # #529: a config card records through config set
         record = CONFIG_RECORD if any(assignment(row[1]) for row in options(fields)) else RECORD
-        return 0, json.dumps([record_widget(args.id, fields, record, level=level)], indent=2)
+        widget = record_widget(args.id, fields, record, level=level)
+        novel = novelty.routed(state.read_state(root), args.id)
+        if novel:
+            widget['question'] += f' First time for {", ".join(novel)}: your answer clears it.'
+        return 0, json.dumps([widget], indent=2)
     if level == 'full':
         return 0, text.rstrip()
     return 0, present(args.id, fields, level) + f'\nFull record: wuwei decision show {args.id} --full'
@@ -198,6 +206,12 @@ def owner_outcome(args, note=None, *, root=None, where=None):
                        payload={'id': args.id, 'option': args.option, 'decided_by': 'owner',
                                 'reversibility': fields['Reversibility']})
     workspace.atomic_write(path, owner_record(text, args.option, where, note))
+    if not (grant is not None and args.option == 'keep'):  # #556: Keep owner-only leaves it novel
+        try:
+            for key in novelty.routed(data, args.id):
+                novelty.clear(root, key, args.id)
+        except (OSError, ValueError) as exc:
+            return 2, f'decision: {args.id} recorded; the seen set was not updated ({exc}); run bin/wuwei doctor'
     return 0, args.option
 
 
@@ -213,7 +227,7 @@ def template():
                   f'Lenses:\n| Lens | A | B |\n| --- | --- | --- |\n{rows}') if lenses else ''
     return f'''Question: Which option should we take?
 Class: design
-Context: Replace with the evidence file and reason for deciding.
+Context: Replace with the evidence file and reason for deciding; name a repository, channel, person, dependency, environment or workflow outside this item's repository as repo:<org>/<name>, channel:<id>, person:<ns>:<id>, dependency:<ecosystem>/<name>, env:<name> or workflow:<name>.
 Options:
 | Option | Title | Rationale | Consequence |
 | --- | --- | --- | --- |
