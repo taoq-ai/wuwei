@@ -41,6 +41,8 @@ for installation and regeneration details.
 
 `security.posture` says what warns and what blocks, by where the plugin runs and for what purpose. Each area has a level: `off` (not checked; a refusal is dropped and not recorded), `warn` (recorded as `guard.would_refuse` and let through) or `block` (refused, as before). `[security.areas]` overrides one area, for example `mcp = "off"`. `bin/wuwei config check` prints the effective table and the key it comes from.
 
+Under `observe` and `guarded` a guard is a warning or a card, never a wall, with one floor: records are written by the workflow and answered by you. A refusal that names the plain form the seat runs itself is coaching, not a wall. Under `strict`, refusals stay.
+
 | Area | What it covers | observe | guarded (default) | strict |
 | --- | --- | --- | --- | --- |
 | `records` | State, events, config, generated instructions, verdicts, decisions, traces, session records (`protect_state`, `decision`, `verdict`, `traces`, `lifecycle`) | block | block | block |
@@ -50,11 +52,13 @@ for installation and regeneration details.
 | `outward` | The outward text lint (`outward`) and the question citation check (`decision.check_question`) | warn | warn | block |
 | `seats` | The seat launch contract: logged brief, capacity, memory, clean worktree (`agent_launch`) | warn | warn | block |
 
+Below `strict` a `block` is a card (deploy, release, publish, evidence) or a fix the seat runs; only `records` is a wall. Merges and approvals stay yours until merging is grantable (#524).
+
 Floors no posture and no override lowers:
 
 - Above the outbound tier table, in every posture: `security.outbound` (canary and honeytoken egress), a headless shepherd seat that only drafts, and a message only you read, which always sends. `publish` stays yours, and a seat never writes the table: `config set` on `outbound` or `outward` is refused from an agent tool. Under `strict` a `send` row never reaches a client or public audience.
-- `records` always blocks. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
-- Owner-only actions always block until you decide: the deployment ban (`deploy`), the merge policy, approvals and owner markers (`pr`), and approve-tier messages and canary or honeytoken egress (the outward approval tier). Under `observe`, `publish` relaxes only the commit and push rules and the PR anchor. Raising a PR and pushing a feature branch are not owner-only: they follow `publish`, and a missing fast check or gate verdict warns under `observe` and asks on a card naming the check under `guarded`. A deploy refusal writes a card for you to answer; your `Allow once`, `Allow today` or `Always allow` answer is a grant, the way you decide once instead of typing the command every time. `bin/wuwei grants revoke <n>` removes a standing grant ([grants](concepts.md#grants)).
+- `records` always blocks, with canary and honeytoken egress and owner disposition markers, whose refusal ends `posture: records = block (floor; no setting lowers it)`. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
+- Owner-only actions (`deploy`, `pr`, and approve-tier messages) block, and below `strict` they ask you on a card, with no `owner-only action` line; under `strict` they keep it. The merge policy, admin merge, approvals, branch protection and the shepherd's no-merge stay owner-only in every posture. Raising a PR and pushing a feature branch are not owner-only: they follow `publish`, and a missing fast check or gate verdict warns under `observe` and asks on a card naming the check under `guarded`. A deploy refusal writes a card for you to answer; your `Allow once`, `Allow today` or `Always allow` answer is a grant, the way you decide once instead of typing the command every time. `bin/wuwei grants revoke <n>` removes a standing grant ([grants](concepts.md#grants)).
 - MCP: under `guarded` and `strict` a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off` or `adapters.scanner = "none"`. A finding blocks only at a severity in `scanner.mcp.block`, which is unset by default: no severity under `guarded`; `critical`, `high` and `unmeasured` under `strict`. Under `observe`, and with `mcp = "off"`, the list has no effect and `config check` says so.
 
 Runtime trace chains (S2) page and ask you only for seats. The planner, its subagents and other registered sessions (shepherd, remote, seat-host) get one silent `traces.noted` event per session per day. A session the registry does not know gets one `traces.unmatched` event per day, and under `strict` one owner decision per session per day. `setup --shadow` and `init --shadow` write `observe`.
@@ -70,7 +74,7 @@ The outward lint reads every string in a tool's input, nested lists and objects 
 Where to run each:
 
 - `observe`: a first week on a project, or a personal sandbox. You see what the guards would stop in your own habits before they stop anything; the records stay trustworthy. `setup --shadow` starts here; after `guards.shadow_days` days one nudge asks you to switch to `guarded`.
-- `guarded`: a real project. Records, publishing and integrity block; seat launches, outward text and MCP findings warn, and each warning is a status nudge.
+- `guarded`: a real project. Records block; publishing asks on a card or names the fix; integrity blocks; seat launches, outward text and MCP findings warn, and each warning is a status nudge.
 - `strict`: a repository that deploys, or a workspace that holds shared credentials. Everything blocks.
 
 The posture changes only what the cooperative guards refuse. The hard boundaries below (host rules, the credential layout, owner-sent messages) hold in every posture. `config.toml` is a record, so a seat cannot lower its own posture.

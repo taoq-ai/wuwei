@@ -1264,14 +1264,14 @@ def forget_guards():
 def test_posture_levels_at_the_hook(plugin):
     payload = (ROOT / 'tests/payloads/PreToolUse/bash.json').read_text()
     set_posture(plugin, '[security]\nposture = "observe"\n')
-    owner = 'posture: publish = block (owner-only action; no setting lowers it)'
-    blocked = {'protect_state': 'posture: records = block (floor; no setting lowers it)',
-               'deploy': owner, 'pr': owner}
+    # #530: below strict an owner-only refusal blocks with no owner-only line.
+    blocked = {'protect_state': '\nposture: records = block (floor; no setting lowers it)',
+               'deploy': '', 'pr': ''}
     try:
         for name, line in blocked.items():
             forget_guards()
             install(plugin, refusing('PreToolUse', 'kept'), name)
-            assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', f'kept\n{line}')
+            assert_refusal(replay(plugin, 'PreToolUse', payload), 'PreToolUse', f'kept{line}')
             assert events_of(plugin, 'guard.would_refuse') == []
             assert events_of(plugin, 'hook.refusal')[-1]['refusals'] == [{'guard': name, 'reason': 'kept', 'exit': 1}]
             (plugin[0] / f'cli/wuwei/guards/{name}.py').unlink()
@@ -1304,21 +1304,21 @@ def test_missing_reviewer_refusal_carries_no_posture_line(tmp_path):
     (tmp_path / '.wuwei/config.toml').write_text('')
     assert hook.posture({}, [(pr.check, NO_REVIEWER, 1), (pr.check, 'other', 1)], tmp_path) == [
         ('pr', NO_REVIEWER, '', 1),
-        ('pr', 'other', 'posture: publish = block (owner-only action; no setting lowers it)', 1)]
+        ('pr', 'other', '', 1)]
 
 
 
 def test_held_draft_posture_line_names_the_card(tmp_path):
-    # #526: a held draft is one card away; security refusals of the same check keep the floor line.
+    # #526: a held draft is one card away; canary egress of the same check is the records floor.
     from wuwei.commands import hook
     from wuwei.guards.outward import check_tier
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text('')
-    floor = 'posture: outward = block (owner-only action; no setting lowers it)'
+    floor = 'posture: records = block (floor; no setting lowers it)'
     assert hook.posture({}, [(check_tier, 'outward: draft draft-1: why; the owner decides', 1),
-                             (check_tier, 'outward: canary in the text', 1)], tmp_path) == [
+                             (check_tier, 'outward: security.canary', 1)], tmp_path) == [
         ('outward', 'outward: draft draft-1: why; the owner decides', 'posture: outward = block; a draft is one card away', 1),
-        ('outward', 'outward: canary in the text', floor, 1)]
+        ('outward', 'outward: security.canary', floor, 1)]
 
 FORCE = 'force-push is refused; push a branch instead'
 

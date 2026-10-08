@@ -133,8 +133,7 @@ def gate(payload, root, config, argv, rule, repo, moved=False):
         return 1, missing
     if found is None:
         return 1, (f'publish: {command} {tail}; name the repository with -R <org>/<repo> or run it from '
-                   'a configured repository so the owner can decide on a card, or the owner runs it '
-                   'in a host terminal')
+                   'a configured repository so the owner can decide on a card')
     head = f'publish: {command} on {found[5:]} {tail}'
     data = state.read_state(root)
     hit = active(config, data, name, found)

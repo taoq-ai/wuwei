@@ -350,3 +350,15 @@ def test_evidence_today_and_keep(root, answer):
     code, reason = evidence(root)
     assert code == 1 and 'asked for the check first (D-2)' in reason
     assert 'bin/wuwei build check DIV-1' in reason and 'host terminal' not in reason
+
+
+@pytest.mark.parametrize('command,step', [
+    ('gh workflow run deploy-production.yml', 'so the owner can decide on a card'),
+    ('git push origin', 'a publish step then asks the owner on a card')])
+def test_refusal_names_the_seat_step_not_a_host_terminal(root, command, step):
+    # #530: no repository target, or a call the deploy guard cannot inspect: the seat names the
+    # repository or writes plain commands; the reason never sends it to a host terminal.
+    import re
+    code, reason = run(root, command, cwd='/')
+    assert code in (1, 2) and step in reason, reason
+    assert not re.search(r'host terminal|ask the owner|only the owner|by hand', reason), reason

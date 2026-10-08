@@ -83,8 +83,9 @@ def text():
           for area in workspace.AREAS),
         '',
         'Floors in every posture: ' + ', '.join(f'{area} {level}' for area, level in workspace.FLOORS.items())
-        + '; the owner-only commands are refused in every posture. A refusal names its reason and the '
-        'accepted form and ends with a `posture:` line: use that form, never a way around it.',
+        + '. Below strict an owner-only action asks the owner on a card the reason names; merges and '
+        'approvals stay owner-only. A refusal names its reason and the accepted form, and a levelled '
+        'one ends with a `posture:` line: use that form, never a way around it.',
         '',
         '## Where records live',
         'Paths are under `.wuwei/`; `<date>` is today.',
