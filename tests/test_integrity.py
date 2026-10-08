@@ -92,7 +92,7 @@ def test_signature_stub_allowlist_and_missing_tool(tmp_path, monkeypatch):
     signature.write_text('sig')
     key = base / 'keys/manifest-signing-key.pub'
     calls = []
-    monkeypatch.setattr(adapter.shutil, 'which', lambda name: name)
+    monkeypatch.setattr(adapter, '_installed', lambda: True)
     def run(argv, **kwargs):
         calls.append((argv, kwargs))
         return Namespace(returncode=0, stdout=b'', stderr=b'')
@@ -113,6 +113,32 @@ def test_signature_stub_allowlist_and_missing_tool(tmp_path, monkeypatch):
     assert adapter.verify(manifest, signature, key).exit == 2
 
 
+def test_verify_leaves_no_signers_file(tmp_path, monkeypatch):
+    # #587: the allowed-signers file lives in a private directory under TMPDIR, gone after
+    # a match, a mismatch and a timeout alike.
+    adapter = ssh()
+    base = plugin(tmp_path)
+    manifest, signature = base / 'MANIFEST.sha256', base / 'MANIFEST.sha256.sig'
+    manifest.write_text('inventory')
+    signature.write_text('sig')
+    temp = tmp_path / 'tmp'
+    temp.mkdir()
+    monkeypatch.setenv('TMPDIR', str(temp))
+    monkeypatch.setattr(adapter, '_installed', lambda: True)
+    for outcome, code in ((0, 0), (1, 1), (None, 2)):
+        seen = []
+        def run(argv, outcome=outcome, **kwargs):
+            signers = Path(argv[argv.index('-f') + 1])
+            seen.append((signers.parent.parent, signers.read_text()))
+            if outcome is None:
+                raise subprocess.TimeoutExpired('ssh-keygen', 30)
+            return Namespace(returncode=outcome, stdout=b'', stderr=b'')
+        monkeypatch.setattr(adapter.subprocess, 'run', run)
+        assert adapter.verify(manifest, signature, base / 'keys/manifest-signing-key.pub').exit == code
+        assert seen == [(temp, 'wuwei ssh-ed25519 test-key\n')]
+        assert list(temp.iterdir()) == []
+
+
 @pytest.mark.parametrize('missing', ['manifest', 'signature'])
 def test_unsigned_install_needs_no_ssh_process(tmp_path, monkeypatch, missing):
     adapter = ssh()
@@ -120,14 +146,14 @@ def test_unsigned_install_needs_no_ssh_process(tmp_path, monkeypatch, missing):
     for path in (manifest, signature, key):
         if path.name != missing:
             path.write_text('unused')
-    monkeypatch.setattr(adapter.shutil, 'which', lambda name: name)
+    monkeypatch.setattr(adapter, '_installed', lambda: True)
     def unexpected(*args, **kwargs):
         pytest.fail('unsigned install must not spawn ssh-keygen')
     monkeypatch.setattr(adapter.subprocess, 'run', unexpected)
     result = adapter.verify(manifest, signature, key)
     assert result.exit == 1
     assert result.reason == 'missing MANIFEST.sha256 or signature'
-    monkeypatch.setattr(adapter.shutil, 'which', lambda name: None)
+    monkeypatch.setattr(adapter, '_installed', lambda: False)
     assert adapter.verify(manifest, signature, key).exit == 2
 
 

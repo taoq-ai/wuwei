@@ -1,6 +1,5 @@
 """Week and month digests built from day records in one fixed shape (design 5.14)."""
 
-from calendar import monthrange
 from datetime import date, timedelta
 import json
 from pathlib import Path
@@ -20,6 +19,7 @@ def period(day, kind):
         dates = [monday + timedelta(days=offset) for offset in range(7)]
         name = f'{year}-W{week:02d}'
         return name, f'# Week {name} ({dates[0]} to {dates[-1]})', dates
+    from calendar import monthrange
     name = f'{day.year}-{day.month:02d}'
     return name, f'# Month {name}', [date(day.year, day.month, number)
                                        for number in range(1, monthrange(day.year, day.month)[1] + 1)]
