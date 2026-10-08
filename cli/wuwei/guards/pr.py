@@ -278,7 +278,7 @@ def api_check(args, cwd, root, config):
         return 0, ''
     if (re.fullmatch(r'repos/[^/]+/[^/]+/(?:branches/.+/protection(?:/.*)?|rulesets(?:/.*)?)', endpoint, re.I)
             or re.fullmatch(r'orgs/[^/]+/rulesets(?:/.*)?', endpoint, re.I)):
-        return 1, 'branch protection changes are refused; branch protection is the owner\'s; ask the owner to change it'
+        return 1, 'branch protection changes are refused; ask the owner, who owns branch protection, to change it'
     match = re.fullmatch(r'repos/([^/]+/[^/]+)/pulls/(\d+)/merge', endpoint, re.I)
     if match:
         return merge_check(match[1], match[2], cwd, root, config)

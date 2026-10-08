@@ -44,7 +44,7 @@ Then open Claude Code in the workspace and say what you want; the session knows 
 ## 2. Configure
 
 `setup` does the configuration in one pass. It finds the git repositories in the project
-directory (or under `--repos <dir>`), reads each one's GitHub name from its `origin` remote,
+directory (or under `--repos <dir>`). It reads each one's GitHub name from its `origin` remote,
 its default branch through `gh` when `gh` is signed in, and its commit identity from its git
 config. When `gh` cannot read the default branch, git answers: `origin/HEAD`, else the
 checked-out branch, and the line says which. A repository with no remote is proposed as
@@ -56,26 +56,26 @@ checked-out branch, and the line says which. A repository with no remote is prop
   signals, each with the file and line it came from
   ([calibration](configuration.md#calibration));
 - your interview is what `bin/wuwei calibrate --interview` asks: how much merge autonomy
-  you want, your gate floor, quiet and working hours, how decisions reach you, words to avoid,
-  which commands you run by hand, which tracker, chat and review bot you use, and who reviews
-  your pull requests (`Owner only` for a solo owner) ([owner interview](configuration.md#owner-interview)); `config check` then names each
+  you want, your gate floor, quiet and working hours, and how decisions reach you. It also asks
+  words to avoid, which commands you run by hand, which tracker, chat and review bot you use, and who reviews
+  your pull requests (`Owner only` for a solo owner) ([owner interview](configuration.md#owner-interview)). `config check` then names each
   credential variable those adapters need until you set it in `.wuwei/env`;
-- your identity: with `gh` signed in, `owner.handles` gains your code-host login,
-  `shepherd.lead_login` defaults to it, and `shepherd.authors` maps your repositories' git
-  emails to it and each bot author seen on the last 50 merged pull requests to its `[bot]`
-  login, and `owner.name` comes from the repositories' git identity. Values you already set
+- your identity: with `gh` signed in, `owner.handles` gains your code-host login and
+  `shepherd.lead_login` defaults to it. `shepherd.authors` maps your repositories' git
+  emails to it, and each bot author seen on the last 50 merged pull requests to its `[bot]`
+  login. `owner.name` comes from the repositories' git identity. Values you already set
   are kept.
 
-A few yes or no questions come with it: turn on ZIRAN scans when `ziran` is installed
-(default no), run your tests once to see whether they are fast enough for every push
-(default yes), add the status line to `.claude/settings.json` (default yes), and install the
+A few yes or no questions come with it. They offer to turn on ZIRAN scans when `ziran` is installed
+(default no), and to run your tests once to see whether they are fast enough for every push
+(default yes). They also offer to add the status line to `.claude/settings.json` (default yes) and to install the
 watch service (default no). A closed input answers no.
 
 It shows the `[[repos]]` tables, the calibration and the answers as one `config.toml` diff,
-applies it after you answer y (the `bin/wuwei config promote` path), runs
+and applies it after you answer y (the `bin/wuwei config promote` path). Then it runs
 `bin/wuwei doctor` and `bin/wuwei mcp check`, and ends with one line:
-`Ready: run /wuwei:wuwei-plan`, or `Next:` with the one command still required (a failing
-install or workspace check, a credential variable, an MCP decision). Anything optional, such
+`Ready: run /wuwei:wuwei-plan`, or `Next:` with the one command still required. That command
+fixes a failing install or workspace check, a credential variable or an MCP decision. Anything optional, such
 as `bin/wuwei promote` for the charter proposals, a repository it could not measure or the
 other doctor findings, is listed on an `Optional:` line before it. Run it again any time;
 with nothing new it proposes nothing. You do not write goals by hand: the lead proposes them
@@ -177,14 +177,14 @@ doctor: 1 fail, 1 warn, 0 unmeasured
 
 Set the protections when you are ready, and run `bin/wuwei watch install` when you want the
 background supervisor. It did not work when the `Applied` line is missing (nothing was
-written; the reason is on the last line) or when the last line is `Next:` instead of `Ready:`
-(setup exits 1): run that one command, then `bin/wuwei setup` again. A repository setup
+written; the reason is on the last line). It also did not work when the last line is `Next:` instead of `Ready:`
+(setup exits 1). Run that one command, then `bin/wuwei setup` again. A repository setup
 could not read shows on the `Optional:` line as `bin/wuwei config add-repo ...`; see
 [troubleshooting](recovery.md#troubleshooting).
 
 `--shadow` starts a first week in the observe posture (on an existing workspace it proposes
 `security.posture = "observe"`), as does the `Observe` answer in the interview. The guards
-then record what they would refuse and let the call through; records still refuse, deploys,
+then record what they would refuse and let the call through. Records still refuse. Deploys,
 releases and messages that wait for your approval ask you on a card, and merges and approvals
 stay yours. Read
 `bin/wuwei shadow report` or the `## Shadow` section of the day report. When the [nudge](concepts.md#nudge) comes
@@ -206,9 +206,10 @@ refuses that call and prints the command for a host terminal. It then records th
 `wuwei plan approve --items <ids> --goals-confirmed`.
 
 When an item in the plan needs a deploy or a release, the lead lists it and the gate carries one
-more card per action, for example `D-2: G-1 fix-login deploys <org>/<repo>: allow today, ask when it
-happens, or keep owner-only?`. `Allow today` is the day's grant, so the deploy runs without
-stopping the day; `Ask when it happens` asks you when the seat gets there; `Keep owner-only`
+more card per action, for example
+`D-2: G-1 fix-login deploys <org>/<repo>: allow today, ask when it happens, or keep owner-only?`.
+`Allow today` is the day's grant, so the deploy runs without
+stopping the day. `Ask when it happens` asks you when the seat gets there, and `Keep owner-only`
 leaves the command to you. A deploy nobody planned stops on its own card, the
 [grant](concepts.md#grants) question.
 
@@ -228,7 +229,7 @@ $ wuwei goals edit --file .wuwei/days/<date>/goals.md
 goals: 1 goal saved (G-1)
 $ wuwei plan approve --items DIV-1 --goals-confirmed
 $ bin/wuwei status --line
-WUWEI pages 0 | nudges 0 | observe | watch off | planned 1/1 | seats 0 of CAP 1 | meeting unmeasured
+WUWEI planned 1/1 · seats 0/1 | pages 0 · nudges 0 · observe
 $ bin/wuwei next
 dispatch: 1 planned item(s) can start, 0 of CAP 1 building; run the launch set, brief each start and launch the set in one turn. Run: wuwei dispatch next --all
 ```
@@ -244,7 +245,7 @@ has no `planned` count after you approved, or when a command exits 1 or 2 with a
 Your open pull requests, branches and worktrees stay as they are; nothing is recreated. The
 morning sweep lists the open PRs you authored in the configured repositories (by
 `owner.handles`) under `## Open PRs to claim` in the plan, and the gate card names them:
-`claims PR-12 (owner/repo#12)`. Approving the gate claims each one under the first goal.
+`Claims PR-12 (owner/repo#12)`. Approving the gate claims each one under the first goal.
 
 Each claim creates an [adopted](concepts.md#adopted) item (`PR-12`, titled from the PR), links the PR and
 makes it one of the day's owned PRs. When a clean worktree is already on the PR branch, the
@@ -360,7 +361,7 @@ Some commands are yours alone and run in a host terminal, never through an agent
 `bin/wuwei decide D-<n> <option>` for any decision, MCP registry findings included (`proceed`
 also re-runs the check), and `bin/wuwei drafts approve` or `drafts drop`. Under `observe` and
 `guarded` the planner asks you a decision in the session and records your answer with the
-same command; under `strict`, and for credentials, you run it in a host terminal and answer y. Nudges and the report name each pending decision.
+same command. Under `strict`, and for credentials, you run it in a host terminal and answer y. Nudges and the report name each pending decision.
 
 `bin/wuwei decision show D-<n>` prints a decision at your `owner.verbosity` level: by default
 the question, each option with its score, and the recommendation with one reason.
@@ -383,8 +384,8 @@ lists each target first seen today under `First time today`.
 
 Seats do not ask what their mandate lets them decide. You see two more things here. An item
 that goes back and forth shows as `loops N` on the status line and a `negotiation.loop`
-nudge (a [page](concepts.md#page) when its goal date has passed), with the counts and the last two exchanges in
-your DM when the listener runs. An external confirmation a seat routed with `--external`
+nudge (a [page](concepts.md#page) when its goal date has passed). When the listener runs, the counts and the last two exchanges reach
+your DM. An external confirmation a seat routed with `--external`
 waits `decisions.wait_hours` weekday hours for your answer; then the sweep confirms the
 recommendation on a two-way door or [parks](concepts.md#park) the item for your `decide`.
 
@@ -420,7 +421,11 @@ recommendation; both cards come after the morning gate.
 
 The status line shows the highest level a class runs at, `cruise L2`, or `cruise off | L2`
 when `decisions.cruise.enabled = false`, and `cruise L2 · budget defer spent` while a spent
-budget holds a class lower. Under `supervised` every class runs at L0.
+budget holds a class lower. It adds `· uncalibrated builder` while a role's stated confidence
+is uncalibrated: its records come to you as cards until it recovers. `bin/wuwei cruise
+calibration` shows the Brier score per class and role, and the day report and the retro
+carry a `## Calibration` section naming the records that broke a forecast. A raise card
+also needs the class calibrated. Under `supervised` every class runs at L0.
 
 ### How you answer
 
@@ -442,7 +447,7 @@ Quality can drift as that context grows, so WUWEI measures it and lets you rotat
 planner on a schedule.
 
 - Measured: `bin/wuwei report` has a `## Quality by band` section with gates, FIX rate,
-  fix rounds, verdict lint rejections and your interventions per hour band (morning
+  fix rounds, verdict lint rejections and your interventions. It splits them per hour band (morning
   05-11, midday 11-14, afternoon 14-18, evening 18-05, in `owner.timezone`) and per
   planner session-age band (turns since it started today, or compacted). `bin/wuwei retro`
   compares the last 7 days, names the worst band when its FIX rate leads every other band

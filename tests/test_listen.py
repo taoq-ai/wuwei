@@ -494,7 +494,7 @@ def test_issue_acceptance_stop_all_stops_every_session_in_one_tick(case, monkeyp
 
 def status_of(capsys):
     capsys.readouterr()
-    assert main(['status', '--line']) == 0
+    assert main(['status']) == 0
     text = capsys.readouterr().out
     assert main(['status', '--json']) == 0
     data = json.loads(capsys.readouterr().out)
@@ -535,7 +535,7 @@ def test_listener_states_in_the_status_line(case, monkeypatch, capsys, setup, pa
         (root / '.wuwei/config.toml').write_text('')
     text, measured, rows = status_of(capsys)
     assert measured == listening
-    assert (part in text) if part else ('listen' not in text)
+    assert f'listen {listening}' in text
     assert [row['tier'] for row in rows] == ([tier] if tier else [])
 
 
@@ -1043,3 +1043,34 @@ def test_negotiation_loop_names_the_ticket(owner_dm):
     loop_event(root)
     assert listen().tick(root, {}) == 0
     assert host.chat.sent == [LOOP_REASON + ' Ticket: ENG-1.']
+
+
+def test_session_start_reads_the_day_once(case, monkeypatch):
+    # #562: one state read and one events read of its own, beyond next.step's.
+    import sys
+    root, _ = case
+    state.append_event('listen: clock', {}, root)
+    counts = {}
+
+    def counting(module, name):
+        original = getattr(module, name)
+
+        def wrapper(*args, **kwargs):
+            caller = sys._getframe(1).f_code.co_name
+            counts[name, caller] = counts.get((name, caller), 0) + 1
+            return original(*args, **kwargs)
+        monkeypatch.setattr(module, name, wrapper)
+    before = lifecycle.session_start({'cwd': str(root)})
+    counting(state, 'read_state')
+    counting(watch, '_day_rows')
+    assert lifecycle.session_start({'cwd': str(root)}) == before
+    assert counts.get(('read_state', 'session_start')) == 1
+    assert counts.get(('_day_rows', 'session_start'), 0) + counts.get(('_day_rows', 'health'), 0) == 1
+
+
+def test_session_start_reports_a_broken_events_file(case):
+    root, _ = case
+    workspace.day_dir(root).mkdir(parents=True, exist_ok=True)
+    (workspace.day_dir(root) / 'events.jsonl').write_bytes(b'\xff\n')
+    code, message = lifecycle.session_start({'cwd': str(root)})
+    assert code == 2 and 'watch health unmeasured' in message

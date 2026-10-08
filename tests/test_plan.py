@@ -339,7 +339,7 @@ def test_owner_open_prs_are_proposed_and_claimed_at_the_gate(root, monkeypatch):
     assert 'PR-13' not in text
     widget = plan.gate_widget(root)
     assert widget['record'] == 'wuwei plan approve --items A PR-12 --goals-confirmed'
-    assert 'claims PR-12 (acme/widget#12)' in widget['options'][0]['description']
+    assert 'Claims PR-12 (acme/widget#12)' in widget['options'][0]['description']
     claimed = []
     monkeypatch.setattr(shepherd, 'claim_pr', lambda *args: claimed.append(args) or 0)
     plan.approve(['A', 'PR-12'], root, goals_confirmed=True)
@@ -366,11 +366,11 @@ def test_gate_widget_is_the_one_approval_question(root):
     assert [row['label'] for row in widget['options']] == ['Approve', 'Change something']
     approve = widget['options'][0]['description']
     assert all(part in approve for part in ('G-1', 'A, B', 'CAP 4', 'claude', '09:00',
-                                            'cap 4 (host): 8 GB free, 1 GB per seat, 4 cores'))
+                                            'Cap 4 (host): 8 GB free, 1 GB per seat, 4 cores'))
     assert 'carry' not in approve.lower()
     assert widget['record'] == 'wuwei plan approve --items A B --goals-confirmed'
     carry = plan.gate_widget(root, import_yesterday=True)
-    assert 'carry-over' in carry['options'][0]['description']
+    assert 'carry-over' in carry['options'][0]['description'].lower()
     assert carry['record'].endswith(' --goals-confirmed --import-yesterday')
     (root / '.wuwei/memory/goals.md').write_text(TEMPLATE.read_text(encoding='utf-8'))
     plan.propose(lead(), root)
@@ -661,6 +661,9 @@ def test_propose_writes_the_cruise_raise_card_the_gate_carries(root, monkeypatch
     rows = {f'D-{100 + index}': {'option': 'A', 'outcome': 'A', 'decided_by': 'owner', 'class': 'defer',
                                  'recommendation': 'A', 'at': workspace.now().isoformat()} for index in range(10)}
     state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update(rows), root, reserved=False)
+    for number in range(300, 310):  # #559: the class is calibrated
+        state.append_event('decision.decided', {'id': f'D-{number}', 'option': 'A', 'class': 'defer',
+                                                'decided_by': 'mandate', 'confidence': 'high'}, root)
     plan.propose(proposal(), root)
     assert state.read_state(root)['cruise_cards']['D-1']['kind'] == 'raise'
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))

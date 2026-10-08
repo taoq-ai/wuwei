@@ -189,18 +189,18 @@ def test_sessions_command_empty_and_unreadable(root, monkeypatch, capsys):
 
 
 def test_status_counts_live_sessions(root, monkeypatch, capsys):
-    assert main(['status', '--line']) == 0
-    assert 'sessions' not in capsys.readouterr().out
+    assert main(['status']) == 0
+    assert 'sessions 0' in capsys.readouterr().out
     hook(monkeypatch, 'SessionStart', 'A', root)
     monkeypatch.setenv('WUWEI_NOW', '2026-09-30T10:30:00+00:00')
     hook(monkeypatch, 'SessionStart', 'B', root)
     capsys.readouterr()
-    assert main(['status', '--line']) == 0
+    assert main(['status']) == 0
     assert 'sessions 2' in capsys.readouterr().out
     assert main(['status', '--json']) == 0
     assert json.loads(capsys.readouterr().out)['sessions'] == 2
     monkeypatch.setenv('WUWEI_NOW', '2026-09-30T11:00:00+00:00')
-    assert main(['status', '--line']) == 0
+    assert main(['status']) == 0
     assert 'sessions 1' in capsys.readouterr().out
     assert listed(capsys)['A']['stale'] is True
 
@@ -282,7 +282,7 @@ def test_registry_fault_keeps_session_start_code_two(root, monkeypatch):
     from wuwei.guards import lifecycle
     monkeypatch.setattr(memory, 'session_payload', lambda root: ('ctx', 3, 1))
     monkeypatch.setattr(memory, 'lint', lambda root: [])
-    monkeypatch.setattr(watch, 'health', lambda root, name='watch': (0, ''))
+    monkeypatch.setattr(watch, 'health', lambda root, clocks=None, name='watch': (0, ''))
 
     def broken(*args, **kwargs):
         raise ValueError('registry broken')

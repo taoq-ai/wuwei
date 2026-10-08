@@ -202,11 +202,11 @@ other context failures identify the failed read and a corrective action.
 
 ## Host terminal actions
 
-Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei grants revoke`, `wuwei goals edit` and `voice edit` (except that the planner records goals and voice you approved at the morning gate with `--file`, outside the strict posture), `wuwei watch uninstall`, `wuwei listen uninstall`, `wuwei remote ack`, `wuwei config promote`, `config set` and `config add-repo`, `wuwei memory forget`, `wuwei setup`, and `wuwei telemetry send`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records a decision it asked you in the session with `wuwei decide`, a config value you picked on a card with `wuwei calibrate --answer` or `wuwei config set <key> <value> --from-card D-n` (no y/N prompt; your answer is the confirmation), and a draft it asked you on a card with `wuwei drafts approve` (only after you answer Send now, or with `--file` the exact text you typed after Send with an edit) or `drafts drop`. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
+Some commands are yours alone: `wuwei decide`, `wuwei decision outcome`, `wuwei state recover`, `wuwei integrity reconfirm`, `wuwei mcp decide`, `wuwei drafts approve` and `drafts drop`, `wuwei grants revoke`, `wuwei goals edit` and `voice edit`. The rest are `wuwei watch uninstall`, `wuwei listen uninstall`, `wuwei remote ack`, `wuwei config promote`, `config set` and `config add-repo`, `wuwei memory forget`, `wuwei setup`, and `wuwei telemetry send`. Outside the strict posture, the planner records goals and voice you approved at the morning gate with `--file`. Agent tool hooks refuse them (`--help` or `-h` alone is allowed), so run them in a host terminal. Outside the strict posture the planner records some of your answers itself. A decision it asked you in the session goes in with `wuwei decide`. A config value you picked on a card goes in with `wuwei calibrate --answer` or `wuwei config set <key> <value> --from-card D-n` (no y/N prompt; your answer is the confirmation). A draft it asked you on a card goes in with `wuwei drafts approve` or `drafts drop`. It approves only after you answer Send now, or with `--file` the exact text you typed after Send with an edit. The ones that ask y/N exit 2 without a terminal. See [host terminal actions](reference.md#host-terminal-actions).
 
 ## Drafts and cards
 
-A draft is an outward message the approval tier held back, stored with an id and the rule that held it, such as `ask by rule 9 (audience=company) for C9: unknown destination C9, not in outbound.work_channels, connector default class company`. Its card, `bin/wuwei drafts show <id> --widget`, asks you Send now, Send with an edit, Keep as draft or Drop, and names the command that records your answer. When a table row asked about one person or the destination channel, Always send to this person or Always ask for this channel takes the place of Drop: it sends this draft and adds the row with `bin/wuwei drafts approve <id> --always`. A draft from a configured adapter is sent by `wuwei drafts approve`. For a draft from a connector, approving records an allowance: the seat's same tool call, to the same place with the same text, passes once within `outward.draft_ttl` seconds (default 3600).
+A draft is an outward message the approval tier held back, stored with an id and the rule that held it, such as `ask by rule 9 (audience=company) for C9: unknown destination C9, not in outbound.work_channels, connector default class company`. Its card, `bin/wuwei drafts show <id> --widget`, asks you Send now, Send with an edit, Keep as draft or Drop, and names the command that records your answer. When a table row asked about one person or the destination channel, Always send to this person or Always ask for this channel takes the place of Drop. It sends this draft and adds the row with `bin/wuwei drafts approve <id> --always`. A draft from a configured adapter is sent by `wuwei drafts approve`. For a draft from a connector, approving records an allowance: the seat's same tool call, to the same place with the same text, passes once within `outward.draft_ttl` seconds (default 3600).
 
 ## Outbound tiers
 
@@ -220,11 +220,11 @@ Who reads the message decides the tier. Each destination and each addressed pers
 - `client`: a channel in `outbound.external_channels`, a channel the connector marks as shared with another organisation, or a person or org outside yours.
 - `public`: anything you mark public in `outbound.channel_classes`.
 
-WUWEI walks one ordered table for each of them, and the first matching row wins. Your rows in `outbound.tiers` come first, after a row for each connector mode in `outward.modes`. The defaults follow: you `send`; public `ask`; a client commitment or disagreement `ask`; anything else to a client `ask`; sensitive, commitment and disagreement text `ask`; company `ask`; a thread among team people `send` (`{ audience = "team", topic = "thread", tier = "send" }`); a monitoring write `send`. No default row blocks: an external party always gets a card you can send from, and you add a `block` row when a client needs one. The strictest reader decides the call. What no row narrows gets your umbrella, `outbound.default_tier`. With `send`, the shipped default, the broad commitment, disagreement and company rows drop out, so a review reply, a thread answer or a message to a colleague just goes, and only client, public and sensitive text still ask; narrow it with your own rows. With `ask` (`bin/wuwei config set outbound.default_tier ask`) the older kind rules say why a draft is held: direct messages draft, and a routine reply in a team channel sends. Docs and tracker writes keep `docs.auto` and `tracker.auto` either way.
+WUWEI walks one ordered table for each of them, and the first matching row wins. Your rows in `outbound.tiers` come first, after a row for each connector mode in `outward.modes`. The defaults follow: you `send`; public `ask`; a client commitment or disagreement `ask`; anything else to a client `ask`. Then sensitive, commitment and disagreement text `ask`; company `ask`; a thread among team people `send` (`{ audience = "team", topic = "thread", tier = "send" }`); a monitoring write `send`. No default row blocks: an external party always gets a card you can send from, and you add a `block` row when a client needs one. The strictest reader decides the call. What no row narrows gets your umbrella, `outbound.default_tier`. With `send`, the shipped default, the broad commitment, disagreement and company rows drop out. A review reply, a thread answer or a message to a colleague just goes, and only client, public and sensitive text still ask. Narrow it with your own rows. With `ask` (`bin/wuwei config set outbound.default_tier ask`) the older kind rules say why a draft is held: direct messages draft, and a routine reply in a team channel sends. Docs and tracker writes keep `docs.auto` and `tracker.auto` either way.
 
 A reply in a chat thread is read by the thread's participants, so each one is a reader. The hook cannot read a thread; the planner can. When a held reason says the participants are not learned, the planner reads the thread with the connector's replies tool and runs `bin/wuwei outbound learn --tool <tool> --thread <file>`, which records them for the day. A thread whose readers are all you or team sends by the thread row, a client participant follows the client rows, and an unknown one goes on the learn card. Until then a thread reply is one company reader: it asks under `ask` and goes under the shipped umbrella. Always send in this channel's threads on the draft card adds `{ channel = "C123", topic = "thread", tier = "send" }`.
 
-For example, a seat writes "I will ship it tomorrow". To a client channel it is held on a card that names the client row; with `{ audience = "client", topic = "commitment", tier = "block" }` in your rows it is refused instead. The same line to a team channel goes out under the shipped umbrella and asks you on a card under `ask`. A status line to your own DM just goes. To let a reviewer's mentions go out, answer Always send to this person on a draft card that held one; it adds `{ person = "U123", tier = "send" }`. `bin/wuwei outbound tiers` prints the table with each row tagged `default` or `owner`, and `bin/wuwei outbound explain <draft id>` shows the rows a draft passed and the one that held it. Under `strict`, a `send` row never reaches a client or the public. The learn card proposes a class for each new channel and person, with one option per entry that approves it with the other class (a channel as client or team, a person as company or team).
+For example, a seat writes "I will ship it tomorrow". To a client channel it is held on a card that names the client row; with `{ audience = "client", topic = "commitment", tier = "block" }` in your rows it is refused instead. The same line to a team channel goes out under the shipped umbrella and asks you on a card under `ask`. A status line to your own DM just goes. To let a reviewer's mentions go out, answer Always send to this person on a draft card that held one; it adds `{ person = "U123", tier = "send" }`. `bin/wuwei outbound tiers` prints the table with each row tagged `default` or `owner`, and `bin/wuwei outbound explain <draft id>` shows the rows a draft passed and the one that held it. Under `strict`, a `send` row never reaches a client or the public. The learn card proposes a class for each new channel and person. Each entry has one option that approves it with the other class: a channel as client or team, a person as company or team.
 
 ## Memory
 
@@ -236,7 +236,7 @@ Memory has three tiers. A day keeps its raw records under `days/` for 30 days (`
 
 Plan, Build, Review, Close. `/wuwei plan` runs the morning gate, then the planner loops `build next` and `dispatch next` for each approved item, raises the PR and closes the day; phases move by themselves.
 
-The day starts in parallel. WUWEI derives CAP from the host (cores, free memory and what one seat costs once seats have run): the running seats plus the seats that fit above the memory floor, one core per seat, within `host.seats`, and within `budget.tokens_per_day` when set. The plan shows it with the measurement, for example `cap 4 (host): 16 GB free, 1.5 GB per seat, 8 cores`, and the morning gate splits it into seats per goal. Each sweep derives it again as memory frees, and the status line shows `seats 3/4 (host)` or `(budget)`. A positive `cap` in config is your override. After you approve, `wuwei dispatch next --all` lists everything that can move now, gate items first, then building items, then planned items up to CAP with each goal's share first, and the planner launches the whole set in one turn, an item's three gate seats together. With `cap = 1` the day runs one item at a time. The [daily path](daily.md) is your walkthrough and the [recovery](recovery.md) page covers the rest.
+The day starts in parallel. WUWEI derives CAP from the host: cores, free memory and what one seat costs once seats have run. CAP is the running seats plus the seats that fit above the memory floor, one core per seat, within `host.seats`, and within `budget.tokens_per_day` when set. The plan shows it with the measurement, for example `cap 4 (host): 16 GB free, 1.5 GB per seat, 8 cores`, and the morning gate splits it into seats per goal. Each sweep derives it again as memory frees, and the status line shows `seats 3/4 (host)` or `(budget)`. A positive `cap` in config is your override. After you approve, `wuwei dispatch next --all` lists everything that can move now. Gate items come first, then building items, then planned items up to CAP with each goal's share first. The planner launches the whole set in one turn, an item's three gate seats together. With `cap = 1` the day runs one item at a time. The [daily path](daily.md) is your walkthrough and the [recovery](recovery.md) page covers the rest.
 
 ## Tickets and comments
 
@@ -290,9 +290,9 @@ a PR; carry-forward applies to day close. See [configuration](configuration.md) 
 
 ## Day close
 
-`bin/wuwei close` and the planner Stop hook after a close request refuse while an
-approved item remains open or blocked without a park or carry decision, an owner
-decision remains pending, or a pushed item branch lacks a raised or claimed PR.
+`bin/wuwei close` and the planner Stop hook after a close request refuse while work is open.
+That is an approved item open or blocked without a park or carry decision, a pending owner
+decision, or a pushed item branch without a raised or claimed PR.
 For each open item the refusal asks one question: carry it to tomorrow
 (recommended), park it, or keep working, with the command for each answer. It names
 each decision or branch. `bin/wuwei close --widget` prints the same questions as
@@ -328,10 +328,10 @@ when its branch has been pushed.
 ## Builder steps
 
 Claude Code builders run as subagents in the planner session. After writing a builder
-brief with its worktree, call `wuwei build next <item>`. It returns one JSON action:
-`launch` supplies the Agent prompt, `continue` supplies the same agent's resume ID and
-feedback, `check` supplies a command to run through Bash, `park` supplies a reason and
-numbered decision path, and `done` means checks passed and the item moved to `gate`
+brief with its worktree, call `wuwei build next <item>`. It returns one JSON action.
+`launch` supplies the Agent prompt, and `continue` supplies the same agent's resume ID and
+feedback. `check` supplies a command to run through Bash, and `park` supplies a reason and
+numbered decision path. `done` means checks passed and the item moved to `gate`
 (or to `delta` after a fix build). Call next again after executing
 the action. Hooks register the seat and record its result; unchanged state returns the
 same action, so execute each action once. Never poll a Claude seat through the CLI.
@@ -384,7 +384,7 @@ Outward text gets the same pass. Every tracker comment, docs page, DM, PR commen
 ## Decision classes and cruise levels
 
 A decision record gives every option a Title, a Rationale (why it scores as it does) and a
-Consequence (what changes, what it costs, what it closes), and the recommendation a
+Consequence (what changes, what it costs, what it closes). The recommendation gets a
 Reasoning line (what decided it and what would flip it). It also names a class. The
 engineering classes `design`, `boundary`, `refactor` and `dependency-bump` add one
 [lens](#lens) line per option: SOLID, twelve-factor, YAGNI and ponytail by default. Your
@@ -393,8 +393,8 @@ consequence and lens lines, and ends the question with the reasoning. `wuwei dec
 template` prints a valid record.
 
 Cruise mode ([design spec 5.8.1](https://github.com/taoq-ai/wuwei/blob/main/docs/specs/2026-09-24-wuwei-design.md))
-runs each class at a level from L0 to L3. When `decision route` takes a record under the
-mandate and its class runs at L2 or L3, the record is two-way, inside its own branch, PR or
+runs each class at a level from L0 to L3. Say `decision route` takes a record under the
+mandate and its class runs at L2 or L3. If the record is two-way, inside its own branch, PR or
 the workspace, its margin reaches `decisions.cruise.margin` and the daily budget allows,
 it is a cruise answer: `Decided-by: cruise <class>@L<n>`. At L2 you get a nudge and can undo
 it for `decisions.cruise.undo_minutes`; at L3 it is in the digest. Levels move only through
@@ -409,15 +409,24 @@ then runs one level lower until the window refills, and gets no raise card meanw
 fast burn (`burn_warn`, the last 48 hours against the window's pace) sends a nudge naming
 the events first. `bin/wuwei cruise budget` prints the table.
 
+Calibration. A record's `Confidence:` is checked against what happened. Each taken record
+with a stored confidence (high 0.9, medium 0.6, low 0.3) whose undo window closed scores 1
+when it stood and 0 when it was undone, reversed, sampled differently or escaped a defect.
+The Brier score per class and per role (the optional `Role:` field) over the error budget
+window is uncalibrated above `calibration_threshold` once `calibration_min` records are
+scored. An uncalibrated class runs at most L1, an uncalibrated role's records go to you as a
+card, and a class gets a raise card only when it is calibrated. `bin/wuwei cruise
+calibration` prints the table.
+
 Every seat prompt ends with a mandate block built from those class levels
 (`decisions.cruise.levels`, the 5.8.1 defaults otherwise), the interview's trust-surface
-line and `deploy.deny`: what the seat decides alone, what it decides and records, and what
-comes to you, closing with "Nothing else is a question." The levels only shape this
+line and `deploy.deny`. It says what the seat decides alone, what it decides and records, and what
+comes to you. It closes with "Nothing else is a question." The levels only shape this
 text and pick which taken records are cruise answers. Assume and record: a two-way
-open question inside the item is not asked; the seat takes its recommendation and records
+open question inside the item is not asked. The seat takes its recommendation and records
 it under `Assumptions:` in the spec or PR body, and gates review it as an `Assumption:`
 finding. A seat that stops on a question to you without a valid decision id is
-flagged by the SubagentStop guard (and by the Codex and headless paths), and `dispatch
+flagged by the SubagentStop guard (and by the Codex and headless paths). Then `dispatch
 next` refuses until the planner acknowledges the note.
 
 A confirmation from someone outside the loop never holds reversible work: the seat routes
@@ -426,10 +435,10 @@ the record with `decision route D-n --external <item>` and continues. After
 recommendation on a two-way door or parks the item on a one-way door, and records
 `decision.waited`.
 
-Negotiation loops: when an item goes back and forth (records, verdicts, restarts and fix
-requests above `steward.loop_threshold` in `steward.loop_window_hours`, or a second fix
-round), the steward raises one `negotiation.loop` nudge per item per day, a page when the
-goal date has passed, and the listener sends the summary to your DM. It reports; the
+Negotiation loops: an item goes back and forth when records, verdicts, restarts and fix
+requests go above `steward.loop_threshold` in `steward.loop_window_hours`, or on a second fix
+round. Then the steward raises one `negotiation.loop` nudge per item per day, and a page when the
+goal date has passed. The listener sends the summary to your DM. It reports; the
 negotiation budget in the charters is what stops the rounds.
 
 ## Sessions

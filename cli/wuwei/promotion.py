@@ -59,14 +59,29 @@ def cruise_level(root, name, level, reason, evidence, hold=None):
         budget[name] = hold
     if budget:
         data['budget'] = budget
+    _cruise_write(root, data, 'raise' if level > previous else 'lower', reason, evidence)
+
+
+def calibration(root, classes, roles, reason):
+    """#559: the steward stores the uncalibrated classes and roles, with a ledger line."""
+    from wuwei.decision import CRUISE, running
+    root = Path(root)
+    data = running(root)
+    data.pop('calibration', None)
+    if classes or roles:
+        data['calibration'] = {'classes': sorted(classes), 'roles': sorted(roles)}
+    _cruise_write(root, data, 'calibration', reason, CRUISE)
+
+
+def _cruise_write(root, data, action, reason, evidence):
+    from wuwei.decision import CRUISE
     path = safe_path(root, CRUISE, label='cruise levels')
     path.parent.mkdir(parents=True, exist_ok=True)
     workspace.atomic_write(path, json.dumps(data, indent=2, sort_keys=True) + '\n')
     # ponytail: not committed to workspace history here; the next promote commit carries the ledger.
     state.append_jsonl(safe_path(root, '.wuwei/memory/ledger.jsonl', label='ledger'), {
         'date': workspace.now().date().isoformat(), 'run_id': uuid4().hex, 'target': CRUISE,
-        'action': 'raise' if level > previous else 'lower', 'status': 'landed',
-        'reason': reason, 'evidence': evidence})
+        'action': action, 'status': 'landed', 'reason': reason, 'evidence': evidence})
 
 
 def safe_path(root, raw, *, label):
@@ -118,7 +133,7 @@ def _ensure_clean(root, target):
     if not isinstance(result.data, list) or not all(isinstance(p, str) for p in result.data):
         raise OSError('workspace integrity evidence unreadable; run bin/wuwei doctor, which tests the workspace history')
     if target.relative_to(root / '.wuwei').as_posix() in result.data:
-        raise ValueError('target has unpromoted changes; owner must review workspace history; the owner reviews the workspace history and runs bin/wuwei goals edit or bin/wuwei voice edit in a host terminal')
+        raise ValueError('target has unpromoted changes; the owner reviews the workspace history. Then the owner runs bin/wuwei goals edit or bin/wuwei voice edit in a host terminal')
 
 
 def _changelog(root):

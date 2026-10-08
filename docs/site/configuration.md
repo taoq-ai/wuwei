@@ -164,10 +164,10 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | `watch.stale_seconds` | `900` | Inactivity age at which running work is reported stale. |
 | `watch.sweep_seconds` | `7200` | Interval between supervision sweeps. |
 | `watch.ping_url` | `""` | https check URL of a hosted cron monitor; each healthy watch heartbeat pings it (see the heartbeat reference). Keep it private. |
-| `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `status --line`, its item claims lapse, and a stale planner is nudged. |
+| `sessions.stale_seconds` | `3600` | Seconds without hook activity after which a registered session is stale: it stops counting in `wuwei status`, its item claims lapse, and a stale planner is nudged. |
 | `sessions.rotate_after` | `{ turns = 0, compactions = 0, clock = "" }` | Scheduled planner rotation, off by default. `turns` (Stop hooks since the session started today), `compactions` (compactions seen) or `clock` (`"HH:MM"` in `owner.timezone`): when one is reached, the Stop hook asks the planner once, at a turn with no running seat and no unanswered owner decision, to end the session and run `wuwei plan session "$WUWEI_SESSION_ID" --take-over` in a fresh one. |
 | `listen.poll_seconds` | `60` | Interval between listener polls of the inbound source. The listener ticks at least every 30 s to probe owned PRs. |
-| `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start and in `status --line`. |
+| `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start and in `wuwei status`. |
 | `responder.enabled` | `true` | Kill switch: when `false` the listener still stores events but does not wake the planner or handle commands. |
 | `steward.every_tool_calls` | `50` | Completed tool calls between steward reviews. |
 | `steward.loop_window_hours` | `4` | Window, in hours, over which a steward review counts an item's exchanges for a negotiation loop. |
@@ -188,6 +188,8 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | `decisions.cruise.budget_share` | `0.1` | Error budget of a class: the share of its cruise answers in the window that may be undone, reversed, sampled differently or attributed an escaped defect. Above 0, at most 0.5. The budget is spent with more events than that and at least two. |
 | `decisions.cruise.budget_window_days` | `14` | Days the error budget is counted over; a spent class runs one level lower until the window refills. |
 | `decisions.cruise.burn_warn` | `2.0` | Burn rate (events of the last 48 hours against the window's allowance) that writes a nudge naming the events. |
+| `decisions.cruise.calibration_threshold` | `0.15` | Brier score above which a class or role is uncalibrated: the class runs at most L1, the role's records go to you as cards. Above 0, below 1. |
+| `decisions.cruise.calibration_min` | `10` | Scored records a class or role needs before it is judged; fewer is `too few`, which only blocks a raise card. |
 | `decisions.cruise.levels` | `{}` | Per-class level (0 to 3) that caps the level a class runs at; a level above the class ceiling or an unknown class is refused. |
 | `decisions.lenses` | `{}` | Lenses every engineering decision (`design`, `boundary`, `refactor`, `dependency-bump`) answers per option, as name = one-line question. The defaults are SOLID, twelve-factor, YAGNI and ponytail; a new name adds a lens and `""` drops one, for example `YAGNI = ""`. Names use letters, digits, dash or underscore. |
 
@@ -653,8 +655,8 @@ command is handled; stored commands are handled once it is back on.
 The listener writes a `listen: clock` line every two minutes. Session start reports
 `listen dead` when today's latest clock line is older than `listen.dead_seconds`, or
 when the listener is installed and wrote none today. A listener that is off or alive
-adds nothing to session start. `wuwei status --line` shows `listen dead`,
-`listen unmeasured` or `listen off` (nothing while alive, and nothing without an inbound
+adds nothing to session start. `wuwei status` shows `listen dead`,
+`listen unmeasured` or `listen off` (`listen alive` while alive, and nothing without an inbound
 adapter), and `wuwei nudges` pages a dead listener as `listen: health`. A DM answer to a
 two-way decision is recorded as your outcome by the listener. A DM answer to a
 one-way or `unsure` decision shows in `wuwei nudges` and session start as "D-n answered

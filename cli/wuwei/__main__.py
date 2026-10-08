@@ -33,7 +33,7 @@ GROUPS = (
     ('Recovery: when something is stuck',
      'doctor why state shadow heartbeat integrity runtime sessions seat'),
     ('Plumbing: hooks, seats and the plugin call these',
-     'agents board event fast-checks git-hook hook index memory payload rank signal sweep verdict'),
+     'agents board event fast-checks git-hook hook index lint memory payload rank signal sweep verdict'),
 )
 
 
@@ -80,7 +80,8 @@ def _main(argv=None):
         print(f"wuwei: {str(exc) or type(exc).__name__}", file=sys.stderr)
         return UNRUN
     if argv == ['status', '--line']:
-        return _call(status.run, SimpleNamespace(command='status', line=True, json=False))
+        return _call(status.run, SimpleNamespace(command='status', line=True, json=False,
+                                                  width=status.WIDTH))
     import argparse
     from importlib import import_module
     import json

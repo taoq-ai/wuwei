@@ -5,7 +5,7 @@ import json
 import sys
 
 from wuwei import novelty, state, workspace
-from wuwei.decision import (LENSES, RECORD, ROUTINE, cisr, decided_record, evaluate, lens_table, lint_file, margin,
+from wuwei.decision import (LENSES, RECORD, ROUTINE, cisr, uncalibrated, decided_record, evaluate, lens_table, lint_file, margin,
                             option_id, options, owner_confirm, owner_record, present, record_rejection,
                             record_widget, route, route_owner, seat_outcome, today_path, widget)
 from wuwei.exits import RACE, SYMLINK
@@ -101,12 +101,12 @@ def mandate(ident, path, text, fields, scores, root, config):
     door = fields['Reversibility']
     if fields['Decided-by'] == 'owner' or door == 'one-way' or (door != 'two-way' and fields.get('Class') not in ROUTINE):
         return None  # one-way doors and records written for the owner still ask (review F1)
-    kind = cisr(fields, scores)
+    kind = cisr(fields, scores, ambiguous=bool(uncalibrated(root, fields)))  # #559
     if kind == 'Strategic' or (kind == 'Exploratory' and margin(fields, scores) <= 0):
         return None
     from wuwei import cruise
     found = cruise.rule(root, ident, fields, scores, config, data) or {}
-    record = {**seat_outcome(fields, scores, by='mandate'), **found}
+    record = {**seat_outcome(fields, scores, by='mandate'), 'cisr': kind, **found}
 
     def update(current):
         if ident in current.get('decision_routes', {}) or ident in current.get('decision_outcomes', {}):
@@ -309,6 +309,7 @@ def template():
                   f'Lenses:\n| Lens | A | B |\n| --- | --- | --- |\n{rows}') if lenses else ''
     return f'''Question: Which option should we take?
 Class: design
+Role: builder
 Context: Replace with the evidence file and reason for deciding; name a repository, channel, person, dependency, environment or workflow outside this item's repository as repo:<org>/<name>, channel:<id>, person:<ns>:<id>, dependency:<ecosystem>/<name>, env:<name> or workflow:<name>.
 Options:
 | Option | Title | Rationale | Consequence |

@@ -6,8 +6,7 @@ from pathlib import Path
 import re
 import stat
 
-from wuwei import registry, workspace
-from wuwei.registry import Result
+from wuwei import workspace
 from wuwei.exits import DAMAGED, SYMLINK
 
 PLUGIN = Path(__file__).resolve().parents[2]
@@ -17,6 +16,7 @@ EXCLUDED = {MANIFEST, MANIFEST + '.sig'}
 
 
 def signature_adapter():
+    from wuwei import registry
     # Fixed trust mechanism, never selected by workspace configuration.
     return registry.load('integrity', {'adapters': {'integrity': 'ssh'}})
 
@@ -68,14 +68,15 @@ def other_versions():
 
 
 def restart(config):
-    """'plugin <old> running against template <new>: restart Claude Code', or ''."""
+    """'restart Claude Code: hooks <old> still running (plugin <new> installed)', or '' (#521)."""
     old = other_versions()
     if config is not None and newer_template(config):
         old.append(version())
     if not old:
         return ''
     new = (config or {}).get('template_version') or version()
-    return f'plugin {", ".join(old)} running against template {new}: restart Claude Code'
+    names = old[0] if len(old) == 1 else f'{", ".join(old[:-1])} and {old[-1]}'
+    return f'restart Claude Code: hooks {names} still running (plugin {new} installed)'
 
 
 def _prune(plugin, directory, dirs):
@@ -121,6 +122,8 @@ def write_manifest(plugin):
 
 
 def measure(plugin=None, pinned=None, *, checkout=None, root=None):
+    from wuwei import registry
+    from wuwei.registry import Result
     import hashlib
     plugin = PLUGIN if plugin is None else Path(plugin)
     try:
@@ -203,6 +206,7 @@ def _record(root, name, data):
 
 
 def _checkout(root):
+    from wuwei import registry
     # Partial release artifacts must still go through signature verification.
     if any((PLUGIN / name).exists() or (PLUGIN / name).is_symlink() for name in EXCLUDED):
         return None
@@ -230,6 +234,7 @@ def _checkout(root):
 
 
 def check(root):
+    from wuwei.registry import Result
     try:
         _record(root, 'verdict.json', {'exit': 2, 'fingerprint': None,
                                      'reason': 'plugin integrity measurement incomplete'})
@@ -261,6 +266,7 @@ def confirmed(other):
 
 
 def cached(root):
+    from wuwei.registry import Result
     try:
         record = json.loads(_path(root, 'verdict.json').read_text())
         if (not isinstance(record, dict) or type(record.get('exit')) is not int
@@ -288,6 +294,7 @@ def fresh(root):
 
     Mtimes are tamper evidence, not a boundary (spec 7.1, 9.1); a checkout is covered by cached.
     """
+    from wuwei.registry import Result
     result = cached(root)
     if result.exit:
         return result
@@ -335,6 +342,7 @@ def _host_confirm(fingerprint, *, prompt=None):
 
 
 def reconfirm(root, *, confirm=None):
+    from wuwei.registry import Result
     try:
         result = check(root)
         if result.exit == 2 or not result.data:
@@ -354,6 +362,7 @@ def reconfirm(root, *, confirm=None):
 
 
 def initialize(directory):
+    from wuwei import registry
     directory = Path(directory)
     (directory / 'integrity').mkdir()
     workspace.atomic_write(directory / 'integrity/pinned.pub', (PLUGIN / KEY).read_text(), mode=0o444)
@@ -364,6 +373,8 @@ def initialize(directory):
 
 
 def workspace_check(root):
+    from wuwei import registry
+    from wuwei.registry import Result
     try:
         vcs = registry.load('vcs', workspace.load_config(root))
         result = vcs.workspace_changes(Path(root) / '.wuwei', root=root)

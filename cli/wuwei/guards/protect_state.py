@@ -44,23 +44,23 @@ def _wuwei_action(argv):
 
 
 _OWNER_ACTIONS = {
-    ('decision', 'outcome'): ("Recording a decision outcome is the owner's answer, outside agent tools: show it "
-                              'with bin/wuwei decision show <id> --widget, and the owner runs bin/wuwei decision '
-                              'outcome <id> <option> in a host terminal.'),
-    ('drafts', 'approve'): ("Approving a draft is the owner's decision, outside agent tools: list drafts with "
-                            'bin/wuwei drafts, and the owner runs bin/wuwei drafts approve <id> in a host terminal.'),
-    ('grants', 'revoke'): ("Revoking a grant is the owner's, outside agent tools: list them with bin/wuwei "
-                           'grants, and the owner runs bin/wuwei grants revoke <n> in a host terminal.'),
-    ('drafts', 'drop'): ("Dropping a draft is the owner's decision, outside agent tools: list drafts with "
-                         'bin/wuwei drafts, and the owner runs bin/wuwei drafts drop <id> in a host terminal.'),
+    ('decision', 'outcome'): ('The owner records a decision outcome, outside agent tools; show it with bin/wuwei '
+                              'decision show <id> --widget. The owner runs bin/wuwei decision outcome <id> '
+                              '<option> in a host terminal.'),
+    ('drafts', 'approve'): ('The owner approves a draft, outside agent tools; list drafts with bin/wuwei drafts. '
+                            'The owner runs bin/wuwei drafts approve <id> in a host terminal.'),
+    ('grants', 'revoke'): ('The owner revokes a grant, outside agent tools; list grants with bin/wuwei grants. '
+                           'The owner runs bin/wuwei grants revoke <n> in a host terminal.'),
+    ('drafts', 'drop'): ('The owner drops a draft, outside agent tools; list drafts with bin/wuwei drafts. '
+                         'The owner runs bin/wuwei drafts drop <id> in a host terminal.'),
     ('mcp', 'decide'): ("MCP decisions are the owner's, outside agent tools: show the request, and the owner "
                         'runs bin/wuwei mcp decide <id> <option> in a host terminal.'),
     # A whole group: decide's verb position holds the D-n (#354).
-    ('decide', ''): ("Decisions are the owner's answer, outside agent tools: show it with bin/wuwei decision "
-                     'show <id> --widget, and the owner runs bin/wuwei decide <id> <option> in a host terminal.'),
-    ('integrity', 'reconfirm'): ('Integrity re-confirmation is an owner action, outside agent tools: the owner '
+    ('decide', ''): ('The owner answers decisions, outside agent tools; show it with bin/wuwei decision show '
+                     '<id> --widget. The owner runs bin/wuwei decide <id> <option> in a host terminal.'),
+    ('integrity', 'reconfirm'): ('The owner reconfirms integrity, outside agent tools: the owner '
                                  'runs bin/wuwei integrity reconfirm in a host terminal.'),
-    ('state', 'recover'): ('State recovery is an owner action, outside agent tools: the owner runs bin/wuwei '
+    ('state', 'recover'): ('The owner recovers state, outside agent tools: the owner runs bin/wuwei '
                            'state recover in a host terminal; bin/wuwei doctor shows what is damaged.'),
     # An uninstalled watch reads as off, so a seat could silence a dead-watch page.
     ('watch', 'uninstall'): ('Watch uninstall is an owner action, outside agent tools: the owner runs bin/wuwei '
@@ -68,22 +68,22 @@ _OWNER_ACTIONS = {
     # An uninstalled listener reads as off, so a seat could silence a dead-listener report.
     ('listen', 'uninstall'): ('Listener uninstall is an owner action, outside agent tools: the owner runs '
                               'bin/wuwei listen uninstall in a host terminal.'),
-    ('goals', 'edit'): ('Owner memory edits are an owner action on the host, outside agent tools: propose the '
-                        'change, and the owner runs bin/wuwei goals edit in a host terminal.'),
-    ('voice', 'edit'): ('Owner memory edits are an owner action on the host, outside agent tools: propose the '
-                        'change, and the owner runs bin/wuwei voice edit in a host terminal.'),
+    ('goals', 'edit'): ('The owner edits owner memory on the host, outside agent tools; propose the change. '
+                        'The owner runs bin/wuwei goals edit in a host terminal.'),
+    ('voice', 'edit'): ('The owner edits owner memory on the host, outside agent tools; propose the change. '
+                        'The owner runs bin/wuwei voice edit in a host terminal.'),
     # An acknowledged refusal stops paging, so a seat could silence an impostor alert.
     ('remote', 'ack'): ('Remote acknowledgements are an owner action, outside agent tools: the owner runs '
                         'bin/wuwei remote ack in a host terminal.'),
     # config.toml holds executed commands and merge eligibility; seats run wuwei promote.
-    ('config', 'promote'): ('Calibration promotion is an owner action, outside agent tools: the owner runs '
+    ('config', 'promote'): ('The owner promotes calibration, outside agent tools: the owner runs '
                             'bin/wuwei config promote in a host terminal.'),
-    ('config', 'set'): ("Config edits are the owner's answer on a card (#529): the planner asks bin/wuwei "
-                        'calibrate --questions <id>, or a decision whose option titles read <key> = <value>, '
-                        "and runs the card's record command; under strict the owner runs bin/wuwei config "
-                        'set <key> <value> in a host terminal.'),
-    ('config', 'add-repo'): ("Config edits are the owner's, outside agent tools: propose the repository, and the "
-                             'owner runs bin/wuwei config add-repo --name <owner/repo> --path <dir> --branch <branch> in a host terminal.'),
+    ('config', 'set'): ("Config edits are the owner's answer on a card (#529). The planner asks bin/wuwei "
+                        'calibrate --questions <id> or a decision with options titled <key> = <value>. Then it '
+                        "runs the card's record command; under strict the owner runs bin/wuwei config set <key> "
+                        '<value> in a host terminal.'),
+    ('config', 'add-repo'): ("Config edits are the owner's, outside agent tools; propose the repository. The owner "
+                             'runs bin/wuwei config add-repo --name <owner/repo> --path <dir> --branch <branch> in a host terminal.'),
     # Only the owner lowers the spec requirement for one item (5.10) or links an existing ticket
     # (5.11); other plan verbs are seat commands.
     ('plan', 'set'): ('Spec overrides are an owner action, outside agent tools: the owner runs bin/wuwei plan '
@@ -92,26 +92,23 @@ _OWNER_ACTIONS = {
                       'tracker create <item>.'),
     # An empty verb is the whole group: setup's flags take values, which _pair reads as a verb.
     # An applied forgetting archives a note or drops a charter rule (design 5.14).
-    ('memory', 'forget'): ("Forgetting memory is the owner's answer, outside agent tools: show the proposals "
-                           'with bin/wuwei consolidate --widget, and the owner runs bin/wuwei memory forget '
-                           '<id> apply|keep in a host terminal.'),
+    ('memory', 'forget'): ('The owner decides what memory to forget, outside agent tools; show the proposals with '
+                           'bin/wuwei consolidate --widget. The owner runs bin/wuwei memory forget <id> '
+                           'apply|keep in a host terminal.'),
     ('setup', ''): ('Setup writes config.toml, an owner action outside agent tools: the owner runs bin/wuwei '
                     'setup in a host terminal.'),
     # #492: listing a connector and proposing it is the planner's; strict asks the card.
-    ('outbound', 'learn'): ('Learning a connector runs in the registered planner session, outside seats: '
-                            'hand back to the planner, which runs bin/wuwei outbound learn; the owner can '
-                            'run it in a host terminal.'),
-    ('telemetry', 'send'): ('Telemetry sends are an owner action, outside agent tools: show the payload with '
-                            'bin/wuwei telemetry preview, and the owner runs bin/wuwei telemetry send in a host '
-                            'terminal.'),
+    ('outbound', 'learn'): ('The registered planner session learns connectors, outside seats; hand back to the '
+                            'planner, which runs bin/wuwei outbound learn. The owner can run it in a host terminal.'),
+    ('telemetry', 'send'): ('The owner sends telemetry, outside agent tools; show the payload with bin/wuwei '
+                            'telemetry preview. The owner runs bin/wuwei telemetry send in a host terminal.'),
 }
 # #492: config set on these keys gets this reason instead of the table's.
 GUARD_KEYS = ('outward', 'security', 'outbound', 'grants')
-GUARD_CONFIG = ("Guard settings (outward, outbound, security, grants) are the owner's and change from an "
-                'agent tool only through a card the owner answered (#529): for an unknown connector, '
-                'channel or person the planner runs bin/wuwei outbound learn; for another value it asks '
-                'a decision whose option titles read <key> = <value> and runs bin/wuwei config set '
-                '<key> <value> --from-card D-n.')
+GUARD_CONFIG = ("Guard settings (outward, outbound, security, grants) are the owner's. An agent tool changes "
+                'them only through a card the owner answered (#529); for an unknown connector, channel or '
+                'person the planner runs bin/wuwei outbound learn. For another value it asks a decision with '
+                'options titled <key> = <value> and runs bin/wuwei config set <key> <value> --from-card D-n.')
 _OWNER_GROUPS = {group for group, _ in _OWNER_ACTIONS}
 _OWNER_VERBS = tuple(sorted({verb for _, verb in _OWNER_ACTIONS if verb}))
 # Owner words as tokens; `_` or `.` may precede them so python snippets such as

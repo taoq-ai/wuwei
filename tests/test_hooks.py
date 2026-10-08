@@ -371,9 +371,17 @@ def test_status_line_skips_parser_and_hashlib(tmp_path):
     result = subprocess.run([sys.executable, '-I', '-P', '-c', script, str(ROOT / 'cli'), str(ROOT), str(out),
                              'status', '--line'], text=True, capture_output=True, cwd=tmp_path, env=env)
     assert result.returncode == 0, result.stderr
-    assert result.stdout.startswith('WUWEI no plan yet | pages 0 | nudges 0 | watch off')
+    assert result.stdout == 'WUWEI no plan yet | pages 0 · nudges 0\n'
     assert {'argparse', 'hashlib', 'shutil', 'wuwei.decision', 'copy', 'weakref',
-            'wuwei.sessions', 'shlex'} & set(json.loads(out.read_text())) == set()
+            'wuwei.sessions', 'shlex', 'wuwei.cruise'} & set(json.loads(out.read_text())) == set()
+
+
+def test_integrity_import_leaves_registry_out():
+    # #562: status --line asks integrity for the version and the restart line only.
+    script = 'import sys; sys.path[:0] = sys.argv[1:3]; import wuwei.integrity; print("wuwei.registry" in sys.modules)'
+    result = subprocess.run([sys.executable, '-I', '-c', script, str(ROOT / 'cli'), str(ROOT)],
+                            text=True, capture_output=True)
+    assert result.stdout == 'False\n', result.stderr
 
 
 def test_together_runs_concurrently_and_raises_in_call_order():
@@ -755,6 +763,24 @@ def test_latency_budget_decision(monkeypatch, capsys, ci, bench, load, expected,
 
 
 @cache
+def test_latency_row_is_written_before_the_budget(monkeypatch, capsys, tmp_path):
+    # #562: the latency job keeps one JSON row per probe, red runs included.
+    out = tmp_path / 'latency.jsonl'
+    monkeypatch.setenv('WUWEI_BENCH', '1')
+    monkeypatch.setitem(globals(), 'startup_floor', lambda runs: (20.0, 22.0))
+    monkeypatch.delenv('WUWEI_LATENCY_OUT', raising=False)
+    assert_latency_budget('hook', 40.0, 60.0, capsys)
+    assert not out.exists()
+    monkeypatch.setenv('WUWEI_LATENCY_OUT', str(out))
+    with pytest.raises(AssertionError):
+        assert_latency_budget('hook', 51.0, 60.0, capsys)
+    assert_latency_budget('tick', 51.0, 60.0, capsys, wall_budget=100)
+    rows = [json.loads(line) for line in out.read_text().splitlines()]
+    assert [(r['probe'], r['cpu_ms'], r['wall_ms'], r['budget_ms'], r['measure']) for r in rows] == [
+        ('hook', 51.0, 60.0, 50, 'cpu'), ('tick', 51.0, 60.0, 100, 'wall')]
+    assert {'floor_cpu_ms', 'floor_wall_ms', 'load', 'cpus'} <= rows[0].keys()
+
+
 def startup_floor(runs):
     """p95 CPU and wall ms of a bare interpreter start, the floor under every hook figure."""
     from resource import RUSAGE_CHILDREN, getrusage
@@ -781,6 +807,13 @@ def assert_latency_budget(name, cpu_ms, wall_ms, capsys, *, wall_budget=None, ru
               f'load {load:.2f} on {cpus} CPUs')
     with capsys.disabled():
         print('\n' + report)
+    if out := os.environ.get('WUWEI_LATENCY_OUT'):  # #562: kept before the assert, red runs too
+        with open(out, 'a', encoding='utf-8') as file:
+            file.write(json.dumps({'probe': name, 'cpu_ms': cpu_ms, 'wall_ms': wall_ms,
+                                   'budget_ms': 50 if wall_budget is None else wall_budget,
+                                   'measure': 'cpu' if wall_budget is None else 'wall',
+                                   'floor_cpu_ms': floor_cpu, 'floor_wall_ms': floor_wall,
+                                   'load': load, 'cpus': cpus}) + '\n')
     # Budgets are enforced only when asked (WUWEI_BENCH=1): wall time on a working host is
     # load-bound, and a load heuristic made the suite red on busy developer machines.
     if os.environ.get('WUWEI_BENCH') == '1':

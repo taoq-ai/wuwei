@@ -218,7 +218,7 @@ def set_value(args, confirm=None):
         print('config set: in a session a card answer confirms the change; nothing written. ' + (
             f'Run bin/wuwei calibrate --questions {qid}, ask the widget, then run its record '
             f'command wuwei calibrate --answer "{qid}=<label>".' if qid else
-            f'Write a decision whose option titles read {args.key} = <value>, route it, ask it with '
+            f'Write a decision whose option titles read {args.key} = <value> and route it. Ask it with '
             f'bin/wuwei decision show D-n --widget, then run bin/wuwei config set {args.key} <value> '
             '--from-card D-n.'), file=sys.stderr)
         return FINDINGS
@@ -561,7 +561,7 @@ def connect(root, confirm=None):
                         'and is in the conversation details or link): ').strip()
         if not re.fullmatch(r'D[A-Z0-9]+', channel):
             print('wuwei setup slack: ' + ('no DM channel ID' if not channel else 'that is not a DM channel ID')
-                  + '; it starts with D and is in the details or link of your direct message with the app. '
+                  + '; it starts with D. Find it in the details or link of your direct message with the app. '
                   'Then run bin/wuwei setup slack again', file=sys.stderr)
             return FINDINGS
         new['SLACK_OWNER_DM_CHANNEL'] = channel
