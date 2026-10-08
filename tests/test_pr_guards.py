@@ -235,6 +235,14 @@ def test_port_errors(case, operation, result):
     assert code == 2 and reason
 
 
+def test_session_merge_names_wuwei_merge(case):
+    # #524: a refused gh pr merge names the command that merges under the owner's grant.
+    root, _, _ = case
+    code, reason = guard().check(payload(root, 'gh pr merge 9'))
+    assert code == 1 and 'merge.auto is off' in reason, reason
+    assert reason.endswith("run bin/wuwei merge 9: it merges under the owner's grant, or asks the owner on a card")
+
+
 @pytest.mark.parametrize('profile', ['strict', 'standard'])
 @pytest.mark.parametrize('command,code,hint', [
     ('gh pr merge 9', 1, 'merge.auto is off'),

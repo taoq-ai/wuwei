@@ -28,6 +28,8 @@ def merge_check(repo, pr, cwd, root, config):
     if pr is None:
         return 1, 'merge policy requires an explicit PR; use wuwei merge <pr>'
     result = merge.check(pr, root, cwd=cwd, repo=repo)
+    if result.exit == 1:  # #524: wuwei merge is the one way through, under a grant or a card
+        return 1, f"{result.reason}; run bin/wuwei merge {pr}: it merges under the owner's grant, or asks the owner on a card"
     if result.exit:
         return result.exit, result.reason
     return 1, 'merge policy passed; use wuwei merge <pr> to record evidence and monitor the merge'

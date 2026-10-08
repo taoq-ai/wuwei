@@ -338,6 +338,19 @@ when a merged PR is reverted or red on the base branch, or when the rolling 14-d
 defect rate for auto-merged PRs (5.6) exceeds the owner's baseline. Any precondition that
 cannot be read is exit 2: not cleared, so the merge goes to the owner.
 
+Amended (owner, 2026-10-05, #524): a merge the policy does not clear is a grantable owner
+action like a deploy (4.7). `wuwei merge` (and `wuwei pr act`) asks the owner on a decision card
+(Keep owner-only, Allow once, Allow today, Always allow per repository; no Always under
+`strict`), and a merge the plan lists is a planned card the morning gate asks, per repository
+or per PR. The recorded answer replaces only eligibility and pacing (`merge.auto`, risk flags,
+never-auto paths, size, cycle budget, soak, daily cap, quiet hours, breaker); every
+precondition above still holds at the current head, and the repository must allow squash
+merges. A precondition that fails names the condition: no grant lifts it. With no grant,
+`[merge] default_tier` decides: `ask` writes the card, `owner_only` prints the exact
+`gh pr merge <url> --squash --match-head-commit <sha>` for a host terminal; unset, it is
+`owner_only` under `strict` and `ask` otherwise. Granted merges are journaled, watched and
+undo-logged like auto-merges.
+
 ### 4.7 Deployment ban (owner, 2026-09-28)
 
 WUWEI never deploys, in any profile, routine or remote command. Refused always, after the
@@ -1842,7 +1855,7 @@ fix the seat runs; only `records` is a wall.
 Floors no posture and no override lowers:
 
 - `records` always blocks, with canary and honeytoken egress and owner disposition markers, whose refusal reads `posture: records = block (floor; no setting lowers it)`. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
-- Owner-only actions (`deploy`, `pr`, and approve-tier messages through `outward`) block, and below strict they ask on a card: a deploy, release or publish asks the owner, and only the owner's recorded answer (once, today, always) lets the same action through (#478); a held message is a draft card (#526). Below strict such a refusal carries no `owner-only action` line; under strict it keeps it. The merge policy, admin merge, approvals, branch protection and the shepherd's no-merge stay owner-only until #524. Raising a PR and pushing a feature branch are not owner-only: they follow `publish`, and missing evidence asks on a card (once, today) under guarded (#530).
+- Owner-only actions (`deploy`, `pr`, and approve-tier messages through `outward`) block, and below strict they ask on a card: a deploy, release or publish asks the owner, and only the owner's recorded answer (once, today, always) lets the same action through (#478); a held message is a draft card (#526). Below strict such a refusal carries no `owner-only action` line; under strict it keeps it. Admin merge, approvals and branch protection stay owner-only. Amended (owner, 2026-10-05, #524): a merge the merge policy does not clear asks the owner on a card like a deploy, and the grant never lifts a 4.6 precondition. Raising a PR and pushing a feature branch are not owner-only: they follow `publish`, and missing evidence asks on a card (once, today) under guarded (#530).
 - MCP: under `guarded` and `strict` a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. A finding blocks only at a severity in `scanner.mcp.block`, which is unset by default: no severity under `guarded`; `critical`, `high` and `unmeasured` under `strict`. Under `observe`, and with `mcp = "off"`, the list has no effect and `config check` says so.
 
 The posture changes what the cooperative guards refuse, never the hard boundaries above.
