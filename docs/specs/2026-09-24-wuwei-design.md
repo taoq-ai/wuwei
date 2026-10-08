@@ -752,10 +752,10 @@ cruise mode. `[decisions.cruise]` in `config.toml`: `enabled` (default true), `m
 (default 0.2), `max_per_day` (default 20), `undo_minutes` (default 60), `budget_share`
 (default 0.1, above 0 and at most 0.5), `budget_window_days` (default 14), `burn_warn`
 (default 2.0), `calibration_threshold` (default 0.15, above 0 and below 1),
-`calibration_min` (default 10), and `levels.<class>`, which only lowers a class. The config check refuses an unknown class, a
+`calibration_min` (default 10), `shadow_days` (default 5), `shadow_min` (default 5), and `levels.<class>`, which only lowers a class. The config check refuses an unknown class, a
 level outside 0 to 3, or a level above the class's ceiling. The running level lives in
 `memory/cruise.json`, starts at the default, and is written only by `wuwei promote` (raises
-with ledger evidence and morning-gate approval, lowers when the error budget is spent). A class runs at the lowest
+with ledger evidence after a passed shadow and morning-gate approval, lowers when the error budget is spent). A class runs at the lowest
 of the running level, the config level and the ceiling.
 
 Conditions. The CLI answers a record only when all hold: the class runs at L2 or L3;
@@ -791,6 +791,21 @@ answer whose undo window closed without an undo. `wuwei promote` lands a raise o
 owner approved it at the morning gate, and never above the ceiling. Once a week the steward
 re-asks the owner one cruise-answered record per class from the past seven days, with the
 answer hidden; a different choice counts as a reversal.
+
+Shadow promotion (owner, 2026-10-08, #560). Agreement alone said nothing about what the next
+level would do on live records, so a raise is shadowed first. When a class reaches its
+agreements, propose starts a shadow at the next level in `memory/cruise.json` instead of a
+card. While it runs, each record the mandate takes for that class also gets the answer the
+shadow level would have given (`decision_shadows`, written only by `wuwei decision route`);
+the live route never changes. The steward scores each shadow answer against the record's final
+outcome: an owner answer, or a cruise answer whose undo window closed. One disagreement ends
+the shadow, and the ledger names the record and both options. The shadow passes after
+`shadow_days` with at least `shadow_min` scored answers, all agreeing. Only a passed shadow
+gets the raise card, the card ends the shadow so it asks once, and `wuwei promote` lands a
+raise only from a card that carries a passed shadow. A raise to L1 changes no route, so its
+shadow passes at once. After an ended shadow the agreements count again from its end.
+`bin/wuwei cruise shadow` prints the shadows and the day report has a `## Cruise shadow`
+section.
 
 Error budget (owner, 2026-10-08, #558). A single event no longer lowers a class: one unlucky
 reversal dropped a class, and a slow drift of bad calls never tripped anything. Each class
@@ -835,7 +850,8 @@ Kill switch. `decisions.cruise.enabled = false` runs every class at L0 without c
 running or configured level, so turning it back on restores them. The status line (5.9) then
 shows `cruise off | L<max>`, the highest level a class would run at, and `cruise L<max>`
 while it is on, followed by `· budget <classes> spent` while an error budget holds a class
-lower, and `· uncalibrated <roles>` while a role is stored uncalibrated (#559).
+lower, `· uncalibrated <roles>` while a role is stored uncalibrated (#559), and
+`· shadow <classes>` while a class runs in shadow or waits for its raise card (#560).
 
 Novelty (owner, 2026-10-08, #556). Blast radius is only known for targets the workspace
 has touched. A decision or guarded action whose target is novel runs one level lower than
@@ -1842,6 +1858,8 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I10 | Under observe and guarded no opaque read-only command is refused | per posture, a script read, a `$(...)` read and a `python3 -c` print through the hook | #547 |
 | I11 | A class runs lower only when its error budget is spent (more events than the allowance and at least two), never on a single event and never through a refusal | `budget_classes.measure` on 3 of 20, 2 of 20 within 48 hours, none, and 1 of 5; no single-trigger lowering left in `cruise` | #558; the lowered class routes its records to a card and is restored when the window refills |
 | I12 | A class or role is uncalibrated only when its Brier score over at least calibration_min scored records is above calibration_threshold; an uncalibrated class runs at most L1, an uncalibrated role only moves a record toward the owner, never through a refusal | `calibration_scores.measure` on 12 high with 5 broken, 10 high stood and 9 high stood; `cruise.level` with and without a stored class; `cisr(..., ambiguous=True)` on a Routine and a Consequential record | #559; too few blocks promotion only |
+| I13 | A shadow never changes a live route | `cruise.level` with and without a stored shadow row, for every class, shadow level and state, cruise on, off and supervised; the full route equality in `tests/test_cruise.py` | #560 |
+| I14 | A raise lands only after a passed shadow | a raise card with no shadow answered `raise` leaves the running levels unchanged | #560; the #558 budget restore is the one raise with no card |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

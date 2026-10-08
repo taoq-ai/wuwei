@@ -479,8 +479,42 @@ def i12(case, rules):
     return calibration_rule()
 
 
+@functools.cache
+def shadow_rule():
+    """#560: a stored shadow never changes the level a class routes at, for any class, shadow
+    level and state, cruise on or off, autonomous or supervised."""
+    from wuwei import cruise
+    for mode, enabled in (('autonomous', True), ('autonomous', False), ('supervised', True)):
+        config = {'autonomy': {'mode': mode}, 'decisions': {'cruise': {'enabled': enabled, 'levels': {}}}}
+        for name in cruise.CLASSES:
+            for level, state in itertools.product((1, 2, 3), cruise.SHADOW):
+                run = {'levels': {}, 'changed': {}, 'shadow': {name: {'level': level, 'state': state}}}
+                if cruise.level(config, name, run) != cruise.level(config, name, {'levels': {}, 'changed': {}}):
+                    return f'a {state} shadow at L{level} moves {name} under {mode}'
+    return None
+
+
+def i13(case, rules):
+    return shadow_rule()
+
+
+def i14(case, rules):
+    """#560: a raise card answered raise lands nothing without a passed shadow."""
+    def compute():
+        from wuwei import cruise, decision, state
+        card = {'kind': 'raise', 'class': 'defer', 'level': 1}
+        before = decision.running(rules.root)['levels']
+        state._write_state(lambda data: data.setdefault('cruise_cards', {}).__setitem__('D-99', card),
+                           rules.root, reserved=False)
+        cruise.answered(rules.root, 'D-99', 'raise')
+        state._write_state(lambda data: data['cruise_cards'].pop('D-99'), rules.root, reserved=False)
+        after = decision.running(rules.root)['levels']
+        return None if after == before else f'a raise card without a passed shadow landed {after}'
+    return rules.memo(('raise card',), compute)
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
-              'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12}
+              'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14}
 
 
 def project(case):

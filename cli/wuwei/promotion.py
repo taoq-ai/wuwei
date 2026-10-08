@@ -55,6 +55,9 @@ def cruise_level(root, name, level, reason, evidence, hold=None):
     data['changed'][name] = workspace.now().isoformat()
     budget = data.pop('budget', {})
     budget.pop(name, None)
+    data.get('shadow', {}).pop(name, None)  # #560: a level write ends the class's shadow
+    if not data.get('shadow', True):
+        data.pop('shadow')
     if hold is not None:
         budget[name] = hold
     if budget:
@@ -71,6 +74,15 @@ def calibration(root, classes, roles, reason):
     if classes or roles:
         data['calibration'] = {'classes': sorted(classes), 'roles': sorted(roles)}
     _cruise_write(root, data, 'calibration', reason, CRUISE)
+
+
+def cruise_shadow(root, name, row, reason, evidence=None):
+    """#560: the one writer of a class's shadow row in cruise.json, with a ledger line."""
+    from wuwei.decision import CRUISE, running
+    root = Path(root)
+    data = running(root)
+    data.setdefault('shadow', {})[name] = row
+    _cruise_write(root, data, 'shadow', reason, evidence or CRUISE)
 
 
 def _cruise_write(root, data, action, reason, evidence):

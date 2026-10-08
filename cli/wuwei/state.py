@@ -275,6 +275,7 @@ STATE_PRODUCERS = {
     'outbound_threads': 'wuwei outbound learn',
     'grants': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise, wuwei plan propose or wuwei decide',
     'cruise_cards': 'wuwei plan propose',
+    'decision_shadows': 'wuwei decision route',
 }
 
 

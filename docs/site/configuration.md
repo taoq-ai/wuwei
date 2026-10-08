@@ -185,6 +185,8 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | `decisions.cruise.undo_minutes` | `60` | Minutes an L2 cruise answer can be undone, from the answer. |
 | `decisions.cruise.promote_agreements` | `10` | Agreeing answers of a class since its last level change that make `plan propose` ask you to raise it. |
 | `decisions.cruise.promote_days` | `14` | Days those agreements are counted over; one raise card per class in that window. |
+| `decisions.cruise.shadow_days` | `5` | Days a class runs in shadow at the next level before its raise card. |
+| `decisions.cruise.shadow_min` | `5` | Shadow answers that must be scored, all agreeing, before the shadow passes. |
 | `decisions.cruise.budget_share` | `0.1` | Error budget of a class: the share of its cruise answers in the window that may be undone, reversed, sampled differently or attributed an escaped defect. Above 0, at most 0.5. The budget is spent with more events than that and at least two. |
 | `decisions.cruise.budget_window_days` | `14` | Days the error budget is counted over; a spent class runs one level lower until the window refills. |
 | `decisions.cruise.burn_warn` | `2.0` | Burn rate (events of the last 48 hours against the window's allowance) that writes a nudge naming the events. |

@@ -404,6 +404,13 @@ scored. An uncalibrated class runs at most L1, an uncalibrated role's records go
 card, and a class gets a raise card only when it is calibrated. `bin/wuwei cruise
 calibration` prints the table.
 
+Shadow promotion. Before a raise card, a class runs in shadow at the next level. Each record
+taken for it also notes what the next level would have answered, and nothing about the live
+route changes. The steward checks those notes against your final answers. One miss ends the
+shadow. After `shadow_days` with at least `shadow_min` checked answers, all agreeing, you get
+the raise card. `bin/wuwei cruise shadow` prints the shadows, and the status line shows
+`· shadow <classes>`.
+
 Every seat prompt ends with a mandate block built from those class levels
 (`decisions.cruise.levels`, the 5.8.1 defaults otherwise), the interview's trust-surface
 line and `deploy.deny`. It says what the seat decides alone, what it decides and records, and what
