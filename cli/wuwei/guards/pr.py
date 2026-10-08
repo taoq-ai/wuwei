@@ -82,12 +82,13 @@ def values(found, *keys):
 
 def _recorded_gates(root, sha, records, item, items=None):
     """Check the bounded fix and delta path recorded by the receive producer."""
-    from wuwei.dispatch import base, gate_set
+    from wuwei.dispatch import base, depth, gate_set
     candidates = [item] if item is not None else sorted({
         key.split(':', 1)[0] for key in records if isinstance(key, str) and ':' in key})
     failures = []
     for candidate in candidates:
         roles = gate_set((items or {}).get(candidate, {}))
+        light = depth((items or {}).get(candidate, {}), gate=True) == 'light'  # #567
         initial = [records.get(f'{candidate}:{role}:initial') for role in roles]
         missing = [role for role, row in zip(roles, initial) if row is None]
         if missing:
@@ -110,7 +111,7 @@ def _recorded_gates(root, sha, records, item, items=None):
             if path.parent != expected or path.is_symlink() or not path.name.startswith('gate-'):
                 raise ValueError('gate verdict path is outside the day decisions; receive the verdict again with bin/wuwei dispatch receive')
             text = path.read_text(encoding='utf-8')
-            code, reason = verdict.lint(text, quality=base(role) == 'quality', class_sweep=True)
+            code, reason = verdict.lint(text, quality=base(role) == 'quality', class_sweep=True, light=light)
             if code:
                 raise ValueError(f'{role} verdict: {reason}')
             active = verdict.active_text(text)

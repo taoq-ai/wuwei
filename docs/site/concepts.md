@@ -46,7 +46,7 @@ Work admitted during the day must fit the remaining build hours.
 
 ### Tier
 
-Review tier: light (one reviewer agent) or standard and full (three), set per change from its size and risk.
+Review tier: light (one reviewer agent) or standard and full (three), set per change from its size and risk. The tier also sets the process depth: see [review tiers](#review-tiers).
 Outbound tier: a message sent as you either goes out at once or waits as a draft for your approval.
 
 ### Soak
@@ -352,6 +352,20 @@ item gets the quality gate only; standard and full get arch, quality and securit
 tier below the computed one is refused and recorded as a reason, and the returned action
 carries the `tier`. See [configuration](configuration.md#workspace-and-repositories) and
 the [lead plan JSON](reference.md#lead-plan-json).
+
+The tier also decides how much process an item gets (design 5.3). Every brief and launch
+prompt carries a `Depth:` line, so no seat decides it:
+
+| | light | standard | full |
+|---|---|---|---|
+| Builder class sweep | none | the classes `wuwei sweep classes <worktree>` lists | every class |
+| Gate step zero (mutation) | none | only when the diff touches guard code, grants, outward, a hook or a trust path | always |
+| After a fix | the same sentinel re-reads and rewrites `Verdict:` and `Head:` | delta round | delta round |
+| Verdict | `Verdict:`, `Head:`, findings | full shape | full shape |
+| Retro note | only when a line is not `none` | always | always |
+
+A Routine decision taken under mandate prints as one line in `decision show` at every tier.
+The default `repos.gates.floor` is `standard`, so light depth needs `floor = "light"`.
 
 With `gates.second_opinion = "<runtime>:<model>"`, standard and full items get one more gate:
 the role in `gates.second_opinion_role` (quality by default) runs again on that runtime and

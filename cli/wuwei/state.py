@@ -331,7 +331,7 @@ def _producer_error(parts):
     if key == 'items' and len(parts) > 2:
         producer = {'phase': 'wuwei state transition',
                     'resume_phase': 'wuwei state transition',
-                    'flags': 'wuwei plan approve', 'track': 'wuwei brief',
+                    'flags': 'wuwei plan approve', 'track': 'wuwei brief', 'depth': 'wuwei brief',
                     'worktree': 'wuwei brief, wuwei worktree adopt or wuwei worktree add --branch',
                     'source': 'wuwei plan add or wuwei pr claim',
                     'title': 'wuwei plan add or wuwei pr claim',

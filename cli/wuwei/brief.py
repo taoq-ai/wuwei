@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import re
+import shlex
 
 from wuwei import registry, security, sessions, state, workspace
 from wuwei.exits import ADAPTER_DATA, DAMAGED, PAYLOAD, SYMLINK
@@ -15,8 +16,33 @@ def launch_prompt(brief_path, charter, *, root=None):
     """Format every Claude seat's instructions with a workspace-relative reference."""
     root = workspace.find_workspace(root)
     relative = Path(brief_path).resolve(strict=True).relative_to(root)
+    header = Path(brief_path).read_text(encoding='utf-8').split('\n\n', 1)[0]
+    found = re.search(r'^Depth: .+$', header, re.M)  # #567: the seat never decides its depth
     return (f'{REFERENCE_PREFIX}{relative}\nRead instructions {charter} and brief {relative}.'
-            + '\n\n' + mandate(root))
+            + '\n\n' + mandate(root) + ('\n' + found[0] if found else ''))
+
+
+LIGHT_GATE = ('Depth: light; skip: gate step zero, the Probe or Mutation row, the class-sweep line, '
+              'the Simplicity and Design rows, the retro note when every line would be none; '
+              'verdict: Verdict:, Head:, findings')
+
+
+def depth_line(role, value, worktree, paths=(), trust_paths=()):
+    """#567: the brief's Depth: line (design 5.3, process depth follows the tier)."""
+    from wuwei import dispatch
+    if role == 'builder':
+        sweep = 'wuwei sweep classes ' + shlex.quote(worktree)
+        if value == 'light':
+            return (f'Depth: light; skip: the class sweep while {sweep} prints Depth: light, '
+                    'and the retro note when every line would be none')
+        return f'Depth: {value}; before handoff run {sweep} and report one CLASS line per class it lists'
+    zero = dispatch.step_zero(value, paths, trust_paths)
+    if zero is None:
+        return LIGHT_GATE
+    run, reason = zero
+    if not run:
+        return f'Depth: {value}; step zero: skip ({reason}); write Mutation: skipped (depth {value})'
+    return f'Depth: {value}; step zero: run' + (f' ({reason})' if reason else '')
 
 
 def mandate(root):
@@ -376,6 +402,14 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             line = specmode.brief_line(config, item, current, tree, gate)
             if line:
                 header.append(line)
+        depth = None
+        if role == 'builder' or gate:
+            from wuwei import dispatch
+            depth = (dispatch.depth(current, gate=True) if gate else dispatch.tier(
+                root, config, {'flags': {}, **current, 'worktree': str(tree) if tree else None})['tier'])
+            header.append(depth_line(role, depth, str(tree) if tree else '<worktree>',
+                                     [row['path'] for row in changed],
+                                     (repo or {}).get('gates', {}).get('trust_paths', []) if tree else []))
         if role == 'builder' and tree and repo:
             from wuwei import fast_checks  # #520: the builder never improvises an interpreter
             for command in repo.get('fast_checks', []):
@@ -439,6 +473,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                     fresh['items'][item]['track'] = track
                     if tree:
                         fresh['items'][item]['worktree'] = str(tree)
+                if role == 'builder' and item in fresh['items']:
+                    fresh['items'][item]['depth'] = depth
                 if role == 'builder':
                     sessions.claim(fresh, item, session, workspace.now(),
                                    config['sessions']['stale_seconds'], cwd=str(Path.cwd()))

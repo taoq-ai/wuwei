@@ -5,6 +5,7 @@
 READ_ONLY = frozenset({'board', 'calibrate', 'config check', 'config show', 'cruise budget', 'cruise calibration', 'doctor', 'drafts show', 'grants', 'guide',
                        'heartbeat', 'outbound explain', 'outbound tiers',
                        'integrity check', 'lint tone', 'mcp check', 'memory show', 'memory status', 'plan gate', 'sessions', 'shadow report', 'status',
+                       'sweep classes',
                        'why'})
 # calibrate only prints with --questions; doctor --fix writes (checked below).
 _NEEDS = {'calibrate': '--questions'}
