@@ -38,7 +38,7 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for yo
 - The path: `bin/wuwei next` returns the exact next action for each step of the day, and Claude walks it ([what the session knows](docs/site/agent.md)).
 - Cruise mode: the CLI answers clear two-way decisions of a class at its level, tells you, and lets you undo for an hour. Reversals spend the class's error budget, and a spent budget lowers the class until the window refills. Agreement raises it on your card. A target the workspace has never touched asks you once, and a class that keeps being more sure than right runs at most L1 ([cruise answers](docs/site/daily.md#cruise-answers), [design spec](docs/specs/2026-09-24-wuwei-design.md) section 5.8.1).
 
-Landing next: merge grants per repository ([#524](https://github.com/taoq-ai/wuwei/issues/524)), one register of people, channels and tools ([#552](https://github.com/taoq-ai/wuwei/issues/552)), a day pace ([#579](https://github.com/taoq-ai/wuwei/issues/579)), measured undo ([#557](https://github.com/taoq-ai/wuwei/issues/557)), shadow-before-live raises ([#560](https://github.com/taoq-ai/wuwei/issues/560)) and [#586](https://github.com/taoq-ai/wuwei/issues/586).
+Landing next: one register of people, channels and tools ([#552](https://github.com/taoq-ai/wuwei/issues/552)), a day pace ([#579](https://github.com/taoq-ai/wuwei/issues/579)), measured undo ([#557](https://github.com/taoq-ai/wuwei/issues/557)), shadow-before-live raises ([#560](https://github.com/taoq-ai/wuwei/issues/560)) and [#586](https://github.com/taoq-ai/wuwei/issues/586).
 
 ## How it works
 
