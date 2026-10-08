@@ -465,8 +465,8 @@ Availability (owner, 2026-10-04, #477). The owner's session is never blocked by 
 Seats run in the background; any command that can run longer than a few seconds (fast
 checks, `dispatch opinion`, `steward run`, calibration) runs in the background, and the
 planner acts on its completion notification. The planner's turn ends with the board in one
-line (`wuwei status --line`, which names the running seats and checks with their start
-times), and the owner can speak at any time; the planner answers from the board, never by
+line (`wuwei status --line`, which names the running seats by role; `wuwei status` and
+`wuwei next` give each seat's item and start time), and the owner can speak at any time; the planner answers from the board, never by
 resuming or interrupting a seat. Owner questions are the one thing that waits, because
 they wait for the owner.
 
@@ -879,9 +879,15 @@ classifier cannot read is a `nudge`, never `silent`.
 
 Surfaces, all reading the same classification:
 
-- Status line. `wuwei status --line` for the Claude Code status line: one line with pages,
-  nudges, items per phase against CAP, the next person reply due, the next meeting, the
-  cruise level (5.8.1) and the day's negotiation loops (5.8.2). It shares the hook latency
+- Status line. `wuwei status --line` for the Claude Code status line (#521): one line of at
+  most 100 columns (`--width <n>`), read left to right by importance. First the one thing to
+  do now when there is one (`restart Claude Code: hooks <old> still running`, `no plan yet`,
+  `gate waiting`, `decision D-n waiting`), then items per phase against CAP and the running
+  seats by role (`seats 4/1 (lead, arch, +2 more)`, cut at whole names), then pages, nudges
+  and the posture when it is not guarded. `wuwei status` prints the same groups one per line
+  with the detail: each running seat with role, item and start time, watch, listen,
+  sessions, the next person reply due, the next meeting, the day's negotiation loops (5.8.2)
+  and the plugin and template versions. It shares the hook latency
   budget (10.6) and shows `WUWEI ? unmeasured` rather than a false green when it cannot read state.
 - Cockpit. The dashboard (#28) grows into the three lanes plus the briefing pack, served on
   127.0.0.1 and opened in the desktop app's browser pane or any browser. Approving a
