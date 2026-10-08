@@ -56,17 +56,17 @@ def session_start(payload):
     session = payload.get('session_id')
     session = session if isinstance(session, str) and session.strip() else None
     lines.append(next_command.orientation(row, workspace.posture(config)[0], specmode.label(config), session))
+    day = None
     try:
         if isinstance(payload.get('session_id'), str) and payload['session_id'].strip():
             sessions.export(payload['session_id'])
-        _seen(root, payload, 'SessionStart')
+        day = _seen(root, payload, 'SessionStart')  # The registry write returns the day (#587).
     except ERRORS as exc:
         code = 2
         lines.append(f'session registry unmeasured: {exc}')
-    day = None
     try:
         # Constraints are orientation (#358), outside the memory budget.
-        day = state.read_state(root)
+        day = state.read_state(root) if day is None else day
         lines.append(memory.constraints(root, day))
         content, size, tokens = memory.session_payload(root)
         lines.extend([content, f'Size: {size} bytes, {tokens} estimated tokens'])
