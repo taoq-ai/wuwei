@@ -153,11 +153,11 @@ def show(args):
             return 0, '[]'  # #530: taken under the mandate, nothing to ask.
         from wuwei.commands.setup import assignment  # #529: a config card records through config set
         record = CONFIG_RECORD if any(assignment(row[1]) for row in options(fields)) else RECORD
-        widget = record_widget(args.id, fields, record, level=level)
+        card = record_widget(args.id, fields, record, level=level)
         novel = novelty.routed(state.read_state(root), args.id)
         if novel:
-            widget['question'] += f' First time for {", ".join(novel)}: your answer clears it.'
-        return 0, json.dumps([widget], indent=2)
+            card['question'] += f' First time for {", ".join(novel)}: your answer clears it.'
+        return 0, json.dumps([card], indent=2)
     if level == 'full':
         return 0, text.rstrip()
     return 0, present(args.id, fields, level) + f'\nFull record: wuwei decision show {args.id} --full'
