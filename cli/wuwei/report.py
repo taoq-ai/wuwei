@@ -53,6 +53,28 @@ def shadow_lines(directories):
     return [*lines, '', 'Candidates for a guard fix or a calibration proposal:', *(candidates or ['none'])]
 
 
+CISR = ('Routine', 'Consequential', 'Exploratory', 'Strategic')
+
+
+def mandate_lines(data):
+    """#530: decisions taken under the mandate, Consequential first, with the reversal command."""
+    taken = sorted(((ident, row) for ident, row in data.get('decision_outcomes', {}).items()
+                    if row.get('decided_by') == 'mandate'),
+                   key=lambda pair: (pair[1].get('cisr') != 'Consequential', pair[0]))
+    return [f"- {ident} ({row.get('cisr')}): {row.get('option')}, decisions/{ident}.md; "
+            f'reverse: bin/wuwei decide {ident} <option>' for ident, row in taken] or ['none']
+
+
+def class_lines(data):
+    """#530: decisions and owner cards per class, from the CLI-written outcomes and routes."""
+    outcomes, routes = data.get('decision_outcomes', {}), data.get('decision_routes', {})
+    kinds = {ident: outcomes.get(ident, {}).get('cisr') or routes.get(ident, {}).get('cisr')
+             for ident in outcomes.keys() | routes.keys()}
+    return [*(f'- {kind}: {sum(value == kind for value in kinds.values())} decisions, '
+              f'{sum(kinds[ident] == kind for ident in routes)} cards' for kind in CISR),
+            'Target: cards only for Strategic and for floors (publish, merge).']
+
+
 def build(root=None):
     root = workspace.find_workspace(root)
     day = workspace.day_dir(root)
@@ -77,7 +99,8 @@ def build(root=None):
     else:
         lines = ['# WUWEI report ' + day.name, '', '## Outcome',
                  *(f'- {title}: {shown(key)}' for title, key in headline)]
-    lines += ['', '## Merged']
+    lines += ['', '## Taken under mandate', *mandate_lines(data), '', '## Decisions by class',
+              *class_lines(data), '', '## Merged']
     items = data['items']
     lines.extend(f"- {name} ({item['pr']})" if item.get('pr') else f'- {name}'
                  for name, item in sorted(items.items()) if item['phase'] == 'merged')

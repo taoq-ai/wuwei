@@ -244,7 +244,8 @@ def snapshot(directory):
         from wuwei import sessions
         live = sum(not row['stale'] and 'stopped' not in row for row in sessions.rows(
             data, workspace.now(), sessions.stale_seconds(directory.parents[2])))
-    result = {'pages': 0, 'nudges': 0, 'cap': data['cap'], 'gate_approved': data['gate_approved'],
+    result = {'pages': 0, 'nudges': 0, 'cap': data['cap'], 'cap_bound': data['cap_bound'],
+              'gate_approved': data['gate_approved'],
               'phases': {phase: count for phase in state.PHASES
                          if (count := sum(item['phase'] == phase for item in data['items'].values()))},
               'next_reply_due': None, 'next_meeting': None, 'sessions': live,
@@ -347,8 +348,8 @@ def line(data):
     parts.extend(f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items())
     if data['gate_approved']:
         seats = data.get('seats', {})
-        parts.append(f'seats {sum(seats.values())} of CAP {data["cap"]}'
-                     + (f' ({state.goal_split(seats)})' if seats else ''))
+        label = '; '.join(part for part in (data.get('cap_bound'), state.goal_split(seats)) if part)
+        parts.append(f'seats {sum(seats.values())}/{data["cap"]}' + (f' ({label})' if label else ''))
     if data.get('running'):
         parts.append('running ' + state.in_flight_text(data['running']))
     if data['sessions']:

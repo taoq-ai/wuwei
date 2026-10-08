@@ -28,6 +28,9 @@ def register(subparsers):
     parser.add_argument('value', help='one TOML value, for example \'"standard"\' or false')
     parser.add_argument('--replace', action='store_true',
                         help='write the value as given instead of adding to the current list or table')
+    parser.add_argument('--from-card', dest='from_card', metavar='D-n',
+                        help="the decision card whose answer is this assignment (#529): the owner's "
+                             'answer is the confirmation outside strict')
     parser.set_defaults(func=setup.set_value)
     parser = actions.add_parser('show', help='print the effective value, each row tagged default or owner')
     parser.add_argument('key', help='dotted key, for example outward.tool_patterns')
@@ -194,7 +197,7 @@ def read(root):
     return path, path.read_text(encoding='utf-8')
 
 
-def proposal(root, raw, base, config, results, extra=(), host=None):
+def proposal(root, raw, base, config, results, extra=()):
     """(text, diff, edits, summary, snapshot): the calibration of base, diffed against raw."""
     import difflib
     import json
@@ -207,7 +210,7 @@ def proposal(root, raw, base, config, results, extra=(), host=None):
     imported = [s for s in imported if s[:2] not in {a[:2] for a in asked}]
     owned = {s[:2] for s in imported + asked}
     text, diff, edits = calibrate.propose(
-        base, results, [s for s in extra if s[:2] not in owned] + imported + asked, host)
+        base, results, [s for s in extra if s[:2] not in owned] + imported + asked)
     if base != raw:
         diff = ''.join(difflib.unified_diff(raw.splitlines(keepends=True), text.splitlines(keepends=True),
                                             'config.toml', 'config.toml (proposed)'))
@@ -266,8 +269,7 @@ def promote(args, confirm=None):
             raise ValueError(calibrate.NO_REPOS)
         results = calibrate.survey(root, config, list(enumerate(config['repos'])), style=False,
                                    measure=getattr(args, 'measure', False))
-        text, _, _, summary, snapshot = proposal(root, raw, raw, config, results,
-                                                 host=calibrate.host(root, config))
+        text, _, _, summary, snapshot = proposal(root, raw, raw, config, results)
         return offer(root, raw, text, summary, label='config promote', what='calibration',
                      confirm=confirm, snapshot=snapshot)
     except ConfigError as exc:

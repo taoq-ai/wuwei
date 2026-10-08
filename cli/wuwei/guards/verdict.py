@@ -99,7 +99,6 @@ def check_write(payload):
 
 def check_retro(payload, *, root=None):
     # Keep persistence imports off unrelated hooks' startup path.
-    from hashlib import sha256
     import json
     from wuwei import state, workspace
 
@@ -118,6 +117,7 @@ def check_retro(payload, *, root=None):
         record = {'agent_id': agent_id, 'agent_type': agent_type, 'fields': fields,
                   'missing': missing, 'invalid': invalid}
         encoded = json.dumps(record, sort_keys=True) + '\n'
+        from hashlib import sha256
         digest = sha256(encoded.encode()).hexdigest()
         directory = workspace.day_dir(root)
         evidence = directory / 'retro' / f'{digest}.json'

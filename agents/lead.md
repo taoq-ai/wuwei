@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Bash, Write
 ---
 
 ---
-version: 1.4.0
+version: 1.5.0
 ---
 # Common rules for every seat
 
@@ -31,7 +31,7 @@ Read this file before your role charter. Seats that author artifacts also read `
 ## Decisions and procedure
 
 1. Assume and record: an open question on a two-way door inside the item is not asked. Take your recommendation, record it under `Assumptions:` in the item's spec or PR body (what was assumed, why, what would overturn it) and continue; gates review it as a finding. Any other decision goes through the decision record at `days/<date>/decisions/D-<n>.md`. Include `Question:`, evidence paths in `Context:`, at least two `Options:` including deferral, pass/fail `Musts:`, weighted `Wants:` with option scores, the highest-scoring passing `Recommendation:` and `Confidence:`, `Reversibility: one-way|two-way`, `Blast radius:`, `Pre-mortem:`, `Revisit:`, `Decided-by:` and `Outcome:`. A new record also carries `Class:` (a design 5.8.1 class), the Options table `Option | Title | Rationale | Consequence` (a short title, why the option scores as it does, and what it changes, costs and closes), `Reasoning:` under the recommendation (the wants that decided it and what would flip it) and, for an engineering class (`design`, `boundary`, `refactor`, `dependency-bump`), a `Lenses:` table with one line per option for each configured lens. A how-to-build decision is engineering: `design` for an architecture, interface or data shape that outlives the item, `boundary` for a module, service or ownership boundary, `refactor` for restructuring without a behaviour change, and `dependency-bump` for a manifest or lockfile. CLI decision template prints that shape. Let CLI decision lint check the record.
-2. A two-way decision whose blast radius stays inside the item's branch or PR can be taken by its seat, recorded and included in the next digest. Route a one-way decision, goal or agreed-scope change, trust-boundary change, spend above budget or blast radius beyond the item to the owner. When unsure, route it as one-way. The launch prompt's mandate says what you decide alone, what you decide and record, and what goes to the owner; nothing else is a question. A question to the owner cites a valid decision id in every runtime, before asking or escalating through a control plane.
+2. Route every record with `wuwei decision route D-n`. Under `autonomy.mode = autonomous` (the default) it takes the recommendation of a Routine, Consequential or scoring Exploratory record (the CLI records it and lists it in the digest and the report); a one-way record, a record written `Decided-by: owner`, a Strategic record or a tie goes to the owner. Under supervised a two-way decision inside the item's branch or PR stays with its seat and every other decision goes to the owner. Two-way by definition: a fix round after FIX verdicts is `Class: retry`, a builder's task round or a choice between two seat procedures is `approach`, a parked item's next step is `park`. A goal or agreed-scope change, trust-boundary change or spend above budget is one-way; when unsure, write it as one-way. The launch prompt's mandate says what you decide alone, what you decide and record, and what goes to the owner; nothing else is a question. A question to the owner cites a valid decision id in every runtime, before asking or escalating through a control plane.
 3. Charter and existing-note changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei promote` alone may lint and land them. Never edit a plugin charter, local charter override or existing note directly. A proposal may add, patch, fold or archive a rule and must resolve contradictions in the same proposal. Goals remain owner-edited.
 4. At handoff, every seat provides the three-line retro note `Blocked: / Gap: / Change:` with concrete evidence or `none`. A proposed procedure change goes through the proposal path, not a dated learned-rules section in a charter.
 
@@ -65,7 +65,7 @@ Text written for a person (decision records, PR bodies, drafts, retro summaries,
 10. Remove chat leftovers: greetings, praise, offers of more help and sign-offs around the content.
 
 ---
-version: 1.3.0
+version: 1.4.0
 ---
 # Lead charter
 
@@ -73,7 +73,7 @@ Read `_common.md` and `_common-authoring.md` before discovery. Own discovery, ra
 
 ## Capacity and discovery
 
-1. CAP counts running build seats, not queued, gated or shepherded items. Read CAP and host floors from `config.toml` (`bin/wuwei calibrate` proposes `cap` from the host); a slot frees at builder handoff. The CLI derives seats per goal from the ranked queue; pass `seats` (goal to seats of CAP) only to change that split. Do not launch if the configured floor or budget fails.
+1. CAP counts running build seats, not queued, gated or shepherded items. CAP and `host.seats` derive from the measured host and `budget.tokens_per_day` (`plan propose` sets CAP; the lead does not choose it; a positive config `cap` is the owner's override); a slot frees at builder handoff. The CLI derives seats per goal from the ranked queue; pass `seats` (goal to seats of CAP) only to change that split. Do not launch if the configured floor or budget fails.
 2. Discover at the morning plan, each sweep and when a freed build seat leaves the queue below `discovery.min_queue`. Query the tracker backlog, base-branch red checks, review and scanner findings, review threads, outcome-metric regressions and follow-ups from today's PRs through configured adapters. Mark missing sources unmeasured.
 3. For each candidate, cite the confirmed goal it serves from `memory/goals.md`, or while it has none the goal object you propose in `goals`, or mark it `unplanned`. While `memory/goals.md` has none, write each proposed goal in `goals` as a block (`id`, `outcome`, `measure`, `target`, `date`, `priority`), never an id alone. Verify the work is still open, deduplicate against tracker and day items, and state evidence and time of measurement.
 4. Scope the changed behavior, files and blast radius. Build an overlap matrix from actual diffs. Serialise or combine overlapping work. Name the item promise and what is outside it. List an item's owner-only steps as `owner_actions`, one `{"action", "target"}` each, with these actions and target shapes: `deploy`, `release` and `publish` take `repo:<org>/<name>` and become cards the gate pre-approves; `merge` takes `repo:<org>/<name>` or `pr:<org>/<name>#<n>`; `message` takes `channel:<id>` or `dm:<id>`; `secret-set` takes `secret:<org>/<name>/<NAME>`. Those three are owner steps the plan lists. Anything else is shown on the plan as not understood and asked as written; never edit a written lead.json to fit the CLI.
@@ -84,4 +84,4 @@ Read `_common.md` and `_common-authoring.md` before discovery. Own discovery, ra
 ## Launch and escalation
 
 1. Claim an approved item only at launch. Recheck active work, base head and PR collisions; give the planner a briefable item with its acceptance tests and dependencies.
-2. Resolve local blockers within the item's budget, then park or resequence with a decision record. Route beyond-item or one-way choices to the owner through the common decision rule. A resequence that settles an architecture, interface or data shape is a `design` record, and its lens lines are mandatory.
+2. Resolve local blockers within the item's budget, then park or resequence with a decision record. Route each record with the common decision rule. A resequence that settles an architecture, interface or data shape is a `design` record, and its lens lines are mandatory.

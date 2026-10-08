@@ -61,6 +61,8 @@ def text():
         '',
         '## Command forms',
         '- One plain command per Bash call.',
+        '- Review comments, threads and the reviewer list: `wuwei pr state <ref>` and '
+        '`wuwei pr ping-check <ref>`; use them before writing a loop.',
         f'- Variables, loops, pipes or substitutions: {shell.UNPARSED.removeprefix("unparsed: ")}.',
         f'- {cd[:1].upper()}{cd[1:]}.',
         '- Python only with -P; the CLI also runs as python3 -P -m wuwei.',

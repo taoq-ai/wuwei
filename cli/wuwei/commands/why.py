@@ -204,10 +204,7 @@ def decided(root, ident):
     text = path.read_text(encoding='utf-8')
     fields, scores = decision.evaluate(text)
     _, _, wants, _ = decision._scored(fields)
-    chosen = fields['Recommendation']
-    # Design 5.8.1: the lead over the best other option, over the most the weights allow.
-    margin = ((scores[chosen] - max(score for option, score in scores.items() if option != chosen))
-              / (10 * sum(int(row[1]) for row in wants)))
+    margin = decision.margin(fields, scores)
     kind = (verdict.rows(verdict.active_text(text), 'Class') or [''])[0].strip() or NOT
     lines = [*decision.present(ident, fields, 'brief').splitlines(),
              'weights: ' + ', '.join(f'{row[0]} {row[1]}' for row in wants),

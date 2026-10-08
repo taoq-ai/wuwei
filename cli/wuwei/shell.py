@@ -994,3 +994,21 @@ def unread(command, publishers=(), cwd=None):
     if not shape.publishes and (not shape.parsed or shape.inline):
         return 2, UNPARSED
     return None
+
+
+def unreadable(command, cwd=None):
+    """#530: what a guard cannot read in this call, '' when it can read all of it."""
+    path = script_path(command, cwd)
+    if path is not None:
+        return f'script {path.name}'
+    if classify(command, cwd=None if cwd is None else str(cwd)).inline:  # before normalize hides it
+        return 'inline interpreter code'
+    try:
+        commands = normalize(command)
+    except ParseError as exc:
+        return str(exc).split(';', 1)[0]
+    for index, found in enumerate(commands):
+        fed = bool(found.reads) or index > 0 and commands[index - 1].separator == '|'
+        if found.argv and is_opaque(found.argv, fed):
+            return f'{PurePosixPath(found.argv[0]).name} code from input'
+    return ''

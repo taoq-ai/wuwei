@@ -7,7 +7,7 @@ SILENT = ('item.progress', 'traces.noted', 'remote.acknowledged', 'state.write',
           'seat started', 'seat stopped', 'seat launched', 'brief written',
           'spec.step', 'spec.skipped', 'spec.override',
           'brief.pack', 'brief.answer', 'session.seen', 'session.rotated', 'item.claimed',
-          'draft.sending', 'draft.approved', 'draft.sent', 'draft.dropped', 'outward.ai_tells', 'outward.to_owner',
+          'draft.sending', 'draft.approved', 'draft.sent', 'draft.dropped', 'outward.ai_tells', 'outward.lint', 'outward.to_owner',
           'fast_checks.record', 'retro.captured', 'decision.two_way', 'merge.auto',
           'merge.observation', 'merge.metric', 'merge.intent', 'merge.completed', 'merge.red', 'merge.revert',
           'reply: acknowledged', 'reply: thread_posted', 'pr.raised', 'pr.claimed',
@@ -26,8 +26,9 @@ SILENT = ('item.progress', 'traces.noted', 'remote.acknowledged', 'state.write',
           'inbox.redacted', 'shepherd.dispatched', 'pr.notified', 'negotiation.notified',
           'doctor.fixed', 'adapter: none', 'telemetry.skipped', 'telemetry.unsent', 'telemetry.shared',
           'telemetry.presented', 'telemetry.off', 'docs.set', 'docs.written', 'docs.exempt',
-          'outbound.proposed', 'outbound.learned', 'grant.asked', 'grant.used', 'grant.revoked',
-          'tracker.created', 'tracker.skipped', 'tracker.folded', 'tracker.logged', 'plan.set')
+          'outbound.proposed', 'outbound.learned', 'outbound.thread', 'config.set', 'grant.asked', 'grant.used', 'grant.revoked',
+          'tracker.created', 'tracker.skipped', 'tracker.folded', 'tracker.logged', 'plan.set',
+          'cap.derived')
 
 
 def classify(event, state):

@@ -83,6 +83,17 @@ def _normalize(text):
                    if unicodedata.category(c) not in {'Mn', 'Me', 'Cf'}).casefold()
 
 
+def internal_word(text, config):
+    """#533: the first outward.patterns match over lint's normalized views, or None."""
+    normalized = _normalize(text)
+    for pattern in config['outward']['patterns']:
+        for view in (normalized, normalized.replace('_', ' ')):
+            found = re.search(pattern, view, re.IGNORECASE | re.DOTALL)
+            if found:
+                return found.group(0)
+    return None
+
+
 OWNER_UNSET = ('owner.name: not set; the outward lint refuses every outward message '
                'except replies in the owner DM')
 
@@ -107,8 +118,6 @@ def lint(text, channel, config, *, root=None, to_owner=False):
             if pronouns.intersection(family.split()):
                 pronouns.update(family.split())
         rules = config['outward']
-        patterns = [re.compile(pattern, re.IGNORECASE | re.DOTALL)
-                    for pattern in rules['patterns']]
         banned = rules['banned_characters']
         if not isinstance(banned, list) or not all(isinstance(c, str) and c for c in banned):
             raise ValueError(f'invalid banned characters; {DAMAGED}')
@@ -123,11 +132,6 @@ def lint(text, channel, config, *, root=None, to_owner=False):
         if any(re.search(r'(?<!\w)' + re.escape(word) + r'(?!\w)', view)
                for word in words for view in views):
             return FINDINGS, f'outward: third-person {label} reference; write it in the first person, or address the owner directly'
-    for pattern in patterns:
-        found = next((pattern.search(view) for view in views if pattern.search(view)), None)
-        if found:
-            return FINDINGS, (f'outward: internal state pattern; remove "{found.group(0)}" from the message '
-                              '(outward.patterns lists the words) or change the list')
     if 'emoji' in banned and re.search(EMOJI, text):
         return FINDINGS, 'outward: emoji is banned; remove the emoji and send again'
     if any(c in text or c in normalized for c in banned if c != 'emoji'):
@@ -373,6 +377,7 @@ DEFAULT_TIERS = (
     {'topic': 'commitment', 'tier': 'ask'},
     {'topic': 'disagreement', 'tier': 'ask'},
     {'audience': 'company', 'tier': 'ask'},
+    {'audience': 'team', 'topic': 'thread', 'tier': 'send'},  # #526: a thread among team people.
     {'tool': 'other', 'tier': 'send'},  # #492: a monitoring write sends after the topics.
 )
 # #527 (owner, 2026-10-05): under the send umbrella these broad rows drop out, so a review
@@ -435,7 +440,7 @@ def _default(config, kind, tool, defaults=UNLEARNED_CLASS):
     return found, f'connector default class {found}'
 
 
-def _person(person, namespace, rules, mine, fallback, label, dm=False):
+def _person(person, namespace, rules, mine, fallback, label, dm=False, what='mention'):
     """A person party: owner, its outbound.people class, team when internal, else the default."""
     key = f'{namespace}:{person}'.casefold()
     party = {'id': label, 'kind': 'person', 'key': key, 'names': {person.casefold(), key}}
@@ -448,13 +453,13 @@ def _person(person, namespace, rules, mine, fallback, label, dm=False):
         return {**party, 'class': 'team',
                 'why': f'{label} internal by outbound.company_domains or outbound.code_host_orgs as team'}
     unknown = (f"unknown DM recipient {label}, not the owner's DM or user id in outbound.owner.slack" if dm
-               else f'unknown mention {label}, not an internal person in outbound.people')
+               else f'unknown {what} {label}, not an internal person in outbound.people')
     return {**party, 'class': fallback[0], 'why': f'{unknown}, {fallback[1]}'}
 
 
-def _parties(context, destinations, mention_text, kind, tool, config, pr):
+def _parties(context, destinations, mention_text, kind, tool, config, pr, thread=None):
     """#496: who reads the call, each {id, kind, key, names, class, why}; pr is the
-    _pr_context exit of a code-host call."""
+    _pr_context exit of a code-host call; thread is (ts, recorded participant ids or None)."""
     rules = config['outbound']
     mine = _owner_ids(config, kind)
     fallback = _default(config, kind, tool)
@@ -490,6 +495,15 @@ def _parties(context, destinations, mention_text, kind, tool, config, pr):
                                        f'in outbound.owner.slack, {fallback[1]}')
         else:
             place(target, fallback[0], f'unknown destination {target}, not in outbound.work_channels, {fallback[1]}')
+    if thread and thread[1] is not None:  # #526: the participants outbound learn --thread recorded.
+        for person in thread[1]:
+            add(_person(person, 'slack', rules, mine, fallback, person, what='thread participant'))
+    elif thread:  # Its own key; kind channel and the channel's name, so a channel row matches it.
+        name = f'{destinations[0]}/{thread[0]}'
+        learn = (f', run bin/wuwei outbound learn --tool {tool or "<tool>"} --thread <file>'
+                 if rules['learn'] != 'off' else '')
+        add({'id': name, 'kind': 'channel', 'key': name.casefold(), 'names': {destinations[0].casefold()},
+             'class': fallback[0], 'why': f'participants of thread {thread[0]} not learned{learn}, {fallback[1]}'})
     if client and not destinations:
         place(connector, 'client', f'{connector} is shared, connected, external or client')
     # Email addresses and mentions are audience evidence, never merely message text.
@@ -602,8 +616,22 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
         code, discussion = _pr_context(context, root, config) if kind == 'code_host' else (None, '')
         if code == UNRUN:
             return code, 'draft'
-        found = decide(_parties(context, destinations, mention_text, kind, tool, config, code),
-                       _topics(normalized, rules), [name for name in (tool, kind) if name], config, trace)
+        # #526: a reply in one chat channel's thread is read by that thread's participants.
+        ts = next((str(context[key]) for key in ('thread_ts', 'thread') if context.get(key) is not None), None)
+        thread, topics = None, _topics(normalized, rules)
+        if kind in ('chat', 'slack') and ts and len(set(destinations)) == 1:
+            from wuwei import state
+            thread = (ts, state.read_state(root).get('outbound_threads', {}).get(f'{destinations[0]}/{ts}'))
+            topics['thread'] = f'thread {ts}'
+        parties = _parties(context, destinations, mention_text, kind, tool, config, code, thread)
+        found = decide(parties, topics, [name for name in (tool, kind) if name], config, trace)
+        # #533: an internal-state word to a client or public reader is a card naming both; a block row wins.
+        outside = next((party for party in parties if party['class'] in ('client', 'public')), None)
+        if outside and kind in OWNER and not (found and found[0] == 'block'):
+            word = internal_word(text, config)
+            if word:
+                return held(f'internal state word "{word}" for the {outside["class"]} audience of '
+                            f'{outside["id"]} (outward.patterns), rewrite that line')
         if found and found[0] == 'send':
             return CLEAN, 'send'
         if found and found[0] == 'ask':
@@ -748,10 +776,27 @@ def check_lint(inputs, root, config, channels, *, to_owner=False):
         if not texts:
             return CLEAN, ''  # #501: a write without text has nothing to lint.
         to_owner = to_owner or owner_only(inputs, config, next(iter(channels)))
+        kind = next(iter(channels))  # #533: matched first, so an invalid list fails closed.
+        word = internal_word(text, config) if kind in OWNER and not to_owner else None
         for channel in sorted(channels.union(destinations)):
             code, reason = lint(text, channel, config, root=root, to_owner=to_owner)
             if code:
                 return code, reason
+        # #533: outward.patterns on chat and mail only; a client or public reader was held by
+        # classify, so a reader here is team, company or owner-approved. Strict refuses,
+        # supervised warns, autonomous stays silent.
+        # ponytail: the hook runs this even when check_tier held the call, so a held supervised
+        # call can record outward.lint too; pass the tier result in if the count must be exact.
+        if word:
+            from wuwei import workspace
+            reason = (f'outward: internal state word "{word}" in a {kind} message (outward.patterns); '
+                      'remove it or change the list')
+            if workspace.posture(config)[0] == 'strict':
+                return FINDINGS, reason
+            if config['autonomy']['mode'] == 'supervised':
+                from wuwei import state
+                state.append_event('outward.lint', {'kind': kind, 'word': word}, root)
+                print(f'warning: {reason}', file=sys.stderr)
         return CLEAN, ''
     except (OSError, ValueError, TypeError, KeyError, AttributeError, re.error):
         return UNRUN, 'outward: cannot read or validate policy or payload; run bin/wuwei config check; if the config is clean, save this as a draft for the owner to send'

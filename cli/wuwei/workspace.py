@@ -46,7 +46,7 @@ FLOORS = {'records': 'block'}
 
 # 5.11: what the tracker opens (classes) and what it comments (kinds).
 AUDIENCES = ('owner', 'team', 'company', 'client', 'public')  # #496: outbound audience classes.
-TOPICS = ('sensitive', 'commitment', 'disagreement')
+TOPICS = ('sensitive', 'commitment', 'disagreement', 'thread')
 TRACKER_CLASSES = ("items", "bugs", "triage", "follow-ups")
 TRACKER_KINDS = ("decisions", "progress", "verdicts", "pr", "close")
 
@@ -75,11 +75,14 @@ SCHEMA = {
                "identity": {"name": (str, ""), "email": (str, "")},
                "shepherd": {"reviewers": [(str, None)]}}],
     "worktree": {"git_hooks": (str, "chain", ("chain", "skip", "replace"))},
+    "checks": {"python": (str, ""), "bootstrap": (str, "")},  # #520
     # #478: standing grants, written by the owner's Always allow answer; ignored under strict.
     "grants": {"standing": [{"action": (str, None, ("deploy", "release", "publish")),
                              "target": (str, None), "scope": (str, "always", ("always",)),
                              "decision": (str, None), "date": (str, None)}]},
-    "cap": (int, 1, 1),
+    # #528: 0 derives CAP and host.seats from the measured host; a positive value is the owner's.
+    "cap": (int, 0, 0),
+    "budget": {"tokens_per_day": (int, 0, 0)},
     "template_version": (str, ""),
     "calibrate": {"fast_check_seconds": (int, 60, 1)},
     "prioritisation": {"framework": (str, "wsjf", ("wsjf", "rice"))},
@@ -109,7 +112,7 @@ SCHEMA = {
               "remote": (str, "origin"),
               "prior_branch_pattern": (str, "*{item}*"),
               "full_path_patterns": [(str, "")]},
-    "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 4, 1),
+    "host": {"free_memory_mb": (int, 1024, 0), "seats": (int, 0, 0),
              "reservation_timeout_seconds": (int, 14400, 1)},
     "consolidation": {"archive_after_days": (int, 30, 0),
                       "similarity_threshold": (float, 0.85)},
@@ -134,6 +137,7 @@ SCHEMA = {
     "responder": {"enabled": (bool, True)},
     "steward": {"every_tool_calls": (int, 50, 1), "loop_window_hours": (int, 4, 1),
                 "loop_threshold": (int, 9, 1)},
+    "autonomy": {"mode": (str, "autonomous", ("autonomous", "supervised"))},
     "decisions": {"wait_hours": (int, 24, 1),
                   "cruise": {"enabled": (bool, True), "levels": {"*": (int, None, 0, 3)}},
                   "lenses": {"*": (str, "")}},
@@ -241,8 +245,9 @@ class ConfigError(ValueError):
     """A configuration finding, rather than an inability to read the file."""
 
 
-def atomic_write(path, text, *, replace=True, mode=None):
-    """Durably write text through a temporary file in the destination directory."""
+def atomic_write(path, text, *, replace=True, mode=None, sync_dir=True):
+    """Durably write text through a temporary file in the destination directory; sync_dir=False
+    leaves the directory fsync to a later write in the same directory."""
     path = Path(path)
     temporary = None
     try:
@@ -268,14 +273,15 @@ def atomic_write(path, text, *, replace=True, mode=None):
             os.replace(temporary, path)
         else:
             os.link(temporary, path)
-        directory_fd = os.open(path.parent, os.O_RDONLY)
-        try:
+        if sync_dir:
+            directory_fd = os.open(path.parent, os.O_RDONLY)
             try:
-                os.fsync(directory_fd)
-            except OSError:
-                pass
-        finally:
-            os.close(directory_fd)
+                try:
+                    os.fsync(directory_fd)
+                except OSError:
+                    pass
+            finally:
+                os.close(directory_fd)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
@@ -563,7 +569,7 @@ _CONFIGS = {}
 # copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
-CONFIG_CACHE_VERSION = 12  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 14  # Bump when the parse, the schema, the defaults or the checks change.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor, why and the board stay read-only.

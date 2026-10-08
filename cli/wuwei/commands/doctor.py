@@ -330,6 +330,16 @@ def _workspace(root, config, error, found):
                          'bin/wuwei config promote --measure (times the test runner once and proposes it when it '
                          f"is fast), or bin/wuwei config set repos.{index}.fast_checks '[\"<command>\"]'",
                          apply='config-promote'))
+        from wuwei import fast_checks
+        for command in checks:  # #520: only checks naming a relative interpreter get a row
+            found = fast_checks.interpreter(command, path, repo, root, config)
+            if found and found[1] == 'missing':
+                rows.append(_row('workspace', f'{name} check interpreter', 'warn',
+                                 f'{command.split()[0]} not found in {path}',
+                                 'set [checks] python or [checks] bootstrap in .wuwei/config.toml'))
+            elif found:
+                source = 'main worktree' if found[1] == 'worktree' else found[1]
+                rows.append(_row('workspace', f'{name} check interpreter', 'ok', f'{found[0]} ({source})'))
         from wuwei import specmode
         engine = config['spec']['engine']
         found = True if specmode.mode(config) == 'off' else specmode.present(path, engine, config)

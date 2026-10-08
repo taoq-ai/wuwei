@@ -1,6 +1,6 @@
 # Configuration
 
-`bin/wuwei init .` creates `.wuwei/config.toml`. In a host terminal, change one value with `bin/wuwei config set <key> <value>` and add a repository with `bin/wuwei config add-repo` (see [calibration](#calibration)). `config set` writes strings, lists and tables in any layout, replaces a value that spans lines in place, and leaves every other line as it was; `wuwei config check` names a key set in two tables. Values below are the shipped template defaults. Omitted keys use CLI defaults. Unknown keys are a warning from `wuwei config check`, `wuwei doctor` and `wuwei init --upgrade`, with the line and the nearest documented key; under `security.posture = "strict"` they are errors, unless `template_version` is newer than the running plugin. The optional commented examples are inactive until uncommented. Paths in repository entries are relative to the workspace unless absolute.
+`bin/wuwei init .` creates `.wuwei/config.toml`. In a host terminal, change one value with `bin/wuwei config set <key> <value>` and add a repository with `bin/wuwei config add-repo` (see [calibration](#calibration)). In the session, outside the strict posture, the planner asks the value on a card and your answer writes it: `CAP`, `host.seats`, `outbound.default_tier` and `outbound.learn` through `wuwei calibrate --questions` and `--answer`, any other key through a decision card and `config set <key> <value> --from-card D-n`. A `config set` in the session without a card exits 1 and names the card. `config set` writes strings, lists and tables in any layout, replaces a value that spans lines in place, and leaves every other line as it was; `wuwei config check` names a key set in two tables. Values below are the shipped template defaults. Omitted keys use CLI defaults. Unknown keys are a warning from `wuwei config check`, `wuwei doctor` and `wuwei init --upgrade`, with the line and the nearest documented key; under `security.posture = "strict"` they are errors, unless `template_version` is newer than the running plugin. The optional commented examples are inactive until uncommented. Paths in repository entries are relative to the workspace unless absolute.
 
 ## Sections
 
@@ -8,13 +8,13 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 
 | Sections | Keys under |
 | --- | --- |
-| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[security.areas]`, `[guards]`, `[worktree]` | [Workspace and repositories](#workspace-and-repositories) |
-| `[host]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
+| `[[repos]]`, `[repos.merge]`, `[repos.gates]`, `[repos.shepherd]`, `[prioritisation]`, `[discovery]`, `[tracker]`, `[tracker.states]`, `[owner]`, `[owner.verbosity]`, `[security]`, `[security.areas]`, `[guards]`, `[worktree]`, `[checks]` | [Workspace and repositories](#workspace-and-repositories) |
+| `[host]`, `[budget]`, `[memory]`, `[retro]`, `[metrics]`, `[consolidation]`, `[build]`, `[codex]`, `[gates]`, `[pr]`, `[shepherd]`, `[shepherd.authors]`, `[watch]`, `[sessions]`, `[listen]`, `[responder]`, `[steward]` | [Host, build and memory](#host-build-and-memory) |
 | `[adapters]`, `[scanner]`, `[scanner.mcp]`, `[calendar]`, `[brief]`, `[brief.style]`, `[chat]`, `[control_plane]` | [Adapters and brief](#adapters-and-brief) |
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[grants]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outward.classes]`, `[outbound]`, `[outbound.people]`, `[outbound.channel_classes]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
-| `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]`, `[decisions.lenses]` | [Decisions](#decisions); cruise answering is not built |
+| `[autonomy]`, `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]`, `[decisions.lenses]` | [Decisions](#decisions); cruise answering is not built |
 | `[calibrate]` | [Calibration](#calibration) |
 | `[spec]` | [Specification mode](#specification-mode) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
@@ -24,7 +24,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `cap` | `1` | Maximum running build seats. `bin/wuwei calibrate` proposes it from the host (cores, free memory, measured seat cost, within `host.seats`) and adds it when absent; a present value is listed to edit by hand. The morning gate approves the day's value with seats per goal, and the launch guard enforces that value. |
+| `cap` | `0` | Maximum running build seats. `0` derives CAP at plan propose and at every sweep from the host (running seats plus the seats that fit above `host.free_memory_mb` at the measured seat cost, one per core, within `host.seats`) and `budget.tokens_per_day`; a positive number is your override, still bounded by the budget. `bin/wuwei calibrate` reports the derived value and never proposes it. The morning gate shows CAP with its measurement and seats per goal; the launch guard compares with the value derived at launch. |
 | `template_version` | `""` | Plugin version that last wrote this file. `wuwei init`, `wuwei setup` and `wuwei init --upgrade` raise it and never lower it. A plugin older than this value treats keys it does not know as unknown to it, records `config.newer_template` once per session, and `wuwei doctor` and the status line say to restart Claude Code. |
 | `prioritisation.framework` | `"wsjf"` | Ranking formula: `wsjf` or `rice`. |
 | `discovery.min_queue` | `2` | Discover again when a seat frees and the queue is below this count. |
@@ -60,7 +60,9 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `repos.gates.light_max_lines` | `100` | A diff with more changed lines is at least STANDARD. Binary changes, any lead flag and track FULL also raise the tier. |
 | `repos.gates.trust_paths` | `["guards/*", "state.py", "adapters/*", ".claude-plugin/*", ".github/*", "ci/*", "workflows/*", "deploy/*", "infra/*"]` | Path globs, matched on any path suffix, that force at least STANDARD. `repos.merge.never_auto_paths` and `brief.full_path_patterns` force it too. |
 | `repos.shepherd.reviewers` | `[]` | Code host logins requested for this repository's PRs; when set it replaces `shepherd.reviewers` here. |
-| `repos.fast_checks` | `[]` | Commands for `wuwei fast-checks` on this checkout. |
+| `repos.fast_checks` | `[]` | Commands for `wuwei fast-checks` on this checkout. A command whose first word starts with `.venv/`, `venv/` or `node_modules/.bin/` resolves that interpreter in the item worktree first, then in the repository's main worktree (its `path`); the check record names the interpreter it ran with. `worktree add` warns when a new worktree will use the main worktree's, `doctor` shows a `check interpreter` row, and the builder brief names it. |
+| `checks.python` | `""` | Interpreter for fast checks whose first word is a relative Python such as `.venv/bin/python`; absolute or relative to the repository's path. It wins in every worktree. |
+| `checks.bootstrap` | `""` | One command `worktree add` runs in each new worktree through the checks runner (capped at 300 seconds), for example `python3 -m venv .venv && .venv/bin/python -m pip install -q -e .`. A failure is one warning line and the worktree is still created. Use it when the package is installed editable in the main worktree's venv: that interpreter can import the main worktree's code instead of the item's. |
 | `owner.name` | `""` | Name used by outward text checks. |
 | `owner.pronouns` | `""` | Owner pronouns for outward text checks. |
 | `owner.handles` | `[]` | Bare chat IDs and code host handles. |
@@ -118,7 +120,8 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `host.free_memory_mb` | `1024` | Nonnegative free memory floor in MiB. |
-| `host.seats` | `4` | Total seat ceiling: default cap plus three parallel gates. Increase with custom cap; refusals name `host.seats`. It also bounds calibrate's `cap` proposal and each turn of `wuwei dispatch next --all`. |
+| `host.seats` | `0` | Total seat ceiling, builders and gates. `0` derives it from free memory and cores like CAP; a positive number is your override. Refusals name `host.seats`; it bounds CAP and each turn of `wuwei dispatch next --all`. |
+| `budget.tokens_per_day` | `0` | Input plus output tokens a day. With a per-seat token cost measured from `seat.usage` rows, CAP is at most the seats the remaining budget fits (at least 1) and says `(budget)`. `0` is no budget. |
 | `host.reservation_timeout_seconds` | `14400` | Age at which a reservation is reported stale. |
 | `memory.max_notes` | `60` | Index note limit. |
 | `memory.note_line_cap` | `80` | Maximum lines in a note. |
@@ -174,6 +177,7 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 
 | Key | Default | Meaning |
 | --- | --- | --- |
+| `autonomy.mode` | `"autonomous"` | Who takes a decision record (`bin/wuwei decision route D-n`). `autonomous`: a Routine, Consequential or scoring Exploratory record is taken as recommended (`Decided-by: mandate`), listed in the digest and the day report with the reversal command; a tie, a Strategic record, a one-way record or a record written for you (a security finding) still asks you. `supervised`: every decision beyond a two-way one on its own branch or PR asks you. A calibration profile may not switch a supervised workspace to autonomous. Under `autonomous` an `outward.patterns` match in team or company chat is not reported; `supervised` records an `outward.lint` event and a warning. |
 | `decisions.wait_hours` | `24` | Weekday hours in `owner.timezone` an external confirmation (`decision route D-n --external <item>`) waits for your answer before the sweep confirms it on a two-way door or parks the item. |
 | `decisions.cruise.enabled` | `true` | When false, every decision class is listed as going to you in the seat mandate (cruise answering is not built). |
 | `decisions.cruise.levels` | `{}` | Per-class level (0 to 3) that lowers a 5.8.1 class default in the seat mandate; a level above the class ceiling or an unknown class is refused. |
@@ -381,7 +385,7 @@ Two starters ship in `templates/profiles/`, derived from WUWEI's own setup: `pyt
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `outward.patterns` | `[]` | Regexes a chat message must not contain; the reason names the matched word. Empty by default since 0.18.2: messages about agents, phases and item ids are normal work. |
+| `outward.patterns` | `[]` | Regexes for internal-state words in chat and mail; the reason names the matched word. Never applied to tracker, docs and code-host writes or to a message only you read. A client or public reader gets a card naming the audience and the word; a team or company reader gets the message (a warning under `autonomy.mode = "supervised"`); the strict posture refuses. Empty by default since 0.18.2: messages about agents, phases and item ids are normal work. |
 | `outward.banned_characters` | `emoji`, U+2014, U+2015, U+2E3A, U+2E3B | Setting a list replaces defaults. |
 | `outward.tool_patterns` | Built-in Slack, Linear, GitHub, Notion and Atlassian MCP matches | Tool regex plus policy channel. The built-in rules match the brand anywhere in the name, so `mcp__<uuid>__slack_send_message` is Slack. A list in `config.toml` replaces the defaults; `config set` adds to them. A tool nothing resolves is a read, a write or unknown by the words of its name (see security). |
 | `outward.servers` | `{}` | MCP server id to channel (`slack`, `tracker`, `code_host`, `docs`, `mail` or `other`), checked before the rules; `bin/wuwei outbound learn` proposes entries. Reads still pass. |
@@ -392,7 +396,7 @@ Two starters ship in `templates/profiles/`, derived from WUWEI's own setup: `pyt
 | `outward.humanize_kinds` | `["dm", "tracker", "docs", "pr", "review"]` | Kinds the lint checks: DMs, tracker comments, docs pages, PR comments and PR bodies, and other chat posts such as review pings. |
 | `outward.humanize_strict` | `false` | `true` refuses a text with a tell; `false` warns and records `outward.ai_tells`. |
 | `outward.draft_ttl` | `3600` | Seconds an approved draft's tool call may repeat, once; at least 60. |
-| `outbound.tiers` | `[]` | Your tier rows, before the defaults; the first match wins. Each row has any of `tool` (regex on the tool name or the channel kind), `person` (id or `slack:<id>`), `channel` (id or class), `audience` (class) and `topic` (`sensitive`, `commitment` or `disagreement`), and the `tier`: `send`, `ask` or `block`. An unknown key or a bad `tool` regex refuses the whole file in every posture. `bin/wuwei outbound tiers` prints the effective table. |
+| `outbound.tiers` | `[]` | Your tier rows, before the defaults; the first match wins. Each row has any of `tool` (regex on the tool name or the channel kind), `person` (id or `slack:<id>`), `channel` (id or class), `audience` (class) and `topic` (`sensitive`, `commitment`, `disagreement` or `thread`, a reply in a chat thread), and the `tier`: `send`, `ask` or `block`. An unknown key or a bad `tool` regex refuses the whole file in every posture. `bin/wuwei outbound tiers` prints the effective table. |
 | `outbound.work_channels` | `[]` | Team channel IDs (class `team`), eligible for routine auto-send. |
 | `outbound.external_channels` | `[]` | Shared or client channels (class `client`); these override work channels. |
 | `outbound.channel_classes` | `{}` | Channel ID to any audience class, over both lists, for example `C4 = "public"`. |

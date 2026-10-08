@@ -26,6 +26,11 @@ LENSES = {'SOLID': 'Which SOLID principle does it keep or break?',
 OPTION_COLUMNS = ['Option', 'Title', 'Rationale', 'Consequence']
 OPTIONAL = ('Class', 'Reasoning', 'Lenses')
 STATUS_QUO = r'(?i)(?:Do nothing|Defer|Keep)\b'  # #478: Keep owner-only is the status quo
+# #530: two-way by definition (fix round, task round, seat procedure, parked item's next step).
+ROUTINE = ('approach', 'retry', 'park', 'accept-residual')
+# ponytail: the design 5.8.1 default margin as a constant; decisions.cruise.margin is not in the schema.
+MARGIN = 0.2
+NO_RECOMMENDATION = 'add the recommendation and the reasoning'
 
 
 def lens_table(config):
@@ -114,14 +119,15 @@ def evaluate(text, lenses=None):
             fields[current] += '\n' + line
     missing = [key for key in FIELDS if not fields.get(key, '').strip()]
     if missing:
-        raise ValueError('missing fields: ' + ', '.join(missing) + '; add each one (bin/wuwei decision template shows them all)')
+        fix = NO_RECOMMENDATION if 'Recommendation' in missing else 'add each one'
+        raise ValueError('missing fields: ' + ', '.join(missing) + f'; {fix} (bin/wuwei decision template shows them all)')
     for key in ('Question', 'Recommendation', 'Confidence', 'Reversibility', 'Decided-by',
                 'Class', 'Reasoning'):
         if '\n' in fields.get(key, ''):
             raise ValueError(f'{key}: expected one line; {DAMAGED}')
     for key, allowed in (('Confidence', ('high', 'medium', 'low')),
                          ('Reversibility', ('one-way', 'two-way', 'unsure')),
-                         ('Decided-by', ('seat', 'owner'))):
+                         ('Decided-by', ('seat', 'owner', 'mandate'))):
         if fields[key] not in allowed:
             raise ValueError(f'{key}: expected {"|".join(allowed)}; fix it in the record; bin/wuwei decision template shows a valid one')
     if 'Class' in fields and fields['Class'] not in CLASSES:
@@ -148,7 +154,8 @@ def _explained(fields, rows, ids, lenses):
     hint = 'bin/wuwei decision template shows a valid one'
     for key in ('Class', 'Reasoning'):
         if not fields.get(key, '').strip():
-            raise ValueError(f'missing fields: {key}; add it ({hint})')
+            raise ValueError(f'missing fields: {key}; '
+                             + (NO_RECOMMENDATION if key == 'Reasoning' else 'add it') + f' ({hint})')
     if len(rows[0]) != len(OPTION_COLUMNS):
         raise ValueError(f'Options: expected columns {", ".join(OPTION_COLUMNS)}; write a title, rationale and consequence for each option; {hint}')
     seen = set()
@@ -261,7 +268,7 @@ def lint(text, lenses=LENSES):
         fields, scores = evaluate(text, lenses)
         option = fields['Recommendation']
         found = outward.tells(text)
-        return 0, f'OK: {option} ({scores[option]})' + ('\nstyle: ' + ', '.join(found) if found else '')
+        return 0, f'OK: {option} ({scores[option]}), {cisr(fields, scores)}' + ('\nstyle: ' + ', '.join(found) if found else '')
     except ValueError as exc:
         return 1, f'{exc}\nREJECT: send back to the seat; fix what is named above and check again with bin/wuwei decision lint <file>'
 
@@ -346,6 +353,23 @@ def today_path(decision_id, root, *, clarification=False):
     return path
 
 
+def margin(fields, scores):
+    """Design 5.8.1: the lead over the best other option, over the most the weights allow."""
+    chosen = fields['Recommendation']
+    return ((scores[chosen] - max(score for option, score in scores.items() if option != chosen))
+            / (10 * sum(int(row[1]) for row in _scored(fields)[2])))
+
+
+def cisr(fields, scores):
+    """#530: the MIT CISR class from risk (door and blast radius) and ambiguity (confidence, margin)."""
+    if fields.get('Class') in ROUTINE and fields['Reversibility'] != 'one-way':
+        return 'Routine'  # two-way by definition unless the seat wrote one-way
+    low_risk = (fields['Reversibility'] == 'two-way'
+                and re.match(r'(?i)\s*(?:item|own branch|own pr|day)\b', fields['Blast radius']))
+    clear = fields['Confidence'] != 'low' and margin(fields, scores) >= MARGIN
+    return ('Routine' if clear else 'Exploratory') if low_risk else ('Consequential' if clear else 'Strategic')
+
+
 def route(fields):
     return ('seat' if fields['Reversibility'] == 'two-way'
             and fields['Blast radius'] in ('own branch', 'own PR') else 'owner')
@@ -354,8 +378,7 @@ def route(fields):
 def route_owner(identifier, fields, root, item=None):
     """Record an owner route once; a repeat route is a no-op. An item marks an external wait."""
     def mark(data):
-        data.setdefault('decision_routes', {}).setdefault(identifier, {
-            'reversibility': fields['Reversibility'], 'recommendation': fields['Recommendation']})
+        data.setdefault('decision_routes', {}).setdefault(identifier, data_row)
         if item is not None:
             if item not in data['items']:
                 raise state.StateError(f'unknown item: {item}')
@@ -367,7 +390,9 @@ def route_owner(identifier, fields, root, item=None):
     if identifier in data.get('decision_routes', {}) and (
             item is None or data['items'].get(item, {}).get('assumption', {}).get('decision') == identifier):
         return
-    payload = {'id': identifier, 'reversibility': fields['Reversibility']}
+    kind = cisr(fields, _scored(fields)[3])
+    data_row = {'reversibility': fields['Reversibility'], 'recommendation': fields['Recommendation'], 'cisr': kind}
+    payload = {'id': identifier, 'reversibility': fields['Reversibility'], 'cisr': kind}
     state._write_state(mark, root, reserved=False, kind='decision.routed',
                        payload=payload if item is None else {**payload, 'item': item})
 
@@ -438,14 +463,14 @@ def answered(data, identifier):
     return record.get('option') if isinstance(record, dict) and record.get('decided_by') == 'owner' else None
 
 
-def seat_outcome(fields, scores):
-    """Snapshot a validated seat decision, including any explicit item disposition."""
-    if route(fields) != 'seat' or fields['Decided-by'] != 'seat':
+def seat_outcome(fields, scores, by='seat'):
+    """Snapshot a validated seat (or #530 mandate) decision, including any item disposition."""
+    if by == 'seat' and (route(fields) != 'seat' or fields['Decided-by'] != 'seat'):
         raise ValueError('Decided-by must be seat for a seat-routed decision; use owner as Decided-by, or fix Reversibility and Blast radius (seat only for a two-way decision on its own branch or PR)')
     return {'option': fields['Recommendation'], 'score': scores[fields['Recommendation']],
-            'decided_by': 'seat', 'outcome': fields['Recommendation'],
+            'decided_by': by, 'outcome': fields['Recommendation'],
             'reversibility': fields['Reversibility'], 'blast_radius': fields['Blast radius'],
-            'item_disposition': fields['Outcome']}
+            'item_disposition': fields['Outcome'], 'cisr': cisr(fields, scores)}
 
 
 def set_outcome(text, option):
@@ -464,10 +489,14 @@ def owner_confirm(root, identifier, digest, prompt):
     return 'at the host terminal' if _host_confirm(digest, prompt=prompt) else ''
 
 
+def decided_record(text, option, by):
+    """The record with its Outcome and Decided-by lines set."""
+    return re.sub(r'^((?:#{1,6} )?Decided-by:).*$', rf'\1 {by}', set_outcome(text, option), count=1, flags=re.M)
+
+
 def owner_record(text, option, where, note=None):
     """The record after the owner's answer: Outcome, Decided-by: owner and one Notes line."""
-    text = set_outcome(text, option)
-    text = re.sub(r'^((?:#{1,6} )?Decided-by:).*$', r'\1 owner', text, count=1, flags=re.M)
+    text = decided_record(text, option, 'owner')
     stamp = workspace.now().isoformat(timespec='seconds')
     return text.rstrip('\n') + f'\nNotes: Decided at {stamp} {where}.' + (f' {note}' if note else '') + '\n'
 

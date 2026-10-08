@@ -6,7 +6,8 @@ import re
 
 
 ACTIONS = {'deploy': ('deploy', 'deploys'), 'release': ('release', 'releases'),
-           'publish': ('publish action', 'publishes')}
+           'publish': ('publish action', 'publishes'),
+           'evidence': ('publish without evidence', 'publishes without evidence')}  # #530
 REPO = r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+'
 RELEASES = ('release create', 'tag push', 'release API', 'tag or branch ref API')
 # #518: every owner-only step a lead may list, with its target shape. The three in ACTIONS
@@ -31,7 +32,9 @@ def understood(entry):
 
 
 def action(rule):
-    """The action class a deploy guard rule refuses."""
+    """The action class a deploy guard rule refuses; #530: an evidence miss of a push or PR raise."""
+    if rule.startswith('evidence: '):
+        return 'evidence'
     return 'release' if rule in RELEASES else 'publish' if rule.startswith('deploy.deny: ') else 'deploy'
 
 
@@ -116,13 +119,18 @@ def gate(payload, root, config, argv, rule, repo, moved=False):
     noun = ACTIONS[name][0]
     command = ' '.join(hook.redacted_target(payload, root).split())
     tail = f'is a {noun} ({rule}), owner-only under {workspace.posture(config)[0]}'
-    if payload.get('session_id') == hook.HEARTBEAT_SESSION:
+    missing = rule.removeprefix('evidence: ')
+    if name == 'evidence':  # #530: never a host-terminal step; the seat runs the check
+        tail = f'has no recorded evidence ({missing})'
+    elif payload.get('session_id') == hook.HEARTBEAT_SESSION:
         return 1, f'publish: {command} {tail}; ask the owner to run it in a host terminal'
     text = ' '.join([PurePosixPath(argv[0]).name, *argv[1:]])
-    if any(fnmatchcase(text, pattern[5:-1]) for pattern in PERMISSIONS_DENY):
+    if name != 'evidence' and any(fnmatchcase(text, pattern[5:-1]) for pattern in PERMISSIONS_DENY):
         return 1, (f'publish: {command} {tail}; the workspace permissions deny it, so no grant lifts it: '
                    'ask the owner to run it in a host terminal')
     found = None if moved and repo is None else target(root, config, payload['cwd'], repo)
+    if found is None and name == 'evidence':
+        return 1, missing
     if found is None:
         return 1, (f'publish: {command} {tail}; name the repository with -R <org>/<repo> or run it from '
                    'a configured repository so the owner can decide on a card, or the owner runs it '
@@ -147,6 +155,8 @@ def gate(payload, root, config, argv, rule, repo, moved=False):
     rows = {key: row for key, row in data.get('grants', {}).items()
             if (row['action'], row['target']) == (name, found)}
     kept = next((key for key, row in rows.items() if row['answered'] == 'keep'), None)
+    if kept and name == 'evidence':
+        return 1, f'{head}; the owner asked for the check first ({kept}): run it, then retry'
     if kept:
         return 1, f'{head}; the owner kept it owner-only ({kept}): ask the owner to run it in a host terminal'
     identifier = next((key for key, row in rows.items() if row['answered'] is None), None)
@@ -162,15 +172,46 @@ def gate(payload, root, config, argv, rule, repo, moved=False):
                     'Each run is recorded as grant.used.', 5),
                    ('always', 'Always allow', 'A standing grant in config.toml [grants].',
                     'Later days too, until bin/wuwei grants revoke.', 3)][:3 if strict else 4]
+        texts = (f'Allow {name} on {repo_name}?',
+                 f'{command} is a {noun} ({rule}). Target: {found}. Item: {item or "none"}. Seat: {seat}.',
+                 'A grant lets a seat run an action that cannot be undone; keep it unless this run is expected.',
+                 f'{noun} on {repo_name}.', f'A seat runs the {noun} at the wrong time or on the wrong branch.')
+        if name == 'evidence':  # #530: no Always allow, so the standing-grant schema is unchanged
+            options = [('keep', 'Defer until the check passes', 'The seat runs the named check, then retries.',
+                        'Nothing publishes without its evidence.', 9), *options[1:3]]
+            texts = (f'Publish on {repo_name} without its evidence?',
+                     f'{command} has no recorded evidence: {missing}. Target: {found}. Item: '
+                     f'{item or "none"}. Seat: {seat}.',
+                     'The check is cheap and the seat can run it; allow only when the check cannot run.',
+                     f'publish without evidence on {repo_name}.', 'The change publishes with a failing check.')
         identifier = ask(root, {
             'action': name, 'target': found, 'rule': rule, 'command': command, 'item': item,
             'seat': seat, 'planned': False}, _record(
-            f'Allow {name} on {repo_name}?',
-            f'{command} is a {noun} ({rule}). Target: {found}. Item: {item or "none"}. Seat: {seat}.',
-            options, 'Least standing access', 'keep',
-            'A grant lets a seat run an action that cannot be undone; keep it unless this run is expected.',
-            f'{noun} on {repo_name}.', f'A seat runs the {noun} at the wrong time or on the wrong branch.'))
+            *texts[:2], options, 'Least standing access', 'keep', *texts[2:]))
     return 1, f'{head}; the owner decides: bin/wuwei decision show {identifier} --widget'
+
+
+def evidence(payload, root, config, argv, reason, repo, record=False):
+    """#530: a push or PR raise without its recorded evidence. Where publish warns, (1, reason)
+    for the hook to record and let through, or with record (a CLI command, no hook) the
+    guard.would_refuse event, the warning on stderr and (0, None); under strict (1, reason);
+    otherwise the owner's card (run the check first, once, today)."""
+    import sys
+    from wuwei import state, workspace
+    from wuwei.commands import hook
+    name, levels = workspace.posture(config)
+    if levels['publish'] == 'off':
+        return 0, None
+    if name == 'strict' or levels['publish'] == 'warn' and not record:
+        return 1, reason
+    if levels['publish'] == 'warn':
+        state.append_event('guard.would_refuse', {
+            'guard': 'pr', 'area': 'publish', 'level': 'warn', 'posture': name, 'reason': reason,
+            'exit': 1, 'target': hook.redacted_target(payload, root), 'session': payload.get('session_id'),
+            'item': hook.claimed(root, payload.get('session_id'))}, root)
+        print(f'warning: {reason}', file=sys.stderr)
+        return 0, None
+    return gate(payload, root, config, argv, 'evidence: ' + reason, repo)
 
 
 def standing(root, row, identifier):

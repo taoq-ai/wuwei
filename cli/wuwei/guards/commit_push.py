@@ -92,15 +92,14 @@ def _context(cwd, settings, env, root, config, vcs, identity):
 
 
 def push_check(repo, actual, push, root, vcs):
-    """Check identities, push shape and current-HEAD evidence for either anchor."""
-    from wuwei import state, workspace
+    """Check identities and push shape for either anchor; fast_evidence reads the evidence."""
+    from wuwei import workspace
 
     result = identity_check(repo['identity'], actual, push['head'])
     if result[0]:
         return result
     item = _item(actual['path'], root)
     branch = item.lower() if item else '<branch>'
-    checks = f'bin/wuwei build check {item}' if item else 'bin/wuwei fast-checks in this worktree'
     sha = push['head']['sha']
     if not isinstance(sha, str) or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', sha):
         raise ValueError(f'invalid HEAD; {DAMAGED}')
@@ -134,6 +133,14 @@ def push_check(repo, actual, push, root, vcs):
             result = identity_check(repo['identity'], commit)
             if result[0]:
                 return result[0], 'pushed commit identity: ' + result[1]
+    return 0, ''
+
+
+def fast_evidence(repo, sha, path, root):
+    """#530: the configured fast checks recorded as passed at the pushed HEAD sha."""
+    from wuwei import state
+    item = _item(path, root)
+    checks = f'bin/wuwei build check {item}' if item else 'bin/wuwei fast-checks in this worktree'
     evidence = state.read_state(root).get('fast_checks', {})
     if not isinstance(evidence, dict) or not isinstance(evidence.get(repo['name'], {}), dict):
         raise ValueError(f'malformed fast-check evidence; {DAMAGED}')
@@ -366,7 +373,7 @@ def check(payload):
             raise ValueError('unsupported environment clearing around Git; run git with the normal environment, without clearing or unsetting variables')
         if re.search(r'''(?:^|[;\n'"])\s*\w+=[^;\n]*[;\n]''', raw):
             raise ValueError('standalone environment assignment before Git; write the assignment directly in front of the git command, or remove it')
-        creates_commit = False
+        creates_commit, used = False, []
         for command, directory, root, parsed, errors in scoped:
             if errors:
                 raise ValueError(errors[0])
@@ -446,8 +453,18 @@ def check(payload):
                 return result
             push = data(next(iter(early), None) or vcs.push_context(actual['path'], remote, refs, root=root))
             result = push_check(repo, actual, push, root, vcs)
+            if not result[0]:
+                result = fast_evidence(repo, push['head']['sha'], actual['path'], root)
+                if result[0] == 1:  # #530: a warning, the owner's card or (strict) the refusal
+                    from wuwei import grants
+                    result = grants.evidence(payload, root, workspace.load_config(root), command.argv,
+                                             result[1], repo['name'])
             if result[0]:
                 return result
+            if callable(result[1]):
+                used.append(result[1])
+        for use in used:  # #478: a grant is spent only when the whole call runs
+            use()
         return 0, ''
     except (OSError, ValueError, KeyError, TypeError, AttributeError, IndexError) as exc:
         reason = str(exc)

@@ -170,8 +170,8 @@ WUWEI is built as ports and adapters (hexagonal).
 | Event | Trigger | Refuses when |
 |---|---|---|
 | PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor; an item without a ticket while tracker hygiene requires one (5.11) |
-| PreToolUse | `git commit`, `git push` | author or committer differs from repository config; force-push; push to the default branch; push before the fast checks passed |
-| PreToolUse | `gh pr create` | the pre-PR gate set has not all passed; no reviewer named in the same action |
+| PreToolUse | `git commit`, `git push` | author or committer differs from repository config; force-push; push to the default branch; push before the fast checks passed (owner, 2026-10-05, #530: below strict a missing fast check is a warning under observe and the owner's card under guarded, naming the check) |
+| PreToolUse | `gh pr create` | the pre-PR gate set has not all passed (#530: a warning under observe, the owner's card under guarded); no reviewer named in the same action; `--repo` and `--head` given apart, or naming a branch that is not a recorded item branch (#534: with both, or after `cd <recorded worktree> &&`, it runs from any directory) |
 | PreToolUse | `gh pr merge` | the merge policy (4.6) does not clear this PR at this head |
 | PreToolUse | `gh pr review --approve`, `--admin`, protection changes | always |
 | PreToolUse | any deploy action (4.7) | always |
@@ -235,6 +235,14 @@ queues, which agent wrote what), banned characters, and a maximum length per cha
 lint also applies the mechanical checks of the owner's voice for the message's audience
 (4.8).
 
+The internal-state patterns (`outward.patterns`, empty by default) apply by kind and
+audience (#533). Tracker, docs and code-host writes are the team's records and never read
+them. On chat and mail, a client or public reader gets a card naming the audience and the
+matched word, decided with the approval tier, so one approval sends it. A team or company
+reader gets the message; under `autonomy.mode = "supervised"` an `outward.lint` event and a
+warning name the word, and under autonomous nothing is recorded. The strict posture keeps
+the refusal. A message only the owner reads is never checked.
+
 ### 4.4 Profiles
 
 - `strict` (default): every guard above blocks.
@@ -249,7 +257,11 @@ Bash guard therefore matches after normalising: unwrap `sh -c`, `bash -c`, `zsh 
 overrides; treat `gh api` calls against the merge, review, branch-protection and
 deployment endpoints as the commands they implement. An interpreter one-liner (`python -c`,
 `node -e`, `perl -e`) or a script whose text invokes `git` or `gh` with a guarded verb is
-refused as opaque. Each bypass form is a test case in the guard's table.
+refused as opaque. Each bypass form is a test case in the guard's table. Amended (owner,
+2026-10-05, #530): below strict an opaque command runs with one `guard.would_refuse` warning
+naming what could not be read, unless its literal text names a publish target (a
+protected-branch, force, tag or no-verify push, a deploy, a release, a gh merge, approval,
+admin, protection or text write, a hooks path change); the records floor stays.
 
 What the normalisation guarantees depends on what the guard protects (9.1):
 
@@ -434,7 +446,12 @@ Records (owner, 2026-10-03, #357). The records under `.wuwei/` are written by th
 from the owner's answers; no step asks the owner to create or edit a file by hand. The owner
 answers questions (in the session, in the DM, or y/N at a terminal) and may edit any record
 afterwards; the planner records. The host terminal remains for the strict posture and for
-credentials.
+credentials. (owner, 2026-10-05, #529) Outside strict the owner's answer on a card is the
+confirmation of the config write its record command makes: `calibrate --answer` for an
+interview card, `config set KEY VALUE --from-card D-n` for a decision whose option titles
+read `KEY = VALUE`. The answer is recorded hashed on the planner's session row when the card
+is answered, and the command writes only that answer. A `config set` in a session without a
+card exits 1 naming the card; under strict the command is printed for a host terminal.
 
 Availability (owner, 2026-10-04, #477). The owner's session is never blocked by work.
 Seats run in the background; any command that can run longer than a few seconds (fast
@@ -468,7 +485,17 @@ they wait for the owner.
   the approach keeps leaking and what replaces it, agreed with the owner before more code,
   and the reconsideration is recorded in its spec (constitution, Cycle budget).
 - A re-gate continues the same sentinel with the delta; a fresh seat only for a lost agent.
-- CAP counts running build seats. Host floors (free memory, seat count) come from config.
+- CAP counts running build seats. The free-memory floor comes from config.
+  Amended (owner, 2026-10-05, #528): CAP and `host.seats` derive from the measured host,
+  never from a shipped number: the running seats plus the seats that fit above the memory
+  floor at the measured seat cost, one per core; `host.seats` is that fit but never under
+  one gate's three sentinels, so a gate always fits, and CAP is the fit. A sweep where a gate
+  waits for seats starts no new planned build. A damaged day log falls back to the default
+  seat cost with a warning. `[budget] tokens_per_day`, with the median input plus output tokens per
+  `seat.usage` row, bounds CAP from the other side (at least 1). A positive config `cap` or
+  `host.seats` is the owner's one-key override. Plan propose, each `dispatch next --all`
+  sweep, the agent-launch guard and `dispatch opinion` derive it live; the plan, the gate
+  card and the status line name what bound it (`host`, `budget`, `owner`, `unmeasured`).
 - Seat policy (model and runtime per role) is set at the morning gate and stored in state.
 - Boundary and environment register come from config; the arch sentinel checks against them.
 - Verdict shape: a `Verdict: PASS|FIX|PARK|ESCALATE` line; findings with severity,
@@ -493,8 +520,8 @@ they wait for the owner.
   state return the same action. The CLI never waits for a Claude seat; the old blocking
   form exits 2 naming `build next`. Codex executes the same actions through its polling
   adapter. Backpressure, signature, stuck and iteration limits, and usage events retain
-  their semantics. `host.seats` defaults to four, the default cap plus three gate seats;
-  increase it with a custom cap. A ceiling refusal names `host.seats`.
+  their semantics. `host.seats` derives from the host (#528) unless config pins it. A
+  ceiling refusal names `host.seats`.
 - Cost per iteration (owner, 2026-09-28). Every dispatch records the runtime's reported
   usage (input and output tokens, cost when the runtime reports it, model, duration) as a
   `seat.usage` event per iteration. The steward reports cost per item, per role and per
@@ -518,7 +545,9 @@ the owner (5.8.1), one question per decision, recommended option first, pending 
 batched, pre-triaged by the steward; for work outside the goals or above the auto-start bar
 (5.7); for merges the merge policy does not clear. Never for what a seat's mandate lets it
 decide (5.2). Otherwise the session is silent, with a
-digest at most every two hours that lists the decisions cruise mode answered.
+digest at most every two hours that lists the decisions cruise mode answered. Under
+`autonomy.mode = autonomous` a decision the mandate covers (5.8, decision classes) is never a
+card (owner, 2026-10-05, #530).
 
 ### 5.5 The steward
 
@@ -642,6 +671,23 @@ Routing by class. The record's class level and the conditions in 5.8.1 decide wh
 CLI answers it or the owner does; anything cruise mode does not answer goes to the owner.
 When unsure, it is one-way.
 
+Decision classes (owner, 2026-10-05, #530). `decision route` derives an MIT CISR class from
+two axes already in the record. Risk is low when the record is two-way and its blast radius
+starts with item, own branch, own PR or day; anything else is high. Ambiguity is low when
+Confidence is not low and the 5.8.1 margin is at least 0.2. Routine is low on both,
+Consequential is high risk with low ambiguity, Exploratory is low risk with high ambiguity and
+Strategic is high on both. The 5.8.1 classes `retry` (a fix round after FIX verdicts),
+`approach` (a builder's task round, a choice between seat procedures), `park` (a parked item's
+next step) and `accept-residual` are Routine by definition. `autonomy.mode` holds the owner's
+setup answer, default `autonomous`: a Routine, Consequential or Exploratory record whose
+recommendation scores ahead is taken as recommended, written `Decided-by: mandate` by the CLI,
+listed in the digest and in the day report with the reversal command, and never a card; a tie,
+a Strategic record, a one-way record (an `unsure` one too, unless its class is Routine by
+definition) and a record written `Decided-by: owner` (a security finding) go to the owner with
+the lens lines. A one-way record is never Routine by definition. Under `supervised` routing stays
+as before this amendment. The lint OK line names the class, and a record without a
+recommendation is refused with "add the recommendation and the reasoning".
+
 Enforcement. A PostToolUse decision lint on writes to `decisions/D-*.md` refuses a record
 missing any field, with an unknown class, with fewer than two options, or whose
 recommendation is not the top passing option by the stated weights (the CLI recomputes the
@@ -714,7 +760,10 @@ Ceilings. Whatever the config says, these stay at L0 or L1: messages to people; 
 agreed with other people; deploys (never made, 4.7) and merges to a repository whose base deploys (4.6); trust-boundary
 findings (a record whose context cites a security finding); anything one-way; anything
 outside the item's goals (an `unplanned` item, or a change to a goal). The Ceiling column
-carries the class ones; the rest are checked on every record.
+carries the class ones; the rest are checked on every record. Under `autonomy.mode =
+autonomous` (5.8, decision classes) the ceilings bind a two-way record not written for the
+owner through its action's floor (merge policy 4.6, publish grants 4.7, outbound tiers 4.9),
+not the decision record (#530); one-way records and trust-boundary findings still go to the owner.
 
 Merge. The `merge` class answers only where `merge.auto = true` and the merge policy clears
 the merge; the policy's eligibility, preconditions, soak window, daily cap and breaker
@@ -1687,7 +1736,7 @@ or `strict`, and `[security.areas]` overrides one area with `off`, `warn` or `bl
 Floors no posture and no override lowers:
 
 - `records` always blocks. An override below `block` is a `config check` finding (exit 1), and every hook then fails closed as for any broken config.
-- Owner-only actions always block: the deployment ban (`deploy`), the merge policy, approvals and owner markers (`pr`), and approve-tier messages and canary or honeytoken egress (the outward approval tier). Under `observe`, `publish` relaxes only the commit and push rules and the PR anchor. Amended (owner, 2026-10-04, #478): a deploy refusal asks the owner on a card, and only the owner's recorded answer (once, today, always) lets the same action through.
+- Owner-only actions always block: the deployment ban (`deploy`), the merge policy, approvals and owner markers (`pr`), and approve-tier messages and canary or honeytoken egress (the outward approval tier). Under `observe`, `publish` relaxes only the commit and push rules and the PR anchor. Amended (owner, 2026-10-04, #478): a deploy refusal asks the owner on a card, and only the owner's recorded answer (once, today, always) lets the same action through. Amended (owner, 2026-10-05, #530): raising a PR and pushing a feature branch are not owner-only; they follow `publish`, and missing evidence asks on a card (once, today) under guarded.
 - MCP: under `guarded` and `strict` a registry check that could not run blocks launches whatever `security.areas.mcp` says, unless it is `off`. A finding blocks only at a severity in `scanner.mcp.block`, which is unset by default: no severity under `guarded`; `critical`, `high` and `unmeasured` under `strict`. Under `observe`, and with `mcp = "off"`, the list has no effect and `config check` says so.
 
 The posture changes what the cooperative guards refuse, never the hard boundaries above.

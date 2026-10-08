@@ -37,7 +37,7 @@ PHASES = {
 }
 BUILD_PHASES = ('spec', 'implement', 'fix')
 STATUSES = ('queued', 'running', 'blocked', 'done')
-DAY_DEFAULTS = {'items': {}, 'cap': 1, 'seat_policy': {}, 'envelope': {},
+DAY_DEFAULTS = {'items': {}, 'cap': 1, 'cap_bound': '', 'seat_policy': {}, 'envelope': {},
                 'claimed_prs': [], 'raised_prs': [], 'gate_verdicts': {}, 'seats': {},
                 'gate_approved': False, 'approved_items': [], 'goals': []}
 ITEM_DEFAULTS = {'lane': 'build', 'status': 'queued', 'phase': 'planned',
@@ -151,11 +151,12 @@ def append_event(kind, payload=None, root=None, *, directory=None):
         _append_event(kind, payload, directory)
 
 
-def _append_event(kind, payload, directory):
-    """Append validated event data while the caller holds state.lock."""
-    record = {'kind': kind, 'payload': payload,
-              'ts': workspace.now().isoformat()}
-    _append_jsonl(directory / 'events.jsonl', record)
+def _append_event(kind, payload, directory, more=()):
+    """Append validated event data, and any more (kind, payload) pairs in the same write,
+    while the caller holds state.lock."""
+    ts = workspace.now().isoformat()
+    _append_jsonl(directory / 'events.jsonl',
+                  *({'kind': k, 'payload': p, 'ts': ts} for k, p in ((kind, payload), *more)))
 
 
 def append_jsonl(path, record):
@@ -168,10 +169,11 @@ def append_jsonl(path, record):
         _append_jsonl(path, record)
 
 
-def _append_jsonl(path, record):
-    """Write one line under state.lock, leaving events and traces read-only."""
+def _append_jsonl(path, *records):
+    """Write the records' lines in one write under state.lock, leaving events and traces read-only."""
     from wuwei.redact import known_values
-    encoded = (json.dumps(known_values(record), allow_nan=False) + '\n').encode('utf-8')
+    encoded = ''.join(json.dumps(known_values(record), allow_nan=False) + '\n'
+                      for record in records).encode('utf-8')
     if path.is_file():
         path.chmod(0o600)
     try:
@@ -195,10 +197,12 @@ def _append_jsonl(path, record):
             path.chmod(0o444)
 
 
-def _write_state(update, root=None, *, reserved=True, kind='state.write', payload=None, directory=None):
-    """Apply a callback that mutates fresh state while holding the writer lock."""
+def _write_state(update, root=None, *, reserved=True, kind='state.write', payload=None, directory=None, more=()):
+    """Apply a callback that mutates fresh state while holding the writer lock; more is
+    (kind, payload) events appended with this write's event."""
     directory = workspace.day_dir(root) if directory is None else Path(directory)
     payload = _event_payload(kind, payload)
+    more = [(name, _event_payload(name, extra)) for name, extra in more]
     directory.parent.mkdir(exist_ok=True)
     directory.mkdir(exist_ok=True)
     # ponytail: POSIX-only sidecar flock; add a platform adapter if Windows is required.
@@ -218,13 +222,15 @@ def _write_state(update, root=None, *, reserved=True, kind='state.write', payloa
                     raise _producer_error((key,))
         data = _validate(data, previous)
         encoded = json.dumps(data, allow_nan=False) + '\n'
-        workspace.atomic_write(directory / 'state.json', encoded, mode=0o444)
+        # One directory fsync, after both renames, makes both durable (#516).
+        workspace.atomic_write(directory / 'state.json', encoded, mode=0o444, sync_dir=False)
         workspace.atomic_write(directory / SNAPSHOT, encoded, mode=0o444)
         changes = {name: item['phase'] for name, item in data['items'].items()
                    if previous is not None and name in previous['items']
                    and item['phase'] != previous['items'][name]['phase']}
-        _append_event(kind, {**payload, 'prs_seen': bool(data['raised_prs'] or data['claimed_prs']),
-                             **({'phase_changes': changes} if changes else {})}, directory)
+        seen = bool(data['raised_prs'] or data['claimed_prs'])
+        _append_event(kind, {**payload, 'prs_seen': seen, **({'phase_changes': changes} if changes else {})},
+                      directory, [(name, {**extra, 'prs_seen': seen}) for name, extra in more])
         return data
 
 
@@ -235,7 +241,8 @@ STATE_PRODUCERS = {
     'mcp': 'wuwei mcp check or owner host decision',
     'integrity': 'wuwei integrity check', 'integrity_failed': 'wuwei integrity check',
     'integrity_confirmation': 'owner host re-confirmation',
-    'cap': 'wuwei plan approve', 'seat_policy': 'wuwei plan approve',
+    'cap': 'wuwei plan approve or wuwei dispatch next --all',
+    'cap_bound': 'wuwei plan approve or wuwei dispatch next --all', 'seat_policy': 'wuwei plan approve',
     'envelope': 'wuwei plan approve', 'items': 'wuwei plan approve',
     'gate_approved': 'wuwei plan approve', 'approved_items': 'wuwei plan approve',
     'goals': 'wuwei plan approve', 'goal_seats': 'wuwei plan approve',
@@ -265,7 +272,8 @@ STATE_PRODUCERS = {
     'tickets': 'wuwei plan approve, add or set, wuwei tracker create or wuwei drafts approve',
     'tracker_log': 'wuwei tracker create or log',
     'outbound_learn': 'wuwei outbound learn or wuwei decide',
-    'grants': 'wuwei hook PreToolUse (deploy guard), wuwei plan propose or wuwei decide',
+    'outbound_threads': 'wuwei outbound learn',
+    'grants': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise, wuwei plan propose or wuwei decide',
 }
 
 
@@ -446,9 +454,10 @@ def transition(item, phase, root=None):
                        payload={'item': item, 'phase': phase})
 
 
-def stop_seat(name, root=None, *, directory=None, agent_id=None, reason=None, by=None):
+def stop_seat(name, root=None, *, directory=None, agent_id=None, reason=None, by=None, session=None):
     """Release a reservation while preserving the used brief and seat identity; with a reason
-    the seat is unmeasured: its report could not be recorded (#473)."""
+    the seat is unmeasured: its report could not be recorded (#473). session (session_id, hook,
+    cwd) also records the session row in the same write (#516)."""
     fields = {'reason': reason} if reason else {}
     if by:
         fields['by'] = by
@@ -461,9 +470,13 @@ def stop_seat(name, root=None, *, directory=None, agent_id=None, reason=None, by
                     **fields)
         if isinstance(agent_id, str) and agent_id.strip():
             seat['agent_id'] = agent_id
+        if session:
+            from wuwei import sessions
+            sessions.record(data, **session)
     payload = {'name': name, **({'status': 'unmeasured'} if reason else {}), **fields}
+    more = [('session.seen', {'session_id': session['session_id'], 'hook': session['hook']})] if session else ()
     return _write_state(update, root, reserved=False, kind='seat stopped',
-                        payload=payload, directory=directory)
+                        payload=payload, directory=directory, more=more)
 
 
 def recover(root=None, *, confirm):

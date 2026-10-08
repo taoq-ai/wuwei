@@ -443,29 +443,72 @@ def _empty_list(key, line):
 SEAT_MIB = 1024
 
 
-def host(root, config):
-    """Host profile and the proposed cap: seats that fit above the memory floor, one core each,
-    within host.seats; {'unmeasured': reason} when the host cannot be read."""
-    from wuwei import metrics
+def _gb(mib):
+    return f'{round(mib / 1024, 1):g} GB'
+
+
+def host(root, config, running=0, free=None):
+    """Capacity (#528): CAP and the seat ceiling from the running seats plus the seats that fit
+    above the memory floor, one per core, then the owner's values and the token budget; `bound`
+    names what set CAP. `free` is MiB when the caller already measured it."""
+    from wuwei import metrics, workspace
     from wuwei.guards.agent_launch import free_memory
 
+    owner_cap, owner_seats = config['cap'], config['host']['seats']
     try:
-        free = free_memory(config, root) // 2**20
+        if free is None:
+            free = free_memory(config, root) // 2**20
+        cores = os.cpu_count()
+        if not cores:
+            raise ValueError('cores unmeasured (os.cpu_count gave none); run bin/wuwei calibrate again on the host')
     except (OSError, ValueError) as exc:
-        return {'unmeasured': str(exc)}
-    cores = os.cpu_count()
-    if not cores:
-        return {'unmeasured': 'cores unmeasured (os.cpu_count gave none); run bin/wuwei calibrate again on the host'}
+        cap = owner_cap or 1
+        return {'unmeasured': str(exc), 'cap': cap, 'seats': owner_seats or 4, 'bound': 'unmeasured',
+                'text': f'cap {cap} (unmeasured): {exc}'}
     days = sorted((root / '.wuwei/days').glob('*'), reverse=True)
-    seat = next((cost for day in days
-                 if (cost := metrics.seat_cost(metrics._events(day) or [])) != metrics.UNMEASURED), None)
-    floor, ceiling = config['host']['free_memory_mb'], config['host']['seats']
-    return {'cores': cores, 'free_mib': free, 'seat_mib': seat or SEAT_MIB,
+    damaged = None
+    try:
+        seat = next((cost for day in days
+                     if (cost := metrics.seat_cost(metrics._events(day) or [])) != metrics.UNMEASURED), None)
+    except ValueError as exc:
+        # a damaged day log never blocks a launch: default seat cost, budget unmeasured
+        seat, damaged = None, exc
+    seat_mib = seat or SEAT_MIB
+    fit = max(1, min(running + max(0, (free - config['host']['free_memory_mb']) // seat_mib), cores))
+    # the derived ceiling holds one gate (three sentinels launch together); the floor still guards
+    from wuwei.dispatch import ROLES
+    seats = owner_seats or max(fit, len(ROLES))
+    cap, bound = (owner_cap, 'owner') if owner_cap else (min(fit, seats), 'host')
+    measured = f'{_gb(free)} free, {_gb(seat_mib)} per seat, {cores} cores'
+    text = (f'cap {cap} (owner): config cap; the host fits {min(fit, seats)} ({measured})'
+            if owner_cap else f'cap {cap} (host): {measured}')
+    budget = config['budget']['tokens_per_day']
+    if budget:
+        # ponytail: counts tokens already spent today, not what running seats will still spend;
+        # reserve a per-seat share at launch if this overshoots.
+        try:
+            per_seat = None if damaged else next((statistics.median(tokens) for day in days
+                                                  if (tokens := metrics.seat_tokens(metrics._events(day) or []))), None)
+            used = sum(metrics.seat_tokens(metrics._events(workspace.day_dir(root)) or []))
+        except ValueError as exc:
+            per_seat, damaged = None, damaged or exc
+        if per_seat is None:
+            text += f'; budget {budget} tokens a day, per-seat tokens unmeasured'
+        else:
+            per_seat = max(1, round(per_seat))
+            fits = max(1, (budget - used) // per_seat)
+            if fits < cap:
+                cap, bound = fits, 'budget'
+                text = f'cap {cap} (budget): {measured}'
+            text += f'; budget {budget} tokens a day, {used} used, {per_seat} per seat'
+    if damaged:
+        text += f'; warning: {damaged}'
+    return {'cores': cores, 'free_mib': free, 'seat_mib': seat_mib,
             'seat_source': 'default' if seat is None else 'measured',
-            'cap': max(1, min((free - floor) // (seat or SEAT_MIB), cores, ceiling))}
+            'cap': cap, 'seats': seats, 'bound': bound, 'text': text}
 
 
-def proposal(raw, targets, host=None):
+def proposal(raw, targets):
     """Additive config proposal for [(repo index, facts)]: (additions, hand edits).
 
     Only keys absent from the raw TOML are added, plus deploy lists and fast_checks still at a
@@ -491,8 +534,6 @@ def proposal(raw, targets, host=None):
         registers['boundary'].update(facts['boundary'])
     wanted += [(('deploy',), key, sorted(values)) for key, values in deploy.items() if values]
     wanted += [((table,), name, text) for table, names in registers.items() for name, text in names.items()]
-    if host and 'cap' in host:
-        wanted.append(((), 'cap', host['cap']))
     sections = _labelled(raw)
     additions, edits = [], []
     for path, key, value in wanted:
@@ -640,9 +681,9 @@ def settle(raw, settings):
     return additions, edits
 
 
-def propose(raw, results, settings=(), host=None):
+def propose(raw, results, settings=()):
     """Return the proposed config text, its diff and the hand edits; owner settings apply last."""
-    additions, edits = proposal(raw, [(r['index'], proposed(r)) for r in results], host)
+    additions, edits = proposal(raw, [(r['index'], proposed(r)) for r in results])
     text = apply(raw, additions)
     extra, more = settle(text, settings)
     text, edits = apply(text, extra), edits + more
@@ -681,7 +722,7 @@ def report(results, diff, edits, written, error=None, host=None, config=None):
             f"- free memory: {host['free_mib']} MiB (floor {config['host']['free_memory_mb']} MiB)",
             f"- seat cost: {host['seat_mib']} MiB ("
             + ('measured)' if host['seat_source'] == 'measured' else 'default, unmeasured until the first seats run)'),
-            f"- proposed cap: {host['cap']} (host.seats {config['host']['seats']})"]) + ['']
+            f"- derived: {host['text']}"]) + ['']
     for result in results:
         lines += [f"## {result['repo']['name']}", '']
         for title, kinds in SECTIONS:

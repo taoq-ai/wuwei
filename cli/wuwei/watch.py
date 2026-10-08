@@ -133,7 +133,7 @@ def digest(root, config):
         sent = set(prior.get('digest_ids', []))
         pending = sorted((ident, value['option']) for ident, value in
                          data.get('decision_outcomes', {}).items()
-                         if ident not in sent and value.get('decided_by') == 'seat'
+                         if ident not in sent and value.get('decided_by') in ('seat', 'mandate')
                          and value.get('reversibility') == 'two-way')
         if not pending:
             return 0

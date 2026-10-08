@@ -251,19 +251,38 @@ def posture(payload, refusals, root):
     guard.would_refuse and lets the call through, block enforces it with its posture line.
     Returns (guard, reason, line, exit); the config is read only because a guard refused."""
     from wuwei import state, workspace
-    from wuwei.guards import NO_REVIEWER, level
+    from wuwei.guards import NO_REVIEWER, RAISE, level
     try:
         if root is None:
             raise LookupError('no workspace; run bin/wuwei init')
-        name, levels = workspace.posture(workspace.load_config(root))
+        config = workspace.load_config(root)
+        name, levels = workspace.posture(config)
     except BaseException:  # No workspace or an unreadable config enforces, as before #331.
         return [(module(check), reason, '', code) for check, reason, code in refusals]
     from wuwei.shell import UNKNOWN_GIT, UNPARSED, WORKSPACE_ROOT
-    enforced, shown, seen = [], None, set()
+    enforced, shown, seen, opaque = [], None, set(), None
+
+    def opaque_reason():
+        """#530: what the guards could not read in a call naming no publish target, else ''."""
+        try:
+            from wuwei import shell
+            from wuwei.guards import deploy
+            command, cwd = payload['tool_input']['command'], payload['cwd']
+            what = shell.unreadable(command, cwd)
+            if not what or deploy.floor_named(command + '\n' + (shell.script_text(command, cwd) or ''), config):
+                return ''
+            return f'opaque: {what}; the guards could not read it, so it ran with this warning (strict refuses it)'
+        except Exception:  # fail closed: the refusal stands
+            return ''
     for check, reason, code in refusals:
         guard, area, decided, line = level(check, levels)
-        if reason == NO_REVIEWER or guard == 'deploy' and reason.startswith('publish: '):
+        if guard == 'pr' and (reason == NO_REVIEWER or reason.startswith(RAISE)):
+            # #530: raising a PR is gated by evidence under the publish area, never owner-only.
+            decided, line = levels['publish'], f'posture: publish = {levels["publish"]} (set security.areas.publish)'
+        if reason == NO_REVIEWER or reason.startswith('publish: '):
             line = ''  # It names its own ways out (#478: the owner's card); still blocked.
+        if guard == 'outward' and reason.startswith('outward: draft '):
+            line = f'posture: {area} = {decided}; a draft is one card away'  # #526: a row lowers it.
         # #347, #470: decided by the reason, not the area; only deploy says unknown git
         if reason in (UNPARSED, WORKSPACE_ROOT) or guard == 'deploy' and reason.startswith(UNKNOWN_GIT):
             if reason in seen:
@@ -271,6 +290,13 @@ def posture(payload, refusals, root):
             seen.add(reason)
             decided = 'block' if reason != WORKSPACE_ROOT and name == 'strict' else 'warn'
             line = ''
+        elif (area == 'publish' and code == UNRUN and name != 'strict'
+              and payload.get('tool_name') == 'Bash'
+              and (opaque := opaque_reason() if opaque is None else opaque)):
+            if opaque in seen or UNPARSED in seen:
+                continue
+            seen.update((opaque, UNPARSED))
+            reason, decided, line = opaque, 'warn', ''
         if decided == 'off':
             continue
         if decided == 'block':

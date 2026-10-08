@@ -52,6 +52,9 @@ NO_REVIEWER = ('PR create requires a named --reviewer in the same command; or '
                'bin/wuwei config set shepherd.min_reviewers 0; or set '
                'shepherd.reviewers and raise with bin/wuwei pr raise')
 
+# #530: the prefix of every PR create refusal; the hook levels it as publish, not owner-only.
+RAISE = 'pr raise: '
+
 
 def level(check, levels):
     """(module, area, level, line) for one guard check under resolved area levels. A check
