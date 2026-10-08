@@ -80,6 +80,20 @@ def notify(root, config, waiting):
             return 2
         notified.add(item)
         state.append_event('negotiation.notified', {'item': item}, root)
+    told = {row['payload'].get('id') for row in rows if row['kind'] == 'decision.notified'}
+    for row in rows:  # #283: each cruise answer with an undo window, once
+        payload = row['payload']
+        if row['kind'] != 'decision.decided' or not payload.get('undo_until') or payload.get('id') in told:
+            continue
+        from wuwei import cruise
+        text = (f'{payload["id"]} taken as {payload["option"]} by {payload["decided_by"]}. '
+                f'Reply undo {payload["id"]} by {cruise.clock(payload["undo_until"])} to ask again.')
+        result = control_plane.notify(text, root=root, transport=remote.TRANSPORT)
+        if result.exit:
+            print(f'listen decision notify unmeasured: {result.reason}', flush=True)
+            return 2
+        told.add(payload['id'])
+        state.append_event('decision.notified', {'id': payload['id']}, root)
     return 0
 
 

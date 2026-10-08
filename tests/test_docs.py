@@ -796,14 +796,21 @@ def test_readme_first_day_and_shipped_areas():
         assert f'({link})' in ships, link
 
 
-def test_cruise_mode_is_designed_not_built():
+def test_cruise_mode_ships():
+    # #283: cruise mode is built; no page calls it designed or not built.
     readme = (ROOT / 'README.md').read_text()
     for path in [ROOT / 'README.md', *SITE.glob('*.md')]:
         for paragraph in re.split(r'\n\s*\n', path.read_text()):
-            if re.search('cruise', paragraph, re.I) and not paragraph.startswith('#'):
-                assert 'not built' in ' '.join(paragraph.split()), (path.name, paragraph)
+            if re.search('cruise', paragraph, re.I):
+                assert 'not built' not in ' '.join(paragraph.split()), (path.name, paragraph)
     assert 'cruise' in readme.split('\n## What ships today\n', 1)[1].split('\n## ', 1)[0]
-    assert all('cruise' in (SITE / f'{page}.md').read_text() for page in ('concepts', 'configuration'))
+    configuration = (SITE / 'configuration.md').read_text()
+    for key in ('margin', 'max_per_day', 'undo_minutes', 'promote_agreements', 'promote_days'):
+        assert f'`decisions.cruise.{key}`' in configuration, key
+    daily = (SITE / 'daily.md').read_text()
+    assert 'decision undo' in daily and 'cruise off' in daily
+    assert '`undo D-<n>`' in (SITE / 'reference.md').read_text()
+    assert 'cruise' in (SITE / 'concepts.md').read_text()
 
 
 def test_concepts_and_daily_cover_shipped_mechanisms():

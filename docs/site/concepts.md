@@ -378,16 +378,20 @@ question card shows the titles, the recommended one first, each with its rationa
 consequence and lens lines, and ends the question with the reasoning. `wuwei decision
 template` prints a valid record.
 
-Cruise mode is designed in
-[design spec 5.8.1](https://github.com/taoq-ai/wuwei/blob/main/docs/specs/2026-09-24-wuwei-design.md)
-and not built: decisions would carry a class, and the CLI would answer some classes itself
-at levels L0 to L3. Today every owner decision comes to you.
+Cruise mode ([design spec 5.8.1](https://github.com/taoq-ai/wuwei/blob/main/docs/specs/2026-09-24-wuwei-design.md))
+runs each class at a level from L0 to L3. When `decision route` takes a record under the
+mandate and its class runs at L2 or L3, the record is two-way, inside its own branch, PR or
+the workspace, its margin reaches `decisions.cruise.margin` and the daily budget allows,
+it is a cruise answer: `Decided-by: cruise <class>@L<n>`. At L2 you get a nudge and can undo
+it for `decisions.cruise.undo_minutes`; at L3 it is in the digest. Levels move only through
+the CLI: down on an undo, a reversal, an escaped defect or three thin margins in a row, up
+when you answer a raise card ([cruise answers](daily.md#cruise-answers)).
 
 Every seat prompt ends with a mandate block built from those class levels
 (`decisions.cruise.levels`, the 5.8.1 defaults otherwise), the interview's trust-surface
 line and `deploy.deny`: what the seat decides alone, what it decides and records, and what
 comes to you, closing with "Nothing else is a question." The levels only shape this
-text; cruise answering is not built. Assume and record: a two-way
+text and pick which taken records are cruise answers. Assume and record: a two-way
 open question inside the item is not asked; the seat takes its recommendation and records
 it under `Assumptions:` in the spec or PR body, and gates review it as an `Assumption:`
 finding. A seat that stops on a question to you without a valid decision id is

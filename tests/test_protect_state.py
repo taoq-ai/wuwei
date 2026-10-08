@@ -603,6 +603,7 @@ def test_f13_permissions_on_containers(workspace, operation, target, expected):
 @pytest.mark.parametrize('path', [
     '.wuwei/days/2026-09-28/traces.jsonl',
     '.wuwei/memory/ledger.jsonl',
+    '.wuwei/memory/cruise.json',
 ])
 def test_memory_lint_evidence_is_cli_owned(workspace, path):
     from wuwei.guards.protect_state import check_bash, check_file

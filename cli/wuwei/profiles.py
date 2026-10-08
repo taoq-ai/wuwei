@@ -28,6 +28,8 @@ FLOORS = workspace.SCHEMA['repos'][0]['gates']['floor'][2]
 DENIED = (
     ('decisions.cruise.enabled', lambda new, old: new is True and old is False),
     ('decisions.cruise.levels.*', lambda new, old: new > old),
+    ('decisions.cruise.margin', lambda new, old: new < old),
+    ('decisions.cruise.max_per_day', lambda new, old: new > old),
     ('repos.gates.floor', lambda new, old: FLOORS.index(new) < FLOORS.index(old)),
     ('repos.merge.auto', lambda new, old: new is True),
     ('shepherd.autostart', lambda new, old: new is True),

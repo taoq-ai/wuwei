@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from wuwei import discovery, plan, registry, state
+from wuwei import discovery, plan, registry, state, workspace
 
 
 @pytest.fixture
@@ -633,3 +633,18 @@ def test_lead_charter_names_every_owner_action():
     text = (Path(__file__).parents[1] / 'charters/lead.md').read_text()
     for name in grants.OWNER_ACTIONS:
         assert f'`{name}`' in text, name
+
+
+def test_propose_writes_the_cruise_raise_card_the_gate_carries(root, monkeypatch, capsys):
+    # #283: ten agreements in a class make plan propose write a raise card; plan gate asks it.
+    from wuwei.__main__ import main
+    rows = {f'D-{100 + index}': {'option': 'A', 'outcome': 'A', 'decided_by': 'owner', 'class': 'defer',
+                                 'recommendation': 'A', 'at': workspace.now().isoformat()} for index in range(10)}
+    state._write_state(lambda data: data.setdefault('decision_outcomes', {}).update(rows), root, reserved=False)
+    plan.propose(proposal(), root)
+    assert state.read_state(root)['cruise_cards']['D-1']['kind'] == 'raise'
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    capsys.readouterr()
+    assert main(['plan', 'gate']) == 0
+    gate, card = json.loads(capsys.readouterr().out)
+    assert card['header'] == 'D-1' and card['options'][0]['label'] == 'Raise defer to L1 (Recommended)'

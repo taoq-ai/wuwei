@@ -379,6 +379,33 @@ your DM when the listener runs. An external confirmation a seat routed with `--e
 waits `decisions.wait_hours` weekday hours for your answer; then the sweep confirms the
 recommendation on a two-way door or [parks](concepts.md#park) the item for your `decide`.
 
+### Cruise answers
+
+Under `autonomy.mode = "autonomous"` the CLI already takes clear records as recommended (the
+mandate). Cruise mode marks the ones whose class runs at L2 or L3: the record is two-way,
+inside its own branch, PR or the workspace, its margin reaches `decisions.cruise.margin` and
+fewer than `max_per_day` were answered today. Such a record reads `Decided-by: cruise
+defer@L2` (class and level). A thin margin on an L2 or L3 class that the mandate does not
+take still comes to you.
+
+At L2 you have `undo_minutes` (60 by default) to undo it. `bin/wuwei nudges` lists it first,
+`D-3 taken as A by cruise defer@L2, undo until 13:00`, and `bin/wuwei decision show D-3
+--widget` asks Keep or Undo on a card. The planner records your answer with `wuwei decision
+undo D-3 --answer "<label>"`; run `bin/wuwei decision undo D-3` in a host terminal and answer
+y, or reply `undo D-3` to the listener DM. An undo puts the record back to you as `Outcome:
+pending` and lowers the class one level. After the window, reverse it with `bin/wuwei decide
+D-3 <option>`, which lowers the class too. An L3 answer has no window; the batched
+two-way summary from the watch lists it, cruise answers first.
+
+Levels move only through the CLI, each move a line in `.wuwei/memory/ledger.jsonl`. Three
+thin-margin escalations of a class in a row, an escaped defect on an item a cruise answer
+named, or a weekly sample you answer differently lower it. `plan propose` asks you to raise a
+class after `promote_agreements` agreeing answers, and once a week asks one recent cruise
+answer again without its recommendation; both cards come after the morning gate.
+
+The status line shows the highest level a class runs at, `cruise L2`, or `cruise off | L2`
+when `decisions.cruise.enabled = false`. Under `supervised` every class runs at L0.
+
 ### How you answer
 
 In the Claude Code session (desktop app, terminal or IDE alike) each owner question shows up
