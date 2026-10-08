@@ -296,4 +296,4 @@ def test_board_shows_running_seats_per_goal(day):
     data.update(gate_approved=True, seats={'a-1': {'id': 'a-1', 'role': 'builder', 'item': 'a',
                                                    'status': 'running'}})
     (day / 'state.json').write_text(json.dumps(data))
-    assert 'seats 1/3 (G-1 1)' in board_call()['content'][0]['text'].splitlines()[0]
+    assert 'seats 1/3 (builder)' in board_call()['content'][0]['text'].splitlines()[0]

@@ -3,6 +3,7 @@ of the product posture x audience x topic x kind x grant x umbrella x connector 
 
 import ast
 import contextlib
+import functools
 from importlib import import_module
 import io
 import itertools
@@ -436,8 +437,25 @@ def i10(case, rules):
     return None
 
 
+@functools.cache
+def budget_rule():
+    """#558: a class runs lower only on a spent error budget: more events than the allowance
+    and at least two, never on one event, and no single-trigger lowering left in cruise."""
+    from wuwei import budget_classes, cruise
+    rule = {'budget_share': 0.1, 'budget_window_days': 14, 'burn_warn': 2.0}
+    found = [budget_classes.measure(*counts, rule)[2] for counts in ((20, 3, 0), (20, 2, 2), (20, 0, 0), (5, 1, 0))]
+    if found != ['spent', 'warn', 'ok', 'ok']:
+        return f'budget states {found}, expected spent, warn, ok, ok'
+    left = [name for name in ('lower', 'streak', 'escaped') if hasattr(cruise, name)]
+    return f'single-trigger lowering left in cruise: {left}' if left else None
+
+
+def i11(case, rules):
+    return budget_rule()
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
-              'I9': i9, 'I10': i10}
+              'I9': i9, 'I10': i10, 'I11': i11}
 
 
 def project(case):

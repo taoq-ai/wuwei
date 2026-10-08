@@ -344,7 +344,6 @@ def test_guarded_literal_arguments_remain_supported(script, word):
 
 
 @pytest.mark.parametrize('script', [
-    "/git/eval 'echo safe'", "/gh/busybox sh -c 'echo safe'",
     "eval 'echo git'hub", "sh -c 'echo git'hub",
     'echo git\\\nhub', "sh -c 'echo git\\\nhub'",
     "git status; python3 <<'EOF'\nrun('gh pr merge')\nEOF",
@@ -808,3 +807,20 @@ def test_unreadable_names_what_a_guard_cannot_read(tmp_path, command, expected):
     # #530: the opaque warning names what the guards could not read.
     from wuwei import shell
     assert shell.unreadable(command, tmp_path) == expected
+
+
+@pytest.mark.parametrize('script', [
+    'git</dev/null push origin main', 'git>/tmp/x push origin main',
+    'gh</dev/null pr merge 1 --admin', 'git;/bin/true', '/usr/bin/git push', 'git-push',
+    'git${IFS}push${IFS}main/x',
+])
+def test_redirect_glued_to_guarded_name_is_a_mention(script):
+    # #508 review F1: only path-segment characters may hide a directory component.
+    from wuwei import shell
+    assert shell._GUARDED.search(script)
+
+
+@pytest.mark.parametrize('script', ['/a/508-git-in/gh/github/git-tools/bin/wuwei', '~/git/x'])
+def test_guarded_name_as_directory_is_no_mention(script):
+    from wuwei import shell
+    assert not shell._GUARDED.search(script)

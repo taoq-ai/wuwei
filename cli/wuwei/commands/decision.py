@@ -74,8 +74,6 @@ def decide(args):
         from wuwei import cruise
         thin = cruise.thin(root, fields, scores, config)
         route_owner(args.id, fields, root, thin=thin)
-        if thin:
-            cruise.streak(root, fields['Class'], args.id)
         return 0, target + said
     try:
         record = seat_outcome(fields, scores)
@@ -235,7 +233,7 @@ def owner_outcome(args, note=None, *, root=None, where=None):
                                 'reversibility': fields['Reversibility'], 'class': fields.get('Class')})
     workspace.atomic_write(path, owner_record(text, args.option, where, note))
     from wuwei import cruise
-    cruise.answered(root, args.id, args.option, previous)
+    cruise.answered(root, args.id, args.option)
     if not (grant is not None and args.option == 'keep'):  # #556: Keep owner-only leaves it novel
         try:
             for key in novelty.routed(data, args.id):
@@ -295,7 +293,6 @@ def undo(args, *, root=None, where=None):
     stamp = workspace.now().isoformat(timespec='seconds')
     workspace.atomic_write(path, decided_record(text, 'pending', 'owner').rstrip('\n')
                            + f'\nNotes: Undone at {stamp} {where}.\n')
-    cruise.lower(root, row['class'], f'undo {args.id}', cruise.evidence(root, args.id))
     from wuwei import undo as undo_ledger
     undo_ledger.record(root, 'decision', 'undo')  # #557: a real undo exercises the decision kind
     return 0, f'owner: ask with wuwei decision show {args.id} --widget'

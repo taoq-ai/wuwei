@@ -128,12 +128,13 @@ def test_status_line_and_json_share_snapshot(tmp_path):
     before = {p.name: p.read_bytes() for p in directory.iterdir()}
     line = cli(tmp_path, 'status', '--line')
     structured = cli(tmp_path, 'status', '--json')
-    assert line.returncode == structured.returncode == 0
+    full = cli(tmp_path, 'status')
+    assert line.returncode == structured.returncode == full.returncode == 0
     assert line.stdout.count('\n') == 1
     assert 'pages 1' in line.stdout and 'nudges 1' in line.stdout
     assert 'spec 1/2' in line.stdout and 'implement 1/2' in line.stdout
-    assert 'reply 2026-09-28T13:00:00+02:00' in line.stdout
-    assert 'meeting 2026-09-28T16:00:00+02:00' in line.stdout
+    assert 'reply 2026-09-28T13:00:00+02:00' in full.stdout
+    assert 'meeting 2026-09-28T16:00:00+02:00' in full.stdout
     data = json.loads(structured.stdout)
     assert data['pages'] == 1 and data['nudges'] == 1
     assert data['phases']['spec'] == 1 and data['cap'] == 2
@@ -158,20 +159,23 @@ def test_status_line_names_running_seats_and_checks(tmp_path, monkeypatch, capsy
                 'started_at': '2026-09-28T09:25:00+02:00', 'pid': child.pid}}}})
         assert main(['status', '--line']) == 0
         line = capsys.readouterr().out
+        assert main(['status']) == 0
+        full = capsys.readouterr().out
         assert main(['status', '--json']) == 0
         running = json.loads(capsys.readouterr().out)['running']
     finally:
         child.kill()
         child.wait()
-    assert ('running reviewer D start unrecorded, builder A 09:10, builder B 09:20, checks C 09:25'
-            in line)
+    assert 'seats 3/2 (reviewer, builder, builder)' in line and 'running' not in line
+    assert ('running reviewer D start unrecorded\nrunning builder A 09:10\nrunning builder B 09:20\n'
+            'running checks C 09:25\n') in full
     assert running == [['', 'reviewer', 'D'],
                        ['2026-09-28T09:10:00+02:00', 'builder', 'A'],
                        ['2026-09-28T09:20:00+02:00', 'builder', 'B'],
                        ['2026-09-28T09:25:00+02:00', 'checks', 'C']]
     state_file = directory / 'state.json'
     state_file.write_text(json.dumps({'cap': 2, 'gate_approved': True, 'items': {}}))
-    assert main(['status', '--line']) == 0
+    assert main(['status']) == 0
     assert 'running' not in capsys.readouterr().out
 
 
@@ -194,7 +198,7 @@ def test_status_line_names_a_solo_pr(tmp_path, monkeypatch, capsys, recorded, sh
     day(tmp_path, {'cap': 1, 'items': {}, 'pr_reviewers': recorded})
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
-    assert main(['status', '--line']) == 0
+    assert main(['status']) == 0
     assert ('reviewers: none (solo)' in capsys.readouterr().out) is shown
 
 
@@ -212,7 +216,7 @@ def test_no_plan_yet_before_the_gate(tmp_path, state_data):
     day(tmp_path, state_data)
     result = cli(tmp_path, 'status', '--line')
     assert result.returncode == 0, result.stderr
-    assert result.stdout.startswith('WUWEI no plan yet | pages 0 | nudges 0')
+    assert result.stdout.startswith('WUWEI no plan yet | pages 0 · nudges 0')
     result = cli(tmp_path, 'status', '--json')
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)['gate_approved'] is False
@@ -222,7 +226,7 @@ def test_approved_gate_has_no_plan_yet_prefix(tmp_path):
     day(tmp_path, {'cap': 1, 'items': {}, 'gate_approved': True})
     result = cli(tmp_path, 'status', '--line')
     assert result.returncode == 0, result.stderr
-    assert result.stdout.startswith('WUWEI pages 0') and 'no plan yet' not in result.stdout
+    assert result.stdout.startswith('WUWEI seats 0/1 | pages 0') and 'no plan yet' not in result.stdout
 
 
 def test_init_prints_snippet_without_owner_settings_write(tmp_path):
@@ -250,7 +254,7 @@ def test_next_due_uses_instant_across_offsets(tmp_path):
 def test_reply_due_at_1500_appears_in_status_line(tmp_path):
     day(tmp_path, {'items': {}, 'cap': 1,
                    'reply_obligations': [{'person': 'Pat', 'due': '2026-09-28T15:00:00+02:00'}]})
-    result = cli(tmp_path, 'status', '--line')
+    result = cli(tmp_path, 'status')
     assert result.returncode == 0, result.stderr
     assert 'reply 2026-09-28T15:00:00+02:00' in result.stdout
     assert 'meeting unmeasured' in result.stdout
@@ -284,7 +288,7 @@ def test_status_calendar_failure_is_unmeasured(tmp_path, monkeypatch):
     assert result['next_meeting'] is None
     assert result['pages'] == 1
     monkeypatch.setenv('WUWEI_CALENDAR_URL', 'invalid-url')
-    line = cli(tmp_path, 'status', '--line')
+    line = cli(tmp_path, 'status')
     assert line.returncode == 0, line.stderr
     assert 'pages 1' in line.stdout
     assert 'meeting unmeasured' in line.stdout
@@ -377,6 +381,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'grant.asked': 'silent', 'grant.used': 'silent', 'grant.revoked': 'silent',
                 'decision.reversed': 'nudge', 'decision.notified': 'silent', 'cruise.carded': 'silent',
                 'undo.rehearsed': 'silent', 'undo.done': 'silent',
+                'cruise.burn': 'nudge',
                 **{f'telemetry.{name}': 'nudge' if name == 'ready' else 'silent' for name in TELEMETRY}}
     assert emitted == set(expected)
     for kind, tier in expected.items():
@@ -519,7 +524,7 @@ def test_issue_acceptance_a_phone_answer_shows_on_the_host(tmp_path, monkeypatch
     rows = [row for row in json.loads(capsys.readouterr().out) if 'D-2' in row['reason']]
     assert rows == [{'tier': 'nudge', 'source': 'decision.answered', 'lane': 'Decisions',
                      'reason': reason}][:len(expected)]
-    assert main(['status', '--line']) == 0
+    assert main(['status']) == 0
     text = capsys.readouterr().out
     assert ('phone answers 1' in text) == bool(expected) and reason not in text
     assert f'nudges {len(expected)}' in text
@@ -538,9 +543,10 @@ def test_issue_acceptance_four_phone_answers_are_one_status_segment(tmp_path, mo
     monkeypatch.setenv('WUWEI_NOW', NOW)
     reasons = [f'{identifier} answered from the phone: option {option}, '
                f'confirm with wuwei decide {identifier} {option}' for identifier, option in zip(ids, 'ABAA')]
-    assert main(['status', '--line']) == 0
+    assert main(['status']) == 0
     text = capsys.readouterr().out.strip()
-    assert 'phone answers 4' in text and 'answered from the phone' not in text and len(text) < 160
+    assert text.count('phone answers') == 1 and 'phone answers 4' in text
+    assert 'answered from the phone' not in text
     assert main(['nudges', '--json']) == 0
     rows = [row['reason'] for row in json.loads(capsys.readouterr().out) if row['source'] == 'decision.answered']
     assert rows == reasons
@@ -571,7 +577,7 @@ def status_of(tmp_path, monkeypatch, events):
     directory = day(tmp_path, {'items': {}, 'cap': 1, 'gate_approved': True}, events)
     (tmp_path / '.wuwei/config.toml').write_text('')
     data = status.snapshot(directory)
-    return data, status.line(data), status.attention(directory)
+    return data, status.full(data), status.attention(directory)
 
 
 CLOCK = {'kind': 'watch: clock', 'payload': {}, 'ts': NOW}
@@ -656,7 +662,7 @@ def test_status_line_counts_loops(tmp_path, monkeypatch):
     loop = {'kind': 'negotiation.loop', 'ts': NOW,
             'payload': {'item': 'alpha', 'past_goal': False, 'reason': reason}}
     data, line, rows = status_of(tmp_path, monkeypatch, [loop])
-    assert data['loops'] == 1 and ' | loops 1' in line
+    assert data['loops'] == 1 and ' · loops 1' in line
     assert [row['reason'] for row in rows if row['source'] == 'negotiation.loop'] == [reason]
 
 
@@ -669,8 +675,10 @@ def test_restart_on_the_status_line(tmp_path, monkeypatch):
     from wuwei.commands import status
     data, line, _ = status_of(tmp_path, monkeypatch, [CLOCK])
     assert data['restart'] == '' and 'restart' not in line
-    text = 'plugin 0.11.0 running against template 0.12.0: restart Claude Code'
-    assert f'nudges 0 | {text} |' in status.line({**data, 'restart': text})
+    text = 'restart Claude Code: hooks 0.11.0 still running (plugin 0.12.0 installed)'
+    assert status.line({**data, 'restart': text}).startswith(
+        'WUWEI restart Claude Code: hooks 0.11.0 still running | seats 0/1 | pages 0')
+    assert status.full({**data, 'restart': text}).startswith(f'WUWEI {text}\n')
 
 
 def test_scan_skips_silent_lines_undecoded(tmp_path, monkeypatch):
@@ -887,7 +895,149 @@ def test_status_line_shows_running_seats_per_goal(tmp_path):
     day(tmp_path, {'cap': 3, 'items': items, 'seats': seats, 'gate_approved': True})
     result = cli(tmp_path, 'status', '--line')
     assert result.returncode == 0, result.stderr
-    assert 'seats 2/3 (G-1 1, G-2 1)' in result.stdout  # no cap_bound: a day state before #528
+    assert 'seats 3/3 (builder, builder, sentinel-arch)' in result.stdout
+    assert 'builders G-1 1, G-2 1' in cli(tmp_path, 'status').stdout  # no cap_bound: before #528
     (tmp_path / '.wuwei/days/2026-09-28/state.json').write_text(json.dumps(
         {'cap': 3, 'items': items, 'gate_approved': False}))
     assert 'seats' not in cli(tmp_path, 'status', '--line').stdout
+
+
+def test_status_json_names_plan_decisions_and_versions(tmp_path):
+    from wuwei import integrity
+    routes = {'D-7': {'reversibility': 'unsure'}, 'D-8': {'reversibility': 'unsure'}}
+    directory = day(tmp_path, {'cap': 1, 'items': {}, 'decision_routes': routes, 'decision_outcomes': {
+        'D-8': {'decided_by': 'owner', 'option': 'A', 'outcome': 'A'}}})
+    (tmp_path / '.wuwei/config.toml').write_text('template_version = "0.1.0"\n')
+    data = json.loads(cli(tmp_path, 'status', '--json').stdout)
+    assert (data['plan'], data['decisions'], data['plugin'], data['template']) == (
+        False, ['D-7'], integrity.version(), '0.1.0')
+    assert {'pages', 'nudges', 'cap', 'cap_bound', 'gate_approved', 'phases', 'next_reply_due',
+            'next_meeting', 'sessions', 'seats', 'running', 'gates', 'watch', 'listen', 'health',
+            'loops', 'answered', 'trace_gaps', 'prs_changed', 'solo', 'posture', 'restart'} <= set(data)
+    (directory / 'plan.md').write_text('# Plan\n')
+    assert json.loads(cli(tmp_path, 'status', '--json').stdout)['plan'] is True
+
+
+ROLES = ('lead', 'arch', 'quality', 'security')
+STALE = 'restart Claude Code: hooks 0.12.0 and 0.15.0 still running (plugin 0.16.0 installed)'
+
+
+def four_seats(tmp_path, monkeypatch):
+    """Issue 521: four running seats on one item and a live fast check, gate approved."""
+    from wuwei.commands import status
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    seats = {role: {'status': 'running', 'role': role, 'item': 'ITEM-1',
+                    'started_at': f'2026-09-28T09:{10 * n:02d}:00+02:00'}
+             for n, role in enumerate(ROLES, 1)}
+    directory = day(tmp_path, {'cap': 1, 'gate_approved': True, 'items': {'ITEM-1': {'phase': 'implement'}},
+                               'seats': seats, 'builds': {'ITEM-1': {'status': 'check', 'check': {
+                                   'started_at': '2026-09-28T09:45:00+02:00', 'pid': os.getppid()}}}})
+    return status.snapshot(directory)
+
+
+def tokens(text):
+    return [token for group in text.removeprefix('WUWEI ').split(' | ') for token in group.split(' · ')]
+
+
+def test_issue_acceptance_the_line_starts_with_the_restart_and_fits(tmp_path, monkeypatch):
+    import re
+    from wuwei.commands import status
+    data = {**four_seats(tmp_path, monkeypatch), 'restart': STALE}
+    line = status.line(data)
+    assert len(line) <= 100
+    assert line.startswith('WUWEI restart Claude Code: hooks 0.12.0 and 0.15.0 still running')
+    assert 'pages 0' in line and 'nudges 0' in line
+    assert 'ITEM-1' not in line and not re.search(r'\d\d:\d\d', line) and '(plugin' not in line
+    whole = tokens(status.line(data, 10 ** 6))
+    assert all(token in whole or token.startswith('seats 4/1 (') for token in tokens(line))
+
+
+def test_issue_acceptance_nothing_to_do_starts_with_the_counts(tmp_path, monkeypatch):
+    from wuwei.commands import status
+    data = four_seats(tmp_path, monkeypatch)
+    assert status.line(data) == (
+        'WUWEI implement 1/1 · seats 4/1 (lead, arch, quality, security) | pages 0 · nudges 0')
+    assert status.line({**data, 'posture': 'observe'}).endswith('| pages 0 · nudges 0 · observe')
+    assert status.line({**data, 'running': [], 'phases': {}}) == 'WUWEI seats 0/1 | pages 0 · nudges 0'
+    for moved in ('watch', 'listen', 'sessions', 'meeting', 'reply', 'running', 'loops', 'bound',
+                  'budget', 'unplanned', 'checks'):
+        assert moved not in status.line({**data, 'cap_bound': 'budget'})
+
+
+def test_the_line_names_the_one_thing_to_do_first(tmp_path, monkeypatch):
+    from wuwei.commands import status
+    directory = day(tmp_path, {'cap': 1, 'items': {}})
+    result = cli(tmp_path, 'status', '--line')
+    assert (result.returncode, result.stdout) == (0, 'WUWEI no plan yet | pages 0 · nudges 0\n')
+    (directory / 'plan.md').write_text('# Plan\n')
+    assert cli(tmp_path, 'status', '--line').stdout == 'WUWEI gate waiting | pages 0 · nudges 0\n'
+    data = {**four_seats(tmp_path / 'b', monkeypatch), 'decisions': ['D-7', 'D-8']}
+    assert status.line(data).startswith('WUWEI decision D-7 waiting | implement 1/1')
+    assert status.line({**data, 'restart': STALE}).startswith('WUWEI restart Claude Code')
+    assert status.line({**data, 'gate_approved': False, 'plan': True}).startswith('WUWEI gate waiting |')
+
+
+def test_a_narrow_line_cuts_the_roles_then_drops_whole_tokens(tmp_path, monkeypatch):
+    from wuwei.commands import status
+    data = four_seats(tmp_path, monkeypatch)
+    assert status.line(data, 84) == (
+        'WUWEI implement 1/1 · seats 4/1 (lead, arch, quality, security) | pages 0 · nudges 0')
+    assert status.line(data, 75) == 'WUWEI implement 1/1 · seats 4/1 (lead, arch, +2 more) | pages 0 · nudges 0'
+    assert status.line(data, 70) == 'WUWEI implement 1/1 · seats 4/1 (lead, +3 more) | pages 0 · nudges 0'
+    assert status.line(data, 55) == 'WUWEI implement 1/1 | pages 0 · nudges 0'
+    assert status.line(data, 45) == 'WUWEI implement 1/1 | pages 0 · nudges 0'
+    assert status.line(data, 30) == 'WUWEI implement 1/1 | pages 0'
+    assert status.line(data, 25) == 'WUWEI implement 1/1'
+    assert status.line(data, 5) == 'WUWEI implement 1/1'
+    assert status.line({**data, 'restart': STALE}, 5) == 'WUWEI ' + STALE.split(' (plugin')[0]
+
+
+def test_status_line_width_flag(tmp_path):
+    seats = {role: {'status': 'running', 'role': role, 'item': 'ITEM-1'} for role in ROLES}
+    day(tmp_path, {'cap': 1, 'gate_approved': True, 'items': {}, 'seats': seats})
+    result = cli(tmp_path, 'status', '--line', '--width', '53')
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == 'WUWEI seats 4/1 (lead, +3 more) | pages 0 · nudges 0\n'
+    assert cli(tmp_path, 'status', '--line', '--width', '40').stdout == 'WUWEI seats 4/1 (+4 more) | pages 0\n'
+    assert cli(tmp_path, 'status', '--line', '--width', 'x').returncode == 2
+
+
+def test_issue_acceptance_status_shows_each_running_seat(tmp_path, monkeypatch):
+    from wuwei.commands import status
+    data = four_seats(tmp_path, monkeypatch)
+    result = cli(tmp_path, 'status')
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert lines[0] == 'WUWEI implement 1/1 · seats 4/1 (lead, arch, quality, security)'
+    assert [row for row in lines if row.startswith('running ')] == [
+        'running lead ITEM-1 09:10', 'running arch ITEM-1 09:20', 'running quality ITEM-1 09:30',
+        'running security ITEM-1 09:40', 'running checks ITEM-1 09:45']
+    shown = status.full({**data, 'restart': STALE}).splitlines()
+    assert shown[0] == 'WUWEI ' + STALE
+    assert shown[1] == 'implement 1/1 · seats 4/1 (lead, arch, quality, security)'
+
+
+def test_status_without_a_flag_fails_closed(tmp_path):
+    (day(tmp_path) / 'state.json').write_text('{broken')
+    result = cli(tmp_path, 'status')
+    assert (result.returncode, result.stdout) == (2, 'WUWEI ? unmeasured\n')
+
+
+def test_status_shows_the_detail_the_line_drops(tmp_path, monkeypatch):
+    from wuwei.commands import status
+    data = {**four_seats(tmp_path, monkeypatch), 'cap_bound': 'budget', 'seats': {'G-1': 2},
+            'watch': 'dead', 'listen': 'off', 'health': 'ok', 'sessions': 2, 'answered': ['x'],
+            'loops': 1, 'prs_changed': 3, 'solo': True, 'trace_gaps': 2, 'pages': 1,
+            'next_reply_due': '2026-09-28T15:00:00+02:00', 'next_meeting': None,
+            'plugin': '0.16.0', 'template': '0.15.0', 'posture': 'observe'}
+    shown = status.full(data).splitlines()
+    assert shown[0] == 'WUWEI implement 1/1 · seats 4/1 (lead, arch, quality, security) · bound budget · builders G-1 2'
+    assert shown[6:] == [
+        'pages 1 · nudges 0 · observe · phone answers 1 · loops 1 · prs 3 changed · reviewers: none (solo)'
+        ' · traces: 2 gaps',
+        'watch dead · listen off · health ok · sessions 2',
+        'reply 2026-09-28T15:00:00+02:00 · meeting unmeasured',
+        'plugin 0.16.0 · template 0.15.0']
+    assert status.full({**data, 'plugin': '', 'template': None})[-len('plugin unmeasured · template none'):] == (
+        'plugin unmeasured · template none')

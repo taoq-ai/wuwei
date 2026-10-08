@@ -352,7 +352,7 @@ def test_tampered_plugin_pages_once_and_withholds_the_ping(launcher, capsys):
     assert 'cli/wuwei/heartbeat.py' in record['probes']['integrity']['value']
     state.append_event('watch: clock', {}, root)
     directory = workspace.day_dir(root)
-    line = status.line(status.snapshot(directory))
+    line = status.full(status.snapshot(directory))
     assert 'health degraded' in line and 'pages 1' in line
     pages = [row for row in status.attention(directory) if row['source'] == 'heartbeat']
     assert len(pages) == 1 and 'integrity' in pages[0]['reason']
@@ -360,7 +360,7 @@ def test_tampered_plugin_pages_once_and_withholds_the_ping(launcher, capsys):
     seed(root)
     os.utime(root / '.wuwei/integrity/verdict.json', (later + 10, later + 10))
     assert heartbeat.beat(root) == 0
-    assert 'health ok' in status.line(status.snapshot(directory))
+    assert 'health ok' in status.full(status.snapshot(directory))
     assert not [row for row in status.attention(directory) if row['source'] == 'heartbeat']
 
 
