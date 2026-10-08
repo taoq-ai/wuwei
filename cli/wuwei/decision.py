@@ -390,9 +390,13 @@ def route_owner(identifier, fields, root, item=None):
     if identifier in data.get('decision_routes', {}) and (
             item is None or data['items'].get(item, {}).get('assumption', {}).get('decision') == identifier):
         return
+    from wuwei import novelty
     kind = cisr(fields, _scored(fields)[3])
     data_row = {'reversibility': fields['Reversibility'], 'recommendation': fields['Recommendation'], 'cisr': kind}
     payload = {'id': identifier, 'reversibility': fields['Reversibility'], 'cisr': kind}
+    novel = novelty.novel(root, workspace.load_config(root), novelty.record_keys(fields))
+    if novel:  # #556: the owner's answer clears these
+        data_row['novel'] = payload['novel'] = novel
     state._write_state(mark, root, reserved=False, kind='decision.routed',
                        payload=payload if item is None else {**payload, 'item': item})
 

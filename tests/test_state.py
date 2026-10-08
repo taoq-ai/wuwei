@@ -201,7 +201,7 @@ def test_transition_cli_rejects_implement_to_done(workspace):
 def test_all_transition_edges(workspace, start):
     from wuwei import state
     edges = {
-        'planned': ['spec', 'implement'], 'spec': ['implement'],
+        'planned': ['spec', 'implement', 'raised'], 'spec': ['implement'],
         'implement': ['gate'], 'gate': ['raised', 'fix'], 'fix': ['delta', 'merged'],
         'delta': ['raised', 'fix', 'merged'], 'raised': ['fix', 'merged'], 'merged': [],
     }
@@ -726,6 +726,38 @@ def test_link_without_raise_keeps_the_phase(workspace, phase, raised):
     state.record_pr(workspace, 'A', 'owner/repo#1', raised=raised)
     data = state.read_state(workspace)
     assert data['items']['A'] == {**data['items']['A'], 'phase': phase, 'pr': 'owner/repo#1'}
+
+
+def test_claim_moves_a_planned_item_to_raised(workspace):
+    from wuwei import state
+    _approved(workspace, 'planned')
+    count = len(events(workspace))
+    state.record_pr(workspace, 'A', 'owner/repo#1', raised=False)
+    assert state.read_state(workspace)['items']['A']['phase'] == 'raised'
+    assert [e['kind'] for e in events(workspace)[count:]] == ['pr.claimed']
+    assert events(workspace)[-1]['payload']['phase_changes'] == {'A': 'raised'}
+
+
+def test_record_worktree(workspace, tmp_path):
+    from wuwei import state
+    _approved(workspace, 'raised')
+    path = tmp_path / 'wt'
+    state.record_worktree(workspace, 'A', path, 'a' * 40)
+    assert state.read_state(workspace)['items']['A']['worktree'] == str(path)
+    event = events(workspace)[-1]
+    assert event['kind'] == 'worktree.adopted'
+    assert {k: event['payload'][k] for k in ('item', 'worktree', 'head')} == {
+        'item': 'A', 'worktree': str(path), 'head': 'a' * 40}
+    state.record_worktree(workspace, 'A', path, 'a' * 40)
+    before = (day(workspace) / 'state.json').read_bytes()
+    with pytest.raises(state.StateError, match='another worktree'):
+        state.record_worktree(workspace, 'A', tmp_path / 'other', 'a' * 40)
+    assert (day(workspace) / 'state.json').read_bytes() == before
+    state._write_state(lambda data: data['items'].update(B={}), workspace, reserved=False)
+    with pytest.raises(state.StateError, match='approved plan'):
+        state.record_worktree(workspace, 'B', path, 'a' * 40)
+    with pytest.raises(state.StateError, match='wuwei worktree adopt'):
+        state.set_state('items.A.worktree', 'x', workspace)
 
 
 def test_stop_seat_records_when_it_stopped(workspace, monkeypatch):

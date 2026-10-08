@@ -1,6 +1,7 @@
 """Git output replay preserves paths and normalizes repository evidence."""
 
 import importlib
+from pathlib import Path
 import subprocess
 
 import pytest
@@ -130,6 +131,7 @@ def test_worktree_identity_needs_worktree_config(monkeypatch):
     ('diff_stat', ['/repo', '--output=/tmp/unwanted', 'HEAD']),
     ('log_since', ['/repo', '--all']),
     ('worktree_add', ['/repo', '--force', '/path']),
+    ('worktree_checkout', ['/repo', '--force', '/path']),
     ('rebase', ['/repo', '--exec=touch unwanted']),
     ('push', ['/repo', 'origin', '--force']),
     ('fetch', ['/repo', '--force', 'main', 'b' * 40]),
@@ -441,3 +443,35 @@ def test_default_branch_from_git(tmp_path, capsys):
     git('checkout', '-q', '--detach')
     result = adapter().default_branch(tmp_path)
     assert result.exit == 2 and 'git.default_branch' in result.reason
+
+
+def test_worktrees_and_checkout_existing_branch(tmp_path):
+    repo = tmp_path / 'repo'
+
+    def git(*args):
+        return subprocess.run(['git', '-C', str(repo), *args], check=True, capture_output=True,
+                              text=True).stdout.strip()
+
+    subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
+    git('-c', 'user.name=Pat Example', '-c', 'user.email=pat@example.test', 'commit', '-q',
+        '--allow-empty', '-m', 'feat: start')
+    git('branch', 'feature-x')
+    git('branch', 'feature-y')
+    git('worktree', 'add', '-q', '--detach', str(tmp_path / 'detached'))
+    sha = git('rev-parse', 'HEAD')
+    result = adapter().worktree_checkout(repo, 'feature-x', str(tmp_path / 'x'))
+    assert result.exit == 0 and result.data == {'branch': 'feature-x', 'path': str(tmp_path / 'x')}
+    assert git('branch', '--list', '--format=%(refname:short)').split() == ['feature-x', 'feature-y', 'main']
+    rows = adapter().worktrees(repo).data
+    by_path = {Path(row['path']).resolve(): row for row in rows}
+    assert by_path[repo.resolve()] == {'path': by_path[repo.resolve()]['path'], 'head': sha, 'branch': 'main'}
+    assert by_path[(tmp_path / 'x').resolve()]['branch'] == 'feature-x'
+    assert by_path[(tmp_path / 'x').resolve()]['head'] == sha
+    assert by_path[(tmp_path / 'detached').resolve()]['branch'] is None
+    assert adapter().worktree_checkout(repo, 'feature-x', str(tmp_path / 'again')).exit == 2
+
+
+@pytest.mark.parametrize('stdout', ['worktree /r\0HEAD x\0\0', 'HEAD ' + 'a' * 40 + '\0\0', 'worktree /r'])
+def test_worktrees_rejects_malformed_records(stdout, monkeypatch):
+    install_replay(monkeypatch, 'git', [{'stdout': stdout}])
+    assert adapter().worktrees('/repo').exit == 2

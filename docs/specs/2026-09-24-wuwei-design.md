@@ -789,6 +789,24 @@ running or configured level, so turning it back on restores them. The status lin
 shows `cruise off | L<max>`, the highest level a class would run at, and `cruise L<max>`
 while it is on.
 
+Novelty (owner, 2026-10-08, #556). Blast radius is only known for targets the workspace
+has touched. A decision or guarded action whose target is novel runs one level lower than
+its class level, never below L0 and never above the ceiling. A target is a repository
+(`repo:<org>/<name>`), channel (`channel:<id>`), person (`person:<ns>:<id>`), connector
+tool (`tool:<server>/<name>`), dependency (`dependency:<ecosystem>/<name>`), environment
+(`env:<name>`) or workflow (`workflow:<name>`). Under `autonomy.mode = "autonomous"` with no
+cruise levels, one level lower means a card: `decision route` sends a record naming a novel
+target to the owner (Routine included), an outward chat send to a novel channel holds as a
+draft, and a standing grant pattern does not apply to a novel repository. Under supervised
+routing does not change. A target is seen when config names it, or after the owner answered
+one card for it (a Keep owner-only grant answer leaves it novel; for a draft only an
+approval counts), or after an action on it was taken under mandate and not reversed within
+the undo window, whichever comes first; the mandate form arrives with the cruise levels.
+`init --upgrade` seeds the seen set from the CLI-written events and sent chat drafts of the
+last 30 days, so an upgraded workspace is not asked about what it already uses. The CLI
+keeps the first-seen date and the clearing in `memory/targets.json`, which no seat can
+write (the records floor). A novel target never creates a grant on its own.
+
 #### 5.8.2 External waits and negotiation loops (owner, 2026-10-01, #301)
 
 External confirmation. A confirmation from a person outside the loop (anyone but the owner

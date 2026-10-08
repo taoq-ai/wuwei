@@ -51,7 +51,7 @@ def session_start(payload):
     try:
         row = next_command.step(root)
     except ERRORS as exc:
-        code, row = 2, {'state': 'unmeasured', 'step': str(exc), 'command': 'wuwei doctor'}
+        code, row = 2, next_command._row('unmeasured', str(exc), 'wuwei doctor')
     from wuwei import specmode
     session = payload.get('session_id')
     session = session if isinstance(session, str) and session.strip() else None

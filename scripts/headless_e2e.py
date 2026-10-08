@@ -22,6 +22,8 @@ ERRORS = (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError
 # tunes them after measured runs.
 REHEARSAL = {'first': (150, 15, 1800), 'second': (40, 5, 600)}
 PLANNED = 'decision outcome D-1 (planned, host terminal)'
+# #551: the fixture's own park of A, which no next action names; any other off-path command fails.
+PARK = ('wuwei plan park A --reason <label>', 'wuwei decision route D-1', 'cp park.md <label>')
 
 
 def check_result(result):
@@ -53,7 +55,21 @@ def conformance(events, hooks):
     return findings
 
 
-def validate(data, events, hooks, start=False):
+def off_path(data, events, traces):
+    """#551: the planner's Bash commands the governing wuwei next did not name, less the park."""
+    sys.path.insert(0, str(ROOT / 'cli'))
+    try:
+        from wuwei import metrics
+    finally:
+        sys.path.pop(0)
+    found = metrics.path(events, traces, data.get('planner_session_id'))['off_path']
+    if not isinstance(found, list):
+        return [f'off the path: unmeasured ({found})']
+    return [f'off the path: {command}' for command in found
+            if not any(metrics._matches(command, form) for form in PARK)]
+
+
+def validate(data, events, hooks, start=False, traces=None):
     """Return measured findings. Assistant prose cannot satisfy any assertion. start: the
     session got only start_prompt, so no probe, Skill call or scripted Stop block is required,
     and any refusal or help call is a finding."""
@@ -116,7 +132,8 @@ def validate(data, events, hooks, start=False):
     closes = [i for i, h in enumerate(hooks) if h.get('args') == ['close'] and h['exit'] == 0]
     if start:
         require(bool(closes), 'close did not succeed')
-        return findings + conformance(events, hooks)
+        return findings + conformance(events, hooks) + (off_path(data, events, traces)
+                                                        if traces is not None else [])
     require(bool(planner) and bool(stops) and stops[-1][1] == 0 and
             any(block < close < stops[-1][0] for block, code in stops if code == 2 for close in closes),
             'planner must block, close successfully, then stop cleanly')
@@ -340,18 +357,20 @@ passed its gates, park it with the decision in park.md as today's D-1 (copy it t
 '''
 
 
-def exercise(*, local_login=False, start=False):
+def exercise(*, local_login=False, start=False, model='sonnet'):
     with tempfile.TemporaryDirectory(prefix='wuwei-headless-') as temporary:
         root, plugin, env = prepare(Path(temporary), local_login=local_login)
-        print('Headless e2e: running Claude (48 turns, USD 3, 300 seconds)', flush=True)
-        result = adapter.run(adapter.claude_command(plugin), cwd=root, env=env,
+        print(f'Headless e2e: running Claude {model} (48 turns, USD 3, 300 seconds)', flush=True)
+        result = adapter.run(adapter.claude_command(plugin, model=model), cwd=root, env=env,
                              input=start_prompt() if start else prompt(root, plugin), timeout=300)
         check_result(result)
         day = root / '.wuwei/days' / DAY
         data = json.loads((day / 'state.json').read_text())
         events = [json.loads(line) for line in (day / 'events.jsonl').read_text().splitlines()]
         hooks = [json.loads(line) for line in (root / 'headless-hooks.jsonl').read_text().splitlines()]
-        findings = validate(data, events, hooks, start=start)
+        traces = [json.loads(line) for line in (day / 'traces.jsonl').read_text().splitlines()] \
+            if start and (day / 'traces.jsonl').is_file() else ([] if start else None)
+        findings = validate(data, events, hooks, start=start, traces=traces)
         for finding in findings:
             print('headless e2e finding: ' + finding)
         if not findings:
@@ -560,6 +579,8 @@ def main(argv=None):
                         help='Bounded live release rehearsal against WUWEI_REHEARSAL_REPO')
     parser.add_argument('--start', action='store_true',
                         help='Give the session only "Start the day." and assert no refusal or help call')
+    parser.add_argument('--model', default='sonnet',
+                        help='The planner model, for example haiku (#551: a smaller model walks the path)')
     args = parser.parse_args(argv)
     if args.rehearsal:
         return rehearse(local_login=args.local_login)
@@ -567,7 +588,7 @@ def main(argv=None):
         print('headless e2e unmeasured: ANTHROPIC_API_KEY is not set')
         return 2
     try:
-        return exercise(local_login=args.local_login, start=args.start)
+        return exercise(local_login=args.local_login, start=args.start, model=args.model)
     except ERRORS as exc:
         print('headless e2e unmeasured: ' + str(exc).removeprefix('unmeasured: '))
         return 2

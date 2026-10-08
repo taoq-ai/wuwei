@@ -1037,3 +1037,16 @@ def test_outbound_learn_planner_only(workspace, monkeypatch, capsys, posture):
 def test_config_show_outbound_learn_passes(workspace, monkeypatch, capsys):
     for command in ('bin/wuwei config show outbound.learn', 'bin/wuwei outbound learn --help'):
         assert _seat_hook(workspace, command, monkeypatch, capsys, 'strict') == (0, '')
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_seen_set_is_cli_owned(records, posture, monkeypatch, capsys):
+    # #556: a seat cannot mark a target seen; the records floor holds under every posture.
+    from wuwei.guards.protect_state import check_file
+    _posture(records, posture)
+    target = '.wuwei/memory/targets.json'
+    for tool, field in [('Write', {'file_path': target}), ('Edit', {'file_path': target}),
+                        ('Bash', {'command': f'echo {{}} > {target}'})]:
+        assert _hook(records, tool, monkeypatch, capsys, **field) == 2
+    code, reason = check_file(payload(records, 'Write', file_path=target))
+    assert code == 1 and 'seen set' in reason and 'init --upgrade' in reason

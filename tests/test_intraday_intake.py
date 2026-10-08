@@ -256,6 +256,19 @@ def test_plan_add_admits_owner_named_item_under_a_goal(root):
     assert 'OWN-1' in day['approved_items']
 
 
+def test_plan_add_records_an_adopted_source(root):
+    plan.add('PR-8', root, goal='G-1', title='Fix login', source='adopted')
+    plan.add('OWN-1', root, goal='G-1')
+    day = state.read_state(root)
+    assert {key: day['items']['PR-8'][key] for key in ('source', 'title')} == {
+        'source': 'adopted', 'title': 'Fix login'}
+    assert 'source' not in day['items']['OWN-1'] and 'title' not in day['items']['OWN-1']
+    events = [json.loads(line) for line in
+              (root / '.wuwei/days/2026-09-29/events.jsonl').read_text().splitlines()]
+    added = [e['payload'] for e in events if e['kind'] == 'plan.added']
+    assert [(row['item'], row['source']) for row in added] == [('PR-8', 'adopted'), ('OWN-1', 'owner')]
+
+
 def test_plan_add_unknown_item_without_goal_names_the_form(root):
     with pytest.raises(state.StateError, match='plan add OWN-2 --goal G-n'):
         plan.add('OWN-2', root)

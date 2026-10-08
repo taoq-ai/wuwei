@@ -323,6 +323,34 @@ def test_propose_sweep_has_pr_flow(root):
     assert '- pr-flow: measured: ok\n' in plan.propose(proposal(), root).read_text()
 
 
+def test_owner_open_prs_are_proposed_and_claimed_at_the_gate(root, monkeypatch):
+    # #510: the sweep lists the owner's open PRs; approving the gate claims them.
+    from fakes.code_host import Fake
+    from wuwei import shepherd
+    (root / '.wuwei/config.toml').write_text(
+        '[owner]\nhandles = ["U1", "Builder"]\n[[repos]]\nname = "acme/widget"\npath = "."\ndefault_branch = "main"\n')
+    host = Fake()
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: host if kind == 'code_host' else load(kind, config))
+    text = plan.propose(proposal(), root).read_text()
+    assert ('open_prs', ('acme/widget',), root) in host.calls
+    assert '- open-prs: measured: 1 open PR by the owner\n' in text
+    assert '## Open PRs to claim\n- PR-12: acme/widget#12 Add a cache (claimed under G-1)\n' in text
+    assert 'PR-13' not in text
+    widget = plan.gate_widget(root)
+    assert widget['record'] == 'wuwei plan approve --items A PR-12 --goals-confirmed'
+    assert 'claims PR-12 (acme/widget#12)' in widget['options'][0]['description']
+    claimed = []
+    monkeypatch.setattr(shepherd, 'claim_pr', lambda *args: claimed.append(args) or 0)
+    plan.approve(['A', 'PR-12'], root, goals_confirmed=True)
+    assert state.read_state(root)['approved_items'] == ['A']
+    assert claimed == [(root, 'acme/widget#12', 'PR-12', 'G-1')]
+    host.results['open_prs'] = registry.Result(2, None, 'github.open_prs: could not run')
+    from wuwei import workspace
+    assert plan._owner_prs(workspace.load_config(root), root, []) == (
+        [], 'unmeasured: github.open_prs: could not run')
+
+
 def test_gate_widget_is_the_one_approval_question(root):
     # #365: the CLI prints the one gate question, its header and the approve command.
     from wuwei.guards.decision import gate_question

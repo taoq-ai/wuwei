@@ -289,7 +289,7 @@ min_reviewers = 1 # Minimum eligible reviewers, including the lead; 0 is a solo 
 author_windows_days = [90, 180] # Authorship lookback windows before all history.
 tie_commits = 2 # Include a third author within this commit count of second place.
 source_exclude = ["specs/*", "*.lock", "*lock.json", "*.generated.*", "generated/*"] # Paths excluded from reviewer selection.
-autostart = false # Start a headless shepherd seat for mechanical PR actions when the listener sees them (wuwei listen).
+autostart = true # Start a headless shepherd seat for mechanical PR actions when the listener sees them (wuwei listen).
 
 [shepherd.authors]
 # Map each author email to a verified code host login and chat mention.

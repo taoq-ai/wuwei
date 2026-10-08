@@ -1365,6 +1365,14 @@ def test_resolve_opaque(configured, monkeypatch, capsys):
         assert code == 1 and held_channel(root, reason) == 'slack', reason
 
 
+def familiar(root, *channels):
+    # #556: these channels were seen before, so the tier table alone decides.
+    (root / '.wuwei/memory').mkdir(exist_ok=True)
+    (root / '.wuwei/memory/targets.json').write_text(json.dumps({'targets': {f'channel:{channel}': {
+        'first_seen': '2026-09-01', 'cleared': {'by': 'seed', 'evidence': 'days/2026-09-01', 'at': '2026-09-01'}}
+        for channel in channels}}))
+
+
 def write_config(root, text):
     with (root / '.wuwei/config.toml').open('a') as stream:
         stream.write(text)
@@ -1462,6 +1470,7 @@ def test_class_modes(configured):
     code, reason = check_tier(payload(root, 'A technical claim.', tool=opaque('append_block_children')))
     assert code == 1 and 'block by rule 2 ' in reason and 'outward.modes' in reason and 'config set' not in reason
     assert check_tier(payload(root, tool=opaque('get_page'))) == (0, '')
+    familiar(root, 'C01')
     unknown = payload(root, 'thanks <@U03>', tool=opaque('send_message', slack), channel='C01')
     assert check_tier(unknown) == (0, '')
     with pytest.raises(workspace.ConfigError):
@@ -1954,6 +1963,7 @@ def test_owner_row_person(configured):
     from wuwei import outward
     root = configured[0]
     config = tiers_workspace(root)
+    familiar(root, 'U07')
     inputs = {'text': 'tests passed <@U07>', 'channel': 'C1'}
     assert outward.check_tier(inputs, root, config, {'slack'}) == (1, (
         f'{outward.APPROVAL_REQUIRED}: ask by rule 9 (audience=company) for @u07: unknown mention @u07, '

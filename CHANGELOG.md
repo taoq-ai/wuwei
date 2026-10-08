@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.19.0](https://github.com/taoq-ai/wuwei/compare/v0.18.2...v0.19.0) (2026-10-08)
+
+
+### Features
+
+* **cap:** WUWEI parallelises on its own: CAP and host.seats come from the measured host (memory floor, cores) and a token budget, never from a default of 1 the owner has to raise, and the planner launches up to CAP without being asked ([#546](https://github.com/taoq-ai/wuwei/issues/546)) ([237af45](https://github.com/taoq-ai/wuwei/commit/237af455685a54e501d3de9e417e7cb62a8b0704))
+* **decisions:** every decision record carries its MIT CISR class, and a Routine decision is taken under mandate without a card in autonomous mode ([#544](https://github.com/taoq-ai/wuwei/issues/544)) ([ee287f5](https://github.com/taoq-ai/wuwei/commit/ee287f533281ba2a5a16417f9f2525328086ec3e))
+
+
+### Bug Fixes
+
+* **checks:** a fast check whose command names a per-worktree virtualenv runs in a fresh item worktree: the interpreter resolves from the repository's main worktree or [checks] python, and worktree add bootstraps or warns ([#550](https://github.com/taoq-ai/wuwei/issues/550)) ([327dd57](https://github.com/taoq-ai/wuwei/commit/327dd57b8dba8242eab2122f9646bdb2c538c9b5)), closes [#520](https://github.com/taoq-ai/wuwei/issues/520)
+* **guards:** an opaque command is a warning under observe and guarded, a branch push, a PR raise and a local merge are never owner-only, and gh pr create and pr raise work from any directory for a recorded item branch ([#547](https://github.com/taoq-ai/wuwei/issues/547)) ([11c6595](https://github.com/taoq-ai/wuwei/commit/11c65959b68a2799d291bcb43cc0791673fa56f1))
+* **latency:** SubagentStop in a workspace is back under its budget with headroom, without loosening the test ([#542](https://github.com/taoq-ai/wuwei/issues/542)) ([2ffe26b](https://github.com/taoq-ai/wuwei/commit/2ffe26bc9cf570177fe5c0d42862b599223f37f4))
+* **outward:** a thread reply in a work channel sends when the thread's participants are known people: the planner learns participants through the connector on the same card flow, a thread row is configurable in the tier table, and the reason's posture line stops saying no setting lowers it ([#545](https://github.com/taoq-ai/wuwei/issues/545)) ([e447ef8](https://github.com/taoq-ai/wuwei/commit/e447ef85217e6164b99dd526c6e7ebc96b24c24d))
+* **outward:** an owner's internal-state list never applies to tracker, docs and code-host writes, warns on team chat and holds client and public with the audience named ([#549](https://github.com/taoq-ai/wuwei/issues/549)) ([13792c7](https://github.com/taoq-ai/wuwei/commit/13792c7d4d6298162257c6a546e08e6ce65dc60f))
+* **records:** an answer given on an Ask card is the confirmation: config set, calibrate answers and every record command run by the planner after a card never prompt y in a host terminal again ([#548](https://github.com/taoq-ai/wuwei/issues/548)) ([17010f7](https://github.com/taoq-ai/wuwei/commit/17010f75fc8d2f26c2e9ee0c5a99270e4cc0c91e)), closes [#529](https://github.com/taoq-ai/wuwei/issues/529)
+
 ## [0.18.2](https://github.com/taoq-ai/wuwei/compare/v0.18.1...v0.18.2) (2026-10-05)
 
 
