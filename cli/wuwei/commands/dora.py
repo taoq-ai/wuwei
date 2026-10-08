@@ -14,7 +14,7 @@ def register(subparsers):
 
 def run(args):
     if args.window < 1:
-        print('wuwei dora: --window must be a positive number of days', file=sys.stderr)
+        print('wuwei dora: --window must be a positive number of days; pass --window 28', file=sys.stderr)
         return 2
     try:
         root = workspace.find_workspace()
