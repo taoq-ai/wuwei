@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.22.0](https://github.com/taoq-ai/wuwei/compare/v0.21.0...v0.22.0) (2026-10-08)
+
+
+### Features
+
+* **graph:** people, channels, tools and their relations are one register with typed edges that the config sections become views over, with wuwei who to walk it and wuwei why citing the edge that decided a hold ([#573](https://github.com/taoq-ai/wuwei/issues/573)) ([6c3751d](https://github.com/taoq-ai/wuwei/commit/6c3751dd0d2b23e78dc7cf463d777f59078c3efa))
+* **metrics:** the DORA four keys read from what WUWEI already records: lead time to merge and to deploy, deployment frequency from the code host, change failure rate from escaped defects, time to restore unmeasured until the on-call seat, in wuwei dora, the retro and the weekly signal set ([#595](https://github.com/taoq-ai/wuwei/issues/595)) ([95e9eb9](https://github.com/taoq-ai/wuwei/commit/95e9eb96c7d498155658b07da22012bf06866314))
+* **pace:** a day pace (careful, steady, fast) chosen at the morning gate from the lead's advice balancing the queue's complexity and deadlines, the host capacity, the owner's wish and the token budget, sets the tier floor, fix rounds, local versus CI checks and the seats used, never a floor or who decides, and the retro reports cycle time and escaped defects per pace ([#594](https://github.com/taoq-ai/wuwei/issues/594)) ([7370a2f](https://github.com/taoq-ai/wuwei/commit/7370a2f76aae86da6028a72c8a01e2cfe1948da2))
+
 ## [0.21.0](https://github.com/taoq-ai/wuwei/compare/v0.20.0...v0.21.0) (2026-10-08)
 
 
