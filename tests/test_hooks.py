@@ -744,6 +744,7 @@ GUARDS = [Guard({event!r}, {matcher!r}, lambda p: (0, ''))]
 ])
 def test_latency_budget_decision(monkeypatch, capsys, ci, bench, load, expected, wall_budget):
     monkeypatch.delenv('CI', raising=False)
+    monkeypatch.delenv('WUWEI_LATENCY_OUT', raising=False)  # its fixture rows are not probe figures
     monkeypatch.delenv('WUWEI_BENCH', raising=False)
     if ci:
         monkeypatch.setenv('CI', '1')
