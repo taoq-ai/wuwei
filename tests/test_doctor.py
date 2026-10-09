@@ -183,7 +183,7 @@ def test_outcome_findings_before_unmeasured():
 
 def test_fix_allow_list_is_pinned():
     # config-set waits for #327's confirmed `config set`.
-    assert set(doctor.FIXES) == {'integrity-reconfirm', 'init-upgrade', 'config-promote', 'calibrate',
+    assert set(doctor.FIXES) == {'integrity-reconfirm', 'init-upgrade', 'calibrate',
                                  'watch-install', 'listen-install', 'trace-decisions', 'mcp-reports'}
 
 
@@ -390,6 +390,8 @@ def test_git_hooks_row_skip_mode(ws):
     (REPO.replace('identity = { name = "Ada", email = "ada@example.com" }\n', ''),
      'acme/widget identity', 'fail', None),
     (REPO.replace('["ruff check ."]', '[]'), 'acme/widget fast_checks', 'warn', 'config-promote'),
+     'acme/widget identity', 'warn', None),
+    (REPO.replace('["ruff check ."]', '[]'), 'acme/widget fast_checks', 'ok', None),
 ])
 def test_workspace_repository_rows(ws, repo, name, status, apply):
     (ws.root / 'plain').mkdir()
@@ -417,6 +419,11 @@ def test_identity_row_without_git_identity_is_the_guards_answer(ws, identity):
     found = row(doctor.diagnose(), 'acme/widget identity')
     reason, fix = commit_push.unset_identity({'name': '', 'email': ''}, 0)
     assert (found['status'], found['value'], found['fix']) == ('fail', reason, W(fix.removeprefix('bin/wuwei ')))
+    if name.endswith('fast_checks'):  # #600: none configured is a state
+        from wuwei import fast_checks
+        assert found['value'] == fast_checks.NONE and not found.get('fix')
+    if name.endswith('identity'):
+        assert 'repos.0.identity.name = "Ada"' in found['fix']
 
 
 @pytest.mark.parametrize('present', [True, False])
@@ -704,7 +711,7 @@ def test_trial_failures_then_clean(ws, monkeypatch, capsys):
     config(ws.root, trial)
     assert main(['doctor']) == 1
     out = capsys.readouterr().out
-    for text in ('wuwei mcp decide proceed-unmeasured docs', f"fix: {W('config promote --measure')}", CLASSIC_LINE,
+    for text in ('wuwei mcp decide proceed-unmeasured docs', CLASSIC_LINE,
                  'acme/widget main: required reviews: missing ('):
         assert text in out, text
 
@@ -795,30 +802,10 @@ def fix(confirm):
     return doctor.run(Namespace(fix=True, json=False, widget=False, apply=None, section=None), confirm=confirm)
 
 
-def empty_checks(ws, monkeypatch, repos=1):
-    from wuwei.commands import config as config_command
-    text = '[adapters]\ncode_host = "github"\n'
-    for index in range(repos):
-        (ws.root / f'repo{index}/.git').mkdir(parents=True)
-        text += REPO.replace('acme/widget', f'acme/widget{index}').replace('"repo"', f'"repo{index}"').replace(
-            '["ruff check ."]', '[]')
-    config(ws.root, text)
-    from wuwei import graph
-    graph.sync(ws.root, workspace.load_config(ws.root))
-    calls, applied = [], []
-
-    def promote(args, confirm=None):
-        calls.append(args)
-        print('fast_checks = ["pytest -q"]')
-        print(ws.promote_extra, end='')
-        if not confirm(f'digest{len(calls)}' if ws.promote_changes else 'digest', prompt='Review'):
-            print('wuwei config promote: declined; nothing written', file=__import__('sys').stderr)
-            return 1
-        applied.append(args)
-        return 0
-    ws.promote_changes, ws.promote_extra = False, ''
-    monkeypatch.setattr(config_command, 'promote', promote)
-    return calls, applied
+def watch_missing(ws):
+    """One allow-listed fix pending: the watch unit is not installed."""
+    workspace.watch_unit(ws.root)[1].unlink()
+    (workspace.day_dir(ws.root) / 'events.jsonl').unlink()
 
 
 def test_doctor_fixed_is_reserved(ws, capsys):
@@ -870,34 +857,25 @@ def test_fix_applies_only_the_allow_list(ws, monkeypatch, capsys):
     assert not events(ws.root, 'doctor.fixed')
 
 
-def test_fix_dedupes(ws, monkeypatch, capsys):
-    calls, applied = empty_checks(ws, monkeypatch, repos=2)
-    assert fix(lambda digest: True) == 1  # the fake promote writes nothing, so the rows stay
-    assert capsys.readouterr().out.count('[config-promote] wuwei config promote') == 1
-    assert len(calls) == 2 and len(applied) == 1
-    assert events(ws.root, 'doctor.fixed') == [{'fix': 'config-promote', 'exit': 0}]
-
-
 def test_fix_wrong_digest_applies_nothing(ws, monkeypatch, capsys):
-    calls, applied = empty_checks(ws, monkeypatch)
+    watch_missing(ws)
     assert fix(lambda digest: False) == 1
     assert 'wuwei doctor: declined; nothing applied' in capsys.readouterr().err
-    assert len(calls) == 1 and not applied and not events(ws.root, 'doctor.fixed')
+    assert not ws.service.installed and not events(ws.root, 'doctor.fixed')
 
 
 def test_fix_without_terminal(ws, monkeypatch, capsys):
-    calls, applied = empty_checks(ws, monkeypatch)
+    watch_missing(ws)
 
     def no_terminal(value, *, prompt=''):
         raise OSError(integrity.HOST_TERMINAL)
     monkeypatch.setattr(integrity, '_host_confirm', no_terminal)
     assert fix(None) == 2
     assert integrity.HOST_TERMINAL in capsys.readouterr().err
-    assert not applied and not events(ws.root, 'doctor.fixed')
+    assert not ws.service.installed and not events(ws.root, 'doctor.fixed')
 
 
 def test_fix_changed_since_preview(ws, monkeypatch, capsys):
-    calls, applied = empty_checks(ws, monkeypatch)
     runs = []
 
     def upgrade(args):
@@ -909,29 +887,7 @@ def test_fix_changed_since_preview(ws, monkeypatch, capsys):
     assert fix(lambda digest: True) == 1
     out = capsys.readouterr().out
     assert 'init-upgrade: exit 1' in out and 'changed since the preview' in out
-    assert len(applied) == 1
-    assert events(ws.root, 'doctor.fixed') == [{'fix': 'init-upgrade', 'exit': 1},
-                                               {'fix': 'config-promote', 'exit': 0}]
-
-
-def test_fix_binds_promote_digest(ws, monkeypatch, capsys):
-    calls, applied = empty_checks(ws, monkeypatch)
-    ws.promote_changes = True
-    assert fix(lambda digest: True) == 1
-    assert len(calls) == 2 and not applied
-    assert events(ws.root, 'doctor.fixed') == [{'fix': 'config-promote', 'exit': 1}]
-
-
-@pytest.mark.parametrize('extra', ['Interview answers:\n  merge: auto\n',
-                                   'Profile acme: guards.mode = "enforce"\n'])
-def test_fix_holds_promote_with_decisions(ws, monkeypatch, capsys, extra):
-    calls, applied = empty_checks(ws, monkeypatch)
-    ws.promote_extra = extra
-    asked = []
-    assert fix(asked.append) == 1
-    out = capsys.readouterr().out
-    assert not asked and not applied and not events(ws.root, 'doctor.fixed')
-    assert 'wuwei config promote: cannot be applied now' in out.split('Not applied:', 1)[1]
+    assert events(ws.root, 'doctor.fixed') == [{'fix': 'init-upgrade', 'exit': 1}]
 
 
 def test_fix_installs_watch(ws, monkeypatch, capsys):

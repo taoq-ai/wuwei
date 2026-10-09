@@ -872,6 +872,77 @@ def i27(case, rules):
             return f'approve refuses the proposed goals: {exc}'
         return None if (root / '.wuwei/memory/goals.md').read_text() == memory else 'approve writes memory'
     return rules.memo(('proposed goals',), compute)
+    """#600: an empty fast-check list never refuses a launch below strict; strict refuses naming
+    the fast-checks card until the owner answers it."""
+    def compute(posture):
+        from wuwei import workspace
+        from wuwei.commands import build
+        config = workspace.load_config(rules.root, raw=rules.base.replace(
+            'fast_checks = ["unit"]', 'fast_checks = []') + f'[security]\nposture = "{posture}"\n')
+        try:
+            build._repo(rules.root, rules.tree.resolve(), config)
+        except ValueError as exc:
+            return str(exc)
+        return None
+    reason = rules.memo(('no checks', case[0]), lambda: compute(case[0]))
+    if (reason is None) != (case[0] != 'strict') or reason and 'calibrate --questions' not in reason:
+        return f'an empty fast-check list under {case[0]}: {reason}'
+    return None
+
+
+def i26(case, rules):
+    """#600: a config card with a list value records without a prompt below strict: the
+    planner's config set --from-card writes the answered option's Value row."""
+    def compute(posture):
+        import os
+        from unittest import mock
+        from test_card_confirms import answer
+        from test_decision import CHECKS_RECORD
+        from wuwei import workspace
+        ident = f'D-{61 + DIMENSIONS["posture"].index(posture)}'
+        rules.configure(posture)
+        (workspace.day_dir(rules.root) / f'decisions/{ident}.md').write_text(
+            CHECKS_RECORD.replace('["make test", "markdownlint ."]', '["make test"]'))
+        quiet = io.StringIO()
+        with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet), mock.patch(
+                'wuwei.integrity._host_confirm', side_effect=AssertionError('prompt')), mock.patch.dict(
+                os.environ, {'WUWEI_SESSION_ID': 'planner-1'}):
+            main(['decision', 'route', ident])
+            answer(rules.root, ident, f'{ident}: Which fast checks gate every change in repo:acme/paper?',
+                   'Detected (Recommended)')
+            try:
+                code = main(['config', 'set', '--from-card', ident])
+            except AssertionError:
+                code = 'a host prompt'
+        written = workspace.load_config(rules.root)['repos'][0]['fast_checks']
+        rules.configure(posture)
+        return code, written
+    code, written = rules.memo(('list card', case[0]), lambda: compute(case[0]))
+    expected = (1, ['unit']) if case[0] == 'strict' else (0, ['make test'])
+    return None if (code, written) == expected else f'config set --from-card gave {code}, {written}'
+
+
+def i27(case, rules):
+    """#600: a config record that records its previous value is never Strategic on its own: the
+    first route stores it two-way and, without a better class, approach."""
+    def compute():
+        from test_decision import CHECKS_RECORD
+        from wuwei import decision, undo, workspace
+        n = 70
+        for cls, door, confidence in itertools.product(('other', None), ('one-way', 'two-way', 'unsure'),
+                                                       ('high', 'low')):
+            text = (CHECKS_RECORD.replace('Class: other\n', f'Class: {cls}\n' if cls else '')
+                    .replace('Reversibility: one-way', f'Reversibility: {door}')
+                    .replace('Confidence: high', f'Confidence: {confidence}'))
+            n += 1
+            path = workspace.day_dir(rules.root) / f'decisions/D-{n}.md'
+            path.write_text(text)
+            fields, scores = decision.evaluate(text)
+            _, fields, _ = undo.correct(f'D-{n}', path, text, fields, rules.root)
+            if decision.cisr(fields, scores) == 'Strategic':
+                return f'a config record ({cls}, {door}, {confidence}) is Strategic'
+        return None
+    return rules.memo(('config record',), compute)
 
 
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
@@ -893,6 +964,7 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
          'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': ()}
+         'I22': (), 'I23': (), 'I24': (), 'I25': (0,), 'I26': (0,), 'I27': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
@@ -975,6 +1047,13 @@ BROKEN = {
     'doctor passes an empty identity': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.commands.doctor'), 'identity_row',
         lambda *args: {'status': 'ok', 'value': 'Builder <builder@example.test>'}),
+    'an empty fast-check list refuses': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.commands.build'), '_repo', lambda *args: (_ for _ in ()).throw(ValueError('none'))),
+    'a list card prompts the host': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.commands.setup'), '_from_card',
+        lambda *args: import_module('wuwei.integrity')._host_confirm('digest')),
+    'a config record keeps one-way': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.undo'), 'correct', lambda ident, path, text, fields, root: (text, fields, '')),
     'client thread row that sends': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.outward'), 'DEFAULT_TIERS',
         ({'audience': 'client', 'topic': 'thread', 'tier': 'send'}, *import_module('wuwei.outward').DEFAULT_TIERS)),

@@ -263,7 +263,6 @@ computed from `config.toml` alone; the planner runs it once at the start of the 
 | --- | --- | --- |
 | `integrity-reconfirm` | `wuwei integrity reconfirm` | a development checkout asks for reconfirmation |
 | `init-upgrade` | `wuwei init --upgrade` | template drift, or `repos = []` above `[[repos]]` tables |
-| `config-promote` | `wuwei config promote` | a repository has an empty `fast_checks` (held when it would also apply interview answers or a profile) |
 | `calibrate` | `wuwei calibrate` | calibration drift was flagged today |
 | `watch-install` | `wuwei watch install` | the watch is not installed |
 | `listen-install` | `wuwei listen install` | an inbound source is set and the listener is not installed |

@@ -56,11 +56,13 @@ def target(root, config, cwd, repo):
 
 
 def _record(question, context, rows, criterion, recommendation, reasoning, blast, premortem,
-            revisit='Revoke a standing grant with bin/wuwei grants revoke.'):
-    """A decision record from (id, title, rationale, consequence, score) rows."""
+            revisit='Revoke a standing grant with bin/wuwei grants revoke.', *, cls='other',
+            confidence='medium', door='one-way', extra=''):
+    """A decision record from (id, title, rationale, consequence, score) rows; extra (#600, Value
+    rows and a Previous line) goes before the Recommendation."""
     ids, cells = ' | '.join(row[0] for row in rows), ' --- |' * len(rows)
     return f'''Question: {question}
-Class: other
+Class: {cls}
 Context: {context}
 Options:
 | Option | Title | Rationale | Consequence |
@@ -73,10 +75,10 @@ Wants:
 | Criterion | Weight | {ids} |
 | --- | --- |{cells}
 | {criterion} | 10 | {' | '.join(str(row[4]) for row in rows)} |
-Recommendation: {recommendation}
+{extra}Recommendation: {recommendation}
 Reasoning: {reasoning}
-Confidence: medium
-Reversibility: one-way
+Confidence: {confidence}
+Reversibility: {door}
 Blast radius: {blast}
 Pre-mortem: {premortem}
 Revisit: {revisit}

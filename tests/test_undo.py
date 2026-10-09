@@ -540,3 +540,74 @@ def test_invariant_d_the_correction_never_changes_a_lint_exit(ws, capsys, postur
     rehearse_all(ws)
     clean = lint(ws, record(cls='retry'), capsys)
     assert corrected[0] == clean[0] == 0 and len(corrected[1]) == 2 and len(clean[1]) == 1
+
+
+# #600: a config write that records its previous value is two-way; its undo is config set.
+
+def checks(door='one-way', cls='other', previous='Previous: repos.0.fast_checks = []'):
+    from test_decision import CHECKS_RECORD
+    text = CHECKS_RECORD.replace('Reversibility: one-way', f'Reversibility: {door}')
+    text = text.replace('Class: other\n', f'Class: {cls}\n' if cls else '')
+    return text.replace('Previous: repos.0.fast_checks = []\n', f'{previous}\n' if previous else '')
+
+
+def test_config_write_needs_a_previous_line_for_its_key():
+    from test_card_confirms import CONFIG_RECORD
+    from wuwei import undo
+    assert undo.config_write(fields_of(checks()))
+    assert undo.config_write(fields_of(CONFIG_RECORD.replace('Outcome: pending', 'Outcome: pending\nPrevious: cap = 1')))
+    assert not undo.config_write(fields_of(checks(previous='')))
+    assert not undo.config_write(fields_of(checks(previous='Previous: cap = 1')))
+    assert not undo.config_write(fields_of(CONFIG_RECORD))
+
+
+def test_a_config_write_is_measured_two_way_with_an_empty_ledger(ws, monkeypatch):
+    from wuwei import undo
+    monkeypatch.setattr(undo, 'ledger', lambda root: {})
+    assert undo.measured(fields_of(checks()), ws, config_of(ws)) == ('config', None)
+
+
+@pytest.mark.parametrize('door,cls,stored', [
+    ('one-way', 'other', 'approach'), ('unsure', '', 'approach'), ('one-way', 'design', 'design')])
+def test_a_config_record_is_corrected_on_its_first_route(ws, door, cls, stored):
+    from wuwei import undo
+    path = save(ws, checks(door, cls))
+    text, fields, said = undo.correct('D-3', path, path.read_text(), fields_of(path.read_text()), ws)
+    assert fields['Reversibility'] == 'two-way' and fields['Class'] == stored
+    assert fields_of(path.read_text()) == fields_of(text) and fields_of(text)['Class'] == stored
+    assert said == (f'Reversibility: two-way, not {door}: a config write that records its previous '
+                    'value is undone by config set (#600)')
+    assert 'Notes: Reversibility corrected at 2026-09-28T12:00:00+00:00: a config write' in text
+    assert undo.correct('D-3', path, text, fields, ws)[2] == ''
+
+
+def test_a_config_record_without_previous_is_untouched(ws):
+    from wuwei import undo
+    text = checks(previous='')
+    path = save(ws, text)
+    undo.correct('D-3', path, text, fields_of(text), ws)
+    assert 'Reversibility: one-way' in path.read_text() and 'Class: other' in path.read_text()
+
+
+@pytest.mark.parametrize('mode', ['autonomous', 'supervised'])
+def test_a_config_record_routes_routine_to_the_owner(ws, capsys, mode):
+    from wuwei import decision
+    (ws / '.wuwei/config.toml').write_text(f'[autonomy]\nmode = "{mode}"\n')
+    path = save(ws, checks())
+    code, lines = lint(ws, checks(), capsys)
+    assert code == 0 and lines[-1].startswith('Reversibility: two-way, not one-way: a config write')
+    code, out = route(ws, capsys)
+    assert code == 0 and out.splitlines()[0] == 'owner'
+    fields, scores = decision.evaluate(path.read_text())
+    assert (fields['Reversibility'], fields['Class']) == ('two-way', 'approach')
+    assert decision.cisr(fields, scores) == 'Routine' and routes(ws)['D-3']['cisr'] == 'Routine'
+
+
+def test_a_title_config_record_under_autonomous_asks_the_owner(ws, capsys):
+    from test_card_confirms import CONFIG_RECORD
+    save(ws, CONFIG_RECORD.replace('Decided-by: owner', 'Decided-by: seat').replace(
+        'Outcome: pending', 'Outcome: pending\nPrevious: cap = 1'))
+    assert route(ws, capsys)[1].splitlines()[0] == 'owner'  # #529: never taken under the mandate
+    from wuwei.__main__ import main
+    assert main(['decision', 'show', 'D-3', '--widget']) == 0
+    assert json.loads(capsys.readouterr().out)[0]['record'] == 'wuwei config set --from-card D-3'

@@ -127,10 +127,29 @@ def toolchain(checkout, repo):
             match = re.match(r'(test|lint|check)\s*:(?!=)', line)
             if match:
                 found.append(_finding('fast_check', f'make {match[1]}', 'Makefile', number))
+    # #600: a repository with no code (a paper) still declares its checks
+    for names, command in ((MARKDOWNLINT, 'markdownlint .'), (('.latexmkrc', 'latexmkrc'), 'latexmk')):
+        name = next((name for name in names if _read(checkout, name, found) is not None), None)
+        if name:
+            found.append(_finding('fast_check', command, name, 1))
+    if not any(f['kind'] == 'fast_check' for f in found):  # only then a CI test step
+        for _, relative, flow in _workflows(checkout, found):
+            if flow['triggers'] & {'pull_request', 'push'}:
+                found += [_finding('fast_check', command, relative, number) for job in flow['jobs']
+                          if re.search(r'(?i)test|check|lint', job['id'] + ' ' + job['name'][0])
+                          for command, number in job['runs']
+                          if TEST_STEP.match(command) and not re.search(r'[;&|<>$`]', command)]
     return found
 
 
-LINT = ('ruff check .', 'black --check .', 'npm run lint', 'make lint')
+MARKDOWNLINT = ('.markdownlint.json', '.markdownlint.jsonc', '.markdownlint.yaml', '.markdownlint.yml',
+                '.markdownlintrc')
+# ponytail: a line regex over single-line run steps; an install step naming a test word is the
+# ceiling. A YAML reader if a real repository needs one. A line with a shell control or expansion
+# character is never one simple command, so it is never proposed (#600 review F1).
+TEST_STEP = re.compile(r'(?!(?:pip3?|npm (?:ci|install)|apt(?:-get)?|brew|sudo|cd|echo)\b)'
+                       r'.*\b(?:pytest|test|tests|check|lint|latexmk|markdownlint)\b')
+LINT = ('ruff check .', 'black --check .', 'npm run lint', 'make lint', 'markdownlint .')
 UNMEASURED = 'test runner, unmeasured; run bin/wuwei calibrate --measure'
 
 
@@ -209,8 +228,8 @@ def _workflow(text):
                 branches.append((_scalar(line[1:]), number))
         elif section == 'jobs':
             if indent == child:
-                job = {'name': (key, number), 'continue': False, 'matrix': None,
-                       'environment': None, 'signals': []}
+                job = {'name': (key, number), 'id': key, 'continue': False, 'matrix': None,
+                       'environment': None, 'signals': [], 'runs': []}
                 jobs.append(job)
                 prop = matrix = environment = None
                 continue
@@ -238,6 +257,9 @@ def _workflow(text):
                     job['matrix'] = ([_scalar(v) for v in value[1:-1].split(',') if v.strip()], number)
                 else:
                     job['matrix'] = 'other'
+            run = re.match(r'-?\s*run:\s*([^|>].*)', line)  # #600: single-line steps only
+            if run:
+                job['runs'].append((_scalar(run[1]), number))
             uses = re.match(r'-?\s*uses:\s*(\S+)', line)
             if (uses and DEPLOY_ACTION.search(uses[1])) or _deploy_command(line):
                 job['signals'].append(number)
@@ -649,6 +671,111 @@ def survey(root, config, selected, *, style=True, measure=False):
         prs = host.merged_prs(result['repo']['name'], root=root)
         result['baseline'], result['bots'] = _port(prs, baseline), _port(prs, bot_authors)
     return results
+
+
+CHECKS = 'Which fast checks gate every change in repo:{repo}?'
+NOTHING = ('no Makefile test, check or lint target, no pyproject.toml or package.json check, no latexmk '
+           'or markdownlint configuration and no CI test step')
+
+
+def checks_text(index, name, commands, sources):
+    """#600: the fast-checks card of a repository with none configured: what it declares, or
+    none with the reason. Two-way: its undo is config set back to the Previous line."""
+    key = f'repos.{index}.fast_checks'
+    # ponytail: recommends what the repository declares, measured or not; a slow runner is
+    # replaced on a card or with calibrate --measure and config promote.
+    rows = [('Detected', commands, 'Runs what the repository declares before every push.',
+             f'Every change runs {", ".join(commands)} before its push.', 9)] if commands else []
+    rows += [('None', [], 'CI and the gates are the evidence.',
+              'Items build with checks none configured and merge at green CI.', 4 if commands else 9),
+             ('Defer', None, 'Nothing changes today.', 'fast_checks stays empty; ask again on a new card.', 1)]
+    rows = [(chr(65 + n), title, value, rationale, consequence, score)
+            for n, (title, value, rationale, consequence, score) in enumerate(rows)]
+    extra = ('Value:\n| Option | Value |\n| --- | --- |\n'
+             + ''.join(f'| {row[0]} | {key} = {configtext.dumps(row[2], inline=True)} |\n'
+                       for row in rows if row[2] is not None)
+             + f'Previous: {key} = []\n')
+    from wuwei import grants
+    return grants._record(
+        CHECKS.format(repo=name),
+        f'Detected in {", ".join(sources)}.' if commands else f'Nothing detected: {NOTHING}.',
+        [(row[0], row[1], row[3], row[4], row[5]) for row in rows], 'Evidence on every change', 'A',
+        'Catching broken code on every push decided it; a slow runner would flip it to None.' if commands
+        else 'Nothing to run locally decided it; a test runner added to the repository would flip it.',
+        f'repository {name} fast checks', 'A wrong check blocks every push until it is changed.',
+        'When a check runs longer than a minute or the repository adds a test runner.',
+        cls='approach', confidence='high', door='two-way', extra=extra)
+
+
+def checks_record(root, name):
+    """(day directory, D-n) of the newest fast-checks record for name on a live day, else None."""
+    # ponytail: live days only; after its day is archived the repository is proposed again. A
+    # memory file is the upgrade if that proves noisy.
+    from wuwei import decision, watch
+    question = CHECKS.format(repo=name)
+    for day in watch.days(Path(root)):
+        paths = sorted((path for path in (day / 'decisions').glob('D-*.md')
+                        if re.fullmatch(decision.DECISION_ID, path.stem)), key=lambda path: -int(path.stem[2:]))
+        for path in paths:
+            try:
+                if not path.is_symlink() and decision.evaluate(path.read_text(encoding='utf-8'))[0]['Question'] == question:
+                    return day, path.stem
+            except (OSError, UnicodeError, ValueError):
+                continue
+    return None
+
+
+def checks_answered(root, name):
+    """#600: the owner answered the repository's fast-checks card (CLI-written day state)."""
+    from wuwei import decision, state
+    found = checks_record(root, name)
+    return bool(found) and decision.answered(state.read_state(directory=found[0]), found[1]) is not None
+
+
+def propose_checks(root, config, selected):
+    """#600: one fast-checks record per selected repository with none configured and no record
+    on a live day. Autonomous below strict takes it under the mandate and writes the value (the
+    CLI computed it in this process); otherwise it is routed and returned as a card.
+    Returns (widgets, stderr lines)."""
+    import contextlib
+    import sys
+    from wuwei import decision, state
+    from wuwei.commands import setup
+    from wuwei.commands.decision import CONFIG_RECORD
+    widgets, lines = [], []
+    mandate = config['autonomy']['mode'] == 'autonomous' and workspace.posture(config)[0] != 'strict'
+    for index, repo in selected:
+        if repo['fast_checks'] or checks_record(root, repo['name']):
+            continue
+        checkout = (Path(root) / Path(repo['path']).expanduser()).resolve()
+        if not checkout.is_dir():
+            lines.append(f"calibrate: {repo['name']}: checkout {repo['path']} is not a directory; "
+                         'no fast-checks card until it is restored')
+            continue
+        found = [f for f in profile(checkout, repo)['findings'] if f['kind'] == 'fast_check']
+        commands = sorted({f['value'] for f in found})
+        text = checks_text(index, repo['name'], commands, sorted({f['source'] for f in found}))
+        path = decision.write(text, root)
+        ident, (fields, scores) = path.stem, decision.evaluate(text)
+        if not mandate:
+            decision.route_owner(ident, fields, root)
+            widgets.append(decision.record_widget(ident, fields, CONFIG_RECORD))
+            continue
+        record = decision.seat_outcome(fields, scores, by='mandate')  # the build._park pattern
+        state._write_state(lambda data: data.setdefault('decision_outcomes', {}).__setitem__(ident, record),
+                           root, reserved=False, kind='decision.decided', payload={'id': ident, **record})
+        workspace.atomic_write(path, decision.decided_record(text, 'A', 'mandate'))
+        key = f'repos.{index}.fast_checks'
+        if commands:
+            with contextlib.redirect_stdout(sys.stderr):  # stdout carries the widget JSON
+                code = setup.card_write(root, 'calibrate', lambda _, raw: setup._settle(
+                    raw, [(('repos', index), 'fast_checks', commands)]), [key], ident)
+            if code:
+                raise ValueError(f'{ident} was taken under mandate but {key} was not written; the owner '
+                                 f'sets it with bin/wuwei config set {key} in a host terminal')
+        lines.append(f'calibrate: {ident} taken under mandate ({record["cisr"]}): '
+                     f'{key} = {configtext.dumps(commands, inline=True)}')
+    return widgets, lines
 
 
 def bot_authors(prs):
