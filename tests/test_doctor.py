@@ -389,8 +389,6 @@ def test_git_hooks_row_skip_mode(ws):
     (REPO.replace('"main"', '"trunk"'), 'acme/widget branch', 'fail', None),
     (REPO.replace('identity = { name = "Ada", email = "ada@example.com" }\n', ''),
      'acme/widget identity', 'fail', None),
-    (REPO.replace('["ruff check ."]', '[]'), 'acme/widget fast_checks', 'warn', 'config-promote'),
-     'acme/widget identity', 'warn', None),
     (REPO.replace('["ruff check ."]', '[]'), 'acme/widget fast_checks', 'ok', None),
 ])
 def test_workspace_repository_rows(ws, repo, name, status, apply):
@@ -399,9 +397,9 @@ def test_workspace_repository_rows(ws, repo, name, status, apply):
     found = row(doctor.diagnose(), name)
     assert found['status'] == status, found
     assert found.get('apply') == apply
-    if name.endswith('fast_checks'):
-        assert found['fix'].startswith(W('config promote --measure'))
-        assert "bin/wuwei config set repos.0.fast_checks '[\"<command>\"]'" in found['fix']
+    if name.endswith('fast_checks'):  # #600: none configured is a state
+        from wuwei import fast_checks
+        assert found['value'] == fast_checks.NONE and not found.get('fix')
     if name.endswith('identity'):  # #605: the guard's reason; the fix names what git resolves
         assert found['value'] == 'repos.0.identity is empty or malformed'
         assert found['fix'] == W('config set repos.0.identity \'{name = "Ada", email = "ada@example.com"}\'')
@@ -419,11 +417,6 @@ def test_identity_row_without_git_identity_is_the_guards_answer(ws, identity):
     found = row(doctor.diagnose(), 'acme/widget identity')
     reason, fix = commit_push.unset_identity({'name': '', 'email': ''}, 0)
     assert (found['status'], found['value'], found['fix']) == ('fail', reason, W(fix.removeprefix('bin/wuwei ')))
-    if name.endswith('fast_checks'):  # #600: none configured is a state
-        from wuwei import fast_checks
-        assert found['value'] == fast_checks.NONE and not found.get('fix')
-    if name.endswith('identity'):
-        assert 'repos.0.identity.name = "Ada"' in found['fix']
 
 
 @pytest.mark.parametrize('present', [True, False])

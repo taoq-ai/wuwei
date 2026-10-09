@@ -872,6 +872,9 @@ def i27(case, rules):
             return f'approve refuses the proposed goals: {exc}'
         return None if (root / '.wuwei/memory/goals.md').read_text() == memory else 'approve writes memory'
     return rules.memo(('proposed goals',), compute)
+
+
+def i31(case, rules):
     """#600: an empty fast-check list never refuses a launch below strict; strict refuses naming
     the fast-checks card until the owner answers it."""
     def compute(posture):
@@ -890,7 +893,7 @@ def i27(case, rules):
     return None
 
 
-def i26(case, rules):
+def i32(case, rules):
     """#600: a config card with a list value records without a prompt below strict: the
     planner's config set --from-card writes the answered option's Value row."""
     def compute(posture):
@@ -922,7 +925,7 @@ def i26(case, rules):
     return None if (code, written) == expected else f'config set --from-card gave {code}, {written}'
 
 
-def i27(case, rules):
+def i33(case, rules):
     """#600: a config record that records its previous value is never Strategic on its own: the
     first route stores it two-way and, without a better class, approach."""
     def compute():
@@ -948,7 +951,8 @@ def i27(case, rules):
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
-              'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27}
+              'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27,
+              'I31': i31, 'I32': i32, 'I33': i33}
 
 
 def project(case):
@@ -963,8 +967,8 @@ OUTWARD = (0, 1, 2, 3, 5, 6)
 READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
-         'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': ()}
-         'I22': (), 'I23': (), 'I24': (), 'I25': (0,), 'I26': (0,), 'I27': ()}
+         'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': (),
+         'I31': (0,), 'I32': (0,), 'I33': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
