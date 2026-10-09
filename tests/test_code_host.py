@@ -327,6 +327,13 @@ def test_protection_requires_deletion_setting(monkeypatch):
     assert adapter().protection(*case['args']).exit == 2
 
 
+def test_pr_not_found_names_the_404(monkeypatch):
+    # #606: outward._pr_context reads this reason to tell an issue reference from a PR.
+    install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Not Found (HTTP 404)'}])
+    result = adapter().pr('acme/widget#1')
+    assert result.exit == 2 and '(HTTP 404)' in result.reason
+
+
 def test_unreadable_protection_is_not_absent(monkeypatch):
     # A repository the token cannot see 404s on the rulesets read too, so it stays unmeasured.
     calls = install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Not Found (HTTP 404)'},
