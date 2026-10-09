@@ -996,9 +996,15 @@ def i34(case, rules):
                    {'path': 'AGENTS.md', 'additions': 2, 'deletions': 0}]
         real = dispatch._changes
         try:
-            for extra, flag, track, floor in itertools.product(
-                    (None, *raising), (None, 'trust_surface', 'boundary_relevant', 'agent_surface'),
-                    ('SLICE', 'FULL'), ('standard', 'full')):
+            # Each raising factor alone, the plain document, and one case with every factor:
+            # the rule is "anything raises", so the product of all factors adds walk time
+            # without adding coverage (the walk's budget is 1.0 s on the runner, #626).
+            cases = [(None, None, 'SLICE', 'standard')]
+            cases += [(extra, None, 'SLICE', 'standard') for extra in raising]
+            cases += [(None, flag, 'SLICE', 'standard') for flag in ('trust_surface', 'boundary_relevant', 'agent_surface')]
+            cases += [(None, None, 'FULL', 'standard'), (None, None, 'SLICE', 'full'),
+                      (raising[0], 'trust_surface', 'FULL', 'full')]
+            for extra, flag, track, floor in cases:
                 repo = config['repos'][0]
                 repo = {**repo, 'gates': {**repo['gates'], 'floor': floor}}
                 changes = [doc] + ([extra] if extra else [])
