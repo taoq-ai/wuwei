@@ -602,8 +602,10 @@ WORKSPACE_ROOT = ('workspace guard: a top-level cd, pushd or popd may leave the 
 # A relevant call the guards could not read and that names no publisher (#347).
 UNPARSED = ('unparsed: write the commands to a file with the Write tool and run bash <file>; '
             'a plain git or gh command stays plain')
+# #616: checksum tools only read their operands and print digests; none writes or runs code.
 READ_ONLY = frozenset({'ls', 'cat', 'less', 'grep', 'head', 'tail', 'sed', 'wc', 'jq', 'diff',
-                       'find', 'cd', 'pushd', 'popd', 'echo'})
+                       'find', 'cd', 'pushd', 'popd', 'echo', 'shasum', 'sha1sum', 'sha256sum',
+                       'sha512sum', 'md5sum', 'cksum'})
 PUBLISHERS = ('gh', 'glab', 'hub')
 # #470: git subcommands by outcome (data; tests/test_shell.py pins them). The deploy guard
 # passes reads and writes; the classifier publishes anything not a read; any other
