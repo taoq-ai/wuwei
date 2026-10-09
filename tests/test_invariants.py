@@ -15,8 +15,9 @@ import time
 
 import pytest
 
+from test_card_confirms import answer
 from test_commit_push import item_case, workspace_case  # noqa: F401 (fixtures)
-from test_decision import draft_question
+from test_decision import CHECKS_RECORD, draft_question
 from test_decision_classes import record
 from test_grants import run
 from test_merge import case  # noqa: F401 (fixture)
@@ -906,26 +907,30 @@ def i32(case, rules):
     """#600: a config card with a list value records without a prompt below strict: the
     planner's config set --from-card writes the answered option's Value row."""
     def compute(posture):
-        import os
-        from unittest import mock
-        from test_card_confirms import answer
-        from test_decision import CHECKS_RECORD
-        from wuwei import workspace
+        from wuwei import integrity, workspace
         ident = f'D-{61 + DIMENSIONS["posture"].index(posture)}'
         rules.configure(posture)
         (workspace.day_dir(rules.root) / f'decisions/{ident}.md').write_text(
             CHECKS_RECORD.replace('["make test", "markdownlint ."]', '["make test"]'))
-        quiet = io.StringIO()
-        with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet), mock.patch(
-                'wuwei.integrity._host_confirm', side_effect=AssertionError('prompt')), mock.patch.dict(
-                os.environ, {'WUWEI_SESSION_ID': 'planner-1'}):
-            main(['decision', 'route', ident])
-            answer(rules.root, ident, f'{ident}: Which fast checks gate every change in repo:acme/paper?',
-                   'Detected (Recommended)')
-            try:
-                code = main(['config', 'set', '--from-card', ident])
-            except AssertionError:
-                code = 'a host prompt'
+        def prompt(*args, **kwargs):
+            raise AssertionError('prompt')
+        quiet, confirm, session = io.StringIO(), integrity._host_confirm, os.environ.get('WUWEI_SESSION_ID')
+        integrity._host_confirm, os.environ['WUWEI_SESSION_ID'] = prompt, 'planner-1'  # no mock import in the walk
+        try:
+            with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+                main(['decision', 'route', ident])
+                answer(rules.root, ident, f'{ident}: Which fast checks gate every change in repo:acme/paper?',
+                       'Detected (Recommended)')
+                try:
+                    code = main(['config', 'set', '--from-card', ident])
+                except AssertionError:
+                    code = 'a host prompt'
+        finally:
+            integrity._host_confirm = confirm
+            if session is None:
+                os.environ.pop('WUWEI_SESSION_ID', None)
+            else:
+                os.environ['WUWEI_SESSION_ID'] = session
         written = workspace.load_config(rules.root)['repos'][0]['fast_checks']
         rules.configure(posture)
         return code, written
