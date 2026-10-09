@@ -53,7 +53,8 @@ def _defaults(value, defaults, path):
     if not isinstance(value, dict):
         raise StateError(f'{path}: expected object; {DAMAGED}')
     for key, default in defaults.items():
-        value.setdefault(key, workspace.copy_data(default))
+        if key not in value:
+            value[key] = workspace.copy_data(default)
         if type(value[key]) is not type(default):
             raise StateError(f'{path}.{key}: expected {type(default).__name__}; {DAMAGED}')
 

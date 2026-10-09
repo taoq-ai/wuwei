@@ -65,6 +65,7 @@ _TOKEN = re.compile(r'(?P<space>[ \t\r]+)|(?P<comment>\#[^\n]*)|'
                     r'(?P<redirect>[0-9]*(?:<<-?|>>!?|>!|<>|>&|<&|>\||[<>])|&>>?)|'
                     r'(?P<operator>\&\&|\|\||[;&|()\n])')
 _ASSIGNMENT = re.compile(r'[A-Za-z_][A-Za-z_0-9]*=')
+PLUGIN_LAUNCHER = Path(__file__).resolve().parents[2] / 'bin/wuwei'  # resolved once, as registry.ADAPTERS
 _PATH_COMMANDS = ('cd', 'pushd', 'popd', 'tee', 'cp', 'mv', 'sed', 'dd', 'truncate')
 
 # #508: a whole word, never a directory component (a '/' later in the same path segment),
@@ -133,7 +134,7 @@ def _launcher(path, cwd):
     """The plugin's own bin/wuwei or the workspace's recorded executable."""
     from wuwei import workspace
     path = path.resolve()
-    if path == Path(__file__).resolve().parents[2] / 'bin/wuwei':
+    if path == PLUGIN_LAUNCHER:
         return True
     try:
         try:
