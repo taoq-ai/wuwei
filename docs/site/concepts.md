@@ -336,9 +336,11 @@ when its branch has been pushed.
 
 Claude Code builders run as subagents in the planner session. After writing a builder
 brief with its worktree, call `wuwei build next <item>`. It returns one JSON action.
-`launch` supplies the Agent prompt, and `continue` supplies the same agent's resume ID and
-feedback. `check` supplies a command to run through Bash, and `park` supplies a reason and
-numbered decision path. `done` means checks passed and the item moved to `gate`
+`launch` supplies the Agent prompt, and `continue` supplies the prompt with the feedback
+and the stopped agent's ID as `resume`. Launch a `continue` as a fresh Agent with its prompt;
+pass `resume` only to an Agent tool that takes it (Claude Code's has none). The fresh
+launch continues the same seat and round. `check` supplies a command to run through Bash,
+and `park` supplies a reason and numbered decision path. `done` means checks passed and the item moved to `gate`
 (or to `delta` after a fix build). Call next again after executing
 the action. Hooks register the seat and record its result; unchanged state returns the
 same action, so execute each action once. Never poll a Claude seat through the CLI.
