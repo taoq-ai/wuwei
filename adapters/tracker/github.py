@@ -11,6 +11,7 @@ import re
 import subprocess
 
 from .._http import Failure, credential, operation, request, settings, status
+from wuwei import redact
 from wuwei.registry import outward_operation
 
 
@@ -29,8 +30,21 @@ def _query(query, variables, root):
         raise Failure('GITHUB_TRACKER_TOKEN is missing; set it in .wuwei/env, or set '
                       'tracker.auth = "gh" to use your gh login')
     if value.get('errors') or not isinstance(value.get('data'), dict):
-        raise Failure('GitHub error response')
+        raise _error(value, variables)
     return value['data']
+
+
+def _error(value, variables):
+    """#617: name the ticket and GitHub's first error message (one line, redacted, capped);
+    the error body is read for that message only, never as data."""
+    ticket = ('{owner}/{name}#{number}'.format(**variables)
+              if {'owner', 'name', 'number'} <= variables.keys() else '')
+    errors = value.get('errors')
+    first = errors[0] if isinstance(errors, list) and errors and isinstance(errors[0], dict) else {}
+    message = first.get('message')
+    text = redact.redact(' '.join(message.split()))[:160] if isinstance(message, str) else ''
+    return Failure('GitHub error response' + (f' for {ticket}' if ticket else '')
+                   + (f': {text}' if text else ''))
 
 
 def _gh(payload):
@@ -48,8 +62,12 @@ def _gh(payload):
             hint = status(int(code[1]))
         elif re.search(r'scope', result.stderr, re.I):
             hint = 'run gh auth refresh -s project'
-        elif result.stdout.lstrip().startswith('{'):  # a GraphQL error body, never parsed as data
-            hint = 'GitHub error response'
+        elif result.stdout.lstrip().startswith('{'):  # a GraphQL error body: its message only (#617)
+            try:
+                body = json.loads(result.stdout)
+            except ValueError:
+                body = {}
+            hint = str(_error(body if isinstance(body, dict) else {}, payload['variables']))
         else:
             hint = 'run gh auth status'
         raise Failure(f'gh api graphql exited {result.returncode}: {hint}')
@@ -181,7 +199,7 @@ def history(item, *, root=None):
 @operation('github.created')
 def created(item, *, root=None):
     value = _query(f'query({VARIABLES}){{repository(owner:$owner,name:$name){{issue(number:$number){{'
-                   'createdAt}}}}', _ref(item), root)['repository']['issue']['createdAt']
+                   'createdAt}}}', _ref(item), root)['repository']['issue']['createdAt']
     if not isinstance(value, str):
         raise Failure('missing issue creation time')
     return value
