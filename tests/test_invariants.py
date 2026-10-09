@@ -778,27 +778,25 @@ def i24(case, rules):
 
 def i25(case, rules):
     """#605: doctor's identity row and the commit and push guard agree on repos.N.identity: both
-    pass a set one, both fail an empty or malformed one with the same reason and fix."""
+    pass a set one, both fail an empty or malformed one with the same reason and fix. The guard
+    answers with commit_push.unset_identity on the identity git resolves; its end-to-end path
+    stays in tests/test_commit_push.py and tests/test_git_hook.py."""
     def compute():
-        from test_commit_push import item_payload
-        from wuwei import workspace
         from wuwei.commands import doctor
         from wuwei.guards import commit_push
         from wuwei.registry import Result
+        found = {'name': 'Builder', 'email': 'builder@example.test'}
         before = rules.fake.results.get('identity')
-        rules.fake.results['identity'] = Result(0, {'name': 'Builder', 'email': 'builder@example.test'})
-        set_one = '{name = "Builder", email = "builder@example.test"}'
+        rules.fake.results['identity'] = Result(0, found)
+        repo = rules.config('guarded', 'send', 'send')['repos'][0]
         try:
-            for identity in (set_one, '{name = "", email = ""}', '{name = "<name>", email = "<email>"}'):
-                (rules.root / '.wuwei/config.toml').write_text(rules.base.replace(set_one, identity))
-                row = doctor.identity_row(workspace.load_config(rules.root)['repos'][0], 0, rules.tree, rules.fake)
-                code, reason = commit_push.check(item_payload(rules.tree, 'git commit -m safe'))
-                said = 0 if row['status'] == 'ok' else (
-                    2, f"commit/push guard could not run: {row['value']}; bin/wuwei {row['fix'].split(' ', 1)[1]}")
-                if said != (code if code == 0 else (code, reason)):
-                    return f'identity {identity}: doctor {row}, guard {code} {reason}'
+            for identity in (found, {'name': '', 'email': ''}, {'name': '<name>', 'email': '<email>'}):
+                row = doctor.identity_row({**repo, 'identity': identity}, 0, rules.tree, rules.fake)
+                said = None if row['status'] == 'ok' else (row['value'], 'bin/wuwei ' + row['fix'].split(' ', 1)[1])
+                guard = commit_push.unset_identity(identity, 0, found)
+                if said != guard:
+                    return f'identity {identity}: doctor {row}, guard {guard}'
         finally:
-            (rules.root / '.wuwei/config.toml').write_text(rules.base)
             if before is None:
                 rules.fake.results.pop('identity', None)
             else:
