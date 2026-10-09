@@ -294,7 +294,8 @@ def sweep(root=None, *, watch_health=None):
     from wuwei import steward
     try:
         prior = saved(root).get('steward_at')
-        if prior is None or (workspace.now() - obligations._time(prior)).total_seconds() >= config['watch']['sweep_seconds']:
+        if ((prior is None or (workspace.now() - obligations._time(prior)).total_seconds()
+             >= config['watch']['sweep_seconds']) and not state.mid_round(state.read_state(root))):  # #624
             steward.run(root, trigger='sweep')
             save(root, {'steward_at': workspace.now().isoformat()})
     except ERRORS as exc:

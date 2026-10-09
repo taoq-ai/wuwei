@@ -76,6 +76,22 @@ def class_lines(data):
             'Target: cards only for Strategic and for floors (publish, merge).']
 
 
+def seat_lines(data):
+    """#622: reviewer seats per tiered item, its gate set and the tier reasons. A delta continues
+    a seat, so it counts once; a second opinion is its own seat."""
+    from wuwei import brief, dispatch
+    seats = brief.seats(data).values()
+    lines = []
+    for name, item in sorted(data['items'].items()):
+        if not item.get('gates'):
+            continue
+        count = sum(seat['item'] == name and seat['role'].startswith('sentinel-') for seat in seats)
+        lines.append(f"- {name}: {count} reviewer seat{'' if count == 1 else 's'} "
+                     f"({', '.join(dispatch.gate_set(item))}); tier {item['gates'].get('tier')}: "
+                     + '; '.join(item['gates'].get('reasons') or ['none recorded']))
+    return lines
+
+
 def cycle_lines(root):
     """#567: median cycle minutes per tier against its target, then one line per merged item."""
     rows = metrics.cycles(root)
@@ -194,6 +210,9 @@ def build(root=None):
     lines.extend(f"- {name}: {item['phase']}" for name, item in carry)
     if not carry:
         lines.append('none')
+    reviewed = seat_lines(data)
+    if reviewed:
+        lines += ['', '## Review seats', *reviewed]
     from wuwei import docs
     documented = docs.report_lines(root, workspace.load_config(root), data)
     if documented:
@@ -210,6 +229,13 @@ def build(root=None):
         from wuwei.grants import ACTIONS
         lines += ['', '## Grants', *(f'- {ACTIONS[action][1]} run under grant {key}: {count}'
                                      for (key, action), count in sorted(used.items()))]
+    runs = Counter(str(row['payload'].get('trigger')) for row in watch.records(day / 'events.jsonl')
+                   if row['kind'] == 'steward.run')
+    config = workspace.load_config(root)
+    lines += ['', '## Steward runs', *([f'- {trigger}: {count}' for trigger, count in sorted(runs.items())]
+                                       or ['none']),
+              f"Settings: steward.every_tool_calls = {config['steward']['every_tool_calls']}, "
+              f"watch.sweep_seconds = {config['watch']['sweep_seconds']}"]
     if level == 'brief':
         return '\n'.join([*lines, ''])
     quality = measured['quality_by_band']

@@ -106,7 +106,13 @@ def _interview(args):
         if args.repo and not repos:
             raise ValueError(f'unknown repository {args.repo!r}; use a configured repos.name')
         if args.questions is not None:
-            print(json.dumps(interview.widgets(root, repos, args.questions), indent=2))
+            widgets, lines = [], []
+            if not args.questions:  # #600: the daily row proposes the missing fast checks
+                from wuwei import calibrate
+                widgets, lines = calibrate.propose_checks(root, config, [
+                    (index, repo) for index, repo in enumerate(config['repos']) if repo['name'] in repos])
+            print(*lines, sep='\n', file=sys.stderr, end='\n' if lines else '')
+            print(json.dumps(interview.widgets(root, repos, args.questions) + widgets, indent=2))
             return CLEAN
         if args.answer:
             picked = interview.parse(args.answer, repos)
@@ -114,7 +120,7 @@ def _interview(args):
             ids = [interview.question(qid)['id'] for qid in args.interview]
             if not sys.stdin.isatty():
                 raise OSError(integrity.HOST_TERMINAL)
-            picked = interview.ask(ids, repos)
+            picked = interview.ask(ids, repos, first=interview.leads(root, repos))
         answers = interview.record(root, config, picked)
     except EOFError:
         print('wuwei calibrate: interview interrupted; nothing written; run bin/wuwei calibrate again to start over', file=sys.stderr)
@@ -123,7 +129,7 @@ def _interview(args):
         print(f'wuwei calibrate: {exc}', file=sys.stderr)
         return UNRUN
     # #529: a workspace answer the owner gave on its card writes its config keys now.
-    pending = False
+    keys, charters = [], False  # #604: the Next line names only what the card path did not write
     allowlist = []
     for qid, answer in picked.items():
         row = interview.question(qid)
@@ -149,12 +155,17 @@ def _interview(args):
                                     ['.'.join(map(str, (*path, key))) for path, key, _ in settings], qid)
             if code:
                 return code
-        pending = pending or not carded or any(
+        if not carded:
+            keys += ['.'.join(map(str, (*path, key))) for path, key, _ in interview.settings({qid: answer}, config)]
+        charters = charters or row['scope'] == 'workspace' and any(
             name in (*interview.ROLES, 'voice') for name in interview.effects(qid, answer))
     print('\n'.join([*interview.describe(answers, config), *allowlist]))
-    if pending:
-        print('Next: run bin/wuwei config promote in a host terminal for the config keys, '
-              'then bin/wuwei promote for the charter and voice proposals.')
+    promote = 'bin/wuwei promote for the charter and voice proposals.'
+    if keys:
+        print(f"Next: run bin/wuwei config promote --keys {' '.join(dict.fromkeys(keys))} in a host terminal "
+              'for these config keys' + (f', then {promote}' if charters else '.'))
+    elif charters:
+        print(f'Next: run {promote}')
     return CLEAN
 
 

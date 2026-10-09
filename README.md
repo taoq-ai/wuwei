@@ -27,7 +27,7 @@ WUWEI is not a hosted service, a tracker, a chat system, or a replacement for yo
 
 - The day loop: `/wuwei plan`, the morning [gate](docs/site/concepts.md#gate), builders, gates, PR and close ([daily path](docs/site/daily.md)).
 - Guards at action time, a signed release and integrity checks ([security](docs/site/security.md)).
-- Review [tiers](docs/site/concepts.md#tier): one quality gate for a small change, three gates otherwise ([review tiers](docs/site/concepts.md#review-tiers)).
+- Review [tiers](docs/site/concepts.md#tier): one reviewer for a docs-only change, three gates for code or a [trust surface](docs/site/concepts.md#trust-surface) ([review tiers](docs/site/concepts.md#review-tiers)).
 - Remote operation from the phone through Remote Control and a Slack owner DM ([remote operation](docs/site/remote.md)).
 - The cockpit: a day board on loopback and inline in Claude Code ([cockpit and board](docs/site/concepts.md#cockpit-and-board)).
 - Calibration and the owner interview ([calibration](docs/site/configuration.md#calibration)).

@@ -52,7 +52,9 @@ spans lines.
 ### fast_checks stays empty after promote
 
 0.11.0 left an explicit `fast_checks = []` alone. From 0.12.0 a one-line empty list is
-filled by `bin/wuwei config promote`, like the deploy lists.
+filled by `bin/wuwei config promote`, like the deploy lists. An empty list is a state, not an
+error: items build with checks none configured and CI is the evidence. The fast-checks card
+that `bin/wuwei calibrate --questions` writes proposes what the repository declares.
 
 ### A test suite is proposed as a fast check
 

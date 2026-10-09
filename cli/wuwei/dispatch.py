@@ -12,18 +12,28 @@ from wuwei.exits import ADAPTER_DATA, DAMAGED, RACE
 ROLES = ('arch', 'quality', 'security')
 GATE_BODY = 'Review {item} at its HEAD against its spec and acceptance criteria.'
 TIERS = ('light', 'standard', 'full')
+GATE_ROLES = (*ROLES, 'goal')  # #622: goal runs only as the single gate of a docs-only diff
+# #622: a docs-only diff gets one reviewer. ponytail: documents are told by suffix, not content;
+# .md and .rst anywhere, .txt only under docs/ or specs/.
+DOC_DIRS = ('docs', 'specs')
+DOC_SUFFIXES = ('.md', '.rst')
+AGENT_DOCS = ('AGENTS.md', 'CLAUDE.md', 'SKILL.md', 'charters/*', 'skills/*', 'agents/*',
+              'commands/*', '.claude/*', '.agents/*')
+SPEC_DOCS = ('specs/*', '*spec*', '*prereg*', '*pre-registration*')
 
 
 def gate_set(row):
-    """The item's recorded gates; all three roles until a tier is recorded.
+    """The item's recorded gates; all three roles until a tier is recorded. Every set holds
+    quality, except a docs-only item's single goal gate (#622).
 
     A recorded second opinion adds one gate named <role>@<runtime>."""
     roles = (row.get('gates') or {}).get('roles')
     if roles is None:
         return ROLES
-    if not isinstance(roles, list) or 'quality' not in roles or not set(roles) <= set(ROLES):
+    if not isinstance(roles, list) or not set(roles) <= set(GATE_ROLES) or (
+            roles != ['goal'] and ('quality' not in roles or 'goal' in roles)):
         raise ValueError(f'invalid recorded gate set; {DAMAGED}')
-    roles = tuple(role for role in ROLES if role in roles)
+    roles = tuple(role for role in GATE_ROLES if role in roles)
     second = row['gates'].get('second_opinion')
     if second is None:
         return roles
@@ -39,10 +49,20 @@ def base(gate):
     return gate.partition('@')[0]
 
 
+def _docs_role(paths):
+    """#622: the single gate of a diff whose every path is a document, else None."""
+    from wuwei import merge
+    if not paths or not all((path.endswith(DOC_SUFFIXES) or (
+            path.endswith('.txt') and path.split('/', 1)[0] in DOC_DIRS))
+            and merge.matched(path, AGENT_DOCS) is None for path in paths):
+        return None
+    return 'quality' if any(merge.matched(path, SPEC_DOCS) for path in paths) else 'goal'
+
+
 def tier(root, config, row):
     """Compute the item's gate tier from its diff, flags, track, floor and lead tier."""
     from wuwei import merge
-    computed, reasons = 'light', []
+    computed, reasons, docs = 'light', [], None
 
     def rise(level, reason):
         nonlocal computed
@@ -74,16 +94,21 @@ def tier(root, config, row):
                 rise('standard', f'{path} matches FULL-track pattern {pattern}')
             if change['additions'] is None or change['deletions'] is None:
                 rise('standard', f'{path} binary change')
-        if total > gates['light_max_lines']:
+        docs = _docs_role([change['path'] for change in changes]) if computed == 'light' else None
+        if total > gates['light_max_lines'] and not docs:
             rise('standard', f'{total} changed lines over light_max_lines {gates["light_max_lines"]}')
-        elif computed == 'light':
+        elif computed == 'light' and not docs:
             reasons.append(f'{total} changed lines within light_max_lines {gates["light_max_lines"]}')
     floor = repo['gates']['floor'] if repo else 'standard'
+    if docs and floor != 'full':
+        floor = 'light'
     effective = max(computed, floor, key=TIERS.index)
     if TIERS.index(floor) > TIERS.index(computed):
         reasons.append(f'floor {floor}')
     lead = row.get('tier')
-    if lead and TIERS.index(lead) > TIERS.index(effective):
+    if docs and lead and TIERS.index(lead) > TIERS.index(effective):
+        reasons.append(f'lead tier {lead} overridden: docs-only')
+    elif lead and TIERS.index(lead) > TIERS.index(effective):
         effective = lead
         reasons.append(f'lead tier {lead}')
     elif lead and TIERS.index(lead) < TIERS.index(effective):
@@ -100,8 +125,11 @@ def tier(root, config, row):
     flagged = row.get('track') == 'FULL' or any(row['flags'].values())
     effective, lighter, more = pace.adjust(current, effective, guard, flagged, repo is not None)
     reasons += more
+    single = docs if docs and effective == 'light' else None
+    if single:
+        reasons.append(f'docs-only: 1 reviewer ({single})')
     record = {'tier': effective, 'computed': computed, 'reasons': reasons,
-              'roles': ['quality'] if effective == 'light' else list(ROLES)}
+              'roles': [single] if single else ['quality'] if effective == 'light' else list(ROLES)}
     if lighter != effective:
         record['depth'] = lighter
     second = config['gates']['second_opinion']
@@ -379,7 +407,20 @@ def launch_set(root=None):
     briefed = {row['payload'].get('item') for row in brief.events(root)
                if row['kind'] == 'brief written' and row['payload'].get('role') == 'builder'}
     gate_waits = any(row['action'] == 'wait' for row in entries if items[row['item']]['phase'] in ('gate', 'delta'))
-    for index, name in enumerate(first + rest):
+    starts, skip = {}, []
+    for name in first + rest:
+        if name in briefed:
+            continue
+        try:
+            starts[name] = _start(root, name, config['repos'])
+        except ValueError as exc:  # a corrupt proposal refuses this item, never the whole set
+            skip.append(name)
+            entries.append({'item': name, 'goal': goal(name), 'action': 'refused', 'reason': str(exc)})
+            continue
+        if starts[name][0].startswith('wuwei plan park '):  # #603: a park takes no seat, whatever the seats and CAP
+            skip.append(name)
+            entries.append({'item': name, 'goal': goal(name), 'action': 'park', 'commands': starts[name]})
+    for index, name in enumerate(name for name in first + rest if name not in skip):
         if gate_waits:
             entries.append({'item': name, 'goal': goal(name), 'action': 'wait', 'reason': (
                 'a gate waits for seats; gates launch before new builds so ready items merge first')})
@@ -390,23 +431,36 @@ def launch_set(root=None):
         elif name in briefed:
             add(name, lambda: build.next_action(name, root=root))
         else:
-            add(name, lambda: {'action': 'start', 'commands': _start(root, name)})
+            add(name, lambda: {'action': 'start', 'commands': starts[name]})
     return {'action': 'set', 'cap': cap, 'bound': bound, 'capacity': limits['text'],
             'building': building, 'free_seats': start,
             'entries': entries}
 
 
-def _start(root, name):
-    """The exact commands that start a planned item: its worktree, then its builder brief."""
+def candidate(root, name):
+    """Today's proposal row for the item, or None."""
     import json
     path = workspace.day_dir(root) / 'proposal.json'
     candidates = json.loads(path.read_text(encoding='utf-8'))['candidates'] if path.is_file() else []
-    row = next((row for row in candidates if row.get('id') == name), None)
+    return next((row for row in candidates if row.get('id') == name), None)
+
+
+def _start(root, name, repos):
+    """The exact commands that start a planned item: its worktree, then its builder brief."""
+    row = candidate(root, name)
     body = (f"Implement {name}: {row['scope']}. Evidence: {row['evidence']}." if row and row.get('scope')
             else f"Implement {name} as today's plan records it.")
     tree = f'worktrees/{name}'
-    return ([] if (root / tree).exists() else [f'wuwei worktree add {name}']) + [
-        f'wuwei brief builder {name} builder-{name} --worktree {tree} --body ' + shlex.quote(body)]
+    add = [] if (root / tree).exists() else [f'wuwei worktree add {name}']
+    if add and len(repos) > 1:  # #603: worktree add exits 2 without --repo here
+        names = [repo['name'] for repo in repos]
+        repo = (row or {}).get('repo')
+        if repo not in names:
+            return [f'wuwei plan park {name} --reason ' + shlex.quote(
+                f'names no configured repository ({", ".join(names)}); the lead names repo for it '
+                'when it is proposed again')]
+        add = [add[0] + ' --repo ' + shlex.quote(repo)]
+    return add + [f'wuwei brief builder {name} builder-{name} --worktree {tree} --body ' + shlex.quote(body)]
 
 
 def _seats(root, data, item, roles, round_name, commands):
@@ -446,8 +500,7 @@ def _seats(root, data, item, roles, round_name, commands):
                     and not str(seat.get('head') or '').lower().startswith(first['head'].lower())):
                 commands.append('wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, name)))
                                 + ' --round delta')
-            if (not seat or seat['status'] != 'stopped' or not seat.get('agent_id')
-                    or not str(seat.get('head') or '').lower().startswith(first['head'].lower())):
+            if not delta_due(data, item, role, name):
                 continue
             action = brief.seat_action('sentinel-' + role, root / seat['brief'],
                                        data['items'][item]['worktree'], root)
@@ -458,6 +511,20 @@ def _seats(root, data, item, roles, round_name, commands):
         actions.append({**action, **extra,
                         'receive': receive + (' --round delta' if round_name == 'delta' else '')})
     return actions
+
+
+def delta_due(data, item, role, name):
+    """#614: seat name is due its delta continue: the item is in delta, role's initial FIX came
+    from that seat, no delta verdict yet, and the seat stopped with an agent id at the initial
+    head (not continued since). One rule for _seats and the launch guard."""
+    row = data['items'].get(item)
+    first = _record(data, item, role, 'initial')
+    seat = data['seats'].get(name)
+    return bool(row and row['phase'] == 'delta' and first and first['verdict'] == 'FIX'
+                and _record(data, item, role, 'delta') is None
+                and Path(first['file']).stem.removeprefix('gate-') == name
+                and seat and seat['status'] == 'stopped' and seat.get('agent_id')
+                and str(seat.get('head') or '').lower().startswith(first['head'].lower()))
 
 
 def _first_briefs(rows, item, role):

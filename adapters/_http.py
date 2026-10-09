@@ -3,14 +3,30 @@
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 from functools import wraps
 
+from wuwei import env
 from wuwei.registry import Result
 
 
 class Failure(ValueError):
-    """A local, safe diagnostic that contains no provider text."""
+    """A local, safe diagnostic: no provider body or stderr text (a GraphQL error's first
+    message, redacted and capped, may name the failing lookup, #617)."""
+
+
+HINTS = {401: 'credential rejected (wrong, expired or revoked token)',
+         403: 'credential has no access (scopes, SSO authorization or a rate limit)',
+         404: 'not found or not visible to the credential (check the project or repository '
+              "name and the token's access)",
+         429: 'rate limited; retry later'}
+
+
+def status(code):
+    """HTTP <code> and a one-line hint, so doctor names the cause (never provider text)."""
+    hint = HINTS.get(code) or ('provider error; retry later' if 500 <= code < 600 else '')
+    return f'HTTP {code}' + (f': {hint}' if hint else '')
 
 
 def operation(name):
@@ -35,6 +51,8 @@ def credential(name):
     value = os.environ.get(name)
     if not value:
         raise Failure(f'{name} is missing')
+    if why := env.malformed(name):
+        raise Failure(f'{name} is malformed ({why}); paste only the token into .wuwei/env as {name}=<token>')
     return value
 
 
@@ -51,10 +69,13 @@ def request(url, token, payload=None, *, authorization='Bearer', extra_headers=N
     headers.update(extra_headers or {})
     data = None if payload is None else json.dumps(payload).encode()
     request = urllib.request.Request(url, data=data, headers=headers, method=method)
-    with urllib.request.urlopen(request, timeout=30) as response:
-        if not 200 <= response.status < 300:
-            raise Failure('HTTP status was not successful')
-        body = response.read(4_000_001)
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            if not 200 <= response.status < 300:
+                raise Failure(status(response.status))
+            body = response.read(4_000_001)
+    except urllib.error.HTTPError as exc:
+        raise Failure(status(exc.code)) from None
     if len(body) > 4_000_000:
         raise Failure('response too large')
     if not body.strip():

@@ -26,9 +26,11 @@ def review(root=None):
     calibration_scores.evaluate(root)  # #559: store the uncalibrated classes and roles
     from wuwei import cruise
     cruise.review_shadows(root)  # #560: score the shadows against the live outcomes
-    rounds = metrics.collect(root)['fix_rounds_per_item']
-    if rounds == metrics.UNMEASURED:
+    # #617: local events only; collect's code host and tracker reads never block a gate step.
+    events = metrics._events(workspace.day_dir(root))
+    if events is None:
         return []
+    rounds = metrics.fix_rounds(events)
     notes = [{'id': f'{item}-fix-3', 'item': item,
               'text': f'{item}: third fix round; reassess scope and escalation before dispatch'}
              for item, count in rounds.items() if count >= 3 and SAFE_ID.fullmatch(item)]
@@ -204,6 +206,9 @@ def run(root=None, *, trigger='sweep'):
         if prior:
             print(f"steward: close review already ran today (brief {prior[0].get('brief')})")
             return 0
+    elif waiting := state.mid_round(state.read_state(root)):
+        print(f"steward: waits for {', '.join(waiting)} to finish the fix round")
+        return 0
     notes = review(root)
     queue = decision_queue(root)
     measured = metrics.collect(root)

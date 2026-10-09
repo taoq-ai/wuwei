@@ -7,7 +7,7 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import Request
 
-from .._http import Failure, credential, operation, request
+from .._http import Failure, credential, operation, request, status
 from wuwei.registry import outward_operation
 
 
@@ -67,7 +67,7 @@ def history(channel, **params):
                 body = response.read(4_000_001)
         except HTTPError as exc:
             if exc.code != 429:
-                raise
+                raise Failure(status(exc.code)) from None
             # ponytail: no backoff state; the caller's next poll is the retry.
             # Persist a not-before time if 429s repeat.
             wait = (exc.headers or {}).get('Retry-After', '')

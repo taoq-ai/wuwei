@@ -14,6 +14,7 @@ template_version = "" # Plugin version that last wrote this file; init, setup an
 # fast_checks = ["python3 -m pytest -q"] # Run and record with wuwei fast-checks <checkout>.
 # [repos.merge]
 # auto = false # Enable only after review, check, soak and path rules are configured.
+# size_exclude = ["results/*.json"] # Generated files max_changed_lines does not count; never-auto paths still apply.
 # [repos.shepherd]
 # reviewers = ["reviewer"] # Replaces shepherd.reviewers for this repository.
 
@@ -40,6 +41,7 @@ backlog_filter = "" # Optional Linear team ID; empty reads accessible issues.
 # max_per_item_per_day = 10 # Comments per ticket per day; the last one folds the rest.
 # project = "" # Linear team, Jira project key or GitHub owner/repo for new tickets.
 # board = "" # GitHub Projects board as owner/number; empty uses labels.
+# auth = "token" # GitHub: "gh" uses your gh login when GITHUB_TRACKER_TOKEN is unset.
 [tracker.states]
 in_review = "In Review"
 done = "Done"
@@ -262,7 +264,7 @@ stale_seconds = 3600
 # rotate_after = { turns = 200 } # Or compactions = 1, or clock = "13:00"; off by default.
 
 [steward]
-every_tool_calls = 50
+every_tool_calls = 250
 loop_window_hours = 4
 loop_threshold = 9
 

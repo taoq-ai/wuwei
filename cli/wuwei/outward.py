@@ -89,7 +89,7 @@ def internal_word(text, config):
     normalized = _normalize(text)
     for pattern in config['outward']['patterns']:
         for view in (normalized, normalized.replace('_', ' ')):
-            found = re.search(pattern, view, re.IGNORECASE | re.DOTALL)
+            found = re.search(pattern, view, PATTERN_FLAGS)
             if found:
                 return found.group(0)
     return None
@@ -147,6 +147,8 @@ def lint(text, channel, config, *, root=None, to_owner=False):
     return CLEAN, ''
 
 
+# Owner patterns match case-blind across lines; one value, not an enum OR on every search.
+PATTERN_FLAGS = re.IGNORECASE | re.DOTALL
 TEXT_FIELDS = {'text', 'message', 'body', 'title', 'description'}
 APPROVAL_REQUIRED = 'outward: deliver as a draft for the owner to send'
 METADATA_FIELDS = {'ref', 'channel', 'thread', 'thread_ts', 'item', 'issue', 'issue_id', 'id',
@@ -291,6 +293,10 @@ def _pr_context(context, root, config):
         return FINDINGS, ''
     host = registry.load('code_host', config)
     result = _result(host.pr(ref, root=root))
+    # #606: a bare owner/repo#N the pulls endpoint 404s on is an issue: no PR context.
+    if (result.exit == UNRUN and match[2] and 'pull_number' not in context and
+            re.search(r'\(HTTP 404\)', str(result.reason))):
+        return FINDINGS, ''
     if result.exit:
         return result.exit, ''
     pr = result.data
@@ -365,7 +371,7 @@ def _topics(normalized, rules):
     if pattern and pattern.search(normalized.replace('_', ' ')):
         found['sensitive'] = 'outbound.sensitive_keywords'
     for key in ('sensitive_patterns', 'commitment_patterns', 'disagreement_patterns'):
-        if any(re.search(pattern, normalized, re.IGNORECASE | re.DOTALL) for pattern in rules[key]):
+        if any(re.search(pattern, normalized, PATTERN_FLAGS) for pattern in rules[key]):
             found.setdefault(key.split('_')[0], f'outbound.{key}')
     return found
 

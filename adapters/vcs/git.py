@@ -118,7 +118,8 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
         case ('log', '-z', format_arg, rev, '--'):
             allowed = (format_arg == _LOG_FORMAT and isinstance(rev, str) and
                        rev.endswith('..HEAD') and bool(_revision(rev[:-6])))
-            if format_arg == _HEAD_FORMAT:
+        case ('log', '-z', format_arg, rev, '--not', '--remotes', '--'):
+            if format_arg == _HEAD_FORMAT and isinstance(rev, str):
                 base, _, tip = rev.rpartition('..')
                 allowed = bool(re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', tip) and (
                     re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', base) or '..' not in base
@@ -683,7 +684,9 @@ def push_commits(repo, remote, destination, local_sha, remote_sha, default_branc
     if not destination.startswith('refs/heads/'):
         raise ValueError('only branch pushes are supported')
     def log(base):
-        return _run(repo, 'log', '-z', _HEAD_FORMAT, base + '..' + local_sha, '--')
+        # #616: a commit any remote-tracking ref reaches is published already (a merged main
+        # carries GitHub's merge commit), so its identity is not this push's.
+        return _run(repo, 'log', '-z', _HEAD_FORMAT, base + '..' + local_sha, '--not', '--remotes', '--')
 
     # A new branch sends what the default branch lacks (merge base..local when that base
     # is unique). The tracking-ref range is read alongside and used only if the ref exists.

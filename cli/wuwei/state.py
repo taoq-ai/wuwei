@@ -53,7 +53,8 @@ def _defaults(value, defaults, path):
     if not isinstance(value, dict):
         raise StateError(f'{path}: expected object; {DAMAGED}')
     for key, default in defaults.items():
-        value.setdefault(key, workspace.copy_data(default))
+        if key not in value:
+            value[key] = workspace.copy_data(default)
         if type(value[key]) is not type(default):
             raise StateError(f'{path}.{key}: expected {type(default).__name__}; {DAMAGED}')
 
@@ -306,6 +307,11 @@ def check_running(build):
     except PermissionError:
         pass
     return marker
+
+
+def mid_round(data):
+    """Items between a FIX and its delta review (#624): the steward waits for them."""
+    return sorted(name for name, item in data.get('items', {}).items() if item.get('phase') in ('fix', 'delta'))
 
 
 def in_flight(data):

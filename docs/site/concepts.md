@@ -46,7 +46,7 @@ Work admitted during the day must fit the remaining build hours.
 
 ### Tier
 
-Review tier: light (one reviewer agent) or standard and full (three), set per change from its size and risk. The tier also sets the process depth: see [review tiers](#review-tiers).
+Review tier: light (one reviewer agent) or standard and full (three), set per change from its diff: a docs-only change gets one reviewer, code or a trust surface gets three. The tier also sets the process depth: see [review tiers](#review-tiers).
 Outbound tier: a message sent as you either goes out at once or waits as a draft for your approval.
 
 ### Pace
@@ -336,9 +336,11 @@ when its branch has been pushed.
 
 Claude Code builders run as subagents in the planner session. After writing a builder
 brief with its worktree, call `wuwei build next <item>`. It returns one JSON action.
-`launch` supplies the Agent prompt, and `continue` supplies the same agent's resume ID and
-feedback. `check` supplies a command to run through Bash, and `park` supplies a reason and
-numbered decision path. `done` means checks passed and the item moved to `gate`
+`launch` supplies the Agent prompt, and `continue` supplies the prompt with the feedback
+and the stopped agent's ID as `resume`. Launch a `continue` as a fresh Agent with its prompt;
+pass `resume` only to an Agent tool that takes it (Claude Code's has none). The fresh
+launch continues the same seat and round. `check` supplies a command to run through Bash,
+and `park` supplies a reason and numbered decision path. `done` means checks passed and the item moved to `gate`
 (or to `delta` after a fix build). Call next again after executing
 the action. Hooks register the seat and record its result; unchanged state returns the
 same action, so execute each action once. Never poll a Claude seat through the CLI.
@@ -357,7 +359,18 @@ At an item's first gate, `dispatch next` computes its review tier, `light`, `sta
 paths, the lead flags, the track, `repos.gates.floor` and an optional lead `tier`. A light
 item gets the quality gate only; standard and full get arch, quality and security. A lead
 tier below the computed one is refused and recorded as a reason, and the returned action
-carries the `tier`. See [configuration](configuration.md#workspace-and-repositories) and
+carries the `tier`.
+
+A docs-only diff gets one reviewer at any size and under the default floor. In such a diff
+every path ends in `.md` or `.rst`, or in `.txt` under `docs/` or `specs/`, and nothing else
+raises it. Agent instruction files never count as documents: `AGENTS.md`, `CLAUDE.md`,
+`SKILL.md` and paths under `charters/`, `skills/`, `agents/`, `commands/`, `.claude/` or
+`.agents/`. The reviewer is goal for a document and quality for a spec or a pre-registration.
+The reason reads `docs-only: 1 reviewer (goal)`, and a FIX continues the same seat. A lead `tier` above light is overridden and recorded as
+`lead tier full overridden: docs-only`. A lead flag, track FULL, a trust, never-auto,
+FULL-pattern or binary path, `floor = "full"` or pace careful keeps the three gates. A
+repository that keeps code under `docs/` or `specs/` lists those paths in
+`repos.gates.trust_paths`. The report lists the reviewer seats per item with its tier reason. See [configuration](configuration.md#workspace-and-repositories) and
 the [lead plan JSON](reference.md#lead-plan-json).
 
 The tier also decides how much process an item gets (design 5.3). Every brief and launch

@@ -87,8 +87,12 @@ def _repo(root, tree, config):
     if repo is None:
         from wuwei.guards.commit_push import context
         repo, _, _ = context(tree, {}, {}, root, identity=False)
-    if not repo['fast_checks']:
-        raise ValueError('worktree has no configured fast checks; add fast_checks to its [[repos]] entry , then retry. bin/wuwei calibrate proposes them, and the owner applies them with bin/wuwei config set in a host terminal')
+    # #600: no fast checks is a state (CI and the gates are the evidence); strict asks once
+    from wuwei import calibrate
+    name = repo['name']
+    if (not repo['fast_checks'] and workspace.posture(config)[0] == 'strict'
+            and not calibrate.checks_answered(root, name)):
+        raise ValueError(f'posture strict: {name} has no fast checks and no answer on its fast-checks card; ask it with wuwei calibrate --questions --repo {name}, then rerun bin/wuwei build next <item>')
     return repo
 
 
@@ -146,11 +150,14 @@ def next_action(item, brief=None, worktree=None, *, root=None):
     repo = _repo(root, tree, config)
     action = seat_action('builder', path, tree, root)
     previous = record
+    from wuwei import fast_checks  # #600: no fast checks still runs repos.tests at careful pace
+    commands = repo['fast_checks'] or fast_checks.commands(root, config, repo, tree)
     record = {'brief': str(path.relative_to(root)), 'worktree': str(tree),
               'runtime': action['runtime'], 'repo': repo['name'],
-              'commands': repo['fast_checks'], 'iteration': 0, 'repeats': 0,
+              'commands': commands, 'iteration': 0, 'repeats': 0,
               'signature': None, 'status': 'ready', 'action': action}
-    _save(item, record, root, 'build.started', previous)
+    _save(item, record, root, 'build.started', previous,
+          None if commands else {'checks': 'none configured'})
     if data['items'][item]['phase'] == 'planned':
         state.transition(item, 'implement', root)
     if previous is None:
@@ -214,8 +221,9 @@ def open_fix(item, feedback, *, root):
     return next_action(item, brief, record['worktree'], root=root)
 
 
-def started(data, item, name):
-    """Bind a Claude iteration inside the existing seat reservation transaction."""
+def started(data, item, name, fresh=False):
+    """Bind a Claude iteration inside the existing seat reservation transaction. fresh (#614):
+    a new agent continues the round, so the replaced agent's id and transcript binding go."""
     record = data.get('builds', {}).get(item)
     if record is None:
         return
@@ -223,6 +231,9 @@ def started(data, item, name):
         raise ValueError(f'build is not ready for a seat; run bin/wuwei build next {item} for the current step (bin/wuwei why {item} explains it)')
     if data['seats'][name]['brief'] != record['brief']:
         raise ValueError(f'seat brief differs from active build; start the seat with the brief that bin/wuwei build next {item} returned')
+    if fresh:
+        record['replaced'] = record.pop('agent_id', None)
+        record.pop('completion', None)
     record.update(status='running', seat=name, started_at=workspace.now().isoformat())
 
 
@@ -288,6 +299,8 @@ def stopped(item, name, payload, *, root):
     agent_id = payload.get('agent_id')
     if not isinstance(agent_id, str) or not agent_id.strip():
         raise ValueError(f'SubagentStop omitted builder agent_id; {PAYLOAD}')
+    if agent_id == record.get('replaced'):
+        return True  # #614: the replaced agent's late stop; the fresh launch records the round
     if record.get('agent_id') and record['agent_id'] != agent_id:
         raise ValueError(f'SubagentStop agent_id differs from resumed builder; {PAYLOAD}')
     from wuwei.brief import last_turn

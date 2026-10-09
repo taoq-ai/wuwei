@@ -42,8 +42,13 @@ def add(args, root, config, item):
         repos = [repo for repo in repos if repo['name'] == args.repo]
         if not repos:
             raise ValueError(f'unknown repository: {args.repo}')
-    elif len(repos) > 1:
-        raise ValueError('several repositories configured; pass --repo <name>')
+    elif len(repos) > 1:  # #603: today's proposal names the item's repository
+        from wuwei import dispatch
+        name = (dispatch.candidate(root, item) or {}).get('repo')
+        repos = [repo for repo in repos if repo['name'] == name] or repos
+        if len(repos) > 1:
+            raise ValueError(f'several repositories configured ({", ".join(repo["name"] for repo in repos)}); '
+                             'pass --repo <name>')
     if not repos:
         raise ValueError('no repository configured; the owner adds one with bin/wuwei config add-repo in a host terminal')
     repo = (root / Path(repos[0]['path']).expanduser()).resolve()

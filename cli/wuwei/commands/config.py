@@ -19,13 +19,19 @@ def register(subparsers):
     check = actions.add_parser("check", help="validate config.toml")
     check.set_defaults(func=run)
     parser = actions.add_parser('promote', help='apply the calibration proposal (owner, host terminal)')
-    parser.add_argument('--measure', action='store_true',
-                        help='time each test runner once through the checks port (runs repository commands)')
+    only = parser.add_mutually_exclusive_group()
+    only.add_argument('--measure', action='store_true',
+                      help='time each test runner once through the checks port (runs repository commands)')
+    only.add_argument('--keys', nargs='+', metavar='KEY',
+                      help="apply only these dotted keys of today's answers, also over a value already "
+                           'set (#604); no repository survey')
     parser.set_defaults(func=promote)
     from wuwei.commands import setup
     parser = actions.add_parser('set', help='set one config value (owner, host terminal)')
-    parser.add_argument('key', help='dotted key, for example owner.verbosity.default or repos.0.merge_deploys')
-    parser.add_argument('value', help='one TOML value, for example \'"standard"\' or false')
+    parser.add_argument('key', nargs='?',
+                        help='dotted key, for example owner.verbosity.default or repos.0.merge_deploys; '
+                             'optional with --from-card, which reads it from the answered option')
+    parser.add_argument('value', nargs='?', help='one TOML value, for example \'"standard"\' or false')
     parser.add_argument('--replace', action='store_true',
                         help='write the value as given instead of adding to the current list or table')
     parser.add_argument('--from-card', dest='from_card', metavar='D-n',
@@ -71,15 +77,21 @@ def run(args):
             if result.exit == 2:
                 print(result.reason, file=sys.stderr)
             status = max(status, result.exit)
+        elif (kind, name) == ('tracker', 'github') and config['tracker']['auth'] == 'gh':
+            # #602: the token, when set, is used before the gh login; the login is not measured here.
+            shape = _shape('GITHUB_TRACKER_TOKEN')
+            print(f'  {label}: ' + ('gh login (tracker.auth = "gh"; GITHUB_TRACKER_TOKEN not set)'
+                                   if shape == 'missing' else
+                                   f'GITHUB_TRACKER_TOKEN: {shape} (used before tracker.auth = "gh")'))
+            status = max(status, FINDINGS if shape.startswith('malformed') else CLEAN)
         elif (kind, name) == ('runtime', 'codex'):
             present = bool(config['codex']['command'])
             print(f'  {label}: codex.command: {"set" if present else "missing"}')
             status = max(status, CLEAN if present else FINDINGS)
         elif (kind, name) in needed:
             for alternatives in needed[kind, name]:
-                present = any(os.environ.get(key) for key in alternatives)
-                fields = ', '.join(f'{key}: {"set" if os.environ.get(key) else "missing"}'
-                                   for key in alternatives)
+                present = any(os.environ.get(key) and not env.malformed(key) for key in alternatives)
+                fields = ', '.join(f'{key}: {_shape(key)}' for key in alternatives)
                 suffix = ' (one required)' if len(alternatives) > 1 else ''
                 print(f'  {label}: {fields}{suffix}')
                 status = max(status, CLEAN if present else FINDINGS)
@@ -171,7 +183,16 @@ def requirements(config):
     }
     if config['chat']['identity'] == 'custom_app':
         needed['chat', 'slack'][0] = ('SLACK_BOT_TOKEN',)
+    if config['tracker']['auth'] == 'gh':  # #602: the gh login stands in for the token
+        del needed['tracker', 'github']
     return needed
+
+
+def _shape(name):
+    """set, missing or malformed (<why>): never the value."""
+    if not os.environ.get(name):
+        return 'missing'
+    return f'malformed ({why})' if (why := env.malformed(name)) else 'set'
 
 
 def missing(config):
@@ -197,8 +218,11 @@ def read(root):
     return path, path.read_text(encoding='utf-8')
 
 
-def proposal(root, raw, base, config, results, extra=()):
-    """(text, diff, edits, summary, snapshot): the calibration of base, diffed against raw."""
+def proposal(root, raw, base, config, results, extra=(), keys=None):
+    """(text, diff, edits, summary, snapshot): the calibration of base, diffed against raw.
+
+    #604: keys None (setup) applies every answer; () keeps a present key an answer would
+    change and lists it; named keys apply only those answer and profile settings."""
     import difflib
     import json
     from wuwei import calibrate, interview, profiles, workspace
@@ -208,6 +232,13 @@ def proposal(root, raw, base, config, results, extra=()):
     asked = interview.settings(answers, config)
     # An interview answer wins over the profile for the same key, and both over a setup default.
     imported = [s for s in imported if s[:2] not in {a[:2] for a in asked}]
+    skipped, missing = [], []
+    dotted = lambda s: '.'.join(map(str, (*s[0], s[1])))  # noqa: E731
+    if keys:
+        missing = [key for key in keys if key not in {dotted(s) for s in imported + asked}]
+        imported, asked = ([s for s in found if dotted(s) in keys] for found in (imported, asked))
+    elif keys is not None:
+        asked, skipped = calibrate.kept(base, asked)
     owned = {s[:2] for s in imported + asked}
     text, diff, edits = calibrate.propose(
         base, results, [s for s in extra if s[:2] not in owned] + imported + asked)
@@ -219,7 +250,11 @@ def proposal(root, raw, base, config, results, extra=()):
                                     'baseline': r['baseline'] or 'unmeasured', 'date': today}
                 for r in results}
     summary = (diff or 'No config.toml changes\n') + ''.join(
-        f'Config differs; edit by hand: {key}\n' for key, _, _ in edits) + (
+        f'Config differs; edit by hand: {key}\n' for key, _, _ in edits) + ''.join(
+        f'Skipped {key}: kept {json.dumps(current)}; to apply the answer run '
+        f'bin/wuwei config promote --keys {key}\n' for key, current in skipped) + ''.join(
+        f"Not in today's answers: {key}; use a key listed under Interview answers, or answer its "
+        'question first: bin/wuwei calibrate --questions\n' for key in missing) + (
         'Interview answers:\n' + ''.join(line + '\n' for line in interview.describe(answers, config))
         if answers else '') + ''.join(
         f"Profile {name}: {'.'.join(map(str, (*path, key)))} = {json.dumps(value)}\n"
@@ -229,7 +264,7 @@ def proposal(root, raw, base, config, results, extra=()):
         f'CI only, not proposed as a fast check: {repo}: {command} ({note})\n'
         for repo, command, note in calibrate.ci_only(results)) + (
         'Approved calibration for .wuwei/calibration.json:\n'
-        + json.dumps(snapshot, indent=2, sort_keys=True) + '\n')
+        + json.dumps(snapshot, indent=2, sort_keys=True) + '\n' if not keys else '')
     return text, diff, edits, summary, snapshot
 
 
@@ -270,11 +305,20 @@ def promote(args, confirm=None):
         root = workspace.find_workspace()
         config = load_config(root)
         _, raw = read(root)
+        keys = tuple(getattr(args, 'keys', None) or ())  # doctor passes a bare Namespace()
+        if keys:  # #604: today's answers only: no survey, no calibration.json
+            text, _, _, summary, _ = proposal(root, raw, raw, config, [], keys=keys)
+            missing = "Not in today's answers: " in summary  # a named key no answer sets: nothing written
+            if text == raw or missing:
+                print(summary, end='')
+                return FINDINGS if missing else CLEAN
+            return offer(root, raw, text, summary, label='config promote', what='calibration',
+                         confirm=confirm)
         if not config['repos']:
             raise ValueError(calibrate.NO_REPOS)
         results = calibrate.survey(root, config, list(enumerate(config['repos'])), style=False,
                                    measure=getattr(args, 'measure', False))
-        text, _, _, summary, snapshot = proposal(root, raw, raw, config, results)
+        text, _, _, summary, snapshot = proposal(root, raw, raw, config, results, keys=())
         return offer(root, raw, text, summary, label='config promote', what='calibration',
                      confirm=confirm, snapshot=snapshot)
     except ConfigError as exc:

@@ -39,7 +39,7 @@ def run(args):
             body = Path(args.file).read_text(encoding='utf-8')
         else:
             raise ValueError('brief body required: pass --body TEXT or --file PATH (--file - reads stdin)')
-        role = 'sentinel-' + args.role if args.role in dispatch.ROLES else args.role
+        role = 'sentinel-' + args.role if args.role in dispatch.GATE_ROLES else args.role
         path = brief.write(role, args.item, args.name, body,
                            worktree=args.worktree, pr=args.pr, gate=args.gate, track=args.track)
     except brief.Refused as exc:

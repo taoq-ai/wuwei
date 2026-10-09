@@ -469,10 +469,20 @@ answers questions (in the session, in the DM, or y/N at a terminal) and may edit
 afterwards; the planner records. The host terminal remains for the strict posture and for
 credentials. (owner, 2026-10-05, #529) Outside strict the owner's answer on a card is the
 confirmation of the config write its record command makes: `calibrate --answer` for an
-interview card, `config set KEY VALUE --from-card D-n` for a decision whose option titles
-read `KEY = VALUE`. The answer is recorded hashed on the planner's session row when the card
-is answered, and the command writes only that answer. A `config set` in a session without a
-card exits 1 naming the card; under strict the command is printed for a host terminal.
+interview card, `config set --from-card D-n` for a decision whose options carry a `Value:`
+row `KEY = VALUE` (or, as before, a title that reads `KEY = VALUE`). The answer is recorded
+hashed on the planner's session row when the card is answered, and the command writes only
+that answer, as shown (a list is replaced, not extended); an answer that sets nothing (Defer,
+Keep) records the outcome only. A `config set` in a session without a card exits 1 naming the
+card; under strict the command is printed for a host terminal. (#600) A config record whose
+`Previous:` line records the key's value before the change is two-way: its undo is the same
+`config set` back to that value; the first route stores it two-way and, without a better
+class, `approach`. A config record is never taken under the mandate; it waits for the
+owner's answer on its card. `repos.N.fast_checks = []` means none configured: items build,
+the PR body says `checks: none configured`, CI and the gates are the evidence; strict asks the
+repository's fast-checks card once before its first launch. `calibrate --questions` writes
+that card (detected checks or none, with the reason), taken under the mandate in autonomous
+mode.
 
 Availability (owner, 2026-10-04, #477). The owner's session is never blocked by work.
 Seats run in the background; any command that can run longer than a few seconds (fast
@@ -1963,9 +1973,17 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I19 | A thread reply follows its recorded participants: a team participant sends, a client or public one is held as a draft, never blocked, below strict | per posture, audience and umbrella, `classify` on a reply in thread `C0TEAM/1.2` whose recorded participant is one person of that audience | #526 |
 | I20 | CAP comes from the host: the owner's cap when set, else the seats that fit above the memory floor, one per core, at least one; a token budget never raises it | `calibrate.host` on free memory below the floor, one seat and eight seats above it, x 1 and 4 cores x owner cap 0 and 3 x no budget and a budget with no recorded usage | #528 |
 | I21 | An internal-state word (`outward.patterns`) never refuses or holds a tracker, docs or other write; team or company chat is never held and is refused only under strict; a client or public chat an owner row would send is held as a draft naming the word | per posture, audience and kind, `classify` and the outward lint with and without the word, with owner rows that send to the client and public channels | #533 |
-| I22 | A record keeps a two-way door only when the CLI knows the undo for its action and that undo ran once in this workspace; a message never does | `undo.measured` for every class and no class with an empty ledger and a full one; a seat's Write to `memory/rehearsals.json` | #557; the pinned cases stay in `tests/test_undo.py` |
+| I22 | A record keeps a two-way door only when the CLI knows the undo for its action and that undo ran once in this workspace; a message never does | `undo.measured` for every class and no class with an empty ledger and a full one; a seat's Write to `memory/rehearsals.json` | #557; the pinned cases stay in `tests/test_undo.py`. #600: a config write that records its previous value is two-way; its undo is config set with that value, so it needs no rehearsal |
 | I23 | A target the workspace never touched goes to the owner once, and only an owner answer, config or the seed clears it | `decision route` on a two-way Routine record naming a new repository under autonomous; a seat's Write to `memory/targets.json` | #556; the pinned cases stay in `tests/test_novelty.py` |
 | I24 | Every guard reads the same people, channels and connectors from the register as from `config.toml` | `graph.drift` of the register built from the fixture's people, channel classes and connector modes | #552; the guard-decision equality stays in `tests/test_graph.py` |
+| I25 | Doctor and the commit and push guard agree on `repos.N.identity`: both pass a set one, both fail an empty one with the same reason and the same `bin/wuwei config set` fix | doctor's identity row against `commit_push.unset_identity`, the helper the guard raises from, with a set, an empty and a malformed identity | #605; one helper, `commit_push.unset_identity`; doctor fills in the identity git resolves; the guard and native hook runs stay in `tests/test_commit_push.py` and `tests/test_git_hook.py` |
+| I26 | Every command `next` returns to start a planned item exits 0 in a multi-repository workspace: `worktree add` names the candidate's `--repo`, and an item with no repository is parked with its reason | `dispatch._start` on a two-repository fixture with one candidate carrying `repo` and one without; the `worktree add` command run through its command function with the VCS boundary faked, and the other item's command is `plan park` | #603; one repository keeps `worktree add <item>`; `tests/test_dispatch.py` runs the park through `main`; the walking day in `tests/test_path_day.py` runs the brief too |
+| I27 | A fresh day's gate-confirmed proposed goals approve the plan, and approve never writes owner memory | `plan.approve` over the empty goals template with the day's `goals.md`; `memory/goals.md` unchanged after | #603; `goals edit` records them after the gate and stays the owner's under strict |
+| I28 | A stored interview answer never overwrites a key present in `config.toml` with a value other than its default unless `config promote --keys` names it | an autonomy answer recorded with `autonomy.mode = "supervised"` present: the promote proposal keeps it and lists it, the proposal with `--keys autonomy.mode` applies it | #604; measured repository facts and `setup` apply as before |
+| I31 | An empty fast-check list never refuses a launch below strict | per posture, `build._repo` on a repository with `fast_checks = []` and no card answered | #600; strict refuses naming `calibrate --questions` until the owner answers the fast-checks card |
+| I32 | A config card with a list value records without a prompt below strict | per posture, a routed card with a Value row `repos.0.fast_checks = ["make test"]` answered in the planner session, then `config set --from-card D-n` with the host prompt failing | #600; strict prints the command for a host terminal |
+| I33 | A config record is never Strategic on its own | Class `other` and none x door one-way, two-way and unsure x confidence high and low: `undo.correct`, then `cisr`, on a record with Value rows and a Previous line | #600; a seat's better class stands |
+| I34 | A docs-only diff never lowers review when anything else would raise it: a lead flag, a FULL track, a trust, never-auto, FULL-pattern, binary or agent-instruction path, or a full floor keeps arch, quality and security; a plain document with nothing raising it gets one reviewer | `dispatch.tier` on a document diff, alone and with each raising path, under each lead flag, track and floor | #622; one decision in `dispatch.tier` (`_docs_role`); goal for a document, quality for a spec or pre-registration |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

@@ -75,6 +75,7 @@ def run(args):
             return 0
         env = {key: value for key, value in os.environ.items() if key.startswith('GIT_')}
         repo, actual, vcs = guard.context(Path.cwd(), {}, env, root)
+        guard.configured_identity(repo, root, actual.get('author'))
         result = guard.identity_check(repo['identity'], actual)
         if not result[0] and args.event == 'pre-push':
             updates, ancestors = [], []
