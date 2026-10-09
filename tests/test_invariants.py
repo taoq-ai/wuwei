@@ -4,6 +4,7 @@ of the product posture x audience x topic x kind x grant x umbrella x connector 
 import ast
 import contextlib
 import functools
+import gc
 from importlib import import_module
 import io
 import itertools
@@ -865,9 +866,16 @@ def walk(world):
 def test_invariants_hold(world):
     cases = list(itertools.product(*DIMENSIONS.values()))
     assert len(cases) == CASES and CASES >= 18000
-    start = time.process_time()  # CPU time: a busy host does not fail the walk
-    failures = walk(world)
-    elapsed = time.process_time() - start
+    # The suite's heap is not the walk's cost: a full collection landing inside the walk scans
+    # every object the earlier tests left alive, so collect and freeze it before the clock starts.
+    gc.collect()
+    gc.freeze()
+    try:
+        start = time.process_time()  # CPU time: a busy host does not fail the walk
+        failures = walk(world)
+        elapsed = time.process_time() - start
+    finally:
+        gc.unfreeze()
     assert not failures, '\n'.join(failures[:20])
     assert elapsed < 1.0, f'{len(cases)} cases took {elapsed:.2f} s'
 
