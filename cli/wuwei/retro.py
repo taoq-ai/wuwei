@@ -173,7 +173,8 @@ def _second_opinion(records):
     costs = ['', '| Item | Gate | Model | Cost | Duration |', '| --- | --- | --- | --- | --- |']
     for second in seconds:
         item, role = second['item'], second['role'].partition('@')[0]
-        first = records.get(f'{item}:{role}:initial', {})
+        first = next((row for row in records.values() if row.get('item') == item  # #623: round one,
+                      and row.get('role') == role and row.get('round') == 'initial'), {})  # moved or not
         mine, theirs = keyed(second), keyed(first)
         for label, own, other in ((f"{second['role']} {second['model']}", mine, theirs),
                                   (role, theirs, mine)):

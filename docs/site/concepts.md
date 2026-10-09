@@ -466,7 +466,7 @@ Negotiation loops: an item goes back and forth when records, verdicts, restarts 
 requests go above `steward.loop_threshold` in `steward.loop_window_hours`, or on a second fix
 round. Then the steward raises one `negotiation.loop` nudge per item per day, and a page when the
 goal date has passed. The listener sends the summary to your DM. It reports; the
-negotiation budget in the charters is what stops the rounds.
+round cap (`gates.max_rounds`) is what stops the rounds.
 
 ## Measured reversibility
 

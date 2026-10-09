@@ -110,6 +110,8 @@ timeout_seconds = 300
 # For STANDARD and FULL items, run one gate again on another runtime, for example "codex:<model>".
 # second_opinion = "off"
 # second_opinion_role = "quality"
+# max_rounds = 2 # Fix rounds per item; after the cap notes ship in the PR and a blocker parks.
+# tier_max_rounds = { light = 0, standard = 0, full = 0 } # 0 uses max_rounds.
 
 [control_plane]
 content = "summary" # summary or none; what a messaging transport sends about decisions.
