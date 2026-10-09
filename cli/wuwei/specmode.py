@@ -25,7 +25,8 @@ STEPS = {
                 ('clarify', 'spec.md', 'clarified', '/speckit.clarify'),
                 ('plan', 'plan.md', 'one', '/speckit.plan'),
                 ('tasks', 'tasks.md', 'one', '/speckit.tasks'),
-                ('analyze', 'analysis.md', 'clean', '/speckit.analyze, report saved as analysis.md'),
+                ('analyze', 'analysis.md', 'clean', '/speckit.analyze, then save its report with '
+                 'bin/wuwei spec analysis {item} < report (a subagent cannot write analysis.md)'),
                 ('checklist', 'checklists/*.md', 'checked', '/speckit.checklist'),
                 ('implement', 'tasks.md', 'checked', '/speckit.implement')),
     'superpowers': (('brainstorming', f'docs/superpowers/specs/{DATE}-{{item}}-design.md', 'one',

@@ -31,8 +31,13 @@ THEN = {
     'background': 'Run the command through Bash in the background; run wuwei next when it exits.',
     'agent': ('Pass it to Agent in the background, then run wuwei next; its completion '
               'notification brings this item back.'),
+    # #614: Claude Code's Agent has no resume; a continue binds as a fresh Agent.
+    'continue': ('Launch a fresh Agent in the background with the prompt unchanged and agent_type '
+                 'as subagent_type (pass resume only to an Agent tool that takes it), then run wuwei '
+                 'next; its completion notification brings this item back.'),
     'set': ('Do every entry now: run each command in order, pass every launch and continue to '
-            'Agent in the background in one message, run each run entry through Bash in the '
+            'Agent in the background in one message (a continue is a fresh Agent with its prompt; '
+            'resume only to an Agent tool that takes it), run each run entry through Bash in the '
             'background; then run wuwei next.'),
     'card': ('Ask the widget list with AskUserQuestion, record each answer with its record '
              'command, then run wuwei next.'),
@@ -357,7 +362,7 @@ def resolve(row, root):
         action = build.next_action(item, root=root)
         if action['action'] in ('done', 'park'):
             return None
-        then = THEN['background'] if action['action'] == 'check' else THEN['agent']
+        then = THEN[{'check': 'background', 'continue': 'continue'}.get(action['action'], 'agent')]
         return {**keep, **action, 'why': row['why'], 'then': then}
     if name == 'verdicts':
         from wuwei import dispatch
