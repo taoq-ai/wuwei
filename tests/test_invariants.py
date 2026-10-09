@@ -16,6 +16,7 @@ import pytest
 from test_commit_push import item_case, workspace_case  # noqa: F401 (fixtures)
 from test_decision import draft_question
 from test_grants import run
+from test_merge import case  # noqa: F401 (fixture)
 from test_posture import fixed
 from test_reasons import CLI, ROOT, reasons
 from wuwei.__main__ import main
@@ -36,19 +37,20 @@ CALLED = [('grants.py', ('gate', 'evidence'), ('deploy.check', 'commit_push.chec
           ('drafts.py', ('reason',), ('outward.check_tier',)),
           ('outward.py', ('check_tier', 'blocked'), ('outward.check_tier',)),
           ('integrity.py', ('measure',), ('integrity.check',))]
-# Walls a later item of #530 removes (design 9.2, I1 notes): (file, substring, issue).
-OWNED = [('guards/pr.py', 'merge policy', '#524'), ('guards/pr.py', 'admin merge', '#524'),
-         ('guards/pr.py', 'PR approval', '#524'), ('guards/pr.py', 'branch protection', '#524'),
-         ('guards/pr.py', 'a shepherd seat never merges', '#524'),
-         ('guards/commit_push.py', 'config add-repo', '#529'),
-         ('guards/commit_push.py', 'default_branch', '#529'),
-         ('guards/commit_push.py', 'empty configured fast check', '#529'),
-         ('guards/pr.py', 'API repository default branch is unmeasured', '#529'),
-         ('integrity.py', 'page: plugin integrity', '#529')]
+# Walls a later item removes (design 9.2, I1 notes): (file, substring, note).
+LATER = 'follow-up, specs/530-posture-day Deferred'
+OWNED = [('guards/commit_push.py', 'config add-repo', LATER),
+         ('guards/commit_push.py', 'default_branch', LATER),
+         ('guards/commit_push.py', 'empty configured fast check', LATER),
+         ('guards/pr.py', 'API repository default branch is unmeasured', LATER),
+         ('integrity.py', 'page: plugin integrity', LATER)]
 # Refusals that are not walls the workflow puts up (design 9.2, I1 notes).
+MERGES = "merge family: bin/wuwei merge is the path (#524); approval and override stay the owner's"
 EXEMPT = [('grants.py', '{} {}; ask the owner to run it in a host terminal', 'heartbeat probe'),
           ('grants.py', 'permissions deny it', 'permissions.deny, deferred'),
           ('grants.py', 'kept it owner-only', "the owner's own Keep answer"),
+          *[('guards/pr.py', part, MERGES) for part in (
+              'merge policy', 'admin merge', 'PR approval', 'branch protection', 'a shepherd seat never merges')],
           ('guards/stop.py', 'day state missing for registered planner', 'records: state recovery'),
           ('guards/deploy.py', 'if it publishes, run it as a plain literal command',
            'unknown git: the hook levels it to a warning below strict')]
@@ -216,7 +218,8 @@ class Rules:
 
     def record(self, posture, grant):
         """decision.record_gate on the planner's card question (when one was asked), then
-        protect_state on bin/wuwei decide D-1 once from the planner and from a seat."""
+        protect_state on bin/wuwei decide D-1 once and config set cap 2 --from-card D-1 (#529)
+        from the planner and from a seat."""
         def compute():
             from wuwei import state
             from wuwei.guards.decision import record_gate
@@ -229,10 +232,12 @@ class Rules:
                 record_gate({'cwd': str(self.root), 'session_id': 'planner-1',
                              'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [
                                  {'question': 'Allow deploy on example/project? (D-1)', 'header': 'D-1'}]}})
-            call = {'cwd': str(self.root), 'session_id': 'planner-1', 'tool_name': 'Bash',
-                    'hook_event_name': 'PreToolUse', 'tool_input': {'command': 'bin/wuwei decide D-1 once'}}
-            return (check_bash(call)[0], check_bash({**call, 'agent_id': 'seat-1'})[0],
-                    before == state.read_state(self.root).get('grants', {}))
+            found = []
+            for command in ('bin/wuwei decide D-1 once', 'bin/wuwei config set cap 2 --from-card D-1'):
+                call = {'cwd': str(self.root), 'session_id': 'planner-1', 'tool_name': 'Bash',
+                        'hook_event_name': 'PreToolUse', 'tool_input': {'command': command}}
+                found.append((check_bash(call)[0], check_bash({**call, 'agent_id': 'seat-1'})[0]))
+            return found, before == state.read_state(self.root).get('grants', {})
         return self.memo(('record', posture, grant), compute)
 
     def enforced(self, posture, check, payload):
@@ -376,10 +381,15 @@ def i2(case, rules):
 
 
 def i3(case, rules):
+    """#524: a session merge is refused in every posture and names bin/wuwei merge, the one
+    journaled path; test_merge_only_at_the_gated_green_head checks what that path merges."""
     from wuwei.guards import MERGE
-    for found in rules.merge(case[0]):
+    squash, admin = rules.merge(case[0])
+    for found in (squash, admin):
         if not found or not found[0][1].startswith(MERGE):
             return f'gh pr merge is not refused by the merge policy: {found}'
+    if 'bin/wuwei merge' not in squash[0][1]:
+        return f'a session merge does not name bin/wuwei merge: {squash[0][1]}'
     return None
 
 
@@ -397,7 +407,7 @@ def i5(case, rules):
             return f'grant {key} changed from {old} to {row}'
     if standing != standing_after or not rules.memo('default', default_has_no_grant):
         return 'a standing grant changed or ships by default'
-    if not rules.record(case[0], case[4])[2]:
+    if not rules.record(case[0], case[4])[1]:
         return 'the record gate changed a grant row'
     return None
 
@@ -427,10 +437,10 @@ def i7(case, rules):
 
 
 def i8(case, rules):
-    planner, seat, _ = rules.record(case[0], case[4])
     expected = case[4] != 'none' and case[0] != 'strict'
-    if (planner == 0) != expected or seat == 0:
-        return f'decide passes for the planner {planner == 0} (expected {expected}), for a seat {seat == 0}'
+    for name, (planner, seat) in zip(('decide', 'config set'), rules.record(case[0], case[4])[0]):
+        if (planner == 0) != expected or seat == 0:
+            return f'{name} passes for the planner {planner == 0} (expected {expected}), for a seat {seat == 0}'
     return None
 
 
@@ -530,6 +540,9 @@ def pace_rule():
     fast on a measured, unflagged standard item without guard code, and no pace plans more seats
     than the host fits."""
     from wuwei import dispatch, pace
+    # #567: an untiered item runs standard, and a gate reader never takes the builder's prediction.
+    if (dispatch.depth({}), dispatch.depth({'depth': 'light'}, gate=True)) != ('standard', 'standard'):
+        return 'an untiered item runs below standard'
     for case in itertools.product(pace.PACES, dispatch.TIERS, (None, 'x matches guards/*'), (False, True), (False, True)):
         tier, depth, _ = pace.adjust(*case)
         if dispatch.TIERS.index(tier) < dispatch.TIERS.index(case[1]):
@@ -618,9 +631,155 @@ def i18(case, rules):
     return rules.memo(('setup answers', case[0]), lambda: compute(case[0]))
 
 
+def i19(case, rules):
+    """#526: a thread reply follows its recorded participants: a team participant sends under
+    both umbrellas, a client or public one is held as a draft, never blocked, below strict."""
+    posture, audience, umbrella = case[0], case[1], case[5]
+    if posture == 'strict' or audience not in ('team', 'client', 'public'):
+        return None
+
+    def compute():
+        from wuwei import outward, state
+        key = 'C0TEAM/1.2'
+        state._write_state(lambda data: data.setdefault('outbound_threads', {}).__setitem__(
+            key, [f'p-{audience}']), rules.root, reserved=False)
+        try:
+            return outward.classify('Tests passed.', rules.root, rules.config(posture, umbrella, 'adapter'),
+                                    {'channel': 'C0TEAM', 'thread_ts': '1.2'}, kind='chat', port=True, why=[])
+        finally:
+            state._write_state(lambda data: data['outbound_threads'].pop(key), rules.root, reserved=False)
+    code, decision = rules.memo(('thread', posture, audience, umbrella), compute)
+    expected = 'send' if audience == 'team' else 'draft'
+    if decision != expected or (decision == 'draft') != (code == 1):
+        return f'a reply to a {audience} thread participant is {decision} (exit {code}), expected {expected}'
+    return None
+
+
+def i20(case, rules):
+    """#528: CAP comes from the host: the owner's cap when set, else the seats that fit above the
+    memory floor, one per core, at least one; a token budget never raises it."""
+    def compute():
+        from unittest import mock
+        from wuwei import calibrate, workspace
+
+        @functools.cache  # calibrate.host only reads the config; parse each of the four once
+        def config(cap, budget):
+            return workspace.load_config(rules.root, raw=f'cap = {cap}\n' + rules.base + (
+                f'[budget]\ntokens_per_day = {budget}\n' if budget else ''))
+        floor, seat = config(0, 0)['host']['free_memory_mb'], calibrate.host(rules.root, config(0, 0), free=0)['seat_mib']
+        for (seats, free), cores, cap, budget in itertools.product(
+                ((1, floor - 1), (1, floor + seat), (8, floor + 8 * seat)), (1, 4), (0, 3), (0, 10**6)):
+            with mock.patch('os.cpu_count', return_value=cores):
+                found = calibrate.host(rules.root, config(cap, budget), free=free)['cap']
+                plain = calibrate.host(rules.root, config(cap, 0), free=free)['cap']
+            expected = cap or min(seats, cores)
+            if found != expected or found > plain:
+                return f'cap {found} (without the budget {plain}) for free {free}, {cores} cores, cap {cap}, budget {budget}'
+        return None
+    return rules.memo(('host cap',), compute)
+
+
+WORD = ('[outward]\npatterns = ["zz-internal"]\n[[outbound.tiers]]\nchannel = "C0CLIENT"\ntier = "send"\n'
+        '[[outbound.tiers]]\nchannel = "C0PUB"\ntier = "send"\n')
+
+
+def i21(case, rules):
+    """#533: an outward.patterns word never refuses or holds a tracker, docs or other write;
+    team or company chat is never held and is refused only under strict; a client or public
+    chat that an owner row sends is held as a draft naming the word."""
+    posture, audience, kind = case[0], case[1], case[3]
+    if audience == 'owner':
+        return None
+
+    def compute():
+        from wuwei import outward, workspace
+        config = workspace.load_config(rules.root, raw=rules.base + f'[security]\nposture = "{posture}"\n'
+                                       + OUTBOUND.format(umbrella='send') + WORD)
+        found = []
+        for text in ('Tests passed zz-internal.', 'Tests passed.'):
+            why, context = [], {'channel': CHANNEL[audience]} if kind == 'chat' else {}
+            if kind != 'chat':
+                text += f' @p-{audience}'
+            code, decision = outward.classify(text, rules.root, config, context, kind=kind, port=True, why=why)
+            with contextlib.redirect_stderr(io.StringIO()):
+                lint = outward.check_lint({**context, 'text': text}, rules.root, config, {kind})[0]
+            found.append((code, decision, ' '.join(why), lint))
+        return found
+    (_, decision, why, lint), (_, plain, _, clean) = rules.memo(('word', posture, audience, kind), compute)
+    if kind != 'chat' and (decision != plain or lint != clean):
+        return f'the word changes a {kind} write: {decision} {lint}, without it {plain} {clean}'
+    if kind == 'chat' and audience in ('team', 'company') and (
+            decision != plain or lint != (1 if posture == 'strict' else clean)):
+        return f'the word in {audience} chat: {decision} {lint}, without it {plain} {clean}'
+    # Under strict the owner row itself drafts, so the word is checked below strict.
+    if kind == 'chat' and audience in ('client', 'public') and (decision != 'draft' or posture != 'strict' and (
+            plain != 'send' or 'zz-internal' not in why)):
+        return f'the word to a {audience} reader: {decision} ({why}), without it {plain}'
+    return None
+
+
+def seat_writes(rules, name):
+    """protect_state on a seat's Write to .wuwei/<name>: its exit."""
+    from wuwei.guards.protect_state import check_file
+    return check_file({'hook_event_name': 'PreToolUse', 'session_id': 'planner-1', 'agent_id': 'seat-1',
+                       'cwd': str(rules.root), 'tool_name': 'Write',
+                       'tool_input': {'file_path': f'.wuwei/{name}', 'content': '{}'}})[0]
+
+
+def i22(case, rules):
+    """#557: a record keeps a two-way door only for a registered undo that ran here; a message
+    never does; a seat cannot write the rehearsal ledger."""
+    def compute():
+        from wuwei import cruise, undo, workspace
+        config = workspace.load_config(rules.root, raw=rules.base)
+        context = f'repo:{config["repos"][0]["name"]}'
+        real = undo.ledger
+        try:
+            for kinds in ((), tuple(undo.REGISTRY)):
+                undo.ledger = lambda root: {kind: {'at': '2026-09-28T12:00:00+00:00', 'by': 'rehearsal'} for kind in kinds}
+                for cls in (*cruise.CLASSES, None):
+                    kind, reason = undo.measured({'Class': cls, 'Context': context} if cls else {}, rules.root, config)
+                    if reason is None and (kind not in undo.REGISTRY or kind not in kinds):
+                        return f'{cls} keeps its door with ledger {kinds}'
+        finally:
+            undo.ledger = real
+        return None if seat_writes(rules, undo.NAME) else 'a seat writes the rehearsal ledger'
+    return rules.memo(('undo',), compute)
+
+
+def i23(case, rules):
+    """#556: a record naming a target the workspace never touched goes to the owner once and
+    names it; a seat cannot write the seen set."""
+    def compute():
+        from test_decision_classes import record
+        from wuwei import novelty, workspace
+        rules.configure('guarded', '[autonomy]\nmode = "autonomous"\n')
+        (workspace.day_dir(rules.root) / 'decisions/D-60.md').write_text(
+            record(cls='retry', radius='item A', wants=(('Context:', 'Context: repo:fixture-org/never-seen'),)))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            main(['decision', 'route', 'D-60'])
+        if not out.getvalue().startswith('owner') or 'repo:fixture-org/never-seen' not in out.getvalue():
+            return f'a record naming a new target routes {out.getvalue()!r}'
+        return None if seat_writes(rules, novelty.NAME) else 'a seat writes the seen set'
+    return rules.memo(('novelty',), compute)
+
+
+def i24(case, rules):
+    """#552: every guard reads the same people, channels and connectors from the register as
+    from config.toml: the register's views equal the config's sections."""
+    def compute():
+        from wuwei import graph
+        config = rules.config('guarded', 'send', 'send')
+        found = graph.drift(graph.build(config), config)
+        return f'the register and config.toml differ on {found}' if found else None
+    return rules.memo(('register',), compute)
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
-              'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18}
+              'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
+              'I22': i22, 'I23': i23, 'I24': i24}
 
 
 def project(case):
@@ -634,7 +793,8 @@ def project(case):
 OUTWARD = (0, 1, 2, 3, 5, 6)
 READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
-         'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,)}
+         'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
+         'I22': (), 'I23': (), 'I24': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
@@ -696,6 +856,20 @@ BROKEN = {
         ({'audience': 'team', 'tier': 'block'}, *import_module('wuwei.outward').DEFAULT_TIERS)),
     'grant for every target': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.grants'), 'active', lambda *args: ('today', 'D-1')),
+    'host cap of one': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.calibrate'), 'host', lambda *args, **kwargs: {'cap': 1, 'seat_mib': 1024}),
+    'the word read on tracker writes': lambda monkeypatch: monkeypatch.setitem(
+        import_module('wuwei.outward').OWNER, 'tracker', 'tracker'),
+    'a message keeps its door': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.undo'), 'measured', lambda *args: ('message', None)),
+    'novelty never seen': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.novelty'), 'novel', lambda *args: []),
+    'a view drops a channel': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.graph'), 'views', lambda register, real=import_module('wuwei.graph').views: {
+            **real(register), 'outbound.channel_classes': {}}),
+    'client thread row that sends': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.outward'), 'DEFAULT_TIERS',
+        ({'audience': 'client', 'topic': 'thread', 'tier': 'send'}, *import_module('wuwei.outward').DEFAULT_TIERS)),
 }
 
 
@@ -751,3 +925,43 @@ def test_table_matches_the_checks():
     assert re.findall(r'^\| (I\d+) \|', table, re.M) == list(INVARIANTS)
     for path in (ROOT / 'docs/specs/2026-09-24-wuwei-design.md', ROOT / 'docs/site/security.md'):
         assert 'Owner-only actions always block' not in path.read_text(), path
+
+
+def test_no_stale_owner_marks():
+    # An owner mark names an issue a later item builds; once its spec is on main it is stale.
+    design = (ROOT / 'docs/specs/2026-09-24-wuwei-design.md').read_text()
+    i1 = re.search(r'^\| I1 \|.*$', design, re.M)[0]
+    owned = re.search(r'Owned: ([^.]*)', i1)
+    marks = [(note, n) for _, _, note in OWNED for n in re.findall(r'#(\d+)', note)]
+    marks += [('design 9.2 I1 Owned', n) for n in re.findall(r'#(\d+)', owned[1] if owned else '')]
+    stale = [(note, n) for note, n in marks if list(ROOT.glob(f'specs/{int(n):03d}-*'))]
+    assert not stale, stale
+
+
+@pytest.mark.parametrize('head', ['gated', 'moved', 'red'])
+@pytest.mark.parametrize('grant', ['none', 'once', 'today', 'standing'])
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_merge_only_at_the_gated_green_head(case, posture, grant, head):
+    # I3 (#524): WUWEI merges only at the head the gates checked with green required checks,
+    # and only under a matching grant: once or today in every posture, a standing line below strict.
+    from test_merge import BASE, REF, SHA, evidence, granted_case, merged_calls, standing_merge
+    from wuwei import merge, state, workspace
+    from wuwei.watch import records
+    root, host = granted_case(case, posture)
+    if grant == 'standing':
+        standing_merge(root)
+    elif grant != 'none':
+        state._write_state(lambda d: d.setdefault('grants', {}).update({'D-9': {
+            'action': 'merge', 'target': 'repo:example/project', 'rule': 'merge', 'command': None,
+            'item': 'item-7', 'seat': None, 'planned': False, 'answered': grant, 'spent': False}}),
+            root, reserved=False)
+    if head == 'moved':
+        for gate in ('arch', 'quality', 'security'):
+            (workspace.day_dir(root) / 'decisions' / f'gate-item-7-{gate}.md').write_text(evidence(BASE))
+    if head == 'red':
+        host.results['checks'].data[0]['conclusion'] = 'failure'
+    merge.execute(REF, root)
+    expected = head == 'gated' and (grant in ('once', 'today') or grant == 'standing' and posture != 'strict')
+    used = [row for row in records(workspace.day_dir(root) / 'events.jsonl') if row['kind'] == 'grant.used']
+    assert merged_calls(host) == ([(REF, SHA)] if expected else []), (posture, grant, head)
+    assert bool(used) == expected, (posture, grant, head, used)
