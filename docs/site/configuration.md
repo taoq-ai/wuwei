@@ -55,8 +55,9 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `repos.path` | Required per entry | Repository path from workspace root or absolute path. |
 | `repos.default_branch` | Required per entry | Protected base branch. |
 | `repos.identity` | `{name = "", email = ""}` | Expected git identity for this repository; the commit guards compare commits against it. Set both values. `wuwei worktree add` writes it to each item worktree's Git config. |
-| `repos.merge_deploys` | `true` when omitted | Whether a merge deploys. Template example sets `false` only after explicit confirmation. |
+| `repos.merge_deploys` | `true` when omitted | Whether a merge deploys. While it is not `false`, every merge in the repository is yours. Setup and the planner's cards ask it per repository (the `deploys` question); only your answer sets `false`. |
 | `repos.merge.auto` | `false` | Allow automatic merge only when the merge policy's review, check, soak, path and budget rules pass. |
+| `repos.merge.size_exclude` | `[]` | Path globs, matched on any path suffix, for generated files such as `results/*.json`. A changed file whose every path matches one does not count toward `max_changed_lines`; a rename counts when either path does not match. Never-auto paths still apply to these files. |
 | `repos.gates.floor` | `"standard"` | Lowest review tier for this repository: `light`, `standard` or `full`. `wuwei dispatch next` computes a tier from the item diff at its first gate; LIGHT runs the quality gate only, STANDARD and FULL run arch, quality and security. Keep `standard` until the escaped defects per tier in the retro support lowering it. |
 | `repos.gates.light_max_lines` | `100` | A diff with more changed lines is at least STANDARD. Binary changes, any lead flag and track FULL also raise the tier. |
 | `repos.gates.trust_paths` | `["guards/*", "state.py", "adapters/*", ".claude-plugin/*", ".github/*", "ci/*", "workflows/*", "deploy/*", "infra/*"]` | Path globs, matched on any path suffix, that force at least STANDARD. `repos.merge.never_auto_paths` and `brief.full_path_patterns` force it too. |
@@ -344,7 +345,7 @@ Run `bin/wuwei calibrate [--repo <name>]` after `init` and the basic `[[repos]]`
 
 It also reads the last 100 commit subjects for the commit style and the last 30 merged pull requests for a size and cycle time baseline, which the steward gets as advisory input.
 
-The proposal is additive. A key absent from `config.toml` is added, and `deploy.workflows`, `deploy.deny` or `repos.fast_checks` still at a one-line `[]` is replaced. A key you already set is never changed: the report lists it under "config differs; edit by hand". Calibration never proposes `merge_deploys = false` or `merge.auto`.
+The proposal is additive. A key absent from `config.toml` is added, and `deploy.workflows`, `deploy.deny` or `repos.fast_checks` still at a one-line `[]` is replaced. A key you already set is never changed: the report lists it under "config differs; edit by hand". Calibration never proposes `merge_deploys = false` or `merge.auto`. The interview's `deploys` question asks you instead.
 
 Only fast commands go into `repos.fast_checks` and the charter blocks. `ruff check .`, `black --check .`, `npm run lint` and `make lint` are fast. A test runner (`python3 -m pytest -q`, `npm test`, `cargo test`, `go test ./...`, `make test`, `make check`) is CI only unless measured. `bin/wuwei calibrate --measure` runs each detected test runner once in the configured checkout through the checks port, the same runner as `wuwei fast-checks` (`/bin/sh -c <command>`, capped at 300 seconds), and may leave tool caches there. It is fast when it exits 0 within `calibrate.fast_check_seconds` (default 60). The `## CI only (not proposed as fast checks)` section of `calibration.md` lists the rest with the measurement or "unmeasured", and the calibrate output and the promote digest print the same lines. `bin/wuwei config promote --measure` measures again before it applies.
 
@@ -361,6 +362,7 @@ The interview asks a short, fixed set of questions about your own preferences. E
 | Question | Maps to |
 | --- | --- |
 | `autonomy` | `Autonomous` (recommended) sets `security.posture = "observe"`, `outbound.default_tier = "send"`, `merge.default_tier = "today"`, `outbound.learn = "auto"` and `autonomy.mode = "autonomous"`; `Supervised` sets `guarded`, `ask`, `ask`, `card` and `supervised`. Strict is set by hand. `setup --shadow` records `Autonomous` |
+| `deploys` (per repository) | `repos.merge_deploys`: `Merges deploy` sets `true`, `Merges do not deploy` sets `false`. The first choice is the recommended one: `Merges do not deploy` only when calibration found no deploy workflow, deploy command or never-auto path for the repository. A repository calibration has not seen gets `Merges deploy` first |
 | `merge` (per repository) | `repos.merge.auto` and `repos.merge.soak_minutes`; auto merge still needs `merge_deploys = false` declared |
 | `gates` (per repository) | `repos.gates.floor` |
 | `quiet` (per repository) | `repos.merge.quiet_hours` |

@@ -290,3 +290,30 @@ def test_plan_skill_and_charter_say_how_an_item_joins_an_approved_plan():
     top = pathlib.Path(__file__).resolve().parents[1]
     for path in ('skills/wuwei-plan/SKILL.md', 'agents/planner.md', 'docs/site/daily.md'):
         assert 'wuwei plan add <item> --goal G-n' in (top / path).read_text(encoding='utf-8'), path
+
+
+def added_events(root):
+    return [e['payload'] for e in map(json.loads, (root / '.wuwei/days/2026-09-29/events.jsonl')
+                                      .read_text().splitlines()) if e['kind'] == 'plan.added']
+
+
+def test_plan_add_records_the_risk_flags_merge_check_reads(root):
+    # #615: plan.added carries flags in the plan.approved shape, so merge check finds evidence.
+    save_candidate(root, candidate())
+    plan.add('NEW', root)
+    plan.add('OWN-1', root, goal='G-1')
+    flags = {key: False for key in plan.FLAGS}
+    assert [row['flags'] for row in added_events(root)] == [{'NEW': flags}, {'OWN-1': flags}]
+
+
+def test_plan_add_backfills_missing_risk_evidence_once(root):
+    # #615: an item admitted before the fix recovers with the command merge check names.
+    flags = {key: False for key in plan.FLAGS}
+    state._write_state(lambda d: d['items'].update({'OLD': {'goal': 'G-1', 'flags': flags}})
+                       or d['approved_items'].append('OLD'), root, reserved=False,
+                       kind='plan.added', payload={'item': 'OLD', 'source': 'owner'})
+    assert plan.add('OLD', root) == {'action': 'risk recorded', 'item': 'OLD'}
+    assert added_events(root)[-1] == {'item': 'OLD', 'source': 'replan', 'flags': {'OLD': flags}}
+    with pytest.raises(state.StateError, match='already in the plan'):
+        plan.add('OLD', root)
+    assert len(added_events(root)) == 2

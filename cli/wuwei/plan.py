@@ -398,6 +398,13 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
     day = state.read_state(root)
     if not day['gate_approved']:
         raise state.StateError('morning gate has not been approved; run the morning gate first (/wuwei:wuwei-plan)')
+    if item in day['items']:  # #615: an item admitted without risk evidence records it once
+        from wuwei.merge import risk_evidence
+        if risk_evidence(root, item):
+            raise state.StateError(f'item {item} is already in the plan; run bin/wuwei build next {item}')
+        state.append_event('plan.added', {'item': item, 'source': 'replan',
+                                          'flags': {item: day['items'][item]['flags']}}, root)
+        return {'action': 'risk recorded', 'item': item}
     config = workspace.load_config(root)
     size_key = 'job_size' if config['prioritisation']['framework'] == 'wsjf' else 'effort'
     candidate = day.get('discovery_candidates', {}).get(item)
@@ -471,7 +478,8 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
         if chosen and not tracker.ticket(current, item):
             current.setdefault('tickets', {})[item] = chosen
     state._write_state(admit, root, reserved=False, kind='plan.added',
-                       payload={'item': item, 'source': candidate.get('source', 'discovery')})
+                       payload={'item': item, 'source': candidate.get('source', 'discovery'),
+                                'flags': {item: candidate['flags']}})
     if status == 'skipped':
         state.append_event('tracker.skipped', {'item': item, 'tier': candidate['tier']}, root)
     return {'action': 'build next', 'item': item}

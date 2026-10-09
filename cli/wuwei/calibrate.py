@@ -372,8 +372,13 @@ def profile(checkout, repo):
         (f['value'], 'deploy target in ' + f['source'].rpartition(':')[0])
         for f in findings if f['kind'] == 'environment'))
     facts['boundary'] = dict(sorted(f['value'] for f in findings if f['kind'] == 'boundary'))
-    facts['merge_deploys'] = bool(facts['deploy_workflows'] or facts['deploy_deny'] or facts['never_auto'])
+    facts['merge_deploys'] = deploys(facts)
     return {'findings': findings, 'facts': facts}
+
+
+def deploys(facts):
+    """Whether the measured facts say a merge deploys: a deploy workflow, deny command or never-auto path."""
+    return bool(facts['deploy_workflows'] or facts['deploy_deny'] or facts['never_auto'])
 
 
 def drift_facts(facts):
