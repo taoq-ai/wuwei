@@ -129,12 +129,20 @@ def _check(payload):
         existing = brief.seats(data).get(logged['name'])
         build = data.get('builds', {}).get(logged['item'])
         resume = inputs.get('resume')
-        continuing = (resume and existing and existing['status'] == 'stopped'
-                      and (build and build['status'] == 'ready'
-                           and build['action']['action'] == 'continue'
-                           and build.get('agent_id') == resume
-                           and build.get('seat') == logged['name']
-                           if role == 'builder' else existing.get('agent_id') == resume))
+        stopped = bool(existing) and existing['status'] == 'stopped'
+        # #614: Claude Code's Agent has no resume, so a fresh launch without one binds the
+        # pending continue of the brief's own stopped seat; with resume it must still match.
+        if role == 'builder':
+            continuing = (stopped and bool(build) and build['status'] == 'ready'
+                          and build['action']['action'] == 'continue'
+                          and build.get('seat') == logged['name']
+                          and (not resume or build.get('agent_id') == resume))
+        elif resume or not stopped:
+            continuing = stopped and existing.get('agent_id') == resume
+        else:
+            from wuwei import dispatch  # lazy: hook path (#346), only for a brief reuse
+            continuing = dispatch.delta_due(
+                data, logged['item'], logged['role'].removeprefix('sentinel-'), logged['name'])
         if role == 'builder' and resume and not continuing:
             raise brief.Refused('resume does not match the stopped builder; resume the builder named by bin/wuwei build next <item>')
         if not continuing and (logged['name'] in brief.seats(data) or any(
@@ -191,7 +199,7 @@ def _check(payload):
         }
         from wuwei.commands import build as build_command
         if role == 'builder':
-            build_command.started(data, logged['item'], logged['name'])
+            build_command.started(data, logged['item'], logged['name'], fresh=continuing and not resume)
     state._write_state(reserve, root, reserved=False, kind='seat launched', payload=event)
     return 0, ''
 

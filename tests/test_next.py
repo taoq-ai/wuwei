@@ -560,6 +560,13 @@ def test_build_rows_return_the_build_loop_action(root, capsys, monkeypatch):
     monkeypatch.setattr(build, 'next_action', lambda item, root=None: check)
     found = row(capsys)[1]
     assert (found['command'], found['then']) == ('wuwei build check A', next_command.THEN['background'])
+    # #614: a continue is a fresh Agent with the returned prompt; resume only where offered
+    resume = {**launch, 'action': 'continue', 'resume': 'agent-1', 'feedback': 'f'}
+    monkeypatch.setattr(build, 'next_action', lambda item, root=None: resume)
+    found = row(capsys)[1]
+    assert found['then'] == next_command.THEN['continue']
+    assert 'fresh Agent' in found['then'] and 'resume' in found['then']
+    assert 'fresh Agent' in next_command.THEN['set']
     # done moves the item on: the day is asked again in the same call
     answers = iter([{'action': 'done'}])
 

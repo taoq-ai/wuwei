@@ -214,8 +214,9 @@ def open_fix(item, feedback, *, root):
     return next_action(item, brief, record['worktree'], root=root)
 
 
-def started(data, item, name):
-    """Bind a Claude iteration inside the existing seat reservation transaction."""
+def started(data, item, name, fresh=False):
+    """Bind a Claude iteration inside the existing seat reservation transaction. fresh (#614):
+    a new agent continues the round, so the replaced agent's id and transcript binding go."""
     record = data.get('builds', {}).get(item)
     if record is None:
         return
@@ -223,6 +224,9 @@ def started(data, item, name):
         raise ValueError(f'build is not ready for a seat; run bin/wuwei build next {item} for the current step (bin/wuwei why {item} explains it)')
     if data['seats'][name]['brief'] != record['brief']:
         raise ValueError(f'seat brief differs from active build; start the seat with the brief that bin/wuwei build next {item} returned')
+    if fresh:
+        record['replaced'] = record.pop('agent_id', None)
+        record.pop('completion', None)
     record.update(status='running', seat=name, started_at=workspace.now().isoformat())
 
 
@@ -288,6 +292,8 @@ def stopped(item, name, payload, *, root):
     agent_id = payload.get('agent_id')
     if not isinstance(agent_id, str) or not agent_id.strip():
         raise ValueError(f'SubagentStop omitted builder agent_id; {PAYLOAD}')
+    if agent_id == record.get('replaced'):
+        return True  # #614: the replaced agent's late stop; the fresh launch records the round
     if record.get('agent_id') and record['agent_id'] != agent_id:
         raise ValueError(f'SubagentStop agent_id differs from resumed builder; {PAYLOAD}')
     from wuwei.brief import last_turn
