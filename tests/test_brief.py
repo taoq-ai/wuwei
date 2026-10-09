@@ -326,7 +326,7 @@ def set_seats(seats, root):
     state._write_state(lambda data: data.update(seats=seats), root, reserved=False)
 
 
-@pytest.mark.parametrize('role', ['quality', 'arch', 'security', 'sentinel-quality'])
+@pytest.mark.parametrize('role', ['quality', 'arch', 'security', 'goal', 'sentinel-quality'])
 def test_gate_brief_accepts_dispatch_role_names(day, monkeypatch, role):
     assert brief(monkeypatch, 'Review it.', role, 'X', 'g', '--gate', '--worktree', 'tree') == 0
     charter = role if role.startswith('sentinel-') else 'sentinel-' + role

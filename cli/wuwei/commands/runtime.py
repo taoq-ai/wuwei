@@ -29,7 +29,7 @@ def run(args, *, root=None):
         root = workspace.find_workspace(root)
         config = workspace.load_config(root)
         if args.action == 'dispatch':
-            role = 'sentinel-' + args.role if args.role in dispatch.ROLES else args.role
+            role = 'sentinel-' + args.role if args.role in dispatch.GATE_ROLES else args.role
             selected = registry.runtime_config(role, config, root)
             adapter = registry.load('runtime', selected)
             response = adapter.dispatch(role, args.brief, args.worktree, args.write, root=root)
