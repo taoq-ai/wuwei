@@ -123,7 +123,7 @@ def _interview(args):
         print(f'wuwei calibrate: {exc}', file=sys.stderr)
         return UNRUN
     # #529: a workspace answer the owner gave on its card writes its config keys now.
-    pending = False
+    keys, charters = [], False  # #604: the Next line names only what the card path did not write
     allowlist = []
     for qid, answer in picked.items():
         row = interview.question(qid)
@@ -149,12 +149,17 @@ def _interview(args):
                                     ['.'.join(map(str, (*path, key))) for path, key, _ in settings], qid)
             if code:
                 return code
-        pending = pending or not carded or any(
+        if not carded:
+            keys += ['.'.join(map(str, (*path, key))) for path, key, _ in interview.settings({qid: answer}, config)]
+        charters = charters or row['scope'] == 'workspace' and any(
             name in (*interview.ROLES, 'voice') for name in interview.effects(qid, answer))
     print('\n'.join([*interview.describe(answers, config), *allowlist]))
-    if pending:
-        print('Next: run bin/wuwei config promote in a host terminal for the config keys, '
-              'then bin/wuwei promote for the charter and voice proposals.')
+    promote = 'bin/wuwei promote for the charter and voice proposals.'
+    if keys:
+        print(f"Next: run bin/wuwei config promote --keys {' '.join(dict.fromkeys(keys))} in a host terminal "
+              'for these config keys' + (f', then {promote}' if charters else '.'))
+    elif charters:
+        print(f'Next: run {promote}')
     return CLEAN
 
 

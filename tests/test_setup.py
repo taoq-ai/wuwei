@@ -1137,6 +1137,13 @@ def test_list_set_appends(workspace):
         *SCHEMA['outward']['tool_patterns'][1], {'pattern': 'mcp__acme__send', 'channel': 'slack'}]
 
 
+def test_empty_list_set_writes_empty(workspace, capsys):
+    # #604: '[]' empties a list instead of adding nothing to the effective (default) list.
+    assert config_set('docs.publish', '[]', Confirm()) == 0
+    assert '+publish = []' in capsys.readouterr().out
+    assert load_config(workspace)['docs']['publish'] == []
+
+
 def test_list_set_replace(workspace):
     assert config_set('outbound.sensitive_keywords', '["C1"]', Confirm(), replace=True) == 0
     assert load_config(workspace)['outbound']['sensitive_keywords'] == ['C1']

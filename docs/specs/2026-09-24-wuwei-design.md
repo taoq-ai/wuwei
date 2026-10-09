@@ -1966,6 +1966,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I22 | A record keeps a two-way door only when the CLI knows the undo for its action and that undo ran once in this workspace; a message never does | `undo.measured` for every class and no class with an empty ledger and a full one; a seat's Write to `memory/rehearsals.json` | #557; the pinned cases stay in `tests/test_undo.py` |
 | I23 | A target the workspace never touched goes to the owner once, and only an owner answer, config or the seed clears it | `decision route` on a two-way Routine record naming a new repository under autonomous; a seat's Write to `memory/targets.json` | #556; the pinned cases stay in `tests/test_novelty.py` |
 | I24 | Every guard reads the same people, channels and connectors from the register as from `config.toml` | `graph.drift` of the register built from the fixture's people, channel classes and connector modes | #552; the guard-decision equality stays in `tests/test_graph.py` |
+| I28 | A stored interview answer never overwrites a key present in `config.toml` with a value other than its default unless `config promote --keys` names it | an autonomy answer recorded with `autonomy.mode = "supervised"` present: the promote proposal keeps it and lists it, `config promote --keys autonomy.mode` applies it | #604; measured repository facts and `setup` apply as before |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

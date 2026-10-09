@@ -687,6 +687,22 @@ def settle(raw, settings):
     return additions, edits
 
 
+def kept(raw, settings):
+    """#604: (settings to apply, skipped (dotted key, current value)): a stored answer never
+    overwrites a key present in raw that the owner changed from its default and the answer would
+    change; config promote --keys names it."""
+    present = tomllib.loads(raw)
+    apply_, skipped = [], []
+    for path, key, value in settings:
+        table, node = _table(present, path), configtext.declared((*path, key))
+        if (table is not None and key in table and settle(raw, [(path, key, value)])[0]
+                and (node is None or table[key] != workspace._default(node))):
+            skipped.append(('.'.join(map(str, (*path, key))), table[key]))
+        else:
+            apply_.append((path, key, value))
+    return apply_, skipped
+
+
 def propose(raw, results, settings=()):
     """Return the proposed config text, its diff and the hand edits; owner settings apply last."""
     additions, edits = proposal(raw, [(r['index'], proposed(r)) for r in results])

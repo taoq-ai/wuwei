@@ -1222,6 +1222,18 @@ def test_docs_row_markdown(ws):
     assert found['status'] == 'ok'
 
 
+def test_docs_publish_fix_runs_as_printed(ws, capsys):
+    # #604: the printed fix empties docs.publish, and the row is ok afterwards.
+    import shlex
+    from wuwei.__main__ import main
+    (ws.root / 'repo/docs').mkdir()
+    found = docs_row(ws, '[docs]\nsystem = "markdown"\n')
+    assert found['status'] == 'warn'
+    ws.mp.setattr(integrity, '_host_confirm', lambda *args, **kwargs: True)
+    assert main(shlex.split(found['fix'])[1:]) == 0, capsys.readouterr()
+    assert row(doctor.diagnose(), 'docs')['status'] == 'ok'
+
+
 def test_tracker_row(ws):
     from fakes.tracker import Fake
     assert row(doctor.diagnose(), 'tracker')['status'] == 'ok'

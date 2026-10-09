@@ -56,6 +56,18 @@ def test_settle_only_grows_the_deploy_deny_list():
     assert tomllib.loads(text)['deploy']['deny'] == ['make deploy*', 'npm publish*'] and edits == []
 
 
+def test_kept_skips_a_present_key_the_answer_would_change():
+    # #604: a stored answer never overwrites a present differing key.
+    raw = TWO + '[outbound]\ndefault_tier = "ask"\nlearn = "auto"\n\n[deploy]\ndeny = ["make deploy*"]\n'
+    tier, learn, absent = (('outbound',), 'default_tier', 'send'), (('outbound',), 'learn', 'auto'), (
+        ('autonomy',), 'mode', 'autonomous')
+    deny = (('deploy',), 'deny', ['make deploy*'])
+    assert calibrate.kept(raw, [tier, learn, absent, deny]) == (
+        [learn, absent, deny], [('outbound.default_tier', 'ask')])
+    grow = (('deploy',), 'deny', ['npm publish*'])
+    assert calibrate.kept(raw, [grow]) == ([], [('deploy.deny', ['make deploy*'])])
+
+
 def test_propose_keeps_calibrate_and_interview_deny_patterns():
     raw = TWO + '[deploy]\nworkflows = []\ndeny = []\n'
     results = [{'index': 0, 'facts': calibrate.profile(FIXTURES / 'node', {'name': 'acme/one'})['facts'],
@@ -492,6 +504,68 @@ def test_answers_from_the_widget_path(offline, capsys):
         main('calibrate', '--questions', '--answer', 'phone=Nothing')
 
 
+PROMOTE_KEYS = 'Next: run bin/wuwei config promote --keys ' + ' '.join(AUTONOMY_KEYS) + (
+    ' in a host terminal for these config keys')
+CHARTERS = 'bin/wuwei promote for the charter and voice proposals.'
+
+
+def test_answer_next_line_names_its_keys(offline, capsys, monkeypatch):
+    # #604: the Next line names only this answer's keys, and the promote it prints touches only them.
+    from wuwei import integrity
+
+    monkeypatch.setattr(integrity, '_host_confirm', lambda *a, **k: True)
+    assert main('calibrate', '--answer', 'verbosity=Full') == 0
+    capsys.readouterr()
+    assert main('calibrate', '--answer', 'autonomy=Autonomous') == 0
+    out = capsys.readouterr().out
+    assert out.splitlines()[-1] == PROMOTE_KEYS + '.' and out.count('Next:') == 1
+    before = tomllib.loads((offline / '.wuwei/config.toml').read_text())
+    assert main('config', 'promote', '--keys', *AUTONOMY_KEYS) == 0, capsys.readouterr().err
+    after = tomllib.loads((offline / '.wuwei/config.toml').read_text())
+    assert after['autonomy'] == {'mode': 'autonomous'} and after['outbound']['default_tier'] == 'send'
+    assert after.get('owner') == before.get('owner') and after['repos'] == before['repos']
+    assert not (offline / '.wuwei/calibration.json').exists()
+
+
+def test_charter_and_mixed_answers_name_their_steps(offline, capsys):
+    assert main('calibrate', '--answer', 'interrupt=Batch') == 0
+    out = capsys.readouterr().out
+    assert out.splitlines()[-1] == 'Next: run ' + CHARTERS and 'config promote' not in out
+    assert main('calibrate', '--answer', 'autonomy=Autonomous', '--answer', 'interrupt=Batch') == 0
+    assert capsys.readouterr().out.splitlines()[-1] == PROMOTE_KEYS + ', then ' + CHARTERS
+
+
+def test_carded_answer_has_no_next_line(root, capsys, monkeypatch):
+    from wuwei import sessions
+
+    monkeypatch.setattr(sessions, 'card_answered', lambda *a: True)
+    assert main('calibrate', '--answer', 'verbosity=Full') == 0, capsys.readouterr().err
+    assert 'Next:' not in capsys.readouterr().out
+    assert tomllib.loads((root / '.wuwei/config.toml').read_text())['owner']['verbosity']['default'] == 'full'
+
+
+def test_promote_keys_reports_unknown_and_nothing(offline, capsys, monkeypatch):
+    from wuwei import integrity
+
+    def ask(*a, **k):
+        raise AssertionError('nothing to change: no confirmation')
+    monkeypatch.setattr(integrity, '_host_confirm', ask)
+    raw = (offline / '.wuwei/config.toml').read_text()
+    assert main('config', 'promote', '--keys', 'owner.name') == 1
+    assert ("Not in today's answers: owner.name; use a key listed under Interview answers, or answer its "
+            'question first: bin/wuwei calibrate --questions\n') in capsys.readouterr().out
+    assert (offline / '.wuwei/config.toml').read_text() == raw
+    monkeypatch.setattr(integrity, '_host_confirm', lambda *a, **k: True)
+    assert main('calibrate', '--answer', 'verbosity=Full') == 0
+    assert main('config', 'promote', '--keys', 'owner.verbosity.default') == 0
+    monkeypatch.setattr(integrity, '_host_confirm', ask)
+    capsys.readouterr()
+    assert main('config', 'promote', '--keys', 'owner.verbosity.default') == 0
+    assert capsys.readouterr().out.startswith('No config.toml changes\n')
+    with pytest.raises(SystemExit, match='2'):
+        main('config', 'promote', '--keys', 'owner.name', '--measure')
+
+
 def test_widgets_come_from_the_table_and_pass_the_question_guard(offline, capsys):
     from wuwei.guards.decision import check_question
 
@@ -588,6 +662,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     summary = out.split('Interview answers:\n', 1)[1]
     for line in lines:
         assert line in summary, line
+    assert 'Skipped' not in out  # #604: a key at its shipped default is not owner-set
     parsed = tomllib.loads((root / '.wuwei/config.toml').read_text())
     repo = parsed['repos'][0]
     assert repo['merge']['auto'] is True and repo['merge']['soak_minutes'] == 30
@@ -601,6 +676,42 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     assert parsed['deploy']['deny'] == ['npm publish*', 'twine upload*', 'cargo publish*', 'gem push*']
     assert [r['status'] for r in promotion.promote(root)] == ['landed'] * 4
     assert main('config', 'check') == 0, capsys.readouterr()
+
+
+def test_answer_applies_over_a_shipped_default(root, capsys, monkeypatch):
+    # #604: a fresh init ships owner.verbosity.default = "brief"; the answer applies through plain promote.
+    from types import SimpleNamespace
+    from wuwei.commands import config as command
+
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text() + '[owner.verbosity]\ndefault = "brief"\n')
+    monkeypatch.setattr(calibrate, 'survey', lambda *a, **k: [])
+    assert main('calibrate', '--answer', 'verbosity=Full') == 0
+    capsys.readouterr()
+    assert command.promote(SimpleNamespace(), confirm=lambda digest, **k: True) == 0
+    assert 'Skipped' not in capsys.readouterr().out
+    assert tomllib.loads(path.read_text())['owner']['verbosity']['default'] == 'full'
+
+
+def test_promote_keeps_a_key_the_owner_set_after_the_answer(root, capsys, monkeypatch):
+    # #604: the owner's later "ask" survives promote and is listed with the command that applies the answer.
+    from types import SimpleNamespace
+    from wuwei.commands import config as command, setup
+
+    monkeypatch.setattr(calibrate, 'survey', lambda *a, **k: [])
+    yes = lambda digest, **k: True  # noqa: E731
+    assert main('calibrate', '--answer', 'autonomy=Autonomous') == 0
+    assert setup.set_value(SimpleNamespace(key='outbound.default_tier', value='"ask"', replace=False,
+                                           from_card=None), confirm=yes) == 0
+    capsys.readouterr()
+    assert command.promote(SimpleNamespace(), confirm=yes) == 0
+    assert ('Skipped outbound.default_tier: kept "ask"; to apply the answer run '
+            'bin/wuwei config promote --keys outbound.default_tier\n') in capsys.readouterr().out
+    parsed = tomllib.loads((root / '.wuwei/config.toml').read_text())
+    assert parsed['outbound'] == {'default_tier': 'ask', 'learn': 'auto'} and parsed['autonomy'] == {
+        'mode': 'autonomous'}
+    assert command.promote(SimpleNamespace(keys=['outbound.default_tier']), confirm=yes) == 0
+    assert tomllib.loads((root / '.wuwei/config.toml').read_text())['outbound']['default_tier'] == 'send'
 
 
 def test_config_promote_refuses_a_forged_interview(root, capsys, monkeypatch):
