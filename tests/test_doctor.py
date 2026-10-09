@@ -387,7 +387,7 @@ def test_git_hooks_row_skip_mode(ws):
     (REPO.replace('"repo"', '"plain"'), 'acme/widget git', 'fail', None),
     (REPO.replace('"main"', '"trunk"'), 'acme/widget branch', 'fail', None),
     (REPO.replace('identity = { name = "Ada", email = "ada@example.com" }\n', ''),
-     'acme/widget identity', 'warn', None),
+     'acme/widget identity', 'fail', None),
     (REPO.replace('["ruff check ."]', '[]'), 'acme/widget fast_checks', 'warn', 'config-promote'),
 ])
 def test_workspace_repository_rows(ws, repo, name, status, apply):
@@ -399,8 +399,23 @@ def test_workspace_repository_rows(ws, repo, name, status, apply):
     if name.endswith('fast_checks'):
         assert found['fix'].startswith(W('config promote --measure'))
         assert "bin/wuwei config set repos.0.fast_checks '[\"<command>\"]'" in found['fix']
-    if name.endswith('identity'):
-        assert 'repos.0.identity.name = "Ada"' in found['fix']
+    if name.endswith('identity'):  # #605: the guard's reason; the fix names what git resolves
+        assert found['value'] == 'repos.0.identity is empty or malformed'
+        assert found['fix'] == W('config set repos.0.identity \'{name = "Ada", email = "ada@example.com"}\'')
+
+
+@pytest.mark.parametrize('identity', ['', 'identity = { name = "<name>", email = "<email>" }\n'])
+def test_identity_row_without_git_identity_is_the_guards_answer(ws, identity):
+    # #605: an empty or malformed identity with no git identity either: doctor gives the
+    # guard's reason and fix word for word.
+    from wuwei.guards import commit_push
+    from wuwei.registry import Result
+    config(ws.root, '[adapters]\ncode_host = "github"\n'
+           + REPO.replace('identity = { name = "Ada", email = "ada@example.com" }\n', identity))
+    ws.vcs.results['identity'] = Result(1, reason='git.identity: no user.name')
+    found = row(doctor.diagnose(), 'acme/widget identity')
+    reason, fix = commit_push.unset_identity({'name': '', 'email': ''}, 0)
+    assert (found['status'], found['value'], found['fix']) == ('fail', reason, W(fix.removeprefix('bin/wuwei ')))
 
 
 @pytest.mark.parametrize('present', [True, False])

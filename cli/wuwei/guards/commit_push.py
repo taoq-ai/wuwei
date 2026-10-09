@@ -1,6 +1,7 @@
 """Commit and push policy shared by tool guards and native Git hooks."""
 
 from pathlib import Path
+import json
 import os
 from fnmatch import fnmatchcase
 import re
@@ -19,6 +20,33 @@ def _identity(value):
             for key in ('name', 'email')):
         raise ValueError(f'missing or malformed identity; {DAMAGED}')
     return value['name'], value['email']
+
+
+def unset_identity(identity, index='<n>', found=None):
+    """#605: the one rule doctor's identity row and this guard share. None when
+    repos.<index>.identity is a valid identity, else (reason, fix); found is the identity git
+    resolves (doctor reads the checkout, the guard the commit context it already has), shown
+    in the fix when it is valid, else placeholders."""
+    try:
+        _identity(identity)
+        return None
+    except ValueError:
+        pass
+    try:
+        name, email = map(json.dumps, _identity(found))
+    except ValueError:
+        name, email = '"<name>"', '"<email>"'
+    return (f'repos.{index}.identity is empty or malformed',
+            f'bin/wuwei config set repos.{index}.identity '
+            + shlex.quote(f'{{name = {name}, email = {email}}}'))
+
+
+def configured_identity(repo, root, found=None):
+    """Raise the shared reason and fix when the matched repository's identity is not valid."""
+    if unset_identity(repo['identity']):
+        from wuwei import workspace
+        index = workspace.load_config(root)['repos'].index(repo)
+        raise ValueError('; '.join(unset_identity(repo['identity'], index, found)))
 
 
 def identity_check(expected, actual, head=None):
@@ -438,6 +466,7 @@ def check(payload):
             repo, actual, vcs, *early = context(cwd, settings, env, root,
                                                 None if early[0] else (remote, refs))
             expected = repo['identity']
+            configured_identity(repo, root, actual.get('author'))
             _identity(expected)
             # Explicit mismatching overrides are refused even if another override wins.
             for key, value in settings.items():
