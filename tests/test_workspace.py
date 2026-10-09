@@ -190,7 +190,7 @@ def test_config_defaults_and_independence(tmp_path):
                     'create': ['bugs', 'triage', 'follow-ups'],
                     'log': ['decisions', 'progress', 'verdicts', 'pr', 'close'],
                     'auto': ['progress', 'pr', 'close'], 'max_per_item_per_day': 10,
-                    'project': '', 'board': ''},
+                    'project': '', 'board': '', 'auth': 'token'},
         'docs': {'system': 'none', 'required_tiers': ['standard', 'full'], 'space': '', 'root': 'docs',
                  'publish': ['report', 'retro'], 'auto': [], 'strict_close': True},
         'chat': {'identity': 'connector'},
@@ -1333,7 +1333,7 @@ def test_tracker_hygiene_keys(tmp_path):
         'create': ['bugs', 'triage', 'follow-ups'],
         'log': ['decisions', 'progress', 'verdicts', 'pr', 'close'],
         'auto': ['progress', 'pr', 'close'], 'max_per_item_per_day': 10,
-        'project': '', 'board': ''}
+        'project': '', 'board': '', 'auth': 'token'}
     for text in ('skip_tiers = ["LIGHT"]', 'auto = ["merge"]', 'log = ["items"]',
                  'create = ["items"]', 'max_per_item_per_day = 0'):
         write_config(tmp_path, f'[tracker]\n{text}\n')

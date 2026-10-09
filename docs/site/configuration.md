@@ -41,6 +41,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `tracker.max_per_item_per_day` | `10` | Comments per ticket per day; the last allowed one folds the rest into one comment. |
 | `tracker.project` | `""` | Where new tickets go: a Linear team ID (empty uses `backlog_filter`), a Jira project key (required for Jira) or a GitHub `owner/repo` (empty uses the first repository). |
 | `tracker.board` | `""` | GitHub Projects board as `owner/number`; transitions set its Status field. Empty uses a label for in review and closes the issue for done. A board or project outside `outbound.code_host_orgs` makes every tracker write a draft. |
+| `tracker.auth` | `"token"` | How `tracker.github` authenticates: `token` uses `GITHUB_TRACKER_TOKEN`; `gh` uses your gh login when that token is unset (the token is used first when set). The gh login is broad, so the tracker path gives up least privilege; seats still reach the tracker only through `bin/wuwei`. See [GitHub tracker through your gh login](adapters.md#github-tracker-through-your-gh-login). |
 | `profile` | `"strict"` | Guard profile: `strict` or `standard`. Standard warns for outward text lint. |
 | `guards.mode` | `"enforce"` | Retired. `init --upgrade` and `doctor --fix` rewrite `"shadow"` to `security.posture = "observe"` (keeping `guards.shadow_since` and `guards.shadow_days`) and remove `"enforce"`. Until then `"shadow"` still means `observe`, and `config check` and `doctor` show `posture: observe (from guards.mode = "shadow", deprecated; run doctor --fix)`. |
 | `guards.shadow_days` | `7` | Days in the `observe` posture before one status nudge asks you to switch to `guarded` or raise this number. |
@@ -700,8 +701,12 @@ contents are preserved by upgrade. Use literal `KEY=value` lines; process
 environment values take precedence. The CLI, scoped hooks and watch all load the
 file before adapter calls. Restart a running watch after editing the file.
 
-`wuwei config check` reports credential names and set/missing status per effective
-adapter. It returns 1 for missing requirements and 2 when a check cannot run.
+`wuwei config check` reports credential names and set, missing or `malformed (<why>)`
+status per effective adapter, never the value: a token with whitespace, a path-like value or
+shell characters is malformed (a pasted command, for example). It returns 1 for missing or
+malformed requirements and 2 when a check cannot run. An HTTP adapter the provider refuses
+reports `HTTP <status>` and a one-line hint (`HTTP 401` credential rejected, `HTTP 403` no
+access, `HTTP 404` not found or not visible to the credential), which doctor shows.
 With an inbound adapter it adds a `Control plane:` section: `control_plane.owner` is
 set, missing or invalid (the last two return 1; the pin is never printed), and
 `WUWEI_TOTP_SECRET` is set or missing, which is information only.

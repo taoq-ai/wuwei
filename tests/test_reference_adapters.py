@@ -179,6 +179,8 @@ def test_slack_sent_replay(monkeypatch):
     assert slack.sent('C1', ['U0OWNER']).data == [{'sender': 'U0OWNER', 'text': 'done'}]
     result = slack.sent('C1', ['U0OWNER'])
     assert result.exit == 2 and 'rate limited' in result.reason and '30' in result.reason
+    replay(monkeypatch, HTTPError('https://slack.com/api/conversations.history', 403, 'private', {}, None))
+    assert 'HTTP 403: credential has no access' in slack.sent('C1', ['U0OWNER']).reason
 
 
 def test_greptile_replay(monkeypatch):
@@ -254,6 +256,19 @@ def test_http_failure_and_timeout_are_unmeasured(monkeypatch):
         result = linear.history('ABC-1')
         assert result.exit == 2 and result.data is None
         assert 'private-key' not in result.reason
+
+
+@pytest.mark.parametrize('code, text', [
+    (401, 'HTTP 401: credential rejected'), (403, 'HTTP 403: credential has no access'),
+    (404, 'HTTP 404: not found or not visible'), (429, 'HTTP 429: rate limited'),
+    (500, 'HTTP 500: provider error'), (503, 'HTTP 503: provider error'), (418, 'HTTP 418')])
+def test_http_failure_names_the_status_and_a_hint(monkeypatch, code, text):
+    linear = importlib.import_module('adapters.tracker.linear')
+    monkeypatch.setenv('LINEAR_API_KEY', 'private-key')
+    replay(monkeypatch, HTTPError('https://api.linear.app/graphql', code, 'private-key body', {}, None))
+    result = linear.history('ABC-1')
+    assert result.exit == 2 and result.reason.startswith(f'linear.history: could not run: {text}')
+    assert 'private-key' not in result.reason and '\n' not in result.reason
 
 
 def test_greptile_stale_review_is_unmeasured(monkeypatch):
