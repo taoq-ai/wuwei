@@ -291,6 +291,10 @@ def _pr_context(context, root, config):
         return FINDINGS, ''
     host = registry.load('code_host', config)
     result = _result(host.pr(ref, root=root))
+    # #606: a bare owner/repo#N the pulls endpoint 404s on is an issue: no PR context.
+    if (result.exit == UNRUN and match[2] and 'pull_number' not in context and
+            re.search(r'\(HTTP 404\)', str(result.reason))):
+        return FINDINGS, ''
     if result.exit:
         return result.exit, ''
     pr = result.data

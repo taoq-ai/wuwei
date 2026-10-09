@@ -203,6 +203,23 @@ def test_pr_evidence_failures(configured, operation, result, expected):
     assert tier(configured, 'The cache is thread safe.', {'ref': 'acme/app#7'}, 'code_host') == expected
 
 
+# #606: a bare owner/repo#N the pulls endpoint does not know is an issue reference.
+NOT_FOUND = Result(2, None, 'github.pr: could not run: gh exited 1 (acme/app): gh: Not Found (HTTP 404)')
+
+
+@pytest.mark.parametrize('context,result,expected', [
+    ({'ref': 'acme/app#7'}, NOT_FOUND, (1, 'draft')),
+    ({'owner': 'acme', 'repo': 'app', 'issue_number': 7}, NOT_FOUND, (1, 'draft')),
+    ({'ref': 'https://github.com/acme/app/pull/7'}, NOT_FOUND, (2, 'draft')),
+    ({'owner': 'acme', 'repo': 'app', 'pull_number': 7}, NOT_FOUND, (2, 'draft')),
+    ({'ref': 'acme/app#7'}, Result(2, None, 'github.pr: could not run: gh exited 1 (acme/app): '
+                                            'gh: Bad credentials (HTTP 401)'), (2, 'draft')),
+])
+def test_issue_reference_reads_without_pr_context(configured, context, result, expected):
+    configured[2].results['pr'] = result
+    assert tier(configured, 'Thanks', context, 'code_host') == expected
+
+
 @pytest.mark.parametrize('code', [0, 1, 2])
 def test_commit_resolution_preserved(configured, code):
     configured[1].results['resolve'] = Result(code, {'sha': 'abc1234' + '0' * 33})
