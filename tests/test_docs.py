@@ -1601,3 +1601,12 @@ def test_dora_keys_documented():
     for key in telemetry.METRICS:
         assert f'`{key}`' in table, key
     assert '(docs/site/concepts.md#dora-keys)' in (ROOT / 'README.md').read_text()
+
+
+def test_steward_trigger_documented():
+    # #624: the 250 default, the wait for the fix round, and the report section.
+    row = next(line for line in (SITE / 'configuration.md').read_text().splitlines()
+               if line.startswith('| `steward.every_tool_calls`'))
+    assert '`250`' in row and 'waits for the round to end' in row
+    assert 'steward: waits for <items> to finish the fix round' in (SITE / 'reference.md').read_text()
+    assert '`## Steward runs`' in (SITE / 'daily.md').read_text()

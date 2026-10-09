@@ -206,6 +206,9 @@ def run(root=None, *, trigger='sweep'):
         if prior:
             print(f"steward: close review already ran today (brief {prior[0].get('brief')})")
             return 0
+    elif waiting := state.mid_round(state.read_state(root)):
+        print(f"steward: waits for {', '.join(waiting)} to finish the fix round")
+        return 0
     notes = review(root)
     queue = decision_queue(root)
     measured = metrics.collect(root)

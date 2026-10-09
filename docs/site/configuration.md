@@ -175,7 +175,7 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `listen.poll_seconds` | `60` | Interval between listener polls of the inbound source. The listener ticks at least every 30 s to probe owned PRs. |
 | `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start and in `wuwei status`. |
 | `responder.enabled` | `true` | Kill switch: when `false` the listener still stores events but does not wake the planner or handle commands. |
-| `steward.every_tool_calls` | `50` | Completed tool calls between steward reviews. `wuwei next` launches only the newest steward brief, and offers neither a due review nor a launch while a steward seat runs; the due review waits until that seat stops. |
+| `steward.every_tool_calls` | `250` | Completed tool calls between steward reviews. `wuwei next` launches only the newest steward brief, and offers neither a due review nor a launch while a steward seat runs; the due review waits until that seat stops. While an item is in `fix` or `delta`, a tool-call or sweep review waits for the round to end; the close review never waits. |
 | `steward.loop_window_hours` | `4` | Window, in hours, over which a steward review counts an item's exchanges for a negotiation loop. |
 | `steward.loop_threshold` | `9` | Exchanges in the window above which an item raises one `negotiation.loop` nudge a day; a second fix round today raises it too. |
 

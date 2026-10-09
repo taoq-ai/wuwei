@@ -394,3 +394,62 @@ def test_concurrent_reviews_record_one_loop(loop):
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(lambda _: steward.review(root), range(2)))
     assert len(loops(root)) == 1
+
+
+@pytest.mark.parametrize('config, dues', [('', [250]), ('[steward]\nevery_tool_calls = 100\n', [100, 200])])
+def test_default_interval_is_250_tool_calls(root, config, dues):
+    from wuwei import steward, watch
+
+    (root / '.wuwei/config.toml').write_text(config)
+    path = workspace.day_dir(root) / 'events.jsonl'
+    for count in range(1, 251):
+        steward.maybe_run_for_tool_calls(count, root)
+        rows = watch.records(path)
+        if rows and rows[-1]['kind'] == 'steward.due':
+            state.append_event('steward.run', {'trigger': 'tool-calls', 'tool_calls': count}, root)
+    assert [row['payload']['tool_calls'] for row in watch.records(path)
+            if row['kind'] == 'steward.due'] == dues
+
+
+def at_phase(root, phase):
+    from test_next import day
+
+    day(root, items={'A': {'phase': phase, 'status': 'running'}})
+
+
+@pytest.mark.parametrize('phase', ['fix', 'delta'])
+@pytest.mark.parametrize('trigger', ['sweep', 'tool-calls'])
+def test_steward_waits_for_the_fix_round(root, monkeypatch, capsys, phase, trigger):
+    from wuwei import registry, steward, watch
+
+    at_phase(root, phase)
+    monkeypatch.setattr(registry, 'load', lambda *args: pytest.fail('steward launched mid-round'))
+    assert steward.run(root, trigger=trigger) == 0
+    assert capsys.readouterr().out == 'steward: waits for A to finish the fix round\n'
+    day = workspace.day_dir(root)
+    assert not list((day / 'briefs').glob('steward-*.md'))
+    assert not any(row['kind'] == 'steward.run' for row in watch.records(day / 'events.jsonl'))
+
+
+def test_close_review_runs_mid_round(root, monkeypatch):
+    from wuwei import registry, steward, watch
+
+    at_phase(root, 'fix')
+    adapter = SimpleNamespace(dispatch=lambda *args, **kwargs: registry.Result(0, {'id': 'one'}))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: adapter)
+    assert steward.run(root, trigger='close') == 0
+    assert [row['payload']['trigger'] for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
+            if row['kind'] == 'steward.run'] == ['close']
+
+
+@pytest.mark.parametrize('verbosity', ['', '[owner.verbosity]\nreport = "brief"\n'])
+def test_report_counts_steward_runs(root, verbosity):
+    from wuwei import report
+
+    (root / '.wuwei/config.toml').write_text(verbosity)
+    settings = 'Settings: steward.every_tool_calls = 250, watch.sweep_seconds = 7200'
+    assert f'## Steward runs\nnone\n{settings}' in report.build(root)
+    for trigger in ('tool-calls', 'sweep', 'sweep', 'close'):
+        state.append_event('steward.run', {'trigger': trigger, 'tool_calls': 0}, root)
+    assert (f'## Steward runs\n- close: 1\n- sweep: 2\n- tool-calls: 1\n{settings}'
+            in report.build(root))

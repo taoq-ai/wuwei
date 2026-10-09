@@ -210,6 +210,13 @@ def build(root=None):
         from wuwei.grants import ACTIONS
         lines += ['', '## Grants', *(f'- {ACTIONS[action][1]} run under grant {key}: {count}'
                                      for (key, action), count in sorted(used.items()))]
+    runs = Counter(str(row['payload'].get('trigger')) for row in watch.records(day / 'events.jsonl')
+                   if row['kind'] == 'steward.run')
+    config = workspace.load_config(root)
+    lines += ['', '## Steward runs', *([f'- {trigger}: {count}' for trigger, count in sorted(runs.items())]
+                                       or ['none']),
+              f"Settings: steward.every_tool_calls = {config['steward']['every_tool_calls']}, "
+              f"watch.sweep_seconds = {config['watch']['sweep_seconds']}"]
     if level == 'brief':
         return '\n'.join([*lines, ''])
     quality = measured['quality_by_band']

@@ -210,7 +210,7 @@ def test_config_defaults_and_independence(tmp_path):
         'sessions': {'stale_seconds': 3600,
                      'rotate_after': {'turns': 0, 'compactions': 0, 'clock': ''}},
         'listen': {'poll_seconds': 60, 'dead_seconds': 300}, 'responder': {'enabled': True},
-        'steward': {'every_tool_calls': 50, 'loop_window_hours': 4, 'loop_threshold': 9},
+        'steward': {'every_tool_calls': 250, 'loop_window_hours': 4, 'loop_threshold': 9},
         'decisions': {'wait_hours': 24, 'cruise': {'enabled': True, 'margin': 0.2, 'max_per_day': 20, 'undo_minutes': 60,
                                                       'promote_agreements': 10, 'promote_days': 14, 'shadow_days': 5, 'shadow_min': 5,
                                                       'budget_share': 0.1, 'budget_window_days': 14, 'burn_warn': 2.0,
@@ -1320,6 +1320,12 @@ def test_telemetry_config(tmp_path):
     write_config(tmp_path, '[telemetry]\nshare = "maybe"\n')
     with pytest.raises(ConfigError):
         load_config(tmp_path)
+
+
+def test_config_cache_version_bumped_for_steward_default():
+    # #624: steward.every_tool_calls default 250; a copy cached with 50 must go stale.
+    from wuwei import workspace
+    assert workspace.CONFIG_CACHE_VERSION >= 15
 
 
 def test_tracker_hygiene_keys(tmp_path):
