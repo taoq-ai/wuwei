@@ -473,3 +473,71 @@ def test_check_in_flight_marker_is_recorded_then_cleared(seat, monkeypatch, resu
     assert seen == [{'started_at': '2026-09-28T12:00:00+00:00', 'pid': os.getpid()}]
     assert any(e['kind'] == 'build.check_started' for e in events(day))
     assert 'check' not in state.read_state(root)['builds']['A']
+
+
+def no_checks(root, posture):
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('fast_checks=["test"]\n', 'fast_checks=[]\n')
+                      + f'[security]\nposture="{posture}"\n')
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded'])
+def test_empty_fast_checks_launch_below_strict(seat, posture):
+    root, _, _, day, _ = seat
+    no_checks(root, posture)
+    phase(root, 'planned')
+    assert build.next_action('A', root=root)['action'] == 'launch'
+    assert state.read_state(root)['builds']['A']['commands'] == []
+    started = [e for e in events(day) if e['kind'] == 'build.started']
+    assert started[-1]['payload']['checks'] == 'none configured'
+
+
+
+def test_empty_fast_checks_at_careful_pace_still_run_the_tests(seat):
+    root, _, _, day, _ = seat
+    no_checks(root, 'observe')
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('fast_checks=[]\n', 'fast_checks=[]\ntests="pytest"\n'))
+    phase(root, 'planned')
+    path = workspace.day_dir(root) / 'state.json'
+    path.write_text(json.dumps({**json.loads(path.read_text()), 'pace': 'careful'}))
+    build.next_action('A', root=root)
+    assert state.read_state(root)['builds']['A']['commands'] == ['pytest']
+    started = [e for e in events(day) if e['kind'] == 'build.started']
+    assert 'checks' not in (started[-1]['payload'] or {})
+
+def test_empty_fast_checks_check_completes_to_gate(seat):
+    root, _, _, _, _ = seat
+    no_checks(root, 'observe')
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat) == (0, '')  # zero checks: the stop completes the build itself
+    assert build.next_action('A', root=root)['action'] == 'done'
+    assert phase(root) == 'gate'
+
+
+def test_dispatch_launches_a_briefed_item_with_no_fast_checks(seat):
+    from wuwei import dispatch
+    root, _, _, _, _ = seat
+    no_checks(root, 'observe')
+    phase(root, 'planned')
+    state._write_state(lambda data: data.update(gate_approved=True, cap=3, approved_items=['A']),
+                       root, reserved=False)
+    entries = dispatch.launch_set(root)['entries']
+    assert [(row['item'], row['action']) for row in entries] == [('A', 'launch')]
+
+
+def test_strict_asks_once_per_repository(seat):
+    from wuwei import calibrate
+    root, _, _, _, _ = seat
+    no_checks(root, 'strict')
+    phase(root, 'planned')
+    with pytest.raises(ValueError, match='wuwei calibrate --questions --repo app'):
+        build.next_action('A', root=root)
+    path = decision.write(calibrate.checks_text(0, 'app', [], []), root)
+    path.write_text(path.read_text().replace('Outcome: pending', 'Outcome: A'))  # Decided-by: owner
+    # a seat-written answer clears nothing
+    with pytest.raises(ValueError, match='fast-checks card'):
+        build.next_action('A', root=root)
+    state._write_state(lambda data: data.update(decision_outcomes={path.stem: {
+        'decided_by': 'owner', 'option': 'B'}}), root, reserved=False)
+    assert build.next_action('A', root=root)['action'] == 'launch'

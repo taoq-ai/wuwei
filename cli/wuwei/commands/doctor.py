@@ -325,12 +325,8 @@ def _workspace(root, config, error, found):
                 rows.append(_row('workspace', f'{name} identity', 'fail', 'empty and unresolved',
                                  f'set repos.{index}.identity in .wuwei/config.toml'))
         checks = [command for command in repo['fast_checks'] if command.strip()]
-        rows.append(_row('workspace', f'{name} fast_checks', 'ok', ', '.join(checks)) if checks else
-                    _row('workspace', f'{name} fast_checks', 'warn', 'empty',
-                         'bin/wuwei config promote --measure (times the test runner once and proposes it when it '
-                         f"is fast), or bin/wuwei config set repos.{index}.fast_checks '[\"<command>\"]'",
-                         apply='config-promote'))
-        from wuwei import fast_checks
+        from wuwei import fast_checks  # #600: none configured is a state, not a finding
+        rows.append(_row('workspace', f'{name} fast_checks', 'ok', ', '.join(checks) or fast_checks.NONE))
         for command in checks:  # #520: only checks naming a relative interpreter get a row
             found = fast_checks.interpreter(command, path, repo, root, config)
             if found and found[1] == 'missing':
@@ -773,23 +769,6 @@ def _reconfirm(root, token):
     return result.exit
 
 
-def _promote_preview(root):
-    from wuwei.commands import config
-    seen = []
-    _, text = _capture(config.promote, Namespace(), confirm=lambda digest, **_: seen.append(digest))
-    if not seen:
-        raise ValueError(text.strip() or 'nothing to promote; run bin/wuwei config promote to see its output')
-    # Interview answers and profile settings carry owner decisions (merge.auto, posture): run it yourself.
-    if any(line == 'Interview answers:' or line.startswith('Profile ') for line in text.splitlines()):
-        raise ValueError('it would also apply interview or profile settings; review them and run it yourself')
-    return text.replace('wuwei config promote: declined; nothing written\n', ''), seen[0]
-
-
-def _promote(root, token):
-    from wuwei.commands import config
-    return config.promote(Namespace(), confirm=lambda digest, **_: digest == token)
-
-
 def _supersede_preview(root):
     ids = _legacy_traces(root)
     if not ids:
@@ -845,7 +824,6 @@ def _reports(root, token):
 FIXES = {
     'integrity-reconfirm': ('wuwei integrity reconfirm', _reconfirm_preview, _reconfirm),
     'init-upgrade': _planned('wuwei init --upgrade', _upgrade),
-    'config-promote': ('wuwei config promote', _promote_preview, _promote),
     'calibrate': ('wuwei calibrate', lambda root: (
         "profile the configured repositories; writes today's calibration.md and charter proposals; "
         'config.toml unchanged\n', None), _calibrate),

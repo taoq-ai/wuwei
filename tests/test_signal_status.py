@@ -1044,3 +1044,21 @@ def test_status_shows_the_detail_the_line_drops(tmp_path, monkeypatch):
         'plugin 0.16.0 · template 0.15.0']
     assert status.full({**data, 'plugin': '', 'template': None})[-len('plugin unmeasured · template none'):] == (
         'plugin unmeasured · template none')
+
+
+def test_status_names_a_repository_with_no_fast_checks(tmp_path, monkeypatch):
+    # #600: none configured is a state; full status says so per repository.
+    from wuwei import fast_checks
+    from wuwei.commands import status
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    monkeypatch.setenv('WUWEI_NOW', NOW)
+    directory = day(tmp_path, {'items': {}, 'cap': 1, 'gate_approved': True})
+    (tmp_path / '.wuwei/config.toml').write_text(''.join(
+        f'[[repos]]\nname = "acme/{name}"\npath = "{name}"\ndefault_branch = "main"\nfast_checks = {checks}\n'
+        for name, checks in (('paper', '[]'), ('widget', '["make test"]'))))
+    data = status.snapshot(directory)
+    assert data['checks_none'] == ['acme/paper']
+    shown = status.full(data).splitlines()
+    assert f'acme/paper {fast_checks.NONE}' in shown
+    assert not any('acme/widget' in line for line in shown)
+    assert 'checks_none' not in status.snapshot(directory, line=True)

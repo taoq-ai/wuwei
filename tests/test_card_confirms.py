@@ -349,7 +349,7 @@ def test_widget_of_a_config_record_prints_the_config_command(ws, capsys):
     save(ws, CONFIG_RECORD, 'D-1.md')
     save(ws, VALID, 'D-2.md')
     assert main('decision', 'show', 'D-1', '--widget') == 0
-    assert json.loads(capsys.readouterr().out)[0]['record'] == 'wuwei config set <key> <value> --from-card D-1'
+    assert json.loads(capsys.readouterr().out)[0]['record'] == 'wuwei config set --from-card D-1'
     assert main('decision', 'show', 'D-2', '--widget') == 0
     assert json.loads(capsys.readouterr().out)[0]['record'] == 'wuwei decide D-2 "<label>"'
 
@@ -441,3 +441,152 @@ def test_config_set_event_is_reserved_and_silent(ws, capsys):
     assert main('event', 'config.set', '{}') == 1
     assert 'wuwei config set --from-card or wuwei calibrate --answer' in capsys.readouterr().err
     assert classify({'kind': 'config.set', 'payload': {'keys': ['cap'], 'card': 'cap'}}, {})[0] == 'silent'
+
+
+# #600: a config card carries its values in Value rows; --from-card alone reads the answer.
+
+PAPER = '[[repos]]\nname = "acme/paper"\npath = "paper"\ndefault_branch = "main"\nfast_checks = []\n'
+CHECKS_QUESTION = 'D-1: Which fast checks gate every change in repo:acme/paper?'
+
+
+def value_card(root, reply='Detected (Recommended)'):
+    from test_decision import CHECKS_RECORD, save
+    (root / 'paper').mkdir(exist_ok=True)
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(PAPER)
+    save(root, CHECKS_RECORD, 'D-1.md')
+    assert main('decision', 'route', 'D-1') == 0
+    if reply:
+        assert answer(root, 'D-1', CHECKS_QUESTION, reply) == (0, '')
+
+
+def test_config_set_from_a_value_card(ws, monkeypatch, capsys):
+    no_terminal(monkeypatch)
+    value_card(ws)
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
+    assert main('config', 'set', '--from-card', 'D-1') == 0, capsys.readouterr().err
+    assert config(ws)['repos'][0]['fast_checks'] == ['make test', 'markdownlint .']
+    assert decision.answered(state.read_state(ws), 'D-1') == 'A'
+    assert events(ws, 'config.set') == [{'keys': ['repos.0.fast_checks'], 'card': 'D-1'}]
+
+
+@pytest.mark.parametrize('value,code', [('["make test", "markdownlint ."]', 0), ('["make test"]', 1)])
+def test_config_set_from_a_value_card_with_key_and_value(ws, monkeypatch, capsys, value, code):
+    no_terminal(monkeypatch)
+    value_card(ws)
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
+    before = config(ws)
+    assert main('config', 'set', 'repos.0.fast_checks', value, '--from-card', 'D-1') == code
+    assert (config(ws) != before) == (code == 0)
+
+
+@pytest.mark.parametrize('card,reply,option', [('value', 'Defer', 'C'), ('title', 'Keep the current cap', 'C')])
+def test_config_set_from_a_card_answered_with_nothing_to_set(ws, monkeypatch, capsys, card, reply, option):
+    no_terminal(monkeypatch)
+    value_card(ws, reply) if card == 'value' else config_card(ws, reply)
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
+    before = (ws / '.wuwei/config.toml').read_text()
+    capsys.readouterr()
+    assert main('config', 'set', '--from-card', 'D-1') == 0, capsys.readouterr().err
+    assert 'No config.toml changes' in capsys.readouterr().out
+    assert (ws / '.wuwei/config.toml').read_text() == before
+    assert decision.answered(state.read_state(ws), 'D-1') == option
+    assert not events(ws, 'config.set')
+
+
+def test_config_set_from_a_title_card_without_key(ws, monkeypatch, capsys):
+    no_terminal(monkeypatch)
+    config_card(ws)
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
+    assert main('config', 'set', '--from-card', 'D-1') == 0, capsys.readouterr().err
+    assert config(ws)['cap'] == 5
+
+
+def test_config_set_without_key_or_card_names_both_forms(ws, capsys):
+    assert main('config', 'set') == 2
+    err = capsys.readouterr().err
+    assert 'KEY VALUE' in err and '--from-card D-n' in err
+
+
+def test_widget_of_a_value_card_prints_the_config_command(ws, capsys):
+    value_card(ws, reply=None)
+    capsys.readouterr()
+    assert main('decision', 'show', 'D-1', '--widget') == 0
+    assert json.loads(capsys.readouterr().out)[0]['record'] == 'wuwei config set --from-card D-1'
+
+
+def test_session_hint_names_value_rows_and_the_previous_line(ws, monkeypatch, capsys):
+    no_terminal(monkeypatch)
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
+    assert main('config', 'set', 'owner.name', '"Pat"') == 1
+    err = capsys.readouterr().err
+    assert 'Value:' in err and 'Previous: owner.name = ""' in err
+    assert 'bin/wuwei config set --from-card D-n' in err
+
+
+def test_hook_passes_the_short_form_from_the_planner_only(ws):
+    value_card(ws)
+    assert hook(ws, 'bin/wuwei config set --from-card D-1') == (0, '')
+    assert hook(ws, 'bin/wuwei config set --from-card D-1', agent_id='a1')[0] == 1
+
+
+# #600: calibrate --questions proposes the fast checks of a repository with none configured.
+
+def paper(root, mode='autonomous', makefile='test:\n\ttrue\n'):
+    (root / '.wuwei/config.toml').write_text(
+        f'[security]\nposture = "observe"\n[autonomy]\nmode = "{mode}"\n' + PAPER)
+    (root / 'paper').mkdir(exist_ok=True)
+    if makefile:
+        (root / 'paper/Makefile').write_text(makefile)
+
+
+def proposed(capsys, *ids):
+    assert main('calibrate', '--questions', *ids) == 0
+    out = capsys.readouterr()
+    return json.loads(out.out), out.err
+
+
+def test_calibrate_takes_the_detected_checks_under_mandate(ws, capsys):
+    paper(ws)
+    widgets, err = proposed(capsys)
+    assert 'calibrate: D-1 taken under mandate (Routine): repos.0.fast_checks = ["make test"]' in err
+    assert 'D-1' not in [widget.get('header') for widget in widgets]
+    assert config(ws)['repos'][0]['fast_checks'] == ['make test']
+    assert state.read_state(ws)['decision_outcomes']['D-1']['decided_by'] == 'mandate'
+    text = (workspace.day_dir(ws) / 'decisions/D-1.md').read_text()
+    assert 'Outcome: A' in text and 'Decided-by: mandate' in text  # the digest lists it
+    assert events(ws, 'config.set') == [{'keys': ['repos.0.fast_checks'], 'card': 'D-1'}]
+
+
+def test_calibrate_records_none_with_the_reason_and_asks_once(ws, capsys):
+    from wuwei import calibrate
+    paper(ws, makefile=None)
+    before = (ws / '.wuwei/config.toml').read_text()
+    _, err = proposed(capsys)
+    assert 'repos.0.fast_checks = []' in err
+    assert (ws / '.wuwei/config.toml').read_text() == before
+    assert calibrate.NOTHING in (workspace.day_dir(ws) / 'decisions/D-1.md').read_text()
+    proposed(capsys)
+    assert not (workspace.day_dir(ws) / 'decisions/D-2.md').exists()
+
+
+def test_calibrate_asks_the_card_under_supervised(ws, capsys):
+    paper(ws, mode='supervised')
+    before = (ws / '.wuwei/config.toml').read_text()
+    widgets, _ = proposed(capsys)
+    card = next(widget for widget in widgets if widget.get('header') == 'D-1')
+    assert card['record'] == 'wuwei config set --from-card D-1'
+    assert card['options'][0]['label'] == 'Detected (Recommended)'
+    assert 'D-1' in state.read_state(ws)['decision_routes']
+    assert (ws / '.wuwei/config.toml').read_text() == before
+
+
+def test_calibrate_with_question_ids_or_no_checkout_writes_no_record(ws, capsys):
+    paper(ws)
+    proposed(capsys, 'cap')
+    assert not (workspace.day_dir(ws) / 'decisions').exists()
+    (ws / 'paper/Makefile').unlink()
+    (ws / 'paper').rmdir()
+    widgets, err = proposed(capsys)
+    assert 'acme/paper' in err and 'paper' in err and widgets
+    assert not (workspace.day_dir(ws) / 'decisions').exists()

@@ -20,7 +20,7 @@ LENSES = {'SOLID': 'Which SOLID principle does it keep or break?',
           'YAGNI': 'What does it build that no item needs yet?',
           'ponytail': 'Is there a simpler thing that works: stdlib before custom, native before a dependency?'}
 OPTION_COLUMNS = ['Option', 'Title', 'Rationale', 'Consequence']
-OPTIONAL = ('Class', 'Reasoning', 'Lenses', 'Role')
+OPTIONAL = ('Class', 'Reasoning', 'Lenses', 'Role', 'Value', 'Previous')  # #600: config cards
 STATUS_QUO = r'(?i)(?:Do nothing|Defer|Keep)\b'  # #478: Keep owner-only is the status quo
 # #530: two-way by definition (fix round, task round, seat procedure, parked item's next step).
 ROUTINE = ('approach', 'retry', 'park', 'accept-residual')
@@ -111,7 +111,7 @@ def evaluate(text, lenses=None):
         fix = NO_RECOMMENDATION if 'Recommendation' in missing else 'add each one'
         raise ValueError('missing fields: ' + ', '.join(missing) + f'; {fix} (bin/wuwei decision template shows them all)')
     for key in ('Question', 'Recommendation', 'Confidence', 'Reversibility', 'Decided-by',
-                'Class', 'Reasoning', 'Role'):
+                'Class', 'Reasoning', 'Role', 'Previous'):
         if '\n' in fields.get(key, ''):
             raise ValueError(f'{key}: expected one line; {DAMAGED}')
     cruise = re.fullmatch(r'cruise ([a-z-]+)@L[23]', fields['Decided-by'])  # #283: a cruise answer
@@ -156,6 +156,14 @@ def _explained(fields, rows, ids, lenses):
         if len(title) > 40 or re.search(r'["`$\\]', title) or title.casefold() in seen:
             raise ValueError(f'Options: title {title} must be unique, at most 40 characters, without a quote, backtick, $ or backslash; write a different title; {hint}')
         seen.add(title.casefold())
+    from wuwei.commands.setup import assignment, declared
+    for option, cell in table(fields['Value'], ['Option', 'Value'], 'Value') if 'Value' in fields else ():
+        if option not in ids or not declared(assignment(cell)):
+            raise ValueError(f'Value: row {option} must name an option and read <key> = <TOML value> with a '
+                             f'declared key; write it as | A | cap = 5 |; {hint}')
+    if 'Previous' in fields and not declared(assignment(fields['Previous'])):
+        raise ValueError(f'Previous: expected <key> = <TOML value> with a declared key, the value before '
+                         f'the change; write it as Previous: cap = 1; {hint}')
     if fields['Class'] in ENGINEERING and lenses:
         names = [row[0] for row in table(fields.get('Lenses', ''), ['Lens', *ids], 'Lenses')]
         missing = [name for name in lenses if name not in names]
@@ -252,6 +260,14 @@ def record_widget(identifier, fields, record=RECORD, level='brief', hidden=False
                    for option, title, rationale, consequence in rows[:4]], record.format(id=identifier))
 
 
+def config_keys(fields):
+    """#600: option id -> (key, value) it sets: its Value row, else its #529 title."""
+    from wuwei.commands.setup import assignment
+    cells = dict(table(fields['Value'], ['Option', 'Value'], 'Value')) if 'Value' in fields else {}
+    found = {row[0]: assignment(cells.get(row[0], row[1])) for row in options(fields)}
+    return {option: value for option, value in found.items() if value}
+
+
 def option_id(fields, label):
     """The option id a widget label (a title, maybe marked Recommended) or an id names; else
     the label unchanged, so the caller's not-in-the-record refusal fires."""
@@ -265,10 +281,14 @@ def lint(text, lenses=LENSES, root=None):
         option = fields['Recommendation']
         found = outward.tells(text)
         said = ''
-        if root is not None and fields['Reversibility'] != 'one-way':  # #557: report, never refuse
+        door = fields['Reversibility']
+        if root is not None:  # #557: report, never refuse
             from wuwei import undo
-            reason = undo.measured(fields, root, workspace.load_config(root))[1]
-            said = '\n' + undo.line(fields['Reversibility'], reason) if reason else ''
+            if undo.config_write(fields):  # #600: the door the first route stores
+                said = '' if door == 'two-way' else '\n' + undo.two_way(door)
+            elif door != 'one-way':
+                reason = undo.measured(fields, root, workspace.load_config(root))[1]
+                said = '\n' + undo.line(door, reason) if reason else ''
         return 0, f'OK: {option} ({scores[option]}), {cisr(fields, scores)}' + ('\nstyle: ' + ', '.join(found) if found else '') + said
     except ValueError as exc:
         return 1, f'{exc}\nREJECT: send back to the seat; fix what is named above and check again with bin/wuwei decision lint <file>'
