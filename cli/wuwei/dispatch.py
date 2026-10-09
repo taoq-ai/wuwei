@@ -160,6 +160,31 @@ def depth(row, *, gate=False):
     return gates.get('depth') or gates.get('tier') or (None if gate else row.get('depth')) or 'standard'
 
 
+def max_rounds(config, row):
+    """#623: the item's fix-round cap: its recorded tier's override, else gates.max_rounds."""
+    gates = config['gates']
+    return gates['tier_max_rounds'].get((row.get('gates') or {}).get('tier')) or gates['max_rounds']
+
+
+def rounds_used(data, item):
+    """#623: fix rounds the item opened in this stage (the count resets at raise); a delta
+    follows at least one, even after a manual transition."""
+    used = (data.get('builds', {}).get(item) or {}).get('fix_rounds', 0)
+    return max(used, int(data['items'][item]['phase'] == 'delta'))
+
+
+def rotate(data, item, used):
+    """#623: the next round answers each gate's delta verdict, so it becomes the gate's initial
+    record and the record it replaces is kept as round<used>. Every verdict reader keeps
+    reading initial and delta."""
+    verdicts = data['gate_verdicts']
+    for gate in gate_set(data['items'][item]):
+        delta = verdicts.pop(f'{item}:{gate}:delta', None)
+        if delta is not None:
+            verdicts[f'{item}:{gate}:round{used}'] = verdicts[f'{item}:{gate}:initial']
+            verdicts[f'{item}:{gate}:initial'] = delta
+
+
 # #567: the builder's class sweep at standard covers the classes whose files the diff touches.
 # ponytail: a glob heuristic per class; sentinels still own their classes.
 CLASS_PATHS = (
@@ -337,12 +362,21 @@ def next_step(item, root=None):
         if not failures:
             return {'action': 'raise', 'notes': []}
         from wuwei.commands import build
-        feedback = '\n'.join(f'Gate {role} FIX: fix only the blocking findings (blocks: yes) in '
-                             f'{_record(data, item, role, "initial")["file"]}.' for role in failures)
-        build.open_fix(item, feedback, root=root)
+        build.open_fix(item, _fix_feedback(data, item, failures, 'initial'), root=root)
         return _fix(item, failures)
-    if any(result['blocks'] for result in results):
-        return {'action': 'escalate', 'reason': 'blocking finding remains after delta'}
+    blocking = [role for role, result in zip(roles, results) if result['blocks']]
+    if blocking:  # #623: the next round below the cap; a park with its finding at the cap
+        cap = max_rounds(config, row)
+        if rounds_used(data, item) >= cap:
+            finding = next(text for text in results[roles.index(blocking[0])]['findings']
+                           if re.search(verdict.BLOCKS_YES, text, re.I))
+            return {'action': 'escalate', 'reason': (
+                f'round cap {cap} reached: {blocking[0]} still blocks: '
+                f'{" ".join(finding.splitlines()[0].split())}; unpark after a design change '
+                'that closes it is recorded in the spec')}
+        from wuwei.commands import build
+        build.open_fix(item, _fix_feedback(data, item, blocking, 'delta'), root=root)
+        return _fix(item, blocking)
     notes = [note for result in results for note in result['notes']]
     return {'action': 'raise', 'notes': notes}
 
@@ -549,7 +583,14 @@ def _delta_feedback(first, light=False):
                 f'blocking findings and rewrite only the Verdict: and Head: lines of {first["file"]}; '
                 'mark each finding the fix closed blocks: no.')
     return (f'Delta review: the fix round changed {first["head"]}..HEAD. Re-check your '
-            f'findings at the current HEAD and rewrite {first["file"]}.')
+            f'findings at the current HEAD and rewrite {first["file"]}. A new finding on lines '
+            'this fix round did not change is blocks: no, unless it is a trust-boundary security '
+            'finding.')  # #623: no scope widening after round one
+
+
+def _fix_feedback(data, item, roles, round_name):
+    return '\n'.join(f'Gate {role} FIX: fix only the blocking findings (blocks: yes) in '
+                     f'{_record(data, item, role, round_name)["file"]}.' for role in roles)
 
 
 def _fix(item, roles):

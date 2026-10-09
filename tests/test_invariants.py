@@ -1020,11 +1020,49 @@ def i34(case, rules):
     return rules.memo(('docs-only',), compute)
 
 
+def i35(case, rules):
+    """#623: no item opens a fix round past its round cap: dispatch.max_rounds is the tier's
+    override when set, else gates.max_rounds, and build.open_fix refuses an item whose build
+    already used that many rounds."""
+    def compute():
+        from wuwei import dispatch, state, workspace
+        from wuwei.commands import build
+        for cap, tier, override in itertools.product((1, 2, 3), dispatch.TIERS, (0, 1, 3)):
+            raw = (rules.base + f'[gates]\nmax_rounds = {cap}\n'
+                   f'tier_max_rounds = {{ {tier} = {override} }}\n')
+            config = workspace.load_config(rules.root, raw=raw)
+            for row_tier in dispatch.TIERS:
+                found = dispatch.max_rounds(config, {'gates': {'tier': row_tier}})
+                if found != (override if row_tier == tier and override else cap):
+                    return f'max_rounds {cap}, {tier} = {override}: a {row_tier} item gets {found}'
+        root = rules.root / 'round-cap'  # its own workspace: the walk's items stay untouched
+        (root / '.wuwei').mkdir(parents=True, exist_ok=True)
+        for cap, override in ((1, 0), (2, 0), (3, 0), (1, 3)):
+            (root / '.wuwei/config.toml').write_text(
+                f'[gates]\nmax_rounds = {cap}\ntier_max_rounds = {{ light = {override} }}\n')
+            limit = override or cap
+
+            def seed(data):
+                data['items'].setdefault('R35', {**state.ITEM_DEFAULTS, 'phase': 'planned'})
+                data['items']['R35']['gates'] = {'tier': 'light', 'roles': ['quality']}
+                data.setdefault('builds', {})['R35'] = {'status': 'done', 'fix_rounds': limit}
+            state._write_state(seed, root, reserved=False)
+            try:
+                build.open_fix('R35', 'Gate quality FIX.', root=root)
+            except ValueError as exc:
+                if f'round cap {limit} reached' not in str(exc):
+                    return f'cap {limit}: open_fix refused with {exc}'
+            else:
+                return f'cap {limit}: open_fix opened round {limit + 1}'
+        return None
+    return rules.memo(('round cap',), compute)
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
               'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27, 'I28': i28,
-              'I31': i31, 'I32': i32, 'I33': i33, 'I34': i34}
+              'I31': i31, 'I32': i32, 'I33': i33, 'I34': i34, 'I35': i35}
 
 
 def project(case):
@@ -1040,7 +1078,7 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
          'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': (), 'I28': (),
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': ()}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
@@ -1134,6 +1172,8 @@ BROKEN = {
         import_module('wuwei.undo'), 'correct', lambda ident, path, text, fields, root: (text, fields, '')),
     'a docs-only diff ignores what raises it': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.dispatch'), 'AGENT_DOCS', ()),
+    'a fix round past the cap': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.dispatch'), 'rounds_used', lambda data, item: 0),
     'client thread row that sends': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.outward'), 'DEFAULT_TIERS',
         ({'audience': 'client', 'topic': 'thread', 'tier': 'send'}, *import_module('wuwei.outward').DEFAULT_TIERS)),

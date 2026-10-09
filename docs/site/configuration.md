@@ -151,6 +151,8 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `codex.timeout_seconds` | `300` | Codex command timeout. |
 | `gates.second_opinion` | `"off"` | `"<runtime>:<model>"`, for example `"codex:gpt-6-astra"`, runs one gate of every STANDARD and FULL item a second time on that runtime and model. Its verdict is one more gate record named `<role>@<runtime>`; a blocking finding from either model blocks. `claude` and `none` are refused. |
 | `gates.second_opinion_role` | `"quality"` | The gate role the second opinion repeats: `arch`, `quality` or `security`. |
+| `gates.max_rounds` | `2` | Fix rounds per item before it ships or parks, the same for code, spec and document items. A FIX verdict opens round one; after a delta only a blocking finding opens the next. At the cap the remaining non-blocking findings go into the PR body as review notes and the item ships. A blocking finding parks it with a decision record naming the finding and what would unpark it. Minimum 1. The report's `## Rounds` section counts them. |
+| `gates.tier_max_rounds` | `{ light = 0, standard = 0, full = 0 }` | A round cap per review tier; `0` uses `gates.max_rounds`. |
 | `pr.poll_seconds` | `120` | Interval between full reads of raised and claimed PRs. With the listener running, conditional probes every 30 s trigger a full read at once on a change. |
 | `pr.action_minutes` | `30` | Positive minutes to act on a measured PR finding. Nudge after this deadline, page at twice the interval. |
 | `pr.review_window` | `120` | Positive minutes to await review before re-requesting it. Starts at first observation of the head; comments do not reset it. |

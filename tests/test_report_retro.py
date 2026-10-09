@@ -386,6 +386,28 @@ def test_retro_lists_findings_unique_to_each_model(tmp_path, monkeypatch):
     assert '| B | quality | unmeasured | unmeasured | unmeasured |' in section
 
 
+
+def test_retro_pairs_a_moved_second_opinion_with_round_one(tmp_path, monkeypatch):
+    # #623: a later fix round moves round one's records to round1; the pairing stays round one.
+    from wuwei import retro
+    root = tmp_path
+    banded_day(monkeypatch, root)
+    captured(root)
+    first = {'item': 'A', 'role': 'quality', 'round': 'initial', 'verdict': 'FIX',
+             'findings': [finding('cli/a.py:1', 'parse')]}
+    later = {'item': 'A', 'role': 'quality', 'round': 'delta', 'verdict': 'FIX',
+             'findings': [finding('cli/z.py:9', 'later round')]}
+    second = {'item': 'A', 'role': 'quality@codex', 'round': 'initial', 'verdict': 'FIX',
+              'runtime': 'codex', 'model': 'm1', 'findings': [finding('cli/a.py:1', 'parse again')]}
+    moved = {**second, 'round': 'delta', 'findings': []}
+    state._write_state(lambda data: data['gate_verdicts'].update({
+        'A:quality:round1': first, 'A:quality:initial': later,
+        'A:quality@codex:round1': second, 'A:quality@codex:initial': moved}), root, reserved=False)
+    section = retro.compile(root).read_text().split('## Second opinion', 1)[1]
+    assert 'cli/z.py:9' not in section and 'cli/a.py:1' not in section
+    assert '| A | quality | none |' in section
+
+
 def test_report_lists_spec_warnings(tmp_path, monkeypatch):
     root = tmp_path
     (root / '.wuwei').mkdir()
@@ -503,3 +525,19 @@ def test_report_lists_review_seats_per_item(tmp_path, monkeypatch):
     assert ('## Review seats\n- A: 1 reviewer seat (goal); tier light: docs-only: 1 reviewer (goal)\n'
             '- B: 3 reviewer seats (arch, quality, security); tier standard: '
             '4 changed lines within light_max_lines 100; floor standard\n') in report.build(root)
+
+
+def test_report_counts_fix_rounds_and_names_the_cap(tmp_path, monkeypatch):
+    # #623: rounds per item, and the items whose rounds reached their cap.
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('[adapters]\ncode_host = "none"\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    state._write_state(lambda data: data.update(items={
+        'A': {**state.ITEM_DEFAULTS, 'phase': 'gate'}}), root, reserved=False)
+    from wuwei import report
+    assert '## Rounds' not in report.build(root)
+    for item, number in (('A', 1), ('B', 1), ('A', 2)):
+        state.append_event('build.fix_opened', {'item': item, 'round': number, 'cap': 2}, root)
+    assert '## Rounds\n- A: 2 fix rounds, round cap 2 reached\n- B: 1 fix round\n' in report.build(root)
