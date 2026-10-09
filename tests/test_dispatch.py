@@ -742,16 +742,16 @@ def tier_events(root):
             if row['kind'] == 'gate.tiered']
 
 
-def test_issue_acceptance_docs_only_light_floor_runs_quality_only(root, monkeypatch):
+def test_issue_acceptance_docs_only_runs_one_goal_gate(root, monkeypatch):
     from wuwei import dispatch
 
-    fake = tiered(root, monkeypatch, [('docs/guide.md', 3, 1)])
-    record = {'tier': 'light', 'computed': 'light', 'roles': ['quality'],
-              'reasons': ['4 changed lines within light_max_lines 100']}
+    fake = tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], floor='standard')
+    record = {'tier': 'light', 'computed': 'light', 'roles': ['goal'],
+              'reasons': ['docs-only: 1 reviewer (goal)']}
     import shlex
     tree = state.read_state(root)['items']['A']['worktree']
-    action = {'action': 'gates', 'roles': ['quality'], 'seats': [], 'tier': record, 'commands': [
-        f'wuwei brief quality A quality-A --gate --worktree {shlex.quote(tree)} --body '
+    action = {'action': 'gates', 'roles': ['goal'], 'seats': [], 'tier': record, 'commands': [
+        f'wuwei brief goal A goal-A --gate --worktree {shlex.quote(tree)} --body '
         + shlex.quote(dispatch.GATE_BODY.format(item='A'))]}
     assert dispatch.next_step('A', root) == action
     assert state.read_state(root)['items']['A']['gates'] == record
@@ -785,13 +785,40 @@ def test_light_item_fixes_and_deltas_quality_only(root):
     assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality'], 'seats': []}
 
 
-def test_malformed_recorded_gate_set_fails_closed(root):
+@pytest.mark.parametrize('roles', [['arch'], ['goal', 'arch'], ['security'], ['goal', 'quality']])
+def test_malformed_recorded_gate_set_fails_closed(root, roles):
     from wuwei import dispatch
 
-    state._write_state(lambda data: data['items']['A'].update(gates={**LIGHT, 'roles': ['arch']}),
+    state._write_state(lambda data: data['items']['A'].update(gates={**LIGHT, 'roles': roles}),
                        root, reserved=False)
     with pytest.raises(ValueError, match='invalid recorded gate set'):
         dispatch.next_step('A', root)
+
+
+GOAL = {**LIGHT, 'roles': ['goal']}
+
+
+def test_docs_only_item_receives_and_raises_on_goal_only(root):
+    from wuwei import dispatch
+
+    state._write_state(lambda data: data['items']['A'].update(gates=GOAL), root, reserved=False)
+    for role in ('arch', 'quality'):
+        with pytest.raises(dispatch.Refused, match='not in the item gate set'):
+            record(root, role, f'{role}-1', PASS)
+    record(root, 'goal', 'goal-1', PASS)
+    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
+
+
+def test_docs_only_item_fix_continues_the_same_goal_seat(root):
+    from wuwei import dispatch
+
+    built(root)
+    state._write_state(lambda data: data['items']['A'].update(gates=GOAL), root, reserved=False)
+    record(root, 'goal', 'goal-1', FIX)
+    assert dispatch.next_step('A', root) == {
+        'action': 'fix', 'roles': ['goal'], 'command': 'wuwei build next A'}
+    state.transition('A', 'delta', root)
+    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['goal'], 'seats': []}
 
 
 def tier_of(root):
@@ -831,9 +858,57 @@ def test_issue_acceptance_lead_flag_raises_a_light_diff(root, monkeypatch, flag)
 
 
 def test_issue_acceptance_lead_tier_raises_and_cannot_lower(root, monkeypatch):
-    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], lead='full')
+    tiered(root, monkeypatch, [('src/app.py', 3, 1)], lead='full')
     record = tier_of(root)
     assert record['tier'] == 'full' and 'lead tier full' in record['reasons']
+
+
+@pytest.mark.parametrize('paths,role', [
+    ([('specs/622-x/spec.md', 3, 1)], 'quality'),
+    ([('docs/prereg.md', 3, 1)], 'quality'),
+    ([('README.md', 3, 1), ('docs/a.md', 2, 0)], 'goal'),
+    ([('docs/big.md', 400, 0)], 'goal'),
+])
+def test_docs_only_diff_gets_one_reviewer(root, monkeypatch, paths, role):
+    tiered(root, monkeypatch, paths, floor='standard')
+    record = tier_of(root)
+    assert (record['tier'], record['roles']) == ('light', [role])
+    assert record['reasons'] == [f'docs-only: 1 reviewer ({role})']
+
+
+@pytest.mark.parametrize('paths,flags,track,floor', [
+    ([('src/app.py', 3, 1)], (), 'SLICE', 'standard'),
+    *[([('docs/guide.md', 3, 1)], (flag,), 'SLICE', 'standard')
+      for flag in ('trust_surface', 'boundary_relevant', 'agent_surface')],
+    ([('docs/guide.md', 3, 1)], (), 'FULL', 'standard'),
+    ([('docs/guide.md', 3, 1), ('cli/wuwei/guards/pr.py', 2, 0)], (), 'SLICE', 'standard'),
+    ([('docs/guide.md', 3, 1), ('uv.lock', 2, 0)], (), 'SLICE', 'standard'),
+    ([('docs/guide.md', 3, 1), ('logo.png', None, None)], (), 'SLICE', 'standard'),
+    ([('charters/lead.md', 3, 1)], (), 'SLICE', 'standard'),
+    ([('AGENTS.md', 3, 1)], (), 'SLICE', 'standard'),
+    ([('docs/guide.md', 3, 1)], (), 'SLICE', 'full'),
+    *[([(path, 3, 1)], (), 'SLICE', 'standard')
+      for path in ('docs/conf.py', 'specs/x/plan.py', 'docs/site/index.html', 'CMakeLists.txt',
+                   'src/stopwords.txt')],
+])
+def test_code_or_trust_surface_keeps_three_gates(root, monkeypatch, paths, flags, track, floor):
+    tiered(root, monkeypatch, paths, floor=floor, flags=flags, track=track)
+    record = tier_of(root)
+    assert record['roles'] == ALL
+    assert not any(reason.startswith('docs-only') for reason in record['reasons'])
+
+
+def test_empty_diff_keeps_quality_at_a_light_floor(root, monkeypatch):
+    tiered(root, monkeypatch, [])
+    record = tier_of(root)
+    assert (record['tier'], record['roles']) == ('light', ['quality'])
+
+
+def test_issue_acceptance_lead_full_is_overridden_for_docs_only(root, monkeypatch):
+    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], floor='standard', lead='full')
+    record = tier_of(root)
+    assert (record['tier'], record['roles']) == ('light', ['goal'])
+    assert record['reasons'] == ['lead tier full overridden: docs-only', 'docs-only: 1 reviewer (goal)']
 
 
 def test_issue_acceptance_lead_cannot_lower_a_standard_diff(root, monkeypatch):
@@ -918,7 +993,7 @@ def test_second_opinion_role_is_configurable(root, monkeypatch):
 def test_light_item_and_option_off_have_no_second_opinion(root, monkeypatch):
     from wuwei import dispatch
 
-    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], extra=SECOND)
+    tiered(root, monkeypatch, [('src/app.py', 3, 1)], extra=SECOND)
     assert 'second_opinion' not in tier_of(root)
     assert dispatch.gate_set(state.read_state(root)['items']['A']) == ('quality',)
 
@@ -1304,7 +1379,7 @@ def test_second_opinion_delta_residual_becomes_a_review_note(root, monkeypatch):
 def test_light_item_with_second_opinion_on_offers_no_run(root, monkeypatch):
     from wuwei import dispatch
 
-    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], extra=SECOND)
+    tiered(root, monkeypatch, [('src/app.py', 3, 1)], extra=SECOND)
     logged_gate_brief(root, 'quality', 'q-1', root / 'repo')
     outcome = dispatch.next_step('A', root)
     assert outcome['roles'] == ['quality'] and [seat['action'] for seat in outcome['seats']] == ['launch']

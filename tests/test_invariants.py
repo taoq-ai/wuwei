@@ -966,11 +966,45 @@ def i33(case, rules):
     return rules.memo(('config record',), compute)
 
 
+def i34(case, rules):
+    """#622: a docs-only diff never lowers review when anything else would raise it: a lead flag,
+    a FULL track, a trust, never-auto, FULL-pattern, binary or agent-instruction path, or a full
+    floor keeps arch, quality and security; a plain document with nothing raising it gets one."""
+    def compute():
+        from wuwei import dispatch
+        config = rules.config('guarded', 'send', 'send')
+        config = {**config, 'brief': {**config['brief'], 'full_path_patterns': ['^api/']}}
+        doc = {'path': 'docs/guide.md', 'additions': 3, 'deletions': 1}
+        raising = [{'path': 'cli/wuwei/guards/pr.py', 'additions': 2, 'deletions': 0},
+                   {'path': 'uv.lock', 'additions': 2, 'deletions': 0},
+                   {'path': 'api/notes.md', 'additions': 2, 'deletions': 0},
+                   {'path': 'docs/logo.txt', 'additions': None, 'deletions': None},
+                   {'path': 'AGENTS.md', 'additions': 2, 'deletions': 0}]
+        real = dispatch._changes
+        try:
+            for extra, flag, track, floor in itertools.product(
+                    (None, *raising), (None, 'trust_surface', 'boundary_relevant', 'agent_surface'),
+                    ('SLICE', 'FULL'), ('standard', 'full')):
+                repo = config['repos'][0]
+                repo = {**repo, 'gates': {**repo['gates'], 'floor': floor}}
+                changes = [doc] + ([extra] if extra else [])
+                dispatch._changes = lambda *args: (repo, changes)
+                row = {'track': track, 'flags': {flag: True} if flag else {}}
+                roles = dispatch.tier(rules.root, config, row)['roles']
+                raised = extra or flag or track == 'FULL' or floor == 'full'
+                if roles != (list(dispatch.ROLES) if raised else ['goal']):
+                    return f'{[c["path"] for c in changes]} flag {flag} track {track} floor {floor} records {roles}'
+        finally:
+            dispatch._changes = real
+        return None
+    return rules.memo(('docs-only',), compute)
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
               'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27, 'I28': i28,
-              'I31': i31, 'I32': i32, 'I33': i33}
+              'I31': i31, 'I32': i32, 'I33': i33, 'I34': i34}
 
 
 def project(case):
@@ -986,7 +1020,7 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
          'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': (), 'I28': (),
-         'I31': (0,), 'I32': (0,), 'I33': ()}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
@@ -1078,6 +1112,8 @@ BROKEN = {
         lambda *args: import_module('wuwei.integrity')._host_confirm('digest')),
     'a config record keeps one-way': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.undo'), 'correct', lambda ident, path, text, fields, root: (text, fields, '')),
+    'a docs-only diff ignores what raises it': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.dispatch'), 'AGENT_DOCS', ()),
     'client thread row that sends': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.outward'), 'DEFAULT_TIERS',
         ({'audience': 'client', 'topic': 'thread', 'tier': 'send'}, *import_module('wuwei.outward').DEFAULT_TIERS)),
