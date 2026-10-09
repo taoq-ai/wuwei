@@ -76,7 +76,8 @@ LEAD_BODY = ('Propose today. Answer with one JSON object: goals, seat_policy, en
              'ordered candidates, plus seats (goal to seats of CAP) only to change the split the CLI '
              'derives. Each candidate has id, goal, evidence, scope, overlap, track, the three '
              'boolean flags, score and evidence_lines for each component of the configured '
-             'framework. While memory/goals.md has no goals, write each proposed goal as a block '
+             'framework. With more than one configured repository each candidate also has repo, the '
+             'configured repository name it changes. While memory/goals.md has no goals, write each proposed goal as a block '
              '(id, outcome, measure, target, date, priority), never an id alone. Check open '
              'status and overlap against the items of the day and other active work.')
 # No single quote in LEAD_BODY: step quotes it without shlex, which hook paths do not import.

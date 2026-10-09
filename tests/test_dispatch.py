@@ -1545,6 +1545,57 @@ def test_start_names_the_worktree_and_the_builder_brief(day_set):
                                  "'Implement P3: one value. Evidence: recorded issue P3.'"]
 
 
+def test_start_names_the_repository_when_several_are_configured(day_set, capsys):
+    # #603: two repositories: worktree add names the candidate's repo; an item with none is parked.
+    import shlex
+    from wuwei import dispatch
+    from wuwei.__main__ import main
+    from wuwei.commands.next import approved
+    root, _ = day_set
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write(''.join(f'[[repos]]\nname = "acme/{name}"\npath = "{name}"\ndefault_branch = "main"\n'
+                             for name in ('code', 'paper')))
+    (workspace.day_dir(root) / 'proposal.json').write_text(json.dumps({'candidates': [
+        {'id': 'P3', 'repo': 'acme/code'}, {'id': 'P1'}]}))
+    starts = {row['item']: row['commands'] for row in dispatch.launch_set(root)['entries']
+              if row['action'] in ('start', 'park')}
+    assert starts['P3'][0] == 'wuwei worktree add P3 --repo acme/code'
+    assert starts['P3'][1].startswith('wuwei brief builder P3 ')
+    [park] = starts['P1']
+    argv = shlex.split(park)
+    assert argv[:5] == ['wuwei', 'plan', 'park', 'P1', '--reason'], park
+    assert 'acme/code' in argv[5] and 'acme/paper' in argv[5] and 'repo' in argv[5]
+    for name in ('P1', 'P3'):  # an existing worktree starts with the brief, whatever its repository
+        (root / 'worktrees' / name).mkdir(parents=True)
+    starts = [row['commands'] for row in dispatch.launch_set(root)['entries'] if row['action'] == 'start']
+    assert [[command.split()[1] for command in commands] for commands in starts] == [['brief'], ['brief']]
+    assert main(argv[1:]) == 0, capsys.readouterr().err
+    assert 'P1' not in approved(state.read_state(root))
+
+
+def test_a_park_runs_without_free_seats(day_set):
+    # #603 review: parking takes no seat, so it is returned even when nothing can launch.
+    from wuwei import dispatch
+    root, _ = day_set
+    (root / '.wuwei/config.toml').write_text('cap = 3\n[host]\nseats = 1\n' + ''.join(
+        f'[[repos]]\nname = "acme/{name}"\npath = "{name}"\ndefault_branch = "main"\n' for name in ('code', 'paper')))
+    (workspace.day_dir(root) / 'proposal.json').write_text(json.dumps({'candidates': [{'id': 'P1'}]}))
+    entries = {row['item']: row for row in dispatch.launch_set(root)['entries']}
+    assert entries['G']['action'] == 'wait'
+    assert entries['P1']['action'] == 'park'
+    assert entries['P1']['commands'][0].startswith('wuwei plan park P1 --reason ')
+
+
+def test_a_corrupt_proposal_refuses_the_planned_items_only(day_set):
+    # #603 review: a corrupt proposal.json refuses each planned item; the set still returns the rest.
+    from wuwei import dispatch
+    root, _ = day_set
+    (workspace.day_dir(root) / 'proposal.json').write_text('{not json')
+    entries = {row['item']: row for row in dispatch.launch_set(root)['entries']}
+    assert entries['G']['action'] == 'gates' and entries['B']['action'] == 'launch'
+    assert entries['P1']['action'] == 'refused'
+
+
 def test_gates_name_each_brief_and_receive(root):
     import shlex
     from wuwei import dispatch

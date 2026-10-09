@@ -806,6 +806,74 @@ def i25(case, rules):
     return rules.memo(('identity',), compute)
 
 
+def i26(case, rules):
+    """#603: every command next returns to start a planned item exits 0 in a multi-repository
+    workspace: worktree add names the candidate's --repo, an item with no repository is parked.
+    tests/test_dispatch.py runs the park through main; here worktree add runs its command function."""
+    def compute():
+        import argparse
+        import json
+        import shlex
+        from wuwei import dispatch, workspace
+        from wuwei.commands import worktree
+        rules.configure('guarded', '[[repos]]\nname = "example/paper"\npath = "paper"\ndefault_branch = "main"\n')
+        config = workspace.load_config(rules.root)
+        repos = config['repos']
+        (workspace.day_dir(rules.root) / 'proposal.json').write_text(json.dumps({'candidates': [
+            {'id': 'P-A', 'repo': 'example/paper'}, {'id': 'P-B'}]}))
+        if dispatch._start(rules.root, 'P-A', repos[:1])[0] != 'wuwei worktree add P-A':
+            return 'one repository changes worktree add'
+        if not dispatch._start(rules.root, 'P-B', repos)[0].startswith('wuwei plan park P-B --reason '):
+            return 'an item with no repository is not parked'
+        add = shlex.split(dispatch._start(rules.root, 'P-A', repos)[0])
+        if add[:4] != ['wuwei', 'worktree', 'add', 'P-A'] or len(add) != 6:
+            return f'worktree add reads {add}'
+        real = workspace.create_worktree
+        workspace.create_worktree = lambda repo, *args, **kwargs: {'repo': str(repo)}  # the VCS boundary
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                found = worktree.add(argparse.Namespace(repo=add[5], branch=None), rules.root, config, 'P-A')
+        except ValueError as exc:
+            return f'{" ".join(add)} refuses: {exc}'
+        finally:
+            workspace.create_worktree = real
+        return None if found['repo'].endswith('paper') else f'{" ".join(add)} picks {found["repo"]}'
+    return rules.memo(('start repo',), compute)
+
+
+def i27(case, rules):
+    """#603: a fresh day's gate-confirmed proposed goals approve the plan, and approve never
+    writes owner memory."""
+    def compute():
+        import json
+        from wuwei import goals, plan, workspace
+        root = rules.root / 'fresh'
+        (root / '.wuwei/memory').mkdir(parents=True)
+        (root / '.wuwei/config.toml').write_text('')
+        memory = (ROOT / 'templates/workspace/memory/goals.md').read_text(encoding='utf-8')
+        (root / '.wuwei/memory/goals.md').write_text(memory)
+        day = workspace.day_dir(root)
+        day.mkdir(parents=True)
+        lead = [{'id': f'G-{n}', 'outcome': 'Ship the widget', 'measure': 'widgets shipped', 'target': '1',
+                 'date': '2026-10-30', 'priority': n} for n in (1, 2)]
+        (day / 'goals.md').write_text(goals.proposed(memory, lead)[0])
+        score = {'value': 5, 'time_criticality': 3, 'risk_reduction': 2, 'job_size': 2}
+        (day / 'proposal.json').write_text(json.dumps({
+            'goals': ['G-1', 'G-2'], 'cap': 2, 'seat_policy': {'builder': {'runtime': 'claude', 'model': 'sonnet'}},
+            'envelope': {'start': '09:00', 'end': '17:00', 'net_build_hours': 5},
+            'sweep': {'processes': 'measured: none', 'tracker': 'unmeasured: absent'},
+            'candidates': [{'id': 'A', 'goal': 'G-1', 'evidence': 'tracker A', 'scope': 'one function',
+                            'overlap': 'none', 'track': 'SLICE', 'flags': dict.fromkeys(plan.FLAGS, False),
+                            'score': score, 'evidence_lines': dict.fromkeys(score, 'tracker A')}]}))
+        (day / 'plan.md').write_text('# Morning plan\n')
+        try:
+            plan.approve(['A'], root, goals_confirmed=True)
+        except (ValueError, OSError) as exc:
+            return f'approve refuses the proposed goals: {exc}'
+        return None if (root / '.wuwei/memory/goals.md').read_text() == memory else 'approve writes memory'
+    return rules.memo(('proposed goals',), compute)
+
+
 def i28(case, rules):
     """#604: a stored answer never overwrites a present differing key unless config promote
     --keys names it."""
@@ -829,7 +897,7 @@ def i28(case, rules):
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
-              'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I28': i28}
+              'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27, 'I28': i28}
 
 
 def project(case):
@@ -844,7 +912,7 @@ OUTWARD = (0, 1, 2, 3, 5, 6)
 READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
-         'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I28': ()}
+         'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': (), 'I28': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
