@@ -268,14 +268,15 @@ def step(root, ran=()):
                         'wuwei dispatch next --all', 'set')
         if phase == 'planned' and waiting is None:
             waiting = label
-    if due:
-        return _row('steward', 'The steward is due after the recorded tool calls.',
-                    'wuwei steward run --trigger tool-calls', then=THEN['background'])
-    for run in runs:
-        stem = str(run.get('brief', '')).rsplit('/', 1)[-1].removesuffix('.md')
+    # #617: one steward at a time, on the newest brief; due waits (not cleared) while one runs.
+    if not any(seat['role'] == 'steward' and seat['status'] == 'running' for seat in seats.values()):
+        if due:
+            return _row('steward', 'The steward is due after the recorded tool calls.',
+                        'wuwei steward run --trigger tool-calls', then=THEN['background'])
+        stem = str(runs[-1].get('brief', '')).rsplit('/', 1)[-1].removesuffix('.md') if runs else ''
         if stem and stem not in seats:
             return _row('steward', 'Launch the steward seat on its brief.', 'wuwei next --json',
-                        'launch', THEN['agent'], brief=run['brief'])
+                        'launch', THEN['agent'], brief=runs[-1]['brief'])
     builders = sorted((seat.get('started_at') or '', name) for name, seat in seats.items()
                       if seat['status'] == 'running' and seat['role'] == 'builder')
     text = state.in_flight_text(rows)

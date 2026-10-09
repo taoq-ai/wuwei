@@ -92,7 +92,9 @@ is used first, whatever `tracker.auth` says; gh runs only when the token is unse
 `tracker.github: gh login (tracker.auth = "gh"; GITHUB_TRACKER_TOKEN not set)` and needs no
 token; doctor's tracker row reads the backlog through gh and names `gh auth status` when it
 fails. A gh failure reports its exit, the HTTP status when gh printed one and a hint, never
-gh's own text. With `tracker.board`, the Status write needs the `project` scope, which a
+gh's own text. On either path a GraphQL error reads `GitHub error response for
+<owner>/<repo>#<n>: <message>`: the ticket, when the lookup names one, and GitHub's first
+error message, on one line, redacted and cut at 160 characters. With `tracker.board`, the Status write needs the `project` scope, which a
 default gh login lacks: run `gh auth refresh -s project`.
 
 The trade-off: the token is scoped to issues and projects; your gh login is broad (classic
