@@ -56,7 +56,7 @@ checked-out branch, and the line says which. A repository with no remote is prop
   signals, each with the file and line it came from
   ([calibration](configuration.md#calibration));
 - your interview is what `bin/wuwei calibrate --interview` asks: how much merge autonomy
-  you want, your gate floor, quiet and working hours, and how decisions reach you. It also asks
+  you want, whether a merge deploys each repository, your gate floor, quiet and working hours, and how decisions reach you. It also asks
   words to avoid, which commands you run by hand, which tracker, chat and review bot you use, and who reviews
   your pull requests (`Owner only` for a solo owner) ([owner interview](configuration.md#owner-interview)). `config check` then names each
   credential variable those adapters need until you set it in `.wuwei/env`;

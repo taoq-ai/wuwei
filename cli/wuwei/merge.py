@@ -140,6 +140,15 @@ def quiet(policy, now):
     return False
 
 
+def risk_evidence(root, name, rows=None):
+    """The risk flags the plan recorded for an item, across days (#615: plan add records them too)."""
+    from wuwei.watch import records, days
+    rows = [row for directory in days(root) for row in records(directory / 'events.jsonl')] if rows is None else rows
+    return [row['payload']['flags'][name] for row in rows
+            if row['kind'] in ('plan.approved', 'state.import', 'plan.added')
+            and name in row['payload'].get('flags', {})]
+
+
 def item_evidence(root, ref, data, granted=False):
     from wuwei.watch import records, days
     items = [(name, value) for name, value in data['items'].items() if value.get('pr') == ref]
@@ -149,11 +158,10 @@ def item_evidence(root, ref, data, granted=False):
         return name
     require(name in data['approved_items'], 'item is not in the approved plan')
     rows = [row for directory in days(root) for row in records(directory / 'events.jsonl')]
-    approved = [row['payload']['flags'][name] for row in rows
-                if row['kind'] in ('plan.approved', 'state.import')
-                and name in row['payload'].get('flags', {})]
+    approved = risk_evidence(root, name, rows)
     if not approved:
-        raise ValueError('approved item risk evidence is missing; replan the item; run bin/wuwei plan add <item> again so its risk is measured')
+        raise ValueError(f'approved item risk evidence is missing; run bin/wuwei plan add {name} '
+                         'so its risk is recorded')
     for flags in [item['flags'], *approved]:
         if set(flags) != set(state.ITEM_DEFAULTS['flags']) or any(type(v) is not bool for v in flags.values()):
             raise ValueError(f'invalid item risk evidence; {DAMAGED}')
@@ -249,7 +257,6 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         deletions = sum(integer(f['deletions']) for f in files)
         if additions != integer(pr['additions']) or deletions != integer(pr['deletions']):
             raise ValueError('incomplete diff size; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
-        require(granted or additions + deletions <= policy['max_changed_lines'], 'diff exceeds max changed lines')
         for file in files:
             if not isinstance(file['path'], str) or not file['path']:
                 raise ValueError(f'invalid changed file path; {DAMAGED}')
@@ -259,6 +266,11 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
                 if not isinstance(path, str) or not path or path.startswith('/') or '..' in Path(path).parts:
                     raise ValueError(f'invalid changed file path; {DAMAGED}')
                 require(granted or matched(path, policy['never_auto_paths']) is None, f'never-auto path: {path}')
+        # #615: a file counts toward the size rule unless every path it names matches size_exclude.
+        changed = sum(file['additions'] + file['deletions'] for file in files
+                      if any(path is not None and matched(path, policy['size_exclude']) is None
+                             for path in (file['path'], file['previous_path'])))
+        require(granted or changed <= policy['max_changed_lines'], 'diff exceeds max changed lines')
         from wuwei.dispatch import gate_set
         from wuwei.guards.pr import gate_check
         code, reason = gate_check(root, root / settings['path'], config, sha=head, item=item)

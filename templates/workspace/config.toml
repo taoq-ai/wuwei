@@ -14,6 +14,7 @@ template_version = "" # Plugin version that last wrote this file; init, setup an
 # fast_checks = ["python3 -m pytest -q"] # Run and record with wuwei fast-checks <checkout>.
 # [repos.merge]
 # auto = false # Enable only after review, check, soak and path rules are configured.
+# size_exclude = ["results/*.json"] # Generated files max_changed_lines does not count; never-auto paths still apply.
 # [repos.shepherd]
 # reviewers = ["reviewer"] # Replaces shepherd.reviewers for this repository.
 
