@@ -550,3 +550,30 @@ def test_builder_brief_names_the_check_interpreter(day, monkeypatch, check, args
     expected = f'Check interpreter: {check} runs with {python.resolve()} (main worktree)'
     assert (expected in text) == line
     assert text.count('Check interpreter:') == int(line)
+
+
+NONE_LINE = ('Fast checks: none configured; CI and the gates are the evidence. '
+             'Write "checks: none configured" in the PR body.')
+
+
+@pytest.mark.parametrize('checks,tests,pace,none,careful', [
+    ('[]', '', 'steady', True, False), ('[]', '', 'careful', True, False),
+    ('[]', '', 'fast', True, False), ('[]', 'pytest', 'careful', False, True),
+    ('["make test"]', '', 'steady', False, False), ('["make test"]', '', 'careful', False, True),
+])
+def test_builder_brief_names_no_fast_checks(day, monkeypatch, checks, tests, pace, none, careful):
+    # #600: an empty fast-check list is a state; the builder writes it in the PR body.
+    root = day[0]
+    (root / '.wuwei/config.toml').write_text(
+        f'[[repos]]\nname = "app"\npath = "app"\ndefault_branch = "main"\nfast_checks = {checks}\n'
+        + (f'tests = "{tests}"\n' if tests else ''))
+    (root / 'app/.git').mkdir(parents=True)
+    (root / 'worktrees/X').mkdir(parents=True)
+    state._write_state(lambda data: data.update(pace=pace), root, reserved=False)
+    day[2].results['repo_context'] = registry.Result(0, {
+        'path': str(root / 'worktrees/X'), 'common_dir': str((root / 'app/.git').resolve())})
+    assert brief(monkeypatch, 'Build it.', 'builder', 'X', 'b', '--worktree', 'worktrees/X') == 0
+    text = (day[1] / 'briefs/b.md').read_text()
+    assert (NONE_LINE in text) == none
+    assert ('Checks: careful' in text) == careful
+    assert 'Checks: fast' not in text

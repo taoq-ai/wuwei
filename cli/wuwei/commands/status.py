@@ -300,6 +300,7 @@ def snapshot(directory, line=False):
     if config is not None:  # #283: the cruise level; a damaged cruise.json is unmeasured
         from wuwei import cruise
         result['cruise'] = cruise.label(config, cruise.running(directory.parents[2]))
+        result['checks_none'] = [repo['name'] for repo in config['repos'] if not repo['fast_checks']]  # #600
     result['plugin'] = integrity.version()
     result['template'] = config['template_version'] if config is not None else None
     if result['listen'] == 'off' and (config is None or config['adapters']['inbound'] == 'none'):
@@ -425,5 +426,7 @@ def full(data):
     calendar.append(f'meeting {data["next_meeting"] or "unmeasured"}')
     cruise = [data['cruise'].replace(' | ', ', ')] if data.get('cruise') else []  # #283, status only
     versions = [f'plugin {data.get("plugin") or "unmeasured"}', f'template {data.get("template") or "none"}']
+    from wuwei.fast_checks import NONE
+    checks = [[f'{name} {NONE}'] for name in data.get('checks_none', [])]
     return 'WUWEI ' + '\n'.join(' · '.join(group) for group in (
-        now, work, *running, attention, health, calendar, cruise, versions) if group)
+        now, work, *running, attention, health, calendar, cruise, *checks, versions) if group)

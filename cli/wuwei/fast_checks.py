@@ -10,6 +10,8 @@ from wuwei.guards.commit_push import context, data
 from wuwei.exits import ADAPTER_DATA, DAMAGED
 
 RELATIVE = ('.venv/', 'venv/', 'node_modules/.bin/')
+# #600: an empty fast-check list is a state, not a wall
+NONE = 'fast checks: none configured; CI and the gates are the evidence'
 
 
 def interpreter(command, worktree, repo, root, config):

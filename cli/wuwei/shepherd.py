@@ -321,6 +321,8 @@ def raise_pr(root, repo_name, base, title, body, item):
         row = data['items'][item]
         if row['gates']:
             body += f'\n\nReview tier: {row["gates"]["tier"]} ({", ".join(dispatch.gate_set(row))})'
+        if not settings['fast_checks'] and 'checks: none configured' not in body:  # #600 acceptance 1
+            body = body.rstrip() + '\n\nchecks: none configured'
         code, reason = outward.lint(title + '\n' + body, 'code_host', config, root=root)
         if not code:
             code, reason = outward.humanize_lint({'title': title, 'body': body}, root, config, {'code_host'})
