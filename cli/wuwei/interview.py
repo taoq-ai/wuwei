@@ -271,8 +271,9 @@ QUESTIONS = (
           {'adapters.tracker': 'linear'}),
          ('Jira', 'Set JIRA_SITE, JIRA_EMAIL and JIRA_API_TOKEN in .wuwei/env; type jira and the '
           'project key to set the project too.', {'adapters.tracker': 'jira'}),
-         ('GitHub', 'GitHub issues; set GITHUB_TRACKER_TOKEN in .wuwei/env; type github and '
-          'owner/repo to set the project too.', {'adapters.tracker': 'github'}),
+         ('GitHub', 'GitHub issues; set GITHUB_TRACKER_TOKEN in .wuwei/env, or tracker.auth = "gh" '
+          'to use your gh login; type github and owner/repo to set the project too.',
+          {'adapters.tracker': 'github'}),
          ('None', 'Discovery reads no tracker backlog.', {'adapters.tracker': 'none'})),
      'free': (_tracker, 'the tracker and its project, for example jira PROJ')},
     {'id': 'tickets', 'scope': 'workspace', 'header': 'Tracking',

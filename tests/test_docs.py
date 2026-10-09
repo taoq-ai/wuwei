@@ -709,6 +709,21 @@ def test_config_check_host_and_credential_layout_are_documented():
         assert text in section, text
     assert 'currently reads as missing' not in page
 
+def test_github_tracker_gh_auth_and_credential_diagnostics_are_documented():
+    # #602: the opt-in, its trade-off and how seats reach it; the malformed and HTTP status lines.
+    adapters = (SITE / 'adapters.md').read_text()
+    adapters = ' '.join(adapters.split())
+    section = adapters[adapters.index('### GitHub tracker through your gh login'):]
+    for text in ('`tracker.auth = "gh"`', 'gh api graphql', 'GITHUB_TRACKER_TOKEN', 'is used first',
+                 'only through `bin/wuwei`', 'least privilege', 'gh auth refresh -s project', 'strict',
+                 'security.md', '`GH_TOKEN`'):
+        assert text in section, text
+    for text in ('malformed (contains whitespace)', 'looks like a path', 'HTTP 401', 'HTTP 403', 'HTTP 404'):
+        assert text in adapters, text
+    page = (SITE / 'configuration.md').read_text()
+    assert '| `tracker.auth` | `"token"` |' in page and 'malformed' in page
+
+
 def test_release_asset_ships_every_linked_doc(tmp_path, monkeypatch):
     signed = []
     def sign(manifest, key):

@@ -44,9 +44,19 @@ Loaded values are redacted from output, events, traces and refusal messages, exc
 `SLACK_OWNER_DM_CHANNEL`: a channel id is an identifier the listener must match in stored events.
 
 `wuwei config check` prints a credentials section for the effective configured
-adapters, including defaults. It names each requirement and reports `set` or
-`missing`, never values. Exit 1 means a required credential is missing; exit 2
-means a check could not run. Presence checks do not verify remote token validity.
+adapters, including defaults. It names each requirement and reports `set`,
+`missing` or `malformed (<why>)`, never values. A token is malformed when it contains
+whitespace, as a pasted command such as `gh auth token` does. It is also malformed when it
+looks like a path (starts with `/`, `~`, `./` or `../`) or a command (`$`, `|`, `;`, a quote
+and other shell characters). URLs, emails, sites and channel ids are not checked. An adapter refuses
+a malformed token before any request, with `<NAME> is malformed (<why>)`, and doctor carries
+the same line, for example `GITHUB_TRACKER_TOKEN: malformed (contains whitespace)`. Exit 1 means a required credential is missing or malformed; exit 2
+means a check could not run. Presence checks do not verify remote token validity. An HTTP
+adapter that the provider refuses reports the status and a hint, for example
+`github.backlog: could not run: HTTP 401: credential rejected (wrong, expired or revoked token)`.
+`HTTP 403` means no access (scopes, SSO authorization or a rate limit). `HTTP 404` means
+not found or not visible to the credential. `HTTP 429` is a rate limit and `HTTP 5xx` a
+provider error. The provider's response text is never shown.
 An `Owner:` line reports `owner.name: set` or `owner.name: not set`; it does not change
 the exit code.
 
@@ -55,7 +65,7 @@ the exit code.
 | code_host.github | `gh auth status --hostname github.com` must succeed. Authenticate gh separately or supply `GH_TOKEN` or `GITHUB_TOKEN`. WUWEI captures and discards gh's account output. A write-scoped `GH_TOKEN` or `GITHUB_TOKEN` in `.wuwei/env` or the environment is readable by seats, and `wuwei config check` reports it. |
 | tracker.linear | `LINEAR_API_KEY` |
 | tracker.jira | `JIRA_SITE` (an `https://` origin, kept from seats but not redacted), `JIRA_EMAIL` and `JIRA_API_TOKEN`; `tracker.project` names the project key |
-| tracker.github | `GITHUB_TRACKER_TOKEN`; `tracker.project` names `owner/repo` (else the first repository) and optional `tracker.board` names a Projects board as `owner/number` |
+| tracker.github | `GITHUB_TRACKER_TOKEN`, a fine-grained token for issues and projects only, or your gh login with `tracker.auth = "gh"` ([below](#github-tracker-through-your-gh-login)); `tracker.project` names `owner/repo` (else the first repository) and optional `tracker.board` names a Projects board as `owner/number` |
 | chat.slack | `SLACK_BOT_TOKEN` or `SLACK_USER_TOKEN`, plus `SLACK_OWNER_DM_CHANNEL`. With `chat.identity = "custom_app"`, `SLACK_BOT_TOKEN` is required. Optional `SLACK_API_BASE` overrides `https://slack.com/api/` (https, or http to a loopback host). |
 | inbound.slack | `SLACK_BOT_TOKEN` or `SLACK_USER_TOKEN`, plus `SLACK_OWNER_DM_CHANNEL`. Mentions in work and external channels need your Slack user id in `owner.handles`. Commands from your owner DM need `control_plane.owner`; `plan` and `ask` with a code need `WUWEI_TOTP_SECRET`. Optional `SLACK_API_BASE` as for chat.slack. |
 | review_bot.greptile | `GREPTILE_API_KEY` |
@@ -71,3 +81,30 @@ the exit code.
 
 The existing `calendar.url` setting remains a runtime fallback for older
 workspaces; move private URLs into `WUWEI_CALENDAR_URL` for configuration readiness.
+
+### GitHub tracker through your gh login
+
+A fine-grained token is made only in the GitHub web UI. If you already work with gh signed
+in, `bin/wuwei config set tracker.auth '"gh"'` lets `tracker.github` run the same GraphQL
+through `gh api graphql --hostname github.com --input -`, the login `code_host.github`
+already uses (`gh auth: set` in `config check`). A set `GITHUB_TRACKER_TOKEN`
+is used first, whatever `tracker.auth` says; gh runs only when the token is unset. `config check` prints
+`tracker.github: gh login (tracker.auth = "gh"; GITHUB_TRACKER_TOKEN not set)` and needs no
+token; doctor's tracker row reads the backlog through gh and names `gh auth status` when it
+fails. A gh failure reports its exit, the HTTP status when gh printed one and a hint, never
+gh's own text. With `tracker.board`, the Status write needs the `project` scope, which a
+default gh login lacks: run `gh auth refresh -s project`.
+
+The trade-off: the token is scoped to issues and projects; your gh login is broad (classic
+scopes such as `repo` and `workflow`). With the opt-in, the tracker path gives up least
+privilege: a defect in the adapter would act with your whole gh login. How seats reach it is
+unchanged. Tracker operations run only through `bin/wuwei` (`tracker create`, `tracker log`,
+the watch, discovery, doctor) and the outward policy, as with the token. The
+opt-in adds nothing to `.wuwei/env` or to a seat's environment. gh keeps its login in its own
+store, which any process running as you can already reach, so that store is not a boundary
+either way ([threat model](security.md#threat-model-91)). It does not change the seat credential rule:
+keep a write-scoped `GH_TOKEN` or `GITHUB_TOKEN` out of `.wuwei/env` and the environment seats
+inherit (`config check` reports one); gh then uses its own stored login. Only you can set
+`tracker.auth = "gh"`: `config set` from a session needs your answer on a card, and seats cannot write
+`config.toml`. Keep the default `tracker.auth = "token"` in a workspace under the `strict`
+posture or with shared credentials, and wherever more than you can run commands as your user.
