@@ -46,7 +46,7 @@ Work admitted during the day must fit the remaining build hours.
 
 ### Tier
 
-Review tier: light (one reviewer agent) or standard and full (three), set per change from its size and risk. The tier also sets the process depth: see [review tiers](#review-tiers).
+Review tier: light (one reviewer agent) or standard and full (three), set per change from its diff: a docs-only change gets one reviewer, code or a trust surface gets three. The tier also sets the process depth: see [review tiers](#review-tiers).
 Outbound tier: a message sent as you either goes out at once or waits as a draft for your approval.
 
 ### Pace
@@ -359,7 +359,18 @@ At an item's first gate, `dispatch next` computes its review tier, `light`, `sta
 paths, the lead flags, the track, `repos.gates.floor` and an optional lead `tier`. A light
 item gets the quality gate only; standard and full get arch, quality and security. A lead
 tier below the computed one is refused and recorded as a reason, and the returned action
-carries the `tier`. See [configuration](configuration.md#workspace-and-repositories) and
+carries the `tier`.
+
+A docs-only diff gets one reviewer at any size and under the default floor. In such a diff
+every path ends in `.md` or `.rst`, or in `.txt` under `docs/` or `specs/`, and nothing else
+raises it. Agent instruction files never count as documents: `AGENTS.md`, `CLAUDE.md`,
+`SKILL.md` and paths under `charters/`, `skills/`, `agents/`, `commands/`, `.claude/` or
+`.agents/`. The reviewer is goal for a document and quality for a spec or a pre-registration.
+The reason reads `docs-only: 1 reviewer (goal)`, and a FIX continues the same seat. A lead `tier` above light is overridden and recorded as
+`lead tier full overridden: docs-only`. A lead flag, track FULL, a trust, never-auto,
+FULL-pattern or binary path, `floor = "full"` or pace careful keeps the three gates. A
+repository that keeps code under `docs/` or `specs/` lists those paths in
+`repos.gates.trust_paths`. The report lists the reviewer seats per item with its tier reason. See [configuration](configuration.md#workspace-and-repositories) and
 the [lead plan JSON](reference.md#lead-plan-json).
 
 The tier also decides how much process an item gets (design 5.3). Every brief and launch

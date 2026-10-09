@@ -475,3 +475,31 @@ def test_report_lists_what_was_undone_and_what_cannot_be(tmp_path, monkeypatch):
         '- D-3: undone (park)', '- 2026-09-29:4: merge undone (https://github.com/example/project/pull/8)']
     assert text.split('## Cannot be undone\n')[1].split('\n\n')[0].splitlines() == [
         '- D-1: A (one-way)', '- message R-1: a message has no undo']
+
+
+def test_report_lists_review_seats_per_item(tmp_path, monkeypatch):
+    # #622: reviewer seats per item with the tier reason.
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('[adapters]\ncode_host = "none"\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    state._write_state(lambda data: data.update(items={
+        'A': {**state.ITEM_DEFAULTS, 'phase': 'gate'}, 'B': {**state.ITEM_DEFAULTS, 'phase': 'gate'}}),
+        root, reserved=False)
+    from wuwei import report
+    assert '## Review seats' not in report.build(root)
+
+    def update(data):
+        data['items']['A']['gates'] = {'tier': 'light', 'computed': 'light', 'roles': ['goal'],
+                                       'reasons': ['docs-only: 1 reviewer (goal)']}
+        data['items']['B']['gates'] = {'tier': 'standard', 'computed': 'light', 'roles': ['arch', 'quality', 'security'],
+                                       'reasons': ['4 changed lines within light_max_lines 100', 'floor standard']}
+        data['seats'] = {'b-1': {'item': 'A', 'role': 'builder', 'status': 'stopped'},
+                         'g-A': {'item': 'A', 'role': 'sentinel-goal', 'status': 'stopped'},
+                         **{f'{role}-B': {'item': 'B', 'role': 'sentinel-' + role, 'status': 'stopped'}
+                            for role in ('arch', 'quality', 'security')}}
+    state._write_state(update, root, reserved=False)
+    assert ('## Review seats\n- A: 1 reviewer seat (goal); tier light: docs-only: 1 reviewer (goal)\n'
+            '- B: 3 reviewer seats (arch, quality, security); tier standard: '
+            '4 changed lines within light_max_lines 100; floor standard\n') in report.build(root)

@@ -76,6 +76,22 @@ def class_lines(data):
             'Target: cards only for Strategic and for floors (publish, merge).']
 
 
+def seat_lines(data):
+    """#622: reviewer seats per tiered item, its gate set and the tier reasons. A delta continues
+    a seat, so it counts once; a second opinion is its own seat."""
+    from wuwei import brief, dispatch
+    seats = brief.seats(data).values()
+    lines = []
+    for name, item in sorted(data['items'].items()):
+        if not item.get('gates'):
+            continue
+        count = sum(seat['item'] == name and seat['role'].startswith('sentinel-') for seat in seats)
+        lines.append(f"- {name}: {count} reviewer seat{'' if count == 1 else 's'} "
+                     f"({', '.join(dispatch.gate_set(item))}); tier {item['gates'].get('tier')}: "
+                     + '; '.join(item['gates'].get('reasons') or ['none recorded']))
+    return lines
+
+
 def cycle_lines(root):
     """#567: median cycle minutes per tier against its target, then one line per merged item."""
     rows = metrics.cycles(root)
@@ -194,6 +210,9 @@ def build(root=None):
     lines.extend(f"- {name}: {item['phase']}" for name, item in carry)
     if not carry:
         lines.append('none')
+    reviewed = seat_lines(data)
+    if reviewed:
+        lines += ['', '## Review seats', *reviewed]
     from wuwei import docs
     documented = docs.report_lines(root, workspace.load_config(root), data)
     if documented:
