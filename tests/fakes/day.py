@@ -34,6 +34,7 @@ class Runtime:
         self.builds = 0
         self.spec = True  # the builder runs the spec-kit steps (design 5.10)
         self.handback = False  # a background seat: SubagentHandback, no last_assistant_message (#473)
+        self.fresh = False  # #614: Claude Code has no resume; a continue is a fresh agent
 
     def dispatch(self, role, brief_path, worktree, write, *, root=None, resume=None):
         day = self.day
@@ -90,7 +91,9 @@ class Runtime:
             day.raise_pr()  # the shepherd raises the PR it owns (#551)
         else:
             assert role == 'steward'
-        transcript = day.root / (path.stem + '.jsonl')
+        # A fresh agent has its own id and transcript.
+        agent = path.stem + ('-fresh' if self.fresh and not resume else '')
+        transcript = day.root / (agent + '.jsonl')
         # A resumed Agent appends its new turn to the same transcript.
         ending = {'type': 'assistant', 'message': {'content': message}}
         fields = {'last_assistant_message': message}
@@ -106,7 +109,7 @@ class Runtime:
                 lines.write(json.dumps({'type': 'user', 'toolEndsTurn': True, 'message': {'content': [
                     {'type': 'tool_result', 'tool_use_id': 'toolu_scripted',
                      'content': 'Report delivered to your caller.'}]}}) + '\n')
-        day.hook('SubagentStop', agent_type=role, agent_id=path.stem,
+        day.hook('SubagentStop', agent_type=role, agent_id=agent,
                  agent_transcript_path=str(transcript), **fields)
         assert day.data['seats'][path.stem]['status'] == 'stopped'
         return Result(0, {'id': path.stem})
@@ -318,8 +321,9 @@ lead_login = "lead"
     def execute(self, action):
         # The planner hands a returned launch or continue action to Agent unchanged.
         assert action['action'] in ('launch', 'continue'), action
+        resume = None if self.runtime.fresh else action.get('resume')
         self.runtime.dispatch(action['agent_type'].removeprefix('wuwei:'), action['brief'],
-                              action['worktree'], False, root=self.root, resume=action.get('resume'))
+                              action['worktree'], False, root=self.root, resume=resume)
 
     def build(self, name):
         self.brief('builder', name)
