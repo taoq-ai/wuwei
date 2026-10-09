@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.24.0](https://github.com/taoq-ai/wuwei/compare/v0.23.0...v0.24.0) (2026-10-09)
+
+
+### Features
+
+* **gates:** lighter gates for docs-only items: one reviewer at the first round (goal for a document, quality for a spec), three only for code or a trust surface, and the tier is read from the diff, not asked ([#631](https://github.com/taoq-ai/wuwei/issues/631)) ([70575bb](https://github.com/taoq-ai/wuwei/commit/70575bbe323430a296c7bdc1202e62bbc2390313))
+* **tracker:** tracker.github runs through the owner's gh login under tracker.auth = "gh", HTTP failures name their status and a hint, and config check names a malformed token without printing it ([#607](https://github.com/taoq-ai/wuwei/issues/607)) ([082e1c6](https://github.com/taoq-ai/wuwei/commit/082e1c66b29e424b8b1086ab1eabfd9c956f2008))
+
+
+### Bug Fixes
+
+* **build:** a fix round and a delta review complete from Claude Code with a fresh Agent launch of the same brief, and wuwei spec analysis saves a subagent's spec-kit report ([#618](https://github.com/taoq-ai/wuwei/issues/618)) ([5a49b42](https://github.com/taoq-ai/wuwei/commit/5a49b42091dbbb569e2391b917de9d839801a45e))
+* **checks:** an empty fast-check list is a state, not a wall: items build with checks none and merge at green CI, calibration proposes checks from the repository or none under mandate, config cards carry list values in a Value row, and a config record is two-way ([#625](https://github.com/taoq-ai/wuwei/issues/625)) ([f00cf55](https://github.com/taoq-ai/wuwei/commit/f00cf552668a5e62deec5f3a1291c00f44bc864a))
+* **config:** promote never overwrites a key the owner set later and calibrate --answer promotes only its keys, and config set writes an empty list as empty ([#613](https://github.com/taoq-ai/wuwei/issues/613)) ([8afbdf1](https://github.com/taoq-ai/wuwei/commit/8afbdf145853d799c86f23b5205e684ec5a6225b))
+* **dispatch:** next passes --repo to worktree add on a multi-repository workspace, and asks for the day's goals before plan approve ([#612](https://github.com/taoq-ai/wuwei/issues/612)) ([8ea4f8f](https://github.com/taoq-ai/wuwei/commit/8ea4f8f35b0eb50eadd71f9936fc7b6ab48bb6ad))
+* **guards:** the push identity check skips commits already on a remote-tracking ref, and verdict lint skips read-only Bash and lints each gate by its own name ([#620](https://github.com/taoq-ai/wuwei/issues/620)) ([4976327](https://github.com/taoq-ai/wuwei/commit/4976327df45fd99342acc901f1cf1ea8ab994deb))
+* **identity:** doctor and the commit and push guard agree on an empty repos.N.identity ([#610](https://github.com/taoq-ai/wuwei/issues/610)) ([e0fa1f5](https://github.com/taoq-ai/wuwei/commit/e0fa1f5d5003f866911830ec433f8d403a9a7875))
+* **loop:** github.created sends a balanced query, a failed ticket lookup leaves only that ticket unmeasured, and next launches only the newest steward brief, one at a time ([#621](https://github.com/taoq-ai/wuwei/issues/621)) ([c760a1e](https://github.com/taoq-ai/wuwei/commit/c760a1e055297893e2194296690966bda565f55e))
+* **merge:** plan add records risk flags, setup asks whether merges deploy, and repos.merge.size_exclude keeps generated files out of max_changed_lines ([#619](https://github.com/taoq-ai/wuwei/issues/619)) ([03fa30d](https://github.com/taoq-ai/wuwei/commit/03fa30d9682c86bcca290bf86ed02a52f91e20a6))
+* **outward:** an owner/repo#N reference that is an issue, not a pull request, no longer fails the outward lint with a 404 from the pulls endpoint ([#609](https://github.com/taoq-ai/wuwei/issues/609)) ([3a00be1](https://github.com/taoq-ai/wuwei/commit/3a00be1dbcd03d46a0ea0ae4a4556addd4b5734a)), closes [#606](https://github.com/taoq-ai/wuwei/issues/606)
+* **steward:** review agents no longer start every 50 tool calls: the tool-call trigger defaults to 250, generated data and fixtures are excluded from the size trigger, and a sweep never starts while a seat is mid-round ([#632](https://github.com/taoq-ai/wuwei/issues/632)) ([89d6625](https://github.com/taoq-ai/wuwei/commit/89d6625d90029adf5a3dc22f39f1eefbc3cf2653))
+* **tests:** the invariant walk fits its CPU budget on the CI runner again (one parse per config text, scandir adapters, no mock or fsync in the timed walk) ([#627](https://github.com/taoq-ai/wuwei/issues/627)) ([cf8acb6](https://github.com/taoq-ai/wuwei/commit/cf8acb6feef5748e66785a57f6100c290e374ac9))
+
 ## [0.23.0](https://github.com/taoq-ai/wuwei/compare/v0.22.0...v0.23.0) (2026-10-09)
 
 
