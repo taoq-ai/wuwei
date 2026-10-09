@@ -296,3 +296,68 @@ def test_posture_day(tmp_path, monkeypatch, choice):
         assert any(row['destination'] == 'C0CLIENT' for row in data['drafts'].values())
         assert {'merged'} <= steps and any(step.startswith('D-') for step in steps)
     assert time.monotonic() - started < 60
+
+
+class Reached(Exception):
+    pass
+
+
+def test_fresh_day_goals_reach_an_approved_plan(day):
+    # #603: a fresh day's proposed goals approve at the gate, then the goals row records them.
+    from test_plan import LEAD_GOALS, TEMPLATE
+    (day.root / '.wuwei/memory/goals.md').write_text(TEMPLATE.read_text(encoding='utf-8'))
+    propose = day.proposal
+    day.proposal = lambda *args, **kwargs: {**propose(*args, **kwargs), 'goals': LEAD_GOALS}
+
+    def card(day, action):
+        for widget in action['widget']:
+            ask(day, widget, widget['options'][0]['label'])
+
+    def after(day, action):
+        if day.data.get('gate_approved'):
+            raise Reached
+    with pytest.raises(Reached):
+        walk(day, card, after)
+    action = json.loads(bash(day, 'wuwei next --json'))
+    assert (action['state'], action['command']) == (
+        'goals', f'wuwei goals edit --file .wuwei/days/{day.directory.name}/goals.md'), action
+    from wuwei import registry
+    from wuwei.registry import Result
+    # The owner commit is the VCS boundary; the fixture workspace memory is not a repository.
+    day.patch.setattr(registry.load('vcs', None), 'workspace_owner_commit', lambda *args, **kwargs: Result(0),
+                      raising=False)
+    bash(day, action['command'])
+    assert '## G-2' in (day.root / '.wuwei/memory/goals.md').read_text()
+
+
+def test_multi_repository_dispatch_runs(day):
+    # #603: with two repositories every start command next returns exits 0 and names --repo.
+    from wuwei import interview
+    with (day.root / '.wuwei/config.toml').open('a') as config:
+        config.write('[[repos]]\nname = "acme/other"\npath = "other"\ndefault_branch = "main"\n')
+    (day.root / 'other').mkdir()
+    (day.root / '.wuwei/days/2026-09-28/interview.json').write_text(json.dumps(
+        {row['id']: dict.fromkeys(('acme/widget', 'acme/other'), '') if row['scope'] == 'repo' else ''
+         for row in interview.QUESTIONS}))
+    propose = day.proposal
+
+    def proposal(*args, **kwargs):
+        value = propose(*args, **kwargs)
+        for row in value['candidates']:
+            row['repo'] = 'acme/widget'
+        return value
+    day.proposal = proposal
+    started = []
+
+    def card(day, action):
+        for widget in action['widget']:
+            ask(day, widget, widget['options'][0]['label'])
+
+    def after(day, action):
+        if action['action'] == 'set':
+            started.extend(command for entry in action['entries'] for command in entry.get('commands', []))
+            if started:
+                raise Reached
+    with pytest.raises(Reached):
+        walk(day, card, after)
+    assert 'wuwei worktree add A --repo acme/widget' in started, started

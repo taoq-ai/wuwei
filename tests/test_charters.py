@@ -142,6 +142,7 @@ def test_gate_and_merge_safety_contract():
     assert "stop line" in common and "reviewed sha" in common
     assert "moved HEAD is ESCALATE" in common
     assert "LLM output used as instructions" in lead
+    assert "more than one configured repository, name each candidate's repository as `repo`" in lead  # #603
     assert "threshold" in lead and "MCP config" in lead
     assert "never-auto" in lead and "FULL" in lead
     assert "review body" in shepherd and "PR comment" in shepherd

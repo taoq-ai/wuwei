@@ -379,7 +379,20 @@ def launch_set(root=None):
     briefed = {row['payload'].get('item') for row in brief.events(root)
                if row['kind'] == 'brief written' and row['payload'].get('role') == 'builder'}
     gate_waits = any(row['action'] == 'wait' for row in entries if items[row['item']]['phase'] in ('gate', 'delta'))
-    for index, name in enumerate(first + rest):
+    starts, skip = {}, []
+    for name in first + rest:
+        if name in briefed:
+            continue
+        try:
+            starts[name] = _start(root, name, config['repos'])
+        except ValueError as exc:  # a corrupt proposal refuses this item, never the whole set
+            skip.append(name)
+            entries.append({'item': name, 'goal': goal(name), 'action': 'refused', 'reason': str(exc)})
+            continue
+        if starts[name][0].startswith('wuwei plan park '):  # #603: a park takes no seat, whatever the seats and CAP
+            skip.append(name)
+            entries.append({'item': name, 'goal': goal(name), 'action': 'park', 'commands': starts[name]})
+    for index, name in enumerate(name for name in first + rest if name not in skip):
         if gate_waits:
             entries.append({'item': name, 'goal': goal(name), 'action': 'wait', 'reason': (
                 'a gate waits for seats; gates launch before new builds so ready items merge first')})
@@ -390,23 +403,36 @@ def launch_set(root=None):
         elif name in briefed:
             add(name, lambda: build.next_action(name, root=root))
         else:
-            add(name, lambda: {'action': 'start', 'commands': _start(root, name)})
+            add(name, lambda: {'action': 'start', 'commands': starts[name]})
     return {'action': 'set', 'cap': cap, 'bound': bound, 'capacity': limits['text'],
             'building': building, 'free_seats': start,
             'entries': entries}
 
 
-def _start(root, name):
-    """The exact commands that start a planned item: its worktree, then its builder brief."""
+def candidate(root, name):
+    """Today's proposal row for the item, or None."""
     import json
     path = workspace.day_dir(root) / 'proposal.json'
     candidates = json.loads(path.read_text(encoding='utf-8'))['candidates'] if path.is_file() else []
-    row = next((row for row in candidates if row.get('id') == name), None)
+    return next((row for row in candidates if row.get('id') == name), None)
+
+
+def _start(root, name, repos):
+    """The exact commands that start a planned item: its worktree, then its builder brief."""
+    row = candidate(root, name)
     body = (f"Implement {name}: {row['scope']}. Evidence: {row['evidence']}." if row and row.get('scope')
             else f"Implement {name} as today's plan records it.")
     tree = f'worktrees/{name}'
-    return ([] if (root / tree).exists() else [f'wuwei worktree add {name}']) + [
-        f'wuwei brief builder {name} builder-{name} --worktree {tree} --body ' + shlex.quote(body)]
+    add = [] if (root / tree).exists() else [f'wuwei worktree add {name}']
+    if add and len(repos) > 1:  # #603: worktree add exits 2 without --repo here
+        names = [repo['name'] for repo in repos]
+        repo = (row or {}).get('repo')
+        if repo not in names:
+            return [f'wuwei plan park {name} --reason ' + shlex.quote(
+                f'names no configured repository ({", ".join(names)}); the lead names repo for it '
+                'when it is proposed again')]
+        add = [add[0] + ' --repo ' + shlex.quote(repo)]
+    return add + [f'wuwei brief builder {name} builder-{name} --worktree {tree} --body ' + shlex.quote(body)]
 
 
 def _seats(root, data, item, roles, round_name, commands):

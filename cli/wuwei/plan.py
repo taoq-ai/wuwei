@@ -149,10 +149,12 @@ def _owner_prs(config, root, candidates):
         result = host.open_prs(repo['name'], root=root)
         if result.exit:
             return [], f'unmeasured: {result.reason}'
-        # ponytail: one PR number in two repositories gives one id; the second claim refuses.
-        rows += [{'id': f'PR-{pr["number"]}', 'pr': f'{repo["name"]}#{pr["number"]}', 'title': pr['title']}
-                 for pr in result.data if (pr['author'] or '').casefold() in logins
-                 and f'PR-{pr["number"]}' not in taken]
+        # #603: with several repositories the id names the repository, so one number gives two ids.
+        prefix = f'PR-{repo["name"].rsplit("/", 1)[-1]}-' if len(config['repos']) > 1 else 'PR-'
+        for pr in result.data:
+            ident = f'{prefix}{pr["number"]}'
+            if (pr['author'] or '').casefold() in logins and ident not in taken:
+                rows.append({'id': ident, 'pr': f'{repo["name"]}#{pr["number"]}', 'title': pr['title']})
     return rows, f'measured: {len(rows)} open PR{"" if len(rows) == 1 else "s"} by the owner'
 
 
@@ -202,6 +204,14 @@ def propose(data, root=None):
     data['sweep']['pr-flow'] = (f"measured: {len(warned)} warn ({', '.join(warned)}); "
                                 'wuwei doctor --section pr-flow' if warned else 'measured: ok')
     data['candidates'] = rank.rank(data['candidates'], framework, goal_list)
+    names = [repo['name'] for repo in config['repos']] if len(config['repos']) > 1 else []
+    for item in data['candidates'] if names else ():  # #603: worktree add needs --repo here
+        if item.get('repo') not in names:
+            item.pop('repo', None)
+            found = [repo['name'] for repo in config['repos'] if any(
+                (root / Path(repo['path']).expanduser() / path).exists() for path in item.get('paths', []))]
+            if len(found) == 1:
+                item['repo'] = found[0]
     data['seats'] = _seats(data)
     data['adopt'], data['sweep']['open-prs'] = _owner_prs(config, root, data['candidates'])
     from wuwei import pace  # #579: the recommended pace, its reasoning and the binding input
@@ -231,6 +241,9 @@ def propose(data, root=None):
         lines += [f'### {number}. {item["id"]} ({item["track"]})',
                   f'Goal: {item.get("goal", "unplanned")}', f'Evidence: {item["evidence"]}',
                   f'Scope: {item["scope"]}', f'Overlap: {item["overlap"]}',
+                  *([f'Repository: {item["repo"]}' if 'repo' in item else
+                     f'Repository: not named; the lead adds "repo": one of {", ".join(names)} (the paths '
+                     'match none or several), then the planner runs wuwei plan propose again'] if names else []),
                   'Flags: ' + ', '.join(key for key in FLAGS if item['flags'][key]) if any(item['flags'].values()) else 'Flags: none',
                   *(f'Owner-only: {name} {target} ({key})' for name, target, key in planned.get(item['id'], [])),
                   *owner_steps(item), '']
@@ -304,9 +317,10 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
         raise ValueError(f'plan files must not be symlinks; {SYMLINK}')
     config = workspace.load_config(root)
     framework = config['prioritisation']['framework']
-    data = _proposal(json.loads(proposal_path.read_text(encoding='utf-8')),
-                     (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8'),
-                     framework)
+    text = (root / '.wuwei/memory/goals.md').read_text(encoding='utf-8')
+    if not goals.defined(text) and (directory / 'goals.md').is_file():
+        text = (directory / 'goals.md').read_text(encoding='utf-8')  # #603: the provisional goals the gate card showed
+    data = _proposal(json.loads(proposal_path.read_text(encoding='utf-8')), text, framework)
     if not isinstance(items, list) or len(items) != len(set(items)):
         raise ValueError(f'approved items must be a unique list; {PLAN_JSON}')
     from wuwei import pace  # #579: the owner's pick on the gate card, recorded as given

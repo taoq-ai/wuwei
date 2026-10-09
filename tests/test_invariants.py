@@ -776,10 +776,69 @@ def i24(case, rules):
     return rules.memo(('register',), compute)
 
 
+
+def i26(case, rules):
+    """#603: every command next returns to start a planned item exits 0 in a multi-repository
+    workspace: worktree add names the candidate's --repo, an item with no repository is parked."""
+    def compute():
+        import json
+        import shlex
+        from wuwei import dispatch, state, workspace
+        rules.configure('guarded', '[[repos]]\nname = "example/paper"\npath = "paper"\ndefault_branch = "main"\n')
+        repos = workspace.load_config(rules.root)['repos']
+        state._write_state(lambda data: data['items'].update(
+            {name: {'phase': 'planned'} for name in ('P-A', 'P-B')}), rules.root, reserved=False)
+        (workspace.day_dir(rules.root) / 'proposal.json').write_text(json.dumps({'candidates': [
+            {'id': 'P-A', 'repo': 'example/paper'}, {'id': 'P-B'}]}))
+        if dispatch._start(rules.root, 'P-A', repos[:1])[0] != 'wuwei worktree add P-A':
+            return 'one repository changes worktree add'
+        real = workspace.create_worktree
+        workspace.create_worktree = lambda repo, *args, **kwargs: {'repo': str(repo)}  # the VCS boundary
+        try:
+            for name in ('P-A', 'P-B'):
+                for command in dispatch._start(rules.root, name, repos):
+                    argv = shlex.split(command)[1:]
+                    if argv[0] == 'brief':
+                        continue
+                    out, err = io.StringIO(), io.StringIO()
+                    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                        code = main(argv)
+                    if code or (argv[0] == 'worktree' and not json.loads(out.getvalue())['repo'].endswith('paper')):
+                        return f'{command} exits {code}: {err.getvalue().strip()}'
+        finally:
+            workspace.create_worktree = real
+        return None
+    return rules.memo(('start repo',), compute)
+
+
+def i27(case, rules):
+    """#603: a fresh day's gate-confirmed proposed goals approve the plan, and approve never
+    writes owner memory."""
+    def compute():
+        import json
+        from test_plan import LEAD_GOALS, TEMPLATE, proposal
+        from wuwei import goals, plan, workspace
+        root = rules.root / 'fresh'
+        (root / '.wuwei/memory').mkdir(parents=True)
+        (root / '.wuwei/config.toml').write_text('')
+        memory = TEMPLATE.read_text(encoding='utf-8')
+        (root / '.wuwei/memory/goals.md').write_text(memory)
+        day = workspace.day_dir(root)
+        day.mkdir(parents=True)
+        (day / 'goals.md').write_text(goals.proposed(memory, LEAD_GOALS)[0])
+        (day / 'proposal.json').write_text(json.dumps({**proposal(), 'goals': ['G-1', 'G-2']}))
+        (day / 'plan.md').write_text('# Morning plan\n')
+        try:
+            plan.approve(['A'], root, goals_confirmed=True)
+        except (ValueError, OSError) as exc:
+            return f'approve refuses the proposed goals: {exc}'
+        return None if (root / '.wuwei/memory/goals.md').read_text() == memory else 'approve writes memory'
+    return rules.memo(('proposed goals',), compute)
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
-              'I22': i22, 'I23': i23, 'I24': i24}
+              'I22': i22, 'I23': i23, 'I24': i24, 'I26': i26, 'I27': i27}
 
 
 def project(case):
@@ -794,7 +853,7 @@ OUTWARD = (0, 1, 2, 3, 5, 6)
 READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
-         'I22': (), 'I23': (), 'I24': ()}
+         'I22': (), 'I23': (), 'I24': (), 'I26': (), 'I27': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
