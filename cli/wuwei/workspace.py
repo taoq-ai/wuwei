@@ -579,9 +579,11 @@ def copy_data(value):
     return value
 
 
-# ponytail: per-process memo keyed on the config text; adapter and path checks rerun only
-# when the text changes.
+# ponytail: per-process memo keyed on the path and the config text, cleared past
+# CONFIGS_KEPT texts; adapter and path checks rerun only for a text not kept, so a process
+# that alternates a few texts (a raw= check beside the file) parses each once.
 _CONFIGS = {}
+CONFIGS_KEPT = 128
 # #346: the validated config and its warnings as JSON in .wuwei/generated, so a hook skips
 # tomllib (with typing and string) and the checks. A copy serves only the exact text it was
 # made from, under this plugin version and this layout; any other text is parsed and the
@@ -653,18 +655,21 @@ def load_config(root=None, *, raw=None, warnings=None):
     path = (find_workspace() if root is None else Path(root)) / ".wuwei/config.toml"
     generated = path.parent / 'generated'
     stale = False
+    if len(_CONFIGS) >= CONFIGS_KEPT:
+        _CONFIGS.clear()
     try:
         if raw is None:
             raw = path.read_text(encoding="utf-8")
-            if _CONFIGS.get(path, (None,))[0] != raw:
+            if (path, raw) not in _CONFIGS:
                 found = _cached(generated, raw)
                 if found:
-                    _CONFIGS[path] = (raw, *found)
+                    _CONFIGS[path, raw] = found
                 stale = not found
-        if _CONFIGS.get(path, (None,))[0] == raw:
+        if (path, raw) in _CONFIGS:
+            config, unknown = _CONFIGS[path, raw]
             if warnings is not None:
-                warnings.extend(f'config.toml: {text}' for text in _CONFIGS[path][2])
-            return copy_data(_CONFIGS[path][1])
+                warnings.extend(f'config.toml: {text}' for text in unknown)
+            return copy_data(config)
         from datetime import date
         import tomllib
         parsed = tomllib.loads(raw)
@@ -763,7 +768,7 @@ def load_config(root=None, *, raw=None, warnings=None):
             from wuwei import integrity  # A newer plugin's keys are unknown to me, not errors.
             if not integrity.newer_template(config):
                 raise ConfigError(unknown[0])
-        _CONFIGS[path] = (raw, config, tuple(unknown))
+        _CONFIGS[path, raw] = (config, tuple(unknown))
         if stale and CONFIG_CACHE_WRITES:
             _cache(generated, raw, config, unknown)
         if warnings is not None:

@@ -9,6 +9,7 @@ from importlib import import_module
 import io
 import itertools
 import math
+import os
 import re
 import time
 
@@ -16,10 +17,12 @@ import pytest
 
 from test_commit_push import item_case, workspace_case  # noqa: F401 (fixtures)
 from test_decision import draft_question
+from test_decision_classes import record
 from test_grants import run
 from test_merge import case  # noqa: F401 (fixture)
 from test_posture import fixed
 from test_reasons import CLI, ROOT, reasons
+from test_workspace import publishes
 from wuwei.__main__ import main
 
 # A wall: the only way out is the owner acting outside the session, and no card is named.
@@ -615,7 +618,6 @@ def i18(case, rules):
     only a merge on a configured repository below strict, and no allowlist rule matches a deploy,
     release, protected-branch push or force push."""
     def compute(posture):
-        from test_workspace import publishes
         from wuwei import grants, workspace
         from wuwei.commands import init
         config = workspace.load_config(rules.root, raw=rules.base + f'[security]\nposture = "{posture}"\n'
@@ -640,16 +642,19 @@ def i19(case, rules):
         return None
 
     def compute():
+        """The reply under every posture below strict and every umbrella, with one recorded
+        participant seeded once for them all."""
         from wuwei import outward, state
         key = 'C0TEAM/1.2'
         state._write_state(lambda data: data.setdefault('outbound_threads', {}).__setitem__(
             key, [f'p-{audience}']), rules.root, reserved=False)
         try:
-            return outward.classify('Tests passed.', rules.root, rules.config(posture, umbrella, 'adapter'),
-                                    {'channel': 'C0TEAM', 'thread_ts': '1.2'}, kind='chat', port=True, why=[])
+            return {(p, u): outward.classify('Tests passed.', rules.root, rules.config(p, u, 'adapter'),
+                                             {'channel': 'C0TEAM', 'thread_ts': '1.2'}, kind='chat', port=True, why=[])
+                    for p in DIMENSIONS['posture'] if p != 'strict' for u in DIMENSIONS['umbrella']}
         finally:
             state._write_state(lambda data: data['outbound_threads'].pop(key), rules.root, reserved=False)
-    code, decision = rules.memo(('thread', posture, audience, umbrella), compute)
+    code, decision = rules.memo(('thread', audience), compute)[posture, umbrella]
     expected = 'send' if audience == 'team' else 'draft'
     if decision != expected or (decision == 'draft') != (code == 1):
         return f'a reply to a {audience} thread participant is {decision} (exit {code}), expected {expected}'
@@ -660,7 +665,6 @@ def i20(case, rules):
     """#528: CAP comes from the host: the owner's cap when set, else the seats that fit above the
     memory floor, one per core, at least one; a token budget never raises it."""
     def compute():
-        from unittest import mock
         from wuwei import calibrate, workspace
 
         @functools.cache  # calibrate.host only reads the config; parse each of the four once
@@ -668,14 +672,20 @@ def i20(case, rules):
             return workspace.load_config(rules.root, raw=f'cap = {cap}\n' + rules.base + (
                 f'[budget]\ntokens_per_day = {budget}\n' if budget else ''))
         floor, seat = config(0, 0)['host']['free_memory_mb'], calibrate.host(rules.root, config(0, 0), free=0)['seat_mib']
-        for (seats, free), cores, cap, budget in itertools.product(
-                ((1, floor - 1), (1, floor + seat), (8, floor + 8 * seat)), (1, 4), (0, 3), (0, 10**6)):
-            with mock.patch('os.cpu_count', return_value=cores):
+        # os.cpu_count set by hand: unittest.mock would import asyncio inside the timed walk.
+        real = os.cpu_count
+        try:
+            for (seats, free), cores, cap, budget in itertools.product(
+                    ((1, floor - 1), (1, floor + seat), (8, floor + 8 * seat)), (1, 4), (0, 3), (0, 10**6)):
+                os.cpu_count = lambda cores=cores: cores
                 found = calibrate.host(rules.root, config(cap, budget), free=free)['cap']
-                plain = calibrate.host(rules.root, config(cap, 0), free=free)['cap']
-            expected = cap or min(seats, cores)
-            if found != expected or found > plain:
-                return f'cap {found} (without the budget {plain}) for free {free}, {cores} cores, cap {cap}, budget {budget}'
+                # Without a budget the plain call is the same call.
+                plain = calibrate.host(rules.root, config(cap, 0), free=free)['cap'] if budget else found
+                expected = cap or min(seats, cores)
+                if found != expected or found > plain:
+                    return f'cap {found} (without the budget {plain}) for free {free}, {cores} cores, cap {cap}, budget {budget}'
+        finally:
+            os.cpu_count = real
         return None
     return rules.memo(('host cap',), compute)
 
@@ -752,7 +762,6 @@ def i23(case, rules):
     """#556: a record naming a target the workspace never touched goes to the owner once and
     names it; a seat cannot write the seen set."""
     def compute():
-        from test_decision_classes import record
         from wuwei import novelty, workspace
         rules.configure('guarded', '[autonomy]\nmode = "autonomous"\n')
         (workspace.day_dir(rules.root) / 'decisions/D-60.md').write_text(
@@ -1009,6 +1018,8 @@ def world(item_case, monkeypatch):
     from wuwei.registry import Result
     from wuwei import integrity
     monkeypatch.setattr(integrity, '_host_confirm', lambda *args, **kwargs: True)  # the owner at the host
+    # No invariant reads durability; a state write's fsyncs are disk work, not the rules' CPU.
+    monkeypatch.setattr(os, 'fsync', lambda fd: None)
     root, fake, tree = item_case
     (tree / '.git').write_text('gitdir: elsewhere\n')
     (root / 'loop.sh').write_text('gh pr view 7\n')

@@ -72,15 +72,15 @@ def known(kind):
     """List installed public module names without importing external tools."""
     if kind not in INTERFACES:
         raise ValueError(f'unknown adapter kind: {kind}')
-    # os.listdir, not Path.glob: config validation lists 14 kinds on every hook.
-    directory = ADAPTERS / kind
+    # os.scandir, not Path.glob: config validation lists 14 kinds on every parse, and an entry's
+    # type comes with the listing instead of a stat per file.
     try:
-        names = os.listdir(directory)
+        with os.scandir(ADAPTERS / kind) as entries:
+            return sorted(entry.name[:-3] for entry in entries
+                          if entry.name.endswith('.py') and entry.name[:-3].isidentifier()
+                          and not entry.name.startswith('_') and entry.is_file())
     except (FileNotFoundError, NotADirectoryError):
         return []
-    return sorted(name[:-3] for name in names
-                  if name.endswith('.py') and name[:-3].isidentifier() and not name.startswith('_')
-                  and os.path.isfile(directory / name))
 
 
 def validate(kind, name, *, for_config=False):
