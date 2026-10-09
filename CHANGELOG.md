@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.1](https://github.com/taoq-ai/wuwei/compare/v0.24.0...v0.24.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **gates:** a round cap for every item kind: after two fix rounds the remaining non-blocking notes go into the PR body and the item ships; a blocking finding after the cap parks the item with its record, and the cap is configurable per tier ([#633](https://github.com/taoq-ai/wuwei/issues/633)) ([5651951](https://github.com/taoq-ai/wuwei/commit/5651951ad52fedeafc9759ce2ca9d37b4fd7e6dd))
+
 ## [0.24.0](https://github.com/taoq-ai/wuwei/compare/v0.23.0...v0.24.0) (2026-10-09)
 
 
