@@ -30,6 +30,17 @@ REINSTALL = 'reinstall the signed release'
 UNLOADED = 'config.toml does not load'
 
 
+def identity_row(repo, index, path, vcs):
+    """#605: the commit and push guard's rule, reason and fix; the fix names what git resolves."""
+    from wuwei.guards import commit_push
+    identity, name = repo['identity'], f"{repo['name']} identity"
+    if not commit_push.unset_identity(identity):
+        return _row('workspace', name, 'ok', f"{identity['name']} <{identity['email']}>")
+    found = vcs.identity(str(path))
+    return _row('workspace', name, 'fail', *commit_push.unset_identity(
+        identity, index, found.data if found.exit == 0 and isinstance(found.data, dict) else None))
+
+
 def _row(section, name, status, value, fix='', apply=None, detail=(), docs=None):
     row = {'section': section, 'name': name, 'status': status, 'value': value}
     if status != 'ok':
@@ -310,20 +321,7 @@ def _workspace(root, config, error, found):
                     else _row('workspace', f'{name} branch', 'unmeasured' if result.exit == 2 else 'fail',
                               result.reason or f'{branch} not found locally',
                               f'git -C {path} fetch origin {branch}:{branch}'))
-        identity = repo['identity']
-        if identity['name'] and identity['email']:
-            rows.append(_row('workspace', f'{name} identity', 'ok', f"{identity['name']} <{identity['email']}>"))
-        else:
-            # ponytail: printed edit until #327 ships a confirmed `config set`; then apply='config-set'.
-            found = vcs.identity(str(path))
-            if found.exit == 0 and isinstance(found.data, dict):
-                rows.append(_row('workspace', f'{name} identity', 'warn',
-                                 f"empty; the repository resolves {found.data['name']} <{found.data['email']}>",
-                                 f'set repos.{index}.identity.name = "{found.data["name"]}" and '
-                                 f'repos.{index}.identity.email = "{found.data["email"]}" in .wuwei/config.toml'))
-            else:
-                rows.append(_row('workspace', f'{name} identity', 'fail', 'empty and unresolved',
-                                 f'set repos.{index}.identity in .wuwei/config.toml'))
+        rows.append(identity_row(repo, index, path, vcs))
         checks = [command for command in repo['fast_checks'] if command.strip()]
         rows.append(_row('workspace', f'{name} fast_checks', 'ok', ', '.join(checks)) if checks else
                     _row('workspace', f'{name} fast_checks', 'warn', 'empty',
@@ -649,9 +647,11 @@ def _tracker(root, config):
         reason = f'tracker unmeasured: {exc}'
     if not reason:
         return _row('day', 'tracker', 'ok', f'{name}: backlog read')
-    return _row('day', 'tracker', 'fail', reason,
-                (f'set {names} in .wuwei/env, or ' if names else '')
-                + 'bin/wuwei config set tracker.required false')
+    fix = f'set {names} in .wuwei/env, or ' if names else ''
+    if name == 'github':  # #602: the token, or the owner's gh login under tracker.auth = "gh"
+        fix = (f'{fix}bin/wuwei config set tracker.auth \'"gh"\' to use your gh login, or ' if names else
+               'run gh auth status (with tracker.board: gh auth refresh -s project), or ')
+    return _row('day', 'tracker', 'fail', reason, fix + 'bin/wuwei config set tracker.required false')
 
 
 LEGACY_TRACE = ('Question: How should this critical tool sequence be investigated?\n'

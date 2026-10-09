@@ -688,6 +688,10 @@ CLASSIFY = [
     ('eval ls', (False, True, False, False)),
     ('cat `ls`', (True, False, False, False)),
     ('find . -name x -delete', (False, False, False, False)),
+    # #616: checksum tools only read their operands and print digests.
+    *((f'{tool} .wuwei/days/d/decisions/gate-a-quality.md', (True, False, False, False))
+      for tool in ('shasum -a 256', 'sha1sum', 'sha256sum', 'sha512sum', 'md5sum', 'cksum')),
+    ('shasum x > .wuwei/days/d/state.json', (False, False, False, True)),
 ]
 
 

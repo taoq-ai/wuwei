@@ -510,8 +510,21 @@ def test_setup_offers_the_detected_spec_engine_first(project, host, terminal, ca
         (project / 'beta' / marker).mkdir()
     terminal.answers['spec'] = label
     assert run_setup(Confirm()) == 0, capsys.readouterr().err
-    assert terminal.first == [{'spec': label}] and 'spec' in terminal.ids[0]
+    assert [first['spec'] for first in terminal.first] == [label] and 'spec' in terminal.ids[0]
     assert load_config(project)['spec']['engine'] == engine
+
+
+def test_setup_recommends_whether_merges_deploy_from_the_survey(project, host, terminal, capsys):
+    # #615: the deploys question lists first what calibration measured; a deploy workflow means deploy.
+    (project / 'alpha/.github/workflows').mkdir(parents=True)
+    (project / 'alpha/.github/workflows/deploy.yml').write_text(
+        (Path(__file__).parent / 'fixtures/calibrate/deploy/.github/workflows/deploy.yml').read_text())
+    terminal.answers['deploys'] = {'acme/beta': 'Merges do not deploy'}
+    assert run_setup(Confirm()) == 0, capsys.readouterr().err
+    assert terminal.first[0]['deploys'] == {'acme/alpha': 'Merges deploy', 'acme/beta': 'Merges do not deploy',
+                                            'acme/gamma': 'Merges do not deploy'}
+    assert 'deploys' in terminal.ids[0]
+    assert {repo['name']: repo['merge_deploys'] for repo in load_config(project)['repos']}['acme/beta'] is False
 
 
 def run_setup(confirm, shadow=True, posture=None, repos=None):

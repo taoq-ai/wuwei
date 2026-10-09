@@ -195,6 +195,8 @@ def test_pushed_range_uses_author_and_committer(tmp_path, monkeypatch, remote_sh
     assert result.exit == 0, result.reason
     assert result.data['commits'][0]['committer']['name'] == 'Other'
     assert len(calls) == len(steps)
+    # #616: commits a remote-tracking ref reaches are published already; never identity-checked.
+    assert all(call[-3:] == ['--not', '--remotes', '--'] for call in calls if 'log' in call)
     if remote_sha is None:
         assert any('refs/remotes/origin/feature^{commit}' in call for call in calls)
 

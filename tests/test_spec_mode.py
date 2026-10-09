@@ -324,3 +324,86 @@ def test_present_and_detect(tmp_path):
     assert specmode.detect([first, second], cfg) == 'openspec'
     (first / '.specify').mkdir()
     assert specmode.detect([first, second], cfg) == 'speckit'
+
+
+# #614: a Claude Code subagent cannot write analysis.md; the seat hands the report to the CLI.
+
+REPORT = (FIXTURES / 'speckit/specs/001-a/analysis.md').read_text()
+
+
+def analysis(ws, monkeypatch, capsys, *args, stdin=REPORT):
+    import io
+    import sys
+    from wuwei.__main__ import main
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(ws))
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(stdin))
+    code = main(['spec', 'analysis', *args])
+    out = capsys.readouterr()
+    return code, out.out, out.err
+
+
+@pytest.fixture
+def unanalysed(item):
+    shutil.copytree(FIXTURES / 'speckit/specs', item / 'specs')
+    (item / 'specs/001-a/analysis.md').unlink()
+    return item / 'specs/001-a/analysis.md'
+
+
+def test_spec_analysis_writes_the_report(ws, item, unanalysed, monkeypatch, capsys, tmp_path):
+    from wuwei import specmode
+    assert specmode.status(item, 'speckit', 'A')['step'] == 'analyze'
+    assert analysis(ws, monkeypatch, capsys, 'a')[:2] == (0, 'specs/001-a/analysis.md\n')
+    assert unanalysed.read_text() == REPORT and not unanalysed.is_symlink()
+    assert specmode.status(item, 'speckit', 'A') is None
+    source = tmp_path / 'report.md'
+    source.write_text(REPORT + '| A2 | Coverage | HIGH | No test. |\n')
+    assert analysis(ws, monkeypatch, capsys, 'A', '--file', str(source), stdin='')[0] == 0
+    assert specmode.status(item, 'speckit', 'A')['step'] == 'analyze'
+    line = specmode.brief_line(config(), 'A', {}, item, False)
+    assert 'bin/wuwei spec analysis a' in line
+
+
+@pytest.mark.parametrize('case, hint', [
+    ('unknown', 'unknown item'), ('no-worktree', 'worktree add'), ('no-dir', '/speckit.specify'),
+    ('two-dirs', 'both match'), ('no-spec', 'spec.md'), ('symlink', 'symlink'),
+    ('linked-dir', 'symlink'), ('empty', 'empty'),
+])
+def test_spec_analysis_refusals(ws, item, unanalysed, monkeypatch, capsys, tmp_path, case, hint):
+    name, stdin = 'A', REPORT
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    if case == 'unknown':
+        name = 'B'
+    if case == 'no-worktree':
+        day_state(ws, {'A': {'phase': 'implement', 'status': 'running'}})
+    if case == 'no-dir':
+        shutil.rmtree(item / 'specs')
+    if case == 'two-dirs':
+        shutil.copytree(item / 'specs/001-a', item / 'specs/002-a')
+    if case == 'no-spec':
+        (item / 'specs/001-a/spec.md').unlink()
+    if case == 'symlink':
+        unanalysed.symlink_to(outside / 'analysis.md')
+    if case == 'linked-dir':
+        shutil.move(item / 'specs/001-a', outside / '001-a')
+        (item / 'specs/001-a').symlink_to(outside / '001-a')
+    if case == 'empty':
+        stdin = ' \n'
+    code, out, err = analysis(ws, monkeypatch, capsys, name, stdin=stdin)
+    assert (code, out) == (2, '') and hint in err, err
+    assert not (outside / 'analysis.md').exists() and not (outside / '001-a/analysis.md').exists()
+    assert not unanalysed.exists() or unanalysed.is_symlink()
+
+
+@pytest.mark.parametrize('form', ['redirect', 'heredoc'])
+def test_builder_seat_runs_spec_analysis(ws, item, unanalysed, monkeypatch, capsys, form):
+    from fakes.day import LAUNCHER
+    (ws / '.wuwei/config.toml').write_text('[security]\nposture = "strict"\n')
+    command = (f'{LAUNCHER} spec analysis a < /tmp/report.md' if form == 'redirect'
+               else f"{LAUNCHER} spec analysis a <<'EOF'\n{REPORT}EOF")
+    data = payload(ws, 'PreToolUse', tool_name='Bash', tool_input={'command': command},
+                   agent_id='builder-1', agent_type='wuwei:builder')
+    data['cwd'] = str(item)
+    code, out = hook('PreToolUse', data, monkeypatch, capsys)
+    assert code == 0, out
+    assert [kind for kind, _ in kinds(ws, 'hook.')] == []

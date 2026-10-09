@@ -172,6 +172,62 @@ def test_tracker_lead_time_and_secondary_durations(root, monkeypatch):
         'creation_to_merge_hours': 48, 'pr_open_to_merge_hours': 24}
 
 
+def two_tickets(root, monkeypatch, created):
+    """#617: two tickets with merged PRs; created(item) answers each tracker created lookup."""
+    from wuwei.registry import Result
+    from wuwei import registry
+
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text() + '\n[adapters]\ntracker = "github"\n')
+    state._write_state(lambda data: data.update(items={
+        'a': {'pr': 'example/project#1'}, 'b': {'pr': 'example/project#2'}}, tickets={
+        'a': {'id': 'acme/app#1', 'source': 'set'}, 'b': {'id': 'acme/app#2', 'source': 'set'}}),
+        root, reserved=False)
+
+    class Host:
+        def pr(self, ref, root=None):
+            return Result(0, {'merged': True, 'merged_at': '2026-09-29T10:00:00Z',
+                              'created_at': '2026-09-28T10:00:00Z', 'author': 'owner'})
+
+        def threads(self, ref, root=None):
+            return Result(0, {'threads': []})
+
+        def commits(self, ref, root=None):
+            return Result(0, [])
+
+    class Tracker:
+        def history(self, item, root=None):
+            return Result(0, [{'createdAt': '2026-09-28T12:00:00Z', 'toState': {'name': 'In Progress'}}])
+
+        def created(self, item, root=None):
+            return created(item)
+
+    monkeypatch.setattr(registry, 'load', lambda kind, config: Tracker() if kind == 'tracker' else Host())
+
+
+def test_one_failing_ticket_lookup_leaves_only_that_ticket_unmeasured(root, monkeypatch):
+    from wuwei.registry import Result
+    reason = 'github.created: could not run: GitHub error response for acme/app#2: Could not resolve'
+    two_tickets(root, monkeypatch, lambda item: Result(0, '2026-09-27T10:00:00Z') if item == 'acme/app#1'
+                else Result(2, None, reason))
+    assert metrics.collect(root)['lead_time'] == {
+        'median_hours': 22, 'p75_hours': 22, 'p90_hours': 22, 'creation_to_merge_hours': 48,
+        'pr_open_to_merge_hours': 24, 'unmeasured': {'acme/app#2': reason}}
+
+
+def test_every_ticket_lookup_failing_is_unmeasured(root, monkeypatch):
+    from wuwei.registry import Result
+    two_tickets(root, monkeypatch, lambda item: Result(0, {'errors': [{'message': 'x'}]}))
+    assert metrics.collect(root)['lead_time'] == 'unmeasured'
+
+
+def test_malformed_ticket_data_still_fails_the_collect(root, monkeypatch):
+    from wuwei.registry import Result
+    two_tickets(root, monkeypatch, lambda item: Result(0, '2026-10-01T10:00:00Z'))
+    with pytest.raises(ValueError, match='merge predates creation'):
+        metrics.collect(root)
+
+
 def test_invalid_transcript_fails_closed_without_disclosing_text(root, capsys):
     from wuwei.__main__ import main
 

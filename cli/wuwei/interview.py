@@ -127,6 +127,15 @@ QUESTIONS = (
           {'security.posture': 'guarded', 'outbound.default_tier': 'ask', 'merge.default_tier': 'ask',
            'outbound.learn': 'card', 'autonomy.mode': 'supervised'})),
      'free': None},
+    # #615: merge_deploys defaults to true, so every merge is the owner's until this is answered.
+    # The table lists the fail-closed choice first; deploys_first reorders it from calibration.
+    {'id': 'deploys', 'scope': 'repo', 'header': 'Deploys', 'question': 'Does merging a pull request in {repo} deploy?',
+     'choices': (
+         ('Merges deploy', 'A merge ships the change to users, so you merge each pull request yourself '
+          '(merge_deploys = true).', {'repos.merge_deploys': True}),
+         ('Merges do not deploy', 'A merge only changes the code; shipping is a separate step you run, so '
+          'WUWEI may merge here (merge_deploys = false).', {'repos.merge_deploys': False})),
+     'free': None},
     {'id': 'merge', 'scope': 'repo', 'header': 'Merges', 'question': 'Who merges pull requests in {repo}?',
      'choices': (
          ('Owner merges', 'You merge every pull request yourself.', {'repos.merge.auto': False}),
@@ -271,8 +280,9 @@ QUESTIONS = (
           {'adapters.tracker': 'linear'}),
          ('Jira', 'Set JIRA_SITE, JIRA_EMAIL and JIRA_API_TOKEN in .wuwei/env; type jira and the '
           'project key to set the project too.', {'adapters.tracker': 'jira'}),
-         ('GitHub', 'GitHub issues; set GITHUB_TRACKER_TOKEN in .wuwei/env; type github and '
-          'owner/repo to set the project too.', {'adapters.tracker': 'github'}),
+         ('GitHub', 'GitHub issues; set GITHUB_TRACKER_TOKEN in .wuwei/env, or tracker.auth = "gh" '
+          'to use your gh login; type github and owner/repo to set the project too.',
+          {'adapters.tracker': 'github'}),
          ('None', 'Discovery reads no tracker backlog.', {'adapters.tracker': 'none'})),
      'free': (_tracker, 'the tracker and its project, for example jira PROJ')},
     {'id': 'tickets', 'scope': 'workspace', 'header': 'Tracking',
@@ -375,6 +385,32 @@ def effects(qid, answer):
         except ValueError as exc:
             raise ValueError(f"{qid}: answer one of: {labels}, or {row['free'][1]} ({exc})") from None
     raise ValueError(f'{qid}: answer one of: {labels}')
+
+
+def deploys_first(facts):
+    """#615: the deploys choice listed first (recommended): do not deploy only when calibration
+    measured no deploy signal; a signal or no measurement recommends deploy (fail closed)."""
+    try:
+        return 'Merges deploy' if calibrate.deploys(facts) else 'Merges do not deploy'
+    except (KeyError, TypeError):
+        return 'Merges deploy'
+
+
+def leads(root, repos):
+    """The first choices by repository, from the approved calibration snapshot; a snapshot that
+    does not read is unmeasured, so it recommends deploy rather than stopping every card."""
+    try:
+        snapshot = calibrate.approved(root)
+    except (OSError, ValueError):
+        snapshot = {}
+    return {'deploys': {repo: deploys_first(snapshot.get(repo)) for repo in repos}}
+
+
+def _first(first, row, repo):
+    """The choices with the lead first; a lead may be given per repository."""
+    lead = (first or {}).get(row['id'])
+    lead = lead.get(repo) if isinstance(lead, dict) else lead
+    return sorted(row['choices'], key=lambda choice: choice[0] != lead)
 
 
 def _answered(answers):
@@ -549,13 +585,13 @@ def _put(picked, row, repo, answer):
 def ask(ids, repos, first=None, defaults=None):
     """Ask on this terminal until each answer is valid; a number picks a choice and an empty
     reply takes the row's default, when it has one. first maps a question id to the choice
-    label listed first (setup's detected spec engine). EOFError propagates."""
+    label listed first (setup's detected spec engine), or to such labels by repository
+    (#615: deploys). EOFError propagates."""
     picked = {}
     for row, repo in _selected(ids, repos):
         default = (defaults or {}).get(row['id'])
         print(f"\n{row['header']}: {row['question'].format(repo=repo)}")
-        lead = (first or {}).get(row['id'])
-        choices = sorted(row['choices'], key=lambda choice: choice[0] != lead)
+        choices = _first(first, row, repo)
         for number, (label, description, _) in enumerate(choices, 1):
             print(f'  {number}. {label}: {description}')
         if row['free']:
@@ -633,9 +669,10 @@ def widgets(root, repos, ids=()):
     """The unanswered questions, or the named ones answered or not (#529), as
     AskUserQuestion widgets for the morning gate."""
     from wuwei import decision
+    first = leads(root, repos)
     return [{'id': row['id'], **({'repo': repo} if repo else {}), **decision.widget(
                 decision.gate(root) + row['question'].format(repo=repo), row['header'],
-                [(label, description) for label, description, _ in row['choices']],
+                [(label, description) for label, description, _ in _first(first, row, repo)],
                 f'wuwei calibrate --answer "{row["id"]}=<label>"' + (f' --repo {repo}' if repo else ''))}
             for row, repo in (_selected(ids, repos) if ids else unanswered(root, repos))]
 

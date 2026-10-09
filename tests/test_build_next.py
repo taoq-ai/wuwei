@@ -131,19 +131,46 @@ def test_claude_launch_check_continue_done_idempotent(seat, monkeypatch, capsys)
     assert '"test_ids"' in err
     assert action['resume'] == 'agent-builder'
     assert build.next_action('A', root=root) == action
-    # A consumed brief alone never authorizes another launch.
-    assert agent_launch.check({'cwd': str(root), 'tool_input': {
-        'subagent_type': 'builder', 'description': 'Build', 'prompt': action['prompt']}})[0] == 1
     launch(seat, action, action['resume'])
     assert stop(seat) == (0, '')
     results.append(registry.Result(0))
     assert main(['build', 'check', 'A']) == 0
     assert build.next_action('A', root=root)['action'] == 'done'
+    # A consumed brief with no pending continue never authorizes another launch.
+    assert agent_launch.check({'cwd': str(root), 'tool_input': {
+        'subagent_type': 'builder', 'description': 'Build', 'prompt': action['prompt']}})[0] == 1
     assert len([e for e in events(day) if e['kind'] == 'seat.usage']) == 2
     assert len([e for e in events(day) if e['kind'] == 'seat stopped']) == 2
     assert stop(seat) == (0, '')
     assert len([e for e in events(day) if e['kind'] == 'seat.usage']) == 2
     assert len([e for e in events(day) if e['kind'] == 'seat stopped']) == 2
+
+
+def test_fresh_agent_binds_the_pending_continue(seat, capsys):
+    # #614: Claude Code's Agent has no resume; a fresh launch of the continue prompt binds the
+    # stopped builder's round, and the fresh agent's stop (a new id) records it.
+    root, _, _, day, results = seat
+    launch(seat, build.next_action('A', root=root))
+    assert stop(seat) == (0, '')
+    results.append(registry.Result(1, {'test_ids': ['test_one'], 'error': 'failure'}))
+    assert main(['build', 'check', 'A']) == 1
+    action = build.next_action('A', root=root)
+    assert action['action'] == 'continue' and action['resume'] == 'agent-builder'
+    launch(seat, action)
+    data = state.read_state(root)
+    assert data['builds']['A']['status'] == data['seats']['builder']['status'] == 'running'
+    assert stop(seat, 'agent-builder') == (0, '')  # the replaced agent's late stop records nothing
+    assert state.read_state(root)['builds']['A']['status'] == 'running'
+    assert stop(seat, 'agent-fresh') == (0, '')
+    record = state.read_state(root)['builds']['A']
+    assert record['status'] == 'check' and record['agent_id'] == 'agent-fresh'
+    assert len([e for e in events(day) if e['kind'] == 'seat.usage']) == 2
+    results.append(registry.Result(0))
+    assert main(['build', 'check', 'A']) == 0
+    assert build.next_action('A', root=root)['action'] == 'done'
+    code, reason = agent_launch.check({'cwd': str(root), 'tool_input': {
+        'subagent_type': 'wuwei:builder', 'description': 'Build A', 'prompt': action['prompt']}})
+    assert code == 1 and 'brief already used' in reason
 
 
 def test_stop_uses_measured_failure_and_parks_valid_decision(seat):

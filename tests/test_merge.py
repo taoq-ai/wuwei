@@ -1076,3 +1076,36 @@ def test_merge_default_today_never_deploys(case):
     config_change(root, 'merge_deploys = false', 'merge_deploys = true')
     result = policy().execute(REF, root)
     assert result.exit == 1 and 'merge_deploys' in result.reason and not merged_calls(host)
+
+
+def test_missing_risk_evidence_names_the_plan_add_that_records_it(case):
+    # #615: an item admitted by plan add before the fix had no flags; plan add now records them.
+    from wuwei import plan
+    root = case[0]
+    path = workspace.day_dir(root) / 'events.jsonl'
+    mode = path.stat().st_mode
+    path.chmod(mode | 0o200)  # the log is read-only; only the test rewrites it
+    path.write_text(''.join(line + '\n' for line in path.read_text().splitlines()
+                            if json.loads(line)['kind'] != 'plan.approved'))
+    path.chmod(mode)
+    answer = check(case)
+    assert answer.exit == 2 and 'run bin/wuwei plan add item-7 ' in answer.reason, answer
+    assert plan.add('item-7', root)['action'] == 'risk recorded'
+    assert check(case).exit == 0
+
+
+@pytest.mark.parametrize('setting,path,previous,code,hint', [
+    ('size_exclude = ["results/*.json"]\n', 'results/run.json', None, 0, ''),
+    ('', 'results/run.json', None, 1, 'diff exceeds max changed lines'),
+    ('size_exclude = ["*.lock"]\n', 'deps/big.lock', None, 1, 'never-auto path'),
+    ('size_exclude = ["results/*.json"]\n', 'src/run.json', 'results/run.json', 1, 'diff exceeds max changed lines'),
+])
+def test_size_exclude_counts_only_the_files_it_does_not_match(case, setting, path, previous, code, hint):
+    # #615: a generated data file does not count toward max_changed_lines; never-auto still applies.
+    root, host = case
+    config_change(root, 'auto = true\n', 'auto = true\n' + setting)
+    host.results['files'].data.append({'path': path, 'previous_path': previous,
+        'status': 'renamed' if previous else 'added', 'additions': 1000, 'deletions': 0, 'patch': ''})
+    host.results['pr'].data.update(additions=1010, changed_files=2)
+    answer = check(case)
+    assert answer.exit == code and hint in answer.reason, answer

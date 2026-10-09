@@ -75,15 +75,21 @@ def run(args):
             if result.exit == 2:
                 print(result.reason, file=sys.stderr)
             status = max(status, result.exit)
+        elif (kind, name) == ('tracker', 'github') and config['tracker']['auth'] == 'gh':
+            # #602: the token, when set, is used before the gh login; the login is not measured here.
+            shape = _shape('GITHUB_TRACKER_TOKEN')
+            print(f'  {label}: ' + ('gh login (tracker.auth = "gh"; GITHUB_TRACKER_TOKEN not set)'
+                                   if shape == 'missing' else
+                                   f'GITHUB_TRACKER_TOKEN: {shape} (used before tracker.auth = "gh")'))
+            status = max(status, FINDINGS if shape.startswith('malformed') else CLEAN)
         elif (kind, name) == ('runtime', 'codex'):
             present = bool(config['codex']['command'])
             print(f'  {label}: codex.command: {"set" if present else "missing"}')
             status = max(status, CLEAN if present else FINDINGS)
         elif (kind, name) in needed:
             for alternatives in needed[kind, name]:
-                present = any(os.environ.get(key) for key in alternatives)
-                fields = ', '.join(f'{key}: {"set" if os.environ.get(key) else "missing"}'
-                                   for key in alternatives)
+                present = any(os.environ.get(key) and not env.malformed(key) for key in alternatives)
+                fields = ', '.join(f'{key}: {_shape(key)}' for key in alternatives)
                 suffix = ' (one required)' if len(alternatives) > 1 else ''
                 print(f'  {label}: {fields}{suffix}')
                 status = max(status, CLEAN if present else FINDINGS)
@@ -175,7 +181,16 @@ def requirements(config):
     }
     if config['chat']['identity'] == 'custom_app':
         needed['chat', 'slack'][0] = ('SLACK_BOT_TOKEN',)
+    if config['tracker']['auth'] == 'gh':  # #602: the gh login stands in for the token
+        del needed['tracker', 'github']
     return needed
+
+
+def _shape(name):
+    """set, missing or malformed (<why>): never the value."""
+    if not os.environ.get(name):
+        return 'missing'
+    return f'malformed ({why})' if (why := env.malformed(name)) else 'set'
 
 
 def missing(config):

@@ -462,6 +462,8 @@ def _setup(args, confirm):
         profiles.record(root, accepted, names)
     snapshot_path = root / '.wuwei/calibration.json'
     picked = {}
+    # #615: the survey runs before the interview so the deploys question recommends from its facts.
+    results = calibrate.survey(root, staged_cfg, list(enumerate(staged_cfg['repos'])), style=True)
     if found['repos'] or not snapshot_path.exists():
         from wuwei import docs, specmode
         paths = [(root / Path(repo['path']).expanduser()).resolve() for repo in staged_cfg['repos']]
@@ -470,12 +472,12 @@ def _setup(args, confirm):
         picked = interview.ask(
             [row['id'] for row in interview.QUESTIONS if not (args.shadow and row['id'] == 'autonomy')], names,
             first={'spec': next(label for label, _, effect in interview.question('spec')['choices']
-                                if effect == {'spec.engine': engine})},
+                                if effect == {'spec.engine': engine}),
+                   'deploys': {r['repo']['name']: interview.deploys_first(r['facts']) for r in results}},
             **({'defaults': {'docs': link}} if link else {}))
         if args.shadow:
             picked['autonomy'] = 'Autonomous'  # the flag answered it, so the first day does not ask again
         interview.record(root, staged_cfg, picked)
-    results = calibrate.survey(root, staged_cfg, list(enumerate(staged_cfg['repos'])), style=True)
     unmeasured = [f"{r['repo']['name']}: {command}" for r in results
                   for command, (_, note) in r['checks'].items() if note == calibrate.UNMEASURED]
     if unmeasured:

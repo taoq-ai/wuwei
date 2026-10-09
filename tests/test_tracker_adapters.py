@@ -3,6 +3,8 @@
 import importlib
 import json
 from pathlib import Path
+import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -33,6 +35,17 @@ class Reply:
 
     def read(self, *unused):
         return self.payload
+
+
+def balanced(query):
+    """#617: brackets close in order; a stray brace is a GraphQL parse error GitHub answers."""
+    stack = []
+    for char in query:
+        if char in '({[':
+            stack.append(')}]'['({['.index(char)])
+        elif char in ')}]' and (not stack or stack.pop() != char):
+            return False
+    return not stack
 
 
 def replay(monkeypatch, responses):
@@ -89,6 +102,8 @@ def test_tracker_port_contract(name, workspace_root, monkeypatch):
     assert isinstance(results['created'].data, str)
     secret = list(CREDENTIALS[name].values())[-1]
     assert all(secret not in json.dumps(call[3]) for call in calls)
+    queries = [call[3]['query'] for call in calls if name != 'jira']
+    assert all(balanced(query) for query in queries), [q for q in queries if not balanced(q)]
     if name == 'linear':
         create = calls[7][3]['variables']['input']
         assert create['parentId'] == 'uuid-1' and create['teamId'] == 'team-1'
@@ -127,6 +142,18 @@ def test_missing_credential_makes_no_request(name, workspace_root, monkeypatch):
     calls = replay(monkeypatch, [])
     result = adapter.history(ITEM[name], root=root)
     assert result.exit == 2 and missing in result.reason and calls == []
+
+
+@pytest.mark.parametrize('name', ['linear', 'jira', 'github'])
+def test_malformed_credential_makes_no_request(name, workspace_root, monkeypatch):
+    adapter = importlib.import_module(f'adapters.tracker.{name}')
+    root = workspace_root(name)
+    token = list(CREDENTIALS[name])[-1]
+    monkeypatch.setenv(token, 'gh auth token private')
+    calls = replay(monkeypatch, [])
+    result = adapter.history(ITEM[name], root=root)
+    assert result.exit == 2 and calls == []
+    assert f'{token} is malformed (contains whitespace)' in result.reason and 'private' not in result.reason
 
 
 def test_jira_site_must_be_https(workspace_root, monkeypatch):
@@ -168,6 +195,7 @@ def test_github_board_moves_the_project_status(workspace_root, monkeypatch):
     assert github.transition('acme/app#1', 'In Review', root=root).exit == 0
     assert calls[1][3]['variables'] == {'project': 'project-1', 'item': 'item-node-1',
                                         'field': 'field-1', 'option': 'option-1'}
+    assert all(balanced(call[3]['query']) for call in calls)
 
 
 def test_github_done_without_board_closes_the_issue(workspace_root, monkeypatch):
@@ -177,3 +205,129 @@ def test_github_done_without_board_closes_the_issue(workspace_root, monkeypatch)
                                  {'data': {'closeIssue': {'issue': {'id': 'issue-node-1'}}}}])
     assert github.transition('acme/app#1', 'Done', root=root).exit == 0
     assert 'closeIssue' in calls[1][3]['query']
+    assert all(balanced(call[3]['query']) for call in calls)
+
+
+@pytest.mark.parametrize('message, expected', [
+    ('Could not resolve to an Issue\n  with the number of 9.',
+     'GitHub error response for acme/app#9: Could not resolve to an Issue with the number of 9.'),
+    ('x' * 500, 'GitHub error response for acme/app#9: ' + 'x' * 160),
+    ('Bad token=private-github-token', 'GitHub error response for acme/app#9: [REDACTED]'),
+    (None, 'GitHub error response for acme/app#9'),
+], ids=['one-line', 'capped', 'redacted', 'no-message'])
+def test_github_error_names_the_ticket_and_the_first_message(workspace_root, monkeypatch,
+                                                             message, expected):
+    from adapters.tracker import github
+    root = workspace_root('github')
+    replay(monkeypatch, [{'errors': [{'message': message}, {'message': 'second'}], 'data': None}])
+    result = github.created('acme/app#9', root=root)
+    assert result.exit == 2 and result.reason.endswith(expected), result.reason
+    assert '\n' not in result.reason and 'second' not in result.reason and 'private' not in result.reason
+
+
+def gh_replay(monkeypatch, responses):
+    """Each answer is a JSON body, or (returncode, stderr) for a failed gh."""
+    calls = []
+    responses = iter(responses)
+
+    def run(argv, **kwargs):
+        calls.append((argv, json.loads(kwargs['input'])))
+        assert kwargs['timeout'] == 30 and kwargs['capture_output'] and kwargs['text']
+        answer = next(responses)
+        if isinstance(answer, tuple):
+            body = ('{"errors": [{"message": "Could not resolve to an Issue with the number of 1."}]}'
+                    if 'resolve' in answer[1] else '')
+            return SimpleNamespace(returncode=answer[0], stdout=body, stderr=answer[1])
+        return SimpleNamespace(returncode=0, stdout=json.dumps(answer), stderr='')
+
+    monkeypatch.setattr(subprocess, 'run', run)
+    return calls
+
+
+@pytest.fixture
+def gh_root(workspace_root, monkeypatch):
+    root = workspace_root('github')
+    monkeypatch.delenv('GITHUB_TRACKER_TOKEN')
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('auth = "gh"\n')
+    return root
+
+
+def test_github_port_contract_through_gh(gh_root, monkeypatch):
+    from adapters.tracker import github
+    http = replay(monkeypatch, [])
+    responses = json.loads((FIXTURES / 'github.json').read_text())
+    calls = gh_replay(monkeypatch, responses)
+    item = ITEM['github']
+    draft = {'title': 'Export fails on empty rows', 'description': 'Evidence: cli/x.py:12',
+             'item': 'item-1', 'category': 'bugs', 'parent': item}
+    results = [github.backlog('', root=gh_root), github.claim(item, root=gh_root),
+               github.transition(item, 'In Review', root=gh_root), github.create(draft, root=gh_root),
+               github.comment(item, '[2026-09-29 item-1] Phase: gate.', 'progress', root=gh_root),
+               github.history(item, root=gh_root), github.created(item, root=gh_root)]
+    assert [result.exit for result in results] == [0] * 7, results
+    assert http == [] and len(calls) == len(responses)
+    assert all(argv == ['gh', 'api', 'graphql', '--hostname', 'github.com', '--input', '-']
+               and set(payload) == {'query', 'variables'} for argv, payload in calls)
+    assert all(balanced(payload['query']) for _, payload in calls)
+    assert results[3].data == {'id': 'acme/app#2', 'url': 'https://github.com/acme/app/issues/2'}
+
+
+def test_github_token_wins_over_gh(gh_root, monkeypatch):
+    from adapters.tracker import github
+    monkeypatch.setenv('GITHUB_TRACKER_TOKEN', 'private-github-token')
+    calls = gh_replay(monkeypatch, [])
+    http = replay(monkeypatch, [{'data': {'repository': {'issue': {'createdAt': '2026-09-28T10:00:00Z'}}}}])
+    assert github.created('acme/app#1', root=gh_root).exit == 0
+    assert calls == [] and len(http) == 1
+
+
+def test_github_default_without_token_names_the_opt_in(workspace_root, monkeypatch):
+    from adapters.tracker import github
+    root = workspace_root('github')
+    monkeypatch.delenv('GITHUB_TRACKER_TOKEN')
+    calls, http = gh_replay(monkeypatch, []), replay(monkeypatch, [])
+    result = github.created('acme/app#1', root=root)
+    assert result.exit == 2 and calls == [] and http == []
+    assert 'GITHUB_TRACKER_TOKEN is missing' in result.reason and 'tracker.auth = "gh"' in result.reason
+
+
+@pytest.mark.parametrize('answer, expected', [
+    ((1, 'gh: Bad credentials private (HTTP 401)'),
+     'gh api graphql exited 1: HTTP 401: credential rejected'),
+    ((1, "gh: Your token has not been granted the required scopes private ['project']"),
+     'gh api graphql exited 1: run gh auth refresh -s project'),
+    ((4, 'To get started with GitHub CLI, please run:  gh auth login private'),
+     'gh api graphql exited 4: run gh auth status'),
+    ((1, 'gh: Could not resolve to a Repository with the name private.'),
+     'gh api graphql exited 1: GitHub error response for acme/app#1: Could not resolve to an '
+     'Issue with the number of 1.'),
+    (FileNotFoundError('gh'), 'gh is not on PATH; install the GitHub CLI and run gh auth login'),
+    (subprocess.TimeoutExpired(['gh'], 30, stderr='private'), 'gh api graphql timed out after 30 s'),
+])
+def test_github_gh_failure_names_the_cause_not_the_text(gh_root, monkeypatch, answer, expected):
+    from adapters.tracker import github
+    if isinstance(answer, Exception):
+        monkeypatch.setattr(subprocess, 'run', lambda *a, **k: (_ for _ in ()).throw(answer))
+    else:
+        gh_replay(monkeypatch, [answer])
+    result = github.created('acme/app#1', root=gh_root)
+    assert result.exit == 2 and expected in result.reason, result.reason
+    assert 'private' not in result.reason
+
+
+def test_github_gh_error_body_is_a_failure(gh_root, monkeypatch):
+    from adapters.tracker import github
+    gh_replay(monkeypatch, [{'errors': [{'message': 'private'}], 'data': None}])
+    result = github.created('acme/app#1', root=gh_root)
+    assert result.exit == 2 and 'GitHub error response' in result.reason
+
+
+def test_tracker_auth_takes_token_or_gh(workspace_root):
+    root = workspace_root('github')
+    from wuwei import workspace
+    assert workspace.load_config(root)['tracker']['auth'] == 'token'
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('auth = "keychain"\n')
+    with pytest.raises(workspace.ConfigError):
+        workspace.load_config(root)

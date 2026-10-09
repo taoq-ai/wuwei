@@ -56,7 +56,7 @@ checked-out branch, and the line says which. A repository with no remote is prop
   signals, each with the file and line it came from
   ([calibration](configuration.md#calibration));
 - your interview is what `bin/wuwei calibrate --interview` asks: how much merge autonomy
-  you want, your gate floor, quiet and working hours, and how decisions reach you. It also asks
+  you want, whether a merge deploys each repository, your gate floor, quiet and working hours, and how decisions reach you. It also asks
   words to avoid, which commands you run by hand, which tracker, chat and review bot you use, and who reviews
   your pull requests (`Owner only` for a solo owner) ([owner interview](configuration.md#owner-interview)). `config check` then names each
   credential variable those adapters need until you set it in `.wuwei/env`;
@@ -312,11 +312,13 @@ executes each returned action unchanged:
    only, `standard` and `full` for all three.
 4. Fix round: when a gate says FIX, `dispatch next` returns `fix` with `command`
    (`wuwei build next <item>`). The item is already in `fix` and the stopped builder has a
-   `continue` action with the FIX verdict files as feedback. The planner runs the build
+   `continue` action with the FIX verdict files as feedback. The planner launches a fresh
+   Agent with its `prompt`; Claude Code's Agent takes no `resume`. Then it runs the build
    loop again until `done`, which moves the item to `delta`.
 5. [Delta](concepts.md#delta): `dispatch next` returns `gates` for the roles that said FIX, and `seats` holds a
-   `continue` action per seat with `resume` (the seat's agent ID) and a `receive` call
-   with `--round delta`. After the delta verdicts it returns `raise` with review notes,
+   `continue` action per seat with its `prompt`, `resume` (the seat's agent ID) and a
+   `receive` call with `--round delta`. The planner launches it as a fresh Agent, which
+   continues the same seat. After the delta verdicts it returns `raise` with review notes,
    or `escalate`. A light item has no delta review: its `continue` feedback starts
    `Re-read:` and the same [sentinel](concepts.md#sentinel) rewrites its `Verdict:` and `Head:` lines.
 6. Pull request: `wuwei pr raise <owner/repo> --base main --title <title> --body-file

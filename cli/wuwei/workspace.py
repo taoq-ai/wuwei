@@ -19,6 +19,7 @@ MERGE_SCHEMA = {
     "bot_login": (str, ""), "bot_min_score": (int, 5, 0),
     "bot_score_pattern": (str, r"Confidence Score:\s*([0-9]+)/5"),
     "fix_pattern": (str, r"(?i)\b(?:fix(?:es|ed)?|bugfix|hotfix|revert)\b"),
+    "size_exclude": [(str, None)],  # #615: globs of generated files max_changed_lines skips
     "never_auto_paths": [(str, None), [
         ".github/*", "ci/*", "workflows/*", ".buildkite/*", ".travis.yml", ".gitlab-ci.yml", "Jenkinsfile", ".circleci/*", "azure-pipelines*",
         "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lock*",
@@ -103,7 +104,8 @@ SCHEMA = {
                 "log": [(str, None, TRACKER_KINDS), list(TRACKER_KINDS)],
                 "auto": [(str, None, (*TRACKER_CLASSES, *TRACKER_KINDS)), ["progress", "pr", "close"]],
                 "max_per_item_per_day": (int, 10, 1),
-                "project": (str, ""), "board": (str, "")},
+                "project": (str, ""), "board": (str, ""),
+                "auth": (str, "token", ("token", "gh"))},
     "docs": {"system": (str, "none"),
              "required_tiers": [(str, None, ("light", "standard", "full")), ["standard", "full"]],
              "space": (str, ""), "root": (str, "docs"),

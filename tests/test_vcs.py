@@ -491,3 +491,64 @@ def test_rehearse_revert_on_a_scratch_repository():
                  ('rev-parse', 'HEAD^{tree}', 'HEAD~2^{tree}')):
         with pytest.raises(ValueError, match='unsupported git command'):
             git._run(outside, *args, local=True)
+
+
+def test_invariant_push_identity_reads_only_unpublished_commits(tmp_path, monkeypatch):
+    # #616 (proposed design 9.2 I25): a commit any remote-tracking ref reaches is already
+    # published, so the push identity check reads only the commits no remote has.
+    import os
+    from wuwei.guards.commit_push import push_check
+    for key in list(os.environ):
+        if key.startswith('GIT_'):
+            monkeypatch.delenv(key)
+    owner = {'name': 'Builder', 'email': 'builder@example.test'}
+    remote, repo = tmp_path / 'remote.git', tmp_path / 'repo'
+
+    def git(*args, who=owner, committer=None):
+        committer = committer or who
+        env = {**os.environ, 'GIT_AUTHOR_NAME': who['name'], 'GIT_AUTHOR_EMAIL': who['email'],
+               'GIT_COMMITTER_NAME': committer['name'], 'GIT_COMMITTER_EMAIL': committer['email']}
+        return subprocess.run(['git', '-C', str(repo), *args], check=True, capture_output=True,
+                              text=True, env=env).stdout.strip()
+
+    subprocess.run(['git', 'init', '-q', '--bare', '-b', 'main', str(remote)], check=True)
+    subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
+    git('remote', 'add', 'origin', str(remote))
+    git('commit', '-q', '--allow-empty', '-m', 'feat: start')
+    git('push', '-q', 'origin', 'main')
+    git('checkout', '-q', '-b', 'feature')
+    git('commit', '-q', '--allow-empty', '-m', 'feat: one')
+    git('push', '-q', 'origin', 'feature')
+    git('checkout', '-q', 'main')
+    git('commit', '-q', '--allow-empty', '-m', 'Merge pull request #1',
+        committer={'name': 'GitHub', 'email': 'noreply@github.com'})
+    git('push', '-q', 'origin', 'main')
+    git('checkout', '-q', 'feature')
+    git('commit', '-q', '--allow-empty', '-m', 'feat: two')
+    git('merge', '-q', '--no-edit', 'origin/main')
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    from fakes.integrity import seed
+    seed(tmp_path)
+    vcs, config = adapter(), {'identity': owner, 'default_branch': 'main'}
+
+    def check(destination):
+        sha = git('rev-parse', 'HEAD')
+        head = {'sha': sha, 'author': owner, 'committer': owner}
+        push = {'head': head, 'remote': 'origin', 'force': False,
+                'updates': [{'source': sha, 'destination': destination}]}
+        found = vcs.push_commits(str(repo), 'origin', destination, sha, None, 'main')
+        assert found.exit == 0, found.reason
+        return ([git('log', '-1', '--format=%s', c['sha']) for c in found.data['commits']],
+                push_check(config, {'path': str(repo), 'author': owner, 'committer': owner}, push, tmp_path, vcs))
+
+    # The pushed branch (tracking ref) and a new branch (default branch base) alike.
+    assert check('refs/heads/feature') == (['Merge remote-tracking branch \'origin/main\' into feature',
+                                            'feat: two'], (0, ''))
+    subjects, _ = check('refs/heads/fresh')
+    assert subjects == ['Merge remote-tracking branch \'origin/main\' into feature', 'feat: two']
+    # A commit by another identity that no remote has is still read and refused.
+    git('commit', '-q', '--allow-empty', '-m', 'feat: foreign', who={'name': 'Other', 'email': 'o@example.test'})
+    subjects, (code, reason) = check('refs/heads/feature')
+    assert subjects[0] == 'feat: foreign'
+    assert code == 1 and 'pushed commit identity' in reason

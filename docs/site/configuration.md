@@ -41,6 +41,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `tracker.max_per_item_per_day` | `10` | Comments per ticket per day; the last allowed one folds the rest into one comment. |
 | `tracker.project` | `""` | Where new tickets go: a Linear team ID (empty uses `backlog_filter`), a Jira project key (required for Jira) or a GitHub `owner/repo` (empty uses the first repository). |
 | `tracker.board` | `""` | GitHub Projects board as `owner/number`; transitions set its Status field. Empty uses a label for in review and closes the issue for done. A board or project outside `outbound.code_host_orgs` makes every tracker write a draft. |
+| `tracker.auth` | `"token"` | How `tracker.github` authenticates: `token` uses `GITHUB_TRACKER_TOKEN`; `gh` uses your gh login when that token is unset (the token is used first when set). The gh login is broad, so the tracker path gives up least privilege; seats still reach the tracker only through `bin/wuwei`. See [GitHub tracker through your gh login](adapters.md#github-tracker-through-your-gh-login). |
 | `profile` | `"strict"` | Guard profile: `strict` or `standard`. Standard warns for outward text lint. |
 | `guards.mode` | `"enforce"` | Retired. `init --upgrade` and `doctor --fix` rewrite `"shadow"` to `security.posture = "observe"` (keeping `guards.shadow_since` and `guards.shadow_days`) and remove `"enforce"`. Until then `"shadow"` still means `observe`, and `config check` and `doctor` show `posture: observe (from guards.mode = "shadow", deprecated; run doctor --fix)`. |
 | `guards.shadow_days` | `7` | Days in the `observe` posture before one status nudge asks you to switch to `guarded` or raise this number. |
@@ -54,8 +55,9 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `repos.path` | Required per entry | Repository path from workspace root or absolute path. |
 | `repos.default_branch` | Required per entry | Protected base branch. |
 | `repos.identity` | `{name = "", email = ""}` | Expected git identity for this repository; the commit guards compare commits against it. Set both values. `wuwei worktree add` writes it to each item worktree's Git config. |
-| `repos.merge_deploys` | `true` when omitted | Whether a merge deploys. Template example sets `false` only after explicit confirmation. |
+| `repos.merge_deploys` | `true` when omitted | Whether a merge deploys. While it is not `false`, every merge in the repository is yours. Setup and the planner's cards ask it per repository (the `deploys` question); only your answer sets `false`. |
 | `repos.merge.auto` | `false` | Allow automatic merge only when the merge policy's review, check, soak, path and budget rules pass. |
+| `repos.merge.size_exclude` | `[]` | Path globs, matched on any path suffix, for generated files such as `results/*.json`. A changed file whose every path matches one does not count toward `max_changed_lines`; a rename counts when either path does not match. Never-auto paths still apply to these files. |
 | `repos.gates.floor` | `"standard"` | Lowest review tier for this repository: `light`, `standard` or `full`. `wuwei dispatch next` computes a tier from the item diff at its first gate; LIGHT runs the quality gate only, STANDARD and FULL run arch, quality and security. Keep `standard` until the escaped defects per tier in the retro support lowering it. |
 | `repos.gates.light_max_lines` | `100` | A diff with more changed lines is at least STANDARD. Binary changes, any lead flag and track FULL also raise the tier. |
 | `repos.gates.trust_paths` | `["guards/*", "state.py", "adapters/*", ".claude-plugin/*", ".github/*", "ci/*", "workflows/*", "deploy/*", "infra/*"]` | Path globs, matched on any path suffix, that force at least STANDARD. `repos.merge.never_auto_paths` and `brief.full_path_patterns` force it too. |
@@ -114,6 +116,8 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 - superpowers: `/plugin marketplace add obra/superpowers-marketplace`, then `/plugin install superpowers@superpowers-marketplace`
 - OpenSpec: `npm install -g @fission-ai/openspec`, then `openspec init`
 
+A Claude Code subagent cannot write `analysis.md` itself, so a builder seat saves the analyze report with `bin/wuwei spec analysis <item> < report`.
+
 `wuwei setup` offers the engine it finds first (`.specify/`, `openspec/`, or a `superpowers@` entry in `scanner.mcp.plugins_file`), spec-kit when it finds none.
 
 ## Host, build and memory
@@ -171,7 +175,7 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 | `listen.poll_seconds` | `60` | Interval between listener polls of the inbound source. The listener ticks at least every 30 s to probe owned PRs. |
 | `listen.dead_seconds` | `300` | Clock age after which the listener is reported dead at session start and in `wuwei status`. |
 | `responder.enabled` | `true` | Kill switch: when `false` the listener still stores events but does not wake the planner or handle commands. |
-| `steward.every_tool_calls` | `50` | Completed tool calls between steward reviews. |
+| `steward.every_tool_calls` | `50` | Completed tool calls between steward reviews. `wuwei next` launches only the newest steward brief, and offers neither a due review nor a launch while a steward seat runs; the due review waits until that seat stops. |
 | `steward.loop_window_hours` | `4` | Window, in hours, over which a steward review counts an item's exchanges for a negotiation loop. |
 | `steward.loop_threshold` | `9` | Exchanges in the window above which an item raises one `negotiation.loop` nudge a day; a second fix round today raises it too. |
 
@@ -341,7 +345,7 @@ Run `bin/wuwei calibrate [--repo <name>]` after `init` and the basic `[[repos]]`
 
 It also reads the last 100 commit subjects for the commit style and the last 30 merged pull requests for a size and cycle time baseline, which the steward gets as advisory input.
 
-The proposal is additive. A key absent from `config.toml` is added, and `deploy.workflows`, `deploy.deny` or `repos.fast_checks` still at a one-line `[]` is replaced. A key you already set is never changed: the report lists it under "config differs; edit by hand". Calibration never proposes `merge_deploys = false` or `merge.auto`.
+The proposal is additive. A key absent from `config.toml` is added, and `deploy.workflows`, `deploy.deny` or `repos.fast_checks` still at a one-line `[]` is replaced. A key you already set is never changed: the report lists it under "config differs; edit by hand". Calibration never proposes `merge_deploys = false` or `merge.auto`. The interview's `deploys` question asks you instead.
 
 Only fast commands go into `repos.fast_checks` and the charter blocks. `ruff check .`, `black --check .`, `npm run lint` and `make lint` are fast. A test runner (`python3 -m pytest -q`, `npm test`, `cargo test`, `go test ./...`, `make test`, `make check`) is CI only unless measured. `bin/wuwei calibrate --measure` runs each detected test runner once in the configured checkout through the checks port, the same runner as `wuwei fast-checks` (`/bin/sh -c <command>`, capped at 300 seconds), and may leave tool caches there. It is fast when it exits 0 within `calibrate.fast_check_seconds` (default 60). The `## CI only (not proposed as fast checks)` section of `calibration.md` lists the rest with the measurement or "unmeasured", and the calibrate output and the promote digest print the same lines. `bin/wuwei config promote --measure` measures again before it applies.
 
@@ -358,6 +362,7 @@ The interview asks a short, fixed set of questions about your own preferences. E
 | Question | Maps to |
 | --- | --- |
 | `autonomy` | `Autonomous` (recommended) sets `security.posture = "observe"`, `outbound.default_tier = "send"`, `merge.default_tier = "today"`, `outbound.learn = "auto"` and `autonomy.mode = "autonomous"`; `Supervised` sets `guarded`, `ask`, `ask`, `card` and `supervised`. Strict is set by hand. `setup --shadow` records `Autonomous` |
+| `deploys` (per repository) | `repos.merge_deploys`: `Merges deploy` sets `true`, `Merges do not deploy` sets `false`. The first choice is the recommended one: `Merges do not deploy` only when calibration found no deploy workflow, deploy command or never-auto path for the repository. A repository calibration has not seen gets `Merges deploy` first |
 | `merge` (per repository) | `repos.merge.auto` and `repos.merge.soak_minutes`; auto merge still needs `merge_deploys = false` declared |
 | `gates` (per repository) | `repos.gates.floor` |
 | `quiet` (per repository) | `repos.merge.quiet_hours` |
@@ -700,8 +705,12 @@ contents are preserved by upgrade. Use literal `KEY=value` lines; process
 environment values take precedence. The CLI, scoped hooks and watch all load the
 file before adapter calls. Restart a running watch after editing the file.
 
-`wuwei config check` reports credential names and set/missing status per effective
-adapter. It returns 1 for missing requirements and 2 when a check cannot run.
+`wuwei config check` reports credential names and set, missing or `malformed (<why>)`
+status per effective adapter, never the value: a token with whitespace, a path-like value or
+shell characters is malformed (a pasted command, for example). It returns 1 for missing or
+malformed requirements and 2 when a check cannot run. An HTTP adapter the provider refuses
+reports `HTTP <status>` and a one-line hint (`HTTP 401` credential rejected, `HTTP 403` no
+access, `HTTP 404` not found or not visible to the credential), which doctor shows.
 With an inbound adapter it adds a `Control plane:` section: `control_plane.owner` is
 set, missing or invalid (the last two return 1; the pin is never printed), and
 `WUWEI_TOTP_SECRET` is set or missing, which is information only.

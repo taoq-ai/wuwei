@@ -89,7 +89,7 @@ def test_question_table_fits_widgets_and_every_choice_validates(tmp_path):
     from wuwei.workspace import load_config
 
     table = interview().QUESTIONS
-    assert [row['id'] for row in table] == ['autonomy', 'merge', 'gates', 'quiet', 'interrupt', 'decisions',
+    assert [row['id'] for row in table] == ['autonomy', 'deploys', 'merge', 'gates', 'quiet', 'interrupt', 'decisions',
                                             'phone', 'hours', 'avoid', 'formality', 'signature', 'risk',
                                             'manual', 'verbosity', 'spec', 'telemetry', 'docs', 'tracker',
                                             'tickets', 'updates', 'chat', 'review_bot', 'reviewers',
@@ -285,7 +285,7 @@ def test_adapter_answers_promote_and_name_credentials(tmp_path, monkeypatch, cap
 def test_unknown_labels_and_ids_are_refused():
     with pytest.raises(ValueError, match='answer one of: Owner merges'):
         interview().effects('merge', 'sometimes')
-    with pytest.raises(ValueError, match='use one of: autonomy, merge'):
+    with pytest.raises(ValueError, match='use one of: autonomy, deploys, merge'):
         interview().question('nope')
 
 
@@ -454,7 +454,7 @@ def test_interview_needs_a_host_terminal(offline, capsys, monkeypatch):
 
 def test_interview_on_the_terminal(offline, capsys, monkeypatch):
     raw = (offline / '.wuwei/config.toml').read_text()
-    replies = ['1', '2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '3', '4',
+    replies = ['1', '1', '2', 'often', '1', '2', '1', '2', '1', '9', '2', 'kindly', '1', '2', '1', '2', '1', '1', '3', '4',
                '1', '1', '1', 'C0123ABCD', '1', 'pat-dev', '1', '1', '2']
     terminal(monkeypatch, replies)
     assert main('calibrate', '--interview', '--repo', 'acme/widget') == 0, capsys.readouterr().err
@@ -463,7 +463,8 @@ def test_interview_on_the_terminal(offline, capsys, monkeypatch):
     assert answers['merge'] == {'acme/widget': 'Auto, 30 min soak'} and answers['gates'] == {
         'acme/widget': 'Standard'} and answers['phone'] == 'Summary' and answers['manual'] == 'Package publishing'
     assert answers['autonomy'] == 'Autonomous' and answers['allowlist'] == 'Not now'
-    assert len(answers) == 26 and answers['telemetry'] == 'Off' and answers['docs'] == 'None' and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
+    assert answers['deploys'] == {'acme/widget': 'Merges deploy'}  # #615: unmeasured lists it first
+    assert len(answers) == 27 and answers['telemetry'] == 'Off' and answers['docs'] == 'None' and answers['reviewers'] == 'pat-dev' and answers['chat'] == 'C0123ABCD' and (offline / '.wuwei/config.toml').read_text() == raw
     for line in interview().describe(answers, config(offline)):
         assert line in out
     assert 'gates: answer one of' in out and 'hours: answer one of' in out and 'bin/wuwei config promote' in out
@@ -486,7 +487,7 @@ def test_interview_reasks_one_question_and_end_of_input_writes_nothing(offline, 
     assert main('calibrate', '--interview', 'phone') == 0
     assert set(json.loads((offline / DAY / 'interview.json').read_text())) == {'merge', 'phone'}
     assert main('calibrate', '--interview', 'nope') == 2
-    assert 'use one of: autonomy, merge' in capsys.readouterr().err
+    assert 'use one of: autonomy, deploys, merge' in capsys.readouterr().err
 
 
 def test_answers_from_the_widget_path(offline, capsys):
@@ -642,7 +643,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     raw = (f'[[repos]]\nname = "acme/widget"\npath = {json.dumps(str(FIXTURES / "python"))}\n'
            'default_branch = "main"\n\n' + PLANE + '\n[deploy]\nworkflows = []\ndeny = []\n')
     (root / '.wuwei/config.toml').write_text(raw)
-    terminal(monkeypatch, ['1', '2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '3', '4', '4',
+    terminal(monkeypatch, ['1', '2', '2', '2', '2', '1', '1', '2', '1', 'kindly', '1', '1', '2', '2', '3', '1', '3', '4', '4',
                            '1', '1', '4', '1', '1', '1', '1', '2'])
     assert main('calibrate', '--interview') == 0, capsys.readouterr().err
     lines = interview().describe(json.loads((root / DAY / 'interview.json').read_text()), config(root))
@@ -666,6 +667,7 @@ def test_interview_answers_apply_through_config_promote(root, capsys, monkeypatc
     parsed = tomllib.loads((root / '.wuwei/config.toml').read_text())
     repo = parsed['repos'][0]
     assert repo['merge']['auto'] is True and repo['merge']['soak_minutes'] == 30
+    assert repo['merge_deploys'] is False  # #615: the deploys answer is the explicit declaration
     assert repo['merge']['quiet_hours'] == ['20:00-08:00'] and repo['gates']['floor'] == 'full'
     assert parsed['control_plane'] == {'content': 'none', 'owner': ''}
     assert parsed['owner']['verbosity'] == {'default': 'full'}
@@ -891,3 +893,31 @@ def test_allowlist_row_names_the_file_and_production_reads():
     assert interview().describe({'allowlist': 'Allow'}, {'repos': []}) == [
         '- allowlist: Allow -> .claude/settings.local.json allow rules']
     assert interview().settings({'allowlist': 'Allow'}, {'repos': []}) == []
+
+
+def test_deploys_question_recommends_from_the_calibration(offline, capsys, monkeypatch):
+    # #615: merge_deploys defaults to true, so setup asks; the first (recommended) choice follows
+    # calibration's deploy facts, and a repository calibration never measured fails closed.
+    def first():
+        assert main('calibrate', '--questions', 'deploys') == 0
+        return {w['repo']: w['options'][0]['label'] for w in json.loads(capsys.readouterr().out)}
+    assert first() == {'acme/widget': 'Merges deploy', 'acme/gadget': 'Merges deploy'}
+    none = {'deploy_workflows': [], 'deploy_deny': [], 'never_auto': []}
+    (offline / '.wuwei/calibration.json').write_text(json.dumps({
+        'acme/widget': none, 'acme/other': none}))
+    assert first() == {'acme/widget': 'Merges do not deploy', 'acme/gadget': 'Merges deploy'}
+    (offline / '.wuwei/calibration.json').write_text(json.dumps({
+        'acme/widget': {**none, 'deploy_workflows': ['Deploy']}, 'acme/gadget': {**none, 'never_auto': ['k8s/*']}}))
+    assert first() == {'acme/widget': 'Merges deploy', 'acme/gadget': 'Merges deploy'}
+    (offline / '.wuwei/calibration.json').write_text('{nope')
+    assert first() == {'acme/widget': 'Merges deploy', 'acme/gadget': 'Merges deploy'}
+    monkeypatch.setattr('builtins.input', lambda prompt='': '1')
+    assert interview().ask(['deploys'], ['acme/widget'], first={'deploys': {
+        'acme/widget': 'Merges do not deploy'}}) == {'deploys': {'acme/widget': 'Merges do not deploy'}}
+    assert main('calibrate', '--answer', 'deploys=Merges do not deploy', '--repo', 'acme/gadget') == 0
+    settings = interview().settings(json.loads((offline / DAY / 'interview.json').read_text()), config(offline))
+    assert settings == [(('repos', 1), 'merge_deploys', False)]
+    raw = (offline / '.wuwei/config.toml').read_text()
+    additions, _ = calibrate.settle(raw, settings)
+    (offline / '.wuwei/config.toml').write_text(calibrate.apply(raw, additions))
+    assert [repo['merge_deploys'] for repo in config(offline)['repos']] == [True, False]
