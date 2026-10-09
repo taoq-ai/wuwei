@@ -874,6 +874,24 @@ def i27(case, rules):
     return rules.memo(('proposed goals',), compute)
 
 
+def i28(case, rules):
+    """#604: a stored answer never overwrites a present differing key unless config promote
+    --keys names it."""
+    def compute():
+        from wuwei import interview, workspace
+        from wuwei.commands import config as command
+        rules.configure('guarded', '[autonomy]\nmode = "supervised"\n')
+        interview.record(rules.root, workspace.load_config(rules.root), {'autonomy': 'Autonomous'})
+        raw = (rules.root / '.wuwei/config.toml').read_text()
+        config = workspace.load_config(rules.root)
+        text, _, _, summary, _ = command.proposal(rules.root, raw, raw, config, [], keys=())
+        if 'mode = "supervised"' not in text or 'Skipped autonomy.mode: kept "supervised"' not in summary:
+            return 'promote overwrites a key the owner set'
+        text = command.proposal(rules.root, raw, raw, config, [], keys=('autonomy.mode',))[0]
+        return None if 'mode = "autonomous"' in text else 'promote --keys autonomy.mode keeps "supervised"'
+    return rules.memo(('promote',), compute)
+
+
 def i31(case, rules):
     """#600: an empty fast-check list never refuses a launch below strict; strict refuses naming
     the fast-checks card until the owner answers it."""
@@ -951,7 +969,7 @@ def i33(case, rules):
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
-              'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27,
+              'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27, 'I28': i28,
               'I31': i31, 'I32': i32, 'I33': i33}
 
 
@@ -967,7 +985,7 @@ OUTWARD = (0, 1, 2, 3, 5, 6)
 READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
-         'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': (),
+         'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': (), 'I28': (),
          'I31': (0,), 'I32': (0,), 'I33': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
@@ -1051,6 +1069,8 @@ BROKEN = {
     'doctor passes an empty identity': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.commands.doctor'), 'identity_row',
         lambda *args: {'status': 'ok', 'value': 'Builder <builder@example.test>'}),
+    'promote overwrites an owner-set key': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.calibrate'), 'kept', lambda raw, settings: (list(settings), [])),
     'an empty fast-check list refuses': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.commands.build'), '_repo', lambda *args: (_ for _ in ()).throw(ValueError('none'))),
     'a list card prompts the host': lambda monkeypatch: monkeypatch.setattr(

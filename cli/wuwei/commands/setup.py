@@ -129,7 +129,7 @@ def merged(config, parts, value, replace=False):
     if replace and not (isinstance(rule, list) or table):
         raise ValueError(f"{'.'.join(map(str, parts))}: --replace applies to a list or a "
                          'named-entry table; remove --replace')
-    if not replace and isinstance(rule, list) and isinstance(value, list):
+    if not replace and isinstance(rule, list) and isinstance(value, list) and value:  # #604: [] empties it
         try:
             current = effective(config, parts)
         except (KeyError, IndexError):  # repos.<n> past the end: settle names the layout
