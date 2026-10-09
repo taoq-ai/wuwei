@@ -67,6 +67,9 @@ def check_write(payload):
             command = required_text(tool_input, 'command', blank=True)
             if 'gate-' not in command.lower():
                 return CLEAN, ''
+            from wuwei.shell import classify
+            if classify(command, cwd=cwd).readonly:
+                return CLEAN, ''  # #616: a call that only reads (cat, grep, shasum) writes no gate
             path = '<opaque gate file>'
             # Refuse literal interpreter snippets without parsing shell paths.
             for program, flags in INTERPRETERS:
@@ -87,7 +90,8 @@ def check_write(payload):
         for path in paths:
             if not is_gate(path):
                 continue
-            code, message = lint_file(path, role=role, root=root)
+            # #616: a Bash call names no one target, so each gate is linted by its own name.
+            code, message = lint_file(path, role='' if bash else role, root=root)
             results.append((code, f'{path}: {message}' if stop and code else message))
         return (CLEAN, '') if stop and payload.get('stop_hook_active') else (
                 max((code for code, _ in results), default=CLEAN),
