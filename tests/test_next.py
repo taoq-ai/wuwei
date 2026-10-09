@@ -678,6 +678,21 @@ def test_steward_launches_only_the_newest_brief_and_never_beside_a_running_one(r
     assert (found['state'], found['command']) == ('steward', 'wuwei steward run --trigger tool-calls')
 
 
+
+def test_steward_rows_wait_for_the_fix_round(root):
+    """#624: no steward row while an item is in fix or delta; the due row comes back after."""
+    approved(root, {'A': ('fix', {})}, seats={'b': {'status': 'running', 'role': 'builder', 'item': 'A'}})
+    state.append_event('steward.run', {'trigger': 'sweep', 'brief': 'b/steward-s.md', 'tool_calls': 0}, root)
+    assert coarse(root)['state'] != 'steward'  # no launch row
+    state.append_event('steward.due', {'tool_calls': 250}, root)
+    assert coarse(root)['state'] != 'steward'  # no due row
+    day(root, items={'A': {'phase': 'delta'}},
+        seats={'g': {'status': 'running', 'role': 'gate', 'item': 'A'}})
+    assert coarse(root)['state'] != 'steward'
+    day(root, items={'A': {'phase': 'merged'}},
+        seats={'steward-s': {'status': 'stopped', 'role': 'steward', 'item': 'day'}})
+    assert coarse(root)['command'] == 'wuwei steward run --trigger tool-calls'
+
 def test_close_path(root, capsys):
     approved(root, {'A': ('merged', {})}, decision_routes={'D-1': 'owner'})
     state.append_event('next.action', {'state': 'x', 'item': '', 'done': [['decision', 'D-1']]}, root)

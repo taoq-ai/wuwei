@@ -264,7 +264,7 @@ stale_seconds = 3600
 # rotate_after = { turns = 200 } # Or compactions = 1, or clock = "13:00"; off by default.
 
 [steward]
-every_tool_calls = 50
+every_tool_calls = 250
 loop_window_hours = 4
 loop_threshold = 9
 

@@ -309,7 +309,7 @@ def test_report_levels(tmp_path, monkeypatch):
     brief = report.build(root)
     sections = [line for line in brief.splitlines() if line.startswith('## ')]
     assert sections == ['## Changed', '## Taken under mandate', '## Decisions by class', '## First time today', '## Undone today', '## Cannot be undone', '## Calibration', '## Cruise shadow', '## Merged', '## Cycle time', '## Pace', '## DORA (last 28 days)', '## Open at close', '## Parked',
-                        '## Decisions answered', '## Carry']
+                        '## Decisions answered', '## Carry', '## Steward runs']
     assert brief.split('## Changed\n')[1].split('\n\n')[0] == 'none'
     (root / '.wuwei/memory/notes/baseline.md').write_text(
         'Escaped-defect-rate: 0.2\nReview-rework: 1.4\n'
