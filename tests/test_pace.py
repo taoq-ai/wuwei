@@ -104,8 +104,16 @@ def test_fast_keeps_a_flagged_item_at_standard_depth(root, monkeypatch):
     assert record['tier'] == 'standard' and 'depth' not in record
 
 
+def test_careful_raises_a_docs_only_item_to_three_gates(root, monkeypatch):
+    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)], floor='standard')
+    set_pace(root, 'careful')
+    record = tier_record(root)
+    assert record['tier'] == 'standard' and record['roles'] == ['arch', 'quality', 'security']
+    assert not any(reason.startswith('docs-only') for reason in record['reasons'])
+
+
 def test_careful_raises_light_to_standard(root, monkeypatch):
-    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)])
+    tiered(root, monkeypatch, [('src/app.py', 3, 1)])
     set_pace(root, 'careful')
     record = tier_record(root)
     assert record['tier'] == 'standard' and record['roles'] == ['arch', 'quality', 'security']
@@ -113,7 +121,7 @@ def test_careful_raises_light_to_standard(root, monkeypatch):
 
 
 def test_steady_records_are_unchanged(root, monkeypatch):
-    tiered(root, monkeypatch, [('docs/guide.md', 3, 1)])
+    tiered(root, monkeypatch, [('src/app.py', 3, 1)])
     set_pace(root, 'steady')
     assert tier_record(root) == {'tier': 'light', 'computed': 'light', 'roles': ['quality'],
                                  'reasons': ['4 changed lines within light_max_lines 100']}

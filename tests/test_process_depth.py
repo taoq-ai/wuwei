@@ -99,7 +99,7 @@ def test_builder_brief_names_its_depth(day, monkeypatch):
     assert line.startswith('Depth: light; skip: the class sweep')
     assert f'wuwei sweep classes {root / "tree"}' in line and 'retro note' in line
     assert state.read_state(root)['items']['X']['depth'] == 'light'
-    depth_day(day, ['docs/guide.md'], floor='standard')
+    depth_day(day, ['cli/wuwei/report.py'], floor='standard')
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b-std', '--worktree', 'tree') == 0
     [line] = depth_line(directory, 'b-std')
     assert line == (f'Depth: standard; before handoff run wuwei sweep classes {root / "tree"} '

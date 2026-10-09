@@ -1983,6 +1983,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I31 | An empty fast-check list never refuses a launch below strict | per posture, `build._repo` on a repository with `fast_checks = []` and no card answered | #600; strict refuses naming `calibrate --questions` until the owner answers the fast-checks card |
 | I32 | A config card with a list value records without a prompt below strict | per posture, a routed card with a Value row `repos.0.fast_checks = ["make test"]` answered in the planner session, then `config set --from-card D-n` with the host prompt failing | #600; strict prints the command for a host terminal |
 | I33 | A config record is never Strategic on its own | Class `other` and none x door one-way, two-way and unsure x confidence high and low: `undo.correct`, then `cisr`, on a record with Value rows and a Previous line | #600; a seat's better class stands |
+| I34 | A docs-only diff never lowers review when anything else would raise it: a lead flag, a FULL track, a trust, never-auto, FULL-pattern, binary or agent-instruction path, or a full floor keeps arch, quality and security; a plain document with nothing raising it gets one reviewer | `dispatch.tier` on a document diff, alone and with each raising path, under each lead flag, track and floor | #622; one decision in `dispatch.tier` (`_docs_role`); goal for a document, quality for a spec or pre-registration |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

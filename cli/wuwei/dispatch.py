@@ -12,18 +12,28 @@ from wuwei.exits import ADAPTER_DATA, DAMAGED, RACE
 ROLES = ('arch', 'quality', 'security')
 GATE_BODY = 'Review {item} at its HEAD against its spec and acceptance criteria.'
 TIERS = ('light', 'standard', 'full')
+GATE_ROLES = (*ROLES, 'goal')  # #622: goal runs only as the single gate of a docs-only diff
+# #622: a docs-only diff gets one reviewer. ponytail: documents are told by suffix, not content;
+# .md and .rst anywhere, .txt only under docs/ or specs/.
+DOC_DIRS = ('docs', 'specs')
+DOC_SUFFIXES = ('.md', '.rst')
+AGENT_DOCS = ('AGENTS.md', 'CLAUDE.md', 'SKILL.md', 'charters/*', 'skills/*', 'agents/*',
+              'commands/*', '.claude/*', '.agents/*')
+SPEC_DOCS = ('specs/*', '*spec*', '*prereg*', '*pre-registration*')
 
 
 def gate_set(row):
-    """The item's recorded gates; all three roles until a tier is recorded.
+    """The item's recorded gates; all three roles until a tier is recorded. Every set holds
+    quality, except a docs-only item's single goal gate (#622).
 
     A recorded second opinion adds one gate named <role>@<runtime>."""
     roles = (row.get('gates') or {}).get('roles')
     if roles is None:
         return ROLES
-    if not isinstance(roles, list) or 'quality' not in roles or not set(roles) <= set(ROLES):
+    if not isinstance(roles, list) or not set(roles) <= set(GATE_ROLES) or (
+            roles != ['goal'] and ('quality' not in roles or 'goal' in roles)):
         raise ValueError(f'invalid recorded gate set; {DAMAGED}')
-    roles = tuple(role for role in ROLES if role in roles)
+    roles = tuple(role for role in GATE_ROLES if role in roles)
     second = row['gates'].get('second_opinion')
     if second is None:
         return roles
@@ -39,10 +49,20 @@ def base(gate):
     return gate.partition('@')[0]
 
 
+def _docs_role(paths):
+    """#622: the single gate of a diff whose every path is a document, else None."""
+    from wuwei import merge
+    if not paths or not all((path.endswith(DOC_SUFFIXES) or (
+            path.endswith('.txt') and path.split('/', 1)[0] in DOC_DIRS))
+            and merge.matched(path, AGENT_DOCS) is None for path in paths):
+        return None
+    return 'quality' if any(merge.matched(path, SPEC_DOCS) for path in paths) else 'goal'
+
+
 def tier(root, config, row):
     """Compute the item's gate tier from its diff, flags, track, floor and lead tier."""
     from wuwei import merge
-    computed, reasons = 'light', []
+    computed, reasons, docs = 'light', [], None
 
     def rise(level, reason):
         nonlocal computed
@@ -74,16 +94,21 @@ def tier(root, config, row):
                 rise('standard', f'{path} matches FULL-track pattern {pattern}')
             if change['additions'] is None or change['deletions'] is None:
                 rise('standard', f'{path} binary change')
-        if total > gates['light_max_lines']:
+        docs = _docs_role([change['path'] for change in changes]) if computed == 'light' else None
+        if total > gates['light_max_lines'] and not docs:
             rise('standard', f'{total} changed lines over light_max_lines {gates["light_max_lines"]}')
-        elif computed == 'light':
+        elif computed == 'light' and not docs:
             reasons.append(f'{total} changed lines within light_max_lines {gates["light_max_lines"]}')
     floor = repo['gates']['floor'] if repo else 'standard'
+    if docs and floor != 'full':
+        floor = 'light'
     effective = max(computed, floor, key=TIERS.index)
     if TIERS.index(floor) > TIERS.index(computed):
         reasons.append(f'floor {floor}')
     lead = row.get('tier')
-    if lead and TIERS.index(lead) > TIERS.index(effective):
+    if docs and lead and TIERS.index(lead) > TIERS.index(effective):
+        reasons.append(f'lead tier {lead} overridden: docs-only')
+    elif lead and TIERS.index(lead) > TIERS.index(effective):
         effective = lead
         reasons.append(f'lead tier {lead}')
     elif lead and TIERS.index(lead) < TIERS.index(effective):
@@ -100,8 +125,11 @@ def tier(root, config, row):
     flagged = row.get('track') == 'FULL' or any(row['flags'].values())
     effective, lighter, more = pace.adjust(current, effective, guard, flagged, repo is not None)
     reasons += more
+    single = docs if docs and effective == 'light' else None
+    if single:
+        reasons.append(f'docs-only: 1 reviewer ({single})')
     record = {'tier': effective, 'computed': computed, 'reasons': reasons,
-              'roles': ['quality'] if effective == 'light' else list(ROLES)}
+              'roles': [single] if single else ['quality'] if effective == 'light' else list(ROLES)}
     if lighter != effective:
         record['depth'] = lighter
     second = config['gates']['second_opinion']
