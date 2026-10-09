@@ -232,11 +232,19 @@ def _references(root):
     return sorted(refs), items
 
 
+class _Unavailable(ValueError):
+    """#617: an adapter read that could not run; .reason is the adapter's own reason."""
+
+    def __init__(self, reason):
+        super().__init__(f'outcome evidence unavailable from adapter; {ADAPTER_DATA}')
+        self.reason = reason or 'adapter returned an error response'
+
+
 def _port(operation, *args, root):
     result = operation(*args, root=root)
     if result.exit != 0 or isinstance(result.data, dict) and (
             'message' in result.data or 'errors' in result.data):
-        raise ValueError(f'outcome evidence unavailable from adapter; {ADAPTER_DATA}')
+        raise _Unavailable(result.reason if result.exit else '')
     return result.data
 
 
@@ -335,23 +343,27 @@ def _lead_time(root, config, items, prs):
     if config['adapters']['tracker'] == 'none' or not items:
         return UNMEASURED
     tracker = registry.load('tracker', config)
-    leads, created, opened = [], [], []
+    leads, created, opened, unmeasured = [], [], [], {}
     for item, refs in items.items():
         merged = [prs[ref] for ref in refs if prs[ref].get('merged')]
         if not merged:
             continue
         pr = min(merged, key=lambda row: row['merged_at'])
         at = datetime.fromisoformat(pr['merged_at'])
-        history = _port(tracker.history, item, root=root)
-        starts = [datetime.fromisoformat(row['createdAt']) for row in history
-                  if (row.get('toState') or {}).get('name') == 'In Progress']
-        if not starts:
-            return UNMEASURED
+        try:
+            history = _port(tracker.history, item, root=root)
+            starts = [datetime.fromisoformat(row['createdAt']) for row in history
+                      if (row.get('toState') or {}).get('name') == 'In Progress']
+            if not starts:
+                return UNMEASURED
+            creation = datetime.fromisoformat(_port(tracker.created, item, root=root))
+        except _Unavailable as exc:  # #617: one lookup that could not run leaves its ticket unmeasured
+            unmeasured[item] = exc.reason
+            continue
         start = min(starts)
         if at < start:
             raise ValueError(f'merge predates In Progress; {ADAPTER_DATA}')
         leads.append((at - start).total_seconds() / 3600)
-        creation = datetime.fromisoformat(_port(tracker.created, item, root=root))
         opened_at = datetime.fromisoformat(pr['created_at'])
         if at < creation or at < opened_at:
             raise ValueError(f'merge predates creation; {ADAPTER_DATA}')
@@ -362,7 +374,7 @@ def _lead_time(root, config, items, prs):
     return {'median_hours': median(leads), 'p75_hours': _percentile(leads, .75),
             'p90_hours': _percentile(leads, .9),
             'creation_to_merge_hours': median(created),
-            'pr_open_to_merge_hours': median(opened)}
+            'pr_open_to_merge_hours': median(opened), **({'unmeasured': unmeasured} if unmeasured else {})}
 
 
 def _escaped_by_tier(root):
@@ -734,6 +746,12 @@ def path(events, traces, planner):
     return {'planner_turns': turns, 'planner_asks': asks, 'off_path': off}
 
 
+def fix_rounds(events):
+    """Fix rounds per item from the day's phase changes; steward.review reads only this (#617)."""
+    return dict(Counter(item for row in events for item, phase in
+                        row['payload'].get('phase_changes', {}).items() if phase == 'fix'))
+
+
 def collect(root=None, *, day=None):
     """Return named measurements; missing evidence never becomes a zero."""
     root = workspace.find_workspace(root)
@@ -764,8 +782,6 @@ def collect(root=None, *, day=None):
             'cost_per_role', 'cost_per_day', 'seat_decisions_owner_reversed', 'seat_cost_mib')}
     else:
         count = lambda kind: sum(row['kind'] == kind for row in events)
-        fix = Counter(item for row in events for item, phase in
-                      row['payload'].get('phase_changes', {}).items() if phase == 'fix')
         # ponytail: reply acknowledgements proxy review handbacks until PR cycle events exist.
         handbacks = Counter(row['payload']['pr'] for row in events
                             if row['kind'] == 'reply: acknowledged' and 'pr' in row['payload'])
@@ -779,7 +795,7 @@ def collect(root=None, *, day=None):
                         if row['kind'] == 'build.parked' and 'item' in row['payload'])
         item_cost = _costs(events, 'item')
         event_metrics = {
-            'fix_rounds_per_item': dict(fix), 'handbacks_per_pr': dict(handbacks),
+            'fix_rounds_per_item': fix_rounds(events), 'handbacks_per_pr': dict(handbacks),
             'time_in_phase_seconds': _phase_time(events, now),
             # One rejection per file version: a hook, a dispatch and a lint of the same content count once.
             'verdict_lint_rejections': len({(str(row['payload'].get('file')), row['payload'].get('sha256'))

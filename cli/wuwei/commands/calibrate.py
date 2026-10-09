@@ -114,7 +114,7 @@ def _interview(args):
             ids = [interview.question(qid)['id'] for qid in args.interview]
             if not sys.stdin.isatty():
                 raise OSError(integrity.HOST_TERMINAL)
-            picked = interview.ask(ids, repos)
+            picked = interview.ask(ids, repos, first=interview.leads(root, repos))
         answers = interview.record(root, config, picked)
     except EOFError:
         print('wuwei calibrate: interview interrupted; nothing written; run bin/wuwei calibrate again to start over', file=sys.stderr)

@@ -417,3 +417,14 @@ def test_init_upgrade_regenerates_worktree_hooks(tmp_path, monkeypatch, capsys):
     assert seen == []
     assert init.run(Namespace(path=str(upgraded), upgrade=True, dry_run=False)) == 0
     assert seen == [upgraded]
+
+
+def test_native_hook_empty_identity_names_the_config_set(workspace_case, monkeypatch, capsys):
+    # #605: the native hook gives the tool guard's (and doctor's) reason for an empty identity.
+    root, _ = workspace_case
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('{name = "Builder", email = "builder@example.test"}',
+                                             '{name = "", email = ""}'))
+    assert invoke(workspace_case, monkeypatch, 'pre-commit') == 2
+    assert ("repos.0.identity is empty or malformed; bin/wuwei config set repos.0.identity "
+            "'{name = \"Builder\", email = \"builder@example.test\"}'") in capsys.readouterr().err

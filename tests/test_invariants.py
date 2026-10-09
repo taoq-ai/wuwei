@@ -777,6 +777,34 @@ def i24(case, rules):
     return rules.memo(('register',), compute)
 
 
+def i25(case, rules):
+    """#605: doctor's identity row and the commit and push guard agree on repos.N.identity: both
+    pass a set one, both fail an empty or malformed one with the same reason and fix. The guard
+    answers with commit_push.unset_identity on the identity git resolves; its end-to-end path
+    stays in tests/test_commit_push.py and tests/test_git_hook.py."""
+    def compute():
+        from wuwei.commands import doctor
+        from wuwei.guards import commit_push
+        from wuwei.registry import Result
+        found = {'name': 'Builder', 'email': 'builder@example.test'}
+        before = rules.fake.results.get('identity')
+        rules.fake.results['identity'] = Result(0, found)
+        repo = rules.config('guarded', 'send', 'send')['repos'][0]
+        try:
+            for identity in (found, {'name': '', 'email': ''}, {'name': '<name>', 'email': '<email>'}):
+                row = doctor.identity_row({**repo, 'identity': identity}, 0, rules.tree, rules.fake)
+                said = None if row['status'] == 'ok' else (row['value'], 'bin/wuwei ' + row['fix'].split(' ', 1)[1])
+                guard = commit_push.unset_identity(identity, 0, found)
+                if said != guard:
+                    return f'identity {identity}: doctor {row}, guard {guard}'
+        finally:
+            if before is None:
+                rules.fake.results.pop('identity', None)
+            else:
+                rules.fake.results['identity'] = before
+        return None
+    return rules.memo(('identity',), compute)
+
 
 def i26(case, rules):
     """#603: every command next returns to start a planned item exits 0 in a multi-repository
@@ -845,10 +873,11 @@ def i27(case, rules):
         return None if (root / '.wuwei/memory/goals.md').read_text() == memory else 'approve writes memory'
     return rules.memo(('proposed goals',), compute)
 
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
-              'I22': i22, 'I23': i23, 'I24': i24, 'I26': i26, 'I27': i27}
+              'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27}
 
 
 def project(case):
@@ -863,7 +892,7 @@ OUTWARD = (0, 1, 2, 3, 5, 6)
 READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
-         'I22': (), 'I23': (), 'I24': (), 'I26': (), 'I27': ()}
+         'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
@@ -943,6 +972,9 @@ BROKEN = {
     'a view drops a channel': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.graph'), 'views', lambda register, real=import_module('wuwei.graph').views: {
             **real(register), 'outbound.channel_classes': {}}),
+    'doctor passes an empty identity': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.commands.doctor'), 'identity_row',
+        lambda *args: {'status': 'ok', 'value': 'Builder <builder@example.test>'}),
     'client thread row that sends': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.outward'), 'DEFAULT_TIERS',
         ({'audience': 'client', 'topic': 'thread', 'tier': 'send'}, *import_module('wuwei.outward').DEFAULT_TIERS)),

@@ -472,8 +472,7 @@ def _seats(root, data, item, roles, round_name, commands):
                     and not str(seat.get('head') or '').lower().startswith(first['head'].lower())):
                 commands.append('wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, name)))
                                 + ' --round delta')
-            if (not seat or seat['status'] != 'stopped' or not seat.get('agent_id')
-                    or not str(seat.get('head') or '').lower().startswith(first['head'].lower())):
+            if not delta_due(data, item, role, name):
                 continue
             action = brief.seat_action('sentinel-' + role, root / seat['brief'],
                                        data['items'][item]['worktree'], root)
@@ -484,6 +483,20 @@ def _seats(root, data, item, roles, round_name, commands):
         actions.append({**action, **extra,
                         'receive': receive + (' --round delta' if round_name == 'delta' else '')})
     return actions
+
+
+def delta_due(data, item, role, name):
+    """#614: seat name is due its delta continue: the item is in delta, role's initial FIX came
+    from that seat, no delta verdict yet, and the seat stopped with an agent id at the initial
+    head (not continued since). One rule for _seats and the launch guard."""
+    row = data['items'].get(item)
+    first = _record(data, item, role, 'initial')
+    seat = data['seats'].get(name)
+    return bool(row and row['phase'] == 'delta' and first and first['verdict'] == 'FIX'
+                and _record(data, item, role, 'delta') is None
+                and Path(first['file']).stem.removeprefix('gate-') == name
+                and seat and seat['status'] == 'stopped' and seat.get('agent_id')
+                and str(seat.get('head') or '').lower().startswith(first['head'].lower()))
 
 
 def _first_briefs(rows, item, role):

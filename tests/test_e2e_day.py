@@ -115,6 +115,27 @@ def test_scripted_day(day):
     assert time.monotonic() - started < 20
 
 
+def test_fix_round_and_delta_with_fresh_agents(day):
+    # #614: Claude Code's Agent has no resume. Each continue runs as a fresh Agent with the
+    # returned prompt, a new agent id and its own transcript; the hooks bind it to the round.
+    day.plan()
+    day.approve()
+    day.run('plan', 'session', 'planner')
+    day.build('builder-initial')
+    for role in ('arch', 'quality', 'security'):
+        day.gate(role, 'FIX' if role == 'quality' else 'PASS')
+    day.runtime.fresh = True
+    day.fix()
+    assert day.data['builds']['A']['agent_id'] == 'builder-initial-fresh'
+    assert day.data['items']['A']['phase'] == 'delta'
+    day.gate('quality', 'PASS', round_name='delta')
+    assert day.data['seats']['quality-initial']['agent_id'] == 'quality-initial-fresh'
+    assert day.next() == {'action': 'raise', 'notes': []}
+    gates = [row['payload'] for row in day.events if row['kind'] == 'gate.received']
+    assert (gates[-1]['role'], gates[-1]['round'], gates[-1]['verdict']) == ('quality', 'delta', 'PASS')
+    assert 'seat stop unmatched' not in [row['kind'] for row in day.events]
+
+
 def test_light_item_skips_spec(day):
     day.runtime.spec = False
     day.plan(tier='light')
