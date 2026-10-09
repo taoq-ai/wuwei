@@ -19,6 +19,7 @@ KIND = {**dict.fromkeys(('approach', 'retry', 'accept-residual', 'scope-cut', 'd
         **dict.fromkeys(('park', 'defer', 're-plan'), 'decision'),
         'merge': 'merge', 'message': 'message'}
 CARD = 'ask the owner: wuwei decision route sends the card'
+CONFIG = 'a config write that records its previous value is undone by config set (#600)'
 
 
 def _path(root):
@@ -67,8 +68,18 @@ def missing(root):
     return [kind for kind in REGISTRY if kind not in kinds]
 
 
+def config_write(fields):
+    """#600: the record sets a config key and its Previous line records that key's value."""
+    from wuwei.commands.setup import assignment
+    from wuwei.decision import config_keys
+    previous = assignment(fields.get('Previous', ''))
+    return bool(previous) and previous[0] in {key for key, _ in config_keys(fields).values()}
+
+
 def measured(fields, root, config):
     """(kind, reason): reason is None when the written door may stand, else why it is one-way."""
+    if config_write(fields):  # its undo is config set with the recorded value: no rehearsal
+        return 'config', None
     name = fields.get('Class')
     kind = KIND.get(name)
     if kind == 'message':
@@ -98,12 +109,31 @@ def line(written, reason):
     return f'Reversibility: one-way, not {written}: {reason}'
 
 
+def two_way(written):
+    return f'Reversibility: two-way, not {written}: {CONFIG}'
+
+
 def correct(ident, path, text, fields, root):
     """On a first route, lower a door the CLI cannot back to one-way in the record: (text,
     fields, the line to print or '')."""
     data = state.read_state(root)
-    if (fields['Reversibility'] == 'one-way' or ident in data.get('decision_routes', {})
-            or ident in data.get('decision_outcomes', {})):
+    if ident in data.get('decision_routes', {}) or ident in data.get('decision_outcomes', {}):
+        return text, fields, ''
+    door, cls = fields['Reversibility'], fields.get('Class')
+    if config_write(fields):  # #600: two-way, and approach unless the seat gave a better class
+        if door == 'two-way' and cls not in (None, 'other'):
+            return text, fields, ''
+        stamp = workspace.now().isoformat(timespec='seconds')
+        text = re.sub(r'^((?:#{1,6} )?Reversibility:).*$', r'\1 two-way', text, count=1, flags=re.M)
+        if cls is None:
+            text = re.sub(r'^((?:#{1,6} )?Question:.*)$', r'\1\nClass: approach', text, count=1, flags=re.M)
+        elif cls == 'other':
+            text = re.sub(r'^((?:#{1,6} )?Class:).*$', r'\1 approach', text, count=1, flags=re.M)
+        text = text.rstrip('\n') + f'\nNotes: Reversibility corrected at {stamp}: {CONFIG}.\n'
+        workspace.atomic_write(path, text)
+        return text, {**fields, 'Reversibility': 'two-way', 'Class': cls if cls not in (None, 'other')
+                      else 'approach'}, two_way(door)
+    if door == 'one-way':
         return text, fields, ''
     _, reason = measured(fields, root, workspace.load_config(root))
     if reason is None:

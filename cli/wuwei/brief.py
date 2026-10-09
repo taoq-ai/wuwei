@@ -431,8 +431,12 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                                   'the main worktree; report it, do not build one')
                 elif found:
                     header.append(f'Check interpreter: {command} runs with {found[0]} ({found[1]})')
-            line = checks_line(pace.current(data, config), repo.get('tests', ''))
-            if line:
+            current, tests = pace.current(data, config), repo.get('tests', '')
+            # #600: nothing runs locally; fast pace with repos.tests runs the tests the diff touches
+            if not fast_checks.commands(root, config, repo, tree) and not (current == 'fast' and tests):
+                header.append(f'{fast_checks.NONE[0].upper()}{fast_checks.NONE[1:]}. '
+                              'Write "checks: none configured" in the PR body.')
+            elif line := checks_line(current, tests):
                 header.append(line)
         host = registry.load('code_host', config) if pr else None
         header.append('PR head (no-cache): ' + (json.dumps(read(host.pr, pr, root=root)) if pr else 'not applicable'))

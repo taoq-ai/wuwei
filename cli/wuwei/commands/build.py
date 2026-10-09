@@ -87,8 +87,12 @@ def _repo(root, tree, config):
     if repo is None:
         from wuwei.guards.commit_push import context
         repo, _, _ = context(tree, {}, {}, root, identity=False)
-    if not repo['fast_checks']:
-        raise ValueError('worktree has no configured fast checks; add fast_checks to its [[repos]] entry , then retry. bin/wuwei calibrate proposes them, and the owner applies them with bin/wuwei config set in a host terminal')
+    # #600: no fast checks is a state (CI and the gates are the evidence); strict asks once
+    from wuwei import calibrate
+    name = repo['name']
+    if (not repo['fast_checks'] and workspace.posture(config)[0] == 'strict'
+            and not calibrate.checks_answered(root, name)):
+        raise ValueError(f'posture strict: {name} has no fast checks and no answer on its fast-checks card; ask it with wuwei calibrate --questions --repo {name}, then rerun bin/wuwei build next <item>')
     return repo
 
 
@@ -146,11 +150,14 @@ def next_action(item, brief=None, worktree=None, *, root=None):
     repo = _repo(root, tree, config)
     action = seat_action('builder', path, tree, root)
     previous = record
+    from wuwei import fast_checks  # #600: no fast checks still runs repos.tests at careful pace
+    commands = repo['fast_checks'] or fast_checks.commands(root, config, repo, tree)
     record = {'brief': str(path.relative_to(root)), 'worktree': str(tree),
               'runtime': action['runtime'], 'repo': repo['name'],
-              'commands': repo['fast_checks'], 'iteration': 0, 'repeats': 0,
+              'commands': commands, 'iteration': 0, 'repeats': 0,
               'signature': None, 'status': 'ready', 'action': action}
-    _save(item, record, root, 'build.started', previous)
+    _save(item, record, root, 'build.started', previous,
+          None if commands else {'checks': 'none configured'})
     if data['items'][item]['phase'] == 'planned':
         state.transition(item, 'implement', root)
     if previous is None:

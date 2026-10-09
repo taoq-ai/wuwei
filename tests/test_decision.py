@@ -1467,3 +1467,65 @@ def test_record_gate_notes_the_owner_draft_answer(planner, answer, extra):
 def test_keep_is_a_status_quo_title():
     from wuwei.decision import lint
     assert lint(VALID.replace('Defer until tomorrow', 'Keep owner-only'))[0] == 0
+
+
+# #600: config cards carry values in a Value row and the previous value in a Previous line.
+CHECKS_RECORD = '''Question: Which fast checks gate every change in repo:acme/paper?
+Class: other
+Context: Detected in Makefile:1 and .markdownlint.json:1.
+Options:
+| Option | Title | Rationale | Consequence |
+| --- | --- | --- | --- |
+| A | Detected | Passes every must and scores 9 on Evidence. | Every change runs the detected checks. |
+| B | None | Passes every must but scores 4 on Evidence. | CI and the gates are the evidence. |
+| C | Defer | Passes every must but scores 1 on Evidence. | The question comes back tomorrow. |
+Value:
+| Option | Value |
+| --- | --- |
+| A | repos.0.fast_checks = ["make test", "markdownlint ."] |
+| B | repos.0.fast_checks = [] |
+Previous: repos.0.fast_checks = []
+Musts:
+| Criterion | A | B | C |
+| --- | --- | --- | --- |
+| Safe | pass | pass | pass |
+Wants:
+| Criterion | Weight | A | B | C |
+| --- | --- | --- | --- | --- |
+| Evidence | 10 | 9 | 4 | 1 |
+Recommendation: A
+Reasoning: Catching broken code on every push decided it. A slow runner would flip it to B.
+Confidence: high
+Reversibility: one-way
+Blast radius: repository acme/paper fast checks
+Pre-mortem: The detected command is slow.
+Revisit: When a check runs longer than a minute.
+Decided-by: owner
+Outcome: pending
+'''
+
+
+def test_value_rows_lint_and_read():
+    from wuwei import decision
+    assert decision.lint(CHECKS_RECORD)[0] == 0, decision.lint(CHECKS_RECORD)
+    fields, _ = decision.evaluate(CHECKS_RECORD, decision.LENSES)
+    assert decision.config_keys(fields) == {
+        'A': ('repos.0.fast_checks', ['make test', 'markdownlint .']), 'B': ('repos.0.fast_checks', [])}
+    from test_card_confirms import CONFIG_RECORD
+    fields, _ = decision.evaluate(CONFIG_RECORD, decision.LENSES)
+    assert decision.config_keys(fields) == {'A': ('cap', 5), 'B': ('cap', 3)}
+    assert decision.config_keys(decision.evaluate(VALID)[0]) == {}
+    assert 'Value' not in decision.evaluate(VALID)[0]
+
+
+@pytest.mark.parametrize('old,new,reason', [
+    ('| A | repos.0.fast_checks = [', '| Z | repos.0.fast_checks = [', 'Value: row Z'),
+    ('| B | repos.0.fast_checks = [] |', '| B | nope.key = [] |', 'Value: row B'),
+    ('| B | repos.0.fast_checks = [] |', '| B | repos.0.fast_checks = [make test |', 'Value: row B'),
+    ('Previous: repos.0.fast_checks = []', 'Previous: repos.0.fast_checks = []\nand more', 'Previous'),
+    ('Previous: repos.0.fast_checks = []', 'Previous: nope', 'Previous'),
+])
+def test_value_rows_reject(old, new, reason):
+    from wuwei import decision
+    code, message = decision.lint(CHECKS_RECORD.replace(old, new))
+    assert code == 1 and reason in message, message

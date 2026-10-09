@@ -24,8 +24,10 @@ def register(subparsers):
     parser.set_defaults(func=promote)
     from wuwei.commands import setup
     parser = actions.add_parser('set', help='set one config value (owner, host terminal)')
-    parser.add_argument('key', help='dotted key, for example owner.verbosity.default or repos.0.merge_deploys')
-    parser.add_argument('value', help='one TOML value, for example \'"standard"\' or false')
+    parser.add_argument('key', nargs='?',
+                        help='dotted key, for example owner.verbosity.default or repos.0.merge_deploys; '
+                             'optional with --from-card, which reads it from the answered option')
+    parser.add_argument('value', nargs='?', help='one TOML value, for example \'"standard"\' or false')
     parser.add_argument('--replace', action='store_true',
                         help='write the value as given instead of adding to the current list or table')
     parser.add_argument('--from-card', dest='from_card', metavar='D-n',

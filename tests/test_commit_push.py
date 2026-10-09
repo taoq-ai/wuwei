@@ -902,6 +902,16 @@ def test_fast_evidence_is_its_own_check(item_case):
     assert guard().fast_evidence(repo, SHA, str(tree), root) == (0, '')
 
 
+
+@pytest.mark.parametrize('pace', ['steady', 'careful', 'fast'])
+def test_fast_evidence_passes_with_no_fast_checks(item_case, pace):
+    from wuwei import state
+    root, _, tree = item_case
+    set_fast_checks(root, {})
+    state._write_state(lambda data: data.update(pace=pace), root, reserved=False)
+    repo = {'name': 'example/project', 'fast_checks': []}
+    assert guard().fast_evidence(repo, SHA, str(tree), root) == (0, '')
+
 def with_posture(root, name):
     with (root / '.wuwei/config.toml').open('a') as stream:
         stream.write(f'[security]\nposture = "{name}"\n')
