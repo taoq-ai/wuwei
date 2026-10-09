@@ -956,3 +956,22 @@ def test_refusal_names_the_seat_step_not_the_owner(workspace_case, command, step
     code, reason = guard().check(payload(root, command))
     assert code in (1, 2) and step in reason, reason
     assert not re.search(r'host terminal|ask the owner|only the owner|by hand', reason), reason
+
+
+@pytest.mark.parametrize('identity', ['{name = "", email = ""}', '{name = "<name>", email = "<email>"}'])
+@pytest.mark.parametrize('command', ['git commit -m safe', 'git push origin HEAD:refs/heads/feature'])
+def test_empty_identity_names_the_config_set(workspace_case, command, identity):
+    # #605: an empty or malformed repos.N.identity fails with the reason and fix doctor's row
+    # shows; the fix names the identity git resolves, read with no new git call.
+    root, fake = workspace_case
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('{name = "Builder", email = "builder@example.test"}', identity))
+    calls = len(fake.calls)
+    reason, fix = guard().unset_identity({'name': '<name>', 'email': ''}, 0, OWNER)
+    assert reason == 'repos.0.identity is empty or malformed'
+    assert fix == "bin/wuwei config set repos.0.identity '{name = \"Builder\", email = \"builder@example.test\"}'"
+    assert guard().check(payload(root, command)) == (2, f'commit/push guard could not run: {reason}; {fix}')
+    assert not any(call[0] == 'identity' for call in fake.calls[calls:])
+    assert guard().unset_identity(OWNER, 0) is None
+    assert guard().unset_identity({'name': '', 'email': ''}, 0, {'name': '<name>', 'email': ''})[1] == (
+        "bin/wuwei config set repos.0.identity '{name = \"<name>\", email = \"<email>\"}'")
