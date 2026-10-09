@@ -1,7 +1,7 @@
 <p align="center"><picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/site/assets/hero-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/site/assets/hero-light.svg">
-    <img src="docs/site/assets/hero-light.svg" alt="A ranked queue you approve feeds an agent team working three parallel lanes that loop build and check, every candidate passes the gates with at most one fix round, pull requests wait in a stack the shepherd sweeps until they merge, and you answer the odd card from the phone while guards, heartbeat, lead and steward work under the hood and each day's retro feeds tomorrow's plan." width="100%">
+    <img src="docs/site/assets/hero-light.svg" alt="A ranked queue you approve feeds an agent team working three parallel lanes that loop build and check, every candidate passes the gates within the round cap, pull requests wait in a stack the shepherd sweeps until they merge, and you answer the odd card from the phone while guards, heartbeat, lead and steward work under the hood and each day's retro feeds tomorrow's plan." width="100%">
 </picture></p>
 
 <h1 align="center">WUWEI 无为</h1>

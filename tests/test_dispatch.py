@@ -113,6 +113,7 @@ def test_fix_pass_then_only_quality_delta(root):
 def test_blocking_delta_escalates_and_bad_verdict_is_unmeasured(root):
     from wuwei import dispatch
 
+    caps(root, 'max_rounds = 1\n')
     for role in ('arch', 'quality', 'security'):
         text = FIX if role == 'security' else PASS
         if role == 'quality':
@@ -121,7 +122,7 @@ def test_blocking_delta_escalates_and_bad_verdict_is_unmeasured(root):
     state.transition('A', 'fix', root)
     state.transition('A', 'delta', root)
     record(root, 'security', 'security-2', FIX, 'delta')
-    assert dispatch.next_step('A', root)['action'] == 'escalate'
+    assert dispatch.next_step('A', root)['reason'].startswith('round cap 1 reached: security still blocks:')
     with pytest.raises(dispatch.Refused, match='already received'):
         record(root, 'security', 'security-3', FIX, 'delta')
 
@@ -350,6 +351,7 @@ def test_agent_surface_delta_rescans_and_keeps_manual_findings(root, monkeypatch
     record(root, 'arch', 'arch', PASS)
     record(root, 'quality', 'quality', PASS + 'Simplicity: none\nDesign: none\n')
     payload, calls, _ = agent_gate(root, monkeypatch)
+    caps(root, 'max_rounds = 1\n')  # #623: the one-round budget this test was written for
     dispatch.receive('A', 'security', 'security', root=root)
     assert dispatch.next_step('A', root)['action'] == 'fix'
     assert state.read_state(root)['items']['A']['phase'] == 'fix'
@@ -1342,10 +1344,12 @@ def test_cli_opinion_contract(root, monkeypatch, capsys):
     assert 'runtime seat failed' in capsys.readouterr().err
 
 
-def opinion_fix_round(root, monkeypatch, delta_text):
+def opinion_fix_round(root, monkeypatch, delta_text, cap=''):
     from wuwei import dispatch
 
     runtime = opinion_ready(root, monkeypatch)
+    if cap:
+        caps(root, cap)
     dispatch.opinion('A', root)
     for role, name in (('arch', 'a-1'), ('quality', 'q-1'), ('security', 's-1')):
         text = PASS + ('Simplicity: none\nDesign: none\n' if role == 'quality' else '')
@@ -1365,8 +1369,9 @@ def opinion_fix_round(root, monkeypatch, delta_text):
 
 
 def test_second_opinion_fix_opens_the_fix_round_and_its_delta_escalates(root, monkeypatch):
-    assert opinion_fix_round(root, monkeypatch, OPINION_TEXT) == {
-        'action': 'escalate', 'reason': 'blocking finding remains after delta'}
+    outcome = opinion_fix_round(root, monkeypatch, OPINION_TEXT, 'max_rounds = 1\n')
+    assert outcome['action'] == 'escalate'
+    assert outcome['reason'].startswith('round cap 1 reached: quality@codex still blocks:')
 
 
 def test_second_opinion_delta_residual_becomes_a_review_note(root, monkeypatch):
@@ -1685,3 +1690,166 @@ def test_gates_name_each_brief_and_receive(root):
     state._write_state(lambda data: data['seats']['arch-A'].update(status='stopped'), root, reserved=False)
     assert dispatch.next_step('A', root)['commands'] == [
         'wuwei dispatch receive A arch arch-A', brief('quality'), brief('security')]
+
+
+def caps(root, text):
+    path = root / '.wuwei/config.toml'
+    old = path.read_text()
+    path.write_text(old.replace('[gates]\n', '[gates]\n' + text) if '[gates]\n' in old
+                    else old + '[gates]\n' + text)
+
+
+def test_round_cap_is_read_from_gates_and_the_tier_override(root):
+    # #623: one cap per item, gates.max_rounds unless the item's tier sets its own.
+    from wuwei import dispatch
+    config = workspace.load_config(root)
+    assert dispatch.max_rounds(config, {}) == 2
+    caps(root, 'max_rounds = 1\ntier_max_rounds = { light = 2 }\n')
+    config = workspace.load_config(root)
+    assert dispatch.max_rounds(config, {'gates': {'tier': 'light'}}) == 2
+    assert dispatch.max_rounds(config, {'gates': {'tier': 'standard'}}) == 1
+    assert dispatch.max_rounds(config, {}) == 1
+    (root / '.wuwei/config.toml').write_text('[gates]\nmax_rounds = 0\n')
+    with pytest.raises(ValueError):
+        workspace.load_config(root)
+
+
+def test_rounds_used_counts_the_build_record(root):
+    from wuwei import dispatch
+    data = state.read_state(root)
+    assert dispatch.rounds_used(data, 'A') == 0
+    built(root)
+    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=2), root, reserved=False)
+    assert dispatch.rounds_used(state.read_state(root), 'A') == 2
+    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=0), root, reserved=False)
+    state.transition('A', 'fix', root)
+    state.transition('A', 'delta', root)
+    assert dispatch.rounds_used(state.read_state(root), 'A') == 1
+
+
+def fix_events(root):
+    return [row['payload'] for row in map(json.loads, (workspace.day_dir(root) / 'events.jsonl')
+            .read_text().splitlines()) if row['kind'] == 'build.fix_opened']
+
+
+def test_open_fix_counts_rounds_and_refuses_at_the_cap(root):
+    from wuwei.commands import build
+    built(root)
+    gate_fix(root)
+    build.open_fix('A', 'Gate quality FIX.', root=root)
+    assert state.read_state(root)['builds']['A']['fix_rounds'] == 1
+    assert {k: fix_events(root)[-1][k] for k in ('round', 'cap')} == {'round': 1, 'cap': 2}
+    caps(root, 'max_rounds = 1\n')
+    state.transition('A', 'delta', root)
+    with pytest.raises(ValueError, match=r'round cap 1 reached \(gates.max_rounds\)'):
+        build.open_fix('A', 'Gate quality FIX.', root=root)
+
+
+def test_open_fix_from_delta_opens_the_next_round_and_moves_the_verdicts(root, monkeypatch):
+    from wuwei.commands import build
+    built(root)
+    gate_fix(root)
+    build.open_fix('A', 'Gate quality FIX.', root=root)
+    state.transition('A', 'delta', root)
+    record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n', 'delta')
+    before = state.read_state(root)['gate_verdicts']
+    state._write_state(lambda data: (data['builds']['A'].update(status='done'),
+                                     data['builds']['A'].pop('agent_id')), root, reserved=False)
+    names = []
+
+    def write(role, item, name, body, **kwargs):
+        names.append(name)
+        path = workspace.day_dir(root) / 'briefs' / (name + '.md')
+        path.write_text(body)
+        return str(path.relative_to(root))
+    monkeypatch.setattr('wuwei.brief.write', write)
+    build.open_fix('A', 'Gate quality FIX again.', root=root)
+    data = state.read_state(root)
+    assert data['items']['A']['phase'] == 'fix' and data['builds']['A']['fix_rounds'] == 2
+    assert fix_events(root)[-1]['round'] == 2 and names == ['A-gate-fix-2']
+    verdicts = data['gate_verdicts']
+    assert verdicts['A:quality:initial'] == before['A:quality:delta']
+    assert verdicts['A:quality:round1'] == before['A:quality:initial']
+    assert 'A:quality:delta' not in verdicts
+    assert verdicts['A:arch:initial'] == before['A:arch:initial'] and 'A:arch:round1' not in verdicts
+    state.transition('A', 'delta', root)
+    with pytest.raises(ValueError, match='round cap 2 reached'):
+        build.open_fix('A', 'Gate quality FIX.', root=root)
+
+
+def test_issue_acceptance_document_item_ships_its_notes_after_two_rounds(root):
+    # #623: FIX at rounds one and two, then non-blocking notes: the notes go to the PR.
+    from wuwei import dispatch
+    from wuwei.commands import next as next_command
+    built(root)
+    state._write_state(lambda data: data['items']['A'].update(gates=GOAL), root, reserved=False)
+    record(root, 'goal', 'goal-1', FIX)
+    assert dispatch.next_step('A', root) == _fix_action(['goal'])
+    state.transition('A', 'delta', root)
+    head = 'def5678'
+    record(root, 'goal', 'goal-1', FIX.replace('abc1234', head), 'delta',
+           agent_id='agent-goal-1', head=head + '0' * 33)
+    assert dispatch.next_step('A', root) == _fix_action(['goal'])
+    data = state.read_state(root)
+    assert data['builds']['A']['fix_rounds'] == 2 and 'A:goal:round1' in data['gate_verdicts']
+    state.transition('A', 'delta', root)
+    outcome = dispatch.next_step('A', root)
+    assert outcome['roles'] == ['goal']
+    [action] = outcome['seats']
+    assert action['action'] == 'continue' and action['resume'] == 'agent-goal-1'
+    assert action['feedback'].startswith('Re-read:') and head in action['feedback']
+    note = FIX.replace('blocks: yes', 'blocks: no').replace('abc1234', '1234abc')
+    record(root, 'goal', 'goal-1', note, 'delta', agent_id='agent-goal-1', head='1234abc' + '0' * 33)
+    outcome = dispatch.next_step('A', root)
+    assert outcome['action'] == 'raise' and 'cli/example.py:12' in outcome['notes'][0]
+    found = next_command.resolve({'state': 'verdicts', 'item': 'A', 'action': 'run', 'why': 'Gates.'}, root)
+    assert found['command'].startswith('wuwei brief shepherd A shepherd-A')
+    assert 'Review note: - P1 | cli/example.py:12' in found['command']
+
+
+def _fix_action(roles):
+    return {'action': 'fix', 'roles': roles, 'command': 'wuwei build next A'}
+
+
+TRUST = FIX.replace('fails when empty', 'tool output across the trust boundary fails when it reaches the shell unchecked')
+
+
+def test_issue_acceptance_blocking_trust_finding_at_round_three_parks(root):
+    import shlex
+    from wuwei import dispatch, plan
+    from wuwei.commands import next as next_command
+    built(root)
+    record(root, 'arch', 'arch-1', PASS)
+    record(root, 'quality', 'quality-1', PASS + 'Simplicity: none\nDesign: none\n')
+    record(root, 'security', 'security-1', TRUST)
+    assert dispatch.next_step('A', root) == _fix_action(['security'])
+    for number, head in ((2, 'def5678'), (3, '1234abc')):
+        state.transition('A', 'delta', root)
+        record(root, 'security', 'security-1', TRUST.replace('abc1234', head), 'delta', head=head + '0' * 33)
+        outcome = dispatch.next_step('A', root)
+        if number == 2:
+            assert outcome == _fix_action(['security'])
+    assert outcome['action'] == 'escalate'
+    reason = outcome['reason']
+    assert reason.startswith('round cap 2 reached: security still blocks: - P1 | cli/example.py:12 | tool output')
+    assert 'unpark after a design change' in reason
+    assert len(fix_events(root)) == 2
+    found = next_command.resolve({'state': 'verdicts', 'item': 'A', 'action': 'run', 'why': 'Gates.'}, root)
+    assert found['command'] == 'wuwei plan park A --reason ' + shlex.quote(reason)
+    name = plan.dispose('A', 'parked', reason, root=root)
+    text = (workspace.day_dir(root) / 'decisions' / f'{name}.md').read_text()
+    assert 'across the trust boundary' in text.split('Context:', 1)[1].splitlines()[0]
+    assert state.read_state(root)['items']['A']['phase'] == 'parked'
+
+
+def test_a_cap_of_one_escalates_the_first_blocking_delta(root):
+    from wuwei import dispatch
+    caps(root, 'max_rounds = 1\n')
+    built(root)
+    gate_fix(root)
+    assert dispatch.next_step('A', root) == _fix_action(['quality'])
+    state.transition('A', 'delta', root)
+    record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n', 'delta')
+    outcome = dispatch.next_step('A', root)
+    assert outcome['action'] == 'escalate' and outcome['reason'].startswith('round cap 1 reached: quality still blocks:')
+    assert len(fix_events(root)) == 1

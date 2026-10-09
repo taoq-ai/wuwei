@@ -133,7 +133,10 @@ SCHEMA = {
               "poll_interval_seconds": (int, 5, 0), "poll_timeout_seconds": (int, 3600, 1)},
     "codex": {"command": [(str, None)], "timeout_seconds": (int, 300, 1)},
     "gates": {"second_opinion": (str, "off"),
-              "second_opinion_role": (str, "quality", ("arch", "quality", "security"))},
+              "second_opinion_role": (str, "quality", ("arch", "quality", "security")),
+              "max_rounds": (int, 2, 1),  # #623: fix rounds per item before notes ship or a blocker parks
+              "tier_max_rounds": {"light": (int, 0, 0), "standard": (int, 0, 0),
+                                  "full": (int, 0, 0)}},
     "watch": {"clock_seconds": (int, 600, 1), "dead_seconds": (int, 1200, 1),
               "stale_seconds": (int, 900, 1), "sweep_seconds": (int, 7200, 1),
               "ping_url": (str, "")},
@@ -590,7 +593,7 @@ CONFIGS_KEPT = 128
 # copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
-CONFIG_CACHE_VERSION = 15  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 16  # Bump when the parse, the schema, the defaults or the checks change.
 # #624: steward.every_tool_calls default 250.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so

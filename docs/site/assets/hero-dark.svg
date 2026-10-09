@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-labelledby="title desc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13">
 <title id="title">WUWEI: agentic delivery, one day</title>
-<desc id="desc">A ranked queue you approve feeds an agent team working three parallel lanes that loop build and check, every candidate passes the gates with at most one fix round, pull requests wait in a stack the shepherd sweeps until they merge, and you answer the odd card from the phone while guards, heartbeat, lead and steward work under the hood and each day's retro feeds tomorrow's plan.</desc>
+<desc id="desc">A ranked queue you approve feeds an agent team working three parallel lanes that loop build and check, every candidate passes the gates within the round cap, pull requests wait in a stack the shepherd sweeps until they merge, and you answer the odd card from the phone while guards, heartbeat, lead and steward work under the hood and each day's retro feeds tomorrow's plan.</desc>
 <style><![CDATA[
 .still{display:none}
 .spin{animation:spin 2s linear infinite;transform-box:fill-box;transform-origin:center}@keyframes spin{to{transform:rotate(360deg)}}

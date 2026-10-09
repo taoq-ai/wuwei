@@ -187,17 +187,21 @@ def open_fix(item, feedback, *, root):
             return {'action': 'wait', 'item': item, 'status': record['status']}
     if record is None or record['status'] not in ('done', 'ready'):
         raise ValueError(f'fix round needs a completed or ready build; run bin/wuwei build next {item} for the current step')
-    if record.get('fix_rounds', 0) >= 1:
-        raise ValueError(f'fix round budget exhausted; park {item} for the owner (bin/wuwei why {item} shows the rounds)')
+    from wuwei import dispatch
+    cap = dispatch.max_rounds(workspace.load_config(root), data['items'][item])
+    used = dispatch.rounds_used(data, item)
+    if used >= cap:  # #623: one round cap for gate and PR fixes alike
+        raise ValueError(f'round cap {cap} reached (gates.max_rounds); park {item} for the owner (bin/wuwei why {item} shows the rounds)')
     phase = data['items'][item]['phase']
-    if phase not in ('gate', 'raised'):
-        raise ValueError(f'fix round needs a gated or raised item; run bin/wuwei dispatch next {item} for its current step')
+    if phase not in ('gate', 'raised', 'delta'):
+        raise ValueError(f'fix round needs a gated, delta or raised item; run bin/wuwei dispatch next {item} for its current step')
     brief = root / record['brief']
     resume = record.get('agent_id') or record.get('job')
     if not resume and (record['status'] == 'done' or record['runtime'] == 'codex'):
         from wuwei import brief as brief_writer
         body = f'Read the original builder brief {record["brief"]}.\n\nFix feedback:\n{feedback}'
-        relative = brief_writer.write('builder', item, f'{item}-{"gate" if phase == "gate" else "pr"}-fix', body,
+        name = f'{item}-{"pr" if phase == "raised" else "gate"}-fix' + (f'-{used + 1}' if used else '')
+        relative = brief_writer.write('builder', item, name, body,
                                       worktree=record['worktree'],
                                       pr=data['items'][item].get('pr'), root=root)
         brief = root / relative
@@ -211,13 +215,15 @@ def open_fix(item, feedback, *, root):
     def update(fresh):
         if fresh.get('builds', {}).get(item) != record:
             raise ValueError(f'build changed before fix round; run bin/wuwei build next {item} again')
+        if phase == 'delta':
+            dispatch.rotate(fresh, item, used)
         fresh['items'][item]['phase'] = 'fix'
         fresh['builds'][item] = {**record, 'brief': str(brief.relative_to(root)),
                                  'status': 'ready', 'action': action,
-                                 'fix_rounds': 1, 'iteration': 0, 'repeats': 0,
+                                 'fix_rounds': used + 1, 'iteration': 0, 'repeats': 0,
                                  'signature': None}
     state._write_state(update, root, reserved=False, kind='build.fix_opened',
-                       payload={'item': item})
+                       payload={'item': item, 'round': used + 1, 'cap': cap})
     return next_action(item, brief, record['worktree'], root=root)
 
 

@@ -96,7 +96,8 @@ def _recorded_gates(root, sha, records, item, items=None):
         if missing:
             failures.append((candidate, missing))
             continue
-        if len({row['head'] for row in initial}) != 1:
+        # #623: a later fix round moves a gate's delta record to initial; only round one's agree
+        if len({row['head'] for row in initial if row.get('round', 'initial') == 'initial'}) > 1:
             raise ValueError('initial gate verdicts disagree on HEAD; run bin/wuwei dispatch next <item> to rerun the odd gate on the current HEAD')
         complete = True
         missing = []

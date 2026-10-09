@@ -76,6 +76,19 @@ def class_lines(data):
             'Target: cards only for Strategic and for floors (publish, merge).']
 
 
+def round_lines(rows):
+    """#623: fix rounds per item today, and the items whose rounds reached their cap."""
+    opened = [row['payload'] for row in rows if row['kind'] == 'build.fix_opened']
+    lines = []
+    for item in sorted({str(row.get('item')) for row in opened}):
+        mine = [row for row in opened if str(row.get('item')) == item]
+        hits = [row['cap'] for row in mine if isinstance(row.get('round'), int)
+                and isinstance(row.get('cap'), int) and row['round'] >= row['cap']]
+        lines.append(f'- {item}: {len(mine)} fix round{"s" if len(mine) > 1 else ""}'
+                     + (f', round cap {hits[-1]} reached' if hits else ''))
+    return lines
+
+
 def seat_lines(data):
     """#622: reviewer seats per tiered item, its gate set and the tier reasons. A delta continues
     a seat, so it counts once; a second opinion is its own seat."""
@@ -213,6 +226,9 @@ def build(root=None):
     reviewed = seat_lines(data)
     if reviewed:
         lines += ['', '## Review seats', *reviewed]
+    rounds = round_lines(watch.records(day / 'events.jsonl'))
+    if rounds:
+        lines += ['', '## Rounds', *rounds]
     from wuwei import docs
     documented = docs.report_lines(root, workspace.load_config(root), data)
     if documented:

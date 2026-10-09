@@ -292,8 +292,11 @@ def test_light_fix_is_re_read_by_the_same_seat(root, light):
     if light:
         assert feedback.startswith('Re-read:') and 'Delta review' not in feedback
         assert 'Verdict:' in feedback and 'Head:' in feedback and 'blocks: no' in feedback
+        assert 'did not change' not in feedback
     else:
         assert feedback.startswith('Delta review:')
+        # #623: no scope widening after round one
+        assert 'did not change is blocks: no, unless it is a trust-boundary security finding' in feedback
 
 
 from test_decision_classes import record as decision_record, route, ws  # noqa: E402,F401

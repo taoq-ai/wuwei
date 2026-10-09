@@ -835,3 +835,27 @@ def test_chained_create_keeps_the_owner_only_refusal_under_observe(case, monkeyp
     monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(data)))
     assert run(Namespace(event='PreToolUse')) == 2
     assert 'run PR create separately' in capsys.readouterr().out
+
+
+def test_recorded_gates_after_more_than_one_fix_round(case):
+    # #623: a later round moves a gate's delta record to initial; only round-one heads must agree.
+    root, _, decisions = case
+
+    def row(role, round_name, verdict, head, name=None):
+        path = decisions / f'gate-9-{name or role}.md'
+        path.write_text(evidence(head, verdict))
+        return {'item': '9', 'role': role, 'round': round_name, 'verdict': verdict, 'head': head,
+                'file': str(path.relative_to(root)), 'blocks': False, 'notes': []}
+    records = {'9:arch:initial': row('arch', 'initial', 'PASS', OLD),
+               '9:security:initial': row('security', 'initial', 'PASS', OLD),
+               '9:quality:round1': row('quality', 'initial', 'FIX', OLD, 'quality-1'),
+               '9:quality:initial': row('quality', 'delta', 'FIX', 'd' * 40, 'quality-2'),
+               '9:quality:delta': row('quality', 'delta', 'PASS', SHA)}
+    assert guard()._recorded_gates(root, SHA, records, '9') == (0, '')
+    moved = {f'9:{role}:{key}': row(role, 'delta', verdict, head, f'{role}-{key}')
+             for role, head in (('arch', 'd' * 40), ('quality', 'e' * 40), ('security', 'f' * 40))
+             for key, verdict, head in (('initial', 'FIX', head), ('delta', 'PASS', SHA))}
+    assert guard()._recorded_gates(root, SHA, moved, '9') == (0, '')
+    records['9:quality:initial'] = row('quality', 'initial', 'FIX', 'd' * 40, 'quality-2')
+    with pytest.raises(ValueError, match='initial gate verdicts disagree on HEAD'):
+        guard()._recorded_gates(root, SHA, records, '9')

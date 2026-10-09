@@ -81,7 +81,7 @@ RULES = (
     ("tracks", "_common.md", "fewer than about twenty tasks"),
     ("flags", "lead.md", "LLM output used as instructions"),
     ("pre-pr gates", "_common.md", "arch, quality and security run in parallel"),
-    ("negotiation budget", "_common.md", "Exceeding the budget is a design reconsideration, never another round"),
+    ("round cap", "_common.md", "counted the same for code, spec and document items"),
     ("re-gate", "_common.md", "Launch a fresh seat only if the original seat is lost"),
     ("cap", "lead.md", "a slot frees at builder handoff"),
     ("seat policy", "planner.md", "model and runtime for each role"),
