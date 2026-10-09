@@ -440,7 +440,7 @@ def test_bash_lints_every_daily_gate_even_when_not_named(tmp_path):
                        ('gate-clean.md', VALID)]:
         (directory / name).write_text(text)
     (directory / 'other.md').write_text('not a verdict')
-    command = 'echo GATE-unrelated'
+    command = 'echo GATE-unrelated > out.txt'  # #616: a bare echo is a read
     assert check_write({'cwd': str(tmp_path), 'tool_name': 'Bash',
                         'tool_input': {'command': command}})[0] == 1
     records = [json.loads(line) for line in (day_dir(tmp_path) / 'events.jsonl').read_text().splitlines()]
@@ -448,7 +448,7 @@ def test_bash_lints_every_daily_gate_even_when_not_named(tmp_path):
                                                      str(directory / 'gate-second.md')]
 
 
-@pytest.mark.parametrize('command', ['echo gate-item', 'python -c "print(\'gate-item\')"'])
+@pytest.mark.parametrize('command', ['echo gate-item > out.txt', 'python -c "print(\'gate-item\')"'])
 def test_daily_gate_scan_records_findings_and_unreadable_files(tmp_path, command):
     from wuwei.guards.verdict import check_write
     from wuwei.workspace import day_dir
@@ -533,6 +533,52 @@ def test_bash_quoted_gate_path_with_spaces(tmp_path):
                                 'tool_input': {'command': f'cat > "{path}"'}})
     assert code == 1
     assert 'file:line' in message
+
+
+def bash_post(tmp_path, command, role=''):
+    """A recorded PostToolUse Bash payload through check_write, with the events it appended."""
+    from wuwei.guards.verdict import check_write
+    from wuwei.workspace import day_dir
+    events = day_dir(tmp_path) / 'events.jsonl'
+    before = events.read_text().splitlines() if events.exists() else []
+    result = check_write({'cwd': str(tmp_path), 'tool_name': 'Bash', 'hook_event_name': 'PostToolUse',
+                          'agent_type': role, 'tool_input': {'command': command}})
+    after = events.read_text().splitlines() if events.exists() else []
+    return result, [json.loads(line) for line in after[len(before):]]
+
+
+@pytest.mark.parametrize('command', ['cat {gate}', 'grep -n Verdict {gate}', 'shasum -a 256 {gate}',
+                                     'cd {day} && sha256sum decisions/gate-a-quality.md | head -1'])
+def test_invariant_read_only_bash_never_lints(tmp_path, command):
+    # #616 (proposed design 9.2 I26): a Bash call that only reads a gate file is not a gate
+    # write: it is not linted and records no verdict.rejected event.
+    from wuwei.workspace import day_dir
+    gate = day_dir(tmp_path) / 'decisions/gate-a-quality.md'
+    gate.parent.mkdir(parents=True)
+    gate.write_text('Verdict: FIX')
+    assert bash_post(tmp_path, command.format(gate=gate, day=day_dir(tmp_path)),
+                     'wuwei:sentinel-quality') == ((0, ''), [])
+
+
+def test_invariant_bash_write_lints_by_file_name(tmp_path):
+    # #616 (proposed design 9.2 I26): a Bash call that can write lints each gate file with the
+    # role its own name implies, never the caller's.
+    from wuwei.verdict import lint_file
+    from wuwei.workspace import day_dir
+    directory = day_dir(tmp_path) / 'decisions'
+    directory.mkdir(parents=True)
+    quality, security = directory / 'gate-a-quality.md', directory / 'gate-a-security.md'
+    quality.write_text('Verdict: FIX')
+    for command in (f'cp x {quality}', f'cat x > {quality}'):
+        (code, message), events = bash_post(tmp_path, command)
+        assert code == 1 and 'file:line' in message
+        assert [e['payload']['file'] for e in events if e['kind'] == 'verdict.rejected'] == [str(quality)]
+    quality.write_text(VALID + 'Simplicity: none\nDesign: none\n')
+    security.write_text(PASS)
+    assert lint_file(security, role='sentinel-quality')[0] == 1  # the quality rules would refuse it
+    assert bash_post(tmp_path, f'cp x {security}', 'wuwei:sentinel-quality') == ((0, ''), [])
+    (code, message), _ = bash_post(tmp_path, "python3 -c \"open('gate-a-security.md', 'w')\"")
+    assert code == 1 and 'opaque' in message
 
 
 @pytest.fixture
