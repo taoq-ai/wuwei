@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/taoq-ai/wuwei/compare/v0.22.0...v0.23.0) (2026-10-09)
+
+
+### Features
+
+* **setup:** one question picks autonomous or supervised and writes the config at once, the interview runs on upgrade, and init proposes the harness allowlist on a card ([#596](https://github.com/taoq-ai/wuwei/issues/596)) ([705250f](https://github.com/taoq-ai/wuwei/commit/705250f2fcf8d054c437e92dcd742aae3f59725f))
+
 ## [0.22.0](https://github.com/taoq-ai/wuwei/compare/v0.21.0...v0.22.0) (2026-10-08)
 
 
