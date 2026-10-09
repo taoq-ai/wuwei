@@ -1,12 +1,16 @@
-"""GitHub Issues and Projects tracker adapter (GraphQL, GITHUB_TRACKER_TOKEN).
+"""GitHub Issues and Projects tracker adapter (GraphQL, GITHUB_TRACKER_TOKEN or the gh login).
 
 Ticket ids are owner/repo#N. With tracker.board (owner/number) a transition sets the board's
-Status field; without one, in review is a label and done closes the issue.
+Status field; without one, in review is a label and done closes the issue. With
+tracker.auth = "gh" and no GITHUB_TRACKER_TOKEN, the same GraphQL runs through gh api graphql.
 """
 
+import json
+import os
 import re
+import subprocess
 
-from .._http import Failure, credential, operation, request, settings
+from .._http import Failure, credential, operation, request, settings, status
 from wuwei.registry import outward_operation
 
 
@@ -15,11 +19,44 @@ ISSUE = 'repository(owner:$owner,name:$name){issue(number:$number){id}}'
 VARIABLES = '$owner:String!,$name:String!,$number:Int!'
 
 
-def _query(query, variables):
-    value = request(URL, credential('GITHUB_TRACKER_TOKEN'), {'query': query, 'variables': variables})
+def _query(query, variables, root):
+    payload = {'query': query, 'variables': variables}
+    if os.environ.get('GITHUB_TRACKER_TOKEN'):
+        value = request(URL, credential('GITHUB_TRACKER_TOKEN'), payload)
+    elif settings(root)['tracker']['auth'] == 'gh':
+        value = _gh(payload)
+    else:
+        raise Failure('GITHUB_TRACKER_TOKEN is missing; set it in .wuwei/env, or set '
+                      'tracker.auth = "gh" to use your gh login')
     if value.get('errors') or not isinstance(value.get('data'), dict):
         raise Failure('GitHub error response')
     return value['data']
+
+
+def _gh(payload):
+    """The owner's gh login (#602); only the exit, an HTTP status and a hint leave, never gh's text."""
+    try:
+        result = subprocess.run(['gh', 'api', 'graphql', '--hostname', 'github.com', '--input', '-'],
+                                input=json.dumps(payload), capture_output=True, text=True, timeout=30)
+    except FileNotFoundError:
+        raise Failure('gh is not on PATH; install the GitHub CLI and run gh auth login') from None
+    except subprocess.TimeoutExpired:
+        raise Failure('gh api graphql timed out after 30 s') from None
+    if result.returncode:
+        code = re.search(r'\(HTTP ([1-5][0-9][0-9])\)', result.stderr)
+        if code:
+            hint = status(int(code[1]))
+        elif re.search(r'scope', result.stderr, re.I):
+            hint = 'run gh auth refresh -s project'
+        elif result.stdout.lstrip().startswith('{'):  # a GraphQL error body, never parsed as data
+            hint = 'GitHub error response'
+        else:
+            hint = 'run gh auth status'
+        raise Failure(f'gh api graphql exited {result.returncode}: {hint}')
+    value = json.loads(result.stdout)
+    if not isinstance(value, dict):
+        raise Failure('invalid JSON object')
+    return value
 
 
 def _ref(item):
@@ -37,8 +74,8 @@ def _repo(root):
     return repo
 
 
-def _issue(item):
-    return _query(f'query({VARIABLES}){{{ISSUE}}}', _ref(item))['repository']['issue']['id']
+def _issue(item, root):
+    return _query(f'query({VARIABLES}){{{ISSUE}}}', _ref(item), root)['repository']['issue']['id']
 
 
 @operation('github.backlog')
@@ -51,7 +88,7 @@ def backlog(filter, *, root=None):
     rows = _query('query($owner:String!,$name:String!' + (',$label:String!' if filter else '') +
                   '){repository(owner:$owner,name:$name){issues(first:100,states:OPEN' + labels +
                   '){nodes{number title url updatedAt} pageInfo{hasNextPage}}}}',
-                  {'owner': owner, 'name': name, **({'label': filter} if filter else {})}
+                  {'owner': owner, 'name': name, **({'label': filter} if filter else {})}, root
                   )['repository']['issues']
     if rows['pageInfo']['hasNextPage'] is not False:
         raise Failure('incomplete GitHub backlog')
@@ -61,10 +98,10 @@ def backlog(filter, *, root=None):
 
 @operation('github.claim')
 def claim(item, *, root=None):
-    value = _query(f'query({VARIABLES}){{viewer{{id}} {ISSUE}}}', _ref(item))
+    value = _query(f'query({VARIABLES}){{viewer{{id}} {ISSUE}}}', _ref(item), root)
     return _query('mutation($id:ID!,$user:ID!){addAssigneesToAssignable(input:{assignableId:$id,'
                   'assigneeIds:[$user]}){assignable{... on Issue{id}}}}',
-                  {'id': value['repository']['issue']['id'], 'user': value['viewer']['id']})
+                  {'id': value['repository']['issue']['id'], 'user': value['viewer']['id']}, root)
 
 
 @operation('github.transition')
@@ -80,7 +117,7 @@ def transition(item, state, *, root=None):
             '... on ProjectV2SingleSelectField{id options{id name}}}}}} '
             'repository(owner:$owner,name:$name){issue(number:$number){'
             'projectItems(first:100){nodes{id project{id}}}}}}',
-            {**_ref(item), 'login': match[1], 'board': int(match[2])})
+            {**_ref(item), 'login': match[1], 'board': int(match[2])}, root)
         project = value['repositoryOwner']['projectV2']
         option = [row['id'] for row in project['field']['options'] if row['name'] == state]
         node = [row['id'] for row in value['repository']['issue']['projectItems']['nodes']
@@ -91,17 +128,17 @@ def transition(item, state, *, root=None):
                       'updateProjectV2ItemFieldValue(input:{projectId:$project,itemId:$item,'
                       'fieldId:$field,value:{singleSelectOptionId:$option}}){projectV2Item{id}}}',
                       {'project': project['id'], 'item': node[0],
-                       'field': project['field']['id'], 'option': option[0]})
+                       'field': project['field']['id'], 'option': option[0]}, root)
     if state == tracker['states']['done']:
         return _query('mutation($id:ID!){closeIssue(input:{issueId:$id}){issue{id}}}',
-                      {'id': _issue(item)})
+                      {'id': _issue(item, root)}, root)
     value = _query(f'query({VARIABLES},$label:String!){{repository(owner:$owner,name:$name){{'
-                   'issue(number:$number){id} label(name:$label){id}}}', {**_ref(item), 'label': state})
+                   'issue(number:$number){id} label(name:$label){id}}}', {**_ref(item), 'label': state}, root)
     if not value['repository']['label']:
         raise Failure('GitHub label for that state not found')
     return _query('mutation($id:ID!,$label:ID!){addLabelsToLabelable(input:{labelableId:$id,'
                   'labelIds:[$label]}){labelable{... on Issue{id}}}}',
-                  {'id': value['repository']['issue']['id'], 'label': value['repository']['label']['id']})
+                  {'id': value['repository']['issue']['id'], 'label': value['repository']['label']['id']}, root)
 
 
 @outward_operation('tracker')
@@ -113,14 +150,14 @@ def create(draft, *, root=None):
     repo = _repo(root)
     owner, name = repo.split('/')
     value = _query('query($owner:String!,$name:String!){repository(owner:$owner,name:$name){'
-                   'id label(name:"bug"){id}}}', {'owner': owner, 'name': name})['repository']
+                   'id label(name:"bug"){id}}}', {'owner': owner, 'name': name}, root)['repository']
     body = draft.get('description', '') + (f"\n\nRelated: {draft['parent']}" if draft.get('parent') else '')
     labels = [value['label']['id']] if draft.get('category') == 'bugs' and value['label'] else []
     issue = _query('mutation($repositoryId:ID!,$title:String!,$body:String!,$labelIds:[ID!]){'
                    'createIssue(input:{repositoryId:$repositoryId,title:$title,body:$body,'
                    'labelIds:$labelIds}){issue{number url}}}',
                    {'repositoryId': value['id'], 'title': draft['title'], 'body': body,
-                    'labelIds': labels})['createIssue']['issue']
+                    'labelIds': labels}, root)['createIssue']['issue']
     return {'id': f"{repo}#{issue['number']}", 'url': issue['url']}
 
 
@@ -128,7 +165,7 @@ def create(draft, *, root=None):
 @operation('github.comment')
 def comment(item, text, category, *, root=None):
     value = _query('mutation($id:ID!,$body:String!){addComment(input:{subjectId:$id,body:$body}){'
-                   'commentEdge{node{id}}}}', {'id': _issue(item), 'body': text})
+                   'commentEdge{node{id}}}}', {'id': _issue(item, root), 'body': text}, root)
     return {'id': value['addComment']['commentEdge']['node']['id']}
 
 
@@ -137,14 +174,14 @@ def history(item, *, root=None):
     """The first assignment stands for In Progress; Projects v2 keeps no readable history."""
     nodes = _query(f'query({VARIABLES}){{repository(owner:$owner,name:$name){{issue(number:$number){{'
                    'timelineItems(itemTypes:[ASSIGNED_EVENT],first:1){nodes{... on AssignedEvent{'
-                   'createdAt}}}}}}', _ref(item))['repository']['issue']['timelineItems']['nodes']
+                   'createdAt}}}}}}', _ref(item), root)['repository']['issue']['timelineItems']['nodes']
     return [{'createdAt': nodes[0]['createdAt'], 'toState': {'name': 'In Progress'}}] if nodes else []
 
 
 @operation('github.created')
 def created(item, *, root=None):
     value = _query(f'query({VARIABLES}){{repository(owner:$owner,name:$name){{issue(number:$number){{'
-                   'createdAt}}}}', _ref(item))['repository']['issue']['createdAt']
+                   'createdAt}}}}', _ref(item), root)['repository']['issue']['createdAt']
     if not isinstance(value, str):
         raise Failure('missing issue creation time')
     return value

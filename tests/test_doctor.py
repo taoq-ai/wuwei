@@ -4,6 +4,7 @@ from argparse import Namespace
 import json
 import os
 from pathlib import Path
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -1250,6 +1251,22 @@ def test_tracker_row(ws):
     assert 'bin/wuwei config set tracker.required false' in found['fix']
     tracker.results['backlog'] = Result(0, [])
     assert row(doctor.diagnose(), 'tracker')['status'] == 'ok'
+
+
+@pytest.mark.parametrize('auth, fix', [
+    ('', 'set GITHUB_TRACKER_TOKEN in .wuwei/env, or bin/wuwei config set tracker.auth \'"gh"\' to use '
+         'your gh login, or bin/wuwei config set tracker.required false'),
+    ('[tracker]\nauth = "gh"\n', 'run gh auth status (with tracker.board: gh auth refresh -s project), '
+                                 'or bin/wuwei config set tracker.required false')])
+def test_github_tracker_row_names_the_auth_fix(ws, auth, fix):
+    from fakes.tracker import Fake
+    config(ws.root, CONFIG.replace('code_host = "github"\n', 'code_host = "github"\ntracker = "github"\n') + auth)
+    tracker = Fake({'backlog': Result(2, reason='github.backlog: could not run: HTTP 401: credential rejected')})
+    real = registry.load
+    ws.mp.setattr(registry, 'load', lambda kind, cfg: tracker if kind == 'tracker' else real(kind, cfg))
+    found = row(doctor.diagnose(), 'tracker')
+    assert found['status'] == 'fail' and 'HTTP 401' in found['value']
+    assert re.sub(r'\S*/bin/wuwei', 'bin/wuwei', found['fix']) == fix
 
 
 @pytest.mark.parametrize('posture,words', [('strict', 'is ignored under strict'),

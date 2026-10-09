@@ -647,9 +647,11 @@ def _tracker(root, config):
         reason = f'tracker unmeasured: {exc}'
     if not reason:
         return _row('day', 'tracker', 'ok', f'{name}: backlog read')
-    return _row('day', 'tracker', 'fail', reason,
-                (f'set {names} in .wuwei/env, or ' if names else '')
-                + 'bin/wuwei config set tracker.required false')
+    fix = f'set {names} in .wuwei/env, or ' if names else ''
+    if name == 'github':  # #602: the token, or the owner's gh login under tracker.auth = "gh"
+        fix = (f'{fix}bin/wuwei config set tracker.auth \'"gh"\' to use your gh login, or ' if names else
+               'run gh auth status (with tracker.board: gh auth refresh -s project), or ')
+    return _row('day', 'tracker', 'fail', reason, fix + 'bin/wuwei config set tracker.required false')
 
 
 LEGACY_TRACE = ('Question: How should this critical tool sequence be investigated?\n'

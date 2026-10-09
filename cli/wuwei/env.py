@@ -16,8 +16,22 @@ CREDENTIALS = ('LINEAR_API_KEY', 'SLACK_BOT_TOKEN', 'SLACK_USER_TOKEN',
                'NOTION_TOKEN', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN', 'JIRA_SITE', 'JIRA_EMAIL',
                'JIRA_API_TOKEN', 'GITHUB_TRACKER_TOKEN')
 PUBLIC = ('SLACK_OWNER_DM_CHANNEL', 'JIRA_SITE')  # identifiers: kept from seats, never redacted
+TOKENS = tuple(name for name in CREDENTIALS if name not in (
+    *PUBLIC, 'WUWEI_CALENDAR_URL', 'SLACK_API_BASE', 'JIRA_EMAIL', 'CONFLUENCE_EMAIL'))
 _loaded = set()
 _shadowed = set()  # .wuwei/env names whose value the process environment overrides
+
+
+def malformed(name):
+    """Why a token's value cannot be a token (a pasted command, a path), or ''; never the value."""
+    value = os.environ.get(name, '') if name in TOKENS else ''
+    if re.search(r'\s', value):
+        return 'contains whitespace'
+    if value.startswith(('/', '~', './', '../')):
+        return 'looks like a path'
+    if re.search(r'[$`;|&<>()"\']', value):
+        return 'looks like a command (shell characters)'
+    return ''
 
 
 def child_environment():

@@ -307,6 +307,52 @@ def test_config_reports_missing_and_set(case, monkeypatch, capsys, adapter, sett
     assert 'set' in output and KEY not in output
 
 
+@pytest.mark.parametrize('name, value, expected', [
+    ('GITHUB_TRACKER_TOKEN', 'github_pat_11ABC_def0', ''),
+    ('JIRA_API_TOKEN', 'ATATT3xFfGF0-abc_DEF=12AB34CD', ''),
+    ('GITHUB_TRACKER_TOKEN', 'gh auth token', 'contains whitespace'),
+    ('LINEAR_API_KEY', 'lin_api_one\tlin_api_two', 'contains whitespace'),
+    ('GITHUB_TRACKER_TOKEN', '/tmp/token.txt', 'looks like a path'),
+    ('GITHUB_TRACKER_TOKEN', '~/token', 'looks like a path'),
+    ('NOTION_TOKEN', './secret', 'looks like a path'),
+    ('NOTION_TOKEN', '../secret', 'looks like a path'),
+    ('GITHUB_TRACKER_TOKEN', '$(gh_auth_token)', 'looks like a command (shell characters)'),
+    ('SLACK_BOT_TOKEN', 'xoxb-1|pbcopy', 'looks like a command (shell characters)'),
+    ('GH_TOKEN', '"ghp_x', 'looks like a command (shell characters)'),
+    ('WUWEI_CALENDAR_URL', 'https://example.test/a b.ics', ''),
+    ('JIRA_SITE', 'https://acme.atlassian.net', ''),
+    ('JIRA_EMAIL', 'pat@example.test', ''),
+])
+def test_malformed_names_the_shape_never_the_value(case, monkeypatch, name, value, expected):
+    from wuwei import env
+    assert env.malformed(name) == ''
+    monkeypatch.setenv(name, value)
+    assert env.malformed(name) == expected
+
+
+def test_config_check_under_gh_auth_needs_no_token(case, capsys):
+    (case / '.wuwei/config.toml').write_text(
+        '[adapters]\ncode_host="none"\ntracker="github"\n[tracker]\nauth="gh"\n')
+    assert main(['config', 'check']) == 0
+    assert '  tracker.github: gh login (tracker.auth = "gh"; GITHUB_TRACKER_TOKEN not set)' in capsys.readouterr().out
+    from wuwei.commands import config
+    assert config.missing(workspace.load_config(case)) == []
+    write_env(case, 'GITHUB_TRACKER_TOKEN=' + KEY + '\n')
+    assert main(['config', 'check']) == 0
+    output = capsys.readouterr().out
+    assert '  tracker.github: GITHUB_TRACKER_TOKEN: set (used before tracker.auth = "gh")' in output
+    assert KEY not in output
+
+
+def test_config_check_reports_a_malformed_token_without_printing_it(case, capsys):
+    (case / '.wuwei/config.toml').write_text('[adapters]\ncode_host="none"\ntracker="github"\n')
+    write_env(case, 'GITHUB_TRACKER_TOKEN=gh auth token ' + KEY + '\n')
+    assert main(['config', 'check']) == 1
+    captured = capsys.readouterr()
+    assert 'tracker.github: GITHUB_TRACKER_TOKEN: malformed (contains whitespace)' in captured.out
+    assert KEY not in captured.out + captured.err and 'gh auth token' not in captured.out + captured.err
+
+
 @pytest.mark.parametrize('identity,token,expected', [
     ('connector', 'SLACK_BOT_TOKEN', 0), ('connector', 'SLACK_USER_TOKEN', 0),
     ('custom_app', 'SLACK_USER_TOKEN', 1), ('custom_app', 'SLACK_BOT_TOKEN', 0),
