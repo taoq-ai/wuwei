@@ -124,11 +124,26 @@ def _interview(args):
         return UNRUN
     # #529: a workspace answer the owner gave on its card writes its config keys now.
     pending = False
+    allowlist = []
     for qid, answer in picked.items():
         row = interview.question(qid)
         settings = interview.settings({qid: answer}, config) if row['scope'] == 'workspace' else []
-        carded = bool(settings) and sessions.card_answered(
-            root, f"{row['header']}\n{decision.gate(root)}{row['question']}", answer)
+        card = f"{row['header']}\n{decision.gate(root)}{row['question']}"
+        if qid == 'allowlist':  # #530: the owner's answer, never a seat, writes settings.local.json
+            if not interview.effects(qid, answer).get('allowlist'):
+                continue
+            if args.interview is None and not sessions.card_answered(root, card, answer):
+                allowlist.append('Next: run bin/wuwei calibrate --interview allowlist in a host terminal.')
+                continue
+            from wuwei.commands import init
+            try:
+                allowlist += [f'Wrote .claude/settings.local.json: {rule}' for rule in init.allow(root)] or [
+                    'No settings.local.json changes']
+            except (OSError, ValueError) as exc:
+                print(f'wuwei calibrate: {exc}', file=sys.stderr)
+                return UNRUN
+            continue
+        carded = bool(settings) and sessions.card_answered(root, card, answer)
         if carded:
             code = setup.card_write(root, 'calibrate', lambda _, raw, s=settings: setup._settle(raw, s),
                                     ['.'.join(map(str, (*path, key))) for path, key, _ in settings], qid)
@@ -136,7 +151,7 @@ def _interview(args):
                 return code
         pending = pending or not carded or any(
             name in (*interview.ROLES, 'voice') for name in interview.effects(qid, answer))
-    print('\n'.join(interview.describe(answers, config)))
+    print('\n'.join([*interview.describe(answers, config), *allowlist]))
     if pending:
         print('Next: run bin/wuwei config promote in a host terminal for the config keys, '
               'then bin/wuwei promote for the charter and voice proposals.')

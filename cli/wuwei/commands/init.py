@@ -123,17 +123,51 @@ def _guide(root, **kwargs):
         return None, False
 
 
-def settings(root):
-    """(path, data) for the project's .claude/settings.json, refused when unsafe to write."""
-    path = Path(root) / '.claude/settings.json'
+def settings(root, name='settings.json'):
+    """(path, data) for the project's .claude/<name>, refused when unsafe to write."""
+    path = Path(root) / '.claude' / name
     if path.parent.is_symlink() or path.is_symlink():
         raise ValueError(f'workspace settings must not be symlinks; {SYMLINK}')
     if Path(root).resolve() == Path.home().resolve():
         raise ValueError('workspace settings must not be owner global settings; run bin/wuwei init in a project folder, not the home folder')
     data = json.loads(path.read_text()) if path.exists() else {}
     if not isinstance(data, dict) or not isinstance(data.get('permissions', {}), dict):
-        raise ValueError('workspace settings and permissions must be objects; fix or move .claude/settings.json in this folder, then rerun bin/wuwei init')
+        raise ValueError(f'workspace settings and permissions must be objects; fix or move .claude/{name} in this folder, then rerun bin/wuwei init')
     return path, data
+
+
+# #530: the reads and local commits the planner and seats run directly; never a push, merge,
+# release, deploy or gh api (design 9.2 I18). Adapters inside the CLI need only the executable's rule.
+# Prefix rules rely on the PreToolUse guards for program-running options (git diff --output, --upload-pack).
+ALLOW = {('vcs', 'git'): ('git status*', 'git diff*', 'git log*', 'git show*', 'git rev-parse*', 'git fetch',
+                          'git add *', 'git commit *', 'git worktree list*'),
+         ('code_host', 'github'): ('gh pr view*', 'gh pr list*', 'gh pr checks*', 'gh pr diff*', 'gh pr status*',
+                                   'gh issue view*', 'gh issue list*', 'gh run view*', 'gh run list*')}
+
+
+def allow_rules(config, executable):
+    """The Claude Code permissions.allow rules WUWEI's own commands and the configured adapters need."""
+    return [f'Bash({executable} *)', *(f'Bash({pattern})' for (key, value), patterns in ALLOW.items()
+                                       if config['adapters'][key] == value for pattern in patterns)]
+
+
+def allow(root):
+    """Add the missing allow rules to .claude/settings.local.json, keeping every other key and rule;
+    returns the rules added. Called only after the owner's answer (#530)."""
+    pointer = Path(root) / '.wuwei/executable'
+    if pointer.is_symlink():
+        raise ValueError(f'.wuwei/executable must not be a symlink; {SYMLINK}')
+    rules = allow_rules(workspace.load_config(root), pointer.read_text(encoding='utf-8').strip())
+    path, data = settings(root, 'settings.local.json')
+    allowed = data.setdefault('permissions', {}).setdefault('allow', [])
+    if not isinstance(allowed, list) or not all(isinstance(rule, str) for rule in allowed):
+        raise ValueError(f'workspace permissions.allow must be a list of strings; {DAMAGED}')
+    added = [rule for rule in rules if rule not in allowed]
+    if added:
+        allowed += added
+        path.parent.mkdir(exist_ok=True)
+        workspace.atomic_write(path, json.dumps(data, indent=2) + '\n')
+    return added
 
 
 def _status_command(executable):
@@ -403,6 +437,14 @@ def upgrade(args):
         if unrehearsed:
             print(f'Undo not rehearsed: {", ".join(unrehearsed)}; run wuwei undo rehearse <kind> '
                   '(a merge counts after its first wuwei undo)')
+        from wuwei import interview  # #530: a read, so it prints under --dry-run too and counts no change
+        try:
+            names = [repo['name'] for repo in workspace.load_config(destination.parent, raw=migrated)['repos']]
+            count = len(interview.unanswered(destination.parent, names))
+            if count:
+                print(f'setup: {count} questions unanswered: {interview.HOW}')
+        except (OSError, ValueError) as exc:
+            print(f'setup: unanswered questions unmeasured: {exc}')
         for name, local_version, base_version in conflicts:
             print(f'Charter override needs review: {name} '
                   f'(local {local_version or "unversioned"}, base {base_version or "missing"})')

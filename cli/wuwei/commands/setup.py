@@ -468,12 +468,12 @@ def _setup(args, confirm):
         engine = specmode.detect(paths, staged_cfg)
         link = docs.detect(paths)
         picked = interview.ask(
-            [row['id'] for row in interview.QUESTIONS if not (args.shadow and row['id'] == 'posture')], names,
+            [row['id'] for row in interview.QUESTIONS if not (args.shadow and row['id'] == 'autonomy')], names,
             first={'spec': next(label for label, _, effect in interview.question('spec')['choices']
                                 if effect == {'spec.engine': engine})},
             **({'defaults': {'docs': link}} if link else {}))
         if args.shadow:
-            picked['posture'] = 'Observe'  # the flag answered it, so the first day does not ask again
+            picked['autonomy'] = 'Autonomous'  # the flag answered it, so the first day does not ask again
         interview.record(root, staged_cfg, picked)
     results = calibrate.survey(root, staged_cfg, list(enumerate(staged_cfg['repos'])), style=True)
     unmeasured = [f"{r['repo']['name']}: {command}" for r in results
@@ -508,6 +508,14 @@ def _setup(args, confirm):
     except (OSError, ValueError) as exc:
         print(f'wuwei setup: status line not written: {exc}; run bin/wuwei setup again to add it', file=sys.stderr)
         optional.append('put the statusLine from bin/wuwei init into .claude/settings.json')
+    if picked.get('allowlist') and interview.effects('allowlist', picked['allowlist']).get('allowlist'):
+        try:  # #530: the terminal answer is the confirmation
+            for rule in init.allow(root):
+                print(f'Wrote .claude/settings.local.json: {rule}')
+        except (OSError, ValueError) as exc:
+            print(f'wuwei setup: allowlist not written: {exc}; run bin/wuwei calibrate --interview allowlist',
+                  file=sys.stderr)
+            optional.append('bin/wuwei calibrate --interview allowlist')
     platform = watch.service_platform()
     if platform in ('darwin', 'linux') and not workspace.watch_unit(root, platform)[1].exists() and _yes(
             'Install the watch service, which supervises the day and your pull requests in the background?', False):
