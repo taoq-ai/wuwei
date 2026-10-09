@@ -410,3 +410,21 @@ def test_watch_uninstall_outside_a_workspace_is_allowed(tmp_path, monkeypatch):
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     assert check_bash({'cwd': str(tmp_path), 'tool_name': 'Bash',
                        'tool_input': {'command': 'bin/wuwei watch uninstall'}}) == (0, '')
+
+
+def test_sweep_steward_waits_for_the_fix_round(root, monkeypatch):
+    """#624: no sweep steward while an item is in fix; the next sweep after the round runs it."""
+    from fakes.integrity import measured
+    from test_next import day
+    measured(monkeypatch)
+    monkeypatch.setattr(watch, 'activity', lambda _root: (0, {'stale': [], 'unreadable': 0}))
+    monkeypatch.setattr('wuwei.dispatch.discovery', lambda *args: None)
+    calls = []
+    monkeypatch.setattr('wuwei.steward.run', lambda *args, **kwargs: calls.append(kwargs) or 0)
+    state.append_event('watch: clock', {}, root)
+    day(root, items={'A': {'phase': 'fix', 'status': 'running'}})
+    watch.sweep(root)
+    assert calls == [] and watch.saved(root).get('steward_at') is None
+    day(root, items={'A': {'phase': 'merged', 'status': 'done'}})
+    watch.sweep(root)
+    assert calls == [{'trigger': 'sweep'}]

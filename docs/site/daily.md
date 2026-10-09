@@ -502,7 +502,9 @@ after its [digest](concepts.md#digest) ([configuration](configuration.md)).
 
 The planner runs `wuwei retro` and `wuwei close --check retro`, writes the report with
 `wuwei report` (shipped, merged, pending decisions and [unmeasured](concepts.md#unmeasured) sources) and ends with
-`wuwei close`. `close` refuses while an obligation is open and names it; the Stop hook
+`wuwei close`. Its `## Steward runs` section counts today's [steward](concepts.md#steward) runs by trigger and
+names the two settings that drive them, `steward.every_tool_calls` and
+`watch.sweep_seconds`. `close` refuses while an obligation is open and names it; the Stop hook
 holds the session until close is clean. For each open item close asks: carry it to
 tomorrow (recommended), park it, or keep working, and records the answer with
 `wuwei plan carry ITEM` or `wuwei plan park ITEM`. Check the day at any time with

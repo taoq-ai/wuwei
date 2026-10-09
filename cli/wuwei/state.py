@@ -308,6 +308,11 @@ def check_running(build):
     return marker
 
 
+def mid_round(data):
+    """Items between a FIX and its delta review (#624): the steward waits for them."""
+    return sorted(name for name, item in data.get('items', {}).items() if item.get('phase') in ('fix', 'delta'))
+
+
 def in_flight(data):
     """(started_at, role, item) for running seats and live fast checks, oldest first."""
     rows = [(seat.get('started_at') or '', seat.get('role'), seat.get('item'))

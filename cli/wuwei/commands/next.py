@@ -270,7 +270,9 @@ def step(root, ran=()):
         if phase == 'planned' and waiting is None:
             waiting = label
     # #617: one steward at a time, on the newest brief; due waits (not cleared) while one runs.
-    if not any(seat['role'] == 'steward' and seat['status'] == 'running' for seat in seats.values()):
+    # #624: and while an item is mid fix round.
+    if not state.mid_round(data) and not any(
+            seat['role'] == 'steward' and seat['status'] == 'running' for seat in seats.values()):
         if due:
             return _row('steward', 'The steward is due after the recorded tool calls.',
                         'wuwei steward run --trigger tool-calls', then=THEN['background'])

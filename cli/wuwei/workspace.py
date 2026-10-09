@@ -142,7 +142,7 @@ SCHEMA = {
                                   "clock": (str, "")}},
     "listen": {"poll_seconds": (int, 60, 1), "dead_seconds": (int, 300, 1)},
     "responder": {"enabled": (bool, True)},
-    "steward": {"every_tool_calls": (int, 50, 1), "loop_window_hours": (int, 4, 1),
+    "steward": {"every_tool_calls": (int, 250, 1), "loop_window_hours": (int, 4, 1),
                 "loop_threshold": (int, 9, 1)},
     "autonomy": {"mode": (str, "autonomous", ("autonomous", "supervised"))},
     "decisions": {"wait_hours": (int, 24, 1),
@@ -588,7 +588,8 @@ _CONFIGS = {}
 # copy rewritten. Keyed on the text, not the file's stat: a same-size rewrite inside one
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
-CONFIG_CACHE_VERSION = 14  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 15  # Bump when the parse, the schema, the defaults or the checks change.
+# #624: steward.every_tool_calls default 250.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
 # doctor, why and the board stay read-only.
