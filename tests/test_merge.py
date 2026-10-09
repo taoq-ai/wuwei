@@ -1083,8 +1083,11 @@ def test_missing_risk_evidence_names_the_plan_add_that_records_it(case):
     from wuwei import plan
     root = case[0]
     path = workspace.day_dir(root) / 'events.jsonl'
+    mode = path.stat().st_mode
+    path.chmod(mode | 0o200)  # the log is read-only; only the test rewrites it
     path.write_text(''.join(line + '\n' for line in path.read_text().splitlines()
                             if json.loads(line)['kind'] != 'plan.approved'))
+    path.chmod(mode)
     answer = check(case)
     assert answer.exit == 2 and 'run bin/wuwei plan add item-7 ' in answer.reason, answer
     assert plan.add('item-7', root)['action'] == 'risk recorded'
