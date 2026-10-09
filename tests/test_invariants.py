@@ -883,14 +883,12 @@ def i28(case, rules):
         rules.configure('guarded', '[autonomy]\nmode = "supervised"\n')
         interview.record(rules.root, workspace.load_config(rules.root), {'autonomy': 'Autonomous'})
         raw = (rules.root / '.wuwei/config.toml').read_text()
-        text, _, _, summary, _ = command.proposal(rules.root, raw, raw, workspace.load_config(rules.root), [],
-                                                  keys=())
+        config = workspace.load_config(rules.root)
+        text, _, _, summary, _ = command.proposal(rules.root, raw, raw, config, [], keys=())
         if 'mode = "supervised"' not in text or 'Skipped autonomy.mode: kept "supervised"' not in summary:
             return 'promote overwrites a key the owner set'
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            main(['config', 'promote', '--keys', 'autonomy.mode'])
-        mode = workspace.load_config(rules.root)['autonomy']['mode']
-        return None if mode == 'autonomous' else f'promote --keys autonomy.mode leaves {mode}'
+        text = command.proposal(rules.root, raw, raw, config, [], keys=('autonomy.mode',))[0]
+        return None if 'mode = "autonomous"' in text else 'promote --keys autonomy.mode keeps "supervised"'
     return rules.memo(('promote',), compute)
 
 
