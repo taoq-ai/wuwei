@@ -162,6 +162,8 @@ After the morning gate, create each code item's worktree with `bin/wuwei worktre
 
 A worktree made with raw `git worktree add` and never adopted has no anchor. Its commits and pushes outside the Claude Bash hook skip the WUWEI guards.
 
+The push guard and the managed pre-push hook check the author and committer of each commit the push sends that no remote-tracking ref reaches. A commit already on a remote is not checked. An example is GitHub's merge commit on `main` after you merge `origin/main` into the item branch.
+
 ## Raising a PR
 
 `bin/wuwei pr raise OWNER/REPO --base BRANCH --title TEXT --body-file PATH --item ITEM` raises a prepared, pushed branch. All four options are required. The body file must be a regular file, not a symlink. The item must be in the approved plan with a worktree recorded by `bin/wuwei brief ... --worktree`, and it must not already link a PR. The pre-PR gate runs on the worktree head first; a finding exits 1 and raises nothing.
@@ -364,6 +366,8 @@ The lint rules:
 - A finding starts on a bullet or table row, a line beginning with its severity, a `Severity:` line, an `Assumption:` line, or a numbered or `F1` line. An `Assumption:` finding reviews an assumption recorded under `Assumptions:` in the item's spec or PR body and needs the same four fields.
 - Each finding carries a severity (P0 to P3, critical, high, medium, low or info), a `file:line` (or `Lnn` for docs), `blocks: yes|no`, and a failure scenario (for example "fails when", "would" or "impact").
 - Fenced blocks, quoted lines and HTML comments are ignored.
+
+The lint runs in three places. A Write, Edit, MultiEdit or NotebookEdit of a `decisions/gate-*.md` file is linted with the seat's role. A Bash call that names `gate-` and can write lints today's gate files, each with the role its file name implies (`quality`, `arch` or `security`). A seat's own gate file is linted again when it stops. A Bash call that only reads, such as `cat`, `grep` or `shasum`, is not linted and records no rejection.
 
 ## State recovery
 
