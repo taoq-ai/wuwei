@@ -106,7 +106,13 @@ def _interview(args):
         if args.repo and not repos:
             raise ValueError(f'unknown repository {args.repo!r}; use a configured repos.name')
         if args.questions is not None:
-            print(json.dumps(interview.widgets(root, repos, args.questions), indent=2))
+            widgets, lines = [], []
+            if not args.questions:  # #600: the daily row proposes the missing fast checks
+                from wuwei import calibrate
+                widgets, lines = calibrate.propose_checks(root, config, [
+                    (index, repo) for index, repo in enumerate(config['repos']) if repo['name'] in repos])
+            print(*lines, sep='\n', file=sys.stderr, end='\n' if lines else '')
+            print(json.dumps(interview.widgets(root, repos, args.questions) + widgets, indent=2))
             return CLEAN
         if args.answer:
             picked = interview.parse(args.answer, repos)

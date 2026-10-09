@@ -11,7 +11,7 @@ from wuwei.decision import (LENSES, RECORD, ROUTINE, cisr, uncalibrated, decided
 from wuwei.exits import RACE, SYMLINK
 
 
-CONFIG_RECORD = 'wuwei config set <key> <value> --from-card {id}'
+CONFIG_RECORD = 'wuwei config set --from-card {id}'  # #600: the answered option names the value
 
 
 def register(subparsers):
@@ -97,6 +97,9 @@ def mandate(ident, path, text, fields, scores, root, config):
         return 'owner'
     if ident in data.get('decision_outcomes', {}):
         return data['decision_outcomes'][ident].get('decided_by')
+    from wuwei.decision import config_keys
+    if config_keys(fields):
+        return None  # #529: a config value is the owner's answer on its card
     novel = novelty.novel(root, workspace.load_config(root), novelty.record_keys(fields))
     if novel:  # #556: a target the workspace never touched asks once (design 5.8.1)
         route_owner(ident, fields, root)
@@ -156,8 +159,8 @@ def show(args):
                               ('Undo', 'Revert the answer and ask you instead.')],
                     f'wuwei decision undo {args.id} --answer "<label>"')], indent=2)
             return 0, '[]'  # #530: taken under the mandate, nothing to ask.
-        from wuwei.commands.setup import assignment  # #529: a config card records through config set
-        record = CONFIG_RECORD if any(assignment(row[1]) for row in options(fields)) else RECORD
+        from wuwei.decision import config_keys  # #529: a config card records through config set
+        record = CONFIG_RECORD if config_keys(fields) else RECORD
         card = record_widget(args.id, fields, record, level=level)
         novel = novelty.routed(state.read_state(root), args.id)
         if novel:

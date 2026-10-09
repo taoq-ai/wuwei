@@ -581,8 +581,11 @@ def test_adopted_fix_round_writes_the_builder_brief(case, capsys):
 def test_adopted_fix_round_without_fast_checks_names_them(case, capsys):
     root, host, _, _ = adopted(case, worktree=True)
     host.results['checks'] = Result(0, RED)
-    assert main(['pr', 'act', REF]) == 2
-    assert 'fast_checks' in capsys.readouterr().out
+    # #600: no fast checks is a state, not a wall: the fix round launches and its brief names it
+    assert main(['pr', 'act', REF]) == 1
+    assert json.loads(capsys.readouterr().out)['action'] == 'launch'
+    brief = (workspace.day_dir(root) / 'briefs/A-adopted-fix.md').read_text()
+    assert 'Fast checks: none configured' in brief and 'checks: none configured" in the PR body' in brief
     with (root / '.wuwei/config.toml').open('a') as config:
         config.write('fast_checks = ["python -m pytest -q"]\n')
     assert main(['pr', 'act', REF]) == 1

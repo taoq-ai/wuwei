@@ -897,8 +897,8 @@ def test_stacked_base_uses_default_branch_required_checks(case):
 
 @pytest.mark.parametrize('gates,body', [
     ({'tier': 'light', 'computed': 'light', 'reasons': ['docs/guide.md'], 'roles': ['quality']},
-     'Body\n\nReview tier: light (quality)'),
-    ({}, 'Body'),
+     'Body\n\nReview tier: light (quality)\n\nchecks: none configured'),
+    ({}, 'Body\n\nchecks: none configured'),  # #600: no fast checks, the CLI writes the line
 ])
 def test_raise_body_names_the_review_tier(case, monkeypatch, gates, body):
     from wuwei import shepherd
@@ -908,6 +908,22 @@ def test_raise_body_names_the_review_tier(case, monkeypatch, gates, body):
     [args] = [args for name, args, _ in host.calls if name == 'create_pr']
     assert args[0]['body'] == body
 
+
+
+def test_raise_body_names_no_checks_once_and_only_when_none(case, monkeypatch):
+    from wuwei import shepherd
+    root, host = solo_raise(case, monkeypatch)
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body\n\nchecks: none configured',
+                             'ITEM-1') == 0
+    [args] = [args for name, args, _ in host.calls if name == 'create_pr']
+    assert args[0]['body'] == 'Body\n\nchecks: none configured'
+    config_path = root / '.wuwei/config.toml'
+    config_path.write_text(config_path.read_text().replace('path = "repo"', 'path = "repo"\nfast_checks = ["make lint"]'))
+    state._write_state(lambda data: data['items']['ITEM-1'].update(pr=None), root, reserved=False)
+    host.calls.clear()
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
+    [args] = [args for name, args, _ in host.calls if name == 'create_pr']
+    assert args[0]['body'] == 'Body'
 
 GATE_MISS = f'pre-PR gates not passed at current HEAD {SHA} for item ITEM-1: security; run the named gate for this HEAD'
 

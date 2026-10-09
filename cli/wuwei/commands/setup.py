@@ -164,27 +164,41 @@ def assignment(title):
     return (key, parsed['value']) if separator and list(parsed) == ['value'] else None
 
 
-def _from_card(args, root, change):
-    """#529: write the value the owner picked on the decision card, then record the card."""
+def declared(found):
+    """#600: an assignment (key, value) whose key the config declares."""
+    return bool(found) and configtext.declared(_parts(found[0])) is not None
+
+
+def _from_card(args, root):
+    """#529: write the value the owner picked on the decision card, then record the card. #600:
+    the value is the option's Value row, else its title; KEY and VALUE, when given, must equal it,
+    and an answered option that sets nothing (Defer, Keep) records the answer only."""
     from wuwei import decision, sessions, state
     from wuwei.commands.decision import owner_outcome
-    card = args.from_card
-    ask = (f'config set: {card} has no recorded answer "{args.key} = {args.value}"; nothing written. '
-           f'Ask the card with bin/wuwei decision show {card} --widget and run the record command '
-           'for the picked option.')
+    card, given = args.from_card, args.key is not None
+    ask = (f'config set: {card} has no recorded answer' + (f' "{args.key} = {args.value}"' if given else '')
+           + f'; nothing written. Ask the card with bin/wuwei decision show {card} --widget and run the '
+           'record command for the picked option.')
     try:
         fields, _ = decision.evaluate(decision.today_path(card, root).read_text(encoding='utf-8'))
-        wanted = assignment(f'{args.key} = {args.value}')
+        keys = decision.config_keys(fields)
+        wanted = assignment(f'{args.key} = {args.value}') if given else None
     except (OSError, ValueError) as exc:
         print(f'config set: {exc}; {ask}', file=sys.stderr)
         return FINDINGS
-    option = next((row[0] for row in decision.options(fields)
-                   if wanted and assignment(row[1]) == wanted and sessions.card_answered(root, card, row[1])), None)
+    picked = [row[0] for row in decision.options(fields) if sessions.card_answered(root, card, row[1])
+              and (not given or wanted and keys.get(row[0]) == wanted)]
+    option = picked[0] if len(picked) == 1 else None
     answered = decision.answered(state.read_state(root), card)
     if option is None or answered not in (None, option):
         print(ask, file=sys.stderr)
         return FINDINGS
-    code = card_write(root, 'config set', change, [args.key], card)
+    code = CLEAN
+    if option in keys:  # the value the card showed, as shown: a list is replaced, never extended
+        key, value = keys[option]
+        code = card_write(root, 'config set', lambda _, raw: write_value(raw, key, value), [key], card)
+    else:
+        print('No config.toml changes')
     if code or answered == option:
         return code
     code, message = owner_outcome(Namespace(id=card, option=option), root=root)
@@ -213,27 +227,42 @@ def set_value(args, confirm=None):
                                    getattr(args, 'replace', False)))
 
     from wuwei import interview, sessions
+    card = getattr(args, 'from_card', None)
+    given = [part for part in (args.key, args.value) if part is not None]
+    if len(given) == 1 or not given and not card:
+        print('config set: pass KEY VALUE, or --from-card D-n in the session to read them from the '
+              'answered card; nothing written', file=sys.stderr)
+        return UNRUN
     try:
         root = workspace.find_workspace()
-        posture = workspace.posture(load_config(root))[0]
-    except (OSError, ValueError):
+        config = load_config(root)
+        posture = workspace.posture(config)[0]
+    except (OSError, ValueError) as exc:
+        if not given:
+            print(f'config set: {exc}', file=sys.stderr)
+            return UNRUN
         return _edit('config set', 'change', confirm, change)  # it reports the reason
-    card, session = getattr(args, 'from_card', None), sessions.current() and confirm is None
-    command = shlex.join(['bin/wuwei', 'config', 'set', args.key, args.value])
-    if posture == 'strict' and session:
+    session = sessions.current() and confirm is None
+    command = shlex.join(['bin/wuwei', 'config', 'set', *given]) if given else (
+        f'bin/wuwei config set <key> <value> (bin/wuwei decision show {card} lists the values)')
+    if posture == 'strict' and (session or not given):
         print(f'config set: under strict a card answer is not a confirmation; nothing written. '
               f'Run {command} in a host terminal.', file=sys.stderr)
         return FINDINGS
     if card and posture != 'strict':
-        return _from_card(args, root, change)
+        return _from_card(args, root)
     if session:  # never a /dev/tty read that comes back empty in a session
         qid = interview.card_for(args.key)
+        try:
+            current = configtext.dumps(effective(config, _parts(args.key)), inline=True)
+        except (KeyError, IndexError, TypeError, ValueError):
+            current = '<current value>'
         print('config set: in a session a card answer confirms the change; nothing written. ' + (
             f'Run bin/wuwei calibrate --questions {qid}, ask the widget, then run its record '
             f'command wuwei calibrate --answer "{qid}=<label>".' if qid else
-            f'Write a decision whose option titles read {args.key} = <value> and route it. Ask it with '
-            f'bin/wuwei decision show D-n --widget, then run bin/wuwei config set {args.key} <value> '
-            '--from-card D-n.'), file=sys.stderr)
+            f'Write a decision whose options carry Value: rows {args.key} = <value> and the line '
+            f'Previous: {args.key} = {current}, and route it. Ask it with bin/wuwei decision show D-n '
+            '--widget, then run bin/wuwei config set --from-card D-n.'), file=sys.stderr)
         return FINDINGS
     return _edit('config set', 'change', confirm, change)
 

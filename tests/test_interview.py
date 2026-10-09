@@ -575,7 +575,7 @@ def test_widgets_come_from_the_table_and_pass_the_question_guard(offline, capsys
     expected = [(row['id'], repo) for row in interview().QUESTIONS
                 for repo in (['acme/widget', 'acme/gadget'] if row['scope'] == 'repo' else [None])]
     assert [(w['id'], w.get('repo')) for w in widgets] == expected
-    (offline / DAY).mkdir(parents=True)
+    (offline / DAY).mkdir(parents=True, exist_ok=True)  # #600: the fast-checks card wrote the day
     (offline / DAY / 'plan.md').write_text('# Plan\n')
     for widget in widgets:
         row = interview().question(widget['id'])
@@ -600,7 +600,7 @@ def test_questions_skip_recorded_answers(offline, capsys):
              for repo in (['acme/widget', 'acme/gadget'] if row['scope'] == 'repo' else [None])]
     assert questions(capsys) == every
     today = offline / DAY / 'interview.json'
-    today.parent.mkdir(parents=True)
+    today.parent.mkdir(parents=True, exist_ok=True)
     today.write_text(json.dumps({'merge': {'acme/widget': 'Owner merges'}, 'phone': 'Nothing'}))
     assert questions(capsys) == [pair for pair in every
                                  if pair not in {('phone', None), ('merge', 'acme/widget')}]
