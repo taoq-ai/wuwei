@@ -1441,6 +1441,8 @@ def test_lead_goals_are_blocks_while_proposing():
     for rel in ('charters/lead.md', 'agents/lead.md'):
         assert 'never an id alone' in (ROOT / rel).read_text(), rel
     assert 'never an id alone' in next_command.LEAD_BODY  # #551: the lead brief next returns
+    for text in (next_command.LEAD_BODY, (ROOT / 'charters/lead.md').read_text()):  # #603
+        assert 'more than one configured repository' in text and 'repo' in text
     for path in (SITE / 'security.md', ROOT / 'docs/specs/2026-09-24-wuwei-design.md'):
         row, = [line for line in path.read_text().splitlines() if line.startswith('| `outward` |')]
         assert '`decision.check_question`' in row, path

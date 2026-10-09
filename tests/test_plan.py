@@ -51,6 +51,31 @@ def test_propose_writes_plan_without_state_or_worktree(root):
     assert not list(root.glob('**/.git'))
 
 
+def test_propose_keeps_derives_and_names_the_repository(root):
+    # #603: with two repositories each candidate carries repo, derived from paths when unique.
+    def configure(*names):
+        (root / '.wuwei/config.toml').write_text(''.join(
+            f'[[repos]]\nname = "acme/{name}"\npath = "{name}"\ndefault_branch = "main"\n' for name in names))
+    configure('code', 'paper')
+    (root / 'code/src').mkdir(parents=True)
+    (root / 'code/src/a.py').write_text('')
+    (root / 'paper').mkdir()
+    base = proposal()['candidates'][0]
+    rows = lambda: [{**base, 'id': 'K', 'repo': 'acme/paper'}, {**base, 'id': 'D', 'paths': ['src/a.py']},
+                    {**base, 'id': 'N', 'paths': ['src/b.py']}, {**base, 'id': 'U', 'repo': 'acme/none'}]
+    text = plan.propose({**proposal(), 'candidates': rows()}, root).read_text()
+    saved = json.loads((root / '.wuwei/days/2026-09-28/proposal.json').read_text())['candidates']
+    assert {row['id']: row.get('repo') for row in saved} == {
+        'K': 'acme/paper', 'D': 'acme/code', 'N': None, 'U': None}
+    assert 'Repository: acme/paper' in text and 'Repository: acme/code' in text
+    assert text.count('Repository: not named') == 2 and 'acme/code, acme/paper' in text
+    configure('code')
+    text = plan.propose({**proposal(), 'candidates': rows()}, root).read_text()
+    assert 'Repository:' not in text
+    saved = json.loads((root / '.wuwei/days/2026-09-28/proposal.json').read_text())['candidates']
+    assert [row['repo'] for row in saved if 'repo' in row] == ['acme/paper', 'acme/none']
+
+
 def test_approve_selected_items_and_reserve_gate_fields(root):
     plan.propose(proposal(), root)
     plan.approve(['A'], root, goals_confirmed=True)
@@ -277,8 +302,18 @@ def test_repropose_on_confirmed_goals_removes_draft(empty):
     assert not (empty / '.wuwei/days/2026-09-28/goals.md').exists()
 
 
-def test_approve_needs_recorded_goals(empty):
+def test_approve_reads_the_proposed_goals(empty):
+    # #603: the gate-confirmed draft approves; memory stays written only by goals edit.
     plan.propose(lead(), empty)
+    before = (empty / '.wuwei/memory/goals.md').read_bytes()
+    plan.approve(['A'], empty, goals_confirmed=True)
+    assert state.read_state(empty)['goals'] == ['G-1', 'G-2']
+    assert (empty / '.wuwei/memory/goals.md').read_bytes() == before
+
+
+def test_approve_without_goals_or_draft_fails(empty):
+    plan.propose(lead(), empty)
+    (empty / '.wuwei/days/2026-09-28/goals.md').unlink()
     with pytest.raises(ValueError, match='no goals'):
         plan.approve(['A'], empty, goals_confirmed=True)
 
@@ -349,6 +384,25 @@ def test_owner_open_prs_are_proposed_and_claimed_at_the_gate(root, monkeypatch):
     from wuwei import workspace
     assert plan._owner_prs(workspace.load_config(root), root, []) == (
         [], 'unmeasured: github.open_prs: could not run')
+
+
+def test_one_pr_number_in_two_repositories_gives_two_ids(root, monkeypatch):
+    # #603 review: with two repositories the claim id names the repository, so approve takes both.
+    from fakes.code_host import Fake
+    from wuwei import shepherd
+    (root / '.wuwei/config.toml').write_text('[owner]\nhandles = ["Builder"]\n' + ''.join(
+        f'[[repos]]\nname = "acme/{name}"\npath = "{name}"\ndefault_branch = "main"\n' for name in ('widget', 'paper')))
+    host = Fake()
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: host if kind == 'code_host' else load(kind, config))
+    plan.propose(proposal(), root)
+    widget = plan.gate_widget(root)
+    assert widget['record'] == ('wuwei plan approve --items A PR-widget-12 PR-paper-12 --goals-confirmed '
+                                '--pace "<label>"')
+    claimed = []
+    monkeypatch.setattr(shepherd, 'claim_pr', lambda *args: claimed.append(args) or 0)
+    plan.approve(['A', 'PR-widget-12', 'PR-paper-12'], root, goals_confirmed=True)
+    assert [args[1:3] for args in claimed] == [('acme/widget#12', 'PR-widget-12'), ('acme/paper#12', 'PR-paper-12')]
 
 
 def test_gate_widget_is_the_one_approval_question(root):

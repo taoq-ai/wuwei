@@ -101,10 +101,21 @@ def test_repo_selection(fake, capsys, names, extra, code, repo):
     if repo is None:
         assert not adds(vcs)
         if len(names) > 1:
-            assert '--repo' in capsys.readouterr().err
+            assert '(app, web); pass --repo' in capsys.readouterr().err
     else:
         assert adds(vcs) == [(str((root / repo).resolve()), 'x', str(root / 'worktrees/X'))]
         assert json.loads(capsys.readouterr().out) == {'branch': 'x', 'path': 'p'}
+
+
+def test_add_falls_back_to_the_proposed_repository(fake, capsys):
+    # #603: a remediation line names worktree add <item>; today's proposal knows the repository.
+    root, vcs = fake
+    repos(root, 'app', 'web')
+    day = workspace.day_dir(root)
+    day.mkdir(parents=True, exist_ok=True)
+    (day / 'proposal.json').write_text(json.dumps({'candidates': [{'id': 'X', 'repo': 'web'}]}))
+    assert main(['worktree', 'add', 'X']) == 0, capsys.readouterr().err
+    assert adds(vcs) == [(str((root / 'web').resolve()), 'x', str(root / 'worktrees/X'))]
 
 
 def test_invalid_item_exits_2_without_vcs_call(fake):
