@@ -12,7 +12,8 @@ from wuwei.registry import Result
 
 
 class Failure(ValueError):
-    """A local, safe diagnostic that contains no provider text."""
+    """A local, safe diagnostic: no provider body or stderr text (a GraphQL error's first
+    message, redacted and capped, may name the failing lookup, #617)."""
 
 
 HINTS = {401: 'credential rejected (wrong, expired or revoked token)',

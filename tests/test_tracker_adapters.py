@@ -37,6 +37,17 @@ class Reply:
         return self.payload
 
 
+def balanced(query):
+    """#617: brackets close in order; a stray brace is a GraphQL parse error GitHub answers."""
+    stack = []
+    for char in query:
+        if char in '({[':
+            stack.append(')}]'['({['.index(char)])
+        elif char in ')}]' and (not stack or stack.pop() != char):
+            return False
+    return not stack
+
+
 def replay(monkeypatch, responses):
     calls = []
     responses = iter(responses)
@@ -91,6 +102,8 @@ def test_tracker_port_contract(name, workspace_root, monkeypatch):
     assert isinstance(results['created'].data, str)
     secret = list(CREDENTIALS[name].values())[-1]
     assert all(secret not in json.dumps(call[3]) for call in calls)
+    queries = [call[3]['query'] for call in calls if name != 'jira']
+    assert all(balanced(query) for query in queries), [q for q in queries if not balanced(q)]
     if name == 'linear':
         create = calls[7][3]['variables']['input']
         assert create['parentId'] == 'uuid-1' and create['teamId'] == 'team-1'
@@ -182,6 +195,7 @@ def test_github_board_moves_the_project_status(workspace_root, monkeypatch):
     assert github.transition('acme/app#1', 'In Review', root=root).exit == 0
     assert calls[1][3]['variables'] == {'project': 'project-1', 'item': 'item-node-1',
                                         'field': 'field-1', 'option': 'option-1'}
+    assert all(balanced(call[3]['query']) for call in calls)
 
 
 def test_github_done_without_board_closes_the_issue(workspace_root, monkeypatch):
@@ -191,6 +205,24 @@ def test_github_done_without_board_closes_the_issue(workspace_root, monkeypatch)
                                  {'data': {'closeIssue': {'issue': {'id': 'issue-node-1'}}}}])
     assert github.transition('acme/app#1', 'Done', root=root).exit == 0
     assert 'closeIssue' in calls[1][3]['query']
+    assert all(balanced(call[3]['query']) for call in calls)
+
+
+@pytest.mark.parametrize('message, expected', [
+    ('Could not resolve to an Issue\n  with the number of 9.',
+     'GitHub error response for acme/app#9: Could not resolve to an Issue with the number of 9.'),
+    ('x' * 500, 'GitHub error response for acme/app#9: ' + 'x' * 160),
+    ('Bad token=private-github-token', 'GitHub error response for acme/app#9: [REDACTED]'),
+    (None, 'GitHub error response for acme/app#9'),
+], ids=['one-line', 'capped', 'redacted', 'no-message'])
+def test_github_error_names_the_ticket_and_the_first_message(workspace_root, monkeypatch,
+                                                             message, expected):
+    from adapters.tracker import github
+    root = workspace_root('github')
+    replay(monkeypatch, [{'errors': [{'message': message}, {'message': 'second'}], 'data': None}])
+    result = github.created('acme/app#9', root=root)
+    assert result.exit == 2 and result.reason.endswith(expected), result.reason
+    assert '\n' not in result.reason and 'second' not in result.reason and 'private' not in result.reason
 
 
 def gh_replay(monkeypatch, responses):
@@ -203,7 +235,8 @@ def gh_replay(monkeypatch, responses):
         assert kwargs['timeout'] == 30 and kwargs['capture_output'] and kwargs['text']
         answer = next(responses)
         if isinstance(answer, tuple):
-            body = '{"errors": [{"message": "private"}]}' if 'resolve' in answer[1] else ''
+            body = ('{"errors": [{"message": "Could not resolve to an Issue with the number of 1."}]}'
+                    if 'resolve' in answer[1] else '')
             return SimpleNamespace(returncode=answer[0], stdout=body, stderr=answer[1])
         return SimpleNamespace(returncode=0, stdout=json.dumps(answer), stderr='')
 
@@ -236,6 +269,7 @@ def test_github_port_contract_through_gh(gh_root, monkeypatch):
     assert http == [] and len(calls) == len(responses)
     assert all(argv == ['gh', 'api', 'graphql', '--hostname', 'github.com', '--input', '-']
                and set(payload) == {'query', 'variables'} for argv, payload in calls)
+    assert all(balanced(payload['query']) for _, payload in calls)
     assert results[3].data == {'id': 'acme/app#2', 'url': 'https://github.com/acme/app/issues/2'}
 
 
@@ -266,7 +300,8 @@ def test_github_default_without_token_names_the_opt_in(workspace_root, monkeypat
     ((4, 'To get started with GitHub CLI, please run:  gh auth login private'),
      'gh api graphql exited 4: run gh auth status'),
     ((1, 'gh: Could not resolve to a Repository with the name private.'),
-     'gh api graphql exited 1: GitHub error response'),
+     'gh api graphql exited 1: GitHub error response for acme/app#1: Could not resolve to an '
+     'Issue with the number of 1.'),
     (FileNotFoundError('gh'), 'gh is not on PATH; install the GitHub CLI and run gh auth login'),
     (subprocess.TimeoutExpired(['gh'], 30, stderr='private'), 'gh api graphql timed out after 30 s'),
 ])

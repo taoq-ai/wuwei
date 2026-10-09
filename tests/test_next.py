@@ -649,6 +649,28 @@ def test_steward_rows(root, capsys):
     assert coarse(root)['state'] == 'close'
 
 
+def test_steward_launches_only_the_newest_brief_and_never_beside_a_running_one(root):
+    """#617: stale briefs are never launched and one steward runs at a time."""
+    approved(root, {})
+    briefs = '.wuwei/days/2026-09-30/briefs'
+    for name, count in (('steward-old', 50), ('steward-new', 100)):
+        state.append_event('steward.run', {'trigger': 'tool-calls', 'brief': f'{briefs}/{name}.md',
+                                           'tool_calls': count}, root)
+    found = coarse(root)
+    assert (found['state'], found['action'], found['brief']) == ('steward', 'launch', f'{briefs}/steward-new.md')
+    day(root, seats={'steward-new': {'status': 'running', 'role': 'steward', 'item': 'day'}})
+    assert coarse(root)['state'] != 'steward'  # the old brief is never offered
+    state.append_event('steward.due', {'tool_calls': 150}, root)
+    assert coarse(root)['state'] != 'steward'  # due waits while the steward runs
+    state.append_event('steward.run', {'trigger': 'tool-calls', 'brief': f'{briefs}/steward-next.md',
+                                       'tool_calls': 150}, root)
+    assert coarse(root)['state'] != 'steward'  # an unlaunched brief waits too
+    state.append_event('steward.due', {'tool_calls': 200}, root)
+    day(root, seats={'steward-new': {'status': 'stopped', 'role': 'steward', 'item': 'day'}})
+    found = coarse(root)
+    assert (found['state'], found['command']) == ('steward', 'wuwei steward run --trigger tool-calls')
+
+
 def test_close_path(root, capsys):
     approved(root, {'A': ('merged', {})}, decision_routes={'D-1': 'owner'})
     state.append_event('next.action', {'state': 'x', 'item': '', 'done': [['decision', 'D-1']]}, root)

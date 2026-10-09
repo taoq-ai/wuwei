@@ -724,6 +724,16 @@ def test_github_tracker_gh_auth_and_credential_diagnostics_are_documented():
     assert '| `tracker.auth` | `"token"` |' in page and 'malformed' in page
 
 
+def test_loop_robustness_is_documented():
+    # #617: one steward on the newest brief; a failing tracker lookup is named and per ticket.
+    page = ' '.join((SITE / 'configuration.md').read_text().split())
+    assert 'newest steward brief' in page and 'while a steward seat runs' in page
+    reference = ' '.join((SITE / 'reference.md').read_text().split())
+    assert '`lead_time.unmeasured`' in reference and 'while a steward seat runs' in reference
+    adapters = ' '.join((SITE / 'adapters.md').read_text().split())
+    assert 'GitHub error response for <owner>/<repo>#<n>' in adapters
+
+
 def test_release_asset_ships_every_linked_doc(tmp_path, monkeypatch):
     signed = []
     def sign(manifest, key):

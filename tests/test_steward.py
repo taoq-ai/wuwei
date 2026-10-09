@@ -44,6 +44,20 @@ def test_third_fix_round_requires_dedicated_ack(root):
         dispatch.next_step('A', root)
 
 
+def test_review_reads_local_events_only(root, monkeypatch):
+    """#617: dispatch next and next reach review; a failing metric read never blocks them."""
+    from wuwei import dispatch, metrics, registry
+
+    def unreachable(*args, **kwargs):
+        raise AssertionError('review reached the network')
+    monkeypatch.setattr(metrics, 'collect', unreachable)
+    monkeypatch.setattr(registry, 'load', unreachable)
+    for _ in range(3):
+        state.append_event('state.transition', {'phase_changes': {'A': 'fix'}}, root)
+    with pytest.raises(dispatch.Refused, match='A-fix-3'):
+        dispatch.next_step('A', root)
+
+
 def test_fresh_seat_run_and_pending_decision_queue(root, monkeypatch):
     from wuwei import registry, steward
 
