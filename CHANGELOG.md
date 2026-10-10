@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.25.0](https://github.com/taoq-ai/wuwei/compare/v0.24.2...v0.25.0) (2026-10-10)
+
+
+### Features
+
+* **merge:** an item-level owner_merge flag that wuwei merge and the auto-merge daemon both respect, replacing draft PRs as the only way to keep a merge for the owner ([#695](https://github.com/taoq-ai/wuwei/issues/695)) ([51978f1](https://github.com/taoq-ai/wuwei/commit/51978f118d398c1a735da40235a4d491a41580bc))
+
+
+### Bug Fixes
+
+* **calibrate:** the interview reads the config before asking: a question whose keys the raw config already sets explicitly counts as answered, so merge_deploys = false is never re-asked ([#654](https://github.com/taoq-ai/wuwei/issues/654)) ([33c5e5b](https://github.com/taoq-ai/wuwei/commit/33c5e5be72d9b21e13e5d1d8b6923b53397beac3))
+* **config:** config set on a list key replaces the list, and says so; adding to a list is the explicit --add ([#683](https://github.com/taoq-ai/wuwei/issues/683)) ([428516c](https://github.com/taoq-ai/wuwei/commit/428516c16959936c93889f0c46a1af3302906432))
+* **seat:** each seat gets its own scratch directory named after its item, so one seat never overwrites another's scratch files ([#684](https://github.com/taoq-ai/wuwei/issues/684)) ([5465038](https://github.com/taoq-ai/wuwei/commit/5465038e23e57b659b0a091ba71fdd3cdf2128c6))
+* **status:** the status line shows the day's items as counts with meaning (planned, building, shipped), not a planned N/M ratio ([#655](https://github.com/taoq-ai/wuwei/issues/655)) ([66b3720](https://github.com/taoq-ai/wuwei/commit/66b372024c42c4d0434b42279434661687f0fb7e)), closes [#641](https://github.com/taoq-ai/wuwei/issues/641)
+* **tracker:** tickets are attached without the owner: the lead proposes a ticket per item (an existing workstream issue or a draft) in the plan, the gate's Approve records the links and creates the drafts, and tracker create and plan set ticket= run from the planner after a card answer in every posture below strict ([#680](https://github.com/taoq-ai/wuwei/issues/680)) ([f497c9e](https://github.com/taoq-ai/wuwei/commit/f497c9e92c578005549215af6836394526406a27))
+* **watch:** a wake fires only for a state change that needs an action: never for a timestamp alone, never again for an event the planner already acted on ([#689](https://github.com/taoq-ai/wuwei/issues/689)) ([60666f7](https://github.com/taoq-ai/wuwei/commit/60666f70ef50eaf2861556f8d6bd6095113262da))
+
 ## [0.24.2](https://github.com/taoq-ai/wuwei/compare/v0.24.1...v0.24.2) (2026-10-10)
 
 
