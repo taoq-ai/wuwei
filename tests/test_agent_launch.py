@@ -175,8 +175,13 @@ def test_outside_workspace_passes(tmp_path, monkeypatch, inputs):
 
 @pytest.mark.parametrize('role', ['Explore', 'general-purpose', 'other:helper'])
 def test_unrelated_agents_pass_before_parsing(day, role):
-    (day[0] / '.wuwei/config.toml').write_text('broken config')
+    # #676: in a day an untyped launch registers an adhoc seat, so its scope (and the config
+    # it reads) decides relevance; before the day nothing past the scope is read or written.
+    drop_day(day[1])
     assert check({'cwd': str(day[0]), 'tool_input': {'subagent_type': role}}) == (0, '')
+    (day[0] / '.wuwei/config.toml').write_text('broken config')
+    assert check({'cwd': str(day[0]), 'tool_input': {'subagent_type': role}})[0] == 2
+    assert not (day[1] / 'state.json').exists()
 
 
 @pytest.mark.parametrize('role', ['builder', 'other:builder', 'wuwei:unknown'])
@@ -456,8 +461,9 @@ def test_unmatched_stop_records_event_and_allows(launch, monkeypatch, case):
 @pytest.mark.parametrize('inputs', [{}, {'subagent_type': ''}, {'subagent_type': None},
                                     {'subagent_type': '  '}])
 def test_default_general_purpose_agent_passes_before_validation(day, inputs):
-    (day[0] / '.wuwei/config.toml').write_text('broken config')
+    drop_day(day[1])
     assert check({'cwd': str(day[0]), 'tool_input': inputs}) == (0, '')
+    assert not (day[1] / 'state.json').exists()
 
 
 def test_default_capacity_fits_builder_and_three_gates(day, monkeypatch):
@@ -632,3 +638,194 @@ def test_builder_cap_is_derived_at_launch(day, monkeypatch):
         code, reason = check({'cwd': str(root), 'tool_input': {
             'subagent_type': 'builder', 'description': name, 'prompt': 'WUWEI brief: ' + relative}})
         assert (code, 'CAP 3' in reason) == ((1, True) if name == 'four' else (0, False)), reason
+
+
+def drop_day(directory):
+    for name in ('state.json', state.SNAPSHOT):
+        (directory / name).chmod(0o600)
+        (directory / name).unlink()
+
+
+ADHOC_PROMPT = 'Review PR 16 for data access\nRead the diff only.'
+
+
+def adhoc_launch(root, prompt=ADHOC_PROMPT, **inputs):
+    return {'cwd': str(root), 'session_id': 'P', 'tool_name': 'Agent', 'tool_input': {
+        'prompt': prompt, 'description': 'Fable review', **inputs}}
+
+
+def set_posture(root, posture, seats=None):
+    with (root / '.wuwei/config.toml').open('a') as config:
+        config.write(f'[security]\nposture = "{posture}"\n')
+        if seats:
+            config.write(f'[security.areas]\nseats = "{seats}"\n')
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded'])
+@pytest.mark.parametrize('inputs,kind', [({'subagent_type': 'general-purpose'}, 'general-purpose'),
+                                         ({}, 'general-purpose'), ({'subagent_type': ' '}, 'general-purpose'),
+                                         ({'subagent_type': 'Explore'}, 'Explore')])
+def test_untyped_launch_registers_adhoc_seat(day, posture, inputs, kind):
+    # #676: an agent outside the WUWEI seat types is an auditable seat below strict.
+    from test_brief import events
+    from wuwei import brief as module
+    root, directory, _, _ = day
+    set_posture(root, posture)
+    state._write_state(lambda data: data.update(planner_session_id='P'), root, reserved=False)
+    assert check(adhoc_launch(root, **inputs)) == (0, '')
+    seat = state.read_state(root)['seats']['adhoc-1']
+    assert seat.pop('started_at')
+    assert seat == {'id': 'adhoc-1', 'role': 'adhoc', 'item': 'adhoc-1', 'type': kind,
+                    'label': kind, 'launcher': 'planner', 'prompt': 'Review PR 16 for data access',
+                    'prompt_sha256': module.prompt_digest(ADHOC_PROMPT), 'status': 'running'}
+    last = events(directory)[-1]
+    assert last['kind'] == 'seat launched' and last['payload']['name'] == 'adhoc-1'
+    assert check(adhoc_launch(root, 'Other work', **inputs)) == (0, '')
+    assert state.read_state(root)['seats']['adhoc-2']['launcher'] == 'planner'
+
+
+def test_adhoc_seat_redacts_prompt_and_names_launcher(day):
+    root = day[0]
+    payload = adhoc_launch(root, 'Use ghp_' + 'a' * 36 + ' to read', subagent_type='general-purpose')
+    payload['session_id'] = 'unknown'
+    assert check(payload) == (0, '')
+    seat = state.read_state(root)['seats']['adhoc-1']
+    assert 'ghp_' not in seat['prompt'] and seat['launcher'] == 'adhoc'
+
+
+@pytest.mark.parametrize('prompt', [None, '', '  '])
+def test_untyped_launch_needs_a_prompt_in_a_day(day, prompt):
+    code, reason = check(adhoc_launch(day[0], prompt, subagent_type='general-purpose'))
+    assert code == 2 and 'prompt' in reason
+    assert state.read_state(day[0])['seats'] == {}
+
+
+def test_untyped_launch_before_the_day_creates_nothing(day):
+    root, directory, _, _ = day
+    drop_day(directory)
+    set_posture(root, 'strict')
+    assert check(adhoc_launch(root, subagent_type='general-purpose')) == (0, '')
+    assert not (directory / 'state.json').exists()
+
+
+@pytest.mark.parametrize('seats', [None, 'block'])
+def test_strict_refuses_unrecorded_untyped_launch(day, seats):
+    root = day[0]
+    set_posture(root, 'guarded' if seats else 'strict', seats)
+    code, reason = check(adhoc_launch(root, subagent_type='general-purpose'))
+    assert code == 1 and 'bin/wuwei seat start --role <role> --adhoc' in reason
+    assert state.read_state(root)['seats'] == {}
+
+
+def adhoc_stop(root, transcript, agent_id='a1', agent_type='general-purpose'):
+    return {'cwd': str(root), 'session_id': 'P', 'hook_event_name': 'SubagentStop',
+            'agent_id': agent_id, 'agent_type': agent_type, 'agent_transcript_path': str(transcript)}
+
+
+def subagent_transcript(path, prompt=ADHOC_PROMPT):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({'type': 'user', 'message': {'role': 'user', 'content': prompt}}) + '\n')
+    return path
+
+
+def test_untyped_stop_stops_its_adhoc_seat(day):
+    from test_brief import events
+    from wuwei.guards import agent_launch
+    root, directory, _, _ = day
+    assert check(adhoc_launch(root, subagent_type='general-purpose')) == (0, '')
+    assert check(adhoc_launch(root, subagent_type='general-purpose')) == (0, '')
+    state._write_state(lambda data: data['seats']['adhoc-2'].update(trace_sessions=['P:a2']),
+                       root, reserved=False)
+    transcript = subagent_transcript(root / 'agent-a2.jsonl')
+    assert agent_launch.stop(adhoc_stop(root, transcript, 'a2')) == (0, '')
+    seats = state.read_state(root)['seats']
+    assert seats['adhoc-2']['status'] == 'stopped' and seats['adhoc-2']['agent_id'] == 'a2'
+    assert seats['adhoc-1']['status'] == 'running'
+    assert events(directory)[-1]['kind'] == 'seat stopped'
+    assert agent_launch.stop(adhoc_stop(root, transcript, 'a1')) == (0, '')
+    assert state.read_state(root)['seats']['adhoc-1']['status'] == 'stopped'
+
+
+@pytest.mark.parametrize('case', ['no-seat', 'no-path', 'missing-file'])
+def test_untraced_stop_is_recorded_and_allowed(day, case):
+    from test_brief import events
+    from wuwei.guards import agent_launch
+    root, directory, _, _ = day
+    transcript = root / 'agent-x.jsonl'
+    if case != 'missing-file':
+        subagent_transcript(transcript)
+    payload = adhoc_stop(root, transcript, agent_type='Explore')
+    if case == 'no-path':
+        del payload['agent_transcript_path']
+    assert agent_launch.stop(payload) == (0, '')
+    last = events(directory)[-1]
+    assert last['kind'] == 'subagent.untraced'
+    assert last['payload']['agent_type'] == 'Explore' and last['payload']['agent_id'] == 'a1'
+    assert last['payload']['reason']
+
+
+def test_untraced_stop_before_the_day_records_nothing(day):
+    from wuwei.guards import agent_launch
+    root, directory, _, _ = day
+    drop_day(directory)
+    before = (directory / 'events.jsonl').read_text()
+    assert agent_launch.stop(adhoc_stop(root, root / 'none.jsonl')) == (0, '')
+    assert (directory / 'events.jsonl').read_text() == before
+    assert not (directory / 'state.json').exists()
+
+
+def test_seat_start_records_an_adhoc_reviewer(day, monkeypatch, capsys):
+    # #676: under strict the planner registers an ad-hoc reviewer, then launches it.
+    from test_brief import events
+    from wuwei import brief as module
+    from wuwei.__main__ import main
+    root, directory, _, _ = day
+    set_posture(root, 'strict')
+    assert main(['seat', 'start', '--role', 'bad role', '--adhoc', ADHOC_PROMPT]) == 2
+    assert main(['seat', 'start', '--role', 'reviewer', '--adhoc', '  ']) == 2
+    capsys.readouterr()
+    assert main(['seat', 'start', '--role', 'reviewer', '--adhoc', ADHOC_PROMPT]) == 0
+    out = capsys.readouterr().out
+    assert 'subagent_type general-purpose' in out and 'wuwei why adhoc' in out
+    last = events(directory)[-1]
+    assert last['kind'] == 'seat adhoc' and last['payload'] == {
+        'role': 'reviewer', 'sha256': module.prompt_digest(ADHOC_PROMPT),
+        'prompt': 'Review PR 16 for data access'}
+    assert check(adhoc_launch(root, subagent_type='general-purpose')) == (0, '')
+    assert state.read_state(root)['seats']['adhoc-1']['label'] == 'reviewer'
+    assert check(adhoc_launch(root, 'Another prompt', subagent_type='general-purpose'))[0] == 1
+    (root / 'report.md').write_text('Done.\n')
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    assert main(['seat', 'stop', 'adhoc-1', '--verdict', str(root / 'report.md')]) == 1
+    assert '--unmeasured' in capsys.readouterr().err
+    assert state.read_state(root)['seats']['adhoc-1']['status'] == 'running'
+
+
+def test_seat_start_needs_the_day(day, capsys):
+    from wuwei.__main__ import main
+    drop_day(day[1])
+    assert main(['seat', 'start', '--role', 'reviewer', '--adhoc', ADHOC_PROMPT]) == 2
+    assert 'morning' in capsys.readouterr().err
+
+
+def test_untyped_agent_is_traced_end_to_end(day, capsys):
+    # #676 SC-001: launch, a tool call, why adhoc and the stop of a general-purpose agent.
+    from wuwei.__main__ import main
+    from wuwei.guards import agent_launch, traces
+    root, directory, _, _ = day
+    set_posture(root, 'observe')
+    assert check(adhoc_launch(root, subagent_type='general-purpose')) == (0, '')
+    transcript = subagent_transcript(root / 'P/subagents/agent-a1.jsonl')
+    call = {'cwd': str(root), 'session_id': 'P', 'transcript_path': str(root / 'P.jsonl'),
+            'hook_event_name': 'PostToolUse', 'tool_name': 'Read', 'tool_input': {'file_path': 'README.md'},
+            'agent_id': 'a1', 'agent_type': 'general-purpose'}
+    assert traces.check(call) == (0, '')
+    spans = (directory / 'traces.jsonl').read_text()
+    assert '"P:a1"' in spans and 'general-purpose' in spans
+    assert state.read_state(root)['seats']['adhoc-1']['trace_sessions'] == ['P:a1']
+    capsys.readouterr()
+    assert main(['why', 'adhoc']) == 0
+    out = capsys.readouterr().out
+    assert 'adhoc seat adhoc-1: general-purpose' in out and 'traces: P:a1' in out
+    assert agent_launch.stop(adhoc_stop(root, transcript)) == (0, '')
+    assert state.read_state(root)['seats']['adhoc-1']['status'] == 'stopped'

@@ -66,6 +66,50 @@ def _seat(payload):
     return root, inputs, agent_type.rsplit(':', 1)[-1]
 
 
+ADHOC = ('untyped Agent launch is not a WUWEI seat; register it first with '
+         'bin/wuwei seat start --role <role> --adhoc "<prompt>", then launch it with the same prompt')
+
+
+def _adhoc(payload):
+    """#676: an untyped launch in a day is an adhoc seat; refused where seats block,
+    unless wuwei seat start --adhoc recorded its prompt."""
+    from wuwei import brief, sessions, state, workspace
+    from wuwei.redact import redact
+
+    inputs = payload.get('tool_input')
+    if not isinstance(inputs, dict):
+        return 0, ''
+    root = workspace.guard_scope(payload)
+    if root is None or not (workspace.day_dir(root) / 'state.json').exists():
+        return 0, ''
+    prompt = inputs.get('prompt')
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise ValueError(f'invalid Agent prompt; {DAMAGED}')
+    kind = inputs.get('subagent_type')
+    kind = kind.strip() if isinstance(kind, str) and kind.strip() else 'general-purpose'
+    digest = brief.prompt_digest(prompt)
+    started = [row['payload'] for row in brief.events(root)
+               if row['kind'] == 'seat adhoc' and row['payload'].get('sha256') == digest]
+    if workspace.posture(workspace.load_config(root))[1]['seats'] == 'block' and not started:
+        raise brief.Refused(f'{kind}: {ADHOC}')
+    session = payload.get('session_id')
+    event = {'role': 'adhoc', 'type': kind}
+
+    def reserve(data):
+        taken = [int(name[6:]) for name in brief.seats(data)
+                 if name.startswith('adhoc-') and name[6:].isdigit()]
+        name = f'adhoc-{max(taken, default=0) + 1}'
+        event.update(name=name, item=name)
+        data['seats'][name] = {
+            'id': name, 'role': 'adhoc', 'item': name, 'type': kind,
+            'label': started[-1]['role'] if started else kind,
+            'launcher': (isinstance(session, str) and sessions.registered(data, session)) or 'adhoc',
+            'prompt': redact(prompt.strip().splitlines()[0])[:200], 'prompt_sha256': digest,
+            'status': 'running', 'started_at': workspace.now().isoformat()}
+    state._write_state(reserve, root, reserved=False, kind='seat launched', payload=event)
+    return 0, ''
+
+
 def _check(payload):
     from datetime import datetime
     import hashlib
@@ -73,7 +117,7 @@ def _check(payload):
 
     seat = _seat(payload)
     if seat is None:
-        return 0, ''
+        return _adhoc(payload)
     root, inputs, role = seat
     for key in ('prompt', 'description', 'subagent_type'):
         if not isinstance(inputs.get(key), str) or not inputs[key].strip():
@@ -245,6 +289,34 @@ def stopping_seat(payload, root):
     return directory, brief.identifier(name), role
 
 
+def _stop_adhoc(payload, root):
+    """#676: stop the adhoc seat of an untyped subagent, else record subagent.untraced.
+    Never refuses: a blocked SubagentStop would trap the agent."""
+    from wuwei import brief, state, workspace
+    from wuwei.redact import redact
+
+    if not (workspace.day_dir(root) / 'state.json').exists():
+        return 0, ''
+    try:
+        prompt = brief.first_prompt(payload['agent_transcript_path'])
+        if prompt is None:
+            raise ValueError('its transcript has no prompt; run wuwei doctor')
+        name = brief.adhoc_seat(state.read_state(root), brief.prompt_digest(prompt),
+                                f"{payload['session_id']}:{payload['agent_id']}")
+        if name is None:
+            raise LookupError('no adhoc seat matches its prompt; register agents with wuwei seat start --adhoc and run wuwei doctor')
+        state.stop_seat(name, root, agent_id=payload.get('agent_id'))
+    except Exception as exc:
+        try:
+            state.append_event('subagent.untraced', {
+                'agent_type': redact(str(payload.get('agent_type'))),
+                'agent_id': redact(str(payload.get('agent_id'))), 'reason': str(exc)}, root)
+        except Exception as log_error:
+            import sys
+            print(f'untraced subagent could not be recorded: {log_error}', file=sys.stderr)
+    return 0, ''
+
+
 def stop(payload):
     from wuwei import brief, state, workspace
 
@@ -253,7 +325,7 @@ def stop(payload):
     except FileNotFoundError:
         return 0, ''
     if not wuwei_role(payload.get('agent_type')):
-        return 0, ''
+        return _stop_adhoc(payload, root)
     directory = None
     try:
         directory, name, role = stopping_seat(payload, root)

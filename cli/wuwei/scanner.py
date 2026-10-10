@@ -68,7 +68,9 @@ def _trace_response(finding, root, posture):
     session = finding['session_id']
     digest = hashlib.sha256(session.encode()).hexdigest()
     data = state.read_state(root)
-    seat = any(session in seat.get('trace_sessions', []) for seat in brief.seats(data).values())
+    # #676: an adhoc seat is the audit record, not an item seat; its session keeps its launcher's rule.
+    seat = any(session in seat.get('trace_sessions', []) for seat in brief.seats(data).values()
+               if seat['role'] != 'adhoc')
     role = None if seat else sessions.registered(data, session)
     if not seat and (role or posture != 'strict'):
         kind = 'traces.noted' if role else 'traces.unmatched'

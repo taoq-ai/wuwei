@@ -63,14 +63,29 @@ def _record(payload, root, findings=(), transcript_path=None):
             reference = brief.transcript_reference(transcript_path)
         except (OSError, ValueError, KeyError, TypeError):
             reference = None
+        bound = None
         if reference is not None:
+            def bound(data):
+                return [seat for seat in brief.seats(data).values() if seat.get('brief') == reference]
+        elif 'agent_id' in payload:
+            # #676: an untyped subagent binds to its adhoc seat by its launch prompt; state is
+            # written only when a seat matches.
+            try:
+                prompt = brief.first_prompt(transcript_path)
+                digest = brief.prompt_digest(prompt) if isinstance(prompt, str) else None
+                if digest and brief.adhoc_seat(state.read_state(root), digest, payload['session_id']):
+                    def bound(data):
+                        name = brief.adhoc_seat(data, digest, payload['session_id'])
+                        return [data['seats'][name]] if name else []
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        if bound is not None:
             def bind(data):
-                for seat in brief.seats(data).values():
-                    if seat.get('brief') == reference:
-                        seat['transcript'] = str(transcript_path)  # brief.stuck reads it (#473)
-                        sessions = seat.setdefault('trace_sessions', [])
-                        if payload['session_id'] not in sessions:
-                            sessions.append(payload['session_id'])
+                for seat in bound(data):
+                    seat['transcript'] = str(transcript_path)  # brief.stuck reads it (#473)
+                    sessions = seat.setdefault('trace_sessions', [])
+                    if payload['session_id'] not in sessions:
+                        sessions.append(payload['session_id'])
             state._write_state(bind, root, reserved=False)
     try:
         from wuwei import steward
