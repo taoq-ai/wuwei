@@ -367,8 +367,8 @@ The lint rules:
 - `Blocked:`, `Gap:` and `Change:` once each.
 - Quality adds exactly one `Simplicity:` and one `Design:` row.
 - Arch, quality and security add class-sweep lines such as `VAL: PASS`, `TEST: N.A.` or `AUTH: FINDING <id>`.
-- A non-PASS verdict needs at least one finding. A PASS verdict carries no `blocks: yes` finding.
-- A finding starts on a bullet or table row, a line beginning with its severity, a `Severity:` line, an `Assumption:` line, or a numbered or `F1` line. An `Assumption:` finding reviews an assumption recorded under `Assumptions:` in the item's spec or PR body and needs the same four fields.
+- A non-PASS verdict needs at least one finding. A PASS verdict carries no `blocks: yes` finding. A FIX verdict needs at least one `blocks: yes` finding; a verdict whose findings are all `blocks: no` is a PASS.
+- A finding starts on a bullet or table row, a line beginning with its severity, a `Severity:` line, an `Assumption:` line, or a numbered line or an id line (`F1`, `Q1`, `S1`, `A1`, `G1`, `N1`, `Finding 1`, optionally in brackets). An `Assumption:` finding reviews an assumption recorded under `Assumptions:` in the item's spec or PR body and needs the same four fields.
 - Each finding carries a severity (P0 to P3, critical, high, medium, low or info), a `file:line` (or `Lnn` for docs), `blocks: yes|no`, and a failure scenario (for example "fails when", "would" or "impact").
 - Fenced blocks, quoted lines and HTML comments are ignored.
 

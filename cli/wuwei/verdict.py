@@ -15,6 +15,7 @@ BLOCKS_YES = r'blocks?:? *yes\b|\| *yes *\|'
 SCENARIO = r'scenario|reproduc|fails? when|would |impact|consequence|breaks? '
 CLASSES = r'(AUTH|VAL|DOC|TEST|INF|RET|ERR|STATE|CON|BUD|DATA|PROOF): *(PASS|N\.A\.|FINDING)'
 SEVERITY = r'(?:P[0-3]|critical|high|medium|low|info)\b'
+FINDING_ID = r'\[?(?:[FQSAGN]\d+|Finding\s+\d+)\]?(?:[\s(:.]|$)'  # #677: any role's ids
 
 
 def active_text(text, *, unformat=True):
@@ -59,7 +60,7 @@ def finding_blocks(text):
         start = re.match(r'^\s*(?:#{1,6}\s+|[-*+]\s+|\|\s*)?\[?'
                          + SEVERITY, line, re.I)
         explicit = re.match(r'^\s*(?:Severity:\s*' + SEVERITY + r'|(?:[-*+]\s+)?Assumption:)', line, re.I)
-        numbered = re.match(r'^\s*(?:\d+[.)]\s+|\[?F\d+\]?(?:[\s(:.]|$))', line, re.I)
+        numbered = re.match(r'^\s*(?:\d+[.)]\s+|' + FINDING_ID + ')', line, re.I)
         # Table rows can put a finding ID before the severity. Evidence-bearing
         # bullets also start a finding when their severity was accidentally omitted.
         row = (re.match(r'^\s*(?:[-*+]\s+|\|)', line)
@@ -68,7 +69,7 @@ def finding_blocks(text):
                                 line, re.I):
             row = False
         heading_only = len(current) == 1 and re.match(
-            r'^\s*(?:#|\d+[.)]\s+|\[?F\d+\]?(?:[\s(:.]|$))', current[0], re.I)
+            r'^\s*(?:#|\d+[.)]\s+|' + FINDING_ID + ')', current[0], re.I)
         if start or row or numbered or explicit and not heading_only:
             if current:
                 blocks.append('\n'.join(current))
@@ -122,6 +123,12 @@ def lint(text, *, quality=False, class_sweep=False, light=False):
     if verdict == 'PASS' and any(re.search(BLOCKS_YES, block, re.I)
                                  for block in blocks):
         failures.append('PASS verdict carries a blocking finding')
+    if verdict == 'FIX' and not any(re.search(BLOCKS_YES, block, re.I) for block in blocks):
+        lines = [line.strip() for line in text.splitlines() if re.search(BLOCKS_YES, line, re.I)]
+        failures.append('FIX verdict but no blocking finding parsed; the lines that look like '
+                        f'findings are: {"; ".join(lines) or "none"} (start each finding with its '
+                        'severity, a number or an id such as Q1 or Finding 1; write Verdict: PASS '
+                        'when none blocks)')
     if verdict and verdict != 'PASS' and not blocks:
         failures.append('no finding with severity (P0-P3, critical, high, medium, low or info)')
     for number, block in enumerate(blocks, 1):
