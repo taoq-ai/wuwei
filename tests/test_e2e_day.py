@@ -46,7 +46,7 @@ def test_scripted_day(day):
     day.gate('quality', 'PASS', round_name='delta')
     assert 'quality-delta' not in day.data['seats']
     assert day.data['seats']['quality-initial']['status'] == 'stopped'
-    assert day.next() == {'action': 'raise', 'notes': []}
+    assert {k: day.next()[k] for k in ('action', 'notes')} == {'action': 'raise', 'notes': []}
     day.raise_pr()
     assert day.data['items']['A']['phase'] == 'raised'
     assert day.data['raised_prs'] == [day.ref]
@@ -131,7 +131,7 @@ def test_fix_round_and_delta_with_fresh_agents(day):
     assert day.data['items']['A']['phase'] == 'delta'
     day.gate('quality', 'PASS', round_name='delta')
     assert day.data['seats']['quality-initial']['agent_id'] == 'quality-initial-fresh'
-    assert day.next() == {'action': 'raise', 'notes': []}
+    assert {k: day.next()[k] for k in ('action', 'notes')} == {'action': 'raise', 'notes': []}
     gates = [row['payload'] for row in day.events if row['kind'] == 'gate.received']
     assert (gates[-1]['role'], gates[-1]['round'], gates[-1]['verdict']) == ('quality', 'delta', 'PASS')
     assert 'seat stop unmatched' not in [row['kind'] for row in day.events]
@@ -162,7 +162,7 @@ def test_solo_daily_path(tmp_path, monkeypatch):
         day.gate(role, 'FIX' if role == 'quality' else 'PASS')
     day.fix()
     day.gate('quality', 'PASS', round_name='delta')
-    assert day.next() == {'action': 'raise', 'notes': []}
+    assert {k: day.next()[k] for k in ('action', 'notes')} == {'action': 'raise', 'notes': []}
     day.raise_pr()
     assert day.data['pr_reviewers'][day.ref] == []
     assert len([call for call in day.host.calls if call[0] == 'create_pr']) == 1

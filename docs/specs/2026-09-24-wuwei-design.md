@@ -171,7 +171,7 @@ WUWEI is built as ports and adapters (hexagonal).
 |---|---|---|
 | PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor; an item without a ticket while tracker hygiene requires one (5.11); under strict, an untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) whose prompt `bin/wuwei seat start --role <role> --adhoc "<prompt>"` did not record (#676). Below strict an untyped launch in a day is registered as an adhoc seat, never refused |
 | PreToolUse | `git commit`, `git push` | author or committer differs from repository config; force-push; push to the default branch; push before the fast checks passed (owner, 2026-10-05, #530: below strict a missing fast check is a warning under observe and the owner's card under guarded, naming the check) |
-| PreToolUse | `gh pr create` | the pre-PR gate set has not all passed (#530: a warning under observe, the owner's card under guarded); no reviewer named in the same action; `--repo` and `--head` given apart, or naming a branch that is not a recorded item branch (#534: with both, or after `cd <recorded worktree> &&`, it runs from any directory) |
+| PreToolUse | `gh pr create` | the pre-PR gate set has not all passed (#530: a warning under observe, the owner's card under guarded); no reviewer named in the same action; `--repo` and `--head` given apart, or naming a branch that is not a recorded item branch (#534: with both, or after `cd <recorded worktree> &&`, it runs from any directory); under strict, a recorded item that links no PR (#783: below strict a warning naming `bin/wuwei pr raise ... --item`) |
 | PreToolUse | `gh pr merge` | the merge policy (4.6) does not clear this PR at this head |
 | PreToolUse | `gh pr review --approve`, `--admin`, protection changes | always |
 | PreToolUse | any deploy action (4.7) | always |
@@ -621,7 +621,8 @@ checks, decision routing and every 9.2 invariant hold at every pace (I15 to I17)
   adapter. Backpressure, signature, stuck and iteration limits, and usage events retain
   their semantics. `host.seats` derives per the #658 rule unless config pins it. A
   ceiling refusal names `host.seats`. Once the build is done and the item is at its gates, `build next`
-  answers what `dispatch next` decides (#666).
+  answers what `dispatch next` decides (#666). At raise both return the shepherd's brief
+  command, then its launch, in the gate shape (#783).
 - Cost per iteration (owner, 2026-09-28). Every dispatch records the runtime's reported
   usage (input and output tokens, cost when the runtime reports it, model, duration) as a
   `seat.usage` event per iteration. The steward reports cost per item, per role and per

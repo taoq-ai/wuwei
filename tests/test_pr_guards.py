@@ -787,6 +787,39 @@ def test_create_from_the_workspace_root_names_a_recorded_branch(item, command):
     assert ('head', (str(tree),), root) in fake.calls
 
 
+@pytest.mark.parametrize('command', ['gh pr create -R example/project --head div-1 -r alice',
+                                     'gh -R example/project pr create -H div-1 --base main -r alice',
+                                     'cd worktrees/DIV-1 && gh pr create -r alice'])
+def test_create_for_a_recorded_item_warns_naming_pr_raise(item, capsys, command):
+    # #783: a PR from gh pr create is not linked to its item; pr raise --item links it.
+    root = item[0]
+    capsys.readouterr()
+    assert guard().check(payload(root, command, cwd=root)) == (0, '')
+    err = capsys.readouterr().err
+    for part in ('warning: DIV-1 is a WUWEI item', 'bin/wuwei pr raise example/project', '--item DIV-1'):
+        assert part in err, err
+
+
+def test_create_for_a_recorded_item_is_refused_under_strict(item):
+    root = item[0]
+    with (root / '.wuwei/config.toml').open('a') as handle:
+        handle.write('[security]\nposture = "strict"\n')
+    code, reason = guard().check(payload(root, 'cd worktrees/DIV-1 && gh pr create -r alice', cwd=root))
+    assert code == 1 and reason.startswith('pr raise: DIV-1 is a WUWEI item') and '--item DIV-1' in reason
+
+
+def test_create_without_an_unlinked_item_keeps_todays_result(item, capsys):
+    from wuwei import state
+    root = item[0]
+    state._write_state(lambda data: data['items']['DIV-1'].update(pr='example/project#5'),
+                       root, reserved=False)
+    capsys.readouterr()
+    assert guard().check(payload(root, 'cd worktrees/DIV-1 && gh pr create -r alice', cwd=root)) == (0, '')
+    assert 'pr raise' not in capsys.readouterr().err
+    assert guard().check(payload(root, 'gh pr create -r alice', cwd=root / 'repo')) == (0, '')
+    assert 'warning:' not in capsys.readouterr().err
+
+
 @pytest.mark.parametrize('command,code,reason', [
     ('gh pr create -R example/project --head other -r alice', 1,
      'pr raise: head other is not a recorded item branch of example/project'),
