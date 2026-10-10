@@ -925,8 +925,9 @@ def test_merge_default_today_writes_no_planned_merge_card(root):
 
 
 def test_empty_optional_fields_are_absent(root):
-    # #640: an empty or null ticket, tier or docs is absent, not a refused proposal.
-    plan.propose(two(A={'ticket': '', 'tier': None, 'docs': ''}, B={'ticket': None, 'tier': '  '}), root)
+    # #640: an empty ticket, tier or docs (or a null tier or docs) is absent, not a refused
+    # proposal; a null ticket is the owner's none (#636) and keeps its key.
+    plan.propose(two(A={'ticket': '', 'tier': None, 'docs': ''}, B={'ticket': '  ', 'tier': '  '}), root)
     saved = json.loads((root / '.wuwei/days/2026-09-28/proposal.json').read_text())['candidates']
     assert not any(key in row for row in saved for key in ('ticket', 'tier', 'docs'))
     plan.approve(['A', 'B'], root, goals_confirmed=True)
