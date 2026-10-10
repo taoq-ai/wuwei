@@ -355,6 +355,11 @@ merges. A precondition that fails names the condition: no grant lifts it. With n
 `owner_only` under `strict` and `ask` otherwise. Granted merges are journaled, watched and
 undo-logged like auto-merges.
 
+Amended (owner, 2026-10-10, #668): a PR whose head turns a check that fails at its base commit
+green skips the soak (`merge.soak_skip`: `base_fix`, the default, or `never`); every other
+rule still holds. A held merge reads either `waits: soak ends at <time>` or
+`owner merges: <rule>`, and `wuwei merge check` prints the next step on a `Next:` line.
+
 ### 4.7 Deployment ban (owner, 2026-09-28)
 
 WUWEI never deploys, in any profile, routine or remote command. Refused always, after the
@@ -2004,6 +2009,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I42 | Generated and data lines never count toward the tier or the size cap, and both read the same count from `merge.uncounted`; a diff that changes `.gitattributes` gets no linguist-generated exclusion | `dispatch.tier` and `merge.uncounted` on source with a large data file and with a linguist-generated file, each with and without a changed `.gitattributes` | #657; one decision in `merge.uncounted`, read by `dispatch.tier` and `merge.check` |
 | I38 | An untyped Agent launch in a workspace is never refused below strict and is registered as an adhoc seat; under strict it is refused naming `seat start --adhoc` unless that command recorded its prompt | per posture, `agent_launch.check` on a general-purpose launch, and under strict again after `seat start --adhoc` with the same prompt | #676; its tool calls bind to the seat by the prompt digest, and `why adhoc` lists it |
 | I39 | A FIX verdict is accepted only with a parsed blocking finding, whatever id form starts it | `verdict.lint` and `verdict.finding_blocks` on a FIX verdict for each id form (`F1.`, `Q1.`, `S1.`, `A1.`, `G1.`, `N1.`, `Finding 1.`, `[Q1]`, `1.`, severity first) with `blocks: yes` (accepted, one blocking block) and with `blocks: no` (refused naming the FIX rule) | #677; one parser in `verdict.finding_blocks`, one rule in `verdict.lint` |
+| I40 | The soak is skipped only for a head that turns a check failing at its base commit green | `merge.fixes_base` on every base conclusion x head conclusion, with the check present and absent at head | #668; one rule in `merge.fixes_base`; the check path (base read only while the soak holds, exit 2 when unreadable) stays in `tests/test_merge.py` |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

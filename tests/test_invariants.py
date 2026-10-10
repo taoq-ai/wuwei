@@ -1232,6 +1232,22 @@ def i39(case, rules):
     return rules.memo(('fix needs a blocker',), compute)
 
 
+def i40(case, rules):
+    """#668: the soak is skipped only for a head that turns a check failing at its base commit
+    green: merge.fixes_base names a check only for base failure or error and head success."""
+    def compute():
+        from wuwei import merge
+        conclusions = (None, 'success', 'failure', 'error', 'neutral', 'skipped', 'cancelled',
+                       'timed_out', 'action_required', 'stale', 'startup_failure')
+        for base, head, present in itertools.product(conclusions, conclusions, (True, False)):
+            found = merge.fixes_base([{'name': 'lint', 'conclusion': base}],
+                                     [{'name': 'lint' if present else 'tests', 'conclusion': head}])
+            if found != (['lint'] if present and base in ('failure', 'error') and head == 'success' else []):
+                return f'base {base}, head {head if present else "absent"}: fixes_base gives {found}'
+        return None
+    return rules.memo(('soak skip',), compute)
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
@@ -1239,7 +1255,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I31': i31, 'I32': i32, 'I33': i33, 'I34': i34, 'I35': i35,
               'I36': i36, 'I37': i37, 'I42': i42,
               'I36': i36, 'I37': i37, 'I38': i38,
-              'I36': i36, 'I37': i37, 'I39': i39}
+              'I36': i36, 'I37': i37, 'I39': i39,
+              'I36': i36, 'I37': i37, 'I40': i40}
 
 
 def project(case):
@@ -1259,7 +1276,9 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (),
-         'I39': ()}
+         'I39': (),
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (),
+         'I40': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 

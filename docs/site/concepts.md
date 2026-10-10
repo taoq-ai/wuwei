@@ -57,7 +57,7 @@ Careful lifts light items to standard and keeps one seat free. Fast runs plain s
 ### Soak
 
 The wait after the last push or approval before WUWEI merges by itself (`merge.soak_minutes`, default 30).
-During it you can stop the merge from your phone.
+During it you can stop the merge from your phone. A PR that turns a check failing on its base green skips it.
 
 ### Delta
 
