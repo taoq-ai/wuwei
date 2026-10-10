@@ -678,7 +678,8 @@ def receive(item, role, name, round_name='initial', root=None):
                 result == 'PASS' or not re.search(r'\bDOC: *FINDING', text)):
             raise Refused(f'docs obligation unmet for {item}; have the sentinel write a FIX verdict with a '
                           f'DOC: FINDING naming {docs.command(config, item)}, then receive it again')
-    blocks = verdict.finding_blocks(text)
+    blocks = sorted(verdict.finding_blocks(text),  # #677: blocking findings first
+                    key=lambda block: not re.search(verdict.BLOCKS_YES, block, re.I))
     notes = [block.strip() for block in blocks if not re.search(verdict.BLOCKS_YES, block, re.I)]
     value = {'item': item, 'role': role, 'round': round_name, 'verdict': result,
              'head': head, 'file': str(path.relative_to(root)),
