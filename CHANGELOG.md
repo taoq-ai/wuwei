@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.2](https://github.com/taoq-ai/wuwei/compare/v0.24.1...v0.24.2) (2026-10-10)
+
+
+### Bug Fixes
+
+* **setup:** the setup interview runs on Ask cards when the session has no terminal (Claude Desktop, the IDE): wuwei setup prints the unanswered questions as widgets instead of refusing, and next says so ([#650](https://github.com/taoq-ai/wuwei/issues/650)) ([b2f0fd0](https://github.com/taoq-ai/wuwei/commit/b2f0fd0d0b485b9c44c09a5999d8b859930791fc))
+
 ## [0.24.1](https://github.com/taoq-ai/wuwei/compare/v0.24.0...v0.24.1) (2026-10-09)
 
 
