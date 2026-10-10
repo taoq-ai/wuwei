@@ -84,6 +84,10 @@ def tiers(args):
     print(f"{'-':<6}{'default':<9}{{ tier = \"{umbrella}\" }} (outbound.default_tier: what no row narrows, "
           "for chat, code host, mail and other, and bug, triage and follow-up tickets in the "
           "workspace's own tracker)")
+    from wuwei.guards.outward import LOCAL_SERVERS
+    owned = [name for name, found in config['outward']['servers'].items() if found == 'local']
+    print(f"{'-':<6}{'local':<9}{', '.join([*LOCAL_SERVERS, 'Claude_Browser preview tools', *owned])}: "
+          'local, never drafted or blocked by these rows; the command guards judge what runs')  # #727
     return CLEAN
 
 
@@ -281,6 +285,7 @@ MODE_TEXT = {
     'code_host': 'writes follow the code host tier as today.',
     'docs': 'writes follow the docs tier as today.',
     'other': 'writes go out after the lint and the sensitive, commitment and disagreement rows.',
+    'local': 'calls act only on your machine and are never drafted; the command guards still judge what runs.',
     'send': 'Every write through this connector goes out after the lint (its row in bin/wuwei outbound tiers).',
     'draft': 'Every write through this connector is a draft.',
     'refuse': 'Every write through this connector is refused.'}
@@ -314,7 +319,8 @@ def record(proposal):
         [_count(client, 'client channel', 'client channels')] if client else []) + (
         [_count(m, 'person', 'people')] if m else []) + ([f'your identity {me}'] if owner else [])
     default = CLASS_MODES.get(proposal['channel'], 'send')
-    question = (f'Connector {server} is {label}, mode {default}'
+    local = proposal['channel'] == 'local'  # #727: local has no mode; the outward rules never apply.
+    question = (f'Connector {server} is {label}' + ('' if local else f', mode {default}')
                 + (f'; add {", ".join(parts[:-1]) + " and " * (len(parts) > 1) + parts[-1]}?' if parts else '?'))
     lines = ''.join([f"- channel #{row['name']} ({row['id']}, {row['members']} members): {row.get('class', 'team')}"
                      f"{', shared with an external org' if row.get('class') == 'client' else ''}\n"
@@ -324,14 +330,14 @@ def record(proposal):
                     + [f"- owner {me} from the connector's identity call\n"] * bool(owner))
     # Scope addition: one option per other mode, so the owner changes the mode on this card.
     rows = [('approve', 'Approve', f'Records the alias, {n} channels and {m} people{mine}.',
-             f'Mode {default}: {MODE_TEXT[proposal["channel"]]}', 9)]
+             ('' if local else f'Mode {default}: ') + MODE_TEXT[proposal['channel']], 9)]
     if n:
         rows.append(('channels', 'Approve channels only', f'Records the alias and {n} channels.',
                      'Mentions of these people still draft.', 5))
     rows.append(('keep', 'Defer: keep as drafts', 'Records nothing.',
                  'Every send through this connector stays a draft today.', 1))
     rows += [(other, f'Approve, mode {other}', f'Records the alias, {n} channels and {m} people{mine} with mode {other}.',
-              MODE_TEXT[other], 3) for other in ('send', 'draft', 'refuse') if other != default]
+              MODE_TEXT[other], 3) for other in ('send', 'draft', 'refuse') if other != default and not local]
     # #496: the card asks each entry's class; one option per entry approves with the other class.
     rows += [(f"{row['id']}-{found}", f"Approve, {prefix}{row['name']} ({row['id']}) as {found}",
               f"Records the same as Approve with {row['id']} as {found}.", CLASS_TEXT[found], 2)
@@ -470,7 +476,7 @@ def learn(args):
                     'the owner changes outward.servers in a host terminal')
     channel = args.channel or (next(iter(found)) if len(found) == 1 else None)
     if channel is None:
-        return fail(f'connector {server} has no channel; pass --as slack, tracker, code_host, docs, mail or other')
+        return fail(f'connector {server} has no channel; pass --as slack, tracker, code_host, docs, mail, other or local')
     unknown, thread = [], None
     if args.thread:  # #526: record the participants before any card; known ones need none.
         if channel != 'slack':
@@ -528,7 +534,7 @@ def learn(args):
         return fail(str(exc))
     # `other` carries mode send with no audience rules, so it is never learned without the card.
     strict = workspace.posture(config)[0] == 'strict'
-    card = config['outbound']['learn'] == 'card' or strict or channel == 'other'
+    card = config['outbound']['learn'] == 'card' or strict or channel in ('other', 'local')
     if owner and not channels and not people and not strict:
         card = False  # #537: the owner's own identity, from the connector's identity call, needs no card.
     proposal = propose(root, config, data, server, channel, tool, channels, people, card=card, owner=owner,

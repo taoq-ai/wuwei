@@ -197,7 +197,7 @@ deny = [] # Literal executable plus argument glob, for example "make publish*".
 # humanize_kinds = ["dm", "tracker", "docs", "pr", "review"] # Kinds the lint checks.
 # humanize_strict = false # true refuses a text with a tell instead of warning.
 # draft_ttl = 3600 # Seconds an approved draft's tool call may repeat, once.
-# Server alias (slack, tracker, code_host, docs, mail or other), checked first, and the
+# Server alias (slack, tracker, code_host, docs, mail, other or local), checked first, and the
 # server's mode (send, draft or refuse); bin/wuwei outbound learn proposes both on a card.
 # [outward.servers]
 # "<server id>" = "slack"

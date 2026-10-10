@@ -1542,3 +1542,21 @@ def test_only_a_held_call_imports_the_draft_queue(tmp_path, channel, held):
     modules = set(json.loads(out.read_text()))
     assert ('wuwei.drafts' in modules) is held
     assert held or 'hashlib' not in modules
+
+
+def test_terminal_as_bash(tmp_path):
+    # #727: a terminal tab's command is the Bash call it types, in the tab's cwd.
+    from wuwei.commands.hook import as_bash
+    call = {'hook_event_name': 'PreToolUse', 'session_id': 's', 'cwd': str(tmp_path),
+            'transcript_path': str(tmp_path / 't.jsonl'), 'tool_name': 'mcp__terminal__run_in_terminal',
+            'tool_input': {'command': 'sleep 600', 'cwd': 'demo'}}
+    seen = as_bash(call)
+    assert (seen['tool_name'], seen['tool_input'], seen['cwd']) == (
+        'Bash', {'command': 'sleep 600'}, str(tmp_path / 'demo'))
+    assert as_bash({**call, 'tool_input': {'command': 'ls'}})['cwd'] == str(tmp_path)
+    for same in ({**call, 'hook_event_name': 'PostToolUse'},
+                 {**call, 'tool_name': 'Bash', 'tool_input': {'command': 'ls'}}):
+        assert as_bash(same) == same
+    for inputs in ({'command': 3}, {'command': 'ls', 'cwd': 3}, 'ls'):
+        with pytest.raises(ValueError, match='payload'):
+            as_bash({**call, 'tool_input': inputs})
