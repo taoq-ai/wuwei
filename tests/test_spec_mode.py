@@ -407,3 +407,119 @@ def test_builder_seat_runs_spec_analysis(ws, item, unanalysed, monkeypatch, caps
     code, out = hook('PreToolUse', data, monkeypatch, capsys)
     assert code == 0, out
     assert [kind for kind, _ in kinds(ws, 'hook.')] == []
+
+
+# #664: the analysis checks each assumption against the governing document the item names.
+
+PREREG = '# Pre\nIntro.\n## Pre-registration\nHypothesis one.\nSample of ten.\n### Sample\nTen.\n## Analysis\nT-test.\n'
+
+
+@pytest.fixture
+def governed_tree(tmp_path):
+    tree = tmp_path / 'gov'
+    (tree / 'docs').mkdir(parents=True)
+    (tree / 'docs/prereg.md').write_text(PREREG)
+    return tree
+
+
+def test_governing_resolves_the_reference(governed_tree):
+    from wuwei import specmode
+    tree = governed_tree
+    assert specmode.governing(tree, {}) is None
+    ref, first, last, text = specmode.governing(tree, {'governed_by': 'docs/prereg.md#Pre-registration'})
+    assert (ref, first, last) == ('docs/prereg.md#Pre-registration', 3, 7)
+    assert '### Sample' in text and '## Analysis' not in text and text.startswith('## Pre-registration')
+    assert specmode.governing(tree, {'governed_by': 'docs/prereg.md'}) == ('docs/prereg.md', 1, 9, PREREG)
+    (tree / 'docs/design.md').write_text('## 5 Roles\n### 5.1 Roles\none\n### 5.10 Spec\nten\n')
+    assert specmode.governing(tree, {'governed_by': 'docs/design.md#5.1'})[1:] == (2, 3, '### 5.1 Roles\none\n')
+    assert specmode.governing(tree, {'governed_by': 'docs/design.md#5.10'})[1:] == (4, 5, '### 5.10 Spec\nten\n')
+    spec = tree / 'specs/001-a'
+    spec.mkdir(parents=True)
+    (spec / 'spec.md').write_text('# Spec\n\nGoverning: docs/prereg.md#Analysis\n')
+    assert specmode.governing(tree, {}, Path('specs/001-a'))[:3] == ('docs/prereg.md#Analysis', 8, 9)
+    row = {'governed_by': 'docs/prereg.md#Pre-registration'}
+    assert specmode.governing(tree, row, Path('specs/001-a'))[0] == 'docs/prereg.md#Pre-registration'
+
+
+@pytest.mark.parametrize('reference, hint', [
+    ('docs/missing.md', 'not a file'), ('docs/prereg.md#Nope', 'no heading Nope'),
+    ('/etc/hosts', 'not a file'), ('../outside.md', 'not a file'), ('#Pre-registration', 'not a file'),
+])
+def test_governing_refusals(governed_tree, reference, hint):
+    from wuwei import specmode
+    (governed_tree.parent / 'outside.md').write_text('# Out\n')
+    with pytest.raises(ValueError, match=hint):
+        specmode.governing(governed_tree, {'governed_by': reference})
+
+
+GOVERNED_SPEC = '# Spec\n\n## Assumptions\n\n- Ten samples.\n* A t-test.\n\n## Other\n'
+TABLE = ('## Governing\n\n| Assumption | Verdict | Line |\n|---|---|---|\n'
+         '| Ten samples | agrees | docs/prereg.md:5 |\n| A t-test | not covered | docs/prereg.md:3-5 |\n')
+
+
+def test_governed_checks_the_table():
+    from wuwei import specmode
+    assert specmode.governed('# Report\n\n' + TABLE, GOVERNED_SPEC) is None
+    assert 'no ## Governing table' in specmode.governed('# Report\n', GOVERNED_SPEC)
+    one = TABLE[:TABLE.index('| A t-test')]
+    assert '1 valid rows for 2 assumptions' in specmode.governed(one, GOVERNED_SPEC)
+    assert '1 valid rows' in specmode.governed(TABLE.replace('agrees', 'maybe'), GOVERNED_SPEC)
+    assert '1 valid rows' in specmode.governed(TABLE.replace('docs/prereg.md:5', 'see above'), GOVERNED_SPEC)
+    assert specmode.governed(one, '# Spec\n') is None
+    assert '0 valid rows for 1 assumptions' in specmode.governed('## Governing\n\nnone\n', '# Spec\n')
+
+
+def governed_item(ws, item, **fields):
+    (item / 'docs').mkdir(exist_ok=True)
+    (item / 'docs/prereg.md').write_text(PREREG)
+    day_state(ws, {'A': {'phase': 'implement', 'status': 'running', 'worktree': str(item), **fields}})
+
+
+def test_spec_analysis_refuses_a_governed_report_without_the_table(ws, item, unanalysed, monkeypatch, capsys):
+    governed_item(ws, item, governed_by='docs/prereg.md#Pre-registration')
+    code, out, err = analysis(ws, monkeypatch, capsys, 'A')
+    assert (code, out) == (2, '') and not unanalysed.exists()
+    assert 'docs/prereg.md#Pre-registration (lines 3-7)' in err and '## Governing' in err, err
+    spec = item / 'specs/001-a/spec.md'
+    spec.write_text(spec.read_text() + '\n## Assumptions\n\n- Ten samples.\n- A t-test.\n')
+    one = REPORT + '\n' + TABLE[:TABLE.index('| A t-test')]
+    assert analysis(ws, monkeypatch, capsys, 'A', stdin=one)[0] == 2 and not unanalysed.exists()
+    assert analysis(ws, monkeypatch, capsys, 'A', stdin=REPORT + '\n' + TABLE)[:2] == (0, 'specs/001-a/analysis.md\n')
+    assert unanalysed.read_text() == REPORT + '\n' + TABLE
+    conflicts = REPORT + '\n' + TABLE.replace('agrees', 'conflicts')
+    assert analysis(ws, monkeypatch, capsys, 'A', stdin=conflicts)[0] == 0
+
+
+def test_spec_analysis_governed_by_the_spec_line(ws, item, unanalysed, monkeypatch, capsys):
+    governed_item(ws, item)
+    spec = item / 'specs/001-a/spec.md'
+    plain = spec.read_text()
+    assert analysis(ws, monkeypatch, capsys, 'A')[0] == 0 and unanalysed.read_text() == REPORT
+    unanalysed.unlink()
+    spec.write_text(plain + '\nGoverning: docs/prereg.md#Pre-registration\n')
+    code, out, err = analysis(ws, monkeypatch, capsys, 'A')
+    assert (code, out) == (2, '') and 'docs/prereg.md#Pre-registration' in err and not unanalysed.exists()
+    spec.write_text(plain)
+    governed_item(ws, item, governed_by='docs/prereg.md#Nope')
+    code, out, err = analysis(ws, monkeypatch, capsys, 'A')
+    assert (code, out) == (2, '') and 'no heading Nope' in err and not unanalysed.exists()
+
+
+def test_brief_block_and_gate_line(governed_tree):
+    from wuwei import specmode
+    tree, row = governed_tree, {'governed_by': 'docs/prereg.md#Pre-registration'}
+    block = specmode.brief_block(config(), 'A', row, tree)
+    assert block.startswith('\n## Governing document\n')
+    assert 'docs/prereg.md#Pre-registration (lines 3-7)' in block
+    assert '/speckit.analyze' in block and '## Governing table' in block
+    assert block.endswith('\n\n' + specmode.governing(tree, row)[3])
+    for cfg, other in ((config(), {}), (config('[spec]\nmode = "off"\n'), row),
+                       (config('[spec]\nengine = "openspec"\n'), row),
+                       (config(), {**row, 'spec': {'value': 'skipped', 'reason': 'r'}})):
+        assert specmode.brief_block(cfg, 'A', other, tree) == ''
+    shutil.copytree(FIXTURES / 'speckit/specs', tree / 'specs')
+    assert specmode.brief_line(config(), 'A', row, tree, True) == (
+        'Spec: speckit artifacts: specs/001-a; governed by docs/prereg.md#Pre-registration (lines 3-7): '
+        'check the ## Governing table in analysis.md')
+    assert specmode.brief_line(config(), 'A', {}, tree, True) == 'Spec: speckit artifacts: specs/001-a'
+    assert specmode.brief_line(config(), 'A', row, tree, False) == specmode.brief_line(config(), 'A', {}, tree, False)

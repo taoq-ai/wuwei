@@ -476,6 +476,7 @@ def test_builder_and_gate_briefs_carry_the_spec_line(day, monkeypatch):
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b1', '--worktree', 'tree') == 0
     [line] = spec_line(directory / 'briefs/b1.md')
     assert line.startswith('Spec: speckit strict;') and '/speckit.specify' in line
+    assert '## Governing document' not in (directory / 'briefs/b1.md').read_text()
     assert 'create-new-feature.sh --json --short-name x' in line and 'specs/x or specs/*-x' in line
     shutil.copytree(Path(__file__).parent / 'fixtures/spec/speckit/specs', root / 'tree/specs')
     (root / 'tree/specs/001-a').rename(root / 'tree/specs/001-x')
@@ -487,6 +488,28 @@ def test_builder_and_gate_briefs_carry_the_spec_line(day, monkeypatch):
     (root / '.wuwei/config.toml').write_text('[spec]\nengine = "none"\n')
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b3', '--worktree', 'tree') == 0
     assert spec_line(directory / 'briefs/b3.md') == []
+
+
+def test_builder_brief_carries_the_governing_document(day, monkeypatch, capsys):
+    root, directory, vcs, host = day
+    (root / 'tree/docs').mkdir(parents=True, exist_ok=True)
+    (root / 'tree/docs/prereg.md').write_text('# Pre\n## Pre-registration\nTen samples.\n\nA t-test.\n## Next\n')
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'b0', '--worktree', 'tree') == 0
+    plain = (directory / 'briefs/b0.md').read_text()
+    state._write_state(lambda data: data['items']['X'].update(governed_by='docs/prereg.md#Pre-registration'),
+                       root, reserved=False)
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'b1', '--worktree', 'tree') == 0
+    text = (directory / 'briefs/b1.md').read_text()
+    assert text.endswith('\n\n## Pre-registration\nTen samples.\n\nA t-test.\n')
+    assert 'body\n\n## Governing document\n\ndocs/prereg.md#Pre-registration (lines 2-5)' in text
+    header = lambda brief_text: [line for line in brief_text.split('\n\n')[0].splitlines()
+                                 if not line.startswith('Written:')]
+    assert header(text) == header(plain)
+    state._write_state(lambda data: data['items']['X'].update(governed_by='docs/missing.md'), root, reserved=False)
+    capsys.readouterr()
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'b2', '--worktree', 'tree') == 2
+    assert 'docs/missing.md is not a file' in capsys.readouterr().err
+    assert not (directory / 'briefs/b2.md').exists()
 
 
 def docs_brief(day, monkeypatch, role, system='notion', tier='standard', docs=None, name='d'):

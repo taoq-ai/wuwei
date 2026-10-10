@@ -102,6 +102,8 @@ def _proposal(data, goals_text, framework="wsjf"):
         paths = item.get('paths', [])  # #579: the files it touches; guard paths advise careful
         if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
             raise ValueError(f'{name}: paths must be a list of strings; {PLAN_JSON}')
+        if 'governed_by' in item and not (isinstance(item['governed_by'], str) and item['governed_by'].strip()):
+            raise ValueError(f'{name}: governed_by must be a path or path#heading; {PLAN_JSON}')  # #664
     json.dumps(data, allow_nan=False)
     return data
 
@@ -438,7 +440,7 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
                                        'flags': candidates[name]['flags'],
                                        'budget_size': candidates[name]['score'][
                                            'job_size' if framework == 'wsjf' else 'effort'],
-                                       **{key: candidates[name][key] for key in ('tier',)
+                                       **{key: candidates[name][key] for key in ('tier', 'governed_by')
                                           if key in candidates[name]}}
                                  for name in items})
         current.update(cap=data['cap'], cap_bound=data.get('capacity', {}).get('bound', ''),
@@ -551,7 +553,7 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
             raise state.StateError(f'item {item} is already in the plan; run bin/wuwei build next {item}')
         current['items'][item] = {'goal': candidate['goal'], 'track': candidate['track'],
                                   'flags': candidate['flags'], 'budget_size': size,
-                                  **{key: candidate[key] for key in ('tier',) if key in candidate},
+                                  **{key: candidate[key] for key in ('tier', 'governed_by') if key in candidate},
                                   **({'source': source, 'title': candidate['title']} if source else {})}
         current['approved_items'].append(item)
         if chosen and not tracker.ticket(current, item):

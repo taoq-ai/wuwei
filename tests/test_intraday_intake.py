@@ -57,6 +57,12 @@ def test_plan_add_admits_goal_slice_after_gate(root):
     assert 'NEW' in day['approved_items']
 
 
+def test_plan_add_copies_governed_by(root):
+    save_candidate(root, {**candidate(), 'governed_by': 'docs/prereg.md'})
+    assert plan.add('NEW', root)['action'] == 'build next'
+    assert state.read_state(root)['items']['NEW']['governed_by'] == 'docs/prereg.md'
+
+
 def test_plan_add_sends_strict_full_to_owner(root):
     (root / '.wuwei/config.toml').write_text('[discovery]\nautostart = "strict"\n')
     save_candidate(root, candidate(track='FULL'))

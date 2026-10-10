@@ -289,3 +289,10 @@ def test_plain_tone_rule_has_five_items_and_ships_in_every_agent():
     for role in ("planner", "lead", "builder", "sentinel-arch", "sentinel-quality", "sentinel-security",
                  "sentinel-goal", "shepherd", "steward"):
         assert section.strip() in (ROOT / "agents" / f"{role}.md").read_text(encoding="utf-8"), role
+
+
+def test_governing_document_charters():  # #664
+    text = charter_text()
+    assert "Governing:" in text["builder.md"] and "## Governing" in text["builder.md"]
+    assert "## Governing" in text["sentinel-goal.md"] and "conflicts" in text["sentinel-goal.md"]
+    assert "governed_by" in text["lead.md"]
