@@ -265,6 +265,29 @@ def test_pre_tool_use_refuses_source_edits_until_the_spec(ws, item, monkeypatch,
     assert hook('PreToolUse', write(ws, item / 'src/app.py'), monkeypatch, capsys)[0] == 0
 
 
+def test_spec_guard_decides_by_path_not_by_file_name(ws, item, tmp_path, monkeypatch, capsys):
+    # #649: a scratch analysis.md is an ordinary write; only the path decides.
+    for tool in ('Write', 'Edit'):
+        code, out = hook('PreToolUse', write(ws, tmp_path / 'scratch/analysis.md', tool), monkeypatch, capsys)
+        assert (code, out.out, out.err) == (0, '', '')
+    assert kinds(ws) == [] and kinds(ws, 'hook.') == []
+    refusals = [hook('PreToolUse', write(ws, item / name, 'Write'), monkeypatch, capsys)
+                for name in ('scratch/analysis.md', 'scratch/notes.txt')]
+    assert [code for code, _ in refusals] == [2, 2]
+    assert refusals[0][1].err == refusals[1][1].err and 'specify first' in refusals[0][1].err
+    (item / 'specs/001-a').mkdir(parents=True)
+    code, out = hook('PreToolUse', write(ws, item / 'specs/001-a/analysis.md', 'Write'), monkeypatch, capsys)
+    assert (code, out.out, out.err) == (0, '', '')
+    shutil.rmtree(item / 'specs')
+    shutil.copytree(FIXTURES / 'speckit/specs', item / 'specs')
+    report = (item / 'specs/001-a/analysis.md').read_text()
+    (item / 'specs/001-a/analysis.md').unlink()
+    code, out = hook('PreToolUse', write(ws, item / 'src/app.py', 'Write'), monkeypatch, capsys)
+    assert code == 2 and 'bin/wuwei spec analysis a' in out.err
+    (item / 'specs/001-a/analysis.md').write_text(report)
+    assert hook('PreToolUse', write(ws, item / 'scratch/analysis.md', 'Write'), monkeypatch, capsys)[0] == 0
+
+
 def test_post_tool_use_records_each_step_once(ws, item, monkeypatch, capsys):
     source = FIXTURES / 'speckit/specs/001-a'
     target = item / 'specs/001-a'

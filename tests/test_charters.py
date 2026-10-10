@@ -280,3 +280,9 @@ def test_plain_tone_rule_has_five_items_and_ships_in_every_agent():
     for role in ("planner", "lead", "builder", "sentinel-arch", "sentinel-quality", "sentinel-security",
                  "sentinel-goal", "shepherd", "steward"):
         assert section.strip() in (ROOT / "agents" / f"{role}.md").read_text(encoding="utf-8"), role
+
+
+def test_builder_names_claude_codes_report_file_check():
+    # #649: the refusal of a scratch analysis.md is Claude Code's check, not a WUWEI hook.
+    builder = charter_text()["builder.md"]
+    assert "wuwei spec analysis <item>" in builder and "in any directory" in builder
