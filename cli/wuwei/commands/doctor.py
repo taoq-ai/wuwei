@@ -655,6 +655,21 @@ def _tracker(root, config):
     return _row('day', 'tracker', 'fail', reason, fix + 'bin/wuwei config set tracker.required false')
 
 
+def _tracker_labels(root, config):
+    """#670: the lifecycle labels the tracker lacks; doctor reads, init --upgrade creates."""
+    from wuwei import tracker
+    result = tracker.labels(root, config, False)
+    if result.exit and not config['tracker']['required']:
+        return _row('day', 'tracker labels', 'ok', 'unmeasured, tickets optional')
+    if result.exit:
+        return _row('day', 'tracker labels', 'unmeasured', result.reason,
+                    'fix the tracker row, then run wuwei doctor')
+    if result.data['missing']:
+        return _row('day', 'tracker labels', 'warn', 'missing: ' + ', '.join(
+            f'"{name}"' for name in result.data['missing']), 'wuwei init --upgrade')
+    return _row('day', 'tracker labels', 'ok', 'none missing')
+
+
 LEGACY_TRACE = ('Question: How should this critical tool sequence be investigated?\n'
                 'Context: Session has no matching item reservation.\n')
 SUPERSEDED = 'superseded by wuwei doctor --fix: tool-sequence decisions apply to item seats only (#352)'
@@ -722,6 +737,8 @@ def diagnose(section=None):
         else:
             rows += [*_gates(root, config), *_docs(root, config), *pr_flow(config), *_day(root, config, probes),
                      _tracker(root, config)]
+            if config['adapters']['tracker'] != 'none':
+                rows.append(_tracker_labels(root, config))
     return rows + _guards(root, probes)
 
 

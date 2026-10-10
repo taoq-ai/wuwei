@@ -339,6 +339,25 @@ def test_solo_owner_raise_requests_no_reviewer(case, monkeypatch):
     assert not any(name == 'request_reviewers' for name, _, _ in host.calls)
 
 
+@pytest.mark.parametrize('adapter,moved,printed', [
+    ('github', Result(1, reason='ITEM-1 not moved to In Review: missing'), True),
+    ('github', Result(0), False),
+    ('none', Result(2, reason='tracker adapter is none'), False)])
+def test_raise_prints_the_tracker_reason(case, monkeypatch, capsys, adapter, moved, printed):
+    """#670: pr raise names why the in-review move failed; its exit and stdout stay."""
+    from wuwei import dispatch, shepherd
+    root, _ = solo_raise(case, monkeypatch)
+    monkeypatch.setattr(dispatch, 'tracker_call', lambda *args: moved)
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace(
+        'review_bot = "greptile"', f'review_bot = "greptile"\ntracker = "{adapter}"'))
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
+    out, err = capsys.readouterr()
+    assert REF in out and 'tracker:' not in out
+    assert ('tracker: ITEM-1 not moved to In Review: missing\n' in err) is printed
+    assert ('tracker:' in err) is printed
+
+
 def test_raise_humanizes_title_and_body(case, monkeypatch, capsys):
     from wuwei import shepherd
     root, host = solo_raise(case, monkeypatch)

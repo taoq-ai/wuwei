@@ -1304,6 +1304,73 @@ def test_upgrade_refuses_unreachable_mode(tmp_path, monkeypatch, capsys):
     assert before == {p: p.read_bytes() for p in (tmp_path / '.wuwei').rglob('*') if p.is_file()}
 
 
+class Labels:
+    """#670: a GitHub tracker that lacks the In Review label until it is created."""
+
+    def __init__(self):
+        self.calls, self.made = [], False
+
+    def labels(self, create, root=None):
+        from wuwei.registry import Result
+        self.calls.append(create)
+        if not self.made and create:
+            self.made = True
+            return Result(0, {'created': ['In Review'], 'missing': []})
+        return Result(0, {'created': [], 'missing': [] if self.made else ['In Review']})
+
+
+def labelled(root, monkeypatch):
+    from types import SimpleNamespace
+    from wuwei import registry
+    from wuwei.commands import init
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    assert init.run(SimpleNamespace(path=str(root), upgrade=False, dry_run=False)) == 0
+    path = root / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('tracker = "none"', 'tracker = "github"', 1)
+                    .replace('[tracker]\n', '[tracker]\nproject = "acme/app"\n', 1))
+    port = Labels()
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
+                        else load(kind, config))
+    return port
+
+
+def test_upgrade_creates_tracker_labels_then_doctor_is_clean(tmp_path, monkeypatch, capsys):
+    """#670 acceptance 1: init --upgrade from a host terminal creates the label on an external
+    project, and doctor's row is then ok."""
+    from wuwei import workspace
+    from wuwei.commands import doctor
+    port = labelled(tmp_path, monkeypatch)
+    monkeypatch.setattr('sys.stdin.isatty', lambda: True)
+    code, out = upgraded(tmp_path, capsys)
+    assert code == 0, out.err
+    assert 'Upgraded tracker label "In Review"' in out.out.splitlines()
+    assert doctor._tracker_labels(tmp_path, workspace.load_config(tmp_path))['status'] == 'ok'
+    code, out = upgraded(tmp_path, capsys)
+    assert code == 0 and 'tracker label' not in out.out
+    assert 'No workspace changes needed' in out.out
+    assert port.calls == [True, False, True]
+
+
+def test_upgrade_from_a_seat_under_strict_creates_no_label(tmp_path, monkeypatch, capsys):
+    """#670: an agent seat (no tty) running init --upgrade under strict only reads the labels."""
+    import io
+    port = labelled(tmp_path, monkeypatch)
+    path = tmp_path / '.wuwei/config.toml'
+    path.write_text(path.read_text().replace('code_host_orgs = []', 'code_host_orgs = ["acme"]', 1)
+                    .replace('posture = "guarded"', 'posture = "strict"', 1))
+    monkeypatch.setattr('sys.stdin', io.StringIO())
+    code, out = upgraded(tmp_path, capsys)
+    assert code == 0, out.err
+    assert port.calls == [False] and 'tracker label' not in out.out
+
+
+def test_upgrade_dry_run_never_contacts_the_tracker(tmp_path, monkeypatch, capsys):
+    port = labelled(tmp_path, monkeypatch)
+    code, out = upgraded(tmp_path, capsys, dry_run=True)
+    assert code == 0 and port.calls == [] and 'tracker label' not in out.out
+
+
 def test_load_config_returns_independent_copies(tmp_path):
     # #346: the memo hands out copies (copy_data, not copy.deepcopy); a caller's edits stay its own.
     from wuwei import state, workspace

@@ -1222,6 +1222,32 @@ def test_tracker_row(ws):
     assert row(doctor.diagnose(), 'tracker')['status'] == 'ok'
 
 
+def test_tracker_labels_row(ws):
+    """#670: doctor lists the lifecycle labels the tracker lacks; it creates none."""
+    from fakes.tracker import Fake
+    assert 'tracker labels' not in names(doctor.diagnose(), 'day')
+    config(ws.root, CONFIG.replace('code_host = "github"\n', 'code_host = "github"\ntracker = "github"\n'))
+    tracker = Fake({'labels': Result(0, {'created': [], 'missing': ['In Review']}),
+                    'backlog': Result(0, [])})
+    real = registry.load
+    ws.mp.setattr(registry, 'load', lambda kind, cfg: tracker if kind == 'tracker' else real(kind, cfg))
+    found = row(doctor.diagnose(), 'tracker labels')
+    assert (found['section'], found['status'], found['value'], found['fix']) == (
+        'day', 'warn', 'missing: "In Review"', W('init --upgrade'))
+    assert 'apply' not in found
+    assert [call[:2] for call in tracker.calls if call[0] == 'labels'] == [('labels', (False,))]
+    tracker.results['labels'] = Result(0, {'created': [], 'missing': []})
+    found = row(doctor.diagnose(), 'tracker labels')
+    assert (found['status'], found['value']) == ('ok', 'none missing')
+    tracker.results['labels'] = Result(2, reason='github.labels: could not run: offline')
+    found = row(doctor.diagnose(), 'tracker labels')
+    assert (found['status'], found['value']) == ('unmeasured', 'github.labels: could not run: offline')
+    config(ws.root, CONFIG.replace('code_host = "github"\n', 'code_host = "github"\ntracker = "github"\n')
+           + '\n[tracker]\nrequired = false\n')
+    found = row(doctor.diagnose(), 'tracker labels')
+    assert (found['status'], found['value']) == ('ok', 'unmeasured, tickets optional')
+
+
 @pytest.mark.parametrize('auth, fix', [
     ('', 'set GITHUB_TRACKER_TOKEN in .wuwei/env, or bin/wuwei config set tracker.auth \'"gh"\' to use '
          'your gh login, or bin/wuwei config set tracker.required false'),

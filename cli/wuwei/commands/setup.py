@@ -586,6 +586,9 @@ def _setup(args, confirm):
     if gate.reason:
         print(gate.reason, file=sys.stderr)
     final = load_config(root)
+    from wuwei import tracker  # #670: the labels exist before doctor reads them
+    for line in tracker.ensure_labels(root, 'Created', True):
+        print(line)
     required = [f'set {name} in .wuwei/env' for name in config.missing(final)]
     if gate.exit == 2 and mcp.unmeasured(root):
         required.append('bin/wuwei mcp decide proceed-unmeasured '

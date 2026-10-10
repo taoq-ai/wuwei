@@ -22,7 +22,7 @@ PARAMETERS = {
     'checks': {'run': ('path', 'command')},
     'tracker': {'backlog': ('filter',), 'claim': ('item',), 'transition': ('item', 'state'),
                 'create': ('draft',), 'history': ('item',), 'created': ('item',),
-                'comment': ('item', 'text', 'category')},
+                'comment': ('item', 'text', 'category'), 'labels': ('create',)},
     'chat': {'post': ('channel', 'text', 'thread'), 'dm': ('text',),
              'sent': ('channel', 'owner')},
     'review_bot': {'score': ('pr',), 'open_findings': ('pr',)},

@@ -807,6 +807,19 @@ def test_setup_next_names_a_failing_doctor_row(project, host, terminal, capsys):
     assert capsys.readouterr().out.splitlines()[-1] == 'Next: wuwei integrity reconfirm'
 
 
+def test_setup_creates_tracker_labels_before_doctor(project, host, terminal, capsys, monkeypatch):
+    """#670: setup creates the lifecycle labels before its doctor ending reads them."""
+    from wuwei import tracker
+    from wuwei.commands import doctor
+    order = []
+    monkeypatch.setattr(tracker, 'ensure_labels', lambda root, prefix, create: order.append(
+        (root, prefix, create)) or [f'{prefix} tracker label "In Review"'])
+    monkeypatch.setattr(doctor, 'diagnose', lambda *a, **k: order.append('doctor') or terminal.rows)
+    assert run_setup(Confirm()) == 0, capsys.readouterr().err
+    assert order == [(project, 'Created', True), 'doctor']
+    assert 'Created tracker label "In Review"' in capsys.readouterr().out.splitlines()
+
+
 def test_status_line_is_written_once(tmp_path, monkeypatch):
     import json
     from wuwei.commands import init

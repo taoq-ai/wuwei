@@ -1,7 +1,8 @@
 """GitHub Issues and Projects tracker adapter (GraphQL, GITHUB_TRACKER_TOKEN or the gh login).
 
 Ticket ids are owner/repo#N. With tracker.board (owner/number) a transition sets the board's
-Status field; without one, in review is a label and done closes the issue. With
+Status field; without one, in review is a label (created by setup, init --upgrade, or on a
+failed move, #670) and done closes the issue. With
 tracker.auth = "gh" and no GITHUB_TRACKER_TOKEN, the same GraphQL runs through gh api graphql.
 """
 
@@ -157,6 +158,31 @@ def transition(item, state, *, root=None):
     return _query('mutation($id:ID!,$label:ID!){addLabelsToLabelable(input:{labelableId:$id,'
                   'labelIds:[$label]}){labelable{... on Issue{id}}}}',
                   {'id': value['repository']['issue']['id'], 'label': value['repository']['label']['id']}, root)
+
+
+@operation('github.labels')
+def labels(create, *, root=None):
+    """#670: the in-review label a move without a board adds; a board needs none."""
+    tracker = settings(root)['tracker']
+    if tracker['board']:
+        return {'created': [], 'missing': []}
+    repo = _repo(root)
+    owner, name = repo.split('/')
+    label = tracker['states']['in_review']
+    value = _query('query($owner:String!,$name:String!,$label:String!){repository(owner:$owner,'
+                   'name:$name){id label(name:$label){id}}}',
+                   {'owner': owner, 'name': name, 'label': label}, root)['repository']
+    if value['label']:
+        return {'created': [], 'missing': []}
+    if not create:
+        return {'created': [], 'missing': [label]}
+    try:
+        _query('mutation($repositoryId:ID!,$name:String!,$color:String!){createLabel(input:{'
+               'repositoryId:$repositoryId,name:$name,color:$color}){label{id}}}',
+               {'repositoryId': value['id'], 'name': label, 'color': 'fbca04'}, root)
+    except Failure as exc:
+        raise Failure(f'could not create the label "{label}" in {repo}: {exc}') from None
+    return {'created': [label], 'missing': []}
 
 
 @outward_operation('tracker')

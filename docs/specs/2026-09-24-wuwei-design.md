@@ -1565,7 +1565,11 @@ Jira; GitHub; none; or `<tracker> <project>` typed in), whether every item needs
 (every item; all but `light` items; optional), and which tracker updates go without approval
 (progress, pull request and close; those plus new tickets; everything; nothing). `doctor`
 fails the tracker row when `required` is in force and the adapter cannot read the backlog,
-naming the missing credentials or `bin/wuwei config set tracker.required false`.
+naming the missing credentials or `bin/wuwei config set tracker.required false`. `setup` and
+`init --upgrade` from a host terminal create the lifecycle labels the tracker port needs (today only the GitHub
+`in_review` label without a board), `doctor`'s `tracker labels` row lists missing ones, and a
+failed in-review move creates the label on the owner's tracker below strict and moves again,
+or otherwise names it with `bin/wuwei tracker move <item> in_review` (#670, I49).
 
 Owner-facing. The board, `wuwei next` and the DM show an item's ticket id beside its name.
 The documentation adds a `[tracker]` section to configuration.md, glossary entries (ticket,
@@ -1885,7 +1889,7 @@ that it did nothing and returns exit 2 where a measurement was expected.
 
 | Adapter | Interface | Reference implementation |
 |---|---|---|
-| tracker | `backlog(filter)`, `claim(item)`, `transition(item, state)`, `create(draft)`, `comment(item, text, category)`, `history(item)`, `created(item)` | Linear (recommended), Jira, GitHub issues and Projects (5.11) |
+| tracker | `backlog(filter)`, `claim(item)`, `transition(item, state)`, `create(draft)`, `comment(item, text, category)`, `history(item)`, `created(item)`, `labels(create)` | Linear (recommended), Jira, GitHub issues and Projects (5.11) |
 | chat | `post(channel, text, thread)`, `dm(text)` | Slack |
 | docs (5.12) | `read(ref)`, `write(draft)` | Notion (recommended), Confluence, repository Markdown |
 | review_bot | `score(pr)`, `open_findings(pr)` | Greptile |
@@ -2036,6 +2040,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I55 | A bug, triage or follow-up ticket WUWEI opens in the workspace's own tracker follows the owner's tier rows, then the sensitive row, then the umbrella: it sends under send and is held as a card under ask, in every posture; an external tracker or a client mention holds it | per posture, audience and umbrella, `classify` on an adapter write with category `bugs` | #644; the finder files it with `tracker create --bug --seat <role>` |
 | I43 | A `trust_surface` or `boundary_relevant` item runs gate step zero at standard whatever its diff, and its brief names the flag; no path turns a flagged run into a skip | `dispatch.step_zero` at standard and full on a non-guard and a guard path under each flag, both flags, `agent_surface` alone and none | #663; one decision in `dispatch.step_zero`; a flagged item is never light (I15) |
 | I46 | A gate verdict never calls a recorded docs value missing: `lint_file` refuses a finding that says the docs value is missing while the item records one, and adds nothing when the value is missing, not required or unresolvable | `verdict.lint` on a missing-value finding with `docs` set and unset, and on a page-content finding with `docs` set | #667; one read through `docs.shown` in `verdict.recorded_docs` |
+| I49 | A missing tracker label is created by WUWEI on its own only on the owner's tracker below strict; under strict or on an external tracker the move names the label, `bin/wuwei init --upgrade` and `bin/wuwei tracker move` | `tracker.creates_labels` per posture on an owned and an external GitHub project | #670; one decision in `tracker.creates_labels`, reached by every in-review move through `dispatch.tracker_call`; `setup` and `init --upgrade` create on any tracker from a host terminal |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

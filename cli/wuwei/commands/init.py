@@ -432,6 +432,12 @@ def upgrade(args):
             print(f'{prefix} {novelty.NAME}: {seeded} targets seen in the last {novelty.DAYS} days')
         if guide_changed:
             print(f'{prefix} {guide_path.relative_to(destination.parent)}: guide block')
+        from wuwei import tracker  # #670: doctor runs the dry run, which never contacts the tracker
+        labelled = [] if args.dry_run else tracker.ensure_labels(  # a seat may run init: no tty, I49 decides
+            destination.parent, prefix,
+            tracker.creates_labels(workspace.load_config(destination.parent)) or sys.stdin.isatty())
+        for line in labelled:
+            print(line)
         from wuwei import undo
         unrehearsed = undo.missing(destination.parent)  # #557: not a change, so not counted below
         if unrehearsed:
@@ -451,7 +457,8 @@ def upgrade(args):
         if not args.dry_run:
             _status_line(executable)
         if (not added and not retired and not stamp_changed and not pointer_changed and not env_changed
-                and not guide_changed and not seeded and not named and not graph_changed and text == raw):
+                and not guide_changed and not seeded and not named and not graph_changed and text == raw
+                and not labelled):
             print('No workspace changes needed')
         if args.dry_run:
             return CLEAN

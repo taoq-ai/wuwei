@@ -293,9 +293,55 @@ def log(root):
     return code
 
 
-def done(root, item):
-    from wuwei import dispatch
-    return dispatch.tracker_call(item, 'done', root)
+def creates_labels(config):
+    """#670 (I49): WUWEI creates a lifecycle label on its own only on the owner's tracker
+    below strict; setup and init --upgrade from a host terminal create on any tracker."""
+    from wuwei import outward
+    return workspace.posture(config)[0] != 'strict' and not outward._external_tracker(config)
+
+
+def labels(root, config, create, port=None):
+    """The port's lifecycle labels, {'created': [...], 'missing': [...]}, checked."""
+    from wuwei import registry
+    from wuwei.exits import ADAPTER_DATA
+    if config['adapters']['tracker'] == 'none':
+        return registry.Result(0, {'created': [], 'missing': []})
+    try:
+        result = (port or registry.load('tracker', config)).labels(create, root=root)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        return registry.Result(2, reason=f'tracker labels unmeasured: {exc}')
+    if (not isinstance(result, registry.Result) or result.exit not in (0, 1, 2)
+            or result.exit == 0 and not (isinstance(result.data, dict) and all(
+                isinstance(result.data.get(key), list) for key in ('created', 'missing')))):
+        return registry.Result(2, reason=f'tracker labels: {ADAPTER_DATA}')
+    return result
+
+
+def relabel(port, root, config, item, ticket, failed):
+    """A failed in-review move: create a missing label when WUWEI may and move once more,
+    or name the label and the owner's commands; any other failure comes back unchanged."""
+    from wuwei import registry
+    name = config['tracker']['states']['in_review']
+    found = labels(root, config, creates_labels(config), port)
+    if found.exit:
+        return failed
+    if found.data['created']:
+        return port.transition(ticket, name, root=root)
+    if found.data['missing']:
+        quoted = ', '.join(f'"{label}"' for label in found.data['missing'])
+        return registry.Result(1, reason=(
+            f'{item} not moved to {name}: the tracker label {quoted} is missing; the owner runs '
+            'bin/wuwei init --upgrade in a host terminal, which creates it, then bin/wuwei '
+            f'tracker move {item} in_review'))
+    return failed
+
+
+def ensure_labels(root, prefix, create):
+    """The lines setup and init --upgrade print after creating the missing labels."""
+    result = labels(root, workspace.load_config(root), create)
+    if result.exit:
+        return [f'tracker labels not created: {result.reason}; run bin/wuwei doctor']
+    return [f'{prefix} tracker label "{name}"' for name in result.data['created']]
 
 
 def record(draft, created, *, root=None, directory=None, seat=None):

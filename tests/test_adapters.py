@@ -86,6 +86,7 @@ CALLS = [
     ('tracker', 'history', ('item',), True),
     ('tracker', 'created', ('item',), True),
     ('tracker', 'comment', ('item', 'text', 'category'), False),
+    ('tracker', 'labels', ('create',), False),
     ('chat', 'post', ('channel', 'text', 'thread'), False),
     ('chat', 'dm', ('text',), False),
     ('chat', 'sent', ('channel', 'owner'), True),
