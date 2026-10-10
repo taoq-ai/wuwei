@@ -28,11 +28,13 @@ def test_worktree_add_anchors_pre_push_outside_claude(tmp_path, monkeypatch, cap
             monkeypatch.delenv(key)
     repo, origin = tmp_path / 'repo', tmp_path / 'origin.git'
     subprocess.run(['git', 'clone', '--shared', str(ROOT), str(repo)], check=True, capture_output=True)
-    subprocess.run(['git', 'init', '--bare', str(origin)], check=True, capture_output=True)
+    # A bare clone, not a push: the CI checkout is shallow and a shallow push is refused.
+    subprocess.run(['git', 'clone', '-q', '--bare', '--shared', str(repo), str(origin)], check=True, capture_output=True)
+    assert git(origin, 'update-ref', 'refs/heads/main', git(repo, 'rev-parse', 'HEAD').stdout.strip()).returncode == 0
+    assert git(origin, 'symbolic-ref', 'HEAD', 'refs/heads/main').returncode == 0
     git(repo, 'remote', 'set-url', 'origin', str(origin))
     git(repo, 'config', 'user.name', 'Builder')
     git(repo, 'config', 'user.email', 'builder@example.test')
-    assert git(repo, 'push', '-q', 'origin', 'HEAD:refs/heads/main').returncode == 0
     (tmp_path / '.wuwei').mkdir()
     (tmp_path / '.wuwei/config.toml').write_text(
         '[[repos]]\nname = "app"\npath = "repo"\ndefault_branch = "main"\n')
@@ -251,7 +253,7 @@ def hooked_workspace(tmp_path, monkeypatch, config=''):
     tmp_path = tmp_path.resolve()
     repo, origin = tmp_path / 'repo', tmp_path / 'origin.git'
     subprocess.run(['git', 'init', '-q', '-b', 'main', str(repo)], check=True)
-    subprocess.run(['git', 'init', '-q', '--bare', str(origin)], check=True)
+    subprocess.run(['git', 'init', '-q', '--bare', '-b', 'main', str(origin)], check=True)
     git(repo, 'remote', 'add', 'origin', str(origin))
     git(repo, 'config', 'user.name', 'Builder')
     git(repo, 'config', 'user.email', 'builder@example.test')
