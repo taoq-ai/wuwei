@@ -697,6 +697,31 @@ def test_guards_rows(ws):
     assert row(doctor.diagnose(), 'outside workspace')['status'] == 'unmeasured'
 
 
+def test_slow_probe_fix_names_the_cause(ws):
+    # #782: a probe over its time is a busy host, the watch's cached line or a rerun, never a reinstall.
+    ok = {name: dict(value) for name, value in ws.probes.items()}
+    slow = {'result': 'failed', 'value': '6600 ms over 200 ms'}
+    timeout = {'result': 'unmeasured', 'value': 'timeout'}
+
+    def fix(name, **changes):
+        ws.probes.clear()
+        ws.probes.update({key: dict(value) for key, value in ok.items()}, **changes)
+        found = row(doctor.diagnose(), name)
+        assert 'reinstall' not in found['fix'], found
+        return found
+
+    hooks = ('refused', 'allowed', 'state_write', 'read_loop')
+    busy = {name: {'result': 'ok', 'value': 'ok', 'ms': ms} for name, ms in zip(hooks, (7100, 5865, 7020, 6490))}
+    found = fix('status_line', status_line=slow, **busy)
+    assert found['status'] == 'fail' and found['value'] == '6600 ms over 200 ms'
+    assert 'fastest hook probe allowed 5865 ms' in found['fix'] and 'the host is busy' in found['fix']
+    quick = {name: {'result': 'ok', 'value': 'ok', 'ms': 40} for name in hooks}
+    found = fix('status_line', status_line=slow, **quick)
+    assert 'only status --line was slow' in found['fix'] and 'watch row' in found['fix']
+    assert 'every hook probe timed out' in fix('allowed', **{name: timeout for name in hooks})['fix']
+    assert 'only this probe timed out' in fix('allowed', **{**quick, 'allowed': timeout})['fix']
+
+
 def test_outside_probe_through_launcher(monkeypatch):
     # One real smoke of the outside-workspace probe through bin/wuwei (#323).
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)

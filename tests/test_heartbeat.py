@@ -465,3 +465,32 @@ def test_status_line_without_cache_waits_and_errors_never_print_the_cache(ws, ca
     monkeypatch.setattr(status, 'snapshot', broken)
     assert status.run(line_args()) == 2
     assert capsys.readouterr().out == 'WUWEI ? unmeasured\n'
+
+
+def test_status_line_and_session_start_make_no_port_call(ws, capsys):
+    # #782: status --line and SessionStart never wait on a code host, tracker or calendar call.
+    from wuwei.commands import status
+    from wuwei.guards import lifecycle
+    root, _, _, monkeypatch = ws
+    config(root, '[adapters]\ncode_host = "github"\ncalendar = "ics"\n')
+    calls = []
+
+    class Hang:
+        def __getattr__(self, operation):
+            def call(*args, **kwargs):
+                calls.append(operation)
+                time.sleep(5)
+            return call
+
+    previous = registry.load
+    network = ('code_host', 'tracker', 'calendar', 'chat', 'inbound', 'review_bot')
+    monkeypatch.setattr(registry, 'load', lambda kind, cfg: Hang() if kind in network else previous(kind, cfg))
+    watch.save(root, {'status_line': 'cached line · as of 12:00'})
+    started = time.monotonic()
+    assert status.run(line_args()) == 0
+    assert time.monotonic() - started < 1
+    assert len(capsys.readouterr().out.splitlines()) == 1
+    code, text = lifecycle.session_start({'session_id': 's1', 'transcript_path': os.devnull, 'cwd': str(root),
+                                          'hook_event_name': 'SessionStart', 'source': 'startup'})
+    assert isinstance(code, int) and isinstance(text, str)
+    assert calls == []
