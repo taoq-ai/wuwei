@@ -212,6 +212,12 @@ def test_tracker_hygiene_commands_have_one_home():
     assert [name for name, body in texts.items() if "tracker create --bug" in body] == ["_common.md"]
     assert "tracker create --follow-up" in texts["planner.md"]
     assert "bin/wuwei tracker create <item>" in texts["planner.md"]
+    # #644: the finder files; a gate seat too, naming its role, never asking the owner.
+    common = texts["_common.md"]
+    boundary = common[common.index("## Write and action boundary"):common.index("## Evidence and gates")]
+    assert "files the out-of-scope bugs it finds" in boundary
+    rule7 = next(line for line in common.splitlines() if line.startswith("7. Classify each finding"))
+    assert "--seat <your role>" in rule7 and "never ask the owner" in rule7
 
 
 def test_lead_proposes_each_ticket_and_the_planner_asks_it():

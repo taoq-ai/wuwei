@@ -29,12 +29,18 @@ def test_retro_compiles_role_evidence_and_cycle(tmp_path, monkeypatch):
     state.append_event('retro.captured', {'agent_id': 'builder-1', 'agent_type': 'builder',
         'fields': {'Blocked': 'none', 'Gap': 'Review lag', 'Change': 'Check review timing'},
         'missing': [], 'invalid': [], 'evidence': evidence.relative_to(root).as_posix()}, root)
+    state.append_event('tracker.created', {'class': 'bugs', 'subject': 'a', 'ticket': 'ENG-2',
+                                           'parent': None, 'seat': 'sentinel-quality'}, root)
+    state.append_event('tracker.created', {'class': 'items', 'subject': 'A', 'ticket': 'ENG-1',
+                                           'parent': None}, root)
     from wuwei import retro
     path = retro.compile(root)
     text = path.read_text()
     assert '| builder |' in text and 'Review lag' in text
     assert '| A | merged | done |' in text
     assert '| gate-a.md | PASS |' in text
+    assert ('## Tickets seats filed\n| Ticket | Class | Item | Seat |\n| --- | --- | --- | --- |\n'
+            '| ENG-2 | bugs | a | sentinel-quality |\n\n') in text
     assert '## Applied\nnone' in text and '.wuwei/charters/builder.md' in text
     assert '## Owner preferences\nnone\n' in text
     assert '"asks_per_item"' in text and '"unnecessary_asks"' in text
@@ -64,7 +70,8 @@ def test_hard_rule_change_is_decision_only(tmp_path, monkeypatch):
     state.append_event('retro.captured', {**record,
         'evidence': evidence.relative_to(root).as_posix()}, root)
     from wuwei import retro
-    retro.compile(root)
+    text = retro.compile(root).read_text()
+    assert '## Tickets seats filed\n| Ticket | Class | Item | Seat |\n| --- | --- | --- | --- |\n| none | | | |' in text
     assert not list((day / 'proposals').glob('*.json'))
     decisions = list((day / 'decisions').glob('D-*.md'))
     assert len(decisions) == 1

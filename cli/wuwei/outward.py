@@ -485,9 +485,10 @@ def _person(person, namespace, rules, mine, fallback, label, dm=False, what='men
     return {**party, 'class': fallback[0], 'why': f'{unknown}, {fallback[1]}'}
 
 
-def _parties(context, destinations, mention_text, kind, tool, config, pr, thread=None):
+def _parties(context, destinations, mention_text, kind, tool, config, pr, thread=None, own=False):
     """#496: who reads the call, each {id, kind, key, names, class, why}; pr is the
-    _pr_context exit of a code-host call; thread is (ts, recorded participant ids or None)."""
+    _pr_context exit of a code-host call; thread is (ts, recorded participant ids or None);
+    own marks WUWEI's own class ticket in the workspace's tracker (#644)."""
     rules = config['outbound']
     mine = _owner_ids(config, kind)
     fallback = _default(config, kind, tool)
@@ -551,7 +552,10 @@ def _parties(context, destinations, mention_text, kind, tool, config, pr, thread
             place(ref, 'team', f'{ref} is a measured team pull request as team')
         else:
             place(ref, fallback[0], f'{ref} is not a measured team pull request, {fallback[1]}')
-    if not parties:
+    if not parties and own:  # #644: WUWEI's own bug, triage or follow-up ticket, nobody else named.
+        place(connector, 'owner', "the workspace tracker is the owner's own")
+        parties[connector.casefold()]['own'] = True
+    elif not parties:
         place(connector, *_default(config, kind, tool, DEFAULT_CLASS))
     return list(parties.values())
 
@@ -580,6 +584,8 @@ def decide(parties, topics, names, config, trace=None):
             line = f'  rule {number} {source} {render(row)}{note}: ' if trace is not None else ''
             if not _matches(row, party, topics, names):
                 outcome = 'passed'
+            elif party.get('own') and source == 'default' and row['tier'] == 'send':
+                outcome = "passed: the umbrella decides the owner's own tracker"  # #644
             elif strict and row['tier'] == 'send' and party['class'] in ('client', 'public'):
                 outcome = 'ignored under strict'  # #496: strict never sends to a client or the public.
             else:
@@ -642,6 +648,10 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
                     return tier('unclassified', 'nested draft fields disagree')
                 context[key] = value
         rules = config['outbound']
+        # #644: WUWEI's own class ticket in a tracker that is not external is internal. Only the
+        # port sets category, so a seat's MCP payload cannot claim it.
+        own = (port and kind == 'tracker' and context.get('category') in config['tracker']['create']
+               and not _external_tracker(config))
         normalized = _normalize(text).replace('\u2019', "'")
         review_match = (re.fullmatch(REVIEW_REQUEST, text) if kind in ('chat', 'slack')
                         and destinations == [config['shepherd']['review_channel']] else None)
@@ -656,7 +666,7 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
             from wuwei import state
             thread = (ts, state.read_state(root).get('outbound_threads', {}).get(f'{destinations[0]}/{ts}'))
             topics['thread'] = f'thread {ts}'
-        parties = _parties(context, destinations, mention_text, kind, tool, config, code, thread)
+        parties = _parties(context, destinations, mention_text, kind, tool, config, code, thread, own)
         found = decide(parties, topics, [name for name in (tool, kind) if name], config, trace)
         # #533: an internal-state word to a client or public reader is a card naming both; a block row wins.
         outside = next((party for party in parties if party['class'] in ('client', 'public')), None)
@@ -675,8 +685,9 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
             return FINDINGS, 'block'
         # #527, #535: the umbrella decides what no row narrowed, every connector write included;
         # docs.auto and tracker.auto keep deciding WUWEI's own adapter writes (the port path),
-        # which carry a kind or a category. With ask, the rules below say why a draft is held.
-        if not (port and kind in ('docs', 'tracker')) and rules['default_tier'] != 'ask':
+        # which carry a kind or a category, except WUWEI's own class tickets in the owner's
+        # tracker (#644). With ask, the rules below say why a draft is held.
+        if (own or not (port and kind in ('docs', 'tracker'))) and rules['default_tier'] != 'ask':
             if rules['default_tier'] == 'send':
                 return CLEAN, 'send'
             if isinstance(why, list):

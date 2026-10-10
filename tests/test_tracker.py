@@ -120,19 +120,87 @@ BUG = ['tracker', 'create', '--bug', 'item-1', 'Export fails on empty rows',
        '--evidence', 'cli/x.py:12']
 
 
-def test_bug_drafts_once_by_default(ws, capsys):
+@pytest.mark.parametrize('flag,seat,category', [('--bug', 'builder', 'bugs'),
+                                                ('--triage', 'sentinel-quality', 'triage')])
+def test_bug_from_a_seat_creates_under_send(ws, capsys, flag, seat, category):
+    """#644: the finder files in the owner's own tracker; no draft under the send umbrella."""
     root, fake = ws
     seed_ticket(root)
+    command = ['tracker', 'create', flag, *BUG[3:], '--seat', seat]
+    assert main(command) == 0
+    assert 'ENG-9' in capsys.readouterr().out
+    assert state.read_state(root).get('drafts', {}) == {}
+    created, = [row['payload'] for row in day_events(root, 'tracker.created')]
+    assert (created['class'], created['subject'], created['seat']) == (category, 'item-1', seat)
+    assert main(command) == 0
+    assert 'ENG-9' in capsys.readouterr().out
+    assert len(fake.calls) == 1 and len(day_events(root, 'tracker.created')) == 1
+
+
+def test_seat_is_a_closed_list(ws):
+    with pytest.raises(SystemExit) as exc:
+        main(BUG + ['--seat', 'lead'])
+    assert exc.value.code == 2
+
+
+def outbound(root, text):
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(text + '\n')
+
+
+def test_bug_held_under_ask_names_the_card(ws, capsys):
+    root, fake = ws
+    seed_ticket(root)
+    outbound(root, '[outbound]\ndefault_tier = "ask"')
     assert main(BUG) == 1
-    assert 'bin/wuwei drafts approve' in capsys.readouterr().out
+    out = capsys.readouterr().out
     row, = state.read_state(root)['drafts'].values()
-    draft = row['inputs']['draft']
-    assert draft == {'title': 'Export fails on empty rows', 'description': 'Evidence: cli/x.py:12',
-                     'item': 'item-1', 'category': 'bugs', 'parent': 'ENG-1'}
+    assert f'bin/wuwei drafts show {row["id"]} --widget' in out and 'category not in tracker.auto' in out
+    assert 'drafts approve' not in out
+    assert row['inputs']['draft'] == {'title': 'Export fails on empty rows', 'description': 'Evidence: cli/x.py:12',
+                                      'item': 'item-1', 'category': 'bugs', 'parent': 'ENG-1'}
     before = (workspace.day_dir(root) / 'events.jsonl').read_text()
     assert main(BUG) == 1
-    assert row['id'] in capsys.readouterr().out
+    assert capsys.readouterr().out == out
     assert (workspace.day_dir(root) / 'events.jsonl').read_text() == before
+    assert fake.calls == []
+
+
+def test_bug_owner_row_holds(ws, capsys):
+    root, fake = ws
+    seed_ticket(root)
+    outbound(root, '[outbound]\ntiers = [{ tool = "tracker", audience = "owner", tier = "ask" }]')
+    assert main(BUG) == 1
+    out = capsys.readouterr().out
+    assert 'rule 1' in out and 'tool=tracker audience=owner' in out
+    assert day_events(root, 'draft.created') and fake.calls == []
+
+
+def test_bug_held_under_strict_names_the_terminal(ws, capsys):
+    root, fake = ws
+    seed_ticket(root)
+    outbound(root, '[outbound]\ndefault_tier = "ask"\n[security]\nposture = "strict"')
+    assert main(BUG) == 1
+    out = capsys.readouterr().out
+    assert 'bin/wuwei drafts approve draft-' in out and 'host terminal' in out
+
+
+def test_bug_blocked_under_block(ws, capsys):
+    root, fake = ws
+    seed_ticket(root)
+    outbound(root, '[outbound]\ndefault_tier = "block"')
+    assert main(BUG) == 1
+    assert 'outbound.default_tier' in capsys.readouterr().err
+    assert not state.read_state(root).get('drafts') and fake.calls == []
+
+
+def test_bug_in_client_tracker_keeps_outward_rules(ws, capsys):
+    root, fake = ws
+    seed_ticket(root)
+    text = (root / '.wuwei/config.toml').read_text().replace('tracker = "linear"', 'tracker = "github"')
+    (root / '.wuwei/config.toml').write_text(text + '[tracker]\nproject = "outside-org/repo"\n')
+    assert main(BUG) == 1
+    assert 'audience=client' in capsys.readouterr().out
     assert fake.calls == []
 
 

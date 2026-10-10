@@ -508,7 +508,9 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         header.append(f'Gate row: {json.dumps(row)}')
         if gate:
             verdict = (directory / 'decisions' / ('gate-' + name + '.md')).relative_to(root)
-            header.append(f'Verdict file: {verdict} (your only write). Include the retro note here.')
+            header.append(f'Verdict file: {verdict} (the only file you write; an out-of-scope bug you '
+                          'find you file yourself with bin/wuwei tracker create --bug, common rule 7). '
+                          'Include the retro note here.')
             header.append("Assumptions: review the item's Assumptions: in its spec and PR body as "
                           'findings of kind Assumption: (severity, file:line, failure scenario, '
                           'blocks yes or no).')

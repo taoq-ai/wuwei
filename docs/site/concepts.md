@@ -259,9 +259,14 @@ on a terminal command; `plan add` drafts an owner-named item's ticket for its Se
 Under strict the commands are printed for a host terminal. A seat never opens an item
 ticket: the planner does after your card answer.
 Builders and sentinels open a linked bug with
-`bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>"` instead of widening
-the item; the planner opens retro follow-ups with `--follow-up`. Each creation is written once
-per day and writes one `tracker.created` event.
+`bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>" --seat <role>` instead
+of widening the item; the planner opens retro follow-ups with `--follow-up`. The finder files it.
+In the workspace's own tracker a bug, triage or follow-up ticket is internal. Under the send
+umbrella it is created with no draft, under `ask` it is held as a card for the planner, and
+`block` refuses it. A row `{ tool = "tracker", audience = "owner", tier = "ask" }` makes it a
+card under send too. An external tracker keeps the outward rules. Each creation is written
+once per day and writes one `tracker.created` event naming the seat; the board's Tickets
+created table and the retro's Tickets seats filed section list who filed it.
 
 `bin/wuwei tracker log` turns today's events into comments on each ticket, once each:
 decisions, progress (phases, seat starts and stops, fast checks), gate verdicts, the pull
