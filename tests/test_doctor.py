@@ -118,6 +118,7 @@ def ws(tmp_path, monkeypatch):
                'branches': Result(0, ['main']), 'hooks_target': Result(0, {'chain': ''})})
     fakes = {'host': host, 'code_host': code_host, 'vcs': vcs}
     real = registry.load
+    host.hand_over = real('host', {'adapters': {'host': 'local'}}).hand_over  # #645: the real exec
     monkeypatch.setattr(registry, 'load', lambda kind, config: fakes.get(kind) or real(kind, config))
     return SimpleNamespace(root=root, plugin=plugin, bin=bin_dir, probes=probes, service=service,
                            host=host, code_host=code_host, vcs=vcs, installed=installed, mp=monkeypatch)
@@ -1372,3 +1373,186 @@ def test_day_shepherd_row(ws):
     state._write_state(lambda data: data.update(gate_approved=True), ws.root, reserved=False)
     found = row(doctor.diagnose(), 'shepherd')
     assert found['status'] == 'ok' and found['value'] == f'scheduled ({service}), last swept {workspace.now().isoformat()}'
+
+
+class HandedOver(Exception):
+    pass
+
+
+def handing(monkeypatch):
+    def fake(path, argv, env):
+        raise HandedOver(path, argv, env)
+    monkeypatch.setattr(doctor.os, 'execve', fake)
+
+
+def copy(tmp_path, name='other'):
+    """A second install built like the ws fixture's (#645)."""
+    plugin = tmp_path / name
+    for part in ('bin', 'hooks', '.claude-plugin'):
+        (plugin / part).mkdir(parents=True)
+    stub(plugin / 'bin', 'wuwei')
+    (plugin / 'hooks/hooks.json').write_text(json.dumps({'hooks': {'PreToolUse': []}}))
+    (plugin / '.claude-plugin/plugin.json').write_text(json.dumps({'name': 'wuwei', 'version': '0.11.0'}))
+    (plugin / 'MANIFEST.sha256.sig').write_text('sig\n')
+    return plugin
+
+
+def options(**changes):
+    return Namespace(**{'fix': False, 'json': False, 'widget': False, 'apply': None, 'section': None, **changes})
+
+
+@pytest.mark.parametrize('changes, flags', [
+    ({'json': True}, ['--json']), ({'fix': True}, ['--fix']),
+    ({'fix': True, 'widget': True}, ['--fix', '--widget']),
+    ({'fix': True, 'apply': 'calibrate'}, ['--fix', '--apply', 'calibrate']),
+    ({'section': 'pr-flow'}, ['--section', 'pr-flow'])])
+def test_doctor_hands_over_to_the_pointer(ws, tmp_path, monkeypatch, changes, flags):
+    """#645: any copy runs the doctor of the install .wuwei/executable names, same options."""
+    other = copy(tmp_path)
+    monkeypatch.setattr(integrity, 'PLUGIN', other)
+    handing(monkeypatch)
+    with pytest.raises(HandedOver) as handed:
+        doctor.run(options(**changes))
+    path, argv, env = handed.value.args
+    assert path == str(ws.plugin / 'bin/wuwei')
+    assert argv == [path, 'doctor', *flags]
+    assert env['WUWEI_DOCTOR_FROM'] == str(other / 'bin/wuwei')
+    assert env['WUWEI_WORKSPACE'] == str(ws.root)
+
+
+def _pointer(ws, tmp_path, monkeypatch, case):
+    pointer = ws.root / '.wuwei/executable'
+    if case == 'symlinked directory':
+        (tmp_path / 'link').symlink_to(ws.plugin)
+        pointer.write_text(f"{tmp_path / 'link/bin/wuwei'}\n")
+    elif case == 'missing pointer':
+        pointer.unlink()
+    elif case == 'missing file':
+        pointer.write_text(f"{tmp_path / 'gone/bin/wuwei'}\n")
+    elif case == 'not executable':
+        other = copy(tmp_path)
+        (other / 'bin/wuwei').chmod(0o644)
+        pointer.write_text(f"{other / 'bin/wuwei'}\n")
+    elif case == 'already handed over':
+        pointer.write_text(f"{copy(tmp_path) / 'bin/wuwei'}\n")
+        monkeypatch.setenv('WUWEI_DOCTOR_FROM', str(tmp_path / 'first/bin/wuwei'))
+    elif case == 'no workspace':
+        pointer.write_text(f"{copy(tmp_path) / 'bin/wuwei'}\n")
+        monkeypatch.delenv('WUWEI_WORKSPACE')
+        monkeypatch.chdir(tmp_path)
+    elif case == 'relative path':
+        stub(ws.root, 'evil')
+        pointer.write_text('evil\n')
+        monkeypatch.chdir(ws.root)
+    elif case == 'not a launcher':
+        stub(tmp_path, 'evil')
+        pointer.write_text(f"{tmp_path / 'evil'}\n")
+    elif case == 'symlinked pointer':
+        (tmp_path / 'pointer').write_text(f"{copy(tmp_path) / 'bin/wuwei'}\n")
+        pointer.unlink()
+        pointer.symlink_to(tmp_path / 'pointer')
+
+
+@pytest.mark.parametrize('case', ['running launcher', 'symlinked directory', 'missing pointer', 'missing file',
+                                  'not executable', 'already handed over', 'no workspace',
+                                  'relative path', 'not a launcher', 'symlinked pointer'])
+def test_doctor_reports_here_without_a_hand_over(ws, tmp_path, monkeypatch, capsys, case):
+    _pointer(ws, tmp_path, monkeypatch, case)
+    monkeypatch.setattr(doctor.os, 'execve', lambda *a: pytest.fail('handed over'))
+    if case == 'no workspace':
+        monkeypatch.setattr(integrity, 'measure', lambda: Result(0, 'f' * 64))
+    doctor.run(options(json=True))
+    rows = json.loads(capsys.readouterr().out)['rows']
+    assert case == 'already handed over' or not [r for r in rows if r['name'] == 'invoked']
+
+
+def test_doctor_with_a_confirm_callback_never_hands_over(ws, tmp_path, monkeypatch):
+    (ws.root / '.wuwei/executable').write_text(f"{copy(tmp_path) / 'bin/wuwei'}\n")
+    monkeypatch.setattr(doctor.os, 'execve', lambda *a: pytest.fail('handed over'))
+    assert doctor.run(options(fix=True, widget=True), confirm=lambda digest: True) in (0, 1)
+
+
+def test_failed_hand_over_reports_here_with_a_warn_row(ws, tmp_path, monkeypatch, capsys):
+    other = copy(tmp_path)
+    monkeypatch.setattr(integrity, 'PLUGIN', other)
+    old(other)
+    ws.installed.write_text(json.dumps({'version': 2, 'plugins': {
+        'wuwei@wuwei': [{'scope': 'user', 'installPath': str(other)}]}}))
+
+    def fail(path, argv, env):
+        raise OSError(8, 'Exec format error')
+    monkeypatch.setattr(doctor.os, 'execve', fail)
+    assert doctor.run(options(json=True)) == 1
+    rows = json.loads(capsys.readouterr().out)['rows']
+    pointer = str(ws.plugin / 'bin/wuwei')
+    found = row(rows, 'invoked')
+    assert (found['section'], found['status']) == ('install', 'warn')
+    assert pointer in found['value'] and 'OSError' in found['value'] and str(other / 'bin/wuwei') in found['value']
+    assert 'Exec format error' not in json.dumps(found)
+    assert found['fix'] == f'{pointer} doctor'
+    assert [r for r in rows if r['name'] != 'invoked'] == doctor.diagnose()
+
+
+def test_hand_over_runs_the_pointer_launcher(tmp_path):
+    """One real process: python3 -P -m wuwei doctor replaces itself with the pointer's launcher."""
+    import subprocess
+    import sys
+    repository = Path(__file__).resolve().parents[1]
+    root = tmp_path / 'ws'
+    (root / '.wuwei').mkdir(parents=True)
+    (root / '.wuwei/config.toml').write_text('')
+    pointer = tmp_path / 'stub/bin/wuwei'
+    pointer.parent.mkdir(parents=True)
+    pointer.write_text('#!/bin/sh\necho "$WUWEI_DOCTOR_FROM|$*"\n')
+    pointer.chmod(0o755)
+    (root / '.wuwei/executable').write_text(f'{pointer}\n')
+    env = {**os.environ, 'PYTHONPATH': os.pathsep.join([str(repository / 'cli'), str(repository)]),
+           'WUWEI_WORKSPACE': str(root)}
+    env.pop('WUWEI_DOCTOR_FROM', None)
+    done = subprocess.run([sys.executable, '-P', '-m', 'wuwei', 'doctor', '--json'], cwd=root, env=env,
+                          capture_output=True, text=True, timeout=60)
+    assert (done.returncode, done.stdout) == (0, f"{repository / 'bin/wuwei'}|doctor --json\n"), done.stderr
+
+
+def test_either_copy_prints_the_same_findings(ws, tmp_path, monkeypatch):
+    """#645: the handed-over doctor prints the direct rows plus one ok row naming the copies."""
+    other = copy(tmp_path)
+    third = tmp_path / 'third'
+    verdict = json.loads((ws.root / '.wuwei/integrity/verdict.json').read_text())
+    integrity._record(ws.root, 'verdict.json', {**verdict, 'plugin': str(third)})
+    direct = doctor.diagnose()
+    monkeypatch.setenv('WUWEI_DOCTOR_FROM', str(other / 'bin/wuwei'))
+    handed = doctor.diagnose()
+    assert [r for r in handed if r['name'] != 'invoked'] == direct
+    found = row(handed, 'invoked')
+    assert (found['section'], found['status']) == ('install', 'ok')
+    for path in (other / 'bin/wuwei', ws.plugin / 'bin/wuwei', third):
+        assert str(path) in found['value'], path
+    assert doctor.outcome(handed) == doctor.outcome(direct)
+
+    integrity._record(ws.root, 'verdict.json', verdict)
+    assert 'unknown' in row(doctor.diagnose(), 'invoked')['value']
+
+    monkeypatch.setenv('WUWEI_DOCTOR_FROM', str(ws.plugin / 'bin/wuwei'))
+    assert not [r for r in doctor.diagnose() if r['name'] == 'invoked']
+
+    monkeypatch.delenv('WUWEI_DOCTOR_FROM')
+    monkeypatch.setattr(integrity, 'PLUGIN', other)
+    handing(monkeypatch)
+    with pytest.raises(HandedOver) as handed_over:
+        doctor.run(options(json=True))
+    assert handed_over.value.args[0] == str(ws.plugin / 'bin/wuwei')
+
+
+def test_doctor_names_the_hooks_copy_when_it_differs(ws, tmp_path):
+    """#645 F3: run from the pointer copy while the hooks measured another: a warn row names both."""
+    verdict = json.loads((ws.root / '.wuwei/integrity/verdict.json').read_text())
+    assert not [r for r in doctor.diagnose() if r['name'] == 'hooks copy']
+    integrity._record(ws.root, 'verdict.json', {**verdict, 'plugin': str(ws.plugin)})
+    assert not [r for r in doctor.diagnose() if r['name'] == 'hooks copy']
+    third = tmp_path / 'third'
+    integrity._record(ws.root, 'verdict.json', {**verdict, 'plugin': str(third)})
+    found = row(doctor.diagnose(), 'hooks copy')
+    assert (found['section'], found['status']) == ('install', 'warn')
+    assert str(third) in found['value'] and str(ws.plugin) in found['value']
+    assert found['fix'] == f"{third / 'bin/wuwei'} doctor"

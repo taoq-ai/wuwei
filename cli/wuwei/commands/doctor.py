@@ -27,6 +27,7 @@ DOCS = {'install': 'docs/site/recovery.md#integrity-reconfirm',
 CODES = {'ok': 0, 'warn': 1, 'fail': 1, 'unmeasured': 2}
 OUTSIDE = "python3 - <<'EOF'\nprint('gh pr list')\nEOF"  # #323: a heredoc that mentions gh
 REINSTALL = 'reinstall the signed release'
+FROM = 'WUWEI_DOCTOR_FROM'  # #645: set on the handed-over doctor; the launcher that was invoked
 UNLOADED = 'config.toml does not load'
 
 
@@ -132,7 +133,26 @@ def _install(root, config):
     version = '.'.join(map(str, sys.version_info[:3]))
     rows.append(_row('install', 'python', 'ok', version) if sys.version_info >= (3, 11) else
                 _row('install', 'python', 'fail', version, 'install Python 3.11 or newer'))
-    return rows
+    return rows + _invoked(root)
+
+
+def _invoked(root):
+    """#645: on a handed-over doctor, which copy was invoked, which reports, which the hooks measured."""
+    invoked, here = os.environ.get(FROM, ''), integrity.PLUGIN / 'bin/wuwei'
+    try:
+        measured = json.loads((root / '.wuwei/integrity/verdict.json').read_text())['plugin']
+    except (OSError, ValueError, KeyError, TypeError):
+        measured = None
+    measured = measured if isinstance(measured, str) else 'unknown'
+    rows = [] if measured == 'unknown' or Path(measured).resolve() == integrity.PLUGIN.resolve() else [
+        _row('install', 'hooks copy', 'warn', f'the SessionStart hook last measured plugin integrity from '
+             f'{measured}; this report comes from {integrity.PLUGIN}, so the hooks may run another copy',
+             f"{Path(measured) / 'bin/wuwei'} doctor")]
+    if not invoked or Path(invoked).resolve() == here.resolve():
+        return rows
+    return rows + [_row('install', 'invoked', 'ok', f'invoked as {invoked}; reported by {here}, the launcher '
+                 f'.wuwei/executable names; plugin integrity last measured from {measured} '
+                 '(the SessionStart hook measures it)')]
 
 
 def _hooks(root, config):
@@ -956,6 +976,31 @@ def fix(rows, confirm=None, only=None, widget=False):
     return outcome(rows)
 
 
+def _hand_over(args):
+    """#645: run the doctor of the install .wuwei/executable names, so every copy prints the same rows;
+    returns a warn row only when that launcher could not be run."""
+    if os.environ.get(FROM):
+        return []
+    try:
+        root = workspace.find_workspace()
+        config = workspace.load_config(root)
+    except (OSError, ValueError, TypeError, KeyError):
+        return []
+    if config['adapters']['host'] == 'none':
+        return []
+    here, target = integrity.PLUGIN / 'bin/wuwei', integrity.recorded(root)
+    if not (target and os.path.isfile(target) and os.access(target, os.X_OK)
+            and Path(target).resolve() != here.resolve()):
+        return []
+    argv = [target, 'doctor', *[f'--{name}' for name in ('fix', 'json', 'widget') if getattr(args, name)]]
+    argv += [item for name in ('apply', 'section') if getattr(args, name) for item in (f'--{name}', getattr(args, name))]
+    sys.stdout.flush()
+    sys.stderr.flush()
+    failed = registry.load('host', config).hand_over(target, argv, {**os.environ, FROM: str(here)}, root=root)
+    return [_row('install', 'invoked', 'warn', f'could not hand doctor over to {target} '
+                 f'({failed.reason}); this report comes from {here}', f'{target} doctor')]
+
+
 def register(subparsers):
     parser = subparsers.add_parser('doctor', help='Find install, host, workspace and guard problems and their fixes')
     mode = parser.add_mutually_exclusive_group()
@@ -972,8 +1017,9 @@ def run(args, confirm=None):
     if (args.widget or args.apply) and not args.fix or args.widget and args.apply:
         print('wuwei doctor: --widget and --apply each need --fix, not both; use bin/wuwei doctor --fix --widget or bin/wuwei doctor --fix --apply <labels>', file=sys.stderr)
         return 2
+    failed = [] if confirm is not None else _hand_over(args)
     with redirect_stderr(io.StringIO()):  # Adapters print their reasons; the rows carry them.
-        rows = diagnose(args.section)
+        rows = diagnose(args.section) + failed
     if args.json:
         print(json.dumps({'exit': outcome(rows), 'rows': rows}))
         return outcome(rows)

@@ -1,5 +1,6 @@
 """Bounded, stdlib-only host memory measurement."""
 
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -33,3 +34,11 @@ def free_memory(root=None):
         return Result(0, pages * page_size)
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return Result(2, None, f'free memory unmeasured: {exc}')
+
+
+def hand_over(target, argv, env, root=None):
+    """#645: replace this process with target; returns only when the exec failed."""
+    try:
+        os.execve(target, argv, env)
+    except OSError as exc:  # never the message: the caller names the launcher and the class only
+        return Result(2, None, type(exc).__name__)
