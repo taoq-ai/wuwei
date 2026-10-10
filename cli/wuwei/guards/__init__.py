@@ -61,8 +61,10 @@ RAISE = 'pr raise: '
 # the owner's (design 9.2, I1 exempt).
 MERGE = ('merge policy', 'admin merge', 'PR approval', 'branch protection',
          'a shepherd seat never merges')
-# #530: canary and honeytoken egress and owner disposition markers are the records floor.
-RECORDS_FLOOR = ('outward: security.', 'owner disposition markers must be posted by the owner')
+# #530: canary and honeytoken egress and owner disposition markers are the records floor;
+# #725: so is a seat launch naming a brief that does not exist.
+RECORDS_FLOOR = ('outward: security.', 'owner disposition markers must be posted by the owner',
+                 'brief .wuwei/days/')
 
 
 def level(check, levels):
