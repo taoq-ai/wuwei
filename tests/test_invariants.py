@@ -1311,6 +1311,29 @@ def i46(case, rules):
     return rules.memo(('docs missing',), compute)
 
 
+def i44(case, rules):
+    """#665: a numbered list outside a Findings heading is not a finding, and every sentinel
+    agent carries a verdict format whose example the lint accepts."""
+    def compute():
+        from wuwei import verdict
+        from wuwei.commands import agents
+        listed = '1. P1 cli/x.py:1 fails when empty; blocks: yes\n2. read cli/x.py\n'
+        for heading, count in (('Evidence:', 0), ('## Evidence', 0), ('## Findings', 2)):
+            found = verdict.finding_blocks(f'{heading}\n1. ran pytest\n2. read the diff\n'
+                                           if not count else f'{heading}\n{listed}')
+            if len(found) != count:
+                return f'{heading} with a numbered list parsed {found}'
+        for name, text in agents.render(ROOT).items():
+            if not name.startswith('sentinel-'):
+                continue
+            path = rules.root / 'i44/decisions' / f'gate-{name}'
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text.split('## Verdict format\n')[-1].split('```text\n')[-1].split('```')[0])
+            if (result := verdict.lint_file(path, role=name[:-3])) != (0, 'OK: FIX'):
+                return f'{name} verdict example linted {result}'
+        return None
+    return rules.memo(('verdict format',), compute)
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
@@ -1323,7 +1346,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I52': i52,
               'I36': i36, 'I37': i37, 'I42': i42, 'I55': i55,
               'I36': i36, 'I37': i37, 'I42': i42, 'I43': i43,
-              'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46}
+              'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46,
+              'I36': i36, 'I37': i37, 'I44': i44}
 
 
 def project(case):
@@ -1350,7 +1374,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I52': (0,),
          'I55': OUTWARD,
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I42': (), 'I43': (),
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': ()}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (),
+         'I44': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 

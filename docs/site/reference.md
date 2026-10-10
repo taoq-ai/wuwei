@@ -366,11 +366,12 @@ The lint rules:
 - A `Probe:` or `Mutation:` line; write `not run` when the seat could not run one.
 - `Blocked:`, `Gap:` and `Change:` once each.
 - Quality adds exactly one `Simplicity:` and one `Design:` row.
-- Arch, quality and security add class-sweep lines such as `VAL: PASS`, `TEST: N.A.` or `AUTH: FINDING <id>`.
+- Arch, quality and security add class-sweep lines such as `VAL: PASS`, `TEST: N.A.` or `AUTH: FINDING <id>`. Write the class name, never the word `CLASS`.
 - A non-PASS verdict needs at least one finding. A PASS verdict carries no `blocks: yes` finding. A FIX verdict needs at least one `blocks: yes` finding; a verdict whose findings are all `blocks: no` is a PASS.
-- A finding starts on a bullet or table row, a line beginning with its severity, a `Severity:` line or an `Assumption:` line. A numbered line or an id line also starts one (`F1`, `Q1`, `S1`, `A1`, `G1`, `N1`, `Finding 1`, optionally in brackets). An `Assumption:` finding reviews an assumption recorded under `Assumptions:` in the item's spec or PR body. It needs the same four fields.
+- A finding starts on a bullet or table row, a line beginning with its severity, a `Severity:` line or an `Assumption:` line. An id line also starts one (`F1`, `Q1`, `S1`, `A1`, `G1`, `N1`, `Finding 1`, optionally in brackets). A numbered line starts one under a `Findings` heading, when a severity, `Severity:` or an id follows the number, or when it carries `blocks:`. A numbered list elsewhere, such as under `Evidence`, is prose. An `Assumption:` finding reviews an assumption recorded under `Assumptions:` in the item's spec or PR body. It needs the same four fields.
 - Each finding carries a severity (P0 to P3, critical, high, medium, low or info), a `file:line` (or `Lnn` for docs), `blocks: yes|no`, and a failure scenario (for example "fails when", "would" or "impact").
 - Fenced blocks, quoted lines and HTML comments are ignored.
+- A rejection quotes the line it refused and the accepted form. The forms live in one table in `cli/wuwei/verdict.py`; `bin/wuwei agents build` renders it as the Verdict format section of every sentinel agent and fails when a charter carries its own copy.
 
 The lint runs in three places. A Write, Edit, MultiEdit or NotebookEdit of a `decisions/gate-*.md` file is linted with the seat's role. A Bash call that names `gate-` and can write lints today's gate files, each with the role its file name implies (`quality`, `arch` or `security`). A seat's own gate file is linted again when it stops. A Bash call that only reads, such as `cat`, `grep` or `shasum`, is not linted and records no rejection.
 

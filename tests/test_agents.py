@@ -91,3 +91,47 @@ def test_checked_in_agents_match_charters_and_allowlist():
     assert all(matrix.values())
     assert all('Agent' not in matrix[role] for role in ROLES if role != 'planner')
     assert all(tool not in matrix['builder'] for tool in ('WebFetch', 'WebSearch'))
+
+
+SENTINELS = ('sentinel-arch', 'sentinel-quality', 'sentinel-security', 'sentinel-goal')
+
+
+@pytest.mark.parametrize('role', SENTINELS)
+def test_every_sentinel_verdict_example_passes_the_lint(tmp_path, role):
+    # #665: the example each checked-in sentinel agent shows is a verdict the lint accepts.
+    from wuwei import verdict
+    text = (ROOT / 'agents' / f'{role}.md').read_text(encoding='utf-8')
+    example = text.split('## Verdict format\n')[1].split('```text\n')[1].split('```')[0]
+    path = tmp_path / 'decisions' / f'gate-{role}.md'
+    path.parent.mkdir()
+    path.write_text(example, encoding='utf-8')
+    assert verdict.lint_file(path, role=role) == (0, 'OK: FIX')
+
+
+def test_only_sentinels_carry_the_verdict_format(plugin):
+    from wuwei import verdict
+    for role in ROLES:
+        text = (ROOT / 'agents' / f'{role}.md').read_text(encoding='utf-8')
+        assert ('## Verdict format' in text) == (role in SENTINELS), role
+    assert agents.build(plugin) == 0
+    for role in ROLES:
+        body = (plugin / 'agents' / f'{role}.md').read_text(encoding='utf-8')
+        assert (('# _common body\n\n' + verdict.section()) in body) == (role in SENTINELS), role
+
+
+@pytest.mark.parametrize('name', ['_common', 'sentinel-arch'])
+def test_charter_with_its_own_verdict_format_fails_build(plugin, capsys, name):
+    charter = plugin / 'charters' / f'{name}.md'
+    charter.write_text(charter.read_text(encoding='utf-8') + '## Verdict format\n', encoding='utf-8')
+    assert agents.build(plugin) == 2
+    assert agents.check(plugin) == 2
+    assert 'Verdict format' in capsys.readouterr().err
+    assert not list((plugin / 'agents').glob('*.md'))
+
+
+def test_format_change_without_rebuild_is_drift(plugin, monkeypatch, capsys):
+    from wuwei import verdict
+    assert agents.build(plugin) == 0
+    monkeypatch.setitem(verdict.FORMAT, 'Probe', ('`Probe: <changed>`', 'Probe: not run'))
+    assert agents.check(plugin) == 1
+    assert 'drift in sentinel-' in capsys.readouterr().err
