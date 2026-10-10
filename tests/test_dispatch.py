@@ -169,7 +169,7 @@ def test_delta_nonblocking_residual_becomes_review_note(root):
     record(root, 'security', 'security-1', PASS)
     state.transition('A', 'fix', root)
     state.transition('A', 'delta', root)
-    residual = FIX.replace('blocks: yes', 'blocks: no')
+    residual = FIX.replace('blocks: yes', 'blocks: no').replace('Verdict: FIX', 'Verdict: PASS')
     record(root, 'quality', 'quality-2', residual + 'Simplicity: none\nDesign: none\n', 'delta')
     outcome = dispatch.next_step('A', root)
     assert outcome['action'] == 'raise'
@@ -1799,7 +1799,8 @@ def test_issue_acceptance_document_item_ships_its_notes_after_two_rounds(root):
     [action] = outcome['seats']
     assert action['action'] == 'continue' and action['resume'] == 'agent-goal-1'
     assert action['feedback'].startswith('Re-read:') and head in action['feedback']
-    note = FIX.replace('blocks: yes', 'blocks: no').replace('abc1234', '1234abc')
+    note = FIX.replace('blocks: yes', 'blocks: no').replace('abc1234', '1234abc').replace(
+        'Verdict: FIX', 'Verdict: PASS')
     record(root, 'goal', 'goal-1', note, 'delta', agent_id='agent-goal-1', head='1234abc' + '0' * 33)
     outcome = dispatch.next_step('A', root)
     assert outcome['action'] == 'raise' and 'cli/example.py:12' in outcome['notes'][0]
@@ -1854,3 +1855,35 @@ def test_a_cap_of_one_escalates_the_first_blocking_delta(root):
     outcome = dispatch.next_step('A', root)
     assert outcome['action'] == 'escalate' and outcome['reason'].startswith('round cap 1 reached: quality still blocks:')
     assert len(fix_events(root)) == 1
+
+
+ASSUMED_NOTE = ('Assumption: medium specs/x/spec.md:12 assumed one process; '
+                'would break when two processes share it; blocks: no\n')
+
+
+def test_issue_677_receive_keeps_q_findings_blocking_first(root):
+    text = ('Verdict: FIX\nHead: abc1234\n\n## Non-blocking findings\n\n'
+            'N1. Severity: low. File: src/c.py:5. blocks: no.\nFailure scenario: would log twice.\n\n'
+            '## Blocking findings\n\n'
+            'Q1. Severity: medium. File: src/a.py:80. blocks: yes.\n'
+            'Failure scenario: a dropped socket would hang.\n\n'
+            'Q2. Severity: high. File: src/b.py:9. blocks: yes.\n'
+            'Failure scenario: an empty file would crash the reader.\n\n'
+            + ASSUMED_NOTE + '\nProbe: not run\nVAL: PASS\nBlocked: none\nGap: none\nChange: none\n'
+            'Simplicity: none\nDesign: none\n')
+    value = record(root, 'quality', 'quality-1', text)
+    assert value['blocks'] is True
+    assert value['findings'][0].startswith('Q1.') and value['findings'][1].startswith('Q2.')
+    assert all('blocks: yes' in finding for finding in value['findings'][:2])
+    assert [note.split(' ')[0] for note in value['notes']] == ['N1.', 'Assumption:']
+
+
+def test_issue_677_receive_refuses_fix_without_parsed_blocker(root):
+    from wuwei import dispatch
+    text = ('Verdict: FIX\nHead: abc1234\n### Q1 high\n'
+            'The cache in src/a.py:80 is never cleared, so a reload would serve stale data; blocks: yes\n'
+            + ASSUMED_NOTE + 'Probe: not run\nVAL: PASS\nBlocked: none\nGap: none\nChange: none\n'
+            'Simplicity: none\nDesign: none\n')
+    with pytest.raises(dispatch.Refused, match='FIX verdict but no blocking finding parsed'):
+        record(root, 'quality', 'quality-1', text)
+    assert state.read_state(root)['gate_verdicts'] == {}

@@ -175,10 +175,10 @@ def test_pr_gate_accepts_nonblocking_delta_residual(case):
             'verdict': 'FIX' if role == 'quality' else 'PASS', 'head': OLD,
             'file': str(path.relative_to(root)), 'blocks': role == 'quality', 'notes': []}
     delta = decisions / 'gate-9-quality-delta.md'
-    delta.write_text(evidence(new_head, 'FIX') +
+    delta.write_text(evidence(new_head, 'PASS') +
         '- P3 | cli/example.py:12 | fails when empty | blocks: no\n')
     records['9:quality:delta'] = {
-        'item': '9', 'role': 'quality', 'round': 'delta', 'verdict': 'FIX',
+        'item': '9', 'role': 'quality', 'round': 'delta', 'verdict': 'PASS',
         'head': new_head, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
     state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
     assert guard().gate_check(root, root / 'repo', workspace.load_config(root), item='9') == (0, '')
