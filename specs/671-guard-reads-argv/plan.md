@@ -49,7 +49,7 @@ tests.
 - VII security: the reader exemption is per call (any non-reader voids it), so a pipe into
   `sh`, `xargs ... sh -c @` or an interpreter is refused as today; variables are never
   resolved to a value, only named for a refusal.
-- Workflow: the changed guard rule adds 9.2 row I36 and its `tests/test_invariants.py`
+- Workflow: the changed guard rule adds 9.2 row I41 and its `tests/test_invariants.py`
   check.
 
 ## Design
@@ -175,4 +175,4 @@ way `target` does if the builder finds a path where it is not.
   posture, and the `resolved:` line and level for constructed forms.
 - `tests/test_hooks.py::test_unaccounted_shell_mention_blocks_hook`: its `echo "git push"`
   is now data; use a non-reader such as `awk 'BEGIN {system("git push")}'`.
-- `tests/test_invariants.py`: `i36`.
+- `tests/test_invariants.py`: `i41`.

@@ -189,7 +189,7 @@ guards on their fixtures; the hook in process for the reason.
   redirect targets, assignments, wrapper options, `xargs`, `command -v`, the extra `sh -c`
   arguments, the hidden-mention check of line 337, ANSI-C quoting, nonliteral command names,
   and every guard's own rules.
-- **FR-008**: Invariant I36 in design 9.2 and `tests/test_invariants.py`: a Bash call is
+- **FR-008**: Invariant I41 in design 9.2 and `tests/test_invariants.py`: a Bash call is
   judged by what it runs: prose in a reader's text never refuses an all-reader call, a git
   or gh name built by quotes, a line continuation, `eval` or `sh -c` is judged as the plain
   command, and a variable-built one is refused naming it.
@@ -222,7 +222,7 @@ guards on their fixtures; the hook in process for the reason.
   strict.
 - The reader set is `shell.reads` as it is; widening it (`tee`, `printf`) is not asked.
 - Naming happens once in the hook for every guard, not in each guard's reason.
-- The next free invariant id is I36; if another item lands I36 first, this one takes the
+- The next free invariant id is I41; if another item lands I41 first, this one takes the
   next free id.
 - The owner message relayed with this run (items 29 to 31: merge soak, merge check wording,
   launch registration) does not describe this issue; this spec follows issue #671 (item 36).

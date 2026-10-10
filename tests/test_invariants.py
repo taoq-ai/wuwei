@@ -1230,6 +1230,9 @@ def i39(case, rules):
                     return f'{marker} blocks: no linted {message}'
         return None
     return rules.memo(('fix needs a blocker',), compute)
+
+
+def i41(case, rules):
     """#671: a Bash call is judged by what it runs: git or gh words in a reader's text pass
     when no command of the call can run them; a name built by quotes, a line continuation,
     eval or sh -c parses to the plain command; one built from a variable is named, not lowered."""
@@ -1350,7 +1353,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I52': i52,
               'I36': i36, 'I37': i37, 'I42': i42, 'I55': i55,
               'I36': i36, 'I37': i37, 'I42': i42, 'I43': i43,
-              'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46}
+              'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46,
+              'I36': i36, 'I37': i37, 'I41': i41}
 
 
 def project(case):
@@ -1377,7 +1381,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I52': (0,),
          'I55': OUTWARD,
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I42': (), 'I43': (),
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': ()}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (),
+         'I41': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
