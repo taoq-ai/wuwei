@@ -550,8 +550,9 @@ def test_continued_sentinel_delta_head_matches_seat_head(root):
     verdict = workspace.day_dir(root) / 'decisions/gate-quality-1.md'
     delta = PASS + 'Simplicity: none\nDesign: none\n'
     verdict.write_text(delta.replace('abc1234', '9999999'))
-    with pytest.raises(dispatch.Refused, match='verdict HEAD differs from dispatched brief'):
+    with pytest.raises(dispatch.Refused, match='is not the delta head') as refused:
         dispatch.receive('A', 'quality', 'quality-1', 'delta', root)
+    assert '9999999' in str(refused.value) and 'def5678' in str(refused.value)
     verdict.write_text(delta.replace('abc1234', 'def5678'))
     assert dispatch.receive('A', 'quality', 'quality-1', 'delta', root)['head'] == 'def5678'
 
@@ -640,7 +641,7 @@ def test_logged_gate_brief_becomes_launch_action(root):
     assert dispatch.next_step('A', root)['seats'] == []
 
 
-def test_delta_offers_one_continuation_of_the_stopped_seat(root):
+def test_delta_offers_one_continuation_of_the_stopped_seat(root, monkeypatch):
     from wuwei import brief, dispatch
 
     tree = built(root)
@@ -648,6 +649,7 @@ def test_delta_offers_one_continuation_of_the_stopped_seat(root):
     state._write_state(lambda data: data['seats']['quality-1'].update(
         agent_id='agent-quality-1', head='abc1234' + '0' * 33), root, reserved=False)
     dispatch.next_step('A', root)
+    live_head(monkeypatch, 'def5678' + '0' * 33)
     state.transition('A', 'delta', root)
     outcome = dispatch.next_step('A', root)
     assert outcome['roles'] == ['quality']
@@ -1364,6 +1366,7 @@ def opinion_fix_round(root, monkeypatch, delta_text, cap=''):
     [continued] = [call for call in runtime.calls if call[0] == 'continue']
     assert continued[1] == 'j1' and continued[2].startswith('Delta review:')
     assert 'gate-q-1-codex.md' in continued[2]
+    assert 'Head: HEAD' not in continued[2]  # #669: the opinion delta names the real head
     assert value['round'] == 'delta' and (value['runtime'], value['model']) == ('codex', 'm1')
     return dispatch.next_step('A', root)
 
@@ -1788,7 +1791,7 @@ def test_open_fix_from_delta_opens_the_next_round_and_moves_the_verdicts(root, m
         build.open_fix('A', 'Gate quality FIX.', root=root)
 
 
-def test_issue_acceptance_document_item_ships_its_notes_after_two_rounds(root):
+def test_issue_acceptance_document_item_ships_its_notes_after_two_rounds(root, monkeypatch):
     # #623: FIX at rounds one and two, then non-blocking notes: the notes go to the PR.
     from wuwei import dispatch
     from wuwei.commands import next as next_command
@@ -1803,6 +1806,7 @@ def test_issue_acceptance_document_item_ships_its_notes_after_two_rounds(root):
     assert dispatch.next_step('A', root) == _fix_action(['goal'])
     data = state.read_state(root)
     assert data['builds']['A']['fix_rounds'] == 2 and 'A:goal:round1' in data['gate_verdicts']
+    live_head(monkeypatch, '1234abc' + '0' * 33)
     state.transition('A', 'delta', root)
     outcome = dispatch.next_step('A', root)
     assert outcome['roles'] == ['goal']
@@ -2040,3 +2044,76 @@ def test_build_next_exits_one_on_a_gate_refusal_or_escalation(root, monkeypatch,
     assert (code, found) == (1, None) and 'builder must stand down before gates' in err
     monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: {'action': 'escalate', 'reason': 'r'})
     assert build_next(capsys, root)[:2] == (1, {'action': 'escalate', 'reason': 'r'})
+
+
+def live_head(monkeypatch, sha):
+    """#669: the worktree head reads sha; every other port is the real one."""
+    from wuwei import registry
+
+    class VCS:
+        def head(self, tree, *, root):
+            return registry.Result(0, {'sha': sha})
+    real = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: VCS() if kind == 'vcs' else real(kind, config))
+
+
+OLD, NEW = 'abc1234' + '0' * 33, 'def5678' + '0' * 33
+
+
+def delta_round(root, monkeypatch):
+    from wuwei import dispatch
+
+    tree = built(root)
+    gate_fix(root)
+    state._write_state(lambda data: data['seats']['quality-1'].update(
+        agent_id='agent-quality-1', head=OLD), root, reserved=False)
+    dispatch.next_step('A', root)
+    live_head(monkeypatch, NEW)  # the fix round committed
+    state.transition('A', 'delta', root)
+    return tree, dispatch.next_step('A', root)
+
+
+def delta_head_events(root):
+    rows = [json.loads(line) for line in (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()]
+    return [{key: row['payload'][key] for key in ('item', 'seat', 'head')}
+            for row in rows if row['kind'] == 'gate.delta_head']
+
+
+def test_issue_acceptance_delta_dispatch_records_and_names_the_delta_head(root, monkeypatch):
+    from wuwei import dispatch
+
+    _, outcome = delta_round(root, monkeypatch)
+    seat = state.read_state(root)['seats']['quality-1']
+    assert seat['delta_head'] == NEW and seat['head'] == OLD
+    [action] = outcome['seats']
+    assert action['action'] == 'continue' and action['feedback'].startswith('Delta review:')
+    assert NEW in action['feedback']
+    assert delta_head_events(root) == [{'item': 'A', 'seat': 'quality-1', 'head': NEW}]
+    dispatch.next_step('A', root)
+    assert len(delta_head_events(root)) == 1
+
+
+def test_issue_acceptance_in_session_reviewer_delta_verdict_is_received_on_the_delta_head(root, monkeypatch):
+    from wuwei import dispatch
+
+    tree, _ = delta_round(root, monkeypatch)
+    directory = workspace.day_dir(root)
+    (directory / 'briefs/quality-1.md').write_text(f'HEAD: {OLD}\nWorktree: {tree}\n')
+    verdict = directory / 'decisions/gate-quality-1.md'
+    delta = PASS + 'Simplicity: none\nDesign: none\n'
+    verdict.write_text(delta)
+    with pytest.raises(dispatch.Refused) as refused:
+        dispatch.receive('A', 'quality', 'quality-1', 'delta', root)
+    assert 'abc1234' in str(refused.value) and NEW in str(refused.value)
+    assert 'A:quality:delta' not in state.read_state(root)['gate_verdicts']
+    verdict.write_text(delta.replace('abc1234', 'def5678'))
+    result = dispatch.receive('A', 'quality', 'quality-1', 'delta', root)
+    assert result['head'] == 'def5678' and result['round'] == 'delta'
+
+
+def test_delta_head_event_is_reserved_and_silent():
+    from wuwei import signal
+    from wuwei.commands import event
+
+    assert event.EVENT_PRODUCERS['gate.delta_head'] == 'wuwei dispatch next'
+    assert 'gate.delta_head' in signal.SILENT

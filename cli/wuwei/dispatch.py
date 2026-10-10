@@ -554,9 +554,17 @@ def _seats(root, data, item, roles, round_name, commands):
                                 + ' --round delta')
             if not delta_due(data, item, role, name):
                 continue
-            action = brief.seat_action('sentinel-' + role, root / seat['brief'],
-                                       data['items'][item]['worktree'], root)
-            feedback = _delta_feedback(first, depth(data['items'][item], gate=True) == 'light')
+            # #669: the fix round moved the head; record it so an in-session resume can
+            # write a true Head: line ('head' stays the initial head for delta_due).
+            worktree = data['items'][item]['worktree']
+            head = brief.read(registry.load('vcs', workspace.load_config(root)).head,
+                              str((root / worktree).resolve()), root=root)['sha']
+            if seat.get('delta_head') != head:
+                state._write_state(lambda fresh: fresh['seats'][name].update(delta_head=head),
+                                   root, reserved=False, kind='gate.delta_head',
+                                   payload={'item': item, 'seat': name, 'head': head})
+            action = brief.seat_action('sentinel-' + role, root / seat['brief'], worktree, root)
+            feedback = _delta_feedback(first, depth(data['items'][item], gate=True) == 'light', head)
             extra = {'action': 'continue', 'resume': seat['agent_id'], 'feedback': feedback,
                      'prompt': action['prompt'] + '\n\n' + feedback}
         receive = 'wuwei dispatch receive ' + ' '.join(map(shlex.quote, (item, role, name)))
@@ -595,13 +603,13 @@ def _opinion_name(data, rows, item, gate, round_name):
     return logged[-1]['name'] + '-' + gate.partition('@')[2] if logged else None
 
 
-def _delta_feedback(first, light=False):
+def _delta_feedback(first, light=False, head='HEAD'):
     if light:  # #567: no delta procedure at light; the same seat re-reads its findings
-        return (f'Re-read: the fix round changed {first["head"]}..HEAD. Re-read the diff for your '
-                f'blocking findings and rewrite only the Verdict: and Head: lines of {first["file"]}; '
-                'mark each finding the fix closed blocks: no.')
-    return (f'Delta review: the fix round changed {first["head"]}..HEAD. Re-check your '
-            f'findings at the current HEAD and rewrite {first["file"]}. A new finding on lines '
+        return (f'Re-read: the fix round changed {first["head"]}..{head}. Re-read the diff for your '
+                f'blocking findings and rewrite only the Verdict: and Head: lines of {first["file"]}, '
+                f'with Head: {head}; mark each finding the fix closed blocks: no.')
+    return (f'Delta review: the fix round changed {first["head"]}..{head}. Re-check your '
+            f'findings at {head} and rewrite {first["file"]} with Head: {head}. A new finding on lines '
             'this fix round did not change is blocks: no, unless it is a trust-boundary security '
             'finding.')  # #623: no scope widening after round one
 
@@ -658,7 +666,13 @@ def receive(item, role, name, round_name='initial', root=None):
     if brief_path.resolve() != directory / 'briefs' / f'{name}.md':
         raise Refused(f'seat brief path does not match gate name; receive the seat with the name its brief was written for (bin/wuwei dispatch next {item})')
     brief_text = brief_path.read_text(encoding='utf-8')
-    if (f'HEAD: {head}' not in brief_text and f'Head: {head}' not in brief_text
+    # #669: a delta seat answers to the head the fix round left, never the stale brief head
+    expected = str(seat.get('delta_head') or seat.get('head') or '') if round_name == 'delta' else ''
+    if expected:
+        if not expected.lower().startswith(head.lower()):
+            raise Refused(f'verdict Head {head} is not the delta head {expected}; have the sentinel '
+                          f'write the verdict with Head: {expected}, then receive it again')
+    elif (f'HEAD: {head}' not in brief_text and f'Head: {head}' not in brief_text
             and not str(seat.get('head') or '').lower().startswith(head.lower())):
         raise Refused('verdict HEAD differs from dispatched brief; have the sentinel write the verdict with the Head from its brief, then receive it again')
     trees = re.findall(r'^Worktree: (.+)$', brief_text, re.M)
@@ -755,6 +769,7 @@ def opinion(item, root=None):
         ceiling = calibrate.host(root, config, running=running, policy=data['seat_policy'])['seats']  # #528
         if running >= ceiling:
             raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish. Or the owner raises host.seats with bin/wuwei config set in a host terminal')
+        head = brief.read(registry.load('vcs', config).head, row['worktree'], root=root)['sha']
         if seat is None:
             if round_name == 'delta':
                 raise Refused(f'second-opinion seat is missing; run bin/wuwei why {item}, then bin/wuwei dispatch next {item}')
@@ -772,12 +787,11 @@ def opinion(item, root=None):
             # the builder's own thread when the builder runs on the same runtime.
             if data['seat_policy'].get('builder', {}).get('runtime') == second['runtime']:
                 raise Refused('second opinion cannot resume on the builder runtime; set gates.second_opinion to a runtime other than the builder. The owner runs bin/wuwei config set in a host terminal')
-            feedback = (_delta_feedback(first) if round_name == 'delta' else
+            feedback = (_delta_feedback(first, head=head) if round_name == 'delta' else
                         'Your verdict file was rejected by the verdict lint; rewrite '
                         f'{directory.relative_to(root)}/decisions/gate-{name}.md to the verdict '
                         'contract in your brief.')
             job = build._data(runtime.continue_job(seat['job'], feedback, root=root), 'continuation')
-        head = brief.read(registry.load('vcs', config).head, row['worktree'], root=root)['sha']
         seat = {'id': name, 'role': sentinel, 'item': item, 'brief': relative, 'head': head,
                 'status': 'running', 'started_at': workspace.now().isoformat(),
                 'runtime': second['runtime'], 'model': second['model'], 'job': job}
