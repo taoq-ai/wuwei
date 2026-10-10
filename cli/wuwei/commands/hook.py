@@ -276,8 +276,8 @@ def posture(payload, refusals, root):
             return ''
     for check, reason, code in refusals:
         guard, area, decided, line = level(check, levels)
-        if reason.startswith(RECORDS_FLOOR):
-            line = 'posture: records = block (floor; no setting lowers it)'
+        if reason.startswith(RECORDS_FLOOR):  # #725: the floor blocks, not only labels
+            decided, line = 'block', 'posture: records = block (floor; no setting lowers it)'
         elif line.endswith('(owner-only action; no setting lowers it)') and name != 'strict' \
                 and not reason.startswith(MERGE):
             line = ''  # #530: below strict an owner-only refusal names its card or its fix
