@@ -637,6 +637,14 @@ checks, decision routing and every 9.2 invariant hold at every pace (I15 to I17)
   ceiling refusal names `host.seats`. Once the build is done and the item is at its gates, `build next`
   answers what `dispatch next` decides (#666). At raise both return the shepherd's brief
   command, then its launch, in the gate shape (#783).
+  answers what `dispatch next` decides (#666).
+- Broken main amendment (owner, 2026-10-10, #648). A fast check that fails only on files the
+  item did not change is main's, not the item's: the build loop records it under
+  `main_broken` with the check and the first failing path, opens one fix item for it through
+  `plan add` (one per file per repository), and sets the item's build action to `wait`
+  naming that fix item instead of a builder round. A held item takes no seat. Once the fix
+  item merges (or is parked), `build next` returns a `continue` that tells the builder to
+  rebase and rerun its checks. A test failure is never held.
 - Cost per iteration (owner, 2026-09-28). Every dispatch records the runtime's reported
   usage (input and output tokens, cost when the runtime reports it, model, duration) as a
   `seat.usage` event per iteration. The steward reports cost per item, per role and per
@@ -2079,6 +2087,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I51 | A word is the CLI only in program position: a grep, rg or git grep pattern and an awk or sed script that can neither run nor write pass the records guard in every posture; an awk or sed that runs, and an argument-echoing stage piped into an executor, are refused in every posture; a CLI path in a leading literal assignment is judged as the CLI | per posture, through the hook, `grep -n "wuwei decide" notes.txt \| sort` and `x=bin/wuwei; $x state set a b`; `check_bash` for a seat on `awk 'BEGIN{system("bin/wuwei decide D-1 a")}'` (2) and on `x=bin/wuwei; $x decide D-1 a` (1) | #730; argument words judged in `protect_state._owner_action`, variables resolved in `shell.leading_variables` |
 | I60 | A CI-fix item's gate verdict is accepted only with one result row per run step of each job the item records, and never as PASS with a failing step; an item that records no job lints as before | `verdict.lint` on two steps with rows for both, one, a duplicate and a FAIL under PASS, and on one row with no steps | #733; the steps come from `items.<item>.ci_jobs` and the worktree's workflow through `brief.ci_steps` |
 | I59 | A blocking gate verdict never ends in a bare escalate: dispatch next answers a fix round, or an escalate naming its decision record and the command that answers it; a PARK or ESCALATE verdict's card is written once, for the planner below strict and routed to the owner under strict | per posture, `dispatch.next_step` twice on a light item whose quality verdict is ESCALATE: one D-n, the same id twice, command `wuwei decision route D-n` below strict and `wuwei decision show D-n --widget` under strict with the card in `decision_routes` | #732; `tests/test_dispatch.py` runs both commands through `main` |
+| I57 | A fast-check failure holds an item on a fix item only when every failing check names lint locations, and only on files the item did not change; a test failure, a failure on a changed file or one with no location goes back to its builder | `fast_checks.unchanged` on a lint location on an unchanged file, then on a changed file, a missing file, a `..` path, test ids, a pytest `ERROR` line, no location, and one held failure beside one own failure | #648; hold, release and the fix item in `tests/test_main_broken.py` |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 
