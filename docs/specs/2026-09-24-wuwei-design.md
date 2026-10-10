@@ -1485,7 +1485,9 @@ set <item> ticket=<id>`, or, while a ticket draft for it is pending, `bin/wuwei 
   contract and so under the `seats` area (9.1).
 
 The tier that decides is the item's recorded gate tier when there is one, else the lead's
-tier; an item with neither is not exempt. An exempt item gets one `tracker.skipped` event at
+tier; an item with neither is not exempt. An unticketed item whose deciding tier is `light`
+and not in `skip_tiers` reads `later` and is not refused (#646, I56): the gate opens its
+ticket, or `close` names `bin/wuwei tracker create <item>` after it ships. An exempt item gets one `tracker.skipped` event at
 admission. A gate tier that later rises out of `skip_tiers` makes `dispatch next` refuse until
 the ticket exists.
 
@@ -2047,6 +2049,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I44 | A numbered list outside a Findings heading is not a finding, and every sentinel agent carries the verdict format the lint accepts | `verdict.finding_blocks` on an `Evidence` numbered list (no block) and a `Findings` numbered list (one block per line); `verdict.lint_file` on the example in each `agents.render(ROOT)` sentinel agent with that role (`OK: FIX`) | #665; one table in `verdict.FORMAT`, one parser in `verdict.finding_blocks`, rendered by `agents.render` |
 | I50 | Under observe and guarded a traces guard that did not finish in time never fails a tool call: a `TimeoutError` is a warning naming its elapsed milliseconds, recorded as `traces.slow`; strict refuses it | per posture, `traces.check` with the trace read raising `TimeoutError` | #659; any other failure keeps the `traces.gap` path |
 | I41 | A Bash call is judged by what it runs: git or gh words in the text of a call whose every command is a reader or a guarded program never refuse it; a git or gh name built by quotes, a line continuation, eval or sh -c is judged as the plain command; one built from a variable is refused naming it | normalize, constructed and unreadable on the reader, runnable-text, split-name and variable tables | #671; the guard and hook cases stay in tests/test_commit_push.py, tests/test_pr_guards.py and tests/test_parser_warns.py |
+| I56 | A small item never waits for its ticket: an unticketed item whose deciding tier is light reads `later` in `tracker.check`, which no refusal point refuses; once its gate tier is standard or full it reads `missing` again | per posture, `tracker.check` on an unticketed item with lead tier light, and with lead tier light and gate tier standard | #646; the gate opens its ticket, or close names `tracker create` after it ships |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 
