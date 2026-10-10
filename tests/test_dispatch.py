@@ -244,6 +244,9 @@ def test_receive_accepts_short_current_worktree_head(root, monkeypatch):
         def head(self, tree, *, root):
             return Result(0, {'sha': 'a' * 40})
 
+        def status(self, tree, *, root):
+            return Result(0, [])
+
     monkeypatch.setattr(registry, 'load', lambda kind, config: VCS())
     directory = workspace.day_dir(root)
     (directory / 'briefs').mkdir(exist_ok=True)
@@ -256,6 +259,47 @@ def test_receive_accepts_short_current_worktree_head(root, monkeypatch):
         'brief': str((directory / 'briefs/arch.md').relative_to(root))}),
         root, reserved=False)
     assert dispatch.receive('A', 'arch', 'arch', root=root)['verdict'] == 'PASS'
+
+
+LEFT = [{'path': 'pkg/__pycache__/mod.cpython-311.pyc', 'index': '?', 'worktree': '?', 'original_path': None},
+        {'path': 'probe.py', 'index': '?', 'worktree': '?', 'original_path': None}]
+
+
+@pytest.mark.parametrize('left', ['files', 'clean', 'failed'])
+def test_receive_warns_on_files_the_round_left(root, monkeypatch, capsys, left):  # #672
+    from types import SimpleNamespace
+    from wuwei import registry
+    from wuwei.__main__ import main
+    from wuwei.registry import Result
+
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    tree = root / 'tree'
+    tree.mkdir()
+    status = {'files': Result(0, LEFT), 'clean': Result(0, []),
+              'failed': Result(2, reason='git status failed')}[left]
+    vcs = SimpleNamespace(head=lambda *args, **kwargs: Result(0, {'sha': 'abc1234'}),
+                          status=lambda *args, **kwargs: status)
+    monkeypatch.setattr(registry, 'load', lambda kind, config: vcs)
+    directory = workspace.day_dir(root)
+    (directory / 'briefs').mkdir(exist_ok=True)
+    (directory / 'decisions').mkdir(exist_ok=True)
+    (directory / 'briefs/arch.md').write_text(f'Head: abc1234\nWorktree: {tree}\n')
+    (directory / 'decisions/gate-arch.md').write_text(PASS)
+    state._write_state(lambda data: data['seats'].update(arch={
+        'item': 'A', 'role': 'sentinel-arch', 'status': 'stopped',
+        'brief': str((directory / 'briefs/arch.md').relative_to(root))}), root, reserved=False)
+    code = main(['dispatch', 'receive', 'A', 'arch', 'arch'])
+    out, err = capsys.readouterr()
+    verdicts = state.read_state(root)['gate_verdicts']
+    if left == 'failed':
+        assert code == 2 and 'git status failed' in err and verdicts == {}
+        return
+    assert code == 0 and json.loads(out)['verdict'] == 'PASS' and 'A:arch:initial' in verdicts
+    if left == 'clean':
+        assert err == ''
+        return
+    assert len(err.splitlines()) == 1 and err.startswith('warning: ')
+    assert str(tree) in err and 'pkg/__pycache__/mod.cpython-311.pyc' in err and 'probe.py' in err
 
 
 def test_cli_next_contract(root, monkeypatch, capsys):
@@ -296,7 +340,8 @@ def agent_gate(root, monkeypatch, *, findings=True, trust=False, threshold='high
         'item': 'A', 'role': 'sentinel-security', 'status': 'stopped',
         'brief': str((directory / 'briefs/security.md').relative_to(root))}), root, reserved=False)
     real_load = registry.load
-    vcs = SimpleNamespace(head=lambda *args, **kwargs: Result(0, {'sha': 'abc1234'}))
+    vcs = SimpleNamespace(head=lambda *args, **kwargs: Result(0, {'sha': 'abc1234'}),
+                          status=lambda *args, **kwargs: Result(0, []))
     monkeypatch.setattr(registry, 'load', lambda kind, config:
                         vcs if kind == 'vcs' else real_load(kind, config))
     calls = []
@@ -2053,6 +2098,9 @@ def live_head(monkeypatch, sha):
     class VCS:
         def head(self, tree, *, root):
             return registry.Result(0, {'sha': sha})
+
+        def status(self, tree, *, root):
+            return registry.Result(0, [])
     real = registry.load
     monkeypatch.setattr(registry, 'load', lambda kind, config: VCS() if kind == 'vcs' else real(kind, config))
 

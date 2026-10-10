@@ -424,6 +424,11 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         header.append(f'Scratch: <your scratchpad>/{item}/{role}/, or {scratch}/ when your host names '
                       'no scratchpad; create it if missing and write every temporary file there, '
                       "never at the scratchpad root or in another item's directory")
+        if gate:  # #672: a gate probe never writes in the builder's worktree
+            header.append('Probe env: PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX='
+                          f'{shlex.quote(str(scratch / "pycache"))}; set it on every command that '
+                          'runs code, and run every probe, test and mutant in a copy of the worktree '
+                          'under your scratch directory, never in the worktree itself')
         from wuwei import mcp
         names = mcp.unmeasured(root)
         if names:

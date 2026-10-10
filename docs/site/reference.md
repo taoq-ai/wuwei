@@ -311,6 +311,7 @@ Several Claude Code sessions can work in one workspace. Once today's `state.json
 | Push evidence | `wuwei build check ITEM` records fast checks through the same producer as `wuwei fast-checks`, so a passing check satisfies the push guard. |
 | Charter names | `lead`, `builder`, `shepherd`, `sentinel-arch`, `sentinel-quality`, `sentinel-security`, `sentinel-goal` or `steward`. Each seat name gets one brief. `runtime dispatch` accepts `arch`, `quality` and `security` for the sentinel roles, as `brief` does. |
 | Scratch directory | Each brief names `<your scratchpad>/<item>/<role>/`, or `.wuwei/scratch/<item>/<role>/` when the host names no scratchpad, for every temporary file. `wuwei brief` creates the workspace one, and an observed merge removes `.wuwei/scratch/<item>/`. A seat's Write into another item's directory prints a warning naming its own under observe and guarded, and is refused under strict (area `seats`). |
+| Gate probes | A gate brief adds `Probe env: PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=<scratch>/pycache` and tells the seat to run every probe, test and mutant in a copy under its scratch directory, never in the worktree. `wuwei dispatch receive` still records the verdict, and prints `warning: <worktree> has files the gate round left: <paths>` when the worktree's git status lists any. |
 | Gate body | A gate body must not ask for an inline verdict or restate the verdict path; the brief adds it. A `Paths:` line lists extra paths for the SLICE protected-path check. |
 
 ## Stuck seats
