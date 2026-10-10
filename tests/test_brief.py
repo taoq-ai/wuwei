@@ -923,3 +923,16 @@ def test_a_brief_naming_no_job_is_unchanged(day, monkeypatch):
     assert brief(monkeypatch, 'Build it.', 'builder', 'X', 'b1', '--worktree', 'tree') == 0
     assert (directory / 'briefs/b1.md').read_text().endswith('\n\nBuild it.\n')
     assert 'ci_jobs' not in state.read_state(root)['items']['X']
+
+
+def test_reference_reads_the_marker_on_any_line(tmp_path):
+    # #660: a planner note before or around WUWEI's prompt keeps the marker readable.
+    from wuwei import brief as module
+    assert module.reference('WUWEI brief: a.md\nRead it') == 'a.md'
+    assert module.reference('Note one\n\nWUWEI brief: a.md\nRead it') == 'a.md'
+    assert module.reference('No marker here') is None
+    assert module.reference('WUWEI brief: a.md\nWUWEI brief: b.md') == 'a.md'
+    assert module.reference('Quote: WUWEI brief: a.md') is None
+    rows = [{'type': 'user', 'message': {'content': 'Planner note: watch the cache.\n\nWUWEI brief: a.md\nRead it'}}]
+    (tmp_path / 't').write_text(''.join(json.dumps(row) + '\n' for row in rows))
+    assert module.transcript_reference(tmp_path / 't') == 'a.md'

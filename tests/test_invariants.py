@@ -1658,6 +1658,49 @@ def i59(case, rules):
         return None
     return rules.memo(('gate card', posture), compute)
 
+def i47(case, rules):
+    """#660: a typed Agent launch inside a day is never silently unregistered: below strict it
+    registers a seat or the session is shown its reason; under strict a launch with no brief
+    marker is refused naming wuwei brief."""
+    def compute(posture):
+        from wuwei import brief, state, workspace
+        from wuwei.commands import hook
+        from wuwei.guards import agent_launch
+        prompt = f'I47 gate under {posture}'
+        missing = workspace.day_dir(rules.root) / 'briefs/i47-missing.md'
+        found = {}
+        rules.configure(posture)
+        try:
+            for name, text in (('no marker', prompt), ('unlogged', brief.REFERENCE_PREFIX
+                                                        + str(missing.relative_to(rules.root)))):
+                payload = {'cwd': str(rules.root), 'session_id': 'i47', 'hook_event_name': 'PreToolUse',
+                           'tool_name': 'Agent', 'tool_input': {
+                               'subagent_type': 'wuwei:sentinel-arch', 'description': 'gate', 'prompt': text}}
+                code, reason = agent_launch.check(payload)
+                warned = []
+                enforced = hook.posture(payload, [(agent_launch.check, reason, code)], rules.root,
+                                        warned) if code else []
+                digest = brief.prompt_digest(text)
+                seated = any(seat.get('prompt_sha256') == digest
+                             for seat in state.read_state(rules.root)['seats'].values())
+                found[name] = ([row[1] for row in enforced], warned, seated)
+        finally:
+            (rules.root / '.wuwei/config.toml').write_text(rules.base)
+        return found
+    found = rules.memo(('unbriefed launch', case[0]), lambda: compute(case[0]))
+    (bare_enforced, bare_warned, bare_seated) = found['no marker']
+    (unlogged_enforced, unlogged_warned, unlogged_seated) = found['unlogged']
+    if case[0] != 'strict':
+        if (bare_enforced or not bare_seated or not any('wuwei brief' in text for text in bare_warned)
+                or unlogged_enforced or not any('seat not registered' in text for text in unlogged_warned)):
+            return f'a typed launch below strict gave {found}'
+        return None
+    if (len(bare_enforced) != 1 or 'wuwei brief' not in bare_enforced[0] or bare_seated
+            or len(unlogged_enforced) != 1 or unlogged_seated):
+        return f'a typed launch under strict gave {found}'
+    return None
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
@@ -1686,7 +1729,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I51': i51,
               'I36': i36, 'I37': i37, 'I52': i52, 'I56': i56, 'I60': i60,
               'I36': i36, 'I37': i37, 'I41': i41, 'I59': i59,
-              'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46, 'I57': i57}
+              'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46, 'I57': i57,
+              'I47': i47}
 
 
 def project(case):
@@ -1729,7 +1773,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I51': (0,),
          'I52': (0,), 'I56': (0,), 'I60': (),
          'I41': (), 'I59': (0,),
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (), 'I57': ()}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (), 'I57': (),
+         'I47': (0,)}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 

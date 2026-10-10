@@ -84,14 +84,22 @@ def test_steward_close_prompt_passes_guard(workspace, monkeypatch, capsys):
     assert_registered(root, job, capsys, monkeypatch)
 
 
-@pytest.mark.parametrize('prompt', ['Do work', 'Instructions:\nWUWEI brief: brief.md'])
-def test_missing_first_line_names_contract(workspace, prompt):
+def test_missing_brief_line_names_the_brief_command(workspace):
+    # #660: below strict a launch with no brief line registers as an adhoc seat and names the fix.
     root, _ = workspace
     code, message = agent_launch.check({'cwd': str(root), 'tool_input': {
-        'subagent_type': 'wuwei:builder', 'description': 'Build', 'prompt': prompt}})
+        'subagent_type': 'wuwei:builder', 'description': 'Build', 'prompt': 'Do work'}})
     assert code == 1
-    assert 'first line' in message
-    assert 'WUWEI brief: <relative brief path>' in message
+    assert 'bin/wuwei brief builder <item> <name>' in message
+    assert [seat['role'] for seat in state.read_state(root)['seats'].values()] == ['adhoc']
+
+
+def test_brief_line_on_a_later_line_is_read(workspace):
+    root, _ = workspace
+    code, message = agent_launch.check({'cwd': str(root), 'tool_input': {
+        'subagent_type': 'wuwei:builder', 'description': 'Build',
+        'prompt': 'Instructions:\nWUWEI brief: brief.md'}})
+    assert code == 2 and 'invalid brief path' in message
     assert state.read_state(root)['seats'] == {}
 
 
