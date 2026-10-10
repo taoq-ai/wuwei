@@ -80,6 +80,8 @@ def humanize_lint(inputs, root, config, channels, *, draft=False):
 
 # ponytail: cross-script confusables remain distinct; add a Unicode confusable table if needed.
 def _normalize(text):
+    if text.isascii():  # #626: NFKD keeps ASCII, and no ASCII character is Mn, Me or Cf.
+        return text.casefold()
     return ''.join(c for c in unicodedata.normalize('NFKD', text)
                    if unicodedata.category(c) not in {'Mn', 'Me', 'Cf'}).casefold()
 
@@ -165,10 +167,16 @@ DESTINATIONS = ('channel', 'channel_id', 'recipient', 'recipients', 'to', 'issue
 NOT_TEXT = METADATA_FIELDS | BOOL_FIELDS | {'issue_number', 'status', 'type', 'object'}
 
 
+@functools.lru_cache(maxsize=256)
+def _snake(key):
+    """issueId -> issue_id, once per key name (#626)."""
+    return re.sub(r'(?<=[a-z0-9])(?=[A-Z])', '_', key).lower()
+
+
 def _strings(value, key, texts, found, text=True, destination=None):
     """#501: walk one payload value; a string is text unless a key on its path is an id,
     flag, structural or destination key; destination values go to found."""
-    name = re.sub(r'(?<=[a-z0-9])(?=[A-Z])', '_', key).lower()
+    name = _snake(key)
     if name in DESTINATIONS:
         destination = name
     if (destination or key in NOT_TEXT or name in NOT_TEXT or name == 'id'
@@ -219,13 +227,14 @@ OWNER = {'chat': 'slack', 'slack': 'slack', 'mail': 'mail'}  # #495: kinds with 
 SLACK_SHAPE = {'user': '[UW][A-Z0-9]+', 'dm': 'D[A-Z0-9]+'}  # A channel id is never the owner.
 
 
-def owner_only(context, config, kind):
+def owner_only(context, config, kind, read=None):
     """#495: True when the owner alone is addressed: every destination and recipient is the
-    owner's identity in outbound.owner for this kind. A nested draft wrapper never is."""
+    owner's identity in outbound.owner for this kind. A nested draft wrapper never is. read is
+    the caller's _text(context), when it has one (#626)."""
     if not isinstance(context, dict) or 'draft' in context:
         return False
     mine = _owner_ids(config, kind)
-    texts, destinations = _text(context)
+    texts, destinations = read or _text(context)
     targets = [*destinations, *context.get('recipients', []), *filter(None, [context.get('recipient')])]
     if kind == 'mail':  # #501: any address in the payload (a Graph ccRecipients shape) is a reader.
         targets += [address for text in texts for address in re.findall(r'[^\s<>@]+@[^\s<>@]+', text)]
@@ -362,6 +371,12 @@ def _keyword_pattern(words):
     return re.compile(r'(?<!\w)(?:' + '|'.join(re.escape(_normalize(word)) for word in words) + r')(?!\w)') if words else None
 
 
+@functools.lru_cache(maxsize=256)
+def _pattern(pattern):
+    """An owner pattern compiled once per process (#626); compiled when reached, as re.search did."""
+    return re.compile(pattern, PATTERN_FLAGS)
+
+
 def _topics(normalized, rules):
     """{topic: config key} of every sensitive, commitment and disagreement hit (#496)."""
     # ponytail: explicit deny lists and complete safe forms have limited language
@@ -371,7 +386,7 @@ def _topics(normalized, rules):
     if pattern and pattern.search(normalized.replace('_', ' ')):
         found['sensitive'] = 'outbound.sensitive_keywords'
     for key in ('sensitive_patterns', 'commitment_patterns', 'disagreement_patterns'):
-        if any(re.search(pattern, normalized, PATTERN_FLAGS) for pattern in rules[key]):
+        if any(_pattern(pattern).search(normalized) for pattern in rules[key]):
             found.setdefault(key.split('_')[0], f'outbound.{key}')
     return found
 
@@ -612,10 +627,10 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
         if not isinstance(text, str) or not isinstance(kind, str):
             return UNRUN, 'draft'
         context = {} if context is None else context
-        _text(context)
+        read = _text(context)
         # #501: the chat rules read channel ids only; a recipient, issue or repo is no channel.
         destinations = channel_ids(context)
-        if owner_only(context, config, kind):
+        if owner_only(context, config, kind, read):
             return CLEAN, 'send'  # #495: only the owner reads it; security and the lint still run.
         # Some tracker tools wrap fields in draft even though the operation sends.
         nested = context.get('draft', {})

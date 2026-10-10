@@ -1,5 +1,7 @@
 """Shared workspace paths and validated configuration."""
 
+from itertools import chain
+import marshal
 import os
 from pathlib import Path
 import re
@@ -317,7 +319,7 @@ def find_workspace(start=None, *, use_environment=True):
             raise ValueError('.wuwei must not be a symlink')
         return root
     start = (Path.cwd() if start is None else Path(start)).resolve()
-    for root in (start, *start.parents):
+    for root in chain((start,), start.parents):  # #626: each parent made only when reached
         if (root / ".wuwei").is_dir():
             if (root / '.wuwei').is_symlink():
                 raise ValueError('.wuwei must not be a symlink')
@@ -522,15 +524,16 @@ def _key_line(raw, path):
 def _validate(value, schema, path, raw, unknown=None):
     """Validate value against schema; with an unknown list, collect unknown keys there
     instead of raising (#353)."""
-    key = ".".join(map(str, path)) or "config"
     if isinstance(schema, tuple) and schema[1] is None and (
         value is None or isinstance(value, str) and not value.strip()
     ):
         line = _key_line(raw, path) or _key_line(raw, path[:-1])
         location = f' at line {line}' if line is not None else ''
+        key = _dotted(path)
         raise ConfigError(f'{key}: required{location}; the owner sets it with bin/wuwei config set {key} <value> in a host terminal')
     expected = dict if isinstance(schema, dict) else list if isinstance(schema, list) else schema[0]
     if type(value) is not expected:
+        key = _dotted(path)
         raise ConfigError(f"{key}: expected {expected.__name__}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
     if isinstance(schema, dict):
         for name in value:
@@ -548,7 +551,8 @@ def _validate(value, schema, path, raw, unknown=None):
         if "*" in schema:
             return {name: _validate(item, schema['*'], (*path, name), raw, unknown)
                     for name, item in value.items()}
-        return {name: _validate(value.get(name, _default(rule)), rule, (*path, name), raw, unknown)
+        return {name: _validate(value[name], rule, (*path, name), raw, unknown) if name in value
+                else _absent(rule, (*path, name), raw)
                 for name, rule in schema.items()}
     if isinstance(schema, list):
         return [_validate(item, schema[0], (*path, index), raw, unknown)
@@ -556,12 +560,33 @@ def _validate(value, schema, path, raw, unknown=None):
     if len(schema) > 2:
         constraint = schema[2]
         if expected is int and value < constraint:
-            raise ConfigError(f"{key}: expected integer >= {constraint}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
-        if expected is int and len(schema) > 3 and value > schema[3]:
-            raise ConfigError(f"{key}: expected integer <= {schema[3]}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
-        if expected is str and value not in constraint:
-            raise ConfigError(f"{key}: expected {' or '.join(constraint)}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
+            problem = f"integer >= {constraint}"
+        elif expected is int and len(schema) > 3 and value > schema[3]:
+            problem = f"integer <= {schema[3]}"
+        elif expected is str and value not in constraint:
+            problem = ' or '.join(constraint)
+        else:
+            return value
+        key = _dotted(path)
+        raise ConfigError(f"{key}: expected {problem}; the owner fixes it with bin/wuwei config set {key} <value> in a host terminal")
     return value
+
+
+# ponytail: SCHEMA is a constant, so an absent key's validated default is computed once per
+# rule (#626) and handed out as a copy; a required key (None default) raises every time.
+_ABSENT = {}
+
+
+def _absent(rule, path, raw):
+    kept = _ABSENT.get(id(rule))
+    if kept is None or kept[0] is not rule:
+        kept = _ABSENT[id(rule)] = rule, _validate(_default(rule), rule, path, raw)
+    return copy_data(kept[1])
+
+
+def _dotted(path):
+    # #626: the dotted key only for a message; a valid node never renders it.
+    return ".".join(map(str, path)) or "config"
 
 
 def _default(schema):
@@ -575,16 +600,19 @@ def _default(schema):
 def copy_data(value):
     """copy.deepcopy for parsed TOML and JSON data: dicts and lists are copied, everything
     else in them is immutable. Hooks skip importing copy and weakref (#346)."""
+    # #626: a leaf is returned in place, not through a call per value.
     if isinstance(value, dict):
-        return {key: copy_data(item) for key, item in value.items()}
+        return {key: copy_data(item) if isinstance(item, (dict, list)) else item
+                for key, item in value.items()}
     if isinstance(value, list):
-        return [copy_data(item) for item in value]
+        return [copy_data(item) if isinstance(item, (dict, list)) else item for item in value]
     return value
 
 
 # ponytail: per-process memo keyed on the path and the config text, cleared past
 # CONFIGS_KEPT texts; adapter and path checks rerun only for a text not kept, so a process
-# that alternates a few texts (a raw= check beside the file) parses each once.
+# that alternates a few texts (a raw= check beside the file) parses each once. #626: it keeps
+# the config marshalled (dicts, lists and scalars only), so each load is one C-level copy.
 _CONFIGS = {}
 CONFIGS_KEPT = 128
 # #346: the validated config and its warnings as JSON in .wuwei/generated, so a hook skips
@@ -658,7 +686,6 @@ def load_config(root=None, *, raw=None, warnings=None):
     parse of the file after its parsed copy missed rewrites the copy (#346); a hit writes
     nothing."""
     path = (find_workspace() if root is None else Path(root)) / ".wuwei/config.toml"
-    generated = path.parent / 'generated'
     stale = False
     if len(_CONFIGS) >= CONFIGS_KEPT:
         _CONFIGS.clear()
@@ -666,15 +693,15 @@ def load_config(root=None, *, raw=None, warnings=None):
         if raw is None:
             raw = path.read_text(encoding="utf-8")
             if (path, raw) not in _CONFIGS:
-                found = _cached(generated, raw)
+                found = _cached(path.parent / 'generated', raw)
                 if found:
-                    _CONFIGS[path, raw] = found
+                    _CONFIGS[path, raw] = (marshal.dumps(found[0]), found[1])
                 stale = not found
         if (path, raw) in _CONFIGS:
             config, unknown = _CONFIGS[path, raw]
             if warnings is not None:
                 warnings.extend(f'config.toml: {text}' for text in unknown)
-            return copy_data(config)
+            return marshal.loads(config)
         from datetime import date
         import tomllib
         parsed = tomllib.loads(raw)
@@ -773,12 +800,12 @@ def load_config(root=None, *, raw=None, warnings=None):
             from wuwei import integrity  # A newer plugin's keys are unknown to me, not errors.
             if not integrity.newer_template(config):
                 raise ConfigError(unknown[0])
-        _CONFIGS[path, raw] = (config, tuple(unknown))
+        _CONFIGS[path, raw] = (marshal.dumps(config), tuple(unknown))
         if stale and CONFIG_CACHE_WRITES:
-            _cache(generated, raw, config, unknown)
+            _cache(path.parent / 'generated', raw, config, unknown)
         if warnings is not None:
             warnings.extend(f'config.toml: {text}' for text in unknown)
-        return copy_data(config)
+        return config  # Built fresh by _validate; the memo holds its own marshalled copy.
     except (ConfigError, UnicodeError, _decode_error()) as exc:
         hint = ''
         if "immutable namespace ('repos',)" in str(exc):  # #326: repos = [] before [[repos]]

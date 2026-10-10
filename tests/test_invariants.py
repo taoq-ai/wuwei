@@ -171,8 +171,9 @@ class Rules:
         return self.cache[key]
 
     def configure(self, posture, extra=''):
-        (self.root / '.wuwei/config.toml').write_text(
-            self.base + f'[security]\nposture = "{posture}"\n' + extra)
+        path, text = self.root / '.wuwei/config.toml', self.base + f'[security]\nposture = "{posture}"\n' + extra
+        if path.read_text() != text:  # the same text again is no change for the hook to load
+            path.write_text(text)
 
     def config(self, posture, umbrella, mode):
         from wuwei import workspace

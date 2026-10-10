@@ -1,5 +1,6 @@
 """Keep state writes in the CLI and persistent directory changes in the workspace."""
 
+from itertools import chain
 import os
 from pathlib import Path
 import re
@@ -442,7 +443,7 @@ def _protected(value, cwd, root, directories=False):
 def _workspace(cwd):
     # Without a discoverable root, skip loading workspace configuration.
     if 'WUWEI_WORKSPACE' not in os.environ and not any(
-            (path / '.wuwei').is_dir() for path in (cwd, *cwd.parents)):
+            (path / '.wuwei').is_dir() for path in chain((cwd,), cwd.parents)):
         return None
     from wuwei.workspace import find_workspace
     try:
