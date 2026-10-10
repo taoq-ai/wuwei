@@ -51,8 +51,8 @@ class Fake(Recorder):
     def log_since(self, repo, sha, root=None):
         return self._call('log_since', (repo, sha), root)
 
-    def worktree_add(self, repo, branch, path, root=None):
-        return self._call('worktree_add', (repo, branch, path), root)
+    def worktree_add(self, repo, branch, path, remote, base, root=None):
+        return self._call('worktree_add', (repo, branch, path, remote, base), root)
 
     def repo_context(self, repo, root=None):
         return self._call('repo_context', (repo,), root)

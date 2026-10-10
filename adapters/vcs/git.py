@@ -143,9 +143,10 @@ def _run(repo, *args, settings=None, env=None, missing=False, local=False, input
         case ('worktree', 'add', '--', path, branch):
             allowed = (bool(_revision(branch)) and isinstance(path, str) and
                        bool(path) and '\0' not in path)
-        case ('worktree', 'add', '-b', branch, '--', path):
+        case ('worktree', 'add', '-b', branch, '--', path, start):
             allowed = (bool(_revision(branch)) and isinstance(path, str) and
-                       bool(path) and '\0' not in path)
+                       bool(path) and '\0' not in path and
+                       bool(re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', start)))
         case ('rebase', '--', ref):
             allowed = bool(_revision(ref))
         case ('fetch', '--no-tags', remote, branch):
@@ -360,13 +361,22 @@ def recent_commits(repo, root=None):
 
 
 @_operation
-def worktree_add(repo, branch, path, root=None):
+def worktree_add(repo, branch, path, remote, base, root=None):
+    """A new branch at <remote>/<base> as just fetched (#681), never the local HEAD."""
     branch = _revision(branch)
     path = os.fspath(path)
     if not path:
         raise ValueError('missing worktree path')
-    _run(repo, 'worktree', 'add', '-b', branch, '--', path)
-    return {'branch': branch, 'path': path}
+    try:
+        _run(repo, 'fetch', '--no-tags', remote, base)
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        raise ValueError(f'could not fetch {remote} {base}, so no worktree was created ({exc}); '
+                         'check the network and the remote, then retry') from None
+    # ponytail: FETCH_HEAD is per repository; two adds with different bases at once could swap
+    # starts. One base per repository today; fetch into a named ref if that changes.
+    start = _sha(_run(repo, 'rev-parse', '--verify', 'FETCH_HEAD^{commit}'))
+    _run(repo, 'worktree', 'add', '-b', branch, '--', path, start)
+    return {'branch': branch, 'path': path, 'start': start}
 
 
 @_operation

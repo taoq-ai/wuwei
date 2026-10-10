@@ -333,7 +333,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'seat launched': 'silent', 'brief written': 'silent',
                 'brief.pack': 'silent', 'brief.answer': 'silent',
                 'session.seen': 'silent', 'session.rotated': 'silent', 'item.claimed': 'silent',
-                'worktree.adopted': 'silent',
+                'worktree.adopted': 'silent', 'worktree.created': 'silent',
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
                 'seat.usage': 'silent', 'cap.derived': 'silent', 'build.parked': 'nudge',
                 'build.fix_opened': 'silent', 'pr.action.done': 'silent',

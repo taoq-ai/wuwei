@@ -62,6 +62,16 @@ def test_worktree_creation(exit_code, tmp_path, monkeypatch):
     assert (result.exit, result.data) == ((0, case['data']) if exit_code == 0 else (2, None))
 
 
+def test_worktree_add_refuses_when_the_fetch_fails(monkeypatch):
+    case = next(c for c in recordings('vcs') if c['operation'] == 'worktree_add')
+    calls = install_replay(monkeypatch, 'git', [{**case['steps'][0], 'exit': 128,
+                                                 'stderr': "fatal: 'origin' does not appear to be a git repository\n"}])
+    result = adapter().worktree_add(*case['args'])
+    assert result.exit == 2 and result.data is None
+    assert 'could not fetch origin main' in result.reason and 'no worktree was created' in result.reason
+    assert len(calls) == 1
+
+
 @pytest.mark.parametrize('code,expected', [(0, 0), (1, 1), (128, 2)])
 def test_rebase_port_reports_conflict_and_errors(code, expected, monkeypatch, tmp_path):
     conflict = tmp_path / 'rebase-merge'
@@ -130,7 +140,9 @@ def test_worktree_identity_needs_worktree_config(monkeypatch):
     ('merge_base', ['/repo', '--help']),
     ('diff_stat', ['/repo', '--output=/tmp/unwanted', 'HEAD']),
     ('log_since', ['/repo', '--all']),
-    ('worktree_add', ['/repo', '--force', '/path']),
+    ('worktree_add', ['/repo', '--force', '/path', 'origin', 'main']),
+    ('worktree_add', ['/repo', 'x', '/path', '-x', 'main']),
+    ('worktree_add', ['/repo', 'x', '/path', 'origin', '--upload-pack=x']),
     ('worktree_checkout', ['/repo', '--force', '/path']),
     ('rebase', ['/repo', '--exec=touch unwanted']),
     ('push', ['/repo', 'origin', '--force']),
@@ -163,6 +175,8 @@ def test_option_injection_never_spawns(operation, args, monkeypatch):
     ('log', '-z', '--format=%s', 'main..HEAD', '--'),
     ('log', '-z', '--format=%H%x00%an%x00%ae%x00%cn%x00%ce%x00%cI%x00%s', '--all..HEAD', '--'),
     ('worktree', 'add', '-b', '--force', '--', '/tmp/worktree'),
+    ('worktree', 'add', '-b', 'x', '--', '/tmp/w'),
+    ('worktree', 'add', '-b', 'x', '--', '/tmp/w', 'origin/main'),
     ('config', '--worktree', 'user.signingkey', 'x'),
     ('config', '--worktree', 'user.name', '-x'),
     (),

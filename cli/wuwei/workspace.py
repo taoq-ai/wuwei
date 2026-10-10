@@ -851,7 +851,7 @@ def _anchor(path, root, vcs, identity):
             data(written)
 
 
-def create_worktree(repo, branch, path, root, vcs, identity=None, existing=False):
+def create_worktree(repo, branch, path, root, vcs, identity=None, existing=False, remote=None, base=None):
     """Create and anchor a WUWEI worktree before handing it to a seat; existing checks out
     an existing branch and records the worktree as the item's (#510)."""
     from wuwei.registry import data
@@ -861,8 +861,13 @@ def create_worktree(repo, branch, path, root, vcs, identity=None, existing=False
     if existing:
         state.record_worktree(root, Path(path).name, str(path), None, check=True)
     sessions.claim_item(Path(root), Path(path).name)
-    add = vcs.worktree_checkout if existing else vcs.worktree_add
-    result = data(add(str(repo), branch, str(path), root=root))
+    if existing:
+        result = data(vcs.worktree_checkout(str(repo), branch, str(path), root=root))
+    else:
+        result = data(vcs.worktree_add(str(repo), branch, str(path), remote, base, root=root))
+        state.append_event('worktree.created', {'item': Path(path).name, 'worktree': str(path),
+                                                'branch': result['branch'], 'base': f'{remote}/{base}',
+                                                'start': result['start']}, root)
     _anchor(path, root, vcs, identity)
     if existing:
         state.record_worktree(root, Path(path).name, str(path), data(vcs.head(str(path), root=root))['sha'])

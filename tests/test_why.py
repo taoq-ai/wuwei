@@ -158,6 +158,16 @@ def test_item_chain_lists_every_recorded_step(root, capsys):
     assert why(capsys, 'fix-login') == (0, BRIEF, '')
 
 
+def test_item_chain_names_where_the_worktree_started(root, capsys):
+    # #681: the worktree.created event records the fetched start commit.
+    merged_item(root)
+    state.append_event('worktree.created', {'item': 'fix-login', 'worktree': 'worktrees/fix-login',
+                                            'branch': 'fix-login', 'base': 'origin/main', 'start': HEAD},
+                       directory=day_of(root))
+    expected = [BRIEF[0], 'worktree: branch fix-login from origin/main at abcdef123456', *BRIEF[1:]]
+    assert why(capsys, 'fix-login') == (0, expected, '')
+
+
 def test_item_chain_full_names_event_ids_and_paths(root, capsys):
     expected = full(root)
     assert why(capsys, 'fix-login', '--full') == (0, expected, '')

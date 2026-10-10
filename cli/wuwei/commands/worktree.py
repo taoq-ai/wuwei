@@ -55,7 +55,8 @@ def add(args, root, config, item):
     tree = root / 'worktrees' / item
     result = workspace.create_worktree(repo, args.branch or item.lower(), tree, root,
                                        registry.load('vcs', config), identity=repos[0]['identity'],
-                                       existing=args.branch is not None)
+                                       existing=args.branch is not None,
+                                       remote=config['brief']['remote'], base=repos[0]['default_branch'])
     # #520: a fresh worktree has no untracked venv; build one or say which interpreter checks use.
     bootstrap = config['checks']['bootstrap']
     if bootstrap:
