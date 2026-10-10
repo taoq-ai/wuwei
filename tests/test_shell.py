@@ -57,7 +57,7 @@ def test_parse_error(script):
     ('''env X=y bash -c 'python3 -c "run(\\\"git push\\\")"' ''', True),
     ('''python -c 'print("legit text")' ''', False),
     ('''python3 -c 'print("github")' ''', False),
-    ('''echo 'python -c git push' ''', True),
+    ('''echo 'python -c git push' ''', False),  # #671: an echo argument is text
     ('git push', False),
 ])
 def test_opaque_interpreter(script, opaque):
@@ -98,13 +98,6 @@ def test_single_quotes_inside_outer_double_quotes_still_expand():
     from wuwei.shell import ParseError, normalize
     with pytest.raises(ParseError):
         normalize('''bash -c "echo '$X'"''')
-
-
-def test_nested_script_continuation_cannot_hide_obfuscated_mention():
-    from wuwei.shell import ParseError, normalize
-    script = 'bash -c "g\'\\\nit\' push"'
-    with pytest.raises(ParseError):
-        normalize(script)
 
 
 @pytest.mark.parametrize('script', [
@@ -302,14 +295,11 @@ def test_opaque_combined_node_eval_print():
     "watch 'git push'", "osascript -e 'do shell script \"git push\"'",
     "fish -c 'git push'", "unknown-launcher 'prefix;gh pr merge'",
     # R1: every mention must be accounted for, even alongside an exposed command.
-    'git status; echo "git push"', 'echo hi # git push\ngit status',
+    'echo hi # git push\ngit status',
     'command -v git', 'git status > git.log', 'echo > gh.log',
-    "cat <<'EOF'\n$(git push -f)\nEOF\ngit status",
-    'cat <<"EOF"\ngit push -f\nEOF\ngit status',
     "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=alias.x GIT_CONFIG_VALUE_0='!git push -f' git x",
     "env A='git push' git status", "sh -c 'git status' 'gh pr merge'",
     "sudo -u git gh pr list", "find git -exec echo hi \\;",
-    'echo "git push"',  # Intentional false positive under the fail-closed rule.
 ])
 def test_unaccounted_guarded_mentions_fail_closed(script):
     from wuwei.shell import ParseError, normalize
@@ -344,7 +334,6 @@ def test_guarded_literal_arguments_remain_supported(script, word):
 
 
 @pytest.mark.parametrize('script', [
-    "eval 'echo git'hub", "sh -c 'echo git'hub",
     'echo git\\\nhub', "sh -c 'echo git\\\nhub'",
     "git status; python3 <<'EOF'\nrun('gh pr merge')\nEOF",
 ])
@@ -377,7 +366,6 @@ def test_source_mentions_cannot_be_replaced_by_decoded_mentions(script):
 
 @pytest.mark.parametrize('script', [
     '''caffeinate -i sh -c 'g""it push -f' ''',
-    '''sh -c "gi't' push"''',
     "flock /tmp/l -c 'gi''t push -f'",
     '''watch 'g""it push -f' ''',
     r'watch "gi\t push -f"',
@@ -442,11 +430,11 @@ def test_plain_guarded_command_heredoc_is_data(header, expected):
 
 
 @pytest.mark.parametrize('script', [
-    "git status; cat <<'EOF'\ngit push\nEOF",
-    "cat <<'EOF'; git status\ngit push\nEOF",
-    "git status | cat <<'EOF'\ngit push\nEOF",
-    "cat <<'EOF' | git status\ngit push\nEOF",
-    "git commit -F - <<'A'; cat <<'B'\ngit documentation\nA\ngit push\nB",
+    "git status; python3 <<'EOF'\ngit push\nEOF",
+    "python3 <<'EOF'; git status\ngit push\nEOF",
+    "git status | python3 <<'EOF'\ngit push\nEOF",
+    "python3 <<'EOF' | git status\ngit push\nEOF",
+    "git commit -F - <<'A'; python3 <<'B'\ngit documentation\nA\ngit push\nB",
 ])
 def test_other_commands_cannot_borrow_guarded_heredoc_exemption(script):
     from wuwei.shell import ParseError, normalize
@@ -828,3 +816,106 @@ def test_redirect_glued_to_guarded_name_is_a_mention(script):
 def test_guarded_name_as_directory_is_no_mention(script):
     from wuwei import shell
     assert not shell._GUARDED.search(script)
+
+
+@pytest.mark.parametrize('raw,names,expected', [
+    ('gi\\\nt push', ('git',), True), ('g\\\nh pr merge 5', ('gh',), True),
+    ('sh -c "g\\\nit push"', ('git',), True), ('echo hi', ('git',), False),
+])
+def test_mentions_joins_line_continuations(raw, names, expected):
+    # #671: the shell joins backslash-newline before it reads the program name.
+    from wuwei.shell import mentions
+    assert mentions(raw, names) is expected
+
+
+@pytest.mark.parametrize('script,expected', [
+    ("cat > brief.md <<'EOF'\nThe shepherd falls back to gh.\n"
+     "Raise the PR with gh pr create; then git push.\nEOF", [['cat']]),
+    ("echo 'falls back to gh' > notes.md", [['echo', 'falls back to gh']]),
+    ('grep -rn "gh pr" docs | head -20', [['grep', '-rn', 'gh pr', 'docs'], ['head', '-20']]),
+    ('echo "git push"', [['echo', 'git push']]),
+    ("git status; cat <<'EOF'\ngit push\nEOF", [['git', 'status'], ['cat']]),
+    ("cat <<'EOF' | git status\ngit push\nEOF", [['cat'], ['git', 'status']]),
+    ("cat <<'EOF'\n$(git push -f)\nEOF\ngit status", [['cat'], ['git', 'status']]),
+])
+def test_reader_text_is_data(script, expected):
+    # #671: a reader's arguments and here-doc body are text, not a command.
+    from wuwei.shell import normalize
+    assert [item.argv for item in normalize(script)] == expected
+
+
+def test_reader_text_keeps_its_write_target():
+    from wuwei.shell import normalize
+    found = normalize("cat > brief.md <<'EOF'\nfalls back to gh\nEOF")
+    assert found[0].writes == ('brief.md',)
+
+
+@pytest.mark.parametrize('script', [
+    "echo 'git push' | sh", "echo 'import os; os.system(\"git push\")' | python3",
+    'echo "gh pr merge 5" | xargs -I@ sh -c @', "cat <<'EOF' | python3\ngit push\nEOF",
+    "cat <<'EOF' | tee out\ngit push\nEOF", "mkdir -p d && echo 'git push' > d/x",
+    "printf 'git push' > x",
+])
+def test_reader_text_that_can_run_fails_closed(script):
+    # #671: one command that is not a reader or git or gh voids the exemption for the call.
+    from wuwei.shell import ParseError, normalize
+    with pytest.raises(ParseError):
+        normalize(script)
+
+
+@pytest.mark.parametrize('script', [
+    'g""it push', 'sh -c "gi""t push"', "eval 'gi''t push'", 'gi\\\nt push',
+    'sh -c "gi\'t\' push"', 'bash -c "g\'\\\nit\' push"', "sh -c 'g\"\"it push'",
+])
+def test_constructed_names_resolve(script):
+    # #671: a quote-split or continued name is parsed to the command it runs.
+    from wuwei.shell import normalize
+    assert [item.argv for item in normalize(script)] == [['git', 'push']]
+
+
+@pytest.mark.parametrize('script', ["eval 'echo git'hub", "sh -c 'echo git'hub"])
+def test_split_word_in_eval_or_shell_is_its_value(script):
+    from wuwei.shell import normalize
+    assert [item.argv for item in normalize(script)] == [['echo', 'github']]
+
+
+@pytest.mark.parametrize('script,expected', [
+    ('g""it push', 'git push'), ('sh -c "gi""t push"', 'git push'),
+    ('x=git; $x push', 'git push'), ('x=gi; ${x}t push', 'git push'),
+    ('g\\\nh pr merge 5 --admin', 'gh pr merge'),
+    ('git push', ''), ('/usr/bin/git push', ''), ('echo "git push"', ''),
+    ('$(printf git) push', ''), ('ls', ''),
+])
+def test_constructed_names_the_command(script, expected):
+    # #671: the git or gh command a call builds without spelling it; never a variable's value.
+    from wuwei.shell import constructed
+    assert constructed(script) == expected
+
+
+def test_constructed_variable_takes_one_value_per_call():
+    # #671 review F1: a repeated variable is one value, and the enumeration is capped.
+    import time
+    from wuwei.shell import constructed
+    assert constructed('x=gi; x=t; $x$x push') == ''
+    start = time.monotonic()
+    constructed('c=x; c=y; c=z; c=; a=gi; b=t; ' + '$c' * 30 + '$a$b push')
+    constructed('a=1; a=2; b=1; b=2; c=1; c=2; d=1; d=2; e=1; e=2; f=1; f=2; g=1; g=2; '
+                + '$a$b$c$d$e$f$g push')
+    assert time.monotonic() - start < 1
+
+
+@pytest.mark.parametrize('script', [
+    "echo '[alias] x = !git push' >> .git/config",
+    "cat > .git/hooks/pre-commit <<'EOF'\ngh pr merge 1 --admin\nEOF",
+])
+def test_reader_text_written_under_git_dir_is_not_data(script):
+    # #671 review F2: text written into git's own files can run, so it is not data.
+    from wuwei.shell import ParseError, normalize
+    with pytest.raises(ParseError):
+        normalize(script)
+
+
+def test_named_command_is_not_unreadable():
+    from wuwei.shell import unreadable
+    assert unreadable('x=git; $x push') == ''
+    assert unreadable('$(printf git) push') != ''

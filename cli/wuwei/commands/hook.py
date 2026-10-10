@@ -129,6 +129,15 @@ def run(args):
         if reasons:
             print('\n'.join(reasons), file=sys.stderr)
         return CLEAN
+    if reasons and args.event == 'PreToolUse' and payload.get('tool_name') == 'Bash':
+        from wuwei.shell import constructed  # #671: only once a Bash call is refused
+        inputs = payload.get('tool_input') if isinstance(payload.get('tool_input'), dict) else {}
+        try:
+            runs = constructed(str(inputs.get('command', '')))
+        except Exception:  # the refusal stands without the name
+            runs = ''
+        if runs:
+            reasons[0] += f'\nresolved: {runs}'
     if reasons:
         return refuse(args.event, reasons[0], cwd=payload.get('cwd'),
                       record=payload.get('session_id') != HEARTBEAT_SESSION,

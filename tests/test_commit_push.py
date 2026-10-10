@@ -985,3 +985,16 @@ def test_empty_identity_names_the_config_set(workspace_case, command, identity):
     assert guard().unset_identity(OWNER, 0) is None
     assert guard().unset_identity({'name': '', 'email': ''}, 0, {'name': '<name>', 'email': ''})[1] == (
         "bin/wuwei config set repos.0.identity '{name = \"<name>\", email = \"<email>\"}'")
+
+
+@pytest.mark.parametrize('built,plain', [
+    ('sh -c "gi""t push"', 'git push'), ('g""it push', 'git push'),
+    ("eval 'gi''t commit --no-verify -m x'", 'git commit --no-verify -m x'),
+    ('sh -c "gi""t commit --no-verify -m x"', 'git commit --no-verify -m x'),
+    ('sh -c "gi""t push origin HEAD:refs/heads/feature"', 'git push origin HEAD:refs/heads/feature'),
+    ('gi\\\nt commit --no-verify -m x', 'git commit --no-verify -m x'),
+])
+def test_constructed_command_is_judged_as_plain(workspace_case, built, plain):
+    # #671: a name built from quotes, eval, sh -c or a continuation is the command it runs.
+    root, _ = workspace_case
+    assert guard().check(payload(root, built)) == guard().check(payload(root, plain))
