@@ -10,6 +10,8 @@ import sys
 
 import pytest
 
+from wuwei.workspace import owner_cli
+
 ROOT = Path(__file__).resolve().parents[1]
 NOW = '2026-09-28T12:00:00+02:00'
 
@@ -522,7 +524,7 @@ def test_issue_acceptance_a_phone_answer_shows_on_the_host(tmp_path, monkeypatch
         replies)
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
-    reason = 'D-2 answered from the phone: option A, confirm with wuwei decide D-2 A'
+    reason = f'D-2 answered from the phone: option A, confirm with {owner_cli(tmp_path)} decide D-2 A'
     expected = [] if outcomes else [reason]
     assert main(['nudges', '--json']) == 0
     rows = [row for row in json.loads(capsys.readouterr().out) if 'D-2' in row['reason']]
@@ -546,7 +548,7 @@ def test_issue_acceptance_four_phone_answers_are_one_status_segment(tmp_path, mo
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
     reasons = [f'{identifier} answered from the phone: option {option}, '
-               f'confirm with wuwei decide {identifier} {option}' for identifier, option in zip(ids, 'ABAA')]
+               f'confirm with {owner_cli(tmp_path)} decide {identifier} {option}' for identifier, option in zip(ids, 'ABAA')]
     assert main(['status']) == 0
     text = capsys.readouterr().out.strip()
     assert text.count('phone answers') == 1 and 'phone answers 4' in text
@@ -806,7 +808,7 @@ def test_issue_acceptance_nudges_print_lines(tmp_path, monkeypatch, capsys):
         'build.parked': 'nudge: ITEM-1 parked. Run: wuwei next',
         'decision.pending': 'nudge: D-1 pending owner decision. Run: wuwei decision show D-1',
         'decision.answered': 'nudge: D-2 answered from the phone: option A, '
-                             'confirm with wuwei decide D-2 A'}
+                             f'confirm with {owner_cli(tmp_path)} decide D-2 A'}
     rows = attention(directory)
     assert main(['nudges']) == 0
     assert capsys.readouterr().out.splitlines() == list(dict.fromkeys(expected[r['source']] for r in rows))

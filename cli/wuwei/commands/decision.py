@@ -161,7 +161,7 @@ def show(args):
             return 0, '[]'  # #530: taken under the mandate, nothing to ask.
         from wuwei.decision import config_keys  # #529: a config card records through config set
         record = CONFIG_RECORD if config_keys(fields) else RECORD
-        card = record_widget(args.id, fields, record, level=level)
+        card = record_widget(args.id, fields, record, level=level, root=root)
         novel = novelty.routed(state.read_state(root), args.id)
         if novel:
             card['question'] += f' First time for {", ".join(novel)}: your answer clears it.'
@@ -200,10 +200,11 @@ def owner_outcome(args, note=None, *, root=None, where=None):
     digest = hashlib.sha256((args.id + '\n' + args.option + '\n' + text).encode()).hexdigest()
     if where and fields['Reversibility'] != 'two-way':
         return 1, (f'decision: only a two-way decision is decided from the DM; '
-                   f'run bin/wuwei decide {args.id} {args.option} in a host terminal')
+                   f'run {workspace.owner_cli(root)} decide {args.id} {args.option} in a host terminal')
     where = where or owner_confirm(root, args.id, digest, f'{args.id}: {fields["Question"]}\nRecord {args.option}.')
     if not where:
-        return 1, 'decision: owner confirmation declined; rerun bin/wuwei decide <id> <option> in a host terminal and answer y'
+        return 1, (f'decision: owner confirmation declined; rerun {workspace.owner_cli(root)} decide <id> <option> '
+                   'in a host terminal and answer y')
     if path.read_text(encoding='utf-8') != text:
         return 2, f'decision: record changed during confirmation; {RACE}'
     reversed_choice = previous is not None and previous['option'] != args.option
@@ -271,10 +272,10 @@ def undo(args, *, root=None, where=None):
         return 1, f'decision undo: {exc}'
     row = state.read_state(root).get('decision_outcomes', {}).get(args.id)
     if not isinstance(row, dict) or row.get('decided_by') != 'mandate' or not row.get('undo_until'):
-        return 1, f'{args.id} has no undo window; reverse it with wuwei decide {args.id} <option>'
+        return 1, f'{args.id} has no undo window; run {workspace.owner_cli(root)} decide {args.id} <option> to reverse it'
     if not cruise.window(row):
         return 1, (f'undo window closed at {cruise.clock(row["undo_until"])}; '
-                   f'reverse it with wuwei decide {args.id} <option>')
+                   f'run {workspace.owner_cli(root)} decide {args.id} <option> to reverse it')
     answer = (args.answer or 'Undo').strip().removesuffix(' (Recommended)').strip().casefold()
     if answer == 'keep':
         return 0, 'kept'

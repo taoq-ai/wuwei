@@ -217,7 +217,7 @@ def scan(directory, classified_state=None, *, config=None):
             if option := replied.get(identifier):
                 source, reason = 'decision.answered', (
                     f'{identifier} answered from the phone: option {option}, '
-                    f'confirm with wuwei decide {identifier} {option}')
+                    f'confirm with {workspace.owner_cli(directory.parents[2])} decide {identifier} {option}')
             current[('decision.pending', identifier)] = {
                 'tier': 'nudge', 'source': source, 'lane': 'Decisions', 'reason': reason}
     for identifier, row in classified_state.get('decision_outcomes', {}).items():

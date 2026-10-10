@@ -1575,3 +1575,145 @@ def test_allow_writes_only_the_missing_rules(tmp_path):
     path.symlink_to(tmp_path / 'elsewhere.json')
     with pytest.raises(ValueError, match='must not be symlinks'):
         init.allow(tmp_path)
+
+
+def repos(*paths):
+    """#735: a [[repos]] table per path."""
+    return ''.join(f'[[repos]]\nname = "acme/r{n}"\npath = "{path}"\ndefault_branch = "main"\n'
+                   for n, path in enumerate(paths))
+
+
+def indexed():
+    return json.loads((Path.home() / '.config/wuwei/workspaces.json').read_text())
+
+
+def test_index_writes_configured_checkouts(tmp_path, clean_environment):
+    from wuwei.workspace import index, load_config
+    ws, absolute = tmp_path / 'ws', tmp_path / 'abs'
+    ws.mkdir()
+    write_config(ws, repos('.', '../repo', '~', absolute))
+    index(ws, load_config(ws))
+    expected = sorted([str((tmp_path / 'repo').resolve()), str(absolute.resolve())])
+    assert indexed() == {str(ws.resolve()): expected}
+    other = tmp_path / 'other'
+    other.mkdir()
+    write_config(other, repos('../elsewhere'))
+    index(other, load_config(other))
+    index(ws, load_config(ws))
+    assert indexed() == {str(ws.resolve()): expected,
+                         str(other.resolve()): [str((tmp_path / 'elsewhere').resolve())]}
+    write_config(ws, '')
+    index(ws, load_config(ws))
+    assert indexed() == {str(other.resolve()): [str((tmp_path / 'elsewhere').resolve())]}
+
+
+def test_find_workspace_from_indexed_checkout(tmp_path, monkeypatch, clean_environment):
+    from wuwei.workspace import find_workspace, index, load_config
+    ws, repo = tmp_path / 'ws', tmp_path / 'repo'
+    ws.mkdir()
+    (repo / 'sub').mkdir(parents=True)
+    write_config(ws, repos('../repo'))
+    index(ws, load_config(ws))
+    assert find_workspace(repo / 'sub') == ws.resolve()
+    monkeypatch.chdir(repo)
+    assert find_workspace() == ws.resolve()
+    selected = tmp_path / 'selected'
+    selected.mkdir()
+    write_config(selected, '')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(selected))
+    assert find_workspace() == selected.resolve()
+    monkeypatch.delenv('WUWEI_WORKSPACE')
+    inner = repo / 'inner'
+    (inner / 'x').mkdir(parents=True)
+    write_config(inner, '')
+    assert find_workspace(inner / 'x') == inner.resolve()
+
+
+def test_two_workspaces_configure_one_checkout(tmp_path, clean_environment):
+    from wuwei.workspace import find_workspace, index, load_config
+    repo = tmp_path / 'repo'
+    repo.mkdir()
+    roots = []
+    for name in ('a', 'b'):
+        root = tmp_path / name
+        root.mkdir()
+        write_config(root, repos('../repo'))
+        index(root, load_config(root))
+        roots.append(str(root.resolve()))
+    with pytest.raises(FileNotFoundError) as raised:
+        find_workspace(repo)
+    assert all(root in str(raised.value) for root in roots) and '--workspace' in str(raised.value)
+    result = cli(repo, 'config', 'check')
+    assert result.returncode == 2
+    assert all(root in result.stderr for root in roots) and '--workspace' in result.stderr
+
+
+@pytest.mark.parametrize('content', [None, 'not json', '[]', '{"relative": ["/x"]}', '{"/ws": "x"}',
+                                     '{"/ws": [1]}', 'no-wuwei', 'symlink'])
+def test_damaged_index_reads_as_empty(tmp_path, clean_environment, content):
+    from wuwei.workspace import find_workspace
+    repo, ws = tmp_path / 'repo', tmp_path / 'ws'
+    repo.mkdir()
+    ws.mkdir()
+    if content == 'symlink':
+        (tmp_path / 'real').mkdir()
+        (ws / '.wuwei').symlink_to(tmp_path / 'real')
+    if content in ('no-wuwei', 'symlink'):
+        content = json.dumps({str(ws.resolve()): [str(repo.resolve())]})
+    if content is not None:
+        path = Path.home() / '.config/wuwei/workspaces.json'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    with pytest.raises(FileNotFoundError, match='wuwei init'):
+        find_workspace(repo)
+
+
+def test_status_from_a_configured_checkout(tmp_path, clean_environment):
+    from wuwei.workspace import index, load_config
+    ws, repo = tmp_path / 'ws', tmp_path / 'repo'
+    ws.mkdir()
+    repo.mkdir()
+    write_config(ws, repos('../repo'))
+    directory = ws / '.wuwei/days/2026-09-28'
+    directory.mkdir(parents=True)
+    (directory / 'state.json').write_text(json.dumps({'cap': 1, 'items': {}}))
+    (directory / 'events.jsonl').write_text('')
+    index(ws, load_config(ws))
+    result = cli(repo, 'status', WUWEI_NOW='2026-09-28T12:00:00+02:00')
+    assert result.returncode == 0, result.stderr  # config check would reach gh for the repo table
+
+
+def test_upgrade_indexes_configured_checkouts(tmp_path):
+    directory = previous_workspace(tmp_path)
+    config_path = directory / 'config.toml'
+    config_path.write_text(config_path.read_text().replace('repos = []\n', '')
+                           + '\n[[repos]]\nname = "app"\npath = "../repo"\ndefault_branch = "main"\n')
+    index = Path.home() / '.config/wuwei/workspaces.json'
+    preview = cli(tmp_path, 'init', '--upgrade', '--dry-run')
+    assert preview.returncode == 0, preview.stderr
+    assert not index.exists()
+    result = cli(tmp_path, 'init', '--upgrade')
+    assert result.returncode == 0, result.stderr
+    assert indexed() == {str(tmp_path.resolve()): [str((tmp_path.parent / 'repo').resolve())]}
+
+
+def test_scope_reaches_an_indexed_checkout(tmp_path, clean_environment):
+    from wuwei.workspace import index, load_config, scope
+    ws, repo = tmp_path / 'ws', tmp_path / 'repo'
+    ws.mkdir()
+    repo.mkdir()
+    write_config(ws, repos('../repo'))
+    index(ws, load_config(ws))
+    found = scope((repo / 'x').resolve())
+    assert found is not None and found[0] == ws.resolve() and found[1] == load_config(ws)
+    other = tmp_path / 'other'
+    other.mkdir()
+    write_config(other, repos('../repo'))
+    index(other, load_config(other))
+    assert scope((repo / 'x').resolve()) is None
+
+
+def test_owner_cli_quotes_the_root():
+    from wuwei.workspace import owner_cli
+    assert owner_cli(Path('/w s')) == "bin/wuwei --workspace '/w s'"
+    assert owner_cli(Path('/w')) == 'bin/wuwei --workspace /w'

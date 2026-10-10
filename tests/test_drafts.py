@@ -385,7 +385,7 @@ def test_cockpit_lists_pending_drafts_read_only(root, port):
     result = cockpit_snapshot(directory)['drafts']
     assert len(result) == 1 and result[0]['id'] == row['id']
     assert result[0]['text'] == row['text']
-    assert result[0]['approve_command'] == f"bin/wuwei drafts approve {row['id']}"
+    assert result[0]['approve_command'] == f"{workspace.owner_cli(root)} drafts approve {row['id']}"
     assert before == [(directory / name).read_bytes() for name in ('state.json', 'events.jsonl')]
 
 
@@ -673,20 +673,28 @@ def card(capsys, draft_id):
     return widget
 
 
+def test_card_drop_names_the_workspace(root):
+    from wuwei import drafts
+    row = {'id': 'draft-test', 'tier_reason': 'approval tier', 'adapter': 'mcp', 'destination': 'C1', 'text': 'Hi'}
+    widget = drafts.widget(row, workspace.load_config(root), root)
+    options = {option['label']: option['description'] for option in widget['options']}
+    assert f"{workspace.owner_cli(root)} drafts drop draft-test" in options['Drop']
+
+
 def test_card_for_a_held_tool_call(root, capsys):
     path = root / '.wuwei/config.toml'  # learn off: the card names no outbound learn (#492).
     path.write_text(path.read_text().replace('[outbound]\ndefault_tier = "ask"\n', '[outbound]\ndefault_tier = "ask"\nlearn = "off"\n'))
     _, _, row = held(root)
     widget = card(capsys, row['id'])
-    assert widget['header'] == 'Draft' and widget['record'] == f"bin/wuwei drafts approve {row['id']}"
+    assert widget['header'] == 'Draft' and widget['record'] == f"{workspace.owner_cli(root)} drafts approve {row['id']}"
     question = widget['question']
     assert row['id'] in question and 'C9' in question and 'mcp__slack__post_message' in question
     assert 'ask by rule 9 (audience=company) for C9: unknown destination C9, not in outbound.work_channels' in question and 'Thanks' in question
     labels = [option['label'] for option in widget['options']]
     assert labels == ['Send now (Recommended)', 'Send with an edit', 'Keep as draft', 'Always ask for this channel']
     text = {option['label']: option['description'] for option in widget['options']}
-    assert f"bin/wuwei drafts approve {row['id']} --file" in text['Send with an edit']
-    assert f"bin/wuwei drafts drop {row['id']}" in text['Keep as draft']
+    assert f"{workspace.owner_cli(root)} drafts approve {row['id']} --file" in text['Send with an edit']
+    assert f"{workspace.owner_cli(root)} drafts drop {row['id']}" in text['Keep as draft']
     assert 'outbound learn' not in text['Send now (Recommended)']
     assert main(['drafts', 'show', row['id']]) == 0
     assert json.loads(capsys.readouterr().out)['id'] == row['id']
@@ -871,8 +879,8 @@ def test_card_adds_a_tier_row(root, capsys):
     options = {option['label']: option['description'] for option in card(capsys, row['id'])['options']}
     assert list(options) == ['Send now (Recommended)', 'Send with an edit', 'Keep as draft',
                              'Always send to this person']
-    assert f"bin/wuwei drafts approve {row['id']} --always" in options['Always send to this person']
-    assert f"bin/wuwei drafts drop {row['id']}" in options['Keep as draft']
+    assert f"{workspace.owner_cli(root)} drafts approve {row['id']} --always" in options['Always send to this person']
+    assert f"{workspace.owner_cli(root)} drafts drop {row['id']}" in options['Keep as draft']
     assert held(root, text='@u07 thanks', channel='C1')[0] == 1
     assert main(['drafts', 'approve', row['id'], '--always']) == 0
     config = workspace.load_config(root)

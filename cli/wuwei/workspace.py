@@ -329,8 +329,58 @@ def find_workspace(start=None, *, use_environment=True):
             if (root / '.wuwei').is_symlink():
                 raise ValueError('.wuwei must not be a symlink')
             return root
+    # #735: a configured checkout beside the workspace, read only after the walk fails.
+    roots = sorted(root for root, checkouts in _indexed().items()
+                   if any(start.is_relative_to(path) for path in checkouts)
+                   and (Path(root) / '.wuwei').is_dir() and not (Path(root) / '.wuwei').is_symlink())
+    if len(roots) == 1:
+        return Path(roots[0])
+    if roots:
+        raise FileNotFoundError(f'{start} is a configured repository of {len(roots)} workspaces: '
+                                f'{", ".join(roots)}; pass --workspace <path> (or set '
+                                'WUWEI_WORKSPACE=<path>) to pick one')
     raise FileNotFoundError(f"No .wuwei/ found from {start}; run from the workspace, set "
                             "WUWEI_WORKSPACE=<path> or pass --workspace <path> (wuwei init creates one)")
+
+
+INDEX = '.config/wuwei/workspaces.json'  # #735: under the home folder; never a .wuwei/ there
+
+
+def _indexed():
+    """#735: the per-user index {root: [checkout]}, absolute strings; missing or damaged is empty."""
+    import json
+    try:
+        data = json.loads((Path.home() / INDEX).read_text(encoding='utf-8'))
+        return {root: list(checkouts) for root, checkouts in data.items()
+                if Path(root).is_absolute() and isinstance(checkouts, list)
+                and all(isinstance(path, str) and Path(path).is_absolute() for path in checkouts)}
+    except (OSError, ValueError, AttributeError, TypeError):
+        return {}
+
+
+def index(root, config):
+    """#735: record root's configured checkouts in the per-user index find_workspace reads;
+    the root itself and the home folder or its parents are never indexed."""
+    import json
+    root, home = Path(root).resolve(), Path.home().resolve()
+    checkouts = sorted({str(path) for repo in config['repos']
+                        if (path := (root / Path(repo['path']).expanduser()).resolve()) != root
+                        and not home.is_relative_to(path)})
+    data = _indexed()
+    data.pop(str(root), None)
+    if checkouts:
+        data[str(root)] = checkouts
+    path = Path.home() / INDEX
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # ponytail: no lock; two writers at once can drop one root's entry until its next config
+    # write or init --upgrade. Lock the file if several workspaces are set up concurrently.
+    atomic_write(path, json.dumps(data, indent=2, sort_keys=True) + '\n')
+
+
+def owner_cli(root):
+    """#735: the owner command prefix that works from any folder (the leading flag, #354)."""
+    import shlex
+    return f'bin/wuwei --workspace {shlex.quote(str(root))}'
 
 
 def worktree_workspace(path):
