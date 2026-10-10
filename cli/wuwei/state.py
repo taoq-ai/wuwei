@@ -278,6 +278,7 @@ STATE_PRODUCERS = {
     'cruise_cards': 'wuwei plan propose',
     'pace': 'wuwei plan approve or wuwei plan set pace=', 'pace_card': 'wuwei plan propose',
     'decision_shadows': 'wuwei decision route',
+    'main_broken': 'wuwei build',
 }
 
 
@@ -307,6 +308,14 @@ def check_running(build):
     except PermissionError:
         pass
     return marker
+
+
+def held(data, name):
+    """#648: the fix item a held build waits on while that item has not ended, else None."""
+    action = (data.get('builds', {}).get(name) or {}).get('action') or {}
+    fix = action.get('fix') if action.get('action') == 'wait' else None
+    ended = data['items'].get(fix, {}).get('phase') in ('merged', 'parked', 'escalated')
+    return fix if fix and not ended else None
 
 
 def mid_round(data):

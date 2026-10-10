@@ -70,7 +70,7 @@ EVENT_PRODUCERS = {
     'pr.reviewers_selected': 'wuwei pr ping',
     'reviewer.unresolved': 'wuwei pr raise, ping or reviewers',
     'day.close_requested': 'wuwei close', 'day.closed': 'wuwei close', 'next.action': 'wuwei next',
-    'build.parked': 'wuwei build',
+    'build.parked': 'wuwei build', 'build.held': 'wuwei build', 'build.released': 'wuwei build',
     'gate.received': 'wuwei dispatch receive', 'discovery.requested': 'wuwei dispatch discovery',
     'discovery.intake': 'wuwei dispatch discovery',
     'tracker.call': 'wuwei tracker lifecycle',
