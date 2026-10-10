@@ -150,6 +150,8 @@ def test_calibrate_answer_writes_the_card_answer(ws, monkeypatch, capsys, qid, r
     interview_card(ws, qid, reply)
     monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
     assert main('calibrate', '--answer', f'{qid}={reply}') == 0, capsys.readouterr().err
+    out = capsys.readouterr()
+    assert f"replaced: {'.'.join(key)} = {value} (was " in out.out + out.err
     written = config(ws)
     for part in key:
         written = written[part]
@@ -299,6 +301,7 @@ def test_config_set_from_a_decision_card(ws, monkeypatch, capsys):
     capsys.readouterr()
     monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
     assert set_from_card() == 0, capsys.readouterr().err
+    assert 'replaced: cap = 5 (was ' in capsys.readouterr().out
     assert config(ws)['cap'] == 5
     data = state.read_state(ws)
     assert data['decision_outcomes']['D-1']['decided_by'] == 'owner'
@@ -307,7 +310,8 @@ def test_config_set_from_a_decision_card(ws, monkeypatch, capsys):
     assert events(ws, 'config.set') == [{'keys': ['cap'], 'card': 'D-1'}]
     capsys.readouterr()
     assert set_from_card() == 0
-    assert 'No config.toml changes' in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert 'No config.toml changes' in out and 'replaced' not in out
     assert len(events(ws, 'decision.decided')) == 1
 
 
@@ -550,6 +554,7 @@ def test_calibrate_takes_the_detected_checks_under_mandate(ws, capsys):
     paper(ws)
     widgets, err = proposed(capsys)
     assert 'calibrate: D-1 taken under mandate (Routine): repos.0.fast_checks = ["make test"]' in err
+    assert 'replaced: repos.0.fast_checks = ["make test"] (was [])' in err
     assert 'D-1' not in [widget.get('header') for widget in widgets]
     assert config(ws)['repos'][0]['fast_checks'] == ['make test']
     assert state.read_state(ws)['decision_outcomes']['D-1']['decided_by'] == 'mandate'
