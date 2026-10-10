@@ -859,3 +859,9 @@ def test_recorded_gates_after_more_than_one_fix_round(case):
     records['9:quality:initial'] = row('quality', 'initial', 'FIX', 'd' * 40, 'quality-2')
     with pytest.raises(ValueError, match='initial gate verdicts disagree on HEAD'):
         guard()._recorded_gates(root, SHA, records, '9')
+
+
+def test_continued_gh_name_is_judged_as_plain(case):
+    # #671: a line continuation inside the program name cannot hide an admin merge.
+    code, reason = guard().check(payload(case[0], 'g\\\nh pr merge 9 --admin'))
+    assert (code, 'admin' in reason) == (1, True)
