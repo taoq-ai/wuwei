@@ -9,12 +9,13 @@ from wuwei.exits import CLEAN, UNRUN
 
 def register(subparsers):
     parser = subparsers.add_parser('discover', help='Discover candidate work')
+    parser.add_argument('--repo', help='narrow to one configured repository (<org>/<name>)')
     parser.set_defaults(func=run)
 
 
 def run(args):
     try:
-        result = discovery.discover()
+        result = discovery.discover(repo=args.repo)
         print(json.dumps(result, sort_keys=True))
         return UNRUN if any(value.startswith('unmeasured') for value in result['sources'].values()) else CLEAN
     except (OSError, UnicodeError, ValueError, TypeError, KeyError) as exc:

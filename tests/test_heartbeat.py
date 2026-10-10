@@ -494,3 +494,13 @@ def test_status_line_and_session_start_make_no_port_call(ws, capsys):
                                           'hook_event_name': 'SessionStart', 'source': 'startup'})
     assert isinstance(code, int) and isinstance(text, str)
     assert calls == []
+def test_config_probe_reads_the_env_file_at_each_beat(ws):
+    # #601: the watch is long-lived; each beat rereads .wuwei/env, as doctor does.
+    from wuwei import env
+    root, _, _, monkeypatch = ws
+    monkeypatch.delenv('GITHUB_TRACKER_TOKEN', raising=False)
+    config(root, '[adapters]\ntracker = "github"\n')
+    with env.session():
+        assert heartbeat.measure(root)['config'] == {'result': 'failed', 'value': 'missing GITHUB_TRACKER_TOKEN'}
+        env.write(root, {'GITHUB_TRACKER_TOKEN': 'fixture-token-value'})
+        assert heartbeat.measure(root)['config'] == {'result': 'ok', 'value': 'complete'}
