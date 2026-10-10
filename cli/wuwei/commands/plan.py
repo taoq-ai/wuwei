@@ -26,6 +26,8 @@ def register(subparsers):
     approve.add_argument('--goals-confirmed', action='store_true')
     approve.add_argument('--import-yesterday', action='store_true')
     approve.add_argument('--pace', help='The gate card answer: Approve or Approve at careful|steady|fast')
+    approve.add_argument('--note', help="The owner's own words on the gate card; recorded on each approved "
+                                        'item and quoted in its briefs as Approved as:')
     add = actions.add_parser('add', help='Admit an item after the morning gate: a discovery candidate, '
                                          'or an item the owner names with --goal')
     add.add_argument('item')
@@ -35,6 +37,8 @@ def register(subparsers):
     add.add_argument('--ticket', help='Existing tracker ticket id when a tracker is set')
     add.add_argument('--from-finding', action='store_true',
                      help="Admit a seat's finding (wuwei next lists them) as a small item; its ticket comes later")
+    add.add_argument('--note', help="The owner's own words naming the item; recorded once and quoted in "
+                                    'its briefs as Approved as:')
     for verb, text in (('carry', 'Carry an open item to tomorrow and record the decision'),
                        ('park', 'Park an open item and record the decision')):
         command = actions.add_parser(verb, help=text)
@@ -81,7 +85,7 @@ def run(args):
                               *grants.gate_widgets(root, config), *cruise.gate_widgets(root, config)], indent=2))
         elif args.action == 'add':
             print(json.dumps(plan.add(args.item, goal=args.goal, size=args.size,
-                                      title=args.title, ticket=args.ticket,
+                                      title=args.title, ticket=args.ticket, note=args.note,
                                       source='finding' if args.from_finding else None)))
         elif args.action == 'set' and args.assignment is None and args.item.startswith('pace='):
             print(plan.set_pace(args.item.partition('=')[2]))
@@ -106,7 +110,7 @@ def run(args):
             print(f'{plan.dispose(args.item, outcome, args.reason)}: {outcome} {args.item}')
         else:
             plan.approve(args.items, goals_confirmed=args.goals_confirmed,
-                         import_yesterday=args.import_yesterday, pace_label=args.pace)
+                         import_yesterday=args.import_yesterday, pace_label=args.pace, note=args.note)
         return CLEAN
     except state.StateError as exc:
         print(f'wuwei plan: {exc}', file=sys.stderr)

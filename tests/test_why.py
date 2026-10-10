@@ -519,3 +519,36 @@ def test_why_json_reads_an_item_only(root, capsys):
     state._write_state(update, root, reserved=False)
     out = live(capsys)
     assert TOKEN not in json.dumps(out) and '[REDACTED]' in out['docs']['reason']
+
+
+def approve_as(root, text, item='fix-login', day=DAY):
+    path = day_of(root, day) / 'state.json'
+    data = json.loads(path.read_text())
+    data['items'][item]['approved_as'] = text
+    path.write_text(json.dumps(data))
+
+
+def test_item_chain_shows_the_recorded_approval(root, capsys):
+    # #731: the owner's recorded approval is its own step, read from the latest day's record.
+    merged_item(root)
+    approve_as(root, 'owner: "login only"')
+    expected = [BRIEF[0], 'approved as: owner: "login only"', *BRIEF[1:]]
+    assert why(capsys, 'fix-login') == (0, expected, '')
+    code, lines, _ = why(capsys, 'fix-login', '--full')
+    assert lines[1] == f'approved as: owner: "login only" (event not recorded; .wuwei/days/{DAY}/state.json)'
+
+
+def test_json_steps_carry_the_approval(root, capsys):
+    live_item(root)
+    approve_as(root, 'owner: "x only"', item='X')
+    assert 'approved as: owner: "x only"' in live(capsys)['steps']
+
+
+def test_carried_item_shows_its_approval_once(root, capsys):
+    yesterday = '2026-10-01'
+    write_state(root, {'items': {'old': {'goal': 'g', 'phase': 'implement', 'approved_as': 'owner: "a"'}}}, yesterday)
+    state.append_event('plan.approved', {'items': ['old'], 'approved_items': ['old']},
+                       directory=day_of(root, yesterday))
+    write_state(root, {'items': {'old': {'goal': 'g', 'approved_as': 'owner: "a"'}}})
+    state.append_event('state.import', {'items': ['old'], 'approved_items': []}, directory=day_of(root))
+    assert why(capsys, 'old')[1].count('approved as: owner: "a"') == 1

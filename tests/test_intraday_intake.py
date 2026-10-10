@@ -262,6 +262,24 @@ def test_plan_add_admits_owner_named_item_under_a_goal(root):
     assert 'OWN-1' in day['approved_items']
 
 
+def test_plan_add_records_the_owner_note_once(root, monkeypatch):
+    # #731: the owner's words naming the item are its recorded approval; set once, at admission.
+    plan.add('OWN-1', root, goal='G-1', note='only the annotator change')
+    plan.add('OWN-2', root, goal='G-1')
+    save_candidate(root, candidate())
+    plan.add('NEW', root)
+    items = state.read_state(root)['items']
+    assert items['OWN-1']['approved_as'] == 'owner: "only the annotator change"'
+    assert 'approved_as' not in items['OWN-2'] and 'approved_as' not in items['NEW']
+    with pytest.raises(state.StateError, match='decision template'):
+        plan.add('OWN-1', root, goal='G-1', note='more')
+    assert state.read_state(root)['items']['OWN-1']['approved_as'] == 'owner: "only the annotator change"'
+    from wuwei.__main__ import main
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    assert main(['plan', 'add', 'OWN-3', '--goal', 'G-1', '--note', 'x']) == 0
+    assert state.read_state(root)['items']['OWN-3']['approved_as'] == 'owner: "x"'
+
+
 def test_plan_add_records_an_adopted_source(root):
     plan.add('PR-8', root, goal='G-1', title='Fix login', source='adopted')
     plan.add('OWN-1', root, goal='G-1')

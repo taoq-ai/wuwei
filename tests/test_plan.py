@@ -94,6 +94,37 @@ def test_approve_selected_items_and_reserve_gate_fields(root):
     assert not list(root.glob('**/.git'))
 
 
+def test_approve_records_the_scope_and_the_owner_note(root, monkeypatch):
+    # #731: the approval is recorded once on each approved item; a carried item keeps its own.
+    yesterday = root / '.wuwei/days/2026-09-27'
+    yesterday.mkdir(parents=True)
+    (yesterday / 'state.json').write_text(json.dumps({'items': {
+        'OLD': {'phase': 'implement', 'status': 'running', 'approved_as': 'owner: "earlier"'},
+        'BARE': {'phase': 'implement', 'status': 'running'}}}))
+    plan.propose(proposal(), root)
+    plan.approve(['A'], root, goals_confirmed=True, import_yesterday=True, note='  keep it\n small ')
+    items = state.read_state(root)['items']
+    assert items['A']['approved_as'] == 'one function; owner: "keep it small"'
+    assert items['OLD']['approved_as'] == 'owner: "earlier"'
+    assert 'approved_as' not in items['BARE']
+
+
+def test_approve_without_note_records_the_scope(root):
+    row = proposal()
+    row['candidates'][0]['scope'] = 'one\n  function'
+    plan.propose(row, root)
+    plan.approve(['A'], root, goals_confirmed=True)
+    assert state.read_state(root)['items']['A']['approved_as'] == 'one function'
+
+
+def test_cli_approve_passes_the_note(root, monkeypatch):
+    from wuwei.__main__ import main
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    plan.propose(proposal(), root)
+    assert main(['plan', 'approve', '--items', 'A', '--goals-confirmed', '--note', 'x']) == 0
+    assert state.read_state(root)['items']['A']['approved_as'].endswith('owner: "x"')
+
+
 def test_intraday_budget_counts_morning_rank_size(root):
     plan.propose(proposal(), root)
     plan.approve(['A'], root, goals_confirmed=True)

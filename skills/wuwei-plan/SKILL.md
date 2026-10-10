@@ -17,4 +17,4 @@ Each action has a `why` and a `then`; do what `then` says. `wuwei guide` holds e
 - `wait`: end the turn with the output of `wuwei status --line`.
 - `done`: the day is closed.
 
-Never resume or interrupt a seat to answer the owner; answer from `wuwei status --line`. An item the owner names during the day joins with `wuwei plan add <item> --goal G-n`. Rewrite any text for a person with the `humanizer` skill in embedded mode when it is installed, outward text included (tracker comments, docs pages, DMs, PR comments, review pings). Without it, apply the checklist in `charters/_common-authoring.md` under Writing for a person.
+Never resume or interrupt a seat to answer the owner; answer from `wuwei status --line`. An item the owner names during the day joins with `wuwei plan add <item> --goal G-n --note "<the owner's words>"`. Rewrite any text for a person with the `humanizer` skill in embedded mode when it is installed, outward text included (tracker comments, docs pages, DMs, PR comments, review pings). Without it, apply the checklist in `charters/_common-authoring.md` under Writing for a person.
