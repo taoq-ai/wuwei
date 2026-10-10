@@ -4,6 +4,7 @@ from datetime import datetime, time
 import os
 from pathlib import Path
 import shlex
+import sys
 
 from wuwei import state, workspace
 from wuwei.exits import PAYLOAD, DAMAGED
@@ -23,6 +24,14 @@ def current():
     """The calling session id that SessionStart exported, or None (host terminal)."""
     value = os.environ.get('WUWEI_SESSION_ID', '').strip()
     return value or None
+
+
+def caller(root, card=False):
+    """#599: the exported session id, else today's planner for a caller with no terminal on
+    stdin or a --card record command; None for a host terminal."""
+    if (session := current()) or (sys.stdin is not None and sys.stdin.isatty() and not card):
+        return session
+    return state.read_state(root).get('planner_session_id')
 
 
 def gate_topics(root, session_id):
@@ -47,7 +56,7 @@ def card_topic(card, answer):
 
 def card_answered(root, card, answer):
     """The calling planner session recorded this answer on that card; never under strict."""
-    return card_topic(card, answer) in gate_topics(root, current())[0]
+    return card_topic(card, answer) in gate_topics(root, caller(root))[0]
 
 
 def stale_seconds(root):
@@ -86,13 +95,17 @@ def registered(data, session_id):
     return role if role in ROLES and role != 'adhoc' else None
 
 
-def touch(root, session_id, *, hook, cwd, role=None, thread=None):
-    """Record hook activity; never creates today's state."""
+def touch(root, session_id, *, hook, cwd, role=None, thread=None, env_file=None):
+    """Record hook activity; never creates today's state. env_file (SessionStart only, #599)
+    says whether the session id reached later Bash calls."""
     if not (workspace.day_dir(root) / 'state.json').exists():
         return None
+    payload = {'session_id': session_id, 'hook': hook}
+    if env_file is not None:
+        payload['env_file'] = env_file
     return state._write_state(
         lambda data: record(data, session_id, hook=hook, cwd=cwd, role=role, thread=thread),
-        root, reserved=False, kind='session.seen', payload={'session_id': session_id, 'hook': hook})
+        root, reserved=False, kind='session.seen', payload=payload)
 
 
 def _due(row, limits, zone):
@@ -178,8 +191,9 @@ def claim_item(root, item):
 
 
 def export(session_id):
-    """Hand the session id to later Bash calls through Claude Code's env file."""
+    """Hand the session id to later Bash calls through Claude Code's env file; False without one."""
     path = os.environ.get('CLAUDE_ENV_FILE')
     if path:
         with open(path, 'a', encoding='utf-8') as stream:
             stream.write(f'export WUWEI_SESSION_ID={shlex.quote(session_id)}\n')
+    return bool(path)

@@ -213,6 +213,17 @@ def _strict(cwd):
         return True
 
 
+def _record_card(identifier, cwd):
+    """#599: the card hash of today's D-n record, as its widget's record command names it."""
+    from wuwei import decision
+    try:
+        root = _workspace(cwd) or worktree_workspace(cwd)
+        fields = decision.evaluate(decision.today_path(identifier, root).read_text(encoding='utf-8'))[0]
+        return decision.card_hash(identifier, fields)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def _owner_relevant(text, script=False):
     """Text only: the CLI word plus an owner group and verb, a non-literal CLI word, or xargs."""
     from wuwei.shell import mentions
@@ -321,9 +332,11 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
                 # #529: the card the planner asked; the CLI checks the owner's answer itself.
                 cards = [value for flag, value in zip(action, action[1:]) if flag in ('--card', '--from-card')]
                 cards += [word.split('=', 1)[1] for word in action if word.startswith(('--card=', '--from-card='))]
-                # #661: a decision's card hash is the owner's answer the gate recorded on that card.
+                # #661: a decision's card hash is the owner's answer the gate recorded on that card;
+                # #599: or the card the widget's record command names for an asked id.
                 unknown = [card for card in cards if not re.fullmatch(r'[0-9a-f]{1,64}', card) or not any(
-                    topic.startswith(f'{ident}={card}') for ident in ids for topic in edits[0])]
+                    topic.startswith(f'{ident}={card}') for ident in ids for topic in edits[0]) and not any(
+                    ident in edits[0] and card == _record_card(ident, cwd) for ident in ids)]
                 if group in ('decide', 'decision') and unknown and ids and not _strict(cwd):
                     return 1, (f'Unknown card hash {unknown[0]!r}: it is not an answer the owner gave on the '
                                f'card. Ask it with bin/wuwei decision show {ids[0]} --widget and run the record '
