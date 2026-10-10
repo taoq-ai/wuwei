@@ -1077,12 +1077,31 @@ def i36(case, rules):
     return rules.memo(('item tickets', case[0]), compute)
 
 
+def i37(case, rules):
+    """#643: a python -c snippet with no write-like token passes the records guard in every
+    posture; one with a write-like token is refused in every posture, naming the token."""
+    def compute(posture):
+        from wuwei import workspace
+        from wuwei.guards.protect_state import check_bash
+        day = (workspace.day_dir(rules.root) / 'state.json').relative_to(rules.root)
+        read = rules.hook(posture, rules.bash(f"python3 -c 'import json; print(json.load(open(\"{day}\")))'"))
+        if read:
+            return f'a read snippet exits {read}'
+        for write, token in ((f"open(\"{day}\", \"w\")", '"w"'),
+                             (f"from pathlib import Path; Path(\"{day}\").write_text(\"x\")", 'write_text')):
+            code, reason = check_bash(rules.bash(f"python3 -c '{write}'"))
+            if code != 2 or f'Opaque interpreter: {token} in the snippet' not in reason:
+                return f'{write} gives {code} {reason}'
+        return None
+    return rules.memo(('python -c', case[0]), lambda: compute(case[0]))
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
               'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27, 'I28': i28,
               'I31': i31, 'I32': i32, 'I33': i33, 'I34': i34, 'I35': i35,
-              'I36': i36}
+              'I36': i36, 'I37': i37}
 
 
 def project(case):
@@ -1098,7 +1117,7 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
          'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': (), 'I28': (),
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,)}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (0,)}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 

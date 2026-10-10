@@ -794,6 +794,8 @@ def test_issue_347_reads_warns_and_writes(workspace, script, expected):
     (['python3', '-m', 'json.tool', 'x'], True), (['python3', '-m', 'json.tool', 'x', 'y'], False),
     (['python3', '-m', 'json.tool'], True),
     (['wuwei', 'config', 'set', 'k', 'v'], False),
+    (['python3', '-c', "import json,sys; print(json.load(open('.wuwei/state.json'))['day'])"], True),
+    (['python3', '-c', "open('.wuwei/state.json', 'w')"], False),
 ])
 def test_issue_349_shared_read_predicate(argv, expected):
     from wuwei import shell
@@ -926,8 +928,48 @@ def test_issue_349_writes_refused_in_every_posture(records, posture, monkeypatch
         assert [json.loads(line)['kind'] for line in _events(records)[before:]] == ['hook.refusal']
     command = f'python3 -c \'open("{_STATE}", "w")\''
     assert check_bash(payload(records, 'Bash', command=command)) == (
-        2, 'Opaque interpreter; use the wuwei CLI for state changes.')
+        2, 'Opaque interpreter: "w" in the snippet is not a read; use the wuwei CLI for state changes.')
     assert check_bash(payload(records, 'Bash', command=f'python3 tool.py > {_CONFIG}'))[0] == 1
+
+
+_READ_643 = "python3 -c \"import json,sys; print(json.load(open('.wuwei/state.json'))['day'])\""
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_issue_643_python_c_read_passes(records, posture, monkeypatch, capsys):
+    _posture(records, posture)
+    for command in (_READ_643, f"python3 -c 'import json; print(json.load(open(\"{_STATE}\")))'"):
+        assert _hook(records, 'Bash', monkeypatch, capsys, command=command) == 0, command
+    assert _events(records) == []
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_issue_643_write_snippet_names_token(records, posture, monkeypatch, capsys):
+    from wuwei.guards.protect_state import check_bash
+    _posture(records, posture)
+    for command, token in [(f"python3 -c 'open(\"{_STATE}\", \"w\")'", '"w"'),
+                           (f"python3 -c 'from pathlib import Path; Path(\"{_STATE}\").write_text(\"x\")'",
+                            'write_text')]:
+        code, reason = check_bash(payload(records, 'Bash', command=command))
+        assert code == 2 and f'Opaque interpreter: {token} in the snippet' in reason, reason
+        assert _hook(records, 'Bash', monkeypatch, capsys, command=command) == 2
+    owner = "python3 -c \"from wuwei.commands import main; main(['decide','D-1','once'])\""
+    assert check_bash(payload(records, 'Bash', command=owner))[0] == 2
+    assert check_bash(payload(records, 'Bash', command=f'{_READ_643} > {_STATE}'))[0] == 1
+    assert check_bash(payload(records, 'Bash', command="python3 -c 'integrity.reconfirm()'"))[0] != 0
+
+
+@pytest.mark.parametrize('command', [
+    f"python3 -c \"open('{_STATE}','\\x77')\"", f"python3 -c \"open('{_STATE}',chr(119))\"",
+    f'python3 -c "import sys;open(sys.argv[1],sys.argv[2])" {_STATE} w',
+    f"python3 -c \"import logging;logging.FileHandler('{_STATE}')\"",
+    f"python3 -c \"import tarfile;tarfile.open('x.tar').extractall('{DAY_349}')\"",
+    f"python3 -c \"open('{_STATE}','W'.lower())\"",
+])
+def test_issue_643_unusual_snippets_refused(records, command):
+    from wuwei.guards.protect_state import check_bash
+    _posture(records, 'observe')
+    assert check_bash(payload(records, 'Bash', command=command))[0] == 2, command
 
 
 @pytest.mark.parametrize('posture', ['observe', 'strict'])

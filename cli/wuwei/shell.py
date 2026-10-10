@@ -559,6 +559,19 @@ def _unwrap(argv, subshell, raw_argv, inherited_env=None, protected=('git', 'gh'
 _INTERPRETER = r'(?:python|pypy)[\d.]*|node|perl|ruby|php|lua'
 # The inline-code option letters of each interpreter other than python and pypy (-c).
 _SNIPPET = {'node': 'ep', 'perl': 'eE', 'ruby': 'e', 'php': 'r', 'lua': 'e'}
+# #643: what makes a python -c snippet more than a read; the leftmost match is named.
+# Fails closed: any escape, run-time input (chr, argv, environ, stdin, input, lower, decode)
+# or less common writer (logging handlers, archive extraction, dunders) is not a read.
+# ponytail: a case-blind token scan, not a parser; switch to an ast allowlist if it keeps growing.
+_SNIPPET_WRITES = re.compile(
+    r"""(['"])[rbt]*[wax+][rbtwax+]*\1"""  # an open mode that writes: 'w', "a+", 'rb+'
+    r'|\w*(?:write|remove|rename|replace|unlink|rmdir|mkdir|makedirs|touch|truncate|chmod|chown'
+    r'|symlink|hardlink|inplace)\w*|os\.(?:link|open|fork)'
+    r'|shutil|subprocess|system|popen|spawn|exec|eval|getattr|__import__|importlib|runpy|ctypes'
+    r'|sqlite3|shelve|dbm'
+    r'|\\|chr|argv|environ|stdin|input|lower|decode|logging|Handler|extract|tarfile|zipfile'
+    r'|__|vars|globals'
+    r'|(?<![\w/-])(?<![^\w.]\.)wuwei(?![\w/-])', re.I)  # the CLI imported; not .wuwei/ or cli/wuwei/
 
 
 def is_opaque(argv: list[str], stdin: bool = True) -> bool:
@@ -873,9 +886,26 @@ def _shell_script(args):
     return None
 
 
+def snippet_write(argv):
+    """#643: the first write-like token of python [-flags] -c <code>; '' when the code only
+    reads; None for any other form (attached -c<code>, -i, -W, -X, -m, a script, stdin)."""
+    if not argv or not re.fullmatch(r'(?:python|pypy)[\d.]*', PurePosixPath(argv[0]).name):
+        return None
+    for index, word in enumerate(argv[1:], 2):
+        if re.fullmatch(r'-[BEIOPSdqsu]*c', word):
+            if index == len(argv):
+                return None
+            match = _SNIPPET_WRITES.search(argv[index])  # later words are sys.argv data
+            return match[0] if match else ''
+        if not re.fullmatch(r'-[BEIOPSdqsu]+', word):
+            return None
+    return None
+
+
 def reads(argv, cwd=None):
-    """#349: one command only reads: a READ_ONLY word (sed -n Np, find with no action) or a
-    read-only call of the known CLI. Shared by the classifier and the state guard."""
+    """#349: one command only reads: a READ_ONLY word (sed -n Np, find with no action), a
+    python -c snippet with no write-like token (#643) or a read-only call of the known CLI.
+    Shared by the classifier and the state guard."""
     from wuwei import commands
     if not argv:
         return False
@@ -886,8 +916,10 @@ def reads(argv, cwd=None):
         return options == ['-n'] and bool(operands) and bool(re.fullmatch(r'[0-9,$]+p', operands[0]))
     if name == 'find':
         return not _FIND_ACTIONS.intersection(args)
-    if re.fullmatch(r'(?:python|pypy)[\d.]*', name) and args[:2] == ['-m', 'json.tool']:
-        return len(args) < 4  # no operand reads stdin; a second operand is json.tool's outfile
+    if re.fullmatch(r'(?:python|pypy)[\d.]*', name):
+        if args[:2] == ['-m', 'json.tool']:
+            return len(args) < 4  # no operand reads stdin; a second operand is json.tool's outfile
+        return snippet_write(argv) == ''  # #643
     return name in READ_ONLY or bool(not any('$' in word for word in args)
                                      and known_cli(argv[0], cwd) and commands.read_only(args))
 
