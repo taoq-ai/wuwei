@@ -331,7 +331,8 @@ executes each returned action unchanged:
 
 Process depth follows the [tier](concepts.md#tier). A light item skips the class sweep, gate step zero and
 the long verdict rows. A standard item sweeps only the classes `wuwei sweep classes
-<worktree>` lists and mutates only when its diff touches guard code or a trust path. Each
+<worktree>` lists and mutates only when its diff touches guard code or a trust path, or the lead flagged it
+trust_surface or boundary_relevant. Each
 brief's `Depth:` line says which. The report's `## Cycle time` section shows how long each
 merged item took and the median per tier against the targets (light 60, standard 180
 minutes).

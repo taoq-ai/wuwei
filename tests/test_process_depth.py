@@ -71,7 +71,7 @@ def test_sweep_classes_is_read_only():
 from test_brief import brief, day  # noqa: E402,F401  (helper and fixture)
 
 
-def depth_day(day, diff, floor='light', trust=None, gates=None):
+def depth_day(day, diff, floor='light', trust=None, gates=None, flags=None):
     from wuwei import registry
     root, directory, vcs, _ = day
     (root / 'tree').mkdir(exist_ok=True)
@@ -84,6 +84,9 @@ def depth_day(day, diff, floor='light', trust=None, gates=None):
         diff_stat=registry.Result(0, [{'path': p, 'additions': 3, 'deletions': 1} for p in diff]))
     if gates:
         state._write_state(lambda data: data['items']['X'].update(gates={'tier': gates}), root, reserved=False)
+    if flags:
+        state._write_state(lambda data: data['items']['X'].setdefault('flags', {}).update(flags),
+                           root, reserved=False)
     return root, directory
 
 
@@ -130,6 +133,36 @@ def test_gate_brief_says_when_step_zero_runs(day, monkeypatch, diff, tier, trust
     _, directory = depth_day(day, diff, trust=trust, gates=tier)
     assert brief(monkeypatch, 'Review it.', 'quality', 'X', 'g', '--gate', '--worktree', 'tree') == 0
     assert depth_line(directory, 'g') == [expected]
+
+
+SKIP = ('Depth: standard; step zero: skip (no guard code or trust path in the diff); '
+        'write Mutation: skipped (depth standard)')
+
+
+@pytest.mark.parametrize('diff,tier,flags,expected', [
+    (['cli/wuwei/mask.py'], 'standard', {'trust_surface': True},
+     'Depth: standard; step zero: run (trust_surface)'),
+    (['cli/wuwei/mask.py'], 'standard', {'boundary_relevant': True},
+     'Depth: standard; step zero: run (boundary_relevant)'),
+    (['cli/wuwei/guards/x.py'], 'standard', {'trust_surface': True, 'boundary_relevant': True},
+     'Depth: standard; step zero: run (trust_surface, boundary_relevant)'),
+    (['cli/wuwei/mask.py'], 'standard', {'agent_surface': True}, SKIP),
+    (['cli/wuwei/mask.py'], 'full', {'trust_surface': True}, 'Depth: full; step zero: run'),
+])
+def test_gate_brief_runs_step_zero_for_a_flagged_item(day, monkeypatch, diff, tier, flags, expected):
+    """#663: a trust_surface or boundary_relevant item runs step zero whatever its diff."""
+    _, directory = depth_day(day, diff, gates=tier, flags=flags)
+    assert brief(monkeypatch, 'Review it.', 'security', 'X', 'g', '--gate', '--worktree', 'tree') == 0
+    assert depth_line(directory, 'g') == [expected]
+
+
+def test_flagged_item_gets_the_security_reviewer(root, monkeypatch):
+    """#663: a flagged item rises to standard and the security reviewer is on it."""
+    from wuwei import dispatch
+    tiered(root, monkeypatch, [('cli/wuwei/mask.py', 3, 1)], flags=['trust_surface'])
+    record = dispatch.tier(root, workspace.load_config(root), state.read_state(root)['items']['A'])
+    assert record['tier'] == 'standard' and 'security' in record['roles']
+    assert 'lead flag trust_surface' in record['reasons']
 
 
 def test_gate_brief_ignores_the_builder_prediction(day, monkeypatch):
