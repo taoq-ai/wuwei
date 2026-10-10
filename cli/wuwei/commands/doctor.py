@@ -625,6 +625,17 @@ def _day(root, config, probes):
                      f'{untraced} stopped with no seat today' if untraced else 'none today',
                      'launch agents from a session inside the workspace after the morning plan; under strict '
                      'register them with wuwei seat start --role <role> --adhoc "<prompt>"'))
+    from wuwei import watch
+    try:  # #599: the last SessionStart says whether Bash calls carry WUWEI_SESSION_ID.
+        flags = [row['payload']['env_file'] for row in watch.records(workspace.day_dir(root) / 'events.jsonl')
+                 if row['kind'] == 'session.seen' and 'env_file' in row['payload']]
+        rows.append(_row('day', 'session id', 'ok', 'SessionStart exported it' if flags else 'not recorded today')
+                    if not flags or flags[-1] else
+                    _row('day', 'session id', 'warn', 'SessionStart had no CLAUDE_ENV_FILE, so Bash calls do not carry '
+                         'WUWEI_SESSION_ID; record commands for asked cards confirm through the planner in state',
+                         'update Claude Code so SessionStart gets CLAUDE_ENV_FILE, then start a new session'))
+    except watch.ERRORS as exc:
+        rows.append(_row('day', 'session id', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
     try:
         if ids := _legacy_traces(root):
             rows.append(_row('day', 'trace decisions', 'warn', f'{", ".join(ids)} pending under the pre-#352 rule',

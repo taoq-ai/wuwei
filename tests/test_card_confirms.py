@@ -2,6 +2,7 @@
 
 from argparse import Namespace
 from hashlib import sha256
+import io
 import json
 import re
 
@@ -52,6 +53,11 @@ def no_terminal(monkeypatch):
     monkeypatch.setattr('wuwei.integrity._host_confirm', fail)
 
 
+class Terminal(io.StringIO):
+    def isatty(self):
+        return True
+
+
 # Phase 1: the card answer is recorded.
 
 def test_card_topic_normalises_and_hashes():
@@ -63,6 +69,7 @@ def test_card_topic_normalises_and_hashes():
 def test_card_answered_only_for_the_planner_outside_strict(ws, monkeypatch):
     state._write_state(lambda data: data['sessions']['planner-1'].update(
         gate_asked=[sessions.card_topic('CAP', '5')]), ws, reserved=False)
+    monkeypatch.setattr('sys.stdin', Terminal())
     assert not sessions.card_answered(ws, 'CAP', '5')  # no session id: a host terminal
     monkeypatch.setenv('WUWEI_SESSION_ID', 'other')
     assert not sessions.card_answered(ws, 'CAP', '5')
@@ -169,6 +176,8 @@ def test_calibrate_answer_without_the_card_answer_keeps_promote(ws, monkeypatch,
         strict(ws)
     if case != 'no session':
         monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
+    else:
+        monkeypatch.setattr('sys.stdin', Terminal())  # a host terminal
     before = (ws / '.wuwei/config.toml').read_text()
     assert main('calibrate', '--answer', 'cap=5') == 0
     assert (ws / '.wuwei/config.toml').read_text() == before
@@ -355,7 +364,8 @@ def test_widget_of_a_config_record_prints_the_config_command(ws, capsys):
     assert main('decision', 'show', 'D-1', '--widget') == 0
     assert json.loads(capsys.readouterr().out)[0]['record'] == 'wuwei config set --from-card D-1'
     assert main('decision', 'show', 'D-2', '--widget') == 0
-    assert json.loads(capsys.readouterr().out)[0]['record'] == 'wuwei decide D-2 "<label>"'
+    card = decision.card_hash('D-2', decision.evaluate(VALID)[0])
+    assert json.loads(capsys.readouterr().out)[0]['record'] == f'wuwei decide D-2 "<label>" --card {card}'
 
 
 # Phase 4: strict keeps the host terminal.
@@ -595,3 +605,93 @@ def test_calibrate_with_question_ids_or_no_checkout_writes_no_record(ws, capsys)
     widgets, err = proposed(capsys)
     assert 'acme/paper' in err and 'paper' in err and widgets
     assert not (workspace.day_dir(ws) / 'decisions').exists()
+
+
+# #599: the card answer confirms without WUWEI_SESSION_ID in the environment.
+
+def record_text(root, identifier='D-1'):
+    return (workspace.day_dir(root) / 'decisions' / f'{identifier}.md').read_text()
+
+
+def planner_bash(monkeypatch):
+    """The planner's Bash call: no session id in the environment, no terminal on stdin."""
+    no_terminal(monkeypatch)
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    monkeypatch.setattr('sys.stdin', io.StringIO())
+
+
+def test_decide_records_an_asked_card_without_the_session_id(ws, monkeypatch, capsys):
+    config_card(ws)
+    planner_bash(monkeypatch)
+    assert main('decide', 'D-1', 'cap = 5') == 0, capsys.readouterr().err
+    assert 'Decided-by: owner' in record_text(ws) and 'in the planner session' in record_text(ws)
+
+
+def host_prompt(monkeypatch):
+    calls = []
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda digest, **kwargs: calls.append(digest) or True)
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    monkeypatch.setattr('sys.stdin', Terminal())
+    return calls
+
+
+@pytest.mark.parametrize('reply', [None, 'cap = 5'])
+def test_host_terminal_prompts(ws, monkeypatch, capsys, reply):
+    config_card(ws, reply)
+    calls = host_prompt(monkeypatch)
+    assert main('decide', 'D-1', 'A') == 0, capsys.readouterr().err
+    assert len(calls) == 1 and 'at the host terminal' in record_text(ws)
+
+
+def test_config_set_from_card_without_the_session_id(ws, monkeypatch, capsys):
+    config_card(ws)
+    planner_bash(monkeypatch)
+    assert set_from_card() == 0, capsys.readouterr().err
+    assert config(ws)['cap'] == 5
+
+
+def test_calibrate_answer_without_the_session_id(ws, monkeypatch, capsys):
+    interview_card(ws, 'cap', '5')
+    planner_bash(monkeypatch)
+    assert main('calibrate', '--answer', 'cap=5') == 0, capsys.readouterr().err
+    assert config(ws)['cap'] == 5
+
+
+def card_of(root, identifier='D-1'):
+    return decision.card_hash(identifier, decision.evaluate(record_text(root, identifier))[0])
+
+
+@pytest.mark.parametrize('case', ['asked', 'edited', 'other hash', 'not asked', 'strict'])
+def test_decide_with_card_never_prompts(ws, monkeypatch, capsys, case):
+    config_card(ws, None if case == 'not asked' else 'cap = 5')
+    card = '000000000000' if case == 'other hash' else card_of(ws)
+    if case == 'edited':  # the record changed after its card was asked
+        path = workspace.day_dir(ws) / 'decisions/D-1.md'
+        path.write_text(path.read_text().replace('Five items build at once.', 'Five items build at once, more memory.'))
+    if case == 'strict':
+        strict(ws)
+    calls = host_prompt(monkeypatch)
+    capsys.readouterr()
+    code = main('decide', 'D-1', 'A', '--card', card)
+    err = capsys.readouterr().err
+    assert calls == []
+    if case == 'asked':
+        assert code == 0 and 'in the planner session' in record_text(ws)
+        return
+    assert code == 1 and 'Outcome: pending' in record_text(ws)
+    assert 'bin/wuwei decision show D-1 --widget' in err
+    assert ('bin/wuwei decide D-1 A in a host terminal' in err) is (case == 'strict')
+
+
+def test_hook_refuses_a_seat_record_command_with_card(ws, monkeypatch):
+    # #599: the state fallback is never reached by a seat; the hook refuses it first (I8).
+    config_card(ws)
+    command = f'bin/wuwei decide D-1 A --card {card_of(ws)}'
+    assert hook(ws, command) == (0, '')
+    assert hook(ws, command, agent_id='a1')[0] == 1
+    monkeypatch.setenv('WUWEI_SEAT_ROLE', 'shepherd')
+    assert hook(ws, command, session_id='seat-1')[0] == 1
+    monkeypatch.delenv('WUWEI_SEAT_ROLE')
+    strict(ws)
+    code, reason = hook(ws, command)
+    assert code == 1 and 'host terminal' in reason

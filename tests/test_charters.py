@@ -307,3 +307,10 @@ def test_governing_document_charters():  # #664
     assert "Governing:" in text["builder.md"] and "## Governing" in text["builder.md"]
     assert "## Governing" in text["sentinel-goal.md"] and "conflicts" in text["sentinel-goal.md"]
     assert "governed_by" in text["lead.md"]
+
+
+def test_plan_skill_reruns_a_failed_card_confirmation_with_card():
+    # #599
+    from test_guide import RERUN
+    skill = (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
+    assert all(part in skill for part in RERUN)
