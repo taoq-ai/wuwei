@@ -128,6 +128,13 @@ def green(checks, protection):
                 f'check {check["name"]} is failing or pending')
 
 
+def fixes_base(base, head):
+    """#668: the checks failing at the base commit that pass at head; a PR that turns a
+    broken base green skips the soak."""
+    passed = {c['name'] for c in head if c['conclusion'] == 'success'}
+    return sorted({c['name'] for c in base if c['conclusion'] in ('failure', 'error')} & passed)
+
+
 def quiet(policy, now):
     minute = now.hour * 60 + now.minute
     for window in policy['quiet_hours']:
@@ -367,7 +374,15 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         bot = bot_evidence(config, policy, discussion, ref, head, root)
         last = max([obligations._time(pr['updated_at']),
                     *[obligations._time(r['submitted_at']) for r in approvals]])
-        require(granted or workspace.now() - last >= timedelta(minutes=policy['soak_minutes']), 'soak window has not passed')
+        end, soak = last + timedelta(minutes=policy['soak_minutes']), None
+        if not granted and workspace.now() < end:
+            fixed = policy['soak_skip'] == 'base_fix' and fixes_base(
+                checks_at(host, ref, pr['base_sha'], root), checks)
+            if not fixed:
+                return Result(1, {'next': f'run bin/wuwei merge {ref} after {end.isoformat()}'},
+                              f'merge policy: waits: soak ends at {end.isoformat()}')
+            soak = (f'skipped: fixes the broken base: {", ".join(fixed)} fail at '
+                    f'{pr["base_sha"]} and pass at head')
         fresh = checked_pr(host, ref, root)
         require(all(fresh[key] == pr[key] for key in ('head', 'base_sha', 'base', 'updated_at',
                     'merge_state', 'mergeable', 'state', 'draft')), 'PR changed during check')
@@ -375,12 +390,13 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         return Result(0, {'pr': ref, 'item': item, 'head': head, 'base': pr['base'],
             'base_sha': pr['base_sha'], 'at': workspace.now().isoformat(), 'verdicts': verdicts,
             'checks': checks, 'approvals': sorted(r['author'] for r in approvals),
-            'protection': protection, 'bot': bot,
+            'protection': protection, 'bot': bot, 'soak': soak,
             'files': [{k: v for k, v in file.items() if k != 'patch'} for file in files]})
     except Refused as exc:
         if granted:  # #524: never the owner wall; the condition, then the retry
             return Result(1, None, f'merge: {exc}; no grant lifts this; run bin/wuwei pr act {ref} once it holds')
-        return Result(1, None, f'merge policy: {exc}; the owner merges; ask the owner')
+        return Result(1, {'next': f"run bin/wuwei merge {ref}: it merges under the owner's grant, "
+                                  'or asks the owner on a card'}, f'merge policy: owner merges: {exc}')
     except ERRORS as exc:
         return Result(2, None, f'merge policy unmeasured: {exc}; route to owner; run bin/wuwei doctor if it repeats')
 

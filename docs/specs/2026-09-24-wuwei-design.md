@@ -355,6 +355,11 @@ merges. A precondition that fails names the condition: no grant lifts it. With n
 `owner_only` under `strict` and `ask` otherwise. Granted merges are journaled, watched and
 undo-logged like auto-merges.
 
+Amended (owner, 2026-10-10, #668): a PR whose head turns a check that fails at its base commit
+green skips the soak (`merge.soak_skip`: `base_fix`, the default, or `never`); every other
+rule still holds. A held merge reads either `waits: soak ends at <time>` or
+`owner merges: <rule>`, and `wuwei merge check` prints the next step on a `Next:` line.
+
 ### 4.7 Deployment ban (owner, 2026-09-28)
 
 WUWEI never deploys, in any profile, routine or remote command. Refused always, after the
@@ -2001,7 +2006,11 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I35 | No item opens a fix round past its round cap: `build.open_fix` refuses at the cap and `dispatch next` turns a blocking finding at the cap into a park with the finding and what would unpark it | `dispatch.max_rounds` for `gates.max_rounds` 1, 2 and 3 x each tier override 0, 1 and 3 x each item tier; `build.open_fix` on an item whose build used its cap, with and without a tier override | #623; one cap read in `dispatch.max_rounds`, one round opened in `build.open_fix`; after the cap non-blocking notes ship in the PR body |
 | I36 | An item ticket is attached by the planner below strict or by the owner, never by a seat: `tracker create <item>` and `plan set <item> ticket=<id>` pass for the registered planner below strict and never for a seat, whose reason names the planner; `tracker create --bug` stays a seat command | per posture, `protect_state.check_bash` on both commands for the planner and for a seat, and on a seat's `tracker create --bug A Broken --evidence cli/x.py:1` | #636; the gate's Approve opens the tickets the plan proposed; under strict the owner runs the commands in a host terminal |
 | I37 | An item with `owner_merge` set is never merged by WUWEI: `merge check`, `wuwei merge`, `pr act`, the PR guard and the overnight shepherd refuse naming the flag, under any grant; cleared, they follow the normal policy | `merge.owner_hold` on a set, cleared, absent and malformed record in the walk; the path table `test_owner_merge_holds_on_every_path` (each path x flag set and cleared x no grant and a today grant) | #678; one read in `merge.check`; only `wuwei plan set` writes it; agent tools set it, the owner clears it |
+<<<<<<< HEAD
 | I42 | Generated and data lines never count toward the tier or the size cap, and both read the same count from `merge.uncounted`; a diff that changes `.gitattributes` gets no linguist-generated exclusion | `dispatch.tier` and `merge.uncounted` on source with a large data file and with a linguist-generated file, each with and without a changed `.gitattributes` | #657; one decision in `merge.uncounted`, read by `dispatch.tier` and `merge.check` |
+=======
+| I40 | The soak is skipped only for a head that turns a check failing at its base commit green | `merge.fixes_base` on every base conclusion x head conclusion, with the check present and absent at head | #668; one rule in `merge.fixes_base`; the check path (base read only while the soak holds, exit 2 when unreadable) stays in `tests/test_merge.py` |
+>>>>>>> ada379b (fix(merge): a fix to a broken base skips the soak, and merge check says either wait or who merges, never both)
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

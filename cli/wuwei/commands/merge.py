@@ -22,4 +22,6 @@ def run(args):
             raise ValueError('usage: wuwei merge <pr>')
         result = merge.execute(args.target)
     print(result.reason if result.exit else json.dumps(result.data, sort_keys=True))
+    if result.exit == 1 and result.data:  # #668: merge check names the next step
+        print(f"Next: {result.data['next']}")
     return result.exit
