@@ -470,6 +470,11 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             line = specmode.brief_line(config, item, current, tree, gate)
             if line:
                 header.append(line)
+        # #664: after the body, never in the header: the header is cut at its first blank line.
+        block = ''
+        if role == 'builder' and tree:
+            from wuwei import specmode
+            block = specmode.brief_block(config, item, current, tree)
         depth = None
         if role == 'builder' or gate:
             from wuwei import dispatch
@@ -517,7 +522,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                 if other != pr:
                     host = host or registry.load('code_host', config)
                     header.append(f'Counterpart {other} head (no-cache): {json.dumps(read(host.pr, other, root=root))}')
-        text = '\n'.join(header) + '\n\n' + body + '\n'
+        text = '\n'.join(header) + '\n\n' + body + '\n' + block
         relative = str(output.relative_to(root))
         import hashlib
         payload = {'name': name, 'item': item, 'role': role, 'path': relative, 'gate': gate,

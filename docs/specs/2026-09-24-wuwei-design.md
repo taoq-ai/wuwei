@@ -1110,6 +1110,24 @@ ending in `-<item>` (`create-new-feature.sh --short-name <item>`); each step is
 | `checklist` | every item checked in `checklists/*.md` (`specify` writes `requirements.md`) |
 | `implement` | every task in `tasks.md` checked |
 
+Governing document (owner, 2026-10-10, #664). An analysis that checks the spec only
+against itself misses a conflict with the document the item answers to. The lead names
+that document on the candidate as `governed_by` (`<path>` or `<path>#<heading>`, relative
+to the repository), which `plan approve` and `plan add` copy to the item; without it, a
+`Governing: <path>#<heading>` line in `spec.md` names it, and the item's value wins. A
+heading matches when its text equals the name or starts with the name and a space; the
+section runs to the next heading of the same or a higher level. A spec-kit builder brief
+for a governed item ends with a `## Governing document` block: the reference, the line
+range, the section text and the instruction to end the analyze report with a
+`## Governing` table, one row per `spec.md` assumption with the verdict `agrees`,
+`conflicts` or `not covered` and the cited `<path>:<line>`. `wuwei spec analysis` refuses
+(exit 2, nothing written) a governed item's report without that table, or with fewer valid
+rows than assumptions, and a reference that is not a file in the worktree or names no
+heading in it. A gate brief's `Spec:` line names the reference and the range; the goal
+sentinel checks each row against its cited line and treats a `conflicts` row as a violated
+requirement unless a recorded decision rules on it. Without a governing document nothing
+changes.
+
 superpowers: the skills of the superpowers plugin; the item is the topic in the file names.
 
 | Step | Artifact |

@@ -120,6 +120,7 @@ You skip or require the spec for one item in a host terminal: `bin/wuwei plan se
 - OpenSpec: `npm install -g @fission-ai/openspec`, then `openspec init`
 
 A Claude Code subagent cannot write `analysis.md` itself: Claude Code refuses a subagent's Write of a Markdown file named like a report, in any directory. A builder seat saves the analyze report with `bin/wuwei spec analysis <item> < report` and gives a scratch file another name.
+A Claude Code subagent cannot write `analysis.md` itself, so a builder seat saves the analyze report with `bin/wuwei spec analysis <item> < report`. An item can name a governing document: the lead's `governed_by`, or a `Governing: <path>#<heading>` line in `spec.md`. Its report must then end with a `## Governing` table, or the command refuses it. The table has one row per assumption: `agrees`, `conflicts` or `not covered`, and the cited `<path>:<line>`.
 
 `wuwei setup` offers the engine it finds first (`.specify/`, `openspec/`, or a `superpowers@` entry in `scanner.mcp.plugins_file`), spec-kit when it finds none.
 
