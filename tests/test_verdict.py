@@ -54,7 +54,8 @@ def test_source_refusal_order():
                                   '**Verdict:** **{}**'])
 def test_source_accepted_verdict_forms(verdict, form):
     from wuwei.verdict import lint
-    code, message = lint(VALID.replace('Verdict: FIX', form.format(verdict)).replace('blocks: yes', 'blocks: no'))
+    text = VALID.replace('Verdict: FIX', form.format(verdict))
+    code, message = lint(text if verdict == 'FIX' else text.replace('blocks: yes', 'blocks: no'))
     assert (code, message) == (0, f'OK: {verdict}')
 
 
@@ -679,8 +680,72 @@ ASSUMED = 'Verdict: FIX\nHead: abc1234\n' + ASSUMPTION + 'Probe: not run\nVAL: P
 
 def test_assumption_is_a_finding_kind():
     from wuwei.verdict import lint
-    assert lint(ASSUMED) == (0, 'OK: FIX')
+    code, message = lint(ASSUMED)
+    assert code == 1 and 'FIX verdict but no blocking finding parsed' in message
+    assert lint(ASSUMED.replace('FIX', 'PASS')) == (0, 'OK: PASS')
     code, message = lint(ASSUMED.replace('would break when two processes share it; ', ''))
     assert code == 1 and 'finding 1: missing failure scenario' in message
     code, message = lint('Verdict: FIX\nHead: abc1234\nAssumptions: reviewed\nProbe: not run\n' + RETRO)
     assert code == 1 and 'no finding with severity' in message
+
+
+def reproduced(first, second):
+    """#677: the shape of a real quality verdict, ids before the severity."""
+    return ('Verdict: FIX\nHead: abc1234\n\n## Blocking findings\n\n'
+            f'{first} Severity: medium. File: src/a.py:80. blocks: yes.\n'
+            'The retry loop never stops.\nFailure scenario: a dropped socket would hang.\n\n'
+            f'{second} Severity: high. File: src/b.py:9. blocks: yes.\n'
+            'Failure scenario: an empty file would crash the reader.\n\n'
+            '## Non-blocking findings\n\n'
+            'N1. Severity: low. File: src/c.py:5. blocks: no.\nFailure scenario: would log twice.\n\n'
+            + ASSUMPTION + '\nProbe: not run\nVAL: PASS\n' + RETRO
+            + 'Simplicity: none\nDesign: none\n')
+
+
+@pytest.mark.parametrize('role,first,second', [
+    ('sentinel-arch', 'A1.', 'A2.'), ('sentinel-quality', 'Q1.', 'Q2.'),
+    ('sentinel-security', 'S1.', 'S2.'), ('sentinel-goal', 'G1.', 'G2.'),
+    ('sentinel-quality', 'F1.', 'F2.'), ('sentinel-quality', '[Q1]', '[Q2]'),
+    ('sentinel-quality', 'Finding 1.', 'Finding 2.')])
+def test_every_role_id_starts_a_finding(tmp_path, role, first, second):
+    from wuwei.verdict import active_text, finding_blocks, lint_file
+    text = reproduced(first, second)
+    blocks = finding_blocks(active_text(text))
+    for block, start in zip(blocks, (first, second, 'N1.', 'Assumption:')):
+        assert block.startswith(start)
+    assert len(blocks) == 4
+    assert all('blocks: yes' in block for block in blocks[:2])
+    path = tmp_path / 'decisions/gate-item.md'
+    path.parent.mkdir()
+    path.write_text(text)
+    assert lint_file(path, role=role) == (0, 'OK: FIX')
+
+
+HEADING_FIX = ('Verdict: FIX\nHead: abc1234\n### Q1 high\n'
+               'The cache in src/a.py:80 is never cleared, so a reload would serve stale data; blocks: yes\n'
+               + ASSUMPTION + 'Probe: not run\nVAL: PASS\n' + RETRO)
+
+
+def test_fix_without_parsed_blocking_finding_is_refused():
+    from wuwei.verdict import lint
+    code, message = lint(HEADING_FIX)
+    assert code == 1
+    assert ('FIX verdict but no blocking finding parsed; the lines that look like findings are: '
+            'The cache in src/a.py:80') in message
+    code, message = lint(VALID.replace('blocks: yes', 'blocks: no'))
+    assert code == 1 and 'findings are: none' in message and 'Verdict: PASS' in message
+    fenced = HEADING_FIX.replace('Probe:', '```\n- P1 | x.py:1 | example | blocks: yes\n```\nProbe:')
+    assert 'x.py:1' not in lint(fenced)[1]
+    for other in ('PARK', 'ESCALATE'):
+        assert 'FIX verdict' not in lint(HEADING_FIX.replace('FIX', other))[1]
+    assert 'FIX verdict' not in lint(VALID.replace('FIX', 'PASS').replace('yes', 'no'))[1]
+
+
+def test_write_guard_refuses_fix_without_parsed_blocker(tmp_path):
+    from wuwei.guards.verdict import check_write
+    path = tmp_path / 'decisions/gate-arch.md'
+    path.parent.mkdir()
+    path.write_text(HEADING_FIX)
+    code, message = check_write({'cwd': str(tmp_path), 'tool_name': 'Write',
+                                 'tool_input': {'file_path': str(path), 'content': HEADING_FIX}})
+    assert code == 1 and 'FIX verdict but no blocking finding parsed' in message
