@@ -19,6 +19,52 @@ def ticket(data, item):
     return data.get('tickets', {}).get(item, {}).get('id')
 
 
+def full_id(config, ticket):
+    """#741: a bare GitHub issue number becomes <tracker repository>#<n> (design 5.11:
+    tracker.project, else the first configured repository); every other id is kept."""
+    if config['adapters']['tracker'] != 'github' or not re.fullmatch(r'[1-9][0-9]*', str(ticket)):
+        return ticket
+    repo = config['tracker']['project'] or next((row['name'] for row in config['repos']), '')
+    if not re.fullmatch(r'[\w.-]+/[\w.-]+', repo):
+        raise ValueError(f'ticket {ticket} names no repository; pass owner/repo#{ticket}, or the '
+                         'owner sets tracker.project to the GitHub owner/repo with bin/wuwei '
+                         'config set tracker.project <owner/repo> in a host terminal')
+    return f'{repo}#{ticket}'
+
+
+def upgrade(root, config, write=True):
+    """#741, once: the latest day's bare GitHub ticket ids become <repo>#<n>; the lines say what
+    changed (or why an id stays). Earlier days are history and are not rewritten."""
+    from wuwei import watch
+    if config['adapters']['tracker'] != 'github':
+        return []
+    day = next((path for path in watch.days(root) if (path / 'state.json').exists()), None)
+    if day is None:
+        return []
+    try:
+        tickets = state.read_state(directory=day).get('tickets', {})
+    except (OSError, ValueError) as exc:
+        return [f'{day.name}/state.json: tickets unread: {exc}']
+    lines = []
+    for item, row in tickets.items():
+        old = row.get('id')
+        if not isinstance(old, str) or not re.fullmatch(r'[1-9][0-9]*', old):
+            continue
+        try:
+            new = full_id(config, old)
+        except ValueError as exc:
+            lines.append(f'{day.name}/state.json: ticket {item} {old} unchanged: {exc}')
+            continue
+        if write:
+            def update(data, item=item, old=old, new=new):
+                if data['tickets'][item]['id'] == old:
+                    data['tickets'][item]['id'] = new
+            state._write_state(update, root, reserved=False, kind='plan.set', directory=day,
+                               payload={'item': item, 'ticket': new, 'was': old})
+        lines.append(f'{day.name}/state.json: ticket {item} {old} to {new}')
+    return lines
+
+
 def in_force(config):
     return config['adapters']['tracker'] != 'none' and config['tracker']['required']
 

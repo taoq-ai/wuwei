@@ -92,8 +92,7 @@ def run(args):
             elif key == 'owner_merge':
                 print(plan.set_owner_merge(args.item, value))
             elif key == 'ticket':
-                plan.set_ticket(args.item, value)
-                print(f'{args.item}: ticket {value}')
+                print(f'{args.item}: ticket {plan.set_ticket(args.item, value)}')
             else:
                 raise ValueError(f'plan set: {args.assignment} is not a spec, docs, ticket or owner_merge value; run '
                                  f'bin/wuwei plan set {args.item} spec=required|skipped, docs=<page>|new|none, '

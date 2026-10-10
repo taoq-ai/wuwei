@@ -1081,7 +1081,9 @@ def test_outbound_learn_planner_only(workspace, monkeypatch, capsys, posture):
 def test_item_tickets_are_the_planners(workspace, monkeypatch, capsys, posture):
     """#636: a seat never attaches an item ticket; the planner does below strict."""
     _planner(workspace, monkeypatch)
-    for command in ('bin/wuwei tracker create A', 'bin/wuwei plan set A ticket=ENG-1'):
+    # #741: the planner links a bare or full GitHub id the same way
+    for command in ('bin/wuwei tracker create A', 'bin/wuwei plan set A ticket=ENG-1',
+                    'bin/wuwei plan set A ticket=24', 'bin/wuwei plan set A ticket=acme/app#24'):
         code, reason = _seat_hook(workspace, command, monkeypatch, capsys, posture)
         assert code == 2 and 'planner' in reason, (command, reason)
         code, reason = _seat_hook(workspace, command, monkeypatch, capsys, posture, seat=False)

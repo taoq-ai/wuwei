@@ -294,6 +294,47 @@ def test_owner_named_item_needs_a_ticket_when_a_tracker_is_set(root):
     assert state.read_state(root)['tickets']['OWN-3'] == {'id': 'ENG-7', 'source': 'candidate'}
 
 
+GITHUB = '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "github"\n[security]\nposture = "strict"\n'
+REPO = '[[repos]]\nname = "{}"\npath = "{}"\ndefault_branch = "main"\n'
+
+
+@pytest.mark.parametrize('settings,stored', [
+    (REPO.format('acme/app', 'app'), 'acme/app#24'),
+    ('[tracker]\nproject = "acme/tracker"\n' + REPO.format('acme/app', 'app'), 'acme/tracker#24'),
+    (REPO.format('acme/app', 'app') + REPO.format('acme/lib', 'lib'), 'acme/app#24'),
+])
+def test_owner_named_bare_ticket_is_stored_in_full_and_claimed(root, monkeypatch, settings, stored):
+    """#741: plan add --ticket 24 stores <repo>#24, and build next claims that id."""
+    from fakes.tracker import Fake
+    from wuwei import dispatch, registry
+    (root / '.wuwei/config.toml').write_text(GITHUB + settings)
+    fake = Fake({'claim': registry.Result(0, {})})
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake if kind == 'tracker'
+                        else load(kind, config))
+    assert plan.add('OWN-3', root, goal='G-1', ticket='24')['action'] == 'build next'
+    assert state.read_state(root)['tickets']['OWN-3'] == {'id': stored, 'source': 'candidate'}
+    assert dispatch.tracker_call('OWN-3', 'claim', root).exit == 0
+    assert fake.calls[-1][:2] == ('claim', (stored,))
+    lines = (root / '.wuwei/days/2026-09-29/events.jsonl').read_text().splitlines()
+    call, = [row for row in map(json.loads, lines) if row['kind'] == 'tracker.call']
+    assert call['payload']['ticket'] == stored
+
+
+def test_owner_named_bare_ticket_without_a_repository_is_refused(root, monkeypatch):
+    from wuwei.__main__ import main
+    (root / '.wuwei/config.toml').write_text(GITHUB)
+    with pytest.raises(ValueError, match='owner/repo#24'):
+        plan.add('OWN-4', root, goal='G-1', ticket='24')
+    day = state.read_state(root)
+    assert 'OWN-4' not in day['items'] and 'OWN-4' not in day.get('tickets', {})
+    assert 'OWN-4' not in day.get('intraday_proposals', {}) and not day.get('drafts')
+    assert 'OWN-4' not in (root / '.wuwei/days/2026-09-29/events.jsonl').read_text()
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.chdir(root)
+    assert main(['plan', 'add', 'OWN-4', '--goal', 'G-1', '--ticket', '24']) == 2
+
+
 def test_owner_named_item_gets_a_ticket_draft_for_its_card(root, monkeypatch):
     """#636: below strict plan add drafts the owner item's ticket; its Send card opens it."""
     from fakes.tracker import Fake, ported
