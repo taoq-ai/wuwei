@@ -123,5 +123,15 @@
     }
    }
   }
+ },
+ {
+  "data": {
+   "repository": {
+    "id": "repo-node-1",
+    "label": {
+     "id": "label-review"
+    }
+   }
+  }
  }
 ]

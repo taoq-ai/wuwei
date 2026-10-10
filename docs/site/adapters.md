@@ -96,6 +96,11 @@ gh's own text. On either path a GraphQL error reads `GitHub error response for
 <owner>/<repo>#<n>: <message>`: the ticket, when the lookup names one, and GitHub's first
 error message, on one line, redacted and cut at 160 characters. With `tracker.board`, the Status write needs the `project` scope, which a
 default gh login lacks: run `gh auth refresh -s project`.
+Without a board, in review is the label named by `tracker.states.in_review`: `setup` and
+`init --upgrade` in a host terminal create it, and doctor's `tracker labels` row warns while it is missing.
+When `pr raise` or `tracker move` finds it missing, WUWEI creates it on your own tracker under
+observe and guarded; under strict or on an external tracker it prints the label,
+`bin/wuwei init --upgrade` and `bin/wuwei tracker move <item> in_review`.
 
 The trade-off: the token is scoped to issues and projects; your gh login is broad (classic
 scopes such as `repo` and `workflow`). With the opt-in, the tracker path gives up least

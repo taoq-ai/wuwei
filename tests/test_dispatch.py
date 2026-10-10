@@ -1506,6 +1506,75 @@ def test_tracker_call_uses_the_ticket(root, monkeypatch):
             if e['kind'] == 'tracker.call'] == [('A', 'ENG-7'), ('B', 'B')]
 
 
+LABEL_MISSING = ('A not moved to In Review: the tracker label "In Review" is missing; the owner '
+                 'runs bin/wuwei init --upgrade in a host terminal, which creates it, then '
+                 'bin/wuwei tracker move A in_review')
+
+
+def moves(root, monkeypatch, labels, posture='guarded', orgs='"acme"'):
+    """#670: a GitHub tracker whose first move fails (no label) and the second succeeds."""
+    from fakes.tracker import Fake
+    from wuwei import registry
+    (root / '.wuwei/config.toml').write_text(
+        NO_SPEC + '[adapters]\ntracker = "github"\n[tracker]\nproject = "acme/app"\n'
+        f'[security]\nposture = "{posture}"\n[outbound]\ncode_host_orgs = [{orgs}]\n')
+    fake = Fake({'labels': labels})
+    answers = [registry.Result(2, reason='github.transition: could not run: GitHub label for '
+                               'that state not found'), registry.Result(0, {})]
+
+    def transition(item, state, root=None):
+        fake.calls.append(('transition', (item, state), root))
+        return answers.pop(0)
+    fake.transition = transition
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
+    return fake
+
+
+def tracker_events(root):
+    return [json.loads(line)['payload'] for line in
+            (workspace.day_dir(root) / 'events.jsonl').read_text().splitlines()
+            if json.loads(line)['kind'] == 'tracker.call']
+
+
+def test_in_review_creates_the_missing_label_and_moves(root, monkeypatch):
+    """#670 acceptance 2: on the owner's tracker below strict the label is created, then moved."""
+    from wuwei import dispatch, registry
+    fake = moves(root, monkeypatch, registry.Result(0, {'created': ['In Review'], 'missing': []}))
+    result = dispatch.tracker_call('A', 'in_review', root)
+    assert result.exit == 0
+    assert [call[:2] for call in fake.calls] == [
+        ('transition', ('A', 'In Review')), ('labels', (True,)), ('transition', ('A', 'In Review'))]
+    assert tracker_events(root)[-1]['exit'] == 0
+
+
+@pytest.mark.parametrize('posture,orgs', [('strict', '"acme"'), ('guarded', '')])
+def test_in_review_names_the_label_under_strict_or_external(root, monkeypatch, posture, orgs):
+    from wuwei import dispatch, registry
+    fake = moves(root, monkeypatch, registry.Result(0, {'created': [], 'missing': ['In Review']}),
+                 posture, orgs)
+    result = dispatch.tracker_call('A', 'in_review', root)
+    assert (result.exit, result.reason) == (1, LABEL_MISSING)
+    assert [call[:2] for call in fake.calls] == [
+        ('transition', ('A', 'In Review')), ('labels', (False,))]
+    event = tracker_events(root)[-1]
+    assert (event['exit'], event['reason']) == (1, LABEL_MISSING)
+
+
+@pytest.mark.parametrize('labels', [{'created': [], 'missing': []}, None])
+def test_in_review_other_failure_is_unchanged(root, monkeypatch, labels):
+    from wuwei import dispatch, registry
+    moves(root, monkeypatch, registry.Result(0, labels) if labels else registry.Result(2, reason='x'))
+    result = dispatch.tracker_call('A', 'in_review', root)
+    assert result.exit == 2 and result.reason.endswith('GitHub label for that state not found')
+
+
+def test_done_never_reads_labels(root, monkeypatch):
+    from wuwei import dispatch, registry
+    fake = moves(root, monkeypatch, registry.Result(0, {'created': ['In Review'], 'missing': []}))
+    assert dispatch.tracker_call('A', 'done', root).exit == 2
+    assert [call[0] for call in fake.calls] == ['transition']
+
+
 def test_issue_acceptance_ticket_then_dispatch(root, monkeypatch, capsys):
     from fakes.tracker import Fake, ported
     from wuwei import registry

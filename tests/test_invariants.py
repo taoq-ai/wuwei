@@ -1395,6 +1395,22 @@ def i44(case, rules):
         return None
     return rules.memo(('verdict format',), compute)
 
+def i49(case, rules):
+    """#670: WUWEI creates a missing tracker label on its own only on the owner's tracker below
+    strict; under strict or on an external tracker the move names the label and the commands."""
+    def compute():
+        from wuwei import tracker, workspace
+        base = workspace.load_config(rules.root, raw=rules.base + f'[security]\nposture = "{case[0]}"\n')
+        for orgs, owned in ((['acme'], True), ([], False)):
+            config = {**base, 'adapters': {**base['adapters'], 'tracker': 'github'},
+                      'tracker': {**base['tracker'], 'project': 'acme/app', 'board': ''},
+                      'outbound': {**base['outbound'], 'code_host_orgs': orgs}}
+            if tracker.creates_labels(config) != (owned and case[0] != 'strict'):
+                return f'code_host_orgs {orgs}: creates labels {tracker.creates_labels(config)}'
+        return None
+    return rules.memo(('tracker labels', case[0]), compute)
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
@@ -1410,7 +1426,7 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46,
               'I36': i36, 'I37': i37, 'I44': i44,
               'I36': i36, 'I37': i37, 'I39': i39, 'I50': i50,
-              'I36': i36, 'I37': i37, 'I41': i41}
+              'I36': i36, 'I37': i37, 'I41': i41, 'I49': i49}
 
 
 def project(case):
@@ -1440,7 +1456,7 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (),
          'I44': (),
          'I39': (), 'I50': (0,),
-         'I41': ()}
+         'I41': (), 'I49': (0,)}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
