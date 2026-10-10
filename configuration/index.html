@@ -1,0 +1,3432 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Autonomous delivery where the safe path is the default one.">
+      
+      
+        <meta name="author" content="TaoQ AI">
+      
+      
+        <link rel="canonical" href="https://taoq-ai.github.io/wuwei/configuration/">
+      
+      
+        <link rel="prev" href="../reference/">
+      
+      
+        <link rel="next" href="../adapters/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Configuration - WUWEI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#configuration" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="WUWEI" class="md-header__button md-logo" aria-label="WUWEI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            WUWEI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Configuration
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/taoq-ai/wuwei" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    taoq-ai/wuwei
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../daily/" class="md-tabs__link">
+          
+  
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../concepts/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../reference/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../recovery/" class="md-tabs__link">
+          
+  
+  
+  Operations
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="WUWEI" class="md-nav__button md-logo" aria-label="WUWEI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    WUWEI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/taoq-ai/wuwei" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    taoq-ai/wuwei
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../daily/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Daily path
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    What the session knows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operator reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#sections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sections
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workspace-and-repositories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workspace and repositories
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#specification-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Specification mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-build-and-memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host, build and memory
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Telemetry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adapters-and-brief" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adapters and brief
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#owner-voice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Owner voice
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#boundaries-and-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Boundaries and deployment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calibration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Calibration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#owner-interview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Owner interview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calibration-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Calibration profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#outward-text-and-outbound-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Outward text and outbound tiers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#people-channels-and-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        People, channels and tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goals-and-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goals and discovery
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Goals and discovery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mcp-registry-checks-s3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP registry checks (S3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-watch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the watch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-listener" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the listener
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Running the listener">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#commands-from-your-owner-dm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands from your owner DM
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#private-workspace-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Private workspace environment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Private workspace environment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#host-protections-and-seat-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host protections and seat credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adapters and ports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../charter-overrides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Charter overrides
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote operation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rehearsal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release rehearsal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#sections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sections
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workspace-and-repositories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workspace and repositories
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#specification-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Specification mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-build-and-memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host, build and memory
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Telemetry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adapters-and-brief" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adapters and brief
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#owner-voice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Owner voice
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#boundaries-and-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Boundaries and deployment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calibration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Calibration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#owner-interview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Owner interview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#calibration-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Calibration profiles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#outward-text-and-outbound-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Outward text and outbound tiers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#people-channels-and-tools" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        People, channels and tools
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goals-and-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goals and discovery
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Goals and discovery">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mcp-registry-checks-s3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP registry checks (S3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-watch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the watch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-the-listener" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the listener
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Running the listener">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#commands-from-your-owner-dm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Commands from your owner DM
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#private-workspace-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Private workspace environment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Private workspace environment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#host-protections-and-seat-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host protections and seat credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h1>
+<p><code>bin/wuwei init .</code> creates <code>.wuwei/config.toml</code>. In a host terminal, change one value with <code>bin/wuwei config set &lt;key&gt; &lt;value&gt;</code> and add a repository with <code>bin/wuwei config add-repo</code> (see <a href="#calibration">calibration</a>). In the session, outside the strict posture, the planner asks the value on a card and your answer writes it: <code>CAP</code>, <code>host.seats</code> and the autonomy answer (<code>security.posture</code>, <code>outbound.default_tier</code>, <code>merge.default_tier</code>, <code>outbound.learn</code> and <code>autonomy.mode</code> at once) through <code>wuwei calibrate --questions</code> and <code>--answer</code>, any other key through a decision card and <code>config set &lt;key&gt; &lt;value&gt; --from-card D-n</code>. A <code>config set</code> in the session without a card exits 1 and names the card. <code>config set</code> writes strings, lists and tables in any layout, replaces a value that spans lines in place, and leaves every other line as it was; <code>wuwei config check</code> names a key set in two tables. Values below are the shipped template defaults. Omitted keys use CLI defaults. Unknown keys are a warning from <code>wuwei config check</code>, <code>wuwei doctor</code> and <code>wuwei init --upgrade</code>, with the line and the nearest documented key; under <code>security.posture = "strict"</code> they are errors, unless <code>template_version</code> is newer than the running plugin. The optional commented examples are inactive until uncommented. Paths in repository entries are relative to the workspace unless absolute.</p>
+<h2 id="sections">Sections<a class="headerlink" href="#sections" title="Permanent link">&para;</a></h2>
+<p>Every table <code>config.toml</code> accepts, and the heading below that documents its keys.</p>
+<table>
+<thead>
+<tr>
+<th>Sections</th>
+<th>Keys under</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[[repos]]</code>, <code>[repos.merge]</code>, <code>[repos.gates]</code>, <code>[repos.shepherd]</code>, <code>[prioritisation]</code>, <code>[discovery]</code>, <code>[tracker]</code>, <code>[tracker.states]</code>, <code>[owner]</code>, <code>[owner.verbosity]</code>, <code>[security]</code>, <code>[security.areas]</code>, <code>[guards]</code>, <code>[worktree]</code>, <code>[checks]</code></td>
+<td><a href="#workspace-and-repositories">Workspace and repositories</a></td>
+</tr>
+<tr>
+<td><code>[host]</code>, <code>[budget]</code>, <code>[pace]</code>, <code>[memory]</code>, <code>[retro]</code>, <code>[metrics]</code>, <code>[consolidation]</code>, <code>[build]</code>, <code>[codex]</code>, <code>[gates]</code>, <code>[pr]</code>, <code>[shepherd]</code>, <code>[shepherd.authors]</code>, <code>[watch]</code>, <code>[sessions]</code>, <code>[listen]</code>, <code>[responder]</code>, <code>[steward]</code></td>
+<td><a href="#host-build-and-memory">Host, build and memory</a></td>
+</tr>
+<tr>
+<td><code>[adapters]</code>, <code>[scanner]</code>, <code>[scanner.mcp]</code>, <code>[calendar]</code>, <code>[brief]</code>, <code>[brief.style]</code>, <code>[chat]</code>, <code>[control_plane]</code></td>
+<td><a href="#adapters-and-brief">Adapters and brief</a></td>
+</tr>
+<tr>
+<td><code>[voice]</code>, <code>[voice.sources]</code></td>
+<td><a href="#owner-voice">Owner voice</a></td>
+</tr>
+<tr>
+<td><code>[boundary]</code>, <code>[environments]</code>, <code>[deploy]</code>, <code>[grants]</code>, <code>[merge]</code></td>
+<td><a href="#boundaries-and-deployment">Boundaries and deployment</a></td>
+</tr>
+<tr>
+<td><code>[outward]</code>, <code>[outward.max_length]</code>, <code>[outward.servers]</code>, <code>[outward.modes]</code>, <code>[outward.classes]</code>, <code>[outbound]</code>, <code>[outbound.people]</code>, <code>[outbound.channel_classes]</code></td>
+<td><a href="#outward-text-and-outbound-tiers">Outward text and outbound tiers</a></td>
+</tr>
+<tr>
+<td><code>[autonomy]</code>, <code>[nudges]</code>, <code>[decisions]</code>, <code>[decisions.cruise]</code>, <code>[decisions.cruise.levels]</code>, <code>[decisions.lenses]</code></td>
+<td><a href="#decisions">Decisions</a></td>
+</tr>
+<tr>
+<td><code>[calibrate]</code></td>
+<td><a href="#calibration">Calibration</a></td>
+</tr>
+<tr>
+<td><code>[spec]</code></td>
+<td><a href="#specification-mode">Specification mode</a></td>
+</tr>
+<tr>
+<td><code>[telemetry]</code>, <code>[telemetry.otlp]</code></td>
+<td><a href="#telemetry">Telemetry</a></td>
+</tr>
+<tr>
+<td><code>[docs]</code></td>
+<td><a href="#docs">Docs</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="workspace-and-repositories">Workspace and repositories<a class="headerlink" href="#workspace-and-repositories" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cap</code></td>
+<td><code>0</code></td>
+<td>Maximum running build seats. <code>0</code> derives CAP at plan propose and at every sweep from the host and <code>budget.tokens_per_day</code>. Claude subagent seats take <code>host.seats</code>, or one per core, and free memory is not read; when a seat runtime launches its own process, CAP is the median of today's last five readings of the running seats plus the seats that fit above <code>host.free_memory_mb</code> at the measured seat cost, one per core, within <code>host.seats</code>; a positive number is your override, still bounded by the budget. <code>bin/wuwei calibrate</code> reports the derived value and never proposes it. The morning gate shows CAP with its measurement and seats per goal; the launch guard compares with the value derived at launch.</td>
+</tr>
+<tr>
+<td><code>template_version</code></td>
+<td><code>""</code></td>
+<td>Plugin version that last wrote this file. <code>wuwei init</code>, <code>wuwei setup</code> and <code>wuwei init --upgrade</code> raise it and never lower it. A plugin older than this value treats keys it does not know as unknown to it, records <code>config.newer_template</code> once per session, and <code>wuwei doctor</code> and the status line say to restart Claude Code.</td>
+</tr>
+<tr>
+<td><code>prioritisation.framework</code></td>
+<td><code>"wsjf"</code></td>
+<td>Ranking formula: <code>wsjf</code> or <code>rice</code>.</td>
+</tr>
+<tr>
+<td><code>discovery.min_queue</code></td>
+<td><code>2</code></td>
+<td>Discover again when a seat frees and the queue is below this count.</td>
+</tr>
+<tr>
+<td><code>discovery.autostart</code></td>
+<td><code>"strict"</code></td>
+<td>Intraday start policy: <code>off</code> carries safe items to the next morning; <code>strict</code> admits confirmed-goal SLICE items above the approved queue cut; <code>goal</code> admits confirmed-goal SLICE items under CAP and budget. Unsafe or over-budget items come to you.</td>
+</tr>
+<tr>
+<td><code>tracker.backlog_filter</code></td>
+<td><code>""</code></td>
+<td>Optional Linear team ID for backlog discovery. Empty reads accessible issues.</td>
+</tr>
+<tr>
+<td><code>tracker.states.in_review</code></td>
+<td><code>"In Review"</code></td>
+<td>Linear workflow state name after a PR is raised.</td>
+</tr>
+<tr>
+<td><code>tracker.states.done</code></td>
+<td><code>"Done"</code></td>
+<td>Linear workflow state name after a confirmed merge.</td>
+</tr>
+<tr>
+<td><code>tracker.required</code></td>
+<td><code>true</code></td>
+<td>While <code>adapters.tracker</code> is not <code>none</code>, every approved item needs a ticket: <code>plan approve</code>, <code>plan add</code>, <code>build next</code>, <code>dispatch next</code> and the seat launch refuse without one. Below strict the reason names the item's card, where the planner proposes the ticket; under strict it names <code>bin/wuwei tracker create &lt;item&gt;</code> or <code>bin/wuwei plan set &lt;item&gt; ticket=&lt;id&gt;</code> for a host terminal.</td>
+</tr>
+<tr>
+<td><code>tracker.skip_tiers</code></td>
+<td><code>[]</code></td>
+<td>Gate tiers that need no ticket, for example <code>["light"]</code>. The recorded gate tier decides, else the lead's tier.</td>
+</tr>
+<tr>
+<td><code>tracker.strict_close</code></td>
+<td><code>true</code></td>
+<td><code>wuwei close</code> refuses while an item merged today has a ticket with no successful done transition (<code>bin/wuwei tracker done &lt;item&gt;</code>). <code>false</code> prints the line and closes.</td>
+</tr>
+<tr>
+<td><code>tracker.create</code></td>
+<td><code>["bugs", "triage", "follow-ups"]</code></td>
+<td>Ticket classes seats may open besides items with <code>bin/wuwei tracker create --bug, --triage or --follow-up</code>; a seat adds <code>--seat &lt;role&gt;</code>, which the board and the retro show.</td>
+</tr>
+<tr>
+<td><code>tracker.log</code></td>
+<td><code>["decisions", "progress", "verdicts", "pr", "close"]</code></td>
+<td>Comment kinds <code>bin/wuwei tracker log</code> writes on each item's ticket.</td>
+</tr>
+<tr>
+<td><code>tracker.auto</code></td>
+<td><code>["progress", "pr", "close"]</code></td>
+<td>Classes and kinds sent without a draft. Everything else waits in <code>wuwei drafts</code>; text naming a person or matching a sensitive pattern drafts whatever this says. A bug, triage or follow-up ticket in the workspace's own tracker follows <code>outbound.default_tier</code> instead, unless the tracker is external; under <code>ask</code> this list still decides it.</td>
+</tr>
+<tr>
+<td><code>tracker.max_per_item_per_day</code></td>
+<td><code>10</code></td>
+<td>Comments per ticket per day; the last allowed one folds the rest into one comment.</td>
+</tr>
+<tr>
+<td><code>tracker.project</code></td>
+<td><code>""</code></td>
+<td>Where new tickets go: a Linear team ID (empty uses <code>backlog_filter</code>), a Jira project key (required for Jira) or a GitHub <code>owner/repo</code> (empty uses the first repository).</td>
+</tr>
+<tr>
+<td><code>tracker.board</code></td>
+<td><code>""</code></td>
+<td>GitHub Projects board as <code>owner/number</code>; transitions set its Status field. Empty uses a label for in review and closes the issue for done. A board or project outside <code>outbound.code_host_orgs</code> makes every tracker write a draft.</td>
+</tr>
+<tr>
+<td><code>tracker.auth</code></td>
+<td><code>"token"</code></td>
+<td>How <code>tracker.github</code> authenticates: <code>token</code> uses <code>GITHUB_TRACKER_TOKEN</code>; <code>gh</code> uses your gh login when that token is unset (the token is used first when set). The gh login is broad, so the tracker path gives up least privilege; seats still reach the tracker only through <code>bin/wuwei</code>. See <a href="../adapters/#github-tracker-through-your-gh-login">GitHub tracker through your gh login</a>.</td>
+</tr>
+<tr>
+<td><code>profile</code></td>
+<td><code>"strict"</code></td>
+<td>Guard profile: <code>strict</code> or <code>standard</code>. Standard warns for outward text lint.</td>
+</tr>
+<tr>
+<td><code>guards.mode</code></td>
+<td><code>"enforce"</code></td>
+<td>Retired. <code>init --upgrade</code> and <code>doctor --fix</code> rewrite <code>"shadow"</code> to <code>security.posture = "observe"</code> (keeping <code>guards.shadow_since</code> and <code>guards.shadow_days</code>) and remove <code>"enforce"</code>. Until then <code>"shadow"</code> still means <code>observe</code>, and <code>config check</code> and <code>doctor</code> show <code>posture: observe (from guards.mode = "shadow", deprecated; run doctor --fix)</code>.</td>
+</tr>
+<tr>
+<td><code>guards.shadow_days</code></td>
+<td><code>7</code></td>
+<td>Days in the <code>observe</code> posture before one status nudge asks you to switch to <code>guarded</code> or raise this number.</td>
+</tr>
+<tr>
+<td><code>guards.shadow_since</code></td>
+<td><code>""</code></td>
+<td>Day <code>observe</code> started, as <code>YYYY-MM-DD</code>. <code>init --posture observe</code> and <code>setup --shadow</code> set it. The Autonomous answer does not: observe is then the chosen posture, not a trial week. Empty means no nudge.</td>
+</tr>
+<tr>
+<td><code>security.required</code></td>
+<td><code>true</code></td>
+<td>When true, a missing <code>.wuwei/security.json</code> makes guards fail closed instead of treating security as disabled.</td>
+</tr>
+<tr>
+<td><code>security.posture</code></td>
+<td><code>"guarded"</code></td>
+<td>What warns and what blocks: <code>observe</code>, <code>guarded</code> or <code>strict</code>. <code>setup --shadow</code> and <code>init --shadow</code> set <code>observe</code> for <code>guards.shadow_days</code> days from <code>guards.shadow_since</code>, then one nudge asks you to switch to <code>guarded</code>. <code>config check</code> and <code>doctor</code> print the effective posture and the key it comes from. See <a href="../security/#security-posture">security posture</a> for the table and its floors.</td>
+</tr>
+<tr>
+<td><code>security.areas.&lt;area&gt;</code></td>
+<td><code>""</code></td>
+<td>Override one area of the posture with <code>off</code>, <code>warn</code> or <code>block</code>; empty takes the posture's level. Areas: <code>integrity</code>, <code>mcp</code>, <code>publish</code>, <code>records</code>, <code>outward</code>, <code>seats</code>; for example <code>security.areas.mcp</code> = <code>"off"</code> skips the MCP registry check. <code>records</code> below <code>block</code> is a config finding.</td>
+</tr>
+<tr>
+<td><code>worktree.git_hooks</code></td>
+<td><code>"chain"</code></td>
+<td>How <code>worktree add</code> installs the git hooks. <code>chain</code> runs WUWEI's pre-commit and pre-push checks, then the repository's hook of the same name, when the repository has its own <code>core.hooksPath</code> or real hooks in <code>.git/hooks</code>: the scripts go in a generated directory under the worktree's git directory and the repository's setting is never changed. Without its own hooks the worktree uses <code>.wuwei/git-hooks</code>. <code>skip</code> installs none, warns and records <code>worktree.hooks_skipped</code>. <code>replace</code> uses <code>.wuwei/git-hooks</code> and the repository's hooks do not run in the worktree, for a repository you own outright. When chaining is impossible (a hooks path that is not a directory, no permission, <code>core.bare</code> or <code>core.worktree</code> set), <code>worktree add</code> still creates the worktree, warns and records <code>worktree.hooks_skipped</code>, and refuses under <code>security.posture = "strict"</code>. The Claude Code PreToolUse guard checks <code>git commit</code> and <code>git push</code> either way. <code>doctor</code> shows a <code>git hooks</code> row per repository; <code>init --upgrade</code> rewrites the scripts.</td>
+</tr>
+<tr>
+<td><code>repos</code></td>
+<td><code>[]</code></td>
+<td>Configured repositories. Each <code>[[repos]]</code> entry has the fields below.</td>
+</tr>
+<tr>
+<td><code>repos.name</code></td>
+<td>Required per entry</td>
+<td>Code host name, such as <code>owner/repo</code>.</td>
+</tr>
+<tr>
+<td><code>repos.path</code></td>
+<td>Required per entry</td>
+<td>Repository path from workspace root or absolute path.</td>
+</tr>
+<tr>
+<td><code>repos.default_branch</code></td>
+<td>Required per entry</td>
+<td>Protected base branch.</td>
+</tr>
+<tr>
+<td><code>repos.identity</code></td>
+<td><code>{name = "", email = ""}</code></td>
+<td>Expected git identity for this repository; the commit guards compare commits against it. Set both values. <code>wuwei worktree add</code> writes it to each item worktree's Git config.</td>
+</tr>
+<tr>
+<td><code>repos.merge_deploys</code></td>
+<td><code>true</code> when omitted</td>
+<td>Whether a merge deploys. While it is not <code>false</code>, every merge in the repository is yours. Setup and the planner's cards ask it per repository (the <code>deploys</code> question); only your answer sets <code>false</code>.</td>
+</tr>
+<tr>
+<td><code>repos.merge_method</code></td>
+<td><code>"auto"</code> when omitted</td>
+<td>How WUWEI merges in the repository: <code>squash</code>, <code>rebase</code> or <code>merge</code>. <code>auto</code> uses the first of squash, rebase, merge that the repository and its rulesets allow. An explicit method the repository does not allow is yours to merge, and the reason names <code>repos.merge_method</code>. <code>wuwei merge check</code> names the method.</td>
+</tr>
+<tr>
+<td><code>repos.merge.auto</code></td>
+<td><code>false</code></td>
+<td>Allow automatic merge only when the merge policy's review, check, soak, path and budget rules pass.</td>
+</tr>
+<tr>
+<td><code>repos.merge.size_exclude</code></td>
+<td><code>[]</code></td>
+<td>Path globs, matched on any path suffix, for generated files such as <code>results/*.json</code>. A changed file whose every path matches one does not count toward <code>max_changed_lines</code> or the review tier; a rename counts when either path does not match. Lockfiles, <code>linguist-generated</code> globs in the repository's root <code>.gitattributes</code> (ignored when the diff changes that file) and data files never count either. Never-auto paths still apply to these files.</td>
+</tr>
+<tr>
+<td><code>repos.merge.soak_skip</code></td>
+<td><code>"base_fix"</code></td>
+<td><code>base_fix</code> skips the soak for a PR whose head turns a check that fails at its base commit green, so a fix to a broken base lands without waiting. <code>never</code> always waits <code>soak_minutes</code>.</td>
+</tr>
+<tr>
+<td><code>repos.merge.size_exclude</code></td>
+<td><code>[]</code></td>
+<td>Path globs, matched on any path suffix, for generated files such as <code>results/*.json</code>. A changed file whose every path matches one does not count toward <code>max_changed_lines</code>; a rename counts when either path does not match. Never-auto paths still apply to these files.</td>
+</tr>
+<tr>
+<td><code>repos.gates.floor</code></td>
+<td><code>"standard"</code></td>
+<td>Lowest review tier for this repository: <code>light</code>, <code>standard</code> or <code>full</code>. <code>wuwei dispatch next</code> computes a tier from the item diff at its first gate; LIGHT runs the quality gate only, STANDARD and FULL run arch, quality and security. A docs-only diff skips a floor below <code>full</code> and runs one reviewer, goal or quality (<a href="../concepts/#review-tiers">review tiers</a>). Keep <code>standard</code> until the escaped defects per tier in the retro support lowering it.</td>
+</tr>
+<tr>
+<td><code>repos.gates.light_max_lines</code></td>
+<td><code>100</code></td>
+<td>A diff with more changed lines is at least STANDARD, except a docs-only diff. Generated and data lines do not count, and the reason names both totals, for example <code>5000 changed lines, 4800 generated or data excluded, 200 count, over light_max_lines 100</code>. Binary changes outside data files, any lead flag and track FULL also raise the tier.</td>
+</tr>
+<tr>
+<td><code>repos.gates.data_paths</code></td>
+<td><code>[]</code></td>
+<td>Path globs, matched on any path suffix, for data such as <code>corpus/runs/</code> (a trailing <code>/</code> means the directory). Their lines never count toward the tier or <code>max_changed_lines</code>, and they count as documents for the docs-only reviewer. <code>.json</code>, <code>.jsonl</code>, <code>.csv</code> and <code>.parquet</code> files over 200 changed lines or with a binary change are data without being listed; such a <code>.json</code> still keeps every gate, since it may be config.</td>
+</tr>
+<tr>
+<td><code>repos.gates.trust_paths</code></td>
+<td><code>["guards/*", "state.py", "adapters/*", ".claude-plugin/*", ".github/*", "ci/*", "workflows/*", "deploy/*", "infra/*"]</code></td>
+<td>Path globs, matched on any path suffix, that force at least STANDARD. <code>repos.merge.never_auto_paths</code> and <code>brief.full_path_patterns</code> force it too.</td>
+</tr>
+<tr>
+<td><code>repos.shepherd.reviewers</code></td>
+<td><code>[]</code></td>
+<td>Code host logins requested for this repository's PRs; when set it replaces <code>shepherd.reviewers</code> here.</td>
+</tr>
+<tr>
+<td><code>repos.fast_checks</code></td>
+<td><code>[]</code></td>
+<td>Commands for <code>wuwei fast-checks</code> on this checkout. A command whose first word starts with <code>.venv/</code>, <code>venv/</code> or <code>node_modules/.bin/</code> resolves that interpreter in the item worktree first, then in the repository's main worktree (its <code>path</code>); the check record names the interpreter it ran with. <code>worktree add</code> warns when a new worktree will use the main worktree's, <code>doctor</code> shows a <code>check interpreter</code> row, and the builder brief names it.</td>
+</tr>
+<tr>
+<td><code>repos.tests</code></td>
+<td><code>""</code></td>
+<td>The repository's test runner, for example <code>python3 -m pytest -q</code>. At pace careful <code>wuwei build check</code> runs it after the fast checks; at fast it runs it on the test files the diff changes, and the push guard takes that record as the evidence. Empty: every pace runs <code>fast_checks</code>.</td>
+</tr>
+<tr>
+<td><code>repos.check_timeout_seconds</code></td>
+<td><code>300</code></td>
+<td>Seconds one run of one check command may take in this repository: fast checks, <code>repos.tests</code>, <code>checks.bootstrap</code> and <code>calibrate --measure</code>. Past it the check is exit 2 with <code>fast check `&lt;cmd&gt;` exceeded &lt;n&gt; s (repos.&lt;n&gt;.check_timeout_seconds)</code>.</td>
+</tr>
+<tr>
+<td><code>checks.python</code></td>
+<td><code>""</code></td>
+<td>Interpreter for fast checks whose first word is a relative Python such as <code>.venv/bin/python</code>; absolute or relative to the repository's path. It wins in every worktree.</td>
+</tr>
+<tr>
+<td><code>checks.bootstrap</code></td>
+<td><code>""</code></td>
+<td>One command <code>worktree add</code> runs in each new worktree through the checks runner (capped at <code>repos.check_timeout_seconds</code>), for example <code>python3 -m venv .venv &amp;&amp; .venv/bin/python -m pip install -q -e .</code>. A failure is one warning line and the worktree is still created. Use it when the package is installed editable in the main worktree's venv: that interpreter can import the main worktree's code instead of the item's.</td>
+</tr>
+<tr>
+<td><code>owner.name</code></td>
+<td><code>""</code></td>
+<td>Name used by outward text checks.</td>
+</tr>
+<tr>
+<td><code>owner.pronouns</code></td>
+<td><code>""</code></td>
+<td>Owner pronouns for outward text checks.</td>
+</tr>
+<tr>
+<td><code>owner.handles</code></td>
+<td><code>[]</code></td>
+<td>Bare chat IDs and code host handles. See <a href="#people-channels-and-tools">People, channels and tools</a>.</td>
+</tr>
+<tr>
+<td><code>owner.timezone</code></td>
+<td><code>""</code></td>
+<td>IANA time zone, for example <code>"Europe/Amsterdam"</code>, for the quality hour bands and <code>sessions.rotate_after.clock</code>. Empty uses this machine's zone.</td>
+</tr>
+<tr>
+<td><code>owner.verbosity.default</code></td>
+<td><code>"brief"</code></td>
+<td>How much the CLI tells you: <code>brief</code>, <code>standard</code> or <code>full</code>. At <code>brief</code> a decision is its question, one line per option with its score, and the recommendation with one reason; the report leads with up to three outcome numbers that changed. <code>standard</code> adds the context, confidence, reversibility, blast radius, pre-mortem and revisit lines to a decision and keeps the earlier report. <code>full</code> adds every field and the record paths. Seat briefs keep <code>brief.style.length</code>.</td>
+</tr>
+<tr>
+<td><code>owner.verbosity.decisions</code></td>
+<td><code>""</code></td>
+<td>Level for <code>bin/wuwei decision show</code>. Empty uses <code>owner.verbosity.default</code>.</td>
+</tr>
+<tr>
+<td><code>owner.verbosity.digest</code></td>
+<td><code>""</code></td>
+<td>Level for the two-way decision digest; <code>full</code> adds each record path. Empty uses the default.</td>
+</tr>
+<tr>
+<td><code>owner.verbosity.nudges</code></td>
+<td><code>""</code></td>
+<td>Level for PR change messages in your owner DM; <code>full</code> adds the changed fields. Empty uses the default.</td>
+</tr>
+<tr>
+<td><code>owner.verbosity.dm</code></td>
+<td><code>""</code></td>
+<td>Level for decisions sent to your owner DM. Empty uses the default.</td>
+</tr>
+<tr>
+<td><code>owner.verbosity.report</code></td>
+<td><code>""</code></td>
+<td>Level for <code>bin/wuwei report</code>. Empty uses the default.</td>
+</tr>
+</tbody>
+</table>
+<p>A minimal repository entry after initialization looks like this. Replace the example values with your own:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[[repos]]</span>
+<span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"owner/repo"</span>
+<span class="n">path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"repos/project"</span>
+<span class="n">default_branch</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"main"</span>
+<span class="n">identity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="n">name</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"Builder"</span><span class="p">,</span><span class="w"> </span><span class="n">email</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"builder@example.test"</span><span class="p">}</span>
+<span class="n">merge_deploys</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span>
+<span class="n">fast_checks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"python3 -m pytest -q"</span><span class="p">]</span>
+</code></pre></div>
+<p>Do not keep a <code>repos = []</code> line once you add <code>[[repos]]</code> tables: TOML rejects the two
+together. <code>bin/wuwei config check</code> names the line to delete, and <code>bin/wuwei init --upgrade</code>
+removes it. While <code>config.toml</code> does not load, every tool call in the workspace is refused
+with that error except <code>ToolSearch</code> and <code>Read</code>, <code>Grep</code> and <code>Glob</code> of <code>.wuwei/config.toml</code>
+and <code>.wuwei/charters</code>, so the session can show you the line; the Stop hook prints the error
+and lets the turn end.</p>
+<h2 id="specification-mode">Specification mode<a class="headerlink" href="#specification-mode" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>spec.engine</code></td>
+<td><code>"speckit"</code></td>
+<td>The spec engine every non-trivial item is specified with before it is built: <code>speckit</code>, <code>superpowers</code>, <code>openspec</code>, or <code>none</code>, which checks nothing.</td>
+</tr>
+<tr>
+<td><code>spec.mode</code></td>
+<td><code>"strict"</code></td>
+<td><code>strict</code> refuses source edits in an item worktree while a step before implementation is missing, keeps the item from the gates until every step is done (a failing check named <code>spec</code> in the build loop; <code>wuwei dispatch next</code> refuses too) and refuses a builder stop whose last message does not name its artifacts. <code>advisory</code> lets each call through and records the first gap per item and day as one <code>spec.warned</code> event, listed in the report. <code>off</code> checks nothing. Under <code>security.posture = "observe"</code>, <code>strict</code> runs as <code>advisory</code>.</td>
+</tr>
+<tr>
+<td><code>spec.skip_tiers</code></td>
+<td><code>["light"]</code></td>
+<td>Lead tiers (<code>light</code>, <code>standard</code>, <code>full</code>) whose items need no spec. The skip holds only while the diff agrees: at the move to the gates, a computed tier outside this list needs the spec after all.</td>
+</tr>
+</tbody>
+</table>
+<p>Steps per engine, each run by the builder with the engine's own command, read from the artifacts in the item's worktree (the item id lowercased):</p>
+<ul>
+<li>spec-kit (<code>specs/&lt;item&gt;</code> or <code>specs/*-&lt;item&gt;</code>): <code>specify</code> (<code>spec.md</code>), <code>clarify</code> (a <code>## Clarifications</code> section), <code>plan</code> (<code>plan.md</code>), <code>tasks</code> (<code>tasks.md</code>), <code>analyze</code> (<code>analysis.md</code> with no CRITICAL or HIGH finding row), <code>checklist</code> (every item checked in <code>checklists/*.md</code>), <code>implement</code> (every task checked).</li>
+<li>superpowers: <code>brainstorming</code> (<code>docs/superpowers/specs/&lt;date&gt;-&lt;item&gt;-design.md</code>), <code>writing-plans</code> (<code>docs/superpowers/plans/&lt;date&gt;-&lt;item&gt;.md</code>), <code>executing-plans</code> (every step in that plan checked), <code>verification-before-completion</code> (the fast checks and the gates).</li>
+<li>OpenSpec (<code>openspec/changes/&lt;item&gt;</code>, later <code>openspec/changes/archive/*-&lt;item&gt;</code>): <code>proposal</code> (<code>proposal.md</code>), <code>specs</code> (<code>specs/&lt;capability&gt;/spec.md</code>), <code>tasks</code> (<code>tasks.md</code>), <code>validate</code> (<code>validation.json</code> from <code>openspec validate &lt;item&gt; --strict --json</code>, every entry valid), <code>apply</code> (every task checked), <code>archive</code> (before the gates).</li>
+</ul>
+<p>You skip or require the spec for one item in a host terminal: <code>bin/wuwei plan set &lt;item&gt; spec=skipped --reason &lt;why&gt;</code> or <code>bin/wuwei plan set &lt;item&gt; spec=required</code>. <code>wuwei doctor</code> fails a repository where the engine is absent and prints its install line:</p>
+<ul>
+<li>spec-kit: <code>uvx --from git+https://github.com/github/spec-kit.git specify init --here --ai claude</code></li>
+<li>superpowers: <code>/plugin marketplace add obra/superpowers-marketplace</code>, then <code>/plugin install superpowers@superpowers-marketplace</code></li>
+<li>OpenSpec: <code>npm install -g @fission-ai/openspec</code>, then <code>openspec init</code></li>
+</ul>
+<p>A Claude Code subagent cannot write <code>analysis.md</code> itself: Claude Code refuses a subagent's Write of a Markdown file named like a report, in any directory. A builder seat saves the analyze report with <code>bin/wuwei spec analysis &lt;item&gt; &lt; report</code> and gives a scratch file another name.
+A Claude Code subagent cannot write <code>analysis.md</code> itself, so a builder seat saves the analyze report with <code>bin/wuwei spec analysis &lt;item&gt; &lt; report</code>. An item can name a governing document: the lead's <code>governed_by</code>, or a <code>Governing: &lt;path&gt;#&lt;heading&gt;</code> line in <code>spec.md</code>. Its report must then end with a <code>## Governing</code> table, or the command refuses it. The table has one row per assumption: <code>agrees</code>, <code>conflicts</code> or <code>not covered</code>, and the cited <code>&lt;path&gt;:&lt;line&gt;</code>.</p>
+<p><code>wuwei setup</code> offers the engine it finds first (<code>.specify/</code>, <code>openspec/</code>, or a <code>superpowers@</code> entry in <code>scanner.mcp.plugins_file</code>), spec-kit when it finds none.</p>
+<h2 id="host-build-and-memory">Host, build and memory<a class="headerlink" href="#host-build-and-memory" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>host.free_memory_mb</code></td>
+<td><code>1024</code></td>
+<td>Nonnegative free memory floor in MiB.</td>
+</tr>
+<tr>
+<td><code>host.seats</code></td>
+<td><code>0</code></td>
+<td>Total seat ceiling, builders and gates. <code>0</code> means one per core for Claude subagent seats, and the free memory and cores fit like CAP when a seat runtime launches its own process; a positive number is your override. Refusals name <code>host.seats</code>; it bounds CAP and each turn of <code>wuwei dispatch next --all</code>.</td>
+</tr>
+<tr>
+<td><code>budget.tokens_per_day</code></td>
+<td><code>0</code></td>
+<td>Input plus output tokens a day. With a per-seat token cost measured from <code>seat.usage</code> rows, CAP is at most the seats the remaining budget fits (at least 1) and says <code>(budget)</code>. <code>0</code> is no budget.</td>
+</tr>
+<tr>
+<td><code>pace.default</code></td>
+<td><code>"steady"</code></td>
+<td>The day's <a href="../concepts/#pace">pace</a> when the gate records none: <code>careful</code>, <code>steady</code> or <code>fast</code>. The gate card shows it beside the advice and never overrides it; after ten days at two paces the steward proposes a value on a card.</td>
+</tr>
+<tr>
+<td><code>host.reservation_timeout_seconds</code></td>
+<td><code>14400</code></td>
+<td>Age at which a reservation is reported stale.</td>
+</tr>
+<tr>
+<td><code>host.rate_limit_wait_seconds</code></td>
+<td><code>120</code></td>
+<td>Longest wait for a GitHub rate limit to reset before one retry; beyond it the reason names the reset time. <code>0</code> never waits.</td>
+</tr>
+<tr>
+<td><code>memory.max_notes</code></td>
+<td><code>60</code></td>
+<td>Index note limit.</td>
+</tr>
+<tr>
+<td><code>memory.note_line_cap</code></td>
+<td><code>80</code></td>
+<td>Maximum lines in a note.</td>
+</tr>
+<tr>
+<td><code>memory.probation_days</code></td>
+<td><code>10</code></td>
+<td>Working days before a note or rule can be archived for nonuse.</td>
+</tr>
+<tr>
+<td><code>memory.state_entry_cap</code></td>
+<td><code>3</code></td>
+<td>State entries included in memory payload.</td>
+</tr>
+<tr>
+<td><code>memory.digest</code></td>
+<td><code>"week"</code></td>
+<td><code>"week"</code> writes the week digest at close and consolidate writes week and month digests; <code>"off"</code> writes none.</td>
+</tr>
+<tr>
+<td><code>memory.budget_tokens</code></td>
+<td><code>6000</code></td>
+<td>SessionStart memory payload budget in estimated tokens; over it today's lines are left out first.</td>
+</tr>
+<tr>
+<td><code>memory.export_to</code></td>
+<td><code>"CLAUDE.md"</code></td>
+<td>Workspace-relative file that receives the generated rules block and the generated guide block (<code>init</code>, <code>init --upgrade</code>); never under <code>.wuwei/</code>.</td>
+</tr>
+<tr>
+<td><code>retro.repo</code></td>
+<td><code>"."</code></td>
+<td>Repository used for retro evidence.</td>
+</tr>
+<tr>
+<td><code>retro.charter_paths</code></td>
+<td><code>[".wuwei/charters"]</code></td>
+<td>Paths to charter procedures reviewed during retro.</td>
+</tr>
+<tr>
+<td><code>retro.changelog</code></td>
+<td><code>".wuwei/memory/CHANGELOG.md"</code></td>
+<td>Retro change log path.</td>
+</tr>
+<tr>
+<td><code>metrics.transcripts</code></td>
+<td><code>"~/.claude/projects"</code></td>
+<td>Claude Code project transcript directory for attended time. Sessions are filtered to the workspace and its repositories.</td>
+</tr>
+<tr>
+<td><code>metrics.band_margin</code></td>
+<td><code>0.2</code></td>
+<td>The retro names a worst hour or session-age band only when its gate FIX rate over the last 7 days exceeds every other measured band by at least this much.</td>
+</tr>
+<tr>
+<td><code>consolidation.archive_after_days</code></td>
+<td><code>30</code></td>
+<td>Pack older day directories into <code>archive/&lt;year&gt;/&lt;date&gt;.tar.gz</code>; read them with <code>wuwei memory show &lt;date&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>consolidation.similarity_threshold</code></td>
+<td><code>0.85</code></td>
+<td>Text similarity ratio for near-duplicate review.</td>
+</tr>
+<tr>
+<td><code>build.max_iterations</code></td>
+<td><code>8</code></td>
+<td>Maximum build iterations.</td>
+</tr>
+<tr>
+<td><code>build.stuck_after</code></td>
+<td><code>3</code></td>
+<td>Repeated progress limit.</td>
+</tr>
+<tr>
+<td><code>build.poll_interval_seconds</code></td>
+<td><code>5</code></td>
+<td>Runtime job poll interval.</td>
+</tr>
+<tr>
+<td><code>build.poll_timeout_seconds</code></td>
+<td><code>3600</code></td>
+<td>Runtime job poll timeout.</td>
+</tr>
+<tr>
+<td><code>codex.command</code></td>
+<td><code>[]</code></td>
+<td>Companion command; fill in to use Codex runtime.</td>
+</tr>
+<tr>
+<td><code>codex.timeout_seconds</code></td>
+<td><code>300</code></td>
+<td>Codex command timeout.</td>
+</tr>
+<tr>
+<td><code>gates.second_opinion</code></td>
+<td><code>"off"</code></td>
+<td><code>"&lt;runtime&gt;:&lt;model&gt;"</code>, for example <code>"codex:gpt-6-astra"</code>, runs one gate of every STANDARD and FULL item a second time on that runtime and model. Its verdict is one more gate record named <code>&lt;role&gt;@&lt;runtime&gt;</code>; a blocking finding from either model blocks. <code>claude</code> and <code>none</code> are refused.</td>
+</tr>
+<tr>
+<td><code>gates.second_opinion_role</code></td>
+<td><code>"quality"</code></td>
+<td>The gate role the second opinion repeats: <code>arch</code>, <code>quality</code> or <code>security</code>.</td>
+</tr>
+<tr>
+<td><code>gates.max_rounds</code></td>
+<td><code>2</code></td>
+<td>Fix rounds per item before it ships or parks, the same for code, spec and document items. A FIX verdict opens round one; after a delta only a blocking finding opens the next. At the cap the remaining non-blocking findings go into the PR body as review notes and the item ships. A blocking finding parks it with a decision record naming the finding and what would unpark it. Minimum 1. The report's <code>## Rounds</code> section counts them.</td>
+</tr>
+<tr>
+<td><code>gates.tier_max_rounds</code></td>
+<td><code>{ light = 0, standard = 0, full = 0 }</code></td>
+<td>A round cap per review tier; <code>0</code> uses <code>gates.max_rounds</code>.</td>
+</tr>
+<tr>
+<td><code>pr.poll_seconds</code></td>
+<td><code>120</code></td>
+<td>Interval between full reads of raised and claimed PRs. With the listener running, conditional probes every 30 s trigger a full read at once on a change.</td>
+</tr>
+<tr>
+<td><code>pr.action_minutes</code></td>
+<td><code>30</code></td>
+<td>Positive minutes to act on a measured PR finding. Nudge after this deadline, page at twice the interval.</td>
+</tr>
+<tr>
+<td><code>pr.review_window</code></td>
+<td><code>120</code></td>
+<td>Positive minutes to await review before re-requesting it. Starts at first observation of the head; comments do not reset it.</td>
+</tr>
+<tr>
+<td><code>shepherd.lead_login</code></td>
+<td><code>""</code></td>
+<td>Lead code host login. Counts as a reviewer when different from the author.</td>
+</tr>
+<tr>
+<td><code>shepherd.reviewers</code></td>
+<td><code>[]</code></td>
+<td>Code host logins to request instead of the history ranking and the lead. No <code>min_reviewers</code> check; the PR author is dropped.</td>
+</tr>
+<tr>
+<td><code>shepherd.reviewers_exclude</code></td>
+<td><code>[]</code></td>
+<td>Code host logins never picked from history; the lead too when listed.</td>
+</tr>
+<tr>
+<td><code>shepherd.review_channel</code></td>
+<td><code>""</code></td>
+<td>Chat channel ID for review requests.</td>
+</tr>
+<tr>
+<td><code>shepherd.review_gate_check</code></td>
+<td><code>"Review Gate"</code></td>
+<td>Check excluded during review requests.</td>
+</tr>
+<tr>
+<td><code>shepherd.min_reviewers</code></td>
+<td><code>1</code></td>
+<td>Minimum eligible reviewers required to raise or request review. <code>0</code> is a solo owner: <code>wuwei pr raise</code> and <code>gh pr create</code> need no reviewer, you merge, and the reviewer and channel-post obligations are not applicable. When the history finds nobody but the author, <code>wuwei pr raise</code> raises with <code>reviewers: none (solo)</code> on any value; it refuses only when it found some reviewers but fewer than this, and names <code>bin/wuwei config set shepherd.min_reviewers 0</code> and <code>shepherd.reviewers</code> as the ways out. Above <code>0</code>, <code>gh pr create</code> still needs a <code>--reviewer</code>: <code>shepherd.reviewers</code> takes effect only through <code>wuwei pr raise</code>.</td>
+</tr>
+<tr>
+<td><code>shepherd.author_windows_days</code></td>
+<td><code>[90, 180]</code></td>
+<td>Authorship lookback windows, then all history.</td>
+</tr>
+<tr>
+<td><code>shepherd.tie_commits</code></td>
+<td><code>2</code></td>
+<td>Include a third author within this many commits of second place.</td>
+</tr>
+<tr>
+<td><code>shepherd.source_exclude</code></td>
+<td><code>specs/*</code>, lock files and generated files</td>
+<td>Changed paths excluded from reviewer selection.</td>
+</tr>
+<tr>
+<td><code>shepherd.autostart</code></td>
+<td><code>true</code></td>
+<td>Start one headless shepherd seat per mechanical PR action (conflicted, red CI, review comments, stale review) when the listener sees it. The seat never merges and every post it makes is a draft.</td>
+</tr>
+<tr>
+<td><code>shepherd.authors</code></td>
+<td><code>{}</code></td>
+<td>Map author email to verified <code>{login, mention}</code> reviewer identity; <code>mention</code> is optional (default <code>""</code>) and a review ping refuses a reviewer without one. <code>bin/wuwei setup</code> maps your repositories' git emails to your code-host login and each bot author seen on the last 50 merged pull requests to its <code>[bot]</code> login. An unmapped email is resolved to the code host login for that email and cached for the day; one the code host cannot resolve is skipped with a <code>reviewer.unresolved</code> event, never a refusal. See <a href="#people-channels-and-tools">People, channels and tools</a>.</td>
+</tr>
+<tr>
+<td><code>watch.clock_seconds</code></td>
+<td><code>600</code></td>
+<td>Interval between watch clock events.</td>
+</tr>
+<tr>
+<td><code>watch.dead_seconds</code></td>
+<td><code>1200</code></td>
+<td>Clock age after which the watch is reported dead.</td>
+</tr>
+<tr>
+<td><code>watch.stale_seconds</code></td>
+<td><code>900</code></td>
+<td>Inactivity age at which running work is reported stale.</td>
+</tr>
+<tr>
+<td><code>watch.sweep_seconds</code></td>
+<td><code>7200</code></td>
+<td>Interval between supervision sweeps.</td>
+</tr>
+<tr>
+<td><code>watch.ping_url</code></td>
+<td><code>""</code></td>
+<td>https check URL of a hosted cron monitor; each healthy watch heartbeat pings it (see the heartbeat reference). Keep it private.</td>
+</tr>
+<tr>
+<td><code>sessions.stale_seconds</code></td>
+<td><code>3600</code></td>
+<td>Seconds without hook activity after which a registered session is stale: it stops counting in <code>wuwei status</code>, its item claims lapse, and a stale planner is nudged.</td>
+</tr>
+<tr>
+<td><code>sessions.rotate_after</code></td>
+<td><code>{ turns = 0, compactions = 0, clock = "" }</code></td>
+<td>Scheduled planner rotation, off by default. <code>turns</code> (Stop hooks since the session started today), <code>compactions</code> (compactions seen) or <code>clock</code> (<code>"HH:MM"</code> in <code>owner.timezone</code>): when one is reached, the Stop hook asks the planner once, at a turn with no running seat and no unanswered owner decision, to end the session and run <code>wuwei plan session "$WUWEI_SESSION_ID" --take-over</code> in a fresh one.</td>
+</tr>
+<tr>
+<td><code>listen.poll_seconds</code></td>
+<td><code>60</code></td>
+<td>Interval between listener polls of the inbound source. The listener ticks at least every 30 s to probe owned PRs.</td>
+</tr>
+<tr>
+<td><code>listen.dead_seconds</code></td>
+<td><code>300</code></td>
+<td>Clock age after which the listener is reported dead at session start and in <code>wuwei status</code>.</td>
+</tr>
+<tr>
+<td><code>responder.enabled</code></td>
+<td><code>true</code></td>
+<td>Kill switch: when <code>false</code> the listener still stores events but does not wake the planner or handle commands.</td>
+</tr>
+<tr>
+<td><code>steward.every_tool_calls</code></td>
+<td><code>250</code></td>
+<td>Completed tool calls between steward reviews. <code>wuwei next</code> launches only the newest steward brief, and offers neither a due review nor a launch while a steward seat runs; the due review waits until that seat stops. While an item is in <code>fix</code> or <code>delta</code>, a tool-call or sweep review waits for the round to end; the close review never waits.</td>
+</tr>
+<tr>
+<td><code>steward.loop_window_hours</code></td>
+<td><code>4</code></td>
+<td>Window, in hours, over which a steward review counts an item's exchanges for a negotiation loop.</td>
+</tr>
+<tr>
+<td><code>steward.loop_threshold</code></td>
+<td><code>9</code></td>
+<td>Exchanges in the window above which an item raises one <code>negotiation.loop</code> nudge a day; a second fix round today raises it too.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="decisions">Decisions<a class="headerlink" href="#decisions" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>autonomy.mode</code></td>
+<td><code>"autonomous"</code></td>
+<td>Who takes a decision record (<code>bin/wuwei decision route D-n</code>). <code>autonomous</code>: a Routine, Consequential or scoring Exploratory record is taken as recommended (<code>Decided-by: mandate</code>), listed in the digest and the day report with the reversal command; a tie, a Strategic record, a one-way record or a record written for you (a security finding) still asks you. <code>supervised</code>: every decision beyond a two-way one on its own branch or PR asks you. A calibration profile may not switch a supervised workspace to autonomous. Under <code>autonomous</code> an <code>outward.patterns</code> match in team or company chat is not reported; <code>supervised</code> records an <code>outward.lint</code> event and a warning.</td>
+</tr>
+<tr>
+<td><code>nudges.mode</code></td>
+<td><code>""</code></td>
+<td>What the status line, <code>bin/wuwei nudges</code>, the board and <code>bin/wuwei doctor</code> show of the nudges. Empty follows <code>autonomy.mode</code>: <code>off</code> when autonomous, <code>next</code> when supervised; a day without <code>config.toml</code> shows <code>all</code>. <code>off</code>: pages only, and the status line drops its <code>nudges N</code> token. <code>next</code>: pages, a phone answer not yet recorded, a fix round with nothing running (<code>wuwei build next &lt;item&gt;</code>) and a day ready to close (<code>wuwei close</code>). <code>all</code>: every open cause. Pages show in every mode, and events are written as before; <code>bin/wuwei nudges --all</code> lists every open cause whatever the mode. <code>bin/wuwei init --upgrade</code> names the mode it applies when the key is absent.</td>
+</tr>
+<tr>
+<td><code>nudges.ttl_hours</code></td>
+<td><code>24</code></td>
+<td>A nudge with no new event for this many hours leaves the list; it is counted as <code>expired</code> on the <code>nudges.dropped</code> row. Pages never expire.</td>
+</tr>
+<tr>
+<td><code>nudges.max_open</code></td>
+<td><code>20</code></td>
+<td>At most this many open nudges, the <code>nudges.dropped</code> row included: the oldest go and are counted as <code>dropped</code> on that row, which also counts the <code>expired</code> ones. Pages are never dropped or counted.</td>
+</tr>
+<tr>
+<td><code>decisions.wait_hours</code></td>
+<td><code>24</code></td>
+<td>Weekday hours in <code>owner.timezone</code> an external confirmation (<code>decision route D-n --external &lt;item&gt;</code>) waits for your answer before the sweep confirms it on a two-way door or parks the item.</td>
+</tr>
+<tr>
+<td><code>decisions.cruise.enabled</code></td>
+<td><code>true</code></td>
+<td>Kill switch: when false every class runs at L0, nothing is a cruise answer and the status line says <code>cruise off \| L&lt;n&gt;</code>. The running levels are kept.</td>
+</tr>
+<tr>
+<td><code>decisions.cruise.margin</code></td>
+<td><code>0.2</code></td>
+<td>Least margin (above 0, at most 1) a record needs to be a cruise answer; a lower one at L2 or L3 is a thin margin. A profile may not lower it.</td>
+</tr>
+<tr>
+<td><code>decisions.cruise.max_per_day</code></td>
+<td><code>20</code></td>
+<td>Cruise answers a day; past it a record the mandate takes is a plain <code>mandate</code> answer. A profile may not raise it.</td>
+</tr>
+<tr>
+<td><code>decisions.cruise.undo_minutes</code></td>
+<td><code>60</code></td>
+<td>Minutes an L2 cruise answer can be undone, from the answer.</td>
+</tr>
+<tr>
+<td><code>decisions.cruise.promote_agreements</code></td>
+<td><code>10</code></td>
+<td>Agreeing answers of a class since its last level change that make <code>plan propose</code> ask you to raise it.</td>
+</tr>
+<tr>
+<td><code>decisions.cruise.promote_days</code></td>
+<td><code>14</code></td>
+<td>Days those agreements are counted over; one raise card per class in that window.</td>
+</tr>
+<tr>
+<td><code>decisions.cruise.shadow_days</code></td>
+<td><code>5</code></td>
+<td>Days a class runs in shadow at the next level before its raise card.</td>
+</tr>
+<tr>
+<td><code>decisions.cruise.shadow_min</code></td>
+<td><code>5</code></td>
+<td>Shadow answers that must be scored, all agreeing, before the shadow passes.</td>
+</tr>
+<tr>
+<td><code>decisions.cruise.budget_share</code></td>
+<td><code>0.1</code></td>
+<td>Error budget of a class: the share of its cruise answers in the window that may be undone, reversed, sampled differently or attributed an escaped defect. Above 0, at most 0.5. The budget is spent with more events than that and at least two.</td>
+</tr>
+<tr>
+<td><code>decisions.cruise.budget_window_days</code></td>
+<td><code>14</code></td>
+<td>Days the error budget is counted over; a spent class runs one level lower until the window refills.</td>
+</tr>
+<tr>
+<td><code>decisions.cruise.burn_warn</code></td>
+<td><code>2.0</code></td>
+<td>Burn rate (events of the last 48 hours against the window's allowance) that writes a nudge naming the events.</td>
+</tr>
+<tr>
+<td><code>decisions.cruise.calibration_threshold</code></td>
+<td><code>0.15</code></td>
+<td>Brier score above which a class or role is uncalibrated: the class runs at most L1, the role's records go to you as cards. Above 0, below 1.</td>
+</tr>
+<tr>
+<td><code>decisions.cruise.calibration_min</code></td>
+<td><code>10</code></td>
+<td>Scored records a class or role needs before it is judged; fewer is <code>too few</code>, which only blocks a raise card.</td>
+</tr>
+<tr>
+<td><code>decisions.cruise.levels</code></td>
+<td><code>{}</code></td>
+<td>Per-class level (0 to 3) that caps the level a class runs at; a level above the class ceiling or an unknown class is refused.</td>
+</tr>
+<tr>
+<td><code>decisions.lenses</code></td>
+<td><code>{}</code></td>
+<td>Lenses every engineering decision (<code>design</code>, <code>boundary</code>, <code>refactor</code>, <code>dependency-bump</code>) answers per option, as name = one-line question. The defaults are SOLID, twelve-factor, YAGNI and ponytail; a new name adds a lens and <code>""</code> drops one, for example <code>YAGNI = ""</code>. Names use letters, digits, dash or underscore.</td>
+</tr>
+</tbody>
+</table>
+<p>These keys feed the mandate block in every seat prompt and cruise mode (design spec 5.8.1). The level a class runs at is the lowest of its running level in <code>.wuwei/memory/cruise.json</code> (the 5.8.1 default until a level moves), its configured level and its ceiling; <code>autonomy.mode = "supervised"</code> runs every class at L0. Only the CLI writes <code>cruise.json</code>, with a ledger line: your raise card, or the error budget (undos, reversals, weekly samples answered differently and escaped defects) spent or refilled. See <a href="../daily/#cruise-answers">cruise answers</a>.</p>
+<h2 id="telemetry">Telemetry<a class="headerlink" href="#telemetry" title="Permanent link">&para;</a></h2>
+<p>Weekly usage counts that say whether WUWEI itself works: how often guards refuse or cannot run, how long a hook takes, how often items loop, how many decisions reach you. The watch sweep aggregates them at most once a day into <code>.wuwei/metrics/&lt;week&gt;.json</code>, never in a hook; <code>bin/wuwei metrics --week [&lt;week&gt;]</code> prints a week on demand. A finalised week can propose a config change, asked once at the next morning gate; nothing applies on its own.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>telemetry.enabled</code></td>
+<td><code>true</code></td>
+<td><code>false</code> stops the aggregate, the proposals, sharing and the OpenTelemetry export.</td>
+</tr>
+<tr>
+<td><code>telemetry.share</code></td>
+<td><code>""</code></td>
+<td><code>"anonymous"</code>, <code>"attributed"</code> or <code>"off"</code>. Empty means the interview question is not answered yet and sends nothing; <code>bin/wuwei doctor</code> lists it as pending. A calibration profile never carries it.</td>
+</tr>
+<tr>
+<td><code>telemetry.endpoint</code></td>
+<td><code>""</code></td>
+<td>Where anonymous mode posts; empty or not <code>https://</code> keeps every week local.</td>
+</tr>
+<tr>
+<td><code>telemetry.repository</code></td>
+<td><code>"taoq-ai/wuwei"</code></td>
+<td>Where attributed mode opens issues with <code>bin/wuwei telemetry send</code>.</td>
+</tr>
+<tr>
+<td><code>telemetry.otlp.endpoint</code></td>
+<td><code>""</code></td>
+<td>An <code>https://</code> OTLP/HTTP base URL on your own platform; off when empty.</td>
+</tr>
+<tr>
+<td><code>telemetry.otlp.headers_env</code></td>
+<td><code>""</code></td>
+<td>The name of the <code>.wuwei/env</code> variable holding the auth headers as <code>key=value,key=value</code>; the value never enters config, events or output.</td>
+</tr>
+</tbody>
+</table>
+<p>OpenTelemetry: with <code>telemetry.otlp.endpoint</code> set, each sweep posts the records appended since the last export to <code>&lt;endpoint&gt;/v1/traces</code> and each newly finalised week to <code>&lt;endpoint&gt;/v1/metrics</code>, as OTLP/HTTP JSON with the stdlib. A day is a trace; each refusal, warning and seat run is a span with the attributes <code>wuwei.event</code>, <code>wuwei.guard</code>, <code>wuwei.outcome</code>, <code>wuwei.reason_code</code>, <code>wuwei.posture</code> and <code>wuwei.item</code>; decisions, loops, gate rounds and owner actions are span events; the weekly metrics are counters and gauges. It never carries command text, reasons or record bodies, and it never goes to the project. The mark advances only on a 2xx answer; a failure records <code>telemetry.unsent</code> and the next sweep resends.</p>
+<h2 id="adapters-and-brief">Adapters and brief<a class="headerlink" href="#adapters-and-brief" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>adapters.tracker</code></td>
+<td><code>"none"</code></td>
+<td>Tracker implementation: none, linear, jira or github.</td>
+</tr>
+<tr>
+<td><code>adapters.chat</code></td>
+<td><code>"none"</code></td>
+<td>Chat implementation: none or slack. With none, the channel-post obligation is not applicable.</td>
+</tr>
+<tr>
+<td><code>adapters.review_bot</code></td>
+<td><code>"none"</code></td>
+<td>Review bot: none or greptile.</td>
+</tr>
+<tr>
+<td><code>adapters.runtime</code></td>
+<td><code>"claude"</code></td>
+<td>Seat runtime: claude, codex or none.</td>
+</tr>
+<tr>
+<td><code>adapters.scanner</code></td>
+<td><code>"none"</code></td>
+<td>Scanner: none or ziran. S4 requires the compatible JSON CLI described below. <code>none</code> turns the MCP registry gate off.</td>
+</tr>
+<tr>
+<td><code>scanner.severity_threshold</code></td>
+<td><code>"high"</code></td>
+<td>Blocking threshold: critical, high, medium or low. Trust-boundary findings always block.</td>
+</tr>
+<tr>
+<td><code>adapters.code_host</code></td>
+<td><code>"github"</code></td>
+<td>Code host: github or none.</td>
+</tr>
+<tr>
+<td><code>adapters.vcs</code></td>
+<td><code>"git"</code></td>
+<td>Version control: git.</td>
+</tr>
+<tr>
+<td><code>adapters.host</code></td>
+<td><code>"local"</code></td>
+<td>Host measurement: local or none.</td>
+</tr>
+<tr>
+<td><code>adapters.checks</code></td>
+<td><code>"local"</code></td>
+<td>Fast check execution: local or none.</td>
+</tr>
+<tr>
+<td><code>adapters.tts</code></td>
+<td><code>"say"</code> on macOS, <code>"none"</code> elsewhere</td>
+<td>Speech output for owner packs. <code>none</code> writes a text pack with an explicit no-audio note.</td>
+</tr>
+<tr>
+<td><code>adapters.calendar</code></td>
+<td><code>"none"</code></td>
+<td>Meeting source: none or a private ICS feed.</td>
+</tr>
+<tr>
+<td><code>adapters.transcripts</code></td>
+<td><code>"none"</code></td>
+<td>Meeting transcript source.</td>
+</tr>
+<tr>
+<td><code>adapters.inbound</code></td>
+<td><code>"none"</code></td>
+<td>Inbound message source: none or slack.</td>
+</tr>
+<tr>
+<td><code>adapters.redactor</code></td>
+<td><code>"builtin"</code></td>
+<td>Redacts inbound text before it is stored: built-in patterns for phone numbers, email addresses and secrets.</td>
+</tr>
+<tr>
+<td><code>calendar.url</code></td>
+<td><code>""</code></td>
+<td>Private HTTPS ICS URL. <code>WUWEI_CALENDAR_URL</code> overrides this setting. Keep the URL secret.</td>
+</tr>
+<tr>
+<td><code>brief.lead_minutes</code></td>
+<td><code>30</code></td>
+<td>Meeting pack window before an event with attendees.</td>
+</tr>
+<tr>
+<td><code>brief.style.length</code></td>
+<td><code>"standard"</code></td>
+<td><code>standard</code> or <code>concise</code> pack text.</td>
+</tr>
+<tr>
+<td><code>brief.style.speed</code></td>
+<td><code>180</code></td>
+<td>Speech rate in words per minute for <code>say</code>.</td>
+</tr>
+<tr>
+<td><code>brief.remote</code></td>
+<td><code>"origin"</code></td>
+<td>Git remote used for a brief.</td>
+</tr>
+<tr>
+<td><code>brief.prior_branch_pattern</code></td>
+<td><code>"*{item}*"</code></td>
+<td>Branch match, with lowercased item substituted.</td>
+</tr>
+<tr>
+<td><code>brief.full_path_patterns</code></td>
+<td><code>[]</code></td>
+<td>Owner supplied regexes for paths needing full context.</td>
+</tr>
+<tr>
+<td><code>chat.identity</code></td>
+<td><code>"connector"</code></td>
+<td>Optional CLI default: connector or custom_app. This key is not in the template.</td>
+</tr>
+<tr>
+<td><code>control_plane.content</code></td>
+<td><code>"summary"</code></td>
+<td>What a messaging transport sends about a pending decision. <code>summary</code> sends the decision at the <code>owner.verbosity.dm</code> level (at <code>brief</code>: the id, the question, each option with its score and the reason for the recommendation; at <code>standard</code> or <code>full</code>: more of the record, up to all of it, including context, blast radius and evidence paths) and the whole record on a <code>more D-n</code> reply; <code>none</code> sends only the id and option letters, and a fixed line in place of an update. The question widget in the planner session always shows the summary.</td>
+</tr>
+<tr>
+<td><code>control_plane.owner</code></td>
+<td><code>""</code></td>
+<td>The pinned sender of commands from your owner DM, as <code>&lt;team id&gt;/&lt;user id&gt;</code> (such as <code>T0123ABC/U0123ABC</code>). Empty handles no command; <code>wuwei config check</code> reports it when <code>adapters.inbound</code> is set.</td>
+</tr>
+</tbody>
+</table>
+<p>Run <code>bin/wuwei brief pack</code> once for a daily text pack, or <code>bin/wuwei brief pack --meeting</code>
+inside the lead window for the next attendee meeting. The returned path contains the
+five fixed sections, a what-changed visual, a three-bullet card and a three-question
+drill. The sections come from the day's items, decision records and owned PRs, never
+from adapter or guard messages. Answer with <code>bin/wuwei brief answer 1 "your answer"</code>; the command prints feedback
+and records the score and streak. The existing <code>bin/wuwei brief ROLE ITEM NAME --body TEXT</code> command
+continues to write seat briefs.</p>
+<p>When the approved item's <code>flags.agent_surface</code> is true, <code>bin/wuwei dispatch receive</code>
+runs the scanner for the security sentinel's reviewed worktree, including delta reviews.
+Every finding becomes a verdict row and a <code>scanner.finding</code> event. Findings change PASS
+to FIX; PARK and ESCALATE remain unchanged. Findings at or above the threshold block.
+Findings also block when marked as a trust boundary, when the item's <code>trust_surface</code> or
+<code>boundary_relevant</code> flag is set, or for ZIRAN checks SA001, SA002, SA003, SA007, SA008,
+SA009 and SA010 (secrets, input validation, execution and data exposure).</p>
+<p>The adapter requires <strong>ZIRAN 0.39.0 or newer</strong>, verified with <code>ziran --version</code>.
+It runs <code>ziran audit PATH --format json --severity low</code> to retain every finding.
+Exit 1 means findings are present; the configured blocking threshold is applied locally.
+Stdout is one JSON document with <code>files_analyzed</code> greater than zero and a <code>findings</code> list.
+Each finding contains
+<code>rule</code>, <code>severity</code>, <code>file</code>, <code>line</code> and <code>message</code>; matched source lines are never included.
+The gate evaluates these validated findings locally. No <code>ziran ci</code> command is used.
+Each external command has a 60-second timeout. Missing or incompatible tools, command
+errors, malformed reports and timeouts report unmeasured (exit 2).</p>
+<p>At each watch sweep, nonempty daily traces are scanned with
+<code>ziran analyze-traces --source otel --input DAY/traces.jsonl --out OUTPUT --format json</code>.
+The adapter reads <code>OUTPUT/trace_analysis.json</code> from a temporary directory and discards it
+after validation. Exit 0 means measured with no critical chain, 1 means critical chains,
+and 2 means unmeasured; errors take precedence over findings. Missing or blank trace
+files report <code>no sessions</code> in the sweep line without invoking ZIRAN, including when the
+scanner adapter is <code>none</code>.</p>
+<p>Critical chains page through <code>scanner.finding</code> events containing only chain, risk level
+and session identity. Subagents use <code>session_id:agent_id</code> identities and their own
+transcript brief references to bind to seat reservations. Transcript lookup is best-effort;
+affected active items park and valid pending owner decisions appear in the existing queue.
+Unknown sessions still page and queue a decision. Repeated sweeps
+remeasure without duplicating a session/chain decision. Commands and argument values
+never enter finding events or decisions. A session identity changed by secret redaction
+uses a stable digest to keep different sessions distinct.</p>
+<h2 id="docs">Docs<a class="headerlink" href="#docs" title="Permanent link">&para;</a></h2>
+<p>The <a href="../concepts/#docs-system">docs system</a> and the <a href="../concepts/#docs-obligation">docs obligation</a> per review tier. With <code>system = "none"</code> nothing here applies.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>docs.system</code></td>
+<td><code>"none"</code></td>
+<td>Where documentation lives: <code>notion</code>, <code>confluence</code>, <code>markdown</code> or <code>none</code>. Notion needs <code>NOTION_TOKEN</code> and Confluence needs <code>CONFLUENCE_EMAIL</code> and <code>CONFLUENCE_API_TOKEN</code> in <code>.wuwei/env</code>.</td>
+</tr>
+<tr>
+<td><code>docs.required_tiers</code></td>
+<td><code>["standard", "full"]</code></td>
+<td>Review tiers whose items need a docs value before the quality gate passes and before the day closes. A light item records one <code>docs.exempt</code> event instead.</td>
+</tr>
+<tr>
+<td><code>docs.space</code></td>
+<td><code>""</code></td>
+<td>The Notion or Confluence page new pages go under, as a link. <code>bin/wuwei doctor</code> reads it.</td>
+</tr>
+<tr>
+<td><code>docs.root</code></td>
+<td><code>"docs"</code></td>
+<td>Under markdown, the directory in each repository that holds the pages.</td>
+</tr>
+<tr>
+<td><code>docs.publish</code></td>
+<td><code>["report", "retro"]</code></td>
+<td>Daily pages <code>wuwei report</code> and <code>wuwei retro</code> publish once per day under notion or confluence. No effect under markdown.</td>
+</tr>
+<tr>
+<td><code>docs.auto</code></td>
+<td><code>[]</code></td>
+<td>Page kinds (<code>page</code>, <code>report</code>, <code>retro</code>) written at once; any other kind is stored as a draft for <code>bin/wuwei drafts approve &lt;id&gt;</code>. Sensitive text drafts anyway.</td>
+</tr>
+<tr>
+<td><code>docs.strict_close</code></td>
+<td><code>true</code></td>
+<td><code>wuwei close</code> refuses while a merged item's docs obligation is unmet; <code>false</code> lists those lines in the report's <code>## Docs</code> section instead.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="owner-voice">Owner voice<a class="headerlink" href="#owner-voice" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>voice.review_prs</code></td>
+<td><code>[]</code></td>
+<td>PR references whose owner comments teach the review audience voice.</td>
+</tr>
+<tr>
+<td><code>voice.sources.internal</code></td>
+<td>Not set</td>
+<td>Example internal audience mapped to sent chat channel IDs. See <a href="#people-channels-and-tools">People, channels and tools</a>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="boundaries-and-deployment">Boundaries and deployment<a class="headerlink" href="#boundaries-and-deployment" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>boundary.api</code></td>
+<td>Not set</td>
+<td>Example named boundary; <code>[boundary]</code> accepts names and descriptions.</td>
+</tr>
+<tr>
+<td><code>environments.production</code></td>
+<td>Not set</td>
+<td>Example environment; <code>[environments]</code> accepts names and descriptions.</td>
+</tr>
+<tr>
+<td><code>deploy.workflows</code></td>
+<td><code>[]</code></td>
+<td>Workflow names, filenames, paths or IDs treated as deploy actions.</td>
+</tr>
+<tr>
+<td><code>deploy.deny</code></td>
+<td><code>[]</code></td>
+<td>Literal executable plus argument globs to refuse.</td>
+</tr>
+<tr>
+<td><code>grants.standing</code></td>
+<td><code>[]</code></td>
+<td>Standing grants, one per line: <code>{action = "deploy", target = "repo:&lt;org&gt;/&lt;name&gt;", scope = "always", decision = "D-n", date = "YYYY-MM-DD"}</code>. <code>action</code> is <code>deploy</code>, <code>release</code>, <code>publish</code> or <code>merge</code>; <code>target</code> may use <code>*</code> and <code>?</code>. Your <code>Always allow</code> answer on a refusal card writes the line; <code>bin/wuwei grants revoke &lt;n&gt;</code> removes one. Ignored under <code>strict</code>, where <code>doctor</code> warns about each line.</td>
+</tr>
+<tr>
+<td><code>merge.default_tier</code></td>
+<td><code>""</code></td>
+<td>What a merge the merge policy does not clear does when no grant matches: <code>ask</code> writes the decision card, <code>owner_only</code> prints the exact <code>gh pr merge &lt;url&gt; --&lt;method&gt; --match-head-commit &lt;sha&gt;</code> for a host terminal, with the method <code>merge check</code> chose. <code>today</code>, written only by the Autonomous setup answer, lets a merge on a configured repository through below <code>strict</code> with no card, recorded as <code>grant.used</code> with decision <code>merge.default_tier</code>. The 4.6 preconditions still hold, a repository whose <code>merge_deploys</code> is not <code>false</code> is still refused, and a Keep owner-only answer for the target wins. Deploys, releases and publishes keep their cards. Empty means <code>owner_only</code> under <code>strict</code> and <code>ask</code> otherwise. A grant you already recorded counts either way.</td>
+</tr>
+<tr>
+<td><code>merge.owner_paths</code></td>
+<td><code>[]</code></td>
+<td>Globs only you merge, for example guard files, workflows or the signing key path. Matched like <code>never_auto_paths</code>, on any path suffix of a changed or renamed path. A match is merged by you in a host terminal: the reason names the path and the glob and prints the <code>gh pr merge</code> command. No grant, standing line or <code>merge.default_tier</code> lifts it.</td>
+</tr>
+</tbody>
+</table>
+<p>The template also shows a <code>"release/*"</code> environment example. Add any actual environment register entries before using rules that depend on them. WUWEI does not deploy on its own: a deploy runs from a session only under a grant you gave (see <a href="../concepts/#grants">grants</a>).</p>
+<h2 id="calibration">Calibration<a class="headerlink" href="#calibration" title="Permanent link">&para;</a></h2>
+<p><code>bin/wuwei setup</code> runs the calibration and your interview: it adds a <code>[[repos]]</code> table for each repository it finds, calibrates them, and applies everything after one digest in a host terminal. The sections below describe what it proposes.</p>
+<p>Two host terminal commands change one value later, each with a diff and a digest, the same path as <code>config promote</code>. The value is parse-checked before you are asked; an invalid one is refused with the reason and nothing is written:</p>
+<ul>
+<li><code>bin/wuwei config set &lt;dotted.key&gt; &lt;toml-value&gt;</code>, for example <code>bin/wuwei config set owner.verbosity.default '"standard"'</code> or <code>bin/wuwei config set repos.0.merge_deploys false</code> (repositories by index), and a list of tables such as <code>bin/wuwei config set outward.tool_patterns '[{pattern = "mcp__custom__send", channel = "customer"}]'</code>. A value that is not TOML is refused with the type the key takes and an example. A table such as <code>owner.verbosity</code> is set one key at a time, and a deploy list only grows. The value is written as given, so a list key is replaced, built-in items included, and <code>'[]'</code> empties it (<code>config set docs.publish '[]'</code>; a deploy list still only grows). After the write it prints <code>replaced: &lt;key&gt; = &lt;new&gt; (was &lt;old&gt;)</code>. <code>--add</code> adds the items to the effective list instead, so the built-in items stay and an item already there is not added twice (<code>config set outbound.work_channels '["C1"]' --add</code>); on a named-entry table such as <code>outbound.people</code> or <code>outward.servers</code> it adds or replaces the given entries. It then prints <code>added: ...</code>, as does a deploy list. <code>--add</code> on any other key is refused. <code>--replace</code> is the default and may be passed for clarity. <code>bin/wuwei config show &lt;key&gt;</code> prints the effective value, one row per item or entry, each tagged <code>default</code> or <code>owner</code>.</li>
+<li><code>bin/wuwei config add-repo --name acme/widget --path widget --branch main --identity "Pat Example &lt;pat@example.test&gt;"</code> appends one <code>[[repos]]</code> table; a duplicate name or path is refused.</li>
+</ul>
+<p>Run <code>bin/wuwei calibrate [--repo &lt;name&gt;]</code> after <code>init</code> and the basic <code>[[repos]]</code> entry (<code>name</code>, <code>path</code>, <code>default_branch</code>), and before the first plan. It reads each checkout and writes <code>.wuwei/days/&lt;date&gt;/calibration.md</code>; it never changes <code>config.toml</code>, and without <code>--measure</code> it runs nothing in the checkout. It exits 0 clean, 1 when it flagged text and 2 when it could not run or a read was unmeasured.</p>
+<table>
+<thead>
+<tr>
+<th>Detector</th>
+<th>Reads</th>
+<th>Proposes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Toolchain</td>
+<td><code>pyproject.toml</code>, <code>pytest.ini</code>, <code>package.json</code>, <code>Cargo.toml</code>, <code>go.mod</code>, <code>Makefile</code>, a markdownlint config, <code>.latexmkrc</code>. With none of those, a single-line test, check or lint <code>run:</code> step of a workflow on <code>pull_request</code> or <code>push</code>, with no shell control or expansion character (<code>;&amp;|&lt;&gt;$</code> or a backtick)</td>
+<td><code>repos.fast_checks</code> from a fixed command table; only the CI step is the repository's own command</td>
+</tr>
+<tr>
+<td>CI checks</td>
+<td><code>.github/workflows/*.yml</code> run on <code>pull_request</code></td>
+<td><code>repos.review_required_checks</code>: job names, one per leg of a single inline matrix, without <code>continue-on-error: true</code> jobs</td>
+</tr>
+<tr>
+<td>Conventions</td>
+<td><code>AGENTS.md</code>, <code>CLAUDE.md</code>, <code>CONTRIBUTING.md</code>, <code>.specify/memory/constitution.md</code>, <code>CODEOWNERS</code>, PR and issue templates</td>
+<td>charter blocks for the builder and the quality sentinel; <code>[boundary]</code> candidates from <code>CODEOWNERS</code></td>
+</tr>
+<tr>
+<td>Deploy signals</td>
+<td>workflows run on a push to the default branch, tags or a release that use an environment, a deploy or release action, or a deploy command; deploy <code>Makefile</code> targets and <code>package.json</code> scripts; infrastructure directories</td>
+<td><code>deploy.workflows</code>, <code>[environments]</code>, <code>deploy.deny</code>, <code>repos.merge_deploys = true</code>, <code>repos.merge.never_auto_paths</code></td>
+</tr>
+</tbody>
+</table>
+<p>It also reads the last 100 commit subjects for the commit style and the last 30 merged pull requests for a size and cycle time baseline, which the steward gets as advisory input.</p>
+<p>The proposal is additive. A key absent from <code>config.toml</code> is added, and <code>deploy.workflows</code>, <code>deploy.deny</code> or <code>repos.fast_checks</code> still at a one-line <code>[]</code> is replaced. A key you already set is never changed: the report lists it under "config differs; edit by hand". Calibration never proposes <code>merge_deploys = false</code> or <code>merge.auto</code>. The interview's <code>deploys</code> question asks you instead.</p>
+<p>Only fast commands go into <code>repos.fast_checks</code> and the charter blocks through <code>config promote</code>. <code>ruff check .</code>, <code>black --check .</code>, <code>npm run lint</code>, <code>make lint</code> and <code>markdownlint .</code> are fast. A test runner (<code>python3 -m pytest -q</code>, <code>npm test</code>, <code>cargo test</code>, <code>go test ./...</code>, <code>make test</code>, <code>make check</code>) is CI only unless measured. <code>bin/wuwei calibrate --measure</code> runs each detected test runner once in the configured checkout through the checks port, the same runner as <code>wuwei fast-checks</code> (<code>/bin/sh -c &lt;command&gt;</code>, capped at <code>repos.check_timeout_seconds</code>, default 300), and may leave tool caches there. A measured run at 80 % of that limit or more proposes <code>check_timeout_seconds</code> at twice the limit. It is fast when it exits 0 within <code>calibrate.fast_check_seconds</code> (default 60). The <code>## CI only (not proposed as fast checks)</code> section of <code>calibration.md</code> lists the rest with the measurement or "unmeasured", and the calibrate output and the promote digest print the same lines. <code>bin/wuwei config promote --measure</code> measures again before it applies.</p>
+<p><code>fast_checks = []</code> means none configured: items build, <code>wuwei pr raise</code> adds <code>checks: none configured</code> to the PR body, careful pace still runs <code>repos.tests</code>, and CI and the gates are the evidence; <code>wuwei status</code> and <code>wuwei doctor</code> say so. Under strict the first launch in such a repository waits for your answer on its fast-checks card. <code>bin/wuwei calibrate --questions</code> (the daily <code>wuwei next</code> row) writes that card once per repository. It recommends what the repository declares, measured or not (a slow runner is replaced on a card or with <code>--measure</code> and <code>config promote</code>), or none with the reason. In autonomous mode it is taken under the mandate and written at once; supervised asks the card.</p>
+<p>Repository text is data. A file with instruction-like text, such as a line telling an agent to ignore its instructions, contributes nothing; the report names its file, line and rule without quoting it. Job, environment and owner names outside a safe character set are reported as unsafe and dropped.</p>
+<p><code>bin/wuwei config promote</code> is a host terminal action. It recomputes the proposal, prints the diff and the calibration it will record, asks y/N, then writes <code>config.toml</code> and <code>.wuwei/calibration.json</code>. Agent tools are refused both. <code>bin/wuwei config promote --keys &lt;key&gt; ...</code> applies only those keys of today's answers, also over a value already set, with no repository survey and no <code>calibration.json</code>; <code>calibrate --answer</code> prints it with the keys of its answer. The charter blocks land through <code>bin/wuwei promote</code>.</p>
+<p>On each sweep the steward compares the fast checks, CI check names and deploy signals with <code>.wuwei/calibration.json</code> and records one <code>calibration.drift</code> nudge per change per day. Run <code>bin/wuwei calibrate</code> and <code>bin/wuwei config promote</code> again to approve the new state.</p>
+<h2 id="owner-interview">Owner interview<a class="headerlink" href="#owner-interview" title="Permanent link">&para;</a></h2>
+<p>The interview asks a short, fixed set of questions about your own preferences. Each answer maps to a config key, a line in a charter override or a voice rule that already exists; nothing applies until you promote it. The questions live in one table, <code>cli/wuwei/interview.py</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Maps to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>autonomy</code></td>
+<td><code>Autonomous</code> (recommended) sets <code>security.posture = "observe"</code>, <code>outbound.default_tier = "send"</code>, <code>merge.default_tier = "today"</code>, <code>outbound.learn = "auto"</code> and <code>autonomy.mode = "autonomous"</code>; <code>Supervised</code> sets <code>guarded</code>, <code>ask</code>, <code>ask</code>, <code>card</code> and <code>supervised</code>. While <code>nudges.mode</code> is empty it follows the answer: <code>off</code> for <code>Autonomous</code>, <code>next</code> for <code>Supervised</code>. Strict is set by hand. <code>setup --shadow</code> records <code>Autonomous</code></td>
+</tr>
+<tr>
+<td><code>deploys</code> (per repository)</td>
+<td><code>repos.merge_deploys</code>: <code>Merges deploy</code> sets <code>true</code>, <code>Merges do not deploy</code> sets <code>false</code>. The first choice is the recommended one: <code>Merges do not deploy</code> only when calibration found no deploy workflow, deploy command or never-auto path for the repository. A repository calibration has not seen gets <code>Merges deploy</code> first</td>
+</tr>
+<tr>
+<td><code>merge</code> (per repository)</td>
+<td><code>repos.merge.auto</code> and <code>repos.merge.soak_minutes</code>; auto merge still needs <code>merge_deploys = false</code> declared</td>
+</tr>
+<tr>
+<td><code>gates</code> (per repository)</td>
+<td><code>repos.gates.floor</code></td>
+</tr>
+<tr>
+<td><code>quiet</code> (per repository)</td>
+<td><code>repos.merge.quiet_hours</code></td>
+</tr>
+<tr>
+<td><code>interrupt</code>, <code>decisions</code>, <code>hours</code></td>
+<td>a line in <code>.wuwei/charters/planner.md</code>: when decisions interrupt you, how they are presented, your working hours and time zone</td>
+</tr>
+<tr>
+<td><code>phone</code></td>
+<td><code>control_plane.content</code></td>
+</tr>
+<tr>
+<td><code>avoid</code></td>
+<td><code>- never:</code> phrases under <code>## shared</code> in <code>.wuwei/memory/voice.md</code>, which the outward lint enforces</td>
+</tr>
+<tr>
+<td><code>formality</code>, <code>signature</code></td>
+<td>a line in <code>.wuwei/charters/shepherd.md</code></td>
+</tr>
+<tr>
+<td><code>risk</code></td>
+<td>a line in <code>.wuwei/charters/lead.md</code>: what else sets <code>trust_surface</code></td>
+</tr>
+<tr>
+<td><code>manual</code></td>
+<td><code>deploy.deny</code> patterns for commands you always run yourself</td>
+</tr>
+<tr>
+<td><code>verbosity</code></td>
+<td><code>owner.verbosity.default</code></td>
+</tr>
+<tr>
+<td><code>telemetry</code></td>
+<td><code>telemetry.share</code>: <code>Anonymous</code>, <code>Attributed</code> or <code>Off</code></td>
+</tr>
+<tr>
+<td><code>tracker</code></td>
+<td><code>adapters.tracker</code>: <code>Linear</code>, <code>Jira</code>, <code>GitHub</code> or <code>None</code> (then set its credentials in <code>.wuwei/env</code>); typing <code>jira PROJ</code> or <code>github owner/repo</code> also sets <code>tracker.project</code></td>
+</tr>
+<tr>
+<td><code>tickets</code></td>
+<td><code>Every item</code> sets <code>tracker.required = true</code>; <code>All but light items</code> sets <code>tracker.skip_tiers = ["light"]</code>; <code>Optional</code> sets <code>tracker.required = false</code></td>
+</tr>
+<tr>
+<td><code>updates</code></td>
+<td><code>tracker.auto</code>: progress, pull request and close by default; <code>Plus new issues</code> adds the four classes; <code>Everything</code> adds decisions and verdicts; <code>Nothing</code> drafts every tracker write</td>
+</tr>
+<tr>
+<td><code>chat</code></td>
+<td><code>adapters.chat</code>: <code>None</code> or <code>Slack</code>; typing a channel ID such as <code>C0123ABCD</code> sets <code>slack</code> and <code>shepherd.review_channel</code></td>
+</tr>
+<tr>
+<td><code>review_bot</code></td>
+<td><code>adapters.review_bot</code>: <code>None</code> or <code>Greptile</code> (then set <code>GREPTILE_API_KEY</code> in <code>.wuwei/env</code>)</td>
+</tr>
+<tr>
+<td><code>reviewers</code></td>
+<td><code>shepherd.min_reviewers</code>: <code>Owner only</code> sets <code>0</code>, <code>Code authors</code> sets <code>1</code>; typing a teammate's code-host login sets <code>shepherd.lead_login</code> to it and <code>min_reviewers = 1</code></td>
+</tr>
+<tr>
+<td><code>allowlist</code></td>
+<td>No config key. <code>Allow</code> adds Claude Code <code>permissions.allow</code> rules to <code>.claude/settings.local.json</code>, keeping every other key and rule. They cover <code>bin/wuwei</code> and the configured adapters' reads and local commits: <code>git status</code>, <code>diff</code>, <code>log</code>, <code>show</code>, <code>rev-parse</code>, <code>fetch</code> (exact, no options), <code>add</code>, <code>commit</code>, <code>worktree list</code>; <code>gh pr view</code>, <code>list</code>, <code>checks</code>, <code>diff</code>, <code>status</code>, <code>gh issue view</code>, <code>list</code>, <code>gh run view</code>, <code>list</code>. It never allows a push, merge, deploy, release or <code>gh api</code>; production reads of your projects stay your decision</td>
+</tr>
+</tbody>
+</table>
+<p>Run <code>bin/wuwei calibrate --interview</code> in a host terminal to answer every question, or <code>bin/wuwei calibrate --interview merge</code> to answer one again; <code>--repo &lt;name&gt;</code> limits the per-repository questions to one repository. Without a terminal it exits 2. At every plan, whatever the day, the plan skill runs <code>bin/wuwei calibrate --questions</code>, which prints only the questions no recorded <code>interview.json</code> answers (<code>[]</code> once all are) as <code>Morning gate</code> widgets, and records each answer with <code>bin/wuwei calibrate --answer &lt;id&gt;=&lt;choice or text&gt;</code>. <code>bin/wuwei init --upgrade</code> and <code>bin/wuwei doctor</code> print the same count: <code>setup: N questions unanswered: the planner asks them on cards (bin/wuwei calibrate --questions), or bin/wuwei setup in a host terminal</code>. The <code>allowlist</code> answer writes <code>.claude/settings.local.json</code> only after you answered its card, at <code>bin/wuwei setup</code> or with <code>bin/wuwei calibrate --interview allowlist</code> in a host terminal; otherwise it prints that command as a <code>Next:</code> line. Free text is checked against the calibration character set and the instruction-like scan.</p>
+<p>Answers are recorded in <code>.wuwei/days/&lt;date&gt;/interview.json</code>, which only the CLI writes; answers not promoted that day are asked again. The charter and voice changes are written as proposals (<code>proposals/interview-&lt;target&gt;.json</code>): one <code>## Owner preferences (interview)</code> block per override, patched in place when you answer again. <code>bin/wuwei config promote</code> folds the config answers into the calibration proposal and lists them in the digest you confirm: an absent key or one at its default is set; a present key you changed from its default is kept and listed as <code>Skipped &lt;key&gt;: kept &lt;value&gt;; to apply the answer run bin/wuwei config promote --keys &lt;key&gt;</code>, and that command replaces it in place in any layout; a table answered with a single value is listed as "config differs; edit by hand". <code>deploy.deny</code> only grows. <code>bin/wuwei promote</code> lands the charter and voice proposals.</p>
+<p>When you merge three or more pull requests the merge policy routed to you within seven days and <code>merge.auto</code> is false for that repository, the steward retro proposes <code>repos.merge.auto = true</code> under <code>## Owner preferences</code> with the decisions as evidence and the command to ask again: <code>bin/wuwei calibrate --interview merge --repo &lt;name&gt;</code>. It never records an answer for you.</p>
+<h2 id="calibration-profiles">Calibration profiles<a class="headerlink" href="#calibration-profiles" title="Permanent link">&para;</a></h2>
+<p>A profile carries a promoted calibration to another workspace of the same kind. <code>bin/wuwei calibrate export &lt;name&gt;</code> writes <code>&lt;name&gt;.json</code> in the current directory and refuses to replace one. It holds the config keys that differ from the shipped template (the <code>repos</code> part comes from the first repository, or from <code>--repo &lt;name&gt;</code>, and applies to every repository on import), the lines your charter overrides add to the shipped charters, and the ledger reasons that landed them. Anything personal stays out: owner, people, channel and repository identity keys, workspace paths, <code>guards</code> and <code>security</code> (the posture says where this workspace runs), plus any key, value, charter line or reason that names one of those values, holds an absolute path or trips the redactor. The <code>dropped</code> list names each one and why, never the value. If the redactor cannot run, the export exits 2.</p>
+<p><code>bin/wuwei calibrate import &lt;source&gt;</code> reads a starter name, an <code>https</code> URL (30 seconds, 1 MiB) or a file. It is a proposal like any calibration:</p>
+<ul>
+<li>A profile that sets <code>repos.merge.auto = true</code> or <code>shepherd.autostart = true</code>, raises a <code>decisions.cruise</code> level above the level the class runs at, turns <code>decisions.cruise.enabled</code> on, lowers <code>decisions.cruise.margin</code>, raises <code>decisions.cruise.max_per_day</code>, lowers <code>repos.gates.floor</code>, turns on <code>gates.second_opinion</code>, sets any <code>adapters</code> key, <code>calendar.url</code>, <code>watch.ping_url</code> or <code>codex.command</code>, or carries a personal key is refused: exit 1, each key named, nothing written.</li>
+<li>Instruction-like text in a config value, a charter line or a reason is flagged by line and rule and that key or role block is not proposed; the rest is (exit 1).</li>
+<li><code>--skip &lt;key&gt;</code> (a dotted config key or <code>charters.&lt;role&gt;</code>) leaves a change out; <code>--repo &lt;name&gt;</code> limits the <code>repos</code> part to one repository.</li>
+</ul>
+<p>Import prints the <code>config.toml</code> diff, writes the accepted part to <code>.wuwei/days/&lt;date&gt;/profile.json</code> (only the CLI writes it) and one <code>proposals/profile-&lt;role&gt;.json</code> per role, without lines the charter already has. <code>bin/wuwei config promote</code> re-checks <code>profile.json</code>, lists each change as <code>Profile &lt;name&gt;: &lt;key&gt; = &lt;value&gt;</code> in the digest you confirm, and lets an interview answer for the same key win. <code>bin/wuwei promote</code> lands the charter blocks. Lists replace yours, except <code>deploy.deny</code>, which only grows.</p>
+<p>Two starters ship in <code>templates/profiles/</code>, derived from WUWEI's own setup: <code>python-library</code> (pytest fast check, packaging and CI on the trust surface, package publishing denied, short builder and quality rules) and <code>cli-tool</code> (the same, plus <code>bin/*</code> and rules on exit codes and reference docs). Try one with <code>bin/wuwei calibrate import python-library</code>.</p>
+<h2 id="outward-text-and-outbound-tiers">Outward text and outbound tiers<a class="headerlink" href="#outward-text-and-outbound-tiers" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>outward.patterns</code></td>
+<td><code>[]</code></td>
+<td>Regexes for internal-state words in chat and mail; the reason names the matched word. Never applied to tracker, docs and code-host writes or to a message only you read. A client or public reader gets a card naming the audience and the word; a team or company reader gets the message (a warning under <code>autonomy.mode = "supervised"</code>); the strict posture refuses. Empty by default since 0.18.2: messages about agents, phases and item ids are normal work.</td>
+</tr>
+<tr>
+<td><code>outward.banned_characters</code></td>
+<td><code>emoji</code>, U+2014, U+2015, U+2E3A, U+2E3B</td>
+<td>Setting a list replaces defaults.</td>
+</tr>
+<tr>
+<td><code>outward.tool_patterns</code></td>
+<td>Built-in Slack, Linear, GitHub, Notion and Atlassian MCP matches</td>
+<td>Tool regex plus policy channel. The built-in rules match the brand anywhere in the name, so <code>mcp__&lt;uuid&gt;__slack_send_message</code> is Slack. A list in <code>config.toml</code> or from <code>config set</code> replaces the defaults; <code>config set --add</code> adds to them. A tool nothing resolves is a read, a write or unknown by the words of its name (see security).</td>
+</tr>
+<tr>
+<td><code>outward.servers</code></td>
+<td><code>{}</code></td>
+<td>MCP server id to channel (<code>slack</code>, <code>tracker</code>, <code>code_host</code>, <code>docs</code>, <code>mail</code> or <code>other</code>), checked before the rules; <code>bin/wuwei outbound learn</code> proposes entries. Reads still pass. See <a href="#people-channels-and-tools">People, channels and tools</a>.</td>
+</tr>
+<tr>
+<td><code>outward.modes</code></td>
+<td><code>{}</code></td>
+<td>MCP server id to its write mode, the first rows of the <a href="../concepts/#outbound-tiers">tier table</a>: <code>send</code> (every write goes out after the lint), <code>draft</code> (<code>ask</code>, every write drafts) or <code>refuse</code> (<code>block</code>, refused with exit 1). Under <code>strict</code> a <code>send</code> mode still never reaches a client or public audience. Without one, the rest of the table decides. The learn card offers each mode. See <a href="#people-channels-and-tools">People, channels and tools</a>.</td>
+</tr>
+<tr>
+<td><code>outward.classes</code></td>
+<td><code>{}</code></td>
+<td>MCP server id to the audience class (<code>owner</code>, <code>team</code>, <code>company</code>, <code>client</code> or <code>public</code>) of a channel or person it has not learned. Without one, chat, Slack, mail and the code host are <code>company</code>; a tracker, docs or <code>other</code> write with no destination is <code>team</code>. See <a href="#people-channels-and-tools">People, channels and tools</a>.</td>
+</tr>
+<tr>
+<td><code>outward.max_length.slack</code></td>
+<td>Not set</td>
+<td>Example positive maximum for one channel under <code>[outward.max_length]</code>.</td>
+</tr>
+<tr>
+<td><code>outward.humanize</code></td>
+<td><code>true</code></td>
+<td>Lint outward text for AI tells before it is drafted or sent; <code>false</code> turns the lint off.</td>
+</tr>
+<tr>
+<td><code>outward.humanize_kinds</code></td>
+<td><code>["dm", "tracker", "docs", "pr", "review"]</code></td>
+<td>Kinds the lint checks: DMs, tracker comments, docs pages, PR comments and PR bodies, and other chat posts such as review pings.</td>
+</tr>
+<tr>
+<td><code>outward.humanize_strict</code></td>
+<td><code>false</code></td>
+<td><code>true</code> refuses a text with a tell; <code>false</code> warns and records <code>outward.ai_tells</code>.</td>
+</tr>
+<tr>
+<td><code>outward.draft_ttl</code></td>
+<td><code>3600</code></td>
+<td>Seconds an approved draft's tool call may repeat, once; at least 60.</td>
+</tr>
+<tr>
+<td><code>outbound.tiers</code></td>
+<td><code>[]</code></td>
+<td>Your tier rows, before the defaults; the first match wins. Each row has any of <code>tool</code> (regex on the tool name or the channel kind), <code>person</code> (id or <code>slack:&lt;id&gt;</code>), <code>channel</code> (id or class), <code>audience</code> (class) and <code>topic</code> (<code>sensitive</code>, <code>commitment</code>, <code>disagreement</code> or <code>thread</code>, a reply in a chat thread), and the <code>tier</code>: <code>send</code>, <code>ask</code> or <code>block</code>. An unknown key or a bad <code>tool</code> regex refuses the whole file in every posture. <code>bin/wuwei outbound tiers</code> prints the effective table.</td>
+</tr>
+<tr>
+<td><code>outbound.work_channels</code></td>
+<td><code>[]</code></td>
+<td>Team channel IDs (class <code>team</code>), eligible for routine auto-send. See <a href="#people-channels-and-tools">People, channels and tools</a>.</td>
+</tr>
+<tr>
+<td><code>outbound.external_channels</code></td>
+<td><code>[]</code></td>
+<td>Shared or client channels (class <code>client</code>); these override work channels. See <a href="#people-channels-and-tools">People, channels and tools</a>.</td>
+</tr>
+<tr>
+<td><code>outbound.channel_classes</code></td>
+<td><code>{}</code></td>
+<td>Channel ID to any audience class, over both lists, for example <code>C4 = "public"</code>. See <a href="#people-channels-and-tools">People, channels and tools</a>.</td>
+</tr>
+<tr>
+<td><code>outbound.company_domains</code></td>
+<td><code>[]</code></td>
+<td>Exact internal domain names.</td>
+</tr>
+<tr>
+<td><code>outbound.code_host_orgs</code></td>
+<td><code>[]</code></td>
+<td>Internal code host organizations.</td>
+</tr>
+<tr>
+<td><code>outbound.people</code></td>
+<td><code>{}</code></td>
+<td>Optional identity map using <code>slack:</code>, <code>github:</code> or <code>email:</code> keys, each with <code>email</code>, <code>org</code> and <code>class</code> (<code>owner</code>, <code>team</code>, <code>company</code>, <code>client</code> or <code>public</code>); <code>bin/wuwei outbound learn</code> proposes <code>slack:</code> entries for the day's reviewers with <code>class = "team"</code>. Without a <code>class</code>, an internal person is <code>team</code> and anyone else takes the connector's default class; <code>doctor</code> warns. See <a href="#people-channels-and-tools">People, channels and tools</a>.</td>
+</tr>
+<tr>
+<td><code>outbound.learn</code></td>
+<td><code>"card"</code></td>
+<td>How <code>bin/wuwei outbound learn</code> records an unknown connector, work channel or person: <code>card</code> asks you on one decision card, <code>auto</code> writes reviewers and listed channels at once under observe and guarded (strict still asks), <code>off</code> never learns and every such send stays a draft.</td>
+</tr>
+<tr>
+<td><code>outbound.default_tier</code></td>
+<td><code>"send"</code></td>
+<td>The umbrella: what no tier row narrows gets this (<code>send</code>, <code>ask</code> or <code>block</code>) for chat, code host, mail and other writes. It also covers bug, triage and follow-up tickets in the workspace's own tracker; other docs and tracker writes keep <code>docs.auto</code> and <code>tracker.auto</code>. With <code>send</code> the broad commitment, disagreement and company rows drop out of the defaults; narrow with <code>outbound.tiers</code> rows per tool, person, channel, audience or topic.</td>
+</tr>
+<tr>
+<td><code>outbound.owner</code></td>
+<td>all empty</td>
+<td>Your own identity: <code>slack.user</code> (U or W id), <code>slack.dm</code> (your own DM channel, D id, never the WUWEI app DM), <code>mail</code> and <code>code_host</code> (login). Setup proposes <code>mail</code>, <code>code_host</code> and <code>slack.user</code> from what it measures; <code>bin/wuwei outbound learn --owner</code> proposes <code>slack.user</code> and <code>slack.dm</code> on its card. A message only you receive (your Slack DM or user id, or a mail whose only recipient is you) is never a draft; it still passes the outward lint and records an <code>outward.to_owner</code> event. See <a href="#people-channels-and-tools">People, channels and tools</a>.</td>
+</tr>
+<tr>
+<td><code>outbound.owner_channel</code></td>
+<td><code>"session"</code></td>
+<td><code>session</code> or <code>dm</code>. With <code>dm</code> the planner also posts the digest, nudges and day report to <code>outbound.owner.slack.dm</code> (or <code>slack.user</code> when <code>dm</code> is empty).</td>
+</tr>
+<tr>
+<td><code>outbound.sensitive_keywords</code></td>
+<td>Built-in sensitive topic words</td>
+<td>Optional replacement list; see the template for the full list.</td>
+</tr>
+<tr>
+<td><code>outbound.sensitive_patterns</code></td>
+<td><code>['\\bmental\\s+health\\b']</code></td>
+<td>Optional replacement regex list.</td>
+</tr>
+<tr>
+<td><code>outbound.commitment_patterns</code></td>
+<td>Built-in commitment regexes</td>
+<td>Optional replacement list; see the template for exact regexes.</td>
+</tr>
+<tr>
+<td><code>outbound.disagreement_patterns</code></td>
+<td>Built-in disagreement regexes</td>
+<td>Optional replacement list; see the template for exact regexes.</td>
+</tr>
+</tbody>
+</table>
+<p>Unknown destinations and direct messages to anyone but you draft by default. A channel allowlist is a ceiling; it does not bypass outward text checks. The shipped <a href="https://github.com/taoq-ai/wuwei/blob/main/templates/workspace/config.toml">template</a> contains the exact regex defaults and examples.</p>
+<h2 id="people-channels-and-tools">People, channels and tools<a class="headerlink" href="#people-channels-and-tools" title="Permanent link">&para;</a></h2>
+<p>What WUWEI learns about your workspace is relational. A person belongs to channels, and a channel has an audience class. A connector sends through a channel kind with a mode. A mail address maps to a code-host login and a chat mention, and a login reviews a repository. <code>.wuwei/graph.json</code> holds it as one register of nodes and typed edges, and the config keys above that hold these facts are views of it:</p>
+<table>
+<thead>
+<tr>
+<th>View key</th>
+<th>Edges</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>outbound.people</code></td>
+<td><code>person:&lt;key&gt;</code> maps to its <code>address:</code>, is a member of its <code>org:</code> and has its <code>class</code>.</td>
+</tr>
+<tr>
+<td><code>outbound.channel_classes</code>, <code>outbound.work_channels</code>, <code>outbound.external_channels</code></td>
+<td><code>channel:&lt;id&gt;</code> has class <code>&lt;class&gt;</code>, <code>team</code> or <code>client</code>.</td>
+</tr>
+<tr>
+<td><code>outbound.owner</code></td>
+<td><code>person:owner</code> maps to your Slack user, DM channel, mail address and login.</td>
+</tr>
+<tr>
+<td><code>owner.handles</code></td>
+<td><code>person:owner</code> maps to each handle: a Slack user id as <code>person:slack:&lt;id&gt;</code>, any other as <code>login:&lt;handle&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>outward.servers</code>, <code>outward.modes</code>, <code>outward.classes</code></td>
+<td><code>connector:&lt;server&gt;</code> sends through its channel kind, has its mode and its default class.</td>
+</tr>
+<tr>
+<td><code>shepherd.authors</code></td>
+<td><code>address:&lt;email&gt;</code> maps to its <code>login:</code> and its <code>person:slack:</code> mention.</td>
+</tr>
+<tr>
+<td><code>voice.sources</code></td>
+<td><code>channel:&lt;id&gt;</code> is a member of <code>voice:&lt;audience&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>repos.&lt;n&gt;.shepherd.reviewers</code></td>
+<td><code>login:&lt;login&gt;</code> reviews <code>repo:&lt;name&gt;</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Each view edge names its config key. The register also keeps what no key can hold: the names an approved <code>bin/wuwei outbound learn</code> card gave a channel or a person, and that a thread's participants are members of its channel, each naming the card. The guards keep reading <code>config.toml</code>; the register decides nothing.</p>
+<p><code>bin/wuwei config set</code>, every card answer that writes config and <code>bin/wuwei init --upgrade</code> write the register and <code>config.toml</code> together, the register first. Agent tools cannot write it (the records floor). A register that cannot be read or written never stops a write: the command prints one warning, <code>wuwei &lt;command&gt;: warning: .wuwei/graph.json not updated: &lt;reason&gt;; move .wuwei/graph.json aside and run bin/wuwei init --upgrade</code>, and writes <code>config.toml</code> as usual.</p>
+<p><code>bin/wuwei who &lt;name&gt;</code> prints a node, its edges and the tier a routine message there gets, computed by the same function the outward guard calls. The name is a node id (<code>channel:C01</code>), a bare id (<code>C01</code>, <code>U01</code>), a people key (<code>slack:U01</code>), a learned name (<code>#eng</code>, <code>@ada</code>), a login or an MCP tool name, which names its connector. For a channel it lists the people known to be in it. <code>--json</code> prints a list of <code>{node, name, edges, tier, rule}</code> for the planner. It exits 1 when no node matches or the register is missing, and 2 when the register is damaged. <code>bin/wuwei why &lt;draft id&gt;</code> names the edge behind a held draft.</p>
+<p>A hand edit of a modeled key is drift: <code>bin/wuwei doctor</code> warns on its <code>register</code> row and names the key, and <code>bin/wuwei init --upgrade</code> takes the config value into the register. The upgrade also creates the register for a workspace that has none and adds a comment naming it above each modeled table.</p>
+<h2 id="goals-and-discovery">Goals and discovery<a class="headerlink" href="#goals-and-discovery" title="Permanent link">&para;</a></h2>
+<p>While <code>memory/goals.md</code> has no goals, the lead proposes goal objects in its JSON, <code>wuwei plan propose</code> shows them as provisional and writes <code>days/&lt;date&gt;/goals.md</code>, and after you approve them in the morning gate the planner records that file with <code>wuwei goals edit --file</code>. Under the strict posture the hook refuses the planner's call and prints the command for a host terminal. Later you can run <code>bin/wuwei goals edit</code> to open <code>$EDITOR</code>, or <code>bin/wuwei goals edit --file goals.md</code> to use a prepared file. The command validates and commits the change in <code>.wuwei</code> history with <code>Promoted-by: wuwei</code> and <code>Edited-by: owner</code>, so SessionStart does not flag it as an unpromoted edit. Seats cannot use this owner action. Each <code>## G-n</code> block needs <code>outcome</code>, <code>measure</code>, <code>target</code>, <code>date</code> in ISO format, and a positive integer <code>priority</code>. Priority 1 wins score ties. <code>wuwei rank candidates.json</code> reads JSON candidates with a goal or <code>unplanned</code> mark, a <code>score</code> object, and one <code>evidence_lines</code> entry per score component. <code>wuwei discover</code> reports unavailable sources as <code>unmeasured</code>.</p>
+<p>You use <code>bin/wuwei voice edit</code> or <code>bin/wuwei voice edit --file voice.md</code> for the same validated history flow. Seat proposals still go through <code>wuwei promote</code>.</p>
+<p>After the morning gate, sweeps and qualifying seat-free events save new discovery candidates. A builder seat stop only records the seat-free request; the watch runs that discovery on its next tick and records a failure once as <code>discovery.unmeasured</code>. Run <code>bin/wuwei plan add &lt;item&gt;</code> to apply the same admission gate to one saved candidate. A started item enters the existing <code>build next</code> path when a builder brief and worktree are logged; otherwise a build request remains visible for the planner. Owner proposals appear in the steward decision batch. The morning plan shows safe <code>off</code> mode candidates carried from the prior day.</p>
+<h3 id="mcp-registry-checks-s3">MCP registry checks (S3)<a class="headerlink" href="#mcp-registry-checks-s3" title="Permanent link">&para;</a></h3>
+<p><code>wuwei init</code> and <code>wuwei init --upgrade</code> discover attached MCP configurations and
+register them through <code>scanner.mcp</code>. Set <code>adapters.scanner = "ziran"</code> to use ZIRAN
+0.39.0 or newer. <code>none</code>, the default, turns the registry gate off: every MCP
+command and the launch gate exit 0, the first check of the day with attached servers
+prints <code>mcp: not measured (no scanner configured; set adapters.scanner = "ziran" to measure)</code>, and doctor shows
+the gate ok and WUWEI's own servers as covered by plugin integrity. Nothing checks
+attached servers for tool drift or poisoning then. A configured scanner that is
+missing or the wrong version is a check that could not run (exit 2) and blocks
+launches under <code>guarded</code> and <code>strict</code>. No attached servers is a clean empty registry.
+WUWEI declares its own read-only board server in the signed
+<code>.claude-plugin/plugin.json</code>; the integrity check covers it, so the registry does
+not scan it and <code>bin/wuwei mcp check</code> reports it as covered by plugin integrity.
+A <code>.mcp.json</code> added to the install, one in a workspace or repo, and any other
+plugin's servers, including one named like the cockpit, are discovered and
+checked like any other. Coverage goes by install directory, so another plugin
+whose plugin.json links to WUWEI's is still checked.</p>
+<p><code>scanner.mcp.project_file</code> defaults to <code>.mcp.json</code> in the workspace and each
+configured repo. <code>scanner.mcp.plugins_file</code> defaults to
+<code>~/.claude/plugins/installed_plugins.json</code>; registry v2 user installations and
+project/local installations matching those repos contribute their <code>.mcp.json</code>
+and the <code>mcpServers</code> object of their <code>.claude-plugin/plugin.json</code>.
+<code>${CLAUDE_PLUGIN_ROOT}</code> in plugin.json servers is expanded to the install path.
+<code>scanner.mcp.user_file</code> defaults to <code>~/.claude.json</code> with top-level <code>mcpServers</code>.
+Relative overrides resolve against the workspace. Missing default user/plugin
+files and absent project/plugin MCP files are optional; explicit user/plugin
+file overrides must exist. Invalid or unreadable input is exit 2.</p>
+<p>Only servers Claude Code would attach are scanned. User-scope and plugin servers
+always attach. A project server (from a workspace or repo <code>project_file</code>) attaches
+when, for the repo path or one of that repo's git worktrees under
+<code>&lt;workspace&gt;/worktrees/</code>, it is not in <code>disabledMcpjsonServers</code> and is in
+<code>enabledMcpjsonServers</code> or <code>enableAllProjectMcpServers</code> is true. Those keys are read
+from <code>projects[&lt;path&gt;]</code> in <code>scanner.mcp.user_file</code>, <code>.claude/settings.json</code> next to
+that file (<code>~/.claude/settings.json</code> by default), and the path's
+<code>.claude/settings.json</code> and <code>.claude/settings.local.json</code>. An unapproved server is
+reported as <code>&lt;name&gt;: not attached (unapproved)</code> and never started. Invalid approval
+state is exit 2. Local-scope servers (<code>projects[&lt;path&gt;].mcpServers</code>) are not read.</p>
+<p>Each attached server is measured on its own: the check writes a one-server config
+under <code>.wuwei/ziran/servers</code> (owner-only, since it copies env and headers) and calls
+the scanner once per server, with <code>scanner.mcp.timeout_seconds</code> (default 60) per call.
+A server that cannot be measured, for example an OAuth remote server, is named in the
+reason and does not hide the others' findings. A stdio server launched by <code>uvx</code>,
+<code>npx</code> or <code>pipx run</code> without an exact package version (<code>pkg@1.2.3</code>, <code>pkg==1.2.3</code>) is
+reported as <code>&lt;name&gt;: unpinned launcher</code> and never started; <code>@latest</code> and ranges are
+unpinned.</p>
+<p>The scanner keeps a snapshot per server under <code>.wuwei/ziran/snapshots</code> and untrusted
+raw reports under <code>.wuwei/ziran/&lt;server&gt;/&lt;digest&gt;.json</code>, one file per server per
+distinct result (the digest is taken over the report's canonical JSON). A repeat check
+with the same result writes nothing and the <code>mcp.checked</code> event records the server as
+<code>unchanged</code> (<code>new</code> for a new result, <code>unmeasured</code> when the run failed); a failed run
+leaves no file. Servers named <code>servers</code>, <code>snapshots</code> or <code>snapshot-backup</code> collide with
+this storage and stay unmeasured. <code>wuwei doctor</code> warns about <code>report-*</code> directories left
+by v0.12.0, and <code>wuwei doctor --fix</code> removes the empty and clean ones and moves each
+readable one into this layout, leaving any that a pending decision still lists. A server whose
+measurement fails keeps its prior snapshot, and a check that could not run restores
+all of them, so retries cannot silently accept drift. After upgrading from v0.11.0
+the first check registers a fresh baseline per server, so drift between the last
+v0.11.0 check and the upgrade is not reported. Events contain server name, drift
+type, severity and tool name only.</p>
+<p>Run <code>bin/wuwei mcp check</code> before the first morning seat. The plan skill does this
+before the lead, and <code>bin/wuwei plan propose</code> checks again. The check exits 2 while
+any server is unmeasured, else 1 while findings await an owner decision, else 0.
+High/critical findings open an owner decision. Medium/low findings remain visible.</p>
+<p><code>scanner.mcp.block</code> is unset by default; the security posture decides: <code>observe</code> and
+<code>guarded</code> block no finding, <code>strict</code> blocks <code>["critical", "high", "unmeasured"]</code>. Set
+it to refuse agent and runtime launches and <code>plan propose</code> on top of that default: a
+pending finding with a listed severity (exit 1), or any unmeasured server when the list
+holds <code>"unmeasured"</code> (exit 2). Everything else is a nudge. Under <code>observe</code> the list has
+no effect. The full v0.11.0 behaviour is <code>["high", "critical", "unmeasured"]</code>. A check
+that could not run (invalid input, an interrupted check, a stale or missing record)
+refuses with exit 2 under <code>guarded</code> and <code>strict</code>. A workspace created before #351
+carries <code>block = ["critical"]</code> from the old template; <code>bin/wuwei config check</code> names it,
+and deleting the line takes the posture default.</p>
+<p>For a server that stays unmeasured, you may run
+<code>bin/wuwei mcp decide proceed-unmeasured &lt;server&gt;...</code> from the host terminal and answer
+y. It records an owner decision bound to each server's definition;
+later checks report the server as proceeding unmeasured by owner decision until its
+definition changes. Briefs list today's unmeasured servers in an <code>MCP unmeasured:</code>
+header line.</p>
+<p>A new result with a queued severity opens one decision; a recheck that finds the
+same reports queues nothing more. Its <code>Context:</code> is a table with one row per finding
+(Server, Tool, Flag, Severity, Snippet, Since) and one row per unmeasured server,
+followed by <code>Reports:</code> with each report path. The snippet is redacted, limited to
+plain characters and cut to 60. Since reads <code>first measurement</code>, or
+<code>changed since &lt;day&gt;</code> when the server has an accepted baseline.</p>
+<p>To answer it, run <code>bin/wuwei decide D-&lt;n&gt; proceed</code> (or <code>defer</code>), or
+<code>bin/wuwei mcp decide D-&lt;n&gt; proceed</code>, from a host terminal and answer y. Under
+<code>observe</code> and <code>guarded</code> the planner asks it in the session and records the answer with
+the same command. The command writes <code>Outcome:</code>, <code>Decided-by: owner</code> and a
+<code>Notes: Decided at &lt;time&gt; at the host terminal.</code> (or <code>in the planner session.</code>) line
+into the record. From outside the workspace, set <code>WUWEI_WORKSPACE=&lt;path&gt;</code> or pass
+<code>bin/wuwei --workspace &lt;path&gt; mcp decide ...</code>. On <code>proceed</code>
+it stores the accepted <code>[server, digest]</code> reports as the baseline in an
+<code>accepted-*.json</code> record and re-runs the check, so those findings do not queue again
+while the report stays the same. <code>defer</code> keeps the gate as it is, and a later
+<code>proceed</code> still works. Agent tools cannot invoke this owner command (its <code>--help</code> is
+allowed). A decision file or forged event alone never clears a flag. Confirmation
+cannot excuse exit 2. Pending findings and report references survive rechecks
+and day rollover. The host terminal follows the local friction boundary in
+threat model 9.1; remote authenticated decisions remain M5 work.</p>
+<h2 id="running-the-watch">Running the watch<a class="headerlink" href="#running-the-watch" title="Permanent link">&para;</a></h2>
+<p>Run <code>bin/wuwei watch install</code> inside an initialized workspace to install and start a
+user service. On macOS this creates a launchd agent; on Linux it creates a systemd
+user unit. The service uses the active workspace and current <code>PATH</code>. Run
+<code>bin/wuwei watch uninstall</code> to stop and remove it. <code>bin/wuwei watch --once</code> runs
+one due cycle without installing a service. The watch writes clock events at
+<code>watch.clock_seconds</code> intervals, and the next sweep reports a dead watch when it
+has no fresh clock line (see below). Each loop iteration also runs the heartbeat probes
+and can ping an external monitor; see <a href="../reference/#heartbeat">Heartbeat</a>.</p>
+<p><code>bin/wuwei watch install --dry-run</code> prints the unit path, the rendered unit and the
+service commands without writing or loading anything. If loading the service
+fails, install removes the unit it wrote, so a retry after the fix works.
+<code>bin/wuwei watch uninstall</code> always exits 0: it prints a failed stop command as a
+warning and still removes the unit. A job that stays loaded after such a warning
+keeps running until you stop it by hand. Uninstall is an owner action: the Bash
+guard refuses <code>watch uninstall</code> from agent tools inside a workspace, so a seat
+cannot turn a dead-watch page into <code>watch off</code>; run it from your own terminal.</p>
+<p><code>bin/wuwei status --line</code>, <code>bin/wuwei nudges</code>, the cockpit, session start and
+sweeps all read watch health the same way, whatever the last sweep recorded:</p>
+<ul>
+<li>Installed with <code>watch install</code>, and no clock line today or today's latest
+  clock older than <code>watch.dead_seconds</code>: <code>watch dead</code>, one <code>watch: health</code> page.
+  This catches a watch that died overnight. It clears at the next clock line, or
+  after <code>watch uninstall</code> when no clock line was written today.</li>
+<li>Not installed, and no clock line today: <code>watch off</code>, neither a page nor a
+  nudge.</li>
+<li>Not installed, and today's clock went stale (a watch run by hand died):
+  <code>watch dead</code>, one page.</li>
+</ul>
+<p><code>watch unmeasured</code> means watch health cannot be read; it is one nudge.</p>
+<p>Run <code>bin/wuwei nudges</code> to list current nudges and pages, one line per cause with the
+command to run next. Repeats of one cause (the same kind on the same PR, item or reason) are
+one entry with its count and the age of its newest event, for example
+<code>(50 times, last 2 h ago)</code>. <code>bin/wuwei nudges --json</code>
+lists every entry with its source, and its entry count matches the page and nudge counts
+in <code>bin/wuwei status --line</code>.
+Routine progress such as plan approval, build starts and checks, and a call to any
+adapter set to <code>none</code> is silent. A nudge clears when its cause clears: a draft nudge when
+the draft is sent or dropped, a merge policy nudge when the PR merges or closes.
+A nudge also leaves the list after <code>nudges.ttl_hours</code> with no new event, and the list keeps
+the newest <code>nudges.max_open</code>; one <code>nudges.dropped</code> line counts what expired or was dropped.</p>
+<h2 id="running-the-listener">Running the listener<a class="headerlink" href="#running-the-listener" title="Permanent link">&para;</a></h2>
+<p><code>bin/wuwei listen</code> polls the inbound source named by <code>adapters.inbound</code> every
+<code>listen.poll_seconds</code> and appends new events, redacted, to <code>.wuwei/inbox/inbox.jsonl</code>.
+Events are deduplicated by source and id, and the cursor per source is kept in
+<code>.wuwei/inbox/cursor.json</code>, so a restart loses nothing and stores nothing twice. When
+new events arrive the listener sets the planner wake, shown at session start as
+<code>inbox to line N</code>; with <code>responder.enabled = false</code> it stores events and wakes nobody.</p>
+<p><code>bin/wuwei listen install [--dry-run]</code> and <code>bin/wuwei listen uninstall</code> work like the
+watch's: one launchd agent or systemd user unit per workspace, labelled
+<code>wuwei-listen-&lt;hash&gt;</code>. <code>bin/wuwei listen --once</code> runs one poll: exit 0 when it polled,
+with or without new events, and exit 2 when it could not run, with the reason printed. With
+<code>adapters.inbound = "none"</code>, <code>listen</code>, <code>listen --once</code> and <code>listen install</code> exit 2.
+Uninstall is an owner action, refused from agent tools inside a workspace.</p>
+<p>With <code>adapters.inbound = "slack"</code> the listener reads every message in
+<code>SLACK_OWNER_DM_CHANNEL</code>, and messages in <code>outbound.work_channels</code> and
+<code>outbound.external_channels</code> that mention a Slack user id from <code>owner.handles</code> (such as
+<code>U0123ABC</code>). It reads top-level messages only, so answer in the DM as a new message, not
+in a thread. Bot and app posts are skipped. The sender of each message is recorded as
+<code>&lt;team id&gt;/&lt;user id&gt;</code>. Each poll re-reads five minutes behind the
+previous successful poll, and the first poll starts five minutes back. A Slack rate limit fails that poll
+and the next poll retries. The reading token needs the <code>channels:history</code>,
+<code>groups:history</code> and <code>im:history</code> scopes and membership of the polled channels.</p>
+<h3 id="commands-from-your-owner-dm">Commands from your owner DM<a class="headerlink" href="#commands-from-your-owner-dm" title="Permanent link">&para;</a></h3>
+<p>Each new message in <code>SLACK_OWNER_DM_CHANNEL</code> is handled once, in order, by the
+listener: <code>plan</code>, <code>status</code>, <code>report</code>, <code>ask &lt;question&gt;</code>, <code>stop &lt;session&gt;</code> (a unique prefix
+of at least eight characters) and <code>stop all</code>. Decision replies use the control-plane
+forms: <code>approve D-n</code>, <code>option X on D-n</code> or <code>drop it</code>. <code>run &lt;routine&gt;</code> and
+<code>cloud &lt;repo&gt; &lt;task&gt;</code> answer "Not available in this version." with the command list, and
+anything else gets the command list. Messages in other channels are never commands.</p>
+<p>Only the sender pinned in <code>control_plane.owner</code> (<code>&lt;team id&gt;/&lt;user id&gt;</code>) can command.
+With no pin, every message fails and the listener log names the pin and the sender.
+A message from any other user is ignored: nothing is answered, and a <code>remote.ignored</code>
+event records the sender once a day. A message from the pinned user id with a different or
+missing team id is refused: the DM answers that the sender does not match the pinned
+identity, and a <code>remote.refused</code> event pages on the host. Editing the pin in config.toml
+on the host is the re-confirmation. <code>stop all</code> is still accepted from a changed identity.</p>
+<p><code>plan</code> and <code>ask</code> need a second factor. Put a base32 TOTP secret in <code>.wuwei/env</code> as
+<code>WUWEI_TOTP_SECRET</code> (30 second codes, six digits, HMAC-SHA1, as authenticator apps use)
+and end the message with the current code, such as <code>plan today 123456</code>. The code must
+reach the listener within 2 minutes of the message and each code works once. Without a
+valid code the command is recorded as <code>remote.pending</code> and the DM asks for <code>confirm</code>:
+replying <code>confirm</code> within 2 minutes runs the latest pending <code>plan</code> or <code>ask</code>. Each
+accepted factor is recorded as <code>remote.confirmed</code>. <code>status</code>, <code>report</code>, <code>stop &lt;session&gt;</code>,
+<code>stop all</code> and decision replies need no second factor. A reply to a decision is recorded
+as <code>decision.replied</code> evidence; with no remote session waiting on it, confirm it on the host.</p>
+<p><code>plan</code> and <code>ask</code> start one headless Claude Code session per command message
+(<code>claude -p --output-format json --permission-mode dontAsk --strict-mcp-config</code>, with the
+role's tools in <code>--allowedTools</code>, and no MCP server); a reply to one of its decisions
+resumes it with <code>--resume</code>. No session starts or resumes while free memory on the host
+is below <code>host.free_memory_mb</code>. The
+session is listed in <code>wuwei sessions</code> with role <code>remote</code>. A tool outside the role's
+tools is refused and arrives as a decision; granting it stays a host change.</p>
+<p>Messages to your owner DM are sent, not drafted: they pass the security check and the
+outward lint first, and a decision the lint refuses arrives as "D-n is waiting in the
+workspace." Every other DM still becomes a draft. With <code>responder.enabled = false</code> no
+command is handled; stored commands are handled once it is back on.</p>
+<p>The listener writes a <code>listen: clock</code> line every two minutes. Session start reports
+<code>listen dead</code> when today's latest clock line is older than <code>listen.dead_seconds</code>, or
+when the listener is installed and wrote none today. A listener that is off or alive
+adds nothing to session start. <code>wuwei status</code> shows <code>listen dead</code>,
+<code>listen unmeasured</code> or <code>listen off</code> (<code>listen alive</code> while alive, and nothing without an inbound
+adapter), and <code>wuwei nudges</code> pages a dead listener as <code>listen: health</code>. A DM answer to a
+two-way decision is recorded as your outcome by the listener. A DM answer to a
+one-way or <code>unsure</code> decision shows in <code>wuwei nudges</code> and session start as "D-n answered
+from the phone", and the status line counts them as <code>phone answers N</code>, until you
+record the outcome.</p>
+<h2 id="private-workspace-environment">Private workspace environment<a class="headerlink" href="#private-workspace-environment" title="Permanent link">&para;</a></h2>
+<p><code>.wuwei/env</code> stores adapter credentials outside tracked configuration. Init and
+upgrade create it empty with mode <code>0600</code> and add its Git ignore rule. Existing
+contents are preserved by upgrade. Use literal <code>KEY=value</code> lines; process
+environment values take precedence. The CLI, scoped hooks and watch all load the
+file before adapter calls. Restart a running watch after editing the file.</p>
+<p><code>wuwei config check</code> reports credential names and set, missing or <code>malformed (&lt;why&gt;)</code>
+status per effective adapter, never the value: a token with whitespace, a path-like value or
+shell characters is malformed (a pasted command, for example). It returns 1 for missing or
+malformed requirements and 2 when a check cannot run. An HTTP adapter the provider refuses
+reports <code>HTTP &lt;status&gt;</code> and a one-line hint (<code>HTTP 401</code> credential rejected, <code>HTTP 403</code> no
+access, <code>HTTP 404</code> not found or not visible to the credential), which doctor shows.
+With an inbound adapter it adds a <code>Control plane:</code> section: <code>control_plane.owner</code> is
+set, missing or invalid (the last two return 1; the pin is never printed), and
+<code>WUWEI_TOTP_SECRET</code> is set or missing, which is information only.
+See <a href="../adapters/#credentials">adapter credentials</a> for every variable, syntax
+rules and authentication requirements. No new config.toml keys are needed.</p>
+<h3 id="host-protections-and-seat-credentials">Host protections and seat credentials<a class="headerlink" href="#host-protections-and-seat-credentials" title="Permanent link">&para;</a></h3>
+<p>Hooks prevent mistakes; they are not the publishing guarantee. That guarantee lives
+in the code host's branch rules and in which credentials seats can read (design 4.5
+and 9.1). <code>wuwei config check</code> verifies both through the code_host adapter.</p>
+<p>Host protections: for each <code>[[repos]]</code> entry it reads the protection of
+<code>default_branch</code> and prints one line per setting.</p>
+<table>
+<thead>
+<tr>
+<th>Line</th>
+<th><code>ok</code> when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>protected ref</td>
+<td>classic branch protection is readable</td>
+</tr>
+<tr>
+<td>classic protection</td>
+<td>printed instead of <code>protected ref</code> when the classic endpoint answers 404: <code>none visible (404: unprotected or no admin)</code>; information only, the other lines then come from rulesets</td>
+</tr>
+<tr>
+<td>required checks</td>
+<td>at least one required status check, including every <code>review_required_checks</code> name; the line lists the required names, and a <code>missing</code> line names the absent ones and the ones <code>required now</code></td>
+</tr>
+<tr>
+<td>required reviews</td>
+<td>at least 1 approving review, or <code>shepherd.min_reviewers = 0</code> (solo owner); when the check named by <code>shepherd.review_gate_check</code> is required, a <code>missing</code> line says it may be satisfying it, and stays a finding</td>
+</tr>
+<tr>
+<td>force pushes</td>
+<td>force pushes are blocked</td>
+</tr>
+<tr>
+<td>deletions</td>
+<td>branch deletion is blocked</td>
+</tr>
+</tbody>
+</table>
+<p>When a line is <code>missing</code>, the next line links the branch settings page. When no classic
+protection is visible it also prints one <code>gh api -X PUT .../protection</code> command for your own
+terminal that sets the layout above; it is not printed over existing protection, which a PUT
+would replace.</p>
+<p>Seat credentials: <code>GH_TOKEN</code> and <code>GITHUB_TOKEN</code> in <code>.wuwei/env</code> or in the environment
+that seats inherit are readable by any seat. Each line reports <code>not set</code>, <code>read-only</code>
+(every classic OAuth scope starts with <code>read:</code>), a finding naming the variable, its
+source and its write scopes, or <code>unmeasured</code>. Fine-grained and app tokens report no
+scopes and are always <code>unmeasured</code>. Publish from your own <code>gh auth login</code>.</p>
+<p>Every line is <code>ok</code>, <code>missing</code> with the exact setting to change, or <code>unmeasured</code>
+(no permission to read, host unreachable, or <code>code_host = "none"</code>), with the reason
+on stderr. The command returns exit 0 when everything is <code>ok</code>, exit 1 on any <code>missing</code>
+line or write-scoped token, and exit 2 when anything is <code>unmeasured</code>; exit 2 wins
+over exit 1. The check, review, force-push and deletion lines combine classic
+protection with the branch's rulesets, so a branch protected only by rulesets measures
+correctly.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,2810 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Autonomous delivery where the safe path is the default one.">
+      
+      
+        <meta name="author" content="TaoQ AI">
+      
+      
+        <link rel="canonical" href="https://taoq-ai.github.io/wuwei/concepts/">
+      
+      
+        <link rel="prev" href="../agent/">
+      
+      
+        <link rel="next" href="../security/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Concepts - WUWEI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#concepts" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="WUWEI" class="md-header__button md-logo" aria-label="WUWEI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            WUWEI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Concepts
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/taoq-ai/wuwei" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    taoq-ai/wuwei
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../daily/" class="md-tabs__link">
+          
+  
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../recovery/" class="md-tabs__link">
+          
+  
+  
+  Operations
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="WUWEI" class="md-nav__button md-logo" aria-label="WUWEI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    WUWEI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/taoq-ai/wuwei" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    taoq-ai/wuwei
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../daily/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Daily path
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    What the session knows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#glossary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Glossary
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Glossary">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#seat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seat
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sentinel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sentinel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shepherd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shepherd
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#steward" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steward
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CAP
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#seats-per-goal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seats per goal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#envelope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Envelope
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#soak" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Soak
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delta" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delta
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#park" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Park
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#carry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Carry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nudge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nudge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Page
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#digest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Digest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unmeasured" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unmeasured
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mandate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mandate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#novel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Novel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trust-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trust surface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#host-terminal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host terminal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#humanizer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Humanizer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#spec-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spec engine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#strict-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Strict mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docs-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docs system
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docs-obligation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docs obligation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ticket" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ticket
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tracker-hygiene" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tracker hygiene
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adopted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adopted
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lens
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#guards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Guards
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-posture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security posture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#grants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grants
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seat-launch-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seat launch contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-terminal-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host terminal actions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drafts-and-cards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drafts and cards
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#outbound-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Outbound tiers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#day-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Day flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tickets-and-comments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tickets and comments
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pr-ownership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PR ownership
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#day-close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Day close
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#builder-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Builder steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#review-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review tiers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writing-for-you" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing for you
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-classes-and-cruise-levels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision classes and cruise levels
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#measured-reversibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Measured reversibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dora-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DORA keys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sessions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#listener" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Listener
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#heartbeat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heartbeat
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cockpit-and-board" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cockpit and board
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operator reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adapters and ports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../charter-overrides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Charter overrides
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote operation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rehearsal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release rehearsal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#glossary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Glossary
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Glossary">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#seat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seat
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sentinel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sentinel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shepherd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shepherd
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#steward" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Steward
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CAP
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#seats-per-goal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seats per goal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#envelope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Envelope
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tier
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#soak" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Soak
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delta" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delta
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#park" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Park
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#carry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Carry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nudge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nudge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Page
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#digest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Digest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#unmeasured" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unmeasured
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mandate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mandate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#novel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Novel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trust-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trust surface
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#host-terminal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host terminal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#humanizer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Humanizer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#spec-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spec engine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#strict-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Strict mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docs-system" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docs system
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docs-obligation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docs obligation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ticket" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ticket
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tracker-hygiene" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tracker hygiene
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#adopted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adopted
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lens
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Roles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#guards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Guards
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-posture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security posture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#grants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grants
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#seat-launch-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Seat launch contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-terminal-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host terminal actions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drafts-and-cards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drafts and cards
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#outbound-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Outbound tiers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Memory
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#day-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Day flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tickets-and-comments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tickets and comments
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pr-ownership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PR ownership
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#day-close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Day close
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#builder-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Builder steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#review-tiers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Review tiers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writing-for-you" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing for you
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision-classes-and-cruise-levels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision classes and cruise levels
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#measured-reversibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Measured reversibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dora-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DORA keys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sessions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#listener" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Listener
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#heartbeat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heartbeat
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cockpit-and-board" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cockpit and board
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="concepts">Concepts<a class="headerlink" href="#concepts" title="Permanent link">&para;</a></h1>
+<h2 id="glossary">Glossary<a class="headerlink" href="#glossary" title="Permanent link">&para;</a></h2>
+<p>The words the rest of these pages use, two lines each.</p>
+<h3 id="seat">Seat<a class="headerlink" href="#seat" title="Permanent link">&para;</a></h3>
+<p>One agent session with one job and its charter: the lead, a builder, a gate reviewer, the shepherd or the steward.
+The planner starts seats as the day needs them; each stops when its job is done.</p>
+<h3 id="gate">Gate<a class="headerlink" href="#gate" title="Permanent link">&para;</a></h3>
+<p>A review of a change by an agent that did not write it: architecture, quality or security.
+The morning gate is different: your approval of the day's plan before anything starts.</p>
+<h3 id="sentinel">Sentinel<a class="headerlink" href="#sentinel" title="Permanent link">&para;</a></h3>
+<p>The four reviewing roles: goal, architecture, quality and security.
+Architecture, quality and security run as the gates on each change; the goal sentinel checks work against its goal.</p>
+<h3 id="shepherd">Shepherd<a class="headerlink" href="#shepherd" title="Permanent link">&para;</a></h3>
+<p>The seat that takes a pull request from raised to merged: reviewers, replies and CI fixes.
+It merges only through the merge policy and never approves a pull request.</p>
+<h3 id="steward">Steward<a class="headerlink" href="#steward" title="Permanent link">&para;</a></h3>
+<p>The seat that watches the day for drift and loops, and compiles the retro at close.
+It proposes rule changes; you promote the ones you want.</p>
+<h3 id="cap">CAP<a class="headerlink" href="#cap" title="Permanent link">&para;</a></h3>
+<p>How many build seats may run at once (<code>cap</code>, default 1; <code>bin/wuwei calibrate</code> proposes it from the host).
+The morning gate asks you to confirm it each day, and the launch guard refuses a builder past it.</p>
+<h3 id="seats-per-goal">Seats per goal<a class="headerlink" href="#seats-per-goal" title="Permanent link">&para;</a></h3>
+<p>How the day's CAP splits across goals, for example <code>3 seats: G-1 2, G-2 1 (CAP 3)</code>.
+The plan counts the first CAP items of the queue per goal; "Change something" at the morning gate changes it.</p>
+<h3 id="envelope">Envelope<a class="headerlink" href="#envelope" title="Permanent link">&para;</a></h3>
+<p>The day's working window: start time, end time and net build hours.
+Work admitted during the day must fit the remaining build hours.</p>
+<h3 id="tier">Tier<a class="headerlink" href="#tier" title="Permanent link">&para;</a></h3>
+<p>Review tier: light (one reviewer agent) or standard and full (three), set per change from its diff: a docs-only change gets one reviewer, code or a trust surface gets three. The tier also sets the process depth: see <a href="#review-tiers">review tiers</a>.
+Outbound tier: a message sent as you either goes out at once or waits as a draft for your approval.</p>
+<h3 id="pace">Pace<a class="headerlink" href="#pace" title="Permanent link">&para;</a></h3>
+<p>How hard the day pushes: <code>careful</code>, <code>steady</code> (the default) or <code>fast</code>, picked on the morning gate card and changed with <code>wuwei plan set pace=&lt;p&gt;</code>.
+Careful lifts light items to standard and keeps one seat free. Fast runs plain standard items at light depth with only the tests the diff changes, and CI is the gate. Guard code runs full at both. No pace moves a floor or changes who decides; <code>wuwei pace</code> shows the advice.</p>
+<h3 id="soak">Soak<a class="headerlink" href="#soak" title="Permanent link">&para;</a></h3>
+<p>The wait after the last push or approval before WUWEI merges by itself (<code>merge.soak_minutes</code>, default 30).
+During it you can stop the merge from your phone. A PR that turns a check failing on its base green skips it.</p>
+<h3 id="delta">Delta<a class="headerlink" href="#delta" title="Permanent link">&para;</a></h3>
+<p>The second review after a fix round: only the gates that asked for the fix look again.
+After it the pull request is raised, or the item comes to you.</p>
+<h3 id="park">Park<a class="headerlink" href="#park" title="Permanent link">&para;</a></h3>
+<p>Stop work on an item for now, with a decision record that says why.
+Close accepts a parked item once that decision is recorded.</p>
+<h3 id="carry">Carry<a class="headerlink" href="#carry" title="Permanent link">&para;</a></h3>
+<p>Move an unfinished item to tomorrow's plan, with a decision record that says so.
+The next morning gate offers it again as carry-over.</p>
+<h3 id="nudge">Nudge<a class="headerlink" href="#nudge" title="Permanent link">&para;</a></h3>
+<p>A reminder that something needs you, but not right now: on the status line and in <code>bin/wuwei nudges</code>.
+Nudges wait for you; pages interrupt.</p>
+<h3 id="page">Page<a class="headerlink" href="#page" title="Permanent link">&para;</a></h3>
+<p>An alert that interrupts you at once, even outside your working hours, for example a failed heartbeat probe.
+It shows on the status line and reaches your phone.</p>
+<h3 id="digest">Digest<a class="headerlink" href="#digest" title="Permanent link">&para;</a></h3>
+<p>The 12-character code a host terminal command shows before it changes a file; type it to confirm.
+Also the summary of waiting decisions sent every two hours when you choose Batch in the interview.</p>
+<h3 id="unmeasured">Unmeasured<a class="headerlink" href="#unmeasured" title="Permanent link">&para;</a></h3>
+<p>A check that could not run or could not read its source; WUWEI reports it and never counts it as clean.
+On a first day some sources are unmeasured until you set them up, for example <code>meeting unmeasured</code>.</p>
+<h3 id="mandate">Mandate<a class="headerlink" href="#mandate" title="Permanent link">&para;</a></h3>
+<p>The block at the end of every seat brief: what the seat decides alone, what it decides and records, and what goes to you.
+Seats do not ask you what their mandate lets them decide.</p>
+<h3 id="novel">Novel<a class="headerlink" href="#novel" title="Permanent link">&para;</a></h3>
+<p>A repository, channel, person, tool, dependency, environment or workflow the workspace has never touched.
+A decision or send on it asks you once on a card, even when the mandate would take it; your answer clears it.</p>
+<h3 id="trust-surface">Trust surface<a class="headerlink" href="#trust-surface" title="Permanent link">&para;</a></h3>
+<p>Code where a mistake costs most: auth, credentials, input parsing, permissions, and the areas you add in the interview.
+A change there gets three reviewer agents and is never merged without you.</p>
+<h3 id="host-terminal">Host terminal<a class="headerlink" href="#host-terminal" title="Permanent link">&para;</a></h3>
+<p>A terminal you type in yourself, outside Claude Code's agent tools.
+Owner commands such as <code>bin/wuwei config set</code> refuse to run anywhere else.</p>
+<h3 id="humanizer">Humanizer<a class="headerlink" href="#humanizer" title="Permanent link">&para;</a></h3>
+<p>The writing checklist seats apply to text for a person, from the humanizer skill.
+A lint checks outward text for its mechanical tells before it is drafted or sent.</p>
+<h3 id="spec-engine">Spec engine<a class="headerlink" href="#spec-engine" title="Permanent link">&para;</a></h3>
+<p>The tool each non-trivial item is specified with before it is built: spec-kit (default), superpowers or OpenSpec.
+<code>[spec] engine</code> picks it; the hooks keep its steps in order in the item's worktree.</p>
+<h3 id="strict-mode">Strict mode<a class="headerlink" href="#strict-mode" title="Permanent link">&para;</a></h3>
+<p><code>[spec] mode = "strict"</code> (default): source edits and the gates wait until the engine's steps are done.
+<code>advisory</code> warns once per item and day instead; <code>off</code> checks nothing.</p>
+<h3 id="docs-system">Docs system<a class="headerlink" href="#docs-system" title="Permanent link">&para;</a></h3>
+<p>Where the team's documentation lives: Notion, Confluence, Markdown files in the repository, or none.
+WUWEI writes an item's page there from its records, never from memory.</p>
+<h3 id="docs-obligation">Docs obligation<a class="headerlink" href="#docs-obligation" title="Permanent link">&para;</a></h3>
+<p>An item tiered standard or full must record what it did to the docs before its quality gate passes.
+The value is a page, <code>new</code>, or <code>none</code> with a reason; the day close checks it again.</p>
+<h3 id="ticket">Ticket<a class="headerlink" href="#ticket" title="Permanent link">&para;</a></h3>
+<p>The tracker issue an item is built under: a Linear, Jira or GitHub id such as <code>ENG-12</code>.
+With a tracker set, no item is built, reviewed or launched without one.</p>
+<h3 id="tracker-hygiene">Tracker hygiene<a class="headerlink" href="#tracker-hygiene" title="Permanent link">&para;</a></h3>
+<p>The rule that every item has a ticket, bugs found midway become linked tickets,
+and the item's decisions, progress, verdicts, pull request and close land on its ticket.</p>
+<h3 id="fold">Fold<a class="headerlink" href="#fold" title="Permanent link">&para;</a></h3>
+<p>One comment that stands for the rest of a ticket's updates once its daily comment cap is reached.</p>
+<h3 id="adopted">Adopted<a class="headerlink" href="#adopted" title="Permanent link">&para;</a></h3>
+<p>An item made from work begun outside WUWEI: <code>pr claim</code> on an open PR with no item creates it,
+and <code>worktree adopt</code> registers an existing worktree as its checkout.</p>
+<h3 id="lens">Lens<a class="headerlink" href="#lens" title="Permanent link">&para;</a></h3>
+<p>A one-line question every option of an engineering decision answers, such as SOLID or YAGNI.
+You can add your own in <code>[decisions.lenses]</code> or drop a default.</p>
+<h2 id="roles">Roles<a class="headerlink" href="#roles" title="Permanent link">&para;</a></h2>
+<p>The shipped charters define planner, lead, builder, shepherd, steward, and four sentinels: goal, architecture, quality and security. Generated agent files in <code>agents/</code> carry the charters and tool allowlists. The planner owns the day, the lead shapes work, builders implement, sentinels check, the shepherd follows pull requests and the steward maintains procedure. <code>/wuwei plan</code> runs the day, starting with your morning gate; see the <a href="../daily/">daily path</a>.</p>
+<h2 id="guards">Guards<a class="headerlink" href="#guards" title="Permanent link">&para;</a></h2>
+<p>Claude Code hooks call the WUWEI CLI. Guards act when a tool is used and refuse relevant unsafe actions inside a WUWEI workspace or configured repository. Outside that scope they return clean. The three outcomes are 0 clean, 1 findings and 2 could not run. A relevant parse or measurement failure returns 2 with a reason. The CLI also records traces and events. See <a href="../security/">security</a> for the trust boundary.</p>
+<h2 id="security-posture">Security posture<a class="headerlink" href="#security-posture" title="Permanent link">&para;</a></h2>
+<p><code>security.posture</code> sets what warns and what blocks per area: <code>observe</code>, <code>guarded</code> (the default) or <code>strict</code>, with per-area overrides under <code>[security.areas]</code>. A <code>warn</code> level still runs the guard, records the refusal as a <code>guard.would_refuse</code> event and lets the call through. Every enforced refusal ends with a <code>posture:</code> line naming the area, its level and the key that changes it. See <a href="../security/#security-posture">security posture</a> for the table.</p>
+<p><code>observe</code> is the old shadow mode (<code>guards.mode = "shadow"</code> still means it). Use it for the first week on a project, to see what the guards would stop in your own habits before they stop anything. Records never relax, in any posture: writes to state, events, config and generated instructions, verdicts and decisions (<code>records</code>), owner disposition markers, and canary or honeytoken egress. Relaxing those would corrupt the records the report is built from or let a seat act as you. Below <code>strict</code> an owner-only action asks you on a card instead: a deploy, release or publish, and a message that waits for your approval. The merge policy and approvals stay yours. The heartbeat probe session is never relaxed either.</p>
+<p><code>bin/wuwei shadow report</code> and the day report group the would-be refusals by guard, with counts and the three most frequent forms. A form refused more than three times with no later page is named as a candidate for a guard fix or a calibration proposal. The status line shows the posture when it is not <code>guarded</code>, each <code>observe</code> session starts with a line saying so, and after <code>guards.shadow_days</code> one nudge asks you to switch to <code>guarded</code> or extend. Under <code>guarded</code> or <code>strict</code> a warning is a nudge, one per guard per day.</p>
+<p>MCP registry findings warn by default. A finding is a heuristic over tool descriptions, and a first measurement is new information, not drift. The publishing guarantee does not rest on the registry gate; it rests on the code host protections and the credential layout (design 9.1). So a false positive must not stop the day: under <code>guarded</code> the finding is filed as an owner decision and shown on the board with <code>bin/wuwei mcp decide D-&lt;n&gt; proceed</code>, and seats launch. Use <code>strict</code> for a repository where a changed tool must stop seats until you decide.</p>
+<h2 id="grants">Grants<a class="headerlink" href="#grants" title="Permanent link">&para;</a></h2>
+<p>An owner-only deploy, release or <code>deploy.deny</code> publish never runs from a session on its own. When a seat or the planner tries one, the deploy guard refuses it and writes a decision card, <code>Allow deploy on &lt;org&gt;/&lt;name&gt;?</code>, with the exact command, the target, the item and the seat. The planner asks you the card; your answer is the grant:</p>
+<ul>
+<li><code>Keep owner-only</code>: nothing runs from the session; you run the command in a host terminal. Later tries today name the same card.</li>
+<li><code>Allow once</code>: the next run of that action on that repository goes through, then the guard asks again.</li>
+<li><code>Allow today</code>: every run of that action on that repository goes through until <code>wuwei close</code>.</li>
+<li><code>Always allow</code>: a standing line in <code>[grants]</code> of <code>config.toml</code>, for later days too. Not offered under <code>strict</code>, where a line in config is ignored.</li>
+</ul>
+<p>Only your recorded answer creates a grant: no seat, no config default and no hook does. Each run under a grant is a <code>grant.used</code> event, and the day report counts them per card. <code>bin/wuwei grants</code> lists your grants; <code>bin/wuwei grants revoke &lt;n&gt;</code> removes a standing one in a host terminal. When the plan already names a deploy, the morning gate asks it with the plan (<code>Allow today</code>, <code>Ask when it happens</code> or <code>Keep owner-only</code>), so the day runs without stopping for it.</p>
+<p>A merge works the same way. When the merge policy does not clear a pull request, <code>bin/wuwei merge &lt;pr&gt;</code> (or <code>bin/wuwei pr act &lt;pr&gt;</code>) asks you on a card, <code>Allow merge on &lt;org&gt;/&lt;name&gt;?</code>, and a merge the plan lists is a planned card per repository or per pull request. The grant replaces only the auto-merge switch and its pacing (risk flags, never-auto paths, size, soak, daily cap, quiet hours, breaker). The gates must still pass at the current head. Required checks must be green, with approvals at that head and no changes requested. Threads and obligations must be clear, <code>merge_deploys = false</code> must hold, and the repository must allow the merge method (<code>repos.merge_method</code>; under <code>auto</code> squash, then rebase, then merge). When one fails, the reason names it and says no grant lifts this. With no grant, <code>merge.default_tier</code> decides: <code>ask</code> writes the card, <code>owner_only</code> prints the exact <code>gh pr merge</code> command for a host terminal. A <code>trust_surface</code> pull request waits on its security gate, not on you, and merges like any other once that gate passes at the head; a path in <code>merge.owner_paths</code> is always yours. A <code>gh pr merge</code> typed in a session is refused with the reason and <code>bin/wuwei merge &lt;pr&gt;</code>, which journals and watches the merge.</p>
+<h2 id="seat-launch-contract">Seat launch contract<a class="headerlink" href="#seat-launch-contract" title="Permanent link">&para;</a></h2>
+<p>The planner launches every seat from the actions <code>build next</code> and <code>dispatch next</code> return; see the <a href="../daily/">daily path</a>. The low-level launch contract is on the <a href="../recovery/#seat-launch-contract">recovery</a> page.</p>
+<p>Commit and push guards follow the target repository even when the session starts
+elsewhere. This includes <code>git -C</code>, <code>--git-dir</code>, <code>--work-tree</code>, repository environment
+variables, and literal <code>cd</code> chains inside or outside subshells. Managed worktree
+anchors connect external checkouts to their workspace. An unrelated repository
+remains outside scope even when <code>WUWEI_WORKSPACE</code> selects another workspace.
+Ambiguous directory changes or unresolved targets may require separate, literal
+commands. A detached HEAD refusal asks you to check out a branch before pushing;
+other context failures identify the failed read and a corrective action.</p>
+<h2 id="host-terminal-actions">Host terminal actions<a class="headerlink" href="#host-terminal-actions" title="Permanent link">&para;</a></h2>
+<p>Some commands are yours alone: <code>wuwei decide</code>, <code>wuwei decision outcome</code>, <code>wuwei state recover</code>, <code>wuwei integrity reconfirm</code>, <code>wuwei mcp decide</code>, <code>wuwei drafts approve</code> and <code>drafts drop</code>, <code>wuwei grants revoke</code>, <code>wuwei goals edit</code> and <code>voice edit</code>. The rest are <code>wuwei watch uninstall</code>, <code>wuwei listen uninstall</code>, <code>wuwei remote ack</code>, <code>wuwei config promote</code>, <code>config set</code> and <code>config add-repo</code>, <code>wuwei memory forget</code>, <code>wuwei setup</code>, and <code>wuwei telemetry send</code>. Outside the strict posture, the planner records goals and voice you approved at the morning gate with <code>--file</code>. Agent tool hooks refuse them (<code>--help</code> or <code>-h</code> alone is allowed), so run them in a host terminal. Outside the strict posture the planner records some of your answers itself. A decision it asked you in the session goes in with <code>wuwei decide</code> or <code>wuwei decision outcome</code>. Below strict a refused record command names the card to ask, never a command for you to run, and <code>wuwei doctor</code> lists answered cards whose record never ran. A config value you picked on a card goes in with <code>wuwei calibrate --answer</code> or <code>wuwei config set &lt;key&gt; &lt;value&gt; --from-card D-n</code> (no y/N prompt; your answer is the confirmation). A draft it asked you on a card goes in with <code>wuwei drafts approve</code> or <code>drafts drop</code>. It approves only after you answer Send now, or with <code>--file</code> the exact text you typed after Send with an edit. The ones that ask y/N exit 2 without a terminal. See <a href="../reference/#host-terminal-actions">host terminal actions</a>.</p>
+<h2 id="drafts-and-cards">Drafts and cards<a class="headerlink" href="#drafts-and-cards" title="Permanent link">&para;</a></h2>
+<p>A draft is an outward message the approval tier held back, stored with an id and the rule that held it, such as <code>ask by rule 9 (audience=company) for C9: unknown destination C9, not in outbound.work_channels, connector default class company</code>. Its card, <code>bin/wuwei drafts show &lt;id&gt; --widget</code>, asks you Send now, Send with an edit, Keep as draft or Drop, and names the command that records your answer. When a table row asked about one person or the destination channel, Always send to this person or Always ask for this channel takes the place of Drop. It sends this draft and adds the row with <code>bin/wuwei drafts approve &lt;id&gt; --always</code>. A draft from a configured adapter is sent by <code>wuwei drafts approve</code>. For a draft from a connector, approving records an allowance: the seat's same tool call, to the same place with the same text, passes once within <code>outward.draft_ttl</code> seconds (default 3600).</p>
+<h2 id="outbound-tiers">Outbound tiers<a class="headerlink" href="#outbound-tiers" title="Permanent link">&para;</a></h2>
+<p>Every outward message gets one of three tiers. <code>send</code> goes out after the lint. <code>ask</code> becomes a draft and its card, and you confirm or edit it. <code>block</code> is refused with the rule named, and there is no draft and no card.</p>
+<p>Who reads the message decides the tier. Each destination and each addressed person gets an audience class:</p>
+<ul>
+<li><code>owner</code>: you, by your identity in <code>outbound.owner</code>.</li>
+<li><code>team</code>: a channel in <code>outbound.work_channels</code>, or a person WUWEI knows is internal.</li>
+<li><code>company</code>: someone in the company WUWEI has not learned yet. A connector's unknown channels and people are <code>company</code> unless <code>outward.classes</code> says otherwise.</li>
+<li><code>client</code>: a channel in <code>outbound.external_channels</code>, a channel the connector marks as shared with another organisation, or a person or org outside yours.</li>
+<li><code>public</code>: anything you mark public in <code>outbound.channel_classes</code>.</li>
+</ul>
+<p>WUWEI walks one ordered table for each of them, and the first matching row wins. Your rows in <code>outbound.tiers</code> come first, after a row for each connector mode in <code>outward.modes</code>. The defaults follow: you <code>send</code>; public <code>ask</code>; a client commitment or disagreement <code>ask</code>; anything else to a client <code>ask</code>. Then sensitive, commitment and disagreement text <code>ask</code>; company <code>ask</code>; a thread among team people <code>send</code> (<code>{ audience = "team", topic = "thread", tier = "send" }</code>); a monitoring write <code>send</code>. No default row blocks: an external party always gets a card you can send from, and you add a <code>block</code> row when a client needs one. The strictest reader decides the call. What no row narrows gets your umbrella, <code>outbound.default_tier</code>. With <code>send</code>, the shipped default, the broad commitment, disagreement and company rows drop out. A review reply, a thread answer or a message to a colleague just goes, and only client, public and sensitive text still ask. Narrow it with your own rows. With <code>ask</code> (<code>bin/wuwei config set outbound.default_tier ask</code>) the older kind rules say why a draft is held: direct messages draft, and a routine reply in a team channel sends. Docs and tracker writes keep <code>docs.auto</code> and <code>tracker.auto</code> either way.</p>
+<p>A reply in a chat thread is read by the thread's participants, so each one is a reader. The hook cannot read a thread; the planner can. When a held reason says the participants are not learned, the planner reads the thread with the connector's replies tool and runs <code>bin/wuwei outbound learn --tool &lt;tool&gt; --thread &lt;file&gt;</code>, which records them for the day. A thread whose readers are all you or team sends by the thread row, a client participant follows the client rows, and an unknown one goes on the learn card. Until then a thread reply is one company reader: it asks under <code>ask</code> and goes under the shipped umbrella. Always send in this channel's threads on the draft card adds <code>{ channel = "C123", topic = "thread", tier = "send" }</code>.</p>
+<p>For example, a seat writes "I will ship it tomorrow". To a client channel it is held on a card that names the client row; with <code>{ audience = "client", topic = "commitment", tier = "block" }</code> in your rows it is refused instead. The same line to a team channel goes out under the shipped umbrella and asks you on a card under <code>ask</code>. A status line to your own DM just goes. To let a reviewer's mentions go out, answer Always send to this person on a draft card that held one; it adds <code>{ person = "U123", tier = "send" }</code>. <code>bin/wuwei outbound tiers</code> prints the table with each row tagged <code>default</code> or <code>owner</code>, and <code>bin/wuwei outbound explain &lt;draft id&gt;</code> shows the rows a draft passed and the one that held it. Under <code>strict</code>, a <code>send</code> row never reaches a client or the public. The learn card proposes a class for each new channel and person. Each entry has one option that approves it with the other class: a channel as client or team, a person as company or team.</p>
+<h2 id="memory">Memory<a class="headerlink" href="#memory" title="Permanent link">&para;</a></h2>
+<p><code>wuwei init</code> creates <code>.wuwei/memory/</code> with a spine, index and changelog. Day records live under <code>.wuwei/days/</code>. Settled facts belong in notes; procedure belongs in charters. The CLI provides <code>note</code>, <code>index</code>, <code>consolidate</code>, <code>payload</code> and <code>promote</code> commands. Goals and voice are yours: the lead proposes, the morning gate confirms and the planner records them, and you can edit them later; seats propose changes for promotion. The index is generated and notes are bounded by configuration defaults.</p>
+<p>Memory has three tiers. A day keeps its raw records under <code>days/</code> for 30 days (<code>consolidation.archive_after_days</code>); then <code>wuwei consolidate</code> packs it into a tarball under <code>archive/&lt;year&gt;/</code>, which <code>wuwei memory show &lt;date&gt;</code> still reads. Week and month digests under <code>memory/digests/</code> stand for the archived days: decisions, lessons, metrics, incidents and items in one fixed shape, rebuilt from the records. A session loads the latest month and week digest, then the rules (spine, notes), then today, within <code>memory.budget_tokens</code>. Rules live only in charters and notes. Forgetting is proposed, never automatic: consolidate lists unreferenced notes, duplicates and superseded or contradicted charter rules, and nothing changes until you answer <code>wuwei memory forget F-n apply</code> in a host terminal; the before text stays under <code>memory/archive/</code>. <code>wuwei memory export --claude</code> writes the charter rules and the week's lessons into a marked block in <code>CLAUDE.md</code>, so the harness memory sees them; the records stay the one source and nothing reads the block back.</p>
+<h2 id="day-flow">Day flow<a class="headerlink" href="#day-flow" title="Permanent link">&para;</a></h2>
+<p>Plan, Build, Review, Close. <code>/wuwei plan</code> runs the morning gate, then the planner loops <code>build next</code> and <code>dispatch next</code> for each approved item, raises the PR and closes the day; phases move by themselves.</p>
+<p>The day starts in parallel. WUWEI derives CAP from the host, by one of two rules. Claude subagent seats run inside one Claude process, so free memory says nothing about how many fit: CAP is <code>host.seats</code>, or one per core when it is unset, and free memory is not read. When a seat runtime launches its own process (Codex or another external runtime), the memory rule applies. CAP is then the running seats plus the seats that fit above the memory floor at the measured seat cost, one core per seat. It is the median of today's last five readings, so one noisy reading does not move it. Both stay within <code>budget.tokens_per_day</code> when set. The plan shows the rule and the measurement, for example <code>cap 6 (host.seats): subagent runtime, free memory not read</code> or <code>cap 4 (memory): median of 4, 5, 4; 16 GB free, 1.5 GB per seat, 8 cores</code>, and the morning gate splits it into seats per goal. Each sweep derives it again, and the status line shows <code>seats 3/4 by host.seats</code>, <code>by memory</code> or <code>by budget</code>. A positive <code>cap</code> in config is your override. After you approve, <code>wuwei dispatch next --all</code> lists everything that can move now. Gate items come first, then building items, then planned items up to CAP with each goal's share first. The planner launches the whole set in one turn, an item's three gate seats together. With <code>cap = 1</code> the day runs one item at a time. The <a href="../daily/">daily path</a> is your walkthrough and the <a href="../recovery/">recovery</a> page covers the rest.</p>
+<h2 id="tickets-and-comments">Tickets and comments<a class="headerlink" href="#tickets-and-comments" title="Permanent link">&para;</a></h2>
+<p>With <code>adapters.tracker</code> set and <code>tracker.required</code> on, one rule decides whether an item may
+run: it has a ticket, or its tier is in <code>tracker.skip_tiers</code>. <code>plan approve</code>, <code>plan add</code>,
+<code>build next</code>, <code>dispatch next</code> and the seat launch all ask it and give the same reason. A
+candidate's <code>ticket</code> field, an item discovered from the tracker backlog,
+<code>bin/wuwei tracker create &lt;item&gt;</code> and <code>bin/wuwei plan set &lt;item&gt; ticket=&lt;id&gt;</code> record one.
+The lead proposes a ticket per item: an open one from the backlog, or a new one from the
+item's record. The plan shows it on a <code>Ticket:</code> line and the gate card lists it. Below
+strict, Approve opens the tickets the plan proposed and records the links, so no item waits
+on a terminal command; <code>plan add</code> drafts an owner-named item's ticket for its Send card.
+Under strict the commands are printed for a host terminal. A seat never opens an item
+ticket: the planner does after your card answer.
+Builders and sentinels open a linked bug with
+<code>bin/wuwei tracker create --bug &lt;item&gt; "&lt;title&gt;" --evidence "&lt;file:line&gt;" --seat &lt;role&gt;</code> instead
+of widening the item; the planner opens retro follow-ups with <code>--follow-up</code>. The finder files it.
+In the workspace's own tracker a bug, triage or follow-up ticket is internal. Under the send
+umbrella it is created with no draft, under <code>ask</code> it is held as a card for the planner, and
+<code>block</code> refuses it. A row <code>{ tool = "tracker", audience = "owner", tier = "ask" }</code> makes it a
+card under send too. An external tracker keeps the outward rules. Each creation is written
+once per day and writes one <code>tracker.created</code> event naming the seat; the board's Tickets
+created table and the retro's Tickets seats filed section list who filed it.</p>
+<p><code>bin/wuwei tracker log</code> turns today's events into comments on each ticket, once each:
+decisions, progress (phases, seat starts and stops, fast checks), gate verdicts, the pull
+request and the close outcome. The watch sweep and <code>wuwei close</code> run it. Kinds in
+<code>tracker.auto</code> are sent; the rest wait as drafts. After <code>tracker.max_per_item_per_day</code>
+comments the last one is a fold. <code>wuwei close</code> refuses while an item merged today has a
+ticket that never reached done; <code>bin/wuwei tracker done &lt;item&gt;</code> moves it.</p>
+<h2 id="pr-ownership">PR ownership<a class="headerlink" href="#pr-ownership" title="Permanent link">&para;</a></h2>
+<p><code>bin/wuwei pr raise</code> links a newly raised PR to its approved item. To take
+ownership of an existing open PR, run
+<code>bin/wuwei pr claim owner/repo#number --item ITEM</code>. Without <code>--item</code> the claim uses the item
+already linked to the PR, else creates an <a href="#adopted">adopted</a> item <code>PR-&lt;number&gt;</code> under
+<code>--goal</code> (default: the day's only goal). Both commands record the
+item link and the day's owned PR set.
+The item link lets merge checks and lead-time metrics find the same work.
+<code>wuwei state set items.ITEM.pr</code> is reserved for these commands.</p>
+<p><code>bin/wuwei pr state [owner/repo#number ...]</code> reads fresh code-host evidence for today's
+raised and claimed PRs and emits JSON rows with state, dispatch instructions, deadline
+and per-PR exit status. Without arguments it measures the complete ownership union.
+Exit 1 means action is required; exit 2 means a PR could not be measured and includes a reason.
+Dispatch instructions are data for the shepherd; this command does not execute them.</p>
+<p>Conflicts require rebase, resolution, fast checks and push. Red CI requires a fix round.
+Outstanding review requests and unanswered threads require triage: fixes, outward-tier
+replies, or owner decisions for disagreements and scope changes. Stale reviews require
+requesting reviewers again and posting in the review channel. Approved PRs go through
+<code>wuwei merge</code> or a merge decision. Closed, unmerged PRs require an owner decision.
+Waiting within the review window and merged PRs have no action deadline.</p>
+<p>The watch produces the same action deadlines while polling. Repeated observations do
+not postpone an unresolved action. Overdue actions produce a nudge, then a page at twice
+the action interval. The planner's Stop hook rechecks fresh evidence and refuses overdue
+actions, naming the PR, state and action. Only a verified owner parking decision exempts
+a PR; carry-forward applies to day close. See <a href="../configuration/">configuration</a> for
+<code>pr.action_minutes</code> and <code>pr.review_window</code>.</p>
+<h2 id="day-close">Day close<a class="headerlink" href="#day-close" title="Permanent link">&para;</a></h2>
+<p><code>bin/wuwei close</code> and the planner Stop hook after a close request refuse while work is open.
+That is an approved item open or blocked without a park or carry decision, a pending owner
+decision, or a pushed item branch without a raised or claimed PR.
+For each open item the refusal asks one question: carry it to tomorrow
+(recommended), park it, or keep working, with the command for each answer. It names
+each decision or branch. <code>bin/wuwei close --widget</code> prints the same questions as
+AskUserQuestion widgets and writes nothing. <code>bin/wuwei close --why</code> prints one line
+per approved item saying what holds it and writes nothing. <code>close</code> launches the close
+steward review once no item is open. Unreadable evidence returns exit 2 with a
+reason; unresolved work returns exit 1. A parked or carried item whose branch cannot
+be measured (a missing worktree, a branch with no commits) is printed as a note and
+never blocks the close. Existing PR, reply, visibility
+and retro requirements still apply. The Stop hook blocks once per stop attempt and
+exits 0 on Claude Code's retry, so it never traps the session; <code>bin/wuwei close</code>
+still reports every finding.</p>
+<p><code>bin/wuwei plan carry ITEM</code> and <code>bin/wuwei plan park ITEM [--reason TEXT]</code> write a
+valid two-way decision record with blast radius <code>own branch</code>, route it and print
+its ID, for example <code>D-1: carried ITEM</code>. Park also pauses an active item. Carried
+items come back with tomorrow's <code>plan approve --import-yesterday</code>. The recorded
+outcome must match the file. A parked phase alone does not count.
+A merged phase also needs fresh merge evidence from the linked PR.
+The build loop creates and records this decision automatically after repeated
+fast-check failures or exhausted iterations. Its <code>D-&lt;n&gt;.md</code> file passes
+<code>bin/wuwei decision lint</code> and does not overwrite earlier decisions.</p>
+<p>A linked PR's externally verified owner park or carry also accounts for its item.
+Editing an owner decision's Outcome does not prove an owner action. An owner
+decision answered with <code>bin/wuwei decide D-&lt;n&gt; OPTION</code> counts as
+resolved, and the command writes the chosen option into the record's <code>Outcome:</code>
+line.
+Pushed branch checks read remote-tracking refs in recorded item worktrees through
+the VCS port, without fetching. A parked item still needs a raised or claimed PR
+when its branch has been pushed.</p>
+<h2 id="builder-steps">Builder steps<a class="headerlink" href="#builder-steps" title="Permanent link">&para;</a></h2>
+<p>Claude Code builders run as subagents in the planner session. After writing a builder
+brief with its worktree, call <code>wuwei build next &lt;item&gt;</code>. It returns one JSON action.
+<code>launch</code> supplies the Agent prompt, and <code>continue</code> supplies the prompt with the feedback
+and the stopped agent's ID as <code>resume</code>. Launch a <code>continue</code> as a fresh Agent with its prompt;
+pass <code>resume</code> only to an Agent tool that takes it (Claude Code's has none). The fresh
+launch continues the same seat and round. <code>check</code> supplies a command to run through Bash,
+and <code>park</code> supplies a reason and numbered decision path. <code>done</code> means checks passed and the item moved to <code>gate</code>
+(or to <code>delta</code> after a fix build). Call next again after executing
+the action. Hooks register the seat and record its result; unchanged state returns the
+same action, so execute each action once. Never poll a Claude seat through the CLI.</p>
+<p>A check command records measurements itself. Exit 1 means failed checks and another next
+call; exit 2 means unmeasured and requires resolving the reported error. The old blocking
+Claude build form exits 2 and directs you to build next. Codex retains
+<code>wuwei build &lt;item&gt; &lt;brief&gt; &lt;worktree&gt;</code> and executes the same action loop with polling.
+<code>host.seats</code> derives from cores for Claude subagent seats, and from free memory and cores for
+seats that run as separate processes, unless config pins it; it counts builders and gate seats
+together.</p>
+<h2 id="review-tiers">Review tiers<a class="headerlink" href="#review-tiers" title="Permanent link">&para;</a></h2>
+<p>At an item's first gate, <code>dispatch next</code> computes its review tier, <code>light</code>, <code>standard</code> or
+<code>full</code>, from the diff size against <code>repos.gates.light_max_lines</code>, trust and never-auto
+paths, the lead flags, the track, <code>repos.gates.floor</code> and an optional lead <code>tier</code>. A light
+item gets the quality gate only; standard and full get arch, quality and security. A lead
+tier below the computed one is refused and recorded as a reason, and the returned action
+carries the <code>tier</code>.</p>
+<p>Generated and data lines never count toward the tier or <code>repos.merge.max_changed_lines</code>, and
+both read the same count. Generated means a lockfile, a <code>repos.merge.size_exclude</code> glob or a
+<code>linguist-generated</code> glob in the repository's root <code>.gitattributes</code>, unless the diff changes
+that file. Data means a <code>repos.gates.data_paths</code> glob, or a <code>.json</code>, <code>.jsonl</code>, <code>.csv</code> or
+<code>.parquet</code> file over 200 changed lines or with a binary change. The reason names both totals:
+<code>5000 changed lines, 4800 generated or data excluded, 200 count, over light_max_lines 100</code>.
+Every measured item that is not docs-only records its count, which <code>wuwei why</code> shows.</p>
+<p>A docs-only diff gets one reviewer at any size and under the default floor. In such a diff
+every path ends in <code>.md</code>, <code>.rst</code> or <code>.ipynb</code>, or in <code>.txt</code> under <code>docs/</code> or <code>specs/</code>, or is
+a data file, and nothing else raises it. An analysis item gets the goal reviewer, never
+security. A <code>.json</code> file counts as a document only under <code>repos.gates.data_paths</code>, since
+it may be config. Agent instruction files never count as documents: <code>AGENTS.md</code>, <code>CLAUDE.md</code>,
+<code>SKILL.md</code> and paths under <code>charters/</code>, <code>skills/</code>, <code>agents/</code>, <code>commands/</code>, <code>.claude/</code> or
+<code>.agents/</code>. The reviewer is goal for a document and quality for a spec or a pre-registration.
+The reason reads <code>docs-only: 1 reviewer (goal)</code>, and a FIX continues the same seat. A lead <code>tier</code> above light is overridden and recorded as
+<code>lead tier full overridden: docs-only</code>. A lead flag, track FULL, a trust, never-auto,
+FULL-pattern or binary path, <code>floor = "full"</code> or pace careful keeps the three gates. A
+repository that keeps code under <code>docs/</code> or <code>specs/</code> lists those paths in
+<code>repos.gates.trust_paths</code>. The report lists the reviewer seats per item with its tier reason. See <a href="../configuration/#workspace-and-repositories">configuration</a> and
+the <a href="../reference/#lead-plan-json">lead plan JSON</a>.</p>
+<p>The tier also decides how much process an item gets (design 5.3). Every brief and launch
+prompt carries a <code>Depth:</code> line, so no seat decides it:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>light</th>
+<th>standard</th>
+<th>full</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Builder class sweep</td>
+<td>none</td>
+<td>the classes <code>wuwei sweep classes &lt;worktree&gt;</code> lists</td>
+<td>every class</td>
+</tr>
+<tr>
+<td>Gate step zero (mutation)</td>
+<td>none</td>
+<td>only when the diff touches guard code, grants, outward, a hook or a trust path, or the lead flagged it trust_surface or boundary_relevant</td>
+<td>always</td>
+</tr>
+<tr>
+<td>After a fix</td>
+<td>the same sentinel re-reads and rewrites <code>Verdict:</code> and <code>Head:</code></td>
+<td>delta round</td>
+<td>delta round</td>
+</tr>
+<tr>
+<td>Verdict</td>
+<td><code>Verdict:</code>, <code>Head:</code>, findings</td>
+<td>full shape</td>
+<td>full shape</td>
+</tr>
+<tr>
+<td>Retro note</td>
+<td>only when a line is not <code>none</code></td>
+<td>always</td>
+<td>always</td>
+</tr>
+</tbody>
+</table>
+<p>A Routine decision taken under mandate prints as one line in <code>decision show</code> at every tier.
+The default <code>repos.gates.floor</code> is <code>standard</code>, so light depth needs <code>floor = "light"</code>.</p>
+<p>With <code>gates.second_opinion = "&lt;runtime&gt;:&lt;model&gt;"</code>, standard and full items get one more gate:
+the role in <code>gates.second_opinion_role</code> (quality by default) runs again on that runtime and
+model, named <code>&lt;role&gt;@&lt;runtime&gt;</code>. Its verdict goes through the same lint and receive. A blocking
+finding from either model blocks, a FIX from only the second opinion opens the same single fix
+round, and the model that raised it does the delta. Each verdict records its cost and duration,
+and the retro's <code>## Second opinion</code> section lists the findings each model raised alone, so you
+can turn it off when it stops paying.</p>
+<h2 id="writing-for-you">Writing for you<a class="headerlink" href="#writing-for-you" title="Permanent link">&para;</a></h2>
+<p><code>owner.verbosity</code> sets how much decisions, the digest, PR nudges, the DM and the report say to you: <code>brief</code> (the default), <code>standard</code> or <code>full</code>, with one key per surface (see <a href="../configuration/">configuration</a>). Anything left out is one command away: <code>bin/wuwei decision show D-&lt;n&gt; --full</code> on the host or <code>more D-n</code> in the DM. Seats rewrite text written for a person with the humanizer skill, version 3.1.0, MIT license, when it is installed, and otherwise follow the ten-line checklist under Writing for a person in <code>charters/_common-authoring.md</code>. The CLI counts the mechanical tells as a <code>style</code> finding on drafts and decision records and as the <code>ai_tells</code> metric in the retro and, at standard or full, the report. By default a tell warns and does not stop a send. An em dash or an emoji is always refused.</p>
+<p>Outward text gets the same pass. Every tracker comment, docs page, DM, PR comment and review ping goes through the humanize lint before it is drafted or sent. By default a tell prints a warning and records an <code>outward.ai_tells</code> event, and sent text with tells counts in <code>ai_tells</code>. With <code>outward.humanize_strict</code> on, the text is refused with the tells it found and a hint to rewrite it. Each draft lists its tells in <code>bin/wuwei drafts</code> and in the approval prompt, and the DM status reply shows the count at full verbosity. <code>outward.humanize = false</code> turns the lint off, and <code>outward.humanize_kinds</code> picks the kinds it checks (see <a href="../configuration/">configuration</a>).</p>
+<h2 id="decision-classes-and-cruise-levels">Decision classes and cruise levels<a class="headerlink" href="#decision-classes-and-cruise-levels" title="Permanent link">&para;</a></h2>
+<p>A decision record gives every option a Title, a Rationale (why it scores as it does) and a
+Consequence (what changes, what it costs, what it closes). The recommendation gets a
+Reasoning line (what decided it and what would flip it). It also names a class. The
+engineering classes <code>design</code>, <code>boundary</code>, <code>refactor</code> and <code>dependency-bump</code> add one
+<a href="#lens">lens</a> line per option: SOLID, twelve-factor, YAGNI and ponytail by default. Your
+question card shows the titles, the recommended one first, each with its rationale,
+consequence and lens lines, and ends the question with the reasoning. <code>wuwei decision
+template</code> prints a valid record.</p>
+<p>Cruise mode (<a href="https://github.com/taoq-ai/wuwei/blob/main/docs/specs/2026-09-24-wuwei-design.md">design spec 5.8.1</a>)
+runs each class at a level from L0 to L3. Say <code>decision route</code> takes a record under the
+mandate and its class runs at L2 or L3. If the record is two-way, inside its own branch, PR or
+the workspace, its margin reaches <code>decisions.cruise.margin</code> and the daily budget allows,
+it is a cruise answer: <code>Decided-by: cruise &lt;class&gt;@L&lt;n&gt;</code>. At L2 you get a nudge and can undo
+it for <code>decisions.cruise.undo_minutes</code>; at L3 it is in the digest. Levels move only through
+the CLI: down one level when the class's error budget is spent, back when its window
+refills, up when you answer a raise card (<a href="../daily/#cruise-answers">cruise answers</a>).</p>
+<p>Error budget. One unlucky reversal no longer drops a class. Each class may spend
+<code>decisions.cruise.budget_share</code> (10 percent) of its cruise answers over
+<code>budget_window_days</code> (14) on undos, reversals, weekly samples answered differently and
+escaped defects. The budget is spent with more events than that and at least two; the class
+then runs one level lower until the window refills, and gets no raise card meanwhile. A
+fast burn (<code>burn_warn</code>, the last 48 hours against the window's pace) sends a nudge naming
+the events first. <code>bin/wuwei cruise budget</code> prints the table.</p>
+<p>Calibration. A record's <code>Confidence:</code> is checked against what happened. Each taken record
+with a stored confidence (high 0.9, medium 0.6, low 0.3) whose undo window closed scores 1
+when it stood and 0 when it was undone, reversed, sampled differently or escaped a defect.
+The Brier score per class and per role (the optional <code>Role:</code> field) over the error budget
+window is uncalibrated above <code>calibration_threshold</code> once <code>calibration_min</code> records are
+scored. An uncalibrated class runs at most L1, an uncalibrated role's records go to you as a
+card, and a class gets a raise card only when it is calibrated. <code>bin/wuwei cruise
+calibration</code> prints the table.</p>
+<p>Shadow promotion. Before a raise card, a class runs in shadow at the next level. Each record
+taken for it also notes what the next level would have answered, and nothing about the live
+route changes. The steward checks those notes against your final answers. One miss ends the
+shadow. After <code>shadow_days</code> with at least <code>shadow_min</code> checked answers, all agreeing, you get
+the raise card. <code>bin/wuwei cruise shadow</code> prints the shadows, and the status line shows
+<code>· shadow &lt;classes&gt;</code>.</p>
+<p>Every seat prompt ends with a mandate block built from those class levels
+(<code>decisions.cruise.levels</code>, the 5.8.1 defaults otherwise), the interview's trust-surface
+line and <code>deploy.deny</code>. It says what the seat decides alone, what it decides and records, and what
+comes to you. It closes with "Nothing else is a question." The levels only shape this
+text and pick which taken records are cruise answers. Assume and record: a two-way
+open question inside the item is not asked. The seat takes its recommendation and records
+it under <code>Assumptions:</code> in the spec or PR body, and gates review it as an <code>Assumption:</code>
+finding. A seat that stops on a question to you without a valid decision id is
+flagged by the SubagentStop guard (and by the Codex and headless paths). Then <code>dispatch
+next</code> refuses until the planner acknowledges the note.</p>
+<p>A confirmation from someone outside the loop never holds reversible work: the seat routes
+the record with <code>decision route D-n --external &lt;item&gt;</code> and continues. After
+<code>decisions.wait_hours</code> weekday hours without your answer, the sweep confirms the
+recommendation on a two-way door or parks the item on a one-way door, and records
+<code>decision.waited</code>.</p>
+<p>Negotiation loops: an item goes back and forth when records, verdicts, restarts and fix
+requests go above <code>steward.loop_threshold</code> in <code>steward.loop_window_hours</code>, or on a second fix
+round. Then the steward raises one <code>negotiation.loop</code> nudge per item per day, and a page when the
+goal date has passed. The listener sends the summary to your DM. It reports; the
+round cap (<code>gates.max_rounds</code>) is what stops the rounds.</p>
+<h2 id="measured-reversibility">Measured reversibility<a class="headerlink" href="#measured-reversibility" title="Permanent link">&para;</a></h2>
+<p>A seat writes <code>Reversibility: two-way</code>, but the CLI decides whether that holds. A record is
+two-way only when the CLI knows the undo for its kind of action and that undo ran once in
+this workspace. The class gives the kind: code changes undo with a git revert, park, defer
+and re-plan with <code>wuwei undo D-n</code>, and a merge with a revert PR when its repository does not
+deploy on merge. A message never has an undo, and neither does <code>other</code>. Each undo is
+rehearsed once on a scratch target (<code>wuwei undo rehearse commit</code>, <code>wuwei undo rehearse
+decision</code>); <code>wuwei next</code> runs these for you after the morning gate. Until then, and for any
+kind without an undo, the CLI rewrites the record to one-way, says why, and the record comes
+to you as a card. Nothing is refused for it.</p>
+<h2 id="dora-keys">DORA keys<a class="headerlink" href="#dora-keys" title="Permanent link">&para;</a></h2>
+<p><code>bin/wuwei dora</code> prints the four DORA keys over the last 28 days (<code>--window &lt;days&gt;</code> changes
+that). Lead time to merge is the median cycle time of the items merged in the window, from
+plan approval to merge. Lead time to deploy adds the hours from each merge to the first
+deployment after it. Deployment frequency counts the code host's deployments, or its
+published releases when a repository never deployed. Change failure rate is the share of
+merged items that a later fix brief names. Time to restore waits for on-call incidents. A
+key without evidence says <code>unmeasured</code> and why, never zero. The report, the retro and the
+week digest show the same table.</p>
+<h2 id="sessions">Sessions<a class="headerlink" href="#sessions" title="Permanent link">&para;</a></h2>
+<p>Several Claude Code sessions can share a workspace. Hooks register each one in day state
+with its role, last hook and claimed items; a session idle past <code>sessions.stale_seconds</code> is
+stale and its claims lapse. One session is the planner, a second takes over with
+<code>plan session --take-over</code>, and <code>sessions.rotate_after</code> rotates the planner on a schedule.
+See <a href="../reference/#sessions">sessions</a> and <a href="../daily/#long-sessions">long sessions</a>.</p>
+<h2 id="listener">Listener<a class="headerlink" href="#listener" title="Permanent link">&para;</a></h2>
+<p><code>bin/wuwei listen</code> polls the inbound source, such as a Slack DM, into the workspace inbox.
+The responder wakes the planner and handles commands only from the pinned owner, with a
+second factor where a command needs one. While running it also probes raised and claimed
+PRs with conditional requests, sends each <code>pr.changed</code> summary to the DM and,
+unless <code>shepherd.autostart = false</code>, starts a headless shepherd seat that never merges. See
+<a href="../remote/">remote operation</a> and
+<a href="../configuration/#running-the-listener">running the listener</a>.</p>
+<h2 id="heartbeat">Heartbeat<a class="headerlink" href="#heartbeat" title="Permanent link">&para;</a></h2>
+<p>On every tick the watch runs a fixed table of probes: a refused and an allowed hook call,
+state, integrity, config, clocks, the status line, the planner and memory. Health shows on
+the status line, a failed probe raises one page, a probe that turns from ok to failed is
+behaviour drift, and a healthy heartbeat pings an external dead-man monitor. See the
+<a href="../reference/#heartbeat">heartbeat reference</a>.</p>
+<h2 id="cockpit-and-board">Cockpit and board<a class="headerlink" href="#cockpit-and-board" title="Permanent link">&para;</a></h2>
+<p><code>bin/wuwei dashboard</code> serves the read-only day board on loopback. The plugin's MCP server
+runs <code>bin/wuwei board</code> and offers the <code>wuwei_board</code> tool inside Claude Code; it is declared
+in the signed <code>plugin.json</code>, so integrity covers it. Answering a decision or approving a
+draft stays a host terminal action. See the <a href="../daily/#6-close">daily path</a>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

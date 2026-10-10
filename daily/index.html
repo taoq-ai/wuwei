@@ -1,0 +1,1825 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Autonomous delivery where the safe path is the default one.">
+      
+      
+        <meta name="author" content="TaoQ AI">
+      
+      
+        <link rel="canonical" href="https://taoq-ai.github.io/wuwei/daily/">
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../agent/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Daily path - WUWEI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#the-daily-path" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="WUWEI" class="md-header__button md-logo" aria-label="WUWEI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            WUWEI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Daily path
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/taoq-ai/wuwei" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    taoq-ai/wuwei
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../concepts/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../recovery/" class="md-tabs__link">
+          
+  
+  
+  Operations
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="WUWEI" class="md-nav__button md-logo" aria-label="WUWEI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    WUWEI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/taoq-ai/wuwei" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    taoq-ai/wuwei
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Daily path
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Daily path
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-install-the-signed-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Install the signed release
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-configure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Configure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-plan-and-the-morning-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Plan and the morning gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#starting-with-work-in-progress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Starting with work in progress
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-through-the-day" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Through the day
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-owner-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Owner decisions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Owner decisions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cruise-answers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cruise answers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-you-answer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How you answer
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#long-sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Long sessions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Close
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    What the session knows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operator reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adapters and ports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../charter-overrides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Charter overrides
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../remote/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote operation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rehearsal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release rehearsal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-install-the-signed-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Install the signed release
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-configure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Configure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-plan-and-the-morning-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Plan and the morning gate
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#starting-with-work-in-progress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Starting with work in progress
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-through-the-day" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Through the day
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-owner-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Owner decisions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Owner decisions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cruise-answers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cruise answers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-you-answer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How you answer
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#long-sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Long sessions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-close" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Close
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="the-daily-path">The daily path<a class="headerlink" href="#the-daily-path" title="Permanent link">&para;</a></h1>
+<p>One path for a solo owner through one day: install, configure, plan, build and review,
+decide, close. Every command here is daily use. Anything else is in
+<a href="../recovery/">recovery</a>. <code>bin/wuwei</code> below is the executable in the plugin
+directory; the planner uses the one recorded in <code>.wuwei/executable</code>. Each Claude Code
+session in the workspace gets the same flow as <a href="../agent/">what the session knows</a>.</p>
+<h2 id="1-install-the-signed-release">1. Install the signed release<a class="headerlink" href="#1-install-the-signed-release" title="Permanent link">&para;</a></h2>
+<p>Claude Code, Python 3.11 or newer, Git and <code>ssh-keygen</code> must be available. From your
+project directory:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fL<span class="w"> </span>https://github.com/taoq-ai/wuwei/releases/latest/download/wuwei.tar.gz<span class="w"> </span>-o<span class="w"> </span>../wuwei.tar.gz
+mkdir<span class="w"> </span>-p<span class="w"> </span>../wuwei-plugin
+tar<span class="w"> </span>-xzf<span class="w"> </span>../wuwei.tar.gz<span class="w"> </span>-C<span class="w"> </span>../wuwei-plugin<span class="w"> </span>--strip-components<span class="o">=</span><span class="m">1</span>
+</code></pre></div>
+<p>In Claude Code:</p>
+<div class="highlight"><pre><span></span><code>/plugin marketplace add ../wuwei-plugin
+/plugin install wuwei@wuwei
+</code></pre></div>
+<p>Then set up the workspace in a <a href="../concepts/#host-terminal">host terminal</a>:</p>
+<div class="highlight"><pre><span></span><code>../wuwei-plugin/bin/wuwei<span class="w"> </span>setup<span class="w"> </span>--shadow
+</code></pre></div>
+<p>In Claude Desktop or the IDE, the planner asks the setup questions on cards. Without a terminal, <code>wuwei setup</code> prints the same cards. The terminal interview is for a plain terminal.</p>
+<p><code>setup</code> runs <code>init</code> when there is no workspace; <code>init</code> ends with <code>plugin integrity: clean</code>
+for an intact signed release. A development checkout needs one host confirmation first; see
+<a href="../recovery/">recovery</a>.</p>
+<p>Then run <code>bin/wuwei doctor</code>. It checks the install, host, workspace, <a href="../concepts/#gate">gates</a>, day and guards in
+one pass and prints the fix for anything that is not ok; <code>bin/wuwei doctor --fix</code> applies the
+deterministic fixes after one confirmation. When something fails on the first day, see
+<a href="../recovery/#troubleshooting">troubleshooting</a>.</p>
+<p>Then open Claude Code in the workspace and say what you want; the session knows the rest.</p>
+<h2 id="2-configure">2. Configure<a class="headerlink" href="#2-configure" title="Permanent link">&para;</a></h2>
+<p><code>setup</code> does the configuration in one pass. It finds the git repositories in the project
+directory (or under <code>--repos &lt;dir&gt;</code>). It reads each one's GitHub name from its <code>origin</code> remote,
+its default branch through <code>gh</code> when <code>gh</code> is signed in, and its commit identity from its git
+config. When <code>gh</code> cannot read the default branch, git answers: <code>origin/HEAD</code>, else the
+checked-out branch, and the line says which. A repository with no remote is proposed as
+<code>&lt;your login&gt;/&lt;directory&gt;</code>, where <code>gh repo create</code> would put it. It lists the host facts
+(platform, <code>claude</code>, <code>gh</code> and <code>ziran</code> on PATH, free memory), then calibrates and interviews:</p>
+<ul>
+<li>the calibration is what <code>bin/wuwei calibrate</code> does: it reads each checkout and writes
+  <code>.wuwei/days/&lt;date&gt;/calibration.md</code> with its checks, CI check names, conventions and deploy
+  signals, each with the file and line it came from
+  (<a href="../configuration/#calibration">calibration</a>);</li>
+<li>your interview is what <code>bin/wuwei calibrate --interview</code> asks: how much merge autonomy
+  you want, whether a merge deploys each repository, your gate floor, quiet and working hours, and how decisions reach you. It also asks
+  words to avoid, which commands you run by hand, which tracker, chat and review bot you use, and who reviews
+  your pull requests (<code>Owner only</code> for a solo owner) (<a href="../configuration/#owner-interview">owner interview</a>). <code>config check</code> then names each
+  credential variable those adapters need until you set it in <code>.wuwei/env</code>;</li>
+<li>your identity: with <code>gh</code> signed in, <code>owner.handles</code> gains your code-host login and
+  <code>shepherd.lead_login</code> defaults to it. <code>shepherd.authors</code> maps your repositories' git
+  emails to it, and each bot author seen on the last 50 merged pull requests to its <code>[bot]</code>
+  login. <code>owner.name</code> comes from the repositories' git identity. Values you already set
+  are kept.</li>
+</ul>
+<p>A few yes or no questions come with it. They offer to turn on ZIRAN scans when <code>ziran</code> is installed
+(default no), and to run your tests once to see whether they are fast enough for every push
+(default yes). They also offer to add the status line to <code>.claude/settings.json</code> (default yes) and to install the
+watch service (default no). A closed input answers no.</p>
+<p>It shows the <code>[[repos]]</code> tables, the calibration and the answers as one <code>config.toml</code> diff,
+and applies it after you answer y (the <code>bin/wuwei config promote</code> path). Then it runs
+<code>bin/wuwei doctor</code> and <code>bin/wuwei mcp check</code>, and ends with one line:
+<code>Ready: run /wuwei:wuwei-plan</code>, or <code>Next:</code> with the one command still required. That command
+fixes a failing install or workspace check, a credential variable or an MCP decision. Anything optional, such
+as <code>bin/wuwei promote</code> for the charter proposals, a repository it could not measure or the
+other doctor findings, is listed on an <code>Optional:</code> line before it. Run it again any time;
+with nothing new it proposes nothing. You do not write goals by hand: the lead proposes them
+at the first morning plan and the planner records the ones you approve. You can change them
+later with <code>bin/wuwei goals edit</code>. <a href="../configuration/">Configuration</a> lists every key.</p>
+<p>A clean first run for one repository with a pytest suite looks like this, with every
+question answered <code>1</code> and every yes or no question left at its default (cut where it shows
+<code>...</code>):</p>
+<div class="highlight"><pre><span></span><code>Created &lt;project&gt;/.wuwei
+Recommended publishing layout (design 4.5, 9.1):
+  ...
+Verify with: wuwei config check
+...
+plugin integrity: clean
+Host: &lt;platform&gt;
+claude: on PATH
+gh: on PATH
+ziran: missing
+code host auth: set
+code host login: pat-example
+free memory: &lt;n&gt; MiB
+
+Merges: Who merges pull requests in acme/widget?
+  1. Owner merges: You merge every pull request yourself.
+  ...
+&gt; 1
+...
+Reviewers: Who reviews your pull requests?
+  1. Owner only: No second reviewer: you merge your own pull requests.
+  ...
+&gt; 1
+Test runner found: acme/widget: python3 -m pytest -q
+Run your tests once now to see if they are fast enough for every push? [Y/n]
+--- config.toml
++++ config.toml (proposed)
+...
+ [owner]
+-name = ""
++name = "Pat Example"
+...
++[[repos]]
++name = "acme/widget"
++path = "widget"
++default_branch = "main"
++identity = {name = "Pat Example", email = "pat@example.com"}
++# Added by wuwei config promote from calibration.
++fast_checks = ["python3 -m pytest -q"]
+...
+Interview answers:
+- merge (acme/widget): Owner merges -&gt; repos.0.merge.auto = false
+...
+- tracker: None -&gt; adapters.tracker = "none"
+- chat: None -&gt; adapters.chat = "none"
+- review_bot: None -&gt; adapters.review_bot = "none"
+- reviewers: Owner only -&gt; shepherd.min_reviewers = 0
+Approved calibration for .wuwei/calibration.json:
+...
+Apply the setup above.
+Confirm? [y/N] y
+Applied the setup and recorded .wuwei/calibration.json
+Show the WUWEI status line in Claude Code for this project? [Y/n]
+Status line: added to .claude/settings.json
+Install the watch service, which supervises the day and your pull requests in the background? [y/N]
+WUWEI plugin.json servers covered by plugin integrity (signed manifest), not scanned
+Optional: bin/wuwei promote; 2 more in bin/wuwei doctor
+Ready: run /wuwei:wuwei-plan
+</code></pre></div>
+<p>It worked when you see <code>Applied the setup and recorded .wuwei/calibration.json</code> and
+<code>Ready: run /wuwei:wuwei-plan</code>; setup then exits 0. The <code>Optional:</code> line is normal on day one
+and blocks nothing. The two doctor findings it counts are the branch protections and the watch
+service you declined:</p>
+<div class="highlight"><pre><span></span><code>$ bin/wuwei doctor
+...
+Gates and adapters
+  fail       config check: exit 1
+      fix: apply the fix each detail line names
+      ...
+      Host protections:
+      acme/widget main: classic protection: none visible (404: unprotected or no admin)
+      acme/widget main: required checks: missing (require status checks on main)
+      acme/widget main: required reviews: ok (solo owner: shepherd.min_reviewers = 0)
+      acme/widget main: force pushes: missing (block force pushes on main)
+      acme/widget main: deletions: missing (block deletions of main)
+      acme/widget main: fix in https://github.com/acme/widget/settings/branches
+      ...
+Day and sessions
+  ...
+  warn       watch: not installed
+      fix: wuwei watch install
+      ...
+doctor: 1 fail, 1 warn, 0 unmeasured, 0 waiting
+</code></pre></div>
+<p>Set the protections when you are ready, and run <code>bin/wuwei watch install</code> when you want the
+background supervisor. It did not work when the <code>Applied</code> line is missing (nothing was
+written; the reason is on the last line). It also did not work when the last line is <code>Next:</code> instead of <code>Ready:</code>
+(setup exits 1). Run that one command, then <code>bin/wuwei setup</code> again. A repository setup
+could not read shows on the <code>Optional:</code> line as <code>bin/wuwei config add-repo ...</code>; see
+<a href="../recovery/#troubleshooting">troubleshooting</a>.</p>
+<p><code>--shadow</code> starts a first week in the observe posture (on an existing workspace it proposes
+<code>security.posture = "observe"</code>), as does the <code>Observe</code> answer in the interview. The guards
+then record what they would refuse and let the call through. Records still refuse. Deploys,
+releases and messages that wait for your approval ask you on a card, and merges and approvals
+stay yours. Read
+<code>bin/wuwei shadow report</code> or the <code>## Shadow</code> section of the day report. When the <a href="../concepts/#nudge">nudge</a> comes
+after <code>guards.shadow_days</code>, run <code>bin/wuwei config set security.posture '"guarded"'</code> in a host
+terminal, or keep watching with <code>bin/wuwei config set guards.shadow_days 14</code>. See <a href="../concepts/#security-posture">security posture</a>.</p>
+<h2 id="3-plan-and-the-morning-gate">3. Plan and the morning gate<a class="headerlink" href="#3-plan-and-the-morning-gate" title="Permanent link">&para;</a></h2>
+<p>Run <code>/wuwei plan</code> in Claude Code. The planner registers its session
+(<code>wuwei plan session</code>), sweeps live work, asks the lead for candidates, orders them with
+<code>wuwei rank</code> and writes the proposal with <code>wuwei plan propose</code>. It then asks you one
+<code>Morning gate</code> question, <code>Approve today's plan as proposed?</code>. Pick <code>Change something</code> to get
+the separate questions on goals, queue, <a href="../concepts/#seat">seat</a> policy, <a href="../concepts/#cap">CAP</a>,
+<a href="../concepts/#envelope">envelope</a> and <a href="../concepts/#carry">carry-over</a>. Nothing is dispatched before your answer. While <code>memory/goals.md</code> has no goals,
+the lead proposes them, <code>plan.md</code> shows them as provisional and the approval question shows the
+blocks. On approval the planner records them with
+<code>wuwei goals edit --file .wuwei/days/&lt;date&gt;/goals.md</code>; under the strict posture the hook
+refuses that call and prints the command for a host terminal. It then records the gate with
+<code>wuwei plan approve --items &lt;ids&gt; --goals-confirmed --pace "&lt;label&gt;"</code>.</p>
+<p>The gate card also carries the day's <a href="../concepts/#pace">pace</a>. <code>Approve</code> takes the
+recommended pace; <code>Approve at careful</code>, <code>Approve at steady</code> or <code>Approve at fast</code> approves the
+same plan at another pace. The recommendation's reasoning is in the Approve description, two
+lines, plus a third when it differs from your <code>[pace] default</code>:</p>
+<div class="highlight"><pre><span></span><code>9 items, 7 light, 2 standard, G-2 due 2026-10-10: fast, 4 seats, expected close 14:30
+Host 10 cores, load 3.2, last suite 14 min; budget covers the queue at fast; binding: queue
+Your default is steady; the advice is fast (binding: queue)
+</code></pre></div>
+<p><code>binding:</code> names the input that set the advice (queue, host or budget) and, when a faster
+pace is held back, what unlocks it. To change the pace during the day, the planner runs
+<code>wuwei plan set pace=careful</code>; items already under review keep their review depth. <code>wuwei pace</code> prints the
+pace, the advice and its inputs at any time.</p>
+<p>When an item in the plan needs a deploy or a release, the lead lists it and the gate carries one
+more card per action, for example
+<code>D-2: G-1 fix-login deploys &lt;org&gt;/&lt;repo&gt;: allow today, ask when it happens, or keep owner-only?</code>.
+<code>Allow today</code> is the day's grant, so the deploy runs without
+stopping the day. <code>Ask when it happens</code> asks you when the seat gets there, and <code>Keep owner-only</code>
+leaves the command to you. A deploy nobody planned stops on its own card, the
+<a href="../concepts/#grants">grant</a> question.</p>
+<p>An item that comes up after the gate needs no second gate. Say what it is and which goal it
+serves; the planner runs <code>wuwei plan add &lt;item&gt; --goal G-n</code> and the item joins today's plan. A
+candidate the discovery sweep found goes through <code>wuwei plan add &lt;item&gt;</code> and the intraday
+start policy.</p>
+<p>The planner asks the morning gate as question cards. After you approve, it records the goals
+and the plan, and you can run the last two commands yourself. A clean first plan with one
+goal and one item looks like this:</p>
+<div class="highlight"><pre><span></span><code>$ wuwei plan propose .wuwei/days/&lt;date&gt;/lead.json
+&lt;project&gt;/.wuwei/days/&lt;date&gt;/plan.md
+$ wuwei goals edit --file .wuwei/days/&lt;date&gt;/goals.md
+goals: 1 goal saved (G-1)
+$ wuwei plan approve --items DIV-1 --goals-confirmed
+$ bin/wuwei status --line
+WUWEI 1 planned · seats 0/1 | pages 0 · observe
+$ bin/wuwei next
+dispatch: 1 planned item(s) can start, 0 of CAP 1 building; run the launch set, brief each start and launch the set in one turn. Run: wuwei dispatch next --all
+</code></pre></div>
+<p>It worked when <code>goals edit</code> says <code>saved</code>, the status line shows <code>1 planned</code> and
+<code>bin/wuwei next</code> names the first item. <code>plan approve</code> prints nothing when it succeeds, and
+<code>meeting unmeasured</code> only means no calendar is set up. It did not work when the status line
+has no <code>planned</code> count after you approved, or when a command exits 1 or 2 with a reason; see
+<a href="../recovery/#troubleshooting">troubleshooting</a>.</p>
+<h2 id="starting-with-work-in-progress">Starting with work in progress<a class="headerlink" href="#starting-with-work-in-progress" title="Permanent link">&para;</a></h2>
+<p>Your open pull requests, branches and worktrees stay as they are; nothing is recreated. The
+morning sweep lists the open PRs you authored in the configured repositories (by
+<code>owner.handles</code>) under <code>## Open PRs to claim</code> in the plan, and the gate card names them:
+<code>Claims PR-12 (owner/repo#12)</code>. Approving the gate claims each one under the first goal.</p>
+<p>Each claim creates an <a href="../concepts/#adopted">adopted</a> item (<code>PR-12</code>, titled from the PR), links the PR and
+makes it one of the day's owned PRs. When a clean worktree is already on the PR branch, the
+claim adopts it too. The board shows the item as <code>PR-12 (adopted)</code>. A PR opened after the
+gate is claimed with <code>bin/wuwei pr claim owner/repo#12 --goal G-1</code>; with one configured
+repository a bare <code>12</code> works, and with one goal for the day <code>--goal</code> can go.</p>
+<p>The <a href="../concepts/#shepherd">shepherd</a> needs no checkout. <code>bin/wuwei pr act</code> pings reviewers, reads CI, answers review
+threads and takes the merge decision through the code host. Only a fix round or a rebase needs a
+checkout, and then <code>pr act</code> returns an <code>adopt</code> action with the exact command and <code>then</code> to run
+after it:</p>
+<ul>
+<li><code>bin/wuwei worktree adopt &lt;path&gt; --item &lt;item&gt;</code> registers a worktree you already have. It
+  chains the hooks, writes the pre-push anchor at the current HEAD and records the path. It
+  refuses a tree with uncommitted or untracked files and names them.</li>
+<li><code>bin/wuwei worktree add &lt;item&gt; --branch &lt;branch&gt;</code> checks the existing branch out in
+  <code>worktrees/&lt;item&gt;</code> and records it as the item's.</li>
+</ul>
+<p>Run <code>bin/wuwei pr act &lt;ref&gt;</code> again and the fix round starts in that worktree.</p>
+<h2 id="4-through-the-day">4. Through the day<a class="headerlink" href="#4-through-the-day" title="Permanent link">&para;</a></h2>
+<p>The day starts in parallel. After you approve, the planner runs <code>wuwei dispatch next --all</code>,
+which lists every item that can move now: items at the gate first, then items building, then
+planned items up to CAP, each goal's share first. It briefs the new items and launches the
+whole set in one turn, so several builders, and an item's three gate seats, run at the same
+time. An item that does not fit waits and says why. The status line shows
+<code>seats 2 of CAP 3 (G-1 1, G-2 1)</code>, and <code>bin/wuwei next</code> names the waiting item and the seat
+expected to free first.</p>
+<p>Watch the status line and <code>bin/wuwei nudges</code>. The status line counts items in words, for
+example <code>1 building</code>, and later <code>1 shipped</code>. The planner runs one loop per item and
+executes each returned action unchanged:</p>
+<ol>
+<li>Worktree and builder brief: <code>wuwei worktree add &lt;item&gt;</code>, then
+   <code>wuwei brief builder &lt;item&gt; &lt;name&gt; --worktree &lt;path&gt; --file -</code>.</li>
+<li>Build: <code>wuwei build next &lt;item&gt;</code> returns <code>launch</code>, <code>continue</code>, <code>check</code>, <code>park</code> or
+   <code>done</code>. The planner runs <code>launch</code> and <code>continue</code> through Agent and a <code>check</code> through
+   its <code>command</code> (<code>wuwei build check &lt;item&gt;</code>), then calls <code>build next</code> again. <code>done</code> means
+   the checks passed and the item is in <code>gate</code>.</li>
+<li>Gates: <code>wuwei dispatch next &lt;item&gt;</code> returns <code>gates</code> with the roles still needed. The
+   planner writes one gate brief per role, for example
+   <code>wuwei brief quality &lt;item&gt; quality-1 --gate --worktree &lt;path&gt; --file -</code>, and calls
+   <code>dispatch next</code> again. Its <code>seats</code> list holds one ready action per brief: <code>launch</code>
+   with <code>prompt</code> and <code>agent_type</code>, and <code>receive</code>, the exact
+   <code>wuwei dispatch receive &lt;item&gt; &lt;role&gt; &lt;seat&gt;</code> call to run after the seat stops. At the
+   first gate the action also carries the item's <code>tier</code>: <code>light</code> asks for the quality gate
+   only, <code>standard</code> and <code>full</code> for all three.</li>
+<li>Fix round: when a gate says FIX, <code>dispatch next</code> returns <code>fix</code> with <code>command</code>
+   (<code>wuwei build next &lt;item&gt;</code>). The item is already in <code>fix</code> and the stopped builder has a
+   <code>continue</code> action with the FIX verdict files as feedback. The planner launches a fresh
+   Agent with its <code>prompt</code>; Claude Code's Agent takes no <code>resume</code>. Then it runs the build
+   loop again until <code>done</code>, which moves the item to <code>delta</code>.</li>
+<li><a href="../concepts/#delta">Delta</a>: <code>dispatch next</code> returns <code>gates</code> for the roles that said FIX, and <code>seats</code> holds a
+   <code>continue</code> action per seat with its <code>prompt</code>, <code>resume</code> (the seat's agent ID) and a
+   <code>receive</code> call with <code>--round delta</code>. The planner launches it as a fresh Agent, which
+   continues the same seat. <code>dispatch next</code> records the head the fix round left on the
+   reviewer's seat, and the <code>continue</code> feedback names it. The delta verdict's <code>Head:</code> is that
+   head, whether the planner continues the seat in its session or as a fresh Agent. After
+   the delta verdicts it returns <code>raise</code> with review notes,
+   or <code>escalate</code>. <code>raise</code> carries the shepherd's brief command in <code>commands</code> (its body
+   carries the review notes), then the shepherd launch in <code>seats</code>; <code>build next</code> returns the same. A light item has no delta review: its <code>continue</code> feedback starts
+   <code>Re-read:</code> and the same <a href="../concepts/#sentinel">sentinel</a> rewrites its <code>Verdict:</code> and <code>Head:</code> lines.</li>
+<li>Pull request: <code>wuwei pr raise &lt;owner/repo&gt; --base main --title &lt;title&gt; --body-file
+   &lt;file&gt; --item &lt;item&gt;</code> opens the PR, links it to the item and moves the item to <code>raised</code>.
+   The shepherd opens it this way. A <code>gh pr create</code> for a recorded item that links no PR
+   warns naming <code>wuwei pr raise ... --item &lt;item&gt;</code> below strict and is refused under strict. <code>wuwei pr state</code>
+   reads the host; <code>wuwei pr act &lt;ref&gt;</code> returns the next PR action, including a post-PR fix
+   round. When the host reports the PR merged, the item is <code>merged</code>, whatever round it
+   was in.</li>
+</ol>
+<p>Process depth follows the <a href="../concepts/#tier">tier</a>. A light item skips the class sweep, gate step zero and
+the long verdict rows. A standard item sweeps only the classes <code>wuwei sweep classes
+&lt;worktree&gt;</code> lists and mutates only when its diff touches guard code or a trust path, or the lead flagged it
+trust_surface or boundary_relevant. Each
+brief's <code>Depth:</code> line says which. The report's <code>## Cycle time</code> section shows how long each
+merged item took and the median per tier against the targets (light 60, standard 180
+minutes).</p>
+<p>On a non-trivial item the builder first runs every step of the configured <a href="../concepts/#spec-engine">spec engine</a>
+(spec-kit by default: specify, clarify, plan, tasks, analyze, checklist, then implement) in
+the item's worktree. Under <a href="../concepts/#strict-mode">strict mode</a> the hooks refuse source edits until the
+steps before implementation are done, and the build loop keeps the item from the gates
+until all of them are. An item the lead marks <code>tier: light</code> skips the spec. To skip one
+item yourself, run <code>bin/wuwei plan set &lt;item&gt; spec=skipped --reason &lt;why&gt;</code> in a host
+terminal; <code>spec=required</code> turns the check back on.</p>
+<p>Phases move by themselves: <code>planned</code>, <code>implement</code>, <code>gate</code>, <code>fix</code>, <code>delta</code>, <code>raised</code>,
+<code>merged</code>. You never move one by hand on this path.</p>
+<p>With a <a href="../concepts/#docs-system">docs system</a> configured, an item tiered standard or full
+carries a <a href="../concepts/#docs-obligation">docs obligation</a>: before its quality gate passes the
+builder records <code>bin/wuwei plan set &lt;item&gt; docs=&lt;page&gt;|new|none --reason "&lt;why&gt;"</code>, or under
+markdown writes the file with <code>bin/wuwei docs page &lt;item&gt;</code>. <code>wuwei next</code> shows a <code>docs</code> row
+until it does, and <code>close</code> names any merged item whose docs were never written.</p>
+<p>To keep an item's merge for yourself, tell the planner (or name it under <code>Change something</code> on
+the morning card); it records <code>bin/wuwei plan set &lt;item&gt; owner_merge=true</code>. From then on
+<code>wuwei merge</code>, <code>merge check</code>, <code>pr act</code>, the PR guard and the overnight shepherd refuse that
+PR, under any grant, with <code>owner merges: owner_merge set by &lt;who&gt; on &lt;date&gt;</code>. The PR carries
+the <code>owner-merge</code> label and, when raised after the flag, an <code>Owner merges:</code> line in its body.
+Only you clear it, with <code>bin/wuwei plan set &lt;item&gt; owner_merge=false</code> in a host terminal; the
+next pass then follows the normal merge policy. If you merge it by hand instead, the item
+moves to <code>merged</code> with the flag still set, so the record shows which way it went.</p>
+<p>With a tracker set up, every item has a <a href="../concepts/#ticket">ticket</a>. The plan proposes one
+per item and Approve opens or links them. An item still without one stops with a line naming
+its card; under strict the line names <code>bin/wuwei tracker create &lt;item&gt;</code> for a host terminal. The board and the loop DM show the
+ticket id beside the item, and WUWEI comments the item's phases, pull request and merge on it.
+Decisions and review results wait in <code>bin/wuwei drafts</code> until you send them.</p>
+<p>A draft is one card away from being sent. The refusal names the draft id and the rule that
+held it; the planner asks you its card (<code>bin/wuwei drafts show &lt;id&gt; --widget</code>) and records
+your answer with <code>bin/wuwei drafts approve &lt;id&gt;</code> or <code>drafts drop &lt;id&gt;</code>. Under strict you run
+that line in a host terminal. A draft from a connector goes out when the seat repeats its
+call, once.</p>
+<p>PR changes reach the planner without you. Every change on a raised or claimed PR that
+needs an action is one <code>pr.changed</code> event with a summary, for example
+<code>PR owner/repo#12: 2 new review comments by alice on cli/x.py; check test (3.11) failed</code>.
+Each part is delivered once. A passed check, a resolved conflict, a reviewer request, a
+timestamp, or a PR starting or stopping being owned does not wake the planner;
+<code>bin/wuwei watch why &lt;pr&gt;</code> says what the last change fired and what it suppressed.
+The Stop hook message and <code>bin/wuwei nudges</code> list that summary first, and the status line
+shows <code>prs &lt;n&gt; changed</code> until the planner has seen the wake. An idle interactive planner
+learns of a change at its next turn (its next Stop or session start): Claude Code cannot
+put input into an idle session. The listener covers the gap: it sends the summary to your
+DM and, unless <code>shepherd.autostart = false</code>, starts a headless <a href="../concepts/#shepherd">shepherd</a> seat for the
+mechanical PR actions (<a href="../remote/">remote</a>, section 5). For CI events in your own
+session, the Claude Code desktop PR monitor is the complement.</p>
+<h2 id="5-owner-decisions">5. Owner decisions<a class="headerlink" href="#5-owner-decisions" title="Permanent link">&para;</a></h2>
+<p>Some commands are yours alone and run in a host terminal, never through an agent:
+<code>bin/wuwei decide D-&lt;n&gt; &lt;option&gt;</code> for any decision, MCP registry findings included (<code>proceed</code>
+also re-runs the check), and <code>bin/wuwei drafts approve</code> or <code>drafts drop</code>. Under <code>observe</code> and
+<code>guarded</code> the planner asks you a decision in the session and records your answer with the
+same command. Under <code>strict</code>, and for credentials, you run it in a host terminal and answer y. Nudges and the report name each pending decision.</p>
+<p><code>bin/wuwei decision show D-&lt;n&gt;</code> prints a decision at your <code>owner.verbosity</code> level: by default
+the question, each option with its score, and the recommendation with one reason.
+<code>bin/wuwei decision show D-&lt;n&gt; --full</code> prints every field.</p>
+<p>To answer from your phone, run the planner session with Claude Code Remote Control
+(<code>claude --remote-control</code>, or <code>/remote-control</code> inside the session) and turn on
+"Push when actions required" in <code>/config</code>. Each decision question then reaches the Claude
+mobile app and stays open until you answer. The planner records that answer with
+<code>bin/wuwei decide</code>, or you run it in a host terminal. To command the workspace and
+answer decisions from Slack as well, run <code>bin/wuwei setup slack</code> and see
+<a href="../remote/">remote operation</a>. A Slack DM answer to a two-way decision is your outcome at
+once. An answer to a one-way decision is evidence, and <code>status --line</code> counts it as
+<code>phone answers 1</code> until you record it with <code>bin/wuwei decide</code>.</p>
+<p>A record, a chat send or a deploy on a <a href="../concepts/#novel">novel</a> target, one the workspace has
+never touched, comes to you once even when the <a href="../concepts/#mandate">mandate</a> would take it. The card says
+<code>first time for &lt;target&gt;</code>. One answer clears the target, and the next one runs as usual. The report
+lists each target first seen today under <code>First time today</code>.</p>
+<p>A record is two-way only when WUWEI can undo it and has tried that undo once here. On the first
+day the planner runs <code>wuwei undo rehearse commit</code> and <code>wuwei undo rehearse decision</code>, which
+<code>wuwei next</code> returns after the gate. Until they ran, two-way records of that kind come to you as
+cards, and a message or a merge to a repository that deploys always does. To undo, answer Undo on
+the card or reply <code>undo D-3</code> to the listener DM. You can also run <code>bin/wuwei undo D-3</code> (or <code>bin/wuwei undo
+&lt;event id&gt;</code> for a merge) in a host terminal and answer y. The report lists what was undone under
+<code>Undone today</code> and the one-way actions of the day under <code>Cannot be undone</code>.</p>
+<p>Seats do not ask what their mandate lets them decide. You see two more things here. An item
+that goes back and forth shows as <code>loops N</code> on the status line and a <code>negotiation.loop</code>
+nudge (a <a href="../concepts/#page">page</a> when its goal date has passed). When the listener runs, the counts and the last two exchanges reach
+your DM. An external confirmation a seat routed with <code>--external</code>
+waits <code>decisions.wait_hours</code> weekday hours for your answer; then the sweep confirms the
+recommendation on a two-way door or <a href="../concepts/#park">parks</a> the item for your <code>decide</code>.</p>
+<h3 id="cruise-answers">Cruise answers<a class="headerlink" href="#cruise-answers" title="Permanent link">&para;</a></h3>
+<p>Under <code>autonomy.mode = "autonomous"</code> the CLI already takes clear records as recommended (the
+mandate). Cruise mode marks the ones whose class runs at L2 or L3: the record is two-way,
+inside its own branch, PR or the workspace, its margin reaches <code>decisions.cruise.margin</code> and
+fewer than <code>max_per_day</code> were answered today. Such a record reads <code>Decided-by: cruise
+defer@L2</code> (class and level). A thin margin on an L2 or L3 class that the mandate does not
+take still comes to you.</p>
+<p>At L2 you have <code>undo_minutes</code> (60 by default) to undo it. <code>bin/wuwei nudges</code> lists it first,
+<code>D-3 taken as A by cruise defer@L2, undo until 13:00</code>, and <code>bin/wuwei decision show D-3
+--widget</code> asks Keep or Undo on a card. The planner records your answer with <code>wuwei decision
+undo D-3 --answer "&lt;label&gt;"</code>; run <code>bin/wuwei decision undo D-3</code> in a host terminal and answer
+y, or reply <code>undo D-3</code> to the listener DM. An undo puts the record back to you as <code>Outcome:
+pending</code> and spends the class's error budget. After the window, reverse it with <code>bin/wuwei
+decide D-3 &lt;option&gt;</code>, which spends it too. An L3 answer has no window; the batched
+two-way summary from the watch lists it, cruise answers first.</p>
+<p>Levels move only through the CLI, each move a line in <code>.wuwei/memory/ledger.jsonl</code>. Undos,
+reversals, a weekly sample you answer differently and an escaped defect on an item a cruise
+answer named spend the class's error budget: <code>budget_share</code> of its cruise answers over
+<code>budget_window_days</code>. One event never lowers a class. When the events exceed the allowance
+and number at least two, the CLI lowers the class one level, with a ledger line that
+names every event, and restores it when the window refills. A fast burn sends a nudge
+first: <code>nudge: defer burns its error budget at 7.0x: ... Run: wuwei cruise budget</code>.
+<code>bin/wuwei cruise budget</code> prints class, level, answered, spent, allowance, burn and state.
+<code>plan propose</code> asks you to raise a class after <code>promote_agreements</code> agreeing answers with
+its budget unspent, and once a week asks one recent cruise answer again without its
+recommendation; both cards come after the morning gate.</p>
+<p>The status line shows the highest level a class runs at, <code>cruise L2</code>, or <code>cruise off | L2</code>
+when <code>decisions.cruise.enabled = false</code>, and <code>cruise L2 · budget defer spent</code> while a spent
+budget holds a class lower. It adds <code>· uncalibrated builder</code> while a role's stated confidence
+is uncalibrated: its records come to you as cards until it recovers. <code>bin/wuwei cruise
+calibration</code> shows the Brier score per class and role, and the day report and the retro
+carry a <code>## Calibration</code> section naming the records that broke a forecast. A raise card
+also needs the class calibrated. Under <code>supervised</code> every class runs at L0.</p>
+<h3 id="how-you-answer">How you answer<a class="headerlink" href="#how-you-answer" title="Permanent link">&para;</a></h3>
+<p>In the Claude Code session (desktop app, terminal or IDE alike) each owner question shows up
+as a question card: tap an option, the recommended one first. The planner records your pick
+with the command printed beside the card. When that command needs your confirmation in a
+host terminal, the planner shows you the line to run.</p>
+<p>Away from the session, the same question reaches your phone through Remote Control, or as a
+DM from the listener when the planner runs headless.</p>
+<p>Use the host terminal for what a hook sends there: today your commands listed at the top
+of this section, and under <code>strict</code> posture everything owner-only.</p>
+<h2 id="long-sessions">Long sessions<a class="headerlink" href="#long-sessions" title="Permanent link">&para;</a></h2>
+<p>The planner session is the one long-lived context of the day; seats are fresh per item.
+Quality can drift as that context grows, so WUWEI measures it and lets you rotate the
+planner on a schedule.</p>
+<ul>
+<li>Measured: <code>bin/wuwei report</code> has a <code>## Quality by band</code> section with gates, FIX rate,
+  fix rounds, verdict lint rejections and your interventions. It splits them per hour band (morning
+  05-11, midday 11-14, afternoon 14-18, evening 18-05, in <code>owner.timezone</code>) and per
+  planner session-age band (turns since it started today, or compacted). <code>bin/wuwei retro</code>
+  compares the last 7 days, names the worst band when its FIX rate leads every other band
+  by <code>metrics.band_margin</code>, and proposes a planner charter line for you to promote or
+  reject.</li>
+<li>Rotation: set <code>sessions.rotate_after</code> (<code>turns</code>, <code>compactions</code> or a <code>clock</code> time; off by
+  default). At the first turn past the limit with no running seat and no unanswered owner
+  decision, the Stop hook tells the planner to end the session once. Start a fresh Claude
+  Code session in the workspace and run
+  <code>wuwei plan session "$WUWEI_SESSION_ID" --take-over</code> there. <code>bin/wuwei sessions</code> shows
+  the old session as <code>rotated</code>, and the events record <code>session.rotated</code>. Nothing is lost:
+  the day lives in <code>.wuwei/</code>, not in the transcript.</li>
+<li>Re-anchoring: every SessionStart payload, after a compaction or a rotation too, opens
+  with the orientation block: what WUWEI is, the posture and the next step from
+  <code>bin/wuwei next</code>. <code>Active constraints:</code> follows with the day's goals, the approved plan,
+  open decisions and the briefs of running seats. The full day state is no longer pasted
+  into the session; it is one command away, <code>bin/wuwei state get</code>.</li>
+</ul>
+<p>Set them with <code>bin/wuwei config set</code> in a host terminal, for example
+<code>bin/wuwei config set owner.timezone '"Europe/Lisbon"'</code>,
+<code>bin/wuwei config set metrics.band_margin 0.3</code> or
+<code>bin/wuwei config set sessions.rotate_after.turns 200</code>. Each shows a diff and applies it
+after its <a href="../concepts/#digest">digest</a> (<a href="../configuration/">configuration</a>).</p>
+<h2 id="6-close">6. Close<a class="headerlink" href="#6-close" title="Permanent link">&para;</a></h2>
+<p>The planner runs <code>wuwei retro</code> and <code>wuwei close --check retro</code>, writes the report with
+<code>wuwei report</code> (shipped, merged, pending decisions and <a href="../concepts/#unmeasured">unmeasured</a> sources) and ends with
+<code>wuwei close</code>. Its <code>## Steward runs</code> section counts today's <a href="../concepts/#steward">steward</a> runs by trigger and
+names the two settings that drive them, <code>steward.every_tool_calls</code> and
+<code>watch.sweep_seconds</code>. <code>close</code> refuses while an obligation is open and names it; the Stop hook
+holds the session until close is clean. For each open item close asks: carry it to
+tomorrow (recommended), park it, or keep working, and records the answer with
+<code>wuwei plan carry ITEM</code> or <code>wuwei plan park ITEM</code>. Check the day at any time with
+<code>bin/wuwei status --line</code>.</p>
+<p>Inside a session, ask Claude for the board, or call the plugin's <code>wuwei_board</code> tool. It
+shows items by phase with gate verdicts, owned PRs and what they wait on, pending decisions
+and pages and nudges as tables, and renders the cockpit inline where the host renders MCP
+Apps. It is read-only: answering a decision or approving a draft stays a CLI owner action.</p>
+<p>Anything not on this page is recovery, not daily use: see <a href="../recovery/">recovery</a>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

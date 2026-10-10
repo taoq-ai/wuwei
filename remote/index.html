@@ -1,0 +1,1681 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Autonomous delivery where the safe path is the default one.">
+      
+      
+        <meta name="author" content="TaoQ AI">
+      
+      
+        <link rel="canonical" href="https://taoq-ai.github.io/wuwei/remote/">
+      
+      
+        <link rel="prev" href="../recovery/">
+      
+      
+        <link rel="next" href="../rehearsal/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Remote operation - WUWEI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#remote-operation" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="WUWEI" class="md-header__button md-logo" aria-label="WUWEI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            WUWEI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Remote operation
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/taoq-ai/wuwei" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    taoq-ai/wuwei
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../daily/" class="md-tabs__link">
+          
+  
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../concepts/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../reference/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../recovery/" class="md-tabs__link">
+          
+  
+  
+  Operations
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="WUWEI" class="md-nav__button md-logo" aria-label="WUWEI" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    WUWEI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/taoq-ai/wuwei" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    taoq-ai/wuwei
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../daily/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Daily path
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    What the session knows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operator reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adapters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Adapters and ports
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../charter-overrides/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Charter overrides
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../recovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Recovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote operation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Remote operation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#connect-slack-in-one-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connect Slack in one command
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-remote-control-no-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Remote Control, no setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-slack-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The Slack app
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-pin-your-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Pin your identity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-second-factor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The second factor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-install-the-listener" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Install the listener
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-commands-from-the-dm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Commands from the DM
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-decisions-on-the-phone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Decisions on the phone
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rehearsal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release rehearsal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integrity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#connect-slack-in-one-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connect Slack in one command
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-remote-control-no-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Remote Control, no setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-the-slack-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. The Slack app
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-pin-your-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Pin your identity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-second-factor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The second factor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-install-the-listener" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Install the listener
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-commands-from-the-dm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Commands from the DM
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-decisions-on-the-phone" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Decisions on the phone
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Limits
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="remote-operation">Remote operation<a class="headerlink" href="#remote-operation" title="Permanent link">&para;</a></h1>
+<p>This page sets up running a day from your phone: Claude Code Remote Control first, then
+optionally the Slack listener and your owner DM. Every step runs on the always-on host
+that holds the workspace. <code>bin/wuwei setup slack</code> does the Slack part in one command.</p>
+<h2 id="connect-slack-in-one-command">Connect Slack in one command<a class="headerlink" href="#connect-slack-in-one-command" title="Permanent link">&para;</a></h2>
+<p>Create the Slack app first (section 2: the four scopes and the Messages Tab). Then run
+<code>bin/wuwei setup slack</code> in a host terminal. Each step prints one line saying what it did:</p>
+<ol>
+<li>It asks for the bot token (hidden as you type; the Bot User OAuth Token on the app's
+   OAuth &amp; Permissions page) and your owner DM channel id (starts with <code>D</code>, shown in the
+   conversation's details or link), and saves both to <code>.wuwei/env</code> with mode <code>0600</code>.</li>
+<li>It asks you to send any message to the app in the DM and waits up to 5 minutes. It
+   shows the sender, for example <code>T0123ABC/U0123ABC</code>, and proposes the pin
+   <code>control_plane.owner</code> together with <code>adapters.chat = "slack"</code> and
+   <code>adapters.inbound = "slack"</code>. One confirmation applies all three.</li>
+<li>It generates <code>WUWEI_TOTP_SECRET</code>, saves it to <code>.wuwei/env</code> and prints the
+   <code>otpauth://</code> URI for your authenticator app (section 4).</li>
+<li>It installs the listener, or restarts it when it is already installed (section 5).</li>
+<li>It ends with <code>bin/wuwei config check</code>.</li>
+</ol>
+<p>A value that is already set is kept and named, so run it again after editing
+<code>.wuwei/env</code> to restart the listener. When a step stops, the line says what to check in
+the Slack app settings, and running the command again picks up where it stopped.
+<code>bin/wuwei setup</code> leads into the same steps when you answer Slack to the chat question.
+Sections 2 to 5 are the same steps by hand, for reference.</p>
+<h2 id="1-remote-control-no-setup">1. Remote Control, no setup<a class="headerlink" href="#1-remote-control-no-setup" title="Permanent link">&para;</a></h2>
+<p>Remote Control needs no WUWEI setup. Start the planner session with
+<code>claude --remote-control</code>, or run <code>/remote-control</code> inside it; "Enable Remote Control for
+all sessions" in <code>/config</code> connects every interactive session. The session keeps running
+on the host and the Claude mobile app or claude.ai/code is a window into it.</p>
+<ul>
+<li>Plans: Pro, Max, Team and Enterprise; API keys are not supported. On Team and
+  Enterprise an organisation Owner must first enable Remote Control in the Claude Code
+  admin settings. Zero Data Retention organisations cannot enable it.</li>
+<li>Turn on "Push when actions required" in <code>/config</code> (and optionally "Push when Claude
+  decides"), and allow notifications for the Claude mobile app. Pushes are skipped while
+  you are active in the connected terminal.</li>
+<li>Questions and permission prompts stay open until you answer them from any connected
+  device.</li>
+<li>The host must stay on with the <code>claude</code> process running. It reconnects after sleep or
+  a network drop and needs outbound HTTPS only. A small always-on machine running the
+  workspace session is the recommended host; a cloud session frees the laptop but cannot
+  read the local workspace.</li>
+</ul>
+<p>Not relied on: a guaranteed proactive push, and Remote Control for headless <code>claude -p</code>
+runs. Sessions started from the Slack DM (section 6) are headless, so they are not
+reachable through Remote Control; their questions come to the DM as decisions.</p>
+<p>How a phone answer becomes your outcome: section 7.</p>
+<h2 id="2-the-slack-app">2. The Slack app<a class="headerlink" href="#2-the-slack-app" title="Permanent link">&para;</a></h2>
+<p>The rest of this page is optional, and <code>bin/wuwei setup slack</code> does the config and
+<code>.wuwei/env</code> steps of sections 2 to 5 for you. Set both Slack adapters in <code>.wuwei/config.toml</code>; the
+listener answers through the chat adapter, so remote operation replaces the
+<code>chat = "none"</code> the <a href="../daily/">daily path</a> suggests for a solo owner. With
+<code>shepherd.min_reviewers = 0</code> the channel-post obligation stays not applicable.</p>
+<div class="highlight"><pre><span></span><code><span class="k">[adapters]</span>
+<span class="n">inbound</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"slack"</span>
+<span class="n">chat</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"slack"</span>
+</code></pre></div>
+<p>Create a Slack app for your Slack workspace and install it to get a bot token. The Slack
+adapters call two Web API methods only:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Used for</th>
+<th>Bot scope</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>conversations.history</code></td>
+<td>reading your owner DM</td>
+<td><code>im:history</code></td>
+</tr>
+<tr>
+<td><code>conversations.history</code></td>
+<td>reading mentions in public channels</td>
+<td><code>channels:history</code></td>
+</tr>
+<tr>
+<td><code>conversations.history</code></td>
+<td>reading mentions in private channels</td>
+<td><code>groups:history</code></td>
+</tr>
+<tr>
+<td><code>chat.postMessage</code></td>
+<td>sending replies to your owner DM</td>
+<td><code>chat:write</code></td>
+</tr>
+</tbody>
+</table>
+<p>Add the scopes under OAuth &amp; Permissions, Bot Token Scopes. In the app settings, open App
+Home and turn on the Messages Tab with 'Allow users to send Slash commands and messages
+from the messages tab', or Slack will not let you message the app.</p>
+<p>Your owner DM is the direct message between you and the app. Its channel id starts with
+<code>D</code> (placeholder <code>D0123ABC</code>) and is shown in the conversation's details or link. To have
+mentions read, add the app to each channel in <code>outbound.work_channels</code> and
+<code>outbound.external_channels</code> and put your Slack user id in <code>owner.handles</code>. Mentions are
+stored in the inbox and wake the planner; nothing answers them from the phone.</p>
+<p>Put the credentials in <code>.wuwei/env</code> on the host (created <code>0600</code> by init; edit it
+yourself, agents cannot):</p>
+<div class="highlight"><pre><span></span><code>SLACK_BOT_TOKEN=&lt;bot token&gt;
+SLACK_OWNER_DM_CHANNEL=D0123ABC
+</code></pre></div>
+<p>For a fake Slack or a proxy, add <code>SLACK_API_BASE=&lt;base URL&gt;</code> (default
+<code>https://slack.com/api/</code>). It must be <code>https</code>, or <code>http</code> to <code>127.0.0.1</code>, <code>localhost</code> or
+<code>::1</code>, so the token never crosses the network in clear. It is treated as a credential and
+never printed.</p>
+<p>Leave <code>SLACK_USER_TOKEN</code> unset on this host. When it is set, the adapters read and reply
+with it instead of the bot token, so replies appear as you.</p>
+<p>Run <code>bin/wuwei config check</code>. Each Slack line under Credentials must have a <code>set</code>:</p>
+<div class="highlight"><pre><span></span><code>  chat.slack: SLACK_BOT_TOKEN: set, SLACK_USER_TOKEN: missing (one required)
+  chat.slack: SLACK_OWNER_DM_CHANNEL: set
+  inbound.slack: SLACK_BOT_TOKEN: set, SLACK_USER_TOKEN: missing (one required)
+  inbound.slack: SLACK_OWNER_DM_CHANNEL: set
+</code></pre></div>
+<p>It checks presence only, not whether the token works.</p>
+<h2 id="3-pin-your-identity">3. Pin your identity<a class="headerlink" href="#3-pin-your-identity" title="Permanent link">&para;</a></h2>
+<p><code>bin/wuwei setup slack</code> shows the sender of your first DM message and pins it on your
+confirmation. Only the sender pinned in <code>control_plane.owner = "T0123ABC/U0123ABC"</code> (your Slack team id,
+a slash, your user id) can command. There is one owner per workspace. Until it is set,
+<code>bin/wuwei config check</code> prints
+<code>control_plane.owner: missing (&lt;team id&gt;/&lt;user id&gt;; see remote operation section 3)</code> and
+exits 1; a malformed
+pin prints <code>control_plane.owner: invalid</code>. It never prints the pin.</p>
+<p>Set <code>owner.name</code> in <code>.wuwei/config.toml</code> too. The outward lint uses it for messages to
+other people; replies in your owner DM are addressed to you and send without it. Until it
+is set, <code>bin/wuwei config check</code> and the listener log print
+<code>owner.name: not set; the outward lint refuses every outward message except replies in your owner DM</code>.</p>
+<p>Find both ids without pasting a token anywhere: leave the pin empty, send any message
+in your owner DM, and run <code>bin/wuwei listen --once</code> on the host after section 5's setup
+(the listener need not be installed). The output contains:</p>
+<div class="highlight"><pre><span></span><code>listen remote unmeasured: control_plane.owner must pin &lt;team&gt;/&lt;user&gt;; this message came from T0123ABC/U0123ABC
+</code></pre></div>
+<p>and the DM answers "That command could not run; see the listener log on the host."
+This run exits 2.
+Under launchd the same line lands in <code>.wuwei/listen.stdout.log</code>. Copy the pair into the
+pin. Cross-check the user id with "Copy member ID" on your Slack profile.</p>
+<p>With the pin set:</p>
+<ul>
+<li>Messages from other users are ignored; a <code>remote.ignored</code> event records each sender
+  once a day.</li>
+<li>Your user id with a different or missing team id is refused. The DM answers
+  "Refused: this sender does not match the pinned identity. Confirm it on the host." and
+  a <code>remote.refused</code> event pages on the host. Editing the pin on the host is the
+  re-confirmation: the event records the pin it was checked against, and the page clears
+  once <code>control_plane.owner</code> holds a different value. A refusal while the pin is right
+  stays paged until you run <code>bin/wuwei remote ack</code> in a host terminal: it lists today's
+  refused message ids, asks y/N and records a <code>remote.acknowledged</code>
+  event. A later refusal pages again. Agent tools are refused this command, and without
+  a terminal it exits 2. Otherwise the page ends with the day. <code>stop all</code> is still
+  accepted.</li>
+</ul>
+<h2 id="4-the-second-factor">4. The second factor<a class="headerlink" href="#4-the-second-factor" title="Permanent link">&para;</a></h2>
+<p><code>plan</code> and <code>ask</code> need a second factor: a current TOTP code at the end of the message, or
+a <code>confirm</code> reply within 2 minutes. <code>bin/wuwei setup slack</code> generates the secret and
+prints the URI below. By hand, generate a secret on the host:</p>
+<div class="highlight"><pre><span></span><code>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">"import base64, secrets; print(base64.b32encode(secrets.token_bytes(20)).decode())"</span>
+</code></pre></div>
+<p>Add it to <code>.wuwei/env</code> as <code>WUWEI_TOTP_SECRET=&lt;printed value&gt;</code>. Load it into an
+authenticator app by manual key entry (time based, SHA1, 6 digits, 30 seconds), or
+encode this URI as a QR code with a tool on the host:</p>
+<div class="highlight"><pre><span></span><code>otpauth://totp/WUWEI:owner?secret=&lt;printed value&gt;&amp;issuer=WUWEI&amp;algorithm=SHA1&amp;digits=6&amp;period=30
+</code></pre></div>
+<p>Never paste the secret or the URI into a website.</p>
+<p>The code must reach the listener within 2 minutes of the message, and each code works
+once. The secret is readable by any process running as you on the host (design 9.1): it
+guards against a stranger in the DM or a stolen Slack session, not against your own
+user. Without <code>WUWEI_TOTP_SECRET</code>, <code>confirm</code> is the only factor. <code>bin/wuwei config check</code>
+prints <code>WUWEI_TOTP_SECRET: set</code> or <code>WUWEI_TOTP_SECRET: missing (confirm replies are the
+only second factor)</code>; neither changes its exit code, and it never prints the value.</p>
+<h2 id="5-install-the-listener">5. Install the listener<a class="headerlink" href="#5-install-the-listener" title="Permanent link">&para;</a></h2>
+<p><code>bin/wuwei setup slack</code> installs the listener, or restarts it when it is installed.
+Optional settings in <code>.wuwei/config.toml</code>, defaults shown:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[listen]</span>
+<span class="n">poll_seconds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">60</span>
+<span class="n">dead_seconds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">300</span>
+
+<span class="k">[responder]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</code></pre></div>
+<p>Run <code>bin/wuwei listen install --dry-run</code> to see the unit, then <code>bin/wuwei listen install</code>
+from a shell where <code>claude</code> is on <code>PATH</code> and signed in: the unit records the current
+<code>PATH</code>, and <code>plan</code> and <code>ask</code> run <code>claude</code> from it. One listener per workspace, labelled
+<code>wuwei-listen-&lt;hash&gt;</code>.</p>
+<ul>
+<li>macOS: a launchd agent that runs while you are logged in. Logs go to
+  <code>.wuwei/listen.stdout.log</code> and <code>.wuwei/listen.stderr.log</code>.</li>
+<li>Linux: a systemd user unit; logs are in the user journal
+  (<code>journalctl --user -u wuwei-listen-&lt;hash&gt;</code>). On a host without a login session, run
+  <code>loginctl enable-linger</code> so the unit keeps running.</li>
+</ul>
+<p>The listener reads <code>.wuwei/env</code> once at start: after editing it, run
+<code>bin/wuwei listen uninstall</code> and <code>bin/wuwei listen install</code> again. Edits to <code>config.toml</code>
+apply at the next poll. More detail is in
+<a href="../configuration/#running-the-listener">running the listener</a>.</p>
+<p><code>bin/wuwei listen --once</code> runs one poll: exit 0 when it polled, with or without new
+messages, and exit 2 when it could not run (configuration, credentials, the pin, the
+Slack API), with the reason printed. A message in any channel other than your owner DM
+logs a <code>listen remote.unmatched</code> line with its id and is never a command.</p>
+<p>The listener writes a <code>listen: clock</code> line every two minutes. Session start reports
+<code>listen dead</code> when today's latest clock line is older than <code>listen.dead_seconds</code>, or when
+the listener is installed and wrote none today. The same rule drives the status line:
+<code>wuwei status</code> shows <code>listen dead</code> (and <code>bin/wuwei nudges</code> a page), <code>listen unmeasured</code>
+when the clock cannot be read, <code>listen off</code> when the listener has not run today, and
+<code>listen alive</code> while it is alive.</p>
+<p>While it runs, the listener also takes over PR polling from the watch. Every tick (at most
+30 s apart) it sends conditional requests (<code>If-None-Match</code> with the last ETag) for each
+raised or claimed PR, its check runs and its statuses. An unchanged PR costs no event and
+no rate limit; a change, a failed probe or a full read older than <code>pr.poll_seconds</code> runs
+the full read at once. Each <code>pr.changed</code> reaches your DM once with its summary, for example
+<code>PR owner/repo#12: check test (3.11) failed.</code>, followed by what the shepherd starts or
+<code>Shepherd autostart is off; nothing started.</code> With <code>control_plane.content = "none"</code> the DM
+is the fixed update line. A summary the outward lint refuses becomes
+<code>PR #12 changed; details are on the host.</code></p>
+<p>With <code>shepherd.autostart</code> on (the default; set it to <code>false</code> to stop), the listener tries one headless shepherd
+seat per mechanical PR state (a launch the guard refuses is not retried until the state
+changes): a logged brief, the seat launch guard (memory floor,
+<code>host.seats</code>, MCP gate) and one headless Claude Code turn registered with role <code>shepherd</code>.
+It rebases a conflicted PR and runs the fast checks, opens the fix round brief for red CI,
+answers review threads with drafts and re-requests a stale review. It never merges, and
+every post it makes is a draft. The PreToolUse hook enforces the role: under a shepherd seat
+it refuses any command that mentions <code>merge</code> or changes a <code>WUWEI_</code> variable. The planner's next turn names the result.</p>
+<p>Kill switches, strongest last:</p>
+<ol>
+<li><code>stop all</code> from the DM (section 6) stops remote sessions.</li>
+<li><code>responder.enabled = false</code> in <code>config.toml</code> takes effect at the next poll: messages
+   are still stored, no command is handled, no PR change reaches the DM, no shepherd
+   starts and the planner is not woken. Stored commands are handled once it is back on.</li>
+<li><code>bin/wuwei listen uninstall</code> in a host terminal stops polling. Agent tools cannot run it.</li>
+</ol>
+<h2 id="6-commands-from-the-dm">6. Commands from the DM<a class="headerlink" href="#6-commands-from-the-dm" title="Permanent link">&para;</a></h2>
+<p>Only top-level messages in your owner DM are commands, each handled once, in order. Answer
+as a new message, not in a thread. Every reply passes the security check and the outward
+lint and is sent, not drafted. The command list the DM sends back:</p>
+<div class="highlight"><pre><span></span><code>Commands: plan, status, report, ask &lt;question&gt;, stop &lt;session&gt;, stop all. Decisions: approve D-n, option X on D-n, more D-n, undo D-n, drop it.
+</code></pre></div>
+<p>One exchange per command (you, then the DM):</p>
+<div class="highlight"><pre><span></span><code>status
+1 building · seats 1/1 (builder) | pages 0 · nudges 1
+
+report
+Report 2026-09-30: merged 1, open 0, parked 0, decisions answered 2.
+
+plan
+Reply confirm within 2 minutes to run it, or send it again ending with a current code.
+confirm
+Session 1a2b3c4d: turn ended, 1 decisions waiting.
+
+plan today 123456
+Session 1a2b3c4d: turn ended, 1 decisions waiting.
+
+ask which PRs are waiting on review 123456
+&lt;the answer&gt;
+Session 1a2b3c4d: turn ended, 0 decisions waiting.
+
+stop 1a2b3c4d
+Stopped 1 sessions.
+
+stop all
+Stopped 2 sessions.
+
+confirm
+Nothing to confirm from the last 2 minutes.
+
+deploy now
+Commands: plan, status, report, ask &lt;question&gt;, stop &lt;session&gt;, stop all. Decisions: approve D-n, option X on D-n, more D-n, undo D-n, drop it.
+</code></pre></div>
+<p>With <code>control_plane.content = "none"</code>, <code>status</code>, <code>report</code> and the answer to <code>ask</code> arrive as
+"An update is waiting in the workspace." Decisions a turn raises arrive before its
+<code>Session</code> line (section 7). A sender that fails the pin (section 3) gets
+"Refused: this sender does not match the pinned identity. Confirm it on the host."
+<code>stop</code> takes effect between turns and a stopped session is never resumed; <code>stop</code>,
+<code>status</code>, <code>report</code> and decision replies need no factor.</p>
+<p><code>plan</code> and <code>ask</code> start headless <code>claude -p</code> sessions with the role's tools only (<code>ask</code>
+is read-only). A refused tool arrives as a decision; granting it stays a host change. No
+session starts while free memory is below <code>host.free_memory_mb</code>. <code>bin/wuwei sessions</code>
+on the host lists them with role <code>remote</code> and a <code>stopped</code> field once stopped; the
+<code>sessions</code> count in <code>wuwei status</code> counts live sessions only.</p>
+<h2 id="7-decisions-on-the-phone">7. Decisions on the phone<a class="headerlink" href="#7-decisions-on-the-phone" title="Permanent link">&para;</a></h2>
+<p>Remote Control path: the planner asks each decision as a question. With "Push when
+actions required" it reaches the phone and stays open until you answer.</p>
+<p>DM path, for every decision routed to you: raised by a <code>plan</code> session, by
+<code>bin/wuwei decision route</code> or <code>bin/wuwei pr act</code> on the host, or by a refused tool. A
+turn's decisions arrive before its <code>Session</code> line; host decisions arrive at the next
+listener poll. Each is sent once a day, recorded as a <code>decision.escalated</code> event. With
+<code>control_plane.content = "summary"</code> and the default <code>owner.verbosity.dm = "brief"</code>, it is
+the same text <code>bin/wuwei decision show D-3</code> prints on the host:</p>
+<div class="highlight"><pre><span></span><code>D-3: &lt;one-line question&gt;
+A: &lt;option&gt; (score 80)
+B: &lt;option&gt; (score 20)
+Recommended: A, ahead of B on &lt;criterion&gt;.
+Reply more D-3 for the full record.
+Not recorded. Reply approve D-n, option X on D-n, or drop it.
+</code></pre></div>
+<p>At <code>standard</code> the context, confidence, reversibility, blast radius, pre-mortem and revisit
+lines follow the recommendation; at <code>full</code> every field is sent and the <code>Reply more</code> line is
+left out.</p>
+<p>With <code>control_plane.content = "none"</code>:</p>
+<div class="highlight"><pre><span></span><code>D-3 options: A, B
+Not recorded. Reply approve D-n, option X on D-n, or drop it.
+</code></pre></div>
+<p>A question the outward lint refuses arrives as "D-3 is waiting in the workspace."</p>
+<p><code>more D-3</code> sends every field of a decision that is waiting on you, needs no factor and
+records nothing. With <code>control_plane.content = "none"</code> it sends <code>D-3 options: A, B</code>. A
+record the outward lint refuses gets "The full record of D-3 is on the host." and a
+decision that is not waiting gets "D-3 is not waiting on you."</p>
+<p>Reply with <code>approve D-3</code> (takes the recommendation), <code>option B on D-3</code>, or <code>drop it</code>
+(only when exactly one decision is pending; takes its Do nothing or Defer option).
+Anything else gets the command list. Replies need no factor.</p>
+<p>Each reply is kept as a <code>decision.replied</code> event. What happens next depends on the
+decision's <code>Reversibility:</code>.</p>
+<p>A two-way decision can be undone, so your reply is your outcome: it is recorded at once,
+as <code>bin/wuwei decide</code> records it, with a Notes line giving the time and naming the DM,
+and items parked on it resume. Nothing is needed on the host. The DM answers:</p>
+<div class="highlight"><pre><span></span><code>Recorded D-3 option B as your outcome; it can be undone, so no host step is needed.
+</code></pre></div>
+<p>A one-way or <code>unsure</code> decision cannot be undone, so your reply is evidence, not your
+outcome, and the DM answers:</p>
+<div class="highlight"><pre><span></span><code>Noted D-3 option B. D-3 cannot be undone, so confirm it on the host: decide D-3 B.
+</code></pre></div>
+<p>If the <code>plan</code> session that raised the decision is live, it resumes with
+"Decision D-3: option B." either way, after the recorded line for a two-way decision.</p>
+<p>For a one-way decision the first answer stands. A second, different answer is not
+recorded:</p>
+<div class="highlight"><pre><span></span><code>Not recorded: D-3 already has option B from this DM. Record the outcome on the host to change it.
+</code></pre></div>
+<p>Record a one-way outcome in a host terminal with <code>bin/wuwei decide D-3 B</code>.
+Until then <code>bin/wuwei nudges</code> and session start show
+<code>D-3 answered from the phone: option B, confirm with wuwei decide D-3 B</code>,
+<code>wuwei status</code> and the DM <code>status</code> reply count it as <code>phone answers 1</code>, and the report
+lists it as pending. Drafts are the same:
+<code>bin/wuwei drafts approve &lt;id&gt;</code> or <code>bin/wuwei drafts drop &lt;id&gt;</code>. Agent tools are refused
+these commands, and <code>decide</code> and <code>drafts approve</code> also ask y/N on
+the terminal, so they run neither through Remote Control nor the DM; from a phone,
+use your own remote shell to the host, for example SSH. See
+<a href="../reference/#host-terminal-actions">host terminal actions</a>.</p>
+<h2 id="8-limits">8. Limits<a class="headerlink" href="#8-limits" title="Permanent link">&para;</a></h2>
+<ul>
+<li>One owner per workspace: one pinned sender.</li>
+<li>TOTP replay protection resets at midnight: used codes are read from today's events
+  only, so a code accepted in the last minute of a day can be replayed in the first
+  minute of the next.</li>
+<li>Slack DM only: no Signal, no WhatsApp, and no responder drafting replies to people.</li>
+<li><code>run &lt;routine&gt;</code> and <code>cloud &lt;repo&gt; &lt;task&gt;</code> answer "Not available in this version.
+  Commands: plan, status, report, ask <question>, stop <session>, stop all. Decisions:
+  approve D-n, option X on D-n, more D-n, undo D-n, drop it." There are no routines, no cloud sessions, no
+  budget governor and no owner quiet hours. <code>listen dead</code> at session start and in
+  <code>wuwei status</code> are the listener's liveness signals, seen only on the host; the off-host
+  signal is the watch heartbeat's dead-man ping (<code>watch.ping_url</code>, see the reference).</li>
+<li>Thread replies are not read, and a turn blocks the listener poll while it runs; so does
+  a shepherd turn, one per tick.</li>
+<li>PR events arrive by polling with conditional requests: no webhooks or tunnels in this
+  version. An idle interactive planner learns of a PR change at its next turn; the DM and
+  the shepherd seat cover the gap.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
