@@ -211,7 +211,7 @@ def present(identifier, fields, level):
 
 
 # The command that records an owner's answer to a D-n widget; <label> is the chosen option.
-RECORD = 'wuwei decide {id} "<label>"'
+RECORD = '{cli} decide {id} "<label>"'
 
 
 def first(text):
@@ -243,7 +243,7 @@ def gate(root):
     return f'Morning gate (days/{workspace.day_dir(root).name}/plan.md): '
 
 
-def record_widget(identifier, fields, record=RECORD, level='brief', hidden=False):
+def record_widget(identifier, fields, record=RECORD, level='brief', hidden=False, *, root):
     """A decision that passed the new-record check as a widget: titles as labels, the
     recommendation first; rationale, consequence and lens lines, trimmed at brief. hidden (the
     #283 weekly sample) keeps record order and shows neither the recommendation nor its reasons."""
@@ -257,7 +257,8 @@ def record_widget(identifier, fields, record=RECORD, level='brief', hidden=False
                   [(title + (' (Recommended)' if option == chosen and not hidden else ''),
                     '\n'.join(trim(part) for part in ((consequence,) if hidden else
                                                        (rationale, consequence, *lenses.get(option, [])))))
-                   for option, title, rationale, consequence in rows[:4]], record.format(id=identifier))
+                   for option, title, rationale, consequence in rows[:4]],
+                  record.format(id=identifier, cli=workspace.owner_cli(root)))
 
 
 def config_keys(fields):

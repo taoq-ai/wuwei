@@ -312,5 +312,5 @@ def gate_widgets(root, config):
     for key in sorted((key for key, row in rows.items() if row['planned'] and row['answered'] is None),
                       key=lambda key: int(key[2:])):
         fields, _ = decision.evaluate(decision.today_path(key, root).read_text(encoding='utf-8'))
-        widgets.append(decision.record_widget(key, fields, level=level))
+        widgets.append(decision.record_widget(key, fields, level=level, root=root))
     return widgets

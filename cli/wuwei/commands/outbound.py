@@ -368,7 +368,7 @@ def _widget(root, config, identifier):
     from wuwei import decision
     fields, _ = decision.evaluate(decision.today_path(identifier, root).read_text(encoding='utf-8'))
     print(json.dumps([decision.record_widget(identifier, fields,
-                                             level=workspace.verbosity(config, 'decisions'))], indent=2))
+                                             level=workspace.verbosity(config, 'decisions'), root=root)], indent=2))
 
 
 def ask(root, config, proposal):

@@ -596,7 +596,7 @@ def test_session_start_shows_a_phone_answer_without_changing_its_code(case):
     assert 'answered from the phone' not in message
     state.append_event('decision.replied', {'id': 'D-1', 'option': 'A'}, root)
     assert lifecycle.session_start({'cwd': str(root)}) == (
-        code, message + '\nD-1 answered from the phone: option A, confirm with wuwei decide D-1 A')
+        code, message + f'\nD-1 answered from the phone: option A, confirm with {workspace.owner_cli(root)} decide D-1 A')
 
 
 def test_session_start_decodes_a_day_without_routes_once(case, monkeypatch):

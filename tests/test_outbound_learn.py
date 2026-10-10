@@ -167,7 +167,7 @@ def test_card(root, capsys):
     assert [row['label'] for row in question['options']] == [
         'Approve (Recommended)', 'Approve channels only', 'Defer: keep as drafts',
         'Approve, mode send']
-    assert question['record'] == 'wuwei decide D-1 "<label>"'
+    assert question['record'] == f'{workspace.owner_cli(root)} decide D-1 "<label>"'
     capsys.readouterr()
     assert card(root, capsys) == widget and decisions(root) == ['D-1.md']
 

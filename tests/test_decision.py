@@ -3,6 +3,7 @@
 from hashlib import sha256
 import io
 import json
+from pathlib import Path
 
 import pytest
 
@@ -691,6 +692,12 @@ def test_owner_outcome_rejects_bad_choice_and_declined_confirmation(ws, monkeypa
     assert main(['decision', 'outcome', 'D-3', 'A']) == 1
     assert not state.read_state(ws).get('decision_outcomes')
     assert path.read_bytes() == before
+    from wuwei.commands.decision import owner_outcome
+    from wuwei.workspace import owner_cli
+    from types import SimpleNamespace
+    assert owner_outcome(SimpleNamespace(id='D-3', option='A'), root=ws) == (
+        1, f'decision: owner confirmation declined; rerun {owner_cli(ws)} decide <id> <option> '
+           'in a host terminal and answer y')
 
 
 @pytest.mark.parametrize('label,code', [('Implement fix (Recommended)', 0), ('implement fix', 0),
@@ -730,6 +737,7 @@ def test_owner_outcome_takes_a_root_and_where(ws, monkeypatch, tmp_path):
 
 def test_owner_outcome_with_where_refuses_a_one_way_record(ws, monkeypatch):
     from types import SimpleNamespace
+    from wuwei.workspace import owner_cli
     from wuwei import decision, state
     from wuwei.commands.decision import owner_outcome
     one_way = VALID.replace('Reversibility: two-way', 'Reversibility: one-way')
@@ -738,7 +746,7 @@ def test_owner_outcome_with_where_refuses_a_one_way_record(ws, monkeypatch):
     before = path.read_bytes()
     assert owner_outcome(SimpleNamespace(id='D-3', option='A'), root=ws, where='in the owner DM') == (
         1, 'decision: only a two-way decision is decided from the DM; '
-           'run bin/wuwei decide D-3 A in a host terminal')
+           f'run {owner_cli(ws)} decide D-3 A in a host terminal')
     assert not state.read_state(ws).get('decision_outcomes')
     assert path.read_bytes() == before
 
@@ -1235,8 +1243,9 @@ Outcome: pending
 
 def test_decision_widget_passes_the_question_guard(ws):
     from wuwei import decision
+    from wuwei.workspace import owner_cli
     save(ws)
-    built = decision.record_widget('D-3', decision.evaluate(VALID)[0])
+    built = decision.record_widget('D-3', decision.evaluate(VALID)[0], root=ws)
     assert built['question'] == 'D-3: Which fix? Correctness decided it.' and built['header'] == 'D-3'
     assert [o['label'] for o in built['options']] == ['Implement fix (Recommended)', 'Defer until tomorrow']
     assert built['multiSelect'] is False
@@ -1244,27 +1253,47 @@ def test_decision_widget_passes_the_question_guard(ws):
         'Passes every must and scores 8 on Correctness.', 'The failure is fixed today.',
         'SOLID: Keeps single responsibility.', 'twelve-factor: No new config.',
         'YAGNI: Builds only the fix.', 'ponytail: Smallest diff that works.']
-    assert built['record'] == 'wuwei decide D-3 "<label>"'
+    assert built['record'] == f'{owner_cli(ws)} decide D-3 "<label>"'
     assert ask(ws, built) == (0, '')
     swapped = VALID.replace('| 10 | 8 | 2 |', '| 10 | 2 | 8 |').replace('Recommendation: A', 'Recommendation: B')
-    built = decision.record_widget('D-3', decision.evaluate(swapped)[0])
+    built = decision.record_widget('D-3', decision.evaluate(swapped)[0], root=ws)
     assert [o['label'] for o in built['options']] == ['Defer until tomorrow (Recommended)', 'Implement fix']
     save(ws, FIVE)
-    built = decision.record_widget('D-3', decision.evaluate(FIVE)[0])
+    built = decision.record_widget('D-3', decision.evaluate(FIVE)[0], root=ws)
     assert [o['label'] for o in built['options']] == [
         'Fix three (Recommended)', 'Fix one', 'Defer until tomorrow', 'Fix four']
     assert built['options'][0]['description'] == 'Scores 9.\nThree changes.'
     assert ask(ws, built) == (0, '')
 
 
+def test_printed_decide_runs_from_anywhere(ws, monkeypatch, tmp_path):
+    import os
+    import shlex
+    from wuwei.__main__ import main
+    from wuwei import decision, state
+    save(ws)
+    decision.route_owner('D-3', decision.evaluate(VALID)[0], ws)
+    built = decision.record_widget('D-3', decision.evaluate(VALID)[0], root=ws)
+    command = built['record'].replace('<label>', built['options'][0]['label'])
+    elsewhere = tmp_path / 'elsewhere'
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+    try:
+        assert main(shlex.split(command)[1:]) == 0
+    finally:
+        os.environ.pop('WUWEI_WORKSPACE', None)
+    assert state.read_state(ws)['decision_outcomes']['D-3']['option'] == 'A'
+
+
 def test_widget_trims_by_verbosity():
     from wuwei import decision
     fields = decision.evaluate(VALID)[0]
-    brief = decision.record_widget('D-3', fields)['options'][0]['description'].splitlines()[0]
-    full = decision.record_widget('D-3', fields, level='full')['options'][0]['description'].splitlines()[0]
+    brief = decision.record_widget('D-3', fields, root=Path('/w'))['options'][0]['description'].splitlines()[0]
+    full = decision.record_widget('D-3', fields, level='full', root=Path('/w'))['options'][0]['description'].splitlines()[0]
     assert brief == 'Passes every must and scores 8 on Correctness.'
     assert full == 'Passes every must and scores 8 on Correctness. It costs a little Speed.'
-    assert decision.record_widget('D-3', fields, level='full')['question'] == (
+    assert decision.record_widget('D-3', fields, level='full', root=Path('/w'))['question'] == (
         'D-3: Which fix? Correctness decided it.')
 
 
@@ -1285,7 +1314,7 @@ def test_decision_show_widget(ws, monkeypatch, capsys):
     monkeypatch.chdir(ws)
     path = save(ws)
     assert main(['decision', 'show', 'D-3', '--widget']) == 0
-    assert json.loads(capsys.readouterr().out) == [decision.record_widget('D-3', decision.evaluate(VALID)[0])]
+    assert json.loads(capsys.readouterr().out) == [decision.record_widget('D-3', decision.evaluate(VALID)[0], root=ws)]
     path.write_text(LEGACY)
     assert main(['decision', 'show', 'D-3', '--widget']) == 1
     assert 'Class' in capsys.readouterr().err
