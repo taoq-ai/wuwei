@@ -460,6 +460,7 @@ def test_watch_probe_refuses_unlisted_commands(tmp_path, monkeypatch):
         module.probe([(('hook', 'PreToolUse'), '{}'), (('state', 'set'), '')], tmp_path)
 
 
+@pytest.mark.xdist_group('timing')
 def test_watch_probe_runs_calls_together_and_times_out(tmp_path):
     import time
     from wuwei.registry import watch_service

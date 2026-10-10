@@ -128,6 +128,7 @@ def test_adapter_failure_leaves_in_process_probes_measured(ws):
     assert probes['state']['result'] == probes['memory']['result'] == 'ok'
 
 
+@pytest.mark.xdist_group('timing')
 def test_stuck_state_lock_fails_the_state_probe(ws):
     root = ws[0]
     directory = workspace.day_dir(root)
