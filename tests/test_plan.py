@@ -189,6 +189,25 @@ def test_candidate_tier_is_copied_at_approve(root):
     assert state.read_state(root)['items']['A']['tier'] == 'full'
 
 
+def test_candidate_governed_by_is_checked(root):
+    plan.propose(proposal(), root)
+    plan.approve(['A'], root, goals_confirmed=True)
+    assert 'governed_by' not in state.read_state(root)['items']['A']
+    for bad in ('', 3):
+        wrong = proposal()
+        wrong['candidates'][0]['governed_by'] = bad
+        with pytest.raises(ValueError, match='governed_by must be'):
+            plan.propose(wrong, root)
+
+
+def test_candidate_governed_by_is_copied_at_approve(root):
+    good = proposal()
+    good['candidates'][0]['governed_by'] = 'docs/prereg.md#Pre-registration'
+    plan.propose(good, root)
+    plan.approve(['A'], root, goals_confirmed=True)
+    assert state.read_state(root)['items']['A']['governed_by'] == 'docs/prereg.md#Pre-registration'
+
+
 SCANNER_CONFIG = '[adapters]\nscanner = "ziran"\n[[repos]]\nname = "acme/widget"\npath = "widget"\ndefault_branch = "main"\n'
 REPORT = (Path(__file__).parent / 'fixtures/scanner/audit.json').read_text()
 

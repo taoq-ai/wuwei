@@ -50,5 +50,12 @@ def write(item, text, root=None):
         raise ValueError(f'{location}/analysis.md is a symlink; remove the link, then run this again')
     if not text.strip():
         raise ValueError('empty report; pass the /speckit.analyze report on stdin or with --file PATH')
+    found = specmode.governing(tree, items[name], location)  # #664
+    gap = found and specmode.governed(text, (directory / 'spec.md').read_text(encoding='utf-8'))
+    if gap:
+        reference, first, last, _ = found
+        raise ValueError(f'{name} is governed by {reference} (lines {first}-{last}) and {gap}; add one row '
+                         'per assumption: | <assumption> | agrees, conflicts or not covered | <path>:<line> |, '
+                         'then run this again')
     workspace.atomic_write(target, text if text.endswith('\n') else text + '\n', mode=0o644)
     return target.relative_to(tree).as_posix()

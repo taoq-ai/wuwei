@@ -295,3 +295,8 @@ def test_builder_names_claude_codes_report_file_check():
     # #649: the refusal of a scratch analysis.md is Claude Code's check, not a WUWEI hook.
     builder = charter_text()["builder.md"]
     assert "wuwei spec analysis <item>" in builder and "in any directory" in builder
+def test_governing_document_charters():  # #664
+    text = charter_text()
+    assert "Governing:" in text["builder.md"] and "## Governing" in text["builder.md"]
+    assert "## Governing" in text["sentinel-goal.md"] and "conflicts" in text["sentinel-goal.md"]
+    assert "governed_by" in text["lead.md"]
