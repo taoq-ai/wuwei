@@ -51,6 +51,7 @@ EVENT_PRODUCERS = {
     'seat launched': 'wuwei hook PreToolUse or wuwei dispatch opinion',
     'seat stopped': 'wuwei hook SubagentStop, wuwei dispatch opinion or owner wuwei seat stop',
     'traces.gap': 'wuwei hook PostToolUse',
+    'traces.slow': 'wuwei hook PostToolUse',
     'seat stood down': 'wuwei hook SubagentStop',
     'seat adhoc': 'wuwei seat start', 'subagent.untraced': 'wuwei hook SubagentStop',
     'fast_checks.record': 'wuwei fast-checks', 'reply: acknowledged': 'wuwei reply',

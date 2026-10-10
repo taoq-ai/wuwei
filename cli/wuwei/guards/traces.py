@@ -1,10 +1,44 @@
 """Record completed tool calls in the OTLP JSONL shape consumed by ZIRAN."""
 
+import time
+
 from wuwei.guards import Guard
 from wuwei.exits import PAYLOAD
 
+# A warm call takes 5 to 20 ms; one that has already run a second is under load.
+# ponytail: sustained load above it defers the advisory steward nudge until a call fits.
+BUDGET_MS = 1000
 
-def _record(payload, root, findings=(), transcript_path=None):
+
+def _digest(directory, calls=0, steward=None):
+    """The writer's running count of today's spans and the steward base (#659), so a call
+    rescans neither traces.jsonl nor events.jsonl. A cache, not evidence: missing or invalid
+    means one recount of the span lines."""
+    import json
+    from wuwei import state, workspace
+    path = directory / 'traces.digest.json'
+    with (directory / 'state.lock').open('a') as lock:
+        state.lock_ex(lock, 'state.lock')
+        try:
+            digest = json.loads(path.read_text(encoding='utf-8'))
+            if not (isinstance(digest, dict) and set(digest) == {'tool_calls', 'steward'}
+                    and all(type(digest[key]) is int for key in digest)
+                    and 0 <= digest['steward'] <= digest['tool_calls']):
+                raise ValueError
+            digest['tool_calls'] += calls
+        except (OSError, ValueError):
+            try:
+                spans = (directory / 'traces.jsonl').read_bytes().count(b'\n')
+            except FileNotFoundError:
+                spans = 0
+            digest = {'tool_calls': spans, 'steward': 0}
+        if steward is not None:
+            digest['steward'] = max(digest['steward'], steward)
+        workspace.atomic_write(path, json.dumps(digest) + '\n', sync_dir=False)
+    return digest
+
+
+def _record(payload, root, findings=(), transcript_path=None, started=None):
     # Discovery runs on every hook; load recorder dependencies only for PostToolUse.
     import hashlib
     import json
@@ -86,21 +120,37 @@ def _record(payload, root, findings=(), transcript_path=None):
                     sessions = seat.setdefault('trace_sessions', [])
                     if payload['session_id'] not in sessions:
                         sessions.append(payload['session_id'])
-            state._write_state(bind, root, reserved=False)
+            if any(seat.get('transcript') != str(transcript_path)
+                   or payload['session_id'] not in seat.get('trace_sessions', ())
+                   for seat in bound(state.read_state(root))):
+                state._write_state(bind, root, reserved=False)  # once per seat and session (#659)
     try:
         from wuwei import steward
-        with (directory / 'traces.jsonl').open(encoding='utf-8') as stream:
-            steward.maybe_run_for_tool_calls(sum(1 for _ in stream), root)
+        digest = _digest(directory, calls=1)
+        if started is None or (time.monotonic() - started) * 1000 < BUDGET_MS:
+            base = steward.maybe_run_for_tool_calls(digest['tool_calls'], root, digest['steward'])
+            if base != digest['steward']:
+                _digest(directory, steward=base)
     except Exception:
         pass  # The due signal must never turn a recorded tool span into a hook refusal.
     return 0, ''
 
 
+def _strict(root):
+    """The workspace posture is strict; an unreadable one counts as strict."""
+    from wuwei import workspace
+    try:
+        return workspace.posture(workspace.load_config(root))[0] == 'strict'
+    except Exception:
+        return True
+
+
 def check(payload):
+    started = time.monotonic()
     import sys
     from wuwei import security, state, workspace
 
-    security_data = None
+    security_data, slow = None, False
     span, session = (payload.get(key) if isinstance(payload, dict) and isinstance(payload.get(key), str)
                      and payload[key] else 'unknown' for key in ('tool_name', 'session_id'))
     try:
@@ -128,23 +178,33 @@ def check(payload):
                 if redact(payload['session_id']) != original_session:
                     payload['session_id'] = hashlib.sha256(original_session.encode()).hexdigest()
 
+        except TimeoutError:
+            raise  # did not finish in time is not could not read (#659)
         except (OSError, ValueError, TypeError, KeyError, RuntimeError):
             return 2, 'wuwei traces: cannot inspect or record workspace security evidence; run bin/wuwei doctor, then retry'
-        code, reason = _record(payload, root, findings, transcript_path)
+        code, reason = _record(payload, root, findings, transcript_path, started)
         if not code:
             return 0, ''
     except BaseException as exc:
-        reason = f'wuwei traces: {type(exc).__name__}: could not record tool span'
+        slow, ms = isinstance(exc, TimeoutError), round((time.monotonic() - started) * 1000)
+        reason = (f'wuwei traces: did not finish in time after {ms} ms (TimeoutError); the tool ran and its span '
+                  'may be missing; run bin/wuwei doctor' if slow
+                  else f'wuwei traces: {type(exc).__name__}: could not record tool span')
     print(reason, file=sys.stderr)
+    kind = 'traces.slow' if slow else 'traces.gap'
     try:
         import hashlib
         from wuwei.redact import redact
         if redact(session) != session:  # a session id that carries a credential, as in check above
             session = hashlib.sha256(session.encode()).hexdigest()
-        state.append_event('traces.gap', {'reason': reason, 'span': redact(span), 'session': session}, root)
+        record = {'reason': reason, 'span': redact(span), 'session': session}
+        # A slow hook must not wait another 30 s to say so.
+        state.append_event(kind, {**record, 'elapsed_ms': ms} if slow else record, root, timeout=1 if slow else 30)
     except BaseException as exc:
-        print(f'wuwei traces: {type(exc).__name__}: could not log traces.gap; run bin/wuwei doctor',
+        print(f'wuwei traces: {type(exc).__name__}: could not log {kind}; run bin/wuwei doctor',
               file=sys.stderr)
+    if slow:
+        return (2, reason) if _strict(root) else (0, '')
     return (2, reason) if security_data is not None else (0, '')
 
 
