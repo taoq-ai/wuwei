@@ -50,6 +50,7 @@ def test_parse_error(script):
 @pytest.mark.parametrize('script,opaque', [
     ('''python -c 'import os; os.system("git push")' ''', True),
     ('''python3 -c 'run("gh pr merge 1")' ''', True),
+    ('''python3 -c 'print("gh pr merge 1")' ''', True),  # #671: a gh word keeps #643's reader opaque
     ('''/usr/bin/python3 -I -c 'run("git push")' ''', True),
     ('''node -e 'run("git push")' ''', True),
     ('''perl -e 'system("gh pr merge")' ''', True),
