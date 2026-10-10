@@ -1230,6 +1230,9 @@ def i39(case, rules):
                     return f'{marker} blocks: no linted {message}'
         return None
     return rules.memo(('fix needs a blocker',), compute)
+
+
+def i40(case, rules):
     """#668: the soak is skipped only for a head that turns a check failing at its base commit
     green: merge.fixes_base names a check only for base failure or error and head success."""
     def compute():
@@ -1253,7 +1256,7 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I42': i42,
               'I36': i36, 'I37': i37, 'I38': i38,
               'I36': i36, 'I37': i37, 'I39': i39,
-}
+              'I36': i36, 'I37': i37, 'I40': i40}
 
 
 def project(case):
@@ -1273,7 +1276,9 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (),
-         'I39': ()}
+         'I39': (),
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (),
+         'I40': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
