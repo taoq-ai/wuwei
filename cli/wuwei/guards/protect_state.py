@@ -236,11 +236,12 @@ def _gate_edits(payload, root):
 def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(), False)):
     """One rule for every owner-only action; (code, reason) or None."""
     from wuwei.commands import read_only
-    from wuwei.shell import _launcher, is_opaque, mentions, reads
+    from wuwei.shell import _launcher, is_opaque, mentions, reads, snippet_write
     # normalize unwraps xargs, so a CLI command may take its group or verb from stdin.
     xargs = relevant and mentions(text, ('xargs',), script=script)
     unseen = len(_WUWEI.findall(re.sub(r"['\"\\]", '', text)))
-    readers = [bool(c.argv) and (Path(c.argv[0]).name in _READERS or reads(c.argv, cwd))
+    readers = [bool(c.argv) and (Path(c.argv[0]).name in _READERS
+                                or reads(c.argv, cwd) and snippet_write(c.argv) != '')
                for c in commands]
     # A pipe feeds an executor unless every later stage is a reader with no redirect.
     feeds = [False] * len(commands)
@@ -630,7 +631,8 @@ def check_bash(payload):
         script = _input(payload, 'command')
         if not isinstance(script, str):
             raise ValueError(f'missing or invalid command; {DAMAGED}')
-        from wuwei.shell import NonliteralPathError, ParseError, UNPARSED, classify, normalize, reads, script_text
+        from wuwei.shell import (NonliteralPathError, ParseError, UNPARSED, classify, normalize, reads,
+                                 script_text, snippet_write)
         from wuwei.workspace import guard_scope
 
         def owner_script(raw):
@@ -687,11 +689,15 @@ def check_bash(payload):
         for command in commands:
             program = Path(command.argv[0]).name if command.argv else ''
             # #349: a script run with no state operand passes; -m json.tool with one file reads.
+            # #643: so does a python -c snippet with no write-like token; a refusal names it.
             if (re.fullmatch(_INTERPRETER, program)
                     and command.argv[1:4] != ['-P', '-m', 'wuwei']
                     and not reads(command.argv)
                     and re.search(_STATE_MENTION, ' '.join(command.argv[1:]))):
-                return 2, 'Opaque interpreter; use the wuwei CLI for state changes.'
+                token = snippet_write(command.argv)
+                return 2, (f'Opaque interpreter: {token} in the snippet is not a read; use the wuwei '
+                           'CLI for state changes.' if token else
+                           'Opaque interpreter; use the wuwei CLI for state changes.')
             for directory in directories:
                 if program == 'git' and 'apply' in command.argv[1:]:
                     git_directory = directory

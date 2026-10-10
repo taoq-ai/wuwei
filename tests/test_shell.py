@@ -828,3 +828,43 @@ def test_redirect_glued_to_guarded_name_is_a_mention(script):
 def test_guarded_name_as_directory_is_no_mention(script):
     from wuwei import shell
     assert not shell._GUARDED.search(script)
+
+
+_READ_643 = "import json,sys; print(json.load(open('.wuwei/state.json'))['day'])"
+
+
+@pytest.mark.parametrize('argv, expected', [
+    (['python3', '-c', _READ_643], ''), (['python3', '-c', "open('x.bin', 'rb').read()"], ''),
+    (['python3', '-c', "from pathlib import Path; print(Path('.wuwei') / 'state.json')"], ''),
+    (['python3', '-c', "print(open('cli/wuwei/shell.py').read())"], ''),
+    (['python3', '-I', '-c', _READ_643], ''), (['python3', '-Bc', _READ_643], ''),
+    (['python3', '-c', "open(p, 'w')"], "'w'"), (['python3', '-c', 'open(p, mode="a+")'], '"a+"'),
+    (['python3', '-c', "open(p, 'r+')"], "'r+'"),
+    (['python3', '-c', 'Path(p).write_text(x)'], 'write_text'),
+    (['python3', '-c', 'import os; os.replace(a, b)'], 'replace'),
+    (['python3', '-c', 'import shutil; shutil.copy(a, b)'], 'shutil'),
+    (['python3', '-c', 'import subprocess; subprocess.run(x)'], 'subprocess'),
+    (['python3', '-c', 'import os; os.system(x)'], 'system'),
+    (['python3', '-c', 'import os; os.makedirs(x)'], 'makedirs'),
+    (['python3', '-c', 'import ctypes'], 'ctypes'),
+    (['python3', '-c', "from wuwei.commands import main; main(['decide'])"], 'wuwei'),
+    (['python3', '-c', 'import json, wuwei'], 'wuwei'),
+    (['python3', '-c', 'import cli.wuwei.commands'], 'wuwei'),
+    (['python3', '-c', r"open(p,'\x77')"], '\\'), (['python3', '-c', 'open(p,chr(119))'], 'chr'),
+    (['python3', '-c', 'import sys;open(sys.argv[1],sys.argv[2])', 'p', 'w'], 'argv'),
+    (['python3', '-c', 'import logging;logging.FileHandler(p)'], 'logging'),
+    (['python3', '-c', 'FileHandler(p)'], 'Handler'), (['python3', '-c', 't.extractall(d)'], 'extract'),
+    (['python3', '-c', 'import tarfile'], 'tarfile'), (['python3', '-c', 'import zipfile'], 'zipfile'),
+    (['python3', '-c', "open(p,'W')"], "'W'"), (['python3', '-c', 'open(p,m.lower())'], 'lower'),
+    (['python3', '-c', "open(p,os.environ['M'])"], 'environ'),
+    (['python3', '-c', 'open(p,sys.stdin.read())'], 'stdin'), (['python3', '-c', 'open(p,input())'], 'input'),
+    (['python3', '-c', 'open(p,m.decode())'], 'decode'), (['python3', '-c', 'o.__class__'], '__'),
+    (['python3', '-c', 'vars(o)'], 'vars'), (['python3', '-c', 'globals()'], 'globals'),
+    (['python3', '-c', 'IMPORT SHUTIL'], 'SHUTIL'),
+    (['python3', 'x.py'], None), (['python3', '-m', 'json.tool', 'f'], None),
+    (['python3', '-i', '-c', 'x'], None), (['python3', '-cprint(1)'], None),
+    (['python3', '-c'], None), (['node', '-e', 'x'], None), (['cat', '-c', 'x'], None), ([], None),
+])
+def test_issue_643_snippet_write(argv, expected):
+    from wuwei import shell
+    assert shell.snippet_write(argv) == expected
