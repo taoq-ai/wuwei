@@ -57,6 +57,10 @@ VOCABULARY = (
     ('mail', r'(?:.*_)?(?:drafts?|labels?|threads?|spam|trash|forward|inbox|e?mails?)(?:_.*)?'),
     ('docs', r'(?:.*_)?(?:pages?|blocks?|databases?)(?:_.*)?'),
     ('other', OTHER))
+# #727: servers that act only on the owner's machine; never drafted, the command guards judge what runs.
+LOCAL_SERVERS = ('terminal', 'Claude_Preview', 'Claude_Code_iOS_Simulator', 'computer-use')
+LOCAL = (rf"mcp__(?:{'|'.join(map(re.escape, LOCAL_SERVERS))})__.*"
+         r'|mcp__Claude_Browser__preview_.*')
 DM_TOOL = r'(?:^|_)(?:dm|direct_message)(?:_|$)'
 
 
@@ -79,6 +83,8 @@ def resolve(tool, config):
         return {alias}
     if channels:
         return channels
+    if re.fullmatch(LOCAL, tool):
+        return {'local'}
     joined = '_'.join(_words(name))
     found = {channel for channel, pattern in VOCABULARY if re.fullmatch(pattern, joined)}
     return found if len(found) == 1 else set()
@@ -161,6 +167,9 @@ def _check(payload, policy):
         if root != policy_root:
             config = workspace.load_config(root)
             channels = resolve(tool, config)
+        if channels == {'local'}:  # #727: never drafted or blocked by the outward rules.
+            from wuwei import security
+            return security.outbound(payload.get('tool_input'), root) if policy is outward.check_tier else (CLEAN, '')
         if not channels:
             return _unmatched(tool, root, config, policy)
         if len(channels) != 1:
