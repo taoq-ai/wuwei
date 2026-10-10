@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.26.0](https://github.com/taoq-ai/wuwei/compare/v0.25.0...v0.26.0) (2026-10-10)
+
+
+### Features
+
+* **spec:** the analysis step checks each assumption against the governing document the item names, not only the spec against itself ([#718](https://github.com/taoq-ai/wuwei/issues/718)) ([3f44978](https://github.com/taoq-ai/wuwei/commit/3f449783b51dfb769868de1571982d1766ebd585))
+* **traces:** every subagent launched in a workspace is traced: an agent outside the seat types registers as an ad-hoc seat with the launcher's role, so its tool calls reach traces.jsonl and can be audited ([#709](https://github.com/taoq-ai/wuwei/issues/709)) ([5c0fe16](https://github.com/taoq-ai/wuwei/commit/5c0fe161b68be7d68a8bd566aef6d116a8d23264))
+
+
+### Bug Fixes
+
+* **brief:** seats read live item state: the brief names the record and the commands, and the values that change during the day (docs path, ticket, spec state) are read when the seat starts, not copied into the brief ([#722](https://github.com/taoq-ai/wuwei/issues/722)) ([d3b7066](https://github.com/taoq-ai/wuwei/commit/d3b706630d1998a3a3605f0e111aa2555bb6638a))
+* **gates:** generated and data paths never count toward the tier or the size cap, and an analysis-only change gets no security reviewer ([#704](https://github.com/taoq-ai/wuwei/issues/704)) ([b5c6d24](https://github.com/taoq-ai/wuwei/commit/b5c6d2491a2e5c5c54b831f75691ec9f5718e3a8))
+* **gates:** the gate depth reads the item's flags: a trust_surface item runs step zero and gets the security reviewer whatever its line count ([#721](https://github.com/taoq-ai/wuwei/issues/721)) ([41084e7](https://github.com/taoq-ai/wuwei/commit/41084e7628803a236872def03de17ffea7856921))
+* **guards:** a read-only python -c on state.json is a read, not a records write ([#717](https://github.com/taoq-ai/wuwei/issues/717)) ([192432a](https://github.com/taoq-ai/wuwei/commit/192432ab733299bfa5490fec4fc54ae9f506ec54))
+* **guards:** the spec guard matches analysis.md only inside a spec directory, not any file by that name ([#653](https://github.com/taoq-ai/wuwei/issues/653)) ([8b759be](https://github.com/taoq-ai/wuwei/commit/8b759bea37e66ecd3abcd7fd5782187a12f0c684))
+* **merge:** a fix to a broken base skips the soak, and merge check says either wait or who merges, never both ([#714](https://github.com/taoq-ai/wuwei/issues/714)) ([3f1db70](https://github.com/taoq-ai/wuwei/commit/3f1db70ef5ade14f39e687c69c9878d3d447557f))
+* **next:** a PR waiting on people never hides work that can run now, and build next and dispatch next give one answer ([#716](https://github.com/taoq-ai/wuwei/issues/716)) ([c642478](https://github.com/taoq-ai/wuwei/commit/c642478b3b8e0ddb85fc26370526f274f21716f4))
+* **pace:** the seat limit is not read from host memory when seats are subagents of one process; the cap is the configured host.seats and a measured per-seat cost only when seats are separate processes ([#699](https://github.com/taoq-ai/wuwei/issues/699)) ([35306d9](https://github.com/taoq-ai/wuwei/commit/35306d96d211721f17145c0c87737e3b7c270552))
+* **plan:** an empty ticket field is absent, not a rejected proposal ([#710](https://github.com/taoq-ai/wuwei/issues/710)) ([5511438](https://github.com/taoq-ai/wuwei/commit/5511438ee57cf81e31f76312b85880ad287bae38))
+* **tracker:** a bug a seat finds is filed by the seat: tracker create in the owner's own tracker is internal, not outward, so it sends without a draft under send and is configurable as a tier row ([#720](https://github.com/taoq-ai/wuwei/issues/720)) ([fe40def](https://github.com/taoq-ai/wuwei/commit/fe40def52809ada611caf4ad5b6cdbae8ad428ed))
+* **verdict:** receive keeps every blocking finding: Q-prefixed and role-prefixed findings parse the same as F-prefixed ones, and a FIX verdict with no parsed blocking finding is refused, not recorded as blocks false ([#712](https://github.com/taoq-ai/wuwei/issues/712)) ([bb1fea1](https://github.com/taoq-ai/wuwei/commit/bb1fea1cc0347e8b26f9c852afdcc5205bf5e0e0))
+* **worktree:** a new worktree fetches first and branches from origin/&lt;base&gt;, never from a stale local main ([#697](https://github.com/taoq-ai/wuwei/issues/697)) ([b5eebe9](https://github.com/taoq-ai/wuwei/commit/b5eebe9229a043be0697ab5f7df464c4542787e2))
+
+
+### Performance Improvements
+
+* **tests:** the invariant walk runs with headroom: one parse per config text is marshalled, not deep-copied, the adapter listing is reused while the directory is unchanged, and the outward classifier reads each payload once, cutting the walk's CPU by a fifth to a third with no budget or assertion changed ([#702](https://github.com/taoq-ai/wuwei/issues/702)) ([88b693c](https://github.com/taoq-ai/wuwei/commit/88b693cc77ecfb173bc29f93e584ebf5317cace1))
+* **tests:** the suite runs in parallel and the slow tests are cut, so a CI run and a local targeted run take minutes, not twenty ([#713](https://github.com/taoq-ai/wuwei/issues/713)) ([1f1b07c](https://github.com/taoq-ai/wuwei/commit/1f1b07cb1b7c30e99d35a495bc6dbace2db33fca))
+
 ## [0.25.0](https://github.com/taoq-ai/wuwei/compare/v0.24.2...v0.25.0) (2026-10-10)
 
 
