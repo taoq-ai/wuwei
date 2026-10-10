@@ -194,6 +194,8 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | --- | --- | --- |
 | `autonomy.mode` | `"autonomous"` | Who takes a decision record (`bin/wuwei decision route D-n`). `autonomous`: a Routine, Consequential or scoring Exploratory record is taken as recommended (`Decided-by: mandate`), listed in the digest and the day report with the reversal command; a tie, a Strategic record, a one-way record or a record written for you (a security finding) still asks you. `supervised`: every decision beyond a two-way one on its own branch or PR asks you. A calibration profile may not switch a supervised workspace to autonomous. Under `autonomous` an `outward.patterns` match in team or company chat is not reported; `supervised` records an `outward.lint` event and a warning. |
 | `nudges.mode` | `""` | What the status line, `bin/wuwei nudges`, the board and `bin/wuwei doctor` show of the nudges. Empty follows `autonomy.mode`: `off` when autonomous, `next` when supervised; a day without `config.toml` shows `all`. `off`: pages only, and the status line drops its `nudges N` token. `next`: pages, a phone answer not yet recorded, a fix round with nothing running (`wuwei build next <item>`) and a day ready to close (`wuwei close`). `all`: every open cause. Pages show in every mode, and events are written as before; `bin/wuwei nudges --all` lists every open cause whatever the mode. `bin/wuwei init --upgrade` names the mode it applies when the key is absent. |
+| `nudges.ttl_hours` | `24` | A nudge with no new event for this many hours leaves the list; it is counted as `expired` on the `nudges.dropped` row. Pages never expire. |
+| `nudges.max_open` | `20` | At most this many open nudges, the `nudges.dropped` row included: the oldest go and are counted as `dropped` on that row, which also counts the `expired` ones. Pages are never dropped or counted. |
 | `decisions.wait_hours` | `24` | Weekday hours in `owner.timezone` an external confirmation (`decision route D-n --external <item>`) waits for your answer before the sweep confirms it on a two-way door or parks the item. |
 | `decisions.cruise.enabled` | `true` | Kill switch: when false every class runs at L0, nothing is a cruise answer and the status line says `cruise off \| L<n>`. The running levels are kept. |
 | `decisions.cruise.margin` | `0.2` | Least margin (above 0, at most 1) a record needs to be a cruise answer; a lower one at L2 or L3 is a thin margin. A profile may not lower it. |
@@ -626,12 +628,16 @@ sweeps all read watch health the same way, whatever the last sweep recorded:
 `watch unmeasured` means watch health cannot be read; it is one nudge.
 
 Run `bin/wuwei nudges` to list current nudges and pages, one line per cause with the
-command to run next; identical causes are merged with a count. `bin/wuwei nudges --json`
+command to run next. Repeats of one cause (the same kind on the same PR, item or reason) are
+one entry with its count and the age of its newest event, for example
+`(50 times, last 2 h ago)`. `bin/wuwei nudges --json`
 lists every entry with its source, and its entry count matches the page and nudge counts
 in `bin/wuwei status --line`.
 Routine progress such as plan approval, build starts and checks, and a call to any
 adapter set to `none` is silent. A nudge clears when its cause clears: a draft nudge when
 the draft is sent or dropped, a merge policy nudge when the PR merges or closes.
+A nudge also leaves the list after `nudges.ttl_hours` with no new event, and the list keeps
+the newest `nudges.max_open`; one `nudges.dropped` line counts what expired or was dropped.
 
 ## Running the listener
 

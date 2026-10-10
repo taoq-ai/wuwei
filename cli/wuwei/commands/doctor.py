@@ -629,10 +629,10 @@ def _day(root, config, probes):
     nudges = sum(page['tier'] == 'nudge' for page in shown)
     rows.append(_row('day', 'nudges', 'ok',
                      f'{nudges} shown, nudges.mode {mode} (wuwei nudges --all lists every open cause)'))
-    gaps = sum(page['source'] == 'traces.gap' for page in found)
+    gaps = sum(page.get('count', 1) for page in found if page['source'] == 'traces.gap')
     rows.append(_row('day', 'traces', 'warn' if gaps else 'ok', f'{gaps} gaps today' if gaps else 'no gaps today',
                      'read the traces.gap reasons in wuwei nudges --all, then run wuwei doctor'))
-    untraced = sum(page['source'] == 'subagent.untraced' for page in found)  # #676
+    untraced = sum(page.get('count', 1) for page in found if page['source'] == 'subagent.untraced')  # #676
     rows.append(_row('day', 'untraced subagents', 'warn' if untraced else 'ok',
                      f'{untraced} stopped with no seat today' if untraced else 'none today',
                      'launch agents from a session inside the workspace after the morning plan; under strict '
