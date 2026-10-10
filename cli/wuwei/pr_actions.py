@@ -157,7 +157,8 @@ def observe(root, host, ref, config, measured):
         raise ValueError(f'invalid PR disposition ledger; {DAMAGED}')
     disposition = (_verify(root, host, ref, dispositions[ref], config)
                    if ref in dispositions else None)
-    row = {'pr': ref, 'state': current, 'disposition': disposition, 'parked': disposition == 'parked'}
+    row = {'pr': ref, 'state': current, 'disposition': disposition, 'parked': disposition == 'parked',
+           'draft': measured['pr']['draft'] is True}
     now = workspace.now()
     event = {'pr': ref, 'tier': 'silent', 'state': current}
     merged = []
@@ -510,7 +511,22 @@ def _thread(root, ref, item, tree, measured, reply=None):
     raise ValueError('no unanswered review thread found; drop --reply, or check the PR with bin/wuwei pr state')
 
 
-def act(root, ref, *, run=False, complete=False, reply=None):
+def _ready(root, ref, ready):
+    """#726: mark an owned draft ready when asked or once the owner cleared owner_merge."""
+    from wuwei import merge
+    items = [row for row in state.read_state(root)['items'].values() if row.get('pr') == ref]
+    cleared = any(row.get('owner_merge') is not None and merge.owner_hold(row) is None for row in items)
+    if not (ready or cleared):
+        return None
+    host = registry.load('code_host', workspace.load_config(root))
+    merge.read(host.ready, ref, root=root)
+    if merge.checked_pr(host, ref, root)['draft']:
+        raise ValueError('PR is still a draft after ready; run bin/wuwei pr state, then retry')
+    print(json.dumps({'action': 'ready', 'pr': ref}))
+    return 0
+
+
+def act(root, ref, *, run=False, complete=False, reply=None, ready=False):
     """Execute safe PR actions and surface work requiring a builder or owner."""
     ref = pull_request(ref)
     _, rows = evaluate(root, [ref])
@@ -518,6 +534,16 @@ def act(root, ref, *, run=False, complete=False, reply=None):
     if row['exit'] == 2:
         print(row['reason'])
         return 2
+    if ready and not row.get('draft'):
+        print(f'{ref}: already ready for review')
+        return 0
+    if row.get('draft') and row['state'] not in ('closed', 'merged'):
+        try:
+            if (code := _ready(root, ref, ready)) is not None:
+                return code
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+            print(f'{ref}: PR action unmeasured: {exc}')
+            return 2
     if row['exit'] == 0:
         return 0
     if (run or complete) and row['state'] != 'conflicted':

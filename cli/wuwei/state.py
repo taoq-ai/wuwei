@@ -413,7 +413,7 @@ def set_state(path, value, root=None):
     return write_state(update, root, kind='state.set', payload={'path': path, 'value': value})
 
 
-def record_pr(root, item, ref, *, raised, head=None, reviewers=None):
+def record_pr(root, item, ref, *, raised, head=None, reviewers=None, draft=False):
     """Link one owned PR to its item in the same write as day ownership."""
     from wuwei.references import pull_request
     ref = pull_request(ref)
@@ -442,6 +442,8 @@ def record_pr(root, item, ref, *, raised, head=None, reviewers=None):
         payload['head'] = head
     if reviewers is not None:
         payload['reviewers'] = reviewers
+    if draft:
+        payload['draft'] = True
     if raised:
         return _write_state(update, root, reserved=False, kind='pr.raised', payload=payload)
     return _write_state(update, root, reserved=False, kind='pr.claimed', payload=payload)

@@ -37,6 +37,7 @@ CALLS = [
     ('code_host', 'request_reviewers', ('ref', 'logins'), False),
     ('code_host', 'comment', ('ref', 'text', 'thread'), False),
     ('code_host', 'merge', ('ref', 'sha'), False),
+    ('code_host', 'ready', ('ref',), False),
     ('code_host', 'revert_pr', ('ref',), False),
     ('code_host', 'merged_prs', ('repo',), True),
     ('code_host', 'open_prs', ('repo',), True),

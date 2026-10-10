@@ -916,6 +916,7 @@ def test_raise_records_owner_merge_on_the_pr(case, monkeypatch):
     from wuwei import shepherd
     root, host = solo_raise(case, monkeypatch)
     host.results['label'] = Result(0, {'labels': ['owner-merge']})
+    host.results['pr'].data['draft'] = True  # #726: and it opens as a draft
     state._write_state(lambda data: data['items']['ITEM-1'].update(owner_merge={
         'value': True, 'by': 'planner', 'at': '2026-09-29T08:00:00+00:00'}), root, reserved=False)
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
@@ -1005,3 +1006,70 @@ def test_raise_from_any_directory_in_the_workspace(case, monkeypatch, where):
     monkeypatch.delenv('WUWEI_WORKSPACE')
     assert shepherd.raise_pr(workspace.find_workspace(), 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
     assert created(host)[0][1][0]['head'] == 'feature'
+
+
+def draft_raise(case, monkeypatch, created_draft=True):
+    # #726: a solo raise with two ranked authors, the created PR reading back as a draft or not.
+    import json
+    root, host = solo_raise(case, monkeypatch)
+    case[4].responses['authorship'] = Result(0, [{'email': 'alice@example.test', 'commits': 4},
+                                                 {'email': 'bob@example.test', 'commits': 3}])
+    host.results['request_reviewers'] = Result(0, {'requested': ['alice', 'bob']})
+    host.results['pr'].data['draft'] = created_draft
+    for phase in ('implement', 'gate'):
+        state.transition('ITEM-1', phase, root)
+    raised = lambda: [e['payload'] for e in map(json.loads, (workspace.day_dir(root) / 'events.jsonl')
+                      .read_text().splitlines()) if e['kind'] == 'pr.raised']
+    return root, host, raised
+
+
+@pytest.mark.parametrize('flag', ['owner_merge', 'draft'])
+def test_raise_opens_a_draft_with_ranked_reviewers(case, monkeypatch, capsys, flag):
+    from wuwei import shepherd
+    root, host, raised = draft_raise(case, monkeypatch)
+    host.results['label'] = Result(0, {'labels': ['owner-merge']})
+    if flag == 'owner_merge':
+        state._write_state(lambda data: data['items']['ITEM-1'].update(owner_merge={
+            'value': True, 'by': 'planner', 'at': '2026-09-29T08:00:00+00:00'}), root, reserved=False)
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1',
+                             draft=flag == 'draft') == 0
+    [args] = [args for name, args, _ in host.calls if name == 'create_pr']
+    assert args[0]['draft'] is True
+    data = state.read_state(root)
+    assert REF in data['raised_prs'] and data['items']['ITEM-1']['phase'] == 'raised'
+    assert raised()[-1]['draft'] is True
+    assert data['pr_reviewers'][REF] == ['alice', 'bob']
+    assert ('request_reviewers', (REF, ['alice', 'bob']), root) in host.calls
+    assert capsys.readouterr().out.splitlines()[-2:] == [REF, 'reviewers: alice bob']
+
+
+def test_raise_without_draft_opens_a_ready_pr(case, monkeypatch, capsys):
+    from wuwei import shepherd
+    root, host, raised = draft_raise(case, monkeypatch, created_draft=False)
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
+    [args] = [args for name, args, _ in host.calls if name == 'create_pr']
+    assert args[0]['draft'] is False
+    assert 'draft' not in raised()[-1]
+    assert capsys.readouterr().out.splitlines()[-2:] == [REF, 'reviewers: alice bob']
+
+
+def test_raise_refuses_a_created_pr_that_is_not_a_draft(case, monkeypatch):
+    from wuwei import shepherd
+    root, host, raised = draft_raise(case, monkeypatch, created_draft=False)
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1', draft=True) == 2
+    data = state.read_state(root)
+    assert data['raised_prs'] == [REF] and data['items']['ITEM-1'].get('pr') is None
+    assert raised() == []
+    assert not any(name == 'request_reviewers' for name, _, _ in host.calls)
+
+
+@pytest.mark.parametrize('extra,draft', [([], False), (['--draft'], True)])
+def test_raise_cli_passes_draft(case, monkeypatch, extra, draft):
+    from wuwei.__main__ import main
+    seen = []
+    monkeypatch.setattr('wuwei.shepherd.raise_pr', lambda *args, **kwargs: seen.append(kwargs) or 0)
+    body = case[0] / 'body.md'
+    body.write_text('Body')
+    assert main(['pr', 'raise', 'acme/widget', '--base', 'main', '--title', 'T', '--body-file',
+                 str(body), '--item', 'ITEM-1', *extra]) == 0
+    assert seen == [{'draft': draft}]

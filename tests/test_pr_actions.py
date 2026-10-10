@@ -622,3 +622,72 @@ def test_observed_merge_removes_the_item_scratch(case, monkeypatch):
     assert state.read_state(root)['items']['A']['phase'] == 'merged'
     assert not (root / workspace.SCRATCH / 'A').exists()
     assert (root / workspace.SCRATCH / 'B/builder/y').is_file()
+
+
+def draft(case, flag=None):
+    # #726: a linked draft PR whose ready call flips the fixture.
+    root, host, _, _ = linked(case)
+    host.results['pr'].data['draft'] = True
+    calls = []
+    def ready(ref, root=None):
+        calls.append(ref)
+        host.results['pr'].data['draft'] = False
+        return Result(0, {'ready': True})
+    host.ready = ready
+    if flag is not None:
+        state._write_state(lambda data: data['items']['A'].update(owner_merge={
+            'value': flag, 'by': 'owner', 'at': '2026-09-28T08:00:00+00:00'}), root, reserved=False)
+    return root, host, calls
+
+
+@pytest.mark.parametrize('flag,args,readied', [
+    (False, [], True), (True, [], False), (None, [], False), (True, ['--ready'], True)])
+def test_act_marks_a_draft_ready(case, capsys, flag, args, readied):
+    root, host, calls = draft(case, flag)
+    assert main(['pr', 'act', REF, *args]) == 0
+    assert calls == ([REF] if readied else [])
+    if readied:
+        assert json.loads(capsys.readouterr().out.splitlines()[-1]) == {'action': 'ready', 'pr': REF}
+
+
+def test_act_never_readies_a_closed_draft(case):
+    root, host, calls = draft(case, False)
+    host.results['pr'].data['state'] = 'closed'
+    main(['pr', 'act', REF, '--ready'])
+    assert calls == []
+
+
+def test_ready_on_a_ready_pr_never_merges(case, capsys):
+    root, host, calls = draft(case)
+    host.results['pr'].data['draft'] = False
+    host.results['reviews'] = Result(0, [{'id': 11, 'author': 'reviewer', 'state': 'approved', 'body': '',
+        'sha': 'a' * 40, 'submitted_at': '2026-09-28T11:00:00Z', 'is_bot': False}])
+    assert main(['pr', 'act', REF, '--ready']) == 0
+    assert capsys.readouterr().out.splitlines()[-1] == f'{REF}: already ready for review'
+    assert calls == [] and not any(call[0] == 'merge' for call in host.calls)
+    with pytest.raises(SystemExit) as exit:
+        main(['pr', 'act', REF, '--ready', '--run'])
+    assert exit.value.code == 2
+
+
+@pytest.mark.parametrize('failure', ['offline', 'still_draft'])
+def test_ready_that_does_not_take_fails_closed(case, capsys, failure):
+    root, host, calls = draft(case)
+    host.ready = (lambda ref, root=None: Result(2, None, 'offline')) if failure == 'offline' else (
+        lambda ref, root=None: Result(0, {'ready': True}))
+    assert main(['pr', 'act', REF, '--ready']) == 2
+    assert f'{REF}: PR action unmeasured:' in capsys.readouterr().out
+
+
+def test_malformed_owner_merge_never_readies(case):
+    root, host, calls = draft(case)
+    state._write_state(lambda data: data['items']['A'].update(owner_merge={'value': 'no'}), root, reserved=False)
+    assert main(['pr', 'act', REF]) == 2
+    assert calls == []
+
+
+def test_state_rows_carry_draft(case):
+    root, host, calls = draft(case)
+    assert pr_actions.evaluate(root, [REF])[1][0]['draft'] is True
+    host.results['pr'].data['draft'] = False
+    assert pr_actions.evaluate(root, [REF])[1][0]['draft'] is False
