@@ -229,14 +229,18 @@ def classes(root, config, row):
                     if paths or record['tier'] == 'full'}
 
 
-def step_zero(value, paths, trust_paths):
+def step_zero(value, paths, trust_paths, flags=None):
     """#567: None at light; (run, reason) otherwise. At standard step zero runs only when a
-    changed path is guard code or a repository trust path."""
+    changed path is guard code or a repository trust path, or (#663) the item is flagged
+    trust_surface or boundary_relevant, whatever its diff."""
     from wuwei import merge
     if value == 'light':
         return None
     if value == 'full':
         return True, ''
+    named = [name for name in ('trust_surface', 'boundary_relevant') if (flags or {}).get(name)]
+    if named:
+        return True, ', '.join(named)
     for path in paths:
         pattern = merge.matched(path, (*trust_paths, *GUARD_CODE))
         if pattern is not None:

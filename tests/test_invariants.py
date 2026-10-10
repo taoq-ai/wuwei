@@ -1278,6 +1278,25 @@ def i55(case, rules):
     return None if found == expected else f'a bug ticket for {audience} under {umbrella}: {found}, expected {expected}'
 
 
+def i43(case, rules):
+    """#663: a trust_surface or boundary_relevant item runs gate step zero at standard whatever
+    its diff, naming the flag; agent_surface alone or no flag leaves the path rule."""
+    def compute():
+        from wuwei.dispatch import step_zero
+        for paths in (['cli/wuwei/mask.py'], ['cli/wuwei/guards/x.py']):
+            for named in (['trust_surface'], ['boundary_relevant'], ['trust_surface', 'boundary_relevant']):
+                flags = dict.fromkeys(named, True)
+                if step_zero('standard', paths, (), flags) != (True, ', '.join(named)):
+                    return f'{named} on {paths}: step zero does not run naming the flag'
+                if step_zero('full', paths, (), flags) != (True, ''):
+                    return f'{named} at full: step zero is not the full run'
+        for flags in ({'agent_surface': True}, {}, None):
+            if step_zero('standard', ['cli/wuwei/mask.py'], (), flags)[0]:
+                return f'{flags}: step zero runs on a non-guard diff'
+        return None
+    return rules.memo(('step zero flags',), compute)
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
@@ -1288,7 +1307,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I39': i39,
               'I36': i36, 'I37': i37, 'I40': i40,
               'I36': i36, 'I37': i37, 'I52': i52,
-              'I36': i36, 'I37': i37, 'I42': i42, 'I55': i55}
+              'I36': i36, 'I37': i37, 'I42': i42, 'I55': i55,
+              'I36': i36, 'I37': i37, 'I42': i42, 'I43': i43}
 
 
 def project(case):
@@ -1313,7 +1333,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I40': (),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (),
          'I52': (0,),
-         'I55': OUTWARD}
+         'I55': OUTWARD,
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I42': (), 'I43': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 

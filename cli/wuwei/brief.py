@@ -27,7 +27,7 @@ LIGHT_GATE = ('Depth: light; skip: gate step zero, the Probe or Mutation row, th
               'verdict: Verdict:, Head:, findings')
 
 
-def depth_line(role, value, worktree, paths=(), trust_paths=()):
+def depth_line(role, value, worktree, paths=(), trust_paths=(), flags=None):
     """#567: the brief's Depth: line (design 5.3, process depth follows the tier)."""
     from wuwei import dispatch
     if role == 'builder':
@@ -36,7 +36,7 @@ def depth_line(role, value, worktree, paths=(), trust_paths=()):
             return (f'Depth: light; skip: the class sweep while {sweep} prints Depth: light, '
                     'and the retro note when every line would be none')
         return f'Depth: {value}; before handoff run {sweep} and report one CLASS line per class it lists'
-    zero = dispatch.step_zero(value, paths, trust_paths)
+    zero = dispatch.step_zero(value, paths, trust_paths, flags)
     if zero is None:
         return LIGHT_GATE
     run, reason = zero
@@ -482,7 +482,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                 root, config, {'flags': {}, **current, 'worktree': str(tree) if tree else None})}))
             header.append(depth_line(role, depth, str(tree) if tree else '<worktree>',
                                      [row['path'] for row in changed],
-                                     (repo or {}).get('gates', {}).get('trust_paths', []) if tree else []))
+                                     (repo or {}).get('gates', {}).get('trust_paths', []) if tree else [],
+                                     current.get('flags')))
         if role == 'builder' and tree and repo:
             from wuwei import fast_checks, pace  # #520: the builder never improvises an interpreter
             for command in repo.get('fast_checks', []):

@@ -401,7 +401,7 @@ prompt carries a `Depth:` line, so no seat decides it:
 | | light | standard | full |
 |---|---|---|---|
 | Builder class sweep | none | the classes `wuwei sweep classes <worktree>` lists | every class |
-| Gate step zero (mutation) | none | only when the diff touches guard code, grants, outward, a hook or a trust path | always |
+| Gate step zero (mutation) | none | only when the diff touches guard code, grants, outward, a hook or a trust path, or the lead flagged it trust_surface or boundary_relevant | always |
 | After a fix | the same sentinel re-reads and rewrites `Verdict:` and `Head:` | delta round | delta round |
 | Verdict | `Verdict:`, `Head:`, findings | full shape | full shape |
 | Retro note | only when a line is not `none` | always | always |

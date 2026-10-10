@@ -558,7 +558,7 @@ checks, decision routing and every 9.2 invariant hold at every pace (I15 to I17)
   | Spec engine | none (#280) | the engine's steps | the engine's steps |
   | Builder class sweep | none | the classes `wuwei sweep classes <worktree>` lists from the changed files | every class |
   | Gates | quality | arch, quality, security | arch, quality, security, goal when docs |
-  | Mutation step (gate step zero) | none | only when the diff touches `guards/`, `grants`, `outward`, a hook or a `trust_paths` entry | always |
+  | Mutation step (gate step zero) | none | only when the diff touches `guards/`, `grants`, `outward`, a hook or a `trust_paths` entry, or the item is flagged `trust_surface` or `boundary_relevant` (#663) | always |
   | After a fix | the same sentinel re-reads the diff and rewrites its `Verdict:` and `Head:` lines | the delta round | the delta round |
   | Verdict shape | `Verdict:`, `Head:`, findings | as below | as below |
   | Decision records | a Routine record under mandate prints one line in `decision show` (`--full` prints it) | the same | the same |
@@ -2031,6 +2031,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I40 | The soak is skipped only for a head that turns a check failing at its base commit green | `merge.fixes_base` on every base conclusion x head conclusion, with the check present and absent at head | #668; one rule in `merge.fixes_base`; the check path (base read only while the soak holds, exit 2 when unreadable) stays in `tests/test_merge.py` |
 | I52 | A `python -c` snippet with no write-like token passes the records guard in every posture; one with a write-like token is refused in every posture, naming the token | per posture, through the hook, a snippet printing the day's `state.json`; `check_bash` on `open(..., "w")` and `Path(...).write_text` snippets naming it | #643; one token scan in `shell.snippet_write`, shared through `shell.reads`; a name built at run time is the 4.5 residual |
 | I55 | A bug, triage or follow-up ticket WUWEI opens in the workspace's own tracker follows the owner's tier rows, then the sensitive row, then the umbrella: it sends under send and is held as a card under ask, in every posture; an external tracker or a client mention holds it | per posture, audience and umbrella, `classify` on an adapter write with category `bugs` | #644; the finder files it with `tracker create --bug --seat <role>` |
+| I43 | A `trust_surface` or `boundary_relevant` item runs gate step zero at standard whatever its diff, and its brief names the flag; no path turns a flagged run into a skip | `dispatch.step_zero` at standard and full on a non-guard and a guard path under each flag, both flags, `agent_surface` alone and none | #663; one decision in `dispatch.step_zero`; a flagged item is never light (I15) |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 
