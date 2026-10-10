@@ -250,7 +250,7 @@ def step_zero(value, paths, trust_paths, flags=None):
 
 def tracker_call(item, action, root=None):
     """Record the tracker measurement without blocking the local build loop."""
-    from wuwei.tracker import ticket as recorded
+    from wuwei.tracker import relabel, ticket as recorded
     root = workspace.find_workspace(root)
     ticket = item
     try:
@@ -264,6 +264,8 @@ def tracker_call(item, action, root=None):
                 result = tracker.claim(ticket, root=root)
             elif action in ('in_review', 'done'):
                 result = tracker.transition(ticket, config['tracker']['states'][action], root=root)
+                if action == 'in_review' and isinstance(result, registry.Result) and result.exit:
+                    result = relabel(tracker, root, config, item, ticket, result)  # #670
             else:
                 raise ValueError('unknown tracker action; pass claim, in_review or done')
             if not isinstance(result, registry.Result) or result.exit not in (0, 1, 2):

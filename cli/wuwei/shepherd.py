@@ -3,6 +3,7 @@
 from fnmatch import fnmatchcase
 import json
 import re
+import sys
 
 from wuwei import merge, obligations, registry, state, workspace
 from wuwei.references import pull_request, repository
@@ -361,7 +362,9 @@ def raise_pr(root, repo_name, base, title, body, item, draft=False):
             merge.read(host.label, ref, merge.LABEL, True, root=root)
         if use:
             use()
-        dispatch.tracker_call(item, 'in_review', root)
+        moved = dispatch.tracker_call(item, 'in_review', root)
+        if config['adapters']['tracker'] != 'none' and moved.exit:  # #670: name why
+            print(f'tracker: {moved.reason}', file=sys.stderr)
         if reviewers:
             requested = merge.read(host.request_reviewers, ref, reviewers, root=root)
             if set(requested['requested']) != set(reviewers):

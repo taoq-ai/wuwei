@@ -29,6 +29,10 @@ def created(item, *, root=None):
     return registry.record_none('tracker', 'created', root)
 
 
+def labels(create, *, root=None):
+    return registry.record_none('tracker', 'labels', root, measurement=False)
+
+
 @outward_operation('tracker')
 def comment(item, text, category, *, root=None):
     return registry.record_none('tracker', 'comment', root, measurement=False)
