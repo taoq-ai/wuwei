@@ -68,9 +68,22 @@ def _candidate(root, data, item):
                 data.get('discovery_candidates', {}).get(item))
 
 
-def create(root, subject, category='items', title=None, evidence=(), row=None):
+def _held(root, config, subject, draft_id):
+    """#644: a held ticket is the planner's card below strict, a host-terminal approve under strict."""
+    from wuwei import drafts, outward
+    rule = drafts.read(state.read_state(root))[draft_id]['tier_reason'].removeprefix(
+        outward.APPROVAL_REQUIRED + ': ')
+    if workspace.posture(config)[0] == 'strict':
+        return (f'{subject}: ticket held ({rule}): the owner runs bin/wuwei drafts approve '
+                f'{draft_id} in a host terminal')
+    return (f'{subject}: ticket held ({rule}): the planner asks it on its card '
+            f'(bin/wuwei drafts show {draft_id} --widget)')
+
+
+def create(root, subject, category='items', title=None, evidence=(), row=None, seat=None):
     """The one ticket creator: tracker create <item> and --bug|--triage|--follow-up; row is
-    an item record not in today's proposal (#636: an owner-named item from plan add)."""
+    an item record not in today's proposal (#636: an owner-named item from plan add); seat is
+    the role a seat declares, recorded on the event (#644)."""
     from wuwei import profiles, registry
     root = workspace.find_workspace(root)
     config = workspace.load_config(root)
@@ -123,11 +136,10 @@ def create(root, subject, category='items', title=None, evidence=(), row=None):
     if entry and entry['outcome'] == 'refused':
         return registry.Result(1, reason=f'tracker create: refused: {entry["reason"]}; create the ticket by hand{by_hand}')
     if queued:
-        return registry.Result(1, {'draft': queued},
-                               f'{subject}: ticket drafted: bin/wuwei drafts approve {queued}')
+        return registry.Result(1, {'draft': queued}, _held(root, config, subject, queued))
     result = registry.load('tracker', config).create(draft, root=root)
     if result.exit == 0:
-        record(draft, result.data, root=root)
+        record(draft, result.data, root=root, seat=seat)
         return registry.Result(0, result.data, f'{subject}: ticket {result.data["id"]} {result.data["url"]}')
     if result.exit == 1:
         stored = re.search(r'outward: draft (draft-[0-9a-f]+)', result.reason or '')
@@ -137,8 +149,7 @@ def create(root, subject, category='items', title=None, evidence=(), row=None):
                            root, reserved=False, kind='tracker.logged',
                            payload={'key': key, 'outcome': outcome['outcome']})
         if stored:
-            return registry.Result(1, {'draft': stored[1]},
-                                   f'{subject}: ticket drafted: bin/wuwei drafts approve {stored[1]}')
+            return registry.Result(1, {'draft': stored[1]}, _held(root, config, subject, stored[1]))
         return registry.Result(1, reason=f'tracker create: refused: {outcome["reason"]}; create the ticket by hand{by_hand}')
     return result
 
@@ -287,7 +298,7 @@ def done(root, item):
     return dispatch.tracker_call(item, 'done', root)
 
 
-def record(draft, created, *, root=None, directory=None):
+def record(draft, created, *, root=None, directory=None, seat=None):
     """The only writer of a confirmed creation: tickets (items), tracker_log and the event."""
     if (not isinstance(created, dict) or not isinstance(created.get('id'), str)
             or not created['id'] or not isinstance(created.get('url'), str)):
@@ -302,4 +313,4 @@ def record(draft, created, *, root=None, directory=None):
             'outcome': 'written', 'ticket': created['id']}
     state._write_state(update, root, reserved=False, kind='tracker.created', directory=directory,
                        payload={'class': category, 'subject': subject,
-                                'ticket': created['id'], 'parent': parent})
+                                'ticket': created['id'], 'parent': parent, **({'seat': seat} if seat else {})})

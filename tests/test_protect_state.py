@@ -1089,6 +1089,8 @@ def test_item_tickets_are_the_planners(workspace, monkeypatch, capsys, posture):
                 code == 2 and 'host terminal' in reason), (command, reason)
     bug = 'bin/wuwei tracker create --bug A Broken --evidence cli/x.py:1'
     assert _seat_hook(workspace, bug, monkeypatch, capsys, posture) == (0, '')
+    # #644: a gate seat files the bug it finds, naming its role.
+    assert _seat_hook(workspace, bug + ' --seat sentinel-quality', monkeypatch, capsys, posture) == (0, '')
     for command in ('bin/wuwei tracker create A -- --bug', 'bin/wuwei plan set A ticket=$X'):
         assert _seat_hook(workspace, command, monkeypatch, capsys, posture)[0] == 2, command
         assert _seat_hook(workspace, command, monkeypatch, capsys, posture, seat=False)[0] == 2, command

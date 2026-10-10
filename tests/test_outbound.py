@@ -495,6 +495,7 @@ def test_outbound_tiers_prints_table(configured, monkeypatch, capsys):
     assert lines[11] == '11    default  { tool = "other", tier = "send" }'
     assert lines[12].startswith('-     default  no row: the kind rules decide (direct messages draft, ')
     assert lines[13].startswith('-     default  { tier = "ask" } (outbound.default_tier: ')  # #527
+    assert "tickets in the workspace's own tracker" in lines[13]  # #644
     assert len(lines) == 14
     path = root / '.wuwei/config.toml'
     path.write_text(path.read_text().replace('[outbound]\ndefault_tier = "ask"\n', '[outbound]\ndefault_tier = "ask"\ntiers = [{ person = "U07", tier = "send" }, '

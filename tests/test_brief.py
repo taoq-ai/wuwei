@@ -149,6 +149,9 @@ def test_stamped_header_and_fresh_pr(day, monkeypatch):
                   'Seat policy:', 'Status:', 'HEAD:', 'Merge-base:', 'Prior branches:',
                   'PR head (no-cache):', 'Gate row:', 'Verdict file:'):
         assert field in text
+    verdict_line, = [line for line in text.splitlines() if line.startswith('Verdict file:')]
+    assert 'the only file you write' in verdict_line and 'tracker create --bug' in verdict_line  # #644
+    assert 'your only write' not in verdict_line
     assert [c[0] for c in host.calls] == ['pr', 'pr']
     written = [e for e in events(directory) if e['kind'] == 'brief written']
     assert len(written) == 2

@@ -282,12 +282,16 @@ def test_board_shows_tickets(day):
     with (day / 'events.jsonl').open('a') as stream:
         stream.write(json.dumps({'kind': 'tracker.created', 'ts': NOW, 'payload': {
             'class': 'bugs', 'subject': 'a', 'ticket': 'ENG-2', 'parent': 'ENG-1'}}) + '\n')
+        stream.write(json.dumps({'kind': 'tracker.created', 'ts': NOW, 'payload': {
+            'class': 'bugs', 'subject': 'a', 'ticket': 'ENG-3', 'parent': 'ENG-1', 'seat': 'builder'}}) + '\n')
     text = board_call()['content'][0]['text']
     assert '| Item | Phase | Status | Ticket | Gates | PR |' in text
     row, = [line for line in text.splitlines() if line.startswith('| a |')]
     assert '| ENG-1, 1 folded |' in row
     created = text.split('## Tickets created', 1)[1].splitlines()
-    assert '| bugs | a | ENG-2 | ENG-1 |' in created
+    assert '| Class | Subject | Ticket | Parent | Seat |' in created
+    assert '| bugs | a | ENG-2 | ENG-1 | none |' in created
+    assert '| bugs | a | ENG-3 | ENG-1 | builder |' in created
 
 
 def test_board_shows_running_seats_per_goal(day):

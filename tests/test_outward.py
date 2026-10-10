@@ -1009,6 +1009,64 @@ def test_tracker_auto_policy(configured, category, auto, expected):
     assert outward.classify(text, root, config, nested, kind='tracker', port=True)[1] == expected
 
 
+def _seat_ticket(root, config, category, tool=None, port=True, title='Broken lint', **kw):
+    from wuwei import outward
+    nested = {'draft': {'title': title, 'item': 'item-1', 'category': category}}
+    return outward.classify(title, root, config, nested, kind='tracker', port=port, tool=tool, **kw)
+
+
+@pytest.mark.parametrize('category', ['bugs', 'triage', 'follow-ups'])
+@pytest.mark.parametrize('umbrella,auto,expected', [
+    ('send', None, (0, 'send')), ('ask', None, (1, 'draft')), ('ask', ['bugs', 'triage', 'follow-ups'], (0, 'send')),
+    ('block', None, (1, 'block')),
+])
+def test_seat_ticket_in_owner_tracker_follows_umbrella(configured, category, umbrella, auto, expected):
+    """#644: a class ticket WUWEI opens in the workspace's own tracker is internal."""
+    root, config = configured
+    config['outbound']['default_tier'] = umbrella
+    if auto:
+        config['tracker']['auto'] = auto
+    why, trace = [], []
+    assert _seat_ticket(root, config, category, why=why, trace=trace) == expected
+    if umbrella == 'block':
+        assert 'outbound.default_tier' in why[0]
+    if umbrella == 'send':
+        assert "party tracker: owner, the workspace tracker is the owner's own" in trace
+        assert any(line.startswith('  rule 1 default') and line.endswith(
+            "passed: the umbrella decides the owner's own tracker") for line in trace)
+
+
+@pytest.mark.parametrize('category', ['items', 'decisions', None])
+def test_other_tracker_writes_keep_drafting_under_send(configured, category):
+    root, config = configured
+    config['outbound']['default_tier'] = 'send'
+    assert _seat_ticket(root, config, category) == (1, 'draft')
+
+
+def test_seat_ticket_owner_row_holds_and_outside_trackers_keep_rules(configured):
+    root, config = configured
+    config['outbound']['default_tier'] = 'send'
+    config['outbound']['tiers'] = [{'tool': 'tracker', 'audience': 'owner', 'tier': 'ask'}]
+    why = []
+    assert _seat_ticket(root, config, 'bugs', why=why) == (1, 'draft')
+    assert why[0].startswith('ask by rule 1 (tool=tracker audience=owner) for tracker:')
+    # A connector claiming category is no port write: never the owner party.
+    config['outbound']['tiers'] = []
+    trace = []
+    _seat_ticket(root, config, 'bugs', tool='mcp__linear__save_issue', port=False, trace=trace)
+    assert not any('owner' in line for line in trace if line.startswith('party'))
+    # Sensitive text holds by the sensitive row.
+    why = []
+    assert _seat_ticket(root, config, 'bugs', title='Broken salary export', why=why) == (1, 'draft')
+    assert 'topic=sensitive' in why[0]
+    # A client tracker keeps the outward rules.
+    config['adapters']['tracker'] = 'github'
+    config['tracker'].update(project='outside-org/repo', board='')
+    why = []
+    assert _seat_ticket(root, config, 'bugs', why=why) == (1, 'draft')
+    assert '(audience=client) for board' in why[0]
+
+
 @pytest.mark.parametrize('text', ['[2026-09-28 item-1] Phase: gate, thanks @pat.',
                                   '[2026-09-28 item-1] Phase: gate; salary review.',
                                   '[2026-09-28 item-1] We will fix it by tomorrow.'])
