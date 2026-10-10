@@ -1279,6 +1279,23 @@ def i40(case, rules):
     return rules.memo(('soak skip',), compute)
 
 
+def i72(case, rules):
+    """#785: WUWEI merges only with a method the repository allows: an explicit setting only
+    when allowed, auto the first allowed of squash, rebase, merge, else None (the owner's merge)."""
+    def compute():
+        from wuwei import merge
+        for setting in ('auto', *merge.METHODS):
+            for size in range(len(merge.METHODS) + 1):
+                for allowed in itertools.combinations(merge.METHODS, size):
+                    want = (next((m for m in merge.METHODS if m in allowed), None) if setting == 'auto'
+                            else setting if setting in allowed else None)
+                    found = merge.method_for(setting, list(allowed))
+                    if found != want:
+                        return f'{setting} with {list(allowed)}: method_for gives {found}'
+        return None
+    return rules.memo(('merge method',), compute)
+
+
 def i52(case, rules):
     """#643: a python -c snippet with no write-like token passes the records guard in every
     posture; one with a write-like token is refused in every posture, naming the token."""
@@ -1410,7 +1427,7 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46,
               'I36': i36, 'I37': i37, 'I44': i44,
               'I36': i36, 'I37': i37, 'I39': i39, 'I50': i50,
-              'I36': i36, 'I37': i37, 'I41': i41}
+              'I36': i36, 'I37': i37, 'I41': i41, 'I72': i72}
 
 
 def project(case):
@@ -1440,7 +1457,7 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (),
          'I44': (),
          'I39': (), 'I50': (0,),
-         'I41': ()}
+         'I41': (), 'I72': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
@@ -1657,7 +1674,7 @@ def test_merge_only_at_the_gated_green_head(case, posture, grant, head):
     merge.execute(REF, root)
     expected = head == 'gated' and (grant in ('once', 'today') or grant == 'standing' and posture != 'strict')
     used = [row for row in records(workspace.day_dir(root) / 'events.jsonl') if row['kind'] == 'grant.used']
-    assert merged_calls(host) == ([(REF, SHA)] if expected else []), (posture, grant, head)
+    assert merged_calls(host) == ([(REF, SHA, 'squash')] if expected else []), (posture, grant, head)
     assert bool(used) == expected, (posture, grant, head, used)
 
 
@@ -1709,7 +1726,7 @@ def test_owner_merge_holds_on_every_path(case, monkeypatch, capsys, path, flag, 
         assert code == 1 and held and merged_calls(host) == [], (path, grant, code, text)
         return
     assert not held and 'owner_merge' not in text, (path, grant, text)
-    merges = [(REF, SHA)] if path in ('wuwei merge', 'pr act') else []
+    merges = [(REF, SHA, 'squash')] if path in ('wuwei merge', 'pr act') else []
     assert merged_calls(host) == merges, (path, grant, text)
     if path == 'overnight shepherd':
         assert text.startswith('merge cleared by policy; '), text
@@ -1739,7 +1756,7 @@ def test_trust_surface_waits_on_its_gate_not_the_owner(case, posture, tier, rout
     result = merge.execute(REF, root)
     case_id = (posture, tier, route, result)
     if route == 'security-pass':
-        assert result.exit == 0 and merged_calls(host) == [(REF, SHA)], case_id
+        assert result.exit == 0 and merged_calls(host) == [(REF, SHA, 'squash')], case_id
         return
     assert not merged_calls(host) and cards(root) == [], case_id
     assert not any(row['kind'] == 'grant.used' for row in events(root)), case_id

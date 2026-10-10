@@ -116,6 +116,17 @@ def checks_at(host, ref, head, root):
     return checks
 
 
+METHODS = ('squash', 'rebase', 'merge')  # #785: the order auto prefers
+
+
+def method_for(setting, allowed):
+    """#785: the configured merge method when the repository allows it; under auto the first
+    allowed of squash, rebase, merge; else None."""
+    if setting != 'auto':
+        return setting if setting in allowed else None
+    return next((method for method in METHODS if method in allowed), None)
+
+
 def green(checks, protection):
     required = obligations._list(protection['required_checks'])
     require(required, 'no required checks resolvable')
@@ -314,11 +325,18 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         require(pr['merge_state'] != 'dirty', 'mergeable_state=dirty')
         protection = read(host.protection, repo_name, pr['base'], root=root)
         for key in ('strict', 'merge_queue', 'require_code_owner_reviews', 'require_last_push_approval',
-                    'dismiss_stale_reviews', 'conversation_resolution', 'enforce_admins', 'squash'):
+                    'dismiss_stale_reviews', 'conversation_resolution', 'enforce_admins'):
             if type(protection[key]) is not bool:
                 raise ValueError(f'invalid branch protection evidence; {DAMAGED}')
-        require(protection['squash'], f'{repo_name} does not allow squash merges into {pr["base"]}; WUWEI '
-                                      'merges only with --squash: ask the owner to merge it in a host terminal')
+        allowed = protection['methods']
+        if not isinstance(allowed, list) or not set(allowed) <= set(METHODS):
+            raise ValueError(f'invalid merge method evidence; {DAMAGED}')
+        setting = settings['merge_method']
+        method = method_for(setting, allowed)
+        require(method, f'{repo_name} allows no merge method into {pr["base"]}: ask the owner to merge it in a host terminal'
+                if setting == 'auto' else
+                f'{repo_name} does not allow the {setting} method into {pr["base"]} (repos.merge_method = {setting}): '
+                'the owner sets an allowed method with bin/wuwei config set or merges it in a host terminal')
         require(pr['merge_state'] != 'behind' or protection['merge_queue'], 'mergeable_state=behind')
         if pr['mergeable'] is None or pr['merge_state'] == 'unknown':
             raise ValueError('mergeability unmeasured; wait a minute and retry; if it persists, run bin/wuwei doctor')
@@ -404,8 +422,8 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         require(workspace.load_config(root) == config, 'configuration changed during check')
         if owner:  # #675: no grant, standing line or default_tier lifts an owner path
             raise Routed(f'{ref} is ready at {head}; {owner[0]} matches merge.owner_paths {owner[1]}: '
-                         f'the owner merges: ask the owner to run {owner_command(ref, head)} in a host terminal')
-        return Result(0, {'pr': ref, 'item': item, 'head': head, 'base': pr['base'],
+                         f'the owner merges: ask the owner to run {owner_command(ref, head, method)} in a host terminal')
+        return Result(0, {'pr': ref, 'method': method, 'item': item, 'head': head, 'base': pr['base'],
             'base_sha': pr['base_sha'], 'at': workspace.now().isoformat(), 'verdicts': verdicts,
             'checks': checks, 'approvals': sorted(r['author'] for r in approvals),
             'protection': protection, 'bot': bot, 'soak': soak,
@@ -450,9 +468,9 @@ def undo(root, directory, ref, entry):
             'payload': {'pr': ref, 'head': entry['head'], 'operation': 'revert_pr'}})
 
 
-def owner_command(ref, head):
+def owner_command(ref, head, method):
     repo, number = ref.split('#')
-    return f'gh pr merge https://github.com/{repo}/pull/{number} --squash --match-head-commit {head}'
+    return f'gh pr merge https://github.com/{repo}/pull/{number} --{method} --match-head-commit {head}'
 
 
 def by_grant(ref, root, cwd=None):
@@ -470,7 +488,7 @@ def by_grant(ref, root, cwd=None):
             for target in (f'repo:{repo}', f'pr:{ref}')):
         return Result(1, None, f'merge: {ref} is ready at {head}; merges are owner-only here '
                                f'(merge.default_tier = owner_only): ask the owner to run '
-                               f'{owner_command(ref, head)} in a host terminal')
+                               f'{owner_command(ref, head, result.data["method"])} in a host terminal')
     argv = ['bin/wuwei', 'merge', ref]
     payload = {'session_id': sessions.current() or '', 'cwd': str(Path(cwd or Path.cwd())),
                'tool_input': {'command': shlex.join(argv)}}
@@ -504,7 +522,7 @@ def execute(ref, root=None, *, cwd=None):
             save_entry(root, directory, ref, entry, 'merge.intent')
             undo(root, directory, ref, entry)
             host = registry.load('code_host', workspace.load_config(root))
-            accepted = read(host.merge, ref, evidence['head'], root=root)
+            accepted = read(host.merge, ref, evidence['head'], evidence['method'], root=root)
             if accepted.get('accepted') is not True or accepted.get('sha') != evidence['head']:
                 raise ValueError('merge result could not be verified; run bin/wuwei pr state to read the PR again before any retry')
             # Accepted can mean enqueued. The watch reads the actual merged commit.
@@ -691,10 +709,13 @@ def monitor(root, directory, ref, entry, host, settings):
         entry.update(status='red', red=red)
         save_entry(root, directory, ref, entry, 'merge.red')
         return 1, {'reverts': [revert(root, directory, ref, entry, host)], 'fixes': [], 'escaped': True}
-    measure = age >= timedelta(days=14) and 'outcome' not in entry
+    # ponytail: line outcomes assume one squash commit; a merge commit or rebase is followed for
+    # red checks and reverts only, first-parent tracking when the cohort needs them (#785 Deferred).
+    measure = (age >= timedelta(days=14) and 'outcome' not in entry
+               and entry['evidence'].get('method', 'squash') == 'squash')
     history = read(host.history, repo, merge_commit, pr['base'], measure, root=root)
     commits = obligations._list(history['commits'])
-    reverted = any(re.search(r'\bThis reverts commit ' + re.escape(merge_commit) + r'\.',
+    reverted = any(re.search(r'\bThis reverts commit ' + re.escape(merge_commit) + r'[.,]',
                             c['message']) for c in commits)
     if reverted:
         trip(root, repo, policy, 'auto-merged PR was reverted', ref=ref)

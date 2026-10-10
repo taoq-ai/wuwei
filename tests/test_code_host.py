@@ -183,6 +183,8 @@ def test_failure_reason_explains_cause_without_body(response, reason, tmp_path, 
     (['pr', 'merge', '7', '--admin'], None),
     (['pr', 'merge', 'https://github.com/acme/widget/pull/7', '--squash',
       '--match-head-commit', 'a' * 40, '--admin'], None),
+    (['pr', 'merge', 'https://github.com/acme/widget/pull/7', '--auto',
+      '--match-head-commit', 'a' * 40], None),
     (['api', 'repos/acme/widget/branches/main/protection', '--method', 'PUT'], None),
     (['api', 'graphql', '--input', '-'], {'query': 'mutation { approve }'}),
     (['api', 'repos/acme/widget/pulls', '--input', '-'], {'title': 'implicit POST'}),
@@ -367,7 +369,8 @@ def test_classic_403_is_unmeasured_without_reading_rulesets(monkeypatch):
     assert adapter().protection('acme/widget', 'main').exit == 2 and len(calls) == 1
 
 
-REPO = {'stdout': json.dumps({'allow_squash_merge': True})}
+ALL = {'allow_squash_merge': True, 'allow_rebase_merge': True, 'allow_merge_commit': True}
+REPO = {'stdout': json.dumps(ALL)}
 
 
 @pytest.mark.parametrize('stderr', ['gh: Not Found (HTTP 404)', 'gh: Branch not protected (HTTP 404)'])
@@ -379,7 +382,8 @@ def test_classic_404_reads_rulesets(monkeypatch, stderr):
         'required_checks': [], 'strict': False, 'approvals': 0, 'dismiss_stale_reviews': False,
         'require_code_owner_reviews': False, 'require_last_push_approval': False,
         'enforce_admins': False, 'conversation_resolution': False, 'allow_force_pushes': True,
-        'allow_deletions': True, 'merge_queue': False, 'classic': False, 'squash': True}
+        'allow_deletions': True, 'merge_queue': False, 'classic': False,
+        'methods': ['squash', 'rebase', 'merge']}
 
 
 def test_classic_404_takes_rules_fields(monkeypatch):
@@ -399,25 +403,43 @@ def test_classic_404_takes_rules_fields(monkeypatch):
     assert data['allow_force_pushes'] is False and data['allow_deletions'] is False
 
 
-@pytest.mark.parametrize('repository,methods,squash', [
-    ({'allow_squash_merge': True}, None, True), ({'allow_squash_merge': False}, None, False),
-    ({'allow_squash_merge': True}, ['merge'], False), ({'allow_squash_merge': True}, ['merge', 'squash'], True),
-    ({}, None, None), ({'allow_squash_merge': 'yes'}, None, None)])
-def test_protection_measures_squash(monkeypatch, repository, methods, squash):
-    # #524: WUWEI merges only with --squash, so the repository and its rulesets must allow it.
+@pytest.mark.parametrize('repository,ruleset,methods', [
+    (ALL, None, ['squash', 'rebase', 'merge']),
+    ({**ALL, 'allow_squash_merge': False, 'allow_rebase_merge': False}, None, ['merge']),
+    (ALL, ['merge'], ['merge']), (ALL, ['merge', 'squash'], ['squash', 'merge']),
+    ({**ALL, 'allow_squash_merge': False}, ['squash'], []),
+    ({'allow_squash_merge': True, 'allow_merge_commit': True}, None, None),
+    ({**ALL, 'allow_merge_commit': 'yes'}, None, None)])
+def test_protection_measures_methods(monkeypatch, repository, ruleset, methods):
+    # #785: the methods the repository and its rulesets allow, in squash, rebase, merge order.
     params = {'required_approving_review_count': 0, 'dismiss_stale_reviews_on_push': False,
               'require_code_owner_review': False, 'require_last_push_approval': False,
               'required_review_thread_resolution': False}
-    if methods is not None:
-        params['allowed_merge_methods'] = methods
+    if ruleset is not None:
+        params['allowed_merge_methods'] = ruleset
     install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Not Found (HTTP 404)'},
                                        {'stdout': json.dumps([[{'type': 'pull_request', 'parameters': params}]])},
                                        {'stdout': json.dumps(repository)}])
     result = adapter().protection('acme/widget', 'main')
-    assert (result.exit, result.data and result.data['squash']) == ((0, squash) if squash is not None else (2, None))
+    assert (result.exit, result.data and result.data['methods']) == ((0, methods) if methods is not None else (2, None))
 
 
 HEAD = 'a' * 40
+
+
+@pytest.mark.parametrize('method', ['squash', 'rebase', 'merge'])
+def test_merge_passes_the_method(monkeypatch, method):
+    # #785: the method merge check chose, and nothing else.
+    argv = ['pr', 'merge', 'https://github.com/acme/widget/pull/7', '--' + method, '--match-head-commit', HEAD]
+    calls = install_replay(monkeypatch, 'gh', [{'argv': argv, 'stdout': ''}])
+    result = adapter().merge('acme/widget#7', HEAD, method)
+    assert (result.exit, result.data) == (0, {'accepted': True, 'sha': HEAD}) and len(calls) == 1
+
+
+@pytest.mark.parametrize('method', ['admin', '--admin', 'auto'])
+def test_merge_refuses_other_methods_before_spawn(monkeypatch, method):
+    monkeypatch.setattr(subprocess, 'run', lambda *a, **k: pytest.fail('unapproved method reached subprocess'))
+    assert adapter().merge('acme/widget#7', HEAD, method).exit == 2
 PR_URL = 'repos/acme/widget/pulls/7'
 CHECKS_URL = f'repos/acme/widget/commits/{HEAD}/check-runs?per_page=100'
 STATUSES_URL = f'repos/acme/widget/commits/{HEAD}/statuses?per_page=100'

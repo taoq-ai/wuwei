@@ -37,7 +37,7 @@ PARAMETERS = {
                   'files': ('ref',), 'history': ('repo', 'start', 'branch', 'patches'),
                   'author_login': ('repo', 'email'), 'token_scopes': ('variable',),
                   'create_pr': ('draft',), 'request_reviewers': ('ref', 'logins'),
-                  'comment': ('ref', 'text', 'thread'), 'merge': ('ref', 'sha'), 'ready': ('ref',),
+                  'comment': ('ref', 'text', 'thread'), 'merge': ('ref', 'sha', 'method'), 'ready': ('ref',),
                   'revert_pr': ('ref',), 'merged_prs': ('repo',), 'open_prs': ('repo',), 'probe': ('ref', 'tags'),
                   'default_branch': ('repo',), 'deployments': ('repo', 'since'),
                   'issue': ('repo', 'title', 'body'), 'label': ('ref', 'name', 'present')},

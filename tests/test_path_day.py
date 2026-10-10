@@ -173,7 +173,7 @@ def held(day, payload, label):
 HEAD = {'protection': {'required_checks': [{'name': 'tests', 'app_id': 1}], 'approvals': 1, 'strict': True,
                        'merge_queue': False, 'require_code_owner_reviews': False, 'require_last_push_approval': False,
                        'dismiss_stale_reviews': True, 'conversation_resolution': True, 'enforce_admins': True,
-                       'squash': True},
+                       'methods': ['squash']},
         'files': [{'path': 'memory/demo.py', 'previous_path': None, 'status': 'modified', 'additions': 1,
                    'deletions': 1, 'patch': '@@ -1 +1 @@\n-VALUE = 0\n+VALUE = 2\n'}],
         'history': {'files': [], 'commits': []}}
@@ -264,7 +264,7 @@ def test_posture_day(tmp_path, monkeypatch, choice):
     kinds = [row['kind'] for row in events]
     assert workspace.load_config(day.root)['autonomy']['mode'] == choice.lower()
     assert data['items']['A']['phase'] == 'merged' and 'day.closed' in kinds
-    assert [row[1] for row in day.host.calls if row[0] == 'merge'] == [(day.ref, day.head)]
+    assert [row[1] for row in day.host.calls if row[0] == 'merge'] == [(day.ref, day.head, 'squash')]
     for row in events:
         if row['kind'] == 'hook.refusal':
             reason = row['payload']['reason']

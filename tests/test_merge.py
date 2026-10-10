@@ -73,7 +73,7 @@ auto = true
             'approvals': 1, 'strict': True, 'merge_queue': False,
             'require_code_owner_reviews': False, 'require_last_push_approval': False,
             'dismiss_stale_reviews': True, 'conversation_resolution': True,
-            'enforce_admins': True, 'squash': True}),
+            'enforce_admins': True, 'methods': ['squash']}),
         'reviews': Result(0, [{'id': 1, 'author': 'reviewer', 'is_bot': False, 'sha': SHA,
             'state': 'approved', 'body': '', 'submitted_at': '2026-09-29T10:00:00Z'}]),
         'threads': Result(0, {'comments': [], 'threads': []}),
@@ -184,6 +184,17 @@ def test_soak_skip_config(case):
         workspace.load_config(root)
 
 
+def test_merge_method_config(case):
+    # #785: auto by default; squash, rebase or merge; nothing else loads.
+    root = case[0]
+    assert workspace.load_config(root)['repos'][0]['merge_method'] == 'auto'
+    config_change(root, 'merge_deploys = false', 'merge_deploys = false\nmerge_method = "merge"')
+    assert workspace.load_config(root)['repos'][0]['merge_method'] == 'merge'
+    config_change(root, '"merge"', '"fast"')
+    with pytest.raises(workspace.ConfigError):
+        workspace.load_config(root)
+
+
 def test_fixes_base_names_checks_red_at_base_and_green_at_head():
     fixes = policy().fixes_base
     def rows(**conclusions):
@@ -262,15 +273,37 @@ def test_cli_check_prints_the_next_step(case, monkeypatch, capsys):
     assert 'Next:' not in capsys.readouterr().out
 
 
-@pytest.mark.parametrize('value,code', [(False, 1), ('yes', 2)])
-def test_squash_must_be_allowed(case, value, code):
-    # #524: WUWEI merges only with --squash, so a repository without it is the owner's merge.
-    case[1].results['protection'].data['squash'] = value
+@pytest.mark.parametrize('setting,methods,expected', [
+    ('auto', ['merge'], 'merge'), ('auto', ['squash', 'rebase', 'merge'], 'squash'),
+    ('auto', ['rebase', 'merge'], 'rebase'), ('merge', ['squash', 'merge'], 'merge'),
+    ('merge', ['squash'], 'example/project does not allow the merge method into main'),
+    ('auto', [], 'example/project allows no merge method into main'),
+    ('auto', 'yes', None), ('auto', ['fast-forward'], None)])
+def test_merge_method_follows_the_repository(case, setting, methods, expected):
+    # #785: the configured method when allowed; under auto squash, then rebase, then merge.
+    root, host = case
+    config_change(root, 'merge_deploys = false', f'merge_deploys = false\nmerge_method = "{setting}"')
+    host.results['protection'].data['methods'] = methods
     result = check(case)
-    assert result.exit == code, result
-    if code == 1:
-        assert 'example/project does not allow squash merges into main' in result.reason
-        assert 'host terminal' in result.reason
+    if expected is None:
+        assert result.exit == 2, result
+    elif ' ' not in expected:
+        assert result.exit == 0 and result.data['method'] == expected, result
+    else:
+        assert result.exit == 1 and expected in result.reason and 'host terminal' in result.reason, result
+        assert setting == 'auto' or 'repos.merge_method' in result.reason
+
+
+def test_merge_commit_repository_merges_with_a_merge_commit(case, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    root, host = case
+    host.results['protection'].data['methods'] = ['merge']
+    monkeypatch.chdir(root / 'repo')
+    assert main(['merge', 'check', '7']) == 0
+    assert '"method": "merge"' in capsys.readouterr().out
+    assert policy().execute(REF, root).exit == 0
+    assert ('merge', (REF, SHA, 'merge'), root) in host.calls
+    assert state.read_state(root)['merges'][REF]['evidence']['method'] == 'merge'
 
 
 @pytest.mark.parametrize('field,value,hint', [
@@ -388,7 +421,7 @@ def test_merge_pins_head_and_writes_evidence_and_undo(case):
     root, host = case
     result = policy().execute(REF, root)
     assert result.exit == 0, result
-    assert ('merge', (REF, SHA), root) in host.calls
+    assert ('merge', (REF, SHA, 'squash'), root) in host.calls
     entry = state.read_state(root)['merges'][REF]
     assert entry['head'] == SHA and entry['status'] == 'accepted'
     assert entry['evidence']['approvals'] == ['reviewer']
@@ -400,7 +433,7 @@ def test_merge_pins_head_and_writes_evidence_and_undo(case):
 
 def test_push_between_check_and_merge_fails(case, monkeypatch):
     root, host = case
-    def race(ref, head, root=None):
+    def race(ref, head, method, root=None):
         assert head == SHA
         host.results['pr'].data['head'] = BASE
         return Result(2, None, 'head does not match')
@@ -644,10 +677,28 @@ def test_mature_outcomes_without_baseline_are_unmeasured(case, monkeypatch):
     assert policy().poll(root) == 2
 
 
-def test_revert_in_base_history_trips_immediately(case):
+def test_merge_commit_is_watched_without_the_line_outcome(case, monkeypatch):
+    # #785: a merge commit is followed for red checks and reverts; the line outcome is squash only.
+    case[1].results['protection'].data['methods'] = ['merge']
+    root, host = merged(case)
+    directory = workspace.day_dir(root)
+    notes = root / '.wuwei/memory/notes'
+    notes.mkdir(parents=True)
+    (notes / 'baseline.md').write_text('Escaped-defect-rate: 1\n')
+    monkeypatch.setenv('WUWEI_NOW', '2026-10-13T12:00:00Z')
+    assert policy().poll(root) == 0
+    histories = [call[1][3] for call in host.calls if call[0] == 'history']
+    assert histories and not any(histories)
+    entry = state.read_state(directory=directory)['merges'][REF]
+    assert 'outcome' not in entry and 'monitor_error' not in entry
+
+
+@pytest.mark.parametrize('message', ['This reverts commit {MERGED}.',
+                                     'This reverts commit {MERGED}, reversing\nchanges made to {BASE}.'])
+def test_revert_in_base_history_trips_immediately(case, message):
     root, host = merged(case)
     host.results['history'].data['commits'] = [{'sha': 'd' * 40, 'at': '2026-09-29T12:00:00Z',
-        'message': f'Revert change\n\nThis reverts commit {MERGED}.', 'files': []}]
+        'message': 'Revert change\n\n' + message.format(MERGED=MERGED, BASE=BASE), 'files': []}]
     assert policy().poll(root) == 1
     assert 'revert' in state.read_state(root)['merge_breakers']['example/project']['reason']
 
@@ -676,8 +727,8 @@ def test_concurrent_merges_only_one_mutation(case, monkeypatch):
     from threading import Event
     root, host = case
     entered, release = Event(), Event()
-    def merge(ref, head, root=None):
-        host.calls.append(('merge', (ref, head), root))
+    def merge(ref, head, method, root=None):
+        host.calls.append(('merge', (ref, head, method), root))
         entered.set()
         assert release.wait(5)
         return Result(0, {'accepted': True, 'sha': head})
@@ -990,7 +1041,7 @@ def test_grant_lifts_only_auto_eligibility_and_pacing(case, name, hint):
     ('gates', 'pre-PR gates not passed at current HEAD'), ('red', 'required check tests is not green'),
     ('approval', 'required human approvals missing at head'), ('changes', 'outstanding changes requested'),
     ('thread', 'thread:t1'), ('deploys', 'merge_deploys'), ('environment', 'ineligible base branch'),
-    ('draft', 'PR is a draft'), ('squash', 'does not allow squash')])
+    ('draft', 'PR is a draft'), ('methods', 'allows no merge method')])
 def test_grant_never_lifts_a_precondition(case, change, hint):
     root, host = case
     config_change(root, 'auto = true', 'auto = false')
@@ -1007,7 +1058,7 @@ def test_grant_never_lifts_a_precondition(case, change, hint):
     elif change == 'deploys': config_change(root, 'merge_deploys = false', 'merge_deploys = true')
     elif change == 'environment': host.results['pr'].data['base'] = 'production'
     elif change == 'draft': host.results['pr'].data['draft'] = True
-    elif change == 'squash': host.results['protection'].data['squash'] = False
+    elif change == 'methods': host.results['protection'].data['methods'] = []
     result = policy().check(REF, root=root, granted=True)
     assert result.exit == 1 and hint in result.reason, result
     assert result.reason.endswith('; no grant lifts this; run bin/wuwei pr act example/project#7 once it holds')
@@ -1059,7 +1110,7 @@ def test_merge_asks_on_a_card_then_runs_under_today(case, owner, posture):
     assert owner(root, 'Allow today') == (0, 'today')
     result = policy().execute(REF, root)
     assert result.exit == 0, result
-    assert merged_calls(host) == [(REF, SHA)]
+    assert merged_calls(host) == [(REF, SHA, 'squash')]
     kinds = [row['kind'] for row in events(root) if row['kind'] in ('grant.used', 'merge.intent', 'merge.auto')]
     assert kinds == ['grant.used', 'merge.intent', 'merge.auto']
     used = next(row['payload'] for row in events(root) if row['kind'] == 'grant.used')
@@ -1102,7 +1153,7 @@ def standing_merge(root):
 def test_standing_merge_line_under_guarded(case):
     root, host = granted_case(case)
     standing_merge(root)
-    assert policy().execute(REF, root).exit == 0 and merged_calls(host) == [(REF, SHA)]
+    assert policy().execute(REF, root).exit == 0 and merged_calls(host) == [(REF, SHA, 'squash')]
     used = next(row['payload'] for row in events(root) if row['kind'] == 'grant.used')
     assert used['scope'] == 'always'
 
@@ -1126,6 +1177,18 @@ def test_strict_without_grant_names_the_owner_command(case, standing):
     result = policy().execute(REF, root)
     assert result.exit == 1 and 'merge.default_tier = owner_only' in result.reason and COMMAND in result.reason
     assert cards(root) == []
+    assert not merged_calls(host)
+
+
+@pytest.mark.parametrize('route', ['owner_only', 'owner_paths'])
+def test_owner_command_names_the_method(case, route):
+    # #785: the owner's host-terminal command uses the method merge check chose.
+    root, host = granted_case(case, 'strict') if route == 'owner_only' else case
+    if route == 'owner_paths':
+        owner_path(root, host)
+    host.results['protection'].data['methods'] = ['merge']
+    result = policy().execute(REF, root)
+    assert result.exit == 1 and COMMAND.replace('--squash', '--merge') in result.reason, result
     assert not merged_calls(host)
 
 
@@ -1180,7 +1243,7 @@ def test_merge_default_today_runs_without_a_card(case, posture):
     root, host = granted_case(case, posture, 'today')
     result = policy().execute(REF, root)
     assert result.exit == 0, result
-    assert merged_calls(host) == [(REF, SHA)] and not (workspace.day_dir(root) / 'decisions' / 'D-1.md').exists()
+    assert merged_calls(host) == [(REF, SHA, 'squash')] and not (workspace.day_dir(root) / 'decisions' / 'D-1.md').exists()
     assert not [row for row in events(root) if row['kind'] == 'grant.asked']
     used = [row['payload'] for row in events(root) if row['kind'] == 'grant.used']
     assert [(row['decision'], row['scope'], row['target']) for row in used] == [
@@ -1377,7 +1440,7 @@ def test_trust_surface_with_security_pass_merges_under_the_normal_policy(case, t
     result = check(case)
     assert result.exit == 0 and result.data['head'] == SHA, result
     assert policy().execute(REF, root).exit == 0
-    assert merged_calls(host) == [(REF, SHA)] and cards(root) == []
+    assert merged_calls(host) == [(REF, SHA, 'squash')] and cards(root) == []
     kinds = [row['kind'] for row in events(root) if row['kind'] in ('grant.used', 'merge.intent', 'merge.auto')]
     assert kinds == ['merge.intent', 'merge.auto']
 
@@ -1484,4 +1547,4 @@ def test_an_unmatched_owner_path_merges_as_before(case):
     root, host = case
     owner_path(root, host, path='src/a.py')
     assert check(case).exit == 0
-    assert policy().execute(REF, root).exit == 0 and merged_calls(host) == [(REF, SHA)]
+    assert policy().execute(REF, root).exit == 0 and merged_calls(host) == [(REF, SHA, 'squash')]
