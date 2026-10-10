@@ -23,6 +23,8 @@ DOC_SUFFIXES = ('.md', '.rst', '.ipynb')
 AGENT_DOCS = ('AGENTS.md', 'CLAUDE.md', 'SKILL.md', 'charters/*', 'skills/*', 'agents/*',
               'commands/*', '.claude/*', '.agents/*')
 SPEC_DOCS = ('specs/*', '*spec*', '*prereg*', '*pre-registration*')
+# #734: a scratch path in verdict text, workspace-relative or absolute, maybe with :<line>
+SCRATCH_PATH = r'[^\s`\'"()<>\[\]{},;|]*(?:scratchpad|\.wuwei/scratch)/[^\s`\'"()<>\[\]{},;|]+'
 
 
 def gate_set(row):
@@ -646,6 +648,26 @@ def _fix(item, roles):
     return {'action': 'fix', 'roles': roles, 'command': 'wuwei build next ' + shlex.quote(item)}
 
 
+def _stale_scratch(text, brief_text, root):
+    """#734: scratch paths the verdict names that existed before its seat's brief was written."""
+    from datetime import datetime
+    written = re.search(r'^Written: (\S+)$', brief_text, re.M)
+    if not written:
+        return []
+    since = datetime.fromisoformat(written[1]).timestamp()
+    stale = []
+    for token in dict.fromkeys(re.findall(SCRATCH_PATH, text)):
+        path = Path(root) / re.sub(r'(:\d+)+$', '', token.rstrip('.:'))
+        try:
+            # ponytail: ctime, since tar sets mtime to the commit time; a stale file the seat
+            # rewrote reads as new, which is right: its content is the seat's
+            if path.stat().st_ctime < since:
+                stale.append(token)
+        except OSError:
+            continue  # not on disk: nothing to date
+    return stale
+
+
 def receive(item, role, name, round_name='initial', root=None):
     """Lint and record one stopped sentinel's verdict file."""
     root = workspace.find_workspace() if root is None else Path(root)
@@ -754,6 +776,7 @@ def receive(item, role, name, round_name='initial', root=None):
             raise Refused(f'gate state changed during receive; {RACE}')
         fresh['gate_verdicts'][key] = value
 
+    stale = _stale_scratch(text, brief_text, root)  # #734: before the write, so damage records nothing
     state._write_state(update, root, reserved=False, kind='gate.received',
                        payload={'item': item, 'role': role, 'round': round_name, 'verdict': result})
     if left:  # #672: the round left files in the builder's worktree
@@ -762,6 +785,10 @@ def receive(item, role, name, round_name='initial', root=None):
         print(f"warning: {tree} has files the gate round left: {', '.join(left)}; gate seats "
               'probe in a copy under their scratch directory; remove them, or the next gate '
               'brief refuses a dirty tree', file=sys.stderr)
+    for cited in stale:
+        print(f"warning: {name}'s verdict names {cited}, which existed before its brief was "
+              "written; its check may have read an earlier seat's files: rerun it in a new, "
+              'empty directory', file=sys.stderr)
     if sentinel == 'sentinel-security' and data['items'][item]['flags']['agent_surface']:
         workspace.atomic_write(path, text + '\n')
     return value

@@ -426,7 +426,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         header += [f'Written: {now}', f'Item: {item}', f'Seat policy: {json.dumps(data["seat_policy"])}']
         scratch = root / workspace.SCRATCH / item / role  # #647: one scratch directory per seat
         header.append(f'Scratch: <your scratchpad>/{item}/{role}/, or {scratch}/ when your host names '
-                      'no scratchpad; create it if missing and write every temporary file there, '
+                      'no scratchpad; create it if missing, or move it aside with a timestamp suffix '
+                      'when it holds files you did not write, and write every temporary file there, '
                       "never at the scratchpad root or in another item's directory")
         if gate:  # #672: a gate probe never writes in the builder's worktree
             header.append('Probe env: PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX='
@@ -593,5 +594,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             if created:
                 output.unlink()
             raise
+        if scratch.is_dir() and any(scratch.iterdir()):  # #734: a new seat never inherits files
+            # ponytail: one move per timestamp; a fixed WUWEI_NOW moving twice is an OSError (exit 2)
+            scratch.rename(scratch.with_name(f'{role}.{workspace.now():%Y%m%dT%H%M%S.%f}'))
         scratch.mkdir(parents=True, exist_ok=True)
         return relative

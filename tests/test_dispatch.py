@@ -64,19 +64,40 @@ def test_gate_dispatch_requires_builder_stand_down(root):
         dispatch.next_step('A', root)
 
 
-def record(root, role, name, text, round_name='initial', **seat):
+def record(root, role, name, text, round_name='initial', brief='Head: abc1234\n', **seat):
     from wuwei import dispatch
 
     directory = workspace.day_dir(root)
     (directory / 'briefs').mkdir(exist_ok=True)
     (directory / 'decisions').mkdir(exist_ok=True)
-    (directory / 'briefs' / f'{name}.md').write_text('Head: abc1234\n')
+    (directory / 'briefs' / f'{name}.md').write_text(brief)
     (directory / 'decisions' / f'gate-{name}.md').write_text(text)
     state._write_state(lambda data: data['seats'].update({
         name: {'item': 'A', 'role': 'sentinel-' + role.partition('@')[0], 'status': 'stopped',
                'brief': str((directory / 'briefs' / f'{name}.md').relative_to(root)), **seat}}),
         root, reserved=False)
     return dispatch.receive('A', role, name, round_name, root)
+
+
+@pytest.mark.parametrize('line, warnings', [('Written: 2099-01-01T00:00:00+00:00\n', 2),
+                                            ('Written: 2000-01-01T00:00:00+00:00\n', 0), ('', 0)])
+def test_receive_warns_on_scratch_evidence_older_than_its_brief(root, capsys, line, warnings):
+    # #734: a verdict citing scratch files older than its seat's brief may have read stale files.
+    copy = root / '.wuwei/scratch/A/sentinel-arch/copy'
+    copy.mkdir(parents=True)
+    (copy / 'x.py').write_text('x = 1\n')
+    relative = '.wuwei/scratch/A/sentinel-arch/copy/x.py'
+    probe = (f'Probe: ruff on {relative}:3 and {copy / "x.py"} and '
+             '.wuwei/scratch/A/sentinel-arch/gone.py: clean\n')
+    text = PASS.replace('Probe: not run\n', probe)
+    capsys.readouterr()
+    value = record(root, 'arch', 'arch-1', text, brief='Head: abc1234\n' + line)
+    assert value['verdict'] == 'PASS'
+    assert 'A:arch:initial' in state.read_state(root)['gate_verdicts']
+    found = [row for row in capsys.readouterr().err.splitlines() if row.startswith('warning:')]
+    assert len(found) == warnings
+    assert all('arch-1' in row and 'gone.py' not in row for row in found)
+    assert all(any(form in row for form in (relative, str(copy / 'x.py'))) for row in found)
 
 
 def built(root):
