@@ -342,7 +342,8 @@ lead_login = "lead"
         self.execute(action)
         assert json.loads(self.run('build', 'next', 'A'))['action'] == 'check'
         self.run('build', 'check', 'A')
-        assert json.loads(self.run('build', 'next', 'A'))['action'] == 'done'
+        # #666: past its checks the build answers what dispatch next decides, the gate step.
+        assert json.loads(self.run('build', 'next', 'A')) == self.next()
 
     def gate(self, role, verdict, round_name='initial', expected=0):
         self.runtime.verdict = verdict
