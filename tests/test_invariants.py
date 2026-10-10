@@ -1058,11 +1058,63 @@ def i35(case, rules):
     return rules.memo(('round cap',), compute)
 
 
+def card_confirm(posture, rules):
+    """#599: (I29 failure, I30 failure) for one posture, from decision.owner_confirm called
+    directly on the planner's asked D-99 with stdin not a terminal and a recording prompt."""
+    def compute():
+        import sys
+        from wuwei import decision, integrity, state
+        rules.configure(posture)
+        fields = {'Question': 'q', 'Options': 'o'}
+        before = state.read_state(rules.root)['sessions']['planner-1'].get('gate_asked', [])
+        state._write_state(lambda data: data['sessions']['planner-1'].__setitem__('gate_asked', [*before, 'D-99']),
+                           rules.root, reserved=False)
+        prompts, found = [], []
+        real = integrity._host_confirm, sys.stdin, os.environ.pop('WUWEI_SESSION_ID', None)
+        integrity._host_confirm, sys.stdin = (lambda *args, **kwargs: prompts.append(args) or False), io.StringIO()
+        try:
+            for session, card in itertools.product(('planner-1', None), (None, decision.card_hash('D-99', fields))):
+                if session:
+                    os.environ['WUWEI_SESSION_ID'] = session
+                else:
+                    os.environ.pop('WUWEI_SESSION_ID', None)
+                found.append(decision.owner_confirm(rules.root, 'D-99', 'x' * 64, 'p', card, fields))
+            asked = len(prompts)
+            edited = decision.owner_confirm(rules.root, 'D-99', 'x' * 64, 'p',
+                                            decision.card_hash('D-99', {**fields, 'Options': 'p'}), fields)
+        finally:
+            integrity._host_confirm, sys.stdin = real[:2]
+            os.environ.pop('WUWEI_SESSION_ID', None)
+            if real[2] is not None:
+                os.environ['WUWEI_SESSION_ID'] = real[2]
+            state._write_state(lambda data: data['sessions']['planner-1'].__setitem__('gate_asked', before),
+                               rules.root, reserved=False)
+        i29 = None
+        if posture != 'strict' and (set(found) != {'in the planner session'} or asked):
+            i29 = f'an asked card answered {found} with {asked} prompts'
+        if posture == 'strict' and ('in the planner session' in found or asked != 2):
+            i29 = f'strict recorded {found} with {asked} prompts (only the two without --card)'
+        i30 = None if edited == '' and len(prompts) == asked else f'an edited record answered {edited!r}'
+        return i29, i30
+    return rules.memo(('card confirm', posture), compute)
+
+
+def i29(case, rules):
+    """#599: a decision record command for a card the planner asked never prompts below
+    strict, with and without WUWEI_SESSION_ID; under strict it never records from the card."""
+    return card_confirm(case[0], rules)[0]
+
+
+def i30(case, rules):
+    """#599: a --card hash from an edited record never records and never prompts."""
+    return card_confirm(case[0], rules)[1]
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
               'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27, 'I28': i28,
-              'I31': i31, 'I32': i32, 'I33': i33, 'I34': i34, 'I35': i35}
+              'I29': i29, 'I30': i30, 'I31': i31, 'I32': i32, 'I33': i33, 'I34': i34, 'I35': i35}
 
 
 def project(case):
@@ -1078,7 +1130,7 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
          'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': (), 'I28': (),
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': ()}
+         'I29': (0,), 'I30': (0,), 'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
@@ -1172,6 +1224,10 @@ BROKEN = {
         import_module('wuwei.undo'), 'correct', lambda ident, path, text, fields, root: (text, fields, '')),
     'a docs-only diff ignores what raises it': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.dispatch'), 'AGENT_DOCS', ()),
+    'session id only from the environment': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.sessions'), 'caller', lambda root, card=False: import_module('wuwei.sessions').current()),
+    'card hash ignored': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.decision'), 'card_hash', lambda identifier, fields: 'same'),
     'a fix round past the cap': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.dispatch'), 'rounds_used', lambda data, item: 0),
     'client thread row that sends': lambda monkeypatch: monkeypatch.setattr(

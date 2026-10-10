@@ -593,7 +593,7 @@ def test_gates_mcp_servers(ws):
 def test_day_rows(ws):
     rows = doctor.diagnose()
     assert names(rows, 'day') == ['state', 'planner', 'watch', 'listener', 'shepherd', 'heartbeat', 'stuck seats',
-                                  'nudges', 'traces', 'tracker']
+                                  'nudges', 'traces', 'session id', 'tracker']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'day'), rows
     assert row(rows, 'listener')['value'] == 'not used'
     ws.probes['seats'] = {'result': 'failed', 'value': 'dead: builder; run wuwei seat stop builder --verdict <file>'}
@@ -624,6 +624,18 @@ def test_day_rows(ws):
     page = row(rows, 'heartbeat page')
     assert page['status'] == 'fail' and page['fix'] == W('nudges')
     assert row(rows, 'nudges')['status'] == 'ok'
+
+
+def test_day_session_id_row(ws):
+    # #599: a SessionStart without CLAUDE_ENV_FILE is visible in one row.
+    assert row(doctor.diagnose(), 'session id')['status'] == 'ok'
+    state.append_event('session.seen', {'session_id': 'A', 'hook': 'SessionStart:startup', 'env_file': False}, ws.root)
+    found = row(doctor.diagnose(), 'session id')
+    assert found['status'] == 'warn' and 'CLAUDE_ENV_FILE' in found['value']
+    state.append_event('session.seen', {'session_id': 'A', 'hook': 'Stop'}, ws.root)
+    assert row(doctor.diagnose(), 'session id')['status'] == 'warn'
+    state.append_event('session.seen', {'session_id': 'B', 'hook': 'SessionStart:startup', 'env_file': True}, ws.root)
+    assert row(doctor.diagnose(), 'session id')['status'] == 'ok'
 
 
 def test_guards_rows(ws):

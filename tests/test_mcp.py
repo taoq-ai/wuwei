@@ -1690,6 +1690,50 @@ def test_planner_session_records_asked_mcp_decision(configured, monkeypatch, cap
         assert core().cached(configured).exit == 0
 
 
+def asked_mcp_card(configured, monkeypatch):
+    """#599: the pending MCP decision D-1 asked on a card by the planner; the planner's Bash
+    without WUWEI_SESSION_ID and without a terminal on stdin; a prompt fails the test."""
+    import io
+    from wuwei import integrity, plan
+    from wuwei.guards.decision import record_gate
+    monkeypatch.chdir(configured)
+    block_critical(configured)
+    fake_scanner(monkeypatch, 1, [metadata('critical')])
+    assert core().check(configured).exit == 1
+    plan.session('planner-1', configured)
+    [question] = core().widget(configured)
+    assert record_gate({'cwd': str(configured), 'session_id': 'planner-1', 'tool_name': 'AskUserQuestion',
+                        'tool_input': {'questions': [question]}}) == (0, '')
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    monkeypatch.setattr('sys.stdin', io.StringIO())
+    monkeypatch.setattr(integrity, '_host_confirm', lambda value, prompt: pytest.fail('prompted'))
+
+
+@pytest.mark.parametrize('verb', [['mcp', 'decide'], ['decide']])
+def test_asked_mcp_card_records_without_the_session_id(configured, monkeypatch, capsys, verb):
+    from wuwei.__main__ import main
+    asked_mcp_card(configured, monkeypatch)
+    assert main([*verb, 'D-1', 'proceed']) == 0, capsys.readouterr().err
+    assert (workspace.day_dir(configured) / 'decisions/D-1.md').read_text().endswith('in the planner session.\n')
+
+
+@pytest.mark.parametrize('hashed', ['record', 'other'])
+def test_decide_card_answers_the_asked_mcp_decision(configured, monkeypatch, capsys, hashed):
+    # #599: --card with the record's hash confirms the asked card; another hash never prompts.
+    from wuwei import decision
+    from wuwei.__main__ import main
+    asked_mcp_card(configured, monkeypatch)
+    path = workspace.day_dir(configured) / 'decisions/D-1.md'
+    card = decision.card_hash('D-1', decision.evaluate(path.read_text())[0]) if hashed == 'record' else '0' * 12
+    capsys.readouterr()
+    code = main(['decide', 'D-1', 'proceed', '--card', card])
+    if hashed == 'record':
+        assert code == 0 and path.read_text().endswith('in the planner session.\n')
+    else:
+        assert code == 1 and 'bin/wuwei decision show D-1 --widget' in capsys.readouterr().err
+        assert 'Outcome: pending' in path.read_text()
+
+
 def test_mcp_decide_workspace_from_outside(configured, tmp_path_factory, monkeypatch, capsys):
     from wuwei import integrity
     from wuwei.__main__ import main

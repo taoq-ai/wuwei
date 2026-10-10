@@ -202,3 +202,13 @@ def test_guide_names_the_pr_read_commands():
     from wuwei import guide
     [line] = [line for line in guide.text().splitlines() if 'wuwei pr state' in line]
     assert 'wuwei pr ping-check' in line and 'reviewer list' in line
+
+
+RERUN = ('wuwei decision show D-n --widget', '`wuwei decide D-n "<label>" --card <hash>`',
+         'without asking the card again. Below strict, never show the owner a host-terminal command for a card they answered')
+
+
+def test_a_failed_card_confirmation_reruns_with_card():
+    # #599: the next step after a confirmation failure is the widget's --card command, never a host terminal.
+    from wuwei import guide
+    assert all(part in guide.text() for part in RERUN)

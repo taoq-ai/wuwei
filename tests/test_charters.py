@@ -280,3 +280,10 @@ def test_plain_tone_rule_has_five_items_and_ships_in_every_agent():
     for role in ("planner", "lead", "builder", "sentinel-arch", "sentinel-quality", "sentinel-security",
                  "sentinel-goal", "shepherd", "steward"):
         assert section.strip() in (ROOT / "agents" / f"{role}.md").read_text(encoding="utf-8"), role
+
+
+def test_plan_skill_reruns_a_failed_card_confirmation_with_card():
+    # #599
+    from test_guide import RERUN
+    skill = (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
+    assert all(part in skill for part in RERUN)
