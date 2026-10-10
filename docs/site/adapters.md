@@ -62,7 +62,7 @@ the exit code.
 
 | Adapter | Required credential or configuration |
 | --- | --- |
-| code_host.github | `gh auth status --hostname github.com` must succeed. Authenticate gh separately or supply `GH_TOKEN` or `GITHUB_TOKEN`. WUWEI captures and discards gh's account output. A write-scoped `GH_TOKEN` or `GITHUB_TOKEN` in `.wuwei/env` or the environment is readable by seats, and `wuwei config check` reports it. |
+| code_host.github | `gh auth status --hostname github.com` must succeed. Authenticate gh separately or supply `GH_TOKEN` or `GITHUB_TOKEN`. WUWEI captures and discards gh's account output. A write-scoped `GH_TOKEN` or `GITHUB_TOKEN` in `.wuwei/env` or the environment is readable by seats, and `wuwei config check` reports it. When it fails, WUWEI reads `gh api user` once: a GitHub rate limit shows in doctor as `gh` waiting, rate limited until <time>, never as missing auth. |
 | tracker.linear | `LINEAR_API_KEY` |
 | tracker.jira | `JIRA_SITE` (an `https://` origin, kept from seats but not redacted), `JIRA_EMAIL` and `JIRA_API_TOKEN`; `tracker.project` names the project key |
 | tracker.github | `GITHUB_TRACKER_TOKEN`, a fine-grained token for issues and projects only, or your gh login with `tracker.auth = "gh"` ([below](#github-tracker-through-your-gh-login)); `tracker.project` names `owner/repo` (else the first repository) and optional `tracker.board` names a Projects board as `owner/number` |

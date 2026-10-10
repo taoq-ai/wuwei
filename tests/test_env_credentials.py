@@ -378,7 +378,8 @@ def test_github_auth_through_adapter(case, monkeypatch, capsys, outcome, expecte
         return SimpleNamespace(returncode=outcome, stdout=KEY, stderr=KEY)
     monkeypatch.setattr(subprocess, 'run', run)
     assert main(['config', 'check']) == expected
-    assert calls == [['gh', 'auth', 'status', '--hostname', 'github.com']]
+    probe = [['gh', 'api', 'user', '--hostname', 'github.com']] if outcome == 1 else []  # #784
+    assert calls == [['gh', 'auth', 'status', '--hostname', 'github.com'], *probe]
     output = str(capsys.readouterr())
     assert 'gh auth' in output and KEY not in output
 
