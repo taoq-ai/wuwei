@@ -229,7 +229,8 @@ def normalize(command: str, *, protected=(), words=None) -> list[Command]:
         # and no write lands in git's own files (hooks, config).
         if texts and any(item.argv and PurePosixPath(item.argv[0]).name not in protected
                          and not reads(item.argv)
-                         or any('.git' in PurePosixPath(target).parts for target in item.writes)
+                         or any('.git' in (part.casefold() for part in PurePosixPath(target).parts)
+                                for target in item.writes)  # case-insensitive filesystems
                          for item in found):
             for text in texts:
                 _reject_mentions(text)
