@@ -17,7 +17,7 @@ EVENT_PRODUCERS = {
     'worktree.hooks_skipped': 'wuwei worktree add, wuwei worktree adopt or wuwei init --upgrade',
     'worktree.adopted': 'wuwei worktree adopt, wuwei worktree add --branch or wuwei pr claim',
     'worktree.created': 'wuwei worktree add',
-    'build.started': 'wuwei build next', 'gate.tiered': 'wuwei dispatch next', 'build.launched': 'wuwei build',
+    'build.started': 'wuwei build next', 'gate.tiered': 'wuwei dispatch next', 'gate.delta_head': 'wuwei dispatch next', 'build.launched': 'wuwei build',
     'build.fix_opened': 'wuwei pr act or wuwei dispatch next',
     'build.checked': 'wuwei build check', 'build.check_started': 'wuwei build check',
     **{f'spec.{kind}': 'wuwei hook, wuwei build or wuwei dispatch next' for kind in ('step', 'skipped', 'warned')},

@@ -137,8 +137,8 @@ def test_fast_light_depth_skips_the_class_sweep(root, monkeypatch, capsys):
 
 
 @pytest.mark.parametrize('value,expected', [('fast', 'Re-read:'), ('steady', 'Delta review:')])
-def test_fast_fix_round_is_re_read(root, value, expected):
-    from test_dispatch import built, gate_fix
+def test_fast_fix_round_is_re_read(root, value, expected, monkeypatch):
+    from test_dispatch import built, gate_fix, live_head
     from wuwei import dispatch
     built(root)
     state._write_state(lambda data: data['items']['A'].update(gates={
@@ -148,6 +148,7 @@ def test_fast_fix_round_is_re_read(root, value, expected):
     state._write_state(lambda data: data['seats']['quality-1'].update(
         agent_id='agent-quality-1', head='abc1234' + '0' * 33), root, reserved=False)
     dispatch.next_step('A', root)
+    live_head(monkeypatch, 'def5678' + '0' * 33)
     state.transition('A', 'delta', root)
     [action] = dispatch.next_step('A', root)['seats']
     assert action['feedback'].startswith(expected)

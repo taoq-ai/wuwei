@@ -302,8 +302,8 @@ def test_light_seat_without_a_retro_note_records_none(seat, tier, text, kind, co
 
 
 @pytest.mark.parametrize('light', [True, False])
-def test_light_fix_is_re_read_by_the_same_seat(root, light):
-    from test_dispatch import FIX, built, gate_fix, record
+def test_light_fix_is_re_read_by_the_same_seat(root, light, monkeypatch):
+    from test_dispatch import FIX, built, gate_fix, live_head, record
     from wuwei import dispatch
 
     built(root)
@@ -317,6 +317,7 @@ def test_light_fix_is_re_read_by_the_same_seat(root, light):
     state._write_state(lambda data: data['seats']['quality-1'].update(
         agent_id='agent-quality-1', head='abc1234' + '0' * 33), root, reserved=False)
     dispatch.next_step('A', root)
+    live_head(monkeypatch, 'def5678' + '0' * 33)
     state.transition('A', 'delta', root)
     [action] = dispatch.next_step('A', root)['seats']
     assert action['action'] == 'continue' and action['resume'] == 'agent-quality-1'
