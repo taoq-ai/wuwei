@@ -39,13 +39,21 @@ def check(data, config, item, row=None):
     if ticket(data, item):
         return 'ticket', ''
     row = row or {}
-    if (row.get('gates', {}).get('tier') or row.get('tier')) in config['tracker']['skip_tiers']:
+    if ((row.get('gates', {}).get('tier') or row.get('tier')) in config['tracker']['skip_tiers']
+            or data.get('tickets', {}).get(item, {}).get('source') == 'none'):  # #636: the owner's none
         return 'skipped', ''
+    strict = workspace.posture(config)[0] == 'strict'
     draft = pending(data, item)
     if draft:
-        return 'missing', f'{item} has no ticket: bin/wuwei drafts approve {draft}'
-    return 'missing', (f"{item} has no ticket: bin/wuwei tracker create {item} (opens one from "
-                       f"the item's record) or bin/wuwei plan set {item} ticket=<id>")
+        return 'missing', (f'{item} has no ticket: the owner runs bin/wuwei drafts approve {draft} '
+                           'in a host terminal' if strict else
+                           f'{item} has no ticket: draft {draft} opens it once the owner answers '
+                           f'Send on its card (bin/wuwei drafts show {draft} --widget)')
+    return 'missing', (f"{item} has no ticket: the owner runs bin/wuwei tracker create {item} (opens "
+                       f"one from the item's record) or bin/wuwei plan set {item} ticket=<id> in a "
+                       'host terminal' if strict else
+                       f"{item} has no ticket: the planner proposes one on the item's card (an "
+                       "existing ticket or a new one from its record) and records the owner's answer")
 
 
 def _key(category, subject, title):
@@ -60,8 +68,9 @@ def _candidate(root, data, item):
                 data.get('discovery_candidates', {}).get(item))
 
 
-def create(root, subject, category='items', title=None, evidence=()):
-    """The one ticket creator: tracker create <item> and --bug|--triage|--follow-up."""
+def create(root, subject, category='items', title=None, evidence=(), row=None):
+    """The one ticket creator: tracker create <item> and --bug|--triage|--follow-up; row is
+    an item record not in today's proposal (#636: an owner-named item from plan add)."""
     from wuwei import profiles, registry
     root = workspace.find_workspace(root)
     config = workspace.load_config(root)
@@ -84,7 +93,7 @@ def create(root, subject, category='items', title=None, evidence=()):
         if ticket(data, subject):
             return registry.Result(0, {'id': ticket(data, subject)},
                                    f'{subject}: ticket {ticket(data, subject)}')
-        row = _candidate(root, data, subject)
+        row = row or _candidate(root, data, subject)
         if not isinstance(row, dict) or not isinstance(row.get('scope'), str):
             return registry.Result(2, reason=f'tracker create: unknown item {subject}; use an id '
                                              "from today's plan or proposal (bin/wuwei status lists them)")

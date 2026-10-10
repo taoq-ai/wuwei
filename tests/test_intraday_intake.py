@@ -235,7 +235,7 @@ def test_plan_add_needs_a_ticket(root, monkeypatch, capsys):
     result = discovery.intake(root, trigger='sweep')
     assert result['owner'] == ['NEW'] and result['started'] == ['ENG-5']
     day = state.read_state(root)
-    assert 'tracker create NEW' in day['intraday_proposals']['NEW']['reason']
+    assert "the planner proposes one on the item's card" in day['intraday_proposals']['NEW']['reason']
     assert day['tickets'] == {'ENG-5': {'id': 'ENG-5', 'source': 'tracker'}}
     save_candidate(root, candidate('OTHER'))
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
@@ -279,11 +279,39 @@ def test_plan_add_unknown_item_without_goal_names_the_form(root):
 
 def test_owner_named_item_needs_a_ticket_when_a_tracker_is_set(root):
     (root / '.wuwei/config.toml').write_text(
-        '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "linear"\n')
+        '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "linear"\n'
+        '[security]\nposture = "strict"\n')
     with pytest.raises(state.StateError, match='OWN-3 has no ticket'):
         plan.add('OWN-3', root, goal='G-1')
+    assert not state.read_state(root).get('drafts')
     assert plan.add('OWN-3', root, goal='G-1', ticket='ENG-7')['action'] == 'build next'
     assert state.read_state(root)['tickets']['OWN-3'] == {'id': 'ENG-7', 'source': 'candidate'}
+
+
+def test_owner_named_item_gets_a_ticket_draft_for_its_card(root, monkeypatch):
+    """#636: below strict plan add drafts the owner item's ticket; its Send card opens it."""
+    from fakes.tracker import Fake, ported
+    from wuwei import drafts, registry
+    (root / '.wuwei/config.toml').write_text(
+        '[owner]\nname = "Pat Example"\n[discovery]\nautostart = "goal"\n'
+        '[adapters]\ntracker = "linear"\n')
+    fake = Fake({'create': registry.Result(0, {'id': 'ENG-9', 'url': 'https://example.test/ENG-9'})})
+    port = ported(fake)
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
+                        else load(kind, config))
+    with pytest.raises(state.StateError) as refused:
+        plan.add('OWN-3', root, goal='G-1', title='Fix the export')
+    assert 'drafts show draft-' in str(refused.value) and 'host terminal' not in str(refused.value)
+    day = state.read_state(root)
+    (key, row), = day['drafts'].items()
+    assert row['status'] == 'pending' and row['inputs']['draft']['title'] == 'Fix the export'
+    assert row['inputs']['draft']['item'] == 'OWN-3'
+    assert fake.calls == [] and 'OWN-3' not in day['items']
+    assert drafts.approve(root, key).exit == 0
+    assert plan.add('OWN-3', root, goal='G-1', title='Fix the export')['action'] == 'build next'
+    day = state.read_state(root)
+    assert day['tickets']['OWN-3']['source'] == 'create' and len(day['drafts']) == 1
 
 
 def test_plan_skill_and_charter_say_how_an_item_joins_an_approved_plan():

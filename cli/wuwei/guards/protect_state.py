@@ -84,12 +84,18 @@ _OWNER_ACTIONS = {
                         '<value> in a host terminal.'),
     ('config', 'add-repo'): ("Config edits are the owner's, outside agent tools; propose the repository. The owner "
                              'runs bin/wuwei config add-repo --name <owner/repo> --path <dir> --branch <branch> in a host terminal.'),
-    # Only the owner lowers the spec requirement for one item (5.10) or links an existing ticket
-    # (5.11); other plan verbs are seat commands.
+    # Only the owner lowers the spec requirement for one item (5.10); the planner links an existing
+    # ticket (5.11, #636) below strict; other plan verbs are seat commands.
     ('plan', 'set'): ('Spec overrides are an owner action, outside agent tools: the owner runs bin/wuwei plan '
                       'set <item> spec=skipped --reason <why> in a host terminal. To link an existing ticket, '
-                      'the owner runs bin/wuwei plan set <item> ticket=<id> there; a seat runs bin/wuwei '
-                      'tracker create <item>.'),
+                      "the planner runs bin/wuwei plan set <item> ticket=<id> after the owner's card answer; "
+                      'under strict the owner runs it in a host terminal.'),
+    # #636: item tickets are the planner's; a class create (--bug, --triage, --follow-up) is a seat's.
+    ('tracker', 'create'): ("Item tickets are the planner's (#636): a seat hands the item back to the planner, "
+                            "which proposes the ticket on the item's card and opens it on the owner's answer. "
+                            'A seat opens a linked bug with bin/wuwei tracker create --bug <item> "<title>" '
+                            '--evidence <file:line>. Under strict the owner runs bin/wuwei tracker create '
+                            '<item> in a host terminal.'),
     # An empty verb is the whole group: setup's flags take values, which _pair reads as a verb.
     # An applied forgetting archives a note or drops a charter rule (design 5.14).
     ('memory', 'forget'): ('The owner decides what memory to forget, outside agent tools; show the proposals with '
@@ -162,6 +168,23 @@ def _planner_pace_set(action):
     """#579: the literal plan set pace=<word>, nothing after it; the planner's two-way choice."""
     return (len(action) == 3 and list(action[:2]) == ['plan', 'set']
             and re.fullmatch(r'pace=[a-z]+', action[2]) is not None)
+
+
+def _seat_class_create(action):
+    """#636: tracker create with one class flag (before any --) is a seat command."""
+    words = list(action[:action.index('--')] if '--' in action else action)
+    return (list(action[:2]) == ['tracker', 'create']
+            and sum(word in ('--bug', '--triage', '--follow-up') for word in words) == 1
+            and not any(re.search(r'[$`*?\[{]', word) for word in action))
+
+
+def _planner_ticket(action):
+    """#636: the literal tracker create <item> or plan set <item> ticket=<id>, nothing more."""
+    action = list(action)
+    return ((len(action) == 3 and action[:2] == ['tracker', 'create']
+             or len(action) == 4 and action[:2] == ['plan', 'set'] and action[3].startswith('ticket='))
+            and not action[2].startswith('-')
+            and not any(re.search(r'[$`*?\[{]', word) for word in action))
 
 
 def _strict(cwd):
@@ -256,11 +279,14 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
                        'actions run in a host terminal.')
         if read_only(action):  # #348: --help prints usage and runs nothing
             continue
-        if (reason := _owner_reason((group, verb))) and not (not xargs and _seat_docs_set(action)):
+        if (reason := _owner_reason((group, verb))) and not (not xargs and (
+                _seat_docs_set(action) or _seat_class_create(action))):
             if (group, verb) == ('outbound', 'learn') and edits[1]:
                 continue  # The registered planner session, in any posture.
             # #579: the registered planner changes the day's pace below strict; strict asks nothing.
-            if not xargs and _planner_pace_set(action) and edits[1] and not _strict(cwd):
+            # #636: so it attaches an item ticket after the owner's card answer.
+            if (not xargs and (_planner_pace_set(action) or _planner_ticket(action)) and edits[1]
+                    and not _strict(cwd)):
                 continue
             if (group, verb) == ('config', 'set') and (
                     _positional(action)[2:3] or [''])[0].split('.')[0] in GUARD_KEYS:

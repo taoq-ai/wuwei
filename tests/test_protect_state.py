@@ -1035,6 +1035,25 @@ def test_outbound_learn_planner_only(workspace, monkeypatch, capsys, posture):
     assert _seat_hook(workspace, LEARN, monkeypatch, capsys, posture, seat=False) == (0, '')
 
 
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_item_tickets_are_the_planners(workspace, monkeypatch, capsys, posture):
+    """#636: a seat never attaches an item ticket; the planner does below strict."""
+    _planner(workspace, monkeypatch)
+    for command in ('bin/wuwei tracker create A', 'bin/wuwei plan set A ticket=ENG-1'):
+        code, reason = _seat_hook(workspace, command, monkeypatch, capsys, posture)
+        assert code == 2 and 'planner' in reason, (command, reason)
+        code, reason = _seat_hook(workspace, command, monkeypatch, capsys, posture, seat=False)
+        assert ((code, reason) == (0, '') if posture != 'strict' else
+                code == 2 and 'host terminal' in reason), (command, reason)
+    bug = 'bin/wuwei tracker create --bug A Broken --evidence cli/x.py:1'
+    assert _seat_hook(workspace, bug, monkeypatch, capsys, posture) == (0, '')
+    for command in ('bin/wuwei tracker create A -- --bug', 'bin/wuwei plan set A ticket=$X'):
+        assert _seat_hook(workspace, command, monkeypatch, capsys, posture)[0] == 2, command
+        assert _seat_hook(workspace, command, monkeypatch, capsys, posture, seat=False)[0] == 2, command
+    spec = 'bin/wuwei plan set A spec=skipped --reason x'
+    assert _seat_hook(workspace, spec, monkeypatch, capsys, posture, seat=False)[0] == 2
+
+
 def test_config_show_outbound_learn_passes(workspace, monkeypatch, capsys):
     for command in ('bin/wuwei config show outbound.learn', 'bin/wuwei outbound learn --help'):
         assert _seat_hook(workspace, command, monkeypatch, capsys, 'strict') == (0, '')

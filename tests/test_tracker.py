@@ -9,13 +9,30 @@ from wuwei import integrity, registry, state, tracker, workspace
 from wuwei.__main__ import main
 
 
-def config(adapter='linear', required=True, skip=()):
+def config(adapter='linear', required=True, skip=(), posture='guarded'):
     return {'adapters': {'tracker': adapter},
-            'tracker': {'required': required, 'skip_tiers': list(skip)}}
+            'tracker': {'required': required, 'skip_tiers': list(skip)},
+            'guards': {'mode': 'enforce'},
+            'security': {'posture': posture, 'areas': dict.fromkeys(workspace.AREAS)}}
 
 
-MISSING = ("item-1 has no ticket: bin/wuwei tracker create item-1 (opens one from the item's "
-           "record) or bin/wuwei plan set item-1 ticket=<id>")
+MISSING = ("item-1 has no ticket: the planner proposes one on the item's card (an existing "
+           "ticket or a new one from its record) and records the owner's answer")
+STRICT = ("item-1 has no ticket: the owner runs bin/wuwei tracker create item-1 (opens one from "
+          "the item's record) or bin/wuwei plan set item-1 ticket=<id> in a host terminal")
+
+
+@pytest.mark.parametrize('posture,expected', [('observe', MISSING), ('guarded', MISSING),
+                                              ('strict', STRICT)])
+def test_missing_reason_by_posture(posture, expected):
+    """#636: below strict the reason names the card, never a terminal command."""
+    assert tracker.check({}, config(posture=posture), 'item-1') == ('missing', expected)
+    assert ('bin/wuwei' in expected) is (posture == 'strict')
+
+
+def test_owners_none_is_skipped():
+    data = {'tickets': {'item-1': {'id': None, 'source': 'none'}}}
+    assert tracker.check(data, config(), 'item-1') == ('skipped', '')
 
 
 @pytest.mark.parametrize('settings,data,row,expected', [
@@ -47,7 +64,11 @@ def test_pending_items_draft_names_approval():
     data = {'drafts': {'draft-2': other, 'draft-1': row}}
     assert tracker.pending(data, 'item-1') == 'draft-1'
     assert tracker.check(data, config(), 'item-1') == (
-        'missing', 'item-1 has no ticket: bin/wuwei drafts approve draft-1')
+        'missing', 'item-1 has no ticket: draft draft-1 opens it once the owner answers Send '
+                   'on its card (bin/wuwei drafts show draft-1 --widget)')
+    assert tracker.check(data, config(posture='strict'), 'item-1') == (
+        'missing', 'item-1 has no ticket: the owner runs bin/wuwei drafts approve draft-1 '
+                   'in a host terminal')
     row['status'] = 'sent'
     assert tracker.pending(data, 'item-1') is None
 

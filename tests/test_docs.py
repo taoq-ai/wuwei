@@ -1610,3 +1610,11 @@ def test_steward_trigger_documented():
     assert '`250`' in row and 'waits for the round to end' in row
     assert 'steward: waits for <items> to finish the fix round' in (SITE / 'reference.md').read_text()
     assert '`## Steward runs`' in (SITE / 'daily.md').read_text()
+
+
+def test_tickets_from_the_card_documented():
+    # #636: Approve opens the proposed tickets; a seat never opens an item ticket.
+    section = (SITE / 'concepts.md').read_text().split('\n## Tickets and comments\n', 1)[1].split('\n## ', 1)[0]
+    text = ' '.join(section.split())
+    assert 'Approve opens the tickets the plan proposed' in text
+    assert 'A seat never opens an item ticket' in text
