@@ -375,8 +375,7 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         verdicts = []
         for gate in gate_set(data['items'][item]):
             first = data['gate_verdicts'].get(f'{item}:{gate}:initial')
-            selected = (data['gate_verdicts'].get(f'{item}:{gate}:delta')
-                        if first and first['verdict'] == 'FIX' else first)
+            selected = data['gate_verdicts'].get(f'{item}:{gate}:delta') or first  # #723
             path = (root / selected['file'] if selected else
                     workspace.day_dir(root) / 'decisions' / f'gate-{item}-{gate}.md')
             verdicts.append({'path': str(path.relative_to(root)),

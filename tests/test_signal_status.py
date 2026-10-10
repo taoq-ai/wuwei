@@ -339,7 +339,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'worktree.adopted': 'silent', 'worktree.created': 'silent',
                 'fast_checks.record': 'silent', 'retro.captured': 'silent',
                 'seat.usage': 'silent', 'cap.derived': 'silent', 'build.parked': 'nudge',
-                'build.fix_opened': 'silent', 'pr.action.done': 'silent',
+                'build.fix_opened': 'silent', 'polish.skipped': 'nudge', 'pr.action.done': 'silent',
                 'pr.action.decision': 'silent',
                 'retro.gap': 'nudge', 'seat stop unmatched': 'nudge',
                 'seat adhoc': 'silent', 'subagent.untraced': 'nudge',

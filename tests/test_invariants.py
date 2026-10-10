@@ -1596,7 +1596,6 @@ def i65(case, rules):
     return rules.memo(('local', case[0]), lambda: compute(case[0]))
 
 
-
 def i51(case, rules):
     """#730: a word is the CLI only in program position. A grep pattern piped into sort and a
     CLI path in a leading literal assignment pass the records guard in every posture; an awk
@@ -1704,6 +1703,39 @@ def i47(case, rules):
     return None
 
 
+def i58(case, rules):
+    """#723: a polish round opens only from a round-one pass with notes, below the round cap,
+    at most once per item and never under gates.polish = never, and exactly one gate re-checks
+    it: the single note author, else quality."""
+    def compute():
+        from wuwei import dispatch
+        roles = ['arch', 'quality', 'security', 'quality@codex']
+        authors = {(): None, ('arch',): 'arch', ('arch', 'quality'): 'quality',
+                   ('quality@codex',): 'quality@codex'}
+        for mode in ('never', 'offer', 'always'):
+            config = {'gates': {'polish': mode, 'max_rounds': 2,
+                                'tier_max_rounds': {'light': 0, 'standard': 0, 'full': 0}}}
+            for wrote, gate in authors.items():
+                results = [{'verdict': 'PASS', 'notes': ['n'] if role in wrote else []} for role in roles]
+                for recorded in (None, 'opened', 'skipped'):
+                    row = {'polish': {'status': recorded}} if recorded else {}
+                    for used in (0, 2):
+                        found = dispatch.polish_offer(config, row, roles, results, used)
+                        closed = mode == 'never' or not wrote or recorded or used == 2
+                        if (found is None) != bool(closed) or (found and found['gate'] != gate):
+                            return f'{mode}, notes by {wrote}, {recorded}, {used} used: offer {found}'
+        for gate in roles[:3]:
+            data = {'items': {'P': {'phase': 'delta', 'polish': {'status': 'opened', 'gate': gate}}},
+                    'gate_verdicts': {f'P:{role}:initial': {'verdict': 'PASS'} for role in roles[:3]}}
+            if [role for role in roles[:3] if dispatch.rechecks(data, 'P', role)] != [gate]:
+                return f'polish by {gate}: the re-check is not {gate} alone'
+            data['items']['P']['pr'] = 'example/project#7'
+            if any(dispatch.rechecks(data, 'P', role) for role in roles[:3]):
+                return f'polish by {gate}: a raised item still re-checks'
+        return None
+    return rules.memo(('polish',), compute)
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
@@ -1733,7 +1765,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I52': i52, 'I56': i56, 'I60': i60,
               'I36': i36, 'I37': i37, 'I41': i41, 'I59': i59,
               'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46, 'I57': i57,
-              'I47': i47}
+              'I47': i47,
+              'I36': i36, 'I37': i37, 'I41': i41, 'I58': i58}
 
 
 def project(case):
@@ -1777,7 +1810,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I52': (0,), 'I56': (0,), 'I60': (),
          'I41': (), 'I59': (0,),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (), 'I57': (),
-         'I47': (0,)}
+         'I47': (0,),
+         'I41': (), 'I58': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 

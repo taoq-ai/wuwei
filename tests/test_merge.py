@@ -104,18 +104,20 @@ def test_clean_has_head_bound_evidence(case):
     assert not any(call[0] == 'merge' for call in case[1].calls)
 
 
-def delta_record(root, fixed):
-    """The fixed gate's initial record is FIX at an older head and its delta PASS at SHA."""
+def delta_record(root, fixed, first='FIX'):
+    """The fixed gate's delta PASS at SHA follows its initial record at an older head: FIX, or
+    PASS when the delta is a polish re-check (#723)."""
     directory = workspace.day_dir(root) / 'decisions'
     records = {}
     for role in ('arch', 'quality', 'security'):
+        fix = role == fixed and first == 'FIX'
         path = directory / f'gate-item-7-{role}.md'
-        path.write_text(evidence(BASE) if role != fixed else
+        path.write_text(evidence(BASE) if not fix else
             evidence(BASE, 'FIX') + '- P1 | cli/example.py:12 | fails when empty | blocks: yes\n')
         records[f'item-7:{role}:initial'] = {
             'item': 'item-7', 'role': role, 'round': 'initial',
-            'verdict': 'FIX' if role == fixed else 'PASS', 'head': BASE,
-            'file': str(path.relative_to(root)), 'blocks': role == fixed, 'notes': []}
+            'verdict': 'FIX' if fix else 'PASS', 'head': BASE,
+            'file': str(path.relative_to(root)), 'blocks': fix, 'notes': []}
     delta = directory / f'gate-item-7-{fixed}-delta.md'
     delta.write_text(evidence(SHA))
     records[f'item-7:{fixed}:delta'] = {
@@ -124,8 +126,9 @@ def delta_record(root, fixed):
     state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
 
 
-def test_merge_uses_quality_delta_record(case):
-    delta_record(case[0], 'quality')
+@pytest.mark.parametrize('first', ['FIX', 'PASS'])  # #723: PASS is a polish re-check
+def test_merge_uses_quality_delta_record(case, first):
+    delta_record(case[0], 'quality', first)
     result = check(case)
     assert result.exit == 0, result
     assert any(row['path'].endswith('quality-delta.md') for row in result.data['verdicts'])

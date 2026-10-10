@@ -202,6 +202,29 @@ def rotate(data, item, used):
             verdicts[f'{item}:{gate}:initial'] = delta
 
 
+def polish_offer(config, row, roles, results, used):
+    """#723: the polish round a round-one pass offers, {'gate', 'notes'}, or None (off, no
+    notes, already recorded, or at the round cap). The gate is the one that wrote every
+    note, else quality."""
+    notes = [note for result in results for note in result['notes']]
+    if (config['gates']['polish'] == 'never' or not notes or row.get('polish')
+            or used >= max_rounds(config, row)):
+        return None
+    authors = [role for role, result in zip(roles, results) if result['notes']]
+    return {'gate': authors[0] if len(authors) == 1 else 'quality', 'notes': notes}
+
+
+def rechecks(data, item, role):
+    """#723: role runs the item's delta: its initial verdict was not PASS (#732), or it is the
+    gate of the item's open polish round (before the PR). One rule for next_step, delta_due, receive and
+    opinion."""
+    row = data['items'][item]
+    first = _record(data, item, role, 'initial')
+    polish = row.get('polish') or {}
+    return bool(first) and (first['verdict'] != 'PASS' or (
+        polish.get('status') == 'opened' and polish.get('gate') == role and not row.get('pr')))
+
+
 # #567: the builder's class sweep at standard covers the classes whose files the diff touches.
 # ponytail: a glob heuristic per class; sentinels still own their classes.
 CLASS_PATHS = (
@@ -414,17 +437,14 @@ def next_step(item, root=None):
             return _parked(root, item, 'fix round already used')
         if any(_record(data, item, role, 'initial') is None for role in gates):
             raise Refused(f'fix phase requires all initial verdicts; record the missing one with bin/wuwei dispatch receive {item} <role> <seat> (bin/wuwei why {item} shows it)')
-        roles = [role for role in gates
-                 if _record(data, item, role, 'initial')['verdict'] != 'PASS']
-        return _fix(item, roles)
+        return _fix(item, [role for role in gates if rechecks(data, item, role)])
     if phase == 'gate':
         roles = list(gates)
         round_name = 'initial'
     else:
         if any(_record(data, item, role, 'initial') is None for role in gates):
             raise Refused(f'delta phase requires all initial verdicts; record the missing one with bin/wuwei dispatch receive {item} <role> <seat> (bin/wuwei why {item} shows it)')
-        roles = [role for role in gates
-                 if _record(data, item, role, 'initial')['verdict'] != 'PASS']
+        roles = [role for role in gates if rechecks(data, item, role)]
         round_name = 'delta'
     missing = [role for role in roles if _record(data, item, role, round_name) is None]
     if missing:
@@ -439,8 +459,14 @@ def next_step(item, root=None):
     blocking = [role for role in roles if role in asked or (
         results[role]['verdict'] == 'FIX' if phase == 'gate' else results[role]['blocks'])]
     if not blocking:
-        return raise_action(root, data, item, [note for result in results.values() for note in result['notes']]
-                            if phase == 'delta' else [])
+        if phase == 'gate':  # #723: a pass with notes may offer a polish round
+            offer = polish_offer(config, row, roles, list(results.values()), rounds_used(data, item))
+            if offer is not None:
+                if config['gates']['polish'] == 'always':
+                    return _open_polish(root, item, offer)
+                return {'action': 'polish', **offer, 'command': 'wuwei dispatch polish ' + shlex.quote(item),
+                        'skip': 'wuwei dispatch skip-polish ' + shlex.quote(item)}
+        return raise_action(root, data, item, [note for result in results.values() for note in result['notes']])
     cap = max_rounds(config, row)
     if rounds_used(data, item) >= cap:  # #623: a park with its finding at the cap
         findings = results[blocking[0]]['findings']
@@ -464,7 +490,6 @@ def next_step(item, root=None):
     from wuwei.commands import build
     build.open_fix(item, _fix_feedback(data, item, blocking, round_name), root=root)
     return _fix(item, blocking)
-
 
 
 def raise_action(root, data, item, notes):
@@ -654,7 +679,8 @@ def _seats(root, data, item, roles, round_name, commands):
                                    root, reserved=False, kind='gate.delta_head',
                                    payload={'item': item, 'seat': name, 'head': head})
             action = brief.seat_action('sentinel-' + role, root / seat['brief'], worktree, root)
-            feedback = _delta_feedback(first, depth(data['items'][item], gate=True) == 'light', head)
+            feedback = _recheck_feedback(data['items'][item], first,
+                                         depth(data['items'][item], gate=True) == 'light', head)
             ci = brief.ci_block(data['items'][item].get('ci_jobs', ()), root / worktree)  # #733
             feedback += '\n' + ci if ci else ''
             extra = {'action': 'continue', 'resume': seat['agent_id'], 'feedback': feedback,
@@ -672,7 +698,7 @@ def delta_due(data, item, role, name):
     row = data['items'].get(item)
     first = _record(data, item, role, 'initial')
     seat = data['seats'].get(name)
-    return bool(row and row['phase'] == 'delta' and first and first['verdict'] != 'PASS'
+    return bool(row and row['phase'] == 'delta' and first and rechecks(data, item, role)
                 and _record(data, item, role, 'delta') is None
                 and Path(first['file']).stem.removeprefix('gate-') == name
                 and seat and seat['status'] == 'stopped' and seat.get('agent_id')
@@ -706,6 +732,23 @@ def _delta_feedback(first, light=False, head='HEAD'):
             'finding.')  # #623: no scope widening after round one
 
 
+def _recheck_feedback(row, first, light=False, head='HEAD'):
+    """#723: a polish re-check reads the notes; any other delta keeps _delta_feedback."""
+    polish = row.get('polish') or {}
+    if first['verdict'] != 'PASS' or polish.get('status') != 'opened':
+        return _delta_feedback(first, light, head)
+    return (f'Polish re-check: the polish round changed {first["head"]}..{head} to close these review '
+            'notes:\n' + '\n'.join(polish['notes']) + f'\nRewrite {first["file"]} with Head: {head}: '
+            'drop each note the delta closed, keep an open one as blocks: no, and block only on a '
+            'defect the delta introduced.')
+
+
+def _polish_feedback(notes):
+    return ('Polish round: every gate passed. Fix only these non-blocking review notes, test first '
+            'where a note names a behaviour, and change nothing else. A note that needs more than a '
+            'small local change stays a review note; name it in your handoff.\n' + '\n'.join(notes))
+
+
 def _fix_feedback(data, item, roles, round_name):
     return '\n'.join(f'Gate {role} {record["verdict"]}: fix only the blocking findings (blocks: yes) '
                      f'in {record["file"]}.' for role in roles
@@ -736,6 +779,45 @@ def _stale_scratch(text, brief_text, root):
     return stale
 
 
+def _open_polish(root, item, offer):
+    from wuwei.commands import build
+    build.open_fix(item, _polish_feedback(offer['notes']), root=root,
+                   polish={'status': 'opened', 'gate': offer['gate'], 'notes': offer['notes']})
+    return _fix(item, [offer['gate']])
+
+
+def _offered(root, item):
+    """#723: the open polish offer; refused unless gates.polish is offer and one is open."""
+    mode = workspace.load_config(root)['gates']['polish']
+    if mode != 'offer':
+        raise Refused(f'gates.polish is {mode}; bin/wuwei dispatch next {item} decides the polish round itself')
+    offer = next_step(item, root)
+    if offer['action'] != 'polish':
+        raise Refused(f'{item} has no polish offer; run bin/wuwei dispatch next {item} for its step')
+    return offer
+
+
+def polish(item, root=None):
+    """#723: open the offered polish round."""
+    root = workspace.find_workspace(root)
+    return _open_polish(root, item, _offered(root, item))
+
+
+def skip_polish(item, root=None):
+    """#723: decline the offered polish round; the notes ship as review notes."""
+    root = workspace.find_workspace(root)
+    offer = _offered(root, item)
+
+    def update(fresh):
+        row = _item(fresh, item)
+        if row['phase'] != 'gate' or row.get('polish'):
+            raise Refused(f'polish state changed during skip; {RACE}')
+        row['polish'] = {'status': 'skipped', 'gate': offer['gate'], 'notes': offer['notes']}
+    state._write_state(update, root, reserved=False, kind='polish.skipped',
+                       payload={'item': item, 'gate': offer['gate'], 'notes': len(offer['notes'])})
+    return raise_action(root, state.read_state(root), item, offer['notes'])
+
+
 def receive(item, role, name, round_name='initial', root=None):
     """Lint and record one stopped sentinel's verdict file."""
     root = workspace.find_workspace() if root is None else Path(root)
@@ -751,7 +833,7 @@ def receive(item, role, name, round_name='initial', root=None):
         raise Refused(f'gate round does not match item phase {data["items"][item]["phase"]};run bin/wuwei dispatch next {item} for the right round')
     if round_name == 'delta':
         first = _record(data, item, role, 'initial')
-        if first is None or first['verdict'] == 'PASS':
+        if first is None or not rechecks(data, item, role):
             raise Refused(f'gate did not need a delta; drop --round delta, or run bin/wuwei dispatch next {item} for what is open')
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name):
         raise Refused('unsafe seat name; use the seat name that bin/wuwei dispatch next returned')
@@ -880,7 +962,7 @@ def opinion(item, root=None):
     if _record(data, item, gate, round_name):
         return _record(data, item, gate, round_name)
     first = _record(data, item, gate, 'initial')
-    if round_name == 'delta' and (not first or first['verdict'] == 'PASS'):
+    if round_name == 'delta' and not rechecks(data, item, gate):
         raise Refused(f'gate did not need a delta; drop --round delta, or run bin/wuwei dispatch next {item} for what is open')
     name = _opinion_name(data, brief.events(root) if round_name == 'initial' else [], item, gate, round_name)
     if name is None:
@@ -913,7 +995,7 @@ def opinion(item, root=None):
             # the builder's own thread when the builder runs on the same runtime.
             if data['seat_policy'].get('builder', {}).get('runtime') == second['runtime']:
                 raise Refused('second opinion cannot resume on the builder runtime; set gates.second_opinion to a runtime other than the builder. The owner runs bin/wuwei config set in a host terminal')
-            feedback = (_delta_feedback(first, head=head) if round_name == 'delta' else
+            feedback = (_recheck_feedback(row, first, head=head) if round_name == 'delta' else
                         'Your verdict file was rejected by the verdict lint; rewrite '
                         f'{directory.relative_to(root)}/decisions/gate-{name}.md to the verdict '
                         'contract in your brief.')

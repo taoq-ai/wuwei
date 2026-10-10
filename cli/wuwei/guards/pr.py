@@ -102,10 +102,13 @@ def _recorded_gates(root, sha, records, item, items=None):
             raise ValueError('initial gate verdicts disagree on HEAD; run bin/wuwei dispatch next <item> to rerun the odd gate on the current HEAD')
         complete = True
         missing = []
+        # #723: a gate is judged on its delta whenever it has one (FIX, or the polish re-check)
+        rechecked = {role for role, first in zip(roles, initial)
+                     if first['verdict'] == 'FIX' or f'{candidate}:{role}:delta' in records}
         for role, first in zip(roles, initial):
-            row = records.get(f'{candidate}:{role}:delta') if first['verdict'] == 'FIX' else first
+            row = records.get(f'{candidate}:{role}:delta') if role in rechecked else first
             if row is None or (row['verdict'] != 'PASS' and not (
-                    first['verdict'] == 'FIX' and row['verdict'] == 'FIX'
+                    role in rechecked and row['verdict'] == 'FIX'
                     and row['blocks'] is False)):
                 complete = False
                 missing.append(role)
@@ -127,9 +130,7 @@ def _recorded_gates(root, sha, records, item, items=None):
                                 for block in verdict.finding_blocks(active))
             if row['blocks'] is not actual_blocks:
                 raise ValueError(f'{role} recorded blocking status differs from file; receive the verdict again with bin/wuwei dispatch receive')
-            if not sha.lower().startswith(row['head'].lower()) and (
-                    first['verdict'] == 'FIX' or not any(
-                        initial_row['verdict'] == 'FIX' for initial_row in initial)):
+            if not sha.lower().startswith(row['head'].lower()) and (role in rechecked or not rechecked):
                 complete = False
                 missing.append(role)
         if complete:

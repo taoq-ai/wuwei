@@ -246,7 +246,7 @@ def test_config_defaults_and_independence(tmp_path):
                   'poll_interval_seconds': 5, 'poll_timeout_seconds': 3600},
         'codex': {'command': [], 'timeout_seconds': 300},
         'gates': {'second_opinion': 'off', 'second_opinion_role': 'quality', 'max_rounds': 2,
-                  'tier_max_rounds': {'light': 0, 'standard': 0, 'full': 0}},
+                  'tier_max_rounds': {'light': 0, 'standard': 0, 'full': 0}, 'polish': 'offer'},
             'watch': {'clock_seconds': 600, 'dead_seconds': 1200, 'stale_seconds': 900,
                       'sweep_seconds': 7200, 'ping_url': ''},
         'sessions': {'stale_seconds': 3600,
@@ -1244,7 +1244,8 @@ def test_decision_lenses_config(tmp_path):
 def test_second_opinion_config(tmp_path):
     from wuwei.workspace import ConfigError, load_config
     write_config(tmp_path, '')
-    gates = {key: value for key, value in load_config(tmp_path)['gates'].items() if 'rounds' not in key}
+    gates = {key: value for key, value in load_config(tmp_path)['gates'].items()
+             if 'rounds' not in key and key != 'polish'}
     assert gates == {'second_opinion': 'off', 'second_opinion_role': 'quality'}
     write_config(tmp_path, '[gates]\nsecond_opinion = "codex:gpt-6-astra"\nsecond_opinion_role = "security"\n')
     assert load_config(tmp_path)['gates']['second_opinion'] == 'codex:gpt-6-astra'
@@ -1255,6 +1256,18 @@ def test_second_opinion_config(tmp_path):
             load_config(tmp_path)
     write_config(tmp_path, '[gates]\nsecond_opinion_role = "goal"\n')
     with pytest.raises(ConfigError, match='gates.second_opinion_role'):
+        load_config(tmp_path)
+
+
+def test_polish_config(tmp_path):
+    # #723: one notes-only round after a pass; never, offer (default) or always.
+    from wuwei.workspace import ConfigError, load_config
+    write_config(tmp_path, '')
+    assert load_config(tmp_path)['gates']['polish'] == 'offer'
+    write_config(tmp_path, '[gates]\npolish = "always"\n')
+    assert load_config(tmp_path)['gates']['polish'] == 'always'
+    write_config(tmp_path, '[gates]\npolish = "sometimes"\n')
+    with pytest.raises(ConfigError, match='gates.polish.*never.*offer.*always'):
         load_config(tmp_path)
 
 

@@ -144,7 +144,8 @@ SCHEMA = {
               "second_opinion_role": (str, "quality", ("arch", "quality", "security")),
               "max_rounds": (int, 2, 1),  # #623: fix rounds per item before notes ship or a blocker parks
               "tier_max_rounds": {"light": (int, 0, 0), "standard": (int, 0, 0),
-                                  "full": (int, 0, 0)}},
+                                  "full": (int, 0, 0)},
+              "polish": (str, "offer", ("never", "offer", "always"))},  # #723: one notes-only round after a pass
     "watch": {"clock_seconds": (int, 600, 1), "dead_seconds": (int, 1200, 1),
               "stale_seconds": (int, 900, 1), "sweep_seconds": (int, 7200, 1),
               "ping_url": (str, "")},

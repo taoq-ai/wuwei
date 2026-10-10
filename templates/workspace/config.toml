@@ -113,6 +113,7 @@ timeout_seconds = 300
 # second_opinion_role = "quality"
 # max_rounds = 2 # Fix rounds per item; after the cap notes ship in the PR and a blocker parks.
 # tier_max_rounds = { light = 0, standard = 0, full = 0 } # 0 uses max_rounds.
+# polish = "offer" # never, offer or always: one notes-only round after a pass.
 
 [control_plane]
 content = "summary" # summary or none; what a messaging transport sends about decisions.

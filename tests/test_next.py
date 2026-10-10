@@ -585,6 +585,8 @@ def test_build_rows_return_the_build_loop_action(root, capsys, monkeypatch):
       'command': 'wuwei decision route D-7'},  # #732: the answer's command, never plan park
      ('verdicts', 'run', 'wuwei decision route D-7')),
     ({'action': 'raise', 'notes': ['n1']}, ('raise', 'run', None)),
+    ({'action': 'polish', 'gate': 'quality', 'notes': ['n1'], 'command': 'wuwei dispatch polish A',
+      'skip': 'wuwei dispatch skip-polish A'}, ('polish', 'run', 'wuwei dispatch polish A')),
 ])
 def test_verdict_rows_return_the_gate_action(root, capsys, monkeypatch, answer, expected):
     from wuwei import dispatch
@@ -602,6 +604,8 @@ def test_verdict_rows_return_the_gate_action(root, capsys, monkeypatch, answer, 
     if answer['action'] == 'raise':
         assert found['command'].startswith(f'wuwei brief shepherd A shepherd-A --worktree {root} --body ')
         assert 'Review note: n1' in found['command']
+    if answer['action'] == 'polish':  # #723
+        assert 'wuwei dispatch skip-polish A' in found['then']
 
 
 def test_shepherd_launch_then_card(root, capsys, monkeypatch):

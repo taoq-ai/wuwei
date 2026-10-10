@@ -526,7 +526,8 @@ def test_ordinary_finding_below_threshold_remains_a_note(root, monkeypatch):
     result = dispatch.receive('A', 'security', 'security', root=root)
     assert result['verdict'] == 'PASS' and not result['blocks']
     assert 'ZIRAN SA004' in result['notes'][0]
-    assert dispatch.next_step('A', root)['action'] == 'raise'
+    offer = dispatch.next_step('A', root)  # #723: the note's new home is the polish offer
+    assert (offer['action'], offer['gate'], offer['notes']) == ('polish', 'security', result['notes'])
 
 
 @pytest.mark.parametrize('fault', ['outside', 'symlink', 'flags', 'unreadable'])
@@ -2497,3 +2498,277 @@ def test_running_unbriefed_seat_makes_its_item_busy(root):
     assert agent_launch.check(payload)[0] == 1
     assert state.read_state(root)['seats']['adhoc-1']['item'] == 'A'
     assert 'A' not in [row['item'] for row in dispatch.launch_set(root)['entries']]
+
+
+# #723: an optional polish round after a pass with notes.
+NOTE_A = '- P3 | cli/example.py:3 | fails when the file is empty | blocks: no\n'
+NOTE_Q = '- P3 | cli/other.py:7 | fails when the name is long | blocks: no\n'
+NOTES = [NOTE_A.strip(), NOTE_Q.strip()]
+OFFER = {'action': 'polish', 'gate': 'quality', 'notes': NOTES,
+         'command': 'wuwei dispatch polish A', 'skip': 'wuwei dispatch skip-polish A'}
+
+
+def noted(text, note):
+    return text.replace('Blocked:', note + 'Blocked:')
+
+
+def polish_ready(root, mode=None, arch=NOTE_A, quality=NOTE_Q):
+    built(root)
+    if mode:
+        caps(root, f'polish = "{mode}"\n')
+    record(root, 'arch', 'arch-1', noted(PASS, arch), agent_id='agent-arch-1', head='abc1234' + '0' * 33)
+    record(root, 'quality', 'quality-1', noted(QUALITY_PASS, quality),
+           agent_id='agent-quality-1', head='abc1234' + '0' * 33)
+    record(root, 'security', 'security-1', PASS)
+
+
+def polish_config(mode='offer', cap=2):
+    return {'gates': {'polish': mode, 'max_rounds': cap,
+                      'tier_max_rounds': {'light': 0, 'standard': 0, 'full': 0}}}
+
+
+def results(*notes):
+    return [{'verdict': 'PASS', 'notes': list(row)} for row in notes]
+
+
+def test_polish_offer_rule():
+    from wuwei import dispatch
+
+    roles = ['arch', 'quality', 'security']
+    two = results(['a'], ['q'], [])
+    assert dispatch.polish_offer(polish_config(), {}, roles, two, 0) == {'gate': 'quality', 'notes': ['a', 'q']}
+    assert dispatch.polish_offer(polish_config('always'), {}, roles, two, 1) == {
+        'gate': 'quality', 'notes': ['a', 'q']}
+    assert dispatch.polish_offer(polish_config(), {}, roles, results(['a'], [], []), 0) == {
+        'gate': 'arch', 'notes': ['a']}
+    assert dispatch.polish_offer(polish_config(), {}, ['goal'], results(['g']), 0)['gate'] == 'goal'
+    assert dispatch.polish_offer(polish_config(), {}, [*roles, 'quality@codex'],
+                                 results([], [], [], ['c']), 0)['gate'] == 'quality@codex'
+    assert dispatch.polish_offer(polish_config('never'), {}, roles, two, 0) is None
+    assert dispatch.polish_offer(polish_config(), {}, roles, results([], [], []), 0) is None
+    for status in ('opened', 'skipped'):
+        assert dispatch.polish_offer(polish_config(), {'polish': {'status': status}}, roles, two, 0) is None
+    assert dispatch.polish_offer(polish_config(cap=2), {}, roles, two, 2) is None
+
+
+def test_rechecks_rule():
+    from wuwei import dispatch
+
+    def data(polish=None, pr=None, quality='PASS'):
+        row = {'phase': 'delta', **({'polish': polish} if polish else {}), **({'pr': pr} if pr else {})}
+        verdicts = {f'P:{role}:initial': {'verdict': quality if role == 'quality' else 'PASS'}
+                    for role in ALL}
+        return {'items': {'P': row}, 'gate_verdicts': verdicts}
+
+    assert [r for r in ALL if dispatch.rechecks(data(quality='FIX'), 'P', r)] == ['quality']
+    opened = {'status': 'opened', 'gate': 'quality', 'notes': ['n']}
+    assert [r for r in ALL if dispatch.rechecks(data(opened), 'P', r)] == ['quality']
+    assert [r for r in ALL if dispatch.rechecks(data({**opened, 'status': 'skipped'}), 'P', r)] == []
+    assert [r for r in ALL if dispatch.rechecks(data(opened, pr=7), 'P', r)] == []
+    assert [r for r in ALL if dispatch.rechecks(data(), 'P', r)] == []
+    empty = data(opened)
+    empty['gate_verdicts'].clear()
+    assert not dispatch.rechecks(empty, 'P', 'quality')
+
+
+def test_issue_acceptance_pass_with_notes_offers_polish(root):
+    from wuwei import dispatch
+
+    polish_ready(root)
+    events = workspace.day_dir(root) / 'events.jsonl'
+    assert dispatch.next_step('A', root) == OFFER
+    size = len(events.read_text().splitlines())
+    assert dispatch.next_step('A', root) == OFFER
+    assert len(events.read_text().splitlines()) == size
+    data = state.read_state(root)
+    assert data['items']['A']['phase'] == 'gate' and 'polish' not in data['items']['A']
+
+
+def test_issue_acceptance_polish_never_raises_at_once_with_the_notes(root):
+    from wuwei import dispatch
+
+    polish_ready(root, 'never')
+    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': NOTES}
+
+
+def test_polish_always_opens_the_round_itself(root):
+    from wuwei import dispatch
+
+    polish_ready(root, 'always')
+    assert dispatch.next_step('A', root) == {'action': 'fix', 'roles': ['quality'],
+                                             'command': 'wuwei build next A'}
+    row = state.read_state(root)['items']['A']
+    assert row['phase'] == 'fix' and row['polish'] == {'status': 'opened', 'gate': 'quality', 'notes': NOTES}
+
+
+@pytest.mark.parametrize('mode', ['never', 'offer', 'always'])
+def test_pass_without_notes_raises_in_every_mode(root, mode):
+    from wuwei import dispatch
+
+    polish_ready(root, mode, arch='', quality='')
+    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
+
+
+def test_polish_takes_the_offer_as_a_fix_round(root):
+    from wuwei import dispatch
+
+    polish_ready(root)
+    assert dispatch.polish('A', root) == {'action': 'fix', 'roles': ['quality'],
+                                          'command': 'wuwei build next A'}
+    data = state.read_state(root)
+    assert data['items']['A']['phase'] == 'fix'
+    assert data['items']['A']['polish'] == {'status': 'opened', 'gate': 'quality', 'notes': NOTES}
+    action = data['builds']['A']['action']
+    assert action['feedback'].startswith('Polish round:')
+    assert all(note in action['feedback'] for note in NOTES)
+    assert action['prompt'].endswith(action['feedback']) and action['resume'] == 'old-builder'
+    [*_, last] = fix_events(root)
+    assert (last['round'], last['polish']) == (1, True)
+
+
+def test_polish_without_agent_id_writes_the_notes_into_the_fresh_brief(root, monkeypatch):
+    from wuwei import dispatch
+
+    polish_ready(root)
+    state._write_state(lambda data: data['builds']['A'].pop('agent_id'), root, reserved=False)
+    bodies = {}
+
+    def write(role, item, name, body, **kwargs):
+        bodies[name] = body
+        path = workspace.day_dir(root) / 'briefs' / (name + '.md')
+        path.write_text(body)
+        return str(path.relative_to(root))
+    monkeypatch.setattr('wuwei.brief.write', write)
+    assert dispatch.polish('A', root)['action'] == 'fix'
+    assert list(bodies) == ['A-gate-fix'] and all(note in bodies['A-gate-fix'] for note in NOTES)
+
+
+def test_skip_polish_records_the_skip_and_raises(root):
+    from wuwei import dispatch
+
+    polish_ready(root)
+    assert dispatch.skip_polish('A', root) == {'action': 'raise', 'notes': NOTES}
+    row = state.read_state(root)['items']['A']
+    assert row['phase'] == 'gate' and row['polish']['status'] == 'skipped'
+    assert events_of(root, 'polish.skipped')[-1]['item'] == 'A'
+    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': NOTES}
+    for call in (dispatch.polish, dispatch.skip_polish):
+        with pytest.raises(dispatch.Refused, match='dispatch next'):
+            call('A', root)
+
+
+def test_polish_twice_is_refused(root):
+    from wuwei import dispatch
+
+    polish_ready(root)
+    dispatch.polish('A', root)
+    for call in (dispatch.polish, dispatch.skip_polish):
+        with pytest.raises(dispatch.Refused, match='dispatch next'):
+            call('A', root)
+
+
+@pytest.mark.parametrize('mode', ['never', 'always'])
+def test_polish_commands_are_refused_outside_offer(root, mode):
+    from wuwei import dispatch
+
+    polish_ready(root, mode)
+    for call in (dispatch.polish, dispatch.skip_polish):
+        with pytest.raises(dispatch.Refused, match=f'gates.polish is {mode}'):
+            call('A', root)
+    row = state.read_state(root)['items']['A']
+    assert row['phase'] == 'gate' and 'polish' not in row
+
+
+@pytest.mark.parametrize('command', ['polish', 'skip-polish'])
+def test_cli_polish_contract(root, monkeypatch, capsys, command):
+    from wuwei.__main__ import main
+
+    polish_ready(root)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    assert main(['dispatch', command, 'A']) == 0
+    assert json.loads(capsys.readouterr().out)['action'] == ('fix' if command == 'polish' else 'raise')
+    assert main(['dispatch', command, 'A']) == 1
+    assert 'dispatch next' in capsys.readouterr().err
+
+
+def polished(root, **kwargs):
+    from wuwei import dispatch
+
+    polish_ready(root, **kwargs)
+    dispatch.polish('A', root)
+    state.transition('A', 'delta', root)
+
+
+def test_issue_acceptance_one_gate_rechecks_the_polish_and_the_pr_is_raised(root, monkeypatch):
+    from wuwei import dispatch
+
+    polished(root)
+    live_head(monkeypatch, NEW)  # #669: the resume reads the polished worktree head
+    outcome = dispatch.next_step('A', root)
+    assert outcome['roles'] == ['quality']
+    [action] = outcome['seats']
+    assert action['action'] == 'continue' and action['resume'] == 'agent-quality-1'
+    assert action['feedback'].startswith('Polish re-check:')
+    assert all(note in action['feedback'] for note in NOTES) and 'gate-quality-1.md' in action['feedback']
+    assert action['receive'] == 'wuwei dispatch receive A quality quality-1 --round delta'
+    data = state.read_state(root)
+    assert dispatch.delta_due(data, 'A', 'quality', 'quality-1')
+    assert not dispatch.delta_due(data, 'A', 'arch', 'arch-1')
+    with pytest.raises(dispatch.Refused, match='did not need a delta'):
+        record(root, 'arch', 'arch-2', PASS, 'delta')
+    record(root, 'quality', 'quality-2', noted(QUALITY_PASS, NOTE_Q), 'delta')
+    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': [NOTE_Q.strip()]}
+    assert dispatch.next_step('A', root)['action'] == 'raise'
+
+
+def test_blocking_polish_delta_opens_the_next_round(root):
+    from wuwei import dispatch
+
+    polished(root)
+    record(root, 'quality', 'quality-2', QUALITY_FIX, 'delta')
+    assert dispatch.next_step('A', root) == {'action': 'fix', 'roles': ['quality'],
+                                             'command': 'wuwei build next A'}
+    data = state.read_state(root)
+    assert data['builds']['A']['fix_rounds'] == 2
+    assert data['gate_verdicts']['A:quality:initial']['verdict'] == 'FIX'
+    assert data['gate_verdicts']['A:quality:round1']['verdict'] == 'PASS'
+    state.transition('A', 'delta', root)
+    assert dispatch.next_step('A', root)['roles'] == ['quality']
+
+
+def test_blocking_polish_delta_parks_at_the_cap(root):
+    from wuwei import dispatch
+
+    caps(root, 'max_rounds = 1\n')
+    polished(root)
+    record(root, 'quality', 'quality-2', QUALITY_FIX, 'delta')
+    assert dispatch.next_step('A', root)['reason'].startswith('round cap 1 reached: quality still blocks:')
+
+
+def test_polish_at_the_cap_raises_with_the_notes(root):
+    from wuwei import dispatch
+
+    polish_ready(root)
+    state._write_state(lambda data: data['builds']['A'].update(fix_rounds=2), root, reserved=False)
+    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': NOTES}
+
+
+def test_second_opinion_notes_are_rechecked_by_the_second_opinion(root, monkeypatch):
+    from wuwei import dispatch
+
+    note = '- P3 | cli/example.py:12 | naming fails when read | blocks: no\n'
+    runtime = opinion_ready(root, monkeypatch, FakeRuntime(noted(QUALITY_PASS, note).replace('abc1234', 'aaaaaaa')))
+    dispatch.opinion('A', root)
+    for role, name in (('arch', 'a-1'), ('quality', 'q-1'), ('security', 's-1')):
+        text = PASS + ('Simplicity: none\nDesign: none\n' if role == 'quality' else '')
+        record(root, role, name, text.replace('abc1234', 'aaaaaaa'), head='a' * 40)
+    offer = dispatch.next_step('A', root)
+    assert (offer['action'], offer['gate'], offer['notes']) == ('polish', 'quality@codex', [note.strip()])
+    assert dispatch.polish('A', root)['roles'] == ['quality@codex']
+    state.transition('A', 'delta', root)
+    assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality@codex'], 'seats': [RUN]}
+    runtime.text = QUALITY_PASS.replace('abc1234', 'aaaaaaa')
+    assert dispatch.opinion('A', root)['round'] == 'delta'
+    [continued] = [call for call in runtime.calls if call[0] == 'continue']
+    assert continued[2].startswith('Polish re-check:') and 'gate-q-1-codex.md' in continued[2]
+    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
