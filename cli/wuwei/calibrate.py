@@ -153,7 +153,10 @@ LINT = ('ruff check .', 'black --check .', 'npm run lint', 'make lint', 'markdow
 UNMEASURED = 'test runner, unmeasured; run bin/wuwei calibrate --measure'
 
 
-def classify(checkout, commands, runner, seconds, root=None):
+NEAR = 0.8  # #724: a measured run at 80 % of its limit proposes twice the limit
+
+
+def classify(checkout, commands, runner, seconds, root=None, timeout=300, measured=None):
     """{command: (fast, note)}: lint and format are fast; a test runner only when measured fast."""
     checks = {}
     for command in commands:
@@ -162,16 +165,20 @@ def classify(checkout, commands, runner, seconds, root=None):
         elif runner is None:
             checks[command] = (False, UNMEASURED)
         else:
-            # ponytail: one full timed run, capped by the checks port's 300 s timeout; add a
-            # collect-only command or a port timeout if --measure proves too slow.
+            # ponytail: one full timed run, capped by repos.<n>.check_timeout_seconds; add a
+            # collect-only command if --measure proves too slow.
             start = monotonic()
-            result = runner.run(str(checkout), command, root=root)
+            result = runner.run(str(checkout), command, timeout=timeout, root=root)
             took = monotonic() - start
+            if measured is not None:
+                measured[command] = took
             ok = isinstance(result, registry.Result) and result.exit == 0
             note = f'test runner, measured {took:.1f} s, threshold {seconds} s'
             if not ok:
                 note += f", exit {getattr(result, 'exit', 2)}" + (
                     f': {result.reason}' if getattr(result, 'reason', '') else '')
+            if took >= NEAR * timeout:
+                note += f', near the {timeout} s check timeout'
             checks[command] = (ok and took <= seconds, note)
     return checks
 
@@ -581,7 +588,8 @@ def proposal(raw, targets):
         base = ('repos', index)
         for key, value in (('fast_checks', facts['fast_checks']),
                            ('review_required_checks', facts['required_checks']),
-                           ('merge_deploys', facts['merge_deploys'] or None)):
+                           ('merge_deploys', facts['merge_deploys'] or None),
+                           ('check_timeout_seconds', facts.get('check_timeout_seconds'))):
             if value:
                 wanted.append((base, key, value))
         if facts['never_auto']:
@@ -674,6 +682,14 @@ def _port(result, reader):
         return None
 
 
+def measure_checks(root, config, result, runner):
+    """Classify a surveyed result's checks; a run near its limit proposes twice the limit (#724)."""
+    limit, measured = result['repo']['check_timeout_seconds'], {}
+    result['checks'] = classify(result['checkout'], result['facts']['fast_checks'], runner,
+                                config['calibrate']['fast_check_seconds'], root, limit, measured)
+    result['check_timeout'] = 2 * limit if max(measured.values(), default=0) >= NEAR * limit else None
+
+
 def survey(root, config, selected, *, style=True, measure=False):
     """Profile and classify each selected (index, repo), then read commit style and the PR baseline.
 
@@ -686,8 +702,7 @@ def survey(root, config, selected, *, style=True, measure=False):
         if not checkout.is_dir():
             raise OSError(f"{repo['name']}: checkout {repo['path']} is not a directory; restore the checkout, or the owner fixes repos.<n>.path with bin/wuwei config set in a host terminal")
         result = {'index': index, 'repo': repo, 'checkout': checkout, **profile(checkout, repo)}
-        result['checks'] = classify(checkout, result['facts']['fast_checks'], runner,
-                                    config['calibrate']['fast_check_seconds'], root)
+        measure_checks(root, config, result, runner)
         results.append(result)
     vcs = registry.load('vcs', config) if style else None
     host = registry.load('code_host', config)
@@ -811,7 +826,8 @@ def bot_authors(prs):
 
 def proposed(result):
     """The facts to propose: only the fast checks; result['facts'] stays raw for drift."""
-    return {**result['facts'], 'fast_checks': [c for c, (fast, _) in result['checks'].items() if fast]}
+    return {**result['facts'], 'fast_checks': [c for c, (fast, _) in result['checks'].items() if fast],
+            'check_timeout_seconds': result.get('check_timeout')}
 
 
 def ci_only(results):

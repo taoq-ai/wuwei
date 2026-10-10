@@ -207,7 +207,7 @@ def test_record_runs_the_pace_commands_and_times_them(workspace_case, monkeypatc
     set_pace(root, 'careful')
     calls = []
     monkeypatch.setattr(registry, 'load', lambda kind, config: SimpleNamespace(
-        run=lambda path, command, root=None: calls.append(command) or Result(0)) if kind == 'checks' else fake)
+        run=lambda path, command, timeout=None, root=None: calls.append(command) or Result(0)) if kind == 'checks' else fake)
     assert fast_checks.record(root / 'repo') == 0
     assert calls == ['unit', 'python3 -m pytest -q']
     records = state.read_state(root)['fast_checks']['example/project']

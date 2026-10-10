@@ -174,6 +174,18 @@ def test_checks_table(tmp_path):
     assert found and 'unknown key checks.pyhton' in found[0]
 
 
+def test_check_timeout_seconds(tmp_path):  # #724
+    from wuwei import workspace
+    repo = '[[repos]]\nname = "app"\npath = "/a"\ndefault_branch = "main"\n'
+    write_config(tmp_path, repo)
+    assert workspace.load_config(tmp_path)['repos'][0]['check_timeout_seconds'] == 300
+    write_config(tmp_path, repo + 'check_timeout_seconds = 900\n')
+    assert workspace.load_config(tmp_path)['repos'][0]['check_timeout_seconds'] == 900
+    write_config(tmp_path, repo + 'check_timeout_seconds = 0\n')
+    with pytest.raises(workspace.ConfigError, match='repos.0.check_timeout_seconds'):
+        workspace.load_config(tmp_path)
+
+
 def test_initialized_config_checks(tmp_path):
     assert cli(tmp_path, 'init').returncode == 0
     result = cli(tmp_path, 'config', 'check')

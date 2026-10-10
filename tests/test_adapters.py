@@ -20,7 +20,7 @@ CALLS = [
     ('integrity', 'sign', ('manifest', 'key'), False),
     ('integrity', 'verify', ('manifest', 'signature', 'key'), True),
     ('host', 'free_memory', (), True),
-    ('checks', 'run', ('path', 'command'), True),
+    ('checks', 'run', ('path', 'command', 'timeout'), True),
     ('code_host', 'auth_status', (), True),
     ('code_host', 'viewer_login', (), True),
     ('code_host', 'pr', ('ref',), True),

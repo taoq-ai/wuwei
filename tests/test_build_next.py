@@ -259,7 +259,7 @@ def test_checks_are_recorded_by_real_producer_before_stop(seat, monkeypatch):
     launch(seat, action)
     vcs = registry.load('vcs', {})
     monkeypatch.setattr(fast_checks, 'context', lambda *args, **kwargs: (
-        {'name': 'app', 'fast_checks': ['test']}, {'path': str(repo)}, vcs))
+        {'name': 'app', 'fast_checks': ['test'], 'check_timeout_seconds': 300}, {'path': str(repo)}, vcs))
     results.append(registry.Result(1, {'test_ids': ['test_real'], 'error': 'broken'}))
     assert fast_checks.record(repo) == 1
     assert stop(seat) == (0, '')
@@ -362,7 +362,7 @@ def test_cached_pass_never_skips_checking_uncommitted_changes(seat, monkeypatch,
     launch(seat, build.next_action('A', root=root))
     vcs = registry.load('vcs', {})
     monkeypatch.setattr(fast_checks, 'context', lambda *args, **kwargs: (
-        {'name': 'app', 'fast_checks': ['test']}, {'path': str(repo)}, vcs))
+        {'name': 'app', 'fast_checks': ['test'], 'check_timeout_seconds': 300}, {'path': str(repo)}, vcs))
     if when_dirty == 'during-check':
         monkeypatch.setattr(vcs, 'status', lambda *args, **kw: registry.Result(0, [{'path': 'changed.py'}]))
     results.append(registry.Result(0))

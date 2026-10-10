@@ -60,7 +60,8 @@ def add(args, root, config, item):
     # #520: a fresh worktree has no untracked venv; build one or say which interpreter checks use.
     bootstrap = config['checks']['bootstrap']
     if bootstrap:
-        found = registry.load('checks', config).run(str(tree), bootstrap, root=root)
+        found = registry.load('checks', config).run(str(tree), bootstrap,
+                                                    timeout=repos[0]['check_timeout_seconds'], root=root)
         if found.exit != 0:
             reason = f': {found.reason}' if found.reason else ''
             print(f'wuwei worktree warning: checks.bootstrap exited {found.exit}{reason}', file=sys.stderr)

@@ -19,7 +19,7 @@ PARAMETERS = {
     'redactor': {'redact': ('text',)},
     'integrity': {'sign': ('manifest', 'key'), 'verify': ('manifest', 'signature', 'key')},
     'host': {'free_memory': ()},
-    'checks': {'run': ('path', 'command')},
+    'checks': {'run': ('path', 'command', 'timeout')},
     'tracker': {'backlog': ('filter',), 'claim': ('item',), 'transition': ('item', 'state'),
                 'create': ('draft',), 'history': ('item',), 'created': ('item',),
                 'comment': ('item', 'text', 'category')},
