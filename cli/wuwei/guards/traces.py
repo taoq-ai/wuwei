@@ -159,11 +159,16 @@ def check(payload):
             return 0, ''
     except (OSError, ValueError, TypeError, RuntimeError):
         return 2, 'wuwei traces: cannot determine workspace scope; run bin/wuwei doctor, which names the workspace problem'
+    inspect = False
     try:
         try:
+            step = 'the security material (.wuwei/security.json)'
             security_data = security.load(root)
+            step = 'the tool call for canary and honeytoken findings'
             findings = security.trace_findings(payload, root, security_data)
+            step = 'the events log (events.jsonl)'
             security.record(findings, root, 'tool_trace')
+            step = 'the tool payload for redaction'
             payload = dict(payload)
             transcript_path = payload.get('transcript_path')
             if 'agent_id' in payload:
@@ -180,16 +185,20 @@ def check(payload):
 
         except TimeoutError:
             raise  # did not finish in time is not could not read (#659)
-        except (OSError, ValueError, TypeError, KeyError, RuntimeError):
-            return 2, 'wuwei traces: cannot inspect or record workspace security evidence; run bin/wuwei doctor, then retry'
-        code, reason = _record(payload, root, findings, transcript_path, started)
-        if not code:
-            return 0, ''
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
+            # #601: never the message, which can carry private details.
+            inspect, reason = True, f'wuwei traces: {type(exc).__name__}: could not read {step}'
+        else:
+            code, reason = _record(payload, root, findings, transcript_path, started)
+            if not code:
+                return 0, ''
     except BaseException as exc:
         slow, ms = isinstance(exc, TimeoutError), round((time.monotonic() - started) * 1000)
         reason = (f'wuwei traces: did not finish in time after {ms} ms (TimeoutError); the tool ran and its span '
                   'may be missing; run bin/wuwei doctor' if slow
-                  else f'wuwei traces: {type(exc).__name__}: could not record tool span')
+                  else f'wuwei traces: {type(exc).__name__}: could not record the tool span in traces.jsonl')
+    if not slow:
+        reason += _mismatch(root) + '; run bin/wuwei doctor, which names the fix'
     print(reason, file=sys.stderr)
     kind = 'traces.slow' if slow else 'traces.gap'
     try:
@@ -203,9 +212,22 @@ def check(payload):
     except BaseException as exc:
         print(f'wuwei traces: {type(exc).__name__}: could not log {kind}; run bin/wuwei doctor',
               file=sys.stderr)
-    if slow:
-        return (2, reason) if _strict(root) else (0, '')
-    return (2, reason) if security_data is not None else (0, '')
+    # #601: below strict the reason and the event are the warning; strict refuses.
+    code = 2 if slow or inspect or security_data is not None else 0
+    return (code, reason) if code and _strict(root) else (0, '')
+
+
+def _mismatch(root):
+    """'; this hook runs A but .wuwei/executable names B' when they differ, else ''."""
+    from pathlib import Path
+    from wuwei import integrity
+    here, recorded = integrity.PLUGIN / 'bin/wuwei', integrity.recorded(root)
+    try:
+        if not recorded or Path(recorded).resolve() == here.resolve():
+            return ''
+    except (OSError, RuntimeError):
+        pass
+    return f'; this hook runs {here} but .wuwei/executable names {recorded}'
 
 
 GUARDS = [Guard('PostToolUse', None, check)]
