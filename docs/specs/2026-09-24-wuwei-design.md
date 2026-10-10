@@ -1458,7 +1458,9 @@ set <item> ticket=<id>`, or, while a ticket draft for it is pending, `bin/wuwei 
   contract and so under the `seats` area (9.1).
 
 The tier that decides is the item's recorded gate tier when there is one, else the lead's
-tier; an item with neither is not exempt. An exempt item gets one `tracker.skipped` event at
+tier; an item with neither is not exempt. An unticketed item whose deciding tier is `light`
+and not in `skip_tiers` reads `later` and is not refused (#646, I56): the gate opens its
+ticket, or `close` names `bin/wuwei tracker create <item>` after it ships. An exempt item gets one `tracker.skipped` event at
 admission. A gate tier that later rises out of `skip_tiers` makes `dispatch next` refuse until
 the ticket exists.
 
@@ -2012,6 +2014,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I39 | A FIX verdict is accepted only with a parsed blocking finding, whatever id form starts it | `verdict.lint` and `verdict.finding_blocks` on a FIX verdict for each id form (`F1.`, `Q1.`, `S1.`, `A1.`, `G1.`, `N1.`, `Finding 1.`, `[Q1]`, `1.`, severity first) with `blocks: yes` (accepted, one blocking block) and with `blocks: no` (refused naming the FIX rule) | #677; one parser in `verdict.finding_blocks`, one rule in `verdict.lint` |
 | I40 | The soak is skipped only for a head that turns a check failing at its base commit green | `merge.fixes_base` on every base conclusion x head conclusion, with the check present and absent at head | #668; one rule in `merge.fixes_base`; the check path (base read only while the soak holds, exit 2 when unreadable) stays in `tests/test_merge.py` |
 | I52 | A `python -c` snippet with no write-like token passes the records guard in every posture; one with a write-like token is refused in every posture, naming the token | per posture, through the hook, a snippet printing the day's `state.json`; `check_bash` on `open(..., "w")` and `Path(...).write_text` snippets naming it | #643; one token scan in `shell.snippet_write`, shared through `shell.reads`; a name built at run time is the 4.5 residual |
+| I56 | A small item never waits for its ticket: an unticketed item whose deciding tier is light reads `later` in `tracker.check`, which no refusal point refuses; once its gate tier is standard or full it reads `missing` again | per posture, `tracker.check` on an unticketed item with lead tier light, and with lead tier light and gate tier standard | #646; the gate opens its ticket, or close names `tracker create` after it ships |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

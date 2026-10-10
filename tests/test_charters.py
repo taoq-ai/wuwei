@@ -295,3 +295,13 @@ def test_builder_names_claude_codes_report_file_check():
     # #649: the refusal of a scratch analysis.md is Claude Code's check, not a WUWEI hook.
     builder = charter_text()["builder.md"]
     assert "wuwei spec analysis <item>" in builder and "in any directory" in builder
+
+
+def test_a_seat_finding_has_its_route():
+    """#646: seats record a small fix with note --fix; the planner adds it and opens its ticket later."""
+    texts = charter_text()
+    assert 'wuwei note --fix "<title>"' in texts["builder.md"]
+    assert 'wuwei note --fix "<title>"' in texts["lead.md"]
+    assert "`light` starts without a ticket" in texts["lead.md"]
+    assert "wuwei plan add <id> --from-finding" in texts["planner.md"]
+    assert "after it ships" in texts["planner.md"]

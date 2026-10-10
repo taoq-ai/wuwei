@@ -345,3 +345,37 @@ def test_plan_add_backfills_missing_risk_evidence_once(root):
     with pytest.raises(state.StateError, match='already in the plan'):
         plan.add('OLD', root)
     assert len(added_events(root)) == 2
+
+
+def test_plan_add_from_a_seat_finding(root, monkeypatch, capsys):
+    """#646: a seat's finding joins as a small item with no ticket, even with a tracker required."""
+    from fakes.tracker import Fake, ported
+    from wuwei import registry, tracker, workspace
+    from wuwei.__main__ import main
+    (root / '.wuwei/config.toml').write_text(
+        '[discovery]\nautostart = "goal"\n[adapters]\ntracker = "linear"\n')
+    fake = Fake({'create': registry.Result(0, {'id': 'ENG-9'})})
+    port = ported(fake)
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
+                        else load(kind, config))
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    assert main(['plan', 'add', '--from-finding', 'fix-pin-ruff-in-ci']) == 1
+    assert 'wuwei next' in capsys.readouterr().err
+    assert main(['note', '--fix', 'Pin ruff in CI']) == 0
+    capsys.readouterr()
+    with pytest.raises(state.StateError, match="not one of today's goals"):
+        plan.add('fix-pin-ruff-in-ci', root, goal='G-9', source='finding')
+    assert main(['plan', 'add', 'fix-pin-ruff-in-ci', '--from-finding']) == 0
+    assert json.loads(capsys.readouterr().out) == {'action': 'build next', 'item': 'fix-pin-ruff-in-ci'}
+    day = state.read_state(root)
+    row = day['items']['fix-pin-ruff-in-ci']
+    assert {key: row[key] for key in ('goal', 'track', 'tier', 'source', 'title', 'budget_size')} == {
+        'goal': 'G-1', 'track': 'SLICE', 'tier': 'light', 'source': 'finding',
+        'title': 'Pin ruff in CI', 'budget_size': 1}
+    assert not any(row['flags'].values()) and 'fix-pin-ruff-in-ci' in day['approved_items']
+    assert fake.calls == [] and not day.get('drafts') and not day.get('tickets')
+    assert added_events(root)[-1]['source'] == 'finding'
+    config = workspace.load_config(root)
+    assert tracker.check(day, config, 'fix-pin-ruff-in-ci', row) == ('later', '')
+

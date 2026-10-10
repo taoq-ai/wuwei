@@ -33,15 +33,18 @@ def pending(data, item):
 
 
 def check(data, config, item, row=None):
-    """The 5.11 rule, pure: (off|ticket|skipped|missing, reason)."""
+    """The 5.11 rule, pure: (off|ticket|skipped|later|missing, reason)."""
     if not in_force(config):
         return 'off', ''
     if ticket(data, item):
         return 'ticket', ''
     row = row or {}
-    if ((row.get('gates', {}).get('tier') or row.get('tier')) in config['tracker']['skip_tiers']
+    tier = row.get('gates', {}).get('tier') or row.get('tier')
+    if (tier in config['tracker']['skip_tiers']
             or data.get('tickets', {}).get(item, {}).get('source') == 'none'):  # #636: the owner's none
         return 'skipped', ''
+    if tier == 'light':  # #646: a small item never waits for its ticket (gate or after it ships)
+        return 'later', ''
     strict = workspace.posture(config)[0] == 'strict'
     draft = pending(data, item)
     if draft:
@@ -64,8 +67,10 @@ def _candidate(root, data, item):
     path = workspace.day_dir(root) / 'proposal.json'
     rows = (json.loads(path.read_text(encoding='utf-8')).get('candidates', [])
             if path.is_file() and not path.is_symlink() else [])
+    found = data.get('seat_findings', {}).get(item)  # #646: a seat's finding added as an item
     return next((row for row in rows if row.get('id') == item),
-                data.get('discovery_candidates', {}).get(item))
+                data.get('discovery_candidates', {}).get(item)
+                or found and {**found, 'goal': data['items'].get(item, {}).get('goal', 'unplanned')})
 
 
 def create(root, subject, category='items', title=None, evidence=(), row=None):

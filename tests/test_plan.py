@@ -639,6 +639,28 @@ def test_a_failed_open_refuses_the_approval(root, monkeypatch):
     assert not state.read_state(root)['approved_items']
 
 
+
+def test_a_small_item_is_approved_without_its_ticket(root, monkeypatch):
+    """#646: the gate opens a light item's ticket, and a failed open does not hold the gate."""
+    fake = opening(root, monkeypatch, 'guarded', C={'tier': 'light'})
+    plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
+    assert [call[0] for call in fake.calls] == ['create']
+    assert state.read_state(root)['tickets']['C'] == {'id': 'ENG-9', 'source': 'create'}
+
+
+def test_a_failed_open_does_not_hold_a_small_item(root, monkeypatch):
+    opening(root, monkeypatch, 'guarded', created=registry.Result(2, reason='linear: unreachable'),
+            C={'tier': 'light'})
+    plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
+    day = state.read_state(root)
+    assert 'C' in day['approved_items'] and 'C' not in day['tickets']
+
+
+def test_strict_approves_a_small_item_and_opens_nothing(root, monkeypatch):
+    fake = opening(root, monkeypatch, 'strict', C={'tier': 'light'})
+    plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
+    assert fake.calls == [] and 'C' in state.read_state(root)['approved_items']
+
 def test_import_yesterday_carries_tickets(root):
     yesterday = root / '.wuwei/days/2026-09-27'
     yesterday.mkdir(parents=True)
