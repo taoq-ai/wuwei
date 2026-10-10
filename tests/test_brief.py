@@ -676,3 +676,53 @@ def test_issue_acceptance_docs_recorded_after_the_brief(day, monkeypatch, capsys
     path.write_text(docs_finding('the docs value is missing'))
     code, message = verdict.lint_file(path, role='sentinel-quality')
     assert code == 1 and 'X records docs docs/x.md' in message
+
+
+NOT_FOUND = 'github.pr: could not run: gh exited 1 (acme/widget): gh: Not Found (HTTP 404)'
+DENIED = 'github.pr: could not run: gh exited 1 (acme/widget): gh: Bad credentials (HTTP 401)'
+WIDGET = '[[repos]]\nname = "acme/widget"\npath = "tree"\ndefault_branch = "main"\n'
+
+
+def test_not_found_reads_the_404_reason():
+    from wuwei import references
+    assert references.not_found(NOT_FOUND) and references.not_found(ValueError(NOT_FOUND))
+    assert not references.not_found(DENIED) and not references.not_found('')
+
+
+def test_issue_reference_registers_with_a_warning(day, monkeypatch, capsys):
+    # #740: a ticket is an issue; the pulls endpoint 404s on it and the brief still registers.
+    (day[0] / '.wuwei/config.toml').write_text(WIDGET)
+    day[3].results['pr'] = registry.Result(2, None, NOT_FOUND)
+    state._write_state(lambda data: data.update(tickets={'X': {'id': 'acme/widget#24'}}), day[0], reserved=False)
+    assert brief(monkeypatch, 'Ticket: acme/widget#24', 'builder', 'X', 'tk') == 0
+    text = (day[1] / 'briefs/tk.md').read_text()
+    assert 'Warning: acme/widget#24 is no pull request the host could read (' in text
+    assert 'Ticket: acme/widget#24' in text
+    assert any(e['kind'] == 'brief written' for e in events(day[1]))
+    capsys.readouterr()
+    assert main(['why', 'X', '--json']) == 0
+    assert json.loads(capsys.readouterr().out)['ticket'] == 'acme/widget#24'
+
+
+def test_counterpart_pr_line_is_unchanged(day, monkeypatch):
+    (day[0] / '.wuwei/config.toml').write_text(WIDGET)
+    day[3].results['pr'] = registry.Result(0, {'head': 'a' * 40})
+    assert brief(monkeypatch, 'see acme/widget#7', 'builder', 'X', 'cp') == 0
+    text = (day[1] / 'briefs/cp.md').read_text()
+    assert 'Counterpart acme/widget#7 head (no-cache): {"head": "' + 'a' * 40 + '"}' in text
+    assert 'Warning:' not in text
+
+
+@pytest.mark.parametrize('posture, reason, code', [
+    ('guarded', DENIED, 0), ('strict', DENIED, 2), ('strict', NOT_FOUND, 0)])
+def test_unreadable_counterpart_follows_the_posture(day, monkeypatch, capsys, posture, reason, code):
+    (day[0] / '.wuwei/config.toml').write_text(WIDGET + f'[security]\nposture = "{posture}"\n')
+    day[3].results['pr'] = registry.Result(2, None, reason)
+    assert brief(monkeypatch, 'Ticket: acme/widget#24', 'builder', 'X', 'ps') == code
+    if code:
+        assert reason in capsys.readouterr().err
+        assert not (day[1] / 'briefs/ps.md').exists()
+        assert not any(e['kind'] == 'brief written' for e in events(day[1]))
+    else:
+        assert f'Warning: acme/widget#24 is no pull request the host could read ({reason})' in (
+            day[1] / 'briefs/ps.md').read_text()
