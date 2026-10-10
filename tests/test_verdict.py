@@ -795,3 +795,114 @@ def test_lint_file_reads_the_docs_value_at_lint_time(tmp_path, monkeypatch):
     assert lint(unknown)[0] == 0
     config.write_text('[docs]\nsystem = "none"\n')
     assert lint(path)[0] == 0
+
+
+# #665: a numbered list in prose is not a finding; one format table feeds the messages.
+EVIDENCE = '1. ran the suite\n2. read the diff\n'
+
+
+@pytest.mark.parametrize('heading', ['Evidence:\n', '## Evidence\n'])
+def test_numbered_evidence_is_not_a_finding(heading):
+    from wuwei.verdict import active_text, finding_blocks, lint
+    text = PASS + heading + EVIDENCE
+    assert finding_blocks(active_text(text)) == []
+    assert lint(text, class_sweep=True) == (0, 'OK: PASS')
+
+
+def test_fix_with_numbered_evidence_keeps_one_finding():
+    from wuwei.verdict import active_text, finding_blocks, lint
+    finding = 'F1 medium cli/example.py:12 fails when input is empty. blocks: yes\n'
+    text = VALID.replace(FINDING, finding + '## Evidence\n1. ran pytest\n2. read cli/example.py\n')
+    blocks = finding_blocks(active_text(text))
+    assert len(blocks) == 1 and blocks[0].startswith('F1')
+    assert lint(text, class_sweep=True) == (0, 'OK: FIX')
+
+
+@pytest.mark.parametrize('heading', ['Findings:\n', '## Findings\n'])
+def test_numbered_lines_under_findings_are_findings(heading):
+    from wuwei.verdict import active_text, finding_blocks, lint
+    text = VALID.replace(FINDING, heading + '1. cli/example.py:12 fails when empty; P1; blocks: yes\n'
+                         '2. read the code\n')
+    assert len(finding_blocks(active_text(text))) == 2
+    assert 'finding 2: missing' in lint(text)[1]
+
+
+@pytest.mark.parametrize('line', ['1. P1 cli/example.py:12 fails when empty | blocks: yes',
+                                  '1. Severity: medium. cli/example.py:12 fails when empty. blocks: yes',
+                                  '1. F1 medium cli/example.py:12 fails when empty. blocks: yes',
+                                  '1. the guard at cli/example.py:12 fails when empty, blocks: yes'])
+def test_numbered_findings_outside_a_heading_still_parse(line):
+    from wuwei.verdict import active_text, finding_blocks, lint
+    assert len(finding_blocks(active_text(PASS + 'Notes:\n' + line + '\n'))) == 1
+    assert len(finding_blocks(active_text(PASS + line + '\n'))) == 1
+    if 'Severity' not in line and 'P1' not in line and 'F1' not in line:
+        assert 'PASS verdict carries a blocking finding' in lint(PASS + line + '\n')[1]
+
+
+def test_evidence_cannot_lend_a_citation():
+    from wuwei.verdict import lint
+    text = VALID.replace(FINDING, '- P1 fails when input is empty | blocks: yes\n'
+                         'Evidence:\n1. read cli/other.py:3\n')
+    code, message = lint(text)
+    assert code == 1 and 'file:line' in message
+
+
+def test_scenario_label_stays_inside_the_finding():
+    from wuwei.verdict import lint
+    text = VALID.replace(FINDING, '### P1: empty input\nFile: cli/example.py:12\nScenario:\n'
+                         'fails when input is empty\nblocks: yes\n')
+    assert lint(text, class_sweep=True) == (0, 'OK: FIX')
+
+
+@pytest.mark.parametrize('finding', ['F1 high cli/example.py:3 fails when empty\nFix:\nadd guard; blocks: yes\n',
+                                     'F1 high cli/example.py:3 blocks: yes\nFailure scenario:\n'
+                                     'the parser would crash on empty input\n'])
+def test_label_line_inside_a_finding_keeps_it_open(finding):
+    from wuwei.verdict import lint
+    assert lint(VALID.replace(FINDING, finding), class_sweep=True) == (0, 'OK: FIX')
+
+
+def test_class_names_build_the_class_rule_and_the_example_passes():
+    import re
+    from wuwei import verdict
+    assert all(re.search(verdict.CLASSES, f'{name}: PASS') for name in verdict.CLASS_NAMES)
+    text = PASS.replace('VAL: PASS', verdict.FORMAT['Class'][1])
+    assert verdict.lint(text, class_sweep=True) == (0, 'OK: PASS')
+
+
+def test_class_line_as_the_old_charter_showed_names_the_fix():
+    from wuwei.verdict import FORMAT, lint
+    code, message = lint(PASS.replace('VAL: PASS', 'CLASS: PASS'), class_sweep=True)
+    assert code == 1
+    assert "'CLASS: PASS'" in message and FORMAT['Class'][0] in message
+    assert '(CLASS: PASS|N.A.|FINDING <id>)' not in message
+    assert message.endswith('REJECT: send back to the seat')
+
+
+def test_rejections_quote_the_line_and_the_form():
+    from wuwei.verdict import FORMAT, lint
+    _, message = lint(VALID.replace('cli/example.py:12', 'nowhere'))
+    line = next(row for row in message.splitlines() if row.startswith('finding 1:'))
+    assert line.startswith('finding 1: missing file:line')
+    assert "'- P1 | nowhere |" in line and FORMAT['Finding'][0] in line
+    _, message = lint(VALID.replace('abc1234', 'abc12'))
+    assert "'Head: abc12'" in message and FORMAT['Head'][0] in message
+    _, message = lint(VALID + 'Verdict: FIX\n')
+    assert 'expected exactly one Verdict: line' in message and "'Verdict: FIX'" in message
+    _, message = lint(PASS + FINDING)
+    hint = next(row for row in message.splitlines() if row.startswith('PASS verdict carries'))
+    assert "'" + FINDING.strip() + "'" in hint and hint.endswith('or blocks: no')
+    _, message = lint(VALID.replace('blocks: yes', 'blocks: no'))
+    assert 'a number' not in message
+    for text in (VALID.replace('abc1234', 'abc12'), PASS + FINDING):
+        assert lint(text)[1].endswith('REJECT: send back to the seat')
+
+
+def test_section_renders_the_format_table():
+    from wuwei.verdict import FORMAT, section
+    text = section()
+    assert text.startswith('## Verdict format\n')
+    rows = [line for line in text.splitlines() if line.startswith('- ')]
+    assert rows == [f'- {key}: {form}' for key, (form, _) in FORMAT.items()]
+    example = text.split('```text\n')[1].split('```')[0]
+    assert example == ''.join(line + '\n' for _, line in FORMAT.values())

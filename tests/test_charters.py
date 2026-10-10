@@ -307,3 +307,10 @@ def test_governing_document_charters():  # #664
     assert "Governing:" in text["builder.md"] and "## Governing" in text["builder.md"]
     assert "## Governing" in text["sentinel-goal.md"] and "conflicts" in text["sentinel-goal.md"]
     assert "governed_by" in text["lead.md"]
+
+
+def test_no_charter_holds_its_own_verdict_format():
+    # #665: the format lives in cli/wuwei/verdict.py FORMAT; agents build renders it.
+    texts = charter_text()
+    assert "`CLASS: PASS|N.A.|FINDING <id>`" not in texts["_common.md"]
+    assert not [name for name, body in texts.items() if "## Verdict format" in body]

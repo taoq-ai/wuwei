@@ -27,13 +27,43 @@ Read this file before your role charter. Seats that author artifacts also read `
 5. Round cap: at most `gates.max_rounds` fix rounds per item (a tier may set its own), counted the same for code, spec and document items and for the spec-done gate. A FIX verdict opens the first round; after a delta only a blocking finding opens the next. At light depth the same sentinel re-reads its findings instead of a delta, as the continue feedback says. After round one, a new finding on lines the fix did not change is a note (`blocks: no`). A trust-boundary security finding always blocks. Put residual non-blocking findings in the PR body's review notes (a document's review notes) and ship. A blocking finding at the cap is a design reconsideration, never another round: park the item with a decision record naming the finding and what would unpark it.
 6. Re-gate: continue the same sentinel with the delta and prior verdict. Launch a fresh seat only if the original seat is lost. A closed finding remains closed absent new evidence.
 7. Classify each finding against the item's promise: fix a regression, violated requirement or trust-boundary defect now; note a non-blocking limit or a gap already on main in the PR; drop a disproven claim with evidence. No seat files or promises a follow-up ticket; send follow-up candidates to lead discovery. The one exception is a bug outside the item's scope: the builder or gate that finds it opens a linked ticket with `bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>" --seat <your role>` instead of widening the item. The finder files it in the owner's tracker directly. When it is held, the reason names the rule and the planner's card: note the ticket or the hold in your report and go on; never ask the owner. Give an out-of-scope reviewer ask one reply. Put mechanical cite and count drift in an appendix, never a verdict. Do not silently expand the item.
-8. At light depth a verdict is `Verdict:`, `Head:` and findings. Otherwise a sentinel verdict has one `Verdict: PASS|FIX|PARK|ESCALATE` line and exactly one `Head: <7 to 40 hex>` row containing the reviewed sha. PARK records a decision and stops the item without interrupting the owner; quality and goal use PARK for unresolved findings. ESCALATE is for an owner-only choice or a vulnerability already on the base branch. For every finding give severity, `file:line`, a concrete failure scenario and `blocks: yes|no`. Give a `Probe:`, `Probes:` or `Mutation:` row for each claim, using `not run` when needed; state residual risk. Arch, quality and security verdicts require a class-sweep line (`CLASS: PASS|N.A.|FINDING <id>`); goal verdicts do not. A quality verdict also follows its role charter's rows.
+8. At light depth a verdict is `Verdict:`, `Head:` and findings. Otherwise a sentinel verdict has one `Verdict: PASS|FIX|PARK|ESCALATE` line and exactly one `Head: <7 to 40 hex>` row containing the reviewed sha. PARK records a decision and stops the item without interrupting the owner; quality and goal use PARK for unresolved findings. ESCALATE is for an owner-only choice or a vulnerability already on the base branch. For every finding give severity, `file:line`, a concrete failure scenario and `blocks: yes|no`. Give a `Probe:`, `Probes:` or `Mutation:` row for each claim, using `not run` when needed; state residual risk. Arch, quality and security verdicts require a class-sweep line (see Verdict format); goal verdicts do not. A quality verdict also follows its role charter's rows.
 ## Decisions and procedure
 
 1. Assume and record: an open question on a two-way door inside the item is not asked. Take your recommendation, record it under `Assumptions:` in the item's spec or PR body (what was assumed, why, what would overturn it) and continue; gates review it as a finding. Any other decision goes through the decision record at `days/<date>/decisions/D-<n>.md`. Include `Question:`, evidence paths in `Context:`, at least two `Options:` including deferral, pass/fail `Musts:`, weighted `Wants:` with option scores, the highest-scoring passing `Recommendation:` and `Confidence:`, `Reversibility: one-way|two-way`, `Blast radius:`, `Pre-mortem:`, `Revisit:`, `Decided-by:` and `Outcome:`. A new record also carries `Class:` (a design 5.8.1 class), `Role:` (your role, the charter name; your stated confidence is scored per role) and the Options table `Option | Title | Rationale | Consequence`. Each row gives a short title, why the option scores as it does, and what it changes, costs and closes. Put `Reasoning:` under the recommendation: the wants that decided it and what would flip it. An engineering class (`design`, `boundary`, `refactor`, `dependency-bump`) also carries a `Lenses:` table with one line per option for each configured lens. A how-to-build decision is engineering. Use `design` for an architecture, interface or data shape that outlives the item, and `boundary` for a module, service or ownership boundary. Use `refactor` for restructuring without a behaviour change, and `dependency-bump` for a manifest or lockfile. CLI decision template prints that shape. Let CLI decision lint check the record.
 2. Route every record with `wuwei decision route D-n`. Under `autonomy.mode = autonomous` (the default) it takes the recommendation of a Routine, Consequential or scoring Exploratory record. The CLI records it and lists it in the digest and the report. A one-way record, a record written `Decided-by: owner`, a Strategic record or a tie goes to the owner. Under supervised a two-way decision inside the item's branch or PR stays with its seat and every other decision goes to the owner. Two-way by definition: a fix round after FIX verdicts is `Class: retry`, a builder's task round or a choice between two seat procedures is `approach`, a parked item's next step is `park`. A goal or agreed-scope change, trust-boundary change or spend above budget is one-way; when unsure, write it as one-way. The launch prompt's mandate says what you decide alone, what you decide and record, and what goes to the owner; nothing else is a question. A question to the owner cites a valid decision id in every runtime, before asking or escalating through a control plane.
 3. Charter and existing-note changes are proposals only. Write target, action, new text or delta, reason and evidence path under `days/<date>/proposals/`; `wuwei promote` alone may lint and land them. Never edit a plugin charter, local charter override or existing note directly. A proposal may add, patch, fold or archive a rule and must resolve contradictions in the same proposal. Goals remain owner-edited.
 4. At handoff, every seat provides the three-line retro note `Blocked: / Gap: / Change:` with concrete evidence or `none`; at light depth only when a line is not `none`. A proposed procedure change goes through the proposal path, not a dated learned-rules section in a charter.
+
+## Verdict format
+
+Write these lines; the verdict lint checks them.
+
+- Verdict: `Verdict: PASS|FIX|PARK|ESCALATE`, once
+- Head: `Head: <7 to 40 hex>`, the sha you reviewed, once
+- Finding: `F<n> <severity> <file:line> <failure scenario> blocks: yes|no`; a numbered line is a finding only under a `Findings` heading
+- Probe: `Probe: <what ran and what it showed>`, or `Probe: not run`
+- Class: `<CLASS>: PASS|N.A.|FINDING <id>`, one line per class you check, CLASS one of AUTH, VAL, DOC, TEST, INF, RET, ERR, STATE, CON, BUD, DATA, PROOF (arch, quality and security)
+- Simplicity: `Simplicity: <what to delete and what replaces it, or none and why>` (quality)
+- Design: `Design: <what makes this change harder to test or change, or none and why>` (quality)
+- Blocked: `Blocked: <evidence or none>`
+- Gap: `Gap: <evidence or none>`
+- Change: `Change: <evidence or none>`
+
+An example the lint accepts:
+
+```text
+Verdict: FIX
+Head: 3f1c2ab
+F1 medium src/calc.py:19 fails when the input is empty. blocks: yes
+Probe: not run
+VAL: FINDING F1
+Simplicity: none, one guard and one division
+Design: none, a single pure function
+Blocked: none
+Gap: none
+Change: none
+```
 
 ---
 version: 1.0.1
