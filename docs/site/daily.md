@@ -30,6 +30,8 @@ Then set up the workspace in a [host terminal](concepts.md#host-terminal):
 ../wuwei-plugin/bin/wuwei setup --shadow
 ```
 
+In Claude Desktop, the IDE or any session with the Ask widget, the planner asks the setup questions on cards (`wuwei calibrate --questions`, and `wuwei setup` without a terminal prints the same cards); the terminal interview is for a plain terminal.
+
 `setup` runs `init` when there is no workspace; `init` ends with `plugin integrity: clean`
 for an intact signed release. A development checkout needs one host confirmation first; see
 [recovery](recovery.md).

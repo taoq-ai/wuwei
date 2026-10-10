@@ -166,8 +166,9 @@ def step(root, ran=()):
     calibration = root / '.wuwei/calibration.json'
     if (not config['repos'] or not calibration.is_file()
             or not json.loads(calibration.read_text(encoding='utf-8'))):
-        return _row('setup', 'Setup is incomplete; complete the repositories, calibration and '
-                    'interview in a host terminal.', 'bin/wuwei setup', 'card',
+        return _row('setup', 'Setup is incomplete. Run bin/wuwei setup through Bash: without a terminal it '
+                    'prints the unanswered setup questions as cards to ask (#635); repositories and '
+                    'calibration still need you in a host terminal.', 'bin/wuwei setup', 'card',
                     THEN['owner'])
     directory = workspace.day_dir(root)
     days = f'.wuwei/days/{directory.name}'
