@@ -241,6 +241,13 @@ the reviewer rows are not applicable), Day and sessions
 hook probes, plus `hook PreToolUse` from a directory outside any workspace, which must
 allow). It works before there is a workspace: the Workspace section then names where to run
 `bin/wuwei init --shadow`.
+When `.wuwei/executable` names another runnable install, `doctor` runs from that install
+with the same options, so every copy prints the same rows; that report adds an `invoked` row
+naming the copy that was invoked and the copy that last measured plugin integrity (the
+SessionStart hook). It hands over only to an absolute `.../bin/wuwei` named by a pointer file
+that is not a symlink, the form `init` writes, and only through the `local` host adapter.
+When the SessionStart hook last measured another copy than the one reporting, a `hooks copy`
+row warns and names both. Seat briefs carry a `Doctor:` line: install findings are yours, never a seat's step.
 
 The config row warns, naming each unknown key, its line and the nearest documented key, when
 `config.toml` loads with keys this plugin does not know. The `.in_use` row warns with

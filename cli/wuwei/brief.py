@@ -28,6 +28,10 @@ LIGHT_GATE = ('Depth: light; skip: gate step zero, the Probe or Mutation row, th
 # #667: the values the day changes under a seat are read live, never copied into the brief.
 LIVE = ('Live: run bin/wuwei why {item} --json when you start and again before your verdict or handoff; '
         'its docs, ticket and spec fields are the record at that moment. This brief copies none of them.')
+# #645: one doctor for every seat; install findings belong to the owner.
+DOCTOR = ('Doctor: run the launcher in .wuwei/executable with doctor; another copy hands over '
+          "to it. Its Install rows and its workspace executable row are the owner's: name them "
+          'in your handoff, never as a Next: step, and never run their fix.')
 
 
 def depth_line(role, value, worktree, paths=(), trust_paths=(), flags=None):
@@ -429,6 +433,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                           f'{shlex.quote(str(scratch / "pycache"))}; set it on every command that '
                           'runs code, and run every probe, test and mutant in a copy of the worktree '
                           'under your scratch directory, never in the worktree itself')
+        header.append(DOCTOR)
         from wuwei import mcp
         names = mcp.unmeasured(root)
         if names:
