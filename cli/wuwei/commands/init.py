@@ -395,6 +395,9 @@ def upgrade(args):
         prefix = 'Would upgrade' if args.dry_run else 'Upgraded'
         from wuwei import novelty
         seeded = novelty.seed(destination.parent, write=not args.dry_run)  # #556
+        from wuwei import tracker  # #741: stored bare GitHub ticket ids gain their repository
+        tickets = tracker.upgrade(destination.parent, workspace.load_config(destination.parent, raw=migrated),
+                                  write=not args.dry_run)
         if not args.dry_run:
             if security_data is None:
                 security.initialize(destination, getattr(args, 'honeytoken_path', security.DEFAULT_HONEYTOKEN_PATH))
@@ -432,6 +435,8 @@ def upgrade(args):
             print(f'{prefix} {novelty.NAME}: {seeded} targets seen in the last {novelty.DAYS} days')
         if guide_changed:
             print(f'{prefix} {guide_path.relative_to(destination.parent)}: guide block')
+        for line in tickets:
+            print(f'{prefix} {line}')
         from wuwei import undo
         unrehearsed = undo.missing(destination.parent)  # #557: not a change, so not counted below
         if unrehearsed:
@@ -451,7 +456,8 @@ def upgrade(args):
         if not args.dry_run:
             _status_line(executable)
         if (not added and not retired and not stamp_changed and not pointer_changed and not env_changed
-                and not guide_changed and not seeded and not named and not graph_changed and text == raw):
+                and not guide_changed and not seeded and not named and not graph_changed and text == raw
+                and not tickets):
             print('No workspace changes needed')
         if args.dry_run:
             return CLEAN

@@ -769,6 +769,33 @@ def test_upgrade_is_idempotent(tmp_path):
     assert before == {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
 
 
+def test_upgrade_normalises_a_stored_bare_ticket(tmp_path):
+    """#741: init --upgrade turns today's stored 24 into acme/app#24, once."""
+    from wuwei import state
+    assert cli(tmp_path, 'init').returncode == 0
+    config_path = tmp_path / '.wuwei/config.toml'
+    config_path.write_text(config_path.read_text().replace('tracker = "none"', 'tracker = "github"', 1)
+                           + '\n[[repos]]\nname = "acme/app"\npath = "app"\ndefault_branch = "main"\n')
+    now = {'WUWEI_NOW': '2026-09-29T12:00:00Z'}
+    assert cli(tmp_path, 'init', '--upgrade', **now).returncode == 0
+    day = tmp_path / '.wuwei/days/2026-09-29'
+    state._write_state(lambda data: data.setdefault('tickets', {}).update(
+        {'X': {'id': '24', 'source': 'candidate'}}), reserved=False, directory=day)
+    before = (day / 'state.json').read_bytes()
+    line = '2026-09-29/state.json: ticket X 24 to acme/app#24'
+    preview = cli(tmp_path, 'init', '--upgrade', '--dry-run', **now)
+    assert preview.returncode == 0, preview.stderr
+    assert f'Would upgrade {line}' in preview.stdout
+    assert 'No workspace changes needed' not in preview.stdout
+    assert (day / 'state.json').read_bytes() == before
+    result = cli(tmp_path, 'init', '--upgrade', **now)
+    assert result.returncode == 0, result.stderr
+    assert f'Upgraded {line}' in result.stdout
+    assert state.read_state(directory=day)['tickets']['X']['id'] == 'acme/app#24'
+    again = cli(tmp_path, 'init', '--upgrade', **now)
+    assert again.returncode == 0 and 'No workspace changes needed' in again.stdout
+
+
 def test_upgrade_preserves_nonadjacent_repo_tables(tmp_path):
     assert cli(tmp_path, 'init').returncode == 0
     config_path = tmp_path / '.wuwei/config.toml'

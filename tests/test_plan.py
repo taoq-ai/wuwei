@@ -705,6 +705,44 @@ def test_plan_set_records_a_confirmed_ticket(root, monkeypatch, capsys):
     assert 'owner=pat is not a spec, docs, ticket or owner_merge value' in capsys.readouterr().err
 
 
+GITHUB = '[adapters]\ntracker = "github"\n'
+REPO = '[[repos]]\nname = "acme/app"\npath = "app"\ndefault_branch = "main"\n'
+
+
+def test_plan_set_bare_ticket_is_stored_and_printed_in_full(root, monkeypatch, capsys):
+    """#741: plan set ticket=24 confirms, stores and prints acme/app#24."""
+    from fakes.tracker import Fake
+    from wuwei.__main__ import main
+    plan.propose(proposal(), root)
+    (root / '.wuwei/config.toml').write_text(GITHUB)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    fake = Fake({'created': registry.Result(0, '2026-09-27T10:00:00Z')})
+    monkeypatch.setattr(registry, 'load', lambda kind, config: fake)
+    assert main(['plan', 'set', 'A', 'ticket=24']) == 2
+    assert 'owner/repo#24' in capsys.readouterr().err
+    assert fake.calls == [] and 'tickets' not in state.read_state(root)
+    (root / '.wuwei/config.toml').write_text(GITHUB + REPO)
+    assert main(['plan', 'set', 'A', 'ticket=24']) == 0
+    assert fake.calls[-1][:2] == ('created', ('acme/app#24',))
+    assert state.read_state(root)['tickets'] == {'A': {'id': 'acme/app#24', 'source': 'set'}}
+    assert [e['payload']['ticket'] for e in events(root) if e['kind'] == 'plan.set'] == ['acme/app#24']
+    assert capsys.readouterr().out.strip() == 'A: ticket acme/app#24'
+
+
+def test_proposed_bare_ticket_is_stored_in_full(root):
+    """#741: the lead's bare ticket reaches proposal.json and tickets as acme/app#24."""
+    (root / '.wuwei/config.toml').write_text(GITHUB)
+    with pytest.raises(ValueError, match='owner/repo#24'):
+        plan.propose(two(B={'ticket': '24'}), root)
+    assert not (root / '.wuwei/days/2026-09-28/proposal.json').exists()
+    (root / '.wuwei/config.toml').write_text(GITHUB + REPO + '[tracker]\nskip_tiers = ["light"]\n')
+    plan.propose(two(A={'tier': 'light'}, B={'ticket': '24'}), root)
+    written = json.loads((root / '.wuwei/days/2026-09-28/proposal.json').read_text())
+    assert {row['id']: row.get('ticket') for row in written['candidates']}['B'] == 'acme/app#24'
+    plan.approve(['A', 'B'], root, goals_confirmed=True)
+    assert state.read_state(root)['tickets'] == {'B': {'id': 'acme/app#24', 'source': 'candidate'}}
+
+
 def four(seats=None):
     data = proposal()
     data.update(goals=['G-1', 'G-2'], cap=3, **({'seats': seats} if seats is not None else {}))

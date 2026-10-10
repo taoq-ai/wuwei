@@ -402,3 +402,81 @@ def test_log_never_sends_an_absolute_path(ws):
     assert fake.calls == []
     entry, = state.read_state(root)['tracker_log'].values()
     assert entry['outcome'] == 'refused' and 'absolute path' in entry['reason']
+
+
+def repos(*names):
+    return ''.join(f'[[repos]]\nname = "{name}"\npath = "{name.split("/")[1]}"\n'
+                   f'default_branch = "main"\n' for name in names)
+
+
+def loaded(tmp_path, adapter='github', project=None, names=('acme/app',)):
+    text = (f'[owner]\nname = "Pat Example"\npronouns = "they/them"\n'
+            f'[adapters]\ntracker = "{adapter}"\n'
+            + (f'[tracker]\nproject = "{project}"\n' if project else '') + repos(*names))
+    return workspace.load_config(tmp_path, raw=text)
+
+
+@pytest.mark.parametrize('settings,ticket,expected', [
+    ({}, '24', 'acme/app#24'),
+    ({'project': 'acme/tracker', 'names': ('acme/app', 'acme/lib')}, '24', 'acme/tracker#24'),
+    ({'names': ('acme/app', 'acme/lib')}, '24', 'acme/app#24'),
+    ({}, 'acme/other#24', 'acme/other#24'),
+    ({}, '0', '0'),
+    ({}, '024', '024'),
+    ({}, 'ENG-24', 'ENG-24'),
+    ({'adapter': 'linear'}, '24', '24'),
+    ({'adapter': 'none'}, '24', '24'),
+])
+def test_full_id(tmp_path, settings, ticket, expected):
+    """#741: a bare GitHub number gains the tracker repository; every other id is kept."""
+    assert tracker.full_id(loaded(tmp_path, **settings), ticket) == expected
+
+
+@pytest.mark.parametrize('settings', [{'names': ()}, {'project': 'TEAM'}])
+def test_full_id_refuses_without_a_repository(tmp_path, settings):
+    with pytest.raises(ValueError) as refused:
+        tracker.full_id(loaded(tmp_path, **settings), '24')
+    assert 'owner/repo#24' in str(refused.value) and 'tracker.project' in str(refused.value)
+
+
+def stored(directory, tickets):
+    directory.parent.mkdir(parents=True, exist_ok=True)
+    state._write_state(lambda data: data.setdefault('tickets', {}).update(tickets),
+                       reserved=False, directory=directory)
+
+
+def test_upgrade_normalises_the_latest_days_bare_tickets(tmp_path, monkeypatch):
+    """#741: init --upgrade turns a stored 24 into acme/app#24 once and records it."""
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    days = tmp_path / '.wuwei/days'
+    assert tracker.upgrade(tmp_path, loaded(tmp_path)) == []
+    today = days / '2026-09-29'
+    stored(today, {'X': {'id': '24', 'source': 'candidate'}, 'Y': {'id': 'acme/app#2', 'source': 'set'},
+                   'Z': {'id': None, 'source': 'none'}})
+    before = (today / 'state.json').read_bytes()
+    line = '2026-09-29/state.json: ticket X 24 to acme/app#24'
+    assert tracker.upgrade(tmp_path, loaded(tmp_path), write=False) == [line]
+    assert (today / 'state.json').read_bytes() == before
+    unnamed, = tracker.upgrade(tmp_path, loaded(tmp_path, names=()))
+    assert 'ticket X 24 unchanged' in unnamed and 'owner/repo#24' in unnamed
+    assert tracker.upgrade(tmp_path, loaded(tmp_path, adapter='linear')) == []
+    assert (today / 'state.json').read_bytes() == before
+    assert tracker.upgrade(tmp_path, loaded(tmp_path)) == [line]
+    tickets = state.read_state(directory=today)['tickets']
+    assert [tickets[key]['id'] for key in 'XYZ'] == ['acme/app#24', 'acme/app#2', None]
+    rows = [json.loads(text) for text in (today / 'events.jsonl').read_text().splitlines()]
+    assert [row['payload'] for row in rows if row['kind'] == 'plan.set'] == [
+        {'item': 'X', 'ticket': 'acme/app#24', 'was': '24', 'prs_seen': False}]
+    assert tracker.upgrade(tmp_path, loaded(tmp_path)) == []
+
+
+def test_upgrade_reads_the_last_day_with_a_state(tmp_path, monkeypatch):
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    days = tmp_path / '.wuwei/days'
+    stored(days / '2026-09-28', {'X': {'id': '24', 'source': 'candidate'}})
+    (days / '2026-09-29').mkdir()
+    assert tracker.upgrade(tmp_path, loaded(tmp_path)) == [
+        '2026-09-28/state.json: ticket X 24 to acme/app#24']
+    (days / '2026-09-29/state.json').write_text('{')
+    unread, = tracker.upgrade(tmp_path, loaded(tmp_path))
+    assert unread.startswith('2026-09-29/state.json: tickets unread: ')

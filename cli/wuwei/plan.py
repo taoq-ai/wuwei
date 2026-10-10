@@ -238,6 +238,10 @@ def propose(data, root=None):
             'capacity': {key: limits[key] for key in ('bound', 'text', 'seats')}}
     framework = config['prioritisation']['framework']
     data = _proposal(data, goals_text, framework)
+    from wuwei import tracker
+    for row in data['candidates']:  # #741: the lead's tickets, in the one id format
+        if row.get('ticket'):
+            row['ticket'] = tracker.full_id(config, row['ticket'])
     from wuwei import mcp
     measured = mcp.check(root)
     gate = mcp.cached(root)  # The posture decides refusal; the sweep shows the measurement.
@@ -505,6 +509,8 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
                    'candidates': [candidate]}, goals_text,
                   config['prioritisation']['framework'])
     from wuwei import tracker
+    if candidate.get('ticket'):  # #741: one id format, before anything is written
+        candidate = {**candidate, 'ticket': tracker.full_id(config, candidate['ticket'])}
     chosen = proposed(candidate)
     status, reason = tracker.check({'tickets': {item: chosen}} if chosen else day,
                                    config, item, candidate)
@@ -654,7 +660,10 @@ def set_ticket(item, ticket, root=None):
     if item not in names:
         raise state.StateError(f"unknown item {item}; use an id from today's plan or proposal "
                                '(bin/wuwei status lists them)')
-    result = registry.load('tracker', workspace.load_config(root)).created(ticket, root=root)
+    from wuwei import tracker
+    config = workspace.load_config(root)
+    ticket = tracker.full_id(config, ticket)  # #741: one id format, confirmed and stored
+    result = registry.load('tracker', config).created(ticket, root=root)
     if result.exit:
         raise (state.StateError if result.exit == 1 else OSError)(
             result.reason or f'tracker could not confirm {ticket}; check the id in the tracker, then '
@@ -662,6 +671,7 @@ def set_ticket(item, ticket, root=None):
     state._write_state(lambda data: data.setdefault('tickets', {}).update(
         {item: {'id': ticket, 'source': 'set'}}), root, reserved=False, kind='plan.set',
         payload={'item': item, 'ticket': ticket})
+    return ticket
 
 
 def dispose(item, outcome, reason=None, root=None):

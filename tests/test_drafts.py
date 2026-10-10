@@ -623,24 +623,30 @@ def fake_tracker(monkeypatch, root, created=None):
     return module, sent
 
 
-def test_tracker_comment_drafts_and_approves_through_comment(root, monkeypatch):
+def test_tracker_comment_drafts_and_approves_through_comment(root, monkeypatch, capsys):
     module, sent = fake_tracker(monkeypatch, root)
     text = '[2026-09-29 item-1] Decision D-1: ship it. Outcome: yes.'
     result = module.comment('ENG-1', text, 'decisions', root=root)
     assert result.exit == 1 and sent == []
     row, = state.read_state(root)['drafts'].values()
     assert (row['channel'], row['operation'], row['text']) == ('tracker', 'comment', text)
+    capsys.readouterr()
     assert main(['drafts', 'approve', row['id']]) == 0
     assert sent == [('comment', 'ENG-1', text, 'decisions')]
+    assert capsys.readouterr().out.strip() == f"drafts: {row['id']} sent"
 
 
-def test_approved_ticket_creation_is_recorded(root, monkeypatch):
+def test_approved_ticket_creation_is_recorded(root, monkeypatch, capsys):
     module, sent = fake_tracker(monkeypatch, root, {'id': 'ENG-9', 'url': 'https://example.test/ENG-9'})
     draft = {'title': 'Add export', 'description': 'Track: build', 'item': 'item-1',
              'category': 'items'}
     assert module.create(draft, root=root).exit == 1
     row, = state.read_state(root)['drafts'].values()
+    capsys.readouterr()
     assert main(['drafts', 'approve', row['id']]) == 0
+    # #741: the owner sees the id the tracker opened, ready to copy
+    assert capsys.readouterr().out.strip() == (
+        f"drafts: {row['id']} sent; ticket ENG-9 https://example.test/ENG-9")
     data = state.read_state(root)
     assert data['tickets'] == {'item-1': {'id': 'ENG-9', 'source': 'create'}}
     assert data['tracker_log'] == {'create:items:item-1:add export': {

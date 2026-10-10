@@ -383,6 +383,9 @@ def approve(root, draft_id, *, edit=False, source=None, always=False):
                     if created.get('category') == 'items' else
                     f'drafts: {draft_id} sent; could not record ticket; do not retry, the ticket '
                     'is in the tracker'))
+            # #741: the id the tracker opened, ready to copy
+            return registry.Result(0, reason=f'drafts: {draft_id} sent; ticket {result.data["id"]} '
+                                             f'{result.data["url"]}')
         return registry.Result(result.exit, reason=(f'drafts: {draft_id} sent' if not result.exit
                                else 'drafts: adapter did not confirm send; do not retry'))
     except state.StateError as exc:
