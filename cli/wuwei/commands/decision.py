@@ -6,7 +6,7 @@ import sys
 
 from wuwei import novelty, state, workspace
 from wuwei.decision import (LENSES, RECORD, ROUTINE, cisr, uncalibrated, decided_record, evaluate, lens_table, lint_file, margin,
-                            option_id, options, owner_confirm, owner_record, present, record_rejection,
+                            no_card, option_id, options, owner_confirm, owner_record, present, record_rejection,
                             record_widget, route, route_owner, seat_outcome, today_path, widget)
 from wuwei.exits import RACE, SYMLINK
 
@@ -203,7 +203,11 @@ def owner_outcome(args, note=None, *, root=None, where=None):
     if where and fields['Reversibility'] != 'two-way':
         return 1, (f'decision: only a two-way decision is decided from the DM; '
                    f'run bin/wuwei decide {args.id} {args.option} in a host terminal')
-    where = where or owner_confirm(root, args.id, digest, f'{args.id}: {fields["Question"]}\nRecord {args.option}.')
+    card = getattr(args, 'card', None)
+    where = where or owner_confirm(root, args.id, digest, f'{args.id}: {fields["Question"]}\nRecord {args.option}.',
+                                   card, fields)
+    if not where and card is not None:
+        return 1, no_card(root, args.id, args.option)
     if not where:
         return 1, 'decision: owner confirmation declined; rerun bin/wuwei decide <id> <option> in a host terminal and answer y'
     if path.read_text(encoding='utf-8') != text:

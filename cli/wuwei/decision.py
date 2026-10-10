@@ -211,7 +211,7 @@ def present(identifier, fields, level):
 
 
 # The command that records an owner's answer to a D-n widget; <label> is the chosen option.
-RECORD = 'wuwei decide {id} "<label>"'
+RECORD = 'wuwei decide {id} "<label>" --card {card}'
 
 
 def first(text):
@@ -243,6 +243,12 @@ def gate(root):
     return f'Morning gate (days/{workspace.day_dir(root).name}/plan.md): '
 
 
+def card_hash(identifier, fields):
+    """#599: the card the owner saw (Question and Options), as the widget's record command carries it."""
+    from wuwei.sessions import card_topic
+    return card_topic(identifier, f'{fields["Question"]}\n{fields["Options"]}').split('=', 1)[1][:12]
+
+
 def record_widget(identifier, fields, record=RECORD, level='brief', hidden=False):
     """A decision that passed the new-record check as a widget: titles as labels, the
     recommendation first; rationale, consequence and lens lines, trimmed at brief. hidden (the
@@ -257,7 +263,7 @@ def record_widget(identifier, fields, record=RECORD, level='brief', hidden=False
                   [(title + (' (Recommended)' if option == chosen and not hidden else ''),
                     '\n'.join(trim(part) for part in ((consequence,) if hidden else
                                                        (rationale, consequence, *lenses.get(option, [])))))
-                   for option, title, rationale, consequence in rows[:4]], record.format(id=identifier))
+                   for option, title, rationale, consequence in rows[:4]], record.format(id=identifier, card=card_hash(identifier, fields)))
 
 
 def config_keys(fields):
@@ -517,14 +523,28 @@ def set_outcome(text, option):
     return re.sub(r'^((?:#{1,6} )?Outcome:).*$', lambda m: f'{m[1]} {option}', text, count=1, flags=re.M)
 
 
-def owner_confirm(root, identifier, digest, prompt):
+def owner_confirm(root, identifier, digest, prompt, card=None, fields=None):
     """Where the owner answered: the planner session's asked gate question, else y/N at the
-    host terminal (#354); '' when declined. OSError without a terminal propagates."""
+    host terminal (#354); '' when declined. A card hash (#599) confirms only the asked card of
+    the record as it stands and never prompts. OSError without a terminal propagates."""
     from wuwei import sessions
-    if identifier in sessions.gate_topics(root, sessions.current())[0]:
+    if card is not None and card != card_hash(identifier, fields):
+        return ''  # the record changed since its card, or not its card hash
+    if identifier in sessions.gate_topics(root, sessions.caller(root, card is not None))[0]:
         return 'in the planner session'
+    if card is not None:
+        return ''
     from wuwei.integrity import _host_confirm
     return 'at the host terminal' if _host_confirm(digest, prompt=prompt) else ''
+
+
+def no_card(root, identifier, option):
+    """#599: the reason a --card record command has no card answer to confirm it."""
+    reason = (f'decision: {identifier} has no card answer for this record from the planner session; '
+              f'ask it with bin/wuwei decision show {identifier} --widget and run its record command')
+    if workspace.posture(workspace.load_config(root))[0] == 'strict':
+        reason += f'; under strict the owner runs bin/wuwei decide {identifier} {option} in a host terminal'
+    return reason
 
 
 def decided_record(text, option, by):
