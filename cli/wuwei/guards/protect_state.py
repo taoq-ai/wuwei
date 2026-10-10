@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import sys
 
 from wuwei.guards import Guard
 from wuwei.shell import WORKSPACE_ROOT
@@ -14,8 +15,11 @@ from wuwei.exits import DAMAGED, PAYLOAD
 _STATE_HINT = ('State and config files are protected; use the wuwei CLI for state changes; '
                'owner edits run outside agent tools.')
 # Pattern strings compile on first use (re's cache); most Bash calls never reach them.
-_STATE_MENTION = r'(?i)state\.json|state\.snapshot\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|\.wuwei'
-_STATE_GLOB = r'(?i)\.w[\w*?\[]'
+# #647: a seat's own scratch scripts are not state, unless the path climbs out with ..
+_SCRATCH = r'[\\/]scratch[\\/](?![^\s\x27"]*\.\.)'
+_STATE_MENTION = (r'(?i)state\.json|state\.snapshot\.json|events\.jsonl|traces\.jsonl|ledger\.jsonl|'
+                  rf'\.wuwei(?!{_SCRATCH})')
+_STATE_GLOB = rf'(?i)\.w(?!uwei{_SCRATCH})[\w*?\[]'
 _DYNAMIC = r'\$\(|[`*?\[]'
 _WRITE_CONSTRUCT = (
     r'>|\b(?:tee|cp|mv|dd|truncate|ln|install|rsync|rm|patch)\b|'
@@ -435,6 +439,40 @@ def check_file(payload):
         return 2, str(exc)
 
 
+
+def check_scratch(payload):
+    """#647: a seat's Write into another item's scratch directory: a warning below strict."""
+    try:
+        if 'agent_id' not in payload:
+            return 0, ''
+        cwd = _cwd(payload)
+        field = 'notebook_path' if payload.get('tool_name') == 'NotebookEdit' else 'file_path'
+        parts = _path(_input(payload, field), cwd).resolve().parts
+        found = next(((Path(*parts[:index + 1]), parts[index + 1]) for index in range(1, len(parts) - 2)
+                      if parts[index] == 'scratchpad'
+                      or parts[index] == 'scratch' and parts[index - 1] == '.wuwei'), None)
+        if found is None:
+            return 0, ''
+        root = _workspace(cwd) or worktree_workspace(cwd)
+        if root is None:
+            return 0, ''
+        from wuwei import brief, state, workspace
+        data = state.read_state(root)
+        seat = brief.seat_of(payload, data)
+        base, other = found
+        if seat is None or other == seat['item'] or other not in data['items']:
+            return 0, ''
+        reason = (f"scratch: {Path(*parts)} is in item {other}'s scratch directory; write item "
+                  f"{seat['item']}'s temporary files in {base / seat['item'] / seat['role']}/")
+        level = workspace.posture(workspace.load_config(root))[1]['seats']
+        if level == 'block':
+            return 1, reason
+        if level == 'warn':
+            print(f'warning: {reason}', file=sys.stderr)
+        return 0, ''
+    except (ValueError, OSError, RuntimeError, KeyError) as exc:
+        return 2, str(exc)
+
 def _copy_targets(argv, cwd):
     """Parse supported copy/move options; unknown relevant forms fail closed."""
     rsync = Path(argv[0]).name == 'rsync'
@@ -667,4 +705,5 @@ def check_bash(payload):
 
 
 GUARDS = [Guard('PreToolUse', 'Write|Edit|MultiEdit|NotebookEdit', check_file),
+          Guard('PreToolUse', 'Write|Edit|MultiEdit|NotebookEdit', check_scratch),
           Guard('PreToolUse', 'Bash', check_bash)]

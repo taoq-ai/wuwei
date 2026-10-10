@@ -50,7 +50,7 @@ Under `observe` and `guarded` a guard is a warning or a card, never a wall, with
 | `integrity` | The plugin integrity gate (`integrity`) | warn | block | block |
 | `mcp` | The MCP registry launch gate | warn | warn | block |
 | `outward` | The outward text lint (`outward`) and the question citation check (`decision.check_question`) | warn | warn | block |
-| `seats` | The seat launch contract: logged brief, capacity, memory, clean worktree (`agent_launch`) | warn | warn | block |
+| `seats` | The seat launch contract: logged brief, capacity, memory, clean worktree (`agent_launch`), and scratch directories (`protect_state.check_scratch`) | warn | warn | block |
 
 Below `strict` a `block` is a card (deploy, release, publish, evidence) or a fix the seat runs; only `records` is a wall. Merges and approvals stay yours until merging is grantable (#524).
 

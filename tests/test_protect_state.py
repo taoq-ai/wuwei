@@ -1077,3 +1077,56 @@ def test_rehearsal_ledger_is_cli_owned(records, posture, monkeypatch, capsys):
         assert _hook(records, tool, monkeypatch, capsys, **field) == 2
     code, reason = check_file(payload(records, 'Write', file_path=target))
     assert code == 1 and 'wuwei undo rehearse' in reason
+
+
+def _scratch_seat(root, monkeypatch):
+    """#647: items A and B, builder seat b-a on A, and its subagent transcript (agent x)."""
+    from wuwei import state
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-28T12:00:00+00:00')
+    brief = '.wuwei/days/2026-09-28/briefs/b-a.md'
+    state._write_state(lambda data: data.update(
+        items={'A': {'phase': 'planned'}, 'B': {'phase': 'planned'}},
+        seats={'b-a': {'role': 'builder', 'item': 'A', 'brief': brief, 'status': 'running'}}),
+        root, reserved=False)
+    transcript = root / 'fixture/subagents/agent-x.jsonl'
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(json.dumps({'type': 'user', 'message': {'content': f'WUWEI brief: {brief}'}}) + '\n')
+
+
+def _scratch_hook(root, target, monkeypatch, capsys, agent='x'):
+    from wuwei.commands.hook import run
+    data = {**payload(root, 'Write', file_path=str(target), content='x'),
+            **({'agent_id': agent} if agent else {})}
+    monkeypatch.setattr(sys, 'stdin', io.StringIO(json.dumps(data)))
+    code = run(SimpleNamespace(event='PreToolUse'))
+    return code, capsys.readouterr()
+
+
+@pytest.mark.parametrize('base', ['workspace', 'scratchpad'])
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_scratch_of_another_item_warns_below_strict(workspace, tmp_path, monkeypatch, capsys, posture, base):
+    _scratch_seat(workspace, monkeypatch)
+    _posture(workspace, posture)
+    scratch = (workspace / '.wuwei/scratch' if base == 'workspace' else tmp_path / 'scratchpad').resolve()
+    code, captured = _scratch_hook(workspace, scratch / 'B/x.sh', monkeypatch, capsys)
+    own = f'{scratch}/A/builder/'
+    if posture == 'strict':
+        assert code == 2
+        assert own in captured.err and 'posture: seats = block (set security.areas.seats)' in captured.err
+    else:
+        assert code == 0 and not captured.out
+        lines = captured.err.splitlines()
+        assert len(lines) == 1 and lines[0].startswith('warning: scratch:') and own in lines[0]
+    _posture(workspace, 'guarded')
+    for target, agent in ((scratch / 'A/x.sh', 'x'), (scratch / 'B/x.sh', None),
+                          (scratch / 'notes/x.sh', 'x'), (scratch / 'B/x.sh', 'missing')):
+        code, captured = _scratch_hook(workspace, target, monkeypatch, capsys, agent)
+        assert (code, captured.out, captured.err) == (0, '', ''), target
+
+
+def test_scratch_scripts_run_but_climbing_out_is_refused(records, monkeypatch, capsys):
+    _posture(records, 'guarded')
+    for command, expected in (('python3 .wuwei/scratch/A/builder/p.py', 0),
+                              ('bash .wuwei/scratch/A/builder/m.sh', 0),
+                              ('python3 .wuwei/scratch/../days/2026-09-28/state.json', 2)):
+        assert _hook(records, 'Bash', monkeypatch, capsys, command=command) == expected, command

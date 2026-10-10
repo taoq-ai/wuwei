@@ -160,6 +160,8 @@ def observe(root, host, ref, config, measured):
     row = {'pr': ref, 'state': current, 'disposition': disposition, 'parked': disposition == 'parked'}
     now = workspace.now()
     event = {'pr': ref, 'tier': 'silent', 'state': current}
+    merged = []
+
     def update(data):
         value = data.setdefault('watch', {})
         actions, reviews = value.setdefault('actions', {}), value.setdefault('reviews', {})
@@ -224,7 +226,12 @@ def observe(root, host, ref, config, measured):
             for name, item in data['items'].items():
                 if item.get('pr') == ref and item['phase'] in ('raised', 'fix', 'delta'):
                     state._move(data, name, 'merged')
+                    merged.append(name)
     state._write_state(update, root, reserved=False, kind='pr.action', payload=event)
+    import shutil
+    for name in merged:  # #647: the item's scratch goes with the confirmed merge
+        # ponytail: the host scratchpad's <item>/ is not removed; the host clears its session scratchpad
+        shutil.rmtree(root / workspace.SCRATCH / name, ignore_errors=True)
     return row
 
 

@@ -606,3 +606,19 @@ def test_latest_finds_the_last_comment_of_a_bot_thread():
         {'id': 1, 'body': 'first'}, {'id': 2, 'body': '**P1** last'}]}]}}
     thread, latest = pr_actions._latest(measured, 'bot-p1', 'T1')
     assert thread['id'] == 'T1' and latest['body'] == '**P1** last'
+
+
+def test_observed_merge_removes_the_item_scratch(case, monkeypatch):
+    """#647: the item's scratch directory goes with the confirmed merge; others stay."""
+    root, host, _, _ = linked(case)
+    keys = ('escaped_defects', 'review_rework', 'owner_intervention', 'lead_time')
+    monkeypatch.setattr('wuwei.metrics.collect', lambda root: {
+        **dict.fromkeys(keys, 0), 'baseline': dict.fromkeys(keys, 0), 'quality_by_band': 'unmeasured'})
+    for name in ('A/builder/x', 'B/builder/y'):
+        (root / workspace.SCRATCH / name).parent.mkdir(parents=True)
+        (root / workspace.SCRATCH / name).write_text('x')
+    host.results['pr'].data.update(state='closed', merged=True)
+    assert main(['pr', 'state']) == 0
+    assert state.read_state(root)['items']['A']['phase'] == 'merged'
+    assert not (root / workspace.SCRATCH / 'A').exists()
+    assert (root / workspace.SCRATCH / 'B/builder/y').is_file()
