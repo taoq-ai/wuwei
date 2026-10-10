@@ -958,3 +958,35 @@ def test_merge_default_today_writes_no_planned_merge_card(root):
     assert 'Owner-only: merge repo:fixture-org/app (merge.default_tier)\n' in text
     assert 'Owner-only: deploy repo:fixture-org/app (D-1)\n' in text
     assert [row['action'] for row in state.read_state(root)['grants'].values()] == ['deploy']
+
+
+def test_empty_optional_fields_are_absent(root):
+    # #640: an empty ticket, tier or docs (or a null tier or docs) is absent, not a refused
+    # proposal; a null ticket is the owner's none (#636) and keeps its key.
+    plan.propose(two(A={'ticket': '', 'tier': None, 'docs': ''}, B={'ticket': '  ', 'tier': '  '}), root)
+    saved = json.loads((root / '.wuwei/days/2026-09-28/proposal.json').read_text())['candidates']
+    assert not any(key in row for row in saved for key in ('ticket', 'tier', 'docs'))
+    plan.approve(['A', 'B'], root, goals_confirmed=True)
+    data = state.read_state(root)
+    assert data.get('tickets', {}) == {}
+    assert not any('tier' in data['items'][name] for name in ('A', 'B'))
+
+
+def test_add_discovery_candidate_with_empty_ticket(root):
+    plan.propose(proposal(), root)
+    plan.approve(['A'], root, goals_confirmed=True)
+    candidate = {**proposal()['candidates'][0], 'id': 'B', 'ticket': '', 'paths': ['src/file.py']}
+    candidate['score'] = {**candidate['score'], 'job_size': 1}  # ranks above A, so it starts
+    state._write_state(lambda day: day.setdefault('discovery_candidates', {}).update(B=candidate),
+                       root, reserved=False)
+    assert plan.add('B', root)['action'] == 'build next'
+    data = state.read_state(root)
+    assert 'B' in data['items'] and 'B' not in data.get('tickets', {})
+
+
+def test_invalid_ticket_names_item_field_and_form(root):
+    with pytest.raises(ValueError) as error:
+        plan.propose(two(A={'ticket': 'not a ticket!'}), root)
+    assert "A: invalid ticket 'not a ticket!'" in str(error.value)
+    assert plan.TICKET in str(error.value) and 'owner/repo#12' in str(error.value)
+    assert not (root / '.wuwei/days').exists()

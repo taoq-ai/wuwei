@@ -75,6 +75,11 @@ def _proposal(data, goals_text, framework="wsjf"):
     for item in data['candidates']:
         if not isinstance(item, dict):
             raise ValueError(f'candidate must be an object; {PLAN_JSON}')
+        for key in ('ticket', 'tier', 'docs'):  # #640: empty means absent; in place, callers reuse item
+            if key in item and isinstance(item[key], str) and not item[key].strip():
+                item.pop(key)  # a null ticket stays: it is the owner's none (#636)
+            elif key != 'ticket' and key in item and item[key] is None:
+                item.pop(key)
         name = item.get('id')
         if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', name) or name in seen:
             raise ValueError(f'candidate id must be unique and safe; {PLAN_JSON}')
@@ -90,8 +95,9 @@ def _proposal(data, goals_text, framework="wsjf"):
         if 'tier' in item and item['tier'] not in dispatch.TIERS:
             raise ValueError(f'{name}: tier must be light, standard or full; {PLAN_JSON}')
         if item.get('ticket') is not None and not (isinstance(item['ticket'], str) and re.fullmatch(
-                TICKET, item['ticket'])):  # #636: null is the owner's none
-            raise ValueError(f'{name}: invalid ticket; {PLAN_JSON}')
+                TICKET, item['ticket'])):  # #636: null is the owner's none; #640: empty is absent
+            raise ValueError(f'{name}: invalid ticket {item["ticket"]!r}; ticket must match {TICKET}, an id '
+                             f'such as ENG-12, PROJ-12 or owner/repo#12, or be left out; {PLAN_JSON}')
         flags = item.get('flags')
         if not isinstance(flags, dict) or set(flags) != set(FLAGS) or any(type(v) is not bool for v in flags.values()):
             raise ValueError(f'{name}: flags must contain boolean trust_surface, boundary_relevant, agent_surface; {PLAN_JSON}')
