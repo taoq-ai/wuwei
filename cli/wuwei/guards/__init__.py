@@ -39,7 +39,8 @@ MODULES = {
 AREAS = {'agent_launch': 'seats', 'agent_launch.check_mcp': None, 'commit_push': 'publish',
          'decision': 'records', 'decision.check_question': 'outward', 'deploy': 'publish',
          'integrity': 'integrity', 'lifecycle': 'records', 'outward': 'outward', 'pr': 'publish',
-         'protect_state': 'records', 'spec': None, 'stop': 'publish', 'traces': 'records',
+         'protect_state': 'records', 'protect_state.check_scratch': 'seats',
+         'spec': None, 'stop': 'publish', 'traces': 'records',
          'verdict': 'records'}
 # Owner-only actions block in every posture (#331 floor): the deployment ban (4.7), the merge
 # policy, approvals and owner markers (4.6), and approve-tier messages and canary egress (4.9).

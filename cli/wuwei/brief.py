@@ -157,6 +157,30 @@ def transcript_reference(path):
     return None
 
 
+def subagent_transcript(payload):
+    """The subagent transcript of a hook call with agent_id (#473), else None."""
+    agent_id = payload.get('agent_id')
+    if agent_id is None:
+        return None
+    if not isinstance(agent_id, str) or not agent_id.strip():
+        raise ValueError(f'invalid agent_id; {PAYLOAD}')
+    if not payload.get('transcript_path'):
+        return None
+    return Path(payload['transcript_path']).parent / payload['session_id'] / 'subagents' / f'agent-{agent_id}.jsonl'
+
+
+def seat_of(payload, data):
+    """#647: the seat whose brief the calling subagent's transcript names, else None."""
+    path = subagent_transcript(payload)
+    if path is None:
+        return None
+    try:
+        reference = transcript_reference(path)
+    except OSError:
+        return None
+    return next((seat for seat in seats(data).values() if seat.get('brief') == reference), None)
+
+
 HANDBACK = 'SubagentHandback'  # the harness's structured hand-back tool (#473)
 
 
@@ -365,6 +389,10 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                 raise ValueError(f'unknown charter: {charter}')
             header.append(f'Charter: {path}')
         header += [f'Written: {now}', f'Item: {item}', f'Seat policy: {json.dumps(data["seat_policy"])}']
+        scratch = root / workspace.SCRATCH / item / role  # #647: one scratch directory per seat
+        header.append(f'Scratch: <your scratchpad>/{item}/{role}/, or {scratch}/ when your host names '
+                      'no scratchpad; create it if missing and write every temporary file there, '
+                      "never at the scratchpad root or in another item's directory")
         from wuwei import mcp
         names = mcp.unmeasured(root)
         if names:
@@ -504,4 +532,5 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
             if created:
                 output.unlink()
             raise
+        scratch.mkdir(parents=True, exist_ok=True)
         return relative

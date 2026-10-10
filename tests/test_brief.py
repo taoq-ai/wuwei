@@ -577,3 +577,21 @@ def test_builder_brief_names_no_fast_checks(day, monkeypatch, checks, tests, pac
     assert (NONE_LINE in text) == none
     assert ('Checks: careful' in text) == careful
     assert 'Checks: fast' not in text
+
+
+def test_each_seat_gets_its_own_scratch_directory(day, monkeypatch, capsys):
+    """#647: two seats on different items name and get different scratch directories."""
+    assert brief(monkeypatch, 'per D-ABC-9', 'builder', 'X', 'refused') == 1
+    assert not (day[0] / '.wuwei/scratch/X').exists()
+    lines = []
+    for item, name in (('X', 'sx'), ('Y', 'sy')):
+        assert brief(monkeypatch, 'body', 'builder', item, name) == 0
+        found = [line for line in (day[1] / f'briefs/{name}.md').read_text().splitlines()
+                 if line.startswith('Scratch: ')]
+        assert len(found) == 1
+        assert found[0].startswith(f'Scratch: <your scratchpad>/{item}/builder/')
+        assert f'.wuwei/scratch/{item}/builder/' in found[0]
+        assert 'write every temporary file there' in found[0]
+        assert (day[0] / f'.wuwei/scratch/{item}/builder').is_dir()
+        lines.append(found[0])
+    assert lines[0] != lines[1]

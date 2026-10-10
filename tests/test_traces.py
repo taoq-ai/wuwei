@@ -713,3 +713,22 @@ def test_trace_gap_on_status_line_and_doctor(trace_workspace, call_payload, monk
     assert (found['status'], found['value']) == ('warn', '1 gaps today')
     assert 'traces.gap' in event.EVENT_PRODUCERS
     assert main(['event', 'traces.gap', '{}']) == 1
+
+
+def test_subagent_transcript_and_seat_of(tmp_path):
+    """#647: one derivation of a subagent's transcript, shared by traces and the scratch guard."""
+    from wuwei import brief
+    base = {'session_id': 's1', 'transcript_path': str(tmp_path / 'main.jsonl')}
+    assert brief.subagent_transcript(base) is None
+    assert brief.subagent_transcript({**base, 'agent_id': 'a', 'transcript_path': ''}) is None
+    with pytest.raises(ValueError, match='invalid agent_id'):
+        brief.subagent_transcript({**base, 'agent_id': ''})
+    path = tmp_path / 's1/subagents/agent-a.jsonl'
+    assert brief.subagent_transcript({**base, 'agent_id': 'a'}) == path
+    reference = '.wuwei/days/2026-09-28/briefs/b-a.md'
+    data = {'seats': {'b-a': {'role': 'builder', 'item': 'A', 'status': 'running', 'brief': reference},
+                      'b-b': {'role': 'builder', 'item': 'B', 'status': 'running', 'brief': 'other.md'}}}
+    assert brief.seat_of({**base, 'agent_id': 'a'}, data) is None
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({'type': 'user', 'message': {'content': f'WUWEI brief: {reference}\nRead.'}}) + '\n')
+    assert brief.seat_of({**base, 'agent_id': 'a'}, data) is data['seats']['b-a']
