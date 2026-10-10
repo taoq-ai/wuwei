@@ -472,7 +472,7 @@ def spec_line(path):
     return [line for line in path.read_text().splitlines() if line.startswith('Spec:')]
 
 
-def test_builder_and_gate_briefs_carry_the_spec_line(day, monkeypatch):
+def test_only_the_builder_brief_carries_the_spec_line(day, monkeypatch):
     import shutil
     from pathlib import Path
     root, directory, vcs, host = day
@@ -484,7 +484,7 @@ def test_builder_and_gate_briefs_carry_the_spec_line(day, monkeypatch):
     shutil.copytree(Path(__file__).parent / 'fixtures/spec/speckit/specs', root / 'tree/specs')
     (root / 'tree/specs/001-a').rename(root / 'tree/specs/001-x')
     assert brief(monkeypatch, 'body', 'sentinel-arch', 'X', 'g1', '--worktree', 'tree') == 0
-    assert spec_line(directory / 'briefs/g1.md') == ['Spec: speckit artifacts: specs/001-x']
+    assert spec_line(directory / 'briefs/g1.md') == []  # #667: the gate reads it with why --json
     state._write_state(lambda data: data['items']['X'].update(tier='light'), root, reserved=False)
     assert brief(monkeypatch, 'body', 'builder', 'X', 'b2', '--worktree', 'tree') == 0
     assert spec_line(directory / 'briefs/b2.md') == ['Spec: skipped (lead tier light)']
@@ -529,19 +529,22 @@ def docs_brief(day, monkeypatch, role, system='notion', tier='standard', docs=No
             if line.startswith('Docs:')]
 
 
-def test_quality_brief_names_the_missing_docs_value(day, monkeypatch):
-    line, = docs_brief(day, monkeypatch, 'quality')
-    assert line.startswith('Docs: required (tier standard); value missing')
-    assert 'DOC: FINDING' in line and 'bin/wuwei plan set X docs=' in line
+@pytest.mark.parametrize('tier,docs', [('standard', None), ('light', None),
+                                       ('standard', {'value': 'none', 'reason': 'internal refactor'})])
+def test_quality_brief_copies_no_docs_value(day, monkeypatch, tier, docs):
+    # #667: the value changes under the seat; the brief names why --json instead.
+    assert docs_brief(day, monkeypatch, 'quality', tier=tier, docs=docs) == []
 
 
-def test_quality_brief_shows_the_recorded_value(day, monkeypatch):
-    line, = docs_brief(day, monkeypatch, 'quality', docs={'value': 'none', 'reason': 'internal refactor'})
-    assert 'value none (internal refactor)' in line
-
-
-def test_light_quality_brief_is_not_required(day, monkeypatch):
-    assert docs_brief(day, monkeypatch, 'quality', tier='light') == ['Docs: not required (tier light).']
+@pytest.mark.parametrize('role,count', [('builder', 1), ('quality', 1), ('arch', 1), ('steward', 0)])
+def test_builder_and_gate_briefs_name_the_live_read(day, monkeypatch, role, count):
+    from wuwei import brief as writer
+    if role == 'steward':
+        writer.write('steward', 'X', 'l', 'body', root=day[0])
+    else:
+        docs_brief(day, monkeypatch, role, name='l')
+    lines = (day[1] / 'briefs/l.md').read_text().splitlines()
+    assert sum(line.startswith('Live: run bin/wuwei why X --json') for line in lines) == count
 
 
 def test_builder_brief_has_the_docs_rule(day, monkeypatch):
@@ -653,3 +656,23 @@ def test_adhoc_prompt_helpers(tmp_path):
     data['seats']['adhoc-3']['status'] = 'stopped'
     assert module.adhoc_seat(data, digest, 'P:a3') is None
     assert module.adhoc_seat(data, 'missing', 'P:a9') is None
+
+
+def test_issue_acceptance_docs_recorded_after_the_brief(day, monkeypatch, capsys):
+    # #667: a docs path recorded after the quality brief is read live, and the lint
+    # rejects a finding that calls it missing.
+    from test_verdict import docs_finding
+    from wuwei import verdict
+    root, directory = day[0], day[1]
+    assert docs_brief(day, monkeypatch, 'quality', name='q') == []
+    assert 'bin/wuwei why X --json' in (directory / 'briefs/q.md').read_text()
+    state._write_state(lambda data: (data['items']['X'].update(docs={'value': 'docs/x.md', 'reason': ''}),
+                                     data['seats'].update(q={'item': 'X', 'role': 'sentinel-quality',
+                                                             'status': 'stopped'})), root, reserved=False)
+    capsys.readouterr()
+    assert main(['why', 'X', '--json']) == 0
+    assert json.loads(capsys.readouterr().out)['docs']['value'] == 'docs/x.md'
+    path = directory / 'decisions/gate-q.md'
+    path.write_text(docs_finding('the docs value is missing'))
+    code, message = verdict.lint_file(path, role='sentinel-quality')
+    assert code == 1 and 'X records docs docs/x.md' in message

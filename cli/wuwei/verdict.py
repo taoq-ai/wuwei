@@ -85,9 +85,17 @@ def finding_blocks(text):
     return blocks
 
 
-def lint(text, *, quality=False, class_sweep=False, light=False):
+# #667: a finding that calls the item's docs value missing; the words must touch the value,
+# so a finding about the page's content ("docs path docs/x.md is missing a flag") never matches.
+DOCS_MISSING = re.compile(
+    r'\bdocs? (?:value|path):? (?:is |was )?(?:still )?(?:missing|not set|not recorded|unset|absent)\b'
+    r'|\b(?:missing|no|unset) docs? (?:value|path)\b|\bdoc\b[^\n]{0,40}\bvalue missing\b', re.I)
+
+
+def lint(text, *, quality=False, class_sweep=False, light=False, docs=None):
     """light (#567, a light item's gate): Verdict:, Head: and findings; no probe row, class
-    line, Simplicity or Design row, and no retro note unless one of its lines is written."""
+    line, Simplicity or Design row, and no retro note unless one of its lines is written.
+    docs (#667): (item, recorded value) refuses a finding that calls that value missing."""
     text = active_text(text)
     failures = []
     verdicts = re.findall(VERDICT_ROW, text, re.M)
@@ -137,6 +145,9 @@ def lint(text, *, quality=False, class_sweep=False, light=False):
                                (SCENARIO, 'failure scenario')):
             if not re.search(pattern, block, re.I):
                 failures.append(f'finding {number}: missing {field}')
+        if docs and DOCS_MISSING.search(block):
+            failures.append(f'finding {number}: says the docs value is missing, but {docs[0]} records docs '
+                            f'{docs[1]} (bin/wuwei why {docs[0]} --json); drop or correct the finding')
     if quality and not light:
         for key in ('Simplicity', 'Design'):
             values = rows(text, key)
@@ -189,6 +200,21 @@ def light(path, data):
         return False
 
 
+def recorded_docs(path, data, root=None):
+    """#667: (item, docs value) when the gate file's seat item records one at lint time; None
+    when the value is missing, not required or the seat, item or config cannot be resolved."""
+    from wuwei import brief, docs, workspace
+    try:
+        seat = brief.seats(data).get(Path(path).stem[len('gate-'):]) if data else None
+        if seat is None:
+            return None
+        config = workspace.load_config(root or workspace.find_workspace(Path(path).parent))
+        value = docs.shown(config, data['items'][seat['item']])
+        return None if value in ('missing', 'n/a') else (seat['item'], value)
+    except (KeyError, TypeError, ValueError, AttributeError, OSError):
+        return None
+
+
 def day_state(path):
     """The day state beside a decisions/gate-*.md file, else None."""
     from wuwei import state
@@ -203,7 +229,9 @@ def lint_file(path, *, role='', root=None):
     try:
         path = Path(path)
         role = role.rsplit(':', 1)[-1]
-        code, message = lint(path.read_text(encoding='utf-8'), light=light(path, day_state(path)),
+        data = day_state(path)
+        code, message = lint(path.read_text(encoding='utf-8'), light=light(path, data),
+                    docs=recorded_docs(path, data, root),
                     quality=role == 'sentinel-quality' or is_quality(path) or is_quality(path.resolve()),
                     class_sweep=role in ('sentinel-arch', 'sentinel-quality', 'sentinel-security') or any(
                         {'arch', 'quality', 'security'} & set(re.split(r'[-_.]', p.name.lower()))

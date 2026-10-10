@@ -416,6 +416,8 @@ Lines follow `owner.verbosity.report`. At `full`, or with `--full`, each line en
 
 Exit 0 prints the view, 1 means the target has no record, 2 means a record could not be read or there is no workspace.
 
+`bin/wuwei why <item> --json` prints the item's values as recorded at call time, for a seat to read when it starts and again before its verdict or handoff: `{item, day, docs: {value, reason, command}, ticket, spec, steps}`. `docs.value` is the recorded value, `missing`, or `n/a` when the item's tier needs none. With `n/a`, `command` is null. `ticket` is the item's ticket id or null. `spec` is the spec state a gate sees, or null when spec mode is off. `steps` are the lines `why <item>` prints. Strings are redacted as above. `--json` reads an item only: any other target exits 2.
+
 ## Host terminal actions
 
 These are owner actions. Agent tool hooks refuse them inside a workspace, so run them yourself in a host terminal:

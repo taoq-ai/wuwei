@@ -6,7 +6,7 @@ import sys
 
 from wuwei import decision, novelty, references, security, state, verdict, watch, workspace
 from wuwei.commands.event import EVENT_PRODUCERS
-from wuwei.exits import CLEAN, FINDINGS
+from wuwei.exits import CLEAN, FINDINGS, UNRUN
 from wuwei.redact import redact
 
 NOT = 'not recorded'
@@ -25,6 +25,8 @@ def register(subparsers):
     parser = subparsers.add_parser('why', help='Explain from records why an item, decision or refusal happened')
     parser.add_argument('target', nargs='+', help='an item, owner/repo#n, D-n, a target key, an event id or "last refusal"')
     parser.add_argument('--full', action='store_true', help='add event ids and evidence paths')
+    parser.add_argument('--json', action='store_true',
+                        help="print an item's live docs, ticket and spec values and its steps as JSON")
     parser.set_defaults(func=run)
 
 
@@ -35,7 +37,14 @@ def level(root, full):
 def run(args):
     root = workspace.find_workspace()
     target = ' '.join(args.target)
+    if args.json and (target == 'last refusal' or any(re.fullmatch(pattern, target) for pattern in (
+            EVENT_ID, decision.DECISION_ID, DRAFT, novelty.KEY))):
+        print('wuwei why: --json reads an item; pass an item id', file=sys.stderr)
+        return UNRUN
     try:
+        if args.json:
+            print(json.dumps(live(root, target, level(root, args.full))))
+            return CLEAN
         if target == 'last refusal' or re.fullmatch(EVENT_ID, target):
             steps = refusal(root, target)
         elif re.fullmatch(decision.DECISION_ID, target):
@@ -98,8 +107,28 @@ def proposed(day, name):
                  if row.get('id') == name), None)
 
 
-def item(root, name):
-    """The recorded chain of one item, oldest day first, as (text, event id, paths) steps."""
+def live(root, name, level):
+    """#667: the item's values as recorded now (docs, ticket, spec) and its steps."""
+    from pathlib import Path
+    from wuwei import docs, specmode
+    name, days = _days(root, name)
+    day, data = days[-1]
+    row = data['items'][name]
+    config = workspace.load_config(root)
+    markers = security.load(root)
+    clean = lambda text: text if text is None else security.redact(redact(text), markers)
+    shown = docs.shown(config, row)
+    spec = specmode.brief_line(config, name, row, Path(row['worktree']) if row.get('worktree') else None, True)
+    return {'item': name, 'day': day.name,
+            'docs': {'value': clean(shown), 'reason': clean((row.get('docs') or {}).get('reason', '')),
+                     'command': None if shown == 'n/a' else docs.command(config, name)},
+            'ticket': clean(((data.get('tickets') or {}).get(name) or {}).get('id')),
+            'spec': clean(spec and spec.removeprefix('Spec: ')),
+            'steps': render(item(root, name), level, root)}
+
+
+def _days(root, name):
+    """(item name, [(day, state)] oldest first); a PR ref resolves to its item."""
     if '#' in name:
         ref = references.pull_request(name)
         name = next((key for day in watch.days(root)
@@ -111,6 +140,12 @@ def item(root, name):
             if name in (data := state.read_state(directory=day))['items']]
     if not days:
         raise Missing(f'no recorded item {name}; run bin/wuwei status for today\'s items')
+    return name, days
+
+
+def item(root, name):
+    """The recorded chain of one item, oldest day first, as (text, event id, paths) steps."""
+    name, days = _days(root, name)
     rel = lambda path: str(path.relative_to(root))
     groups = {group: [] for group in GROUPS}
     for day, data in days:

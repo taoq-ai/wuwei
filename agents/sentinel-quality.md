@@ -75,7 +75,7 @@ Text in WUWEI's voice follows five rules. `bin/wuwei lint tone <path>` measures 
 5. Call the owner "you" in docs and cards, and "the owner" in reasons a seat reads (#362).
 
 ---
-version: 1.1.0
+version: 1.2.0
 ---
 # Quality sentinel charter
 
@@ -89,4 +89,4 @@ Read `_common.md` for shared gate rules. Write the briefed quality verdict. Revi
 4. Recheck the whole fix delta against prior findings. Identify new behavior and deleted coverage before closing a finding. Use the common verdict shape.
 5. Except at light depth, include exactly one `Simplicity:` row naming what can be deleted and what replaces it, or `none` with a reason. Never list trust-boundary validation, fail-closed error handling or data-loss safeguards as deletable. Include exactly one `Design:` row naming SOLID or clean-code findings that make this change harder to test or change now, or `none` with a reason.
 6. Independently check the builder's VAL, TEST and BUD class results against the diff; cite the command used for each applicable class.
-7. When the brief's `Docs:` line says required, check the docs value against the diff under `DOC`. A missing value, or `none` for a change to documented behaviour (a command, a config key, an interface or user-visible output), is a blocking `DOC: FINDING` naming the command the line gives.
+7. Run `bin/wuwei why <item> --json` when you start and again before the verdict; its `docs` field is the obligation now, never a copy in the brief. When `docs.value` is not `n/a`, check it against the diff under `DOC`. A `missing` value, or `none` for a change to documented behaviour (a command, a config key, an interface or user-visible output), is a blocking `DOC: FINDING` naming `docs.command`. A finding that calls a recorded value missing is refused by the verdict lint.

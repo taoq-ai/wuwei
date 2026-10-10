@@ -202,7 +202,8 @@ def test_writing_for_a_person_names_the_humanizer_and_carries_the_checklist():
 def test_docs_obligation_in_quality_and_builder_charters():
     texts = charter_text()
     quality = texts["sentinel-quality.md"]
-    assert "Docs:" in quality and "DOC: FINDING" in quality and "documented behaviour" in quality
+    assert "bin/wuwei why <item> --json" in quality and "DOC: FINDING" in quality
+    assert "documented behaviour" in quality and "brief's `Docs:` line" not in quality  # #667
     builder = texts["builder.md"]
     assert "Docs:" in builder and "bin/wuwei docs page" in builder
 

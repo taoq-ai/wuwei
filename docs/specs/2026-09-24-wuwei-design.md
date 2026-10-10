@@ -1182,7 +1182,8 @@ recorded worktree contains the path):
   item's artifacts (the spec-kit feature directory, the OpenSpec change, or the superpowers
   design and plan files).
 - Briefs (5.2): the builder brief carries the engine's step table with the item's paths
-  and commands, or the skip and its reason; gate briefs carry the artifact paths.
+  and commands, or the skip and its reason; gate briefs name `wuwei why <item> --json`, whose `spec` field gives
+  the artifact paths (#667).
 
 `spec.step`, `spec.skipped`, `spec.warned`, `spec.override` and `items.<item>.spec` are
 written only by the CLI. The artifacts are written by the seat: they show the work was
@@ -1614,8 +1615,10 @@ shows it. An item tiered outside `required_tiers` has no obligation and gets one
 
 Checks, at two points:
 
-- Before the gate verdict. The quality brief carries the obligation and the recorded
-  value. The quality sentinel checks the value against the diff under the `DOC` class: a
+- Before the gate verdict. The quality brief names the obligation's reader,
+  `wuwei why <item> --json`, which the sentinel runs when it starts and before its verdict;
+  the brief copies no value (#667). The verdict lint refuses a finding that calls a value
+  recorded at lint time missing. The quality sentinel checks the value against the diff under the `DOC` class: a
   missing value, or `none` for a change to documented behaviour (a command, a config key,
   an interface, user-visible output), is a blocking finding naming `plan set <item>
   docs=...`. `wuwei dispatch receive` refuses a quality `PASS` while the value is missing,
@@ -2032,6 +2035,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I52 | A `python -c` snippet with no write-like token passes the records guard in every posture; one with a write-like token is refused in every posture, naming the token | per posture, through the hook, a snippet printing the day's `state.json`; `check_bash` on `open(..., "w")` and `Path(...).write_text` snippets naming it | #643; one token scan in `shell.snippet_write`, shared through `shell.reads`; a name built at run time is the 4.5 residual |
 | I55 | A bug, triage or follow-up ticket WUWEI opens in the workspace's own tracker follows the owner's tier rows, then the sensitive row, then the umbrella: it sends under send and is held as a card under ask, in every posture; an external tracker or a client mention holds it | per posture, audience and umbrella, `classify` on an adapter write with category `bugs` | #644; the finder files it with `tracker create --bug --seat <role>` |
 | I43 | A `trust_surface` or `boundary_relevant` item runs gate step zero at standard whatever its diff, and its brief names the flag; no path turns a flagged run into a skip | `dispatch.step_zero` at standard and full on a non-guard and a guard path under each flag, both flags, `agent_surface` alone and none | #663; one decision in `dispatch.step_zero`; a flagged item is never light (I15) |
+| I46 | A gate verdict never calls a recorded docs value missing: `lint_file` refuses a finding that says the docs value is missing while the item records one, and adds nothing when the value is missing, not required or unresolvable | `verdict.lint` on a missing-value finding with `docs` set and unset, and on a page-content finding with `docs` set | #667; one read through `docs.shown` in `verdict.recorded_docs` |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

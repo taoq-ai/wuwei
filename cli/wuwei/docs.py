@@ -103,22 +103,12 @@ def exempt(root, config, item, tier):
 
 
 def brief_line(config, row, item, role):
-    """The Docs: header line of a builder or quality brief; None otherwise."""
+    """The Docs: header line of a builder brief; None otherwise (#667: a gate reads why --json)."""
     rules = config['docs']
-    if rules['system'] == 'none' or role not in ('builder', 'sentinel-quality'):
+    if rules['system'] == 'none' or role != 'builder':
         return None
-    if role == 'builder':
-        return (f"Docs: {rules['system']}; items tiered {', '.join(rules['required_tiers'])} need a "
-                f'docs value before you stand down: {command(config, item)}.')
-    tier = (row.get('gates') or {}).get('tier')
-    if not required(config, row):
-        return f'Docs: not required (tier {tier}).'
-    if unmet(config, row):
-        return (f'Docs: required (tier {tier}); value missing: a blocking DOC: FINDING naming '
-                f'{command(config, item)}.')
-    value = row['docs']
-    reason = f" ({value['reason']})" if value.get('reason') else ''
-    return f"Docs: required (tier {tier}); value {value['value']}{reason}; check it against the diff under DOC."
+    return (f"Docs: {rules['system']}; items tiered {', '.join(rules['required_tiers'])} need a "
+            f'docs value before you stand down: {command(config, item)}.')
 
 
 def _candidate(root, data, item):
