@@ -223,8 +223,8 @@ class Rules:
 
     def record(self, posture, grant):
         """decision.record_gate on the planner's card question (when one was asked), then
-        protect_state on bin/wuwei decide D-1 once and config set cap 2 --from-card D-1 (#529)
-        from the planner and from a seat."""
+        protect_state on bin/wuwei decide D-1 once, decision outcome D-1 once (#661) and config
+        set cap 2 --from-card D-1 (#529) from the planner and from a seat."""
         def compute():
             from wuwei import state
             from wuwei.guards.decision import record_gate
@@ -238,7 +238,8 @@ class Rules:
                              'tool_name': 'AskUserQuestion', 'tool_input': {'questions': [
                                  {'question': 'Allow deploy on example/project? (D-1)', 'header': 'D-1'}]}})
             found = []
-            for command in ('bin/wuwei decide D-1 once', 'bin/wuwei config set cap 2 --from-card D-1'):
+            for command in ('bin/wuwei decide D-1 once', 'bin/wuwei decision outcome D-1 once',
+                            'bin/wuwei config set cap 2 --from-card D-1'):
                 call = {'cwd': str(self.root), 'session_id': 'planner-1', 'tool_name': 'Bash',
                         'hook_event_name': 'PreToolUse', 'tool_input': {'command': command}}
                 found.append((check_bash(call)[0], check_bash({**call, 'agent_id': 'seat-1'})[0]))
@@ -443,7 +444,7 @@ def i7(case, rules):
 
 def i8(case, rules):
     expected = case[4] != 'none' and case[0] != 'strict'
-    for name, (planner, seat) in zip(('decide', 'config set'), rules.record(case[0], case[4])[0]):
+    for name, (planner, seat) in zip(('decide', 'decision outcome', 'config set'), rules.record(case[0], case[4])[0]):
         if (planner == 0) != expected or seat == 0:
             return f'{name} passes for the planner {planner == 0} (expected {expected}), for a seat {seat == 0}'
     return None

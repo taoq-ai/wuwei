@@ -234,7 +234,11 @@ def test_build_park_is_recorded_lintable_decision(tmp_path, monkeypatch, capsys,
     decisions.mkdir()
     (decisions / 'D-1.md').write_text('preserve existing record')
     assert build.run_loop('A', str(brief), str(repo), root=tmp_path) == 1
-    assert ('maximum build iterations reached' if maximum else 'same fast-check failure repeated') in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert ('maximum build iterations reached' if maximum else 'same fast-check failure repeated') in err
+    # #661: the parked line names the card, never a host-terminal command.
+    assert 'bin/wuwei decision show D-2 --widget' in err
+    assert 'host terminal' not in err and 'decisions/D-2.md' not in err
     path = decisions / 'D-2.md'
     assert path.exists()
     monkeypatch.chdir(tmp_path)

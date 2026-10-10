@@ -119,6 +119,10 @@ GUARD_CONFIG = ("Guard settings (outward, outbound, security, grants) are the ow
                 'them only through a card the owner answered (#529); for an unknown connector, channel or '
                 'person the planner runs bin/wuwei outbound learn. For another value it asks a decision with '
                 'options titled <key> = <value> and runs bin/wuwei config set <key> <value> --from-card D-n.')
+# #661: below strict the owner answers on a card; the planner never hands them a command.
+CARD_FIRST = ("The owner's answer on a card in this session records it: ask the card (bin/wuwei decision "
+              'show <id> --widget for a decision, the Draft card for a draft, the morning gate for goals '
+              'and voice), then run the record command the card names.')
 _OWNER_GROUPS = {group for group, _ in _OWNER_ACTIONS}
 _OWNER_VERBS = tuple(sorted({verb for _, verb in _OWNER_ACTIONS if verb}))
 # Owner words as tokens; `_` or `.` may precede them so python snippets such as
@@ -211,8 +215,8 @@ def _owner_relevant(text, script=False):
         and (re.search(_OWNER_VERB, stripped) or mentions(text, _OWNER_VERBS, script=script))))
 
 
-# #357, #354, #493: records the planner may write from its own answered gate question.
-_GATE_EDITS = {('goals', 'edit'), ('voice', 'edit'), ('mcp', 'decide'), ('decide', ''),
+# #357, #354, #493, #661: records the planner may write from its own answered gate question.
+_GATE_EDITS = {('goals', 'edit'), ('voice', 'edit'), ('mcp', 'decide'), ('decide', ''), ('decision', 'outcome'),
                ('drafts', 'approve'), ('drafts', 'drop'), ('config', 'set')}
 
 
@@ -305,15 +309,28 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
                     # #493: approve needs the owner's Send answer; --file/--edit needs Send with an edit.
                     edited = any(word in ('--file', '--edit') or word.startswith('--file=') for word in action)
                     ids = [word + (':edit' if edited else ':send') for word in ids]
-                if group in ('mcp', 'decide', 'drafts') and ids and set(ids) <= edits[0]:
-                    continue
                 # #529: the card the planner asked; the CLI checks the owner's answer itself.
-                cards = [value for flag, value in zip(action, action[1:]) if flag == '--from-card']
-                cards += [word.split('=', 1)[1] for word in action if word.startswith('--from-card=')]
+                cards = [value for flag, value in zip(action, action[1:]) if flag in ('--card', '--from-card')]
+                cards += [word.split('=', 1)[1] for word in action if word.startswith(('--card=', '--from-card='))]
+                # #661: a decision's card hash is the owner's answer the gate recorded on that card.
+                unknown = [card for card in cards if not re.fullmatch(r'[0-9a-f]{1,64}', card) or not any(
+                    topic.startswith(f'{ident}={card}') for ident in ids for topic in edits[0])]
+                if group in ('decide', 'decision') and unknown and ids and not _strict(cwd):
+                    return 1, (f'Unknown card hash {unknown[0]!r}: it is not an answer the owner gave on the '
+                               f'card. Ask it with bin/wuwei decision show {ids[0]} --widget and run the record '
+                               'command the card names.')
+                if group in ('mcp', 'decide', 'decision', 'drafts') and ids and set(ids) <= edits[0]:
+                    continue
                 if ((group, verb) == ('config', 'set') and not xargs and len(cards) == 1
                         and re.fullmatch(r'D-[1-9][0-9]*', cards[0]) and cards[0] in edits[0]):
                     continue
-                return 1, f'{reason} Run it in a host terminal: {shlex.join(argv)}'
+                if not _strict(cwd):  # #661: a card, never a host-terminal command below strict
+                    return 1, reason if group == 'config' else CARD_FIRST
+                # The owner's pasted command prompts y/N, so the card hash words drop.
+                shown = argv if group not in ('decide', 'decision') else [
+                    word for before, word in zip(['', *argv], argv)
+                    if before not in ('--card', '--from-card') and not word.startswith(('--card', '--from-card'))]
+                return 1, f'{reason} Run it in a host terminal: {shlex.join(shown)}'
             return 1, reason
     # #471: a call made only of readers runs nothing, so a mention in its input is data.
     if relevant and unseen > 0 and not all(readers):
