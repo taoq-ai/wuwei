@@ -328,3 +328,11 @@ def test_plan_skill_reruns_a_failed_card_confirmation_with_card():
     from test_guide import RERUN
     skill = (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
     assert all(part in skill for part in RERUN)
+def test_a_seat_finding_has_its_route():
+    """#646: seats record a small fix with note --fix; the planner adds it and opens its ticket later."""
+    texts = charter_text()
+    assert 'wuwei note --fix "<title>"' in texts["builder.md"]
+    assert 'wuwei note --fix "<title>"' in texts["lead.md"]
+    assert "`light` starts without a ticket" in texts["lead.md"]
+    assert "wuwei plan add <id> --from-finding" in texts["planner.md"]
+    assert "after it ships" in texts["planner.md"]

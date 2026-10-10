@@ -1494,7 +1494,9 @@ set <item> ticket=<id>`, or, while a ticket draft for it is pending, `bin/wuwei 
   contract and so under the `seats` area (9.1).
 
 The tier that decides is the item's recorded gate tier when there is one, else the lead's
-tier; an item with neither is not exempt. An exempt item gets one `tracker.skipped` event at
+tier; an item with neither is not exempt. An unticketed item whose deciding tier is `light`
+and not in `skip_tiers` reads `later` and is not refused (#646, I56): the gate opens its
+ticket, or `close` names `bin/wuwei tracker create <item>` after it ships. An exempt item gets one `tracker.skipped` event at
 admission. A gate tier that later rises out of `skip_tiers` makes `dispatch next` refuse until
 the ticket exists.
 
@@ -2067,6 +2069,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I49 | A missing tracker label is created by WUWEI on its own only on the owner's tracker below strict; under strict or on an external tracker the move names the label, `bin/wuwei init --upgrade` and `bin/wuwei tracker move` | `tracker.creates_labels` per posture on an owned and an external GitHub project | #670; one decision in `tracker.creates_labels`, reached by every in-review move through `dispatch.tracker_call`; `setup` and `init --upgrade` create on any tracker from a host terminal |
 | I61 | An Agent launch naming a brief that does not exist is refused in every posture, naming the brief command, and registers no seat | per posture, the PreToolUse hook on a launch naming a missing brief, then the day's seats and `seat launched` events | #725 |
 | I65 | A local tool passes the outward guard in every posture, and a `run_in_terminal` command is judged by the Bash guards as the same command through Bash | per posture, through the hook, `run_in_terminal` with a plain command and with a day `state.json` write, against the same command through Bash; `check_tier` on `open_terminal_tab` | #727; one shape in `guards.outward.resolve` and one view in `hook.as_bash` |
+| I56 | A small item never waits for its ticket: an unticketed item whose deciding tier is light reads `later` in `tracker.check`, which no refusal point refuses; once its gate tier is standard or full it reads `missing` again | per posture, `tracker.check` on an unticketed item with lead tier light, and with lead tier light and gate tier standard | #646; the gate opens its ticket, or close names `tracker create` after it ships |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

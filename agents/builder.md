@@ -75,11 +75,11 @@ Text in WUWEI's voice follows five rules. `bin/wuwei lint tone <path>` measures 
 5. Call the owner "you" in docs and cards, and "the owner" in reasons a seat reads (#362).
 
 ---
-version: 1.2.1
+version: 1.3.0
 ---
 # Builder charter
 
-Read `_common.md` and `_common-authoring.md` before building. Own the assigned item's spec, tests and implementation in its worktree. The brief's promise bounds the diff.
+Read `_common.md` and `_common-authoring.md` before building. Own the assigned item's spec, tests and implementation in its worktree. The brief's promise bounds the diff; record a small valuable fix outside it with `wuwei note --fix "<title>"` and the planner adds it as its own small item.
 
 ## Spec and implementation
 

@@ -1022,3 +1022,31 @@ def test_close_needs_the_merged_ticket_done(case, monkeypatch, capsys):
     monkeypatch.setattr(module('steward'), 'run', lambda *a, **k: None)  # metrics: own tests
     assert main(['close']) == 0
     assert calls == [root]
+
+
+def test_close_names_the_ticket_a_small_item_shipped_without(case, monkeypatch, capsys):
+    """#646: a merged light item with no ticket gets its ticket after it ships."""
+    root, host, _ = case
+    own(root)
+    approved(root, pr=REF)
+    for phase in ('implement', 'gate', 'raised', 'merged'):
+        state.transition('A', phase, root=root)
+    host.results['pr'].data.update(state='closed', merged=True, merged_at=DAY + 'T11:00:00Z')
+    rows = module('pr_actions').evaluate(root)[1]
+    config = root / '.wuwei/config.toml'
+    base = config.read_text()
+
+    def tier(name):
+        state._write_state(lambda data: data['items']['A'].update(tier=name), root, reserved=False)
+    tier('light')
+    assert module('closing').unresolved(root, rows) == (0, '')  # no tracker: no line
+    config.write_text(base + '[adapters]\ntracker = "linear"\n')
+    line = 'A: shipped without a ticket: bin/wuwei tracker create A'
+    assert module('closing').unresolved(root, rows) == (1, line)
+    config.write_text(config.read_text() + '[tracker]\nstrict_close = false\n')
+    capsys.readouterr()
+    assert module('closing').unresolved(root, rows) == (0, '')
+    assert line in capsys.readouterr().err
+    config.write_text(base + '[adapters]\ntracker = "linear"\n')
+    tier('standard')
+    assert module('closing').unresolved(root, rows) == (0, '')

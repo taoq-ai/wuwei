@@ -361,6 +361,8 @@ def test_emitted_kinds_have_intended_tiers():
                 'merge.metric': 'silent', 'merge.policy_blocked': 'nudge', 'base.red': 'page',
                 'gate.received': 'silent', 'gate.tiered': 'silent', 'gate.delta_head': 'silent', 'discovery.requested': 'silent',
                 'discovery.intake': 'silent', 'plan.added': 'silent',
+                'gate.received': 'silent', 'gate.tiered': 'silent', 'discovery.requested': 'silent',
+                'discovery.intake': 'silent', 'plan.added': 'silent', 'finding.noted': 'silent',
                 'plan.proposed': 'nudge', 'build.requested': 'nudge',
                 'tracker.call': 'nudge',
                 'tracker.created': 'silent', 'tracker.skipped': 'silent', 'tracker.folded': 'silent',

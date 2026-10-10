@@ -44,6 +44,7 @@ EVENT_PRODUCERS = {
     'state.import': 'wuwei plan approve', 'plan.approved': 'wuwei plan approve',
     'cap.derived': 'wuwei dispatch next --all',
     'plan.added': 'wuwei plan add', 'plan.proposed': 'wuwei plan add',
+    'finding.noted': 'wuwei note --fix',
     'plan.session': 'wuwei plan session', 'gate.asked': 'wuwei hook PostToolUse', 'brief written': 'wuwei brief',
     'session.seen': 'wuwei hook SessionStart, Stop and SubagentStop',
     'session.rotated': 'wuwei hook Stop',

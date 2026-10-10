@@ -268,6 +268,7 @@ STATE_PRODUCERS = {
     'negotiation_loops': 'wuwei steward run or wuwei dispatch next',
     'discovery_candidates': 'wuwei dispatch discovery',
     'intraday_proposals': 'wuwei plan add',
+    'seat_findings': 'wuwei note --fix',
     'sessions': 'wuwei hook SessionStart, Stop and SubagentStop, wuwei plan session, wuwei listen (remote sessions) or wuwei hook PostToolUse (gate questions)',
     'claims': 'wuwei brief builder or wuwei worktree add',
     'tickets': 'wuwei plan approve, add or set, wuwei tracker create or wuwei drafts approve',
