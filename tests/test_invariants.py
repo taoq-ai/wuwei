@@ -1230,6 +1230,33 @@ def i39(case, rules):
                     return f'{marker} blocks: no linted {message}'
         return None
     return rules.memo(('fix needs a blocker',), compute)
+    """#671: a Bash call is judged by what it runs: git or gh words in a reader's text pass
+    when no command of the call can run them; a name built by quotes, a line continuation,
+    eval or sh -c parses to the plain command; one built from a variable is named, not lowered."""
+    def compute():
+        from wuwei.shell import ParseError, constructed, normalize, unreadable
+        for script in ("cat > brief.md <<'EOF'\nfalls back to gh; then git push\nEOF",
+                       'echo "git push"', 'grep -rn "gh pr" docs | head -20',
+                       "git status; cat <<'EOF'\ngit push\nEOF"):
+            try:
+                normalize(script)
+            except ParseError as exc:
+                return f'reader text {script!r} refused: {exc}'
+        for script in ("echo 'git push' | sh", "cat <<'EOF' | python3\ngit push\nEOF",
+                       'echo "gh pr merge 5" | xargs -I@ sh -c @', "printf 'git push' > x"):
+            try:
+                normalize(script)
+            except ParseError:
+                continue
+            return f'runnable text {script!r} parsed'
+        for script in ('g""it push', 'sh -c "gi""t push"', "eval 'gi''t push'", 'gi\\\nt push'):
+            if [item.argv for item in normalize(script)] != [['git', 'push']]:
+                return f'{script!r} does not parse to git push'
+        for script in ('x=git; $x push', 'x=gi; ${x}t push'):
+            if constructed(script) != 'git push' or unreadable(script) != '':
+                return f'{script!r} is not named as git push'
+        return None
+    return rules.memo(('argv',), compute)
 
 
 def i40(case, rules):

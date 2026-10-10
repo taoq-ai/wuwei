@@ -299,3 +299,38 @@ def test_issue_508_git_in_path(tmp_path, posture, monkeypatch, capsys):
             assert code == 0 and events(root, 'guard.would_refuse'), command
         else:
             assert code == 2, (command, out)
+
+
+BRIEF = ("cat > brief.md <<'EOF'\nThe shepherd falls back to gh.\n"
+         "Raise the PR with gh pr create; then git push.\nEOF")
+
+
+@pytest.mark.parametrize('posture', POSTURES)
+def test_prose_heredoc_passes(workspace, posture, monkeypatch, capsys):
+    # #671: git and gh words in a brief written by a reader are text.
+    configure(workspace, posture)
+    code, out, _ = hook(workspace, BRIEF, monkeypatch, capsys)
+    assert (code, events(workspace, 'guard.would_refuse')) == (0, []), out
+
+
+@pytest.mark.parametrize('posture', POSTURES)
+@pytest.mark.parametrize('command', ['sh -c "gi""t push"', 'x=git; $x push'])
+def test_constructed_refusal_names_the_command(workspace, posture, command, monkeypatch, capsys):
+    # #671: a built name is refused at the plain command's level, naming what it runs.
+    configure(workspace, posture)
+    expected, _, _ = hook(workspace, 'git push', monkeypatch, capsys)
+    code, out, _ = hook(workspace, command, monkeypatch, capsys)
+    assert code == expected
+    if code:
+        assert out['permissionDecisionReason'].endswith('resolved: git push')
+    warned = [event['payload']['reason'] for event in events(workspace, 'guard.would_refuse')]
+    assert not any(reason.startswith('opaque:') for reason in warned), warned
+
+
+@pytest.mark.parametrize('posture', POSTURES)
+def test_continued_admin_merge_is_named(workspace, posture, monkeypatch, capsys):
+    configure(workspace, posture)
+    code, out, _ = hook(workspace, 'g\\\nh pr merge 5 --admin', monkeypatch, capsys)
+    reason = out['permissionDecisionReason']
+    assert code == 2
+    assert 'admin merge is refused' in reason and reason.endswith('resolved: gh pr merge')
