@@ -17,6 +17,7 @@ from wuwei.exits import DAMAGED
 MERGE_SCHEMA = {
     "auto": (bool, False), "max_changed_lines": (int, 400, 0),
     "max_per_day": (int, 5, 1), "soak_minutes": (int, 30, 0),
+    "soak_skip": (str, "base_fix", ("base_fix", "never")),  # #668
     "reset_epoch": (int, 0, 0), "quiet_hours": [(str, None)],
     "bot_login": (str, ""), "bot_min_score": (int, 5, 0),
     "bot_score_pattern": (str, r"Confidence Score:\s*([0-9]+)/5"),

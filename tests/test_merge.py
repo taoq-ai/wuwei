@@ -144,8 +144,118 @@ def test_required_check_must_be_green(case, conclusion):
 ])
 def test_config_eligibility(case, change, hint):
     config_change(case[0], *change)
+    if hint == 'soak': base_checks(case[1], 'success')
     result = check(case)
     assert result.exit == 1 and hint in result.reason, result
+
+
+def base_checks(host, conclusion):
+    """#668: checks at the base commit BASE; a Result stands for the adapter's answer."""
+    original = host.checks
+    def checks(ref, sha, root=None):
+        if sha != BASE:
+            return original(ref, sha, root)
+        host.calls.append(('checks', (ref, sha), root))
+        return conclusion if isinstance(conclusion, Result) else Result(0, [
+            {'name': 'tests', 'sha': BASE, 'app_id': 1, 'state': 'completed', 'conclusion': conclusion}])
+    host.checks = checks
+
+
+def base_reads(host):
+    return [call for call in host.calls if call[:2] == ('checks', (REF, BASE))]
+
+
+WAIT = '2026-09-29T13:00:00+00:00'
+GRANT = "run bin/wuwei merge example/project#7: it merges under the owner's grant, or asks the owner on a card"
+
+
+def test_soak_skip_config(case):
+    # #668: base_fix by default; never turns the skip off; nothing else loads.
+    root = case[0]
+    assert workspace.load_config(root)['repos'][0]['merge']['soak_skip'] == 'base_fix'
+    config_change(root, 'auto = true', 'auto = true\nsoak_skip = "never"')
+    assert workspace.load_config(root)['repos'][0]['merge']['soak_skip'] == 'never'
+    config_change(root, '"never"', '"sometimes"')
+    with pytest.raises(ValueError):
+        workspace.load_config(root)
+
+
+def test_fixes_base_names_checks_red_at_base_and_green_at_head():
+    fixes = policy().fixes_base
+    def rows(**conclusions):
+        return [{'name': name, 'conclusion': value} for name, value in conclusions.items()]
+    assert fixes(rows(lint='failure'), rows(lint='success')) == ['lint']
+    assert fixes(rows(lint='error'), rows(lint='success')) == ['lint']
+    for base in ('success', 'cancelled', 'timed_out', 'skipped', None):
+        assert fixes(rows(lint=base), rows(lint='success')) == []
+    for head in ('neutral', 'skipped'):
+        assert fixes(rows(lint='failure'), rows(lint=head)) == []
+    assert fixes(rows(lint='failure'), rows(tests='success')) == []
+    assert fixes(rows(tests='failure', lint='failure'), rows(tests='success', lint='success')) == ['lint', 'tests']
+
+
+def test_a_fix_to_a_broken_base_skips_the_soak(case):
+    root, host = case
+    config_change(root, 'auto = true', 'auto = true\nsoak_minutes = 180')
+    base_checks(host, 'failure')
+    result = check(case)
+    assert result.exit == 0, result
+    assert 'fixes the broken base' in result.data['soak'] and 'tests' in result.data['soak']
+    assert BASE in result.data['soak']
+    config_change(root, 'auto = true', 'auto = true\nsoak_skip = "never"')
+    assert check(case).exit == 1
+
+
+def test_a_held_soak_says_when_it_ends(case):
+    root, host = case
+    config_change(root, 'auto = true', 'auto = true\nsoak_minutes = 180')
+    base_checks(host, 'success')
+    result = check(case)
+    assert (result.exit, result.reason) == (1, f'merge policy: waits: soak ends at {WAIT}'), result
+    assert result.data == {'next': f'run bin/wuwei merge {REF} after {WAIT}'}
+    for text in (result.reason, result.data['next']):
+        assert 'owner merges' not in text and 'ask the owner' not in text
+
+
+def test_unreadable_base_checks_fail_closed(case):
+    root, host = case
+    config_change(root, 'auto = true', 'auto = true\nsoak_minutes = 180')
+    base_checks(host, Result(2, None, 'offline'))
+    assert check(case).exit == 2
+
+
+def test_base_checks_are_read_only_when_the_soak_holds(case):
+    root, host = case
+    base_checks(host, 'failure')
+    result = check(case)
+    assert result.exit == 0 and result.data['soak'] is None and not base_reads(host), result
+    config_change(root, 'auto = true', 'auto = true\nsoak_minutes = 180')
+    assert policy().check(REF, root=root, granted=True).exit == 0
+    assert not base_reads(host)
+
+
+def test_an_owner_rule_says_the_owner_merges(case):
+    config_change(case[0], 'auto = true', 'auto = false')
+    result = check(case)
+    assert (result.exit, result.reason) == (1, 'merge policy: owner merges: merge.auto is off'), result
+    assert result.data == {'next': GRANT} and 'waits' not in result.reason
+
+
+def test_cli_check_prints_the_next_step(case, monkeypatch, capsys):
+    from wuwei.__main__ import main
+    root, host = case
+    monkeypatch.chdir(root / 'repo')
+    config_change(root, 'auto = true', 'auto = true\nsoak_minutes = 180')
+    base_checks(host, 'success')
+    assert main(['merge', 'check', '7']) == 1
+    assert capsys.readouterr().out.splitlines() == [
+        f'merge policy: waits: soak ends at {WAIT}', f'Next: run bin/wuwei merge {REF} after {WAIT}']
+    config_change(root, 'auto = true', 'auto = false')
+    assert main(['merge', 'check', '7']) == 1
+    assert capsys.readouterr().out.splitlines() == ['merge policy: owner merges: merge.auto is off', f'Next: {GRANT}']
+    host.results['checks'].data[0]['conclusion'] = 'failure'
+    assert main(['merge', '7']) == 1
+    assert 'Next:' not in capsys.readouterr().out
 
 
 @pytest.mark.parametrize('value,code', [(False, 1), ('yes', 2)])
@@ -855,7 +965,9 @@ def auto_only(root, host, name):
         for _ in range(2): state.append_event('state.transition', {'item': 'item-7', 'phase': 'fix'}, root)
     elif name == 'size': config_change(root, 'auto = true', 'auto = true\nmax_changed_lines = 5')
     elif name == 'path': host.results['files'].data[0]['path'] = '.github/workflows/test.yml'
-    elif name == 'soak': config_change(root, 'auto = true', 'auto = true\nsoak_minutes = 180')
+    elif name == 'soak':
+        config_change(root, 'auto = true', 'auto = true\nsoak_minutes = 180')
+        base_checks(host, 'success')
 
 
 @pytest.mark.parametrize('name,hint', [
