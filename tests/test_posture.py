@@ -346,6 +346,20 @@ def test_owner_only_line_below_strict(tmp_path):
             ('pr', marker, records, 1)]
 
 
+def test_missing_brief_blocks_on_the_records_floor(tmp_path):
+    # #725: a launch naming a missing brief blocks in every posture and through any seats override.
+    from wuwei.commands import hook
+    from wuwei.guards import agent_launch
+    (tmp_path / '.wuwei').mkdir()
+    reason = ('brief .wuwei/days/2026-09-28/briefs/never.md does not exist; '
+              'run bin/wuwei brief sentinel-arch <item> <name> first')
+    records = 'posture: records = block (floor; no setting lowers it)'
+    for config in ('observe', 'guarded', 'strict', 'guarded"\n[security.areas]\nseats = "off'):
+        (tmp_path / '.wuwei/config.toml').write_text(f'[security]\nposture = "{config}"\n')
+        assert hook.posture({}, [(agent_launch.check, reason, 2)], tmp_path) == [
+            ('agent_launch', reason, records, 2)]
+
+
 def test_orientation_says_owner_only_asks_below_strict():
     # #530: no orientation text says owner-only actions refuse with no way through below strict.
     from wuwei import guide

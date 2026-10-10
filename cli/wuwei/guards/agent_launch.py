@@ -133,6 +133,9 @@ def _check(payload):
             or path.parent != directory / 'briefs' or path.suffix != '.md'
             or path.resolve() != path):
         raise ValueError(f'invalid brief path; {DAMAGED}')
+    if not path.exists():  # #725: its prefix is in RECORDS_FLOOR, so it blocks in every posture
+        return 2, (f'brief {path.relative_to(root)} does not exist; '
+                   f'run bin/wuwei brief {role} <item> <name> first')
     try:
         rows = [json.loads(line) for line in (directory / 'events.jsonl').read_text().splitlines()]
         if any(not isinstance(row, dict) or not isinstance(row.get('kind'), str)
