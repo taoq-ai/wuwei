@@ -1558,6 +1558,24 @@ def i65(case, rules):
     return rules.memo(('local', case[0]), lambda: compute(case[0]))
 
 
+
+def i51(case, rules):
+    """#730: a word is the CLI only in program position. A grep pattern piped into sort and a
+    CLI path in a leading literal assignment pass the records guard in every posture; an awk
+    that runs the CLI is refused and a variable holding the CLI is judged as the CLI."""
+    def compute(posture):
+        from wuwei.guards.protect_state import check_bash
+        for command in ('grep -n "wuwei decide" notes.txt | sort', 'x=bin/wuwei; $x state set a b'):
+            if code := rules.hook(posture, rules.bash(command)):
+                return f'{command} exits {code}'
+        for command, expected in (('awk \'BEGIN{system("bin/wuwei decide D-1 a")}\'', 2),
+                                  ('x=bin/wuwei; $x decide D-1 a', 1)):
+            if (code := check_bash(rules.bash(command, agent_id='seat-1'))[0]) != expected:
+                return f'check_bash on {command} gives {code}'
+        return None
+    return rules.memo(('word position', case[0]), lambda: compute(case[0]))
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
@@ -1582,7 +1600,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I41': i41,
               'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46, 'I65': i65,
               'I36': i36, 'I37': i37, 'I41': i41,
-              'I36': i36, 'I37': i37, 'I52': i52, 'I56': i56}
+              'I36': i36, 'I37': i37, 'I52': i52, 'I56': i56,
+              'I51': i51}
 
 
 def project(case):
@@ -1621,7 +1640,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I41': (),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (), 'I65': (0,),
          'I41': (),
-         'I52': (0,), 'I56': (0,)}
+         'I52': (0,), 'I56': (0,),
+         'I51': (0,)}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 

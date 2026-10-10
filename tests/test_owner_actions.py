@@ -195,7 +195,21 @@ EXECUTOR_PROBES = [
     "(echo 'exec bin/wuwei decision outcome x'; echo) | tclsh",
     # sort and uniq can write a file, so they are not readers.
     "echo 'exec bin/wuwei decision outcome x' | sort -o x.tcl; tclsh x.tcl",
-    "echo 'exec bin/wuwei decision outcome x' | uniq - x.tcl; tclsh x.tcl"]
+    "echo 'exec bin/wuwei decision outcome x' | uniq - x.tcl; tclsh x.tcl",
+    # #730: an awk or sed that can run or write, and a pattern program that prints its words.
+    "awk 'BEGIN{print \"bin/wuwei decision outcome x\" | \"sh\"}'",
+    "awk 'BEGIN{print \"exec bin/wuwei decision outcome x\" > \"x.tcl\"}'; tclsh x.tcl",
+    "awk -f prog.awk 'wuwei decision outcome'",
+    "sed 's/.*/bin\\/wuwei decision outcome x/e' t.py",
+    "sed 's/.*/bin\\/wuwei decision outcome x/ge' t.py",
+    "sed '1e bin/wuwei decision outcome x' t.py",
+    "sed -n 's/^/exec bin\\/wuwei decision outcome x/w x.tcl' t.py; tclsh x.tcl",
+    "sed -i 's/^/exec bin\\/wuwei decision outcome x;/' x.tcl; tclsh x.tcl",
+    "sed 's/^/exec bin\\/wuwei decision outcome x/' t.py | tclsh",
+    "echo 'exec bin/wuwei decision outcome x' | sed 's/x/y/' | tclsh",
+    "rg -r 'exec bin/wuwei decision outcome x' . t.py | tclsh",
+    "grep -H --label='exec bin/wuwei decision outcome x' . - < t.py | tclsh",
+    "git grep -O'bin/wuwei decision outcome' x"]
 
 
 @pytest.mark.parametrize('command', EXECUTOR_PROBES)
@@ -401,3 +415,51 @@ def test_owner_commands_beside_data_stay_refused(places):
     for command in ("echo 'exec bin/wuwei goals edit' > x.tcl; tclsh x.tcl",
                     "cat <<'EOF' | tclsh\nexec bin/wuwei goals edit\nEOF"):
         assert seat(command) == 2, command
+
+
+# #730: a word is the CLI only in program position.
+def test_issue_730_acceptance_rows_pass_through_the_hook(places, monkeypatch, capsys):
+    root, _ = places
+    for command in ('x=bin/wuwei; $x state set a b', 'grep -n wuwei tests/test_x.py', 'd=/path/to/tree; ls $d'):
+        code, output = hook(root, command, monkeypatch, capsys)
+        assert code == 0 and output.get('permissionDecision') != 'deny', (command, output)
+
+
+def test_issue_730_a_variable_holding_the_cli_is_judged_as_the_cli(places):
+    from wuwei.guards.protect_state import _OWNER_ACTIONS
+    root, outside = places
+    for command in ('x=bin/wuwei; $x decide D-1 a', 'x=bin/wuwei; "$x" decide D-1 a',
+                    'x=bin/wuwei; timeout 5 $x decide D-1 a'):
+        assert bash(root, command) == (1, _OWNER_ACTIONS[('decide', '')]), command
+        assert bash(outside, command) == (0, ''), command
+    for command in ('x=bin/wuwei; echo D-1 | xargs $x decide', 'x=bin/wuwei; x=ls; $x decide D-1 a',
+                    'ls; x=bin/wuwei; $x decide D-1 a'):
+        assert bash(root, command)[0] == 2, command
+        assert bash(outside, command) == (0, ''), command
+
+
+SEARCH_FORMS = [
+    'd=tests; grep -rn wuwei $d | sort | head -3', 'grep -n "wuwei decide" t.py | sort',
+    'grep -n "wuwei decide" t.py | cut -c1-5 | sort',
+    'grep -n "wuwei decide" t.py > out.txt; python3 -m pytest -q',
+    'grep -rn "wuwei decide" tests | sort > out.txt && ls',
+    'grep -n "wuwei decide" t.py | sed s/a/b/', 'grep -n "wuwei decide" t.py | awk 1',
+    "awk '/wuwei decide/' t.py", 'awk "/wuwei decide/ {print}" t.py | head',
+    "sed -n '/wuwei decide/p' t.py", "sed 's/wuwei decide/x/' t.py",
+    "echo 'bin/wuwei decide D-1 a' | sed 's/a/b/'", "git grep -n 'wuwei decide'"]
+
+
+@pytest.mark.parametrize('command', SEARCH_FORMS)
+def test_issue_730_search_patterns_are_data(places, command):
+    for cwd in places:
+        assert bash(cwd, command) == (0, ''), command
+
+
+def test_issue_730_refusal_names_the_stage_and_word(places):
+    root, _ = places
+    code, reason = bash(root, 'perl -ne "print if /wuwei decision outcome/" t.py')
+    assert code == 2 and 'Stage: perl -ne' in reason and 'word: wuwei' in reason, reason
+    code, reason = bash(root, "echo 'exec bin/wuwei decision outcome x' | sed 's/x/y/' | tclsh")
+    assert code == 2 and 'Stage: echo' in reason and 'word: wuwei' in reason, reason
+    code, reason = bash(root, "tclsh <<'EOF'\nexec bin/wuwei decision outcome x\nEOF")
+    assert code == 2 and 'no stage shows' in reason, reason

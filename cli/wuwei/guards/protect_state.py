@@ -146,6 +146,32 @@ _CLI_NONLITERAL = (r'(?<![\w.-])wuwei(?:\s+-\S*)*(?:\s+(?:' + '|'.join(sorted(_O
 # operand and tee do, so they are not here). #471: shell.reads adds the classifier's
 # read-only words (cat, jq, sed -n Np, find without an action).
 _READERS = ('grep', 'rg', 'echo', 'printf', 'head', 'tail', 'wc', 'cut', 'tr')
+# #730: what an awk or sed script runs or writes. ponytail: a token scan, not a parser; it
+# over-matches (any e, w or W command or flag word, a pipe, a redirect), and a script it
+# cannot clear keeps the refusal.
+_SCRIPT_EFFECT = r'system|getline|[|>]|(?<![A-Za-z])[gpiImM0-9]*[ewW](?![A-Za-z])'
+
+
+def _text_script(argv):
+    """#730: awk or sed whose script runs nothing and writes no file only reads."""
+    words = argv[1:]
+    return (bool(argv) and Path(argv[0]).name in ('awk', 'sed')
+            and all(re.fullmatch(r'-[nEr]+|-e|-F.*', word) for word in words if word.startswith('-'))
+            and not re.search(_SCRIPT_EFFECT, ' '.join(word for word in words if not word.startswith('-'))))
+
+
+def _pattern_args(argv):
+    """#730: grep prints matched lines, never its pattern, so its words are data in any pipe or
+    redirect; --label, rg --replace and rg --pre print or run their words.
+    ponytail: -l and -H print file names, and a file named as a command must already exist;
+    ls | tclsh reaches that today too."""
+    from wuwei.shell import git_kind
+    program = Path(argv[0]).name if argv else ''
+    if program == 'git':
+        return argv[1:2] == ['grep'] and git_kind(argv[1:]) == 'read'
+    return (program == 'grep' and not any(word.startswith('--label') for word in argv)
+            or program == 'rg' and not any(re.match(r'--(?:replace|pre)|-[A-Za-z]*r', word)
+                                           for word in argv[1:]))
 
 
 def _positional(words):
@@ -256,22 +282,27 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
     xargs = relevant and mentions(text, ('xargs',), script=script)
     unseen = len(_WUWEI.findall(re.sub(r"['\"\\]", '', text)))
     readers = [bool(c.argv) and (Path(c.argv[0]).name in _READERS
-                                or reads(c.argv, cwd) and snippet_write(c.argv) != '')
+                                or reads(c.argv, cwd) and snippet_write(c.argv) != ''
+                                or _text_script(c.argv) or _pattern_args(c.argv))
                for c in commands]
     # A pipe feeds an executor unless every later stage is a reader with no redirect.
     feeds = [False] * len(commands)
     for index in range(len(commands) - 2, -1, -1):
         feeds[index] = commands[index].separator == '|' and (
             not readers[index + 1] or bool(commands[index + 1].writes) or feeds[index + 1])
+    kept = None  # #730: the stage whose mention may reach an executor, for the reason
     for index, command in enumerate(commands):
         argv = command.argv
         named = len(_WUWEI.findall(' '.join([*argv, *command.env.values()])))
         # A reader's mentions are only text when it stands alone: no redirect, no group or
         # subshell (scope depth 1, or 2 for a top-level pipe stage), no pipe into an executor.
+        # #730: a pattern program never prints its words, so they are text anywhere.
         piped = command.separator == '|' or index > 0 and commands[index - 1].separator == '|'
-        if not readers[index] or (not command.writes and not feeds[index]
-                                  and len(command.scope) == (2 if piped else 1)):
+        if not readers[index] or _pattern_args(argv) or (not command.writes and not feeds[index]
+                                                         and len(command.scope) == (2 if piped else 1)):
             unseen -= named
+        elif named:
+            kept = (shlex.join(argv), _WUWEI.search(' '.join([*argv, *command.env.values()]))[0])
         action = _wuwei_action(argv)
         # A renamed or symlinked launcher is the CLI too; checked only for a literal owner pair.
         if (action is None and argv and '/' in argv[0] and _owner_reason(_pair(argv[1:]))
@@ -293,9 +324,11 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
             hidden = (is_opaque(argv) and '-m' not in argv[1:]
                       or re.fullmatch(_INTERPRETER, program) and (named or any(
                           re.fullmatch(r'-(?:[a-zA-Z]*[ceEpr]|-eval)(?:=.*)?', arg, re.S) for arg in argv[1:])))
-            if hidden or re.search(_CLI_WORD, ' '.join(words)):
+            word = re.search(_CLI_WORD, ' '.join(words))
+            if hidden or word:
                 return 2, ('Opaque owner action: write bin/wuwei <group> <verb> as a plain command so the '
-                           'guard can read it; owner actions run in a host terminal.')
+                           'guard can read it; owner actions run in a host terminal.'
+                           f' Stage: {shlex.join(argv)}; word: {word[0] if word else program}.')
             continue
         group, verb = _pair(action)
         if xargs and not (re.fullmatch(r'[a-z][\w-]*', group) and (
@@ -358,7 +391,9 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
     if relevant and unseen > 0 and not all(readers):
         # A CLI mention sits in a heredoc, comment or other input no argv shows.
         return 2, ('Opaque owner action: write bin/wuwei <group> <verb> as a plain command so the '
-                   'guard can read it; owner actions run in a host terminal.')
+                   'guard can read it; owner actions run in a host terminal.'
+                   + (f' Stage: {kept[0]} feeds a pipe or file; word: {kept[1]}.' if kept
+                      else ' The mention sits in a here-doc, comment or input no stage shows.'))
     return None
 
 

@@ -959,3 +959,68 @@ def test_named_command_is_not_unreadable():
     from wuwei.shell import unreadable
     assert unreadable('x=git; $x push') == ''
     assert unreadable('$(printf git) push') != ''
+
+
+@pytest.mark.parametrize('text, expected', [
+    ('x=bin/wuwei; $x state set a b', {'x': 'bin/wuwei'}),
+    ('x=bin/wuwei && $x status', {'x': 'bin/wuwei'}),
+    ('x="bin/wuwei"; $x status', {'x': 'bin/wuwei'}),
+    ('x=bin/wuwei\n$x status', {'x': 'bin/wuwei'}),
+    ('a=1 b=c/d; ls', {'a': '1', 'b': 'c/d'}),
+    ('ls; x=bin/wuwei; $x status', {}), ('x=bin/wuwei; x=ls; $x', {}),
+    ('x=bin/wuwei | true; $x', {}), ("x='a b'; $x", {}), ('x=~/bin/wuwei; $x', {}),
+    ('x=$(pwd); $x push', {}), ('x=bin/wuwei $x status', {}),
+])
+def test_issue_730_leading_variables(text, expected):
+    from wuwei import shell
+    assert shell.leading_variables(text) == expected
+
+
+@pytest.mark.parametrize('command, argv', [
+    ('x=bin/wuwei; $x state set a b', ['bin/wuwei', 'state', 'set', 'a', 'b']),
+    ('x=bin/wuwei; "$x" state set a b', ['bin/wuwei', 'state', 'set', 'a', 'b']),
+    ('x=bin/wuwei; ${x} state set a b', ['bin/wuwei', 'state', 'set', 'a', 'b']),
+    ('x=bin/wuwei; timeout 5 $x status', ['bin/wuwei', 'status']),
+])
+def test_issue_730_program_variable_resolves(command, argv):
+    from wuwei import shell
+    assert shell.normalize(command)[-1].argv == argv
+
+
+@pytest.mark.parametrize('command', [
+    '$y foo', 'ls; x=bin/wuwei; $x status', 'G=git; $G push origin main', 'G=/usr/bin/git; $G status',
+    'x=gh; $x pr list', "x=bin/wuwei; sh -c '$x status'"])
+def test_issue_730_unresolved_program_variable_is_refused(command):
+    from wuwei import shell
+    with pytest.raises(shell.ParseError):
+        shell.normalize(command)
+
+
+def test_issue_730_refusal_names_the_word_and_stage():
+    from wuwei import shell
+    with pytest.raises(shell.ParseError) as error:
+        shell.normalize('$y foo')
+    assert '$y' in str(error.value) and 'in stage $y foo' in str(error.value)
+
+
+def test_issue_730_mentions_judges_a_resolved_variable_by_its_value():
+    from wuwei.shell import mentions
+    assert not mentions('x=bin/wuwei; $x state set a b', ('git', 'gh', 'rm'))
+    assert mentions('G=git; $G push origin main', ('git', 'gh'))
+    assert mentions('$x push', ('git',))
+    assert mentions('ls; x=bin/wuwei; $x push', ('git',))
+
+
+@pytest.mark.parametrize('command', [
+    'x=gi; x+=t; $x push origin main', 'x=ls; read x < f; $x push origin main',
+    'x=ls; getopts g x; $x push origin main',
+    # A name built by expansion is no bare word; a later variable-writing builtin makes x opaque.
+    'x=ls; n=xx; read ${n%?} < f; $x push origin main',
+    'x=ls; n=xx; v=gi; printf -v ${n%?} %st $v; $x push origin main',
+    'x=ls; n=xx; mapfile -t ${n%?} < f; $x push origin main',
+    'c=read x=ls n=xx; $c ${n%?} < f; $x push origin main', 'x=ls; . ./f; $x push origin main'])
+def test_issue_730_a_variable_changed_after_its_assignment_is_not_resolved(command):
+    from wuwei import shell
+    assert shell.mentions(command, ('git',))
+    with pytest.raises(shell.ParseError):
+        shell.normalize(command)
