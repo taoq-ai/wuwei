@@ -36,6 +36,9 @@ class Fake(Recorder):
     def merge(self, ref, sha, root=None):
         return self._call('merge', (ref, sha), root)
 
+    def label(self, ref, name, present, root=None):
+        return self._call('label', (ref, name, present), root)
+
     def revert_pr(self, ref, root=None):
         return self._call('revert_pr', (ref,), root)
 

@@ -321,6 +321,8 @@ def raise_pr(root, repo_name, base, title, body, item):
         row = data['items'][item]
         if row['gates']:
             body += f'\n\nReview tier: {row["gates"]["tier"]} ({", ".join(dispatch.gate_set(row))})'
+        if hold := merge.owner_hold(row):  # #678: the PR's record of who keeps the merge
+            body += f'\n\nOwner merges: owner_merge set by {hold[0]} on {hold[1]}'
         if not settings['fast_checks'] and 'checks: none configured' not in body:  # #600 acceptance 1
             body = body.rstrip() + '\n\nchecks: none configured'
         code, reason = outward.lint(title + '\n' + body, 'code_host', config, root=root)
@@ -354,6 +356,8 @@ def raise_pr(root, repo_name, base, title, body, item):
         if pr['head'] != head or pr['url'] != created['url']:
             raise ValueError('created PR does not match checked head and URL; run bin/wuwei pr state to read the PR before any retry')
         state.record_pr(root, item, ref, raised=True, head=head, reviewers=reviewers)
+        if hold:
+            merge.read(host.label, ref, merge.LABEL, True, root=root)
         if use:
             use()
         dispatch.tracker_call(item, 'in_review', root)

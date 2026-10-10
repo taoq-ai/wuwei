@@ -461,6 +461,42 @@ def test_plan_set_spec_override(root, capsys, monkeypatch):
     assert 'wuwei plan set' in capsys.readouterr().err
 
 
+
+def test_plan_set_owner_merge(root, capsys, monkeypatch):
+    # #678: the owner keeps an item's merge; the record says who set it and when.
+    from wuwei.__main__ import main
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
+    state._write_state(lambda data: data['items'].update(A={'phase': 'planned', 'status': 'queued'}),
+                       root, reserved=False)
+    assert main(['plan', 'set', 'A', 'owner_merge=maybe']) == 2
+    assert 'owner_merge=true|false' in capsys.readouterr().err
+    assert main(['plan', 'set', 'Z', 'owner_merge=true']) == 1
+    assert 'owner_merge' not in state.read_state(root)['items']['A']
+    assert main(['plan', 'set', 'A', 'owner_merge=true']) == 0
+    assert 'A: owner_merge true' in capsys.readouterr().out
+    at = '2026-09-28T09:00:00+02:00'
+    assert state.read_state(root)['items']['A']['owner_merge'] == {'value': True, 'by': 'owner', 'at': at}
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
+    assert main(['plan', 'set', 'A', 'owner_merge=false']) == 0
+    assert state.read_state(root)['items']['A']['owner_merge'] == {'value': False, 'by': 'planner', 'at': at}
+    monkeypatch.setenv('WUWEI_SEAT_ROLE', 'builder')
+    assert main(['plan', 'set', 'A', 'owner_merge=true']) == 0
+    assert state.read_state(root)['items']['A']['owner_merge']['by'] == 'builder'
+    assert [e['payload'] for e in events(root) if e['kind'] == 'plan.set'] == [
+        {'item': 'A', 'owner_merge': value, 'by': by, 'prs_seen': False}
+        for value, by in ((True, 'owner'), (False, 'planner'), (True, 'builder'))]
+    with pytest.raises(state.StateError, match='reserved; written by wuwei plan set'):
+        state.set_state('items.A.owner_merge', '{"value": false}', root)
+
+
+def test_gate_card_names_the_owner_merge_route(root):
+    plan.propose(proposal(), root)
+    change = plan.gate_widget(root)['options'][-1]
+    assert change['label'] == 'Change something'
+    assert 'wuwei plan set <item> owner_merge=true' in change['description']
+
 def two(**extra):
     data = proposal()
     data['candidates'].append({**data['candidates'][0], 'id': 'B'})
@@ -647,7 +683,7 @@ def test_plan_set_records_a_confirmed_ticket(root, monkeypatch, capsys):
     assert main(['plan', 'set', 'A', 'ticket=bad id']) == 2
     fake.results['created'] = registry.Result(1, reason='not found')
     assert main(['plan', 'set', 'A', 'ticket=ENG-5']) == 1
-    assert 'owner=pat is not a spec, docs or ticket value' in capsys.readouterr().err
+    assert 'owner=pat is not a spec, docs, ticket or owner_merge value' in capsys.readouterr().err
 
 
 def four(seats=None):

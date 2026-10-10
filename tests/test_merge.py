@@ -1109,3 +1109,61 @@ def test_size_exclude_counts_only_the_files_it_does_not_match(case, setting, pat
     host.results['pr'].data.update(additions=1010, changed_files=2)
     answer = check(case)
     assert answer.exit == code and hint in answer.reason, answer
+
+
+def flag_item(root, record):
+    state._write_state(lambda d: d['items']['item-7'].update(owner_merge=record), root, reserved=False)
+
+
+HOLD = {'value': True, 'by': 'owner', 'at': '2026-09-29T11:00:00+00:00'}
+OWNER_LINE = ('owner merges: owner_merge set by owner on 2026-09-29; '
+              'clear it with bin/wuwei plan set item-7 owner_merge=false')
+
+
+@pytest.mark.parametrize('item,hold', [
+    ({}, None), ({'owner_merge': dict(HOLD, value=False)}, None),
+    ({'owner_merge': HOLD}, ('owner', '2026-09-29'))])
+def test_owner_hold_reads_the_item_record(item, hold):
+    assert policy().owner_hold(item) == hold
+
+
+@pytest.mark.parametrize('record', ['yes', dict(HOLD, value='true'),
+                                    {'value': True, 'at': HOLD['at']}, dict(HOLD, at=None)])
+def test_malformed_owner_hold_is_damaged(record):
+    with pytest.raises(ValueError, match='invalid owner_merge record; a WUWEI record'):
+        policy().owner_hold({'owner_merge': record})
+
+
+def test_owner_merge_refuses_before_every_other_rule(case):
+    root, host = case
+    flag_item(root, HOLD)
+    result = check(case)
+    assert result.exit == 1 and OWNER_LINE in result.reason, result
+    config_change(root, 'auto = true', 'auto = false')
+    result = check(case)
+    assert result.exit == 1 and OWNER_LINE in result.reason, result
+    assert policy().execute(REF, root).exit == 1
+    assert not any(c[0] == 'merge' for c in host.calls)
+    assert events(root)[-1]['kind'] == 'merge.policy_blocked'
+    assert OWNER_LINE in events(root)[-1]['payload']['reason']
+    flag_item(root, 'yes')
+    assert check(case).exit == 2
+
+
+def test_plan_set_owner_merge_labels_the_linked_pr(case, monkeypatch):
+    # #678: the label is the PR's record; the state is written first, so a failure keeps the hold.
+    from wuwei import plan
+    root, host = case
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
+    host.results['label'] = Result(0, {'labels': ['owner-merge']})
+    assert plan.set_owner_merge('item-7', 'true', root) == 'item-7: owner_merge true'
+    host.results['label'] = Result(0, {'labels': []})
+    plan.set_owner_merge('item-7', 'false', root)
+    assert [c[1] for c in host.calls if c[0] == 'label'] == [
+        (REF, 'owner-merge', True), (REF, 'owner-merge', False)]
+    host.results['label'] = Result(2, None, 'offline')
+    with pytest.raises(OSError, match='rerun bin/wuwei plan set item-7 owner_merge=true'):
+        plan.set_owner_merge('item-7', 'true', root)
+    assert state.read_state(root)['items']['item-7']['owner_merge']['value'] is True
+    assert check(case).exit == 1

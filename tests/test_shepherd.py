@@ -907,7 +907,22 @@ def test_raise_body_names_the_review_tier(case, monkeypatch, gates, body):
     assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
     [args] = [args for name, args, _ in host.calls if name == 'create_pr']
     assert args[0]['body'] == body
+    assert not any(name == 'label' for name, _, _ in host.calls)
 
+
+
+def test_raise_records_owner_merge_on_the_pr(case, monkeypatch):
+    # #678: a flagged item's PR says who keeps the merge, in the body and as a label.
+    from wuwei import shepherd
+    root, host = solo_raise(case, monkeypatch)
+    host.results['label'] = Result(0, {'labels': ['owner-merge']})
+    state._write_state(lambda data: data['items']['ITEM-1'].update(owner_merge={
+        'value': True, 'by': 'planner', 'at': '2026-09-29T08:00:00+00:00'}), root, reserved=False)
+    assert shepherd.raise_pr(root, 'acme/widget', 'main', 'Feature', 'Body', 'ITEM-1') == 0
+    [args] = [args for name, args, _ in host.calls if name == 'create_pr']
+    assert args[0]['body'] == ('Body\n\nOwner merges: owner_merge set by planner on 2026-09-29'
+                               '\n\nchecks: none configured')
+    assert [args for name, args, _ in host.calls if name == 'label'] == [(REF, 'owner-merge', True)]
 
 
 def test_raise_body_names_no_checks_once_and_only_when_none(case, monkeypatch):

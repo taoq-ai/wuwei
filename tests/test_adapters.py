@@ -44,6 +44,7 @@ CALLS = [
     ('code_host', 'default_branch', ('repo',), True),
     ('code_host', 'deployments', ('repo', 'since'), True),
     ('code_host', 'issue', ('repo', 'title', 'body'), False),
+    ('code_host', 'label', ('ref', 'name', 'present'), False),
     ('vcs', 'workspace_init', ('repo',), False),
     ('vcs', 'workspace_changes', ('repo',), True),
     ('vcs', 'workspace_commit', ('repo', 'paths'), False),

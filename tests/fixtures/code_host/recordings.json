@@ -590,5 +590,38 @@
         "author": "renovate[bot]"
       }
     ]
+  },
+  {
+    "operation": "label",
+    "args": [
+      "acme/widget#7",
+      "owner-merge",
+      true
+    ],
+    "steps": [
+      {
+        "argv": [
+          "api",
+          "repos/acme/widget/issues/7/labels",
+          "--method",
+          "POST",
+          "--input",
+          "-",
+          "--hostname",
+          "github.com"
+        ],
+        "input": {
+          "labels": [
+            "owner-merge"
+          ]
+        },
+        "stdout": "[{\"name\": \"owner-merge\"}]"
+      }
+    ],
+    "data": {
+      "labels": [
+        "owner-merge"
+      ]
+    }
   }
 ]
