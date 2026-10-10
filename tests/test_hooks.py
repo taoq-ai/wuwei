@@ -861,7 +861,7 @@ def check(payload):
 GUARDS = [Guard('PreToolUse', 'Bash', check)]
 ''')
     payload = fixture('PreToolUse')
-    payload.update(tool_name='Bash', tool_input={'command': 'echo "git push"'})
+    payload.update(tool_name='Bash', tool_input={'command': '''awk 'BEGIN {system("git push")}' '''})
     result = replay(plugin, 'PreToolUse', json.dumps(payload))
     assert result.returncode == 2
     assert 'run git or gh as a plain command' in result.stderr

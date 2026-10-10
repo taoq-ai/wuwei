@@ -1077,12 +1077,42 @@ def i36(case, rules):
     return rules.memo(('item tickets', case[0]), compute)
 
 
+def i37(case, rules):
+    """#671: a Bash call is judged by what it runs: git or gh words in a reader's text pass
+    when no command of the call can run them; a name built by quotes, a line continuation,
+    eval or sh -c parses to the plain command; one built from a variable is named, not lowered."""
+    def compute():
+        from wuwei.shell import ParseError, constructed, normalize, unreadable
+        for script in ("cat > brief.md <<'EOF'\nfalls back to gh; then git push\nEOF",
+                       'echo "git push"', 'grep -rn "gh pr" docs | head -20',
+                       "git status; cat <<'EOF'\ngit push\nEOF"):
+            try:
+                normalize(script)
+            except ParseError as exc:
+                return f'reader text {script!r} refused: {exc}'
+        for script in ("echo 'git push' | sh", "cat <<'EOF' | python3\ngit push\nEOF",
+                       'echo "gh pr merge 5" | xargs -I@ sh -c @', "printf 'git push' > x"):
+            try:
+                normalize(script)
+            except ParseError:
+                continue
+            return f'runnable text {script!r} parsed'
+        for script in ('g""it push', 'sh -c "gi""t push"', "eval 'gi''t push'", 'gi\\\nt push'):
+            if [item.argv for item in normalize(script)] != [['git', 'push']]:
+                return f'{script!r} does not parse to git push'
+        for script in ('x=git; $x push', 'x=gi; ${x}t push'):
+            if constructed(script) != 'git push' or unreadable(script) != '':
+                return f'{script!r} is not named as git push'
+        return None
+    return rules.memo(('argv',), compute)
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
               'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27, 'I28': i28,
               'I31': i31, 'I32': i32, 'I33': i33, 'I34': i34, 'I35': i35,
-              'I36': i36}
+              'I36': i36, 'I37': i37}
 
 
 def project(case):
@@ -1098,7 +1128,7 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
          'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': (), 'I28': (),
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,)}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
