@@ -582,7 +582,7 @@ _SNIPPET_WRITES = re.compile(
     r'|\w*(?:write|remove|rename|replace|unlink|rmdir|mkdir|makedirs|touch|truncate|chmod|chown'
     r'|symlink|hardlink|inplace)\w*|os\.(?:link|open|fork)'
     r'|shutil|subprocess|system|popen|spawn|exec|eval|getattr|__import__|importlib|runpy|ctypes'
-    r'|sqlite3|shelve|dbm'
+    r'|sqlite3|shelve|dbm|\brun\(|\bpty\b|\b(?:git|gh)\b'  # #671: a snippet that may run git or gh
     r'|\\|chr|argv|environ|stdin|input|lower|decode|logging|Handler|extract|tarfile|zipfile'
     r'|__|vars|globals'
     r'|(?<![\w/-])(?<![^\w.]\.)wuwei(?![\w/-])', re.I)  # the CLI imported; not .wuwei/ or cli/wuwei/
