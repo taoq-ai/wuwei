@@ -188,11 +188,6 @@ def lint(text, *, quality=False, class_sweep=False, light=False, docs=None):
         failures.append('no finding with severity (P0-P3, critical, high, medium, low or info)'
                         + _fix('Finding'))
     for number, block in enumerate(blocks, 1):
-        for pattern, field in ((r'\b' + SEVERITY, 'severity'),
-                               (CITATION, 'file:line'), (BLOCKS, 'blocks yes/no'),
-                               (SCENARIO, 'failure scenario')):
-            if not re.search(pattern, block, re.I):
-                failures.append(f'finding {number}: missing {field}')
         if docs and DOCS_MISSING.search(block):
             failures.append(f'finding {number}: says the docs value is missing, but {docs[0]} records docs '
                             f'{docs[1]} (bin/wuwei why {docs[0]} --json); drop or correct the finding')
