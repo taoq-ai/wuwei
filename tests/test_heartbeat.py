@@ -408,3 +408,60 @@ def test_seats_probe(ws, tmp_path):
     probes = heartbeat.measure(root)
     assert list(probes)[-1] == 'seats'
     assert probes['seats']['result'] == 'failed' and 'wuwei seat stop builder' in probes['seats']['value']
+
+
+def test_beat_saves_the_status_line(ws, capsys):
+    """#659: the tick renders the status line in process for status --line to fall back on."""
+    import re
+    from wuwei.commands import status
+    root, _, _, monkeypatch = ws
+    assert beats(root, monkeypatch) == 0
+    text = watch.saved(root)['status_line']
+    assert re.search(r' · as of \d\d:\d\d$', text) and len(text) <= status.WIDTH
+
+
+def line_args():
+    from types import SimpleNamespace
+    from wuwei.commands import status
+    return SimpleNamespace(line=True, json=False, width=status.WIDTH)
+
+
+def test_status_line_prints_the_cache_when_the_compute_overruns(ws, capsys):
+    import threading
+    from wuwei.commands import status
+    root, _, _, monkeypatch = ws
+    watch.save(root, {'status_line': 'cached line · as of 12:00'})
+    release = threading.Event()
+    real = status.snapshot
+    monkeypatch.setattr(status, 'snapshot', lambda *args, **kwargs: release.wait(5) and real(*args, **kwargs))
+    try:
+        started = time.monotonic()
+        assert status.run(line_args()) == 0
+        assert time.monotonic() - started < 1
+    finally:
+        release.set()
+    assert capsys.readouterr().out == 'cached line · as of 12:00\n'
+
+
+def test_status_line_without_cache_waits_and_errors_never_print_the_cache(ws, capsys):
+    import threading
+    from wuwei.commands import status
+    root, _, _, monkeypatch = ws
+    real = status.snapshot
+
+    def late(*args, **kwargs):
+        time.sleep(0.3)
+        return real(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(status, 'snapshot', late)
+        assert status.run(line_args()) == 0
+    assert capsys.readouterr().out.startswith('WUWEI ')
+
+    def broken(*args, **kwargs):
+        raise ValueError('damaged')
+
+    watch.save(root, {'status_line': 'cached line · as of 12:00'})
+    monkeypatch.setattr(status, 'snapshot', broken)
+    assert status.run(line_args()) == 2
+    assert capsys.readouterr().out == 'WUWEI ? unmeasured\n'

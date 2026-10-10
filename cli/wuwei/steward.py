@@ -250,17 +250,22 @@ def run(root=None, *, trigger='sweep'):
     return 0
 
 
-def maybe_run_for_tool_calls(count, root=None):
-    """Notify the planner once when the trace count reaches a run boundary."""
+def maybe_run_for_tool_calls(count, root=None, base=0):
+    """Notify the planner once when the trace count reaches a run boundary. base is the
+    count returned last time (#659): every run and due is at or below it, so below one
+    interval from it no due can be owed and the events are not read. Returns the next base."""
     root = workspace.find_workspace(root)
     interval = workspace.load_config(root)['steward']['every_tool_calls']
+    if count - base < interval:
+        return base
     events = watch.records(workspace.day_dir(root) / 'events.jsonl')
     runs = [row['payload'].get('tool_calls') for row in events if row['kind'] == 'steward.run']
     last = runs[-1] if runs else 0
     if type(last) is not int or last < 0 or last > count:
         raise ValueError(f'invalid steward trace checkpoint; {DAMAGED}')
-    due = any(row['kind'] == 'steward.due' and row['payload'].get('tool_calls', 0) > last
-              for row in events)
-    if count - last >= interval and not due:
+    dues = [row['payload'].get('tool_calls', 0) for row in events if row['kind'] == 'steward.due']
+    dues = [value for value in dues if value > last]
+    if count - last >= interval and not dues:
         state.append_event('steward.due', {'tool_calls': count}, root)
-    return 0
+        return count
+    return max([last, *dues])

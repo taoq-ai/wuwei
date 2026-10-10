@@ -453,3 +453,20 @@ def test_report_counts_steward_runs(root, verbosity):
         state.append_event('steward.run', {'trigger': trigger, 'tool_calls': 0}, root)
     assert (f'## Steward runs\n- close: 1\n- sweep: 2\n- tool-calls: 1\n{settings}'
             in report.build(root))
+
+
+def test_tool_call_gate_reads_no_events_below_the_interval(root, monkeypatch):
+    """#659: below a run boundary from the base the due check reads nothing."""
+    from wuwei import steward, watch
+
+    reads = []
+    records = watch.records
+    monkeypatch.setattr(watch, 'records', lambda path: reads.append(path) or records(path))
+    assert steward.maybe_run_for_tool_calls(10, root, 0) == 0
+    assert reads == []
+    (root / '.wuwei/config.toml').write_text('[steward]\nevery_tool_calls = 2\n')
+    assert steward.maybe_run_for_tool_calls(2, root, 0) == 2
+    state.append_event('steward.run', {'trigger': 'tool-calls', 'tool_calls': 3}, root)
+    assert steward.maybe_run_for_tool_calls(4, root, 2) == 3
+    path = workspace.day_dir(root) / 'events.jsonl'
+    assert [row['payload']['tool_calls'] for row in records(path) if row['kind'] == 'steward.due'] == [2]

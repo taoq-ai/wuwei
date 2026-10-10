@@ -320,6 +320,7 @@ def test_emitted_kinds_have_intended_tiers():
     emitted.update(['draft.sent', 'draft.failed'])  # dynamic final outcome
     emitted.update(['draft.sending', 'draft.approved'])  # drafts.approve picks its writer kind
     emitted.add('state.write')  # default writer kind
+    emitted.update(['traces.gap', 'traces.slow'])  # traces.check picks its kind (#659)
     emitted.update(['watch: observation', 'session: compact'])  # writer default and locked append
     emitted.update(['remote.started', 'remote.resumed'])  # one conditional writer kind
     emitted.update(['spec.step', 'spec.skipped', 'spec.warned'])  # specmode.once(kind)
@@ -340,7 +341,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'pr.action.decision': 'silent',
                 'retro.gap': 'nudge', 'seat stop unmatched': 'nudge',
                 'seat adhoc': 'silent', 'subagent.untraced': 'nudge',
-                'traces.gap': 'nudge', 'hook.refusal': 'silent',
+                'traces.gap': 'nudge', 'traces.slow': 'nudge', 'hook.refusal': 'silent',
                 'guard.would_refuse': 'silent', 'config.newer_template': 'nudge',
                 'hook.warning': 'nudge',
                 'verdict.rejected': 'silent', 'decision.rejected': 'nudge',

@@ -29,6 +29,7 @@ SHADOW_NUDGE = ('Observe posture has run {days} days. To enforce, set '
                 'security.posture = "guarded" in config.toml; to keep observing, raise guards.shadow_days. '
                 'bin/wuwei shadow report lists what would have been refused.')
 WIDTH = 100  # status --line columns unless --width says otherwise (#521)
+LINE_BUDGET_MS = 100  # #659: half the heartbeat's 200 ms wall; the rest is start-up and printing
 # #641: what the line calls each phase, in this order; CAP is shown on seats only.
 WORDS = {'planned': 'planned', **dict.fromkeys(state.BUILD_PHASES, 'building'),
          **dict.fromkeys(('gate', 'delta', 'raised'), 'in review'),
@@ -335,8 +336,40 @@ def snapshot(directory, line=False):
     return result
 
 
+def _line_or_cache():
+    """The line's snapshot, or the heartbeat's cached line when the compute overruns its
+    budget (#659). With no cache it waits; a compute error is raised, never the cache."""
+    import threading
+    result = []
+
+    def compute():
+        try:
+            result.append((True, snapshot(workspace.day_dir(), line=True)))
+        except BaseException as exc:
+            result.append((False, exc))
+
+    worker = threading.Thread(target=compute, daemon=True)
+    worker.start()
+    worker.join(LINE_BUDGET_MS / 1000)
+    if worker.is_alive():
+        try:
+            cached = state.read_state(directory=workspace.day_dir()).get('watch', {}).get('status_line')
+        except Exception:
+            cached = None
+        if isinstance(cached, str):
+            return cached
+        worker.join()
+    ok, value = result[0]
+    if not ok:
+        raise value
+    return line(value, WIDTH)
+
+
 def run(args):
     try:
+        if args.line and not args.json and getattr(args, 'width', WIDTH) == WIDTH:
+            print(_line_or_cache())
+            return CLEAN
         data = snapshot(workspace.day_dir(), line=args.line and not args.json)
     except (OSError, ValueError, KeyError, TypeError, RecursionError, UnicodeError) as exc:
         if args.json:

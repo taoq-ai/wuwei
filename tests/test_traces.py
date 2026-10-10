@@ -763,3 +763,140 @@ def test_untyped_subagent_binds_to_its_adhoc_seat(trace_workspace, call_payload,
     else:
         assert before == {name: (trace_workspace / name).read_text()
                           for name in ('state.json', 'events.jsonl') if (trace_workspace / name).exists()}
+
+
+def test_append_event_timeout_is_bounded(trace_workspace):
+    """#659: the slow record gives up its state.lock wait at the given bound."""
+    import fcntl
+    trace_workspace.mkdir(parents=True)
+    with (trace_workspace / 'state.lock').open('a') as holder:
+        fcntl.flock(holder, fcntl.LOCK_EX)
+        with pytest.raises(TimeoutError):
+            state.append_event('x.y', {}, trace_workspace.parents[2], timeout=0)
+
+
+def secure(trace_workspace, posture):
+    from wuwei import security
+    root = trace_workspace.parents[2]
+    (root / '.wuwei/config.toml').write_text(f'[security]\nrequired = true\nposture = "{posture}"\n')
+    security.initialize(root / '.wuwei')
+    return root
+
+
+def slow(*args):
+    raise TimeoutError('state.lock remained locked for 30s')
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_slow_trace_read_is_a_warning_below_strict(trace_workspace, call_payload, monkeypatch, capsys, posture):
+    """#659: a read that did not finish in time names its elapsed time; only strict refuses."""
+    import re
+    from wuwei import security
+    secure(trace_workspace, posture)
+    monkeypatch.setattr(security, 'trace_findings', slow)
+    code, output = run_hook(call_payload, monkeypatch, capsys)
+    assert code == (2 if posture == 'strict' else 0)
+    assert re.search(r'wuwei traces: did not finish in time after \d+ ms', output.err)
+    assert 'remained locked' not in output.err
+    event, = error_events(trace_workspace)
+    assert event['kind'] == 'traces.slow'
+    assert type(event['payload']['elapsed_ms']) is int
+    assert (event['payload']['span'], event['payload']['session']) == ('Read', call_payload['session_id'])
+
+
+@pytest.mark.parametrize('posture', ['observe', 'strict'])
+def test_slow_unsecured_trace_read_refuses_only_under_strict(trace_workspace, call_payload, monkeypatch, capsys, posture):
+    """#659: without required security, strict still refuses a read that did not finish in time."""
+    from wuwei import security
+    root = trace_workspace.parents[2]
+    (root / '.wuwei/config.toml').write_text(f'[security]\nrequired = false\nposture = "{posture}"\n')
+    monkeypatch.setattr(security, 'trace_findings', slow)
+    code, output = run_hook(call_payload, monkeypatch, capsys)
+    assert code == (2 if posture == 'strict' else 0)
+    assert 'did not finish in time' in output.err
+
+
+@pytest.mark.parametrize('error', [TimeoutError, OSError])
+def test_slow_record_is_slow_and_unwritable_record_is_a_gap(trace_workspace, call_payload, monkeypatch, capsys, error):
+    def broken(*args):
+        raise error('private details')
+
+    secure(trace_workspace, 'observe')
+    monkeypatch.setattr(state, 'append_jsonl', broken)
+    code, output = run_hook(call_payload, monkeypatch, capsys)
+    event, = error_events(trace_workspace)
+    if error is TimeoutError:
+        assert code == 0 and event['kind'] == 'traces.slow'
+    else:
+        assert code == 2 and event['kind'] == 'traces.gap'
+
+
+def test_slow_record_gives_up_on_a_held_lock(trace_workspace, call_payload, monkeypatch, capsys):
+    import fcntl
+    import time
+    from wuwei import security
+    secure(trace_workspace, 'observe')
+    monkeypatch.setattr(security, 'trace_findings', slow)
+    trace_workspace.mkdir(parents=True, exist_ok=True)
+    with (trace_workspace / 'state.lock').open('a') as holder:
+        fcntl.flock(holder, fcntl.LOCK_EX)
+        started = time.monotonic()
+        code, output = run_hook(call_payload, monkeypatch, capsys)
+    assert time.monotonic() - started < 3
+    assert code == 0 and 'could not log traces.slow' in output.err
+
+
+def test_trace_slow_is_reserved():
+    from wuwei.__main__ import main
+    from wuwei.commands import event
+    assert 'traces.slow' in event.EVENT_PRODUCERS
+    assert main(['event', 'traces.slow', '{}']) == 1
+
+
+def test_digest_counts_calls_without_reading_events(trace_workspace, call_payload, monkeypatch):
+    """#659: below a steward boundary a traced call reads neither traces.jsonl nor events.jsonl."""
+    from wuwei import watch
+    state.append_event('x.y', {}, trace_workspace.parents[2])
+    reads = []
+    monkeypatch.setattr(watch, 'records', lambda path: reads.append(path) or [])
+    for _ in range(5):
+        assert recorder()(call_payload) == (0, '')
+    assert reads == []
+    assert json.loads((trace_workspace / 'traces.digest.json').read_text()) == {'tool_calls': 5, 'steward': 0}
+
+
+@pytest.mark.parametrize('digest', [None, '{"tool_calls": -1}', 'not json'])
+def test_missing_or_invalid_digest_recounts_spans(trace_workspace, call_payload, digest):
+    trace_workspace.mkdir(parents=True)
+    (trace_workspace / 'traces.jsonl').write_text('{}\n' * 3)
+    if digest is not None:
+        (trace_workspace / 'traces.digest.json').write_text(digest)
+    assert recorder()(call_payload) == (0, '')
+    assert json.loads((trace_workspace / 'traces.digest.json').read_text())['tool_calls'] == 4
+
+
+def test_steward_check_is_skipped_over_budget(trace_workspace, call_payload, monkeypatch):
+    from wuwei.guards import traces
+    root = trace_workspace.parents[2]
+    (root / '.wuwei/config.toml').write_text('[steward]\nevery_tool_calls = 1\n')
+    with monkeypatch.context() as patch:
+        patch.setattr(traces, 'BUDGET_MS', 0)
+        assert recorder()(call_payload) == (0, '')
+    assert not (trace_workspace / 'events.jsonl').exists()
+    assert recorder()(call_payload) == (0, '')
+    assert [row['kind'] for row in error_events(trace_workspace)] == ['steward.due']
+
+
+def test_bound_seat_is_not_rewritten(trace_workspace, call_payload):
+    root = trace_workspace.parents[2]
+    relative = str((trace_workspace / 'briefs/builder.md').relative_to(root))
+    state._write_state(lambda data: data['seats'].update({'builder': {
+        'item': 'A', 'role': 'builder', 'status': 'running', 'brief': relative}}), root, reserved=False)
+    transcript = root / 'session.jsonl'
+    transcript.write_text(json.dumps({'type': 'user', 'message': {'content': 'WUWEI brief: ' + relative}}) + '\n')
+    before = len(error_events(trace_workspace))
+    for _ in range(3):
+        assert recorder()({**call_payload, 'transcript_path': str(transcript)}) == (0, '')
+    assert [row['kind'] for row in error_events(trace_workspace)[before:]] == ['state.write']
+    seat = state.read_state(root)['seats']['builder']
+    assert seat['transcript'] == str(transcript) and seat['trace_sessions'] == [call_payload['session_id']]

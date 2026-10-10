@@ -141,14 +141,14 @@ def _event_payload(kind, payload):
     return payload
 
 
-def append_event(kind, payload=None, root=None, *, directory=None):
+def append_event(kind, payload=None, root=None, *, directory=None, timeout=30):
     """Append one event using the shared clock, never a caller timestamp."""
     payload = _event_payload(kind, payload)
     directory = workspace.day_dir(root) if directory is None else Path(directory)
     directory.parent.mkdir(exist_ok=True)
     directory.mkdir(exist_ok=True)
     with (directory / 'state.lock').open('a') as lock:
-        lock_ex(lock, 'state.lock')
+        lock_ex(lock, 'state.lock', timeout)
         _append_event(kind, payload, directory)
 
 

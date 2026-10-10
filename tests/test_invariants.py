@@ -1309,6 +1309,36 @@ def i46(case, rules):
                 return f'{text!r}: lint exits {recorded} with a recorded value, {unset} without'
         return None
     return rules.memo(('docs missing',), compute)
+def i50(case, rules):
+    """#659: a traces guard that did not finish in time never fails a tool call below strict:
+    a TimeoutError is a warning naming its elapsed milliseconds; strict refuses it."""
+    def compute():
+        import tempfile
+        from pathlib import Path
+        from wuwei import security
+        from wuwei.guards import traces
+        real = security.trace_findings
+
+        def slow(*args):
+            raise TimeoutError('state.lock remained locked for 30s')
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / '.wuwei').mkdir()
+            (root / '.wuwei/config.toml').write_text(f'[security]\nrequired = true\nposture = "{case[0]}"\n')
+            security.initialize(root / '.wuwei')
+            payload = {'hook_event_name': 'PostToolUse', 'session_id': 'seat-1', 'cwd': str(root),
+                       'tool_name': 'Read', 'tool_input': {'file_path': 'README.md'}}
+            security.trace_findings = slow
+            try:
+                with contextlib.redirect_stderr(io.StringIO()):
+                    code, reason = traces.check(payload)
+            finally:
+                security.trace_findings = real
+        if case[0] != 'strict':
+            return None if (code, reason) == (0, '') else f'a slow traces read exits {code}: {reason}'
+        return None if code == 2 and 'did not finish in time' in reason else f'strict lets a slow read pass: {code}'
+    return rules.memo(('slow traces', case[0]), compute)
 
 
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
@@ -1323,7 +1353,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I52': i52,
               'I36': i36, 'I37': i37, 'I42': i42, 'I55': i55,
               'I36': i36, 'I37': i37, 'I42': i42, 'I43': i43,
-              'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46}
+              'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46,
+              'I36': i36, 'I37': i37, 'I39': i39, 'I50': i50}
 
 
 def project(case):
@@ -1350,7 +1381,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I52': (0,),
          'I55': OUTWARD,
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I42': (), 'I43': (),
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': ()}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (),
+         'I39': (), 'I50': (0,)}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
