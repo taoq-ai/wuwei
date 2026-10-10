@@ -14,9 +14,9 @@ GATE_BODY = 'Review {item} at its HEAD against its spec and acceptance criteria.
 TIERS = ('light', 'standard', 'full')
 GATE_ROLES = (*ROLES, 'goal')  # #622: goal runs only as the single gate of a docs-only diff
 # #622: a docs-only diff gets one reviewer. ponytail: documents are told by suffix, not content;
-# .md and .rst anywhere, .txt only under docs/ or specs/.
+# .md and .rst anywhere, .txt only under docs/ or specs/. #657: a notebook is analysis.
 DOC_DIRS = ('docs', 'specs')
-DOC_SUFFIXES = ('.md', '.rst')
+DOC_SUFFIXES = ('.md', '.rst', '.ipynb')
 AGENT_DOCS = ('AGENTS.md', 'CLAUDE.md', 'SKILL.md', 'charters/*', 'skills/*', 'agents/*',
               'commands/*', '.claude/*', '.agents/*')
 SPEC_DOCS = ('specs/*', '*spec*', '*prereg*', '*pre-registration*')
@@ -49,10 +49,11 @@ def base(gate):
     return gate.partition('@')[0]
 
 
-def _docs_role(paths):
-    """#622: the single gate of a diff whose every path is a document, else None."""
+def _docs_role(paths, data=()):
+    """#622: the single gate of a diff whose every path is a document, else None. #657: a
+    data path (merge.uncounted) counts as a document."""
     from wuwei import merge
-    if not paths or not all((path.endswith(DOC_SUFFIXES) or (
+    if not paths or not all((path in data or path.endswith(DOC_SUFFIXES) or (
             path.endswith('.txt') and path.split('/', 1)[0] in DOC_DIRS))
             and merge.matched(path, AGENT_DOCS) is None for path in paths):
         return None
@@ -75,8 +76,11 @@ def tier(root, config, row):
             rise('standard', f'lead flag {name}')
     try:
         repo, changes = _changes(root, config, row)
+        skip = merge.uncounted(root, repo, changes)  # #657: generated and data lines never count
         total = sum(change['additions'] or 0 for change in changes) + sum(
             change['deletions'] or 0 for change in changes)
+        excluded = sum((change['additions'] or 0) + (change['deletions'] or 0)
+                       for change in changes if change['path'] in skip)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
         repo = None
         rise('standard', f'diff unmeasured: {str(exc) or type(exc).__name__}')
@@ -92,13 +96,21 @@ def tier(root, config, row):
             pattern = next((p for p in config['brief']['full_path_patterns'] if re.search(p, path, re.I)), None)
             if pattern is not None:
                 rise('standard', f'{path} matches FULL-track pattern {pattern}')
-            if change['additions'] is None or change['deletions'] is None:
+            if (change['additions'] is None or change['deletions'] is None) and path not in skip:
                 rise('standard', f'{path} binary change')
-        docs = _docs_role([change['path'] for change in changes]) if computed == 'light' else None
-        if total > gates['light_max_lines'] and not docs:
-            rise('standard', f'{total} changed lines over light_max_lines {gates["light_max_lines"]}')
-        elif computed == 'light' and not docs:
-            reasons.append(f'{total} changed lines within light_max_lines {gates["light_max_lines"]}')
+        # A .json counts as a document only under data_paths: by suffix alone it may be config.
+        named = tuple(p + '*' if p.endswith('/') else p for p in gates['data_paths'])
+        docs = _docs_role([change['path'] for change in changes],
+                          [path for path, kind in skip.items() if kind == 'data' and (
+                              not path.endswith('.json') or merge.matched(path, named))]
+                          ) if computed == 'light' else None
+        counted = total - excluded
+        lines = f'{total} changed lines' + (
+            f', {excluded} generated or data excluded, {counted} count,' if excluded else '')
+        if counted > gates['light_max_lines'] and not docs:
+            rise('standard', f'{lines} over light_max_lines {gates["light_max_lines"]}')
+        elif not docs:
+            reasons.append(f'{lines} within light_max_lines {gates["light_max_lines"]}')
     floor = repo['gates']['floor'] if repo else 'standard'
     if docs and floor != 'full':
         floor = 'light'

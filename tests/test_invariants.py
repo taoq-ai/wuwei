@@ -991,7 +991,8 @@ def i33(case, rules):
 def i34(case, rules):
     """#622: a docs-only diff never lowers review when anything else would raise it: a lead flag,
     a FULL track, a trust, never-auto, FULL-pattern, binary or agent-instruction path, or a full
-    floor keeps arch, quality and security; a plain document with nothing raising it gets one."""
+    floor keeps arch, quality and security; a plain document with nothing raising it gets one.
+    #657: documents, notebooks and data alike."""
     def compute():
         from wuwei import dispatch
         config = rules.config('guarded', 'send', 'send')
@@ -1022,10 +1023,57 @@ def i34(case, rules):
                 raised = extra or flag or track == 'FULL' or floor == 'full'
                 if roles != (list(dispatch.ROLES) if raised else ['goal']):
                     return f'{[c["path"] for c in changes]} flag {flag} track {track} floor {floor} records {roles}'
+            changes = [doc, {'path': 'study/results/scores.csv', 'additions': 600, 'deletions': 0}]
+            dispatch._changes = lambda *args: (config['repos'][0], changes)
+            roles = dispatch.tier(rules.root, config, {'track': 'SLICE', 'flags': {}})['roles']
+            if roles != ['goal']:
+                return f'a document and a data file record {roles}'
+            # A large .json is config by default (devcontainer, tasks): it keeps every gate
+            # unless data_paths names it.
+            config_json = [{'path': '.devcontainer/devcontainer.json', 'additions': 250, 'deletions': 0}]
+            for globs, want in (([], list(dispatch.ROLES)), (['.devcontainer/'], ['goal'])):
+                repo = config['repos'][0]
+                repo = {**repo, 'gates': {**repo['gates'], 'data_paths': globs}}
+                dispatch._changes = lambda *args: (repo, config_json)
+                roles = dispatch.tier(rules.root, config, {'track': 'SLICE', 'flags': {}})['roles']
+                if roles != want:
+                    return f'a config .json with data_paths {globs} records {roles}'
         finally:
             dispatch._changes = real
         return None
     return rules.memo(('docs-only',), compute)
+def i42(case, rules):
+    """#657: generated and data lines never count toward the tier or the size cap, and both read
+    the same count from merge.uncounted; a diff that changes .gitattributes gets no
+    linguist-generated exclusion."""
+    def compute():
+        from wuwei import dispatch, merge
+        config = rules.config('guarded', 'send', 'send')
+        repo = config['repos'][0]
+        repo = {**repo, 'gates': {**repo['gates'], 'floor': 'light'}}
+        source = {'path': 'src/app.py', 'additions': 80, 'deletions': 0}
+        attributes = rules.root / repo['path'] / '.gitattributes'
+        real = dispatch._changes
+        try:
+            attributes.write_text('dist/* linguist-generated\n')
+            for big in ('pilot/manifest.json', 'dist/app.js'):
+                large = {'path': big, 'additions': 4800, 'deletions': 0}
+                for changes, skipped in (([source, large], [big]),
+                                         ([source, {'path': '.gitattributes', 'additions': 1, 'deletions': 0}, large],
+                                          [big] if big.endswith('.json') else [])):
+                    dispatch._changes = lambda *args: (repo, changes)
+                    record = dispatch.tier(rules.root, config, {'track': 'SLICE', 'flags': {}})
+                    found = sorted(merge.uncounted(rules.root, repo, changes))
+                    paths = [c['path'] for c in changes]
+                    if found != skipped:
+                        return f'{paths}: merge.uncounted names {found}'
+                    if (record['tier'] == 'light') != bool(skipped):
+                        return f'{paths}: tier {record["tier"]} with {found} uncounted'
+        finally:
+            dispatch._changes = real
+            attributes.unlink(missing_ok=True)
+        return None
+    return rules.memo(('uncounted',), compute)
 
 
 def i35(case, rules):
@@ -1109,7 +1157,7 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
               'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27, 'I28': i28,
               'I31': i31, 'I32': i32, 'I33': i33, 'I34': i34, 'I35': i35,
-              'I36': i36, 'I37': i37}
+              'I36': i36, 'I37': i37, 'I42': i42}
 
 
 def project(case):
@@ -1125,7 +1173,7 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
          'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': (), 'I28': (),
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': ()}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I42': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 

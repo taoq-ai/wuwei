@@ -1854,3 +1854,85 @@ def test_a_cap_of_one_escalates_the_first_blocking_delta(root):
     outcome = dispatch.next_step('A', root)
     assert outcome['action'] == 'escalate' and outcome['reason'].startswith('round cap 1 reached: quality still blocks:')
     assert len(fix_events(root)) == 1
+
+
+MANIFEST = ('pilot/manifest.json', 4800, 0)
+CORPUS = 'data_paths = ["corpus/runs/"]\n'
+
+
+@pytest.mark.parametrize('paths,floor,extra,tier,reason', [
+    ([('src/app.py', 200, 0), MANIFEST], 'standard', '', 'standard',
+     '5000 changed lines, 4800 generated or data excluded, 200 count, over light_max_lines 100'),
+    ([('src/app.py', 80, 0), MANIFEST], 'light', '', 'light',
+     '4880 changed lines, 4800 generated or data excluded, 80 count, within light_max_lines 100'),
+    ([('src/app.py', 3, 0), ('corpus/runs/r1.log', 3000, 0)], 'light', CORPUS, 'light',
+     '3003 changed lines, 3000 generated or data excluded, 3 count, within light_max_lines 100'),
+    ([('src/app.py', 3, 0), ('corpus/runs/r1.log', 3000, 0)], 'light', '', 'standard',
+     '3003 changed lines over light_max_lines 100'),
+])
+def test_issue_657_tier_counts_without_generated_and_data_lines(root, monkeypatch, paths, floor, extra, tier, reason):
+    tiered(root, monkeypatch, paths, floor=floor, extra=extra)
+    record = tier_of(root)
+    assert record['tier'] == tier and reason in record['reasons']
+    if tier == 'light':
+        assert record['roles'] == ['quality']
+
+
+def test_issue_657_standard_item_shows_its_count(root, monkeypatch):
+    tiered(root, monkeypatch, [('cli/wuwei/guards/pr.py', 2, 0)])
+    assert '2 changed lines within light_max_lines 100' in tier_of(root)['reasons']
+
+
+def test_issue_657_lockfile_stops_counting_but_stays_never_auto(root, monkeypatch):
+    tiered(root, monkeypatch, [('src/app.py', 10, 0), ('uv.lock', 4800, 0)])
+    record = tier_of(root)
+    assert record['tier'] == 'standard' and 'security' in record['roles']
+    assert any(reason.startswith('uv.lock matches never-auto path') for reason in record['reasons'])
+    assert '4810 changed lines, 4800 generated or data excluded, 10 count, within light_max_lines 100' in record['reasons']
+
+
+def test_issue_657_unreadable_gitattributes_is_unmeasured(root, monkeypatch):
+    tiered(root, monkeypatch, [('src/app.py', 3, 0)])
+    (root / 'repo/.gitattributes').mkdir()
+    record = tier_of(root)
+    assert record['tier'] == 'standard'
+    assert any(reason.startswith('diff unmeasured:') for reason in record['reasons'])
+
+
+ANALYSIS = [('docs/analysis.md', 120, 0), ('study/results/scores.csv', 600, 0), ('analysis/eval.ipynb', 69, 0)]
+
+
+@pytest.mark.parametrize('paths,extra', [
+    (ANALYSIS, ''),
+    ([('docs/analysis.md', 3, 0), ('study/results/x.parquet', None, None)], ''),
+    ([('corpus/runs/r1.jsonl', 3000, 0)], CORPUS),
+    ([('corpus/runs/r1.log', 3000, 0)], CORPUS),
+])
+def test_issue_657_analysis_only_gets_the_goal_reviewer(root, monkeypatch, paths, extra):
+    from wuwei import dispatch
+
+    tiered(root, monkeypatch, paths, floor='standard', extra=extra)
+    step = dispatch.next_step('A', root)
+    record = step['tier']
+    assert (record['tier'], record['roles']) == ('light', ['goal'])
+    assert record['reasons'] == ['docs-only: 1 reviewer (goal)']
+    assert step['roles'] == ['goal']
+
+
+@pytest.mark.parametrize('paths,flags,track,floor', [
+    *[(ANALYSIS, (flag,), 'SLICE', 'standard')
+      for flag in ('trust_surface', 'boundary_relevant', 'agent_surface')],
+    (ANALYSIS, (), 'FULL', 'standard'),
+    (ANALYSIS, (), 'SLICE', 'full'),
+    (ANALYSIS + [('cli/wuwei/guards/pr.py', 2, 0)], (), 'SLICE', 'standard'),
+    (ANALYSIS + [('logo.png', None, None)], (), 'SLICE', 'standard'),
+    (ANALYSIS + [('src/app.py', 1, 0)], (), 'SLICE', 'standard'),
+    ([('.claude/settings.json', 300, 0)], (), 'SLICE', 'standard'),
+    ([('docs/guide.md', 3, 0), ('dist/app.js', 4800, 0)], (), 'SLICE', 'standard'),
+])
+def test_issue_657_analysis_with_code_or_trust_surface_keeps_three_gates(root, monkeypatch, paths, flags, track, floor):
+    tiered(root, monkeypatch, paths, floor=floor, flags=flags, track=track)
+    (root / 'repo/.gitattributes').write_text('dist/* linguist-generated\n')
+    record = tier_of(root)
+    assert record['roles'] == ALL
+    assert not any(reason.startswith('docs-only') for reason in record['reasons'])
