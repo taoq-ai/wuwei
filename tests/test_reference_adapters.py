@@ -68,6 +68,8 @@ def test_http_request_methods_and_empty_body(monkeypatch):
 
 def test_linear_replay(monkeypatch):
     linear = importlib.import_module('adapters.tracker.linear')
+    # #776: linear._state_ids memoises team states per process; a transition run earlier in this worker skipped the workflowStates replay.
+    monkeypatch.setattr(linear, '_state_ids', {})
     monkeypatch.setenv('LINEAR_API_KEY', 'private-linear-key')
     calls = replay(monkeypatch, *RECORDINGS['linear'][:2],
                    {'data': {'issue': {'team': {'id': 'team-1'}}}},
