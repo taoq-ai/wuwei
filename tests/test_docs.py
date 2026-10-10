@@ -103,7 +103,7 @@ def test_daily_shows_a_clean_first_day():
                                    'Ready: run /wuwei:wuwei-plan\n',
                                    '  warn       watch: not installed',
                                    'doctor: 1 fail, 1 warn, 0 unmeasured')),
-                            ('3', ('goals: 1 goal saved (G-1)', 'planned 1/1', 'planned item(s) can'))):
+                            ('3', ('goals: 1 goal saved (G-1)', '1 planned', 'planned item(s) can'))):
         section = daily.split(f'\n## {number}. ', 1)[1].split('\n## ', 1)[0]
         blocks = re.findall(r'```text\n(.*?)```', section, re.S)
         for marker in markers:

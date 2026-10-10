@@ -247,12 +247,12 @@ $ wuwei goals edit --file .wuwei/days/<date>/goals.md
 goals: 1 goal saved (G-1)
 $ wuwei plan approve --items DIV-1 --goals-confirmed
 $ bin/wuwei status --line
-WUWEI planned 1/1 · seats 0/1 | pages 0 · nudges 0 · observe
+WUWEI 1 planned · seats 0/1 | pages 0 · nudges 0 · observe
 $ bin/wuwei next
 dispatch: 1 planned item(s) can start, 0 of CAP 1 building; run the launch set, brief each start and launch the set in one turn. Run: wuwei dispatch next --all
 ```
 
-It worked when `goals edit` says `saved`, the status line shows `planned 1/1` and
+It worked when `goals edit` says `saved`, the status line shows `1 planned` and
 `bin/wuwei next` names the first item. `plan approve` prints nothing when it succeeds, and
 `meeting unmeasured` only means no calendar is set up. It did not work when the status line
 has no `planned` count after you approved, or when a command exits 1 or 2 with a reason; see
@@ -294,8 +294,8 @@ time. An item that does not fit waits and says why. The status line shows
 `seats 2 of CAP 3 (G-1 1, G-2 1)`, and `bin/wuwei next` names the waiting item and the seat
 expected to free first.
 
-Watch the status line and `bin/wuwei nudges`. The status line counts items per phase, for
-example `implement 1/1`, and later `merged 1/1`. The planner runs one loop per item and
+Watch the status line and `bin/wuwei nudges`. The status line counts items in words, for
+example `1 building`, and later `1 shipped`. The planner runs one loop per item and
 executes each returned action unchanged:
 
 1. Worktree and builder brief: `wuwei worktree add <item>`, then

@@ -144,7 +144,8 @@ def test_observed_merge_moves_raised_to_merged(case, monkeypatch, capsys, phase)
     assert merged == f'- A ({REF})'
     assert main(['status', '--line']) == 0
     line = capsys.readouterr().out
-    assert 'merged 1/' in line and phase not in line
+    from wuwei.commands import status
+    assert '1 shipped' in line and status.WORDS[phase] not in line
 
 
 @pytest.mark.parametrize('phase', ['delta', 'parked'])
