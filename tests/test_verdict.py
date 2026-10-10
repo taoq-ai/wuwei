@@ -749,3 +749,49 @@ def test_write_guard_refuses_fix_without_parsed_blocker(tmp_path):
     code, message = check_write({'cwd': str(tmp_path), 'tool_name': 'Write',
                                  'tool_input': {'file_path': str(path), 'content': HEADING_FIX}})
     assert code == 1 and 'FIX verdict but no blocking finding parsed' in message
+QUALITY_FIX = VALID + 'Simplicity: none\nDesign: none\n'
+DOCS_REJECTED = ['the docs value is missing', 'Docs value: missing', 'docs path not recorded',
+                 'no docs value was set', 'DOC: required; value missing']
+DOCS_ACCEPTED = ['the docs path docs/x.md is missing the --json flag',
+                 'docs value none is wrong for a changed command', 'the return value missing a zone']
+
+
+def docs_finding(text):
+    return QUALITY_FIX.replace('fails when input is empty', f'{text}; fails when input is empty')
+
+
+@pytest.mark.parametrize('text,code', [(text, 1) for text in DOCS_REJECTED] + [(text, 0) for text in DOCS_ACCEPTED])
+def test_lint_refuses_a_recorded_docs_value_called_missing(text, code):
+    # #667: a gate never calls a recorded docs value missing.
+    from wuwei.verdict import lint
+    result, message = lint(docs_finding(text), quality=True, class_sweep=True, docs=('X', 'docs/x.md'))
+    assert result == code, message
+    if code:
+        assert ('finding 1: says the docs value is missing, but X records docs docs/x.md '
+                '(bin/wuwei why X --json)') in message
+    assert lint(docs_finding(text), quality=True, class_sweep=True)[0] == 0
+
+
+def test_lint_file_reads_the_docs_value_at_lint_time(tmp_path, monkeypatch):
+    from wuwei import state, verdict, workspace
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    config = tmp_path / '.wuwei/config.toml'
+    config.write_text('[docs]\nsystem = "notion"\n')
+    state._write_state(lambda data: data.update(
+        items={'A': {'phase': 'gate', 'status': 'running', 'gates': {'tier': 'standard'}}},
+        seats={'quality-1': {'item': 'A', 'role': 'sentinel-quality', 'status': 'stopped'}}),
+        tmp_path, reserved=False)
+    decisions = workspace.day_dir(tmp_path) / 'decisions'
+    decisions.mkdir()
+    path, unknown = decisions / 'gate-quality-1.md', decisions / 'gate-unknown-1.md'
+    for file in (path, unknown):
+        file.write_text(docs_finding('the docs value is missing'))
+    lint = lambda file: verdict.lint_file(file, role='sentinel-quality', root=tmp_path)
+    assert lint(path)[0] == 0
+    state._write_state(lambda data: data['items']['A'].update(docs={'value': 'docs/a.md', 'reason': ''}),
+                       tmp_path, reserved=False)
+    code, message = lint(path)
+    assert code == 1 and 'A records docs docs/a.md' in message
+    assert lint(unknown)[0] == 0
+    config.write_text('[docs]\nsystem = "none"\n')
+    assert lint(path)[0] == 0

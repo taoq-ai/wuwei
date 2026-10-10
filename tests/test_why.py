@@ -465,3 +465,57 @@ def test_why_adhoc_lists_todays_adhoc_seats(root, capsys):
     line, = capsys.readouterr().out.splitlines()
     assert line == ('adhoc seat adhoc-1: general-purpose as reviewer, launched by planner, running; '
                     'prompt: Review PR 16; traces: P:a1')
+
+
+def live_item(root, tier='standard', config='[docs]\nsystem = "notion"\n'):
+    """#667: item X at the gate with a speckit directory in its worktree."""
+    (root / '.wuwei/config.toml').write_text(config)
+    (root / 'tree/specs/001-x').mkdir(parents=True)
+    day = day_of(root)
+    day.mkdir(parents=True, exist_ok=True)
+    (day / 'state.json').write_text(json.dumps({'items': {'X': {
+        'phase': 'gate', 'status': 'running', 'gates': {'tier': tier}, 'worktree': str(root / 'tree')}}}))
+    state.append_event('plan.approved', {'items': ['X'], 'approved_items': ['X'], 'flags': {}}, directory=day)
+
+
+def live(capsys, *argv):
+    code, lines, err = why(capsys, 'X', '--json', *argv)
+    assert code == 0 and err == ''
+    return json.loads('\n'.join(lines))
+
+
+def test_why_json_reads_the_record_at_call_time(root, capsys):
+    live_item(root)
+    out = live(capsys)
+    assert out['docs']['value'] == 'missing' and out['docs']['reason'] == ''
+    assert 'plan set X docs=' in out['docs']['command']
+    assert (out['item'], out['day'], out['ticket']) == ('X', DAY, None)
+    assert out['spec'] == 'speckit artifacts: specs/001-x'
+    assert out['steps'] == why(capsys, 'X')[1]
+
+    def update(data):
+        data['items']['X']['docs'] = {'value': 'page-1', 'reason': 'updated'}
+        data['tickets'] = {'X': {'id': 'acme/w#5'}}
+    state._write_state(update, root, reserved=False)
+    out = live(capsys)
+    assert (out['docs']['value'], out['docs']['reason'], out['ticket']) == ('page-1', 'updated', 'acme/w#5')
+
+
+def test_why_json_light_tier_and_no_spec_engine(root, capsys):
+    live_item(root, tier='light', config='[docs]\nsystem = "notion"\n[spec]\nengine = "none"\n')
+    out = live(capsys)
+    assert out['docs'] == {'value': 'n/a', 'reason': '', 'command': None} and out['spec'] is None
+
+
+def test_why_json_reads_an_item_only(root, capsys):
+    live_item(root)
+    assert why(capsys, 'Y', '--json')[0] == 1
+    for target in (['D-3'], ['last', 'refusal'], ['draft-' + '0' * 32]):
+        code, lines, err = why(capsys, *target, '--json')
+        assert (code, lines) == (2, []) and '--json reads an item' in err
+
+    def update(data):
+        data['items']['X']['docs'] = {'value': 'none', 'reason': f'leaked {TOKEN}'}
+    state._write_state(update, root, reserved=False)
+    out = live(capsys)
+    assert TOKEN not in json.dumps(out) and '[REDACTED]' in out['docs']['reason']

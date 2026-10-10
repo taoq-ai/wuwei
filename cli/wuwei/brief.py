@@ -25,6 +25,9 @@ def launch_prompt(brief_path, charter, *, root=None):
 LIGHT_GATE = ('Depth: light; skip: gate step zero, the Probe or Mutation row, the class-sweep line, '
               'the Simplicity and Design rows, the retro note when every line would be none; '
               'verdict: Verdict:, Head:, findings')
+# #667: the values the day changes under a seat are read live, never copied into the brief.
+LIVE = ('Live: run bin/wuwei why {item} --json when you start and again before your verdict or handoff; '
+        'its docs, ticket and spec fields are the record at that moment. This brief copies none of them.')
 
 
 def depth_line(role, value, worktree, paths=(), trust_paths=(), flags=None):
@@ -465,9 +468,9 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         if track == 'SLICE' and protected:
             raise Refused('SLICE brief touches protected paths: ' + ', '.join(protected) + '; use --track FULL')
         header.append(f'Track: {track}')
-        if role == 'builder' or gate:
+        if role == 'builder':
             from wuwei import specmode
-            line = specmode.brief_line(config, item, current, tree, gate)
+            line = specmode.brief_line(config, item, current, tree, False)
             if line:
                 header.append(line)
         # #664: after the body, never in the header: the header is cut at its first blank line.
@@ -519,6 +522,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         line = docs.brief_line(config, current, item, role)
         if line:
             header.append(line)
+        if role == 'builder' or gate:
+            header.append(LIVE.format(item=item))
         header += rulings(body, directory, tree, data)
         for repo in config['repos']:
             for other in sorted(set(re.findall(re.escape(repo['name']) + r'#[0-9]+', body))):

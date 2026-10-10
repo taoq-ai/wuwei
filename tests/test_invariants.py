@@ -1295,6 +1295,20 @@ def i43(case, rules):
                 return f'{flags}: step zero runs on a non-guard diff'
         return None
     return rules.memo(('step zero flags',), compute)
+def i46(case, rules):
+    """#667: a gate verdict never calls a recorded docs value missing: verdict.lint refuses a
+    finding that says the docs value is missing while a value is recorded, and adds nothing when
+    none is recorded or the finding is about the page itself."""
+    def compute():
+        from test_verdict import DOCS_ACCEPTED, DOCS_REJECTED, docs_finding
+        from wuwei import verdict
+        for text in DOCS_REJECTED + DOCS_ACCEPTED:
+            recorded = verdict.lint(docs_finding(text), quality=True, class_sweep=True, docs=('X', 'docs/x.md'))[0]
+            unset = verdict.lint(docs_finding(text), quality=True, class_sweep=True)[0]
+            if (recorded, unset) != (int(text in DOCS_REJECTED), 0):
+                return f'{text!r}: lint exits {recorded} with a recorded value, {unset} without'
+        return None
+    return rules.memo(('docs missing',), compute)
 
 
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
@@ -1308,7 +1322,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I40': i40,
               'I36': i36, 'I37': i37, 'I52': i52,
               'I36': i36, 'I37': i37, 'I42': i42, 'I55': i55,
-              'I36': i36, 'I37': i37, 'I42': i42, 'I43': i43}
+              'I36': i36, 'I37': i37, 'I42': i42, 'I43': i43,
+              'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46}
 
 
 def project(case):
@@ -1334,7 +1349,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (),
          'I52': (0,),
          'I55': OUTWARD,
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I42': (), 'I43': ()}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I42': (), 'I43': (),
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
@@ -1431,6 +1447,8 @@ BROKEN = {
         import_module('wuwei.dispatch'), 'AGENT_DOCS', ()),
     'a fix round past the cap': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.dispatch'), 'rounds_used', lambda data, item: 0),
+    'docs-missing rule off': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.verdict'), 'DOCS_MISSING', re.compile(r'(?!)')),
     'owner_merge ignored': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.merge'), 'owner_hold', lambda item: None),
     'an untyped launch refused below strict': lambda monkeypatch: monkeypatch.setattr(

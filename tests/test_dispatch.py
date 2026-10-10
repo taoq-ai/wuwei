@@ -1430,6 +1430,16 @@ def test_quality_pass_refused_while_docs_value_missing(root):
     record(root, 'arch', 'arch-1', PASS)
 
 
+def test_quality_fix_refused_when_it_calls_a_recorded_docs_value_missing(root):
+    # #667: the lint reads the docs value at receive time, not the brief's copy.
+    from wuwei import dispatch, docs
+    docs_root(root)
+    docs.assign('A', 'none', 'internal refactor', root)
+    with pytest.raises(dispatch.Refused, match='records docs none'):
+        record(root, 'quality', 'quality-1', DOC_FIX.replace('fails when empty', 'the docs value is missing; fails when empty'))
+    assert state.read_state(root)['gate_verdicts'] == {}
+
+
 def test_quality_pass_recorded_after_docs_value(root):
     from wuwei import docs
     docs_root(root)
