@@ -12,6 +12,29 @@ from wuwei.exits import ADAPTER_DATA, DAMAGED
 RELATIVE = ('.venv/', 'venv/', 'node_modules/.bin/')
 # #600: an empty fast-check list is a state, not a wall
 NONE = 'fast checks: none configured; CI and the gates are the evidence'
+# #648: a lint location at a line start (ruff, flake8, mypy; ruff's full form starts with -->)
+LOCATION = re.compile(r'^\s*(?:-->\s*)?(?:\./)?([\w.-]+(?:/[\w.-]+)*):\d+', re.M)
+SUMMARY = re.compile(r'^(?:FAILED|ERROR) ', re.M)  # pytest's summary, collection errors included
+
+
+def unchanged(failures, changed, tree):
+    """#648: [(check, first failing path)] when every failure names lint locations only on
+    worktree files the item did not change, else []. A test failure never qualifies: an
+    unchanged test usually fails because of the item's own change.
+    ponytail: a path heuristic for file-local linters; a cross-file checker failing in an
+    unchanged file because of the item's change reads as main broken. Upgrade: confirm across
+    two items, or run the check at the merge base."""
+    held = []
+    for check, result in failures:
+        error = result.get('error') if isinstance(result, dict) else None
+        if not isinstance(error, str) or result.get('test_ids') or SUMMARY.search(error):
+            return []
+        paths = [path for path in LOCATION.findall(error)
+                 if '..' not in path.split('/') and (Path(tree) / path).is_file()]
+        if not paths or set(paths) & set(changed):
+            return []
+        held.append((check, paths[0]))
+    return held
 
 
 def interpreter(command, worktree, repo, root, config):
