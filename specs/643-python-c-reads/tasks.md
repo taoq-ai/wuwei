@@ -40,7 +40,7 @@ files while working, then the full suite.
   `> {_STATE}` returns exit 1. Update the exact reason asserted in
   `test_issue_349_writes_refused_in_every_posture` (line 928) to the new token reason.
   Red: the reasons carry no token.
-- [X] T007 Test in `tests/test_invariants.py`: `i36` per posture (`READS['I36'] = (0,)`, added
+- [X] T007 Test in `tests/test_invariants.py`: `i37` per posture (`READS['I37'] = (0,)`, added
   to `INVARIANTS`), memoized like `Rules.opaque`: the read of the day `state.json` (path from
   `workspace.day_dir(rules.root)`, relative to the root) through `rules.hook` exits 0;
   `check_bash` on the `'w'` and `write_text` snippets returns 2 with the token in the reason.
@@ -62,7 +62,7 @@ files while working, then the full suite.
 
 ## Phase 4: docs (FR-005, FR-006)
 
-- [X] T009 Add row I36 to the 9.2 table in `docs/specs/2026-09-24-wuwei-design.md` (text in
+- [X] T009 Add row I37 to the 9.2 table in `docs/specs/2026-09-24-wuwei-design.md` (text in
   `plan.md`).
 - [X] T010 `docs/site/security.md` line 66: one sentence after the read-only words: a
   `python -c` snippet with no write-like token is a read; any other snippet that names a
