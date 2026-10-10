@@ -38,7 +38,7 @@ def test_linear_transition_resolves_team_state_once(monkeypatch):
                                        'pageInfo': {'hasNextPage': False}}}
         return {'issue': {'team': {'id': 'team-1'}}}
     monkeypatch.setattr(linear, '_query', query)
-    linear._state_ids.clear()
+    monkeypatch.setattr(linear, '_state_ids', {})
     assert linear.transition('ABC-1', 'In Review').exit == 0
     assert linear.transition('ABC-1', 'In Review').exit == 0
     assert calls.count({'team': 'team-1'}) == 1
@@ -56,7 +56,7 @@ def test_linear_transition_resolves_name_starting_with_state(monkeypatch):
                                        'pageInfo': {'hasNextPage': False}}}
         return {'issue': {'team': {'id': 'team-2'}}}
     monkeypatch.setattr(linear, '_query', query)
-    linear._state_ids.clear()
+    monkeypatch.setattr(linear, '_state_ids', {})
     assert linear.transition('ABC-1', 'state-review').exit == 0
     assert calls[-1][1]['input'] == {'stateId': 'uuid-state'}
 
