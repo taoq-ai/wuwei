@@ -21,6 +21,13 @@ def register(subparsers):
     parser.set_defaults(func=run)
 
 
+def parked_line(item, action):
+    """#661: a parked item names its card, never a host-terminal command."""
+    ident = Path(action['decision']).stem
+    return (f'build: parked {item}: {action["reason"]}; decision {ident}; ask the owner with '
+            f'bin/wuwei decision show {ident} --widget and run its record command, then resume the item')
+
+
 def run(args):
     try:
         if args.operation in ('next', 'check'):
@@ -33,7 +40,7 @@ def run(args):
                 if code == 1:
                     action = state.read_state(root).get('builds', {}).get(item, {}).get('action', {})
                     if action.get('action') == 'park':
-                        print(f'build: parked {item}: {action["reason"]}; decision {action["decision"]}; the owner answers it with bin/wuwei decision outcome {action["decision"]} <option> in a host terminal, then resume the item', file=sys.stderr)
+                        print(parked_line(item, action), file=sys.stderr)
                     elif action.get('action') == 'continue':
                         print(action['feedback'], file=sys.stderr)
                 return code
@@ -504,7 +511,7 @@ def run_loop(item, brief, worktree, *, root=None):
                 if action['action'] == 'done':
                     return 0
                 if action['action'] == 'park':
-                    print(f'build: parked {item}: {action["reason"]}; decision {action["decision"]}; the owner answers it with bin/wuwei decision outcome {action["decision"]} <option> in a host terminal, then resume the item', file=sys.stderr)
+                    print(parked_line(item, action), file=sys.stderr)
                     return 1
                 if action['action'] == 'check':
                     check(item, root=root)

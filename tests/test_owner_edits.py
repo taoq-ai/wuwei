@@ -8,7 +8,7 @@ import sys
 import pytest
 
 from wuwei import integrity, registry, state
-from wuwei.guards.protect_state import check_bash, check_file
+from wuwei.guards.protect_state import CARD_FIRST, check_bash, check_file
 
 ROOT = Path(__file__).resolve().parents[1]
 GOALS = '# Goals\n## G-1\noutcome: Ship\nmeasure: shipped\ntarget: 1\ndate: 2026-10-30\npriority: 1\n'
@@ -198,8 +198,7 @@ def test_strict_prints_host_terminal_command(tmp_path, monkeypatch):
 def test_gate_allowance_needs_question_file_and_planner(tmp_path, monkeypatch):
     _, draft = gated(tmp_path, monkeypatch, topics=())
     command = f'bin/wuwei goals edit --file {draft}'
-    code, reason = edit(tmp_path, command)
-    assert code == 1 and reason.endswith(f'Run it in a host terminal: {command}')
+    assert edit(tmp_path, command) == (1, CARD_FIRST)  # #661: below strict, a card
     from test_decision import gate
     from wuwei.guards.decision import record_gate
     record_gate(gate(tmp_path))
@@ -236,15 +235,17 @@ DECIDE = ('The owner answers decisions, outside agent tools; show it with bin/wu
           '<id> --widget. The owner runs bin/wuwei decide <id> <option> in a host terminal.')
 
 
-def asked_decision(tmp_path, monkeypatch, posture='guarded', ask=True):
+def asked_decision(tmp_path, monkeypatch, posture='guarded', ask=True, reply=None):
     """The planner asked the owner about today's D-3 record through the gate (#354)."""
     from test_decision import VALID, save
     from wuwei.guards.decision import record_gate
     gated(tmp_path, monkeypatch, posture, topics=())
     save(tmp_path, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
     if ask:
+        answered = {'tool_response': {'answers': {'D-3: Which fix?': reply}}} if reply else {}
         assert record_gate({'cwd': str(tmp_path), 'session_id': 'planner-1', 'tool_name': 'AskUserQuestion',
-                            'tool_input': {'questions': [{'question': 'D-3: Which fix?', 'header': 'D-3'}]}}) == (0, '')
+                            'tool_input': {'questions': [{'question': 'D-3: Which fix?', 'header': 'D-3'}]},
+                            **answered}) == (0, '')
 
 
 @pytest.mark.parametrize('posture', ['observe', 'guarded'])
@@ -256,14 +257,47 @@ def test_planner_records_asked_decision(tmp_path, monkeypatch, posture):
                             ('bin/wuwei mcp decide proceed-unmeasured aws',
                              "MCP decisions are the owner's, outside agent tools: show the request, and the owner "
                              'runs bin/wuwei mcp decide <id> <option> in a host terminal.')):
-        assert edit(tmp_path, command) == (1, f'{reason} Run it in a host terminal: {command}')
+        assert edit(tmp_path, command) == (1, CARD_FIRST)
     assert edit(tmp_path, 'bin/wuwei decide D-3 B', agent_id='a1') == (1, DECIDE)
 
 
-def test_unasked_or_strict_decision_prints_host_terminal_command(tmp_path, monkeypatch):
+@pytest.mark.parametrize('posture', ['observe', 'guarded'])
+def test_planner_records_an_asked_decision_outcome(tmp_path, monkeypatch, posture):
+    """#661: decision outcome writes the same record as decide, so the planner runs it for
+    a decision it asked; a card hash must be the owner's recorded answer on that card."""
+    from wuwei import sessions
+    asked_decision(tmp_path, monkeypatch, posture, reply='B')
+    known = sessions.card_topic('D-3', 'B').split('=')[1]
+    command = 'bin/wuwei decision outcome D-3 B'
+    for line in (command, f'{command} --from-card {known[:12]}', f'{command} --card {known}',
+                 f'{command} --card={known[:12]}', f'bin/wuwei decide D-3 B --from-card {known[:12]}'):
+        assert edit(tmp_path, line) == (0, ''), line
+    for line in (f'{command} --from-card abcdef012345', f'{command} --card=abcdef012345',
+                 'bin/wuwei decide D-3 B --from-card abcdef012345', f'{command} --from-card='):
+        code, reason = edit(tmp_path, line)
+        assert code == 1 and 'Unknown card hash' in reason and 'decision show D-3 --widget' in reason, line
+    assert edit(tmp_path, command, agent_id='a1')[0] == 1
+    assert check_bash({'cwd': str(tmp_path), 'session_id': 'other',
+                       'tool_input': {'command': command}})[0] == 1
+    assert edit(tmp_path, f'{command} --from-card D-4')[0] == 1
+
+def test_unasked_decision_names_the_card(tmp_path, monkeypatch):
     asked_decision(tmp_path, monkeypatch, ask=False)
-    assert edit(tmp_path, 'bin/wuwei decide D-3 B') == (
-        1, f'{DECIDE} Run it in a host terminal: bin/wuwei decide D-3 B')
+    assert edit(tmp_path, 'bin/wuwei decide D-3 B') == (1, CARD_FIRST)
+
+
+def test_unasked_decision_outcome_names_the_card(tmp_path, monkeypatch):
+    """#661: below strict the planner is never handed a command for the owner to paste."""
+    asked_decision(tmp_path, monkeypatch, ask=False)
+    assert edit(tmp_path, 'bin/wuwei decision outcome D-3 B') == (1, CARD_FIRST)
+    assert 'decision show <id> --widget' in CARD_FIRST and 'host terminal' not in CARD_FIRST
+
+
+def test_strict_decision_outcome_prints_it_without_the_hash(tmp_path, monkeypatch):
+    asked_decision(tmp_path, monkeypatch, 'strict')
+    for flag in ('--from-card abcdef012345', '--card=abcdef012345'):
+        code, reason = edit(tmp_path, f'bin/wuwei decision outcome D-3 B {flag}')
+        assert code == 1 and reason.endswith('Run it in a host terminal: bin/wuwei decision outcome D-3 B')
 
 
 def test_strict_asked_decision_prints_host_terminal_command(tmp_path, monkeypatch):
@@ -294,7 +328,7 @@ def test_planner_records_asked_draft(tmp_path, monkeypatch, posture):
     for command in (f'bin/wuwei drafts approve {draft_id}', f'bin/wuwei drafts drop {draft_id}'):
         assert edit(tmp_path, command) == (0, '')
     other = f'bin/wuwei drafts approve {pending_draft(tmp_path)}'
-    assert edit(tmp_path, other) == (1, f'{APPROVE} Run it in a host terminal: {other}')
+    assert edit(tmp_path, other) == (1, CARD_FIRST)
     command = f'bin/wuwei drafts approve {draft_id}'
     assert edit(tmp_path, command, agent_id='a1') == (1, APPROVE)
     assert check_bash({'cwd': str(tmp_path), 'session_id': 'other',
@@ -307,9 +341,8 @@ def test_draft_approve_needs_the_owner_send_answer(tmp_path, monkeypatch, answer
     the drafted text; --file needs the Send with an edit answer (#493)."""
     draft_id = asked_draft(tmp_path, monkeypatch, answer=answer)
     plain, edited = f'bin/wuwei drafts approve {draft_id}', f'bin/wuwei drafts approve {draft_id} --file reply.txt'
-    assert edit(tmp_path, plain) == (1, f'{APPROVE} Run it in a host terminal: {plain}')
-    assert edit(tmp_path, edited) == ((0, '') if answer == 'Send with an edit' else
-                                      (1, f'{APPROVE} Run it in a host terminal: {edited}'))
+    assert edit(tmp_path, plain) == (1, CARD_FIRST)
+    assert edit(tmp_path, edited) == ((0, '') if answer == 'Send with an edit' else (1, CARD_FIRST))
     assert edit(tmp_path, f'bin/wuwei drafts drop {draft_id}') == (0, '')
 
 

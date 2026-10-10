@@ -234,7 +234,7 @@ settings the shepherd reads: `owner.handles`, `shepherd.lead_login`, `shepherd.a
 empty one warns with `will block: <what> at <phase>` and the `config set` line, a `none`
 adapter is ok with what discovery and the shepherd skip, and with `shepherd.min_reviewers = 0`
 the reviewer rows are not applicable), Day and sessions
-(state, planner, watch, listener, shepherd, heartbeat, stuck seats, open pages, nudges, traces gaps, untraced subagents, pre-#352 trace decisions) and Guards (the heartbeat
+(state, planner, watch, listener, shepherd, heartbeat, stuck seats, open pages, nudges, traces gaps, untraced subagents, pre-#352 trace decisions, answered cards not recorded) and Guards (the heartbeat
 hook probes, plus `hook PreToolUse` from a directory outside any workspace, which must
 allow). It works before there is a workspace: the Workspace section then names where to run
 `bin/wuwei init --shadow`.
@@ -425,7 +425,7 @@ These are owner actions. Agent tool hooks refuse them inside a workspace, so run
 | Command | Asks y/N |
 | --- | --- |
 | `bin/wuwei decide D-<n> <option> [--note <text>]` (the planner records a decision it asked in the session, outside strict) | yes |
-| `bin/wuwei decision outcome D-<n> <option>` | yes |
+| `bin/wuwei decision outcome D-<n> <option>` (the planner records a decision it asked in the session, outside strict) | yes |
 | `bin/wuwei state recover` | yes |
 | `bin/wuwei integrity reconfirm` | yes |
 | `bin/wuwei mcp decide D-<n> <option>` and `mcp decide proceed-unmeasured <server>...` | yes |

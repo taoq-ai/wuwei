@@ -12,6 +12,8 @@ def register(subparsers):
     parser.add_argument('id')
     parser.add_argument('option')
     parser.add_argument('--note', help='one line appended to the record Notes')
+    parser.add_argument('--card', '--from-card', dest='card', metavar='HASH',
+                        help="the owner's answer hash on the card (#661; the CLI binds it with #599)")
     parser.set_defaults(func=run)
 
 

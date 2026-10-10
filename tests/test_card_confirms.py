@@ -430,6 +430,12 @@ def test_hook_passes_config_set_from_an_asked_card(ws):
     assert hook(ws, 'bin/wuwei config set cap 5 --from-card D-1', session_id='other')[0] == 1
 
 
+def test_hook_config_set_below_strict_keeps_its_reason_without_a_command(ws):
+    """#661: below strict the planner gets the card-first table reason, no command to paste."""
+    from wuwei.guards.protect_state import _OWNER_ACTIONS
+    config_card(ws)
+    assert hook(ws, 'bin/wuwei config set cap 5') == (1, _OWNER_ACTIONS[('config', 'set')])
+
 def test_hook_under_strict_prints_the_host_terminal_command(ws):
     config_card(ws)
     strict(ws)

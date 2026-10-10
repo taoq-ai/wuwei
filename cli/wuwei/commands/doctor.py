@@ -631,6 +631,14 @@ def _day(root, config, probes):
                              'wuwei doctor --fix', apply='trace-decisions'))
     except (OSError, ValueError) as exc:
         rows.append(_row('day', 'trace decisions', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
+    try:
+        ids = _unrecorded(root)
+        rows.append(_row('day', 'answered cards', 'warn' if ids else 'ok',
+                         f'{", ".join(ids)} answered on a card, not recorded' if ids else 'none',
+                         "the planner runs each card's record command (wuwei decision show <id> --widget "
+                         'names it); under strict you run it in a host terminal'))
+    except (OSError, ValueError) as exc:
+        rows.append(_row('day', 'answered cards', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
     return rows
 
 
@@ -669,6 +677,32 @@ def _legacy_traces(root):
             and (text := path.read_text(encoding='utf-8')).startswith(LEGACY_TRACE)
             and re.search(r'^Outcome: pending$', text, re.M)
             and decision.answered(data, path.stem) is None]
+
+
+def _unrecorded(root):
+    """#661: cards the owner answered whose record command never ran (Keep and Undo answers
+    on an undo card record nothing more)."""
+    from wuwei import decision, drafts, sessions, state
+    data = state.read_state(root)
+    topics = {topic for row in data.get('sessions', {}).values() for topic in row.get('gate_asked', ())}
+    queue = drafts.read(data)
+    found = {ident for topic in topics if re.fullmatch(r'D-[1-9][0-9]*=[0-9a-f]{64}', topic)
+             and topic not in (sessions.card_topic(ident := topic.split('=')[0], 'Keep'),
+                               sessions.card_topic(ident, 'Undo'))
+             and decision.answered(data, ident) is None and not _owner_on_file(ident, root)}
+    found |= {ident for topic in topics if re.fullmatch(r'draft-[0-9a-f]{32}:(?:send|edit|text:.*)', topic)
+              and queue.get(ident := topic.split(':')[0], {}).get('status') == 'pending'}
+    return sorted(found)
+
+
+def _owner_on_file(ident, root):
+    """mcp.decide records the owner's option in the D-n file only, never in decision_outcomes."""
+    from wuwei import decision
+    try:
+        text = decision.today_path(ident, root).read_text(encoding='utf-8')
+    except (OSError, UnicodeError):
+        return False
+    return bool(re.search(r'^Decided-by: owner$', text, re.M) and re.search(r'^Outcome: (?!pending$)\S', text, re.M))
 
 
 def _guards(root, probes):
