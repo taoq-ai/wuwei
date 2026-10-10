@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 SILENT = ('item.progress', 'traces.noted', 'remote.acknowledged', 'state.write', 'state.set', 'state.transition',
-          'seat started', 'seat stopped', 'seat launched', 'brief written',
+          'seat started', 'seat stopped', 'seat launched', 'seat adhoc', 'brief written',
           'spec.step', 'spec.skipped', 'spec.override',
           'brief.pack', 'brief.answer', 'session.seen', 'session.rotated', 'item.claimed', 'worktree.adopted', 'worktree.created',
           'draft.sending', 'draft.approved', 'draft.sent', 'draft.dropped', 'outward.ai_tells', 'outward.lint', 'outward.to_owner',

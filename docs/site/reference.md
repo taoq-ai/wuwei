@@ -65,7 +65,7 @@ Every command `bin/wuwei --help --all` prints; `bin/wuwei --help` groups them an
 | `bin/wuwei shadow` | `report` lists what the guards would have refused since `guards.shadow_since`, grouped by guard, and names likely false positives. | [Security posture](concepts.md#security-posture) |
 | `bin/wuwei retro` | Compiles the steward retro. | [Retro and merge](#retro-and-merge-configuration) |
 | `bin/wuwei runtime` | Dispatches and inspects runtime jobs. | [Recovery](recovery.md#runtime-dispatch) |
-| `bin/wuwei seat` | Recovers a stuck seat: records its report from a file, or stops it as unmeasured. | [Stuck seats](#stuck-seats) |
+| `bin/wuwei seat` | Recovers a stuck seat: records its report from a file, or stops it as unmeasured. Records an ad-hoc seat before its Agent launch. | [Stuck seats](#stuck-seats) |
 | `bin/wuwei sessions` | Lists registered sessions, roles and claims. | [Sessions](#sessions) |
 | `bin/wuwei signal` | Plumbing: classifies attention. | |
 | `bin/wuwei spec` | Plumbing: `spec analysis <item>` saves the spec-kit analyze report as `analysis.md`. A Claude Code subagent cannot write that file itself. The report comes on stdin or with `--file PATH`. It goes to the one spec directory of the item worktree, which must hold `spec.md`. The command prints the path, and the builder commits the file. It exits 2 and writes nothing for an unknown item, no worktree, no or two spec directories, no `spec.md`, a symlink or an empty report. | [Configuration](configuration.md#specification-mode) |
@@ -234,7 +234,7 @@ settings the shepherd reads: `owner.handles`, `shepherd.lead_login`, `shepherd.a
 empty one warns with `will block: <what> at <phase>` and the `config set` line, a `none`
 adapter is ok with what discovery and the shepherd skip, and with `shepherd.min_reviewers = 0`
 the reviewer rows are not applicable), Day and sessions
-(state, planner, watch, listener, shepherd, heartbeat, stuck seats, open pages, nudges, traces gaps, pre-#352 trace decisions) and Guards (the heartbeat
+(state, planner, watch, listener, shepherd, heartbeat, stuck seats, open pages, nudges, traces gaps, untraced subagents, pre-#352 trace decisions) and Guards (the heartbeat
 hook probes, plus `hook PreToolUse` from a directory outside any workspace, which must
 allow). It works before there is a workspace: the Workspace section then names where to run
 `bin/wuwei init --shadow`.
@@ -315,6 +315,8 @@ Several Claude Code sessions can work in one workspace. Once today's `state.json
 A seat launched in the background ends with the harness's structured hand-back, and its SubagentStop carries no `last_assistant_message`. The hook reads the report from the seat's own transcript (the hand-back's message, or the last assistant turn's text) and every SubagentStop guard sees it, as for a foreground seat. When the report cannot be read, the hook stops the seat with status `unmeasured` and a `reason`, records `seat stopped` with both, and exits 2 naming the recovery command; the seat never stays `running`.
 
 `bin/wuwei seat stop <name> --verdict <file>` records the seat's report from the file through the same SubagentStop guards (a sentinel's file must pass the verdict lint first). `bin/wuwei seat stop <name> --unmeasured "<reason>"` stops it as unmeasured so the day can move; a builder's running build parks with that reason. Under `strict` it is an owner action: answer y at the host terminal. Under `observe` and `guarded` it runs from a host terminal or today's planner session. `bin/wuwei next`, the doctor `stuck seats` row and the heartbeat `seats` probe name it for a running seat whose transcript ends in the hand-back with no stop, and for a seat the hook stopped as unmeasured.
+
+An agent launched in the workspace with a type outside the WUWEI seats (`general-purpose`, `Explore`, another plugin's agent) is an adhoc seat once the day's `state.json` exists (#676). The Agent launch guard registers it as `adhoc-<n>` with role `adhoc`, its type, the launching session's role, the redacted first line of its prompt and the prompt's sha256. Its tool calls bind to the seat by that digest, so `traces.jsonl` spans for its session are tied to it, and its SubagentStop stops it. A SubagentStop that matches no seat records `subagent.untraced`, which the doctor `untraced subagents` row counts. Under `strict` (or `security.areas.seats = "block"`) an untyped launch is refused until the planner records it with `bin/wuwei seat start --role <role> --adhoc "<prompt>"` and launches it with the same prompt; the seat is then labelled with that role. `bin/wuwei why adhoc` lists today's adhoc seats. An adhoc seat has no report to record, so a stale one is cleared with `bin/wuwei seat stop <name> --unmeasured "<reason>"` only.
 
 ## Item phase order
 
@@ -398,7 +400,7 @@ With `security.areas.mcp = "off"`, `bin/wuwei mcp check` exits 0 with `MCP regis
 
 ## Why
 
-`bin/wuwei why <target>` reads the day records and prints why something is where it is. It writes nothing. The target is, in this order: `last refusal`, an event id, a decision id `D-<n>`, a draft id `draft-<hex>`, a target key such as `repo:<org>/<name>`, a PR ref `owner/repo#<n>`, or an item name. For a target key, `why` prints when it was first seen and how it was cleared, `seen: configured in config.toml`, or `not seen yet`; for a decision routed as a first time it adds `novel: first time for <targets>`.
+`bin/wuwei why <target>` reads the day records and prints why something is where it is. It writes nothing. The target is, in this order: `last refusal`, an event id, a decision id `D-<n>`, a draft id `draft-<hex>`, `adhoc`, a target key such as `repo:<org>/<name>`, a PR ref `owner/repo#<n>`, or an item name. `adhoc` lists today's adhoc seats (see [Stuck seats](#stuck-seats)). For a target key, `why` prints when it was first seen and how it was cleared, `seen: configured in config.toml`, or `not seen yet`; for a decision routed as a first time it adds `novel: first time for <targets>`.
 
 An event id is `<YYYY-MM-DD>:<line>`: the day directory and the 1-based line of that day's append-only `events.jsonl`.
 

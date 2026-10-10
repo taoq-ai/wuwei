@@ -593,9 +593,16 @@ def test_gates_mcp_servers(ws):
 def test_day_rows(ws):
     rows = doctor.diagnose()
     assert names(rows, 'day') == ['state', 'planner', 'watch', 'listener', 'shepherd', 'heartbeat', 'stuck seats',
-                                  'nudges', 'traces', 'tracker']
+                                  'nudges', 'traces', 'untraced subagents', 'tracker']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'day'), rows
     assert row(rows, 'listener')['value'] == 'not used'
+    assert row(rows, 'untraced subagents')['value'] == 'none today'
+    # #676: a subagent stop that matched no seat is named, with the way to register one.
+    state.append_event('subagent.untraced', {'agent_type': 'Explore', 'agent_id': 'a1', 'reason': 'no seat'},
+                       ws.root)
+    found = row(doctor.diagnose(), 'untraced subagents')
+    assert (found['status'], found['value']) == ('warn', '1 stopped with no seat today')
+    assert 'seat start --role <role> --adhoc' in found['fix']
     ws.probes['seats'] = {'result': 'failed', 'value': 'dead: builder; run wuwei seat stop builder --verdict <file>'}
     found = row(doctor.diagnose(), 'stuck seats')
     assert found['status'] == 'fail' and 'wuwei seat stop' in found['fix']

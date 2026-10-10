@@ -816,3 +816,12 @@ def test_unanswered_setup_questions_are_asked_on_any_day(root, capsys, answered)
     assert found['widget'][0]['id'] == 'autonomy'
     ran(root, found['widget'][0]['record'].replace('<label>', 'Autonomous'))
     assert row(capsys)[1]['state'] != 'calibrate'
+
+
+@pytest.mark.parametrize('kind,producer', [('seat adhoc', 'wuwei seat start'),
+                                           ('subagent.untraced', 'wuwei hook SubagentStop')])
+def test_adhoc_seat_events_are_reserved(root, capsys, kind, producer):
+    # #676: the launch guard trusts seat adhoc; doctor counts subagent.untraced.
+    capsys.readouterr()
+    assert main(['event', kind, '{}']) == 1
+    assert f'{kind}: reserved; written by {producer}' in capsys.readouterr().err
