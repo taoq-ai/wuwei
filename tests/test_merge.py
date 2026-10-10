@@ -211,7 +211,7 @@ def test_a_held_soak_says_when_it_ends(case):
     config_change(root, 'auto = true', 'auto = true\nsoak_minutes = 180')
     base_checks(host, 'success')
     result = check(case)
-    assert (result.exit, result.reason) == (1, f'merge policy: waits: soak ends at {WAIT}'), result
+    assert (result.exit, result.reason) == (1, f'merge policy: waits: soak ends at {WAIT}; run bin/wuwei merge example/project#7 after it'), result
     assert result.data == {'next': f'run bin/wuwei merge {REF} after {WAIT}'}
     for text in (result.reason, result.data['next']):
         assert 'owner merges' not in text and 'ask the owner' not in text
@@ -237,7 +237,7 @@ def test_base_checks_are_read_only_when_the_soak_holds(case):
 def test_an_owner_rule_says_the_owner_merges(case):
     config_change(case[0], 'auto = true', 'auto = false')
     result = check(case)
-    assert (result.exit, result.reason) == (1, 'merge policy: owner merges: merge.auto is off'), result
+    assert (result.exit, result.reason) == (1, "merge policy: owner merges: merge.auto is off; run bin/wuwei merge example/project#7: it merges under the owner's grant, or asks the owner on a card"), result
     assert result.data == {'next': GRANT} and 'waits' not in result.reason
 
 
@@ -249,10 +249,10 @@ def test_cli_check_prints_the_next_step(case, monkeypatch, capsys):
     base_checks(host, 'success')
     assert main(['merge', 'check', '7']) == 1
     assert capsys.readouterr().out.splitlines() == [
-        f'merge policy: waits: soak ends at {WAIT}', f'Next: run bin/wuwei merge {REF} after {WAIT}']
+        f'merge policy: waits: soak ends at {WAIT}; run bin/wuwei merge example/project#7 after it', f'Next: run bin/wuwei merge {REF} after {WAIT}']
     config_change(root, 'auto = true', 'auto = false')
     assert main(['merge', 'check', '7']) == 1
-    assert capsys.readouterr().out.splitlines() == ['merge policy: owner merges: merge.auto is off', f'Next: {GRANT}']
+    assert capsys.readouterr().out.splitlines() == ["merge policy: owner merges: merge.auto is off; run bin/wuwei merge example/project#7: it merges under the owner's grant, or asks the owner on a card", f'Next: {GRANT}']
     host.results['checks'].data[0]['conclusion'] = 'failure'
     assert main(['merge', '7']) == 1
     assert 'Next:' not in capsys.readouterr().out

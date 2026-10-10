@@ -380,7 +380,7 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
                 checks_at(host, ref, pr['base_sha'], root), checks)
             if not fixed:
                 return Result(1, {'next': f'run bin/wuwei merge {ref} after {end.isoformat()}'},
-                              f'merge policy: waits: soak ends at {end.isoformat()}')
+                              f'merge policy: waits: soak ends at {end.isoformat()}; run bin/wuwei merge {ref} after it')
             soak = (f'skipped: fixes the broken base: {", ".join(fixed)} fail at '
                     f'{pr["base_sha"]} and pass at head')
         fresh = checked_pr(host, ref, root)
@@ -396,7 +396,8 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         if granted:  # #524: never the owner wall; the condition, then the retry
             return Result(1, None, f'merge: {exc}; no grant lifts this; run bin/wuwei pr act {ref} once it holds')
         return Result(1, {'next': f"run bin/wuwei merge {ref}: it merges under the owner's grant, "
-                                  'or asks the owner on a card'}, f'merge policy: owner merges: {exc}')
+                                  'or asks the owner on a card'},
+                      f"merge policy: owner merges: {exc}; run bin/wuwei merge {ref}: it merges under the owner's grant, or asks the owner on a card")
     except ERRORS as exc:
         return Result(2, None, f'merge policy unmeasured: {exc}; route to owner; run bin/wuwei doctor if it repeats')
 
