@@ -43,6 +43,9 @@ def run(args):
                         print(parked_line(item, action), file=sys.stderr)
                     elif action.get('action') == 'continue':
                         print(action['feedback'], file=sys.stderr)
+                        print(f'build: parked {item}: {action["reason"]}; decision {action["decision"]}; the owner answers it with bin/wuwei decision outcome {action["decision"]} <option> in a host terminal, then resume the item', file=sys.stderr)
+                    elif action.get('action') in ('continue', 'wait'):
+                        print(action.get('feedback') or action['reason'], file=sys.stderr)
                 return code
             action = next_action(item, *paths, root=root)
             if action['action'] == 'done' and state.read_state(root)['items'][item]['phase'] in ('gate', 'delta'):
@@ -113,13 +116,99 @@ def _repo(root, tree, config):
     return repo
 
 
-def _save(item, record, root, kind, expected, extra=None):
+def _save(item, record, root, kind, expected, extra=None, also=None):
     def update(data):
         builds = data.setdefault('builds', {})
         if builds.get(item) != expected:
             raise ValueError(f'build changed before recording action; {RACE}')
         builds[item] = record
+        if also:
+            also(data)
     state._write_state(update, root, reserved=False, kind=kind, payload={'item': item, **(extra or {})})
+
+
+def _continue(root, record, feedback):
+    """Resume the stopped builder with feedback: a failure round or a #648 release."""
+    from wuwei.brief import launch_prompt
+    from wuwei.security import agent_path
+    return {'action': 'continue', 'feedback': feedback, 'resume': record.get('agent_id'),
+            'agent_type': 'wuwei:builder',
+            'prompt': launch_prompt(root / record['brief'], agent_path(root, 'builder'), root=root) + '\n\n' + feedback}
+
+
+def _fix_id(data, repo, path):
+    """#648: one fix item per broken file per repository; a merged one gets a successor."""
+    base = 'fix-main-' + '-'.join(re.findall(r'[a-z0-9]+', f'{repo} {path}'.lower()))
+    fix, number = base, 1
+    while data['items'].get(fix, {}).get('phase') == 'merged':
+        number += 1
+        fix = f'{base}-{number}'
+    return fix
+
+
+def _main_broken(root, config, data, item, record, failures):
+    """#648: (check, path, fix id) when every failure is main's, else None. An unreadable
+    diff, a fix item failing on its own file or a fix the planner parked holds nothing."""
+    from wuwei import dispatch, fast_checks
+    from wuwei.brief import status
+    try:
+        _, rows = dispatch._changes(root, config, {'worktree': record['worktree']})
+        dirty = status(registry.load('vcs', config), record['worktree'], root)
+        changed = {path for change in [*rows, *dirty]
+                   for path in (change.get('path'), change.get('original_path')) if path}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    held = fast_checks.unchanged(failures, changed, record['worktree'])
+    if not held:
+        return None
+    check, path = held[0]
+    fix = _fix_id(data, record['repo'], path)
+    if fix == item or data['items'].get(fix, {}).get('phase') in ('parked', 'escalated'):
+        return None
+    return check, path, fix
+
+
+def _admit(root, row, broken):
+    """#648: the fix item through plan add (the owner-item path, no ticket below strict)."""
+    check, path, fix = broken
+    if fix in state.read_state(root)['items']:
+        return True
+    from wuwei import plan
+    try:
+        plan.add(fix, root, goal=row.get('goal'), title=f'Fix main: {path} fails {check}'[:120],
+                 source='main-broken')
+    except (OSError, ValueError):
+        pass  # a refusal holds nothing, unless a concurrent hold admitted it first
+    return fix in state.read_state(root)['items']
+
+
+def _hold(item, record, root, expected, broken):
+    """#648: the item waits on the fix item; main_broken names the check, path and items."""
+    check, path, fix = broken
+    record.update(status='ready', action={'action': 'wait', 'fix': fix, 'reason': (
+        f'main is broken: {check} fails on {path}, which {item} does not change; fix item {fix} '
+        f'repairs it. Do not fix it in this branch: {item} rebases and reruns its checks once {fix} merges')})
+
+    def entry(data):
+        found = data.setdefault('main_broken', {}).setdefault(fix, {
+            'repo': record['repo'], 'check': check, 'path': path, 'items': [],
+            'scope': f'Fix main: {path} fails {check}'[:120],
+            'evidence': f'{check} fails on {path}, a file the held items do not change',
+            'at': workspace.now().isoformat()})
+        if item not in found['items']:
+            found['items'].append(item)
+    _save(item, record, root, 'build.held', expected, {'fix': fix}, also=entry)
+
+
+def _release(item, record, data, root):
+    """#648: the fix item ended: the builder rebases and the fast checks rerun."""
+    fix = record['action']['fix']
+    feedback = (f"Main fix {fix} is {data['items'].get(fix, {}).get('phase')}. Rebase this branch onto "
+                'the current base branch and run the fast checks; change nothing else unless a check '
+                'still fails.')
+    released = {**record, 'action': _continue(root, record, feedback)}
+    _save(item, released, root, 'build.released', record, {'fix': fix})
+    return released['action']
 
 
 def _busy(item, record):
@@ -155,6 +244,8 @@ def next_action(item, brief=None, worktree=None, *, root=None):
     path = (root / brief).resolve(strict=True)
     if record is not None:
         if str(path.relative_to(root)) == record['brief'] and str(tree) == record['worktree']:
+            if record['action']['action'] == 'wait' and not state.held(data, item):
+                return _release(item, record, data, root)
             return record['action']
         if record['status'] not in ('done', 'parked'):
             raise ValueError(f'cannot replace an unfinished build with a new brief; run bin/wuwei build next {item} to finish it first')
@@ -387,7 +478,12 @@ def complete_checks(item, results, *, root, expected=None):
                 return 1
             failures.append((command, result.data))
     config = workspace.load_config(root)
-    row = state.read_state(root)['items'][item]
+    data = state.read_state(root)
+    row = data['items'][item]
+    broken = failures and _main_broken(root, config, data, item, record, failures)
+    if broken and _admit(root, row, broken):
+        _hold(item, record, root, expected, broken)
+        return 1
     if not failures and row['phase'] in ('implement', 'fix'):
         # Design 5.10: the move to the gates needs every spec step, implementation included.
         from wuwei import specmode
@@ -406,13 +502,8 @@ def complete_checks(item, results, *, root, expected=None):
         if reason:
             _park(root, item, record, reason, expected)
             return 1
-        from wuwei.brief import launch_prompt
-        from wuwei.security import agent_path
         feedback = '\n'.join(f'{name}: {json.dumps(data)}' for name, data in failures)
-        action = {'action': 'continue', 'feedback': feedback, 'resume': record.get('agent_id'),
-                  'agent_type': 'wuwei:builder',
-                  'prompt': launch_prompt(root / record['brief'], agent_path(root, 'builder'), root=root) + '\n\n' + feedback}
-        record.update(status='ready', action=action)
+        record.update(status='ready', action=_continue(root, record, feedback))
     _save(item, record, root, 'build.checked', expected,
           {'passed': len(results) - len(failures), 'failed': len(failures)})
     after = {'implement': 'gate', 'fix': 'delta'}.get(state.read_state(root)['items'][item]['phase'])
@@ -512,6 +603,9 @@ def run_loop(item, brief, worktree, *, root=None):
                     return 0
                 if action['action'] == 'park':
                     print(parked_line(item, action), file=sys.stderr)
+                    return 1
+                if action['action'] == 'wait':
+                    print(f'build: {item} waits: {action["reason"]}; run bin/wuwei build {item} <brief> <worktree> again once {action["fix"]} merges', file=sys.stderr)
                     return 1
                 if action['action'] == 'check':
                     check(item, root=root)

@@ -449,9 +449,10 @@ def launch_set(root=None):
     for name in builds:
         if name not in busy:
             add(name, lambda: build.next_action(name, root=root))
-    building = len(builds)
+    seated = [name for name in builds if not state.held(data, name)]  # #648: a held item takes no seat
+    building = len(seated)
     share = Counter(data.get('goal_seats', {}))
-    share.subtract(goal(name) for name in builds)
+    share.subtract(goal(name) for name in seated)
     first, rest = [], []
     for name in (name for name in names if items[name]['phase'] == 'planned'):
         (first if share[goal(name)] > 0 else rest).append(name)
@@ -490,11 +491,12 @@ def launch_set(root=None):
 
 
 def candidate(root, name):
-    """Today's proposal row for the item, or None."""
+    """Today's proposal row for the item, else its #648 main_broken row (a fix item), or None."""
     import json
     path = workspace.day_dir(root) / 'proposal.json'
     candidates = json.loads(path.read_text(encoding='utf-8'))['candidates'] if path.is_file() else []
-    return next((row for row in candidates if row.get('id') == name), None)
+    return (next((row for row in candidates if row.get('id') == name), None)
+            or state.read_state(root).get('main_broken', {}).get(name))
 
 
 def _start(root, name, repos):

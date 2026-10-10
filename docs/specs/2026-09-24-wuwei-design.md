@@ -622,6 +622,13 @@ checks, decision routing and every 9.2 invariant hold at every pace (I15 to I17)
   their semantics. `host.seats` derives per the #658 rule unless config pins it. A
   ceiling refusal names `host.seats`. Once the build is done and the item is at its gates, `build next`
   answers what `dispatch next` decides (#666).
+- Broken main amendment (owner, 2026-10-10, #648). A fast check that fails only on files the
+  item did not change is main's, not the item's: the build loop records it under
+  `main_broken` with the check and the first failing path, opens one fix item for it through
+  `plan add` (one per file per repository), and sets the item's build action to `wait`
+  naming that fix item instead of a builder round. A held item takes no seat. Once the fix
+  item merges (or is parked), `build next` returns a `continue` that tells the builder to
+  rebase and rerun its checks. A test failure is never held.
 - Cost per iteration (owner, 2026-09-28). Every dispatch records the runtime's reported
   usage (input and output tokens, cost when the runtime reports it, model, duration) as a
   `seat.usage` event per iteration. The steward reports cost per item, per role and per
@@ -2046,6 +2053,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I46 | A gate verdict never calls a recorded docs value missing: `lint_file` refuses a finding that says the docs value is missing while the item records one, and adds nothing when the value is missing, not required or unresolvable | `verdict.lint` on a missing-value finding with `docs` set and unset, and on a page-content finding with `docs` set | #667; one read through `docs.shown` in `verdict.recorded_docs` |
 | I44 | A numbered list outside a Findings heading is not a finding, and every sentinel agent carries the verdict format the lint accepts | `verdict.finding_blocks` on an `Evidence` numbered list (no block) and a `Findings` numbered list (one block per line); `verdict.lint_file` on the example in each `agents.render(ROOT)` sentinel agent with that role (`OK: FIX`) | #665; one table in `verdict.FORMAT`, one parser in `verdict.finding_blocks`, rendered by `agents.render` |
 | I50 | Under observe and guarded a traces guard that did not finish in time never fails a tool call: a `TimeoutError` is a warning naming its elapsed milliseconds, recorded as `traces.slow`; strict refuses it | per posture, `traces.check` with the trace read raising `TimeoutError` | #659; any other failure keeps the `traces.gap` path |
+| I57 | A fast-check failure holds an item on a fix item only when every failing check names lint locations, and only on files the item did not change; a test failure, a failure on a changed file or one with no location goes back to its builder | `fast_checks.unchanged` on a lint location on an unchanged file, then on a changed file, a missing file, a `..` path, test ids, a pytest `ERROR` line, no location, and one held failure beside one own failure | #648; hold, release and the fix item in `tests/test_main_broken.py` |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 
