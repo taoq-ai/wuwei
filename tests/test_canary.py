@@ -359,8 +359,9 @@ def test_trace_security_failure_is_unrun_and_redacted(secured, capsys):
     data = material(secured)
     (secured / '.wuwei/security.json').unlink()
     code, reason = check(trace_payload(secured, response=data['canary']))
-    assert code == 2 and reason
-    assert data['canary'] not in reason + capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert (code, reason) == (0, '') and 'security material' in err  # #601: a warning below strict
+    assert data['canary'] not in err
     assert not (workspace.day_dir(secured) / 'traces.jsonl').exists()
 
 
@@ -549,3 +550,26 @@ def test_agent_path_names_build_only_for_known_roles(secured):
     generated.unlink()
     with pytest.raises(ValueError, match='run wuwei agents build'):
         security.agent_path(secured, 'sentinel-arch')
+
+
+def test_init_writes_the_registered_install(tmp_path, monkeypatch, capsys):
+    # #601: init and init --upgrade write the install Claude Code runs the hooks from.
+    from test_integrity import release_install
+    from wuwei import integrity
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    a, b = release_install(tmp_path / 'a'), release_install(tmp_path / 'b')
+    (b / 'keys').mkdir()
+    (b / integrity.KEY).write_text((integrity.PLUGIN / integrity.KEY).read_text())
+    monkeypatch.setattr(integrity, 'PLUGIN', b)
+    plugins = Path.home() / '.claude/plugins/installed_plugins.json'
+    plugins.parent.mkdir(parents=True)
+    plugins.write_text(json.dumps({'version': 2, 'plugins': {'wuwei@wuwei': [{'scope': 'user', 'installPath': str(a)}]}}))
+    root = tmp_path / 'ws'
+    root.mkdir()
+    assert init.run(SimpleNamespace(path=str(root))) == 0
+    assert (root / '.wuwei/executable').read_text() == f"{a / 'bin/wuwei'}\n"
+    capsys.readouterr()
+    assert init.run(SimpleNamespace(path=str(root), upgrade=True, dry_run=True)) == 0
+    assert 'executable pointer' not in capsys.readouterr().out
+    assert init.run(SimpleNamespace(path=str(root), upgrade=True, dry_run=False)) == 0
+    assert (root / '.wuwei/executable').read_text() == f"{a / 'bin/wuwei'}\n"

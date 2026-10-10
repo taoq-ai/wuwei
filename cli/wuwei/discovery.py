@@ -64,10 +64,15 @@ def start_decision(item, config, confirmed_goals, *, within_budget, above_cut):
     return 'start'
 
 
-def discover(root=None, *, ports=None):
-    """Measure available sources; missing ports remain unmeasured."""
+def discover(root=None, *, ports=None, repo=None):
+    """Measure available sources; missing ports remain unmeasured. Each candidate whose id
+    names a configured repository carries it as repo; repo narrows to one (#601)."""
     root = workspace.find_workspace(root)
     config = workspace.load_config(root)
+    project = config['tracker']['project'] if config['adapters']['tracker'] == 'github' else ''
+    names = list(dict.fromkeys(name for name in (*(row['name'] for row in config['repos']), project) if name))
+    if repo is not None and repo not in names:
+        raise ValueError(f'--repo {repo} is not a configured repository; pass one of: {", ".join(names)}')
     day = state.read_state(root)
     ports = {} if ports is None else ports
     sources = {name: 'not applicable: no open PRs' for name in SOURCES}
@@ -193,22 +198,27 @@ def discover(root=None, *, ports=None):
     if config['repos'] and config['adapters']['scanner'] != 'none':
         scanner = ports.get('scanner') or registry.load('scanner', config)
         found = []
-        for repo in config['repos']:
-            result = scanner.audit(str((root / repo['path']).resolve()), root=root)
+        for checkout in config['repos']:
+            result = scanner.audit(str((root / checkout['path']).resolve()), root=root)
             valid = isinstance(result, registry.Result) and result.exit in (0, 1, 2)
             rows = (result.data.get('findings') if valid and result.exit != 2 and isinstance(result.data, dict)
                     else None)
             if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
                 reason = (result.reason or 'scanner audit failed') if valid and result.exit == 2 \
                     else 'invalid scanner result'
-                found = f'unmeasured: {repo["name"]}: {reason}'
+                found = f'unmeasured: {checkout["name"]}: {reason}'
                 break
             # Rows are already validated by the adapter (ziran._report).
-            found += [{'id': f'{repo["name"]}:scanner:{row["rule"]}:{row["file"]}:{row["line"]}',
+            found += [{'id': f'{checkout["name"]}:scanner:{row["rule"]}:{row["file"]}:{row["line"]}',
                        'evidence': f'{row["severity"]} {row["rule"]} {row["file"]}:{row["line"]}: '
                                    f'{row["message"]}'} for row in rows]
         sources['scanner'] = found
-    return dedupe(sources, day_ids=day['items'])
+    found = dedupe(sources, day_ids=day['items'])
+    for candidate in found['candidates']:
+        candidate.update({'repo': name for name in names if candidate['id'].startswith((name + '#', name + ':'))})
+    if repo is not None:
+        found['candidates'] = [row for row in found['candidates'] if row.get('repo', repo) == repo]
+    return found
 
 
 def when_seat_frees(root=None, *, queue_size):

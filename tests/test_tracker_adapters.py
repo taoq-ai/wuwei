@@ -331,3 +331,28 @@ def test_tracker_auth_takes_token_or_gh(workspace_root):
         stream.write('auth = "keychain"\n')
     with pytest.raises(workspace.ConfigError):
         workspace.load_config(root)
+
+
+def backlog_page(number):
+    return {'data': {'repository': {'issues': {'nodes': [
+        {'number': number, 'title': 'Fix it', 'url': 'https://example.test/x', 'updatedAt': '2026-10-01T00:00:00Z'}],
+        'pageInfo': {'hasNextPage': False}}}}}
+
+
+def test_github_backlog_reads_every_configured_repository(workspace_root, monkeypatch):
+    # #601: discover reads the backlog of every configured repository, not only tracker.project.
+    from adapters.tracker import github
+    root = workspace_root('github')
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('[[repos]]\nname = "acme/app"\npath = "app"\ndefault_branch = "main"\n[[repos]]\nname = "acme/gadget"\npath = "gadget"\ndefault_branch = "main"\n')
+    calls = replay(monkeypatch, [backlog_page(1), backlog_page(1)])
+    result = github.backlog('', root=root)
+    assert result.exit == 0, result
+    assert [call[3]['variables']['name'] for call in calls] == ['app', 'gadget']
+    assert [row['id'] for row in result.data] == ['acme/app#1', 'acme/gadget#1']
+    replay(monkeypatch, [backlog_page(1), {'errors': [{'message': 'Could not resolve'}]}])
+    assert github.backlog('', root=root).exit == 2
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('[[repos]]\nname = "gadget"\npath = "other"\ndefault_branch = "main"\n')
+    result = github.backlog('', root=root)
+    assert result.exit == 2 and 'gadget is not a GitHub owner/repo' in result.reason

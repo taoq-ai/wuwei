@@ -92,6 +92,19 @@ def _repo(root):
     return repo
 
 
+def _repos(root):
+    """tracker.project and every configured repository, once each (#601)."""
+    config = settings(root)
+    names = list(dict.fromkeys(name for name in (config['tracker']['project'],
+                                                 *(row['name'] for row in config['repos'])) if name))
+    if not names:
+        _repo(root)  # its message names the missing project
+    for name in names:
+        if not re.fullmatch(r'[\w.-]+/[\w.-]+', name):
+            raise Failure(f'{name} is not a GitHub owner/repo; fix tracker.project or repos.name')
+    return names
+
+
 def _issue(item, root):
     return _query(f'query({VARIABLES}){{{ISSUE}}}', _ref(item), root)['repository']['issue']['id']
 
@@ -100,18 +113,20 @@ def _issue(item, root):
 def backlog(filter, *, root=None):
     if not isinstance(filter, str):
         raise Failure('invalid backlog filter')
-    repo = _repo(root)
-    owner, name = repo.split('/')
     labels = ',labels:[$label]' if filter else ''
-    rows = _query('query($owner:String!,$name:String!' + (',$label:String!' if filter else '') +
-                  '){repository(owner:$owner,name:$name){issues(first:100,states:OPEN' + labels +
-                  '){nodes{number title url updatedAt} pageInfo{hasNextPage}}}}',
-                  {'owner': owner, 'name': name, **({'label': filter} if filter else {})}, root
-                  )['repository']['issues']
-    if rows['pageInfo']['hasNextPage'] is not False:
-        raise Failure('incomplete GitHub backlog')
-    return [{'id': f"{repo}#{row['number']}", 'title': row['title'], 'url': row['url'],
-             'updated': row['updatedAt'], 'state': 'Open'} for row in rows['nodes']]
+    found = []
+    for repo in _repos(root):
+        owner, name = repo.split('/')
+        rows = _query('query($owner:String!,$name:String!' + (',$label:String!' if filter else '') +
+                      '){repository(owner:$owner,name:$name){issues(first:100,states:OPEN' + labels +
+                      '){nodes{number title url updatedAt} pageInfo{hasNextPage}}}}',
+                      {'owner': owner, 'name': name, **({'label': filter} if filter else {})}, root
+                      )['repository']['issues']
+        if rows['pageInfo']['hasNextPage'] is not False:
+            raise Failure(f'incomplete GitHub backlog for {repo}')
+        found += [{'id': f"{repo}#{row['number']}", 'title': row['title'], 'url': row['url'],
+                   'updated': row['updatedAt'], 'state': 'Open'} for row in rows['nodes']]
+    return found
 
 
 @operation('github.claim')

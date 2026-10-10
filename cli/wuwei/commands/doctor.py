@@ -85,8 +85,7 @@ def render(rows):
     return '\n'.join(lines)
 
 
-def _checkout():
-    return (integrity.PLUGIN / '.git').exists() and not (integrity.PLUGIN / 'MANIFEST.sha256.sig').exists()
+_checkout = integrity.development
 
 
 def _install(root, config):
@@ -126,6 +125,7 @@ def _install(root, config):
     rows.append(_row('install', 'in_use', 'warn', notice, integrity.RESTART) if notice else
                 _row('install', 'in_use', 'ok', f'{count} Claude Code process markers (expected)'))
     rows.append(_hooks(root, config))
+    rows += _installs(root, config)
     launcher = plugin / 'bin/wuwei'
     rows.append(_row('install', 'launcher', 'ok', str(launcher)) if os.access(launcher, os.X_OK) else
                 _row('install', 'launcher', 'fail', f'{launcher} not executable', f'chmod +x {launcher}'))
@@ -145,13 +145,8 @@ def _hooks(root, config):
     except (OSError, ValueError, AttributeError) as exc:
         return _row('install', 'hooks', 'fail', f'hooks/hooks.json: {exc}', REINSTALL)
     name = config['scanner']['mcp']['plugins_file'] if config else mcp.DEFAULTS['plugins_file']
-    path = Path(name).expanduser()
     try:
-        data = json.loads(((root or Path.cwd()) / path).read_text())
-        listed = any(Path(entry['installPath']).expanduser().resolve() == plugin.resolve()
-                     for entries in data['plugins'].values() for entry in entries)
-    except FileNotFoundError:
-        listed = False
+        listed = integrity.registered(root, config) is not None  # from either launcher (#601)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
         return _row('install', 'hooks', 'unmeasured', f'{name}: {exc}', f'check {name}')
     if listed:
@@ -159,6 +154,32 @@ def _hooks(root, config):
     if (plugin / '.git').exists():
         return _row('install', 'hooks', 'ok', 'development checkout (loaded per session with --plugin-dir)')
     return _row('install', 'hooks', 'fail', f'not listed in {name}', '/plugin install wuwei@wuwei in Claude Code')
+
+
+def _installs(root, config):
+    """One warn row when more than one plugin install is in play (#601), else none."""
+    seen = {}
+
+    def add(directory, role):
+        seen.setdefault(Path(directory).resolve(), []).append(role)
+
+    add(integrity.PLUGIN, 'this launcher')
+    try:
+        found = integrity.registered(root, config)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        found = None  # the hooks row reports a broken plugins file
+    if found:
+        add(found, 'registered in Claude Code; its hooks run')
+    recorded = integrity.recorded(root) if root is not None else ''
+    if recorded and Path(recorded).exists():
+        add(Path(recorded).resolve().parents[1], 'named by .wuwei/executable')
+    if len(seen) < 2:
+        return []
+    canonical = integrity.launcher(root, config)
+    others = ', '.join(str(path) for path in seen if path != canonical.resolve().parents[1])
+    return [_row('install', 'installs', 'warn',
+                 '; '.join(f'{path} ({", ".join(roles)})' for path, roles in seen.items()),
+                 f'{canonical} init --upgrade, then remove {others} if you do not use it')]
 
 
 def _host(root, config):
@@ -256,11 +277,8 @@ def _workspace(root, config, error, found):
         if 'guide block not written: ' in line:
             rows.append(_row('workspace', 'guide', 'warn', line.split('not written: ', 1)[1].removesuffix('; run bin/wuwei doctor for the fix'),
                              'fix the memory.export_to file as the reason says, then run wuwei init --upgrade'))
-    launcher = integrity.PLUGIN / 'bin/wuwei'
-    try:
-        recorded = (root / '.wuwei/executable').read_text(encoding='utf-8').splitlines()[0]
-    except (OSError, UnicodeError, IndexError):
-        recorded = ''
+    launcher = integrity.launcher(root, config)
+    recorded = integrity.recorded(root)
     if recorded and Path(recorded).resolve() == launcher.resolve():
         rows.append(_row('workspace', 'executable', 'ok', recorded))
     else:
@@ -574,6 +592,7 @@ PROBE = {'ok': 'ok', 'failed': 'fail', 'unmeasured': 'unmeasured'}
 
 
 def _day(root, config, probes):
+    from wuwei import watch
     from wuwei.commands import status
     rows = [_row('day', 'state', PROBE[probes['state']['result']], probes['state']['value'],
                  'wuwei state recover in a host terminal'),
@@ -609,6 +628,17 @@ def _day(root, config, probes):
         rows.append(_row('day', 'shepherd', 'unmeasured', str(exc), 'wuwei state recover in a host terminal'))
     rows.append(_row('day', 'heartbeat', {None: 'ok', 'ok': 'ok', 'degraded': 'fail'}.get(beat, 'unmeasured'),
                      beat or 'none today', 'wuwei heartbeat names the failed probe'))
+    try:  # #601: one credential reader; the heartbeat row reports a broken saved beat
+        theirs = watch.saved(root).get('heartbeat', {}).get('probes', {}).get('config')
+    except (OSError, ValueError, TypeError, AttributeError):
+        theirs = None
+    mine = probes.get('config')
+    if theirs and mine and theirs != mine:
+        rows.append(_row('day', 'credentials', 'warn',
+                         f"the watch's last heartbeat read {theirs.get('result')} {theirs.get('value')}; "
+                         f"doctor reads {mine['result']} {mine['value']}",
+                         'the next heartbeat rereads .wuwei/env; if this row stays, '
+                         'wuwei watch uninstall, then wuwei watch install'))
     rows.append(_row('day', 'stuck seats', PROBE[probes['seats']['result']], probes['seats']['value'],
                      'wuwei seat stop <name> --verdict <file>, or wuwei seat stop <name> --unmeasured "<reason>"'))
     for page in found:

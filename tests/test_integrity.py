@@ -1189,3 +1189,39 @@ def test_both_paths_old_records(tmp_path, monkeypatch):
     (root / '.wuwei/integrity/verdict.json').write_text(json.dumps(
         {'exit': 0, 'fingerprint': 'a' * 64, 'reason': '', 'plugin': str(tmp_path / 'other')}))
     assert api.cached(root).exit == 0
+
+
+def release_install(path):
+    (path / 'bin').mkdir(parents=True)
+    (path / 'bin/wuwei').write_text('#!/bin/sh\n')
+    (path / 'MANIFEST.sha256.sig').write_text('sig\n')
+    return path
+
+
+def test_launcher_prefers_the_registered_install(tmp_path, monkeypatch):
+    # #601: the hooks run the registered install; .wuwei/executable names it whichever launcher ran.
+    api = core()
+    a, b = release_install(tmp_path / 'a'), release_install(tmp_path / 'b')
+    monkeypatch.setattr(api, 'PLUGIN', b)
+    plugins = Path.home() / '.claude/plugins/installed_plugins.json'
+    plugins.parent.mkdir(parents=True)
+    root = tmp_path / 'ws'
+    root.mkdir()
+    assert api.registered(root) is None
+    assert api.launcher(root) == b / 'bin/wuwei'
+    for data in ({'version': 2, 'plugins': {}},
+                 {'version': 2, 'plugins': {'wuwei@wuwei': [{'installPath': str(tmp_path / 'empty')}]}}):
+        plugins.write_text(json.dumps(data))
+        assert api.launcher(root) == b / 'bin/wuwei'
+    plugins.write_text('{')
+    with pytest.raises(ValueError):
+        api.registered(root)
+    assert api.launcher(root) == b / 'bin/wuwei'
+    plugins.write_text(json.dumps({'version': 2, 'plugins': {
+        'other@market': [{'installPath': str(b)}], 'wuwei@wuwei': [{'scope': 'user', 'installPath': str(a)}]}}))
+    assert api.registered(root) == a
+    assert api.launcher(root) == a / 'bin/wuwei'
+    (b / '.git').mkdir()
+    (b / 'MANIFEST.sha256.sig').unlink()
+    assert api.development()
+    assert api.launcher(root) == b / 'bin/wuwei'

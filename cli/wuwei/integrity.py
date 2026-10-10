@@ -44,6 +44,49 @@ def version():
     return found if isinstance(found, str) else ''
 
 
+def recorded(root):
+    """The launcher .wuwei/executable names, or '' when missing, empty or unreadable (#601)."""
+    try:
+        return (Path(root) / '.wuwei/executable').read_text(encoding='utf-8').splitlines()[0]
+    except (OSError, UnicodeError, IndexError):
+        return ''
+
+
+def development():
+    """A git checkout without a signed manifest: loaded per session with --plugin-dir."""
+    return (PLUGIN / '.git').exists() and not (PLUGIN / 'MANIFEST.sha256.sig').exists()
+
+
+def registered(root=None, config=None):
+    """The install directory Claude Code registered for wuwei (the first wuwei@* entry with
+    bin/wuwei), or None when the plugins file is missing or lists none; other errors raise."""
+    from wuwei import mcp
+    name = config['scanner']['mcp']['plugins_file'] if config else mcp.DEFAULTS['plugins_file']
+    try:
+        data = json.loads(((Path(root) if root else Path.cwd()) / Path(name).expanduser()).read_text())
+    except FileNotFoundError:
+        return None
+    for key, entries in data['plugins'].items():
+        for entry in entries if key.startswith('wuwei@') else ():
+            path = Path(entry['installPath']).expanduser()
+            if (path / 'bin/wuwei').is_file():
+                return path
+    return None
+
+
+def launcher(root=None, config=None):
+    """The canonical launcher (#601): this one for a development checkout, else the registered
+    install's, else this one; a broken plugins file never stops it."""
+    here = PLUGIN / 'bin/wuwei'
+    if development():
+        return here
+    try:
+        found = registered(root, config)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return here
+    return found / 'bin/wuwei' if found else here
+
+
 def release(text):
     """A dotted-integer version as a tuple, or None; nothing else ever counts as newer."""
     found = isinstance(text, str) and re.fullmatch(r'\d+(?:\.\d+)*', text, re.ASCII)
