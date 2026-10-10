@@ -7,7 +7,8 @@ import subprocess
 
 import pytest
 
-from fakes.replay import install_replay, recordings
+from fakes.replay import (NOW, SECONDARY, SECONDARY_JSON, hms, install_clock, install_replay, limits,
+                          recordings)
 
 
 CASES = [c for c in recordings('code_host') if c['operation'] in
@@ -568,3 +569,81 @@ def test_deployments_fail_closed(steps, since, monkeypatch):
     install_replay(monkeypatch, 'gh', steps)
     result = adapter().deployments('acme/widget', since)
     assert result.exit == 2 and result.data is None and result.reason
+
+
+RATE_LIMIT = ['api', 'rate_limit', '--hostname', 'github.com']
+PR = ['api', 'repos/acme/widget/pulls/7', '-H', 'Cache-Control: no-cache', '--hostname', 'github.com']
+
+
+def wait_cap(tmp_path, monkeypatch, seconds):
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text(f'[host]\nrate_limit_wait_seconds = {seconds}\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+
+
+@pytest.mark.parametrize('stderr', [SECONDARY, SECONDARY_JSON], ids=['plain', 'json'])
+@pytest.mark.parametrize('step,until,left', [
+    ({'stdout': limits(4990, 4800, NOW + 3600)}, NOW + 60, ' (4800 of 5000 graphql calls left)'),
+    ({'stdout': limits(0, 4800, NOW + 900)}, NOW + 900, ' (0 of 5000 core calls left)'),
+    ({'exit': 1, 'stderr': 'gh: boom'}, NOW + 60, ''),
+    ({'stdout': 'not json'}, NOW + 60, ''),
+], ids=['secondary', 'primary', 'read-fails', 'not-json'])
+def test_rate_limit_is_named_not_redacted(stderr, step, until, left, tmp_path, monkeypatch):
+    # #738: the reason names the limit and its reset, built from numbers only.
+    wait_cap(tmp_path, monkeypatch, 0)
+    slept = install_clock(monkeypatch)
+    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': stderr},
+                                               {'argv': RATE_LIMIT, **step}])
+    result = adapter().pr('acme/widget#7')
+    assert result.exit == 2
+    assert result.reason == (f'github.pr: could not run: GitHub rate limit until {hms(until)} UTC'
+                             f'{left}; retry after it')
+    assert slept == [] and len(calls) == 2
+
+
+@pytest.mark.parametrize('reset,slept', [(NOW + 30, [30]), (NOW - 5, [0])])
+def test_rate_limit_within_the_cap_waits_and_retries(reset, slept, tmp_path, monkeypatch):
+    # #738: default cap (no workspace): the call waits for the reset and runs once more.
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    monkeypatch.chdir(tmp_path)
+    clock = install_clock(monkeypatch)
+    case = next(c for c in CASES if c['operation'] == 'pr')
+    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': SECONDARY},
+                                               {'argv': RATE_LIMIT, 'stdout': limits(0, 4000, reset)},
+                                               *case['steps']])
+    result = adapter().pr(*case['args'])
+    assert (result.exit, result.data) == (0, case['data'])
+    assert clock == slept and len(calls) == 3
+
+
+def test_rate_limit_beyond_the_cap_names_the_reset(tmp_path, monkeypatch):
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    monkeypatch.chdir(tmp_path)
+    clock = install_clock(monkeypatch)
+    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': SECONDARY},
+                                               {'argv': RATE_LIMIT, 'stdout': limits(0, 4000, NOW + 121)}])
+    result = adapter().pr('acme/widget#7')
+    assert result.exit == 2 and f'until {hms(NOW + 121)} UTC' in result.reason
+    assert clock == [] and len(calls) == 2
+
+
+def test_rate_limit_retries_once_only(tmp_path, monkeypatch):
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    monkeypatch.chdir(tmp_path)
+    clock = install_clock(monkeypatch)
+    calls = install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': SECONDARY},
+                                               {'argv': RATE_LIMIT, 'stdout': limits(0, 4000, NOW + 30)},
+                                               {'argv': PR, 'exit': 1, 'stderr': SECONDARY},
+                                               {'argv': RATE_LIMIT, 'stdout': limits(0, 4000, NOW + 90)}])
+    result = adapter().pr('acme/widget#7')
+    assert result.exit == 2 and f'until {hms(NOW + 90)} UTC' in result.reason
+    assert clock == [30] and len(calls) == 4
+
+
+def test_json_error_reply_shows_its_message(monkeypatch):
+    # #738: GitHub's JSON error reply is read for its message, not redacted whole.
+    stderr = json.dumps({'message': 'Resource not accessible by integration',
+                         'documentation_url': 'https://docs.github.com/rest'})
+    install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': stderr}])
+    result = adapter().pr('acme/widget#7')
+    assert result.reason.endswith('gh exited 1 (acme/widget): Resource not accessible by integration')

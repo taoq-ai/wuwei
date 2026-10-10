@@ -1222,6 +1222,20 @@ def test_tracker_row(ws):
     assert row(doctor.diagnose(), 'tracker')['status'] == 'ok'
 
 
+def test_tracker_row_on_a_rate_limit(ws):
+    # #738: a rate limit is not a broken tracker; the row says when to look again.
+    from fakes.tracker import Fake
+    config(ws.root, CONFIG.replace('code_host = "github"\n', 'code_host = "github"\ntracker = "github"\n'))
+    reason = ('github.backlog: could not run: GitHub rate limit until 14:05:00 UTC '
+              '(0 of 5000 graphql calls left); retry after it')
+    tracker = Fake({'backlog': Result(2, reason=reason)})
+    real = registry.load
+    ws.mp.setattr(registry, 'load', lambda kind, cfg: tracker if kind == 'tracker' else real(kind, cfg))
+    found = row(doctor.diagnose(), 'tracker')
+    assert found['status'] == 'unmeasured' and reason in found['value']
+    assert 'wait until the reset' in found['fix']
+
+
 @pytest.mark.parametrize('auth, fix', [
     ('', 'set GITHUB_TRACKER_TOKEN in .wuwei/env, or bin/wuwei config set tracker.auth \'"gh"\' to use '
          'your gh login, or bin/wuwei config set tracker.required false'),

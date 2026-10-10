@@ -133,6 +133,7 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | `budget.tokens_per_day` | `0` | Input plus output tokens a day. With a per-seat token cost measured from `seat.usage` rows, CAP is at most the seats the remaining budget fits (at least 1) and says `(budget)`. `0` is no budget. |
 | `pace.default` | `"steady"` | The day's [pace](concepts.md#pace) when the gate records none: `careful`, `steady` or `fast`. The gate card shows it beside the advice and never overrides it; after ten days at two paces the steward proposes a value on a card. |
 | `host.reservation_timeout_seconds` | `14400` | Age at which a reservation is reported stale. |
+| `host.rate_limit_wait_seconds` | `120` | Longest wait for a GitHub rate limit to reset before one retry; beyond it the reason names the reset time. `0` never waits. |
 | `memory.max_notes` | `60` | Index note limit. |
 | `memory.note_line_cap` | `80` | Maximum lines in a note. |
 | `memory.probation_days` | `10` | Working days before a note or rule can be archived for nonuse. |

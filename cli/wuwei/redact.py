@@ -116,3 +116,15 @@ def redact(value, *, prefix=False):
             # earlier paths stay); per-value redaction if traces need the tail.
             return value[:min(starts)] + REDACTED if prefix and decoded == value else REDACTED
     return value
+
+
+def reply(line):
+    """#738: GitHub's JSON error reply keeps its message when the message holds no credential
+    shape; redact still runs on the message."""
+    try:
+        value = json.loads(line)
+    except ValueError:
+        value = None
+    if isinstance(value, dict) and isinstance(value.get('message'), str) and 'documentation_url' in value:
+        line = value['message']
+    return redact(line)
