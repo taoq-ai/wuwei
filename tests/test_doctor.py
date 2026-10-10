@@ -179,6 +179,9 @@ def test_outcome_findings_before_unmeasured():
     assert doctor.outcome([fail, unmeasured]) == 1
     assert doctor.outcome([ok, unmeasured]) == 2
     assert doctor.outcome([ok, ok]) == 0
+    waiting = {'status': 'waiting'}  # #784
+    assert doctor.outcome([ok, waiting]) == 2 and doctor.outcome([waiting, warn]) == 1
+    assert doctor.CODES['waiting'] == 2
 
 
 def test_fix_allow_list_is_pinned():
@@ -1270,8 +1273,24 @@ def test_tracker_row_on_a_rate_limit(ws):
     real = registry.load
     ws.mp.setattr(registry, 'load', lambda kind, cfg: tracker if kind == 'tracker' else real(kind, cfg))
     found = row(doctor.diagnose(), 'tracker')
-    assert found['status'] == 'unmeasured' and reason in found['value']
+    assert found['status'] == 'waiting'  # #784
+    assert found['value'] == ('rate limited until 14:05:00 UTC (0 of 5000 graphql calls left); '
+                              'retry after it')
     assert 'wait until the reset' in found['fix']
+
+
+def test_gh_row_on_a_rate_limit(ws, capsys):
+    # #784: a rate limit on gh auth is a wait, never missing auth.
+    ws.code_host.results['auth_status'] = Result(2, reason='GitHub rate limit until 14:05:00 UTC '
+                                                 '(5000 of 5000 core calls left); retry after it')
+    rows = doctor.diagnose()
+    found = row(rows, 'gh')
+    assert found['status'] == 'waiting'
+    assert found['value'] == 'rate limited until 14:05:00 UTC (5000 of 5000 core calls left); retry after it'
+    assert 'wait until the reset' in found['fix']
+    assert not any('gh auth: missing' in r['value'] or 'gh auth login' in r.get('fix', '') for r in rows)
+    assert main(['doctor']) == 2
+    assert capsys.readouterr().out.splitlines()[-1].endswith('1 waiting')
 
 
 @pytest.mark.parametrize('auth, fix', [

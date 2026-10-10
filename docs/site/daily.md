@@ -174,7 +174,7 @@ Day and sessions
   warn       watch: not installed
       fix: wuwei watch install
       ...
-doctor: 1 fail, 1 warn, 0 unmeasured
+doctor: 1 fail, 1 warn, 0 unmeasured, 0 waiting
 ```
 
 Set the protections when you are ready, and run `bin/wuwei watch install` when you want the

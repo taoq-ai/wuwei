@@ -659,6 +659,14 @@ def auth_status(root=None):
         if code == 0:
             return Result(0)
         if code == 1:
+            # #784: gh auth status calls the API and says "token invalid" on any non-200, a
+            # rate limit included; one gh api user read tells which (#738 names a limit).
+            try:
+                _run(['api', 'user'])
+                return Result(0)
+            except ValueError as exc:
+                if str(exc).startswith('GitHub rate limit until '):
+                    return Result(2, reason=str(exc))
             return Result(1, reason='gh auth: missing')
         return Result(2, reason='gh auth: could not run')
     except (OSError, subprocess.SubprocessError, ValueError):

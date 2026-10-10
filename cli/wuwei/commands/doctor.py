@@ -24,9 +24,10 @@ DOCS = {'install': 'docs/site/recovery.md#integrity-reconfirm',
         'pr-flow': 'docs/site/configuration.md#host-build-and-memory',
         'day': 'docs/site/reference.md#watch-state',
         'guards': 'docs/site/reference.md#heartbeat'}
-CODES = {'ok': 0, 'warn': 1, 'fail': 1, 'unmeasured': 2}
+CODES = {'ok': 0, 'warn': 1, 'fail': 1, 'unmeasured': 2, 'waiting': 2}
 OUTSIDE = "python3 - <<'EOF'\nprint('gh pr list')\nEOF"  # #323: a heredoc that mentions gh
 REINSTALL = 'reinstall the signed release'
+LIMITED = 'GitHub rate limit until '  # adapters/_http.RateLimited's text (#738)
 UNLOADED = 'config.toml does not load'
 
 
@@ -55,6 +56,14 @@ def _row(section, name, status, value, fix='', apply=None, detail=(), docs=None)
     return row
 
 
+def _limited(section, name, reason):
+    """#784: a GitHub rate limit is a wait, not a broken credential or tracker."""
+    if LIMITED in (reason or ''):
+        return _row(section, name, 'waiting', 'rate limited until ' + reason.split(LIMITED, 1)[1],
+                    'wait until the reset it names (another job on the same GitHub account '
+                    'shares the limit), then run doctor again')
+
+
 def _capture(function, *args, **kwargs):
     stream = io.StringIO()
     with redirect_stdout(stream), redirect_stderr(stream):
@@ -64,7 +73,7 @@ def _capture(function, *args, **kwargs):
 
 def outcome(rows):
     statuses = {row['status'] for row in rows}
-    return 1 if statuses & {'warn', 'fail'} else 2 if 'unmeasured' in statuses else 0
+    return 1 if statuses & {'warn', 'fail'} else 2 if statuses & {'unmeasured', 'waiting'} else 0
 
 
 def render(rows):
@@ -79,7 +88,7 @@ def render(rows):
             if row['status'] != 'ok':
                 lines += [f"      fix: {row['fix']}", f"      docs: {row['docs']}"]
             lines += [f'      {line}' for line in row.get('detail', ())]
-    counts = {status: sum(row['status'] == status for row in rows) for status in ('fail', 'warn', 'unmeasured')}
+    counts = {status: sum(row['status'] == status for row in rows) for status in ('fail', 'warn', 'unmeasured', 'waiting')}
     lines.append('doctor: ' + (', '.join(f'{n} {status}' for status, n in counts.items()) if any(counts.values())
                                else 'ok'))
     return '\n'.join(lines)
@@ -170,9 +179,10 @@ def _host(root, config):
         rows.append(_row('host', 'gh', 'fail', 'not on PATH', 'install the GitHub CLI, then gh auth login'))
     else:
         result = registry.load('code_host', config).auth_status()
-        rows.append(_row('host', 'gh', ('ok', 'fail', 'unmeasured')[result.exit],
-                         'authenticated' if result.exit == 0 else result.reason,
-                         'gh auth login' if result.exit == 1 else 'run gh auth status and fix what it names'))
+        rows.append(_limited('host', 'gh', result.reason) or _row(
+            'host', 'gh', ('ok', 'fail', 'unmeasured')[result.exit],
+            'authenticated' if result.exit == 0 else result.reason,
+            'gh auth login' if result.exit == 1 else 'run gh auth status and fix what it names'))
     vcs = registry.load('vcs', config)
 
     def resolved(path):
@@ -658,9 +668,8 @@ def _tracker(root, config):
         reason = f'tracker unmeasured: {exc}'
     if not reason:
         return _row('day', 'tracker', 'ok', f'{name}: backlog read')
-    if 'GitHub rate limit until' in reason:  # #738
-        return _row('day', 'tracker', 'unmeasured', reason, 'wait until the reset it names (another job on '
-                    'the same GitHub account shares the limit), then run doctor again')
+    if found := _limited('day', 'tracker', reason):  # #738
+        return found
     fix = f'set {names} in .wuwei/env, or ' if names else ''
     if name == 'github':  # #602: the token, or the owner's gh login under tracker.auth = "gh"
         fix = (f'{fix}bin/wuwei config set tracker.auth \'"gh"\' to use your gh login, or ' if names else

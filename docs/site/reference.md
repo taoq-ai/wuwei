@@ -253,10 +253,10 @@ only the PreToolUse hook writes it and `bin/wuwei event` refuses the kind. `bin/
 `bin/wuwei init --upgrade` end with `Restart Claude Code so only this version's hooks run` when
 another version's marker is present.
 
-Each row is `ok`, `warn`, `fail` or `unmeasured` with its value; every row that is not ok
+Each row is `ok`, `warn`, `fail`, `unmeasured` or `waiting` (a GitHub rate limit, with its reset) with its value; every row that is not ok
 prints `fix:` with the exact command or edit and `docs:` with the page. A row that does not
 apply (the listener with `adapters.inbound = "none"`) is ok with the reason. Exit 1 when any
-row is warn or fail, else 2 when any is unmeasured, else 0. Without `--fix` it writes nothing
+row is warn or fail, else 2 when any is unmeasured or waiting, else 0. Without `--fix` it writes nothing
 and makes no network call beyond the `gh` reads `config check` makes. `--json` prints
 `{"exit", "rows"}` with one object per row (`section`, `name`, `status`, `value`, and `fix`,
 `apply`, `docs`, `detail` when set). `--section pr-flow` prints only the PR flow rows,

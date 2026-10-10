@@ -649,3 +649,46 @@ def test_json_error_reply_shows_its_message(monkeypatch):
     install_replay(monkeypatch, 'gh', [{'argv': PR, 'exit': 1, 'stderr': stderr}])
     result = adapter().pr('acme/widget#7')
     assert result.reason.endswith('gh exited 1 (acme/widget): Resource not accessible by integration')
+
+
+AUTH = ['auth', 'status', '--hostname', 'github.com']
+USER = ['api', 'user', '--hostname', 'github.com']
+AUTH_FAILED = ('github.com\n  X Failed to log in to github.com account octocat (keyring)\n'
+               '  - Active account: true\n  - The token in keyring is invalid.\n')
+
+
+@pytest.mark.parametrize('stdout,reset,left', [
+    (limits(5000, 5000, NOW + 3600), NOW + 60, '(5000 of 5000 core calls left)'),
+    (limits(0, 5000, NOW + 900), NOW + 900, '(0 of 5000 core calls left)'),
+], ids=['secondary', 'primary'])
+def test_auth_status_rate_limit_is_not_missing(stdout, reset, left, tmp_path, monkeypatch):
+    # #784: gh auth status says "token invalid" on a 403 rate limit; the probe names the limit.
+    wait_cap(tmp_path, monkeypatch, 0)
+    slept = install_clock(monkeypatch)
+    calls = install_replay(monkeypatch, 'gh', [{'argv': AUTH, 'exit': 1, 'stdout': AUTH_FAILED},
+                                               {'argv': USER, 'exit': 1, 'stderr': SECONDARY},
+                                               {'argv': RATE_LIMIT, 'stdout': stdout}])
+    result = adapter().auth_status()
+    assert result.exit == 2
+    assert result.reason == f'GitHub rate limit until {hms(reset)} UTC {left}; retry after it'
+    assert slept == [] and len(calls) == 3
+
+
+@pytest.mark.parametrize('steps,expected', [
+    ([{'argv': USER, 'exit': 1, 'stderr': 'gh: Bad credentials (HTTP 401)'}], (1, 'gh auth: missing')),
+    ([{'argv': USER, 'exit': 4, 'stderr': 'To get started with GitHub CLI, please run:  gh auth login'}],
+     (1, 'gh auth: missing')),
+    ([{'argv': USER, 'stdout': '{"login": "octocat"}'}], (0, '')),
+], ids=['bad-credentials', 'logged-out', 'probe-ok'])
+def test_auth_status_missing_and_ok(steps, expected, tmp_path, monkeypatch):
+    wait_cap(tmp_path, monkeypatch, 0)
+    install_clock(monkeypatch)
+    calls = install_replay(monkeypatch, 'gh', [{'argv': AUTH, 'exit': 1, 'stdout': AUTH_FAILED}, *steps])
+    result = adapter().auth_status()
+    assert (result.exit, result.reason) == expected and len(calls) == 2
+
+
+def test_auth_status_ok_needs_no_probe(monkeypatch):
+    calls = install_replay(monkeypatch, 'gh', [{'argv': AUTH}])
+    result = adapter().auth_status()
+    assert (result.exit, result.reason, len(calls)) == (0, '', 1)
