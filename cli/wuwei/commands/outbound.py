@@ -82,7 +82,8 @@ def tiers(args):
     if umbrella == 'ask':
         print(f"{'-':<6}{'default':<9}{KIND_RULES}")
     print(f"{'-':<6}{'default':<9}{{ tier = \"{umbrella}\" }} (outbound.default_tier: what no row narrows, "
-          "for chat, code host, mail and other)")
+          "for chat, code host, mail and other, and bug, triage and follow-up tickets in the "
+          "workspace's own tracker)")
     return CLEAN
 
 

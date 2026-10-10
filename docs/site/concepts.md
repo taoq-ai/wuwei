@@ -57,7 +57,7 @@ Careful lifts light items to standard and keeps one seat free. Fast runs plain s
 ### Soak
 
 The wait after the last push or approval before WUWEI merges by itself (`merge.soak_minutes`, default 30).
-During it you can stop the merge from your phone.
+During it you can stop the merge from your phone. A PR that turns a check failing on its base green skips it.
 
 ### Delta
 
@@ -243,7 +243,7 @@ Memory has three tiers. A day keeps its raw records under `days/` for 30 days (`
 
 Plan, Build, Review, Close. `/wuwei plan` runs the morning gate, then the planner loops `build next` and `dispatch next` for each approved item, raises the PR and closes the day; phases move by themselves.
 
-The day starts in parallel. WUWEI derives CAP from the host: cores, free memory and what one seat costs once seats have run. CAP is the running seats plus the seats that fit above the memory floor, one core per seat, within `host.seats`, and within `budget.tokens_per_day` when set. The plan shows it with the measurement, for example `cap 4 (host): 16 GB free, 1.5 GB per seat, 8 cores`, and the morning gate splits it into seats per goal. Each sweep derives it again as memory frees, and the status line shows `seats 3/4 (host)` or `(budget)`. A positive `cap` in config is your override. After you approve, `wuwei dispatch next --all` lists everything that can move now. Gate items come first, then building items, then planned items up to CAP with each goal's share first. The planner launches the whole set in one turn, an item's three gate seats together. With `cap = 1` the day runs one item at a time. The [daily path](daily.md) is your walkthrough and the [recovery](recovery.md) page covers the rest.
+The day starts in parallel. WUWEI derives CAP from the host, by one of two rules. Claude subagent seats run inside one Claude process, so free memory says nothing about how many fit: CAP is `host.seats`, or one per core when it is unset, and free memory is not read. When a seat runtime launches its own process (Codex or another external runtime), the memory rule applies. CAP is then the running seats plus the seats that fit above the memory floor at the measured seat cost, one core per seat. It is the median of today's last five readings, so one noisy reading does not move it. Both stay within `budget.tokens_per_day` when set. The plan shows the rule and the measurement, for example `cap 6 (host.seats): subagent runtime, free memory not read` or `cap 4 (memory): median of 4, 5, 4; 16 GB free, 1.5 GB per seat, 8 cores`, and the morning gate splits it into seats per goal. Each sweep derives it again, and the status line shows `seats 3/4 by host.seats`, `by memory` or `by budget`. A positive `cap` in config is your override. After you approve, `wuwei dispatch next --all` lists everything that can move now. Gate items come first, then building items, then planned items up to CAP with each goal's share first. The planner launches the whole set in one turn, an item's three gate seats together. With `cap = 1` the day runs one item at a time. The [daily path](daily.md) is your walkthrough and the [recovery](recovery.md) page covers the rest.
 
 ## Tickets and comments
 
@@ -259,9 +259,14 @@ on a terminal command; `plan add` drafts an owner-named item's ticket for its Se
 Under strict the commands are printed for a host terminal. A seat never opens an item
 ticket: the planner does after your card answer.
 Builders and sentinels open a linked bug with
-`bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>"` instead of widening
-the item; the planner opens retro follow-ups with `--follow-up`. Each creation is written once
-per day and writes one `tracker.created` event.
+`bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>" --seat <role>` instead
+of widening the item; the planner opens retro follow-ups with `--follow-up`. The finder files it.
+In the workspace's own tracker a bug, triage or follow-up ticket is internal. Under the send
+umbrella it is created with no draft, under `ask` it is held as a card for the planner, and
+`block` refuses it. A row `{ tool = "tracker", audience = "owner", tier = "ask" }` makes it a
+card under send too. An external tracker keeps the outward rules. Each creation is written
+once per day and writes one `tracker.created` event naming the seat; the board's Tickets
+created table and the retro's Tickets seats filed section list who filed it.
 
 `bin/wuwei tracker log` turns today's events into comments on each ticket, once each:
 decisions, progress (phases, seat starts and stops, fast checks), gate verdicts, the pull
@@ -355,8 +360,9 @@ A check command records measurements itself. Exit 1 means failed checks and anot
 call; exit 2 means unmeasured and requires resolving the reported error. The old blocking
 Claude build form exits 2 and directs you to build next. Codex retains
 `wuwei build <item> <brief> <worktree>` and executes the same action loop with polling.
-`host.seats` derives from free memory and cores unless config pins it; it counts builders
-and gate seats together.
+`host.seats` derives from cores for Claude subagent seats, and from free memory and cores for
+seats that run as separate processes, unless config pins it; it counts builders and gate seats
+together.
 
 ## Review tiers
 
@@ -367,9 +373,19 @@ item gets the quality gate only; standard and full get arch, quality and securit
 tier below the computed one is refused and recorded as a reason, and the returned action
 carries the `tier`.
 
+Generated and data lines never count toward the tier or `repos.merge.max_changed_lines`, and
+both read the same count. Generated means a lockfile, a `repos.merge.size_exclude` glob or a
+`linguist-generated` glob in the repository's root `.gitattributes`, unless the diff changes
+that file. Data means a `repos.gates.data_paths` glob, or a `.json`, `.jsonl`, `.csv` or
+`.parquet` file over 200 changed lines or with a binary change. The reason names both totals:
+`5000 changed lines, 4800 generated or data excluded, 200 count, over light_max_lines 100`.
+Every measured item that is not docs-only records its count, which `wuwei why` shows.
+
 A docs-only diff gets one reviewer at any size and under the default floor. In such a diff
-every path ends in `.md` or `.rst`, or in `.txt` under `docs/` or `specs/`, and nothing else
-raises it. Agent instruction files never count as documents: `AGENTS.md`, `CLAUDE.md`,
+every path ends in `.md`, `.rst` or `.ipynb`, or in `.txt` under `docs/` or `specs/`, or is
+a data file, and nothing else raises it. An analysis item gets the goal reviewer, never
+security. A `.json` file counts as a document only under `repos.gates.data_paths`, since
+it may be config. Agent instruction files never count as documents: `AGENTS.md`, `CLAUDE.md`,
 `SKILL.md` and paths under `charters/`, `skills/`, `agents/`, `commands/`, `.claude/` or
 `.agents/`. The reviewer is goal for a document and quality for a spec or a pre-registration.
 The reason reads `docs-only: 1 reviewer (goal)`, and a FIX continues the same seat. A lead `tier` above light is overridden and recorded as
@@ -385,7 +401,7 @@ prompt carries a `Depth:` line, so no seat decides it:
 | | light | standard | full |
 |---|---|---|---|
 | Builder class sweep | none | the classes `wuwei sweep classes <worktree>` lists | every class |
-| Gate step zero (mutation) | none | only when the diff touches guard code, grants, outward, a hook or a trust path | always |
+| Gate step zero (mutation) | none | only when the diff touches guard code, grants, outward, a hook or a trust path, or the lead flagged it trust_surface or boundary_relevant | always |
 | After a fix | the same sentinel re-reads and rewrites `Verdict:` and `Head:` | delta round | delta round |
 | Verdict | `Verdict:`, `Head:`, findings | full shape | full shape |
 | Retro note | only when a line is not `none` | always | always |

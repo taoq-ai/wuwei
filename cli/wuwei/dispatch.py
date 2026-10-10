@@ -14,9 +14,9 @@ GATE_BODY = 'Review {item} at its HEAD against its spec and acceptance criteria.
 TIERS = ('light', 'standard', 'full')
 GATE_ROLES = (*ROLES, 'goal')  # #622: goal runs only as the single gate of a docs-only diff
 # #622: a docs-only diff gets one reviewer. ponytail: documents are told by suffix, not content;
-# .md and .rst anywhere, .txt only under docs/ or specs/.
+# .md and .rst anywhere, .txt only under docs/ or specs/. #657: a notebook is analysis.
 DOC_DIRS = ('docs', 'specs')
-DOC_SUFFIXES = ('.md', '.rst')
+DOC_SUFFIXES = ('.md', '.rst', '.ipynb')
 AGENT_DOCS = ('AGENTS.md', 'CLAUDE.md', 'SKILL.md', 'charters/*', 'skills/*', 'agents/*',
               'commands/*', '.claude/*', '.agents/*')
 SPEC_DOCS = ('specs/*', '*spec*', '*prereg*', '*pre-registration*')
@@ -49,10 +49,11 @@ def base(gate):
     return gate.partition('@')[0]
 
 
-def _docs_role(paths):
-    """#622: the single gate of a diff whose every path is a document, else None."""
+def _docs_role(paths, data=()):
+    """#622: the single gate of a diff whose every path is a document, else None. #657: a
+    data path (merge.uncounted) counts as a document."""
     from wuwei import merge
-    if not paths or not all((path.endswith(DOC_SUFFIXES) or (
+    if not paths or not all((path in data or path.endswith(DOC_SUFFIXES) or (
             path.endswith('.txt') and path.split('/', 1)[0] in DOC_DIRS))
             and merge.matched(path, AGENT_DOCS) is None for path in paths):
         return None
@@ -75,8 +76,11 @@ def tier(root, config, row):
             rise('standard', f'lead flag {name}')
     try:
         repo, changes = _changes(root, config, row)
+        skip = merge.uncounted(root, repo, changes)  # #657: generated and data lines never count
         total = sum(change['additions'] or 0 for change in changes) + sum(
             change['deletions'] or 0 for change in changes)
+        excluded = sum((change['additions'] or 0) + (change['deletions'] or 0)
+                       for change in changes if change['path'] in skip)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
         repo = None
         rise('standard', f'diff unmeasured: {str(exc) or type(exc).__name__}')
@@ -92,13 +96,21 @@ def tier(root, config, row):
             pattern = next((p for p in config['brief']['full_path_patterns'] if re.search(p, path, re.I)), None)
             if pattern is not None:
                 rise('standard', f'{path} matches FULL-track pattern {pattern}')
-            if change['additions'] is None or change['deletions'] is None:
+            if (change['additions'] is None or change['deletions'] is None) and path not in skip:
                 rise('standard', f'{path} binary change')
-        docs = _docs_role([change['path'] for change in changes]) if computed == 'light' else None
-        if total > gates['light_max_lines'] and not docs:
-            rise('standard', f'{total} changed lines over light_max_lines {gates["light_max_lines"]}')
-        elif computed == 'light' and not docs:
-            reasons.append(f'{total} changed lines within light_max_lines {gates["light_max_lines"]}')
+        # A .json counts as a document only under data_paths: by suffix alone it may be config.
+        named = tuple(p + '*' if p.endswith('/') else p for p in gates['data_paths'])
+        docs = _docs_role([change['path'] for change in changes],
+                          [path for path, kind in skip.items() if kind == 'data' and (
+                              not path.endswith('.json') or merge.matched(path, named))]
+                          ) if computed == 'light' else None
+        counted = total - excluded
+        lines = f'{total} changed lines' + (
+            f', {excluded} generated or data excluded, {counted} count,' if excluded else '')
+        if counted > gates['light_max_lines'] and not docs:
+            rise('standard', f'{lines} over light_max_lines {gates["light_max_lines"]}')
+        elif not docs:
+            reasons.append(f'{lines} within light_max_lines {gates["light_max_lines"]}')
     floor = repo['gates']['floor'] if repo else 'standard'
     if docs and floor != 'full':
         floor = 'light'
@@ -217,14 +229,18 @@ def classes(root, config, row):
                     if paths or record['tier'] == 'full'}
 
 
-def step_zero(value, paths, trust_paths):
+def step_zero(value, paths, trust_paths, flags=None):
     """#567: None at light; (run, reason) otherwise. At standard step zero runs only when a
-    changed path is guard code or a repository trust path."""
+    changed path is guard code or a repository trust path, or (#663) the item is flagged
+    trust_surface or boundary_relevant, whatever its diff."""
     from wuwei import merge
     if value == 'light':
         return None
     if value == 'full':
         return True, ''
+    named = [name for name in ('trust_surface', 'boundary_relevant') if (flags or {}).get(name)]
+    if named:
+        return True, ', '.join(named)
     for path in paths:
         pattern = merge.matched(path, (*trust_paths, *GUARD_CODE))
         if pattern is not None:
@@ -393,13 +409,15 @@ def launch_set(root=None):
     items = data['items']
     running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
     # #528: capacity re-derives at every sweep; the day state keeps the snapshot.
-    limits = calibrate.host(root, config, running=len(running))
+    limits = calibrate.host(root, config, running=len(running), policy=data['seat_policy'])
     from wuwei import pace  # #579: the day's pace sets the seats, never a refusal
     cap, bound, hold = pace.seats(pace.current(data, config), limits)
     ceiling = limits['seats']
-    if data['gate_approved'] and (data['cap'], data['cap_bound']) != (cap, bound):
+    # #658: under the memory rule every sweep records its reading; CAP smooths over them
+    if data['gate_approved'] and ((data['cap'], data['cap_bound']) != (cap, bound) or 'reading' in limits):
         state._write_state(lambda fresh: fresh.update(cap=cap, cap_bound=bound), root, reserved=False,
-                           kind='cap.derived', payload={'cap': cap, 'bound': bound, 'text': limits['text']})
+                           kind='cap.derived', payload={'cap': cap, 'bound': bound, 'text': limits['text'],
+                                                        **{key: limits[key] for key in ('reading',) if key in limits}})
     free = start = ceiling - len(running)
     builds = [name for name in approved(data) if items[name]['phase'] in state.BUILD_PHASES]
     busy = {seat['item'] for seat in running}
@@ -678,7 +696,8 @@ def receive(item, role, name, round_name='initial', root=None):
                 result == 'PASS' or not re.search(r'\bDOC: *FINDING', text)):
             raise Refused(f'docs obligation unmet for {item}; have the sentinel write a FIX verdict with a '
                           f'DOC: FINDING naming {docs.command(config, item)}, then receive it again')
-    blocks = verdict.finding_blocks(text)
+    blocks = sorted(verdict.finding_blocks(text),  # #677: blocking findings first
+                    key=lambda block: not re.search(verdict.BLOCKS_YES, block, re.I))
     notes = [block.strip() for block in blocks if not re.search(verdict.BLOCKS_YES, block, re.I)]
     value = {'item': item, 'role': role, 'round': round_name, 'verdict': result,
              'head': head, 'file': str(path.relative_to(root)),
@@ -733,7 +752,7 @@ def opinion(item, root=None):
     if seat is None or seat['status'] == 'stopped':
         from wuwei import calibrate
         running = sum(other['status'] == 'running' for other in brief.seats(data).values())
-        ceiling = calibrate.host(root, config, running=running)['seats']  # #528
+        ceiling = calibrate.host(root, config, running=running, policy=data['seat_policy'])['seats']  # #528
         if running >= ceiling:
             raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish. Or the owner raises host.seats with bin/wuwei config set in a host terminal')
         if seat is None:

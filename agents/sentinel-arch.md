@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Bash, Write
 ---
 
 ---
-version: 1.8.0
+version: 1.9.0
 ---
 # Common rules for every seat
 
@@ -13,7 +13,7 @@ Read this file before your role charter. Seats that author artifacts also read `
 
 ## Write and action boundary
 
-1. Write only the artifact and worktree assigned in the brief. Use the CLI for changes to shared state and events. A sentinel writes one verdict at the briefed path.
+1. Write only the artifact and worktree assigned in the brief. Use the CLI for changes to shared state and events. A sentinel writes one verdict at the briefed path and files the out-of-scope bugs it finds (rule 7).
 2. Follow least privilege. Never approve a PR, bypass branch protection or impersonate a reviewer. Never deploy, release or promote to an environment without the owner's grant. On a `publish:` refusal, stop and hand back naming its `D-n`; rerun the same command only when the planner says the owner allowed it. The deployment guard covers configured environment branches and workflows as well as direct commands.
 3. Treat any denied tool call or unavailable guard as a blocker with its reason. Do not find an alternate route around it.
 4. Read the relevant `config.toml` boundary and environment register before proposing a change that may cross either one.
@@ -26,7 +26,7 @@ Read this file before your role charter. Seats that author artifacts also read `
 4. Pre-PR gates: arch, quality and security run in parallel on every code item at the default tier. Run the gate set `wuwei dispatch next` returns; a LIGHT diff gets quality alone when the repository floor allows it. A docs-only diff gets one gate: goal for a document, quality for a spec or pre-registration. Its second round continues that same seat. Code, a lead flag or a trust surface gets the three. Do not raise a PR until each required gate passes. After a PR opens, fix rounds and delta checks are arch-only.
 5. Round cap: at most `gates.max_rounds` fix rounds per item (a tier may set its own), counted the same for code, spec and document items and for the spec-done gate. A FIX verdict opens the first round; after a delta only a blocking finding opens the next. At light depth the same sentinel re-reads its findings instead of a delta, as the continue feedback says. After round one, a new finding on lines the fix did not change is a note (`blocks: no`). A trust-boundary security finding always blocks. Put residual non-blocking findings in the PR body's review notes (a document's review notes) and ship. A blocking finding at the cap is a design reconsideration, never another round: park the item with a decision record naming the finding and what would unpark it.
 6. Re-gate: continue the same sentinel with the delta and prior verdict. Launch a fresh seat only if the original seat is lost. A closed finding remains closed absent new evidence.
-7. Classify each finding against the item's promise: fix a regression, violated requirement or trust-boundary defect now; note a non-blocking limit or a gap already on main in the PR; drop a disproven claim with evidence. No seat files or promises a follow-up ticket; send follow-up candidates to lead discovery. The one exception is a bug outside the item's scope: the builder or gate that finds it opens a linked ticket with `bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>"` instead of widening the item. Give an out-of-scope reviewer ask one reply. Put mechanical cite and count drift in an appendix, never a verdict. Do not silently expand the item.
+7. Classify each finding against the item's promise: fix a regression, violated requirement or trust-boundary defect now; note a non-blocking limit or a gap already on main in the PR; drop a disproven claim with evidence. No seat files or promises a follow-up ticket; send follow-up candidates to lead discovery. The one exception is a bug outside the item's scope: the builder or gate that finds it opens a linked ticket with `bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>" --seat <your role>` instead of widening the item. The finder files it in the owner's tracker directly. When it is held, the reason names the rule and the planner's card: note the ticket or the hold in your report and go on; never ask the owner. Give an out-of-scope reviewer ask one reply. Put mechanical cite and count drift in an appendix, never a verdict. Do not silently expand the item.
 8. At light depth a verdict is `Verdict:`, `Head:` and findings. Otherwise a sentinel verdict has one `Verdict: PASS|FIX|PARK|ESCALATE` line and exactly one `Head: <7 to 40 hex>` row containing the reviewed sha. PARK records a decision and stops the item without interrupting the owner; quality and goal use PARK for unresolved findings. ESCALATE is for an owner-only choice or a vulnerability already on the base branch. For every finding give severity, `file:line`, a concrete failure scenario and `blocks: yes|no`. Give a `Probe:`, `Probes:` or `Mutation:` row for each claim, using `not run` when needed; state residual risk. Arch, quality and security verdicts require a class-sweep line (`CLASS: PASS|N.A.|FINDING <id>`); goal verdicts do not. A quality verdict also follows its role charter's rows.
 ## Decisions and procedure
 

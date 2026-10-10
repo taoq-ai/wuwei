@@ -474,16 +474,29 @@ def _gb(mib):
     return f'{round(mib / 1024, 1):g} GB'
 
 
-def host(root, config, running=0, free=None):
-    """Capacity (#528): CAP and the seat ceiling from the running seats plus the seats that fit
-    above the memory floor, one per core, then the owner's values and the token budget; `bound`
-    names what set CAP. `free` is MiB when the caller already measured it."""
-    from wuwei import metrics, workspace
+def processes(config, policy):
+    """#658: True when a seat runtime of the day launches its own process: any runtime but the
+    Claude subagent, and none launches nothing. policy: the seat policy, role to row."""
+    rows = policy.values() if isinstance(policy, dict) else ()
+    names = {config['adapters']['runtime'], *(row.get('runtime') for row in rows if isinstance(row, dict))}
+    return bool(names - {'claude', 'none', None})
+
+
+def host(root, config, running=0, free=None, policy=None):
+    """Capacity (#528, #658): CAP and the seat ceiling. Claude subagent seats take host.seats,
+    else one per core, and never read free memory; seats that are separate processes take the
+    median of today's last five memory readings (the seats that fit above the floor, one per
+    core). Then the owner's values and the token budget; `bound` names what set CAP. `free` is
+    MiB when the caller already measured it; `policy` the day's seat policy when held."""
+    from wuwei import metrics, state, workspace
     from wuwei.guards.agent_launch import free_memory
 
     owner_cap, owner_seats = config['cap'], config['host']['seats']
     try:
-        if free is None:
+        if policy is None:
+            policy = state.read_state(root)['seat_policy']
+        separate = processes(config, policy)
+        if separate and free is None:
             free = free_memory(config, root) // 2**20
         cores = os.cpu_count()
         if not cores:
@@ -493,22 +506,36 @@ def host(root, config, running=0, free=None):
         return {'unmeasured': str(exc), 'cap': cap, 'seats': owner_seats or 4, 'bound': 'unmeasured',
                 'text': f'cap {cap} (unmeasured): {exc}'}
     days = sorted((root / '.wuwei/days').glob('*'), reverse=True)
-    damaged = None
-    try:
-        seat = next((cost for day in days
-                     if (cost := metrics.seat_cost(metrics._events(day) or [])) != metrics.UNMEASURED), None)
-    except ValueError as exc:
-        # a damaged day log never blocks a launch: default seat cost, budget unmeasured
-        seat, damaged = None, exc
-    seat_mib = seat or SEAT_MIB
-    fit = max(1, min(running + max(0, (free - config['host']['free_memory_mb']) // seat_mib), cores))
+    damaged, memory = None, {}
+    if separate:
+        try:
+            seat = next((cost for day in days
+                         if (cost := metrics.seat_cost(metrics._events(day) or [])) != metrics.UNMEASURED), None)
+        except ValueError as exc:
+            # a damaged day log never blocks a launch: default seat cost, budget unmeasured
+            seat, damaged = None, exc
+        seat_mib = seat or SEAT_MIB
+        reading = max(1, min(running + max(0, (free - config['host']['free_memory_mb']) // seat_mib), cores))
+        try:  # the sweep records each reading on cap.derived; smooth over today's last five
+            readings = [row['payload']['reading'] for row in metrics._events(workspace.day_dir(root)) or []
+                        if row['kind'] == 'cap.derived' and type(row['payload'].get('reading')) is int][-4:]
+        except ValueError as exc:
+            readings, damaged = [], damaged or exc
+        readings.append(reading)
+        fit, rule = statistics.median_low(readings), 'memory'
+        measured = ((f'median of {", ".join(map(str, readings))}; ' if len(readings) > 1 else '')
+                    + f'{_gb(free)} free, {_gb(seat_mib)} per seat, {cores} cores')
+        memory = {'free_mib': free, 'seat_mib': seat_mib,
+                  'seat_source': 'default' if seat is None else 'measured', 'reading': reading}
+    else:
+        fit, rule = owner_seats or cores, 'host.seats'
+        measured = 'subagent runtime, free memory not read' + ('' if owner_seats else f'; host.seats unset, {cores} cores')
     # the derived ceiling holds one gate (three sentinels launch together); the floor still guards
     from wuwei.dispatch import ROLES
     seats = owner_seats or max(fit, len(ROLES))
-    cap, bound = (owner_cap, 'owner') if owner_cap else (min(fit, seats), 'host')
-    measured = f'{_gb(free)} free, {_gb(seat_mib)} per seat, {cores} cores'
+    cap, bound = (owner_cap, 'owner') if owner_cap else (min(fit, seats), rule)
     text = (f'cap {cap} (owner): config cap; the host fits {min(fit, seats)} ({measured})'
-            if owner_cap else f'cap {cap} (host): {measured}')
+            if owner_cap else f'cap {cap} ({bound}): {measured}')
     budget, costs = config['budget']['tokens_per_day'], {}
     if budget:
         # ponytail: counts tokens already spent today, not what running seats will still spend;
@@ -536,9 +563,8 @@ def host(root, config, running=0, free=None):
         load = round(os.getloadavg()[0], 1)
     except (OSError, AttributeError):
         load = None
-    return {'cores': cores, 'free_mib': free, 'seat_mib': seat_mib,
-            'seat_source': 'default' if seat is None else 'measured',
-            'cap': cap, 'seats': seats, 'bound': bound, 'text': text, 'load': load, **costs}
+    return {'cores': cores, **memory, 'cap': cap, 'seats': seats, 'bound': bound, 'text': text,
+            'load': load, **costs}
 
 
 def proposal(raw, targets):
@@ -877,10 +903,11 @@ def report(results, diff, edits, written, error=None, host=None, config=None):
     lines = ['# Calibration', '']
     if host:
         lines += ['## Host', ''] + ([f"- unmeasured: {host['unmeasured']}"] if 'unmeasured' in host else [
-            f"- cores: {host['cores']}",
-            f"- free memory: {host['free_mib']} MiB (floor {config['host']['free_memory_mb']} MiB)",
-            f"- seat cost: {host['seat_mib']} MiB ("
-            + ('measured)' if host['seat_source'] == 'measured' else 'default, unmeasured until the first seats run)'),
+            f"- cores: {host['cores']}", *([
+                f"- free memory: {host['free_mib']} MiB (floor {config['host']['free_memory_mb']} MiB)",
+                f"- seat cost: {host['seat_mib']} MiB ("
+                + ('measured)' if host['seat_source'] == 'measured' else 'default, unmeasured until the first seats run)')]
+                if 'free_mib' in host else []),
             f"- derived: {host['text']}"]) + ['']
     for result in results:
         lines += [f"## {result['repo']['name']}", '']

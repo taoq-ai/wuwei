@@ -75,6 +75,11 @@ def _proposal(data, goals_text, framework="wsjf"):
     for item in data['candidates']:
         if not isinstance(item, dict):
             raise ValueError(f'candidate must be an object; {PLAN_JSON}')
+        for key in ('ticket', 'tier', 'docs'):  # #640: empty means absent; in place, callers reuse item
+            if key in item and isinstance(item[key], str) and not item[key].strip():
+                item.pop(key)  # a null ticket stays: it is the owner's none (#636)
+            elif key != 'ticket' and key in item and item[key] is None:
+                item.pop(key)
         name = item.get('id')
         if not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', name) or name in seen:
             raise ValueError(f'candidate id must be unique and safe; {PLAN_JSON}')
@@ -90,8 +95,9 @@ def _proposal(data, goals_text, framework="wsjf"):
         if 'tier' in item and item['tier'] not in dispatch.TIERS:
             raise ValueError(f'{name}: tier must be light, standard or full; {PLAN_JSON}')
         if item.get('ticket') is not None and not (isinstance(item['ticket'], str) and re.fullmatch(
-                TICKET, item['ticket'])):  # #636: null is the owner's none
-            raise ValueError(f'{name}: invalid ticket; {PLAN_JSON}')
+                TICKET, item['ticket'])):  # #636: null is the owner's none; #640: empty is absent
+            raise ValueError(f'{name}: invalid ticket {item["ticket"]!r}; ticket must match {TICKET}, an id '
+                             f'such as ENG-12, PROJ-12 or owner/repo#12, or be left out; {PLAN_JSON}')
         flags = item.get('flags')
         if not isinstance(flags, dict) or set(flags) != set(FLAGS) or any(type(v) is not bool for v in flags.values()):
             raise ValueError(f'{name}: flags must contain boolean trust_surface, boundary_relevant, agent_surface; {PLAN_JSON}')
@@ -102,6 +108,8 @@ def _proposal(data, goals_text, framework="wsjf"):
         paths = item.get('paths', [])  # #579: the files it touches; guard paths advise careful
         if not isinstance(paths, list) or any(not isinstance(path, str) for path in paths):
             raise ValueError(f'{name}: paths must be a list of strings; {PLAN_JSON}')
+        if 'governed_by' in item and not (isinstance(item['governed_by'], str) and item['governed_by'].strip()):
+            raise ValueError(f'{name}: governed_by must be a path or path#heading; {PLAN_JSON}')  # #664
     json.dumps(data, allow_nan=False)
     return data
 
@@ -224,7 +232,8 @@ def propose(data, root=None):
             'discovered': found['candidates']}
     config = workspace.load_config(root)
     from wuwei import calibrate
-    limits = calibrate.host(root, config)  # #528: CAP derives; the lead's cap is not used
+    # #528: CAP derives; the lead's cap is not used. #658: the proposal's seat policy picks the rule
+    limits = calibrate.host(root, config, policy=data.get('seat_policy'))
     data = {**data, 'cap': limits['cap'],
             'capacity': {key: limits[key] for key in ('bound', 'text', 'seats')}}
     framework = config['prioritisation']['framework']
@@ -437,7 +446,7 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
                                        'flags': candidates[name]['flags'],
                                        'budget_size': candidates[name]['score'][
                                            'job_size' if framework == 'wsjf' else 'effort'],
-                                       **{key: candidates[name][key] for key in ('tier',)
+                                       **{key: candidates[name][key] for key in ('tier', 'governed_by')
                                           if key in candidates[name]}}
                                  for name in items})
         current.update(cap=data['cap'], cap_bound=data.get('capacity', {}).get('bound', ''),
@@ -550,7 +559,7 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
             raise state.StateError(f'item {item} is already in the plan; run bin/wuwei build next {item}')
         current['items'][item] = {'goal': candidate['goal'], 'track': candidate['track'],
                                   'flags': candidate['flags'], 'budget_size': size,
-                                  **{key: candidate[key] for key in ('tier',) if key in candidate},
+                                  **{key: candidate[key] for key in ('tier', 'governed_by') if key in candidate},
                                   **({'source': source, 'title': candidate['title']} if source else {})}
         current['approved_items'].append(item)
         if chosen and not tracker.ticket(current, item):

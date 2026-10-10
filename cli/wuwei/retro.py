@@ -98,6 +98,11 @@ Outcome: pending
         lines.append(f"| {name} | {item['phase']} | {item['status']} | "
                      f"{rounds.get(name, 0) if isinstance(rounds, dict) else 'unmeasured'} |")
     lines += ['', metrics.cycle_moved(metrics.cycles(root), workspace.now())]  # #567
+    filed = [row['payload'] for row in watch.records(day / 'events.jsonl')
+             if row['kind'] == 'tracker.created' and row['payload'].get('seat')]  # #644
+    lines += ['', '## Tickets seats filed', '| Ticket | Class | Item | Seat |', '| --- | --- | --- | --- |',
+              *([f"| {p['ticket']} | {p['class']} | {p['subject']} | {p['seat']} |" for p in filed]
+                or ['| none | | | |'])]
     from wuwei import decision, report
     card = data.get('pace_card', {}).get('id')  # #579
     lines += ['', '## Pace', *report.pace_lines(root, data),

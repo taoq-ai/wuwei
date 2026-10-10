@@ -6,14 +6,14 @@ import sys
 
 from wuwei import decision, novelty, references, security, state, verdict, watch, workspace
 from wuwei.commands.event import EVENT_PRODUCERS
-from wuwei.exits import CLEAN, FINDINGS
+from wuwei.exits import CLEAN, FINDINGS, UNRUN
 from wuwei.redact import redact
 
 NOT = 'not recorded'
 EVENT_ID = r'\d{4}-\d{2}-\d{2}:[1-9][0-9]*'
 REFUSALS = ('hook.refusal', 'guard.would_refuse')
 DRAFT = r'draft-[0-9a-f]{32}'
-GROUPS = ('queued', 'tier', 'gate', 'decision', 'phase', 'merge')
+GROUPS = ('queued', 'worktree', 'tier', 'gate', 'decision', 'phase', 'merge')
 REQUIRED = {'queued': 'queued', 'tier': 'tier', 'gate': 'gate verdicts', 'merge': 'merge policy check'}
 
 
@@ -25,6 +25,8 @@ def register(subparsers):
     parser = subparsers.add_parser('why', help='Explain from records why an item, decision or refusal happened')
     parser.add_argument('target', nargs='+', help='an item, owner/repo#n, D-n, a target key, an event id or "last refusal"')
     parser.add_argument('--full', action='store_true', help='add event ids and evidence paths')
+    parser.add_argument('--json', action='store_true',
+                        help="print an item's live docs, ticket and spec values and its steps as JSON")
     parser.set_defaults(func=run)
 
 
@@ -35,13 +37,22 @@ def level(root, full):
 def run(args):
     root = workspace.find_workspace()
     target = ' '.join(args.target)
+    if args.json and (target == 'last refusal' or any(re.fullmatch(pattern, target) for pattern in (
+            EVENT_ID, decision.DECISION_ID, DRAFT, novelty.KEY))):
+        print('wuwei why: --json reads an item; pass an item id', file=sys.stderr)
+        return UNRUN
     try:
+        if args.json:
+            print(json.dumps(live(root, target, level(root, args.full))))
+            return CLEAN
         if target == 'last refusal' or re.fullmatch(EVENT_ID, target):
             steps = refusal(root, target)
         elif re.fullmatch(decision.DECISION_ID, target):
             steps = decided(root, target)
         elif re.fullmatch(DRAFT, target):  # #552
             steps = [(line, None, []) for line in held(root, target)]
+        elif target == 'adhoc':  # #676
+            steps = adhoc(root)
         elif re.fullmatch(novelty.KEY, target):  # #556
             steps = [(line, None, []) for line in novelty.explain(root, workspace.load_config(root), target)]
         else:
@@ -51,6 +62,19 @@ def run(args):
         return FINDINGS
     print('\n'.join(render(steps, level(root, args.full), root)))
     return CLEAN
+
+
+def adhoc(root):
+    """#676: today's adhoc seats, the agents launched outside the WUWEI seat types."""
+    path = workspace.day_dir(root) / 'state.json'
+    steps = [(f"adhoc seat {name}: {seat.get('type', NOT)} as {seat.get('label', NOT)}, "
+              f"launched by {seat.get('launcher', NOT)}, {seat['status']}; prompt: {seat.get('prompt', NOT)}; "
+              f"traces: {', '.join(seat.get('trace_sessions', [])) or 'none yet'}",
+              None, [str(path.relative_to(root))])
+             for name, seat in state.read_state(root)['seats'].items() if seat.get('role') == 'adhoc']
+    if not steps:
+        raise Missing('no adhoc seat today; an Agent launch of a type outside the WUWEI seats registers one, then run wuwei why adhoc')
+    return steps
 
 
 def render(steps, level, root):
@@ -83,8 +107,28 @@ def proposed(day, name):
                  if row.get('id') == name), None)
 
 
-def item(root, name):
-    """The recorded chain of one item, oldest day first, as (text, event id, paths) steps."""
+def live(root, name, level):
+    """#667: the item's values as recorded now (docs, ticket, spec) and its steps."""
+    from pathlib import Path
+    from wuwei import docs, specmode
+    name, days = _days(root, name)
+    day, data = days[-1]
+    row = data['items'][name]
+    config = workspace.load_config(root)
+    markers = security.load(root)
+    clean = lambda text: text if text is None else security.redact(redact(text), markers)
+    shown = docs.shown(config, row)
+    spec = specmode.brief_line(config, name, row, Path(row['worktree']) if row.get('worktree') else None, True)
+    return {'item': name, 'day': day.name,
+            'docs': {'value': clean(shown), 'reason': clean((row.get('docs') or {}).get('reason', '')),
+                     'command': None if shown == 'n/a' else docs.command(config, name)},
+            'ticket': clean(((data.get('tickets') or {}).get(name) or {}).get('id')),
+            'spec': clean(spec and spec.removeprefix('Spec: ')),
+            'steps': render(item(root, name), level, root)}
+
+
+def _days(root, name):
+    """(item name, [(day, state)] oldest first); a PR ref resolves to its item."""
     if '#' in name:
         ref = references.pull_request(name)
         name = next((key for day in watch.days(root)
@@ -96,6 +140,12 @@ def item(root, name):
             if name in (data := state.read_state(directory=day))['items']]
     if not days:
         raise Missing(f'no recorded item {name}; run bin/wuwei status for today\'s items')
+    return name, days
+
+
+def item(root, name):
+    """The recorded chain of one item, oldest day first, as (text, event id, paths) steps."""
+    name, days = _days(root, name)
     rel = lambda path: str(path.relative_to(root))
     groups = {group: [] for group in GROUPS}
     for day, data in days:
@@ -116,6 +166,9 @@ def item(root, name):
             if kind == 'plan.added' and payload.get('item') == name:
                 score = data.get('discovery_candidates', {}).get(name, {}).get('score')
                 add('queued', f'queued: goal {row.get("goal", NOT)}, {scored(score)}', rel(day / 'state.json'))
+            if kind == 'worktree.created' and payload.get('item') == name:
+                add('worktree', f'worktree: branch {payload.get("branch", NOT)} from {payload.get("base", NOT)} '
+                    f'at {str(payload.get("start", NOT))[:12]}')
             if kind == 'gate.tiered' and payload.get('item') == name:
                 reasons = payload.get('reasons') or []
                 add('tier', f'tier: {payload.get("tier", NOT)}' + (f' ({"; ".join(reasons)})' if reasons else ''))

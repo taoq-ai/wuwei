@@ -80,6 +80,8 @@ def humanize_lint(inputs, root, config, channels, *, draft=False):
 
 # ponytail: cross-script confusables remain distinct; add a Unicode confusable table if needed.
 def _normalize(text):
+    if text.isascii():  # #626: NFKD keeps ASCII, and no ASCII character is Mn, Me or Cf.
+        return text.casefold()
     return ''.join(c for c in unicodedata.normalize('NFKD', text)
                    if unicodedata.category(c) not in {'Mn', 'Me', 'Cf'}).casefold()
 
@@ -165,10 +167,16 @@ DESTINATIONS = ('channel', 'channel_id', 'recipient', 'recipients', 'to', 'issue
 NOT_TEXT = METADATA_FIELDS | BOOL_FIELDS | {'issue_number', 'status', 'type', 'object'}
 
 
+@functools.lru_cache(maxsize=256)
+def _snake(key):
+    """issueId -> issue_id, once per key name (#626)."""
+    return re.sub(r'(?<=[a-z0-9])(?=[A-Z])', '_', key).lower()
+
+
 def _strings(value, key, texts, found, text=True, destination=None):
     """#501: walk one payload value; a string is text unless a key on its path is an id,
     flag, structural or destination key; destination values go to found."""
-    name = re.sub(r'(?<=[a-z0-9])(?=[A-Z])', '_', key).lower()
+    name = _snake(key)
     if name in DESTINATIONS:
         destination = name
     if (destination or key in NOT_TEXT or name in NOT_TEXT or name == 'id'
@@ -219,13 +227,14 @@ OWNER = {'chat': 'slack', 'slack': 'slack', 'mail': 'mail'}  # #495: kinds with 
 SLACK_SHAPE = {'user': '[UW][A-Z0-9]+', 'dm': 'D[A-Z0-9]+'}  # A channel id is never the owner.
 
 
-def owner_only(context, config, kind):
+def owner_only(context, config, kind, read=None):
     """#495: True when the owner alone is addressed: every destination and recipient is the
-    owner's identity in outbound.owner for this kind. A nested draft wrapper never is."""
+    owner's identity in outbound.owner for this kind. A nested draft wrapper never is. read is
+    the caller's _text(context), when it has one (#626)."""
     if not isinstance(context, dict) or 'draft' in context:
         return False
     mine = _owner_ids(config, kind)
-    texts, destinations = _text(context)
+    texts, destinations = read or _text(context)
     targets = [*destinations, *context.get('recipients', []), *filter(None, [context.get('recipient')])]
     if kind == 'mail':  # #501: any address in the payload (a Graph ccRecipients shape) is a reader.
         targets += [address for text in texts for address in re.findall(r'[^\s<>@]+@[^\s<>@]+', text)]
@@ -362,6 +371,12 @@ def _keyword_pattern(words):
     return re.compile(r'(?<!\w)(?:' + '|'.join(re.escape(_normalize(word)) for word in words) + r')(?!\w)') if words else None
 
 
+@functools.lru_cache(maxsize=256)
+def _pattern(pattern):
+    """An owner pattern compiled once per process (#626); compiled when reached, as re.search did."""
+    return re.compile(pattern, PATTERN_FLAGS)
+
+
 def _topics(normalized, rules):
     """{topic: config key} of every sensitive, commitment and disagreement hit (#496)."""
     # ponytail: explicit deny lists and complete safe forms have limited language
@@ -371,7 +386,7 @@ def _topics(normalized, rules):
     if pattern and pattern.search(normalized.replace('_', ' ')):
         found['sensitive'] = 'outbound.sensitive_keywords'
     for key in ('sensitive_patterns', 'commitment_patterns', 'disagreement_patterns'):
-        if any(re.search(pattern, normalized, PATTERN_FLAGS) for pattern in rules[key]):
+        if any(_pattern(pattern).search(normalized) for pattern in rules[key]):
             found.setdefault(key.split('_')[0], f'outbound.{key}')
     return found
 
@@ -470,9 +485,10 @@ def _person(person, namespace, rules, mine, fallback, label, dm=False, what='men
     return {**party, 'class': fallback[0], 'why': f'{unknown}, {fallback[1]}'}
 
 
-def _parties(context, destinations, mention_text, kind, tool, config, pr, thread=None):
+def _parties(context, destinations, mention_text, kind, tool, config, pr, thread=None, own=False):
     """#496: who reads the call, each {id, kind, key, names, class, why}; pr is the
-    _pr_context exit of a code-host call; thread is (ts, recorded participant ids or None)."""
+    _pr_context exit of a code-host call; thread is (ts, recorded participant ids or None);
+    own marks WUWEI's own class ticket in the workspace's tracker (#644)."""
     rules = config['outbound']
     mine = _owner_ids(config, kind)
     fallback = _default(config, kind, tool)
@@ -536,7 +552,10 @@ def _parties(context, destinations, mention_text, kind, tool, config, pr, thread
             place(ref, 'team', f'{ref} is a measured team pull request as team')
         else:
             place(ref, fallback[0], f'{ref} is not a measured team pull request, {fallback[1]}')
-    if not parties:
+    if not parties and own:  # #644: WUWEI's own bug, triage or follow-up ticket, nobody else named.
+        place(connector, 'owner', "the workspace tracker is the owner's own")
+        parties[connector.casefold()]['own'] = True
+    elif not parties:
         place(connector, *_default(config, kind, tool, DEFAULT_CLASS))
     return list(parties.values())
 
@@ -565,6 +584,8 @@ def decide(parties, topics, names, config, trace=None):
             line = f'  rule {number} {source} {render(row)}{note}: ' if trace is not None else ''
             if not _matches(row, party, topics, names):
                 outcome = 'passed'
+            elif party.get('own') and source == 'default' and row['tier'] == 'send':
+                outcome = "passed: the umbrella decides the owner's own tracker"  # #644
             elif strict and row['tier'] == 'send' and party['class'] in ('client', 'public'):
                 outcome = 'ignored under strict'  # #496: strict never sends to a client or the public.
             else:
@@ -612,10 +633,10 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
         if not isinstance(text, str) or not isinstance(kind, str):
             return UNRUN, 'draft'
         context = {} if context is None else context
-        _text(context)
+        read = _text(context)
         # #501: the chat rules read channel ids only; a recipient, issue or repo is no channel.
         destinations = channel_ids(context)
-        if owner_only(context, config, kind):
+        if owner_only(context, config, kind, read):
             return CLEAN, 'send'  # #495: only the owner reads it; security and the lint still run.
         # Some tracker tools wrap fields in draft even though the operation sends.
         nested = context.get('draft', {})
@@ -627,6 +648,10 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
                     return tier('unclassified', 'nested draft fields disagree')
                 context[key] = value
         rules = config['outbound']
+        # #644: WUWEI's own class ticket in a tracker that is not external is internal. Only the
+        # port sets category, so a seat's MCP payload cannot claim it.
+        own = (port and kind == 'tracker' and context.get('category') in config['tracker']['create']
+               and not _external_tracker(config))
         normalized = _normalize(text).replace('\u2019', "'")
         review_match = (re.fullmatch(REVIEW_REQUEST, text) if kind in ('chat', 'slack')
                         and destinations == [config['shepherd']['review_channel']] else None)
@@ -641,7 +666,7 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
             from wuwei import state
             thread = (ts, state.read_state(root).get('outbound_threads', {}).get(f'{destinations[0]}/{ts}'))
             topics['thread'] = f'thread {ts}'
-        parties = _parties(context, destinations, mention_text, kind, tool, config, code, thread)
+        parties = _parties(context, destinations, mention_text, kind, tool, config, code, thread, own)
         found = decide(parties, topics, [name for name in (tool, kind) if name], config, trace)
         # #533: an internal-state word to a client or public reader is a card naming both; a block row wins.
         outside = next((party for party in parties if party['class'] in ('client', 'public')), None)
@@ -660,8 +685,9 @@ def classify(text, root, config, context=None, *, kind='chat', port=False, why=N
             return FINDINGS, 'block'
         # #527, #535: the umbrella decides what no row narrowed, every connector write included;
         # docs.auto and tracker.auto keep deciding WUWEI's own adapter writes (the port path),
-        # which carry a kind or a category. With ask, the rules below say why a draft is held.
-        if not (port and kind in ('docs', 'tracker')) and rules['default_tier'] != 'ask':
+        # which carry a kind or a category, except WUWEI's own class tickets in the owner's
+        # tracker (#644). With ask, the rules below say why a draft is held.
+        if (own or not (port and kind in ('docs', 'tracker'))) and rules['default_tier'] != 'ask':
             if rules['default_tier'] == 'send':
                 return CLEAN, 'send'
             if isinstance(why, list):

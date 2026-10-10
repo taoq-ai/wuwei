@@ -48,6 +48,9 @@ STEPS = {
 # The first implementation row of each engine; the rows before it gate source edits.
 IMPLEMENT = ('implement', 'executing-plans', 'apply')
 BOX = re.compile(r'^\s*[-*] \[([ xX])\]', re.M)
+# #664: the item's governing document: governed_by on the plan item, else this line in spec.md.
+GOVERNING = re.compile(r'^Governing:[ \t]*(\S[^\n]*?)[ \t]*$', re.M)
+VERDICTS = ('agrees', 'conflicts', 'not covered')
 
 
 def _read(path):
@@ -308,6 +311,67 @@ def named(root, config, item, row, tree, text):
                if gap else f'spec mode: no spec artifacts found for {item}; write them in the item worktree, then stop again')
 
 
+def governing(tree, row, location=None):
+    """None when the item names no governing document, else (reference, first line, last
+    line, text) of the section it names; ValueError when the reference does not resolve."""
+    reference = row.get('governed_by')
+    spec = Path(tree) / location / 'spec.md' if location is not None else None
+    if not reference and spec is not None and spec.is_file():
+        found = GOVERNING.search(_read(spec))
+        reference = found and found.group(1)
+    if not reference:
+        return None
+    name, _, heading = reference.partition('#')
+    path = Path(tree) / name
+    if (not name or Path(name).is_absolute() or not path.resolve().is_relative_to(Path(tree).resolve())
+            or not path.is_file()):
+        raise ValueError(f'governing document {reference} is not a file in the worktree; fix the Governing: line in spec.md to a repository-relative path, then run the analyze step again')
+    lines = _read(path).splitlines(keepends=True)
+    first, last = 1, len(lines)
+    if heading:
+        # ponytail: a '#' line inside a fenced code block reads as a heading; parse fences if a
+        # governing document ever has one.
+        heads = [(index, len(match.group(1)), match.group(2)) for index, line in enumerate(lines, 1)
+                 if (match := re.match(r'(#{1,6})[ \t]+(.*?)[ \t]*$', line))]
+        start = next(((index, level) for index, level, title in heads
+                      if title == heading or title.startswith(heading + ' ')), None)
+        if start is None:
+            raise ValueError(f'no heading {heading} in {name}; fix the heading after # in the Governing: line of spec.md, then run the analyze step again')
+        first = start[0]
+        last = next((index - 1 for index, level, _ in heads if index > first and level <= start[1]), last)
+    return reference, first, last, ''.join(lines[first - 1:last])
+
+
+def governed(report, spec_text):
+    """None when the report has a ## Governing table with a row per spec.md assumption, else the gap."""
+    from wuwei.docs import _sections
+    table = _sections(report, ('Governing',))
+    if not table:
+        return 'the report has no ## Governing table'
+    rows = 0
+    for line in table.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip('|').split('|')]
+        rows += (line.lstrip().startswith('|') and len(cells) >= 3 and cells[1].lower() in VERDICTS
+                 and bool(re.fullmatch(r'\S+:\d+\S*', cells[2])))
+    needed = max(1, len(re.findall(r'^[-*] ', _sections(spec_text, ('Assumptions',)), re.M)))
+    return None if rows >= needed else f'the ## Governing table has {rows} valid rows for {needed} assumptions'
+
+
+def brief_block(config, item, row, tree):
+    """The builder brief's ## Governing document block (#664), or '' when the item names none."""
+    if mode(config) == 'off' or config['spec']['engine'] != 'speckit' or skip(config, row):
+        return ''
+    found = governing(tree, row)
+    if not found:
+        return ''
+    reference, first, last, text = found
+    return (f'\n## Governing document\n\n{reference} (lines {first}-{last}) governs this item. Give the text '
+            'below to /speckit.analyze with the spec, and end the report with a ## Governing table: '
+            '| Assumption | Verdict | Line |, one row per assumption in spec.md, the verdict agrees, '
+            'conflicts or not covered, the line cited as <path>:<n>. bin/wuwei spec analysis refuses a '
+            f'report without it.\n\n{text}')
+
+
 def brief_line(config, item, row, tree, gate):
     """The brief's Spec: header line, or None when spec mode is off."""
     effective = mode(config)
@@ -319,7 +383,12 @@ def brief_line(config, item, row, tree, gate):
     engine = config['spec']['engine']
     location, why = _location(tree, engine, item)
     if gate:
-        return f'Spec: {engine} artifacts: {location}' if location else f'Spec: not found ({why})'
+        if not location:
+            return f'Spec: not found ({why})'
+        found = governing(tree, row, location) if engine == 'speckit' else None
+        return f'Spec: {engine} artifacts: {location}' + (
+            f'; governed by {found[0]} (lines {found[1]}-{found[2]}): check the ## Governing table in analysis.md'
+            if found else '')
     where = location.as_posix() if location else ' or '.join(
         pattern.format(item=item.lower()) for pattern in LOCATION[engine])
     steps = '; '.join(f"{step} ({command.format(item=item.lower())})"

@@ -128,6 +128,13 @@ def green(checks, protection):
                 f'check {check["name"]} is failing or pending')
 
 
+def fixes_base(base, head):
+    """#668: the checks failing at the base commit that pass at head; a PR that turns a
+    broken base green skips the soak."""
+    passed = {c['name'] for c in head if c['conclusion'] == 'success'}
+    return sorted({c['name'] for c in base if c['conclusion'] in ('failure', 'error')} & passed)
+
+
 def quiet(policy, now):
     minute = now.hour * 60 + now.minute
     for window in policy['quiet_hours']:
@@ -219,6 +226,43 @@ def owner_hold(item):
     return (flag['by'], flag['at'][:10]) if flag['value'] else None
 
 
+# #657: what never counts toward the tier or max_changed_lines. ponytail: lockfiles by name and
+# data by suffix over DATA_LINES changed lines; linguist-generated globs from the root
+# .gitattributes are matched like every path glob here, not with full gitattributes semantics.
+LOCKFILES = ('*.lock', 'bun.lock*', 'package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'go.sum')
+DATA_SUFFIXES = ('*.json', '*.jsonl', '*.csv', '*.parquet')
+DATA_LINES = 200
+
+
+def uncounted(root, repo, files):
+    """#657: {path: 'data' | 'generated'} for each changed file whose every named path is data
+    (repos.gates.data_paths, or a data suffix with a binary change or over DATA_LINES lines)
+    or generated (a lockfile, repos.merge.size_exclude, a linguist-generated glob in the
+    repository's root .gitattributes, ignored when the diff changes that file)."""
+    named = [(f['path'], f.get('previous_path')) for f in files]
+    linguist = []
+    if not any('.gitattributes' in pair for pair in named):
+        try:
+            text = (Path(root) / Path(repo['path']).expanduser() / '.gitattributes').read_text()
+        except FileNotFoundError:
+            text = ''
+        for line in text.splitlines():
+            parts = line.split()
+            if parts and not parts[0].startswith('#') and {'linguist-generated', 'linguist-generated=true'} & set(parts[1:]):
+                linguist.append(parts[0].removeprefix('/').removeprefix('**/'))
+    data = tuple(p + '*' if p.endswith('/') else p for p in repo['gates']['data_paths'])
+    generated = (*LOCKFILES, *repo['merge']['size_exclude'], *linguist)
+    result = {}
+    for file, pair in zip(files, named):
+        big = file['additions'] is None or file['deletions'] is None or file['additions'] + file['deletions'] > DATA_LINES
+        kinds = ['data' if matched(path, data) or (big and matched(path, DATA_SUFFIXES))
+                 else 'generated' if matched(path, generated) else None
+                 for path in pair if path is not None]
+        if None not in kinds:
+            result[file['path']] = 'data' if set(kinds) == {'data'} else 'generated'
+    return result
+
+
 def check(ref, root=None, *, cwd=None, repo=None, granted=False):
     """Return 0 and evidence, 1 findings, or 2 unmeasured; never authorize overrides. #524:
     granted (the owner's merge grant) skips only auto-merge eligibility and pacing."""
@@ -284,11 +328,13 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
                 if not isinstance(path, str) or not path or path.startswith('/') or '..' in Path(path).parts:
                     raise ValueError(f'invalid changed file path; {DAMAGED}')
                 require(granted or matched(path, policy['never_auto_paths']) is None, f'never-auto path: {path}')
-        # #615: a file counts toward the size rule unless every path it names matches size_exclude.
-        changed = sum(file['additions'] + file['deletions'] for file in files
-                      if any(path is not None and matched(path, policy['size_exclude']) is None
-                             for path in (file['path'], file['previous_path'])))
-        require(granted or changed <= policy['max_changed_lines'], 'diff exceeds max changed lines')
+        # #615, #657: a file counts toward the size rule unless merge.uncounted names it.
+        skip = uncounted(root, settings, files)
+        changed = sum(file['additions'] + file['deletions'] for file in files if file['path'] not in skip)
+        excluded = additions + deletions - changed
+        require(granted or changed <= policy['max_changed_lines'],
+                f'diff exceeds max changed lines: {changed} count over {policy["max_changed_lines"]}'
+                + (f' ({excluded} generated or data excluded)' if excluded else ''))
         from wuwei.dispatch import gate_set
         from wuwei.guards.pr import gate_check
         code, reason = gate_check(root, root / settings['path'], config, sha=head, item=item)
@@ -328,7 +374,15 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         bot = bot_evidence(config, policy, discussion, ref, head, root)
         last = max([obligations._time(pr['updated_at']),
                     *[obligations._time(r['submitted_at']) for r in approvals]])
-        require(granted or workspace.now() - last >= timedelta(minutes=policy['soak_minutes']), 'soak window has not passed')
+        end, soak = last + timedelta(minutes=policy['soak_minutes']), None
+        if not granted and workspace.now() < end:
+            fixed = policy['soak_skip'] == 'base_fix' and fixes_base(
+                checks_at(host, ref, pr['base_sha'], root), checks)
+            if not fixed:
+                return Result(1, {'next': f'run bin/wuwei merge {ref} after {end.isoformat()}'},
+                              f'merge policy: waits: soak ends at {end.isoformat()}; run bin/wuwei merge {ref} after it')
+            soak = (f'skipped: fixes the broken base: {", ".join(fixed)} fail at '
+                    f'{pr["base_sha"]} and pass at head')
         fresh = checked_pr(host, ref, root)
         require(all(fresh[key] == pr[key] for key in ('head', 'base_sha', 'base', 'updated_at',
                     'merge_state', 'mergeable', 'state', 'draft')), 'PR changed during check')
@@ -336,12 +390,14 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         return Result(0, {'pr': ref, 'item': item, 'head': head, 'base': pr['base'],
             'base_sha': pr['base_sha'], 'at': workspace.now().isoformat(), 'verdicts': verdicts,
             'checks': checks, 'approvals': sorted(r['author'] for r in approvals),
-            'protection': protection, 'bot': bot,
+            'protection': protection, 'bot': bot, 'soak': soak,
             'files': [{k: v for k, v in file.items() if k != 'patch'} for file in files]})
     except Refused as exc:
         if granted:  # #524: never the owner wall; the condition, then the retry
             return Result(1, None, f'merge: {exc}; no grant lifts this; run bin/wuwei pr act {ref} once it holds')
-        return Result(1, None, f'merge policy: {exc}; the owner merges; ask the owner')
+        return Result(1, {'next': f"run bin/wuwei merge {ref}: it merges under the owner's grant, "
+                                  'or asks the owner on a card'},
+                      f"merge policy: owner merges: {exc}; run bin/wuwei merge {ref}: it merges under the owner's grant, or asks the owner on a card")
     except ERRORS as exc:
         return Result(2, None, f'merge policy unmeasured: {exc}; route to owner; run bin/wuwei doctor if it repeats')
 

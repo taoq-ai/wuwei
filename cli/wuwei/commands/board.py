@@ -150,9 +150,9 @@ def read(root):
                if '"tracker.created"' in line]
     lines = [status.line(cockpit['status']),
              *_table('Work', ('Item', 'Phase', 'Status', 'Ticket', 'Gates', 'PR', 'Docs'), work),
-             *_table('Tickets created', ('Class', 'Subject', 'Ticket', 'Parent'),
-                     [(row.get('class'), row.get('subject'), row.get('ticket'), row.get('parent') or 'none')
-                      for row in created]),
+             *_table('Tickets created', ('Class', 'Subject', 'Ticket', 'Parent', 'Seat'),
+                     [(row.get('class'), row.get('subject'), row.get('ticket'), row.get('parent') or 'none',
+                       row.get('seat') or 'none') for row in created]),
              *_table('PRs', ('PR', 'State', 'Waiting on', 'Deadline'),
                      [(r['ref'], r['state'], r['waiting_on'], r['deadline']) for r in cockpit['prs']]),
              *_table('Decisions', ('Id', 'Question', 'Route', 'Command'),

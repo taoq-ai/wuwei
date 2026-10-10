@@ -19,6 +19,9 @@ def register(subparsers):
     create.add_argument('title', nargs='?', help='Ticket title; required with a class flag')
     create.add_argument('--evidence', action='append', default=[],
                         help='One evidence line, for example cli/x.py:12; repeatable')
+    create.add_argument('--seat', choices=('builder', 'sentinel-arch', 'sentinel-goal', 'sentinel-quality',
+                                           'sentinel-security'),
+                        help='Your seat role, recorded on the event (#644)')
     actions.add_parser('log', help="Write today's decisions, progress, verdicts, PR and close "
                                    'as ticket comments')
     done = actions.add_parser('done', help="Move the item's ticket to the done state")
@@ -36,7 +39,7 @@ def run(args):
             reason = f'{args.item}: ticket done' if result.exit == 0 else result.reason
         else:
             result = tracker.create(root, args.subject, args.category or 'items', args.title,
-                                    args.evidence)
+                                    args.evidence, seat=args.seat)
             reason = result.reason
         # A created, found or drafted ticket is the answer; anything else is a reason.
         if result.exit == 0 or result.data:

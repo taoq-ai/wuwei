@@ -25,9 +25,12 @@ def launch_prompt(brief_path, charter, *, root=None):
 LIGHT_GATE = ('Depth: light; skip: gate step zero, the Probe or Mutation row, the class-sweep line, '
               'the Simplicity and Design rows, the retro note when every line would be none; '
               'verdict: Verdict:, Head:, findings')
+# #667: the values the day changes under a seat are read live, never copied into the brief.
+LIVE = ('Live: run bin/wuwei why {item} --json when you start and again before your verdict or handoff; '
+        'its docs, ticket and spec fields are the record at that moment. This brief copies none of them.')
 
 
-def depth_line(role, value, worktree, paths=(), trust_paths=()):
+def depth_line(role, value, worktree, paths=(), trust_paths=(), flags=None):
     """#567: the brief's Depth: line (design 5.3, process depth follows the tier)."""
     from wuwei import dispatch
     if role == 'builder':
@@ -36,7 +39,7 @@ def depth_line(role, value, worktree, paths=(), trust_paths=()):
             return (f'Depth: light; skip: the class sweep while {sweep} prints Depth: light, '
                     'and the retro note when every line would be none')
         return f'Depth: {value}; before handoff run {sweep} and report one CLASS line per class it lists'
-    zero = dispatch.step_zero(value, paths, trust_paths)
+    zero = dispatch.step_zero(value, paths, trust_paths, flags)
     if zero is None:
         return LIGHT_GATE
     run, reason = zero
@@ -142,8 +145,8 @@ def read_day(root):
     return directory, state.read_state(root)
 
 
-def transcript_reference(path):
-    """Read the same brief reference for session binding and seat stop."""
+def _user_messages(path):
+    """The text of each user row of a transcript, in order."""
     with Path(path).open(encoding='utf-8') as transcript:
         for line in transcript:
             row = json.loads(line)
@@ -152,8 +155,14 @@ def transcript_reference(path):
             content = row['message']['content']
             if isinstance(content, list):
                 content = '\n'.join(part['text'] for part in content if part.get('type') == 'text')
-            if content.startswith(REFERENCE_PREFIX):
-                return content.splitlines()[0].removeprefix(REFERENCE_PREFIX)
+            yield content
+
+
+def transcript_reference(path):
+    """Read the same brief reference for session binding and seat stop."""
+    for content in _user_messages(path):
+        if content.startswith(REFERENCE_PREFIX):
+            return content.splitlines()[0].removeprefix(REFERENCE_PREFIX)
     return None
 
 
@@ -179,6 +188,28 @@ def seat_of(payload, data):
     except OSError:
         return None
     return next((seat for seat in seats(data).values() if seat.get('brief') == reference), None)
+
+
+def first_prompt(path):
+    """#676: the first user message of a transcript: a subagent's launch prompt, or None."""
+    return next(_user_messages(path), None)
+
+
+def prompt_digest(text):
+    """#676: the key an adhoc seat is matched by: sha256 of the stripped prompt."""
+    import hashlib
+    return hashlib.sha256(text.strip().encode()).hexdigest()
+
+
+def adhoc_seat(data, digest, session):
+    """#676: the running adhoc seat of a subagent: the one already bound to its trace
+    session, else the oldest with its prompt digest and no session yet; None when none."""
+    # ponytail: two running adhoc seats with one prompt may swap; same prompt, same audit record.
+    running = [(name, seat) for name, seat in seats(data).items()
+               if seat['role'] == 'adhoc' and seat['status'] == 'running'
+               and seat.get('prompt_sha256') == digest]
+    return next((name for name, seat in running if session in seat.get('trace_sessions', ())),
+                next((name for name, seat in running if not seat.get('trace_sessions')), None))
 
 
 HANDBACK = 'SubagentHandback'  # the harness's structured hand-back tool (#473)
@@ -437,11 +468,16 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         if track == 'SLICE' and protected:
             raise Refused('SLICE brief touches protected paths: ' + ', '.join(protected) + '; use --track FULL')
         header.append(f'Track: {track}')
-        if role == 'builder' or gate:
+        if role == 'builder':
             from wuwei import specmode
-            line = specmode.brief_line(config, item, current, tree, gate)
+            line = specmode.brief_line(config, item, current, tree, False)
             if line:
                 header.append(line)
+        # #664: after the body, never in the header: the header is cut at its first blank line.
+        block = ''
+        if role == 'builder' and tree:
+            from wuwei import specmode
+            block = specmode.brief_block(config, item, current, tree)
         depth = None
         if role == 'builder' or gate:
             from wuwei import dispatch
@@ -449,7 +485,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                 root, config, {'flags': {}, **current, 'worktree': str(tree) if tree else None})}))
             header.append(depth_line(role, depth, str(tree) if tree else '<worktree>',
                                      [row['path'] for row in changed],
-                                     (repo or {}).get('gates', {}).get('trust_paths', []) if tree else []))
+                                     (repo or {}).get('gates', {}).get('trust_paths', []) if tree else [],
+                                     current.get('flags')))
         if role == 'builder' and tree and repo:
             from wuwei import fast_checks, pace  # #520: the builder never improvises an interpreter
             for command in repo.get('fast_checks', []):
@@ -475,7 +512,9 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         header.append(f'Gate row: {json.dumps(row)}')
         if gate:
             verdict = (directory / 'decisions' / ('gate-' + name + '.md')).relative_to(root)
-            header.append(f'Verdict file: {verdict} (your only write). Include the retro note here.')
+            header.append(f'Verdict file: {verdict} (the only file you write; an out-of-scope bug you '
+                          'find you file yourself with bin/wuwei tracker create --bug, common rule 7). '
+                          'Include the retro note here.')
             header.append("Assumptions: review the item's Assumptions: in its spec and PR body as "
                           'findings of kind Assumption: (severity, file:line, failure scenario, '
                           'blocks yes or no).')
@@ -483,13 +522,15 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         line = docs.brief_line(config, current, item, role)
         if line:
             header.append(line)
+        if role == 'builder' or gate:
+            header.append(LIVE.format(item=item))
         header += rulings(body, directory, tree, data)
         for repo in config['repos']:
             for other in sorted(set(re.findall(re.escape(repo['name']) + r'#[0-9]+', body))):
                 if other != pr:
                     host = host or registry.load('code_host', config)
                     header.append(f'Counterpart {other} head (no-cache): {json.dumps(read(host.pr, other, root=root))}')
-        text = '\n'.join(header) + '\n\n' + body + '\n'
+        text = '\n'.join(header) + '\n\n' + body + '\n' + block
         relative = str(output.relative_to(root))
         import hashlib
         payload = {'name': name, 'item': item, 'role': role, 'path': relative, 'gate': gate,

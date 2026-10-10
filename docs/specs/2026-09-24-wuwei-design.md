@@ -169,7 +169,7 @@ WUWEI is built as ports and adapters (hexagonal).
 
 | Event | Trigger | Refuses when |
 |---|---|---|
-| PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor; an item without a ticket while tracker hygiene requires one (5.11) |
+| PreToolUse | `Agent` launch | no brief logged for it; a gate seat while its item's builder is live or its tree is dirty; running seats at CAP or free memory below the configured floor; an item without a ticket while tracker hygiene requires one (5.11); under strict, an untyped launch (`general-purpose`, `Explore` or any type outside the WUWEI seats) whose prompt `bin/wuwei seat start --role <role> --adhoc "<prompt>"` did not record (#676). Below strict an untyped launch in a day is registered as an adhoc seat, never refused |
 | PreToolUse | `git commit`, `git push` | author or committer differs from repository config; force-push; push to the default branch; push before the fast checks passed (owner, 2026-10-05, #530: below strict a missing fast check is a warning under observe and the owner's card under guarded, naming the check) |
 | PreToolUse | `gh pr create` | the pre-PR gate set has not all passed (#530: a warning under observe, the owner's card under guarded); no reviewer named in the same action; `--repo` and `--head` given apart, or naming a branch that is not a recorded item branch (#534: with both, or after `cd <recorded worktree> &&`, it runs from any directory) |
 | PreToolUse | `gh pr merge` | the merge policy (4.6) does not clear this PR at this head |
@@ -354,6 +354,11 @@ merges. A precondition that fails names the condition: no grant lifts it. With n
 `gh pr merge <url> --squash --match-head-commit <sha>` for a host terminal; unset, it is
 `owner_only` under `strict` and `ask` otherwise. Granted merges are journaled, watched and
 undo-logged like auto-merges.
+
+Amended (owner, 2026-10-10, #668): a PR whose head turns a check that fails at its base commit
+green skips the soak (`merge.soak_skip`: `base_fix`, the default, or `never`); every other
+rule still holds. A held merge reads either `waits: soak ends at <time>` or
+`owner merges: <rule>`, and `wuwei merge check` prints the next step on a `Next:` line.
 
 ### 4.7 Deployment ban (owner, 2026-09-28)
 
@@ -553,7 +558,7 @@ checks, decision routing and every 9.2 invariant hold at every pace (I15 to I17)
   | Spec engine | none (#280) | the engine's steps | the engine's steps |
   | Builder class sweep | none | the classes `wuwei sweep classes <worktree>` lists from the changed files | every class |
   | Gates | quality | arch, quality, security | arch, quality, security, goal when docs |
-  | Mutation step (gate step zero) | none | only when the diff touches `guards/`, `grants`, `outward`, a hook or a `trust_paths` entry | always |
+  | Mutation step (gate step zero) | none | only when the diff touches `guards/`, `grants`, `outward`, a hook or a `trust_paths` entry, or the item is flagged `trust_surface` or `boundary_relevant` (#663) | always |
   | After a fix | the same sentinel re-reads the diff and rewrites its `Verdict:` and `Head:` lines | the delta round | the delta round |
   | Verdict shape | `Verdict:`, `Head:`, findings | as below | as below |
   | Decision records | a Routine record under mandate prints one line in `decision show` (`--full` prints it) | the same | the same |
@@ -572,7 +577,15 @@ checks, decision routing and every 9.2 invariant hold at every pace (I15 to I17)
   `seat.usage` row, bounds CAP from the other side (at least 1). A positive config `cap` or
   `host.seats` is the owner's one-key override. Plan propose, each `dispatch next --all`
   sweep, the agent-launch guard and `dispatch opinion` derive it live; the plan, the gate
-  card and the status line name what bound it (`host`, `budget`, `owner`, `unmeasured`).
+  card and the status line name what bound it (`memory`, `host.seats`, `budget`, `owner`,
+  `unmeasured`).
+  Amended (owner, 2026-10-10, #658): the memory estimate applies only when a seat runtime of
+  the day (`adapters.runtime` or a seat policy runtime) launches its own process, that is
+  any runtime but `claude` and `none`; it is then smoothed as the median of today's last five
+  readings (each sweep records its reading on `cap.derived`), bound `memory`. Claude subagent
+  seats share one process, so free memory does not track their count: CAP and `host.seats`
+  are the configured `host.seats`, else one per core, bound `host.seats`, and free memory is
+  not read. The free-memory floor still refuses a launch under either rule.
 - Seat policy (model and runtime per role) is set at the morning gate and stored in state.
 - Boundary and environment register come from config; the arch sentinel checks against them.
 - Verdict shape (at light, see Process depth above): a `Verdict: PASS|FIX|PARK|ESCALATE` line; findings with severity,
@@ -598,8 +611,9 @@ checks, decision routing and every 9.2 invariant hold at every pace (I15 to I17)
   state return the same action. The CLI never waits for a Claude seat; the old blocking
   form exits 2 naming `build next`. Codex executes the same actions through its polling
   adapter. Backpressure, signature, stuck and iteration limits, and usage events retain
-  their semantics. `host.seats` derives from the host (#528) unless config pins it. A
-  ceiling refusal names `host.seats`.
+  their semantics. `host.seats` derives per the #658 rule unless config pins it. A
+  ceiling refusal names `host.seats`. Once the build is done and the item is at its gates, `build next`
+  answers what `dispatch next` decides (#666).
 - Cost per iteration (owner, 2026-09-28). Every dispatch records the runtime's reported
   usage (input and output tokens, cost when the runtime reports it, model, duration) as a
   `seat.usage` event per iteration. The steward reports cost per item, per role and per
@@ -1025,7 +1039,8 @@ Surfaces, all reading the same classification:
   do now when there is one (`restart Claude Code: hooks <old> still running`, `no plan yet`,
   `gate waiting`, `decision D-n waiting`), then the day's items counted in words (`5 planned
   · 2 building · 1 in review · 3 shipped`, CAP only on the seats token) and the running
-  seats by role (`seats 4/1 (lead, arch, +2 more)`, cut at whole names), then pages, nudges
+  seats by role with the bound that set CAP (`seats 4/1 by host.seats (lead, arch, +2 more)`,
+  cut at whole names; #658), then pages, nudges
   and the posture when it is not guarded. `wuwei status` prints the same groups one per line
   with the detail: each running seat with role, item and start time, watch, listen,
   sessions, the next person reply due, the next meeting, the day's negotiation loops (5.8.2)
@@ -1095,6 +1110,24 @@ ending in `-<item>` (`create-new-feature.sh --short-name <item>`); each step is
 | `checklist` | every item checked in `checklists/*.md` (`specify` writes `requirements.md`) |
 | `implement` | every task in `tasks.md` checked |
 
+Governing document (owner, 2026-10-10, #664). An analysis that checks the spec only
+against itself misses a conflict with the document the item answers to. The lead names
+that document on the candidate as `governed_by` (`<path>` or `<path>#<heading>`, relative
+to the repository), which `plan approve` and `plan add` copy to the item; without it, a
+`Governing: <path>#<heading>` line in `spec.md` names it, and the item's value wins. A
+heading matches when its text equals the name or starts with the name and a space; the
+section runs to the next heading of the same or a higher level. A spec-kit builder brief
+for a governed item ends with a `## Governing document` block: the reference, the line
+range, the section text and the instruction to end the analyze report with a
+`## Governing` table, one row per `spec.md` assumption with the verdict `agrees`,
+`conflicts` or `not covered` and the cited `<path>:<line>`. `wuwei spec analysis` refuses
+(exit 2, nothing written) a governed item's report without that table, or with fewer valid
+rows than assumptions, and a reference that is not a file in the worktree or names no
+heading in it. A gate brief's `Spec:` line names the reference and the range; the goal
+sentinel checks each row against its cited line and treats a `conflicts` row as a violated
+requirement unless a recorded decision rules on it. Without a governing document nothing
+changes.
+
 superpowers: the skills of the superpowers plugin; the item is the topic in the file names.
 
 | Step | Artifact |
@@ -1149,7 +1182,8 @@ recorded worktree contains the path):
   item's artifacts (the spec-kit feature directory, the OpenSpec change, or the superpowers
   design and plan files).
 - Briefs (5.2): the builder brief carries the engine's step table with the item's paths
-  and commands, or the skip and its reason; gate briefs carry the artifact paths.
+  and commands, or the skip and its reason; gate briefs name `wuwei why <item> --json`, whose `spec` field gives
+  the artifact paths (#667).
 
 `spec.step`, `spec.skipped`, `spec.warned`, `spec.override` and `items.<item>.spec` are
 written only by the CLI. The artifacts are written by the seat: they show the work was
@@ -1581,8 +1615,10 @@ shows it. An item tiered outside `required_tiers` has no obligation and gets one
 
 Checks, at two points:
 
-- Before the gate verdict. The quality brief carries the obligation and the recorded
-  value. The quality sentinel checks the value against the diff under the `DOC` class: a
+- Before the gate verdict. The quality brief names the obligation's reader,
+  `wuwei why <item> --json`, which the sentinel runs when it starts and before its verdict;
+  the brief copies no value (#667). The verdict lint refuses a finding that calls a value
+  recorded at lint time missing. The quality sentinel checks the value against the diff under the `DOC` class: a
   missing value, or `none` for a change to documented behaviour (a command, a config key,
   an interface, user-visible output), is a blocking finding naming `plan set <item>
   docs=...`. `wuwei dispatch receive` refuses a quality `PASS` while the value is missing,
@@ -1856,7 +1892,7 @@ that it did nothing and returns exit 2 where a measurement was expected.
 | runtime | `dispatch(role, brief_path, worktree, write)`, `status(job)`, `result(job)` (includes usage: tokens, cost, model, duration) | Claude (default), Codex |
 | scanner | `audit(path)`, `gate(result, threshold)`, `traces(file)`, `mcp(servers)` | ZIRAN |
 | code_host | `pr(ref)`, `checks(ref, sha)`, `reviews(ref)`, `threads(ref)`, `protection(repo, branch)`, `create_pr(draft)`, `request_reviewers(ref, logins)`, `comment(ref, text, thread)`, `merge(ref, sha)`, `revert_pr(ref)`, `issue(repo, title, body)` (5.13) | GitHub through `gh` (default); GitLab possible later |
-| vcs | `identity(repo)`, `head(repo)`, `merge_base(repo, ref)`, `status(repo)`, `diff_stat(repo, base, head)`, `log_since(repo, sha)`, `worktree_add(repo, branch, path)` | git |
+| vcs | `identity(repo)`, `head(repo)`, `merge_base(repo, ref)`, `status(repo)`, `diff_stat(repo, base, head)`, `log_since(repo, sha)`, `worktree_add(repo, branch, path, remote, base)` | git |
 | inbound (M5) | `poll(since)` or `receive(request)`, `reply(thread, text)` | Slack (poll) |
 | control_plane (M5) | `escalate(decision)`, `notify(summary)`, `poll_replies(since)` | Remote Control plus push (default), Signal, WhatsApp |
 | redactor (M5) | `redact(text) -> text, findings` | built-in patterns (default); WUMING once it ships a CLI |
@@ -1963,7 +1999,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I4 | A message to the owner's own DM always sends | per case, chat to the owner DM | |
 | I5 | No seat, default or hook creates a grant | per case, grant rows and `grants.standing` before and after the deploy guard and the record gate; the shipped config | A once grant is spent, never created; the shipped `merge.default_tier` is empty; `today` is written only by the owner's autonomy answer (#530) |
 | I6 | A seat never posts an owner disposition marker | per posture, an MCP payload and `gh pr comment` carrying `WUWEI parked ` | Records floor |
-| I7 | Docs and tracker writes follow `docs.auto` and `tracker.auto` | per case, WUWEI's own adapter write; a connector write under the send umbrella | #535 |
+| I7 | Docs and tracker writes follow `docs.auto` and `tracker.auto` | per case, WUWEI's own adapter write; a connector write under the send umbrella | #535; class tickets in the owner's tracker: I55 (#644) |
 | I8 | A record command runs from the planner only after a card answer outside strict | per case, `bin/wuwei decide D-1 once` and `bin/wuwei config set cap 2 --from-card D-1` through `protect_state` from the planner and a seat | #529 |
 | I9 | A branch push and a PR raise with recorded evidence succeed from the planner and the builder below strict, and a tag push with a release grant or an Allow once release card passes | per posture, through the hook | #547; below strict the deploy guard's release card and grants gate a tag and `push_check` passes it; under strict `push_check` refuses it |
 | I10 | Under observe and guarded no opaque read-only command is refused | per posture, a script read, a `$(...)` read and a `python3 -c` print through the hook | #547 |
@@ -1976,7 +2012,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I17 | Fast merges only at green required checks | the merge policy, the PR guard and the launch guard never read the pace; `merge.green` on a pending required check is not green | #579; I3 keeps the gated head |
 | I18 | The setup answers never allow a publish target | per posture, `grants.active` with `merge.default_tier = "today"` covers only a merge on a configured repository below strict; no `init.allow_rules` rule matches a deploy, release, protected-branch push or force push | #530 |
 | I19 | A thread reply follows its recorded participants: a team participant sends, a client or public one is held as a draft, never blocked, below strict | per posture, audience and umbrella, `classify` on a reply in thread `C0TEAM/1.2` whose recorded participant is one person of that audience | #526 |
-| I20 | CAP comes from the host: the owner's cap when set, else the seats that fit above the memory floor, one per core, at least one; a token budget never raises it | `calibrate.host` on free memory below the floor, one seat and eight seats above it, x 1 and 4 cores x owner cap 0 and 3 x no budget and a budget with no recorded usage | #528 |
+| I20 | CAP comes from the host: the owner's cap when set, else, for seats that are separate processes, the seats that fit above the memory floor, one per core, at least one, and for Claude subagent seats one per core whatever the free memory; a token budget never raises it | `calibrate.host` on free memory below the floor, one seat and eight seats above it, x 1 and 4 cores x owner cap 0 and 3 x no budget and a budget with no recorded usage x a process and a subagent seat policy | #528, #658 |
 | I21 | An internal-state word (`outward.patterns`) never refuses or holds a tracker, docs or other write; team or company chat is never held and is refused only under strict; a client or public chat an owner row would send is held as a draft naming the word | per posture, audience and kind, `classify` and the outward lint with and without the word, with owner rows that send to the client and public channels | #533 |
 | I22 | A record keeps a two-way door only when the CLI knows the undo for its action and that undo ran once in this workspace; a message never does | `undo.measured` for every class and no class with an empty ledger and a full one; a seat's Write to `memory/rehearsals.json` | #557; the pinned cases stay in `tests/test_undo.py`. #600: a config write that records its previous value is two-way; its undo is config set with that value, so it needs no rehearsal |
 | I23 | A target the workspace never touched goes to the owner once, and only an owner answer, config or the seed clears it | `decision route` on a two-way Routine record naming a new repository under autonomous; a seat's Write to `memory/targets.json` | #556; the pinned cases stay in `tests/test_novelty.py` |
@@ -1988,10 +2024,18 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I31 | An empty fast-check list never refuses a launch below strict | per posture, `build._repo` on a repository with `fast_checks = []` and no card answered | #600; strict refuses naming `calibrate --questions` until the owner answers the fast-checks card |
 | I32 | A config card with a list value records without a prompt below strict | per posture, a routed card with a Value row `repos.0.fast_checks = ["make test"]` answered in the planner session, then `config set --from-card D-n` with the host prompt failing | #600; strict prints the command for a host terminal |
 | I33 | A config record is never Strategic on its own | Class `other` and none x door one-way, two-way and unsure x confidence high and low: `undo.correct`, then `cisr`, on a record with Value rows and a Previous line | #600; a seat's better class stands |
-| I34 | A docs-only diff never lowers review when anything else would raise it: a lead flag, a FULL track, a trust, never-auto, FULL-pattern, binary or agent-instruction path, or a full floor keeps arch, quality and security; a plain document with nothing raising it gets one reviewer | `dispatch.tier` on a document diff, alone and with each raising path, under each lead flag, track and floor | #622; one decision in `dispatch.tier` (`_docs_role`); goal for a document, quality for a spec or pre-registration |
+| I34 | A docs-only diff never lowers review when anything else would raise it: a lead flag, a FULL track, a trust, never-auto, FULL-pattern, binary or agent-instruction path, or a full floor keeps arch, quality and security; a plain diff of documents, notebooks and data with nothing raising it gets one reviewer | `dispatch.tier` on a document diff, alone and with each raising path, under each lead flag, track and floor, and on a document with a data file | #622; one decision in `dispatch.tier` (`_docs_role`); goal for a document, quality for a spec or pre-registration |
 | I35 | No item opens a fix round past its round cap: `build.open_fix` refuses at the cap and `dispatch next` turns a blocking finding at the cap into a park with the finding and what would unpark it | `dispatch.max_rounds` for `gates.max_rounds` 1, 2 and 3 x each tier override 0, 1 and 3 x each item tier; `build.open_fix` on an item whose build used its cap, with and without a tier override | #623; one cap read in `dispatch.max_rounds`, one round opened in `build.open_fix`; after the cap non-blocking notes ship in the PR body |
 | I36 | An item ticket is attached by the planner below strict or by the owner, never by a seat: `tracker create <item>` and `plan set <item> ticket=<id>` pass for the registered planner below strict and never for a seat, whose reason names the planner; `tracker create --bug` stays a seat command | per posture, `protect_state.check_bash` on both commands for the planner and for a seat, and on a seat's `tracker create --bug A Broken --evidence cli/x.py:1` | #636; the gate's Approve opens the tickets the plan proposed; under strict the owner runs the commands in a host terminal |
 | I37 | An item with `owner_merge` set is never merged by WUWEI: `merge check`, `wuwei merge`, `pr act`, the PR guard and the overnight shepherd refuse naming the flag, under any grant; cleared, they follow the normal policy | `merge.owner_hold` on a set, cleared, absent and malformed record in the walk; the path table `test_owner_merge_holds_on_every_path` (each path x flag set and cleared x no grant and a today grant) | #678; one read in `merge.check`; only `wuwei plan set` writes it; agent tools set it, the owner clears it |
+| I42 | Generated and data lines never count toward the tier or the size cap, and both read the same count from `merge.uncounted`; a diff that changes `.gitattributes` gets no linguist-generated exclusion | `dispatch.tier` and `merge.uncounted` on source with a large data file and with a linguist-generated file, each with and without a changed `.gitattributes` | #657; one decision in `merge.uncounted`, read by `dispatch.tier` and `merge.check` |
+| I38 | An untyped Agent launch in a workspace is never refused below strict and is registered as an adhoc seat; under strict it is refused naming `seat start --adhoc` unless that command recorded its prompt | per posture, `agent_launch.check` on a general-purpose launch, and under strict again after `seat start --adhoc` with the same prompt | #676; its tool calls bind to the seat by the prompt digest, and `why adhoc` lists it |
+| I39 | A FIX verdict is accepted only with a parsed blocking finding, whatever id form starts it | `verdict.lint` and `verdict.finding_blocks` on a FIX verdict for each id form (`F1.`, `Q1.`, `S1.`, `A1.`, `G1.`, `N1.`, `Finding 1.`, `[Q1]`, `1.`, severity first) with `blocks: yes` (accepted, one blocking block) and with `blocks: no` (refused naming the FIX rule) | #677; one parser in `verdict.finding_blocks`, one rule in `verdict.lint` |
+| I40 | The soak is skipped only for a head that turns a check failing at its base commit green | `merge.fixes_base` on every base conclusion x head conclusion, with the check present and absent at head | #668; one rule in `merge.fixes_base`; the check path (base read only while the soak holds, exit 2 when unreadable) stays in `tests/test_merge.py` |
+| I52 | A `python -c` snippet with no write-like token passes the records guard in every posture; one with a write-like token is refused in every posture, naming the token | per posture, through the hook, a snippet printing the day's `state.json`; `check_bash` on `open(..., "w")` and `Path(...).write_text` snippets naming it | #643; one token scan in `shell.snippet_write`, shared through `shell.reads`; a name built at run time is the 4.5 residual |
+| I55 | A bug, triage or follow-up ticket WUWEI opens in the workspace's own tracker follows the owner's tier rows, then the sensitive row, then the umbrella: it sends under send and is held as a card under ask, in every posture; an external tracker or a client mention holds it | per posture, audience and umbrella, `classify` on an adapter write with category `bugs` | #644; the finder files it with `tracker create --bug --seat <role>` |
+| I43 | A `trust_surface` or `boundary_relevant` item runs gate step zero at standard whatever its diff, and its brief names the flag; no path turns a flagged run into a skip | `dispatch.step_zero` at standard and full on a non-guard and a guard path under each flag, both flags, `agent_surface` alone and none | #663; one decision in `dispatch.step_zero`; a flagged item is never light (I15) |
+| I46 | A gate verdict never calls a recorded docs value missing: `lint_file` refuses a finding that says the docs value is missing while the item records one, and adds nothing when the value is missing, not required or unresolvable | `verdict.lint` on a missing-value finding with `docs` set and unset, and on a page-content finding with `docs` set | #667; one read through `docs.shown` in `verdict.recorded_docs` |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 
