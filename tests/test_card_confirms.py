@@ -355,7 +355,7 @@ def test_widget_of_a_config_record_prints_the_config_command(ws, capsys):
     assert main('decision', 'show', 'D-1', '--widget') == 0
     assert json.loads(capsys.readouterr().out)[0]['record'] == 'wuwei config set --from-card D-1'
     assert main('decision', 'show', 'D-2', '--widget') == 0
-    assert json.loads(capsys.readouterr().out)[0]['record'] == 'wuwei decide D-2 "<label>"'
+    assert json.loads(capsys.readouterr().out)[0]['record'] == f'{workspace.owner_cli(ws)} decide D-2 "<label>"'
 
 
 # Phase 4: strict keeps the host terminal.

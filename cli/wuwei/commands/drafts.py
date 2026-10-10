@@ -32,7 +32,7 @@ def run(args):
         except state.StateError as exc:
             print(exc, file=sys.stderr)
             return 1
-        print(json.dumps([drafts.widget(row, workspace.load_config(root))] if args.widget else row,
+        print(json.dumps([drafts.widget(row, workspace.load_config(root), root)] if args.widget else row,
                          indent=2))
         return 0
     if args.action:

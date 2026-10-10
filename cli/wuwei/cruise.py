@@ -310,7 +310,8 @@ def gate_widgets(root, config):
     for ident, row in sorted(data.get('cruise_cards', {}).items(), key=lambda pair: int(pair[0][2:])):
         if decision.answered(data, ident) is None:
             fields, _ = decision.evaluate(decision.today_path(ident, root).read_text(encoding='utf-8'))
-            widgets.append(decision.record_widget(ident, fields, level=level, hidden=row['kind'] == 'sample'))
+            widgets.append(decision.record_widget(ident, fields, level=level, hidden=row['kind'] == 'sample',
+                                                          root=root))
     return widgets
 
 

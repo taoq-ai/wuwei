@@ -1015,5 +1015,5 @@ def test_undo_lines_pass_the_outward_lint(ws):
     config = workspace.load_config(ws)
     for text in (remote().UNDONE.format(identifier='D-1'), remote().VOCABULARY,
                  'D-1 taken as A by cruise retry@L2. Reply undo D-1 by 13:00 to ask again.',
-                 'D-1 has no undo window; reverse it with wuwei decide D-1 <option>'):
+                 f'D-1 has no undo window; run {workspace.owner_cli(ws)} decide D-1 <option> to reverse it'):
         assert outward.lint(text, 'D1', config) == (0, ''), text

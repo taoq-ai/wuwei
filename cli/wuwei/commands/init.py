@@ -407,6 +407,10 @@ def upgrade(args):
                 graph.save(destination.parent, register)
             if config_changed:
                 workspace.atomic_write(config_path, migrated)
+            try:  # #735: the checkouts find the workspace from anywhere
+                workspace.index(destination.parent, workspace.load_config(destination.parent, raw=migrated))
+            except (OSError, ValueError) as exc:
+                print(f'wuwei init: warning: workspace index not written: {exc}; rerun bin/wuwei init --upgrade to write it', file=sys.stderr)
             if pointer_changed:
                 workspace.atomic_write(pointer_path, str(executable) + '\n')
             if guide_changed:
