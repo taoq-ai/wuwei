@@ -2040,3 +2040,40 @@ def test_build_next_exits_one_on_a_gate_refusal_or_escalation(root, monkeypatch,
     assert (code, found) == (1, None) and 'builder must stand down before gates' in err
     monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: {'action': 'escalate', 'reason': 'r'})
     assert build_next(capsys, root)[:2] == (1, {'action': 'escalate', 'reason': 'r'})
+
+
+def test_registered_noted_launch_is_not_offered_again(root, monkeypatch):
+    # #660: a launch with a planner note registers, so dispatch offers its receive, not the launch.
+    from fakes.vcs import Fake as VCS
+    from wuwei import brief, dispatch, registry, security
+    from wuwei.guards import agent_launch
+
+    tree = built(root)
+    vcs = VCS()
+    vcs.results.update(head=registry.Result(0, {'sha': 'a' * 40}), status=registry.Result(0, []),
+                       branches=registry.Result(0, []))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: vcs)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    brief.write('sentinel-arch', 'A', 'arch-1', 'body', worktree=str(tree), gate=True, root=root)
+    path = workspace.day_dir(root) / 'briefs/arch-1.md'
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    own = brief.launch_prompt(path, security.agent_path(root, 'sentinel-arch'), root=root)
+    payload = {'cwd': str(root), 'tool_name': 'Agent', 'tool_input': {
+        'prompt': 'Planner note: watch the cache.\n\n' + own, 'description': 'Gate A',
+        'subagent_type': 'wuwei:sentinel-arch', 'name': 'arch-1'}}
+    assert agent_launch.check(payload) == (0, '')
+    state.stop_seat('arch-1', root)
+    outcome = dispatch.next_step('A', root)
+    assert all(seat.get('brief') != str(path) for seat in outcome['seats'])
+    assert 'wuwei dispatch receive A arch arch-1' in outcome['commands']
+
+
+def test_running_unbriefed_seat_makes_its_item_busy(root):
+    from wuwei import dispatch
+    from wuwei.guards import agent_launch
+
+    payload = {'cwd': str(root), 'tool_name': 'Agent', 'tool_input': {
+        'prompt': 'Review the gate', 'description': 'Gate A', 'subagent_type': 'wuwei:sentinel-arch'}}
+    assert agent_launch.check(payload)[0] == 1
+    assert state.read_state(root)['seats']['adhoc-1']['item'] == 'A'
+    assert 'A' not in [row['item'] for row in dispatch.launch_set(root)['entries']]

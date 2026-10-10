@@ -32,7 +32,7 @@ def check(payload):
     ('missing-pid', 1, 'builder'), ('cap', 0, ''), ('memory', 1, 'memory'),
     ('memory-error', 2, 'unmeasured'), ('status-error', 2, 'unavailable'),
     ('malformed-event', 2, 'events'), ('missing-state', 2, 'state'),
-    ('no-marker', 1, 'brief'), ('nested-marker', 1, 'brief'), ('traversal', 2, 'path'),
+    ('no-marker', 1, 'brief'), ('nested-marker', 0, ''), ('traversal', 2, 'path'),
     ('missing-input', 2, 'tool_input'), ('bad-seats', 2, 'seat'),
 ])
 def test_guard_table(launch, monkeypatch, case, code, hint):
@@ -539,7 +539,7 @@ def test_second_opinion_brief_is_never_an_agent_launch(launch, monkeypatch):
     second = {**payload, 'tool_input': {**payload['tool_input'], 'name': 'gate-codex',
               'prompt': 'WUWEI brief: ' + str((directory / 'briefs/gate-codex.md').relative_to(root))}}
     code, message = check(second)
-    assert code == 1 and message == 'second-opinion brief runs through wuwei dispatch opinion, not Agent'
+    assert code == 1 and message == 'seat not registered: second-opinion brief runs through wuwei dispatch opinion, not Agent'
     assert state.read_state(root)['seats'] == {}
     assert check(payload) == (0, '')
 
@@ -829,3 +829,142 @@ def test_untyped_agent_is_traced_end_to_end(day, capsys):
     assert 'adhoc seat adhoc-1: general-purpose' in out and 'traces: P:a1' in out
     assert agent_launch.stop(adhoc_stop(root, transcript)) == (0, '')
     assert state.read_state(root)['seats']['adhoc-1']['status'] == 'stopped'
+
+
+def own_prompt(root, payload):
+    # #660: WUWEI's launch prompt for the logged gate brief, as build next and dispatch next print it.
+    from wuwei import brief as module, security
+    relative = module.reference(payload['tool_input']['prompt'])
+    return module.launch_prompt(root / relative, security.agent_path(root, 'sentinel-arch'), root=root)
+
+
+NOTE = 'Planner note: watch the cache.'
+
+
+@pytest.mark.parametrize('shape', ['appended', 'prepended', 'middle', 'bare'])
+def test_planner_note_keeps_the_launch_registered(launch, monkeypatch, shape):
+    # #660: a note around WUWEI's prompt, or the marker on any line, still registers the seat.
+    from wuwei.guards import agent_launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    (root, _, _, _), payload = launch
+    own = own_prompt(root, payload)
+    marker = payload['tool_input']['prompt']
+    payload['tool_input']['prompt'] = {
+        'appended': own + '\n\n' + NOTE, 'prepended': NOTE + '\n\n' + own,
+        'middle': 'Review the gate.\n' + marker + '\nKeep it short.', 'bare': own}[shape]
+    assert check(payload) == (0, '')
+    seat = state.read_state(root)['seats']['gate']
+    assert seat.get('planner_note') == {'appended': NOTE, 'prepended': NOTE,
+                                'middle': 'Review the gate.\n\nKeep it short.', 'bare': None}[shape]
+
+
+@pytest.mark.parametrize('secret', [False, True])
+def test_planner_note_is_redacted_and_capped(launch, monkeypatch, secret):
+    from wuwei.guards import agent_launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    (root, _, _, _), payload = launch
+    note = 'n' * 600 + (' ghp_' + 'a' * 36 if secret else '')
+    payload['tool_input']['prompt'] = own_prompt(root, payload) + '\n\n' + note
+    assert check(payload) == (0, '')
+    stored = state.read_state(root)['seats']['gate']['planner_note']
+    assert len(stored) <= 500 and 'ghp_' not in stored
+    assert secret or stored == 'n' * 500
+
+
+def test_planner_note_falls_back_when_the_prompt_cannot_be_rebuilt(launch, monkeypatch):
+    from wuwei import brief as module
+    from wuwei.guards import agent_launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    (root, _, _, _), payload = launch
+    marker = payload['tool_input']['prompt']
+    payload['tool_input']['prompt'] = own_prompt(root, payload) + '\n\n' + NOTE
+
+    def fail(*args, **kwargs):
+        raise ValueError('unavailable')
+    monkeypatch.setattr(module, 'launch_prompt', fail)
+    assert check(payload) == (0, '')
+    expected = payload['tool_input']['prompt'].replace(marker, '', 1).strip()
+    assert state.read_state(root)['seats']['gate']['planner_note'] == expected[:500]
+
+
+def test_prepended_note_seat_stops_by_its_transcript(launch, monkeypatch):
+    from test_brief import events
+    from wuwei.guards import agent_launch
+    monkeypatch.setattr(agent_launch, 'free_memory', lambda *args: 8 * 1024**3)
+    (root, directory, _, _), payload = launch
+    payload['tool_input']['prompt'] = NOTE + '\n\n' + own_prompt(root, payload)
+    assert check(payload) == (0, '')
+    transcript = subagent_transcript(root / 'agent-g.jsonl', payload['tool_input']['prompt'])
+    assert agent_launch.stop({'cwd': str(root), 'agent_id': 'g', 'agent_type': 'wuwei:sentinel-arch',
+                              'last_assistant_message': 'done',
+                              'agent_transcript_path': str(transcript)}) == (0, '')
+    assert state.read_state(root)['seats']['gate']['status'] == 'stopped'
+    assert all(row['kind'] != 'seat stop unmatched' for row in events(directory))
+
+
+UNBRIEFED_PROMPT = 'Review the gate of this item\nRead the diff only.'
+
+
+def unbriefed(root, description='Gate X', prompt=UNBRIEFED_PROMPT):
+    return {'cwd': str(root), 'session_id': 'P', 'tool_name': 'Agent', 'tool_input': {
+        'prompt': prompt, 'description': description, 'subagent_type': 'wuwei:sentinel-arch'}}
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded'])
+@pytest.mark.parametrize('description,item', [('Gate X', 'X'), ('Gate', None), ('Gate X and Y', None)])
+def test_unbriefed_typed_launch_registers_an_adhoc_seat(day, posture, description, item):
+    # #660: a WUWEI seat type launched with no marker is never silently unregistered.
+    from test_brief import events
+    from wuwei import brief as module
+    root, directory, _, _ = day
+    set_posture(root, posture)
+    state._write_state(lambda data: data['items'].update(Y={'phase': 'planned'}), root, reserved=False)
+    code, reason = check(unbriefed(root, description))
+    assert code == 1
+    named = item or "<item>"
+    assert reason.startswith('unbriefed launch registered as adhoc seat adhoc-1 for '
+                             + (item or "no item of today's plan")), reason
+    assert f'bin/wuwei brief sentinel-arch {named} <name>' in reason
+    seat = state.read_state(root)['seats']['adhoc-1']
+    assert seat['role'] == 'adhoc' and seat['item'] == (item or 'adhoc-1')
+    assert seat['label'] == 'sentinel-arch' and seat['type'] == 'wuwei:sentinel-arch'
+    assert seat['prompt_sha256'] == module.prompt_digest(UNBRIEFED_PROMPT) and seat['status'] == 'running'
+    last = events(directory)[-1]
+    assert last['kind'] == 'seat launched' and last['payload']['item'] == (item or 'adhoc-1')
+
+
+def test_strict_refuses_an_unbriefed_typed_launch(day, monkeypatch, capsys):
+    from test_brief import events
+    from wuwei.__main__ import main
+    root, directory, _, _ = day
+    set_posture(root, 'strict')
+    assert main(['seat', 'start', '--role', 'reviewer', '--adhoc', UNBRIEFED_PROMPT]) == 0
+    before = events(directory)
+    code, reason = check(unbriefed(root))
+    assert code == 1 and 'bin/wuwei brief sentinel-arch X <name>' in reason
+    assert state.read_state(root)['seats'] == {} and events(directory) == before
+
+
+def test_launch_refusals_say_the_seat_is_not_registered(launch, monkeypatch):
+    (root, directory, _, _), payload = launch
+    payload['tool_input']['prompt'] = 'WUWEI brief: ' + str((directory / 'briefs/other.md').relative_to(root))
+    code, reason = check(payload)
+    assert code == 1 and reason.startswith('seat not registered: no brief logged'), reason
+
+
+def test_unbriefed_seat_stops_and_traces_as_adhoc(day):
+    from test_brief import events
+    from wuwei.guards import agent_launch, traces
+    root, directory, _, _ = day
+    assert check(unbriefed(root))[0] == 1
+    transcript = subagent_transcript(root / 'P/subagents/agent-a1.jsonl', UNBRIEFED_PROMPT)
+    call = {'cwd': str(root), 'session_id': 'P', 'transcript_path': str(root / 'P.jsonl'),
+            'hook_event_name': 'PostToolUse', 'tool_name': 'Read', 'tool_input': {'file_path': 'README.md'},
+            'agent_id': 'a1', 'agent_type': 'wuwei:sentinel-arch'}
+    assert traces.check(call) == (0, '')
+    assert state.read_state(root)['seats']['adhoc-1']['trace_sessions'] == ['P:a1']
+    assert agent_launch.stop(adhoc_stop(root, transcript, agent_type='wuwei:sentinel-arch')) == (0, '')
+    assert state.read_state(root)['seats']['adhoc-1']['status'] == 'stopped'
+    assert check(unbriefed(root))[0] == 1
+    assert agent_launch.stop(adhoc_stop(root, root / 'missing.jsonl', 'a2', 'wuwei:sentinel-arch')) == (0, '')
+    assert events(directory)[-1]['kind'] == 'seat stop unmatched'
