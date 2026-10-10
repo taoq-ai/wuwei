@@ -548,3 +548,30 @@ def test_report_counts_fix_rounds_and_names_the_cap(tmp_path, monkeypatch):
     for item, number in (('A', 1), ('B', 1), ('A', 2)):
         state.append_event('build.fix_opened', {'item': item, 'round': number, 'cap': 2}, root)
     assert '## Rounds\n- A: 2 fix rounds, round cap 2 reached\n- B: 1 fix round\n' in report.build(root)
+
+
+def test_retro_lists_seat_findings(tmp_path, monkeypatch):
+    """#646: every finding of the day is in its retro, with its item phase or not added."""
+    from wuwei import retro
+    root = tmp_path
+    (root / '.wuwei').mkdir()
+    (root / '.wuwei/config.toml').write_text('')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    monkeypatch.chdir(root)
+    state._write_state(lambda data: data.update(items={'fix-a': {'phase': 'merged', 'status': 'done'}}),
+                       root, reserved=False)
+    (workspace.day_dir(root) / 'retro').mkdir()
+    note = {'agent_id': 'builder-1', 'agent_type': 'builder', 'missing': [], 'invalid': [],
+            'fields': {'Blocked': 'none', 'Gap': 'none', 'Change': 'none'}}
+    evidence = workspace.day_dir(root) / 'retro/role.json'
+    evidence.write_text(json.dumps(note))
+    state.append_event('retro.captured', {**note, 'evidence': evidence.relative_to(root).as_posix()}, root)
+    assert '## Seat findings\nnone\n' in retro.compile(root).read_text()
+    found = {'evidence': 'seat finding', 'track': 'SLICE', 'at': '2026-09-29T11:00:00Z'}
+    state._write_state(lambda data: data.update(
+        seat_findings={'fix-b': {**found, 'scope': 'B'}, 'fix-a': {**found, 'scope': 'A'}}),
+        root, reserved=False)
+    text = retro.compile(root).read_text()
+    assert '## Seat findings\n- fix-a: A (item merged)\n- fix-b: B (not added)\n' in text
+    assert text.count('## Seat findings') == 1

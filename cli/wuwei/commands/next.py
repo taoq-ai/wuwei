@@ -234,6 +234,11 @@ def step(root, ran=()):
     if stuck := brief.stuck(data):
         return _row('stuck', f'Seat {stuck[0]} ended with no recorded result.',
                     f'wuwei seat stop {stuck[0]} --unmeasured "seat ended with no recorded result"')
+    for ident, finding in data.get('seat_findings', {}).items():  # #646: proposed once
+        if ident not in data['items'] and ('finding', ident) not in returned:
+            return _row('finding', f"A seat found a small fix: {finding['scope']}. Add it as a small "
+                        'item; its ticket follows after it ships.',
+                        f'wuwei plan add {ident} --from-finding', item=ident)
     rows = state.in_flight(data)
     running = {item for _, _, item in rows}
     items = data['items']

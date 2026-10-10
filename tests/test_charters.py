@@ -314,3 +314,11 @@ def test_no_charter_holds_its_own_verdict_format():
     texts = charter_text()
     assert "`CLASS: PASS|N.A.|FINDING <id>`" not in texts["_common.md"]
     assert not [name for name, body in texts.items() if "## Verdict format" in body]
+def test_a_seat_finding_has_its_route():
+    """#646: seats record a small fix with note --fix; the planner adds it and opens its ticket later."""
+    texts = charter_text()
+    assert 'wuwei note --fix "<title>"' in texts["builder.md"]
+    assert 'wuwei note --fix "<title>"' in texts["lead.md"]
+    assert "`light` starts without a ticket" in texts["lead.md"]
+    assert "wuwei plan add <id> --from-finding" in texts["planner.md"]
+    assert "after it ships" in texts["planner.md"]

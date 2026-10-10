@@ -866,3 +866,22 @@ def test_json_rows_survive_resolution(root, capsys, monkeypatch):
     found = row(capsys)[1]
     assert (found['state'], found['action']) == ('build', 'launch')
     assert found['rows'] == coarse(root)['rows']
+
+
+def test_finding_row(root, capsys):
+    """#646: a seat's finding is proposed once as a small item, after a stuck seat."""
+    approved(root, {})
+    before = coarse(root)
+    assert before['state'] != 'finding'
+    assert main(['note', '--fix', 'Pin ruff in CI']) == 0
+    found = coarse(root)
+    assert (found['state'], found['item'], found['command']) == (
+        'finding', 'fix-pin-ruff-in-ci', 'wuwei plan add fix-pin-ruff-in-ci --from-finding')
+    assert 'Pin ruff in CI' in found['why']
+    day(root, items={'fix-pin-ruff-in-ci': {'phase': 'merged'}})
+    assert coarse(root) == before
+    assert main(['note', '--fix', 'Pin black']) == 0
+    assert coarse(root)['item'] == 'fix-pin-black'
+    state.append_event('next.action', {'state': 'x', 'item': '',
+                                       'done': [['finding', 'fix-pin-black']]}, root)
+    assert coarse(root) == before
