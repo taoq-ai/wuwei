@@ -158,12 +158,15 @@ def _user_messages(path):
             yield content
 
 
+def reference(text):
+    """#660: the brief path of the first line of text that starts with the marker, else None."""
+    return next((line[len(REFERENCE_PREFIX):] for line in text.splitlines()
+                 if line.startswith(REFERENCE_PREFIX)), None)
+
+
 def transcript_reference(path):
     """Read the same brief reference for session binding and seat stop."""
-    for content in _user_messages(path):
-        if content.startswith(REFERENCE_PREFIX):
-            return content.splitlines()[0].removeprefix(REFERENCE_PREFIX)
-    return None
+    return next(filter(None, map(reference, _user_messages(path))), None)
 
 
 def subagent_transcript(payload):

@@ -726,3 +726,14 @@ def test_unreadable_counterpart_follows_the_posture(day, monkeypatch, capsys, po
     else:
         assert f'Warning: acme/widget#24 is no pull request the host could read ({reason})' in (
             day[1] / 'briefs/ps.md').read_text()
+def test_reference_reads_the_marker_on_any_line(tmp_path):
+    # #660: a planner note before or around WUWEI's prompt keeps the marker readable.
+    from wuwei import brief as module
+    assert module.reference('WUWEI brief: a.md\nRead it') == 'a.md'
+    assert module.reference('Note one\n\nWUWEI brief: a.md\nRead it') == 'a.md'
+    assert module.reference('No marker here') is None
+    assert module.reference('WUWEI brief: a.md\nWUWEI brief: b.md') == 'a.md'
+    assert module.reference('Quote: WUWEI brief: a.md') is None
+    rows = [{'type': 'user', 'message': {'content': 'Planner note: watch the cache.\n\nWUWEI brief: a.md\nRead it'}}]
+    (tmp_path / 't').write_text(''.join(json.dumps(row) + '\n' for row in rows))
+    assert module.transcript_reference(tmp_path / 't') == 'a.md'
