@@ -675,6 +675,19 @@ def test_redaction_corpus():
         assert redact(command) == '[REDACTED]'  # outside the traces a credential takes the whole string
 
 
+def test_prose_names_credentials_without_holding_one():
+    # #662: prose that names a credential kind passes; a credential value is still redacted.
+    from wuwei.redact import redact
+    for text in ('the collector masks the bearer token in its logs', 'use a bearer token, not a password',
+                 'Basic authentication is off', 'the token is rotated weekly',
+                 'the password field is masked', 'the secret stays in the env file'):
+        assert redact(text) == text and redact(text, prefix=True) == text, text
+    for text in ('Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc',
+                 'send Bearer abc123XYZ789def456 with the request', 'the header is Basic dXNlcjpwYXNz here',
+                 "token = 'abc123XYZ789'", 'set password=hunter2 then restart'):
+        assert redact(text) == '[REDACTED]', text
+
+
 def test_unquoted_curl_body_redacted():
     # #473 review F3: the -d narrowing keeps unquoted key=value bodies redacted for every caller.
     from wuwei.redact import redact
