@@ -156,7 +156,7 @@ def _carry(root, directory):
 def step(root, ran=()):
     """The first due action row; root None means no workspace here. Hook-safe: it only reads.
     ran: the (state, key) pairs whose command ran since the last recorded action.
-    ponytail: one row, not a list; the first due item wins and status --line shows the rest."""
+    ponytail: one row, not a list; the first runnable item wins and its rows name the rest (#666)."""
     if root is None:
         return _row('no-workspace', 'No WUWEI workspace here; create one in observe posture in a '
                     'host terminal in the project directory.',
@@ -241,6 +241,7 @@ def step(root, ran=()):
     building = sum(items[name]['phase'] in state.BUILD_PHASES for name in names)
     queued = sum(items[name]['phase'] == 'planned' for name in names)
     waiting = None
+    found, prs = [], []  # #666: runnable rows first; a PR waits on people, so it comes last
     for name in names:
         phase = items[name]['phase']
         if phase in TERMINAL or name in running:
@@ -249,27 +250,34 @@ def step(root, ran=()):
         ticket = data.get('tickets', {}).get(name, {}).get('id')
         label = f'{name} ({ticket})' if ticket else name
         if phase in state.BUILD_PHASES:
-            return _row('build', f'{label} is in {phase}; this is its build loop step.',
-                        f'wuwei build next {name}', item=name)
-        if phase in ('gate', 'delta'):
+            found.append(_row('build', f'{label} is in {phase}; this is its build loop step.',
+                              f'wuwei build next {name}', item=name))
+        elif phase in ('gate', 'delta'):
             from wuwei import docs  # Local: only an item at the gate needs it.
             if docs.unmet(config, items[name]):
-                return _row('docs', f"{name} (tier {items[name]['gates']['tier']}) has no docs value; "
-                            'record it before the quality gate.',
-                            docs.command(config, name).removeprefix('bin/'), item=name,
-                            then='Choose the value it names, record it, then run wuwei next.')
-            return _row('verdicts', f'{label} is at {phase}; these are its gate steps.',
-                        f'wuwei dispatch next {name}', item=name)
-        if phase == 'raised':
+                found.append(_row('docs', f"{name} (tier {items[name]['gates']['tier']}) has no docs value; "
+                                  'record it before the quality gate.',
+                                  docs.command(config, name).removeprefix('bin/'), item=name,
+                                  then='Choose the value it names, record it, then run wuwei next.'))
+            else:
+                found.append(_row('verdicts', f'{label} is at {phase}; these are its gate steps.',
+                                  f'wuwei dispatch next {name}', item=name))
+        elif phase == 'raised':
             pr = items[name].get('pr')
-            return _row('pr', f'{label} has PR {pr} open; act on its review state.',
-                        f'wuwei pr act {pr}', item=name, then=THEN['pr'])
-        if phase == 'planned' and building < data['cap']:
-            return _row('dispatch', f'{min(queued, data["cap"] - building)} planned item(s) can '
-                        f'start, {building} of CAP {data["cap"]} building; this is the launch set.',
-                        'wuwei dispatch next --all', 'set')
-        if phase == 'planned' and waiting is None:
+            prs.append(_row('pr', f'{label} has PR {pr} open; act on its review state.',
+                            f'wuwei pr act {pr}', item=name, then=THEN['pr']))
+        elif phase == 'planned' and building < data['cap']:
+            if not any(row['state'] == 'dispatch' for row in found):
+                found.append(_row('dispatch', f'{min(queued, data["cap"] - building)} planned item(s) can '
+                                  f'start, {building} of CAP {data["cap"]} building; this is the launch set.',
+                                  'wuwei dispatch next --all', 'set'))
+        elif phase == 'planned' and waiting is None:
             waiting = label
+    queue = [{'state': row['state'], 'item': row.get('item', ''), 'command': row['command']}
+             for row in found + prs]
+    queue = {'rows': queue} if len(queue) > 1 else {}
+    if found:
+        return {**found[0], **queue}
     # #617: one steward at a time, on the newest brief; due waits (not cleared) while one runs.
     # #624: and while an item is mid fix round.
     if not state.mid_round(data) and not any(
@@ -281,6 +289,8 @@ def step(root, ran=()):
         if stem and stem not in seats:
             return _row('steward', 'Launch the steward seat on its brief.', 'wuwei next --json',
                         'launch', THEN['agent'], brief=runs[-1]['brief'])
+    if prs:
+        return {**prs[0], **queue}
     builders = sorted((seat.get('started_at') or '', name) for name, seat in seats.items()
                       if seat['status'] == 'running' and seat['role'] == 'builder')
     text = state.in_flight_text(rows)
@@ -328,7 +338,9 @@ def text(row):
     command = row.get('command')
     if row['action'] in ('launch', 'continue') and row.get('agent_type'):
         command = f"Agent {row['agent_type']}"
-    return f"{row['state']}: {row['why']} {row['then']}" + (f'\n{command}' if command else '')
+    queue = ', '.join(' '.join(filter(None, (entry['state'], entry['item']))) for entry in row.get('rows', []))
+    return (f"{row['state']}: {row['why']} {row['then']}" + (f'\n{command}' if command else '')
+            + (f'\nQueue: {queue}' if queue else ''))
 
 
 def _widget(argv):
@@ -509,6 +521,8 @@ def run(args):
                 if exc.code != 1:
                     raise ValueError(str(exc)) from exc
                 action, code = {**row, 'why': str(exc)}, FINDINGS
+            if 'rows' in row:  # resolve builds new dicts; the queue rides on the action
+                action = {**action, 'rows': row['rows']}
             if args.json:  # a person's look-up never moves the day
                 _record(root, action, named(action), ran)
             row = action

@@ -37,8 +37,18 @@ def run(args):
                     elif action.get('action') == 'continue':
                         print(action['feedback'], file=sys.stderr)
                 return code
-            print(json.dumps(next_action(item, *paths, root=root)))
-            return 0
+            action = next_action(item, *paths, root=root)
+            if action['action'] == 'done' and state.read_state(root)['items'][item]['phase'] in ('gate', 'delta'):
+                from wuwei import dispatch  # #666: past the build, answer what dispatch next decides
+                try:
+                    action = dispatch.next_step(item, root)
+                except dispatch.Refused as exc:
+                    print(f'build: {exc}', file=sys.stderr)
+                    return 1
+                if action['action'] == 'fix':  # the round just opened: its builder action
+                    action = state.read_state(root)['builds'][item]['action']
+            print(json.dumps(action))
+            return 1 if action['action'] == 'escalate' else 0
         if len(args.arguments) not in (0, 2):
             raise ValueError('usage: build next <item> or build <item> <brief> <worktree> (Codex only); use bin/wuwei build next <item> for a Claude builder. Use bin/wuwei build <item> <brief> <worktree> for a Codex builder')
         return run_loop(args.operation, *(args.arguments or [None, None]))
