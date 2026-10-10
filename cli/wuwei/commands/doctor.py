@@ -620,6 +620,11 @@ def _day(root, config, probes):
     gaps = sum(page['source'] == 'traces.gap' for page in found)
     rows.append(_row('day', 'traces', 'warn' if gaps else 'ok', f'{gaps} gaps today' if gaps else 'no gaps today',
                      'read the traces.gap reasons in wuwei nudges, then run wuwei doctor'))
+    untraced = sum(page['source'] == 'subagent.untraced' for page in found)  # #676
+    rows.append(_row('day', 'untraced subagents', 'warn' if untraced else 'ok',
+                     f'{untraced} stopped with no seat today' if untraced else 'none today',
+                     'launch agents from a session inside the workspace after the morning plan; under strict '
+                     'register them with wuwei seat start --role <role> --adhoc "<prompt>"'))
     try:
         if ids := _legacy_traces(root):
             rows.append(_row('day', 'trace decisions', 'warn', f'{", ".join(ids)} pending under the pre-#352 rule',

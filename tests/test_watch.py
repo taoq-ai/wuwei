@@ -508,6 +508,14 @@ def test_activity_tracks_launched_seat_worktree_from_brief(case):
     assert row['payload']['item'] == 'work'
 
 
+def test_activity_skips_running_adhoc_seat(case):
+    # #676: an adhoc seat has no brief to check.
+    root = case[0]
+    state._write_state(lambda data: data['seats'].update({'adhoc-1': {
+        'role': 'adhoc', 'item': 'adhoc-1', 'status': 'running'}}), root, reserved=False)
+    assert watch_module().activity(root)[1]['unreadable'] == 0
+
+
 def test_sweep_reports_unmeasured_discovery_with_measured_scanner(case, monkeypatch):
     root, host, _, _ = case
     watch = watch_module()

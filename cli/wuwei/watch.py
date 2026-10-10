@@ -179,7 +179,8 @@ def activity(root):
         data = state.read_state(root)
         active = {name: item for name, item in data['items'].items()
                   if item['status'] == 'running' and item.get('worktree')}
-        running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
+        running = [seat for seat in brief.seats(data).values()
+                   if seat['status'] == 'running' and seat['role'] != 'adhoc']  # #676: no brief
         if running:
             logged = records(workspace.day_dir(root) / 'events.jsonl')
             for seat in running:

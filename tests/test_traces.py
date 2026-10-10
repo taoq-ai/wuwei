@@ -732,3 +732,33 @@ def test_subagent_transcript_and_seat_of(tmp_path):
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({'type': 'user', 'message': {'content': f'WUWEI brief: {reference}\nRead.'}}) + '\n')
     assert brief.seat_of({**base, 'agent_id': 'a'}, data) is data['seats']['b-a']
+
+
+@pytest.mark.parametrize('case', ['match', 'no-seat', 'no-day'])
+def test_untyped_subagent_binds_to_its_adhoc_seat(trace_workspace, call_payload, case):
+    # #676: an untyped subagent's calls bind to its adhoc seat by its launch prompt.
+    from wuwei import brief
+    root = trace_workspace.parents[2]
+    prompt = 'Review PR 16\nRead only.'
+    if case != 'no-day':
+        seat = {'id': 'adhoc-1', 'role': 'adhoc', 'item': 'adhoc-1', 'type': 'general-purpose',
+                'status': 'running', 'prompt_sha256': brief.prompt_digest(
+                    prompt if case == 'match' else 'another prompt')}
+        state._write_state(lambda data: data['seats'].update({'adhoc-1': seat}), root, reserved=False)
+    before = {name: (trace_workspace / name).read_text()
+              for name in ('state.json', 'events.jsonl') if (trace_workspace / name).exists()}
+    main = root / 'session.jsonl'
+    transcript = root / call_payload['session_id'] / 'subagents/agent-a1.jsonl'
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(json.dumps({'type': 'user', 'message': {'content': prompt}}) + '\n')
+    payload = {**call_payload, 'transcript_path': str(main), 'agent_id': 'a1',
+               'agent_type': 'general-purpose'}
+    assert recorder()(payload) == (0, '')
+    assert len(read_spans(trace_workspace)) == 1
+    if case == 'match':
+        stored = state.read_state(root)['seats']['adhoc-1']
+        assert stored['trace_sessions'] == [call_payload['session_id'] + ':a1']
+        assert stored['transcript'] == str(transcript)
+    else:
+        assert before == {name: (trace_workspace / name).read_text()
+                          for name in ('state.json', 'events.jsonl') if (trace_workspace / name).exists()}
