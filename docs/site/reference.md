@@ -181,6 +181,8 @@ Reviewers are the people who committed most to the changed source paths (top two
 
 Before the morning gate is approved, including before today's `state.json` exists, the line starts `WUWEI no plan yet` and exits 0, for example `WUWEI no plan yet | pages 0 | nudges 0 | watch off | meeting unmeasured`. Pages and nudges stay visible. `status --json` carries the same fact as `gate_approved`. A lost state (no `state.json` next to a snapshot) still reads `WUWEI ? unmeasured` with exit 2.
 
+`bin/wuwei watch why <pr>` prints the last recorded PR change: the poll time, one `fired: <part> (<planner action>)` line per part that woke the planner and one `suppressed: <part> (already delivered|no action)` line per part that did not. It exits 0 with a record, 1 without one, and 2 on an invalid reference or outside a workspace.
+
 `watch unmeasured`: the clock cannot be read or is in the future; one nudge. The same health appears in `bin/wuwei nudges`, at session start and in sweeps. A running watch adds nothing to the line.
 
 When one or more registered sessions are live, the line adds `sessions N` before the reply and meeting parts, and `status --json` carries `sessions`.

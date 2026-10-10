@@ -168,7 +168,7 @@ def test_sweep_telemetry_step_never_changes_the_exit(case, capsys):
     assert 'watch telemetry unmeasured: bad week' in capsys.readouterr().out
 
 
-@pytest.mark.parametrize('field', ['head', 'mergeable', 'updated_at', 'checks', 'reviews', 'threads'])
+@pytest.mark.parametrize('field', ['head', 'mergeable', 'checks', 'reviews', 'threads'])
 def test_pr_poll_persisted_diff_wakes_once(case, field, capsys):
     root, host, _, _ = case
     watch = watch_module()
@@ -185,8 +185,7 @@ def test_pr_poll_persisted_diff_wakes_once(case, field, capsys):
         host.results['threads'].data['comments'] = [{'id': 1, 'author': 'reviewer',
             'is_bot': False, 'body': 'private text', 'created_at': workspace.now().isoformat()}]
     else:
-        host.results['pr'].data[field] = {'head': 'b' * 40, 'mergeable': False,
-                                        'updated_at': '2026-09-28T12:01:00Z'}[field]
+        host.results['pr'].data[field] = {'head': 'b' * 40, 'mergeable': False}[field]
     assert watch.poll(root) == 1
     row, = events(root, 'pr.changed')
     assert field in row['payload']['fields']
@@ -197,6 +196,21 @@ def test_pr_poll_persisted_diff_wakes_once(case, field, capsys):
     assert 'planner wake' in capsys.readouterr().out
     assert watch.poll(root) == 0
     assert len(events(root, 'pr.changed')) == 1
+
+
+def test_updated_at_alone_never_wakes(case):
+    root, host, _, _ = case
+    watch = watch_module()
+    assert watch.poll(root) == 0
+    host.results['pr'].data['updated_at'] = '2026-09-28T12:01:00Z'
+    assert watch.poll(root) == 0
+    assert not events(root, 'pr.changed')
+    assert 'wake' not in watch.saved(root)
+    # A baseline written before #674 still fingerprints updated_at: not a change.
+    old = watch.saved(root)['prs']
+    watch.save(root, {'prs': {REF: {**old[REF], 'updated_at': 'stale'}}})
+    assert watch.poll(root) == 0
+    assert not events(root, 'pr.changed')
 
 
 def test_poll_read_failure_preserves_baseline_and_resets_streak(case):
@@ -230,13 +244,15 @@ def test_poll_new_gone_and_midnight(case):
         result.data['number'] = int(ref.split('#')[1])
         return result
     monkeypatch.setattr(host, 'pr', read_pr)
-    assert watch.poll(root) == 1
+    assert watch.poll(root) == 0
+    assert watch.saved(root)['why']['example/project#8']['suppressed'] == [['now watched', 'no action']]
     advance(case, 86400)
     state._write_state(lambda data: data.update(raised_prs=[REF]), root, reserved=False)
     host.results['pr'].data['head'] = 'b' * 40
     assert watch.poll(root) == 1
-    assert len(events(root, 'pr.changed')) == 2
-    assert events(root, 'pr.changed')[-1]['payload']['fields'] == ['gone']
+    row, = events(root, 'pr.changed')
+    assert row['payload']['fields'] == ['head']
+    assert watch.saved(root)['why']['example/project#8']['suppressed'] == [['no longer owned', 'no action']]
 
 
 def test_midnight_without_day_state_keeps_polling(case, capsys):
@@ -246,8 +262,9 @@ def test_midnight_without_day_state_keeps_polling(case, capsys):
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T00:05:00+00:00')
     assert not (workspace.day_dir(root) / 'state.json').exists()
     assert watch.owned(root, workspace.load_config(root))[1] == []
-    assert watch.poll(root) == 1
-    assert events(root, 'pr.changed')[-1]['payload']['fields'] == ['gone']
+    assert watch.poll(root) == 0
+    assert not events(root, 'pr.changed')
+    assert watch.saved(root)['why'][REF]['suppressed'] == [['no longer owned', 'no action']]
     waited = []
     def stop(seconds):
         waited.append(seconds)
@@ -462,7 +479,8 @@ def test_poll_in_place_edit_and_unordered_evidence(case):
     comments.reverse()
     assert watch.poll(root) == 0
     comments[0]['body'] = 'edited text'
-    assert watch.poll(root) == 1
+    assert watch.poll(root) == 0
+    assert watch.saved(root)['why'][REF]['suppressed'] == [['updated (threads)', 'no action']]
 
 
 def test_flush_rejects_complete_record_without_newline(case):
@@ -728,6 +746,9 @@ def test_stop_wake_once_accumulates_until_seen(case, capsys):
         result.data['number'] = int(ref.split('#')[1])
         return result
     monkeypatch.setattr(host, 'pr', read_pr)
+    watch.poll(root)  # #674: a newly watched PR alone does not wake.
+    assert state.read_state(root)['watch']['wake']['prs'] == [REF]
+    host.results['pr'].data['head'] = 'c' * 40
     watch.poll(root)
     assert state.read_state(root)['watch']['wake']['prs'] == [REF, other]
     capsys.readouterr()
@@ -748,7 +769,7 @@ def test_stop_wake_once_accumulates_until_seen(case, capsys):
     assert stop()[0] == 0
     assert not watch.wake(root)
     # Even two changes with the same wall clock must have different marker ids.
-    host.results['pr'].data['head'] = 'c' * 40
+    host.results['pr'].data['head'] = 'd' * 40
     watch.poll(root)
     assert state.read_state(root)['watch']['wake']['at'] != value['wake']['at']
     capsys.readouterr()
@@ -1035,46 +1056,243 @@ def check(name, conclusion, state='completed'):
     return {'name': name, 'state': state, 'conclusion': conclusion, 'sha': 'a' * 40}
 
 
-def test_summary_names_comments_files_and_failed_checks():
+def kinds(rows):
+    return [(kind, text) for kind, _, _, text in rows]
+
+
+def test_parts_name_comments_files_and_failed_checks():
     watch = watch_module()
     before = watch.facts(measured_pr(checks=[check('test (3.11)', None, 'in_progress')]))
     after = watch.facts(measured_pr(
         threads={'comments': [], 'threads': [thread('T1', 'cli/x.py', (31, 'alice'), (32, 'alice'))]},
         checks=[check('test (3.11)', 'failure')]))
     assert 'secret body' not in json.dumps(after)
-    assert watch.summary(REF, before, after, ['checks', 'threads']) == (
-        'PR example/project#7: 2 new review comments by alice on cli/x.py; check test (3.11) failed')
+    assert kinds(watch.parts(before, after, ['checks', 'threads'])) == [
+        ('comments', '2 new review comments by alice on cli/x.py'),
+        ('check_failed', 'check test (3.11) failed')]
 
 
-@pytest.mark.parametrize('before,after,fields,expected', [
-    ({}, None, ['gone'], 'no longer owned'),
-    (None, {}, ['new'], 'now watched'),
-    ({}, {'state': 'closed', 'merged': True}, ['state'], 'merged'),
-    ({}, {'head': 'b' * 40}, ['head'], 'new commits pushed (head bbbbbbb)'),
-    ({}, {'mergeable': False}, ['mergeable'], 'conflicts with its base'),
-    ({'mergeable': False}, {}, ['mergeable'], 'conflicts resolved'),
+@pytest.mark.parametrize('before,after,fields,kind,expected', [
+    ({}, None, ['gone'], 'gone', 'no longer owned'),
+    (None, {}, ['new'], 'new', 'now watched'),
+    ({}, {'state': 'closed', 'merged': True}, ['state'], 'merged', 'merged'),
+    ({}, {'state': 'closed'}, ['state'], 'closed', 'closed'),
+    ({}, {'head': 'b' * 40}, ['head'], 'commits', 'new commits pushed (head bbbbbbb)'),
+    ({}, {'mergeable': False}, ['mergeable'], 'conflicts', 'conflicts with its base'),
+    ({'mergeable': False}, {}, ['mergeable'], 'resolved', 'conflicts resolved'),
     ({}, {'threads': {'comments': [{'id': 5, 'author': 'bob', 'body': 'x'}], 'threads': []}},
-     ['threads'], '1 new comment by bob'),
-    ({}, {'reviews': [{'id': 9, 'author': 'carol', 'state': 'approved'}]}, ['reviews'], 'approved by carol'),
+     ['threads'], 'comments', '1 new comment by bob'),
+    ({}, {'reviews': [{'id': 9, 'author': 'carol', 'state': 'approved'}]}, ['reviews'], 'approved',
+     'approved by carol'),
     ({}, {'reviews': [{'id': 9, 'author': 'carol', 'state': 'changes_requested'}]},
-     ['reviews'], 'changes requested by carol'),
-    ({'checks': [check('ci', 'failure')]}, {'checks': [check('ci', 'success')]}, ['checks'], 'check ci passed'),
-    ({}, {'requested_reviewers': ['dave']}, ['requested_reviewers'], 'review requested from dave'),
-    ({}, {}, ['updated_at'], 'updated (updated_at)'),
+     ['reviews'], 'changes_requested', 'changes requested by carol'),
+    ({}, {'reviews': [{'id': 9, 'author': 'carol', 'state': 'commented'}]}, ['reviews'], 'review',
+     'review by carol'),
+    ({}, {'checks': [check('ci', 'failure')]}, ['checks'], 'check_failed', 'check ci failed'),
+    ({'checks': [check('ci', 'failure')]}, {'checks': [check('ci', 'success')]}, ['checks'],
+     'check_passed', 'check ci passed'),
+    ({}, {'requested_reviewers': ['dave']}, ['requested_reviewers'], 'requested', 'review requested from dave'),
+    ({}, {}, ['updated_at'], 'updated', 'updated (updated_at)'),
     ({}, {'threads': {'comments': [], 'threads': [thread('T1', None, (40, 'erin'))]}},
-     ['threads'], '1 new review comment by erin'),
+     ['threads'], 'comments', '1 new review comment by erin'),
 ])
-def test_summary_rules(before, after, fields, expected):
+def test_parts_rules(before, after, fields, kind, expected):
     watch = watch_module()
     old = None if before is None else watch.facts(measured_pr(**before))
     new = None if after is None else watch.facts(measured_pr(**after))
-    assert watch.summary(REF, old, new, fields) == f'PR {REF}: {expected}'
+    assert kinds(watch.parts(old, new, fields)) == [(kind, expected)]
+    assert (kind in watch.ACTIONS) is (kind not in (
+        'resolved', 'check_passed', 'requested', 'new', 'gone', 'updated'))
 
 
-def test_summary_without_prior_facts_names_fields():
+def test_parts_action_map_covers_only_produced_kinds():
     watch = watch_module()
-    assert watch.summary(REF, None, watch.facts(measured_pr()), ['checks', 'head']) == (
-        f'PR {REF}: updated (checks, head)')
+    produced = {'merged', 'closed', 'commits', 'conflicts', 'comments', 'approved',
+                'changes_requested', 'review', 'check_failed'}
+    assert set(watch.ACTIONS) == produced
+    assert all(isinstance(text, str) and text for text in watch.ACTIONS.values())
+
+
+def test_parts_failed_check_evidence_names_the_head():
+    watch = watch_module()
+    before = watch.facts(measured_pr())
+    a = watch.parts(before, watch.facts(measured_pr(checks=[check('ci', 'failure')])), ['checks'])
+    b = watch.parts(before, watch.facts(measured_pr(head='b' * 40, checks=[check('ci', 'failure')])), ['checks'])
+    assert a[0][1] == b[-1][1] == 'check:ci'
+    assert a[0][2] != b[-1][2]
+
+
+def test_parts_without_prior_facts_names_fields():
+    watch = watch_module()
+    assert kinds(watch.parts(None, watch.facts(measured_pr()), ['checks', 'head'])) == [
+        ('updated', 'updated (checks, head)')]
+
+
+def failed(name='ci', conclusion='failure'):
+    return Result(0, [{**check(name, conclusion), 'url': None}])
+
+
+def test_merge_delivered_once_then_only_the_new_failed_check(case):
+    root, host, _, _ = case
+    watch, lifecycle = watch_module(), lifecycle_module()
+    assert main(['plan', 'session', 'planner']) == 0
+    assert watch.poll(root) == 0
+    host.results['pr'].data.update(state='closed', merged=True)
+    assert watch.poll(root) == 1
+    assert events(root, 'pr.changed')[-1]['payload']['summary'] == f'PR {REF}: merged'
+    assert lifecycle.stop({'cwd': str(root), 'session_id': 'planner'})[0] == 1
+    host.results['pr'].data['updated_at'] = '2026-09-28T12:01:00Z'
+    assert watch.poll(root) == 0
+    assert len(events(root, 'pr.changed')) == 1
+    host.results['checks'] = failed()
+    assert watch.poll(root) == 1
+    assert events(root, 'pr.changed')[-1]['payload']['summary'] == f'PR {REF}: check ci failed'
+    code, message = lifecycle.stop({'cwd': str(root), 'session_id': 'planner'})
+    assert code == 1
+    assert message.split('\n')[0] == f'PR {REF}: check ci failed' and 'merged' not in message
+
+
+@pytest.mark.parametrize('change,text', [('check_passed', 'check ci passed'),
+                                         ('resolved', 'conflicts resolved'),
+                                         ('requested', 'review requested from dave')])
+def test_parts_without_an_action_never_wake(case, change, text):
+    root, host, _, _ = case
+    watch = watch_module()
+    if change == 'check_passed':
+        host.results['checks'] = failed()
+    elif change == 'resolved':
+        host.results['pr'].data['mergeable'] = False
+    assert watch.poll(root) == 0
+    if change == 'check_passed':
+        host.results['checks'] = failed(conclusion='success')
+    elif change == 'resolved':
+        host.results['pr'].data['mergeable'] = True
+    else:
+        host.results['pr'].data['requested_reviewers'] = ['dave']
+    assert watch.poll(root) == 0
+    assert not events(root, 'pr.changed')
+    assert 'wake' not in watch.saved(root)
+    assert watch.saved(root)['why'][REF]['suppressed'] == [[text, 'no action']]
+
+
+def test_failed_and_passed_check_fire_the_failure_only(case):
+    root, host, _, _ = case
+    watch = watch_module()
+    host.results['checks'] = Result(0, [{**check('a', 'failure'), 'url': None},
+                                        {**check('b', 'success'), 'url': None}])
+    assert watch.poll(root) == 0
+    host.results['checks'] = Result(0, [{**check('a', 'success'), 'url': None},
+                                        {**check('b', 'failure'), 'url': None}])
+    assert watch.poll(root) == 1
+    assert events(root, 'pr.changed')[-1]['payload']['summary'] == f'PR {REF}: check b failed'
+    why = watch.saved(root)['why'][REF]
+    assert why['fired'] == [['check b failed', 'start a fix round']]
+    assert why['suppressed'] == [['check a passed', 'no action']]
+
+
+def test_delivered_part_is_not_delivered_again(case):
+    root, host, _, _ = case
+    watch = watch_module()
+    assert watch.poll(root) == 0
+    before = {key: watch.saved(root)[key] for key in ('prs', 'facts')}
+    host.results['pr'].data.update(state='closed', merged=True)
+    assert watch.poll(root) == 1
+    watch.save(root, before)
+    assert watch.poll(root) == 0
+    assert len(events(root, 'pr.changed')) == 1
+    assert watch.saved(root)['why'][REF]['suppressed'] == [['merged', 'already delivered']]
+
+
+def test_conflict_that_returns_fires_again(case):
+    root, host, _, _ = case
+    watch = watch_module()
+    assert watch.poll(root) == 0
+    for mergeable, expected in ((False, 1), (True, 0), (False, 1)):
+        host.results['pr'].data['mergeable'] = mergeable
+        assert watch.poll(root) == expected
+    assert [row['payload']['summary'] for row in events(root, 'pr.changed')] == [
+        f'PR {REF}: conflicts with its base'] * 2
+
+
+def test_conflict_cleared_through_unknown_fires_again(case):
+    root, host, _, _ = case
+    watch = watch_module()
+    assert watch.poll(root) == 0
+    for mergeable, expected in ((False, 1), (None, 2), (True, 0), (False, 1)):
+        host.results['pr'].data['mergeable'] = mergeable
+        assert watch.poll(root) == expected
+    assert [row['payload']['summary'] for row in events(root, 'pr.changed')] == [
+        f'PR {REF}: conflicts with its base'] * 2
+
+
+def test_check_rerun_that_fails_again_fires_again(case):
+    root, host, _, _ = case
+    watch = watch_module()
+    assert watch.poll(root) == 0
+    steps = (('failure', 'completed', 1), (None, 'in_progress', 0), ('success', 'completed', 0),
+             (None, 'in_progress', 0), ('failure', 'completed', 1))
+    for conclusion, status, expected in steps:
+        host.results['checks'] = Result(0, [{**check('ci', conclusion, status), 'url': None}])
+        assert watch.poll(root) == expected
+    assert [row['payload']['summary'] for row in events(root, 'pr.changed')] == [
+        f'PR {REF}: check ci failed'] * 2
+
+
+def test_reopened_pr_that_closes_again_fires_again(case):
+    root, host, _, _ = case
+    watch = watch_module()
+    assert watch.poll(root) == 0
+    for status, expected in (('closed', 1), ('open', 0), ('closed', 1)):
+        host.results['pr'].data['state'] = status
+        assert watch.poll(root) == expected
+    assert [row['payload']['summary'] for row in events(root, 'pr.changed')] == [
+        f'PR {REF}: closed'] * 2
+
+
+def test_delivered_and_why_carry_over_midnight_for_owned_prs(case):
+    root, host, _, monkeypatch = case
+    watch = watch_module()
+    other = 'example/project#8'
+    state._write_state(lambda data: data.update(claimed_prs=[other]), root, reserved=False)
+    datas = {ref: dict(host.results['pr'].data, number=int(ref.split('#')[1])) for ref in (REF, other)}
+    monkeypatch.setattr(host, 'pr', lambda ref, root=None: Result(0, datas[ref]))
+    assert watch.poll(root) == 0
+    for data in datas.values():
+        data.update(head='b' * 40)
+    assert watch.poll(root) == 1
+    delivered = watch.saved(root)['delivered']
+    assert set(delivered) == {REF, other}
+    advance(case, 86400)
+    state._write_state(lambda data: data.update(raised_prs=[REF]), root, reserved=False)
+    assert watch.poll(root) == 0
+    assert watch.saved(root)['delivered'] == {REF: delivered[REF]}
+    assert watch.poll(root) == 0
+    assert set(watch.saved(root)['why']) == {REF}
+
+
+def test_watch_why_prints_fired_and_suppressed(case, capsys):
+    root, host, _, _ = case
+    watch = watch_module()
+    assert watch.poll(root) == 0
+    before = {key: watch.saved(root)[key] for key in ('prs', 'facts')}
+    host.results['pr'].data.update(state='closed', merged=True)
+    assert watch.poll(root) == 1
+    watch.save(root, before)
+    host.results['checks'] = failed()
+    assert watch.poll(root) == 1
+    capsys.readouterr()
+    assert main(['watch', 'why', REF]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out == [f'PR {REF} ({workspace.now().isoformat()})',
+                   'fired: check ci failed (start a fix round)',
+                   'suppressed: merged (already delivered)']
+    assert main(['watch', 'why', 'example/project#9']) == 1
+    assert 'no recorded change' in capsys.readouterr().out
+    assert main(['watch', 'why', 'not-a-ref']) == 2
+    assert 'expected owner/repo#number' in capsys.readouterr().err
+    with pytest.raises(SystemExit) as exit:
+        main(['listen', 'why', REF])
+    assert exit.value.code == 2
 
 
 def test_poll_writes_summary_and_body_free_facts(case, capsys):
@@ -1121,6 +1339,26 @@ def test_stop_and_session_start_lead_with_the_summary(case):
     assert code == 1
     first, second = message.split('\n')
     assert first == expected and second.startswith('planner wake (') and second.endswith(REF)
+
+
+@pytest.mark.parametrize('session', ['planner', 'seat'])
+def test_session_start_in_the_planner_session_delivers_the_wake(case, session):
+    root, host, _, _ = case
+    watch, lifecycle = watch_module(), lifecycle_module()
+    state._write_state(lambda data: data.update(planner_session_id='planner'), root, reserved=False)
+    watch.poll(root)
+    host.results['pr'].data['head'] = 'b' * 40
+    watch.poll(root)
+    first = f'PR {REF}: new commits pushed (head bbbbbbb)'
+    assert first in lifecycle.session_start({'cwd': str(root), 'session_id': session})[1]
+    assert bool(events(root, 'session: wake-seen')) is (session == 'planner')
+    host.results['checks'] = Result(0, [{**check('ci', 'failure'), 'url': None}])
+    host.results['checks'].data[0]['sha'] = 'b' * 40
+    watch.poll(root)
+    code, message = lifecycle.stop({'cwd': str(root), 'session_id': 'planner'})
+    assert code == 1
+    assert (first in message) is (session == 'seat')
+    assert f'PR {REF}: check ci failed' in message
 
 
 def test_poll_prs_reads_then_reconciles_and_marks_poll_at(case, monkeypatch):

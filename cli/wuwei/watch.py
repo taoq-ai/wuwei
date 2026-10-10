@@ -1,6 +1,5 @@
 """Continuous supervision through ports and the shared synchronous writer."""
 
-from collections import Counter
 from datetime import timedelta
 import json
 import re
@@ -333,6 +332,12 @@ def previous(root):
     return {}
 
 
+def carried(root, key):
+    """Today's watch.<key>, else the previous day's, else None."""
+    value = saved(root).get(key)
+    return previous(root).get(key) if value is None else value
+
+
 def fingerprint(value):
     # Array order from providers is not activity. Bodies are hashed, never logged.
     if isinstance(value, list):
@@ -365,8 +370,9 @@ def evidence(host, ref, root):
 def snapshot(host, ref, root, *, measured=None):
     measured = evidence(host, ref, root) if measured is None else measured
     pr = measured['pr']
+    # #674: updated_at is evidence time only, never a change on its own.
     fields = {key: pr[key] for key in ('state', 'head', 'mergeable', 'merge_state',
-                                      'updated_at', 'requested_reviewers', 'requested_teams')}
+                                      'requested_reviewers', 'requested_teams')}
     fields.update({key: measured[key] for key in ('reviews', 'threads', 'checks')})
     return {key: fingerprint(value) for key, value in fields.items()}
 
@@ -392,43 +398,58 @@ def facts(measured):
 PASSING = ('success', 'neutral', 'skipped', 'queued', 'in_progress', 'pending', 'waiting', 'requested')
 
 
-def summary(ref, before, after, fields):
-    """One line naming what changed; never a bare 'changed'."""
+# #674: the part kinds that need a planner action; any other part never wakes on its own.
+ACTIONS = {'merged': 'close the item', 'closed': 'owner decision for the closed PR',
+           'commits': 're-run the gates on the new head',
+           'conflicts': 'rebase, resolve, run fast checks, push',
+           'comments': 'triage the comments', 'approved': 'wuwei merge or merge decision',
+           'changes_requested': 'triage review threads', 'review': 'triage the review',
+           'check_failed': 'start a fix round'}
+
+
+def parts(before, after, fields):
+    """(kind, key, evidence, text) rows naming what changed: the wake text and the action map."""
     if fields == ['new'] or fields == ['gone']:
-        return f'PR {ref}: ' + ('now watched' if fields == ['new'] else 'no longer owned')
-    parts = []
+        return [(fields[0], 'watched', fields[0], 'now watched' if fields == ['new'] else 'no longer owned')]
+    rows = []
     if before is not None and after is not None:
         if after['merged'] and not before['merged']:
-            parts.append('merged')
+            rows.append(('merged', 'state', 'merged', 'merged'))
         elif after['state'] == 'closed' and before['state'] != 'closed':
-            parts.append('closed')
+            rows.append(('closed', 'state', 'closed', 'closed'))
         if after['head'] != before['head']:
-            parts.append(f'new commits pushed (head {after["head"][:7]})')
+            rows.append(('commits', 'head', after['head'], f'new commits pushed (head {after["head"][:7]})'))
         if after['mergeable'] is False and before['mergeable'] is not False:
-            parts.append('conflicts with its base')
+            rows.append(('conflicts', 'mergeable', False, 'conflicts with its base'))
         elif after['mergeable'] is True and before['mergeable'] is False:
-            parts.append('conflicts resolved')
-        new = [(key.split(':')[0], *value) for key, value in after['seen'].items()
-               if key not in before['seen']]
-        groups = Counter(row for row in new if row[0] != 'review')
-        for (surface, author, path), count in sorted(groups.items(), key=lambda pair: pair[0][0] != 'thread'):
+            rows.append(('resolved', 'mergeable', True, 'conflicts resolved'))
+        new = {key: (key.split(':')[0], *value) for key, value in after['seen'].items()
+               if key not in before['seen']}
+        groups = {}
+        for key, row in new.items():
+            if row[0] != 'review':
+                groups.setdefault(row, []).append(key)
+        for (surface, author, path), keys in sorted(groups.items(), key=lambda pair: pair[0][0] != 'thread'):
             noun = 'review comment' if surface == 'thread' else 'comment'
-            parts.append(f'{count} new {noun}{"s" if count > 1 else ""} by {author}'
-                         + (f' on {path}' if path else ''))
-        reviews = {'approved': 'approved by', 'changes_requested': 'changes requested by',
-                   'commented': 'review by'}
-        parts += [f'{reviews[state]} {author}' for surface, author, state in new
-                  if surface == 'review' and state in reviews]
+            rows.append(('comments', f'{surface}:{author}:{path}', sorted(keys),
+                         f'{len(keys)} new {noun}{"s" if len(keys) > 1 else ""} by {author}'
+                         + (f' on {path}' if path else '')))
+        reviews = {'approved': ('approved', 'approved by'),
+                   'changes_requested': ('changes_requested', 'changes requested by'),
+                   'commented': ('review', 'review by')}
+        rows += [(reviews[state][0], key, state, f'{reviews[state][1]} {author}')
+                 for key, (surface, author, state) in new.items()
+                 if surface == 'review' and state in reviews]
         for name, value in after['checks'].items():
             old = before['checks'].get(name)
             if value != old and value not in PASSING and value is not None:
-                parts.append(f'check {name} failed')
+                rows.append(('check_failed', f'check:{name}', [after['head'], value], f'check {name} failed'))
             elif value == 'success' and old is not None and old not in PASSING:
-                parts.append(f'check {name} passed')
+                rows.append(('check_passed', f'check:{name}', [after['head'], value], f'check {name} passed'))
         added = [login for login in after['requested'] if login not in before['requested']]
         if added:
-            parts.append(f'review requested from {", ".join(added)}')
-    return f'PR {ref}: ' + ('; '.join(parts) or f'updated ({", ".join(fields)})')
+            rows.append(('requested', 'requested', added, f'review requested from {", ".join(added)}'))
+    return rows or [('updated', 'fields', fields, f'updated ({", ".join(fields)})')]
 
 
 def poll(root):
@@ -436,15 +457,11 @@ def poll(root):
     started = workspace.now()
     try:
         config = workspace.load_config(root)
-        old = saved(root).get('prs')
-        if old is None:
-            old = previous(root).get('prs')
+        old = carried(root, 'prs')
         if old is not None and not isinstance(old, dict):
             raise ValueError(f'invalid PR baseline; {DAMAGED}')
-        old_facts = saved(root).get('facts')
-        if old_facts is None:
-            old_facts = previous(root).get('facts', {})
-        if not isinstance(old_facts, dict):
+        old_facts, old_delivered, old_why = (carried(root, key) or {} for key in ('facts', 'delivered', 'why'))
+        if not all(isinstance(value, dict) for value in (old_facts, old_delivered, old_why)):
             raise ValueError(f'invalid PR facts; {DAMAGED}')
         host, refs = owned(root, config)
     except ERRORS as exc:
@@ -477,23 +494,47 @@ def poll(root):
                 changes[ref] = ['new']
             elif ref not in current:
                 changes[ref] = ['gone']
-            elif old[ref] != current[ref]:
-                changes[ref] = sorted(key for key in current[ref]
-                                      if old[ref].get(key) != current[ref][key])
+            elif fields := sorted(key for key in current[ref] if old[ref].get(key) != current[ref][key]):
+                changes[ref] = fields
+    # #674: a part fires once per evidence, and only when it needs a planner action.
+    delivered = {ref: dict(old_delivered.get(ref, {})) for ref in current}
+    why = {ref: value for ref, value in old_why.items() if ref in current}
+    fired = {}
+    for ref, fields in changes.items():
+        marks, shown, held = delivered.get(ref, {}), [], []
+        for kind, key, proof, text in parts(old_facts.get(ref), new_facts.get(ref), fields):
+            mark = fingerprint(proof)
+            if marks.get(key) == mark:
+                held.append([text, 'already delivered'])
+            elif kind not in ACTIONS:
+                held.append([text, 'no action'])
+            else:
+                shown.append([text, ACTIONS[kind]])
+            marks[key] = mark
+        # A state that cleared through a transition no part names must fire again when it returns.
+        after = new_facts.get(ref) or {}
+        if after.get('mergeable') is True:
+            marks.pop('mergeable', None)
+        if after.get('state') == 'open':
+            marks.pop('state', None)
+        for name, value in after.get('checks', {}).items():
+            if value == 'success':
+                marks.pop(f'check:{name}', None)
+        why[ref] = {'at': started.isoformat(), 'fired': shown, 'suppressed': held}
+        if shown:
+            fired[ref] = fields, f'PR {ref}: ' + '; '.join(text for text, _ in shown)
     # Save the wake before the baseline so interruption cannot lose a change.
-    if changes:
-        summaries = {ref: summary(ref, old_facts.get(ref), new_facts.get(ref), fields)
-                     for ref, fields in changes.items()}
-        (ref, fields), *rest = changes.items()
-        mark_wake(root, prs=changes, summaries=list(summaries.values()), kind='pr.changed',
-                  payload={'pr': ref, 'fields': fields, 'summary': summaries[ref]})
-        for ref, fields in rest:
-            state.append_event('pr.changed', {'pr': ref, 'fields': fields, 'summary': summaries[ref]}, root)
-        for text in summaries.values():
+    if fired:
+        (ref, (fields, text)), *rest = fired.items()
+        mark_wake(root, prs=fired, summaries=[text for _, text in fired.values()], kind='pr.changed',
+                  payload={'pr': ref, 'fields': fields, 'summary': text})
+        for ref, (fields, text) in rest:
+            state.append_event('pr.changed', {'pr': ref, 'fields': fields, 'summary': text}, root)
+        for _, text in fired.values():
             print(f'planner wake: {text}', flush=True)
-    save(root, {'prs': current, 'facts': new_facts, 'failures': 0,
+    save(root, {'prs': current, 'facts': new_facts, 'delivered': delivered, 'why': why, 'failures': 0,
                 'measured_at': None if unreadable else started.isoformat()})
-    return 2 if unreadable else int(bool(changes))
+    return 2 if unreadable else int(bool(fired))
 
 
 def mark_wake(root, *, prs=(), inbox=0, summaries=(), kind, payload):
