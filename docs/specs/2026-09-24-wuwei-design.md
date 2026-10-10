@@ -1019,7 +1019,8 @@ Surfaces, all reading the same classification:
 - Status line. `wuwei status --line` for the Claude Code status line (#521): one line of at
   most 100 columns (`--width <n>`), read left to right by importance. First the one thing to
   do now when there is one (`restart Claude Code: hooks <old> still running`, `no plan yet`,
-  `gate waiting`, `decision D-n waiting`), then items per phase against CAP and the running
+  `gate waiting`, `decision D-n waiting`), then the day's items counted in words (`5 planned
+  · 2 building · 1 in review · 3 shipped`, CAP only on the seats token) and the running
   seats by role (`seats 4/1 (lead, arch, +2 more)`, cut at whole names), then pages, nudges
   and the posture when it is not guarded. `wuwei status` prints the same groups one per line
   with the detail: each running seat with role, item and start time, watch, listen,

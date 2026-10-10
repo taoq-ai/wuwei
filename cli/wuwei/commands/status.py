@@ -29,6 +29,10 @@ SHADOW_NUDGE = ('Observe posture has run {days} days. To enforce, set '
                 'security.posture = "guarded" in config.toml; to keep observing, raise guards.shadow_days. '
                 'bin/wuwei shadow report lists what would have been refused.')
 WIDTH = 100  # status --line columns unless --width says otherwise (#521)
+# #641: what the line calls each phase, in this order; CAP is shown on seats only.
+WORDS = {'planned': 'planned', **dict.fromkeys(state.BUILD_PHASES, 'building'),
+         **dict.fromkeys(('gate', 'delta', 'raised'), 'in review'),
+         'merged': 'shipped', 'parked': 'parked', 'escalated': 'escalated'}
 # Silent kinds scan drops with no action; the rest of SILENT is read (clocks, replies,
 # draft and decision closures, wake, steward and acknowledgements).
 SKIP = frozenset(SILENT) - {
@@ -364,7 +368,11 @@ def _groups(data, shown=None):
         now = ['gate waiting' if data.get('plan') else 'no plan yet']
     elif data.get('decisions'):
         now = [f'decision {data["decisions"][0]} waiting']
-    work = [f'{phase} {count}/{data["cap"]}' for phase, count in data['phases'].items()]
+    counts = dict.fromkeys(WORDS.values(), 0)
+    for phase, count in data['phases'].items():
+        word = WORDS.get(phase, phase)
+        counts[word] = counts.get(word, 0) + count
+    work = [f'{count} {word}' for word, count in counts.items() if count]
     roles = _roles(data)
     if data['gate_approved'] or roles:
         names = roles[:shown] + ([f'+{len(roles) - shown} more'] if shown is not None and shown < len(roles) else [])

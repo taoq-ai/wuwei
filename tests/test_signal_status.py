@@ -132,7 +132,7 @@ def test_status_line_and_json_share_snapshot(tmp_path):
     assert line.returncode == structured.returncode == full.returncode == 0
     assert line.stdout.count('\n') == 1
     assert 'pages 1' in line.stdout and 'nudges 1' in line.stdout
-    assert 'spec 1/2' in line.stdout and 'implement 1/2' in line.stdout
+    assert '2 building' in line.stdout
     assert 'reply 2026-09-28T13:00:00+02:00' in full.stdout
     assert 'meeting 2026-09-28T16:00:00+02:00' in full.stdout
     data = json.loads(structured.stdout)
@@ -189,7 +189,7 @@ def test_status_counts_every_nonzero_phase(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv('WUWEI_NOW', NOW)
     assert main(['status', '--line']) == 0
     line = capsys.readouterr().out
-    assert 'delta 1/2' in line and 'merged 1/2' in line and 'spec' not in line
+    assert '1 in review' in line and '1 shipped' in line and 'building' not in line
     assert main(['status', '--json']) == 0
     assert json.loads(capsys.readouterr().out)['phases'] == {'delta': 1, 'merged': 1}
 
@@ -960,7 +960,7 @@ def test_issue_acceptance_nothing_to_do_starts_with_the_counts(tmp_path, monkeyp
     from wuwei.commands import status
     data = four_seats(tmp_path, monkeypatch)
     assert status.line(data) == (
-        'WUWEI implement 1/1 · seats 4/1 (lead, arch, quality, security) | pages 0 · nudges 0')
+        'WUWEI 1 building · seats 4/1 (lead, arch, quality, security) | pages 0 · nudges 0')
     assert status.line({**data, 'posture': 'observe'}).endswith('| pages 0 · nudges 0 · observe')
     assert status.line({**data, 'running': [], 'phases': {}}) == 'WUWEI seats 0/1 | pages 0 · nudges 0'
     for moved in ('watch', 'listen', 'sessions', 'meeting', 'reply', 'running', 'loops', 'bound',
@@ -976,7 +976,7 @@ def test_the_line_names_the_one_thing_to_do_first(tmp_path, monkeypatch):
     (directory / 'plan.md').write_text('# Plan\n')
     assert cli(tmp_path, 'status', '--line').stdout == 'WUWEI gate waiting | pages 0 · nudges 0\n'
     data = {**four_seats(tmp_path / 'b', monkeypatch), 'decisions': ['D-7', 'D-8']}
-    assert status.line(data).startswith('WUWEI decision D-7 waiting | implement 1/1')
+    assert status.line(data).startswith('WUWEI decision D-7 waiting | 1 building')
     assert status.line({**data, 'restart': STALE}).startswith('WUWEI restart Claude Code')
     assert status.line({**data, 'gate_approved': False, 'plan': True}).startswith('WUWEI gate waiting |')
 
@@ -984,16 +984,41 @@ def test_the_line_names_the_one_thing_to_do_first(tmp_path, monkeypatch):
 def test_a_narrow_line_cuts_the_roles_then_drops_whole_tokens(tmp_path, monkeypatch):
     from wuwei.commands import status
     data = four_seats(tmp_path, monkeypatch)
-    assert status.line(data, 84) == (
-        'WUWEI implement 1/1 · seats 4/1 (lead, arch, quality, security) | pages 0 · nudges 0')
-    assert status.line(data, 75) == 'WUWEI implement 1/1 · seats 4/1 (lead, arch, +2 more) | pages 0 · nudges 0'
-    assert status.line(data, 70) == 'WUWEI implement 1/1 · seats 4/1 (lead, +3 more) | pages 0 · nudges 0'
-    assert status.line(data, 55) == 'WUWEI implement 1/1 | pages 0 · nudges 0'
-    assert status.line(data, 45) == 'WUWEI implement 1/1 | pages 0 · nudges 0'
-    assert status.line(data, 30) == 'WUWEI implement 1/1 | pages 0'
-    assert status.line(data, 25) == 'WUWEI implement 1/1'
-    assert status.line(data, 5) == 'WUWEI implement 1/1'
+    assert status.line(data, 81) == (
+        'WUWEI 1 building · seats 4/1 (lead, arch, quality, security) | pages 0 · nudges 0')
+    assert status.line(data, 72) == 'WUWEI 1 building · seats 4/1 (lead, arch, +2 more) | pages 0 · nudges 0'
+    assert status.line(data, 67) == 'WUWEI 1 building · seats 4/1 (lead, +3 more) | pages 0 · nudges 0'
+    assert status.line(data, 52) == 'WUWEI 1 building | pages 0 · nudges 0'
+    assert status.line(data, 42) == 'WUWEI 1 building | pages 0 · nudges 0'
+    assert status.line(data, 27) == 'WUWEI 1 building | pages 0'
+    assert status.line(data, 22) == 'WUWEI 1 building'
+    assert status.line(data, 5) == 'WUWEI 1 building'
     assert status.line({**data, 'restart': STALE}, 5) == 'WUWEI ' + STALE.split(' (plugin')[0]
+
+
+SAMPLE = {'planned': 5, 'spec': 1, 'implement': 1, 'gate': 1, 'raised': 1, 'merged': 3}
+
+
+def sample_day(tmp_path, monkeypatch, phases=SAMPLE):
+    """Issue 641: cap 3, one builder seat, the day's items across the phases."""
+    return {**four_seats(tmp_path, monkeypatch), 'cap': 3, 'phases': dict(phases),
+            'running': [('2026-09-28T09:10:00+02:00', 'builder', 'ITEM-1')]}
+
+
+def test_issue_641_the_line_counts_the_days_items_in_words(tmp_path, monkeypatch):
+    import re
+    from wuwei.commands import status
+    data = sample_day(tmp_path, monkeypatch)
+    assert status.line(data) == (
+        'WUWEI 5 planned · 2 building · 2 in review · 3 shipped · seats 1/3 (builder) | pages 0 · nudges 0')
+    for text in (status.line(data), status.full(data)):
+        assert all(text[:match.start()].endswith('seats ') for match in re.finditer(r'\d+/\d+', text)), text
+
+
+def test_issue_641_parked_and_escalated_follow_shipped(tmp_path, monkeypatch):
+    from wuwei.commands import status
+    data = sample_day(tmp_path, monkeypatch, {**SAMPLE, 'escalated': 1, 'parked': 1, 'odd': 2})
+    assert '3 shipped · 1 parked · 1 escalated · 2 odd · seats 1/3' in status.line(data, 10 ** 6)
 
 
 def test_status_line_width_flag(tmp_path):
@@ -1012,13 +1037,13 @@ def test_issue_acceptance_status_shows_each_running_seat(tmp_path, monkeypatch):
     result = cli(tmp_path, 'status')
     assert result.returncode == 0, result.stderr
     lines = result.stdout.splitlines()
-    assert lines[0] == 'WUWEI implement 1/1 · seats 4/1 (lead, arch, quality, security)'
+    assert lines[0] == 'WUWEI 1 building · seats 4/1 (lead, arch, quality, security)'
     assert [row for row in lines if row.startswith('running ')] == [
         'running lead ITEM-1 09:10', 'running arch ITEM-1 09:20', 'running quality ITEM-1 09:30',
         'running security ITEM-1 09:40', 'running checks ITEM-1 09:45']
     shown = status.full({**data, 'restart': STALE}).splitlines()
     assert shown[0] == 'WUWEI ' + STALE
-    assert shown[1] == 'implement 1/1 · seats 4/1 (lead, arch, quality, security)'
+    assert shown[1] == '1 building · seats 4/1 (lead, arch, quality, security)'
 
 
 def test_status_without_a_flag_fails_closed(tmp_path):
@@ -1035,7 +1060,7 @@ def test_status_shows_the_detail_the_line_drops(tmp_path, monkeypatch):
             'next_reply_due': '2026-09-28T15:00:00+02:00', 'next_meeting': None,
             'plugin': '0.16.0', 'template': '0.15.0', 'posture': 'observe'}
     shown = status.full(data).splitlines()
-    assert shown[0] == 'WUWEI implement 1/1 · seats 4/1 (lead, arch, quality, security) · bound budget · builders G-1 2'
+    assert shown[0] == 'WUWEI 1 building · seats 4/1 (lead, arch, quality, security) · bound budget · builders G-1 2'
     assert shown[6:] == [
         'pages 1 · nudges 0 · observe · phone answers 1 · loops 1 · prs 3 changed · reviewers: none (solo)'
         ' · traces: 2 gaps',
