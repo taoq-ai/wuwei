@@ -816,3 +816,46 @@ def test_unanswered_setup_questions_are_asked_on_any_day(root, capsys, answered)
     assert found['widget'][0]['id'] == 'autonomy'
     ran(root, found['widget'][0]['record'].replace('<label>', 'Autonomous'))
     assert row(capsys)[1]['state'] != 'calibrate'
+
+
+# #666: a PR waiting on people never hides work that can run now
+
+
+QUEUE = [('build', 'A', 'wuwei build next A'), ('verdicts', 'B', 'wuwei dispatch next B'),
+         ('pr', 'P', 'wuwei pr act example/project#7')]
+
+
+def waiting_pr_day(root):
+    approved(root, {'P': ('raised', {'pr': 'example/project#7'}), 'A': ('fix', {}), 'B': ('delta', {})}, cap=2)
+
+
+def test_issue_acceptance_runnable_rounds_before_a_waiting_pr(root):
+    waiting_pr_day(root)
+    for _ in range(3):  # the state is read fresh each call, and the answer stays put
+        found = coarse(root)
+        assert (found['state'], found['item'], found['command']) == QUEUE[0]
+        assert [(r['state'], r['item'], r['command']) for r in found['rows']] == QUEUE
+
+
+def test_text_mode_names_the_queue(root, capsys):
+    waiting_pr_day(root)
+    assert 'Queue: build A, verdicts B, pr P' in next_command.text(coarse(root))
+
+
+def test_a_lone_pr_comes_after_the_steward(root):
+    approved(root, {'P': ('raised', {'pr': 'example/project#7'})})
+    found = coarse(root)
+    assert (found['state'], found['command']) == ('pr', 'wuwei pr act example/project#7')
+    assert 'rows' not in found
+    state.append_event('steward.due', {'tool_calls': 200}, root)
+    assert coarse(root)['command'] == 'wuwei steward run --trigger tool-calls'
+
+
+def test_json_rows_survive_resolution(root, capsys, monkeypatch):
+    from wuwei.commands import build
+    waiting_pr_day(root)
+    launch = {'action': 'launch', 'prompt': 'WUWEI brief: x', 'agent_type': 'wuwei:builder', 'brief': 'b'}
+    monkeypatch.setattr(build, 'next_action', lambda item, root=None: launch)
+    found = row(capsys)[1]
+    assert (found['state'], found['action']) == ('build', 'launch')
+    assert found['rows'] == coarse(root)['rows']

@@ -595,7 +595,8 @@ checks, decision routing and every 9.2 invariant hold at every pace (I15 to I17)
   form exits 2 naming `build next`. Codex executes the same actions through its polling
   adapter. Backpressure, signature, stuck and iteration limits, and usage events retain
   their semantics. `host.seats` derives from the host (#528) unless config pins it. A
-  ceiling refusal names `host.seats`.
+  ceiling refusal names `host.seats`. Once the build is done and the item is at its gates, `build next`
+  answers what `dispatch next` decides (#666).
 - Cost per iteration (owner, 2026-09-28). Every dispatch records the runtime's reported
   usage (input and output tokens, cost when the runtime reports it, model, duration) as a
   `seat.usage` event per iteration. The steward reports cost per item, per role and per
