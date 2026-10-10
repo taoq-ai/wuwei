@@ -13,9 +13,7 @@ def register(subparsers):
     parser.add_argument('option')
     parser.add_argument('--note', help='one line appended to the record Notes')
     parser.add_argument('--card', '--from-card', dest='card', metavar='HASH',
-                        help="the owner's answer hash on the card (#661; the CLI binds it with #599)")
-    parser.add_argument('--card', metavar='HASH',
-                        help='the card hash from the widget record command; the owner answered it in the planner session, so it never prompts')
+                        help="the owner's answer hash on the card (#661, #599): the widget record command carries it, so it never prompts")
     parser.set_defaults(func=run)
 
 
