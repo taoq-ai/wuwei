@@ -1310,6 +1310,20 @@ def i46(case, rules):
         return None
     return rules.memo(('docs missing',), compute)
 
+def i56(case, rules):
+    """#646: a small item never waits for its ticket: an unticketed light item reads later in
+    tracker.check, which no refusal point refuses; once its gate tier is standard it reads missing."""
+    def compute():
+        from wuwei import tracker, workspace
+        config = {'adapters': {'tracker': 'linear'}, 'tracker': {'required': True, 'skip_tiers': []},
+                  'guards': {'mode': 'enforce'},
+                  'security': {'posture': case[0], 'areas': dict.fromkeys(workspace.AREAS)}}
+        small = tracker.check({}, config, 'A', {'tier': 'light'})
+        if small != ('later', ''):
+            return f'an unticketed light item reads {small}'
+        risen = tracker.check({}, config, 'A', {'tier': 'light', 'gates': {'tier': 'standard'}})
+        return None if risen[0] == 'missing' else f'a light item whose gate tier rose reads {risen}'
+    return rules.memo(('small ticket', case[0]), compute)
 
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
@@ -1323,7 +1337,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I52': i52,
               'I36': i36, 'I37': i37, 'I42': i42, 'I55': i55,
               'I36': i36, 'I37': i37, 'I42': i42, 'I43': i43,
-              'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46}
+              'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46,
+              'I36': i36, 'I37': i37, 'I52': i52, 'I56': i56}
 
 
 def project(case):
@@ -1350,7 +1365,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I52': (0,),
          'I55': OUTWARD,
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I42': (), 'I43': (),
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': ()}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (),
+         'I52': (0,), 'I56': (0,)}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 

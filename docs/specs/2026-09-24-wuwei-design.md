@@ -1485,7 +1485,9 @@ set <item> ticket=<id>`, or, while a ticket draft for it is pending, `bin/wuwei 
   contract and so under the `seats` area (9.1).
 
 The tier that decides is the item's recorded gate tier when there is one, else the lead's
-tier; an item with neither is not exempt. An exempt item gets one `tracker.skipped` event at
+tier; an item with neither is not exempt. An unticketed item whose deciding tier is `light`
+and not in `skip_tiers` reads `later` and is not refused (#646, I56): the gate opens its
+ticket, or `close` names `bin/wuwei tracker create <item>` after it ships. An exempt item gets one `tracker.skipped` event at
 admission. A gate tier that later rises out of `skip_tiers` makes `dispatch next` refuse until
 the ticket exists.
 
@@ -2044,6 +2046,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I55 | A bug, triage or follow-up ticket WUWEI opens in the workspace's own tracker follows the owner's tier rows, then the sensitive row, then the umbrella: it sends under send and is held as a card under ask, in every posture; an external tracker or a client mention holds it | per posture, audience and umbrella, `classify` on an adapter write with category `bugs` | #644; the finder files it with `tracker create --bug --seat <role>` |
 | I43 | A `trust_surface` or `boundary_relevant` item runs gate step zero at standard whatever its diff, and its brief names the flag; no path turns a flagged run into a skip | `dispatch.step_zero` at standard and full on a non-guard and a guard path under each flag, both flags, `agent_surface` alone and none | #663; one decision in `dispatch.step_zero`; a flagged item is never light (I15) |
 | I46 | A gate verdict never calls a recorded docs value missing: `lint_file` refuses a finding that says the docs value is missing while the item records one, and adds nothing when the value is missing, not required or unresolvable | `verdict.lint` on a missing-value finding with `docs` set and unset, and on a page-content finding with `docs` set | #667; one read through `docs.shown` in `verdict.recorded_docs` |
+| I56 | A small item never waits for its ticket: an unticketed item whose deciding tier is light reads `later` in `tracker.check`, which no refusal point refuses; once its gate tier is standard or full it reads `missing` again | per posture, `tracker.check` on an unticketed item with lead tier light, and with lead tier light and gate tier standard | #646; the gate opens its ticket, or close names `tracker create` after it ships |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

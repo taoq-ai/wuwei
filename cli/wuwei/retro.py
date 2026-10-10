@@ -103,6 +103,10 @@ Outcome: pending
     lines += ['', '## Tickets seats filed', '| Ticket | Class | Item | Seat |', '| --- | --- | --- | --- |',
               *([f"| {p['ticket']} | {p['class']} | {p['subject']} | {p['seat']} |" for p in filed]
                 or ['| none | | | |'])]
+    lines += ['', '## Seat findings', *([  # #646: what seats found and whether it became an item
+        f"- {ident}: {row['scope']} ("
+        + (f"item {data['items'][ident]['phase']}" if ident in data['items'] else 'not added') + ')'
+        for ident, row in sorted(data.get('seat_findings', {}).items())] or ['none'])]
     from wuwei import decision, report
     card = data.get('pace_card', {}).get('id')  # #579
     lines += ['', '## Pace', *report.pace_lines(root, data),

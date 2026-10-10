@@ -307,3 +307,13 @@ def test_governing_document_charters():  # #664
     assert "Governing:" in text["builder.md"] and "## Governing" in text["builder.md"]
     assert "## Governing" in text["sentinel-goal.md"] and "conflicts" in text["sentinel-goal.md"]
     assert "governed_by" in text["lead.md"]
+
+
+def test_a_seat_finding_has_its_route():
+    """#646: seats record a small fix with note --fix; the planner adds it and opens its ticket later."""
+    texts = charter_text()
+    assert 'wuwei note --fix "<title>"' in texts["builder.md"]
+    assert 'wuwei note --fix "<title>"' in texts["lead.md"]
+    assert "`light` starts without a ticket" in texts["lead.md"]
+    assert "wuwei plan add <id> --from-finding" in texts["planner.md"]
+    assert "after it ships" in texts["planner.md"]
