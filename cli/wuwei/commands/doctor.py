@@ -710,11 +710,33 @@ def _owner_on_file(ident, root):
     return bool(re.search(r'^Decided-by: owner$', text, re.M) and re.search(r'^Outcome: (?!pending$)\S', text, re.M))
 
 
+TIMED = ('refused', 'allowed', 'state_write', 'read_loop')  # the heartbeat probes that carry ms
+
+
+def _probe_fix(name, probes):
+    """A failed guard probe row's fix. #782: a probe over its time is a busy host or a
+    missing cached line, never a reinstall; damaged files are the integrity row's."""
+    value = probes[name]['value']
+    if 'plugin integrity' in value:
+        return 'fix the integrity row first'
+    if value != 'timeout' and ' ms over ' not in value:
+        return 'the hook no longer behaves as shipped; run wuwei integrity check and ' + REINSTALL
+    budget = heartbeat.STATUS_LINE_BUDGET_MS
+    peers = {other: probes[other] for other in TIMED if other != name}
+    if all(row['value'] == 'timeout' or row.get('ms', 0) > budget for row in peers.values()):
+        fastest = min(((row['ms'], other) for other, row in peers.items() if 'ms' in row), default=None)
+        detail = f'fastest hook probe {fastest[1]} {fastest[0]} ms' if fastest else 'every hook probe timed out'
+        return (f'every launcher call in this run was slow ({detail}): the host is busy, not the '
+                'hook; rerun wuwei doctor when fewer seats run')
+    if name == 'status_line':
+        return ('only status --line was slow: it prints the line the watch heartbeat caches each '
+                'tick, and a dead watch caches none; fix the watch row, then rerun wuwei doctor')
+    return 'only this probe timed out in this run; rerun wuwei doctor'
+
+
 def _guards(root, probes):
     from wuwei.commands.hook import HEARTBEAT_SESSION
-    rows = [_row('guards', name, PROBE[probes[name]['result']], probes[name]['value'],
-                 'fix the integrity row first' if 'plugin integrity' in probes[name]['value'] else
-                 'the hook no longer behaves as shipped; run wuwei integrity check and ' + REINSTALL)
+    rows = [_row('guards', name, PROBE[probes[name]['result']], probes[name]['value'], _probe_fix(name, probes))
             for name in ('refused', 'allowed', 'state_write', 'read_loop', 'git_read', 'status_line')] if root is not None else []
     fix = 'upgrade WUWEI: outside a workspace every hook must allow (#323)'
     try:
