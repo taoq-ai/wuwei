@@ -542,8 +542,7 @@ def _setup(args, confirm):
         if _yes('Run your tests once now to see if they are fast enough for every push?', True):
             runner = registry.load('checks', staged_cfg)
             for r in results:
-                r['checks'] = calibrate.classify(r['checkout'], r['facts']['fast_checks'], runner,
-                                                 staged_cfg['calibrate']['fast_check_seconds'], root)
+                calibrate.measure_checks(root, staged_cfg, r, runner)
     extra += identity(staged_cfg, found['login'], results)
     text, diff, edits, summary, snapshot = config.proposal(root, raw, staged, staged_cfg, results, extra)
     if text == raw and snapshot_path.exists():

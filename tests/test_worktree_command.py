@@ -524,12 +524,12 @@ def test_worktree_add_runs_checks_bootstrap_once(tmp_path, monkeypatch, capsys):
     assert row['exit'] == 0 and row['interpreter'] == str(tree / '.venv/bin/python')
 
 
-def checked(root, vcs, monkeypatch, check, bootstrap='', result=registry.Result(0)):
+def checked(root, vcs, monkeypatch, check, bootstrap='', result=registry.Result(0), extra=''):
     (root / '.wuwei/config.toml').write_text(
-        f'[[repos]]\nname = "app"\npath = "app"\ndefault_branch = "main"\nfast_checks = ["{check}"]\n'
+        f'[[repos]]\nname = "app"\npath = "app"\ndefault_branch = "main"\nfast_checks = ["{check}"]\n{extra}'
         + (f'[checks]\nbootstrap = "{bootstrap}"\n' if bootstrap else ''))
     runs = []
-    port = SimpleNamespace(run=lambda path, command, root=None: runs.append((path, command)) or result)
+    port = SimpleNamespace(run=lambda path, command, timeout=None, root=None: runs.append((path, command, timeout)) or result)
     monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'checks' else vcs)
     return runs
 
@@ -543,11 +543,19 @@ def test_worktree_add_failed_bootstrap_warns(fake, monkeypatch, capsys, result, 
     root, vcs = fake
     runs = checked(root, vcs, monkeypatch, '.venv/bin/python -m pytest -q', 'make venv', result)
     assert main(['worktree', 'add', 'X']) == 0
-    assert runs == [(str(root / 'worktrees/X'), 'make venv')]
+    assert runs == [(str(root / 'worktrees/X'), 'make venv', 300)]
     out = capsys.readouterr()
     assert json.loads(out.out) == {'branch': 'x', 'path': 'p', 'start': 'a' * 40}
     lines = out.err.splitlines()
     assert len(lines) == 1 and lines[0].startswith(line) and 'install output' not in out.err
+
+
+
+def test_worktree_bootstrap_uses_the_repository_timeout(fake, monkeypatch):  # #724
+    root, vcs = fake
+    runs = checked(root, vcs, monkeypatch, 'unit', 'make venv', extra='check_timeout_seconds = 900\n')
+    assert main(['worktree', 'add', 'X']) == 0
+    assert runs == [(str(root / 'worktrees/X'), 'make venv', 900)]
 
 
 @pytest.mark.parametrize('check,warned', [('.venv/bin/python -m pytest -q', True), ('python3 -m pytest -q', False)])

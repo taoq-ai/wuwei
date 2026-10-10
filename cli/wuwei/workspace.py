@@ -70,6 +70,7 @@ SCHEMA = {
     "repos": [{"name": (str, None), "path": (str, None),
                "default_branch": (str, None), "fast_checks": [(str, "")],
                "tests": (str, ""),  # #579: the test runner the pace runs (full suite or touched files)
+               "check_timeout_seconds": (int, 300, 1),  # #724: one check run's limit in this repository
                "review_required_checks": [(str, None)],
                "merge_deploys": (bool, True), "merge": MERGE_SCHEMA,
                "gates": {"floor": (str, "standard", ("light", "standard", "full")),

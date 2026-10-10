@@ -678,6 +678,15 @@ def test_setup_measures_the_test_runner_once(project, host, terminal, runner, ca
     assert load_config(project)['repos'][0]['fast_checks'] == ['python3 -m pytest -q']
 
 
+def test_setup_proposes_check_timeout_near_the_limit(project, host, terminal, runner, capsys, monkeypatch):  # #724
+    from wuwei import calibrate
+
+    clock = iter([0.0, 290.0])
+    monkeypatch.setattr(calibrate, 'monotonic', lambda: next(clock))
+    assert run_setup(Confirm()) == 0, capsys.readouterr().err
+    assert '+check_timeout_seconds = 600' in capsys.readouterr().out
+
+
 def test_setup_measures_nothing_on_no(project, host, terminal, runner, capsys):
     terminal.replies['tests'] = 'n'
     run_setup(Confirm())

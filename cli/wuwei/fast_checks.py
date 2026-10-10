@@ -89,7 +89,7 @@ def record(path):
         run = command
         if found and found[1] in ('checks.python', 'main worktree'):
             run = shlex.quote(str(found[0])) + command.lstrip()[len(command.split(None, 1)[0]):]
-        result = runner.run(str(path), run, root=root)
+        result = runner.run(str(path), run, timeout=repo['check_timeout_seconds'], root=root)
         if (not isinstance(result, registry.Result) or type(result.exit) is not int
                 or result.exit not in (0, 1, 2)):
             raise ValueError(f'invalid fast-check result; {ADAPTER_DATA}')

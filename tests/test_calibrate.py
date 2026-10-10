@@ -189,7 +189,7 @@ BOT = '49699333+dependabot[bot]@users.noreply.github.com'
 def test_survey_keeps_bot_authors(tmp_path, ports):
     from wuwei.registry import Result
 
-    repo = {**REPO, 'path': str(FIXTURES / 'python')}
+    repo = {**REPO, 'path': str(FIXTURES / 'python'), 'check_timeout_seconds': 300}
     config = {'calibrate': {'fast_check_seconds': 30}}
     [result] = calibrate.survey(tmp_path, config, [(0, repo)], style=False)
     assert result['bots'] == {BOT: 'dependabot[bot]'}
@@ -320,19 +320,35 @@ def test_classify_without_measure():
     ((0,), [0.0, 75.0], False, ['75.0', '60']),
     ((0,), [0.0, 3.0], True, ['3.0']),
     ((1, {}), [0.0, 3.0], False, ['exit 1']),
-    ((2, None, 'fast check could not run: TimeoutExpired'), [0.0, 3.0], False, ['exit 2', 'TimeoutExpired'])])
+    ((2, None, 'fast check could not run: TimeoutExpired'), [0.0, 3.0], False, ['exit 2', 'TimeoutExpired']),
+    ((0,), [0.0, 290.0], False, ['near the 300 s check timeout'])])  # #724
 def test_classify_measures_test_runners(monkeypatch, result, times, fast, phrases):
     from types import SimpleNamespace
     from wuwei import registry
 
-    calls = []
-    runner = SimpleNamespace(run=lambda path, command, root=None: calls.append((path, command))
+    calls, measured = [], {}
+    runner = SimpleNamespace(run=lambda path, command, timeout=None, root=None: calls.append((path, command, timeout))
                              or registry.Result(*result))
     monkeypatch.setattr(calibrate, 'monotonic', iter(times).__next__)
-    checks = calibrate.classify(FIXTURES / 'python', ['python3 -m pytest -q', 'ruff check .'], runner, 60)
+    checks = calibrate.classify(FIXTURES / 'python', ['python3 -m pytest -q', 'ruff check .'], runner, 60,
+                                None, 300, measured)
     assert checks['python3 -m pytest -q'][0] is fast and checks['ruff check .'][0] is True
     assert all(p in checks['python3 -m pytest -q'][1] for p in phrases), checks
-    assert calls == [(str(FIXTURES / 'python'), 'python3 -m pytest -q')]
+    assert ('near the' in checks['python3 -m pytest -q'][1]) is (times[1] >= 240)
+    assert calls == [(str(FIXTURES / 'python'), 'python3 -m pytest -q', 300)]
+    assert measured == {'python3 -m pytest -q': times[1]}
+
+
+def test_proposal_check_timeout_seconds():  # #724
+    found = {**facts('python'), 'check_timeout_seconds': 600}
+    additions, edits = calibrate.proposal(repo_block('acme/widget'), [(0, found)])
+    assert (('repos', 0), 'check_timeout_seconds', 600) in additions and edits == []
+    raw = repo_block('acme/widget', 'check_timeout_seconds = 450\n')
+    additions, edits = calibrate.proposal(raw, [(0, found)])
+    assert ('repos.0.check_timeout_seconds', 450, 600) in edits
+    assert not any(key == 'check_timeout_seconds' for _, key, _ in additions)
+    additions, edits = calibrate.proposal(repo_block('acme/widget'), [(0, facts('python'))])
+    assert 'check_timeout_seconds' not in str((additions, edits))
 
 
 def test_missing_merge_table_lands_after_its_repo(tmp_path):
@@ -503,6 +519,16 @@ def test_calibrate_measure_lists_slow_tests_as_ci_only(workspace_root, ports, mo
     measured(monkeypatch, ports, [0.0, 75.0])
     assert main('calibrate', '--measure') == 0, capsys.readouterr().err
     assert '+fast_checks = ["python3 -m pytest -q", "ruff check ."]' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('took,proposed', [(290.0, True), (75.0, False)])
+def test_calibrate_measure_proposes_check_timeout(workspace_root, ports, monkeypatch, capsys, took, proposed):  # #724
+    configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
+    measured(monkeypatch, ports, [0.0, took])
+    assert main('calibrate', '--measure') == 0, capsys.readouterr().err
+    out = capsys.readouterr().out
+    assert ('+check_timeout_seconds = 600' in out) is proposed
+    assert ('check_timeout_seconds' in out) is proposed
 
 
 def test_empty_fast_checks_calibrate_and_promote(workspace_root, capsys):

@@ -215,7 +215,7 @@ lead_login = "lead"
         self.chat.sent = lambda *args, root=None: self.chat._call('sent', args, root)
         self.runtime = Runtime(self)
 
-        def check(path, command, root=None):
+        def check(path, command, timeout=None, root=None):
             assert Path(path) == self.repo and command == 'demo-check'
             assert (self.repo / 'memory/demo.py').read_text() == f'VALUE = {self.runtime.builds}\n'
             return Result(0)

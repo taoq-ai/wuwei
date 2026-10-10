@@ -45,7 +45,7 @@ def setup(tmp_path, monkeypatch, checks, spec='[spec]\nengine="none"\n'):
     runtime = FakeRuntime()
 
     class FakeChecks:
-        def run(self, path, command, *, root=None):
+        def run(self, path, command, *, timeout=None, root=None):
             return checks.pop(0)
 
     vcs = SimpleNamespace(head=lambda *a, **kw: registry.Result(0, {'sha': 'a' * 40}),

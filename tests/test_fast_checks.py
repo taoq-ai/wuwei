@@ -40,7 +40,7 @@ def test_recorder_runs_configured_check_and_records_derived_evidence(workspace_c
     root, vcs = workspace_case
     calls = []
 
-    def run(path, command, root=None):
+    def run(path, command, timeout=300, root=None):
         assert not state.read_state(root).get('fast_checks', {}).get('example/project')
         calls.append((path, command))
         return Result(exit_code, reason='check unavailable' if exit_code == 2 else '')
@@ -58,11 +58,25 @@ def test_recorder_runs_configured_check_and_records_derived_evidence(workspace_c
     assert guard().check(payload(root, 'git push origin feature'))[0] == (0 if exit_code == 0 else 1)
 
 
+
+@pytest.mark.parametrize('line,timeout', [('', 300), ('\ncheck_timeout_seconds = 900', 900)])
+def test_recorder_passes_the_repository_timeout(workspace_case, monkeypatch, line, timeout):  # #724
+    root, vcs = workspace_case
+    config = root / '.wuwei/config.toml'
+    config.write_text(config.read_text().replace('fast_checks = ["unit"]', 'fast_checks = ["unit"]' + line))
+    seen = []
+    port = SimpleNamespace(run=lambda path, command, timeout=None, root=None: seen.append(timeout) or Result(0))
+    monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'checks' else vcs)
+    assert main(['fast-checks', str(root / 'repo')]) == 0
+    assert seen == [timeout]
+    assert state.read_state(root)['fast_checks']['example/project']['unit']['exit'] == 0
+
+
 @pytest.mark.parametrize('failure', ['head_changed', 'head_unavailable', 'runner_raised', 'runner_unavailable'])
 def test_recorder_failure_cannot_leave_passing_evidence(workspace_case, monkeypatch, failure):
     root, vcs = workspace_case
 
-    def run(path, command, root=None):
+    def run(path, command, timeout=300, root=None):
         if failure == 'runner_raised':
             raise OSError('unavailable')
         if failure == 'head_changed':
@@ -101,6 +115,40 @@ def test_local_checks_execute_configured_shell_command(tmp_path, monkeypatch, re
     result = adapter.run(str(tmp_path), 'unit && lint')
     assert result.exit == expected
     assert calls == [['/bin/sh', '-c', 'unit && lint']]
+
+
+def test_local_checks_use_the_given_timeout(tmp_path, monkeypatch):  # #724
+    import subprocess
+    adapter = importlib.import_module('adapters.checks.local')
+
+    def run(argv, **kwargs):  # a 600 s check
+        if kwargs['timeout'] < 600:
+            raise subprocess.TimeoutExpired(argv, kwargs['timeout'])
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(subprocess, 'run', run)
+    assert adapter.run(str(tmp_path), 'suite', timeout=900).exit == 0
+    assert adapter.run(str(tmp_path), 'suite').exit == 2
+
+
+def test_local_checks_timeout_names_command_limit_and_setting(tmp_path, monkeypatch):  # #724
+    import subprocess
+    adapter = importlib.import_module('adapters.checks.local')
+
+    def run(argv, **kwargs):
+        raise subprocess.TimeoutExpired(argv, kwargs['timeout'])
+
+    monkeypatch.setattr(subprocess, 'run', run)
+    result = adapter.run(str(tmp_path), 'python3 -m pytest -q', timeout=900)
+    assert (result.exit, result.reason) == (2, 'fast check `python3 -m pytest -q` exceeded 900 s '
+                                               '(repos.<n>.check_timeout_seconds); raise it with '
+                                               'bin/wuwei config set or split the check')
+
+    def broken(argv, **kwargs):
+        raise OSError('no shell')
+
+    monkeypatch.setattr(subprocess, 'run', broken)
+    assert adapter.run(str(tmp_path), 'suite', timeout=900).reason == 'fast check could not run: OSError'
 
 
 @pytest.mark.parametrize('command,output,reason', [
@@ -227,10 +275,10 @@ def item_worktree(root, vcs, checks):
 def real_checks(monkeypatch, vcs, calls=None):
     adapter = importlib.import_module('adapters.checks.local')
 
-    def run(path, command, root=None):
+    def run(path, command, timeout=300, root=None):
         if calls is not None:
             calls.append(command)
-        return adapter.run(path, command, root=root)
+        return adapter.run(path, command, timeout, root=root)
     monkeypatch.setattr(registry, 'load', lambda kind, config: (
         SimpleNamespace(run=run) if kind == 'checks' else vcs))
 
