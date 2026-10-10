@@ -19,6 +19,11 @@ class Refused(ValueError):
     """Measured policy finding, distinct from missing evidence."""
 
 
+class Routed(Refused):
+    """#675: a refusal whose route no grant changes (a gate to wait on, an owner path); its
+    text is the whole reason after `merge: `."""
+
+
 def require(condition, reason):
     if not condition:
         raise Refused(reason)
@@ -172,7 +177,12 @@ def item_evidence(root, ref, data, granted=False):
     for flags in [item['flags'], *approved]:
         if set(flags) != set(state.ITEM_DEFAULTS['flags']) or any(type(v) is not bool for v in flags.values()):
             raise ValueError(f'invalid item risk evidence; {DAMAGED}')
-        require(not any(flags.values()), 'item carries a risk flag')
+        # #675: trust_surface asks for the security gate (checked at the head in check), not the owner
+        require(not (flags['boundary_relevant'] or flags['agent_surface']), 'item carries a risk flag')
+    if any(flags['trust_surface'] for flags in [item['flags'], *approved]):
+        from wuwei.dispatch import gate_set
+        require('security' in gate_set(item), 'trust_surface needs the security gate and the recorded '
+                f'gate set of {name} has none; run bin/wuwei dispatch next {name}')
     for phase in ('fix', 'delta'):
         count = sum((row['kind'].startswith('state.') and
                     row['payload'].get('phase_changes', {}).get(name) == phase)
@@ -319,6 +329,7 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         deletions = sum(integer(f['deletions']) for f in files)
         if additions != integer(pr['additions']) or deletions != integer(pr['deletions']):
             raise ValueError('incomplete diff size; retry; if it repeats, run bin/wuwei doctor, which tests the code host adapter')
+        owner = None
         for file in files:
             if not isinstance(file['path'], str) or not file['path']:
                 raise ValueError(f'invalid changed file path; {DAMAGED}')
@@ -328,6 +339,9 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
                 if not isinstance(path, str) or not path or path.startswith('/') or '..' in Path(path).parts:
                     raise ValueError(f'invalid changed file path; {DAMAGED}')
                 require(granted or matched(path, policy['never_auto_paths']) is None, f'never-auto path: {path}')
+                hit = matched(path, config['merge']['owner_paths'])
+                if hit is not None and owner is None:
+                    owner = (path, hit)
         # #615, #657: a file counts toward the size rule unless merge.uncounted names it.
         skip = uncounted(root, settings, files)
         changed = sum(file['additions'] + file['deletions'] for file in files if file['path'] not in skip)
@@ -338,7 +352,8 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         from wuwei.dispatch import gate_set
         from wuwei.guards.pr import gate_check
         code, reason = gate_check(root, root / settings['path'], config, sha=head, item=item)
-        require(code == 0, reason)
+        if code:  # #675: the PR waits on its gates, never on the owner
+            raise Routed(f'waits on the gate: {reason}; no grant lifts this; run bin/wuwei pr act {ref} once it holds')
         verdicts = []
         for gate in gate_set(data['items'][item]):
             first = data['gate_verdicts'].get(f'{item}:{gate}:initial')
@@ -387,11 +402,16 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         require(all(fresh[key] == pr[key] for key in ('head', 'base_sha', 'base', 'updated_at',
                     'merge_state', 'mergeable', 'state', 'draft')), 'PR changed during check')
         require(workspace.load_config(root) == config, 'configuration changed during check')
+        if owner:  # #675: no grant, standing line or default_tier lifts an owner path
+            raise Routed(f'{ref} is ready at {head}; {owner[0]} matches merge.owner_paths {owner[1]}: '
+                         f'the owner merges: ask the owner to run {owner_command(ref, head)} in a host terminal')
         return Result(0, {'pr': ref, 'item': item, 'head': head, 'base': pr['base'],
             'base_sha': pr['base_sha'], 'at': workspace.now().isoformat(), 'verdicts': verdicts,
             'checks': checks, 'approvals': sorted(r['author'] for r in approvals),
             'protection': protection, 'bot': bot, 'soak': soak,
             'files': [{k: v for k, v in file.items() if k != 'patch'} for file in files]})
+    except Routed as exc:
+        return Result(1, None, f'merge: {exc}')
     except Refused as exc:
         if granted:  # #524: never the owner wall; the condition, then the retry
             return Result(1, None, f'merge: {exc}; no grant lifts this; run bin/wuwei pr act {ref} once it holds')
@@ -430,6 +450,11 @@ def undo(root, directory, ref, entry):
             'payload': {'pr': ref, 'head': entry['head'], 'operation': 'revert_pr'}})
 
 
+def owner_command(ref, head):
+    repo, number = ref.split('#')
+    return f'gh pr merge https://github.com/{repo}/pull/{number} --squash --match-head-commit {head}'
+
+
 def by_grant(ref, root, cwd=None):
     """#524: the owner's merge grant replaces auto-merge eligibility and pacing, never the 4.6
     preconditions; with no grant, the card (ask) or the host-terminal command (owner_only)."""
@@ -439,14 +464,13 @@ def by_grant(ref, root, cwd=None):
     if result.exit:
         return result
     config, ref, head = workspace.load_config(root), result.data['pr'], result.data['head']
-    repo, number = ref.split('#')
+    repo = ref.split('#')[0]
     if grants.merge_tier(config) == 'owner_only' and not any(
             grants.active(config, state.read_state(root), 'merge', target)
             for target in (f'repo:{repo}', f'pr:{ref}')):
         return Result(1, None, f'merge: {ref} is ready at {head}; merges are owner-only here '
-                               f'(merge.default_tier = owner_only): ask the owner to run gh pr merge '
-                               f'https://github.com/{repo}/pull/{number} --squash --match-head-commit {head} '
-                               'in a host terminal')
+                               f'(merge.default_tier = owner_only): ask the owner to run '
+                               f'{owner_command(ref, head)} in a host terminal')
     argv = ['bin/wuwei', 'merge', ref]
     payload = {'session_id': sessions.current() or '', 'cwd': str(Path(cwd or Path.cwd())),
                'tool_input': {'command': shlex.join(argv)}}

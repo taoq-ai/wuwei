@@ -209,7 +209,7 @@ def test_config_defaults_and_independence(tmp_path):
         'owner': {'name': '', 'pronouns': '', 'handles': [], 'timezone': '', 'verbosity': {
             'default': 'brief', 'decisions': '', 'digest': '', 'nudges': '', 'dm': '', 'report': ''}},
         'repos': [], 'worktree': {'git_hooks': 'chain'}, 'checks': {'python': '', 'bootstrap': ''},
-        'merge': {'default_tier': ''}, 'grants': {'standing': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'pace': {'default': 'steady'}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
+        'merge': {'default_tier': '', 'owner_paths': []}, 'grants': {'standing': []}, 'cap': 0, 'budget': {'tokens_per_day': 0}, 'pace': {'default': 'steady'}, 'template_version': '', 'calibrate': {'fast_check_seconds': 60},
         'prioritisation': {'framework': 'wsjf'},
         'discovery': {'min_queue': 2, 'autostart': 'strict'},
         'tracker': {'backlog_filter': '', 'states': {'in_review': 'In Review', 'done': 'Done'},
