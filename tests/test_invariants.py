@@ -1395,6 +1395,30 @@ def i44(case, rules):
         return None
     return rules.memo(('verdict format',), compute)
 
+
+def i61(case, rules):
+    """#725: an Agent launch naming a brief that does not exist is refused in every posture,
+    naming the brief command, and registers no seat."""
+    def compute(posture):
+        from wuwei import state, workspace
+        from wuwei.guards import agent_launch
+        directory = workspace.day_dir(rules.root)
+        relative = (directory / 'briefs/i61-missing.md').relative_to(rules.root)
+        payload = {**rules.bash(''), 'tool_name': 'Agent', 'tool_input': {
+            'prompt': f'WUWEI brief: {relative}', 'description': 'gate',
+            'subagent_type': 'wuwei:sentinel-arch'}}
+        seats, events = state.read_state(rules.root).get('seats'), (directory / 'events.jsonl').read_text()
+        code = rules.hook(posture, payload)
+        found = agent_launch.check(payload)
+        added = (directory / 'events.jsonl').read_text()[len(events):]
+        expected = (2, f'brief {relative} does not exist; run bin/wuwei brief sentinel-arch <item> <name> first')
+        if code != 2 or found != expected:
+            return f'a missing brief exits {code} with {found}'
+        if state.read_state(rules.root).get('seats') != seats or 'seat launched' in added:
+            return 'a missing brief registered a seat'
+        return None
+    return rules.memo(('missing brief', case[0]), lambda: compute(case[0]))
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
@@ -1410,7 +1434,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46,
               'I36': i36, 'I37': i37, 'I44': i44,
               'I36': i36, 'I37': i37, 'I39': i39, 'I50': i50,
-              'I36': i36, 'I37': i37, 'I41': i41}
+              'I36': i36, 'I37': i37, 'I41': i41,
+              'I61': i61}
 
 
 def project(case):
@@ -1440,7 +1465,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (),
          'I44': (),
          'I39': (), 'I50': (0,),
-         'I41': ()}
+         'I41': (),
+         'I61': (0,)}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
