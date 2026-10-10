@@ -85,7 +85,7 @@ def escalate(decision_id, *, root=None, transport=None):
     root = workspace.find_workspace(root)
     decisions = pending(root)
     if decision_id not in decisions:
-        return Result(1, None, f'control plane: {decision_id} is not pending; run bin/wuwei nudges for the open decisions')
+        return Result(1, None, f'control plane: {decision_id} is not pending; run bin/wuwei nudges --all for the open decisions')
     if transport is None:
         return Result(0, render(decision_id, decisions[decision_id], 'summary', _level(root), root),
                       'ask as a question widget; Remote Control pushes it')

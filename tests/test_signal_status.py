@@ -124,7 +124,7 @@ def test_status_line_and_json_share_snapshot(tmp_path):
     directory = day(tmp_path, state_data, [
         {'kind': kind, 'payload': {}, 'ts': NOW}
         for kind in ('security.finding', 'decision.one_way', 'watch: clock')])
-    (tmp_path / '.wuwei/config.toml').write_text('')
+    (tmp_path / '.wuwei/config.toml').write_text('[nudges]\nmode = "all"\n')  # #742
     before = {p.name: p.read_bytes() for p in directory.iterdir()}
     line = cli(tmp_path, 'status', '--line')
     structured = cli(tmp_path, 'status', '--json')
@@ -579,7 +579,7 @@ def status_of(tmp_path, monkeypatch, events):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
     directory = day(tmp_path, {'items': {}, 'cap': 1, 'gate_approved': True}, events)
-    (tmp_path / '.wuwei/config.toml').write_text('')
+    (tmp_path / '.wuwei/config.toml').write_text('[nudges]\nmode = "all"\n')  # #742: the raw classification
     data = status.snapshot(directory)
     return data, status.full(data), status.attention(directory)
 

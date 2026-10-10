@@ -14,7 +14,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `[voice]`, `[voice.sources]` | [Owner voice](#owner-voice) |
 | `[boundary]`, `[environments]`, `[deploy]`, `[grants]`, `[merge]` | [Boundaries and deployment](#boundaries-and-deployment) |
 | `[outward]`, `[outward.max_length]`, `[outward.servers]`, `[outward.modes]`, `[outward.classes]`, `[outbound]`, `[outbound.people]`, `[outbound.channel_classes]` | [Outward text and outbound tiers](#outward-text-and-outbound-tiers) |
-| `[autonomy]`, `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]`, `[decisions.lenses]` | [Decisions](#decisions) |
+| `[autonomy]`, `[nudges]`, `[decisions]`, `[decisions.cruise]`, `[decisions.cruise.levels]`, `[decisions.lenses]` | [Decisions](#decisions) |
 | `[calibrate]` | [Calibration](#calibration) |
 | `[spec]` | [Specification mode](#specification-mode) |
 | `[telemetry]`, `[telemetry.otlp]` | [Telemetry](#telemetry) |
@@ -190,6 +190,7 @@ A Claude Code subagent cannot write `analysis.md` itself, so a builder seat save
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `autonomy.mode` | `"autonomous"` | Who takes a decision record (`bin/wuwei decision route D-n`). `autonomous`: a Routine, Consequential or scoring Exploratory record is taken as recommended (`Decided-by: mandate`), listed in the digest and the day report with the reversal command; a tie, a Strategic record, a one-way record or a record written for you (a security finding) still asks you. `supervised`: every decision beyond a two-way one on its own branch or PR asks you. A calibration profile may not switch a supervised workspace to autonomous. Under `autonomous` an `outward.patterns` match in team or company chat is not reported; `supervised` records an `outward.lint` event and a warning. |
+| `nudges.mode` | `""` | What the status line, `bin/wuwei nudges`, the board and `bin/wuwei doctor` show of the nudges. Empty follows `autonomy.mode`: `off` when autonomous, `next` when supervised; a day without `config.toml` shows `all`. `off`: pages only, and the status line drops its `nudges N` token. `next`: pages, a phone answer not yet recorded, a fix round with nothing running (`wuwei build next <item>`) and a day ready to close (`wuwei close`). `all`: every open cause. Pages show in every mode, and events are written as before; `bin/wuwei nudges --all` lists every open cause whatever the mode. `bin/wuwei init --upgrade` names the mode it applies when the key is absent. |
 | `decisions.wait_hours` | `24` | Weekday hours in `owner.timezone` an external confirmation (`decision route D-n --external <item>`) waits for your answer before the sweep confirms it on a two-way door or parks the item. |
 | `decisions.cruise.enabled` | `true` | Kill switch: when false every class runs at L0, nothing is a cruise answer and the status line says `cruise off \| L<n>`. The running levels are kept. |
 | `decisions.cruise.margin` | `0.2` | Least margin (above 0, at most 1) a record needs to be a cruise answer; a lower one at L2 or L3 is a thin margin. A profile may not lower it. |
@@ -370,7 +371,7 @@ The interview asks a short, fixed set of questions about your own preferences. E
 
 | Question | Maps to |
 | --- | --- |
-| `autonomy` | `Autonomous` (recommended) sets `security.posture = "observe"`, `outbound.default_tier = "send"`, `merge.default_tier = "today"`, `outbound.learn = "auto"` and `autonomy.mode = "autonomous"`; `Supervised` sets `guarded`, `ask`, `ask`, `card` and `supervised`. Strict is set by hand. `setup --shadow` records `Autonomous` |
+| `autonomy` | `Autonomous` (recommended) sets `security.posture = "observe"`, `outbound.default_tier = "send"`, `merge.default_tier = "today"`, `outbound.learn = "auto"` and `autonomy.mode = "autonomous"`; `Supervised` sets `guarded`, `ask`, `ask`, `card` and `supervised`. While `nudges.mode` is empty it follows the answer: `off` for `Autonomous`, `next` for `Supervised`. Strict is set by hand. `setup --shadow` records `Autonomous` |
 | `deploys` (per repository) | `repos.merge_deploys`: `Merges deploy` sets `true`, `Merges do not deploy` sets `false`. The first choice is the recommended one: `Merges do not deploy` only when calibration found no deploy workflow, deploy command or never-auto path for the repository. A repository calibration has not seen gets `Merges deploy` first |
 | `merge` (per repository) | `repos.merge.auto` and `repos.merge.soak_minutes`; auto merge still needs `merge_deploys = false` declared |
 | `gates` (per repository) | `repos.gates.floor` |

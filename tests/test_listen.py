@@ -498,7 +498,7 @@ def status_of(capsys):
     text = capsys.readouterr().out
     assert main(['status', '--json']) == 0
     data = json.loads(capsys.readouterr().out)
-    assert main(['nudges', '--json']) == 0
+    assert main(['nudges', '--all', '--json']) == 0
     rows = [row for row in json.loads(capsys.readouterr().out) if row['source'] == 'listen: health']
     return text, data['listen'], rows
 

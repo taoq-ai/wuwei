@@ -247,7 +247,7 @@ $ wuwei goals edit --file .wuwei/days/<date>/goals.md
 goals: 1 goal saved (G-1)
 $ wuwei plan approve --items DIV-1 --goals-confirmed
 $ bin/wuwei status --line
-WUWEI 1 planned · seats 0/1 | pages 0 · nudges 0 · observe
+WUWEI 1 planned · seats 0/1 | pages 0 · observe
 $ bin/wuwei next
 dispatch: 1 planned item(s) can start, 0 of CAP 1 building; run the launch set, brief each start and launch the set in one turn. Run: wuwei dispatch next --all
 ```

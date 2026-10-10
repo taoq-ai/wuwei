@@ -286,13 +286,13 @@ def test_nudges_list_an_open_undo_window_first(ws, answered, capsys, monkeypatch
     from wuwei.__main__ import main
     save(ws, record(door='one-way', confidence='low'), name='D-4.md')
     route(ws, capsys, 'D-4')
-    assert main(['nudges']) == 0
+    assert main(['nudges', '--all']) == 0
     lines = capsys.readouterr().out.splitlines()
     assert lines[0] == ('nudge: D-3 taken as A by cruise defer@L2, undo until 13:00. '
                         'Run: wuwei decision show D-3 --widget')
     assert any(line.startswith('nudge: D-4 pending') for line in lines[1:])
     later(monkeypatch, '13:00')
-    main(['nudges'])
+    main(['nudges', '--all'])
     assert 'D-3 taken' not in capsys.readouterr().out
 
 

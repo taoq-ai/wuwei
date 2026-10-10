@@ -291,7 +291,7 @@ def decided(root, ident):
     """Today's D-n: options and scores, weights, margin, class, level and who decided."""
     path = decision.today_path(ident, root)
     if not path.is_file():
-        raise Missing(f'no decision record {ident} today; run bin/wuwei nudges for open decisions')
+        raise Missing(f'no decision record {ident} today; run bin/wuwei nudges --all for open decisions')
     text = path.read_text(encoding='utf-8')
     fields, scores = decision.evaluate(text)
     _, _, wants, _ = decision._scored(fields)

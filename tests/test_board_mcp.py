@@ -101,7 +101,7 @@ def test_issue_acceptance_board_matches_status_and_dashboard(day):
                and 'bin/wuwei decision route D-3' in line for line in lines)
     attention = text.split('## Attention', 1)[1].splitlines()
     assert len([line for line in attention if line.startswith('| ') and '---' not in line]) == \
-        len(status.attention(day)) + 1
+        len(status.surfaced(day, status.attention(day))[1]) + 1
     assert lines[-1].startswith('Full cockpit:')
     files = result['structuredContent']
     assert json.loads(files['./board.json']) == {**dashboard.board_snapshot(day),

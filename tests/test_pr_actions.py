@@ -178,6 +178,8 @@ def test_scope_disagreement_creates_decision(case, capsys):
 def test_pr_act_decision_is_routed_and_nudges(case, monkeypatch, capsys):
     root, host, _, _ = linked(case)
     monkeypatch.chdir(root)
+    with (root / '.wuwei/config.toml').open('a') as stream:  # #742: the raw classification
+        stream.write('[nudges]\nmode = "all"\n')
     host.results['threads'].data['threads'] = [{'id': 'T17', 'resolved': False,
         'outdated': False, 'comments': [{'id': 3, 'author': 'reviewer', 'is_bot': False,
             'body': 'This is out of scope; add a new API instead',

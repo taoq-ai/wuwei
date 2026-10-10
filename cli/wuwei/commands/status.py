@@ -252,6 +252,32 @@ def scan(directory, classified_state=None, *, config=None):
     return rows, health['watch'], health['listen'], beat_health, loops
 
 
+def surfaced(directory, rows, data=None, config=None):
+    """(mode, rows) the surfaces show under nudges.mode (#742): pages always; off drops every
+    nudge; next keeps an unrecorded phone answer and adds a ready fix round and a pending close;
+    all, or a day without config.toml, shows every row."""
+    if config is None and (directory.parents[1] / 'config.toml').is_file():
+        config = workspace.load_config(directory.parents[2])
+    mode = 'all' if config is None else workspace.nudge_mode(config)
+    if mode == 'all':
+        return mode, rows
+    shown = [row for row in rows if row['tier'] != 'nudge'
+             or (mode == 'next' and row['source'] == 'decision.answered')]
+    if mode == 'next':
+        data = state.read_state(directory=directory) if data is None else data
+        busy = {item for _, _, item in state.in_flight(data)}
+        for name, item in data['items'].items():
+            if item['phase'] == 'fix' and name not in busy:
+                shown.append({'tier': 'nudge', 'source': 'round.ready', 'lane': 'Work',
+                              'reason': f'{name} fix round is ready: run wuwei build next {name}'})
+        phases = [data['items'][name]['phase'] for name in data['approved_items'] if name in data['items']]
+        if (data['gate_approved'] and phases and not busy and not data.get('close_requested')
+                and 'merged' in phases and all(phase in ('merged', 'parked', 'escalated') for phase in phases)):
+            shown.append({'tier': 'nudge', 'source': 'close.ready', 'lane': 'Work',
+                          'reason': f'{phases.count("merged")} merged and nothing left to build: run wuwei close'})
+    return mode, shown
+
+
 def snapshot(directory, line=False):
     """The day's figures; line=True skips the fields status --line never renders (#562)."""
     data = state.read_state(directory=directory)
@@ -275,7 +301,8 @@ def snapshot(directory, line=False):
         directory, classified_state, config=config)
     result['pages'] = sum(row['tier'] == 'page' for row in active)
     result['answered'] = [row['reason'] for row in active if row['source'] == 'decision.answered']
-    result['nudges'] = sum(row['tier'] == 'nudge' for row in active)
+    result['nudges_mode'], shown = surfaced(directory, active, data, config)
+    result['nudges'] = sum(row['tier'] == 'nudge' for row in shown)
     result['trace_gaps'] = sum(row['source'] == 'traces.gap' for row in active)
     result['prs_changed'] = sum(row['source'] == 'pr.changed' for row in active)
     result['solo'] = any(row == [] for row in data.get('pr_reviewers', {}).values())
@@ -378,7 +405,8 @@ def _groups(data, shown=None):
         names = roles[:shown] + ([f'+{len(roles) - shown} more'] if shown is not None and shown < len(roles) else [])
         work.append(f'seats {len(roles)}/{data["cap"]}' + (f' by {data["cap_bound"]}' if data.get('cap_bound') else '')
                     + (f' ({", ".join(names)})' if names else ''))  # #658: the bound names the rule
-    attention = [f'pages {data["pages"]}', f'nudges {data["nudges"]}']
+    attention = [f'pages {data["pages"]}'] + (
+        [] if data.get('nudges_mode') == 'off' else [f'nudges {data["nudges"]}'])  # #742
     if data.get('posture') not in (None, 'guarded'):
         attention.append(data['posture'])
     if data.get('pace') not in (None, 'steady'):  # #579

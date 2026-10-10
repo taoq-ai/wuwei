@@ -153,6 +153,7 @@ SCHEMA = {
     "steward": {"every_tool_calls": (int, 250, 1), "loop_window_hours": (int, 4, 1),
                 "loop_threshold": (int, 9, 1)},
     "autonomy": {"mode": (str, "autonomous", ("autonomous", "supervised"))},
+    "nudges": {"mode": (str, "", ("", "off", "next", "all"))},  # #742: "" follows autonomy.mode
     "decisions": {"wait_hours": (int, 24, 1),
                   "cruise": {"enabled": (bool, True), "margin": (float, 0.2),
                              "max_per_day": (int, 20, 0), "undo_minutes": (int, 60, 1),
@@ -431,6 +432,11 @@ def verbosity(config, surface):
     """The owner's level for one surface: its own setting, else owner.verbosity.default."""
     levels = config['owner']['verbosity']
     return levels[surface] or levels['default']
+
+
+def nudge_mode(config):
+    """The effective nudges.mode (#742): an empty setting follows autonomy.mode."""
+    return config['nudges']['mode'] or ('off' if config['autonomy']['mode'] == 'autonomous' else 'next')
 
 
 def now():
