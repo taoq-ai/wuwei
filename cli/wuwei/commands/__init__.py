@@ -2,7 +2,7 @@
 
 # #348: every registered command path is in exactly one set (tests/test_cli_known_command.py).
 # A positional named `action` is part of the path (mcp check, calibrate export).
-READ_ONLY = frozenset({'board', 'calibrate', 'config check', 'config show', 'cruise budget', 'cruise calibration', 'cruise shadow', 'doctor', 'dora', 'drafts show', 'grants', 'guide',
+READ_ONLY = frozenset({'watch why', 'board', 'calibrate', 'config check', 'config show', 'cruise budget', 'cruise calibration', 'cruise shadow', 'doctor', 'dora', 'drafts show', 'grants', 'guide',
                        'heartbeat', 'outbound explain', 'outbound tiers',
                        'integrity check', 'lint tone', 'mcp check', 'memory show', 'memory status', 'pace', 'plan gate', 'sessions', 'shadow report', 'status',
                        'sweep classes', 'who',
