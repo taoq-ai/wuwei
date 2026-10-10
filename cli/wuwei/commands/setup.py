@@ -449,7 +449,15 @@ def _setup(args, confirm):
 
     # The interview and the digest both need this terminal; nothing is written yet.
     if not sys.stdin.isatty():
-        raise OSError(integrity.HOST_TERMINAL)
+        try:
+            root = workspace.find_workspace()
+        except FileNotFoundError:
+            raise OSError(integrity.HOST_TERMINAL)
+        # #635: a session without a terminal (Claude Desktop, the IDE) asks the interview on
+        # cards: the unanswered questions as AskUserQuestion widgets, each with its record command.
+        repos = [repo['name'] for repo in workspace.load_config(root)['repos']]
+        print(json.dumps(interview.widgets(root, repos), indent=2))
+        return CLEAN
     try:
         root = workspace.find_workspace()
     except FileNotFoundError:
