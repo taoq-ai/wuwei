@@ -279,7 +279,8 @@ def test_worktree_install_failure_is_not_clean(tmp_path, monkeypatch):
     assert hasattr(command(), 'install')
     (tmp_path / '.wuwei').mkdir()
     install_replay(monkeypatch, 'git', [{'exit': 128}])
-    result = adapter().worktree_add(str(tmp_path / 'repo'), 'feature', str(tmp_path / 'tree'), root=tmp_path)
+    result = adapter().worktree_add(str(tmp_path / 'repo'), 'feature', str(tmp_path / 'tree'), 'origin', 'main',
+                                    root=tmp_path)
     assert result.exit == 2 and result.reason
 
 
@@ -334,18 +335,22 @@ def test_hook_failure_prevents_core_success(workspace_case):
     root, fake = workspace_case
     from wuwei import state
     state._write_state(lambda data: data.update(gate_approved=True), root, reserved=False)
-    fake.results['worktree_add'] = Result(0, {'branch': 'feature', 'path': str(root / 'tree')})
+    fake.results['worktree_add'] = Result(0, {'branch': 'feature', 'path': str(root / 'tree'), 'start': 'a' * 40})
     fake.results['hooks_path'] = Result(2, None, 'unavailable hooks')
     with pytest.raises(ValueError, match='unavailable hooks'):
-        workspace.create_worktree(root / 'repo', 'feature', root / 'tree', root, fake)
+        workspace.create_worktree(root / 'repo', 'feature', root / 'tree', root, fake, remote='origin', base='main')
     assert [call[0] for call in fake.calls] == ['worktree_add', 'hooks_path']
 
 
 def test_worktree_port_is_only_git(tmp_path, monkeypatch):
-    calls = install_replay(monkeypatch, 'git', [{'stdout': ''}])
-    result = adapter().worktree_add(str(tmp_path / 'repo'), 'feature', str(tmp_path / 'tree'))
+    sha = 'c' * 40
+    calls = install_replay(monkeypatch, 'git', [{'stdout': ''}, {'stdout': sha + '\n'}, {'stdout': ''}])
+    result = adapter().worktree_add(str(tmp_path / 'repo'), 'feature', str(tmp_path / 'tree'), 'origin', 'main')
     assert result.exit == 0, result.reason
-    assert calls == [['git', '-C', str(tmp_path / 'repo'), 'worktree', 'add', '-b', 'feature', '--', str(tmp_path / 'tree')]]
+    repo = ['git', '-C', str(tmp_path / 'repo')]
+    assert calls == [[*repo, 'fetch', '--no-tags', 'origin', 'main'],
+                     [*repo, 'rev-parse', '--verify', 'FETCH_HEAD^{commit}'],
+                     [*repo, 'worktree', 'add', '-b', 'feature', '--', str(tmp_path / 'tree'), sha]]
 
 
 def test_managed_worktree_isolation_and_runtime_pointer(tmp_path, monkeypatch):
@@ -367,7 +372,7 @@ def test_managed_worktree_isolation_and_runtime_pointer(tmp_path, monkeypatch):
     from wuwei import state
     state._write_state(lambda data: data.update(gate_approved=True), tmp_path, reserved=False)
     assert hasattr(workspace, 'create_worktree'), 'core worktree caller is missing'
-    workspace.create_worktree(owner, 'managed', managed, tmp_path, adapter())
+    workspace.create_worktree(owner, 'managed', managed, tmp_path, adapter(), remote='.', base='HEAD')
     assert git(owner, 'config', '--get', 'extensions.worktreeConfig').stdout.strip() == 'true'
     for repo in (owner, sibling):
         assert git(repo, 'config', '--get', 'core.hooksPath').returncode == 1
@@ -400,7 +405,7 @@ def test_init_upgrade_regenerates_worktree_hooks(tmp_path, monkeypatch, capsys):
     (root / '.wuwei').mkdir(parents=True)
     (root / '.wuwei/config.toml').write_text('')
     state._write_state(lambda data: data.update(gate_approved=True), root, reserved=False)
-    workspace.create_worktree(repo, 'item', root / 'worktrees/X', root, adapter())
+    workspace.create_worktree(repo, 'item', root / 'worktrees/X', root, adapter(), remote='.', base='HEAD')
     script = Path(git(root / 'worktrees/X', 'rev-parse', '--absolute-git-dir').stdout.strip()) / 'wuwei-hooks/pre-commit'
     script.unlink()
     (root / 'worktrees/A').mkdir()

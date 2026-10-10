@@ -246,9 +246,19 @@
     "args": [
       "/repo with spaces",
       "feature",
-      "/new worktree"
+      "/new worktree",
+      "origin",
+      "main"
     ],
     "steps": [
+      {
+        "argv": ["-C", "/repo with spaces", "fetch", "--no-tags", "origin", "main"],
+        "stderr": " * branch            main       -> FETCH_HEAD\n"
+      },
+      {
+        "argv": ["-C", "/repo with spaces", "rev-parse", "--verify", "FETCH_HEAD^{commit}"],
+        "stdout": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n"
+      },
       {
         "argv": [
           "-C",
@@ -258,15 +268,17 @@
           "-b",
           "feature",
           "--",
-          "/new worktree"
+          "/new worktree",
+          "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         ],
-        "stdout": "HEAD is now at aaaaaaa base\n",
+        "stdout": "HEAD is now at bbbbbbb base\n",
         "stderr": "Preparing worktree (new branch 'feature')\n"
       }
     ],
     "data": {
       "branch": "feature",
-      "path": "/new worktree"
+      "path": "/new worktree",
+      "start": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     }
   }
 ]

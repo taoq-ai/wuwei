@@ -20,7 +20,7 @@ def prepare(day, skip=()):
     day.patch.setenv('WUWEI_SESSION_ID', 'planner')
     (day.root / '.wuwei/calibration.json').write_text('{"acme/widget": {"date": "2026-09-29"}}\n')
 
-    def worktree(repo, branch, path, root, vcs, identity=None, existing=False):
+    def worktree(repo, branch, path, root, vcs, **kwargs):
         # The VCS boundary: the item worktree is the fixture repository the fakes check.
         path.parent.mkdir(exist_ok=True)
         path.symlink_to(day.repo)

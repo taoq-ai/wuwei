@@ -48,7 +48,7 @@ PARAMETERS = {
             'fetch': ('repo', 'remote', 'branch', 'expected'),
             'rebase': ('repo', 'ref'), 'push': ('repo', 'remote', 'branch', 'expected'),
             'status': ('repo',), 'diff_stat': ('repo', 'base', 'head'),
-            'log_since': ('repo', 'sha'), 'worktree_add': ('repo', 'branch', 'path'),
+            'log_since': ('repo', 'sha'), 'worktree_add': ('repo', 'branch', 'path', 'remote', 'base'),
             'changes_on': ('repo', 'day'), 'read_tree': ('repo', 'ref', 'paths'),
             'branches': ('repo', 'pattern'),
             'pushed_branches': ('repo',),
