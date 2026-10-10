@@ -314,3 +314,8 @@ def test_no_charter_holds_its_own_verdict_format():
     texts = charter_text()
     assert "`CLASS: PASS|N.A.|FINDING <id>`" not in texts["_common.md"]
     assert not [name for name, body in texts.items() if "## Verdict format" in body]
+def test_plan_skill_reruns_a_failed_card_confirmation_with_card():
+    # #599
+    from test_guide import RERUN
+    skill = (ROOT / "skills/wuwei-plan/SKILL.md").read_text(encoding="utf-8")
+    assert all(part in skill for part in RERUN)
