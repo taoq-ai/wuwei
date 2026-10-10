@@ -907,6 +907,7 @@ def test_constructed_variable_takes_one_value_per_call():
 @pytest.mark.parametrize('script', [
     "echo '[alias] x = !git push' >> .git/config",
     "cat > .git/hooks/pre-commit <<'EOF'\ngh pr merge 1 --admin\nEOF",
+    "cat > .GIT/hooks/pre-commit <<'EOF'\ngh pr merge 1 --admin\nEOF",
 ])
 def test_reader_text_written_under_git_dir_is_not_data(script):
     # #671 review F2: text written into git's own files can run, so it is not data.
