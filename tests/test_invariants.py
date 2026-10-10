@@ -1137,11 +1137,16 @@ def walk(world):
     return failures
 
 
-def test_invariants_hold(world):
+def test_invariants_hold(world, monkeypatch):
     cases = list(itertools.product(*DIMENSIONS.values()))
     assert len(cases) == CASES and CASES >= 18000
     # The suite's heap is not the walk's cost: a full collection landing inside the walk scans
     # every object the earlier tests left alive, so collect and freeze it before the clock starts.
+    # #626: nor is the runner's disk: the walk writes state and config a few hundred times and
+    # every atomic write syncs the file and its directory; that kernel time lands in process_time
+    # and varies with the host's disk, which the CPU budget was chosen to exclude. The sync is
+    # skipped for the walk only; atomic_write's own tests keep it.
+    monkeypatch.setattr(os, 'fsync', lambda fd: None)
     gc.collect()
     gc.freeze()
     try:
