@@ -124,6 +124,8 @@ def test_amended_role_rules():
     assert "WSJF" in texts["lead.md"] and "RICE" in texts["lead.md"]
     assert "wuwei rank" in texts["lead.md"]
     assert "wuwei merge" in texts["shepherd.md"]
+    for part in ("wuwei pr raise", "--item <item>", "gh pr create", "wuwei pr claim"):  # #783
+        assert part in texts["shepherd.md"], part
     assert "never approve" in texts["_common.md"].lower()
     assert "never deploy" in texts["_common.md"].lower()
     assert "decision record" in texts["_common.md"]

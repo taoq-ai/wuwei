@@ -11,6 +11,9 @@ from wuwei.exits import ADAPTER_DATA, DAMAGED, RACE
 
 ROLES = ('arch', 'quality', 'security')
 GATE_BODY = 'Review {item} at its HEAD against its spec and acceptance criteria.'
+SHEPHERD_BODY = ('Raise the PR for {item} and own it until merged. Open it with bin/wuwei pr raise '
+                 '<owner/repo> --base <branch> --title <title> --body-file <file> --item {item}. It '
+                 'links the PR to {item} and requests the ranked reviewers.')
 TIERS = ('light', 'standard', 'full')
 GATE_ROLES = (*ROLES, 'goal')  # #622: goal runs only as the single gate of a docs-only diff
 # #622: a docs-only diff gets one reviewer. ponytail: documents are told by suffix, not content;
@@ -376,7 +379,7 @@ def next_step(item, root=None):
     if phase == 'gate':
         failures = [role for role in roles if _record(data, item, role, 'initial')['verdict'] == 'FIX']
         if not failures:
-            return {'action': 'raise', 'notes': []}
+            return raise_action(root, data, item, [])
         from wuwei.commands import build
         build.open_fix(item, _fix_feedback(data, item, failures, 'initial'), root=root)
         return _fix(item, failures)
@@ -394,7 +397,25 @@ def next_step(item, root=None):
         build.open_fix(item, _fix_feedback(data, item, blocking, 'delta'), root=root)
         return _fix(item, blocking)
     notes = [note for result in results for note in result['notes']]
-    return {'action': 'raise', 'notes': notes}
+    return raise_action(root, data, item, notes)
+
+
+def raise_action(root, data, item, notes):
+    """#783: raise in the gate shape (#551): the shepherd's brief command, then its launch."""
+    name = f'shepherd-{item}'
+    path = workspace.day_dir(root) / 'briefs' / f'{name}.md'
+    worktree = data['items'][item].get('worktree') or str(root)
+    action = {'action': 'raise', 'notes': notes, 'seats': []}
+    if not path.is_file():
+        body = '\n'.join([SHEPHERD_BODY.format(item=item), *(f'Review note: {note}' for note in notes)])
+        action['commands'] = [f'wuwei brief shepherd {item} {name} --worktree {shlex.quote(worktree)} '
+                              '--body ' + shlex.quote(body)]
+    elif name not in data['seats']:
+        action['seats'] = [brief.seat_action('shepherd', path, worktree, root)]
+    else:
+        action['reason'] = (f'{name} is {data["seats"][name].get("status")} and the PR is not raised; '
+                            f'bin/wuwei why {item} shows it')
+    return action
 
 
 def launch_set(root=None):

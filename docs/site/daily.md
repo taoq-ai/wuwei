@@ -324,10 +324,13 @@ executes each returned action unchanged:
    reviewer's seat, and the `continue` feedback names it. The delta verdict's `Head:` is that
    head, whether the planner continues the seat in its session or as a fresh Agent. After
    the delta verdicts it returns `raise` with review notes,
-   or `escalate`. A light item has no delta review: its `continue` feedback starts
+   or `escalate`. `raise` carries the shepherd's brief command in `commands` (its body
+   carries the review notes), then the shepherd launch in `seats`; `build next` returns the same. A light item has no delta review: its `continue` feedback starts
    `Re-read:` and the same [sentinel](concepts.md#sentinel) rewrites its `Verdict:` and `Head:` lines.
 6. Pull request: `wuwei pr raise <owner/repo> --base main --title <title> --body-file
-   <file> --item <item>` opens the PR and moves the item to `raised`. `wuwei pr state`
+   <file> --item <item>` opens the PR, links it to the item and moves the item to `raised`.
+   The shepherd opens it this way. A `gh pr create` for a recorded item that links no PR
+   warns naming `wuwei pr raise ... --item <item>` below strict and is refused under strict. `wuwei pr state`
    reads the host; `wuwei pr act <ref>` returns the next PR action, including a post-PR fix
    round. When the host reports the PR merged, the item is `merged`, whatever round it
    was in.

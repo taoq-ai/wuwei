@@ -81,7 +81,6 @@ LEAD_BODY = ('Propose today. Answer with one JSON object: goals, seat_policy, en
              '(id, outcome, measure, target, date, priority), never an id alone. Check open '
              'status and overlap against the items of the day and other active work.')
 # No single quote in LEAD_BODY: step quotes it without shlex, which hook paths do not import.
-SHEPHERD_BODY = 'Raise the PR for {item} and own it until merged.'
 PROPOSE = 'run wuwei plan propose '
 
 
@@ -399,22 +398,18 @@ def resolve(row, root):
 
 
 def _shepherd(root, item, notes, why):
-    """The shepherd raises the PR: its brief, its launch, or a card when it stopped without one."""
-    import shlex
-    data = state.read_state(root)
-    name = f'shepherd-{item}'
-    path = workspace.day_dir(root) / 'briefs' / f'{name}.md'
-    worktree = data['items'][item].get('worktree') or str(root)
-    if not path.is_file():
-        body = '\n'.join([SHEPHERD_BODY.format(item=item), *(f'Review note: {note}' for note in notes)])
+    """The shepherd raises the PR: dispatch's brief command, its launch, or a card when it
+    stopped without one (#783: one raise action for dispatch, build and next)."""
+    from wuwei import dispatch
+    action = dispatch.raise_action(root, state.read_state(root), item, notes)
+    if action.get('commands'):
         return _row('raise', f'{why} Every gate passed; brief the shepherd to raise the PR.',
-                    f'wuwei brief shepherd {item} {name} --worktree {shlex.quote(worktree)} --body '
-                    + shlex.quote(body), item=item)
-    if name not in data['seats']:
-        return {'state': 'raise', 'item': item, **brief.seat_action('shepherd', path, worktree, root),
+                    action['commands'][0], item=item)
+    if action['seats']:
+        return {'state': 'raise', 'item': item, **action['seats'][0],
                 'why': f'{why} Launch the shepherd to raise the PR.', 'then': THEN['agent']}
-    return _row('raise', f'{name} stopped without raising the PR.', f'wuwei why {item}', 'card',
-                THEN['owner'], item=item)
+    return _row('raise', f'shepherd-{item} stopped without raising the PR.', f'wuwei why {item}',
+                'card', THEN['owner'], item=item)
 
 
 def named(action):

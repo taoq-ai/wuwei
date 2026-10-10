@@ -104,7 +104,8 @@ def test_fix_pass_then_only_quality_delta(root):
     state.transition('A', 'delta', root)
     assert dispatch.next_step('A', root) == {'action': 'gates', 'roles': ['quality'], 'seats': []}
     record(root, 'quality', 'quality-2', PASS + 'Simplicity: none\nDesign: none\n', 'delta')
-    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
+    found = dispatch.next_step('A', root)
+    assert {key: found[key] for key in ('action', 'notes')} == {'action': 'raise', 'notes': []}
     state.transition('A', 'fix', root)
     assert dispatch.next_step('A', root) == {
         'action': 'escalate', 'reason': 'fix round already used'}
@@ -174,6 +175,7 @@ def test_delta_nonblocking_residual_becomes_review_note(root):
     outcome = dispatch.next_step('A', root)
     assert outcome['action'] == 'raise'
     assert 'cli/example.py:12' in outcome['notes'][0]
+    assert 'Review note: ' in outcome['commands'][0]
     state.transition('A', 'fix', root)
     assert dispatch.next_step('A', root) == {
         'action': 'escalate', 'reason': 'fix round already used'}
@@ -740,7 +742,8 @@ def test_gate_stays_without_complete_fix_round(root):
     for role in ('arch', 'quality', 'security'):
         record(root, role, role + '-1', PASS + ('Simplicity: none\nDesign: none\n' if role == 'quality' else ''))
     assert state.read_state(root)['items']['A']['phase'] == 'gate'
-    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
+    found = dispatch.next_step('A', root)
+    assert {key: found[key] for key in ('action', 'notes')} == {'action': 'raise', 'notes': []}
 
 
 def test_fix_with_park_or_missing_gate_stays_in_gate(root):
@@ -819,7 +822,8 @@ def test_light_item_receives_and_raises_on_quality_only(root):
     with pytest.raises(dispatch.Refused, match='not in the item gate set'):
         record(root, 'arch', 'arch-1', PASS)
     record(root, 'quality', 'quality-1', PASS + 'Simplicity: none\nDesign: none\n')
-    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
+    found = dispatch.next_step('A', root)
+    assert {key: found[key] for key in ('action', 'notes')} == {'action': 'raise', 'notes': []}
 
 
 def test_light_item_fixes_and_deltas_quality_only(root):
@@ -855,7 +859,8 @@ def test_docs_only_item_receives_and_raises_on_goal_only(root):
         with pytest.raises(dispatch.Refused, match='not in the item gate set'):
             record(root, role, f'{role}-1', PASS)
     record(root, 'goal', 'goal-1', PASS)
-    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
+    found = dispatch.next_step('A', root)
+    assert {key: found[key] for key in ('action', 'notes')} == {'action': 'raise', 'notes': []}
 
 
 def test_docs_only_item_fix_continues_the_same_goal_seat(root):
@@ -1265,7 +1270,8 @@ def test_passing_opinion_lets_the_item_raise(root, monkeypatch):
     for role, name in (('arch', 'a-1'), ('quality', 'q-1'), ('security', 's-1')):
         text = PASS + ('Simplicity: none\nDesign: none\n' if role == 'quality' else '')
         record(root, role, name, text.replace('abc1234', 'aaaaaaa'), head='a' * 40)
-    assert dispatch.next_step('A', root) == {'action': 'raise', 'notes': []}
+    found = dispatch.next_step('A', root)
+    assert {key: found[key] for key in ('action', 'notes')} == {'action': 'raise', 'notes': []}
 
 
 def test_opinion_rerun_polls_the_running_job(root, monkeypatch):
@@ -2089,6 +2095,39 @@ def test_build_next_exits_one_on_a_gate_refusal_or_escalation(root, monkeypatch,
     assert (code, found) == (1, None) and 'builder must stand down before gates' in err
     monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: {'action': 'escalate', 'reason': 'r'})
     assert build_next(capsys, root)[:2] == (1, {'action': 'escalate', 'reason': 'r'})
+
+
+def test_issue_acceptance_raise_is_the_shepherd_launch(root, monkeypatch, capsys):
+    """#783: raise is the shepherd's brief command, then its launch, the gate shape."""
+    from wuwei import brief
+    tree = built(root)
+    record(root, 'arch', 'arch-1', PASS)
+    record(root, 'security', 'security-1', PASS)
+    record(root, 'quality', 'quality-1', PASS + 'Simplicity: none\nDesign: none\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+
+    def both():
+        code, found, _ = cli(capsys, 'dispatch', 'next', 'A')
+        assert build_next(capsys, root)[:2] == (code, found) and code == 0
+        assert (found['action'], found['notes']) == ('raise', [])
+        return found
+    found = both()
+    assert found['seats'] == [] and len(found['commands']) == 1
+    command = found['commands'][0]
+    assert command.startswith(f'wuwei brief shepherd A shepherd-A --worktree {tree} --body ')
+    assert all(part in command for part in ('bin/wuwei pr raise', '--item A')) and 'gh pr create' not in command
+    from wuwei.guards import pr
+    assert pr.check({'cwd': str(root), 'tool_name': 'Bash', 'tool_input': {'command': command}})[0] == 0
+    path = workspace.day_dir(root) / 'briefs/shepherd-A.md'
+    path.write_text('brief\n')
+    found = both()
+    assert found['seats'] == [brief.seat_action('shepherd', path, str(tree), root)]
+    assert 'commands' not in found
+    state._write_state(lambda data: data['seats'].update({'shepherd-A': {
+        'item': 'A', 'role': 'shepherd', 'status': 'running'}}), root, reserved=False)
+    found = both()
+    assert found['seats'] == [] and 'commands' not in found
+    assert all(part in found['reason'] for part in ('shepherd-A', 'running', 'bin/wuwei why A'))
 
 
 def live_head(monkeypatch, sha):

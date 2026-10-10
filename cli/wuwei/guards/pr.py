@@ -6,6 +6,7 @@ import posixpath
 from pathlib import Path
 import re
 import shlex
+import sys
 from urllib.parse import unquote, urlsplit
 
 from wuwei import registry, shell, verdict, workspace
@@ -239,6 +240,16 @@ def create_check(args, command, cwd, root, config, payload):
         raise ValueError('repository environment override cannot be verified; remove the GIT_* and GH_* overrides and run gh pr create from the item worktree')
     if operands or values(found, '--web', '-w'):
         raise ValueError('opaque PR create; use explicit CLI options')
+    from wuwei import state
+    linked = (item, cwd) if item else _recorded(root, config, path=cwd)
+    if linked and not state.read_state(root)['items'][linked[0]].get('pr'):
+        # #783: pr raise links the PR to its item; a PR from gh pr create stays unlinked.
+        hint = (f'{linked[0]} is a WUWEI item: raise its PR with bin/wuwei pr raise '
+                f'{repo or "<owner/repo>"} --base <branch> --title <title> --body-file <file> '
+                f'--item {linked[0]}. It links the PR to {linked[0]}; gh pr create does not')
+        if workspace.posture(config)[0] == 'strict':
+            return 1, hint
+        print(f'warning: {hint}', file=sys.stderr)
     reviewers = values(found, '--reviewer', '-r')
     if (reviewers or config['shepherd']['min_reviewers']) and not (reviewers and all(
             part.strip() and not part.strip().startswith('-')

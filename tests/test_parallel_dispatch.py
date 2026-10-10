@@ -124,7 +124,7 @@ def test_gate_sentinels_run_together_and_the_item_moves_after_all_verdicts(day):
         result = day.next()
         if number < 3:
             assert result['action'] == 'gates' and day.data['items']['A']['phase'] == 'gate'
-    assert result == {'action': 'raise', 'notes': []}
+    assert {key: result[key] for key in ('action', 'notes')} == {'action': 'raise', 'notes': []}
 
 
 def test_gate_seats_wait_when_host_seats_cannot_hold_them_together(day):
