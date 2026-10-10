@@ -551,3 +551,40 @@ def test_learn_with_a_damaged_register_still_applies(root, capsys, monkeypatch):
     assert 'warning: .wuwei/graph.json not updated' in capsys.readouterr().err
     assert 'slack:U03' in workspace.load_config(root)['outbound']['people']
     assert (root / '.wuwei/graph.json').read_text() == 'not json'
+
+
+def test_local_card(root, capsys, monkeypatch):
+    # #727: a connector the planner names local is proposed as local on the card, without a mode.
+    from wuwei.__main__ import main
+    from wuwei.guards.outward import check_tier
+    tool = f'mcp__{UUID}__run_job'
+    assert learn(root, '--as', 'local', tool=tool, listings=False) == 0
+    [question] = json.loads(capsys.readouterr().out)
+    assert question['question'].startswith(f'D-1: Connector {UUID} is local?')
+    labels = [row['label'] for row in question['options']]
+    assert labels == ['Approve (Recommended)', 'Defer: keep as drafts']
+    assert main(['decision', 'lint', str(workspace.day_dir(root) / 'decisions/D-1.md')]) == 0
+    assert answer(root, monkeypatch, 'approve')[0] == 0
+    config = workspace.load_config(root)
+    assert config['outward']['servers'] == {UUID: 'local'}
+    assert UUID not in config['outward'].get('modes', {})
+    call = {'cwd': str(root), 'tool_name': tool, 'hook_event_name': 'PreToolUse',
+            'session_id': 'test', 'tool_use_id': 'call', 'tool_input': {'command': 'sleep 600'}}
+    assert check_tier(call) == (0, '')
+
+
+def test_local_shape_proposes_local(root, capsys):
+    assert learn(root, tool='mcp__terminal__open_terminal_tab', listings=False) == 0
+    [question] = json.loads(capsys.readouterr().out)
+    assert question['question'].startswith('D-1: Connector terminal is local?')
+
+
+@pytest.mark.parametrize('name', ['observe', 'guarded', 'strict'])
+def test_auto_never_learns_local_without_the_card(root, capsys, name):
+    # #727: WUWEI cannot verify that a connector is local, so the owner always answers.
+    configure(root, 'learn = "auto"')
+    posture(root, name)
+    assert learn(root, '--as', 'local', tool=f'mcp__{UUID}__run_job', listings=False) == 0
+    assert decisions(root) == ['D-1.md']
+    assert events(root, 'outbound.learned') == []
+    assert UUID not in workspace.load_config(root)['outward'].get('servers', {})

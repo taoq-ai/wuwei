@@ -239,7 +239,7 @@ SCHEMA = {
             {"pattern": r"mcp__(?=.*atlassian).*__(?:\w*_)?(create|update)Confluence.*", "channel": "docs"},
         ]],
         # #492: the owner's alias of an MCP server id to its channel.
-        "servers": {"*": (str, None, ("slack", "tracker", "code_host", "docs", "mail", "other"))},
+        "servers": {"*": (str, None, ("slack", "tracker", "code_host", "docs", "mail", "other", "local"))},
         # #492: the owner's approval mode of an MCP server id; absent is the class default.
         "modes": {"*": (str, None, ("send", "draft", "refuse"))},
         # #496: a connector's default audience class for what it has not seen, by server id.
@@ -626,7 +626,7 @@ CONFIGS_KEPT = 128
 # coarse timestamp tick keeps mtime, size and inode, and the text is read anyway.
 CONFIG_CACHE = 'config.cache.json'
 SCRATCH = '.wuwei/scratch'  # #647: <root>/.wuwei/scratch/<item>/<role>/, one per seat
-CONFIG_CACHE_VERSION = 16  # Bump when the parse, the schema, the defaults or the checks change.
+CONFIG_CACHE_VERSION = 17  # Bump when the parse, the schema, the defaults or the checks change.
 # #624: steward.every_tool_calls default 250.
 # Only hook and status --line processes write the copy (__main__ turns this on): they pay the
 # parse on every call. Every other command reads a current copy and writes nothing, so
