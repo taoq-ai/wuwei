@@ -1180,13 +1180,45 @@ def i37(case, rules):
         return f'an untyped launch under strict gave {found}, {labels}'
     return None
 
+def i38(case, rules):
+    """#676: an untyped Agent launch in a workspace is never refused below strict and is
+    registered as an adhoc seat; under strict it is refused naming seat start --adhoc unless
+    that command recorded its prompt."""
+    def compute(posture):
+        from wuwei import brief, state
+        from wuwei.guards import agent_launch
+        prompt = f'I38 review under {posture}'
+        payload = {'cwd': str(rules.root), 'tool_name': 'Agent', 'tool_input': {
+            'subagent_type': 'general-purpose', 'description': 'review', 'prompt': prompt}}
+        rules.configure(posture)
+        try:
+            found = [agent_launch.check(payload)]
+            if posture == 'strict':
+                with contextlib.redirect_stdout(io.StringIO()):
+                    main(['seat', 'start', '--role', 'reviewer', '--adhoc', prompt])
+                found.append(agent_launch.check(payload))
+            digest = brief.prompt_digest(prompt)
+            seats = [seat for seat in state.read_state(rules.root)['seats'].values()
+                     if seat.get('prompt_sha256') == digest]
+        finally:
+            (rules.root / '.wuwei/config.toml').write_text(rules.base)
+        return found, [seat['label'] for seat in seats]
+    found, labels = rules.memo(('adhoc launch', case[0]), lambda: compute(case[0]))
+    if case[0] != 'strict':
+        return None if found == [(0, '')] and labels == ['general-purpose'] else f'an untyped launch gave {found}, {labels}'
+    (code, reason), after = found
+    if code != 1 or 'seat start --role <role> --adhoc' not in reason or after != (0, '') or labels != ['reviewer']:
+        return f'an untyped launch under strict gave {found}, {labels}'
+    return None
+
 
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
               'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27, 'I28': i28,
               'I31': i31, 'I32': i32, 'I33': i33, 'I34': i34, 'I35': i35,
-              'I36': i36, 'I37': i37, 'I42': i42}
+              'I36': i36, 'I37': i37, 'I42': i42,
+              'I36': i36, 'I37': i37, 'I38': i38}
 
 
 def project(case):
@@ -1203,7 +1235,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
          'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': (), 'I28': (),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I42': (),
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (),}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (),
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,)}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
