@@ -57,7 +57,12 @@ SECRET = (
     rf'--(?:{SENSITIVE_FIELD})[\w-]{{0,40}}\s{{1,40}}(?!\[BODY )\S|'
     r'--data[\w-]{0,40}(?:\s{1,40}|=)\S|'
     r'(?:--json|(?<![\w-])-d)(?:\s{1,40}|=)(?:[\'"{@]|[^\s=&:]{0,2048}[=&:])|'
-    r'\b(?:Bearer|Basic)\s{1,40}\S{1,2048}|[a-z][a-z0-9+.-]{0,30}://[^/\s]{0,2048}@|'
+    # #662: a scheme word is a credential only with a credential-shaped value: 8 or more
+    # token68 characters holding a digit or a lower-to-upper change (case-sensitive under re.I).
+    # ponytail: no word list, so `Bearer swordfish` is missed and `Basic JavaScript` is still
+    # caught; a dictionary check if either matters.
+    r'\b(?:Bearer|Basic)\s{1,40}(?=[\w.~+/-]{8})(?=[\w.~+/-]{0,2048}?(?-i:\d|[a-z][A-Z]))[\w.~+/-]{1,2048}|'
+    r'[a-z][a-z0-9+.-]{0,30}://[^/\s]{0,2048}@|'
     r'\b(?:gh[pousr]_|github_pat_|sk-|xox[baprs]-|[sr]k_(?:live|test)_|'
     r'glpat-|AIza|npm_|hf_)[a-z0-9_-]{1,2048}|hooks\.slack\.com/services/|'
     r'\b(?:AKIA|ASIA)[A-Z0-9]{16}\b|'

@@ -202,7 +202,9 @@ def test_render_without_scope(day, monkeypatch):
 
 
 @pytest.mark.parametrize('text', ['see /opt/x/y', 'see ~/x', 'at C:\\x', 'in .wuwei/days',
-                                  'state.json', 'the events.jsonl file', 'key sekrit-value-123'])
+                                  'state.json', 'the events.jsonl file', 'key sekrit-value-123',
+                                  'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc',
+                                  "token = 'abc123XYZ789'"])
 def test_check_refuses_raw_records_paths_and_credentials(monkeypatch, text):
     from wuwei import docs, redact
     monkeypatch.setattr(redact, 'VALUES', {'sekrit-value-123'})
@@ -213,6 +215,13 @@ def test_check_refuses_raw_records_paths_and_credentials(monkeypatch, text):
 def test_check_accepts_links_and_relative_paths():
     from wuwei import docs
     docs.check('See https://example.com/a/b and docs/x.md (decisions/D-1.md).')
+
+
+def test_check_accepts_prose_about_credentials():
+    # #662: naming a credential kind is not holding one.
+    from wuwei import docs
+    docs.check('### What changed\nthe collector masks the bearer token in its logs\n'
+               'Basic authentication is off and the token is rotated weekly.')
 
 
 def notion_replay(monkeypatch, *answers):
