@@ -572,7 +572,15 @@ checks, decision routing and every 9.2 invariant hold at every pace (I15 to I17)
   `seat.usage` row, bounds CAP from the other side (at least 1). A positive config `cap` or
   `host.seats` is the owner's one-key override. Plan propose, each `dispatch next --all`
   sweep, the agent-launch guard and `dispatch opinion` derive it live; the plan, the gate
-  card and the status line name what bound it (`host`, `budget`, `owner`, `unmeasured`).
+  card and the status line name what bound it (`memory`, `host.seats`, `budget`, `owner`,
+  `unmeasured`).
+  Amended (owner, 2026-10-10, #658): the memory estimate applies only when a seat runtime of
+  the day (`adapters.runtime` or a seat policy runtime) launches its own process, that is
+  any runtime but `claude` and `none`; it is then smoothed as the median of today's last five
+  readings (each sweep records its reading on `cap.derived`), bound `memory`. Claude subagent
+  seats share one process, so free memory does not track their count: CAP and `host.seats`
+  are the configured `host.seats`, else one per core, bound `host.seats`, and free memory is
+  not read. The free-memory floor still refuses a launch under either rule.
 - Seat policy (model and runtime per role) is set at the morning gate and stored in state.
 - Boundary and environment register come from config; the arch sentinel checks against them.
 - Verdict shape (at light, see Process depth above): a `Verdict: PASS|FIX|PARK|ESCALATE` line; findings with severity,
@@ -598,7 +606,7 @@ checks, decision routing and every 9.2 invariant hold at every pace (I15 to I17)
   state return the same action. The CLI never waits for a Claude seat; the old blocking
   form exits 2 naming `build next`. Codex executes the same actions through its polling
   adapter. Backpressure, signature, stuck and iteration limits, and usage events retain
-  their semantics. `host.seats` derives from the host (#528) unless config pins it. A
+  their semantics. `host.seats` derives per the #658 rule unless config pins it. A
   ceiling refusal names `host.seats`.
 - Cost per iteration (owner, 2026-09-28). Every dispatch records the runtime's reported
   usage (input and output tokens, cost when the runtime reports it, model, duration) as a
@@ -1025,7 +1033,8 @@ Surfaces, all reading the same classification:
   do now when there is one (`restart Claude Code: hooks <old> still running`, `no plan yet`,
   `gate waiting`, `decision D-n waiting`), then the day's items counted in words (`5 planned
   · 2 building · 1 in review · 3 shipped`, CAP only on the seats token) and the running
-  seats by role (`seats 4/1 (lead, arch, +2 more)`, cut at whole names), then pages, nudges
+  seats by role with the bound that set CAP (`seats 4/1 by host.seats (lead, arch, +2 more)`,
+  cut at whole names; #658), then pages, nudges
   and the posture when it is not guarded. `wuwei status` prints the same groups one per line
   with the detail: each running seat with role, item and start time, watch, listen,
   sessions, the next person reply due, the next meeting, the day's negotiation loops (5.8.2)
@@ -1976,7 +1985,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I17 | Fast merges only at green required checks | the merge policy, the PR guard and the launch guard never read the pace; `merge.green` on a pending required check is not green | #579; I3 keeps the gated head |
 | I18 | The setup answers never allow a publish target | per posture, `grants.active` with `merge.default_tier = "today"` covers only a merge on a configured repository below strict; no `init.allow_rules` rule matches a deploy, release, protected-branch push or force push | #530 |
 | I19 | A thread reply follows its recorded participants: a team participant sends, a client or public one is held as a draft, never blocked, below strict | per posture, audience and umbrella, `classify` on a reply in thread `C0TEAM/1.2` whose recorded participant is one person of that audience | #526 |
-| I20 | CAP comes from the host: the owner's cap when set, else the seats that fit above the memory floor, one per core, at least one; a token budget never raises it | `calibrate.host` on free memory below the floor, one seat and eight seats above it, x 1 and 4 cores x owner cap 0 and 3 x no budget and a budget with no recorded usage | #528 |
+| I20 | CAP comes from the host: the owner's cap when set, else, for seats that are separate processes, the seats that fit above the memory floor, one per core, at least one, and for Claude subagent seats one per core whatever the free memory; a token budget never raises it | `calibrate.host` on free memory below the floor, one seat and eight seats above it, x 1 and 4 cores x owner cap 0 and 3 x no budget and a budget with no recorded usage x a process and a subagent seat policy | #528, #658 |
 | I21 | An internal-state word (`outward.patterns`) never refuses or holds a tracker, docs or other write; team or company chat is never held and is refused only under strict; a client or public chat an owner row would send is held as a draft naming the word | per posture, audience and kind, `classify` and the outward lint with and without the word, with owner rows that send to the client and public channels | #533 |
 | I22 | A record keeps a two-way door only when the CLI knows the undo for its action and that undo ran once in this workspace; a message never does | `undo.measured` for every class and no class with an empty ledger and a full one; a seat's Write to `memory/rehearsals.json` | #557; the pinned cases stay in `tests/test_undo.py`. #600: a config write that records its previous value is two-way; its undo is config set with that value, so it needs no rehearsal |
 | I23 | A target the workspace never touched goes to the owner once, and only an owner answer, config or the seed clears it | `decision route` on a two-way Routine record naming a new repository under autonomous; a seat's Write to `memory/targets.json` | #556; the pinned cases stay in `tests/test_novelty.py` |

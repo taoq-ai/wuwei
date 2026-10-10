@@ -376,7 +376,8 @@ def _groups(data, shown=None):
     roles = _roles(data)
     if data['gate_approved'] or roles:
         names = roles[:shown] + ([f'+{len(roles) - shown} more'] if shown is not None and shown < len(roles) else [])
-        work.append(f'seats {len(roles)}/{data["cap"]}' + (f' ({", ".join(names)})' if names else ''))
+        work.append(f'seats {len(roles)}/{data["cap"]}' + (f' by {data["cap_bound"]}' if data.get('cap_bound') else '')
+                    + (f' ({", ".join(names)})' if names else ''))  # #658: the bound names the rule
     attention = [f'pages {data["pages"]}', f'nudges {data["nudges"]}']
     if data.get('posture') not in (None, 'guarded'):
         attention.append(data['posture'])
@@ -413,8 +414,6 @@ def full(data):
     now, work, attention = _groups(data)
     if data.get('restart'):
         now = [data['restart']]
-    if data.get('cap_bound'):
-        work.append(f'bound {data["cap_bound"]}')
     if split := state.goal_split(data.get('seats', {})):
         work.append(f'builders {split}')
     running = [[f'running {state.in_flight_text([row])}'] for row in data.get('running', [])]

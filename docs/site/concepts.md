@@ -243,7 +243,7 @@ Memory has three tiers. A day keeps its raw records under `days/` for 30 days (`
 
 Plan, Build, Review, Close. `/wuwei plan` runs the morning gate, then the planner loops `build next` and `dispatch next` for each approved item, raises the PR and closes the day; phases move by themselves.
 
-The day starts in parallel. WUWEI derives CAP from the host: cores, free memory and what one seat costs once seats have run. CAP is the running seats plus the seats that fit above the memory floor, one core per seat, within `host.seats`, and within `budget.tokens_per_day` when set. The plan shows it with the measurement, for example `cap 4 (host): 16 GB free, 1.5 GB per seat, 8 cores`, and the morning gate splits it into seats per goal. Each sweep derives it again as memory frees, and the status line shows `seats 3/4 (host)` or `(budget)`. A positive `cap` in config is your override. After you approve, `wuwei dispatch next --all` lists everything that can move now. Gate items come first, then building items, then planned items up to CAP with each goal's share first. The planner launches the whole set in one turn, an item's three gate seats together. With `cap = 1` the day runs one item at a time. The [daily path](daily.md) is your walkthrough and the [recovery](recovery.md) page covers the rest.
+The day starts in parallel. WUWEI derives CAP from the host, by one of two rules. Claude subagent seats run inside one Claude process, so free memory says nothing about how many fit: CAP is `host.seats`, or one per core when it is unset, and free memory is not read. When a seat runtime launches its own process (Codex or another external runtime), the memory rule applies. CAP is then the running seats plus the seats that fit above the memory floor at the measured seat cost, one core per seat. It is the median of today's last five readings, so one noisy reading does not move it. Both stay within `budget.tokens_per_day` when set. The plan shows the rule and the measurement, for example `cap 6 (host.seats): subagent runtime, free memory not read` or `cap 4 (memory): median of 4, 5, 4; 16 GB free, 1.5 GB per seat, 8 cores`, and the morning gate splits it into seats per goal. Each sweep derives it again, and the status line shows `seats 3/4 by host.seats`, `by memory` or `by budget`. A positive `cap` in config is your override. After you approve, `wuwei dispatch next --all` lists everything that can move now. Gate items come first, then building items, then planned items up to CAP with each goal's share first. The planner launches the whole set in one turn, an item's three gate seats together. With `cap = 1` the day runs one item at a time. The [daily path](daily.md) is your walkthrough and the [recovery](recovery.md) page covers the rest.
 
 ## Tickets and comments
 
@@ -355,8 +355,9 @@ A check command records measurements itself. Exit 1 means failed checks and anot
 call; exit 2 means unmeasured and requires resolving the reported error. The old blocking
 Claude build form exits 2 and directs you to build next. Codex retains
 `wuwei build <item> <brief> <worktree>` and executes the same action loop with polling.
-`host.seats` derives from free memory and cores unless config pins it; it counts builders
-and gate seats together.
+`host.seats` derives from cores for Claude subagent seats, and from free memory and cores for
+seats that run as separate processes, unless config pins it; it counts builders and gate seats
+together.
 
 ## Review tiers
 

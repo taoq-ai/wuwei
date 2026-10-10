@@ -182,7 +182,8 @@ def _check(payload):
         event.update(free_mib=available // 2**20, running=len(running))
         builders = sum(seat['role'] == 'builder' for seat in running)
         from wuwei import calibrate  # lazy: hook path (#346); #528: derived at launch
-        limits = calibrate.host(root, config, running=len(running), free=available // 2**20)
+        limits = calibrate.host(root, config, running=len(running), free=available // 2**20,
+                                policy=data['seat_policy'])
         if role == 'builder' and builders >= limits['cap']:
             raise brief.Refused(f'running build seats {builders} at CAP {limits["cap"]}; wait for a build seat to finish, then retry' + stale_note)
         if len(running) >= limits['seats']:
