@@ -920,6 +920,7 @@ def test_config_parsed_once_per_text(tmp_path, monkeypatch):
     path.write_text('cap = 2\n')
     parsed = []
     loads = workspace.tomllib.loads
+    monkeypatch.setattr(workspace, '_CONFIGS', {})  # In-process CLI calls (#685) fill the memo.
     monkeypatch.setattr(workspace.tomllib, 'loads', lambda text: parsed.append(text) or loads(text))
     first = workspace.load_config(tmp_path)
     first['cap'] = 9
