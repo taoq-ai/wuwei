@@ -921,3 +921,53 @@ def test_deploys_question_recommends_from_the_calibration(offline, capsys, monke
     additions, _ = calibrate.settle(raw, settings)
     (offline / '.wuwei/config.toml').write_text(calibrate.apply(raw, additions))
     assert [repo['merge_deploys'] for repo in config(offline)['repos']] == [True, False]
+
+
+GADGET = ONE.replace('widget', 'gadget')
+SUPERVISED = ('[security]\nposture = "guarded"\n\n[outbound]\ndefault_tier = "ask"\nlearn = "card"\n\n'
+              '[merge]\ndefault_tier = "ask"\n\n[autonomy]\nmode = "supervised"\n')
+
+
+def asked(root, repos):
+    return [(row['id'], repo) for row, repo in interview().unanswered(root, repos)]
+
+
+def test_a_config_value_answers_its_question(offline, capsys):
+    # #639: merge_deploys = false set by hand is not asked again, for that repository only.
+    (offline / '.wuwei/config.toml').write_text(ONE + 'merge_deploys = false\n\n' + GADGET)
+    found = asked(offline, ['acme/widget', 'acme/gadget'])
+    assert ('deploys', 'acme/widget') not in found and ('deploys', 'acme/gadget') in found
+    assert main('calibrate', '--questions') == 0
+    shown = [(w['id'], w.get('repo')) for w in json.loads(capsys.readouterr().out)]
+    assert ('deploys', 'acme/widget') not in shown and ('deploys', 'acme/gadget') in shown
+    assert not list(offline.glob('.wuwei/days/*/interview.json'))
+
+
+def test_asking_by_id_ignores_the_config(root):
+    (root / '.wuwei/config.toml').write_text(ONE + 'merge_deploys = false\n\n' + GADGET)
+    assert [w.get('repo') for w in interview().widgets(root, ['acme/widget'], ['deploys'])] == ['acme/widget']
+
+
+def test_every_autonomy_key_set_answers_the_autonomy_question(root):
+    (root / '.wuwei/config.toml').write_text(ONE + SUPERVISED)
+    assert ('autonomy', None) not in asked(root, ['acme/widget'])
+    (root / '.wuwei/config.toml').write_text(ONE + SUPERVISED.replace('default_tier = "ask"\nlearn', 'learn'))
+    assert ('autonomy', None) in asked(root, ['acme/widget'])
+
+
+def test_defaults_and_partial_answers_still_ask(root):
+    template = (ROOT / 'templates/workspace/config.toml').read_text()
+    every = [(row['id'], repo) for row in interview().QUESTIONS
+             for repo in (['acme/widget'] if row['scope'] == 'repo' else [None])]
+    (root / '.wuwei/config.toml').write_text(template + '\n' + ONE)
+    assert asked(root, ['acme/widget']) == every
+    (root / '.wuwei/config.toml').write_text(ONE + 'merge_deploys = true\n')
+    assert ('deploys', 'acme/widget') in asked(root, ['acme/widget'])
+    (root / '.wuwei/config.toml').write_text(ONE + '[repos.merge]\nauto = false\n')
+    assert ('merge', 'acme/widget') in asked(root, ['acme/widget'])
+
+
+def test_an_unreadable_config_fails_closed(root):
+    (root / '.wuwei/config.toml').write_text('[[repos]\nnope')
+    with pytest.raises(ValueError):
+        interview().unanswered(root, ['acme/widget'])

@@ -3,9 +3,10 @@
 from datetime import date, datetime
 import json
 import re
+import tomllib
 import zoneinfo
 
-from wuwei import calibrate, workspace
+from wuwei import calibrate, configtext, workspace
 from wuwei.merge import quiet
 from wuwei.promotion import safe_path
 from wuwei.exits import DAMAGED, SYMLINK
@@ -661,8 +662,29 @@ def unanswered(root, repos):
     """#530: (row, repository or None) for each question no day's answer covers, in table order;
     the one count init --upgrade, doctor and the planner's cards read."""
     done = _recorded(root)
+    path = root / '.wuwei/config.toml'
+    try:
+        present = tomllib.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f'config.toml: {exc}') from None
     return [(row, repo) for row in QUESTIONS for repo in (repos if row['scope'] == 'repo' else [None])
-            if (row['id'], repo) not in done]
+            if (row['id'], repo) not in done and not _configured(row, repo, present)]
+
+
+def _configured(row, repo, present):
+    """#639: the raw config answers a question when it sets every key the question writes and
+    at least one differs from its default; a template written at its defaults still asks."""
+    if repo is not None and repo not in [r.get('name') for r in present.get('repos', [])]:
+        return False
+    found = []
+    for name in {key for _, _, result in row['choices'] for key in result if _setting(key)}:
+        path, key = _path(name, repo, present)
+        table = calibrate._table(present, path)
+        if table is None or key not in table:
+            return False
+        node = configtext.declared((*path, key))
+        found.append(node is None or table[key] != workspace._default(node))
+    return any(found)
 
 
 def widgets(root, repos, ids=()):
