@@ -32,7 +32,7 @@ Every table `config.toml` accepts, and the heading below that documents its keys
 | `tracker.backlog_filter` | `""` | Optional Linear team ID for backlog discovery. Empty reads accessible issues. |
 | `tracker.states.in_review` | `"In Review"` | Linear workflow state name after a PR is raised. |
 | `tracker.states.done` | `"Done"` | Linear workflow state name after a confirmed merge. |
-| `tracker.required` | `true` | While `adapters.tracker` is not `none`, every approved item needs a ticket: `plan approve`, `plan add`, `build next`, `dispatch next` and the seat launch refuse without one and name `bin/wuwei tracker create <item>` or `bin/wuwei plan set <item> ticket=<id>`. |
+| `tracker.required` | `true` | While `adapters.tracker` is not `none`, every approved item needs a ticket: `plan approve`, `plan add`, `build next`, `dispatch next` and the seat launch refuse without one. Below strict the reason names the item's card, where the planner proposes the ticket; under strict it names `bin/wuwei tracker create <item>` or `bin/wuwei plan set <item> ticket=<id>` for a host terminal. |
 | `tracker.skip_tiers` | `[]` | Gate tiers that need no ticket, for example `["light"]`. The recorded gate tier decides, else the lead's tier. |
 | `tracker.strict_close` | `true` | `wuwei close` refuses while an item merged today has a ticket with no successful done transition (`bin/wuwei tracker done <item>`). `false` prints the line and closes. |
 | `tracker.create` | `["bugs", "triage", "follow-ups"]` | Ticket classes seats may open besides items with `bin/wuwei tracker create --bug, --triage or --follow-up`. |

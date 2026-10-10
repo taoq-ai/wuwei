@@ -1058,11 +1058,31 @@ def i35(case, rules):
     return rules.memo(('round cap',), compute)
 
 
+def i36(case, rules):
+    """#636: an item ticket is attached by the planner below strict or by the owner, never by a
+    seat, whose reason names the planner; tracker create --bug stays a seat command."""
+    def compute():
+        from wuwei.guards.protect_state import check_bash
+        rules.configure(case[0])
+        for command in ('bin/wuwei tracker create A', 'bin/wuwei plan set A ticket=ENG-1'):
+            call = rules.bash(command)
+            planner = check_bash(call)[0]
+            seat, reason = check_bash({**call, 'agent_id': 'seat-1'})
+            if (planner == 0) != (case[0] != 'strict') or seat == 0 or 'planner' not in reason:
+                return f'{command}: passes for the planner {planner == 0}, for a seat {seat == 0}'
+        call = rules.bash('bin/wuwei tracker create --bug A Broken --evidence cli/x.py:1')
+        if check_bash({**call, 'agent_id': 'seat-1'})[0]:
+            return 'a seat cannot open a linked bug'
+        return None
+    return rules.memo(('item tickets', case[0]), compute)
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
               'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27, 'I28': i28,
-              'I31': i31, 'I32': i32, 'I33': i33, 'I34': i34, 'I35': i35}
+              'I31': i31, 'I32': i32, 'I33': i33, 'I34': i34, 'I35': i35,
+              'I36': i36}
 
 
 def project(case):
@@ -1078,7 +1098,7 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
          'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': (), 'I28': (),
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': ()}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,)}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 

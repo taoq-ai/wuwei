@@ -481,7 +481,7 @@ def events(root):
 def test_approve_refuses_every_candidate_without_a_ticket(root, monkeypatch, capsys):
     from wuwei.__main__ import main
     plan.propose(two(), root)
-    tracked(root)
+    tracked(root, '[security]\nposture = "strict"\n')  # #636: below strict Approve opens them
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     assert main(['plan', 'approve', '--items', 'A', 'B', '--goals-confirmed']) == 1
     err = capsys.readouterr().err
@@ -505,6 +505,102 @@ def test_approve_records_candidate_and_tracker_tickets(root):
 def test_invalid_candidate_ticket_is_unrun(root):
     with pytest.raises(ValueError, match='A: invalid ticket'):
         plan.propose(two(A={'ticket': 'has space'}), root)
+
+
+def three(**extra):
+    data = two(**extra)
+    data['candidates'].append({**proposal()['candidates'][0], 'id': 'C',
+                               'scope': 'Add the export\n  button', **extra.get('C', {})})
+    return data
+
+
+def ticket_lines(root):
+    return [line for line in (root / '.wuwei/days/2026-09-28/plan.md').read_text().splitlines()
+            if line.startswith('Ticket:')]
+
+
+def test_plan_and_gate_card_show_each_ticket(root):
+    """#636: the plan and the Approve description name an existing ticket or a new one."""
+    tracked(root)
+    plan.propose(three(A={'ticket': 'ENG-1'}, B={'ticket': 'ENG-2'}), root)
+    assert ticket_lines(root) == ['Ticket: ENG-1 (existing)', 'Ticket: ENG-2 (existing)',
+                                  'Ticket: new Add the export button']
+    widget = plan.gate_widget(root)
+    assert ('Tickets A ENG-1 (existing), B ENG-2 (existing), C new Add the export button'
+            in widget['options'][0]['description'])
+    assert 'tickets' in widget['options'][-1]['description']
+    plan.propose(three(A={'ticket': None}), root)
+    assert ticket_lines(root)[0] == 'Ticket: none'
+    tracked(root, '[tracker]\nskip_tiers = ["light"]\n')
+    plan.propose(three(A={'tier': 'light'}), root)
+    assert len(ticket_lines(root)) == 2
+    (root / '.wuwei/config.toml').write_text('')
+    plan.propose(three(), root)
+    assert ticket_lines(root) == []
+    assert 'Tickets' not in plan.gate_widget(root)['options'][0]['description']
+
+
+def opening(root, monkeypatch, posture, created=None, **extra):
+    """#636: A and B link existing tickets, C gets a new one; the fake tracker opens it."""
+    from fakes.tracker import Fake, ported
+    tracked(root, f'[owner]\nname = "Pat Example"\n[security]\nposture = "{posture}"\n')
+    plan.propose(three(**{'A': {'ticket': 'ENG-1'}, 'B': {'ticket': 'ENG-2'}, **extra}), root)
+    fake = Fake({'create': created or registry.Result(0, {'id': 'ENG-9',
+                                                           'url': 'https://example.test/ENG-9'})})
+    port = ported(fake)
+    load = registry.load
+    monkeypatch.setattr(registry, 'load', lambda kind, config: port if kind == 'tracker'
+                        else load(kind, config))
+    return fake
+
+
+@pytest.mark.parametrize('posture', ['observe', 'guarded'])
+def test_approve_links_and_opens_the_proposed_tickets(root, monkeypatch, posture):
+    """#636 acceptance 1: two links and one new ticket, no terminal command."""
+    from wuwei import tracker
+    fake = opening(root, monkeypatch, posture)
+    plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
+    day = state.read_state(root)
+    assert day['tickets'] == {'A': {'id': 'ENG-1', 'source': 'candidate'},
+                              'B': {'id': 'ENG-2', 'source': 'candidate'},
+                              'C': {'id': 'ENG-9', 'source': 'create'}}
+    assert [call[0] for call in fake.calls] == ['create']
+    assert fake.calls[0][1][0]['item'] == 'C'
+    assert [row['status'] for row in day.get('drafts', {}).values()] in ([], ['sent'])
+    config = workspace.load_config(root)
+    assert all(tracker.check(day, config, name)[0] == 'ticket' for name in 'ABC')
+    with pytest.raises(state.StateError, match='already approved'):
+        plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
+    assert len(fake.calls) == 1
+
+
+def test_strict_approve_prints_the_commands(root, monkeypatch, capsys):
+    """#636 acceptance 2: under strict nothing is opened and the commands are printed."""
+    from wuwei.__main__ import main
+    fake = opening(root, monkeypatch, 'strict')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    assert main(['plan', 'approve', '--items', 'A', 'B', 'C', '--goals-confirmed']) == 1
+    err = capsys.readouterr().err
+    assert 'bin/wuwei tracker create C' in err and 'host terminal' in err
+    assert fake.calls == []
+    day = state.read_state(root)
+    assert not day.get('drafts') and not day['approved_items']
+
+
+def test_owners_none_is_approved_without_a_ticket(root, monkeypatch):
+    fake = opening(root, monkeypatch, 'guarded', A={'ticket': None}, C={'ticket': 'ENG-3'})
+    plan.approve(['A'], root, goals_confirmed=True)
+    assert fake.calls == []
+    assert state.read_state(root)['tickets'] == {'A': {'id': None, 'source': 'none'}}
+    skipped = [event['payload'] for event in events(root) if event['kind'] == 'tracker.skipped']
+    assert skipped == [{'item': 'A', 'ticket': 'none'}]
+
+
+def test_a_failed_open_refuses_the_approval(root, monkeypatch):
+    opening(root, monkeypatch, 'guarded', created=registry.Result(2, reason='linear: unreachable'))
+    with pytest.raises(state.StateError, match='C: drafts: adapter did not confirm send'):
+        plan.approve(['A', 'B', 'C'], root, goals_confirmed=True)
+    assert not state.read_state(root)['approved_items']
 
 
 def test_import_yesterday_carries_tickets(root):

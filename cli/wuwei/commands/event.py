@@ -71,7 +71,7 @@ EVENT_PRODUCERS = {
     'gate.received': 'wuwei dispatch receive', 'discovery.requested': 'wuwei dispatch discovery',
     'discovery.intake': 'wuwei dispatch discovery',
     'tracker.call': 'wuwei tracker lifecycle',
-    'tracker.created': 'wuwei tracker create or wuwei drafts approve',
+    'tracker.created': 'wuwei tracker create, wuwei drafts approve or wuwei plan approve',
     'tracker.skipped': 'wuwei plan approve or add', 'tracker.folded': 'wuwei tracker log',
     'tracker.logged': 'wuwei tracker log', 'plan.set': 'wuwei plan set',
     'brief.pack': 'wuwei brief pack', 'brief.answer': 'wuwei brief answer',

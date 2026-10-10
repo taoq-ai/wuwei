@@ -214,6 +214,15 @@ def test_tracker_hygiene_commands_have_one_home():
     assert "bin/wuwei tracker create <item>" in texts["planner.md"]
 
 
+def test_lead_proposes_each_ticket_and_the_planner_asks_it():
+    """#636: the lead gives each candidate its open ticket; Change something can change it."""
+    texts = charter_text()
+    assert '"ticket": null' in texts["lead.md"]
+    assert "give each candidate the open ticket" in texts["lead.md"]
+    assert "goals, queue, tickets, seat policy" in texts["planner.md"]
+    assert "Approve opens the tickets the plan proposed" in texts["planner.md"]
+
+
 def test_decision_lens_charters():
     """#475: the record shape lives in _common.md; three roles name the design class and the lens."""
     texts = charter_text()

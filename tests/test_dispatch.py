@@ -1454,7 +1454,8 @@ def test_dispatch_refuses_an_item_without_a_ticket(root, monkeypatch, capsys):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     assert main(['dispatch', 'next', 'A']) == 1
     err = capsys.readouterr().err
-    assert 'bin/wuwei tracker create A' in err and 'bin/wuwei plan set A ticket=<id>' in err
+    assert "A has no ticket: the planner proposes one on the item's card" in err
+    assert 'bin/wuwei' not in err.split('has no ticket')[1]
     state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-1', 'source': 'set'}}),
                        root, reserved=False)
     assert main(['dispatch', 'next', 'A']) == 0
@@ -1510,7 +1511,7 @@ def test_issue_acceptance_ticket_then_dispatch(root, monkeypatch, capsys):
                         else load(kind, config))
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     assert main(['dispatch', 'next', 'A']) == 1
-    assert 'bin/wuwei tracker create A' in capsys.readouterr().err
+    assert "A has no ticket: the planner proposes one on the item's card" in capsys.readouterr().err
     assert main(['tracker', 'create', 'A']) == 0
     assert state.read_state(root)['tickets'] == {'A': {'id': 'ENG-7', 'source': 'create'}}
     capsys.readouterr()

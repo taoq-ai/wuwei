@@ -353,8 +353,9 @@ builder records `bin/wuwei plan set <item> docs=<page>|new|none --reason "<why>"
 markdown writes the file with `bin/wuwei docs page <item>`. `wuwei next` shows a `docs` row
 until it does, and `close` names any merged item whose docs were never written.
 
-With a tracker set up, every item has a [ticket](concepts.md#ticket). An item without one
-stops with a line naming `bin/wuwei tracker create <item>`. The board and the loop DM show the
+With a tracker set up, every item has a [ticket](concepts.md#ticket). The plan proposes one
+per item and Approve opens or links them. An item still without one stops with a line naming
+its card; under strict the line names `bin/wuwei tracker create <item>` for a host terminal. The board and the loop DM show the
 ticket id beside the item, and WUWEI comments the item's phases, pull request and merge on it.
 Decisions and review results wait in `bin/wuwei drafts` until you send them.
 

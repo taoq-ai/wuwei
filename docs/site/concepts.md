@@ -252,6 +252,12 @@ run: it has a ticket, or its tier is in `tracker.skip_tiers`. `plan approve`, `p
 `build next`, `dispatch next` and the seat launch all ask it and give the same reason. A
 candidate's `ticket` field, an item discovered from the tracker backlog,
 `bin/wuwei tracker create <item>` and `bin/wuwei plan set <item> ticket=<id>` record one.
+The lead proposes a ticket per item: an open one from the backlog, or a new one from the
+item's record. The plan shows it on a `Ticket:` line and the gate card lists it. Below
+strict, Approve opens the tickets the plan proposed and records the links, so no item waits
+on a terminal command; `plan add` drafts an owner-named item's ticket for its Send card.
+Under strict the commands are printed for a host terminal. A seat never opens an item
+ticket: the planner does after your card answer.
 Builders and sentinels open a linked bug with
 `bin/wuwei tracker create --bug <item> "<title>" --evidence "<file:line>"` instead of widening
 the item; the planner opens retro follow-ups with `--follow-up`. Each creation is written once

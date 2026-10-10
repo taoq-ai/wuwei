@@ -435,7 +435,7 @@ def test_build_next_needs_a_ticket_and_claims_it(seat, monkeypatch, capsys):
     monkeypatch.setattr(registry, 'load', lambda kind, config: fake if kind == 'tracker'
                         else load(kind, config))
     assert main(['build', 'next', 'A']) == 1
-    assert 'bin/wuwei tracker create A' in capsys.readouterr().err
+    assert "A has no ticket: the planner proposes one on the item's card" in capsys.readouterr().err
     assert 'builds' not in state.read_state(root)
     state._write_state(lambda data: data.update(tickets={'A': {'id': 'ENG-7', 'source': 'set'}}),
                        root, reserved=False)
