@@ -341,6 +341,29 @@ def test_seat_records_a_docs_value(places, monkeypatch, capsys):
         assert bash(root, smuggled)[0] != 0, smuggled
 
 
+
+@pytest.mark.parametrize('role', ['builder', None])
+def test_agent_tools_set_owner_merge_only_true(places, monkeypatch, capsys, role):
+    """#678: setting owner_merge only narrows what WUWEI may do; clearing it stays the owner's."""
+    root, _ = places
+    if role:
+        monkeypatch.setenv('WUWEI_SEAT_ROLE', role)
+    else:
+        monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
+    command = 'bin/wuwei plan set X owner_merge=true'
+    assert bash(root, command) == (0, '')
+    code, output = hook(root, command, monkeypatch, capsys)
+    assert code == 0 and output.get('permissionDecision') != 'deny', output
+    for refused in ('bin/wuwei plan set X owner_merge=false',
+                    'bin/wuwei plan set X owner_merge=true spec=skipped',
+                    'bin/wuwei plan set X owner_merge=true --reason x',
+                    'bin/wuwei plan set $A owner_merge=true',
+                    'bin/wuwei plan set X owner_merge=$V',
+                    'echo owner_merge=true | xargs bin/wuwei plan set X'):
+        code, reason = bash(root, refused)
+        assert code != 0, refused
+    assert 'clearing it (owner_merge=false) is the owner' in bash(root, 'bin/wuwei plan set X owner_merge=false')[1]
+
 # #471: a mention of an owner command inside data is data.
 DATA_MENTIONS = [
     "jq '.sweep.ranking = \"wuwei rank exit 2: ... bin/wuwei goals edit ...\"' lead.json > {out}/lead.ranked.json",

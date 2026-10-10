@@ -1,6 +1,7 @@
 """Morning proposal and dedicated gate approval producer."""
 
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -339,7 +340,8 @@ def gate_widget(root=None, *, import_yesterday=False):
         [*(paces if advised else [('Approve', approves + '.')]),
          ('Change something', 'Ask the separate questions on goals, queue, tickets, seat policy, '
                               'CAP and seats per goal, envelope and carry-over. CAP is derived. '
-                              'A changed CAP is recorded as config cap.')],
+                              'A changed CAP is recorded as config cap. Name any item you merge '
+                              'yourself; the planner records it with wuwei plan set <item> owner_merge=true.')],
         ' '.join(['wuwei plan approve --items', *ids, '--goals-confirmed',
                   *(['--import-yesterday'] if import_yesterday else []),
                   *(['--pace "<label>"'] if advised else [])]))
@@ -580,6 +582,38 @@ def set_spec(item, assignment, reason=None, root=None):
     state._write_state(update, root, reserved=False, kind='spec.override',
                        payload={'item': item, 'value': value, 'reason': reason})
     return f'{item}: spec {value}'
+
+
+def set_owner_merge(item, value, root=None):
+    """#678: plan set <item> owner_merge=true|false: the owner keeps (or releases) this merge."""
+    root = workspace.find_workspace(root)
+    if value not in ('true', 'false'):
+        raise ValueError(f'expected owner_merge=true or owner_merge=false; run bin/wuwei plan set {item} '
+                         'owner_merge=true|false')
+    on = value == 'true'
+    by = os.environ.get('WUWEI_SEAT_ROLE') or ('planner' if sessions.current() else 'owner')
+    linked = []
+
+    def update(data):
+        if item not in data['items']:
+            raise state.StateError(f"no item {item} today; today's items: "
+                                   f"{', '.join(sorted(data['items'])) or 'none'}; use one of those ids")
+        data['items'][item]['owner_merge'] = {'value': on, 'by': by, 'at': workspace.now().isoformat()}
+        linked.append(data['items'][item].get('pr'))
+    state._write_state(update, root, reserved=False, kind='plan.set',
+                       payload={'item': item, 'owner_merge': on, 'by': by})
+    config = workspace.load_config(root)
+    if linked[-1] and config['adapters']['code_host'] != 'none':
+        from wuwei import merge, registry
+        try:
+            labels = merge.read(registry.load('code_host', config).label, linked[-1], merge.LABEL, on, root=root)
+            if (merge.LABEL in labels['labels']) != on:
+                raise ValueError('the PR labels did not change; if it repeats, run bin/wuwei doctor, '
+                                 'which tests the code host adapter')
+        except merge.ERRORS as exc:
+            raise OSError(f'{item}: owner_merge {value} recorded; PR label not updated: {exc}; '
+                          f'rerun bin/wuwei plan set {item} owner_merge={value}') from exc
+    return f'{item}: owner_merge {value}'
 
 
 def set_pace(value, root=None):

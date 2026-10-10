@@ -1077,12 +1077,31 @@ def i36(case, rules):
     return rules.memo(('item tickets', case[0]), compute)
 
 
+def i37(case, rules):
+    """#678: an item with owner_merge set is never merged by WUWEI: merge.owner_hold, the one
+    read every merge path reaches through merge.check, holds a set flag, releases a cleared or
+    absent one and fails closed on a malformed record."""
+    def compute():
+        from wuwei import merge
+        record = {'value': True, 'by': 'owner', 'at': '2026-09-29T11:00:00+00:00'}
+        if merge.owner_hold({'owner_merge': record}) != ('owner', '2026-09-29'):
+            return 'a set owner_merge does not hold the merge'
+        if merge.owner_hold({'owner_merge': {**record, 'value': False}}) or merge.owner_hold({}):
+            return 'a cleared or absent owner_merge holds the merge'
+        try:
+            merge.owner_hold({'owner_merge': 'yes'})
+        except ValueError:
+            return None
+        return 'a malformed owner_merge record reads as cleared'
+    return rules.memo(('owner merge',), compute)
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
               'I22': i22, 'I23': i23, 'I24': i24, 'I25': i25, 'I26': i26, 'I27': i27, 'I28': i28,
               'I31': i31, 'I32': i32, 'I33': i33, 'I34': i34, 'I35': i35,
-              'I36': i36}
+              'I36': i36, 'I37': i37}
 
 
 def project(case):
@@ -1098,7 +1117,7 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
          'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': (), 'I28': (),
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,)}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
@@ -1194,6 +1213,8 @@ BROKEN = {
         import_module('wuwei.dispatch'), 'AGENT_DOCS', ()),
     'a fix round past the cap': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.dispatch'), 'rounds_used', lambda data, item: 0),
+    'owner_merge ignored': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.merge'), 'owner_hold', lambda item: None),
     'client thread row that sends': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.outward'), 'DEFAULT_TIERS',
         ({'audience': 'client', 'topic': 'thread', 'tier': 'send'}, *import_module('wuwei.outward').DEFAULT_TIERS)),
@@ -1294,3 +1315,59 @@ def test_merge_only_at_the_gated_green_head(case, posture, grant, head):
     used = [row for row in records(workspace.day_dir(root) / 'events.jsonl') if row['kind'] == 'grant.used']
     assert merged_calls(host) == ([(REF, SHA)] if expected else []), (posture, grant, head)
     assert bool(used) == expected, (posture, grant, head, used)
+
+
+@pytest.mark.parametrize('grant', ['none', 'today'])
+@pytest.mark.parametrize('flag', ['set', 'cleared'])
+@pytest.mark.parametrize('path', ['merge check', 'wuwei merge', 'pr act', 'pr guard', 'overnight shepherd'])
+def test_owner_merge_holds_on_every_path(case, monkeypatch, capsys, path, flag, grant):
+    # I37 (#678): the command paths and the daemon path read one hold; cleared, the normal policy.
+    from test_merge import REF, SHA, merged_calls
+    from wuwei import merge, plan, pr_actions, shepherd, state, workspace
+    from wuwei.guards.pr import check as guard
+    from wuwei.registry import Result
+    from wuwei.watch import records
+    root, host = case
+    monkeypatch.delenv('WUWEI_SESSION_ID', raising=False)
+    monkeypatch.delenv('WUWEI_SEAT_ROLE', raising=False)
+    host.results['label'] = Result(0, {'labels': ['owner-merge']})
+    plan.set_owner_merge('item-7', 'true', root)
+    if flag == 'cleared':
+        host.results['label'].data['labels'] = []
+        plan.set_owner_merge('item-7', 'false', root)
+    if grant == 'today':
+        state._write_state(lambda d: d.setdefault('grants', {}).update({'D-9': {
+            'action': 'merge', 'target': 'repo:example/project', 'rule': 'merge', 'command': None,
+            'item': 'item-7', 'seat': None, 'planned': False, 'answered': 'today', 'spent': False}}),
+            root, reserved=False)
+    approved = [{'pr': REF, 'exit': 1, 'state': 'approved', 'parked': False, 'action': 'merge'}]
+    monkeypatch.setattr(pr_actions, 'evaluate', lambda root, refs=None: (1, approved))
+    monkeypatch.chdir(root / 'repo')
+    if path == 'merge check':
+        result = merge.check(REF, root)
+        code, text = result.exit, result.reason or ''
+    elif path == 'wuwei merge':
+        code = main(['merge', '7'])
+        text = capsys.readouterr().out
+    elif path == 'pr act':
+        code = pr_actions.act(root, REF)
+        text = capsys.readouterr().out
+    elif path == 'pr guard':
+        code, text = guard({'cwd': str(root / 'repo'), 'tool_input': {'command': 'gh pr merge 7'}})
+    else:
+        shepherd.overnight(root)
+        capsys.readouterr()
+        [event] = [row['payload'] for row in records(workspace.day_dir(root) / 'events.jsonl')
+                   if row['kind'] == 'shepherd.overnight']
+        code, text = (1 if event['outcome'] == 'queued' else 0), event['reason']
+    held = 'owner merges: owner_merge set by owner on 2026-09-29' in text
+    if flag == 'set':
+        assert code == 1 and held and merged_calls(host) == [], (path, grant, code, text)
+        return
+    assert not held and 'owner_merge' not in text, (path, grant, text)
+    merges = [(REF, SHA)] if path in ('wuwei merge', 'pr act') else []
+    assert merged_calls(host) == merges, (path, grant, text)
+    if path == 'overnight shepherd':
+        assert text.startswith('merge cleared by policy; '), text
+    elif path == 'merge check':
+        assert code == 0, text

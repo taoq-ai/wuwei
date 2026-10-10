@@ -93,7 +93,8 @@ _OWNER_ACTIONS = {
     ('plan', 'set'): ('Spec overrides are an owner action, outside agent tools: the owner runs bin/wuwei plan '
                       'set <item> spec=skipped --reason <why> in a host terminal. To link an existing ticket, '
                       "the planner runs bin/wuwei plan set <item> ticket=<id> after the owner's card answer; "
-                      'under strict the owner runs it in a host terminal.'),
+                      'under strict the owner runs it in a host terminal. A seat or the planner records '
+                      "owner_merge=true itself; clearing it (owner_merge=false) is the owner's, in a host terminal."),
     # #636: item tickets are the planner's; a class create (--bug, --triage, --follow-up) is a seat's.
     ('tracker', 'create'): ("Item tickets are the planner's (#636): a seat hands the item back to the planner, "
                             "which proposes the ticket on the item's card and opens it on the owner's answer. "
@@ -166,6 +167,12 @@ def _seat_docs_set(action):
             and (not rest or len(rest) == 2 and rest[0] == '--reason'
                  or len(rest) == 1 and rest[0].startswith('--reason='))
             and not any(re.search(r'[$`*?\[{]', word) for word in action))
+
+
+def _seat_owner_merge(action):
+    """#678: the literal plan set <item> owner_merge=true; it only narrows what WUWEI may merge."""
+    return (len(action) == 4 and list(action[:2]) == ['plan', 'set'] and not action[2].startswith('-')
+            and action[3] == 'owner_merge=true' and not re.search(r'[$`*?\[{]', action[2]))
 
 
 def _planner_pace_set(action):
@@ -284,7 +291,7 @@ def _owner_action(commands, text, relevant, cwd, script=False, edits=(frozenset(
         if read_only(action):  # #348: --help prints usage and runs nothing
             continue
         if (reason := _owner_reason((group, verb))) and not (not xargs and (
-                _seat_docs_set(action) or _seat_class_create(action))):
+                _seat_docs_set(action) or _seat_class_create(action) or _seat_owner_merge(action))):
             if (group, verb) == ('outbound', 'learn') and edits[1]:
                 continue  # The registered planner session, in any posture.
             # #579: the registered planner changes the day's pace below strict; strict asks nothing.

@@ -39,9 +39,11 @@ def register(subparsers):
         command.add_argument('item')
         command.add_argument('--reason', help='Why; written into the record on one line')
     assign = actions.add_parser('set', help="Record an item's value: spec=required|skipped, "
-                                            'docs=<page>|new|none or ticket=<id>; or the day: pace=<p>')
+                                            'docs=<page>|new|none, ticket=<id> or owner_merge=true|false; '
+                                            'or the day: pace=<p>')
     assign.add_argument('item', help='The item id, or pace=careful|steady|fast for the day')
-    assign.add_argument('assignment', nargs='?', help='spec=required|skipped, docs=<page>|new|none or ticket=<id>')
+    assign.add_argument('assignment', nargs='?', help='spec=required|skipped, docs=<page>|new|none, '
+                                                      'ticket=<id> or owner_merge=true|false')
     assign.add_argument('--reason', help='Why; required for spec=skipped and docs=none')
     parser.set_defaults(func=run)
 
@@ -87,13 +89,15 @@ def run(args):
             elif key == 'docs' and value:
                 from wuwei import docs
                 print(docs.assign(args.item, value, args.reason))
+            elif key == 'owner_merge':
+                print(plan.set_owner_merge(args.item, value))
             elif key == 'ticket':
                 plan.set_ticket(args.item, value)
                 print(f'{args.item}: ticket {value}')
             else:
-                raise ValueError(f'plan set: {args.assignment} is not a spec, docs or ticket value; run '
-                                 f'bin/wuwei plan set {args.item} spec=required|skipped, docs=<page>|new|none '
-                                 'or ticket=<id>, or bin/wuwei plan set pace=careful|steady|fast. '
+                raise ValueError(f'plan set: {args.assignment} is not a spec, docs, ticket or owner_merge value; run '
+                                 f'bin/wuwei plan set {args.item} spec=required|skipped, docs=<page>|new|none, '
+                                 'ticket=<id> or owner_merge=true|false, or bin/wuwei plan set pace=careful|steady|fast. '
                                  'Pass --reason "<why>" with spec=skipped or docs=none')
         elif args.action in ('carry', 'park'):
             outcome = {'carry': 'carried', 'park': 'parked'}[args.action]

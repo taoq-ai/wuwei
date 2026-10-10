@@ -353,6 +353,15 @@ builder records `bin/wuwei plan set <item> docs=<page>|new|none --reason "<why>"
 markdown writes the file with `bin/wuwei docs page <item>`. `wuwei next` shows a `docs` row
 until it does, and `close` names any merged item whose docs were never written.
 
+To keep an item's merge for yourself, tell the planner (or name it under `Change something` on
+the morning card); it records `bin/wuwei plan set <item> owner_merge=true`. From then on
+`wuwei merge`, `merge check`, `pr act`, the PR guard and the overnight shepherd refuse that
+PR, under any grant, with `owner merges: owner_merge set by <who> on <date>`. The PR carries
+the `owner-merge` label and, when raised after the flag, an `Owner merges:` line in its body.
+Only you clear it, with `bin/wuwei plan set <item> owner_merge=false` in a host terminal; the
+next pass then follows the normal merge policy. If you merge it by hand instead, the item
+moves to `merged` with the flag still set, so the record shows which way it went.
+
 With a tracker set up, every item has a [ticket](concepts.md#ticket). The plan proposes one
 per item and Approve opens or links them. An item still without one stops with a line naming
 its card; under strict the line names `bin/wuwei tracker create <item>` for a host terminal. The board and the loop DM show the

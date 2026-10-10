@@ -117,6 +117,9 @@ def test_write_failure(case, response, tmp_path, monkeypatch):
     ('request_reviewers', ['acme/widget#7', '--admin']),
     ('comment', ['acme/widget#7', 'body', '../reviews']),
     ('revert_pr', ['https://evil.test/acme/widget/pull/7']),
+    ('label', ['acme/widget#7', 'other', True]),
+    ('label', ['acme/widget#7', 'owner-merge', 'yes']),
+    ('label', ['../widget#7', 'owner-merge', True]),
 ])
 def test_invalid_write_input_never_spawns(operation, args, monkeypatch):
     def forbidden(*args, **kwargs):
@@ -327,6 +330,19 @@ def test_protection_requires_deletion_setting(monkeypatch):
     assert adapter().protection(*case['args']).exit == 2
 
 
+@pytest.mark.parametrize('step,labels', [
+    ({'stdout': '[{"name": "bug"}]'}, ['bug']),
+    ({'exit': 1, 'stderr': 'gh: Label does not exist (HTTP 404)'}, []),
+])
+def test_label_removal_treats_a_missing_label_as_absent(step, labels, monkeypatch):
+    # #678: clearing owner_merge removes the label; a PR without it is already clean.
+    calls = install_replay(monkeypatch, 'gh', [{'argv': [
+        'api', 'repos/acme/widget/issues/7/labels/owner-merge', '--method', 'DELETE',
+        '--hostname', 'github.com'], **step}])
+    result = adapter().label('acme/widget#7', 'owner-merge', False)
+    assert (result.exit, result.data) == (0, {'labels': labels}) and len(calls) == 1
+
+
 def test_pr_not_found_names_the_404(monkeypatch):
     # #606: outward._pr_context reads this reason to tell an issue reference from a PR.
     install_replay(monkeypatch, 'gh', [{'exit': 1, 'stderr': 'gh: Not Found (HTTP 404)'}])
@@ -496,7 +512,7 @@ def test_stderr_line_search_has_no_email(monkeypatch):
 def test_issue_opens_through_the_allowlisted_api(tmp_path, monkeypatch):
     # #422: the attributed telemetry week; the validated body skips the outward lint by design.
     from wuwei import registry
-    assert registry.INTERFACES['code_host'][-1] == 'issue'
+    assert 'issue' in registry.INTERFACES['code_host']
     assert registry.PARAMETERS['code_host']['issue'] == ('repo', 'title', 'body')
     calls = install_replay(monkeypatch, 'gh', [{
         'argv': ['api', 'repos/acme/widget/issues', '--method', 'POST', '--input', '-', '--hostname', 'github.com'],
