@@ -66,6 +66,9 @@ def _run(args, payload=None, *, json_output=True, env=None):
             repo, number = _ref(url)
             allowed = (url == f'https://github.com/{repo}/pull/{number}' and
                        bool(_sha(sha)) and payload is None)
+        case ['pr', 'ready', url]:  # #726: take an owned draft out of draft
+            repo, number = _ref(url)
+            allowed = url == f'https://github.com/{repo}/pull/{number}' and payload is None
         case ['api', '--include', 'user']:
             allowed = payload is None and not json_output
         case ['api', 'user']:
@@ -614,6 +617,13 @@ def merge(ref, sha, root=None):
     _run(['pr', 'merge', f'https://github.com/{repo}/pull/{number}',
           '--squash', '--match-head-commit', _sha(sha)], json_output=False)
     return {'accepted': True, 'sha': sha}
+
+
+@_operation
+def ready(ref, root=None):
+    repo, number = _ref(ref)
+    _run(['pr', 'ready', f'https://github.com/{repo}/pull/{number}'], json_output=False)
+    return {'ready': True}
 
 
 @_operation

@@ -427,6 +427,25 @@
     }
   },
   {
+    "operation": "ready",
+    "args": [
+      "acme/widget#7"
+    ],
+    "steps": [
+      {
+        "argv": [
+          "pr",
+          "ready",
+          "https://github.com/acme/widget/pull/7"
+        ],
+        "stdout": ""
+      }
+    ],
+    "data": {
+      "ready": true
+    }
+  },
+  {
     "operation": "revert_pr",
     "args": [
       "acme/widget#7"

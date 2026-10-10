@@ -121,6 +121,8 @@ def test_write_failure(case, response, tmp_path, monkeypatch):
     ('label', ['acme/widget#7', 'other', True]),
     ('label', ['acme/widget#7', 'owner-merge', 'yes']),
     ('label', ['../widget#7', 'owner-merge', True]),
+    ('ready', ['https://evil.test/acme/widget/pull/7']),
+    ('ready', ['../widget#7']),
 ])
 def test_invalid_write_input_never_spawns(operation, args, monkeypatch):
     def forbidden(*args, **kwargs):

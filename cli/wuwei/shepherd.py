@@ -275,7 +275,7 @@ def post_review_request(root, ref):
         return 2
 
 
-def raise_pr(root, repo_name, base, title, body, item):
+def raise_pr(root, repo_name, base, title, body, item, draft=False):
     """Raise a prepared, pushed branch after the existing pre-PR gate."""
     try:
         from wuwei.guards.pr import gate_check
@@ -323,6 +323,7 @@ def raise_pr(root, repo_name, base, title, body, item):
             body += f'\n\nReview tier: {row["gates"]["tier"]} ({", ".join(dispatch.gate_set(row))})'
         if hold := merge.owner_hold(row):  # #678: the PR's record of who keeps the merge
             body += f'\n\nOwner merges: owner_merge set by {hold[0]} on {hold[1]}'
+        draft = draft or bool(hold)  # #726: an owner-merged item opens as a draft
         if not settings['fast_checks'] and 'checks: none configured' not in body:  # #600 acceptance 1
             body = body.rstrip() + '\n\nchecks: none configured'
         code, reason = outward.lint(title + '\n' + body, 'code_host', config, root=root)
@@ -350,12 +351,12 @@ def raise_pr(root, repo_name, base, title, body, item):
         host = registry.load('code_host', config)
         head_branch = merge.read(vcs.branch, str(repo_path), root=root)['name']
         created = merge.read(host.create_pr, {'repo': repo_name, 'base': base,
-            'head': head_branch, 'title': title, 'body': body}, root=root)
+            'head': head_branch, 'title': title, 'body': body, 'draft': draft}, root=root)
         ref = pull_request(f'{repo_name}#{created["number"]}')
         pr = merge.checked_pr(host, ref, root)
-        if pr['head'] != head or pr['url'] != created['url']:
-            raise ValueError('created PR does not match checked head and URL; run bin/wuwei pr state to read the PR before any retry')
-        state.record_pr(root, item, ref, raised=True, head=head, reviewers=reviewers)
+        if pr['head'] != head or pr['url'] != created['url'] or pr['draft'] != draft:
+            raise ValueError('created PR does not match checked head, URL and draft; run bin/wuwei pr state to read the PR before any retry')
+        state.record_pr(root, item, ref, raised=True, head=head, reviewers=reviewers, draft=draft)
         if hold:
             merge.read(host.label, ref, merge.LABEL, True, root=root)
         if use:
@@ -366,8 +367,7 @@ def raise_pr(root, repo_name, base, title, body, item):
             if set(requested['requested']) != set(reviewers):
                 raise ValueError('reviewer request could not be verified; run bin/wuwei pr state to read the PR before any retry')
         print(ref)
-        if not reviewers:
-            print(obligations.SOLO)
+        print('reviewers: ' + ' '.join(reviewers) if reviewers else obligations.SOLO)
         return 0
     except (merge.Refused, state.StateError) as exc:
         print(exc)

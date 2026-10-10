@@ -18,6 +18,7 @@ def register(subparsers):
     raise_cmd.add_argument('--title', required=True)
     raise_cmd.add_argument('--body-file', required=True)
     raise_cmd.add_argument('--item', required=True)
+    raise_cmd.add_argument('--draft', action='store_true', help='Open the PR as a draft; automatic for an owner_merge item')
     raise_cmd.set_defaults(func=run_raise)
     claim = commands.add_parser('claim', help='Claim an existing PR; with no item, create one (adopted)')
     claim.add_argument('ref')
@@ -39,6 +40,7 @@ def register(subparsers):
     mode = act.add_mutually_exclusive_group()
     mode.add_argument('--run', action='store_true', help='Execute the returned rebase step')
     mode.add_argument('--complete', action='store_true', help='Finish a manually resolved rebase')
+    mode.add_argument('--ready', action='store_true', help='Mark a draft PR ready for review')
     mode.add_argument('--reply', help='Composed answer to the next unanswered review question')
     act.set_defaults(func=run_act)
     record = commands.add_parser('disposition')
@@ -66,7 +68,8 @@ def run_raise(args):
     if path.is_symlink() or not path.is_file():
         raise ValueError(f'body file must be a regular file; {DAMAGED}')
     return shepherd.raise_pr(workspace.find_workspace(), args.repo, args.base,
-                             args.title, path.read_text(encoding='utf-8'), args.item)
+                             args.title, path.read_text(encoding='utf-8'), args.item,
+                             draft=args.draft)
 
 
 def run_claim(args):
@@ -99,4 +102,4 @@ def run_ping_check(args):
 
 def run_act(args):
     return pr_actions.act(workspace.find_workspace(), args.ref, run=args.run,
-                          complete=args.complete, reply=args.reply)
+                          complete=args.complete, reply=args.reply, ready=args.ready)
