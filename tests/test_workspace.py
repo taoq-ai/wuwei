@@ -1435,7 +1435,7 @@ def test_upgrade_counts_the_unanswered_setup_questions(tmp_path, monkeypatch, ca
     for day in ('2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28'):
         (tmp_path / '.wuwei/days' / day).mkdir(parents=True)
     count = len(interview.unanswered(tmp_path, ['example/project']))
-    line = f'setup: {count} questions unanswered: bin/wuwei setup, or the planner asks them on cards'
+    line = f'setup: {count} questions unanswered: {interview.HOW}'
     for dry_run in (True, False):
         code, out = upgraded(tmp_path, capsys, dry_run=dry_run)
         assert code == 0 and line in out.out.splitlines(), out

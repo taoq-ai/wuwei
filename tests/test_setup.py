@@ -708,6 +708,19 @@ def test_no_terminal_writes_nothing(project, host, terminal, monkeypatch, capsys
     assert not (project / '.wuwei').exists()
 
 
+def test_no_terminal_inside_a_workspace_prints_the_interview_cards(workspace, monkeypatch, capsys):
+    # #635: a session without a terminal asks the interview on cards instead of being refused.
+    import json
+    import sys
+
+    monkeypatch.setattr(sys.stdin, 'isatty', lambda: False, raising=False)
+    assert run_setup(Confirm()) == 0
+    out = capsys.readouterr().out
+    widgets = json.loads(out)
+    assert widgets and all('question' in widget and 'record' in widget for widget in widgets)
+    assert any('calibrate --answer' in widget['record'] for widget in widgets)
+
+
 def test_empty_directory_owes_add_repo(tmp_path, project, host, terminal, monkeypatch, capsys):
     empty = tmp_path / 'empty'
     empty.mkdir()

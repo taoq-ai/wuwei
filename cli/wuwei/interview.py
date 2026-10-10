@@ -654,7 +654,7 @@ def _recorded(root):
     return found
 
 
-HOW = 'bin/wuwei setup, or the planner asks them on cards'
+HOW = 'the planner asks them on cards (bin/wuwei calibrate --questions), or bin/wuwei setup in a host terminal'
 
 
 def unanswered(root, repos):

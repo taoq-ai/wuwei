@@ -492,7 +492,8 @@ def test_workspace_interview_counts_the_unanswered(ws):
     count = len(interview.unanswered(ws.root, ['acme/widget']))
     found = row(doctor.diagnose(), 'interview')
     assert (found['status'], found['value'], found['fix']) == (
-        'warn', f'{count} questions unanswered', W('setup, or the planner asks them on cards'))
+        'warn', f'{count} questions unanswered',
+        'the planner asks them on cards (' + W('calibrate --questions') + '), or ' + W('setup in a host terminal'))  # #635
     path.write_text('not json')
     assert row(doctor.diagnose(), 'interview')['status'] == 'unmeasured'
 
