@@ -169,7 +169,8 @@ def test_card(root, capsys):
         'Approve, mode send']
     from wuwei import decision
     fields = decision.evaluate((workspace.day_dir(root) / 'decisions/D-1.md').read_text())[0]
-    assert question['record'] == f'wuwei decide D-1 "<label>" --card {decision.card_hash("D-1", fields)}'
+    assert question['record'] == (
+        f'{workspace.owner_cli(root)} decide D-1 "<label>" --card {decision.card_hash("D-1", fields)}')
     capsys.readouterr()
     assert card(root, capsys) == widget and decisions(root) == ['D-1.md']
 

@@ -406,7 +406,7 @@ def widget(root):
         return []  # an earlier day's record: the question guard cannot cite it today
     fields, _ = decision.evaluate(path.read_text(encoding='utf-8'), decision.LENSES)
     question = decision.record_widget(identifier, fields, RECORD,
-                                      workspace.verbosity(workspace.load_config(root), 'decisions'))
+                                      workspace.verbosity(workspace.load_config(root), 'decisions'), root=root)
     for option in question['options']:
         if decision.option_id(fields, option['label']) == 'proceed':
             option['description'] = '\n'.join([option['description'], *findings(root)])
