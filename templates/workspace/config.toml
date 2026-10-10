@@ -277,6 +277,8 @@ loop_threshold = 9
 
 # [nudges]
 # mode = "" # off, next or all. Empty follows autonomy.mode: off when autonomous, next when supervised.
+# ttl_hours = 24 # A nudge with no new event for this many hours leaves the list.
+# max_open = 20 # At most this many open nudges; the oldest go, counted in one nudges.dropped line.
 
 [decisions]
 wait_hours = 24 # Weekday hours an external confirmation waits before the sweep acts.

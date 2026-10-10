@@ -212,7 +212,7 @@ def test_config_defaults_and_independence(tmp_path):
     assert outward['banned_characters'] == ['emoji', '\u2014', '\u2015', '\u2e3a', '\u2e3b']
     assert outward['max_length'] == {}
     assert config.pop('autonomy') == {'mode': 'autonomous'}  # #530
-    assert config.pop('nudges') == {'mode': ''}  # #742
+    assert config.pop('nudges') == {'mode': '', 'ttl_hours': 24, 'max_open': 20}  # #742, #786
     assert config == {
         'scanner': {'severity_threshold': 'high', 'mcp': {
             'project_file': '.mcp.json', 'plugins_file': '~/.claude/plugins/installed_plugins.json',

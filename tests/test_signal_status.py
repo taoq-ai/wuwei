@@ -743,7 +743,7 @@ def test_scan_reads_the_day_with_universal_newlines(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
     rows, *_ = status.scan(directory)
-    assert [row['source'] for row in rows].count('hook.warning') == 2
+    assert sum(row['count'] for row in rows if row['source'] == 'hook.warning') == 2  # #786: folded
     assert not any(row['source'] == 'unreadable event' for row in rows)
     path.write_bytes(b'{"kind": "hook.warning", "payload": {"reason": "\xff"}, "ts": "' + NOW.encode() + b'"}\n')
     with pytest.raises(UnicodeDecodeError):
@@ -765,7 +765,7 @@ def test_scan_skip_matches_decoding_every_line(tmp_path, monkeypatch):
     skipped = status.scan(directory)
     monkeypatch.setattr(status, 'LINES', r'([^\n]*)\n?')
     assert skipped == status.scan(directory)
-    assert [row['source'] for row in skipped[0]].count('hook.warning') == 3
+    assert sum(row['count'] for row in skipped[0] if row['source'] == 'hook.warning') == 3  # #786: folded
     assert any(row['source'] == 'unreadable event' for row in skipped[0])
 
 
@@ -813,7 +813,7 @@ def test_issue_acceptance_nudges_print_lines(tmp_path, monkeypatch, capsys):
     assert capsys.readouterr().out.splitlines() == list(dict.fromkeys(expected[r['source']] for r in rows))
     assert main(['nudges', '--json']) == 0
     assert capsys.readouterr().out == json.dumps(rows, allow_nan=False) + '\n'
-    assert [r['source'] for r in rows].count('mcp.checked') == 2
+    assert [r['count'] for r in rows if r['source'] == 'mcp.checked'] == [2]  # #786: one row, counted
     (directory / 'events.jsonl').write_text('')
     (directory / 'state.json').write_text(json.dumps({'cap': 1, 'items': {}}))
     assert main(['nudges']) == 0

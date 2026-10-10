@@ -131,7 +131,7 @@ def scan(directory, classified_state=None, *, config=None):
                     if payload['pin'] != pin:
                         continue
             else:
-                kind, payload = 'unreadable event', {}
+                kind, payload, stamp = 'unreadable event', {}, None
             if kind == 'watch: sweep' and isinstance(payload, dict):
                 current = {key: value for key, value in current.items() if key[0] != 'watch: sweep'}
                 fields = (('reply_owed', 'reply', 'nudge'),
@@ -160,8 +160,12 @@ def scan(directory, classified_state=None, *, config=None):
                 key = (kind, payload.get('id', number))
             elif kind == 'guard.would_refuse' and isinstance(payload, dict):
                 key = (kind, payload.get('guard'))
-            else:
+            elif tier == 'page':
                 key = (kind, number)
+            else:  # #786: one row per subject, so a repeat folds in and a later silent event of the kind clears it
+                subject = (payload.get('pr') or payload.get('item') or payload.get('reason', kind)) \
+                    if isinstance(payload, dict) else kind
+                key = (kind, str(subject))
             if tier == 'silent':
                 current.pop(key, None)
             else:
@@ -180,7 +184,9 @@ def scan(directory, classified_state=None, *, config=None):
                     waiting = mcp.pending(directory.parents[2])
                     reason = 'MCP {} {} finding on {}: run '.format(*shown) + (
                         mcp.command(waiting) if waiting else 'bin/wuwei mcp check')
-                current[key] = {'tier': tier, 'source': kind, 'lane': lane, 'reason': reason}
+                current[key] = {'tier': tier, 'source': kind, 'lane': lane, 'reason': reason,
+                                'count': current.get(key, {}).get('count', 0) + 1,
+                                'ts': stamp if isinstance(stamp, str) else None}
     # Live health, not the last sweep's count: a partial sweep event must not hide a dead watch.
     current = {key: value for key, value in current.items() if key[:2] != ('watch: sweep', 'watch')}
     health = {}
@@ -253,6 +259,28 @@ def scan(directory, classified_state=None, *, config=None):
     return rows, health['watch'], health['listen'], beat_health, loops
 
 
+def _tidy(rows, now, limits=None):
+    """#786: drop nudges quiet for nudges.ttl_hours, keep the newest nudges.max_open, the
+    nudges.dropped row included. Pages, and rows without ts, never age out."""
+    limits = limits or {key: rule[1] for key, rule in workspace.SCHEMA['nudges'].items()}
+    ttl, cap = limits['ttl_hours'], limits['max_open']
+
+    def seen(row):
+        return datetime.fromisoformat(row['ts']).astimezone() if row.get('ts') else now
+
+    nudges = [row for row in rows if row['tier'] == 'nudge']
+    fresh = [row for row in nudges if now - seen(row) <= timedelta(hours=ttl)]
+    expired = len(nudges) - len(fresh)
+    if not expired and len(fresh) <= cap:
+        return rows
+    kept = {id(row) for row in sorted(fresh, key=seen, reverse=True)[:cap - 1]}
+    dropped = len(fresh) - len(kept)
+    return [row for row in rows if row['tier'] != 'nudge' or id(row) in kept] + [{
+        'tier': 'nudge', 'source': 'nudges.dropped', 'lane': 'Work',
+        'reason': f'{expired} expired after nudges.ttl_hours = {ttl}, {dropped} dropped over nudges.max_open = {cap}',
+        'expired': expired, 'dropped': dropped}]
+
+
 def surfaced(directory, rows, data=None, config=None):
     """(mode, rows) the surfaces show under nudges.mode (#742): pages always; off drops every
     nudge; next keeps an unrecorded phone answer and adds a ready fix round and a pending close;
@@ -260,6 +288,8 @@ def surfaced(directory, rows, data=None, config=None):
     if config is None and (directory.parents[1] / 'config.toml').is_file():
         config = workspace.load_config(directory.parents[2])
     mode = 'all' if config is None else workspace.nudge_mode(config)
+    # #786: the surfaces see the tidied list; scan keeps every row for health counts and --all.
+    rows = _tidy(rows, workspace.now(), config['nudges'] if config is not None else None)
     if mode == 'all':
         return mode, rows
     shown = [row for row in rows if row['tier'] != 'nudge'
@@ -304,7 +334,7 @@ def snapshot(directory, line=False):
     result['answered'] = [row['reason'] for row in active if row['source'] == 'decision.answered']
     result['nudges_mode'], shown = surfaced(directory, active, data, config)
     result['nudges'] = sum(row['tier'] == 'nudge' for row in shown)
-    result['trace_gaps'] = sum(row['source'] == 'traces.gap' for row in active)
+    result['trace_gaps'] = sum(row.get('count', 1) for row in active if row['source'] == 'traces.gap')
     result['prs_changed'] = sum(row['source'] == 'pr.changed' for row in active)
     result['solo'] = any(row == [] for row in data.get('pr_reviewers', {}).values())
     result['plan'] = (directory / 'plan.md').is_file()
