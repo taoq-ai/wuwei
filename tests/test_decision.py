@@ -767,14 +767,27 @@ def test_owner_outcome_without_a_terminal_names_the_owner_action(ws, monkeypatch
 
 
 @pytest.mark.parametrize('command', [['decision', 'outcome'], ['decide']])
-def test_outcome_accepts_the_card_hash(ws, monkeypatch, command):
-    """#661: the record command a card names parses; #599 binds the hash in the CLI."""
+def test_outcome_accepts_the_card_hash(planner, monkeypatch, capsys, command):
+    """#661: the record command a card names parses; #599 binds the hash to the record's card."""
     from wuwei.__main__ import main
-    monkeypatch.chdir(ws)
-    save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
+    from wuwei import decision
+    from wuwei.guards.decision import record_gate
+    monkeypatch.chdir(planner)
+    text = VALID.replace('Reversibility: two-way', 'Reversibility: one-way')
+    save(planner, text)
     assert main(['decision', 'route', 'D-3']) == 0
-    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
-    assert main([*command, 'D-3', 'B', '--from-card', 'abcdef012345']) == 0
+    calls = []
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: calls.append(value) or True)
+    monkeypatch.setenv('WUWEI_SESSION_ID', 'planner-1')
+    capsys.readouterr()
+    assert main([*command, 'D-3', 'B', '--from-card', 'abcdef012345']) == 1
+    assert 'decision show D-3 --widget' in capsys.readouterr().err
+    assert record_gate({'cwd': str(planner), 'session_id': 'planner-1', 'tool_name': 'AskUserQuestion',
+                        'tool_input': {'questions': [{'question': 'D-3: Which fix?', 'header': 'D-3'}]},
+                        'tool_response': {'answers': {'D-3: Which fix?': 'B'}}}) == (0, '')
+    card = decision.card_hash('D-3', decision.evaluate(text)[0])
+    assert main([*command, 'D-3', 'B', '--card', card]) == 0, capsys.readouterr().err
+    assert calls == []
 
 
 def test_owner_reversal_is_recorded_once_and_measured(ws, monkeypatch):
