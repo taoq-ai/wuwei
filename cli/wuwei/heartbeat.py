@@ -78,10 +78,12 @@ def _integrity(root):
 
 
 def _config(root):
+    from wuwei import env
     from wuwei.commands.config import missing
     try:
+        env.load(root)  # #601: the watch is long-lived; read .wuwei/env at each beat, as doctor does
         names = missing(workspace.load_config(root))
-    except workspace.ConfigError as exc:
+    except ValueError as exc:  # ConfigError is one
         return 'failed', str(exc)
     return ('failed', 'missing ' + ', '.join(names)) if names else ('ok', 'complete')
 

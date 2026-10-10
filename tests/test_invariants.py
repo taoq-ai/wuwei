@@ -1340,6 +1340,25 @@ def i46(case, rules):
                 return f'{text!r}: lint exits {recorded} with a recorded value, {unset} without'
         return None
     return rules.memo(('docs missing',), compute)
+def i54(case, rules):
+    """#601: under observe and guarded the traces guard never fails a tool call: a failure is a
+    warning naming what it could not read; strict refuses it."""
+    def compute(posture):
+        from wuwei.guards import traces
+        root = rules.root / 'traces-floor'  # its own workspace: security required, material unreadable
+        (root / '.wuwei').mkdir(parents=True, exist_ok=True)
+        (root / '.wuwei/security.json').write_text('{}')
+        (root / '.wuwei/config.toml').write_text(f'[security]\nrequired = true\nposture = "{posture}"\n')
+        payload = {'hook_event_name': 'PostToolUse', 'session_id': 'fixture', 'cwd': str(root),
+                   'tool_name': 'Read', 'tool_input': {'file_path': 'README.md'}}
+        with contextlib.redirect_stderr(io.StringIO()):
+            return traces.check(payload)
+    code, reason = rules.memo(('traces floor', case[0]), lambda: compute(case[0]))
+    if case[0] == 'strict':
+        return None if code == 2 and 'the security material' in reason else f'strict gave {code} {reason}'
+    return None if (code, reason) == (0, '') else f'{case[0]} gave {code} {reason}'
+
+
 def i50(case, rules):
     """#659: a traces guard that did not finish in time never fails a tool call below strict:
     a TimeoutError is a warning naming its elapsed milliseconds; strict refuses it."""
@@ -1410,7 +1429,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46,
               'I36': i36, 'I37': i37, 'I44': i44,
               'I36': i36, 'I37': i37, 'I39': i39, 'I50': i50,
-              'I36': i36, 'I37': i37, 'I41': i41}
+              'I36': i36, 'I37': i37, 'I41': i41,
+              'I36': i36, 'I37': i37, 'I54': i54}
 
 
 def project(case):
@@ -1440,7 +1460,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (),
          'I44': (),
          'I39': (), 'I50': (0,),
-         'I41': ()}
+         'I41': (),
+         'I54': (0,)}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 

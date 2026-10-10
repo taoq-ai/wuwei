@@ -123,3 +123,44 @@ def test_no_tracker_lifecycle_is_unmeasured(tmp_path):
     (tmp_path / '.wuwei/config.toml').write_text('')
     result = dispatch.tracker_call('ABC-1', 'claim', tmp_path)
     assert result.exit == 2 and result.reason.startswith('tracker adapter is none, so tracker updates are skipped;')
+
+
+def test_discover_lists_every_repository_and_narrows_with_repo(tmp_path, monkeypatch, capsys):
+    # #601: candidates name their source repository; --repo narrows to one configured repository.
+    from wuwei.__main__ import main
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text('[adapters]\ntracker = "linear"\n' + ''.join(
+        f'[[repos]]\nname = "{name}"\npath = "{name}"\ndefault_branch = "main"\n'
+        for name in ('acme/app', 'acme/app-docs')))
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    tracker = Fake({'backlog': registry.Result(0, [{'id': 'acme/app#1', 'title': 'A'},
+                                                   {'id': 'acme/app-docs#2', 'title': 'B'},
+                                                   {'id': 'ENG-3', 'title': 'C'}])})
+    monkeypatch.setattr(registry, 'load', lambda kind, config: tracker)
+    assert main(['discover']) == 0
+    assert json.loads(capsys.readouterr().out)['candidates'] == [
+        {'id': 'acme/app#1', 'title': 'A', 'source': 'tracker', 'repo': 'acme/app'},
+        {'id': 'acme/app-docs#2', 'title': 'B', 'source': 'tracker', 'repo': 'acme/app-docs'},
+        {'id': 'ENG-3', 'title': 'C', 'source': 'tracker'}]
+    assert main(['discover', '--repo', 'acme/app-docs']) == 0
+    assert [row['id'] for row in json.loads(capsys.readouterr().out)['candidates']] == ['acme/app-docs#2', 'ENG-3']
+    assert main(['discover', '--repo', 'acme/unknown']) == 2
+    err = capsys.readouterr().err
+    assert 'acme/unknown is not a configured repository' in err and 'acme/app, acme/app-docs' in err
+
+
+def test_discover_repo_counts_a_github_tracker_project(tmp_path, monkeypatch, capsys):
+    # #601 review F3: a GitHub tracker.project outside [[repos]] is tagged and selectable.
+    from wuwei.__main__ import main
+    (tmp_path / '.wuwei').mkdir()
+    (tmp_path / '.wuwei/config.toml').write_text(
+        '[adapters]\ntracker = "github"\n[tracker]\nproject = "acme/app-docs"\n'
+        '[[repos]]\nname = "acme/app"\npath = "app"\ndefault_branch = "main"\n')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
+    tracker = Fake({'backlog': registry.Result(0, [{'id': 'acme/app#1', 'title': 'A'},
+                                                   {'id': 'acme/app-docs#2', 'title': 'B'}])})
+    monkeypatch.setattr(registry, 'load', lambda kind, config: tracker)
+    assert main(['discover', '--repo', 'acme/app']) == 0
+    assert [row['id'] for row in json.loads(capsys.readouterr().out)['candidates']] == ['acme/app#1']
+    assert main(['discover', '--repo', 'acme/app-docs']) == 0
+    assert [row['id'] for row in json.loads(capsys.readouterr().out)['candidates']] == ['acme/app-docs#2']

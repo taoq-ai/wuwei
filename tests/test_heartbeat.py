@@ -465,3 +465,15 @@ def test_status_line_without_cache_waits_and_errors_never_print_the_cache(ws, ca
     monkeypatch.setattr(status, 'snapshot', broken)
     assert status.run(line_args()) == 2
     assert capsys.readouterr().out == 'WUWEI ? unmeasured\n'
+
+
+def test_config_probe_reads_the_env_file_at_each_beat(ws):
+    # #601: the watch is long-lived; each beat rereads .wuwei/env, as doctor does.
+    from wuwei import env
+    root, _, _, monkeypatch = ws
+    monkeypatch.delenv('GITHUB_TRACKER_TOKEN', raising=False)
+    config(root, '[adapters]\ntracker = "github"\n')
+    with env.session():
+        assert heartbeat.measure(root)['config'] == {'result': 'failed', 'value': 'missing GITHUB_TRACKER_TOKEN'}
+        env.write(root, {'GITHUB_TRACKER_TOKEN': 'fixture-token-value'})
+        assert heartbeat.measure(root)['config'] == {'result': 'ok', 'value': 'complete'}
