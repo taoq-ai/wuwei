@@ -13,13 +13,17 @@ What to build is in the [design spec](docs/specs/2026-09-24-wuwei-design.md).
 - One GitHub issue is one spec-kit feature: `specify`, then `plan`, then `tasks`, then
   `implement`. The skills are in `.agents/skills/`.
 - Test first: write the failing test, run it, see it fail, then implement.
-- Runtime code is stdlib only, Python 3.11 or newer. pytest is a dev dependency only.
+- Runtime code is stdlib only, Python 3.11 or newer. pytest and pytest-xdist are dev
+  dependencies only.
 - Keep it simple: reuse what exists, shortest working diff.
 - No emojis and no em-dashes in anything you write.
 
 ## Before you open a pull request
 
 - Run the suite from the repository root: `python3 -m pytest -q`. It must pass.
+  In parallel: `python3 -m pytest -q -n auto --dist loadgroup` (the timing tests share one
+  worker). While you work, `python3 scripts/changed_tests.py` runs only the tests your diff
+  against origin/main touches; extra arguments go to pytest.
 - If you change the hero, run `python3 scripts/build-hero.py` and commit both SVGs.
 - Use conventional commit messages (`feat:`, `fix:`, `docs:` and so on).
 - A pull request merges with the suite green and an adversarial review covering

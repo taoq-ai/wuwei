@@ -826,6 +826,7 @@ def assert_latency_budget(name, cpu_ms, wall_ms, capsys, *, wall_budget=None, ru
         pytest.skip(report)
 
 
+@pytest.mark.xdist_group('timing')
 @pytest.mark.parametrize('event', ['PreToolUse', 'PostToolUse'])
 def test_hook_latency(subprocess_plugin, capsys, event):
     from resource import RUSAGE_CHILDREN, getrusage
@@ -867,6 +868,7 @@ GUARDS = [Guard('PreToolUse', 'Bash', check)]
     assert 'run git or gh as a plain command' in result.stderr
 
 
+@pytest.mark.xdist_group('timing')
 def test_status_line_latency(subprocess_plugin, capsys):
     from resource import RUSAGE_CHILDREN, getrusage
     from statistics import quantiles
@@ -1024,6 +1026,7 @@ def seeded_workspace(subprocess_plugin, tmp_path, monkeypatch):
     return (root, env), payloads, reset, calls
 
 
+@pytest.mark.xdist_group('timing')
 @pytest.mark.parametrize('path', ['Stop', 'SubagentStop', 'SessionStart', 'commit', 'push'])
 def test_workspace_hook_latency(seeded_workspace, capsys, path):
     from resource import RUSAGE_CHILDREN, getrusage
@@ -1144,6 +1147,7 @@ def test_no_hook_path_imports_heartbeat():
             assert not any('heartbeat' in name or 'telemetry' in name for name in names), path
 
 
+@pytest.mark.xdist_group('timing')
 def test_heartbeat_latency(seeded_workspace, capsys, monkeypatch, quiet_heartbeat):
     from resource import RUSAGE_CHILDREN, RUSAGE_SELF, getrusage
     from statistics import quantiles

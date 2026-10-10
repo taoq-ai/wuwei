@@ -1,6 +1,7 @@
 """#362: every reason string names a next step, in the voice of its reader."""
 
 import ast
+import functools
 from pathlib import Path
 import re
 
@@ -148,13 +149,17 @@ def person_facing():
     return found
 
 
+@functools.cache
 def all_reasons():
+    """Every reason as (rel, line, text, family, seat); read once per run (#685)."""
+    found = []
     for rel, source in _sources():
         tree = ast.parse(source)
         ranges = _person_ranges(rel, tree)
         for line, text, family in reasons(source, rel):
             seat = not any(a <= line <= b for a, b in ranges)
-            yield rel, line, text, family, seat
+            found.append((rel, line, text, family, seat))
+    return tuple(found)
 
 
 def test_collector_finds_a_new_bare_wall():

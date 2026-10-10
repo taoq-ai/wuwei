@@ -220,8 +220,25 @@ def make_repo(path, remote, name='Pat Example'):
         git('-C', str(path), 'remote', 'add', 'origin', remote)
 
 
+@pytest.fixture(scope='module')
+def repos(tmp_path_factory):
+    # #685: the three repositories are built once per module, without the developer's git
+    # config, and copied into each test's project.
+    import os
+
+    root = tmp_path_factory.mktemp('repos')
+    with pytest.MonkeyPatch.context() as patch:
+        for key in list(os.environ):
+            if key.startswith('GIT_'):
+                patch.delenv(key)
+        patch.setenv('HOME', str(tmp_path_factory.mktemp('home')))
+        for name, remote in REMOTES.items():
+            make_repo(root / name, remote)
+    return root
+
+
 @pytest.fixture
-def project(tmp_path, monkeypatch):
+def project(repos, tmp_path, monkeypatch):
     import os
 
     for key in list(os.environ):
@@ -231,8 +248,7 @@ def project(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_NOW', '2026-10-03T09:00:00')
     monkeypatch.setenv('HOME', str(tmp_path / 'home'))
     root = tmp_path / 'project'
-    for name, remote in REMOTES.items():
-        make_repo(root / name, remote)
+    shutil.copytree(repos, root, symlinks=True)
     monkeypatch.chdir(root)
     return root
 

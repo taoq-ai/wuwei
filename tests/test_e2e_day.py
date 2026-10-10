@@ -11,6 +11,7 @@ def day(tmp_path, monkeypatch):
     return Day(tmp_path / 'workspace', monkeypatch)
 
 
+@pytest.mark.xdist_group('timing')
 def test_scripted_day(day):
     started = time.monotonic()
     day.plan()

@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -10,11 +11,25 @@ from wuwei import workspace
 from wuwei.commands import agents, init
 
 
+@pytest.fixture(scope='module')
+def initialized(tmp_path_factory):
+    # #685: init once per module, under the environment conftest gives a test, and copy it per test.
+    root = tmp_path_factory.mktemp('secured')
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv('HOME', str(tmp_path_factory.mktemp('home')))
+        for key in ('WUWEI_WORKSPACE', 'GH_TOKEN', 'GITHUB_TOKEN', 'WUWEI_SESSION_ID', 'CLAUDE_ENV_FILE',
+                    'SLACK_OWNER_DM_CHANNEL', 'SLACK_API_BASE'):
+            patch.delenv(key, raising=False)
+        patch.chdir(root)
+        assert init.run(SimpleNamespace(path=str(root))) == 0
+    return root
+
+
 @pytest.fixture
-def secured(tmp_path, monkeypatch):
+def secured(initialized, tmp_path, monkeypatch):
     monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
     monkeypatch.chdir(tmp_path)
-    assert init.run(SimpleNamespace(path=str(tmp_path))) == 0
+    shutil.copytree(initialized, tmp_path, symlinks=True, dirs_exist_ok=True)
     return tmp_path
 
 
@@ -22,7 +37,12 @@ def material(root):
     return json.loads((root / '.wuwei/security.json').read_text())
 
 
-def test_init_random_private_material(secured, tmp_path, capsys):
+def test_init_random_private_material(tmp_path, monkeypatch, capsys):
+    # Asserts on what init printed, so init runs here rather than in the copied fixture.
+    secured = tmp_path
+    monkeypatch.delenv('WUWEI_WORKSPACE', raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert init.run(SimpleNamespace(path=str(tmp_path))) == 0
     first = material(secured)
     other = tmp_path / 'other'
     assert init.run(SimpleNamespace(path=str(other))) == 0

@@ -1,6 +1,7 @@
 """#522: the plain tone rule, its lint and the budget every text class keeps."""
 
 import ast
+import functools
 
 import pytest
 
@@ -33,13 +34,18 @@ def _cards():
         yield from (text for _, text, _ in row['choices'])
 
 
+@functools.cache
+def _classes():
+    return {'reasons': tuple(text for _, _, text, _, _ in all_reasons()),
+            'cards': tuple(_cards()),
+            'skills': tuple(p.read_text() for p in sorted(ROOT.glob('skills/*/SKILL.md'))),
+            'charters': tuple(p.read_text() for p in sorted(ROOT.glob('charters/*.md'))),
+            'docs': tuple(p.read_text() for p in [*sorted(ROOT.glob('docs/site/*.md')), ROOT / 'README.md'])}
+
+
 def classes():
-    """{class: [texts]}: the five text classes the plain tone budget holds."""
-    return {'reasons': [text for _, _, text, _, _ in all_reasons()],
-            'cards': list(_cards()),
-            'skills': [p.read_text() for p in sorted(ROOT.glob('skills/*/SKILL.md'))],
-            'charters': [p.read_text() for p in sorted(ROOT.glob('charters/*.md'))],
-            'docs': [p.read_text() for p in [*sorted(ROOT.glob('docs/site/*.md')), ROOT / 'README.md']]}
+    """{class: [texts]}: the five text classes the plain tone budget holds, a fresh copy per call (#685)."""
+    return {name: list(texts) for name, texts in _classes().items()}
 
 
 def test_sentences_skip_what_is_not_prose():

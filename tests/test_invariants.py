@@ -1275,6 +1275,7 @@ def walk(world):
     return failures
 
 
+@pytest.mark.xdist_group('timing')
 def test_invariants_hold(world):
     cases = list(itertools.product(*DIMENSIONS.values()))
     assert len(cases) == CASES and CASES >= 18000
