@@ -765,6 +765,17 @@ def test_owner_outcome_without_a_terminal_names_the_owner_action(ws, monkeypatch
     assert not state.read_state(ws).get('decision_outcomes')
 
 
+@pytest.mark.parametrize('command', [['decision', 'outcome'], ['decide']])
+def test_outcome_accepts_the_card_hash(ws, monkeypatch, command):
+    """#661: the record command a card names parses; #599 binds the hash in the CLI."""
+    from wuwei.__main__ import main
+    monkeypatch.chdir(ws)
+    save(ws, VALID.replace('Reversibility: two-way', 'Reversibility: one-way'))
+    assert main(['decision', 'route', 'D-3']) == 0
+    monkeypatch.setattr('wuwei.integrity._host_confirm', lambda value, **kwargs: True)
+    assert main([*command, 'D-3', 'B', '--from-card', 'abcdef012345']) == 0
+
+
 def test_owner_reversal_is_recorded_once_and_measured(ws, monkeypatch):
     from wuwei.__main__ import main
     from wuwei import metrics

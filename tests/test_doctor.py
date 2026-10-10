@@ -590,10 +590,48 @@ def test_gates_mcp_servers(ws):
     assert found['status'] == 'unmeasured' and found['fix'] == W('mcp check')
 
 
+def test_answered_cards_row(ws):
+    """#661: a card the owner answered whose record command never ran shows on doctor."""
+    from test_decision import pending_draft
+    from wuwei import drafts, sessions
+
+    def asked(*topics, outcomes=None):
+        def update(data):
+            data.setdefault('sessions', {}).setdefault('planner-1', {})['gate_asked'] = list(topics)
+            data.setdefault('decision_outcomes', {}).update(outcomes or {})
+        state._write_state(update, ws.root, reserved=False)
+        return doctor._unrecorded(ws.root)
+
+    assert asked() == []
+    topic = sessions.card_topic('D-2', 'Defer until tomorrow')
+    assert asked('D-2', topic) == ['D-2']
+    found = row(doctor.diagnose(), 'answered cards')
+    assert found['status'] == 'warn' and 'D-2' in found['value']
+    assert 'decision show <id> --widget' in found['fix']
+    from wuwei.decision import today_path
+    record = today_path('D-2', ws.root)
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text('Decided-by: owner\nOutcome: pending\n')  # an MCP decision waiting on the owner
+    assert asked('D-2', topic) == ['D-2']
+    record.write_text('Decided-by: owner\nOutcome: proceed\n')  # mcp.decide records no state outcome
+    assert asked('D-2', topic) == []
+    record.unlink()
+    assert asked('D-2', topic, outcomes={'D-2': {'option': 'B', 'decided_by': 'owner'}}) == []
+    undo = sessions.card_topic('D-3', 'Undo')
+    assert asked(undo, outcomes={'D-3': {'option': 'A', 'decided_by': 'mandate'}}) == []
+    draft_id = pending_draft(ws.root)
+    assert asked(draft_id, f'{draft_id}:send') == [draft_id]
+
+    def broken(data):
+        raise ValueError('drafts: invalid queue')
+    ws.mp.setattr(drafts, 'read', broken)
+    found = row(doctor.diagnose(), 'answered cards')
+    assert (found['status'], found['value']) == ('unmeasured', 'drafts: invalid queue')
+
 def test_day_rows(ws):
     rows = doctor.diagnose()
     assert names(rows, 'day') == ['state', 'planner', 'watch', 'listener', 'shepherd', 'heartbeat', 'stuck seats',
-                                  'nudges', 'traces', 'untraced subagents', 'tracker']
+                                  'nudges', 'traces', 'untraced subagents', 'answered cards', 'tracker']
     assert all(r['status'] == 'ok' for r in rows if r['section'] == 'day'), rows
     assert row(rows, 'listener')['value'] == 'not used'
     assert row(rows, 'untraced subagents')['value'] == 'none today'

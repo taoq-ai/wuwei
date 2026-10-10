@@ -29,6 +29,8 @@ def register(subparsers):
     outcome = commands.add_parser('outcome', help='Record an owner choice from the host terminal')
     outcome.add_argument('id')
     outcome.add_argument('option')
+    outcome.add_argument('--card', '--from-card', dest='card', metavar='HASH',
+                         help="the owner's answer hash on the card (#661; the CLI binds it with #599)")
     outcome.set_defaults(func=run)
     show = commands.add_parser('show', help='Print a decision at the owner verbosity level')
     show.add_argument('id')
