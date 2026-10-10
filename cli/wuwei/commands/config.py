@@ -32,8 +32,12 @@ def register(subparsers):
                         help='dotted key, for example owner.verbosity.default or repos.0.merge_deploys; '
                              'optional with --from-card, which reads it from the answered option')
     parser.add_argument('value', nargs='?', help='one TOML value, for example \'"standard"\' or false')
-    parser.add_argument('--replace', action='store_true',
-                        help='write the value as given instead of adding to the current list or table')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--add', action='store_true',
+                      help='add the items to the current list, or the entries to the current table, '
+                           'instead of replacing it (#673)')
+    mode.add_argument('--replace', action='store_true',
+                      help='write the value as given; the default (#673)')
     parser.add_argument('--from-card', dest='from_card', metavar='D-n',
                         help="the decision card whose answer is this assignment (#529): the owner's "
                              'answer is the confirmation outside strict')

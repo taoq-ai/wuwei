@@ -1,6 +1,7 @@
 """Issue #327: config set, config add-repo and one-command setup with one confirmation."""
 
 import hashlib
+import json
 from pathlib import Path
 import shutil
 from types import SimpleNamespace
@@ -46,8 +47,8 @@ class Confirm:
         return self.answer
 
 
-def config_set(key, value, confirm, replace=False):
-    return setup().set_value(SimpleNamespace(key=key, value=value, replace=replace), confirm=confirm)
+def config_set(key, value, confirm, replace=False, add=False):
+    return setup().set_value(SimpleNamespace(key=key, value=value, replace=replace, add=add), confirm=confirm)
 
 
 def test_one_value_lands_after_its_digest(workspace, capsys):
@@ -55,9 +56,13 @@ def test_one_value_lands_after_its_digest(workspace, capsys):
     assert config_set('owner.verbosity.default', '"standard"', confirm) == 0
     out = capsys.readouterr().out
     assert '+default = "standard"' in out
-    summary = out.split('Applied the change')[0]
+    summary, after = out.split('Applied the change')
     assert confirm.digests == [hashlib.sha256(summary.encode()).hexdigest()[:12]]
+    assert 'replaced: owner.verbosity.default = "standard" (was "brief")' in after
     assert load_config(workspace)['owner']['verbosity']['default'] == 'standard'
+    assert config_set('owner.verbosity.default', '"standard"', confirm) == 0
+    out = capsys.readouterr().out
+    assert 'No config.toml changes' in out and 'replaced' not in out
 
 
 def test_declined_value_writes_nothing(workspace, capsys):
@@ -1151,14 +1156,53 @@ def test_discovery_prints_tracker_links(project, host, terminal):
     assert load_config(project)['adapters']['tracker'] == 'none'
 
 
-# #492: a list key keeps its effective items, a named-entry table keeps its entries.
+# #673: a list key is replaced by default; --add keeps its effective items.
+@pytest.mark.parametrize('replace', [False, True])
+def test_list_set_replaces(workspace, capsys, replace):
+    (workspace / '.wuwei/config.toml').write_text(TEMPLATE + REPO + 'fast_checks = ["make lint", "make test"]\n')
+    assert config_set('repos.0.fast_checks', '["x"]', Confirm(), replace=replace) == 0
+    assert load_config(workspace)['repos'][0]['fast_checks'] == ['x']
+    after = capsys.readouterr().out.split('Applied the change')[1]
+    assert 'replaced: repos.0.fast_checks = ["x"] (was ["make lint", "make test"])' in after
+
+
+def test_deploy_list_line_says_added(workspace, capsys):
+    text = TEMPLATE.replace('deny = [] #', 'deny = ["make deploy*"] #')
+    (workspace / '.wuwei/config.toml').write_text(text)
+    assert config_set('deploy.deny', '["npm publish*"]', Confirm()) == 0
+    assert load_config(workspace)['deploy']['deny'] == ['make deploy*', 'npm publish*']
+    assert ('added: deploy.deny = ["make deploy*", "npm publish*"] (was ["make deploy*"])'
+            in capsys.readouterr().out)
+
+
+def test_list_set_add_once(workspace, capsys):
+    before = load_config(workspace)['outbound']['work_channels']
+    assert config_set('outbound.work_channels', '["C1"]', Confirm(), add=True) == 0
+    line = [row for row in capsys.readouterr().out.splitlines() if row.startswith('added: ')]
+    assert len(line) == 1 and line[0].startswith('added: outbound.work_channels = ')
+    assert line[0].endswith(f'(was {json.dumps(before)})')
+    assert config_set('outbound.work_channels', '["C1"]', Confirm(), add=True) == 0
+    assert 'No config.toml changes' in capsys.readouterr().out
+    assert config_set('outbound.work_channels', '[]', Confirm(), add=True) == 0
+    assert 'No config.toml changes' in capsys.readouterr().out
+    assert load_config(workspace)['outbound']['work_channels'] == [*before, 'C1']
+
+
+def test_add_and_replace_exclude_each_other(workspace):
+    from wuwei.__main__ import main
+    with pytest.raises(SystemExit) as exc:
+        main(['config', 'set', 'outbound.work_channels', '["C1"]', '--add', '--replace'])
+    assert exc.value.code == 2
+
+
+# #492: with --add a list key keeps its effective items, a named-entry table keeps its entries.
 def test_list_set_appends(workspace):
     from wuwei.workspace import SCHEMA
     before = load_config(workspace)['outbound']['work_channels']
-    assert config_set('outbound.work_channels', '["C1"]', Confirm()) == 0
+    assert config_set('outbound.work_channels', '["C1"]', Confirm(), add=True) == 0
     assert load_config(workspace)['outbound']['work_channels'] == [*before, 'C1']
     rule = '[{pattern = "mcp__acme__send", channel = "slack"}]'
-    assert config_set('outward.tool_patterns', rule, Confirm()) == 0
+    assert config_set('outward.tool_patterns', rule, Confirm(), add=True) == 0
     assert load_config(workspace)['outward']['tool_patterns'] == [
         *SCHEMA['outward']['tool_patterns'][1], {'pattern': 'mcp__acme__send', 'channel': 'slack'}]
 
@@ -1176,25 +1220,27 @@ def test_list_set_replace(workspace):
 
 
 def test_table_set_adds_entries(workspace):
-    assert config_set('outbound.people', '{"slack:U01" = {email = "ada@example.com"}}', Confirm()) == 0
-    assert config_set('outbound.people', '{"slack:U02" = {org = "acme"}}', Confirm()) == 0
+    assert config_set('outbound.people', '{"slack:U01" = {email = "ada@example.com"}}', Confirm(), add=True) == 0
+    assert config_set('outbound.people', '{"slack:U02" = {org = "acme"}}', Confirm(), add=True) == 0
     assert load_config(workspace)['outbound']['people'] == {
         'slack:U01': {'email': 'ada@example.com', 'org': '', 'class': ''},
         'slack:U02': {'email': '', 'org': 'acme', 'class': ''}}
     assert '"slack:U02" = {org = "acme"}' in (workspace / '.wuwei/config.toml').read_text()
 
 
-def test_replace_refused_on_scalar(workspace, capsys):
+def test_add_refused_on_scalar(workspace, capsys):
     confirm = Confirm()
-    assert config_set('owner.verbosity.default', '"standard"', confirm, replace=True) == 1
-    assert '--replace' in capsys.readouterr().err and confirm.digests == []
+    assert config_set('owner.verbosity.default', '"standard"', confirm, add=True) == 1
+    assert '--add' in capsys.readouterr().err and confirm.digests == []
     assert (workspace / '.wuwei/config.toml').read_text() == TEMPLATE
+    assert config_set('owner.verbosity.default', '"standard"', confirm, replace=True) == 0
+    assert load_config(workspace)['owner']['verbosity']['default'] == 'standard'
 
 
 def test_config_show_tags(workspace, capsys):
     from wuwei.__main__ import main
     rule = '[{pattern = "mcp__acme__send", channel = "slack"}]'
-    assert config_set('outward.tool_patterns', rule, Confirm()) == 0
+    assert config_set('outward.tool_patterns', rule, Confirm(), add=True) == 0
     capsys.readouterr()
     assert main(['config', 'show', 'outward.tool_patterns']) == 0
     rows = capsys.readouterr().out.splitlines()

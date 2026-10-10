@@ -187,7 +187,7 @@ deny = [] # Literal executable plus argument glob, for example "make publish*".
 # patterns = ['\binternal phrase\b'] # Replaces defaults; [] disables patterns.
 # banned_characters = ["emoji", "\u2014", "\u2015", "\u2e3a", "\u2e3b"] # [] disables character bans.
 # Tool patterns full-match names and select a policy channel. Setting the array
-# here replaces the defaults; bin/wuwei config set adds to them.
+# here replaces the defaults; bin/wuwei config set --add adds to them.
 # Adapter ports enforce the same policy independently of these patterns.
 # tool_patterns = [{pattern = 'mcp__custom__send', channel = 'customer'}]
 # Register every outward write tool used by this workspace. Unsupported payload

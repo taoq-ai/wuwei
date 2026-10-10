@@ -416,7 +416,7 @@ def apply(root, proposal, option, decision_id=None):
         settings += [(('outward', 'modes'), proposal['server'], mode)] if mode else []
         for key, ids in (('work_channels', team), ('external_channels', client)):  # #496: by class.
             if ids:
-                settings += setup.merged(config, ['outbound', key], ids)
+                settings += setup.merged(config, ['outbound', key], ids, add=True)
         settings += [(('outbound', 'people'), f"slack:{row['id']}", row['entry']) for row in people]
         settings += [(('outbound', 'owner', 'slack'), key, value) for key, value in owner.items()]
         return setup._settle(raw, settings)
