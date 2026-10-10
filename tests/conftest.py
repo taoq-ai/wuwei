@@ -2,6 +2,11 @@
 
 import pytest
 
+# These modules bind integrity.PLUGIN at import. Import them before any test patches it,
+# or the first lazy import under a patch pins a tmp plugin for the rest of the worker.
+from wuwei import mcp  # noqa: F401,E402
+from wuwei.commands import board  # noqa: F401,E402
+
 
 @pytest.fixture(autouse=True)
 def isolated_mcp_home(tmp_path_factory, monkeypatch):
