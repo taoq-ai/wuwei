@@ -415,3 +415,18 @@ def test_merge_default_today_not_under_strict(root):
         stream.write(TODAY)
     strict(root)
     assert grants.active(config(root), {}, 'merge', 'repo:fixture-org/app') is None
+
+
+def test_closed_merge_card_grants_nothing(root):  # #729
+    def merge(ref):
+        argv = ['bin/wuwei', 'merge', ref]
+        return grants.gate({'session_id': '', 'cwd': str(root), 'tool_input': {'command': ' '.join(argv)}},
+                           root, config(root), argv, f'merge: {ref} at ' + 'a' * 40, 'fixture-org/app', pr=ref)
+    code, reason = merge('fixture-org/app#7')
+    assert code == 1 and 'D-1' in reason
+    assert grants.close_merged(root, 'fixture-org/app#7', {'merge_commit': 'b' * 40, 'merged_by': None}) == ['D-1']
+    assert state.read_state(root)['decision_outcomes']['D-1']['by'] is None
+    assert grants.active(config(root), state.read_state(root), 'merge', 'repo:fixture-org/app') is None
+    code, reason = merge('fixture-org/app#8')
+    assert code == 1 and 'D-2' in reason
+    assert records(root) == ['D-1.md', 'D-2.md']

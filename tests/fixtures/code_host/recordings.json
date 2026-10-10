@@ -42,6 +42,7 @@
       "merged": false,
       "merged_at": null,
       "merge_commit": null,
+      "merged_by": null,
       "created_at": "2026-09-28T10:00:00Z",
       "title": "Add a widget option",
       "body": "## How to use\nSet the option."

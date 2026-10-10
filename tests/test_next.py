@@ -885,3 +885,13 @@ def test_finding_row(root, capsys):
     state.append_event('next.action', {'state': 'x', 'item': '',
                                        'done': [['finding', 'fix-pin-black']]}, root)
     assert coarse(root) == before
+
+
+def test_merged_pr_drops_its_card(root):  # #729
+    from wuwei import grants
+    approved(root, {}, decision_routes={'D-1': 'owner'}, grants={'D-1': {
+        'action': 'merge', 'target': 'pr:example/project#7', 'rule': 'planned', 'command': None,
+        'item': None, 'seat': None, 'planned': True, 'answered': None, 'spent': False}})
+    assert coarse(root)['state'] == 'decision'
+    assert grants.close_merged(root, 'example/project#7', {'merge_commit': 'b' * 40, 'merged_by': 'owner-login'}) == ['D-1']
+    assert coarse(root)['state'] != 'decision'

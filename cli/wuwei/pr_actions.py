@@ -248,6 +248,9 @@ def observe(root, host, ref, config, measured):
     for name in merged:  # #647: the item's scratch goes with the confirmed merge
         # ponytail: the host scratchpad's <item>/ is not removed; the host clears its session scratchpad
         shutil.rmtree(root / workspace.SCRATCH / name, ignore_errors=True)
+    if current == 'merged':  # #729: a merge card about this PR is now moot
+        from wuwei import grants
+        grants.close_merged(root, ref, measured['pr'])
     return row
 
 

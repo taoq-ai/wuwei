@@ -71,6 +71,17 @@ def test_pr_carries_actual_merge_commit(monkeypatch):
     assert result.data['merged_at'] == '2026-09-28T12:00:00Z'
 
 
+def test_pr_carries_who_merged(monkeypatch):  # #729
+    case = deepcopy(next(c for c in recordings('code_host') if c['operation'] == 'pr'))
+    install_replay(monkeypatch, 'gh', case['steps'])
+    assert adapter().pr(*case['args']).data['merged_by'] is None
+    body = json.loads(case['steps'][0]['stdout'])
+    body.update(merged=True, merge_commit_sha='b' * 40, merged_by={'login': 'owner-login', 'type': 'User'})
+    case['steps'][0]['stdout'] = json.dumps(body)
+    install_replay(monkeypatch, 'gh', case['steps'])
+    assert adapter().pr(*case['args']).data['merged_by'] == 'owner-login'
+
+
 def commit(sha, parent, message='merge change'):
     return {'sha': sha, 'parents': [{'sha': parent}],
         'commit': {'message': message, 'committer': {'date': '2026-09-29T12:00:00Z'}},

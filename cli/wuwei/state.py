@@ -251,7 +251,8 @@ STATE_PRODUCERS = {
     'builds': 'wuwei build and seat hooks',
     'seats': 'wuwei hook PreToolUse or wuwei dispatch opinion', 'fast_checks': 'wuwei fast-checks',
     'reply_acks': 'wuwei reply', 'decision_outcomes': ('wuwei decision route or wuwei build or wuwei plan carry or park '
-                          'or owner host wuwei doctor --fix or wuwei listen (two-way DM answer)'),
+                          'or owner host wuwei doctor --fix or wuwei listen (two-way DM answer) '
+                          'or wuwei watch and wuwei pr state (a merged PR closes its merge card)'),
     'decision_routes': 'wuwei decision route',
     'channel_posts': 'wuwei pr ping',
     'pr_reviewers': 'wuwei pr raise or ping',
@@ -275,7 +276,8 @@ STATE_PRODUCERS = {
     'tracker_log': 'wuwei tracker create or log',
     'outbound_learn': 'wuwei outbound learn or wuwei decide',
     'outbound_threads': 'wuwei outbound learn',
-    'grants': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise, wuwei merge or wuwei pr act, wuwei plan propose or wuwei decide',
+    'grants': 'wuwei hook PreToolUse (deploy, push and PR guards), wuwei pr raise, wuwei merge or wuwei pr act, wuwei plan propose or wuwei decide'
+              ' or wuwei watch and wuwei pr state (a merged PR closes its merge card)',
     'cruise_cards': 'wuwei plan propose',
     'pace': 'wuwei plan approve or wuwei plan set pace=', 'pace_card': 'wuwei plan propose',
     'decision_shadows': 'wuwei decision route',
