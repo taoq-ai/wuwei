@@ -73,6 +73,7 @@ SCHEMA = {
                "check_timeout_seconds": (int, 300, 1),  # #724: one check run's limit in this repository
                "review_required_checks": [(str, None)],
                "merge_deploys": (bool, True), "merge": MERGE_SCHEMA,
+               "merge_method": (str, "auto", ("auto", "squash", "rebase", "merge")),  # #785
                "gates": {"floor": (str, "standard", ("light", "standard", "full")),
                          "light_max_lines": (int, 100, 0),
                          "data_paths": [(str, None)],  # #657: data globs (a trailing / is a directory) that never count

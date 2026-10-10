@@ -368,6 +368,14 @@ unchanged. A diff touching a `[merge] owner_paths` glob, renames included, is me
 owner in a host terminal whatever the grant, standing line or `merge.default_tier`; the reason
 names the path and the glob and prints the `gh pr merge` command.
 
+Amended (owner, 2026-10-10, #785): the merge method follows the repository:
+`repos.merge_method` (`auto`, the default, `squash`, `rebase` or `merge`). Under `auto` WUWEI
+uses the first method the repository and its rulesets allow of squash, rebase, merge; an
+explicit method is used only when allowed. Where the text above says `--squash` it reads
+`--<method>`, and where it says the repository must allow squash merges it reads the chosen
+method; `wuwei merge check` names it. A merge commit or rebase merge is followed for red base
+checks and reverts; the 14-day line outcome is measured for squash merges.
+
 ### 4.7 Deployment ban (owner, 2026-09-28)
 
 WUWEI never deploys, in any profile, routine or remote command. Refused always, after the
@@ -1900,7 +1908,7 @@ that it did nothing and returns exit 2 where a measurement was expected.
 | review_bot | `score(pr)`, `open_findings(pr)` | Greptile |
 | runtime | `dispatch(role, brief_path, worktree, write)`, `status(job)`, `result(job)` (includes usage: tokens, cost, model, duration) | Claude (default), Codex |
 | scanner | `audit(path)`, `gate(result, threshold)`, `traces(file)`, `mcp(servers)` | ZIRAN |
-| code_host | `pr(ref)`, `checks(ref, sha)`, `reviews(ref)`, `threads(ref)`, `protection(repo, branch)`, `create_pr(draft)`, `request_reviewers(ref, logins)`, `comment(ref, text, thread)`, `merge(ref, sha)`, `revert_pr(ref)`, `issue(repo, title, body)` (5.13) | GitHub through `gh` (default); GitLab possible later |
+| code_host | `pr(ref)`, `checks(ref, sha)`, `reviews(ref)`, `threads(ref)`, `protection(repo, branch)`, `create_pr(draft)`, `request_reviewers(ref, logins)`, `comment(ref, text, thread)`, `merge(ref, sha, method)`, `revert_pr(ref)`, `issue(repo, title, body)` (5.13) | GitHub through `gh` (default); GitLab possible later |
 | vcs | `identity(repo)`, `head(repo)`, `merge_base(repo, ref)`, `status(repo)`, `diff_stat(repo, base, head)`, `log_since(repo, sha)`, `worktree_add(repo, branch, path, remote, base)` | git |
 | inbound (M5) | `poll(since)` or `receive(request)`, `reply(thread, text)` | Slack (poll) |
 | control_plane (M5) | `escalate(decision)`, `notify(summary)`, `poll_replies(since)` | Remote Control plus push (default), Signal, WhatsApp |
@@ -2048,6 +2056,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I44 | A numbered list outside a Findings heading is not a finding, and every sentinel agent carries the verdict format the lint accepts | `verdict.finding_blocks` on an `Evidence` numbered list (no block) and a `Findings` numbered list (one block per line); `verdict.lint_file` on the example in each `agents.render(ROOT)` sentinel agent with that role (`OK: FIX`) | #665; one table in `verdict.FORMAT`, one parser in `verdict.finding_blocks`, rendered by `agents.render` |
 | I50 | Under observe and guarded a traces guard that did not finish in time never fails a tool call: a `TimeoutError` is a warning naming its elapsed milliseconds, recorded as `traces.slow`; strict refuses it | per posture, `traces.check` with the trace read raising `TimeoutError` | #659; any other failure keeps the `traces.gap` path |
 | I41 | A Bash call is judged by what it runs: git or gh words in the text of a call whose every command is a reader or a guarded program never refuse it; a git or gh name built by quotes, a line continuation, eval or sh -c is judged as the plain command; one built from a variable is refused naming it | normalize, constructed and unreadable on the reader, runnable-text, split-name and variable tables | #671; the guard and hook cases stay in tests/test_commit_push.py, tests/test_pr_guards.py and tests/test_parser_warns.py |
+| I72 | WUWEI merges only with a method the repository allows: an explicit `repos.merge_method` only when allowed, `auto` the first allowed of squash, rebase, merge, none allowed the owner's merge | `merge.method_for` on every setting x every subset of allowed methods | #785; one choice in `merge.method_for`, read by `merge.check`; the adapter allowlist admits only `--squash`, `--rebase` and `--merge` |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 

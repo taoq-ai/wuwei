@@ -495,7 +495,7 @@ def check_through_github(case, monkeypatch, steps, extra=''):
     return main(['config', 'check'])
 
 
-SQUASH = {'stdout': '{"allow_squash_merge": true}'}  # #524: the repository read
+SQUASH = {'stdout': '{"allow_squash_merge": true, "allow_rebase_merge": true, "allow_merge_commit": true}'}  # #524, #785: the repository read
 
 
 def test_classic_404_with_no_rulesets_is_a_finding(case, monkeypatch, capsys):

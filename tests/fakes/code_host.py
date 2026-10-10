@@ -33,8 +33,8 @@ class Fake(Recorder):
     def comment(self, ref, text, thread, root=None):
         return self._call('comment', (ref, text, thread), root)
 
-    def merge(self, ref, sha, root=None):
-        return self._call('merge', (ref, sha), root)
+    def merge(self, ref, sha, method, root=None):
+        return self._call('merge', (ref, sha, method), root)
 
     def ready(self, ref, root=None):
         return self._call('ready', (ref,), root)

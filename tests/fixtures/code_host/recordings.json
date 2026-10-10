@@ -241,7 +241,7 @@
           "--hostname",
           "github.com"
         ],
-        "stdout": "{\"default_branch\": \"main\", \"allow_squash_merge\": true, \"allow_merge_commit\": false}"
+        "stdout": "{\"default_branch\": \"main\", \"allow_squash_merge\": true, \"allow_rebase_merge\": false, \"allow_merge_commit\": false}"
       }
     ],
     "data": {
@@ -266,7 +266,9 @@
       "allow_deletions": false,
       "merge_queue": false,
       "classic": true,
-      "squash": true
+      "methods": [
+        "squash"
+      ]
     }
   },
   {
@@ -406,7 +408,8 @@
     "operation": "merge",
     "args": [
       "acme/widget#7",
-      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "squash"
     ],
     "steps": [
       {

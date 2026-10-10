@@ -62,7 +62,7 @@ def _run(args, payload=None, *, json_output=True, env=None):
     match args:
         case ['auth', 'status', '--hostname', 'github.com']:
             allowed = payload is None and not json_output
-        case ['pr', 'merge', url, '--squash', '--match-head-commit', sha]:
+        case ['pr', 'merge', url, '--squash' | '--rebase' | '--merge', '--match-head-commit', sha]:
             repo, number = _ref(url)
             allowed = (url == f'https://github.com/{repo}/pull/{number}' and
                        bool(_sha(sha)) and payload is None)
@@ -440,7 +440,7 @@ def protection(repo, branch, root=None):
             'classic': classic}
 
 
-    result['merge_queue'], result['squash'] = False, True
+    result['merge_queue'], narrow = False, None
     for rule in _pages(f'repos/{_repo(repo)}/rules/branches/{quote(branch, safe="")}'):
         kind = _field(rule, 'type', str)
         if kind == 'merge_queue':
@@ -469,9 +469,13 @@ def protection(repo, branch, root=None):
             ):
                 result[target] |= _field(params, source, bool)
             if params.get('allowed_merge_methods') is not None:  # #524: a ruleset narrows the methods
-                result['squash'] &= 'squash' in _list(params['allowed_merge_methods'])
-    # #524: WUWEI merges only with --squash; a repository that does not allow it is refused.
-    result['squash'] &= _field(_api(f'repos/{_repo(repo)}'), 'allow_squash_merge', bool)
+                listed = set(_list(params['allowed_merge_methods']))
+                narrow = listed if narrow is None else narrow & listed
+    # #785: the methods the repository allows, narrowed by its rulesets; all three fields are read.
+    repository = _api(f'repos/{_repo(repo)}')
+    allowed = [method for method, key in (('squash', 'allow_squash_merge'), ('rebase', 'allow_rebase_merge'),
+                                          ('merge', 'allow_merge_commit')) if _field(repository, key, bool)]
+    result['methods'] = [method for method in allowed if narrow is None or method in narrow]
     return result
 
 
@@ -612,10 +616,12 @@ def label(ref, name, present, root=None):
 
 
 @_operation
-def merge(ref, sha, root=None):
+def merge(ref, sha, method, root=None):
     repo, number = _ref(ref)
+    if method not in ('squash', 'rebase', 'merge'):  # #785
+        raise ValueError('invalid merge method')
     _run(['pr', 'merge', f'https://github.com/{repo}/pull/{number}',
-          '--squash', '--match-head-commit', _sha(sha)], json_output=False)
+          '--' + method, '--match-head-commit', _sha(sha)], json_output=False)
     return {'accepted': True, 'sha': sha}
 
 
