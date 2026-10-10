@@ -9,8 +9,9 @@ import subprocess
 import sys
 from urllib.parse import quote
 
+from .._http import RateLimited, gh_limit, retry
 from wuwei.registry import Result, outward_operation
-from wuwei.redact import redact
+from wuwei.redact import reply
 from wuwei.references import pull_request, repository as _repo
 
 
@@ -101,8 +102,17 @@ def _run(args, payload=None, *, json_output=True, env=None):
         raise ValueError('unsupported gh command')
     if args[0] == 'api':
         args = [*args, '--hostname', 'github.com']
-    result = subprocess.run(['gh', *args], input=json.dumps(payload) if payload is not None else None,
-                            capture_output=True, text=True, timeout=TIMEOUT, env=env)
+
+    def call():
+        result = subprocess.run(['gh', *args], input=json.dumps(payload) if payload is not None else None,
+                                capture_output=True, text=True, timeout=TIMEOUT, env=env)
+        if result.returncode and (limit := gh_limit(result.stderr, env)):
+            raise limit
+        return result
+    try:
+        result = retry(call)
+    except RateLimited as limit:
+        raise ValueError(str(limit)) from None  # _operation shows plain ValueError text only
     if args[0] == 'auth':
         return result.returncode
     if '--include' in args and re.match(r'HTTP/\S+ 304\b', result.stdout):
@@ -124,7 +134,7 @@ def _run(args, payload=None, *, json_output=True, env=None):
         for token in {(env or os.environ).get(key) for key in ('GH_TOKEN', 'GITHUB_TOKEN')} - {None, ''}:
             line = line.replace(token, '[REDACTED]')
         if line:
-            reason += ': ' + redact(line)[:200]
+            reason += ': ' + reply(line)[:200]
         if re.search(r'auth login|not logged|authentication', line, re.I):
             reason += '; run gh auth login'
         raise ValueError(reason)

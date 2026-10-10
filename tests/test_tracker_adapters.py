@@ -1,13 +1,16 @@
 """One tracker port contract, replayed per adapter from recorded responses; no network."""
 
+import email.message
 import importlib
 import json
 from pathlib import Path
 import subprocess
 from types import SimpleNamespace
+import urllib.error
 
 import pytest
 
+from fakes.replay import NOW, SECONDARY, hms, install_clock, limits
 from wuwei import outward
 
 FIXTURES = Path(__file__).parent / 'fixtures/tracker'
@@ -55,7 +58,10 @@ def replay(monkeypatch, responses):
     def urlopen(request, timeout=None):
         calls.append((request.get_method(), request.full_url, dict(request.header_items()),
                       json.loads(request.data) if request.data else None))
-        return Reply(next(responses))
+        answer = next(responses)
+        if isinstance(answer, Exception):
+            raise answer
+        return Reply(answer)
 
     monkeypatch.setattr('urllib.request.urlopen', urlopen)
     return calls
@@ -331,3 +337,90 @@ def test_tracker_auth_takes_token_or_gh(workspace_root):
         stream.write('auth = "keychain"\n')
     with pytest.raises(workspace.ConfigError):
         workspace.load_config(root)
+
+
+def limited_gh(monkeypatch, answers, reset):
+    """#738: gh api rate_limit answers from limits(); each graphql call takes the next answer."""
+    calls = []
+    answers = iter(answers)
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if argv[:3] == ['gh', 'api', 'rate_limit']:
+            return SimpleNamespace(returncode=0, stdout=limits(4990, 0, reset), stderr='')
+        answer = next(answers)
+        if isinstance(answer, tuple):
+            return SimpleNamespace(returncode=answer[0], stdout='', stderr=answer[1])
+        return SimpleNamespace(returncode=0, stdout=json.dumps(answer), stderr='')
+
+    monkeypatch.setattr(subprocess, 'run', run)
+    return calls
+
+
+CREATED = {'data': {'repository': {'issue': {'createdAt': '2026-09-28T10:00:00Z'}}}}
+
+
+def no_wait(root):
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write('[host]\nrate_limit_wait_seconds = 0\n')
+
+
+def test_github_gh_rate_limit_is_named_and_retried(gh_root, monkeypatch):
+    from adapters.tracker import github
+    slept = install_clock(monkeypatch)
+    calls = limited_gh(monkeypatch, [(1, SECONDARY), CREATED], NOW + 20)
+    result = github.created('acme/app#1', root=gh_root)
+    assert (result.exit, result.data) == (0, '2026-09-28T10:00:00Z')
+    assert slept == [20] and len(calls) == 3
+    no_wait(gh_root)
+    limited_gh(monkeypatch, [(1, SECONDARY)], NOW + 20)
+    result = github.created('acme/app#1', root=gh_root)
+    assert result.exit == 2 and result.reason == (
+        f'github.created: could not run: GitHub rate limit until {hms(NOW + 20)} UTC '
+        '(0 of 5000 graphql calls left); retry after it')
+
+
+def limited(code, headers, url='https://api.github.com/graphql'):
+    message = email.message.Message()
+    for key, value in headers.items():
+        message[key] = value
+    return urllib.error.HTTPError(url, code, 'error', message, None)
+
+
+PRIMARY = {'X-RateLimit-Remaining': '0', 'X-RateLimit-Limit': '5000',
+           'X-RateLimit-Resource': 'graphql', 'X-RateLimit-Reset': str(NOW + 10)}
+
+
+@pytest.mark.parametrize('code,headers,reason', [
+    (403, PRIMARY, f'GitHub rate limit until {hms(NOW + 10)} UTC (0 of 5000 graphql calls left); retry after it'),
+    (429, {'Retry-After': '30'}, f'GitHub rate limit until {hms(NOW + 30)} UTC; retry after it'),
+    (429, {}, f'GitHub rate limit until {hms(NOW + 60)} UTC; retry after it'),
+    (403, {}, 'HTTP 403: credential has no access'),
+])
+def test_github_token_rate_limit_reads_the_headers(code, headers, reason, workspace_root, monkeypatch):
+    from adapters.tracker import github
+    root = workspace_root('github')
+    no_wait(root)
+    slept = install_clock(monkeypatch)
+    replay(monkeypatch, [limited(code, headers)])
+    result = github.created('acme/app#1', root=root)
+    assert result.exit == 2 and reason in result.reason and slept == []
+
+
+def test_github_token_rate_limit_waits_and_retries(workspace_root, monkeypatch):
+    from adapters.tracker import github
+    root = workspace_root('github')
+    slept = install_clock(monkeypatch)
+    calls = replay(monkeypatch, [limited(403, PRIMARY), CREATED])
+    result = github.created('acme/app#1', root=root)
+    assert (result.exit, result.data) == (0, '2026-09-28T10:00:00Z')
+    assert slept == [10] and len(calls) == 2
+
+
+def test_other_hosts_keep_the_429_hint(monkeypatch):
+    from adapters import _http
+    replay(monkeypatch, [limited(429, {'Retry-After': '30'}, 'https://example.test/api')])
+    with pytest.raises(_http.Failure) as error:
+        _http.request('https://example.test/api', 'token', {})
+    assert str(error.value) == 'HTTP 429: rate limited; retry later'
+    assert not isinstance(error.value, _http.RateLimited)

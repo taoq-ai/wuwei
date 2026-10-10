@@ -117,3 +117,34 @@ class Recorder:
 
         self.calls.append((operation, deepcopy(args), root))
         return deepcopy(self.results.get(operation, Result(2, None, 'unconfigured fake operation')))
+
+
+NOW = 1_760_000_000
+SECONDARY = ('gh: You have exceeded a secondary rate limit. Please wait a few minutes before you try '
+             'again. If you reach out to GitHub Support for help, please include the request ID '
+             'D5E6:3A0B:1F2C3D:2A3B4C:670800AA. (HTTP 403)')
+SECONDARY_JSON = json.dumps({'message': 'You have exceeded a secondary rate limit. Please wait a few '
+                                        'minutes before you try again.',
+                             'documentation_url': 'https://docs.github.com/rest/overview/rate-limits-for-the-rest-api'})
+
+
+def limits(core, graphql, reset):
+    """A gh api rate_limit reply (#738)."""
+    return json.dumps({'resources': {name: {'limit': 5000, 'remaining': left, 'reset': reset, 'used': 5000 - left}
+                                     for name, left in (('core', core), ('graphql', graphql))}})
+
+
+def install_clock(monkeypatch):
+    """#738: a fixed clock for the rate-limit wait; returns the list of seconds slept."""
+    import time
+    import types
+    from adapters import _http
+    slept = []
+    monkeypatch.setattr(_http, 'time', types.SimpleNamespace(
+        time=lambda: NOW, sleep=slept.append, strftime=time.strftime, gmtime=time.gmtime))
+    return slept
+
+
+def hms(seconds):
+    import time
+    return time.strftime('%H:%M:%S', time.gmtime(seconds))

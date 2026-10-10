@@ -12,6 +12,16 @@ import pytest
 from wuwei import state, workspace
 
 
+def test_reply_keeps_a_known_api_message():
+    # #738: GitHub's JSON error reply keeps its message; redact still runs on that message.
+    from wuwei.redact import redact, reply
+    known = '{"message":"%s","documentation_url":"https://docs.github.com/rest"}'
+    assert reply(known % 'Resource not accessible by integration') == 'Resource not accessible by integration'
+    assert reply(known % ('token ghp_' + 'a' * 36)) == '[REDACTED]'
+    for line in ('{"message":"x: 1"}', 'not json', 'password=hunter2'):
+        assert reply(line) == redact(line)
+
+
 @pytest.mark.parametrize('value', ['safe ' * 410, 'password=swordfish ' + 'x' * 2100],
                          ids=['ordinary', 'secret'])
 def test_large_strings_are_truncated_before_redaction(value):

@@ -10,7 +10,7 @@ import os
 import re
 import subprocess
 
-from .._http import Failure, credential, operation, request, settings, status
+from .._http import Failure, credential, gh_limit, operation, request, retry, settings, status
 from wuwei import redact
 from wuwei.registry import outward_operation
 
@@ -23,9 +23,9 @@ VARIABLES = '$owner:String!,$name:String!,$number:Int!'
 def _query(query, variables, root):
     payload = {'query': query, 'variables': variables}
     if os.environ.get('GITHUB_TRACKER_TOKEN'):
-        value = request(URL, credential('GITHUB_TRACKER_TOKEN'), payload)
+        value = retry(lambda: request(URL, credential('GITHUB_TRACKER_TOKEN'), payload), root)
     elif settings(root)['tracker']['auth'] == 'gh':
-        value = _gh(payload)
+        value = retry(lambda: _gh(payload), root)
     else:
         raise Failure('GITHUB_TRACKER_TOKEN is missing; set it in .wuwei/env, or set '
                       'tracker.auth = "gh" to use your gh login')
@@ -57,6 +57,8 @@ def _gh(payload):
     except subprocess.TimeoutExpired:
         raise Failure('gh api graphql timed out after 30 s') from None
     if result.returncode:
+        if limit := gh_limit(result.stderr):
+            raise limit
         code = re.search(r'\(HTTP ([1-5][0-9][0-9])\)', result.stderr)
         if code:
             hint = status(int(code[1]))
