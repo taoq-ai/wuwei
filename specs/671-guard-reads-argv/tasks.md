@@ -107,14 +107,14 @@ suite with `python -m pytest -q`.
 
 ## Phase 5: invariant, docs, suite (FR-008, FR-009)
 
-- [X] T016 Test in `tests/test_invariants.py`: add `i36(case, rules)` (READS `()`, memoised
+- [X] T016 Test in `tests/test_invariants.py`: add `i41(case, rules)` (READS `()`, memoised
   with `rules.memo` like `i35`) checking at the shared spot: `normalize` returns argv for the
   T003 reader cases and raises for the T004 cases; `normalize` returns a `git` or `gh` argv
   for the T007 forms; `constructed` names the T012 variable forms and `unreadable` returns
-  `''` for them. Register `'I36': i36` in `INVARIANTS` and `'I36': ()` in `READS`.
+  `''` for them. Register `'I41': i41` in `INVARIANTS` and `'I41': ()` in `READS`.
   `test_table_matches_the_checks` fails until T017.
-- [X] T017 Add row I36 after I35 in `docs/specs/2026-09-24-wuwei-design.md` 9.2:
-  `| I36 | A Bash call is judged by what it runs: git or gh words in the text of a call whose every command is a reader or a guarded program never refuse it; a git or gh name built by quotes, a line continuation, eval or sh -c is judged as the plain command; one built from a variable is refused naming it | normalize, constructed and unreadable on the reader, runnable-text, split-name and variable tables | #671; the guard and hook cases stay in tests/test_commit_push.py, tests/test_pr_guards.py and tests/test_parser_warns.py |`
+- [X] T017 Add row I41 after I37 in `docs/specs/2026-09-24-wuwei-design.md` 9.2:
+  `| I41 | A Bash call is judged by what it runs: git or gh words in the text of a call whose every command is a reader or a guarded program never refuse it; a git or gh name built by quotes, a line continuation, eval or sh -c is judged as the plain command; one built from a variable is refused naming it | normalize, constructed and unreadable on the reader, runnable-text, split-name and variable tables | #671; the guard and hook cases stay in tests/test_commit_push.py, tests/test_pr_guards.py and tests/test_parser_warns.py |`
 - [X] T018 `docs/site/security.md`, after the `unparsed` paragraph's read-only sentence:
   "A git or gh word in the text a reader prints or writes to a file (`cat > brief.md
   <<'EOF'`) is text when every command of the call is a reader or git or gh; a git or gh
