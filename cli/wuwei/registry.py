@@ -18,7 +18,7 @@ PARAMETERS = {
     'inbound': {'poll': ('since',)},
     'redactor': {'redact': ('text',)},
     'integrity': {'sign': ('manifest', 'key'), 'verify': ('manifest', 'signature', 'key')},
-    'host': {'free_memory': ()},
+    'host': {'free_memory': (), 'hand_over': ('target', 'argv', 'env')},
     'checks': {'run': ('path', 'command', 'timeout')},
     'tracker': {'backlog': ('filter',), 'claim': ('item',), 'transition': ('item', 'state'),
                 'create': ('draft',), 'history': ('item',), 'created': ('item',),

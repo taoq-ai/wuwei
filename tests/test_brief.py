@@ -8,7 +8,7 @@ import pytest
 
 from fakes.code_host import Fake as CodeHost
 from fakes.vcs import Fake as VCS
-from wuwei import registry, state, workspace
+from wuwei import brief as brief_module, registry, state, workspace
 from wuwei.__main__ import main
 
 
@@ -761,3 +761,14 @@ def test_unreadable_counterpart_follows_the_posture(day, monkeypatch, capsys, po
     else:
         assert f'Warning: acme/widget#24 is no pull request the host could read ({reason})' in (
             day[1] / 'briefs/ps.md').read_text()
+
+
+def test_every_brief_names_the_doctor_and_the_install_rule(day, monkeypatch):
+    """#645: one doctor for every seat; install findings are the owner's."""
+    root, directory, vcs, host = day
+    assert brief(monkeypatch, 'body', 'builder', 'X', 'b1') == 0
+    assert brief(monkeypatch, 'per D-ABC-1', 'sentinel-arch', 'X', 's1', '--worktree', 'tree') == 0
+    for name in ('b1', 's1'):
+        assert brief_module.DOCTOR in (directory / f'briefs/{name}.md').read_text().split('\n\n', 1)[0], name
+    for text in ('.wuwei/executable', 'doctor', 'owner', 'Next:'):
+        assert text in brief_module.DOCTOR, text

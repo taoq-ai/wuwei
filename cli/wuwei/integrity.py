@@ -44,6 +44,18 @@ def version():
     return found if isinstance(found, str) else ''
 
 
+def recorded(root):
+    """The launcher .wuwei/executable names, or '' when missing, empty, unreadable, a symlink, or
+    not an absolute .../bin/wuwei, the only form init writes (#601, #645)."""
+    pointer = Path(root) / '.wuwei/executable'
+    try:
+        found = '' if pointer.is_symlink() else pointer.read_text(encoding='utf-8').splitlines()[0]
+    except (OSError, UnicodeError, IndexError):
+        return ''
+    path = Path(found)
+    return found if path.is_absolute() and path.name == 'wuwei' and path.parent.name == 'bin' else ''
+
+
 def release(text):
     """A dotted-integer version as a tuple, or None; nothing else ever counts as newer."""
     found = isinstance(text, str) and re.fullmatch(r'\d+(?:\.\d+)*', text, re.ASCII)
