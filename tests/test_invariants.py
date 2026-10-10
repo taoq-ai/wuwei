@@ -1395,6 +1395,29 @@ def i44(case, rules):
         return None
     return rules.memo(('verdict format',), compute)
 
+def i65(case, rules):
+    """#727: a local tool passes the outward guard in every posture, and a run_in_terminal
+    command is judged by the Bash guards as the same command through Bash."""
+    def compute(posture):
+        from wuwei import workspace
+        from wuwei.guards.outward import check_tier
+
+        def local(command, tool='mcp__terminal__run_in_terminal'):
+            return {**rules.bash(command), 'tool_name': tool}
+        plain = rules.hook(posture, local('sleep 600'))
+        if plain:
+            return f'a plain terminal command exits {plain}'
+        day = (workspace.day_dir(rules.root) / 'state.json').relative_to(rules.root)
+        write = f"python3 -c 'open(\"{day}\", \"w\")'"
+        terminal, bash = rules.hook(posture, local(write)), rules.hook(posture, rules.bash(write))
+        if terminal != bash:
+            return f'a state.json write exits {terminal} through the terminal and {bash} through Bash'
+        rules.configure(posture)
+        tab = check_tier(local('sleep 600', 'mcp__terminal__open_terminal_tab'))
+        return None if tab == (0, '') else f'open_terminal_tab gives {tab}'
+    return rules.memo(('local', case[0]), lambda: compute(case[0]))
+
+
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
               'I9': i9, 'I10': i10, 'I11': i11, 'I12': i12, 'I13': i13, 'I14': i14,
               'I15': i15, 'I16': i16, 'I17': i17, 'I18': i18, 'I19': i19, 'I20': i20, 'I21': i21,
@@ -1410,7 +1433,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46,
               'I36': i36, 'I37': i37, 'I44': i44,
               'I36': i36, 'I37': i37, 'I39': i39, 'I50': i50,
-              'I36': i36, 'I37': i37, 'I41': i41}
+              'I36': i36, 'I37': i37, 'I41': i41,
+              'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46, 'I65': i65}
 
 
 def project(case):
@@ -1440,7 +1464,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (),
          'I44': (),
          'I39': (), 'I50': (0,),
-         'I41': ()}
+         'I41': (),
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (), 'I65': (0,)}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
