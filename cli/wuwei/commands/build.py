@@ -45,7 +45,9 @@ def run(args):
                         print(action['feedback'], file=sys.stderr)
                 return code
             action = next_action(item, *paths, root=root)
-            if action['action'] == 'done' and state.read_state(root)['items'][item]['phase'] in ('gate', 'delta'):
+            row = state.read_state(root)['items'][item]
+            if action['action'] == 'done' and (row['phase'] in ('gate', 'delta') or (  # #732: or parked on a record
+                    row['phase'] in ('parked', 'escalated') and row.get('decision'))):
                 from wuwei import dispatch  # #666: past the build, answer what dispatch next decides
                 try:
                     action = dispatch.next_step(item, root)

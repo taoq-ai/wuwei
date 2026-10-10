@@ -391,8 +391,8 @@ def resolve(row, root):
         if action['action'] == 'fix':
             return None
         if action['action'] == 'escalate':
-            return _row(name, f"{item}: {action['reason']}; park it for the owner.",
-                        f'wuwei plan park {item} --reason ' + shlex.quote(action['reason']), item=item)
+            return _row(name, f"{item}: {action['reason']}; decision {action['decision']}.",
+                        action['command'], item=item)  # #732: the command that answers it
         if action['action'] == 'raise':
             return _shepherd(root, item, action['notes'], row['why'])
         return {**keep, **action, 'why': row['why'], 'then': THEN['set']}

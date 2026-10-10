@@ -318,7 +318,13 @@ executes each returned action unchanged:
    `continue` action with the FIX verdict files as feedback. The planner launches a fresh
    Agent with its `prompt`; Claude Code's Agent takes no `resume`. Then it runs the build
    loop again until `done`, which moves the item to `delta`.
-5. [Delta](concepts.md#delta): `dispatch next` returns `gates` for the roles that said FIX, and `seats` holds a
+   A [PARK](concepts.md#park) or ESCALATE verdict returns `escalate` with `decision`, a
+   card `dispatch next` wrote once from the verdict, and `command`. Below strict the
+   planner runs `wuwei decision route D-n`; under strict you answer it from
+   `wuwei decision show D-n --widget`. Answered `fix`, the next `dispatch next` opens the
+   fix round; answered `park`, it parks the item on the card. `build next` prints the
+   same answer.
+5. [Delta](concepts.md#delta): `dispatch next` returns `gates` for the roles that did not pass, and `seats` holds a
    `continue` action per seat with its `prompt`, `resume` (the seat's agent ID) and a
    `receive` call with `--round delta`. The planner launches it as a fresh Agent, which
    continues the same seat. `dispatch next` records the head the fix round left on the
@@ -327,6 +333,9 @@ executes each returned action unchanged:
    the delta verdicts it returns `raise` with review notes,
    or `escalate`. `raise` carries the shepherd's brief command in `commands` (its body
    carries the review notes), then the shepherd launch in `seats`; `build next` returns the same. A light item has no delta review: its `continue` feedback starts
+   the next fix round, or `escalate`. With no round left the item parks with its decision
+   record, and `escalate` names it in `decision` with the `command` that answers it. A
+   light item has no delta review: its `continue` feedback starts
    `Re-read:` and the same [sentinel](concepts.md#sentinel) rewrites its `Verdict:` and `Head:` lines.
 6. Pull request: `wuwei pr raise <owner/repo> --base main --title <title> --body-file
    <file> --item <item>` opens the PR, links it to the item and moves the item to `raised`.

@@ -565,6 +565,10 @@ checks, decision routing and every 9.2 invariant hold at every pace (I15 to I17)
   reconsideration, never another round: the item parks with a decision record stating why
   the approach keeps leaking and what replaces it, agreed with the owner before more code,
   and the reconsideration is recorded in its spec (constitution, Cycle budget).
+  Amended (owner, 2026-10-10, #732): a PARK or ESCALATE verdict is a decision card that
+  dispatch next writes from the verdict (fix or park; the planner answers below strict, the
+  owner under strict); a blocked item with no round left parks with its record; every
+  escalate names the record and the command that answers it, and build next prints the same.
 - A re-gate continues the same sentinel with the delta; a fresh seat only for a lost agent.
 - Process depth follows the tier (owner, 2026-10-08, #567). The tier (#280, from the diff,
   the repository floor and the lead tier) decides the process depth, not only the gate
@@ -2074,6 +2078,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I56 | A small item never waits for its ticket: an unticketed item whose deciding tier is light reads `later` in `tracker.check`, which no refusal point refuses; once its gate tier is standard or full it reads `missing` again | per posture, `tracker.check` on an unticketed item with lead tier light, and with lead tier light and gate tier standard | #646; the gate opens its ticket, or close names `tracker create` after it ships |
 | I51 | A word is the CLI only in program position: a grep, rg or git grep pattern and an awk or sed script that can neither run nor write pass the records guard in every posture; an awk or sed that runs, and an argument-echoing stage piped into an executor, are refused in every posture; a CLI path in a leading literal assignment is judged as the CLI | per posture, through the hook, `grep -n "wuwei decide" notes.txt \| sort` and `x=bin/wuwei; $x state set a b`; `check_bash` for a seat on `awk 'BEGIN{system("bin/wuwei decide D-1 a")}'` (2) and on `x=bin/wuwei; $x decide D-1 a` (1) | #730; argument words judged in `protect_state._owner_action`, variables resolved in `shell.leading_variables` |
 | I60 | A CI-fix item's gate verdict is accepted only with one result row per run step of each job the item records, and never as PASS with a failing step; an item that records no job lints as before | `verdict.lint` on two steps with rows for both, one, a duplicate and a FAIL under PASS, and on one row with no steps | #733; the steps come from `items.<item>.ci_jobs` and the worktree's workflow through `brief.ci_steps` |
+| I59 | A blocking gate verdict never ends in a bare escalate: dispatch next answers a fix round, or an escalate naming its decision record and the command that answers it; a PARK or ESCALATE verdict's card is written once, for the planner below strict and routed to the owner under strict | per posture, `dispatch.next_step` twice on a light item whose quality verdict is ESCALATE: one D-n, the same id twice, command `wuwei decision route D-n` below strict and `wuwei decision show D-n --widget` under strict with the card in `decision_routes` | #732; `tests/test_dispatch.py` runs both commands through `main` |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 
