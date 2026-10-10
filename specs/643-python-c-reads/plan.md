@@ -31,7 +31,7 @@ never reaches it pays nothing
 - VII Security: the records floor keeps every write form it refuses today; the only new pass
   is a snippet with no write-like token, and the CLI import is a token so `_owner_action`
   never treats an in-process owner action as a read.
-- Workflow: invariant I36 added to design spec 9.2 and `tests/test_invariants.py`.
+- Workflow: invariant I37 added to design spec 9.2 and `tests/test_invariants.py`.
 
 ## Design
 
@@ -115,8 +115,8 @@ Import `snippet_write` in the existing local `from wuwei.shell import ...` line 
 
 ### Docs
 
-- `docs/specs/2026-09-24-wuwei-design.md` 9.2: row I36 after I35:
-  `| I36 | A python -c snippet with no write-like token passes the records guard in every
+- `docs/specs/2026-09-24-wuwei-design.md` 9.2: row I37 after I35:
+  `| I37 | A python -c snippet with no write-like token passes the records guard in every
   posture; one with a write-like token is refused in every posture, naming the token | per
   posture, through the hook, a snippet printing a key of the day's state.json; check_bash on
   open(..., 'w') and Path(...).write_text snippets naming it | #643; one token scan in
@@ -150,7 +150,7 @@ Import `snippet_write` in the existing local `from wuwei.shell import ...` line 
     into `_STATE` exits 1;
   - update the exact reason in `test_issue_349_writes_refused_in_every_posture` (line 928)
     to the new token reason for `open("{_STATE}", "w")`.
-- `tests/test_invariants.py`: `i36` reading posture `(0,)`: through `rules.hook(posture,
+- `tests/test_invariants.py`: `i37` reading posture `(0,)`: through `rules.hook(posture,
   rules.bash(cmd))` the read of the day `state.json` (path from `workspace.day_dir(rules.root)`
   relative to the root) exits 0; `check_bash(rules.bash(write))` for the `'w'` and `write_text`
   snippets returns 2 with the token in the reason. Memoize per posture like `opaque`. Add to
