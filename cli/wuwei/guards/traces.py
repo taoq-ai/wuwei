@@ -102,14 +102,9 @@ def check(payload):
             payload = dict(payload)
             transcript_path = payload.get('transcript_path')
             if 'agent_id' in payload:
-                from pathlib import Path
-                agent_id = payload['agent_id']
-                if not isinstance(agent_id, str) or not agent_id.strip():
-                    raise ValueError(f'invalid agent_id; {PAYLOAD}')
-                if transcript_path:
-                    transcript_path = (Path(transcript_path).parent / payload['session_id']
-                                       / 'subagents' / f'agent-{agent_id}.jsonl')
-                payload['session_id'] = payload['session_id'] + ':' + agent_id
+                from wuwei import brief
+                transcript_path = brief.subagent_transcript(payload)
+                payload['session_id'] = payload['session_id'] + ':' + payload['agent_id']
             original_session = payload.get('session_id')
             payload = security.redact(payload, security_data)
             if isinstance(original_session, str):

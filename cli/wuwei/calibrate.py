@@ -794,6 +794,11 @@ def ci_only(results):
             if not fast]
 
 
+def grows(path, current):
+    """A deploy list only grows: an answer never removes a deploy-ban pattern."""
+    return path == ('deploy',) and isinstance(current, list)
+
+
 def settle(raw, settings):
     """Owner answers as (additions, hand edits): absent keys added, present ones replaced in place;
     a table answered with a non-table is a hand edit.
@@ -808,7 +813,7 @@ def settle(raw, settings):
             additions.append((path, key, value))
             continue
         current = table[key]
-        if path == ('deploy',) and isinstance(current, list):
+        if grows(path, current):
             value = [*current, *(item for item in value if item not in current)]
         if current == value:
             continue

@@ -45,8 +45,9 @@ def register(subparsers):
     parser.set_defaults(func=run)
 
 
-def _edit(label, what, confirm, change, root=None):
-    """The owner edit frame: validate change(root, raw) -> text, then the digest path."""
+def _edit(label, what, confirm, change, root=None, keys=(), add=False):
+    """The owner edit frame: validate change(root, raw) -> text, then the digest path; after the
+    write one replaced or added line per key in keys (#673)."""
     try:
         root = workspace.find_workspace(root)
         _, raw = config.read(root)
@@ -54,29 +55,33 @@ def _edit(label, what, confirm, change, root=None):
         print(f'wuwei {label}: {exc}', file=sys.stderr)
         return UNRUN
     try:
-        load_config(root, raw=raw)
+        before = load_config(root, raw=raw)
         text = change(root, raw)
         if text == raw:
             print('No config.toml changes')
             return CLEAN
-        load_config(root, raw=text)
+        after = load_config(root, raw=text)
         diff = ''.join(difflib.unified_diff(raw.splitlines(keepends=True), text.splitlines(keepends=True),
                                             'config.toml', 'config.toml (proposed)'))
     except ValueError as exc:  # ConfigError, a TOML error and calibrate.LAYOUT included
         print(f'wuwei {label}: {exc}', file=sys.stderr)
         return FINDINGS
     try:
-        return config.offer(root, raw, text, diff, label=label, what=what, confirm=confirm)
+        code = config.offer(root, raw, text, diff, label=label, what=what, confirm=confirm)
     except (OSError, ValueError) as exc:
         print(f'wuwei {label}: {exc}', file=sys.stderr)
         return UNRUN
+    if code == CLEAN:
+        for line in filter(None, (changed(key, before, after, add) for key in keys)):
+            print(line)
+    return code
 
 
 def card_write(root, label, change, keys, card):
     """#529: the owner's answer on a card is the confirmation, as for a learned connector
     (outbound.apply); one config.set event naming the card after the write."""
     from wuwei import state
-    code = _edit(label, 'change', lambda *args, **kwargs: True, change, root)
+    code = _edit(label, 'change', lambda *args, **kwargs: True, change, root, keys=keys)
     if code == CLEAN:
         state.append_event('config.set', {'keys': keys, 'card': card}, root)
     return code
@@ -121,22 +126,36 @@ def effective(config, parts):
     return config
 
 
-def merged(config, parts, value, replace=False):
-    """#492: the settings for one key: a list gets the effective items plus the new ones, a
-    named-entry table one setting per entry; replace writes the value as given."""
+def changed(key, before, after, add):
+    """#673: 'replaced: <key> = <new> (was <old>)', or 'added' for --add and a deploy list;
+    None when either value cannot be read, so the report never fails a done write."""
+    parts = [int(part) if part.isdigit() else part for part in key.split('.')]
+    try:
+        old, new = effective(before, parts), effective(after, parts)
+    except (KeyError, IndexError, TypeError):
+        return None
+    verb = 'added' if add or calibrate.grows(tuple(parts[:-1]), old) else 'replaced'
+    return f'{verb}: {key} = {configtext.dumps(new, inline=True)} (was {configtext.dumps(old, inline=True)})'
+
+
+def merged(config, parts, value, add=False):
+    """The settings for one key: the value as given (#673); with add (#492) a list gets the
+    effective items plus the new ones, a named-entry table one setting per entry."""
     rule = configtext.declared(parts)
     table = isinstance(rule, dict) and '*' in rule
-    if replace and not (isinstance(rule, list) or table):
-        raise ValueError(f"{'.'.join(map(str, parts))}: --replace applies to a list or a "
-                         'named-entry table; remove --replace')
-    if not replace and isinstance(rule, list) and isinstance(value, list) and value:  # #604: [] empties it
+    if add and isinstance(rule, list) and isinstance(value, list):
+        if not value:
+            return []
         try:
             current = effective(config, parts)
         except (KeyError, IndexError):  # repos.<n> past the end: settle names the layout
             current = []
         return [(tuple(parts[:-1]), parts[-1], [*current, *(item for item in value if item not in current)])]
-    if not replace and table and isinstance(value, dict):
+    if add and table and isinstance(value, dict):
         return [(tuple(parts), name, item) for name, item in value.items()]
+    if add:
+        raise ValueError(f"{'.'.join(map(str, parts))}: --add applies to a list or a "
+                         'named-entry table; remove --add')
     return [(tuple(parts[:-1]), parts[-1], value)]
 
 
@@ -224,7 +243,7 @@ def set_value(args, confirm=None):
         if list(parsed) != ['value']:
             raise ValueError(f'{args.value!r}: expected one TOML value; pass one TOML value, for example \'"standard"\' or false')
         return _settle(raw, merged(load_config(root, raw=raw), parts, parsed['value'],
-                                   getattr(args, 'replace', False)))
+                                   getattr(args, 'add', False)))
 
     from wuwei import interview, sessions
     card = getattr(args, 'from_card', None)
@@ -241,7 +260,8 @@ def set_value(args, confirm=None):
         if not given:
             print(f'config set: {exc}', file=sys.stderr)
             return UNRUN
-        return _edit('config set', 'change', confirm, change)  # it reports the reason
+        return _edit('config set', 'change', confirm, change, keys=[args.key],
+                     add=getattr(args, 'add', False))  # it reports the reason
     session = sessions.current() and confirm is None
     command = shlex.join(['bin/wuwei', 'config', 'set', *given]) if given else (
         f'bin/wuwei config set <key> <value> (bin/wuwei decision show {card} lists the values)')
@@ -264,7 +284,7 @@ def set_value(args, confirm=None):
             f'Previous: {args.key} = {current}, and route it. Ask it with bin/wuwei decision show D-n '
             '--widget, then run bin/wuwei config set --from-card D-n.'), file=sys.stderr)
         return FINDINGS
-    return _edit('config set', 'change', confirm, change)
+    return _edit('config set', 'change', confirm, change, keys=[args.key], add=getattr(args, 'add', False))
 
 
 def repo_tables(raw, repos):

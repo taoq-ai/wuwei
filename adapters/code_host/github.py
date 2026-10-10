@@ -81,7 +81,10 @@ def _run(args, payload=None, *, json_output=True, env=None):
                 allowed = payload is None and options == ['-H', 'Cache-Control: no-cache']
             elif match:
                 _repo(match[1])
-                if payload is None:
+                if payload is None and options == ['--method', 'DELETE']:
+                    # #678: the one label WUWEI removes.
+                    allowed = re.fullmatch(r'issues/[1-9][0-9]*/labels/owner-merge', match[2]) is not None
+                elif payload is None:
                     allowed = options in ([], ['-H', 'Cache-Control: no-cache'],
                                           ['-H', 'Cache-Control: no-cache', '--paginate', '--slurp'])
                     # Conditional reads: one If-None-Match header holding one quoted ETag.
@@ -91,7 +94,7 @@ def _run(args, payload=None, *, json_output=True, env=None):
                 else:
                     allowed = (options == ['--method', 'POST', '--input', '-'] and
                                re.fullmatch(r'pulls|pulls/[1-9][0-9]*/requested_reviewers|'
-                                            r'issues|issues/[1-9][0-9]*/comments|'
+                                            r'issues|issues/[1-9][0-9]*/comments|issues/[1-9][0-9]*/labels|'
                                             r'pulls/[1-9][0-9]*/comments/[1-9][0-9]*/replies',
                                             match[2]) is not None)
     if not allowed:
@@ -574,6 +577,25 @@ def issue(repo, title, body, root=None):
         raise ValueError('expected issue title and body')
     value = _api(f'repos/{_repo(repo)}/issues', payload={'title': title, 'body': body})
     return {'number': _field(value, 'number', int), 'url': _field(value, 'html_url', str)}
+
+
+@_operation
+def label(ref, name, present, root=None):
+    """#678: add or remove the owner-merge label; the item record, never the label, is the flag."""
+    repo, number = _ref(ref)
+    if name != 'owner-merge' or type(present) is not bool:
+        raise ValueError('expected the owner-merge label and present true or false')
+    endpoint = f'repos/{repo}/issues/{number}/labels'
+    if present:
+        value = _api(endpoint, payload={'labels': [name]})
+    else:
+        try:
+            value = _run(['api', f'{endpoint}/{name}', '--method', 'DELETE'])
+        except ValueError as exc:
+            if '(HTTP 404)' not in str(exc):
+                raise
+            value = []  # The PR does not carry it: already absent.
+    return {'labels': [_field(row, 'name', str) for row in _list(value)]}
 
 
 @_operation

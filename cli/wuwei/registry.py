@@ -40,7 +40,7 @@ PARAMETERS = {
                   'comment': ('ref', 'text', 'thread'), 'merge': ('ref', 'sha'),
                   'revert_pr': ('ref',), 'merged_prs': ('repo',), 'open_prs': ('repo',), 'probe': ('ref', 'tags'),
                   'default_branch': ('repo',), 'deployments': ('repo', 'since'),
-                  'issue': ('repo', 'title', 'body')},
+                  'issue': ('repo', 'title', 'body'), 'label': ('ref', 'name', 'present')},
     'vcs': {'workspace_init': ('repo',),
             'workspace_changes': ('repo',),
             'workspace_commit': ('repo', 'paths'), 'workspace_owner_commit': ('repo', 'paths'),

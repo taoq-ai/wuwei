@@ -48,6 +48,10 @@ def merge(ref, sha, root=None):
     return record_none("code_host", "merge", root, measurement=False)
 
 
+def label(ref, name, present, root=None):
+    return record_none('code_host', 'label', root, measurement=False)
+
+
 def revert_pr(ref, root=None):
     return record_none("code_host", "revert_pr", root, measurement=False)
 

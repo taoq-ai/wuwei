@@ -205,6 +205,20 @@ def matched(path, patterns):
                  if fnmatchcase('/'.join(parts[i:]), pattern)), None)
 
 
+LABEL = 'owner-merge'
+
+
+def owner_hold(item):
+    """#678: (who, date) when the owner keeps this item's merge, else None."""
+    flag = item.get('owner_merge')
+    if flag is None:
+        return None
+    if (not isinstance(flag, dict) or type(flag.get('value')) is not bool
+            or not isinstance(flag.get('by'), str) or not isinstance(flag.get('at'), str)):
+        raise ValueError(f'invalid owner_merge record; {DAMAGED}')
+    return (flag['by'], flag['at'][:10]) if flag['value'] else None
+
+
 def check(ref, root=None, *, cwd=None, repo=None, granted=False):
     """Return 0 and evidence, 1 findings, or 2 unmeasured; never authorize overrides. #524:
     granted (the owner's merge grant) skips only auto-merge eligibility and pacing."""
@@ -213,6 +227,11 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
         config = workspace.load_config(root)
         ref = reference(ref, root, config, cwd, repo)
         repo_name = ref.split('#')[0]
+        data = state.read_state(root)
+        for name, linked in data['items'].items():
+            if linked.get('pr') == ref and (hold := owner_hold(linked)):
+                raise Refused(f'owner merges: owner_merge set by {hold[0]} on {hold[1]}; '
+                              f'clear it with bin/wuwei plan set {name} owner_merge=false')
         settings = next((r for r in config['repos'] if r['name'] == repo_name), None)
         require(settings is not None, 'merge policy requires a configured repository')
         policy = settings['merge']
@@ -228,7 +247,6 @@ def check(ref, root=None, *, cwd=None, repo=None, granted=False):
                     for directory, r, entry in entries if entry['status'] != 'failed') < policy['max_per_day'],
                 'repository daily merge cap reached')
         require(granted or not quiet(policy, workspace.now()), 'merge is in quiet hours')
-        data = state.read_state(root)
         item = item_evidence(root, ref, data, granted)
         host = registry.load('code_host', config)
         pr = checked_pr(host, ref, root)

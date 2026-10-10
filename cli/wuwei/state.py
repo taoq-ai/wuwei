@@ -345,7 +345,7 @@ def _producer_error(parts):
                     'title': 'wuwei plan add or wuwei pr claim',
                     'pr': 'wuwei pr raise or wuwei pr claim',
                     'goal': 'wuwei plan approve', 'tier': 'wuwei plan approve',
-                    'gates': 'wuwei dispatch next', 'spec': 'wuwei plan set',
+                    'gates': 'wuwei dispatch next', 'spec': 'wuwei plan set', 'owner_merge': 'wuwei plan set',
                     'docs': 'wuwei plan set or wuwei docs page',
                     'assumption': 'wuwei decision route --external or wuwei sweep'}.get(
                         parts[2], 'its dedicated command')

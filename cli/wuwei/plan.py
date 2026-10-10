@@ -1,6 +1,7 @@
 """Morning proposal and dedicated gate approval producer."""
 
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -88,8 +89,8 @@ def _proposal(data, goals_text, framework="wsjf"):
             raise ValueError(f'{name}: track must be SLICE or FULL; {PLAN_JSON}')
         if 'tier' in item and item['tier'] not in dispatch.TIERS:
             raise ValueError(f'{name}: tier must be light, standard or full; {PLAN_JSON}')
-        if 'ticket' in item and not (isinstance(item['ticket'], str) and re.fullmatch(
-                TICKET, item['ticket'])):
+        if item.get('ticket') is not None and not (isinstance(item['ticket'], str) and re.fullmatch(
+                TICKET, item['ticket'])):  # #636: null is the owner's none
             raise ValueError(f'{name}: invalid ticket; {PLAN_JSON}')
         flags = item.get('flags')
         if not isinstance(flags, dict) or set(flags) != set(FLAGS) or any(type(v) is not bool for v in flags.values()):
@@ -118,6 +119,43 @@ def owner_steps(item):
         elif entry['action'] not in grants.ACTIONS:
             lines.append(f'Owner-only: {entry["action"]} {entry["target"]} (owner step)')
     return lines
+
+
+def tracked(data):
+    """The ids discovery found in the tracker: each is its own ticket."""
+    return {row.get('id') for row in data.get('discovered', []) if isinstance(row, dict)
+            and row.get('source') == 'tracker'}
+
+
+def proposed(row, found=()):
+    """#636: the ticket record a candidate carries: its ticket field (None is the owner's
+    none), its own id when discovered from the tracker, or None for a new ticket."""
+    if 'ticket' in row:
+        return {'id': row['ticket'], 'source': 'candidate' if row['ticket'] else 'none'}
+    if row['id'] in found or row.get('source') == 'tracker':
+        return {'id': row['id'], 'source': 'tracker'}
+    return None
+
+
+def _skipped(name, row):
+    """The tracker.skipped payload: the owner's none, else the skipped tier."""
+    return ({'item': name, 'ticket': 'none'} if 'ticket' in row and row['ticket'] is None
+            else {'item': name, 'tier': row['tier']})
+
+
+def _tickets(config, data):
+    """#636: {item: '<id> (existing)' | 'new <title>' | 'none'} for the plan and the gate card."""
+    from wuwei import tracker
+    if not tracker.in_force(config):
+        return {}
+    found, texts = tracked(data), {}
+    for row in data['candidates']:
+        if row.get('tier') in config['tracker']['skip_tiers']:
+            continue
+        record = proposed(row, found)
+        texts[row['id']] = ('new ' + ' '.join(row['scope'].split()) if record is None else
+                            'none' if record['id'] is None else f'{record["id"]} (existing)')
+    return texts
 
 
 def goal_seats(candidates, cap):
@@ -237,6 +275,7 @@ def propose(data, root=None):
                  if provisional else [f'- {goal}'])], '',
              '## Measured sweep', *[f'- {key}: {value}' for key, value in data['sweep'].items()], '',
              '## Proposed queue']
+    shown = _tickets(config, data)
     for number, item in enumerate(data['candidates'], 1):
         lines += [f'### {number}. {item["id"]} ({item["track"]})',
                   f'Goal: {item.get("goal", "unplanned")}', f'Evidence: {item["evidence"]}',
@@ -245,6 +284,7 @@ def propose(data, root=None):
                      f'Repository: not named; the lead adds "repo": one of {", ".join(names)} (the paths '
                      'match none or several), then the planner runs wuwei plan propose again'] if names else []),
                   'Flags: ' + ', '.join(key for key in FLAGS if item['flags'][key]) if any(item['flags'].values()) else 'Flags: none',
+                  *([f'Ticket: {shown[item["id"]]}'] if item['id'] in shown else []),
                   *(f'Owner-only: {name} {target} ({key})' for name, target, key in planned.get(item['id'], [])),
                   *owner_steps(item), '']
     lines += ['## Discovery intake',
@@ -278,10 +318,12 @@ def gate_widget(root=None, *, import_yesterday=False):
     provisional = goals.parse(draft.read_text(encoding='utf-8')) if draft.is_file() else None
     adopt = data.get('adopt', [])
     ids = [item['id'] for item in data['candidates']] + [row['id'] for row in adopt]
+    shown = _tickets(workspace.load_config(root), data)  # #636: Approve opens the new ones
     approves = '. '.join(part[:1].upper() + part[1:] for part in [
         'Goals ' + ', '.join(f'{goal} ({provisional[goal]["outcome"]})' if provisional else goal
                              for goal in data['goals']),
         'queue ' + (', '.join(item['id'] for item in data['candidates']) or 'empty'),
+        *(['tickets ' + ', '.join(f'{name} {text}' for name, text in shown.items())] if shown else []),
         *(['claims ' + ', '.join(f'{row["id"]} ({row["pr"]})' for row in adopt)] if adopt else []),
         seats_text(_seats(data), data['cap']),
         *([data['capacity']['text']] if 'capacity' in data else []),
@@ -296,9 +338,10 @@ def gate_widget(root=None, *, import_yesterday=False):
         decision.gate(root) + "Approve today's plan as proposed?",
         'Goals' if provisional else 'Plan',
         [*(paces if advised else [('Approve', approves + '.')]),
-         ('Change something', 'Ask the separate questions on goals, queue, seat policy, '
+         ('Change something', 'Ask the separate questions on goals, queue, tickets, seat policy, '
                               'CAP and seats per goal, envelope and carry-over. CAP is derived. '
-                              'A changed CAP is recorded as config cap.')],
+                              'A changed CAP is recorded as config cap. Name any item you merge '
+                              'yourself; the planner records it with wuwei plan set <item> owner_merge=true.')],
         ' '.join(['wuwei plan approve --items', *ids, '--goals-confirmed',
                   *(['--import-yesterday'] if import_yesterday else []),
                   *(['--pace "<label>"'] if advised else [])]))
@@ -334,9 +377,7 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
         raise state.StateError('approved item is absent from proposal; approve only ids from the proposal (bin/wuwei status lists them), or run bin/wuwei plan propose again')
     from wuwei import tracker
     imported, carried = {}, {}
-    tracked = {row.get('id') for row in data.get('discovered', []) if isinstance(row, dict)
-               and row.get('source') == 'tracker'}
-    skipped = []
+    found, skipped = tracked(data), []
     if import_yesterday:
         days = root / '.wuwei/days'
         prior = sorted((path for path in days.iterdir() if path.is_dir() and
@@ -354,6 +395,21 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
             item.pop('resume_phase', None)
         if set(imported) & set(items):
             raise state.StateError('imported and approved item ids overlap; remove the overlapping ids from --items, or run without --import-yesterday')
+    current, reasons = state.read_state(root), []
+    if (tracker.in_force(config) and workspace.posture(config)[0] != 'strict'
+            and not current.get('gate_approved')):
+        from wuwei import drafts
+        for name in items:  # #636: the Approve answer listed these new tickets; it is their Send
+            if (proposed(candidates[name], found) is not None
+                    or tracker.check(current, config, name, candidates[name])[0] != 'missing'):
+                continue
+            result = tracker.create(root, name)
+            if result.exit == 1 and isinstance(result.data, dict) and result.data.get('draft'):
+                result = drafts.approve(root, result.data['draft'])
+            if result.exit:
+                reasons.append(f'{name}: {result.reason}')
+    if reasons:
+        raise state.StateError('\n'.join(reasons))
 
     def update(current):
         if current.get('gate_approved'):
@@ -362,10 +418,8 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
             raise state.StateError('day item already exists; remove the existing ids from --items (bin/wuwei status lists them)')
         tickets = {**current.get('tickets', {}), **carried}
         for name in items:
-            if name not in tickets and 'ticket' in candidates[name]:
-                tickets[name] = {'id': candidates[name]['ticket'], 'source': 'candidate'}
-            elif name not in tickets and name in tracked:
-                tickets[name] = {'id': name, 'source': 'tracker'}
+            if name not in tickets and (record := proposed(candidates[name], found)):
+                tickets[name] = record
         if tickets:
             current['tickets'] = tickets
         reasons = []
@@ -398,7 +452,7 @@ def approve(items, root=None, *, goals_confirmed=False, import_yesterday=False, 
                                           'flags': {name: candidates[name]['flags'] for name in items},
                                           'pace': chosen, 'recommended': recommended, 'wish': wish})
     for name in skipped:
-        state.append_event('tracker.skipped', {'item': name, 'tier': candidates[name]['tier']}, root)
+        state.append_event('tracker.skipped', _skipped(name, candidates[name]), root)
     from wuwei import shepherd
     for name in claims:  # claim_pr prints the claim or its refusal; the gate stays approved.
         shepherd.claim_pr(root, adopted[name]['pr'], name, data['goals'][0])
@@ -442,10 +496,20 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
                    'candidates': [candidate]}, goals_text,
                   config['prioritisation']['framework'])
     from wuwei import tracker
-    chosen = ({'id': candidate['ticket'], 'source': 'candidate'} if 'ticket' in candidate else
-              {'id': item, 'source': 'tracker'} if candidate.get('source') == 'tracker' else None)
+    chosen = proposed(candidate)
     status, reason = tracker.check({'tickets': {item: chosen}} if chosen else day,
                                    config, item, candidate)
+    if status == 'missing' and owner_item and workspace.posture(config)[0] != 'strict':
+        # #636: draft the owner item's ticket for its Send card; a seat can reach plan add, so never send here.
+        opened = tracker.create(root, item, row={'scope': candidate['title'], 'goal': goal,
+                                                 'track': candidate['track'],
+                                                 'evidence': 'named by the owner'})
+        if opened.exit == 0:
+            status = 'ticket'
+        elif isinstance(opened.data, dict):
+            reason = tracker.check(state.read_state(root), config, item, candidate)[1]
+        else:
+            reason = opened.reason
     if status == 'missing':
         raise state.StateError(reason)
     size = candidate['score'][size_key]
@@ -495,7 +559,7 @@ def add(item, root=None, goal=None, size=None, title=None, ticket=None, source=N
                        payload={'item': item, 'source': candidate.get('source', 'discovery'),
                                 'flags': {item: candidate['flags']}})
     if status == 'skipped':
-        state.append_event('tracker.skipped', {'item': item, 'tier': candidate['tier']}, root)
+        state.append_event('tracker.skipped', _skipped(item, candidate), root)
     return {'action': 'build next', 'item': item}
 
 
@@ -518,6 +582,38 @@ def set_spec(item, assignment, reason=None, root=None):
     state._write_state(update, root, reserved=False, kind='spec.override',
                        payload={'item': item, 'value': value, 'reason': reason})
     return f'{item}: spec {value}'
+
+
+def set_owner_merge(item, value, root=None):
+    """#678: plan set <item> owner_merge=true|false: the owner keeps (or releases) this merge."""
+    root = workspace.find_workspace(root)
+    if value not in ('true', 'false'):
+        raise ValueError(f'expected owner_merge=true or owner_merge=false; run bin/wuwei plan set {item} '
+                         'owner_merge=true|false')
+    on = value == 'true'
+    by = os.environ.get('WUWEI_SEAT_ROLE') or ('planner' if sessions.current() else 'owner')
+    linked = []
+
+    def update(data):
+        if item not in data['items']:
+            raise state.StateError(f"no item {item} today; today's items: "
+                                   f"{', '.join(sorted(data['items'])) or 'none'}; use one of those ids")
+        data['items'][item]['owner_merge'] = {'value': on, 'by': by, 'at': workspace.now().isoformat()}
+        linked.append(data['items'][item].get('pr'))
+    state._write_state(update, root, reserved=False, kind='plan.set',
+                       payload={'item': item, 'owner_merge': on, 'by': by})
+    config = workspace.load_config(root)
+    if linked[-1] and config['adapters']['code_host'] != 'none':
+        from wuwei import merge, registry
+        try:
+            labels = merge.read(registry.load('code_host', config).label, linked[-1], merge.LABEL, on, root=root)
+            if (merge.LABEL in labels['labels']) != on:
+                raise ValueError('the PR labels did not change; if it repeats, run bin/wuwei doctor, '
+                                 'which tests the code host adapter')
+        except merge.ERRORS as exc:
+            raise OSError(f'{item}: owner_merge {value} recorded; PR label not updated: {exc}; '
+                          f'rerun bin/wuwei plan set {item} owner_merge={value}') from exc
+    return f'{item}: owner_merge {value}'
 
 
 def set_pace(value, root=None):

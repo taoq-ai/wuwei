@@ -267,7 +267,7 @@ One exchange per command (you, then the DM):
 
 ```text
 status
-pages 0 | nudges 1 | implement 1/1 | sessions 1 | meeting unmeasured
+1 building · seats 1/1 (builder) | pages 0 · nudges 1
 
 report
 Report 2026-09-30: merged 1, open 0, parked 0, decisions answered 2.

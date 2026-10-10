@@ -216,9 +216,13 @@ it. Ownership is enforced by three mechanisms, none of which depends on the mode
   - `merged`: done.
   An overdue action is a `nudge`, then a `page` at twice the deadline (5.9).
 - Wake outside the model. The watch process polls owned PRs every `pr.poll_seconds` (default
-  120; head, CI, mergeability, reviews, comments, threads) and, on any change, records a
-  `pr.changed` event and wakes the planner session (and, in M5, launches a headless shepherd
-  run). Nothing needs to be re-armed by a seat.
+  120; head, CI, mergeability, reviews, comments, threads) and, on a change with a part that
+  needs a planner action (`watch.ACTIONS`: merged, closed, new commits, conflicts, new
+  comments, reviews, a failed check), records a `pr.changed` event and wakes the planner
+  session (and, in M5, launches a headless shepherd run). Each part is delivered once
+  (`watch.delivered`) until its evidence changes; `updated_at` is evidence time only; a
+  SessionStart in the registered planner session consumes the wake; `wuwei watch why <pr>`
+  shows what fired and what was suppressed (#674). Nothing needs to be re-armed by a seat.
 - Overnight, without a session (owner, 2026-10-08, #511). `wuwei sweep obligations --headless`
   (and `wuwei shepherd`, every 15 minutes, installed with `wuwei shepherd schedule`, from the
   Shepherd card in a session or, under strict, by the owner in a host terminal) sweeps the
@@ -1019,7 +1023,8 @@ Surfaces, all reading the same classification:
 - Status line. `wuwei status --line` for the Claude Code status line (#521): one line of at
   most 100 columns (`--width <n>`), read left to right by importance. First the one thing to
   do now when there is one (`restart Claude Code: hooks <old> still running`, `no plan yet`,
-  `gate waiting`, `decision D-n waiting`), then items per phase against CAP and the running
+  `gate waiting`, `decision D-n waiting`), then the day's items counted in words (`5 planned
+  · 2 building · 1 in review · 3 shipped`, CAP only on the seats token) and the running
   seats by role (`seats 4/1 (lead, arch, +2 more)`, cut at whole names), then pages, nudges
   and the posture when it is not guarded. `wuwei status` prints the same groups one per line
   with the detail: each running seat with role, item and start time, watch, listen,
@@ -1985,6 +1990,8 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I33 | A config record is never Strategic on its own | Class `other` and none x door one-way, two-way and unsure x confidence high and low: `undo.correct`, then `cisr`, on a record with Value rows and a Previous line | #600; a seat's better class stands |
 | I34 | A docs-only diff never lowers review when anything else would raise it: a lead flag, a FULL track, a trust, never-auto, FULL-pattern, binary or agent-instruction path, or a full floor keeps arch, quality and security; a plain document with nothing raising it gets one reviewer | `dispatch.tier` on a document diff, alone and with each raising path, under each lead flag, track and floor | #622; one decision in `dispatch.tier` (`_docs_role`); goal for a document, quality for a spec or pre-registration |
 | I35 | No item opens a fix round past its round cap: `build.open_fix` refuses at the cap and `dispatch next` turns a blocking finding at the cap into a park with the finding and what would unpark it | `dispatch.max_rounds` for `gates.max_rounds` 1, 2 and 3 x each tier override 0, 1 and 3 x each item tier; `build.open_fix` on an item whose build used its cap, with and without a tier override | #623; one cap read in `dispatch.max_rounds`, one round opened in `build.open_fix`; after the cap non-blocking notes ship in the PR body |
+| I36 | An item ticket is attached by the planner below strict or by the owner, never by a seat: `tracker create <item>` and `plan set <item> ticket=<id>` pass for the registered planner below strict and never for a seat, whose reason names the planner; `tracker create --bug` stays a seat command | per posture, `protect_state.check_bash` on both commands for the planner and for a seat, and on a seat's `tracker create --bug A Broken --evidence cli/x.py:1` | #636; the gate's Approve opens the tickets the plan proposed; under strict the owner runs the commands in a host terminal |
+| I37 | An item with `owner_merge` set is never merged by WUWEI: `merge check`, `wuwei merge`, `pr act`, the PR guard and the overnight shepherd refuse naming the flag, under any grant; cleared, they follow the normal policy | `merge.owner_hold` on a set, cleared, absent and malformed record in the walk; the path table `test_owner_merge_holds_on_every_path` (each path x flag set and cleared x no grant and a today grant) | #678; one read in `merge.check`; only `wuwei plan set` writes it; agent tools set it, the owner clears it |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 
