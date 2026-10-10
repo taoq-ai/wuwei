@@ -1967,3 +1967,66 @@ def test_issue_677_receive_refuses_fix_without_parsed_blocker(root):
     with pytest.raises(dispatch.Refused, match='FIX verdict but no blocking finding parsed'):
         record(root, 'quality', 'quality-1', text)
     assert state.read_state(root)['gate_verdicts'] == {}
+# #666: build next and dispatch next read one decision
+
+
+def cli(capsys, *argv):
+    from wuwei.__main__ import main
+    capsys.readouterr()
+    code = main(list(argv))
+    out = capsys.readouterr()
+    return code, json.loads(out.out) if out.out else None, out.err
+
+
+def build_next(capsys, root):
+    record_ = state.read_state(root)['builds']['A']
+    return cli(capsys, 'build', 'next', 'A', record_['brief'], record_['worktree'])
+
+
+@pytest.mark.parametrize('first', ['build', 'dispatch'])
+def test_issue_acceptance_build_next_and_dispatch_next_agree_on_a_gate_fix(root, monkeypatch, capsys, first):
+    built(root)
+    gate_fix(root)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    answers = {}
+    for name in (first, {'build': 'dispatch', 'dispatch': 'build'}[first]):
+        answers[name] = build_next(capsys, root) if name == 'build' else cli(capsys, 'dispatch', 'next', 'A')
+    assert answers['dispatch'][:2] == (0, {'action': 'fix', 'roles': ['quality'], 'command': 'wuwei build next A'})
+    action = state.read_state(root)['builds']['A']['action']
+    assert answers['build'][:2] == (0, action)
+    assert action['action'] == 'continue' and action['resume'] == 'old-builder'
+    assert 'gate-quality-1.md' in action['feedback']
+    assert state.read_state(root)['items']['A']['phase'] == 'fix'
+    assert len(fix_events(root)) == 1
+
+
+def test_build_next_opens_the_delta_fix_round_dispatch_next_names(root, monkeypatch, capsys):
+    from wuwei import dispatch
+    built(root)
+    gate_fix(root)
+    dispatch.next_step('A', root)
+    state._write_state(lambda data: data['builds']['A'].update(status='done', action={'action': 'done'}),
+                       root, reserved=False)
+    state.transition('A', 'delta', root)
+    record(root, 'quality', 'quality-1', FIX + 'Simplicity: none\nDesign: none\n', 'delta')
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+    code, found, _ = build_next(capsys, root)
+    data = state.read_state(root)
+    assert (code, found) == (0, data['builds']['A']['action']) and found['action'] == 'continue'
+    assert data['items']['A']['phase'] == 'fix' and data['builds']['A']['fix_rounds'] == 2
+    code, found, _ = cli(capsys, 'dispatch', 'next', 'A')
+    assert (code, found['action'], found['command']) == (0, 'fix', 'wuwei build next A')
+
+
+def test_build_next_exits_one_on_a_gate_refusal_or_escalation(root, monkeypatch, capsys):
+    from wuwei import dispatch
+    built(root)
+    monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
+
+    def refuse(item, root=None):
+        raise dispatch.Refused('builder must stand down before gates')
+    monkeypatch.setattr(dispatch, 'next_step', refuse)
+    code, found, err = build_next(capsys, root)
+    assert (code, found) == (1, None) and 'builder must stand down before gates' in err
+    monkeypatch.setattr(dispatch, 'next_step', lambda item, root=None: {'action': 'escalate', 'reason': 'r'})
+    assert build_next(capsys, root)[:2] == (1, {'action': 'escalate', 'reason': 'r'})
