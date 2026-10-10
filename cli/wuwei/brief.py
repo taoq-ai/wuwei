@@ -142,8 +142,8 @@ def read_day(root):
     return directory, state.read_state(root)
 
 
-def transcript_reference(path):
-    """Read the same brief reference for session binding and seat stop."""
+def _user_messages(path):
+    """The text of each user row of a transcript, in order."""
     with Path(path).open(encoding='utf-8') as transcript:
         for line in transcript:
             row = json.loads(line)
@@ -152,8 +152,14 @@ def transcript_reference(path):
             content = row['message']['content']
             if isinstance(content, list):
                 content = '\n'.join(part['text'] for part in content if part.get('type') == 'text')
-            if content.startswith(REFERENCE_PREFIX):
-                return content.splitlines()[0].removeprefix(REFERENCE_PREFIX)
+            yield content
+
+
+def transcript_reference(path):
+    """Read the same brief reference for session binding and seat stop."""
+    for content in _user_messages(path):
+        if content.startswith(REFERENCE_PREFIX):
+            return content.splitlines()[0].removeprefix(REFERENCE_PREFIX)
     return None
 
 
@@ -179,6 +185,28 @@ def seat_of(payload, data):
     except OSError:
         return None
     return next((seat for seat in seats(data).values() if seat.get('brief') == reference), None)
+
+
+def first_prompt(path):
+    """#676: the first user message of a transcript: a subagent's launch prompt, or None."""
+    return next(_user_messages(path), None)
+
+
+def prompt_digest(text):
+    """#676: the key an adhoc seat is matched by: sha256 of the stripped prompt."""
+    import hashlib
+    return hashlib.sha256(text.strip().encode()).hexdigest()
+
+
+def adhoc_seat(data, digest, session):
+    """#676: the running adhoc seat of a subagent: the one already bound to its trace
+    session, else the oldest with its prompt digest and no session yet; None when none."""
+    # ponytail: two running adhoc seats with one prompt may swap; same prompt, same audit record.
+    running = [(name, seat) for name, seat in seats(data).items()
+               if seat['role'] == 'adhoc' and seat['status'] == 'running'
+               and seat.get('prompt_sha256') == digest]
+    return next((name for name, seat in running if session in seat.get('trace_sessions', ())),
+                next((name for name, seat in running if not seat.get('trace_sessions')), None))
 
 
 HANDBACK = 'SubagentHandback'  # the harness's structured hand-back tool (#473)

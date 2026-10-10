@@ -595,3 +595,35 @@ def test_each_seat_gets_its_own_scratch_directory(day, monkeypatch, capsys):
         assert (day[0] / f'.wuwei/scratch/{item}/builder').is_dir()
         lines.append(found[0])
     assert lines[0] != lines[1]
+
+
+def test_adhoc_prompt_helpers(tmp_path):
+    # #676: an untyped subagent is matched to its seat by its launch prompt.
+    from wuwei import brief as module
+    rows = {'str': [{'type': 'system'}, {'type': 'user', 'message': {'content': 'Review it\nmore'}}],
+            'list': [{'type': 'user', 'message': {'content': [
+                {'type': 'text', 'text': 'Review it'}, {'type': 'image'}, {'type': 'text', 'text': 'more'}]}}],
+            'none': [{'type': 'assistant', 'message': {'content': 'x'}}]}
+    for name, lines in rows.items():
+        (tmp_path / name).write_text(''.join(json.dumps(row) + '\n' for row in lines))
+    assert module.first_prompt(tmp_path / 'str') == 'Review it\nmore'
+    assert module.first_prompt(tmp_path / 'list') == 'Review it\nmore'
+    assert module.first_prompt(tmp_path / 'none') is None
+    digest = module.prompt_digest('Review it\nmore')
+    assert digest == module.prompt_digest('  Review it\nmore\n') != module.prompt_digest('other')
+    seat = {'role': 'adhoc', 'status': 'running', 'prompt_sha256': digest}
+    data = {'seats': {
+        'adhoc-1': {**seat, 'item': 'adhoc-1', 'trace_sessions': ['P:a1']},
+        'adhoc-2': {**seat, 'item': 'adhoc-2'},
+        'adhoc-3': {**seat, 'item': 'adhoc-3'},
+        'adhoc-4': {**seat, 'item': 'adhoc-4', 'status': 'stopped'},
+        'adhoc-5': {**seat, 'item': 'adhoc-5', 'prompt_sha256': 'other'},
+        'b': {'role': 'builder', 'item': 'X', 'status': 'running', 'prompt_sha256': digest},
+    }}
+    assert module.adhoc_seat(data, digest, 'P:a1') == 'adhoc-1'
+    assert module.adhoc_seat(data, digest, 'P:a2') == 'adhoc-2'
+    data['seats']['adhoc-2']['trace_sessions'] = ['P:a2']
+    assert module.adhoc_seat(data, digest, 'P:a3') == 'adhoc-3'
+    data['seats']['adhoc-3']['status'] = 'stopped'
+    assert module.adhoc_seat(data, digest, 'P:a3') is None
+    assert module.adhoc_seat(data, 'missing', 'P:a9') is None

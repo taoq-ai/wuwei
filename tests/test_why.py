@@ -440,3 +440,18 @@ def test_why_draft_without_an_edge(root, capsys):
 def test_why_unknown_draft_exits_one(root, capsys):
     code, _, err = why(capsys, 'draft-' + '0' * 32)
     assert code == 1 and 'bin/wuwei drafts' in err
+
+
+def test_why_adhoc_lists_todays_adhoc_seats(root, capsys):
+    # #676: an untyped agent is auditable: why adhoc names its seat and trace sessions.
+    assert main(['why', 'adhoc']) == 1
+    assert 'no adhoc seat today' in capsys.readouterr().err
+    seat = {'id': 'adhoc-1', 'role': 'adhoc', 'item': 'adhoc-1', 'type': 'general-purpose',
+            'label': 'reviewer', 'launcher': 'planner', 'prompt': 'Review PR 16',
+            'prompt_sha256': 'f' * 64, 'status': 'running', 'trace_sessions': ['P:a1']}
+    state._write_state(lambda data: data['seats'].update({'adhoc-1': seat, 'b': {
+        'role': 'builder', 'item': 'X', 'status': 'running'}}), root, reserved=False)
+    assert main(['why', 'adhoc']) == 0
+    line, = capsys.readouterr().out.splitlines()
+    assert line == ('adhoc seat adhoc-1: general-purpose as reviewer, launched by planner, running; '
+                    'prompt: Review PR 16; traces: P:a1')

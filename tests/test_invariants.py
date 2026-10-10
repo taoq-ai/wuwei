@@ -1094,6 +1094,35 @@ def i37(case, rules):
             return None
         return 'a malformed owner_merge record reads as cleared'
     return rules.memo(('owner merge',), compute)
+    """#676: an untyped Agent launch in a workspace is never refused below strict and is
+    registered as an adhoc seat; under strict it is refused naming seat start --adhoc unless
+    that command recorded its prompt."""
+    def compute(posture):
+        from wuwei import brief, state
+        from wuwei.guards import agent_launch
+        prompt = f'I38 review under {posture}'
+        payload = {'cwd': str(rules.root), 'tool_name': 'Agent', 'tool_input': {
+            'subagent_type': 'general-purpose', 'description': 'review', 'prompt': prompt}}
+        rules.configure(posture)
+        try:
+            found = [agent_launch.check(payload)]
+            if posture == 'strict':
+                with contextlib.redirect_stdout(io.StringIO()):
+                    main(['seat', 'start', '--role', 'reviewer', '--adhoc', prompt])
+                found.append(agent_launch.check(payload))
+            digest = brief.prompt_digest(prompt)
+            seats = [seat for seat in state.read_state(rules.root)['seats'].values()
+                     if seat.get('prompt_sha256') == digest]
+        finally:
+            (rules.root / '.wuwei/config.toml').write_text(rules.base)
+        return found, [seat['label'] for seat in seats]
+    found, labels = rules.memo(('adhoc launch', case[0]), lambda: compute(case[0]))
+    if case[0] != 'strict':
+        return None if found == [(0, '')] and labels == ['general-purpose'] else f'an untyped launch gave {found}, {labels}'
+    (code, reason), after = found
+    if code != 1 or 'seat start --role <role> --adhoc' not in reason or after != (0, '') or labels != ['reviewer']:
+        return f'an untyped launch under strict gave {found}, {labels}'
+    return None
 
 
 INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': i7, 'I8': i8,
@@ -1117,7 +1146,7 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I6': (0,), 'I7': OUTWARD, 'I8': (0, 4), 'I9': (0,), 'I10': (0,), 'I11': (), 'I12': (), 'I13': (), 'I14': (),
          'I15': (), 'I16': (0,), 'I17': (), 'I18': (0,), 'I19': (0, 1, 5), 'I20': (), 'I21': (0, 1, 3),
          'I22': (), 'I23': (), 'I24': (), 'I25': (), 'I26': (), 'I27': (), 'I28': (),
-         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': ()}
+         'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (),}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
@@ -1215,6 +1244,9 @@ BROKEN = {
         import_module('wuwei.dispatch'), 'rounds_used', lambda data, item: 0),
     'owner_merge ignored': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.merge'), 'owner_hold', lambda item: None),
+    'an untyped launch refused below strict': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.guards.agent_launch'), '_adhoc',
+        lambda payload: (_ for _ in ()).throw(import_module('wuwei.brief').Refused('untyped'))),
     'client thread row that sends': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.outward'), 'DEFAULT_TIERS',
         ({'audience': 'client', 'topic': 'thread', 'tier': 'send'}, *import_module('wuwei.outward').DEFAULT_TIERS)),

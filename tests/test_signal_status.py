@@ -339,6 +339,7 @@ def test_emitted_kinds_have_intended_tiers():
                 'build.fix_opened': 'silent', 'pr.action.done': 'silent',
                 'pr.action.decision': 'silent',
                 'retro.gap': 'nudge', 'seat stop unmatched': 'nudge',
+                'seat adhoc': 'silent', 'subagent.untraced': 'nudge',
                 'traces.gap': 'nudge', 'hook.refusal': 'silent',
                 'guard.would_refuse': 'silent', 'config.newer_template': 'nudge',
                 'hook.warning': 'nudge',

@@ -229,7 +229,9 @@ def test_payload_opens_with_active_constraints(tmp_path, monkeypatch, case):
             return
         data.update(goals=['G-1'], gate_approved=True, approved_items=['ITEM-1'],
                     seats={'b1': {'item': 'ITEM-1', 'brief': running, 'status': 'running'},
-                           'b2': {'item': 'ITEM-2', 'brief': stopped, 'status': 'stopped'}},
+                           'b2': {'item': 'ITEM-2', 'brief': stopped, 'status': 'stopped'},
+                           # #676: an adhoc seat has no brief, so it is not a current brief
+                           'adhoc-1': {'item': 'adhoc-1', 'role': 'adhoc', 'status': 'running'}},
                     builds={'ITEM-3': {'status': 'check', 'runtime': 'codex', 'brief': 'c3.md'},
                             'ITEM-4': {'status': 'merged', 'brief': 'c4.md'}},
                     decision_routes={'D-1': {}, 'D-2': {}},

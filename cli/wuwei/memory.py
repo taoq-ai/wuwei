@@ -102,7 +102,7 @@ def constraints(root, data):
         from wuwei.decision import answered
     open_ids = sorted(ident for ident in routes if answered(data, ident) is None)
     briefs = [f'{seat.get("item")} {name} {seat.get("brief")}' for name, seat in data['seats'].items()
-              if seat.get('status') == 'running']
+              if seat.get('status') == 'running' and seat.get('brief')]  # #676: adhoc has none
     briefs += [f'{item} build {build.get("brief")}' for item, build in data.get('builds', {}).items()
                if build.get('status') in ('running', 'check')]
     return (f'Active constraints:\nGoals: {goals}\nPlan: {plan}\n'

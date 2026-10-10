@@ -26,7 +26,7 @@ WRITES = frozenset({
     'pr act', 'pr claim', 'pr disposition', 'pr ping', 'pr ping-check', 'pr raise', 'pr reviewers', 'pr state',
     'promote',
     'rank', 'remote ack', 'reply', 'report', 'retro', 'runtime continue', 'runtime dispatch',
-    'runtime result', 'runtime status', 'seat stop', 'setup', 'shepherd schedule', 'shepherd unschedule', 'signal classify', 'spec analysis', 'state get',
+    'runtime result', 'runtime status', 'seat start', 'seat stop', 'setup', 'shepherd schedule', 'shepherd unschedule', 'signal classify', 'spec analysis', 'state get',
     'state recover', 'state set', 'state transition', 'steward ack', 'steward run',
     'sweep obligations', 'sweep watch', 'telemetry off', 'telemetry preview', 'telemetry proposals',
     'telemetry send', 'tracker create', 'tracker done', 'tracker log', 'verdict lint', 'voice edit',

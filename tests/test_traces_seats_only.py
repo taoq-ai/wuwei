@@ -110,6 +110,18 @@ def test_planner_subagent_and_registered_roles(day):
     assert digest('A') in (workspace.day_dir(root) / 'decisions' / ident).read_text()
 
 
+def test_adhoc_seat_keeps_its_launchers_session_rule(day):
+    # #676: an adhoc seat is the audit record; tool-sequence decisions stay for item seats.
+    root = day('guarded', findings=rows('P:a1'))
+    state._write_state(lambda data: data['seats'].update({'adhoc-1': {
+        'role': 'adhoc', 'item': 'adhoc-1', 'status': 'running', 'trace_sessions': ['P:a1']}}),
+        root, reserved=False)
+    sweep(root)
+    noted, = events(root, 'traces.noted')
+    assert noted['role'] == 'planner'
+    assert not events(root, 'scanner.finding') and decisions(root) == []
+
+
 def test_seat_wins_over_registration(day):
     root = day('observe', findings=rows('P'))
     state._write_state(lambda data: data.update(

@@ -1,4 +1,5 @@
-"""Recover a stuck seat: record its report from a file, or stop it as unmeasured (#473)."""
+"""Recover a stuck seat: record its report from a file, or stop it as unmeasured (#473);
+record an ad-hoc seat's prompt before its launch (#676)."""
 
 import sys
 
@@ -15,11 +16,30 @@ def register(subparsers):
     how.add_argument('--verdict', metavar='FILE', help='the seat\'s report or verdict')
     how.add_argument('--unmeasured', metavar='REASON', help='one line: why no report is recorded')
     stop.set_defaults(func=run)
+    start = actions.add_parser('start', help='Record an ad-hoc seat before its Agent launch (#676)')
+    start.add_argument('--role', required=True, help='what the ad-hoc seat does, such as reviewer')
+    start.add_argument('--adhoc', required=True, metavar='PROMPT', help='the exact prompt the Agent launch will use')
+    start.set_defaults(func=start_adhoc)
 
 
 def refuse(code, message):
     print(f'wuwei seat: {message}', file=sys.stderr)
     return code
+
+
+def start_adhoc(args):
+    """#676: record an ad-hoc seat's role and prompt digest, so a strict launch accepts it."""
+    from wuwei.redact import redact
+    root = workspace.find_workspace()
+    brief.read_day(root)
+    brief.identifier(args.role)
+    if not args.adhoc.strip():
+        raise ValueError('pass the agent prompt to --adhoc')
+    state.append_event('seat adhoc', {'role': args.role, 'sha256': brief.prompt_digest(args.adhoc),
+                                      'prompt': redact(args.adhoc.strip().splitlines()[0])[:200]}, root)
+    print(f'ad-hoc {args.role} recorded; launch it with the Agent tool (subagent_type general-purpose) '
+          'and this same prompt; it runs as an adhoc seat and wuwei why adhoc lists it')
+    return CLEAN
 
 
 def run(args):
@@ -31,6 +51,9 @@ def run(args):
         return refuse(FINDINGS, f'{name} is not a seat today; run wuwei next for the next step')
     if not (seat['status'] == 'running' or seat['status'] == 'unmeasured' and seat.get('by') != 'owner'):
         return refuse(FINDINGS, f'{name} is {seat["status"]}; nothing to stop; run wuwei next for the next step')
+    if args.verdict is not None and seat['role'] == 'adhoc':
+        return refuse(FINDINGS, f'{name} is an adhoc seat with no report to record; '
+                      f'run wuwei seat stop {name} --unmeasured "<reason>"')
     reason = args.unmeasured
     if reason is not None and (not reason.strip() or '\n' in reason):
         return refuse(UNRUN, 'pass a one-line reason to --unmeasured')

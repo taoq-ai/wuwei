@@ -42,6 +42,8 @@ def run(args):
             steps = decided(root, target)
         elif re.fullmatch(DRAFT, target):  # #552
             steps = [(line, None, []) for line in held(root, target)]
+        elif target == 'adhoc':  # #676
+            steps = adhoc(root)
         elif re.fullmatch(novelty.KEY, target):  # #556
             steps = [(line, None, []) for line in novelty.explain(root, workspace.load_config(root), target)]
         else:
@@ -51,6 +53,19 @@ def run(args):
         return FINDINGS
     print('\n'.join(render(steps, level(root, args.full), root)))
     return CLEAN
+
+
+def adhoc(root):
+    """#676: today's adhoc seats, the agents launched outside the WUWEI seat types."""
+    path = workspace.day_dir(root) / 'state.json'
+    steps = [(f"adhoc seat {name}: {seat.get('type', NOT)} as {seat.get('label', NOT)}, "
+              f"launched by {seat.get('launcher', NOT)}, {seat['status']}; prompt: {seat.get('prompt', NOT)}; "
+              f"traces: {', '.join(seat.get('trace_sessions', [])) or 'none yet'}",
+              None, [str(path.relative_to(root))])
+             for name, seat in state.read_state(root)['seats'].items() if seat.get('role') == 'adhoc']
+    if not steps:
+        raise Missing('no adhoc seat today; an Agent launch of a type outside the WUWEI seats registers one, then run wuwei why adhoc')
+    return steps
 
 
 def render(steps, level, root):
