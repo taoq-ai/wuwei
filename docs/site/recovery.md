@@ -129,11 +129,16 @@ runtime, pass the returned `prompt` unchanged to Agent and use its `agent_type`
 (`wuwei:<role>`) as Agent's `subagent_type`. Supply an Agent description and launch
 from the workspace root, which is the hook payload's `cwd`.
 
-The exact first line is `WUWEI brief: <relative brief path>`. The path is relative
+The prompt carries the line `WUWEI brief: <relative brief path>`. The path is relative
 to the workspace root, for example `.wuwei/days/2026-09-29/briefs/builder-1.md`,
-not relative to the item's worktree. Do not prepend instructions to the prompt.
-The guard still requires the logged, unchanged brief and matching role, fresh
-evidence and available capacity; a missing first line is refused with the required format.
+not relative to the item's worktree. The line may stand on any line of the prompt:
+a note you add before or after WUWEI's prompt is kept on the seat, and
+`wuwei why <item>` shows it. The guard still requires the logged, unchanged brief and
+matching role, fresh evidence and available capacity. A WUWEI seat type launched without
+the line is refused under strict, naming `bin/wuwei brief <role> <item> <name>`. Below
+strict it is registered as an adhoc seat with that warning, so WUWEI can trace and stop it
+but cannot receive or continue it. Any launch refusal the posture lets through is shown
+to the session as `seat not registered: <reason>`.
 
 The core function `wuwei.brief.launch_prompt` generates these instructions for all
 Claude roles, including the actions `build next` and `dispatch next` return.

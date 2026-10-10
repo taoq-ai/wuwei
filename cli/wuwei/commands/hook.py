@@ -116,10 +116,10 @@ def run(args):
     # #362: the most specific refusal first: a finding before a could-not-run, integrity last.
     if args.event != 'SessionStart':
         refusals.sort(key=lambda row: (row[2], module(row[0]) == 'integrity'))
-    enforced = [(module(check), message, '', code) for check, message, code in refusals]
+    enforced, warned = [(module(check), message, '', code) for check, message, code in refusals], []
     if (refusals and args.event != 'SessionStart'
             and payload.get('session_id') != HEARTBEAT_SESSION):
-        enforced = posture(payload, refusals, root)
+        enforced = posture(payload, refusals, root, warned)
     reasons = [f'{message}\n{line}' if line else message for _, message, line, _ in enforced]
     if args.event == 'SessionStart' and (context or reasons):
         from wuwei.commands.next import HEADER  # Not guards: hook tests replace their __path__.
@@ -134,6 +134,9 @@ def run(args):
                       record=payload.get('session_id') != HEARTBEAT_SESSION,
                       refusals=[(guard, message, code) for guard, message, _, code in enforced],
                       payload=payload)
+    if warned:  # #660: a launch refusal the posture lets through is shown to the session.
+        print(json.dumps({'hookSpecificOutput': {'hookEventName': args.event,
+                                                 'additionalContext': '\n'.join(warned)}}))
     if args.event == 'Stop' and context:
         print('\n'.join(context), file=sys.stderr)
     return CLEAN
@@ -246,10 +249,11 @@ def module(check):
     return check.__module__.rsplit('.', 1)[-1]
 
 
-def posture(payload, refusals, root):
+def posture(payload, refusals, root, warned=None):
     """#331, at the point #308 shadow mode used: per refusal, off drops it, warn records
     guard.would_refuse and lets the call through, block enforces it with its posture line.
-    Returns (guard, reason, line, exit); the config is read only because a guard refused."""
+    Returns (guard, reason, line, exit); the config is read only because a guard refused.
+    warned, when given, collects the launch refusals warn let through (#660)."""
     from wuwei import state, workspace
     from wuwei.guards import MERGE, NO_REVIEWER, RAISE, RECORDS_FLOOR, level
     try:
@@ -314,6 +318,8 @@ def posture(payload, refusals, root):
                 'guard': guard, 'area': area, 'level': decided, 'posture': name,
                 'reason': reason, 'exit': code, 'target': shown, 'session': payload['session_id'],
                 'item': claimed(root, payload['session_id'])}, root)
+            if warned is not None and guard == 'agent_launch':
+                warned.append(f'{reason}\n{line}' if line else reason)
         except BaseException as exc:
             print(f'wuwei hook: could not record shadow refusal: {exc}; run bin/wuwei doctor', file=sys.stderr)
             enforced.append((guard, reason, line, code))

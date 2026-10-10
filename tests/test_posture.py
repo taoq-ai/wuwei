@@ -353,3 +353,26 @@ def test_orientation_says_owner_only_asks_below_strict():
     for text in (POSTURES['observe'], POSTURES['guarded'], guide.text()):
         assert 'on a card' in text and 'merges and approvals stay owner-only' in text, text
         assert 'owner-only commands are refused in every posture' not in text
+
+
+def test_warned_launch_refusal_is_shown_to_the_session(guarded, monkeypatch, capsys):
+    # #660: a launch refusal the posture lets through is shown, never only recorded.
+    import json
+    code, out = hook_call(guarded, monkeypatch, capsys, guards=[fixed('agent_launch', 1, 'launch reason')])
+    assert code == 0
+    [line] = out.out.splitlines()
+    assert json.loads(line)['hookSpecificOutput'] == {
+        'hookEventName': 'PreToolUse',
+        'additionalContext': 'launch reason\nposture: seats = warn (set security.areas.seats)'}
+    assert [row['reason'] for row in events(guarded, 'guard.would_refuse')] == ['launch reason']
+    code, out = hook_call(guarded, monkeypatch, capsys, guards=[fixed('outward', 1, 'outward reason')])
+    assert code == 0 and out.out == ''
+    code, out = hook_call(guarded, monkeypatch, capsys, guards=[
+        fixed('agent_launch', 1, 'launch reason'), fixed('deploy', 2, 'deploy reason')])
+    assert code == 2
+    [line] = out.out.splitlines()
+    assert json.loads(line)['hookSpecificOutput']['permissionDecisionReason'].startswith('deploy reason')
+    (guarded / '.wuwei/config.toml').write_text('[security]\nposture = "strict"\n')
+    code, out = hook_call(guarded, monkeypatch, capsys, guards=[fixed('agent_launch', 1, 'launch reason')])
+    assert code == 2
+    assert json.loads(out.out)['hookSpecificOutput']['permissionDecisionReason'].startswith('launch reason')

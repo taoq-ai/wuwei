@@ -22,7 +22,7 @@ def check(payload):
     try:
         return _check(payload)
     except brief.Refused as exc:
-        return 1, str(exc)
+        return 1, f'seat not registered: {exc}'
     except Exception as exc:
         return 2, f'agent launch could not run: {exc}'
 
@@ -70,9 +70,46 @@ ADHOC = ('untyped Agent launch is not a WUWEI seat; register it first with '
          'bin/wuwei seat start --role <role> --adhoc "<prompt>", then launch it with the same prompt')
 
 
-def _adhoc(payload):
+UNBRIEFED = ('unbriefed launch registered as adhoc seat {name} for {target}: the Agent prompt has no '
+             'WUWEI brief: line, so WUWEI cannot receive or continue it; {fix}')
+
+
+def _fix(role, item):
+    item = item or '<item>'
+    return (f'write the brief with bin/wuwei brief {role} {item} <name>, then launch with the prompt '
+            f'bin/wuwei build next {item} or bin/wuwei dispatch next {item} returns')
+
+
+def _named_item(data, inputs):
+    """#660: the one plan item named as a whole word in the Agent name, description or prompt."""
+    import re
+    text = '\n'.join(value for key in ('name', 'description', 'prompt')
+                     if isinstance(value := inputs.get(key), str))
+    named = [item for item in data['items']
+             if re.search(rf'(?<![\w.-]){re.escape(item)}(?![\w.-])', text)]
+    return named[0] if len(named) == 1 else None
+
+
+def _unbriefed(payload, root, inputs, role):
+    """#660: a WUWEI seat type launched with no marker: refused where seats block, else an
+    adhoc seat labelled with its role and a warning naming the brief command."""
+    from wuwei import brief, workspace
+
+    item = '<item>'
+    if (workspace.day_dir(root) / 'state.json').exists():
+        _, data = brief.read_day(root)
+        if workspace.posture(workspace.load_config(root))[1]['seats'] != 'block':
+            return _adhoc(payload, role=role)
+        item = _named_item(data, inputs) or item
+    raise brief.Refused(f'no WUWEI brief: line in the Agent prompt; write the brief with bin/wuwei brief '
+                        f'{role} {item} <name>, then launch with the prompt bin/wuwei build next {item} '
+                        f'or bin/wuwei dispatch next {item} returns')
+
+
+def _adhoc(payload, role=None):
     """#676: an untyped launch in a day is an adhoc seat; refused where seats block,
-    unless wuwei seat start --adhoc recorded its prompt."""
+    unless wuwei seat start --adhoc recorded its prompt. #660: with role, an unbriefed
+    WUWEI seat type, registered with a warning (the caller decided the posture)."""
     from wuwei import brief, sessions, state, workspace
     from wuwei.redact import redact
 
@@ -90,24 +127,46 @@ def _adhoc(payload):
     digest = brief.prompt_digest(prompt)
     started = [row['payload'] for row in brief.events(root)
                if row['kind'] == 'seat adhoc' and row['payload'].get('sha256') == digest]
-    if workspace.posture(workspace.load_config(root))[1]['seats'] == 'block' and not started:
+    if (role is None and workspace.posture(workspace.load_config(root))[1]['seats'] == 'block'
+            and not started):
         raise brief.Refused(f'{kind}: {ADHOC}')
     session = payload.get('session_id')
-    event = {'role': 'adhoc', 'type': kind}
+    event, found = {'role': 'adhoc', 'type': kind}, []
 
     def reserve(data):
         taken = [int(name[6:]) for name in brief.seats(data)
                  if name.startswith('adhoc-') and name[6:].isdigit()]
         name = f'adhoc-{max(taken, default=0) + 1}'
-        event.update(name=name, item=name)
+        found.append(role and _named_item(data, inputs))
+        event.update(name=name, item=found[-1] or name)
         data['seats'][name] = {
-            'id': name, 'role': 'adhoc', 'item': name, 'type': kind,
-            'label': started[-1]['role'] if started else kind,
+            'id': name, 'role': 'adhoc', 'item': found[-1] or name, 'type': kind,
+            'label': role or (started[-1]['role'] if started else kind),
             'launcher': (isinstance(session, str) and sessions.registered(data, session)) or 'adhoc',
             'prompt': redact(prompt.strip().splitlines()[0])[:200], 'prompt_sha256': digest,
             'status': 'running', 'started_at': workspace.now().isoformat()}
     state._write_state(reserve, root, reserved=False, kind='seat launched', payload=event)
-    return 0, ''
+    if role is None:
+        return 0, ''
+    return 1, UNBRIEFED.format(name=event['name'], target=found[-1] or "no item of today's plan",
+                               fix=_fix(role, found[-1]))
+
+
+NOTE = 500
+
+
+def _note(prompt, relative, path, root, role):
+    """#660: the planner's text around WUWEI's own launch prompt, redacted and capped."""
+    from wuwei import brief, security
+    from wuwei.redact import redact
+    try:
+        own = brief.launch_prompt(path, security.agent_path(root, role), root=root)
+    except (OSError, ValueError):
+        own = None
+    # ponytail: a continue round's appended feedback reads as note; subtract it if noisy.
+    text = (prompt.replace(own, '', 1) if own and own in prompt
+            else prompt.replace(brief.REFERENCE_PREFIX + relative, '', 1))
+    return redact(text.strip())[:NOTE]
 
 
 def _check(payload):
@@ -122,11 +181,9 @@ def _check(payload):
     for key in ('prompt', 'description', 'subagent_type'):
         if not isinstance(inputs.get(key), str) or not inputs[key].strip():
             raise ValueError(f'invalid Agent {key}; {DAMAGED}')
-    prefix = brief.REFERENCE_PREFIX
-    if not inputs['prompt'].startswith(prefix):
-        raise brief.Refused('no logged brief reference at start of Agent prompt; '
-                            f'write this first line: {prefix}<relative brief path>')
-    relative = inputs['prompt'].splitlines()[0][len(prefix):]
+    relative = brief.reference(inputs['prompt'])
+    if relative is None:
+        return _unbriefed(payload, root, inputs, role)
     directory, _ = brief.read_day(root)
     path = root / relative
     if (Path(relative).is_absolute() or '..' in Path(relative).parts
@@ -157,6 +214,7 @@ def _check(payload):
         raise brief.Refused('Agent name does not match logged brief name; write the brief again with bin/wuwei brief, then launch with the name and role it returns')
     if hashlib.sha256(path.read_bytes()).hexdigest() != logged.get('sha256'):
         raise brief.Refused('brief modified since it was logged; write the brief again with bin/wuwei brief, then launch with the name and role it returns')
+    note = _note(inputs['prompt'], relative, path, root, role)
     if logged.get('second_opinion'):
         raise brief.Refused('second-opinion brief runs through wuwei dispatch opinion, not Agent')
     config = workspace.load_config(root)
@@ -242,6 +300,8 @@ def _check(payload):
             'brief': relative, 'head': head, 'status': 'running',
             'started_at': workspace.now().isoformat(),
         }
+        if note:
+            data['seats'][logged['name']]['planner_note'] = note
         from wuwei.commands import build as build_command
         if role == 'builder':
             build_command.started(data, logged['item'], logged['name'], fresh=continuing and not resume)
@@ -317,6 +377,16 @@ def _stop_adhoc(payload, root):
     return 0, ''
 
 
+def _unbriefed_stop(payload):
+    """#660: a typed stop whose readable transcript names no brief is an unbriefed adhoc seat;
+    an unreadable one keeps the brief path and its #473 fallback."""
+    from wuwei import brief
+    try:
+        return brief.transcript_reference(payload['agent_transcript_path']) is None
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
 def stop(payload):
     from wuwei import brief, state, workspace
 
@@ -324,7 +394,7 @@ def stop(payload):
         root = workspace.find_workspace(payload.get('cwd'))
     except FileNotFoundError:
         return 0, ''
-    if not wuwei_role(payload.get('agent_type')):
+    if not wuwei_role(payload.get('agent_type')) or _unbriefed_stop(payload):
         return _stop_adhoc(payload, root)
     directory = None
     try:
