@@ -101,6 +101,7 @@ RULES = (
     ("no follow-up ticket", "_common.md", "No seat files or promises a follow-up ticket"),
     ("reviewer ladder", "shepherd.md", "rank authors over the past 90 days"),
     ("trust-boundary block", "_common.md", "A trust-boundary security finding always blocks"),
+    ("clean probes", "_common.md", "runs every probe, test and mutant in a copy under its `Scratch:` directory"),
 )
 
 
@@ -110,6 +111,12 @@ def test_section_5_3_rule_has_one_home(rule, home, anchor):
     hits = [name for name, body in texts.items() if anchor in body]
     assert hits == [home], (rule, hits)
     assert texts[home].count(anchor) == 1, rule
+
+
+@pytest.mark.parametrize("name", ["arch", "quality", "security", "goal"])
+def test_sentinel_agents_carry_clean_probes(name):  # #672
+    text = (ROOT / "agents" / f"sentinel-{name}.md").read_text()
+    assert "runs every probe, test and mutant in a copy under its `Scratch:` directory" in text
 
 
 def test_amended_role_rules():

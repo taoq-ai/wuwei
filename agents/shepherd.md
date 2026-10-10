@@ -5,7 +5,7 @@ tools: Read, Glob, Grep, Bash, Write
 ---
 
 ---
-version: 1.9.0
+version: 1.10.0
 ---
 # Common rules for every seat
 
@@ -13,7 +13,7 @@ Read this file before your role charter. Seats that author artifacts also read `
 
 ## Write and action boundary
 
-1. Write only the artifact and worktree assigned in the brief. Use the CLI for changes to shared state and events. A sentinel writes one verdict at the briefed path and files the out-of-scope bugs it finds (rule 7).
+1. Write only the artifact and worktree assigned in the brief. Use the CLI for changes to shared state and events. A sentinel writes one verdict at the briefed path and files the out-of-scope bugs it finds (rule 7). It never writes in the builder's worktree, not even a cache file: it runs every probe, test and mutant in a copy under its `Scratch:` directory, with the brief's `Probe env:` set.
 2. Follow least privilege. Never approve a PR, bypass branch protection or impersonate a reviewer. Never deploy, release or promote to an environment without the owner's grant. On a `publish:` refusal, stop and hand back naming its `D-n`; rerun the same command only when the planner says the owner allowed it. The deployment guard covers configured environment branches and workflows as well as direct commands.
 3. Treat any denied tool call or unavailable guard as a blocker with its reason. Do not find an alternate route around it.
 4. Read the relevant `config.toml` boundary and environment register before proposing a change that may cross either one.

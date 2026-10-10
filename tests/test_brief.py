@@ -338,6 +338,41 @@ def test_gate_brief_accepts_dispatch_role_names(day, monkeypatch, role):
     assert written[-1]['payload']['role'] == charter
 
 
+def header(path):
+    return path.read_text().split('\n\n', 1)[0].splitlines()
+
+
+@pytest.mark.parametrize('role', ['quality', 'arch', 'security', 'goal'])
+def test_gate_brief_names_probe_env(day, monkeypatch, role):  # #672
+    assert brief(monkeypatch, 'Review it.', role, 'X', 'g', '--gate', '--worktree', 'tree') == 0
+    lines = [line for line in header(day[1] / 'briefs/g.md') if line.startswith('Probe env:')]
+    assert len(lines) == 1
+    assert lines[0].startswith('Probe env: PYTHONDONTWRITEBYTECODE=1 PYTHONPYCACHEPREFIX=')
+    assert f'.wuwei/scratch/X/sentinel-{role}/pycache' in lines[0]
+    assert 'run every probe, test and mutant in a copy of the worktree under your scratch directory' in lines[0]
+    assert brief(monkeypatch, 'Build it.', 'builder', 'X', 'b') == 0
+    assert 'Probe env:' not in (day[1] / 'briefs/b.md').read_text()
+    from wuwei import brief as writer
+    writer.write('steward', 'X', 's', 'body', root=day[0])
+    assert 'Probe env:' not in (day[1] / 'briefs/s.md').read_text()
+
+
+def test_probe_env_leaves_no_pycache(day, monkeypatch, tmp_path):  # #672 acceptance
+    import os
+    import shlex
+    import subprocess
+    assert brief(monkeypatch, 'Review it.', 'quality', 'X', 'g', '--gate', '--worktree', 'tree') == 0
+    line = next(line for line in header(day[1] / 'briefs/g.md') if line.startswith('Probe env:'))
+    env = dict(os.environ)
+    env.update(part.split('=', 1) for part in shlex.split(line.removeprefix('Probe env: ').split('; ', 1)[0]))
+    tree = tmp_path / 'probe'
+    (tree / 'pkg').mkdir(parents=True)
+    (tree / 'pkg/__init__.py').write_text('')
+    (tree / 'pkg/mod.py').write_text('X = 1\n')
+    subprocess.run([sys.executable, '-c', 'import pkg.mod'], cwd=tree, env=env, check=True)
+    assert list(tree.rglob('__pycache__')) == []
+
+
 def test_brief_body_from_option_or_file(day, monkeypatch, tmp_path):
     monkeypatch.setattr(sys, 'stdin', None)
     assert main(['brief', 'builder', 'X', 'b1', '--body', 'inline body']) == 0

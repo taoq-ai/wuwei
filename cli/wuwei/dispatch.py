@@ -662,15 +662,17 @@ def receive(item, role, name, round_name='initial', root=None):
             and not str(seat.get('head') or '').lower().startswith(head.lower())):
         raise Refused('verdict HEAD differs from dispatched brief; have the sentinel write the verdict with the Head from its brief, then receive it again')
     trees = re.findall(r'^Worktree: (.+)$', brief_text, re.M)
+    left = []
     if trees and trees[0] != 'none':
         from wuwei import registry
         tree = Path(trees[0])
         if not tree.is_absolute():
             raise Refused(f'gate brief has an invalid worktree; write the brief again with --worktree <absolute path> (bin/wuwei worktree add {item} creates it)')
-        current_head = brief.read(registry.load('vcs', workspace.load_config(root)).head,
-                                  str(tree), root=root)['sha']
+        vcs = registry.load('vcs', workspace.load_config(root))
+        current_head = brief.read(vcs.head, str(tree), root=root)['sha']
         if not isinstance(current_head, str) or not current_head.lower().startswith(head.lower()):
             raise Refused(f'verdict HEAD differs from current worktree HEAD; write a fresh gate brief for the current HEAD and run bin/wuwei dispatch next {item}')
+        left = [row['path'] for row in brief.status(vcs, str(tree), root)]  # #672
     current = [_record(data, item, gate, round_name) for gate in gates]
     if any(record and record['head'] != head for record in current):
         raise Refused(f'gate HEAD differs from sibling verdict; rerun the odd gate on the current HEAD via bin/wuwei dispatch next {item}')
@@ -717,6 +719,12 @@ def receive(item, role, name, round_name='initial', root=None):
 
     state._write_state(update, root, reserved=False, kind='gate.received',
                        payload={'item': item, 'role': role, 'round': round_name, 'verdict': result})
+    if left:  # #672: the round left files in the builder's worktree
+        # ponytail: git status omits ignored files (a gitignored __pycache__); the brief's
+        # Probe env: line prevents those. Add an --ignored status form if seats keep leaving them.
+        print(f"warning: {tree} has files the gate round left: {', '.join(left)}; gate seats "
+              'probe in a copy under their scratch directory; remove them, or the next gate '
+              'brief refuses a dirty tree', file=sys.stderr)
     if sentinel == 'sentinel-security' and data['items'][item]['flags']['agent_surface']:
         workspace.atomic_write(path, text + '\n')
     return value
