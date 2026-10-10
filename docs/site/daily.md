@@ -365,9 +365,12 @@ your answer with `bin/wuwei drafts approve <id>` or `drafts drop <id>`. Under st
 that line in a host terminal. A draft from a connector goes out when the seat repeats its
 call, once.
 
-PR changes reach the planner without you. Every change on a raised or claimed PR is one
-`pr.changed` event with a summary, for example
+PR changes reach the planner without you. Every change on a raised or claimed PR that
+needs an action is one `pr.changed` event with a summary, for example
 `PR owner/repo#12: 2 new review comments by alice on cli/x.py; check test (3.11) failed`.
+Each part is delivered once. A passed check, a resolved conflict, a reviewer request, a
+timestamp, or a PR starting or stopping being owned does not wake the planner;
+`bin/wuwei watch why <pr>` says what the last change fired and what it suppressed.
 The Stop hook message and `bin/wuwei nudges` list that summary first, and the status line
 shows `prs <n> changed` until the planner has seen the wake. An idle interactive planner
 learns of a change at its next turn (its next Stop or session start): Claude Code cannot

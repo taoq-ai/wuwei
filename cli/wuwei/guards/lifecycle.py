@@ -97,7 +97,8 @@ def session_start(payload):
         code = max(code, listen_code)
         lines.append(message)
     try:
-        notice = watch.wake(root)
+        # #674: the registered planner reading the wake here has seen it; the Stop must not repeat it.
+        notice = watch.wake(root, consume=bool(session) and session == (day or {}).get('planner_session_id'))
         if notice:
             lines.append(notice)
         # Phone answers exist only for routed decisions: a day without routes skips the second

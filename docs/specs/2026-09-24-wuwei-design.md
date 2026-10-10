@@ -216,9 +216,13 @@ it. Ownership is enforced by three mechanisms, none of which depends on the mode
   - `merged`: done.
   An overdue action is a `nudge`, then a `page` at twice the deadline (5.9).
 - Wake outside the model. The watch process polls owned PRs every `pr.poll_seconds` (default
-  120; head, CI, mergeability, reviews, comments, threads) and, on any change, records a
-  `pr.changed` event and wakes the planner session (and, in M5, launches a headless shepherd
-  run). Nothing needs to be re-armed by a seat.
+  120; head, CI, mergeability, reviews, comments, threads) and, on a change with a part that
+  needs a planner action (`watch.ACTIONS`: merged, closed, new commits, conflicts, new
+  comments, reviews, a failed check), records a `pr.changed` event and wakes the planner
+  session (and, in M5, launches a headless shepherd run). Each part is delivered once
+  (`watch.delivered`) until its evidence changes; `updated_at` is evidence time only; a
+  SessionStart in the registered planner session consumes the wake; `wuwei watch why <pr>`
+  shows what fired and what was suppressed (#674). Nothing needs to be re-armed by a seat.
 - Overnight, without a session (owner, 2026-10-08, #511). `wuwei sweep obligations --headless`
   (and `wuwei shepherd`, every 15 minutes, installed with `wuwei shepherd schedule`, from the
   Shepherd card in a session or, under strict, by the owner in a host terminal) sweeps the

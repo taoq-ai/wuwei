@@ -5,7 +5,8 @@ from pathlib import Path
 import sys
 from xml.sax.saxutils import escape
 
-from wuwei import registry, watch, workspace
+from wuwei import references, registry, watch, workspace
+from wuwei.exits import DAMAGED
 
 
 def service_platform():
@@ -20,6 +21,8 @@ def add(subparsers, name, help):
     install.add_argument('--dry-run', action='store_true',
                          help='Print the unit path, unit and service commands without changing anything')
     actions.add_parser('uninstall', help=f'Stop and remove the user {name} service')
+    if name == 'watch':
+        actions.add_parser('why', help='Show what fired and what was suppressed for an owned PR').add_argument('pr')
     return parser
 
 
@@ -28,7 +31,27 @@ def register(subparsers):
 
 
 def run(args):
+    if args.watch_action == 'why':
+        return why(args.pr)
     return service(args, 'watch', watch.run)
+
+
+def why(ref):
+    """Print the last poll's fired and suppressed parts for a PR (#674)."""
+    ref = references.pull_request(ref)
+    value = watch.carried(workspace.find_workspace(), 'why') or {}
+    if not isinstance(value, dict):
+        raise ValueError(f'invalid watch why record; {DAMAGED}')
+    record = value.get(ref)
+    if record is None:
+        print(f'watch why: no recorded change for {ref} today')
+        return 1
+    print(f'PR {ref} ({record["at"]})')
+    for text, action in record['fired']:
+        print(f'fired: {text} ({action})')
+    for text, reason in record['suppressed']:
+        print(f'suppressed: {text} ({reason})')
+    return 0
 
 
 def service(args, name, loop):
