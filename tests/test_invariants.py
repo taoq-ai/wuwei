@@ -1008,7 +1008,7 @@ def i34(case, rules):
         try:
             # Each raising factor alone, the plain document, and one case with every factor:
             # the rule is "anything raises", so the product of all factors adds walk time
-            # without adding coverage (the walk's budget is 1.0 s on the runner, #626).
+            # without adding coverage (each invariant has INVARIANT_BUDGET on the runner, #626).
             cases = [(None, None, 'SLICE', 'standard')]
             cases += [(extra, None, 'SLICE', 'standard') for extra in raising]
             cases += [(None, flag, 'SLICE', 'standard') for flag in ('trust_surface', 'boundary_relevant', 'agent_surface')]
@@ -1457,17 +1457,27 @@ class Unread:
     __eq__ = __ne__ = __hash__ = __str__ = __format__ = __bool__ = __iter__ = _read
 
 
+COST = {}  # CPU seconds per invariant over the last walk (#626: one budget per invariant)
+# #626: the CPU one invariant may spend over all its cases on the runner. The dearest today
+# (I1 and I5) take about 0.15 s locally and 0.23 s on the 3.12 runner; a rule that gets costly
+# is the finding, named by the assertion, rather than a wall the sum of all rules hits.
+INVARIANT_BUDGET = 0.4
+
+
 def walk(world):
     """Every invariant on every case; one line per failure with the full tuple."""
     rules, found, keys = Rules(*world), {}, list(DIMENSIONS)
     checks = [(name, reads, check) for name, invariant in INVARIANTS.items()
               for reads, check in PARTS.get(name, ((READS[name], invariant),))]
+    COST.clear()
     for index, (name, reads, check) in enumerate(checks):
         for values in itertools.product(*(DIMENSIONS[keys[i]] for i in reads)):
             case = [Unread(name)] * len(keys)
             for position, value in zip(reads, values):
                 case[position] = value
+            started = time.process_time()
             found[index, values] = check(tuple(case), rules)
+            COST[name] = COST.get(name, 0.0) + time.process_time() - started
     if not any(found.values()):
         return []
     failures = []
@@ -1494,7 +1504,12 @@ def test_invariants_hold(world):
     finally:
         gc.unfreeze()
     assert not failures, '\n'.join(failures[:20])
-    assert elapsed < 1.0, f'{len(cases)} cases took {elapsed:.2f} s'
+    # #626: one CPU budget per invariant, not one total. The total grew with every rule added
+    # (I1 to I58 in one day) until it crossed a fixed wall on the runner that said nothing about
+    # any rule. Here the costly rule is named; the total is reported for the record.
+    over = {name: cost for name, cost in COST.items() if cost >= INVARIANT_BUDGET}
+    assert not over, (f'{len(cases)} cases took {elapsed:.2f} s; over {INVARIANT_BUDGET} s: '
+                      + ', '.join(f'{name} {cost:.2f} s' for name, cost in sorted(over.items(), key=lambda p: -p[1])))
 
 
 def test_undeclared_read_raises(world, monkeypatch):
