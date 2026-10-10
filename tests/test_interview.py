@@ -882,7 +882,7 @@ def test_unanswered_is_the_one_count(root):
     assert pairs(interview().unanswered(root, [])) == [pair for pair in every if pair[1] is None and pair[0] != 'cap']
     assert [(w['id'], w.get('repo')) for w in interview().widgets(root, ['acme/widget'])] == [
         pair for pair in every if pair[0] != 'cap']
-    assert interview().HOW == 'bin/wuwei setup, or the planner asks them on cards'
+    assert interview().HOW == 'the planner asks them on cards (bin/wuwei calibrate --questions), or bin/wuwei setup in a host terminal'
 
 
 def test_allowlist_row_names_the_file_and_production_reads():
