@@ -368,9 +368,19 @@ item gets the quality gate only; standard and full get arch, quality and securit
 tier below the computed one is refused and recorded as a reason, and the returned action
 carries the `tier`.
 
+Generated and data lines never count toward the tier or `repos.merge.max_changed_lines`, and
+both read the same count. Generated means a lockfile, a `repos.merge.size_exclude` glob or a
+`linguist-generated` glob in the repository's root `.gitattributes`, unless the diff changes
+that file. Data means a `repos.gates.data_paths` glob, or a `.json`, `.jsonl`, `.csv` or
+`.parquet` file over 200 changed lines or with a binary change. The reason names both totals:
+`5000 changed lines, 4800 generated or data excluded, 200 count, over light_max_lines 100`.
+Every measured item that is not docs-only records its count, which `wuwei why` shows.
+
 A docs-only diff gets one reviewer at any size and under the default floor. In such a diff
-every path ends in `.md` or `.rst`, or in `.txt` under `docs/` or `specs/`, and nothing else
-raises it. Agent instruction files never count as documents: `AGENTS.md`, `CLAUDE.md`,
+every path ends in `.md`, `.rst` or `.ipynb`, or in `.txt` under `docs/` or `specs/`, or is
+a data file, and nothing else raises it. An analysis item gets the goal reviewer, never
+security. A `.json` file counts as a document only under `repos.gates.data_paths`, since
+it may be config. Agent instruction files never count as documents: `AGENTS.md`, `CLAUDE.md`,
 `SKILL.md` and paths under `charters/`, `skills/`, `agents/`, `commands/`, `.claude/` or
 `.agents/`. The reviewer is goal for a document and quality for a spec or a pre-registration.
 The reason reads `docs-only: 1 reviewer (goal)`, and a FIX continues the same seat. A lead `tier` above light is overridden and recorded as

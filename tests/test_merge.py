@@ -1096,9 +1096,9 @@ def test_missing_risk_evidence_names_the_plan_add_that_records_it(case):
 
 @pytest.mark.parametrize('setting,path,previous,code,hint', [
     ('size_exclude = ["results/*.json"]\n', 'results/run.json', None, 0, ''),
-    ('', 'results/run.json', None, 1, 'diff exceeds max changed lines'),
+    ('', 'results/run.txt', None, 1, 'diff exceeds max changed lines'),
     ('size_exclude = ["*.lock"]\n', 'deps/big.lock', None, 1, 'never-auto path'),
-    ('size_exclude = ["results/*.json"]\n', 'src/run.json', 'results/run.json', 1, 'diff exceeds max changed lines'),
+    ('size_exclude = ["results/*.txt"]\n', 'src/run.txt', 'results/run.txt', 1, 'diff exceeds max changed lines'),
 ])
 def test_size_exclude_counts_only_the_files_it_does_not_match(case, setting, path, previous, code, hint):
     # #615: a generated data file does not count toward max_changed_lines; never-auto still applies.
@@ -1167,3 +1167,71 @@ def test_plan_set_owner_merge_labels_the_linked_pr(case, monkeypatch):
         plan.set_owner_merge('item-7', 'true', root)
     assert state.read_state(root)['items']['item-7']['owner_merge']['value'] is True
     assert check(case).exit == 1
+
+
+def row(path, additions=10, deletions=0, previous=None):
+    return {'path': path, 'previous_path': previous, 'additions': additions, 'deletions': deletions}
+
+
+def uncounted(root, files):
+    return policy().uncounted(root, workspace.load_config(root)['repos'][0], files)
+
+
+@pytest.mark.parametrize('setting,file,kind', [
+    ('', row('pilot/manifest.json', 4800), 'data'),
+    ('', row('small/config.json', 10), None),
+    ('', row('small/config.json', 200), None),
+    ('', row('small/config.json', 201), 'data'),
+    ('', row('study/results/x.parquet', None, None), 'data'),
+    ('', row('uv.lock'), 'generated'),
+    ('', row('web/package-lock.json'), 'generated'),
+    ('[repos.merge]\nsize_exclude = ["results/*.txt"]\n', row('results/a.txt', 1000), 'generated'),
+    ('[repos.gates]\ndata_paths = ["corpus/runs/"]\n', row('corpus/runs/a/b.log', 3000), 'data'),
+    ('', row('corpus/runs/a/b.log', 3000), None),
+    ('', row('src/run.txt', 4800, previous='pilot/manifest.json'), None),
+    ('', row('src/app.py', 4800), None),
+])
+def test_uncounted_names_generated_and_data_files(case, setting, file, kind):
+    # #657: what never counts toward the tier or max_changed_lines.
+    root, _ = case
+    config_change(root, 'auto = true\n', 'auto = true\n' + setting.replace('[repos.merge]\n', ''))
+    assert uncounted(root, [file]) == ({file['path']: kind} if kind else {})
+
+
+@pytest.mark.parametrize('attributes,extra,kind', [
+    ('dist/* linguist-generated\n', [], 'generated'),
+    ('# generated\n/dist/* linguist-generated=true\n', [], 'generated'),
+    ('**/dist/* linguist-generated\n', [], 'generated'),
+    ('dist/* -linguist-generated\n', [], None),
+    ('dist/* linguist-generated=false\n', [], None),
+    ('dist/* linguist-generated\n', [row('.gitattributes', 1)], None),
+])
+def test_uncounted_reads_linguist_generated_from_the_checkout(case, attributes, extra, kind):
+    root, _ = case
+    (root / 'repo/.gitattributes').write_text(attributes)
+    assert uncounted(root, [row('dist/app.js', 4800), *extra]).get('dist/app.js') == kind
+
+
+def test_uncounted_fails_closed_on_unreadable_gitattributes(case):
+    root, _ = case
+    (root / 'repo/.gitattributes').mkdir()
+    with pytest.raises(OSError):
+        uncounted(root, [row('src/app.py')])
+
+
+@pytest.mark.parametrize('source,code,hint', [
+    (190, 0, ''),
+    (590, 1, 'diff exceeds max changed lines: 600 count over 400 (4800 generated or data excluded)'),
+])
+def test_size_cap_skips_generated_and_data_lines(case, source, code, hint):
+    root, host = case
+    host.results['files'].data.extend([row('src/b.py', source), row('pilot/manifest.json', 4800)])
+    host.results['pr'].data.update(additions=10 + source + 4800, changed_files=3)
+    answer = check(case)
+    assert answer.exit == code and hint in answer.reason, answer
+
+
+def test_size_cap_unreadable_gitattributes_is_unmeasured(case):
+    root, _ = case
+    (root / 'repo/.gitattributes').mkdir()
+    assert check(case).exit == 2

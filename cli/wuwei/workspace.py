@@ -71,6 +71,7 @@ SCHEMA = {
                "merge_deploys": (bool, True), "merge": MERGE_SCHEMA,
                "gates": {"floor": (str, "standard", ("light", "standard", "full")),
                          "light_max_lines": (int, 100, 0),
+                         "data_paths": [(str, None)],  # #657: data globs (a trailing / is a directory) that never count
                          "trust_paths": [(str, None), [
                              "guards/*", "state.py", "adapters/*", ".claude-plugin/*", ".github/*",
                              "ci/*", "workflows/*", "deploy/*", "infra/*"]]},
