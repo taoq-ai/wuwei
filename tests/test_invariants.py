@@ -1428,6 +1428,19 @@ def i54(case, rules):
     return None if (code, reason) == (0, '') else f'{case[0]} gave {code} {reason}'
 
 
+def i60(case, rules):
+    """#733: a CI-fix item's gate verdict is accepted only with one result row per listed CI
+    step and never as PASS with a failing step; with no steps the lint is unchanged."""
+    def compute():
+        from test_verdict import PASS, ROW1, ROW2, STEPS
+        from wuwei import verdict
+        for rows, steps, code in ((ROW1 + ROW2, STEPS, 0), (ROW1, STEPS, 1),
+                                  (ROW1 + 'CI step 2: FAIL mypy exited 1\n', STEPS, 1),
+                                  (ROW1 + ROW1 + ROW2, STEPS, 1), (ROW1, (), 0)):
+            if (found := verdict.lint(PASS + rows, steps=steps)[0]) != code:
+                return f'{rows!r} with {len(steps)} steps linted {found}, expected {code}'
+        return None
+    return rules.memo(('ci step rows',), compute)
 def i50(case, rules):
     """#659: a traces guard that did not finish in time never fails a tool call below strict:
     a TimeoutError is a warning naming its elapsed milliseconds; strict refuses it."""
@@ -1601,7 +1614,8 @@ INVARIANTS = {'I1': i1, 'I2': i2, 'I3': i3, 'I4': i4, 'I5': i5, 'I6': i6, 'I7': 
               'I36': i36, 'I37': i37, 'I38': i38, 'I46': i46, 'I65': i65,
               'I36': i36, 'I37': i37, 'I41': i41,
               'I36': i36, 'I37': i37, 'I52': i52, 'I56': i56,
-              'I51': i51}
+              'I51': i51,
+              'I36': i36, 'I37': i37, 'I52': i52, 'I56': i56, 'I60': i60}
 
 
 def project(case):
@@ -1641,7 +1655,8 @@ READS = {'I1': None, 'I2': OUTWARD, 'I3': (0,), 'I4': OUTWARD, 'I5': (0, 4),
          'I31': (0,), 'I32': (0,), 'I33': (), 'I34': (), 'I35': (), 'I36': (0,), 'I37': (), 'I38': (0,), 'I46': (), 'I65': (0,),
          'I41': (),
          'I52': (0,), 'I56': (0,),
-         'I51': (0,)}
+         'I51': (0,),
+         'I52': (0,), 'I56': (0,), 'I60': ()}
 # I1 reads all seven dimensions as one function; its two halves each read fewer (#562).
 PARTS = {'I1': ((OUTWARD, i1_outward), ((0, 4), i1_grant))}
 
@@ -1767,6 +1782,8 @@ BROKEN = {
     'client thread row that sends': lambda monkeypatch: monkeypatch.setattr(
         import_module('wuwei.outward'), 'DEFAULT_TIERS',
         ({'audience': 'client', 'topic': 'thread', 'tier': 'send'}, *import_module('wuwei.outward').DEFAULT_TIERS)),
+    'ci step rows off': lambda monkeypatch: monkeypatch.setattr(
+        import_module('wuwei.verdict'), 'ci_rows', lambda *args: []),
 }
 
 

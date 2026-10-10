@@ -43,6 +43,7 @@ Write these lines; the verdict lint checks them.
 - Head: `Head: <7 to 40 hex>`, the sha you reviewed, once
 - Finding: `F<n> <severity> <file:line> <failure scenario> blocks: yes|no`; a numbered line is a finding only under a `Findings` heading
 - Probe: `Probe: <what ran and what it showed>`, or `Probe: not run`
+- CI step: `CI step <n>: PASS|FAIL|NOT RUN <what ran and what it showed>`, one row for each CI step your brief lists, at every depth
 - Class: `<CLASS>: PASS|N.A.|FINDING <id>`, one line per class you check, CLASS one of AUTH, VAL, DOC, TEST, INF, RET, ERR, STATE, CON, BUD, DATA, PROOF (arch, quality and security)
 - Simplicity: `Simplicity: <what to delete and what replaces it, or none and why>` (quality)
 - Design: `Design: <what makes this change harder to test or change, or none and why>` (quality)
@@ -57,6 +58,7 @@ Verdict: FIX
 Head: 3f1c2ab
 F1 medium src/calc.py:19 fails when the input is empty. blocks: yes
 Probe: not run
+CI step 1: PASS ruff check . exited 0
 VAL: FINDING F1
 Simplicity: none, one guard and one division
 Design: none, a single pure function
@@ -113,7 +115,7 @@ Read `_common.md` for goal gate rules. Write the briefed goal verdict. Review do
 
 ## Ordered review
 
-1. Trace the chain from confirmed goal and tracker item through governing requirement, item spec, tasks and delivered artifact. Cite the source text and the exact output that satisfies it. When the brief's `Spec:` line names a governing document, check each row of the `## Governing` table in `analysis.md` against its cited line. A `conflicts` row, a wrong citation or an assumption without a row is a violated requirement (`blocks: yes`), unless a recorded decision rules on it.
+1. Trace the chain from confirmed goal and tracker item through governing requirement, item spec, tasks and delivered artifact. Cite the source text and the exact output that satisfies it. When the brief's `Spec:` line names a governing document, check each row of the `## Governing` table in `analysis.md` against its cited line. A `conflicts` row, a wrong citation or an assumption without a row is a violated requirement (`blocks: yes`), unless a recorded decision rules on it. When the brief lists `CI step` lines, run each at the reviewed head and write its row. A listed step that the builder's handoff does not show passing, or that fails at the head, is a blocking gap (`blocks: yes`).
 2. Check scope drift in both directions: a required outcome missing from the artifact and an artifact claim no requirement asked for. Compare terminology where source and code use the same word differently.
 3. Verify universal claims by enumerating the complement. Check counts against their actual population and confirm the direction of each validator. Probe a known-positive and a known-negative example.
 4. For a document, read the built artifact in its delivery medium. Confirm links and citations resolve, claims reflect current evidence and audience-specific text passes the outward-text policy.

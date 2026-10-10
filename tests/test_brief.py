@@ -835,3 +835,91 @@ def test_every_brief_names_the_doctor_and_the_install_rule(day, monkeypatch):
         assert brief_module.DOCTOR in (directory / f'briefs/{name}.md').read_text().split('\n\n', 1)[0], name
     for text in ('.wuwei/executable', 'doctor', 'owner', 'Next:'):
         assert text in brief_module.DOCTOR, text
+
+
+# Issue #733: a CI-fix item's briefs list every run step of the job it names.
+
+from test_calibrate import CI_FLOW  # noqa: E402
+
+LINT_REF = '.github/workflows/ci.yml#lint'
+CI_BLOCK = ('CI steps: this item fixes CI job lint (.github/workflows/ci.yml). Run every step below locally '
+            'from the worktree root, not only the one that was red, and cite each as one row in your verdict '
+            'or handoff: CI step <n>: PASS|FAIL|NOT RUN <what ran and what it showed>.\n'
+            'CI step 1: lint / Ruff (.github/workflows/ci.yml:8)\n'
+            '    ruff check .\n'
+            'CI step 2: lint / Types (.github/workflows/ci.yml:10)\n'
+            '    pip install mypy\n'
+            '    mypy cli\n')
+
+
+def ci_tree(tree):
+    (tree / '.github/workflows').mkdir(parents=True)
+    (tree / '.github/workflows/ci.yml').write_text(CI_FLOW)
+    return tree
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('fix the lint job', [LINT_REF]),
+    ('CI job `lint` is red', [LINT_REF]),
+    ('the Lint job', [LINT_REF]),
+    ('Lint: failure https://example.test/run/1', [LINT_REF]),
+    ('Lint (3.11): timed_out https://example.test/run/1', [LINT_REF]),
+    ('write the test first', []),
+    ('lint: fix the import order', []),
+    ('fix the deploy job', []),
+])
+def test_ci_jobs_finds_the_named_job(tmp_path, text, expected):
+    from wuwei import brief as brief_module
+    assert brief_module.ci_jobs(text, ci_tree(tmp_path)) == expected
+
+
+def test_ci_jobs_without_workflows(tmp_path):
+    from wuwei import brief as brief_module
+    assert brief_module.ci_jobs('fix the lint job', tmp_path) == []
+
+
+def test_ci_steps_and_block(tmp_path):
+    from wuwei import brief as brief_module
+    tree = ci_tree(tmp_path)
+    steps, missing = brief_module.ci_steps([LINT_REF], tree)
+    assert steps == [
+        {'n': 1, 'label': 'lint / Ruff', 'source': '.github/workflows/ci.yml:8', 'run': 'ruff check .'},
+        {'n': 2, 'label': 'lint / Types', 'source': '.github/workflows/ci.yml:10', 'run': 'pip install mypy\nmypy cli'}]
+    assert missing == []
+    assert brief_module.ci_steps([LINT_REF, '.github/workflows/ci.yml#gone'], tree)[1] == [
+        '.github/workflows/ci.yml#gone']
+    assert brief_module.ci_block([], tree) == ''
+    assert brief_module.ci_block([LINT_REF], tree) == CI_BLOCK
+    assert brief_module.ci_block([LINT_REF, '.github/workflows/ci.yml#gone'], tree) == (
+        CI_BLOCK + 'CI job .github/workflows/ci.yml#gone: not in the workflow file at this head\n')
+    real = tmp_path / 'real.yml'
+    real.write_text(CI_FLOW)
+    (tree / '.github/workflows/ci.yml').unlink()
+    (tree / '.github/workflows/ci.yml').symlink_to(real)
+    with pytest.raises(ValueError, match='.github/workflows/ci.yml'):
+        brief_module.ci_steps([LINT_REF], tree)
+
+
+def test_builder_and_gate_briefs_list_every_step(day, monkeypatch):
+    root, directory = day[0], day[1]
+    ci_tree(root / 'tree')
+    state._write_state(lambda data: data['items']['X'].update(title='fix the lint job'), root, reserved=False)
+    assert brief(monkeypatch, 'Build it.', 'builder', 'X', 'b1', '--worktree', 'tree') == 0
+    text = (directory / 'briefs/b1.md').read_text()
+    assert text.endswith('Build it.\n' + CI_BLOCK)
+    assert state.read_state(root)['items']['X']['ci_jobs'] == [LINT_REF]
+    state._write_state(lambda data: data['items']['X'].pop('title'), root, reserved=False)
+    from wuwei.dispatch import GATE_BODY
+    assert brief(monkeypatch, GATE_BODY.format(item='X'), 'quality', 'X', 'g1', '--gate', '--worktree', 'tree') == 0
+    assert (directory / 'briefs/g1.md').read_text().endswith(CI_BLOCK)
+    copy = (directory / 'briefs/g1.md').read_text().split('\n\n', 1)[1].removesuffix('\n')  # as dispatch.opinion
+    assert brief(monkeypatch, copy, 'quality', 'X', 'g2', '--gate', '--worktree', 'tree') == 0
+    assert (directory / 'briefs/g2.md').read_text().count('CI step 1:') == 1
+
+
+def test_a_brief_naming_no_job_is_unchanged(day, monkeypatch):
+    root, directory = day[0], day[1]
+    ci_tree(root / 'tree')
+    assert brief(monkeypatch, 'Build it.', 'builder', 'X', 'b1', '--worktree', 'tree') == 0
+    assert (directory / 'briefs/b1.md').read_text().endswith('\n\nBuild it.\n')
+    assert 'ci_jobs' not in state.read_state(root)['items']['X']

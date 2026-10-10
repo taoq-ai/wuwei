@@ -64,6 +64,69 @@ def checks_line(pace, tests):
     return None
 
 
+# #733: the conclusions pr_actions._fix reports as red (everything but success, neutral, skipped)
+RED = ('failure', 'error', 'cancelled', 'timed_out', 'action_required', 'stale', 'startup_failure')
+
+
+def ci_jobs(text, tree):
+    """#733: sorted '<workflow path>#<job id>' of each worktree workflow job the text names:
+    'job <name>', '<name> job', or the fix-feedback line '<name>[ (<matrix>)]: <red conclusion>',
+    <name> being the job id or its name:."""
+    from wuwei import calibrate
+    found = set()
+    for _, relative, flow in calibrate._workflows(Path(tree), []):
+        for job in flow['jobs']:
+            for name in {job['id'], job['name'][0]}:
+                name, quote = re.escape(name), '[`\'"]?'
+                if (re.search(rf'(?<![\w-])job[ \t]+{quote}{name}{quote}(?![\w-])', text, re.I)
+                        or re.search(rf'(?<![\w-]){quote}{name}{quote}[ \t]+job\b', text, re.I)
+                        or re.search(rf'^[ \t]*{name}(?: \([^)\n]*\))?:[ \t]*(?:{"|".join(RED)})\b', text, re.M)):
+                    found.add(f"{relative}#{job['id']}")
+    return sorted(found)
+
+
+def ci_steps(refs, tree):
+    """#733: (steps, missing) for recorded refs. steps: one dict per run step in ref order and
+    file order, numbered from 1: {'n', 'label', 'source', 'run'}. missing: refs whose job is
+    not in the worktree at this head. Raises ValueError when a recorded workflow is unreadable."""
+    from wuwei import calibrate
+    tree, found, jobs = Path(tree), [], {}
+    if refs and (tree / '.github/workflows').is_symlink():
+        raise ValueError('CI workflow directory .github/workflows is a symlink; fix it, then retry')
+    for _, relative, flow in calibrate._workflows(tree, found):
+        jobs.update({f"{relative}#{job['id']}": (relative, job) for job in flow['jobs']})
+    files = {ref.rpartition('#')[0] for ref in refs}
+    for row in found:
+        path = row['source'].rpartition(':')[0]
+        if row['kind'] == 'skipped' and path in files:
+            raise ValueError(f"CI workflow {path} unreadable ({row['value']}); fix the file, then retry")
+    steps, missing = [], [ref for ref in refs if ref not in jobs]
+    for ref in refs:
+        relative, job = jobs.get(ref, (None, {'steps': []}))
+        for step in job['steps']:
+            if step['run']:
+                steps.append({'n': len(steps) + 1, 'label': f"{job['id']} / {step['name'] or 'unnamed'}",
+                              'source': f"{relative}:{step['line']}", 'run': step['run']})
+    return steps, missing
+
+
+def ci_block(refs, tree):
+    """#733: the step block for recorded refs, ending in a newline; '' when there are none."""
+    if not refs:
+        return ''
+    steps, missing = ci_steps(refs, tree)
+    named = ', '.join('{1} ({0})'.format(*ref.rpartition('#')[::2])
+                      for ref in [r for r in refs if r not in missing] or refs)
+    lines = [f'CI steps: this item fixes CI job {named}. Run every step below locally from the worktree '
+             'root, not only the one that was red, and cite each as one row in your verdict or handoff: '
+             'CI step <n>: PASS|FAIL|NOT RUN <what ran and what it showed>.']
+    for step in steps:
+        lines.append(f"CI step {step['n']}: {step['label']} ({step['source']})")
+        lines += ['    ' + line for line in step['run'].splitlines()]
+    lines += [f'CI job {ref}: not in the workflow file at this head' for ref in missing]
+    return '\n'.join(lines) + '\n'
+
+
 def mandate(root):
     """Design 5.2: what a seat decides alone, records, or sends to the owner."""
     from wuwei import decision
@@ -489,6 +552,11 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
         if role == 'builder' and tree:
             from wuwei import specmode
             block = specmode.brief_block(config, item, current, tree)
+        refs, ci = [], ''
+        if (role == 'builder' or gate) and tree:  # #733: the CI job this item fixes, every step
+            refs = sorted({*current.get('ci_jobs', ()), *ci_jobs(body + '\n' + (current.get('title') or ''), tree)})
+            ci = ci_block(refs, tree)
+            ci = '' if ci.rstrip('\n') in body else ci  # a second opinion copies the block
         depth = None
         if role == 'builder' or gate:
             from wuwei import dispatch
@@ -553,7 +621,7 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                             raise
                         header.append(f'Warning: {other} is no pull request the host could read ({exc}); '
                                       'kept as a reference')
-        text = '\n'.join(header) + '\n\n' + body + '\n' + block
+        text = '\n'.join(header) + '\n\n' + body + '\n' + block + ci
         relative = str(output.relative_to(root))
         import hashlib
         payload = {'name': name, 'item': item, 'role': role, 'path': relative, 'gate': gate,
@@ -586,6 +654,8 @@ def write(role, item, name, body, *, worktree=None, pr=None, gate=False, track=N
                         fresh['items'][item]['worktree'] = str(tree)
                 if role == 'builder' and item in fresh['items']:
                     fresh['items'][item]['depth'] = depth
+                if refs and item in fresh['items']:
+                    fresh['items'][item]['ci_jobs'] = refs
                 if role == 'builder':
                     sessions.claim(fresh, item, session, workspace.now(),
                                    config['sessions']['stale_seconds'], cwd=str(Path.cwd()))

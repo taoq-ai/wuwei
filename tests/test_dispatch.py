@@ -2294,3 +2294,34 @@ def test_delta_head_event_is_reserved_and_silent():
 
     assert event.EVENT_PRODUCERS['gate.delta_head'] == 'wuwei dispatch next'
     assert 'gate.delta_head' in signal.SILENT
+
+
+# Issue #733: the fix round and the delta continue prompt carry every CI step.
+
+def test_open_fix_records_the_ci_job_and_lists_every_step(root):
+    from test_brief import CI_BLOCK, LINT_REF, ci_tree
+    from wuwei.commands import build
+    ci_tree(built(root))
+    gate_fix(root)
+    action = build.open_fix('A', 'Lint: failure https://example.test/1', root=root)
+    assert state.read_state(root)['items']['A']['ci_jobs'] == [LINT_REF]
+    assert action['prompt'].endswith('Lint: failure https://example.test/1\n' + CI_BLOCK)
+
+
+def test_delta_continuation_carries_the_ci_steps(root, monkeypatch):
+    from test_brief import CI_BLOCK, LINT_REF, ci_tree
+    from wuwei import brief, dispatch
+
+    tree = built(root)
+    ci_tree(tree)
+    gate_fix(root)
+    state._write_state(lambda data: (data['seats']['quality-1'].update(
+        agent_id='agent-quality-1', head='abc1234' + '0' * 33),
+        data['items']['A'].update(ci_jobs=[LINT_REF])), root, reserved=False)
+    dispatch.next_step('A', root)
+    live_head(monkeypatch, 'def5678' + '0' * 33)
+    state.transition('A', 'delta', root)
+    [action] = dispatch.next_step('A', root)['seats']
+    launch = brief.seat_action('sentinel-quality', workspace.day_dir(root) / 'briefs/quality-1.md', tree, root)
+    assert action['feedback'].endswith('\n' + CI_BLOCK)
+    assert action['prompt'] == launch['prompt'] + '\n\n' + action['feedback']

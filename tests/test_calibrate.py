@@ -1422,3 +1422,40 @@ def test_memory_rule_takes_the_median_of_five(workspace_root, ports, monkeypatch
         rows.write('{"kind": "cap.derived"')
     damaged = calibrate.host(workspace_root, config, policy=PROCESS)
     assert damaged['cap'] == 4 and 'median' not in damaged['text'] and '; warning: ' in damaged['text']
+
+
+# Issue #733: the workflow reader records each job's steps.
+
+CI_FLOW = '''on: [pull_request]
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ruff
+        run: ruff check .
+      - name: Types
+        run: |
+          pip install mypy
+          mypy cli
+'''
+
+
+def test_workflow_records_steps_and_never_a_block_indicator():
+    job = calibrate._workflow(CI_FLOW)['jobs'][0]
+    assert job['steps'] == [{'name': None, 'run': None, 'line': 7},
+                            {'name': 'Ruff', 'run': 'ruff check .', 'line': 8},
+                            {'name': 'Types', 'run': 'pip install mypy\nmypy cli', 'line': 10}]
+    assert job['runs'] == [('ruff check .', 9)]
+    folded = calibrate._workflow('jobs:\n  t:\n    steps:\n      - run: make test\n'
+                                 '      - name: Long\n        run: >-\n          a\n            b\n')
+    assert folded['jobs'][0]['steps'] == [{'name': None, 'run': 'make test', 'line': 4},
+                                          {'name': 'Long', 'run': 'a\n  b', 'line': 5}]
+    assert folded['jobs'][0]['runs'] == [('make test', 4)]
+    flush = calibrate._workflow('jobs:\n  lint:\n    runs-on: x\n    steps:\n    - uses: actions/checkout@v4\n'
+                                '    - name: Ruff\n      run: ruff check .\n    - run: mypy src\n'
+                                '    timeout-minutes: 5\n')
+    assert flush['jobs'][0]['steps'] == [{'name': None, 'run': None, 'line': 5},
+                                         {'name': 'Ruff', 'run': 'ruff check .', 'line': 6},
+                                         {'name': None, 'run': 'mypy src', 'line': 8}]

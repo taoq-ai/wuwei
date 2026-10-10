@@ -906,3 +906,60 @@ def test_section_renders_the_format_table():
     assert rows == [f'- {key}: {form}' for key, (form, _) in FORMAT.items()]
     example = text.split('```text\n')[1].split('```')[0]
     assert example == ''.join(line + '\n' for _, line in FORMAT.values())
+
+
+# #733: a CI-fix item's verdict carries one result row per CI step its brief lists.
+STEPS = [(1, 'lint / Ruff'), (2, 'lint / Types')]
+ROW1, ROW2 = 'CI step 1: PASS ruff check . exited 0\n', 'CI step 2: NOT RUN needs a service\n'
+
+
+@pytest.mark.parametrize('rows,options,code,reason', [
+    (ROW1, {}, 1, 'CI step 2 (lint / Types) has no result row'),
+    (ROW1 + ROW2, {}, 0, ''),
+    ('- ' + ROW1 + '- ' + ROW2, {}, 0, ''),
+    (ROW1 + 'CI step 2: FAIL mypy reported 3 errors\n', {}, 1, 'PASS verdict with CI step 2 FAIL'),
+    (ROW1 + ROW1 + ROW2, {}, 1, 'CI step 1 has 2 result rows'),
+    ('CI step 1: PASS\n' + ROW2, {}, 1, 'CI step 1 (lint / Ruff) has no result row'),
+    (ROW1, {'light': True}, 1, 'CI step 2 (lint / Types) has no result row'),
+])
+def test_ci_step_rows(rows, options, code, reason):
+    from wuwei.verdict import lint
+    result, message = lint(PASS + rows, steps=STEPS, **options)
+    assert result == code and reason in message
+    if reason.endswith('no result row'):
+        assert 'CI step <n>: PASS|FAIL|NOT RUN' in message
+
+
+@pytest.mark.parametrize('text', [PASS, VALID, PASS + ROW1, PASS + 'CI step 2: FAIL x\n'])
+def test_ci_step_rows_without_steps_lint_as_before(text):
+    from wuwei.verdict import lint
+    assert lint(text, steps=()) == lint(text)
+
+
+def test_lint_file_reads_the_ci_steps_at_lint_time(tmp_path, monkeypatch):
+    from test_brief import LINT_REF, ci_tree
+    from wuwei import state, verdict, workspace
+    monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00Z')
+    tree = ci_tree(tmp_path / 'tree')
+    state._write_state(lambda data: data.update(
+        items={'A': {'phase': 'gate', 'status': 'running', 'gates': {'tier': 'standard'},
+                     'worktree': str(tree)}},
+        seats={'quality-1': {'item': 'A', 'role': 'sentinel-quality', 'status': 'stopped'}}),
+        tmp_path, reserved=False)
+    decisions = workspace.day_dir(tmp_path) / 'decisions'
+    decisions.mkdir()
+    path, unknown = decisions / 'gate-quality-1.md', decisions / 'gate-unknown-1.md'
+    for file in (path, unknown):
+        file.write_text(PASS + 'Simplicity: none\nDesign: none\n' + ROW1)
+    lint = lambda file: verdict.lint_file(file, role='sentinel-quality', root=tmp_path)
+    assert lint(path)[0] == 0
+    state._write_state(lambda data: data['items']['A'].update(ci_jobs=[LINT_REF]), tmp_path, reserved=False)
+    code, message = lint(path)
+    assert code == 1 and 'CI step 2 (lint / Types)' in message
+    assert lint(unknown)[0] == 0
+    real = tmp_path / 'real.yml'
+    real.write_text((tree / '.github/workflows/ci.yml').read_text())
+    (tree / '.github/workflows/ci.yml').unlink()
+    (tree / '.github/workflows/ci.yml').symlink_to(real)
+    code, message = lint(path)
+    assert code == 2 and '.github/workflows/ci.yml' in message
