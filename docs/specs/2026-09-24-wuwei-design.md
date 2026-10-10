@@ -631,6 +631,14 @@ checks, decision routing and every 9.2 invariant hold at every pace (I15 to I17)
   ceiling refusal names `host.seats`. Once the build is done and the item is at its gates, `build next`
   answers what `dispatch next` decides (#666). At raise both return the shepherd's brief
   command, then its launch, in the gate shape (#783).
+  answers what `dispatch next` decides (#666).
+- Broken main amendment (owner, 2026-10-10, #648). A fast check that fails only on files the
+  item did not change is main's, not the item's: the build loop records it under
+  `main_broken` with the check and the first failing path, opens one fix item for it through
+  `plan add` (one per file per repository), and sets the item's build action to `wait`
+  naming that fix item instead of a builder round. A held item takes no seat. Once the fix
+  item merges (or is parked), `build next` returns a `continue` that tells the builder to
+  rebase and rerun its checks. A test failure is never held.
 - Cost per iteration (owner, 2026-09-28). Every dispatch records the runtime's reported
   usage (input and output tokens, cost when the runtime reports it, model, duration) as a
   `seat.usage` event per iteration. The steward reports cost per item, per role and per
@@ -2065,6 +2073,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | I72 | WUWEI merges only with a method the repository allows: an explicit `repos.merge_method` only when allowed, `auto` the first allowed of squash, rebase, merge, none allowed the owner's merge | `merge.method_for` on every setting x every subset of allowed methods | #785; one choice in `merge.method_for`, read by `merge.check`; the adapter allowlist admits only `--squash`, `--rebase` and `--merge` |
 | I54 | Under observe and guarded the traces guard never fails a tool call: an inspection or recording failure is a warning naming what it could not read, recorded as `traces.gap`; strict refuses it | per posture, `traces.check` on a PostToolUse payload in a workspace with security required and unreadable security material | #601; the guard decides its own posture; an unreadable config keeps the refusal |
 | I49 | A missing tracker label is created by WUWEI on its own only on the owner's tracker below strict; under strict or on an external tracker the move names the label, `bin/wuwei init --upgrade` and `bin/wuwei tracker move` | `tracker.creates_labels` per posture on an owned and an external GitHub project | #670; one decision in `tracker.creates_labels`, reached by every in-review move through `dispatch.tracker_call`; `setup` and `init --upgrade` create on any tracker from a host terminal |
+| I57 | A fast-check failure holds an item on a fix item only when every failing check names lint locations, and only on files the item did not change; a test failure, a failure on a changed file or one with no location goes back to its builder | `fast_checks.unchanged` on a lint location on an unchanged file, then on a changed file, a missing file, a `..` path, test ids, a pytest `ERROR` line, no location, and one held failure beside one own failure | #648; hold, release and the fix item in `tests/test_main_broken.py` |
 
 A later item that adds a rule adds its row here and its check to `tests/test_invariants.py`.
 
