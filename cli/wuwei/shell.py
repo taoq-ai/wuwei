@@ -87,12 +87,18 @@ def _reject_mentions(text):
         raise ParseError('unaccounted git/gh mention; remove the mention, or run git or gh as its own plain command')
 
 
+@lru_cache(maxsize=64)
+def _names(names):
+    """One compiled pattern per name list, built once per process (#626)."""
+    return re.compile(r'(?<![.\w])(?:' + '|'.join(map(re.escape, names)) + r')\b')
+
+
 def mentions(raw, names, *, script=False) -> bool:
     """Conservative relevance check, including obfuscated and constructed names.
 
     With script=True the text is a script file and only literal tokens count.
     """
-    pattern = re.compile(r'(?<![.\w])(?:' + '|'.join(map(re.escape, names)) + r')\b')
+    pattern = _names(tuple(names))
     # ANSI-C quoting can hide every character of a name.
     if "$'" in raw and not script:
         return True

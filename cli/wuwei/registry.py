@@ -73,14 +73,26 @@ def known(kind):
     if kind not in INTERFACES:
         raise ValueError(f'unknown adapter kind: {kind}')
     # os.scandir, not Path.glob: config validation lists 14 kinds on every parse, and an entry's
-    # type comes with the listing instead of a stat per file.
+    # type comes with the listing instead of a stat per file. #626: a listing is kept per
+    # directory and reused while the directory's own stat (an entry added, removed or renamed
+    # changes its mtime) is unchanged.
+    directory = os.path.join(ADAPTERS, kind)
     try:
-        with os.scandir(ADAPTERS / kind) as entries:
-            return sorted(entry.name[:-3] for entry in entries
-                          if entry.name.endswith('.py') and entry.name[:-3].isidentifier()
-                          and not entry.name.startswith('_') and entry.is_file())
+        stamp = os.stat(directory)
+        stamp = (stamp.st_mtime_ns, stamp.st_ino, stamp.st_dev)
+        kept = _KNOWN.get(directory)
+        if not kept or kept[0] != stamp:
+            with os.scandir(directory) as entries:
+                kept = _KNOWN[directory] = stamp, sorted(
+                    entry.name[:-3] for entry in entries
+                    if entry.name.endswith('.py') and entry.name[:-3].isidentifier()
+                    and not entry.name.startswith('_') and entry.is_file())
+        return list(kept[1])
     except (FileNotFoundError, NotADirectoryError):
         return []
+
+
+_KNOWN = {}  # {directory: (stat stamp, names)}
 
 
 def validate(kind, name, *, for_config=False):
