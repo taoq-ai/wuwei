@@ -325,7 +325,7 @@ def governing(tree, row, location=None):
     path = Path(tree) / name
     if (not name or Path(name).is_absolute() or not path.resolve().is_relative_to(Path(tree).resolve())
             or not path.is_file()):
-        raise ValueError(f'governing document {reference} is not a file in the worktree')
+        raise ValueError(f'governing document {reference} is not a file in the worktree; fix the Governing: line in spec.md to a repository-relative path, then run the analyze step again')
     lines = _read(path).splitlines(keepends=True)
     first, last = 1, len(lines)
     if heading:
@@ -336,7 +336,7 @@ def governing(tree, row, location=None):
         start = next(((index, level) for index, level, title in heads
                       if title == heading or title.startswith(heading + ' ')), None)
         if start is None:
-            raise ValueError(f'no heading {heading} in {name}')
+            raise ValueError(f'no heading {heading} in {name}; fix the heading after # in the Governing: line of spec.md, then run the analyze step again')
         first = start[0]
         last = next((index - 1 for index, level, _ in heads if index > first and level <= start[1]), last)
     return reference, first, last, ''.join(lines[first - 1:last])
