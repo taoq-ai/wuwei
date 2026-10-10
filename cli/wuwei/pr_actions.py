@@ -148,10 +148,23 @@ def classify(measured, me, acks):
     return 'waiting'
 
 
+def _base_red(host, ref, measured, root):
+    """#728: the base_red reason when every red head check is red at the base commit too."""
+    from wuwei import merge
+    red = lambda checks: {c['name'] for c in checks if c['state'] == 'completed'
+                          and c['conclusion'] not in ('success', 'neutral', 'skipped')}
+    base, names = merge.sha(measured['pr']['base_sha']), red(measured['checks'])
+    if names and names <= red(merge.checks_at(host, ref, base, root)):
+        return f'base_red: {", ".join(sorted(names))} fails at {base} too'
+    return None
+
+
 def observe(root, host, ref, config, measured):
     """Produce an episode under the shared writer lock from a fresh port read."""
     data = state.read_state(root)
     current = classify(measured, obligations._owner_login(config), obligations._ledger(data).get(ref, {}))
+    reason = _base_red(host, ref, measured, root) if current == 'ci_red' else None
+    current = 'base_red' if reason else current
     dispositions = data.get('pr_dispositions', {})
     if not isinstance(dispositions, dict):
         raise ValueError(f'invalid PR disposition ledger; {DAMAGED}')
@@ -159,6 +172,8 @@ def observe(root, host, ref, config, measured):
                    if ref in dispositions else None)
     row = {'pr': ref, 'state': current, 'disposition': disposition, 'parked': disposition == 'parked',
            'draft': measured['pr']['draft'] is True}
+    if reason:
+        row['reason'] = reason
     now = workspace.now()
     event = {'pr': ref, 'tier': 'silent', 'state': current}
     merged = []

@@ -584,7 +584,7 @@ def overnight(root):
                 ref, current, reason, evidence = row['pr'], row.get('state', 'unmeasured'), '', []
                 if row['exit'] == 2:
                     outcome, reason = 'unmeasured', row['reason']
-                elif row['parked'] or current == 'waiting' or last.get(ref, {}).get('outcome') == 'merged':
+                elif row['parked'] or current in ('waiting', 'base_red') or last.get(ref, {}).get('outcome') == 'merged':
                     continue
                 elif current == 'merged':
                     outcome = 'merged'
