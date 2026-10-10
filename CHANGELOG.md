@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.27.0](https://github.com/taoq-ai/wuwei/compare/v0.26.0...v0.27.0) (2026-10-10)
+
+
+### Features
+
+* **merge:** the merge method follows the repository: wuwei merge reads the allowed methods and uses one, or a per-repository merge_method setting, so a repository that forbids squash is still merged by WUWEI ([#793](https://github.com/taoq-ai/wuwei/issues/793)) ([8952952](https://github.com/taoq-ai/wuwei/commit/895295244bb15c2a4d08947346e34af40864da05))
+* **pr:** wuwei pr raise --draft opens a draft PR for an item the owner merges, keeping reviewer ranking and the raised record ([#745](https://github.com/taoq-ai/wuwei/issues/745)) ([80fceec](https://github.com/taoq-ai/wuwei/commit/80fceecd83a51d80ef849a64ccdb25996788288f))
+
+
+### Bug Fixes
+
+* **brief:** an owner/repo#N reference in a brief is resolved as an issue or a pull request, through the [#606](https://github.com/taoq-ai/wuwei/issues/606) lookup, so a ticket reference never fails registration with Not Found ([#753](https://github.com/taoq-ai/wuwei/issues/753)) ([c49c28a](https://github.com/taoq-ai/wuwei/commit/c49c28a0fd7caf58dfa22c5099c6bf1cf5408d79))
+* **checks:** the fast-check timeout is per repository in config and the error names the limit ([#757](https://github.com/taoq-ai/wuwei/issues/757)) ([5079d5c](https://github.com/taoq-ai/wuwei/commit/5079d5c125d18e09225ab28229028474f48c699d))
+* **dispatch:** the raise action is a ready-to-run shepherd launch that opens the PR with wuwei pr raise --item, so a PR is never raised outside WUWEI and left unlinked ([#792](https://github.com/taoq-ai/wuwei/issues/792)) ([8283e9f](https://github.com/taoq-ai/wuwei/commit/8283e9f4eb4b13d80ad050bdd616a406ac4f1063))
+* **doctor:** a 403 rate-limit reply is reported as a rate limit with its reset time, never as missing gh auth ([#791](https://github.com/taoq-ai/wuwei/issues/791)) ([78c4665](https://github.com/taoq-ai/wuwei/commit/78c4665e722bb03c9f185c2b3f0738ba5b30cf0a))
+* **gates:** probes leave no files in a builder's worktree: PYTHONDONTWRITEBYTECODE=1 and a copy under the seat's scratch directory by default, and the charters say so ([#787](https://github.com/taoq-ai/wuwei/issues/787)) ([a3419bb](https://github.com/taoq-ai/wuwei/commit/a3419bb815f5f54170f3ed469e0ee8026c044ade))
+* **gates:** the delta round refreshes the reviewer's recorded head so an in-session reviewer can re-review a fix without a new seat ([#769](https://github.com/taoq-ai/wuwei/issues/769)) ([f2567cb](https://github.com/taoq-ai/wuwei/commit/f2567cb59dd921fbe83e252051fdebd0afe4fcda))
+* **guards:** the git and gh guard reads the executed command, not prose: words in a brief body or a heredoc are text, and a split string that runs git is still caught ([#766](https://github.com/taoq-ai/wuwei/issues/766)) ([2b3b077](https://github.com/taoq-ai/wuwei/commit/2b3b0778312fe0304b993a2d8051b86f75f98da5))
+* **heartbeat:** the status line never waits on the network: host calls run in the heartbeat's background tick with a cache, and doctor names the slow probe instead of suggesting a reinstall ([#790](https://github.com/taoq-ai/wuwei/issues/790)) ([191eb94](https://github.com/taoq-ai/wuwei/commit/191eb94925600ad101cd515a8889a8e3c424e4e1))
+* **merge:** a trust_surface item whose security gate passed merges under the normal policy; the flag routes to the owner only while the gate is open or names the change that needs the owner ([#749](https://github.com/taoq-ai/wuwei/issues/749)) ([35b7c3a](https://github.com/taoq-ai/wuwei/commit/35b7c3a35002093f4c13ff20ddbc9feae7785b0a))
+* **nudges:** nudges expire, repeats combine and the list is capped; under observe a would-be refusal goes to the shadow report, not the nudge list ([#795](https://github.com/taoq-ai/wuwei/issues/795)) ([5816266](https://github.com/taoq-ai/wuwei/commit/5816266e9cecdeef744538b82432d8371ff77ef0))
+* **nudges:** under autonomous mode nudges are off by default and a nudge is only ever a pointer to a runnable next action, never a reminder nobody reads ([#756](https://github.com/taoq-ai/wuwei/issues/756)) ([169221a](https://github.com/taoq-ai/wuwei/commit/169221a9e93099a54a47843c634f00637e5d267e))
+* **plan:** one ticket id format: plan add --ticket 24 stores owner/repo[#24](https://github.com/taoq-ai/wuwei/issues/24) from the item's repository, tracker create prints the full id, and build next never says invalid GitHub issue id ([#748](https://github.com/taoq-ai/wuwei/issues/748)) ([3801872](https://github.com/taoq-ai/wuwei/commit/38018724a41e5304a55da5ff3ce4c0089389207d))
+* **ports:** a GitHub rate limit is named, not redacted: a 403 or 429 reply says rate limit with the reset time, the call waits and retries once, and redaction never hides an error text that holds no secret ([#752](https://github.com/taoq-ai/wuwei/issues/752)) ([2ed91e8](https://github.com/taoq-ai/wuwei/commit/2ed91e83e75b1c070f2d3649cb9c9c9146358151))
+* **records:** the agent that asked a card records its answer: a card answer is the owner's decision, so decision outcome, config set --from-card and every record command run from the planner after the answer in every posture below strict ([#765](https://github.com/taoq-ai/wuwei/issues/765)) ([3b2417d](https://github.com/taoq-ai/wuwei/commit/3b2417dcd9a88c4db19967d50629f9e315412117))
+* **redact:** the credential scan matches secrets, not the words for them: 'bearer token' in prose is not a credential ([#763](https://github.com/taoq-ai/wuwei/issues/763)) ([7267532](https://github.com/taoq-ai/wuwei/commit/7267532b84542d1cdd63dfab33a72fb256f9f6e7))
+* **tests:** the invariant walk has one CPU budget per invariant, not one total ([#626](https://github.com/taoq-ai/wuwei/issues/626)) ([#781](https://github.com/taoq-ai/wuwei/issues/781)) ([83aac46](https://github.com/taoq-ai/wuwei/commit/83aac46ddf6ef750b2a74f1a64e4e799eabd6bc4))
+* **tests:** the reference-adapter replay test is isolated under the parallel run: it fails on one worker in about one run in four with no change to what it checks ([#779](https://github.com/taoq-ai/wuwei/issues/779)) ([cb33150](https://github.com/taoq-ai/wuwei/commit/cb331500cb21118921f1dc8059eef87116c9c644))
+* **traces:** a trace that did not finish in time is a warning below strict and a refusal under strict, so a slow hook is not misreported as a gap ([#659](https://github.com/taoq-ai/wuwei/issues/659)) ([#764](https://github.com/taoq-ai/wuwei/issues/764)) ([e35aa31](https://github.com/taoq-ai/wuwei/commit/e35aa316b3500a3df6fbd551a5c03025df7f11e3))
+* **verdict:** the verdict lint and the charters agree on one format, a numbered list in prose is not a finding, and a rejected verdict says the one line to change ([#761](https://github.com/taoq-ai/wuwei/issues/761)) ([871f5a1](https://github.com/taoq-ai/wuwei/commit/871f5a1954826f5783cf655520667070ec70332c))
+
 ## [0.26.0](https://github.com/taoq-ai/wuwei/compare/v0.25.0...v0.26.0) (2026-10-10)
 
 
