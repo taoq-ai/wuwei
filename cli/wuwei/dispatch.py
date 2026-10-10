@@ -393,13 +393,15 @@ def launch_set(root=None):
     items = data['items']
     running = [seat for seat in brief.seats(data).values() if seat['status'] == 'running']
     # #528: capacity re-derives at every sweep; the day state keeps the snapshot.
-    limits = calibrate.host(root, config, running=len(running))
+    limits = calibrate.host(root, config, running=len(running), policy=data['seat_policy'])
     from wuwei import pace  # #579: the day's pace sets the seats, never a refusal
     cap, bound, hold = pace.seats(pace.current(data, config), limits)
     ceiling = limits['seats']
-    if data['gate_approved'] and (data['cap'], data['cap_bound']) != (cap, bound):
+    # #658: under the memory rule every sweep records its reading; CAP smooths over them
+    if data['gate_approved'] and ((data['cap'], data['cap_bound']) != (cap, bound) or 'reading' in limits):
         state._write_state(lambda fresh: fresh.update(cap=cap, cap_bound=bound), root, reserved=False,
-                           kind='cap.derived', payload={'cap': cap, 'bound': bound, 'text': limits['text']})
+                           kind='cap.derived', payload={'cap': cap, 'bound': bound, 'text': limits['text'],
+                                                        **{key: limits[key] for key in ('reading',) if key in limits}})
     free = start = ceiling - len(running)
     builds = [name for name in approved(data) if items[name]['phase'] in state.BUILD_PHASES]
     busy = {seat['item'] for seat in running}
@@ -733,7 +735,7 @@ def opinion(item, root=None):
     if seat is None or seat['status'] == 'stopped':
         from wuwei import calibrate
         running = sum(other['status'] == 'running' for other in brief.seats(data).values())
-        ceiling = calibrate.host(root, config, running=running)['seats']  # #528
+        ceiling = calibrate.host(root, config, running=running, policy=data['seat_policy'])['seats']  # #528
         if running >= ceiling:
             raise Refused(f'running seats at host seat ceiling host.seats={ceiling}; wait for a seat to finish. Or the owner raises host.seats with bin/wuwei config set in a host terminal')
         if seat is None:

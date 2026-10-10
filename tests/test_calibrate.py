@@ -1105,7 +1105,7 @@ def seat_day(root, cost):
 
 
 def test_host_derives_cap_and_seats(workspace_root, ports, monkeypatch):
-    # #528: one derivation from free memory above the floor, the seat cost and the cores.
+    # #528, #658: on process seats, one derivation from free memory above the floor, the seat cost and the cores.
     from wuwei import registry, workspace
     (workspace_root / '.wuwei/config.toml').write_text('')
     config = workspace.load_config(workspace_root)
@@ -1113,34 +1113,35 @@ def test_host_derives_cap_and_seats(workspace_root, ports, monkeypatch):
     monkeypatch.setattr(os, 'getloadavg', lambda: (1.0, 1.0, 1.0))
     memory = lambda mib: ports['host'].results.update(free_memory=registry.Result(0, mib * 2**20))
     memory(8192)
-    assert calibrate.host(workspace_root, config) == {
+    assert calibrate.host(workspace_root, config, policy=PROCESS) == {
         'cores': 4, 'free_mib': 8192, 'seat_mib': 1024, 'seat_source': 'default', 'cap': 4,
-        'seats': 4, 'bound': 'host', 'text': 'cap 4 (host): 8 GB free, 1 GB per seat, 4 cores', 'load': 1.0}
+        'seats': 4, 'bound': 'memory', 'text': 'cap 4 (memory): 8 GB free, 1 GB per seat, 4 cores', 'load': 1.0,
+        'reading': 4}
     memory(3072)
     # the derived seat ceiling always holds one three-role gate, so a gate never deadlocks
-    assert (calibrate.host(workspace_root, config)['cap'], calibrate.host(workspace_root, config)['seats']) == (2, 3)
+    assert (calibrate.host(workspace_root, config, policy=PROCESS)['cap'], calibrate.host(workspace_root, config, policy=PROCESS)['seats']) == (2, 3)
     memory(2048)
-    assert calibrate.host(workspace_root, config, running=2)['cap'] == 3
-    assert calibrate.host(workspace_root, config, free=8192)['cap'] == 4
+    assert calibrate.host(workspace_root, config, policy=PROCESS, running=2)['cap'] == 3
+    assert calibrate.host(workspace_root, config, policy=PROCESS, free=8192)['cap'] == 4
     memory(512)
-    assert calibrate.host(workspace_root, config)['cap'] == 1
+    assert calibrate.host(workspace_root, config, policy=PROCESS)['cap'] == 1
     memory(8192)
     config['cap'] = 1
-    owner = calibrate.host(workspace_root, config)
+    owner = calibrate.host(workspace_root, config, policy=PROCESS)
     assert (owner['cap'], owner['seats'], owner['bound']) == (1, 4, 'owner')
     assert owner['text'] == ('cap 1 (owner): config cap; the host fits 4 '
                              '(8 GB free, 1 GB per seat, 4 cores)')
     config['cap'], config['host']['seats'] = 0, 2
-    assert [calibrate.host(workspace_root, config)[key] for key in ('cap', 'seats', 'bound')] == [2, 2, 'host']
+    assert [calibrate.host(workspace_root, config, policy=PROCESS)[key] for key in ('cap', 'seats', 'bound')] == [2, 2, 'memory']
     seat_day(workspace_root, 1536)
-    assert calibrate.host(workspace_root, config)['text'].endswith('1.5 GB per seat, 4 cores')
+    assert calibrate.host(workspace_root, config, policy=PROCESS)['text'].endswith('1.5 GB per seat, 4 cores')
     ports['host'].results['free_memory'] = registry.Result(2, None, 'vm_stat failed')
-    assert calibrate.host(workspace_root, config) == {
+    assert calibrate.host(workspace_root, config, policy=PROCESS) == {
         'unmeasured': 'vm_stat failed', 'cap': 1, 'seats': 2, 'bound': 'unmeasured',
         'text': 'cap 1 (unmeasured): vm_stat failed'}
     memory(8192)
     monkeypatch.setattr(os, 'cpu_count', lambda: None)
-    unmeasured = calibrate.host(workspace_root, {**config, 'cap': 3, 'host': {**config['host'], 'seats': 0}})
+    unmeasured = calibrate.host(workspace_root, {**config, 'cap': 3, 'host': {**config['host'], 'seats': 0}}, policy=PROCESS)
     assert 'cores' in unmeasured['unmeasured'] and (unmeasured['cap'], unmeasured['seats']) == (3, 4)
 
 
@@ -1159,7 +1160,7 @@ def test_host_falls_back_when_a_past_day_log_is_damaged(workspace_root, monkeypa
     events = workspace_root / '.wuwei/days/2026-09-01/events.jsonl'
     events.parent.mkdir(parents=True, exist_ok=True)
     events.write_text('{"ts": "2026-09-01T09:00:00+00:00", "kind": "seat.usage"')
-    limits = calibrate.host(workspace_root, workspace.load_config(workspace_root), free=8192)
+    limits = calibrate.host(workspace_root, workspace.load_config(workspace_root), free=8192, policy=PROCESS)
     assert (limits['cap'], limits['seats'], limits['seat_mib']) == (4, 4, calibrate.SEAT_MIB)
     assert 'per-seat tokens unmeasured' in limits['text'] and 'events.jsonl' in limits['text']
 
@@ -1178,24 +1179,26 @@ def test_token_budget_bounds_cap(workspace_root, ports, monkeypatch):
     (workspace_root / '.wuwei/config.toml').write_text('[budget]\ntokens_per_day = 200000\n')
     config = workspace.load_config(workspace_root)
     monkeypatch.setattr(os, 'cpu_count', lambda: 4)
-    unmeasured = calibrate.host(workspace_root, config)
-    assert (unmeasured['cap'], unmeasured['bound']) == (4, 'host')
+    unmeasured = calibrate.host(workspace_root, config, policy=PROCESS)
+    assert (unmeasured['cap'], unmeasured['bound']) == (4, 'memory')
     assert unmeasured['text'].endswith('; budget 200000 tokens a day, per-seat tokens unmeasured')
     usage_day(workspace_root, '2026-09-30', 100000, 100000)
-    budget = calibrate.host(workspace_root, config)
+    budget = calibrate.host(workspace_root, config, policy=PROCESS)
     assert (budget['cap'], budget['bound']) == (2, 'budget')
     assert budget['text'] == ('cap 2 (budget): 10 GB free, 1 GB per seat, 4 cores; '
                               'budget 200000 tokens a day, 0 used, 100000 per seat')
     usage_day(workspace_root, '2026-10-01', 150000)
-    assert [calibrate.host(workspace_root, config)[key] for key in ('cap', 'bound')] == [1, 'budget']
+    assert [calibrate.host(workspace_root, config, policy=PROCESS)[key] for key in ('cap', 'bound')] == [1, 'budget']
     usage_day(workspace_root, '2026-10-01', 150000)
-    assert [calibrate.host(workspace_root, config)[key] for key in ('cap', 'bound')] == [1, 'budget']
+    assert [calibrate.host(workspace_root, config, policy=PROCESS)[key] for key in ('cap', 'bound')] == [1, 'budget']
 
 
 def test_calibrate_measures_the_host_and_never_proposes_cap(workspace_root, ports, capsys):
     # #528: CAP derives at every sweep, so calibrate reports it and never asks for it.
     from wuwei import registry
     configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
+    with (workspace_root / '.wuwei/config.toml').open('a') as config:  # #658: process seats
+        config.write('\n[adapters]\nruntime = "codex"\n')
     seat_day(workspace_root, 3072)
     assert main('calibrate') == 0, capsys.readouterr().err
     assert 'cap' not in calibrate.propose((workspace_root / '.wuwei/config.toml').read_text(), [])[1]
@@ -1204,7 +1207,7 @@ def test_calibrate_measures_the_host_and_never_proposes_cap(workspace_root, port
     host = report.split('## Host', 1)[1].split('##', 1)[0]
     for phrase in ('cores: 8', 'free memory: 10240 MiB (floor 1024 MiB)',
                    'seat cost: 3072 MiB (measured)',
-                   'derived: cap 3 (host): 10 GB free, 3 GB per seat, 8 cores'):
+                   'derived: cap 3 (memory): 10 GB free, 3 GB per seat, 8 cores'):
         assert phrase in host, phrase
     ports['host'].results['free_memory'] = registry.Result(2, None, 'vm_stat failed')
     assert main('calibrate') == 2
@@ -1318,3 +1321,78 @@ def test_checks_record_and_answered(tmp_path, monkeypatch):
                        tmp_path, reserved=False)
     assert calibrate.checks_answered(tmp_path, 'acme/paper')
     assert not calibrate.checks_answered(tmp_path, 'acme/widget')
+
+
+# #658: seats that are subagents of one process do not read free memory; process seats smooth it.
+
+PROCESS = {'builder': {'runtime': 'codex', 'model': 'm'}}
+
+
+def test_runtime_rule(workspace_root):
+    from wuwei import workspace
+    (workspace_root / '.wuwei/config.toml').write_text('')
+    config = workspace.load_config(workspace_root)
+    claude = {'runtime': 'claude', 'model': 'opus'}
+    assert not calibrate.processes(config, {})
+    assert not calibrate.processes(config, {'builder': claude})
+    assert not calibrate.processes(config, {'builder': {'runtime': 'none'}})
+    assert calibrate.processes(config, {**PROCESS, 'sentinel-arch': claude})
+    assert calibrate.processes({**config, 'adapters': {**config['adapters'], 'runtime': 'codex'}}, {})
+    assert not calibrate.processes(config, ['codex']) and not calibrate.processes(config, {'builder': 'codex'})
+    second = {**config, 'gates': {**config['gates'], 'second_opinion': 'codex:gpt-5'}}
+    assert not calibrate.processes(second, {})
+
+
+def test_subagent_seats_never_read_memory(workspace_root, ports, monkeypatch):
+    from wuwei import pace, registry, workspace
+    (workspace_root / '.wuwei/config.toml').write_text('[host]\nseats = 6\n')
+    config = workspace.load_config(workspace_root)
+    monkeypatch.setattr(os, 'cpu_count', lambda: 10)
+    for mib in (9216, 5120, 7168, 9216, 3072):
+        ports['host'].results['free_memory'] = registry.Result(0, mib * 2**20)
+        limits = calibrate.host(workspace_root, config, policy={})
+        assert pace.seats('steady', limits) == (6, 'host.seats', None)
+        assert limits['text'] == 'cap 6 (host.seats): subagent runtime, free memory not read'
+        assert calibrate.host(workspace_root, config)['cap'] == 6
+    assert not [call for call in ports['host'].calls if call[0] == 'free_memory']
+    ports['host'].results['free_memory'] = registry.Result(2, None, 'vm_stat failed')
+    failing = calibrate.host(workspace_root, config, policy={})
+    assert failing['cap'] == 6 and 'unmeasured' not in failing
+    config['host']['seats'] = 0
+    unset = calibrate.host(workspace_root, config, policy={})
+    assert (unset['cap'], unset['seats'], unset['bound']) == (10, 10, 'host.seats')
+    assert unset['text'].endswith('host.seats unset, 10 cores')
+
+
+def test_calibrate_reports_no_memory_lines_for_subagent_seats(workspace_root, ports, capsys):
+    configure(workspace_root, ('acme/widget', FIXTURES / 'python'))
+    assert main('calibrate') == 0, capsys.readouterr().err
+    report = (workspace_root / '.wuwei/days/2026-10-01/calibration.md').read_text()
+    host = report.split('## Host', 1)[1].split('##', 1)[0]
+    assert 'cores: 8' in host and 'derived: cap 8 (host.seats)' in host
+    assert 'free memory:' not in host and 'seat cost:' not in host
+
+
+def test_memory_rule_takes_the_median_of_five(workspace_root, ports, monkeypatch):
+    from wuwei import registry, state, workspace
+    (workspace_root / '.wuwei/config.toml').write_text('')
+    config = workspace.load_config(workspace_root)
+    monkeypatch.setattr(os, 'cpu_count', lambda: 10)
+    ports['host'].results['free_memory'] = registry.Result(0, 5120 * 2**20)
+    first = calibrate.host(workspace_root, config, policy=PROCESS)
+    assert (first['cap'], first['bound'], first['reading']) == (4, 'memory', 4)
+    assert first['text'] == 'cap 4 (memory): 5 GB free, 1 GB per seat, 10 cores'
+    for reading in (8, 4, 6, 8):
+        state.append_event('cap.derived', {'cap': reading, 'bound': 'memory', 'reading': reading}, workspace_root)
+    smoothed = calibrate.host(workspace_root, config, policy=PROCESS)
+    assert (smoothed['cap'], smoothed['reading']) == (6, 4)
+    assert smoothed['text'].startswith('cap 6 (memory): median of 8, 4, 6, 8, 4; ')
+    state.append_event('cap.derived', {'cap': 9, 'bound': 'memory', 'reading': 9}, workspace_root)
+    assert calibrate.host(workspace_root, config, policy=PROCESS)['text'].startswith(
+        'cap 6 (memory): median of 4, 6, 8, 9, 4; ')
+    log = workspace.day_dir(workspace_root) / 'events.jsonl'
+    log.chmod(0o600)
+    with log.open('a') as rows:
+        rows.write('{"kind": "cap.derived"')
+    damaged = calibrate.host(workspace_root, config, policy=PROCESS)
+    assert damaged['cap'] == 4 and 'median' not in damaged['text'] and '; warning: ' in damaged['text']

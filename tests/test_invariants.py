@@ -662,9 +662,14 @@ def i19(case, rules):
     return None
 
 
+PROCESS = {'builder': {'runtime': 'codex', 'model': 'm'}}  # #658: seats as processes
+
+
 def i20(case, rules):
-    """#528: CAP comes from the host: the owner's cap when set, else the seats that fit above the
-    memory floor, one per core, at least one; a token budget never raises it."""
+    """#528, #658: CAP comes from the host: the owner's cap when set, else, for seats that are
+    separate processes, the seats that fit above the memory floor, one per core, at least one,
+    and for Claude subagent seats one per core whatever the free memory; a token budget never
+    raises it."""
     def compute():
         from wuwei import calibrate, workspace
 
@@ -672,19 +677,21 @@ def i20(case, rules):
         def config(cap, budget):
             return workspace.load_config(rules.root, raw=f'cap = {cap}\n' + rules.base + (
                 f'[budget]\ntokens_per_day = {budget}\n' if budget else ''))
-        floor, seat = config(0, 0)['host']['free_memory_mb'], calibrate.host(rules.root, config(0, 0), free=0)['seat_mib']
+        floor, seat = config(0, 0)['host']['free_memory_mb'], calibrate.host(rules.root, config(0, 0), free=0, policy=PROCESS)['seat_mib']
         # os.cpu_count set by hand: unittest.mock would import asyncio inside the timed walk.
         real = os.cpu_count
         try:
             for (seats, free), cores, cap, budget in itertools.product(
                     ((1, floor - 1), (1, floor + seat), (8, floor + 8 * seat)), (1, 4), (0, 3), (0, 10**6)):
                 os.cpu_count = lambda cores=cores: cores
-                found = calibrate.host(rules.root, config(cap, budget), free=free)['cap']
-                # Without a budget the plain call is the same call.
-                plain = calibrate.host(rules.root, config(cap, 0), free=free)['cap'] if budget else found
-                expected = cap or min(seats, cores)
-                if found != expected or found > plain:
-                    return f'cap {found} (without the budget {plain}) for free {free}, {cores} cores, cap {cap}, budget {budget}'
+                for policy, expected in ((PROCESS, cap or min(seats, cores)), ({}, cap or cores)):
+                    found = calibrate.host(rules.root, config(cap, budget), free=free, policy=policy)['cap']
+                    # Without a budget the plain call is the same call.
+                    plain = (calibrate.host(rules.root, config(cap, 0), free=free, policy=policy)['cap']
+                             if budget else found)
+                    if found != expected or found > plain:
+                        return (f'cap {found} (without the budget {plain}) for free {free}, {cores} cores, '
+                                f'cap {cap}, budget {budget}, policy {policy}')
         finally:
             os.cpu_count = real
         return None

@@ -964,8 +964,11 @@ def test_issue_acceptance_nothing_to_do_starts_with_the_counts(tmp_path, monkeyp
     assert status.line({**data, 'posture': 'observe'}).endswith('| pages 0 · nudges 0 · observe')
     assert status.line({**data, 'running': [], 'phases': {}}) == 'WUWEI seats 0/1 | pages 0 · nudges 0'
     for moved in ('watch', 'listen', 'sessions', 'meeting', 'reply', 'running', 'loops', 'bound',
-                  'budget', 'unplanned', 'checks'):
+                  'unplanned', 'checks'):
         assert moved not in status.line({**data, 'cap_bound': 'budget'})
+    # #658: the seats token names the rule that set CAP; before the gate there is none
+    assert 'seats 4/1 by budget (lead, ' in status.line({**data, 'cap_bound': 'budget'})
+    assert ' by ' not in status.line({**data, 'cap_bound': ''})
 
 
 def test_the_line_names_the_one_thing_to_do_first(tmp_path, monkeypatch):
@@ -1060,7 +1063,7 @@ def test_status_shows_the_detail_the_line_drops(tmp_path, monkeypatch):
             'next_reply_due': '2026-09-28T15:00:00+02:00', 'next_meeting': None,
             'plugin': '0.16.0', 'template': '0.15.0', 'posture': 'observe'}
     shown = status.full(data).splitlines()
-    assert shown[0] == 'WUWEI 1 building · seats 4/1 (lead, arch, quality, security) · bound budget · builders G-1 2'
+    assert shown[0] == 'WUWEI 1 building · seats 4/1 by budget (lead, arch, quality, security) · builders G-1 2'
     assert shown[6:] == [
         'pages 1 · nudges 0 · observe · phone answers 1 · loops 1 · prs 3 changed · reviewers: none (solo)'
         ' · traces: 2 gaps',

@@ -12,7 +12,7 @@ def run(args):
         root = workspace.find_workspace()
         config, data = workspace.load_config(root), state.read_state(root)
         running = sum(seat['status'] == 'running' for seat in brief.seats(data).values())
-        limits = calibrate.host(root, config, running=running)
+        limits = calibrate.host(root, config, running=running, policy=data['seat_policy'])
         path = workspace.day_dir(root) / 'proposal.json'
         proposal = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
         merged = {name for name, row in data['items'].items() if row['phase'] == 'merged'}

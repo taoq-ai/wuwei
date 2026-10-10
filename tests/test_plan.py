@@ -83,7 +83,7 @@ def test_approve_selected_items_and_reserve_gate_fields(root):
     assert data['gate_approved'] is True
     assert data['approved_items'] == ['A']
     assert data['goals'] == ['G-1']
-    assert (data['cap'], data['cap_bound']) == (4, 'host')  # derived; the lead's 2 is not used
+    assert (data['cap'], data['cap_bound']) == (4, 'host.seats')  # derived; the lead's 2 is not used
     assert data['envelope']['net_build_hours'] == 5
     assert data['seat_policy']['builder']['runtime'] == 'claude'
     assert data['items']['A']['phase'] == 'planned'
@@ -421,7 +421,7 @@ def test_gate_widget_is_the_one_approval_question(root):
         'Approve', 'Approve at careful', 'Approve at fast', 'Change something']  # #579: pace rows
     approve = widget['options'][0]['description']
     assert all(part in approve for part in ('G-1', 'A, B', 'CAP 4', 'claude', '09:00',
-                                            'Cap 4 (host): 8 GB free, 1 GB per seat, 4 cores'))
+                                            'Cap 4 (host.seats): subagent runtime, free memory not read'))
     assert 'carry' not in approve.lower()
     assert widget['record'] == 'wuwei plan approve --items A B --goals-confirmed --pace "<label>"'
     carry = plan.gate_widget(root, import_yesterday=True)
