@@ -316,6 +316,7 @@ def test_every_sweep_measures_integrity(tmp_path, monkeypatch):
     assert calls == [root, root]
 
 
+@pytest.mark.xdist_group('timing')
 def test_cached_check_latency(tmp_path):
     import time
     api = core()

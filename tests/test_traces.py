@@ -20,6 +20,7 @@ def test_large_strings_are_truncated_before_redaction(value):
     assert redact(value) == redact(value[:512]) + marker
 
 
+@pytest.mark.xdist_group('timing')
 @pytest.mark.parametrize('value', ['x' * (5 * 1024 * 1024), 'abcdef0123456789' * 6400],
                          ids=['5MB-Write', '100KB-hex'])
 def test_large_arguments_record_under_50ms_cpu(trace_workspace, call_payload, value):

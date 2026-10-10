@@ -1,5 +1,7 @@
 """Workspace contracts, including real CLI processes without site packages."""
 
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import json
 import os
 from pathlib import Path
@@ -21,6 +23,31 @@ def fake_credential_tools(tmp_path_factory, monkeypatch):
 
 
 def cli(cwd, *args, **env):
+    """The CLI in process (#685): same contract as cli_process, without an interpreter launch."""
+    from wuwei.__main__ import main
+    saved, here, out, err = dict(os.environ), os.getcwd(), io.StringIO(), io.StringIO()
+    try:
+        for key in ('WUWEI_WORKSPACE', 'WUWEI_NOW'):
+            os.environ.pop(key, None)
+        os.environ.update(env)
+        os.chdir(cwd)
+        with redirect_stdout(out), redirect_stderr(err):
+            try:
+                code = main(list(args))
+            except SystemExit as stop:
+                code = stop.code
+    finally:
+        os.chdir(here)
+        os.environ.clear()
+        os.environ.update(saved)
+    if isinstance(code, str):
+        err.write(code + '\n')
+        code = 1
+    return subprocess.CompletedProcess(['wuwei', *args], code or 0, out.getvalue(), err.getvalue())
+
+
+def cli_process(cwd, *args, **env):
+    """One real interpreter launch without site packages: the smoke test of python -m wuwei."""
     environment = {k: v for k, v in os.environ.items()
                    if k not in ('WUWEI_WORKSPACE', 'WUWEI_NOW')}
     return subprocess.run(
@@ -33,7 +60,7 @@ def cli(cwd, *args, **env):
 @pytest.mark.parametrize('explicit', [False, True])
 def test_init_layout(tmp_path, explicit):
     target = tmp_path / 'body of work' if explicit else tmp_path
-    result = cli(tmp_path, 'init', *([str(target)] if explicit else []))
+    result = cli_process(tmp_path, 'init', *([str(target)] if explicit else []))
     assert result.returncode == 0, result.stderr
     workspace = target / '.wuwei'
     for name in ('config.toml', 'memory/spine.md', 'memory/index.md',

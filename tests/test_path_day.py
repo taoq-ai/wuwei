@@ -107,6 +107,7 @@ def walk(day, card, after=None, looks=1):
     pytest.fail(f'the day did not close: {action}')
 
 
+@pytest.mark.xdist_group('timing')
 @pytest.mark.parametrize('looks,tier', [(1, 'standard'), (2, 'standard'), (1, 'light')])
 def test_the_day_closes_walking_only_next(day, looks, tier):
     if tier == 'light':  # #567: the repository floor and the lead allow light
@@ -191,6 +192,7 @@ def approve_at_head(day):
     day.host.results['pr'].data.update(additions=1, deletions=1, changed_files=1)
 
 
+@pytest.mark.xdist_group('timing')
 @pytest.mark.parametrize('choice', ['Autonomous', 'Supervised'])
 def test_posture_day(tmp_path, monkeypatch, choice):
     # #530 E: a whole day under the setup answer. Under autonomous the owner answers the gate and

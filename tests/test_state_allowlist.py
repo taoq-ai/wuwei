@@ -1,6 +1,7 @@
 """Generic commands deny new evidence by default, including reader inventories."""
 
 import ast
+import functools
 import json
 from pathlib import Path
 
@@ -158,12 +159,14 @@ def test_free_note_and_internal_events(root):
     assert events[-1]['kind'] == 'future.producer'
 
 
+@functools.cache
 def reader_inventory():
     """Conservative source inventory: dictionary reads plus kind tests and prefixes.
 
     Scan all CLI modules so helpers used by guards, sweeps and policies are included.
     Include helper arguments and container literals for dynamic reads such as due(key)
     and loops over field names. Non-state keys are included to avoid alias guessing.
+    It reads only source files, so it is scanned once per run (#685).
     """
     keys, kinds = set(), set()
     source = Path(__file__).resolve().parents[1] / 'cli/wuwei'
@@ -205,7 +208,7 @@ def reader_inventory():
                     candidates.extend(ast.walk(constants[part.id]))
             kinds.update(part.value for part in candidates
                          if isinstance(part, ast.Constant) and isinstance(part.value, str))
-    return keys, kinds
+    return frozenset(keys), frozenset(kinds)
 
 
 def test_reader_inventory_cannot_be_written_generically(root, capsys):

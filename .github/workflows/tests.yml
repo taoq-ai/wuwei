@@ -20,8 +20,24 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install test dependencies
-        run: python -m pip install pytest
-      - run: python -m pytest -q
+        run: python -m pip install pytest pytest-xdist
+      - name: Tests in parallel
+        id: suite
+        continue-on-error: true
+        run: python -m pytest -q -n auto --dist loadgroup
+      # #685: a timing test the parallel run failed reruns alone; any other failure fails the job.
+      # loadgroup records a grouped test as <nodeid>@timing, which a plain --lf cannot match.
+      - name: Rerun failed timing tests alone
+        if: steps.suite.outcome == 'failure'
+        run: |
+          python - <<'EOF'
+          import json, sys, pytest
+          failed = json.load(open('.pytest_cache/v/cache/lastfailed'))
+          plain = [k for k in failed if not k.endswith('@timing')]
+          if not failed or plain:
+              sys.exit(f'not rerun: failures outside the timing group: {plain}')
+          sys.exit(pytest.main(['-q', *(k.removesuffix('@timing') for k in failed)]))
+          EOF
 
   ziran-audit:
     runs-on: ubuntu-latest
