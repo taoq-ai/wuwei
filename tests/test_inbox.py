@@ -18,6 +18,15 @@ from adapters.redactor import builtin
      ['secret']),
     ('xoxp-123456789-abc', '[REDACTED]', ['secret']),
     ('mail a.123456789@example.com', 'mail [REDACTED]', ['email']),
+    ('the collector masks the bearer token in its logs',
+     'the collector masks the bearer token in its logs', []),
+    ('use a bearer token, not a password', 'use a bearer token, not a password', []),
+    ('send Bearer abc123XYZ789def456 with the request', 'send [REDACTED] with the request',
+     ['secret']),
+    ('the header is Basic dXNlcjpwYXNz here', 'the header is [REDACTED] here', ['secret']),
+    ("token = 'abc123XYZ789'", '[REDACTED]', ['secret']),
+    ('Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc', '[REDACTED] [REDACTED]',
+     ['secret', 'secret']),
 ])
 def test_builtin_redactor(text, expected, kinds):
     result = builtin.redact(text)
