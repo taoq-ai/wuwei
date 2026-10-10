@@ -99,7 +99,7 @@ OBSERVE = '[security]\nposture = "observe"\n'
 ])
 def test_status_shows_posture_and_nudges_once(root, config, posture, nudged):
     from wuwei.commands import status
-    (root / '.wuwei/config.toml').write_text(f'{config}\n')
+    (root / '.wuwei/config.toml').write_text(f'{config}\n[nudges]\nmode = "all"\n')  # #742
     state._write_state(lambda data: None, root, reserved=False)
     directory = workspace.day_dir(root)
     data = status.snapshot(directory)

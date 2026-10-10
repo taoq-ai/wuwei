@@ -139,7 +139,7 @@ def show(args):
         text = path.read_text(encoding='utf-8')
         fields, _ = evaluate(text, lens_table(config) if args.widget else None)
     except FileNotFoundError:  # #362: a state answer; --widget callers read JSON, so a finding there.
-        return int(bool(args.widget)), f'No {args.id} today; bin/wuwei nudges lists open decisions.'
+        return int(bool(args.widget)), f'No {args.id} today; bin/wuwei nudges --all lists open decisions.'
     except (OSError, UnicodeError) as exc:
         return 2, (f'decision show: could not read {path.relative_to(root)}: {type(exc).__name__}; '
                    'check the file is readable, then run bin/wuwei doctor')

@@ -22,7 +22,7 @@ RUN = {'kind': 'steward.run', 'payload': {'trigger': 'tool-calls', 'brief': 'b',
 def test_steward_run_clears_earlier_due_nudge(tmp_path, monkeypatch, capsys, events, count):
     day(tmp_path, {'cap': 1, 'items': {}, 'gate_approved': True},
         [{**event, 'ts': NOW} for event in events])
-    (tmp_path / '.wuwei/config.toml').write_text('')
+    (tmp_path / '.wuwei/config.toml').write_text('[nudges]\nmode = "all"\n')  # #742: the raw classification
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
     assert main(['nudges', '--json']) == 0

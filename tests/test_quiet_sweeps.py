@@ -13,7 +13,7 @@ from wuwei.__main__ import main
 @pytest.fixture
 def root(tmp_path, monkeypatch):
     (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('')
+    (tmp_path / '.wuwei/config.toml').write_text('[nudges]\nmode = "all"\n')  # #742: the raw classification
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T12:00:00+00:00')
     state._write_state(lambda data: None, tmp_path, reserved=False)

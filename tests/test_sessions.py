@@ -22,7 +22,7 @@ def root(tmp_path, monkeypatch):
     monkeypatch.setenv('WUWEI_WORKSPACE', str(tmp_path))
     monkeypatch.setenv('WUWEI_NOW', NOW)
     (tmp_path / '.wuwei').mkdir()
-    (tmp_path / '.wuwei/config.toml').write_text('')
+    (tmp_path / '.wuwei/config.toml').write_text('[nudges]\nmode = "all"\n')  # #742: the raw classification
     state._write_state(lambda data: None, tmp_path, reserved=False)
     return tmp_path
 

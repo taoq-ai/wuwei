@@ -200,6 +200,7 @@ def test_config_defaults_and_independence(tmp_path):
     assert outward['banned_characters'] == ['emoji', '\u2014', '\u2015', '\u2e3a', '\u2e3b']
     assert outward['max_length'] == {}
     assert config.pop('autonomy') == {'mode': 'autonomous'}  # #530
+    assert config.pop('nudges') == {'mode': ''}  # #742
     assert config == {
         'scanner': {'severity_threshold': 'high', 'mcp': {
             'project_file': '.mcp.json', 'plugins_file': '~/.claude/plugins/installed_plugins.json',
@@ -831,6 +832,23 @@ def test_upgrade_dry_run_does_not_write(tmp_path):
     assert before == {path: path.read_bytes() for path in directory.rglob('*') if path.is_file()}
 
 
+@pytest.mark.parametrize('extra,shown', [('', 'off'), ('\n[autonomy]\nmode = "supervised"\n', 'next'),
+                                         ('\n[nudges]\nmode = "all"\n', None)])
+def test_upgrade_names_the_nudge_mode_it_applies(tmp_path, extra, shown):
+    # #742: a notice, not a write; the notice alone is no workspace change.
+    assert cli(tmp_path, 'init').returncode == 0
+    config_path = tmp_path / '.wuwei/config.toml'
+    config_path.write_text(config_path.read_text() + extra)
+    before = config_path.read_bytes()
+    for flags in (('--dry-run',), ()):
+        result = cli(tmp_path, 'init', '--upgrade', *flags)
+        assert result.returncode == 0, result.stderr
+        notice = f'nudges.mode unset, so nudges follow autonomy.mode: {shown}'
+        assert (notice in result.stdout) == bool(shown)
+        assert 'No workspace changes needed' in result.stdout
+        assert config_path.read_bytes() == before
+
+
 def test_upgrade_rejects_unknown_key_without_writes(tmp_path):
     directory = previous_workspace(tmp_path)
     config_path = directory / 'config.toml'
@@ -1288,7 +1306,7 @@ def test_upgrade_retires_shadow_mode(tmp_path, monkeypatch, capsys):
     before = path.read_text()
     code, out = upgraded(tmp_path, capsys, dry_run=True)
     assert code == 0 and path.read_text() == before
-    assert [line for line in out.out.splitlines() if not line.startswith(('Undo not rehearsed', 'setup:'))] == [
+    assert [line for line in out.out.splitlines() if not line.startswith(('Undo not rehearsed', 'setup:', 'nudges.mode unset'))] == [
         'Would upgrade config.toml: guards.mode = "shadow" becomes security.posture = "observe"']
     code, out = upgraded(tmp_path, capsys)
     assert code == 0, out.err
@@ -1305,7 +1323,7 @@ def test_upgrade_removes_enforce_mode(tmp_path, monkeypatch, capsys):
     import tomllib
     path = trial(tmp_path, monkeypatch, 'enforce')
     code, out = upgraded(tmp_path, capsys, dry_run=True)
-    assert [line for line in out.out.splitlines() if not line.startswith(('Undo not rehearsed', 'setup:'))] == [
+    assert [line for line in out.out.splitlines() if not line.startswith(('Undo not rehearsed', 'setup:', 'nudges.mode unset'))] == [
         'Would upgrade config.toml: remove guards.mode = "enforce" (the default)']
     assert upgraded(tmp_path, capsys)[0] == 0
     config = tomllib.loads(path.read_text())

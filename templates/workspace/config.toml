@@ -275,6 +275,9 @@ loop_threshold = 9
 # [autonomy]
 # mode = "supervised" # Every decision beyond a two-way one on its own branch or PR asks the owner.
 
+# [nudges]
+# mode = "" # off, next or all. Empty follows autonomy.mode: off when autonomous, next when supervised.
+
 [decisions]
 wait_hours = 24 # Weekday hours an external confirmation waits before the sweep acts.
 # Cruise mode (design 5.8.1): the CLI answers clear two-way records of a class at L2 or L3.

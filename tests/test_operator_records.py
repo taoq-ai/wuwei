@@ -18,7 +18,7 @@ def test_merged_item_and_answered_decision_read_the_same_everywhere(tmp_path, mo
         '# Goals\n## G-1\noutcome: Ship\nmeasure: shipped\n'
         'target: 1\ndate: 2026-10-30\npriority: 1\n')
     (root / '.wuwei/config.toml').write_text(
-        '[adapters]\ntts = "none"\ncalendar = "none"\ncode_host = "none"\n')
+        '[adapters]\ntts = "none"\ncalendar = "none"\ncode_host = "none"\n[nudges]\nmode = "all"\n')
     monkeypatch.setenv('WUWEI_WORKSPACE', str(root))
     monkeypatch.setenv('WUWEI_NOW', '2026-09-29T10:00:00+02:00')
     monkeypatch.chdir(root)

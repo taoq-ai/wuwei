@@ -159,7 +159,8 @@ def read(root):
                      [(r['id'], r['question'], r['route'], r['command']) for r in cockpit['decisions']]),
              *_table('Telemetry', ('Metric', 'Value'), _telemetry(root, data)),
              *_table('Attention', ('Tier', 'Lane', 'Reason'),
-                     [(r['tier'], r['lane'], r['reason']) for r in status.attention(directory)]),
+                     [(r['tier'], r['lane'], r['reason'])
+                      for r in status.surfaced(directory, status.attention(directory), data)[1]]),
              '', 'Full cockpit: run bin/wuwei dashboard and open the printed loopback URL.']
     files = {'./board.json': json.dumps(dashboard.board_snapshot(directory)),
              './state.json': json.dumps(data), './events.jsonl': events,

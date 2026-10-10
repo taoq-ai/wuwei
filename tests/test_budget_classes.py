@@ -188,7 +188,7 @@ def test_a_fast_burn_writes_one_nudge_a_day(ws, capsys):
     assert 'reversal 2026-09-28 D-11' in burn['reason'] and level(ws) == 2
     budget_classes.evaluate(ws)
     assert len([e for e in events(ws) if e['kind'] == 'cruise.burn']) == 1
-    main(['nudges'])
+    main(['nudges', '--all'])  # #742: the raw classification
     assert any(line.startswith('nudge: defer burns its error budget') and line.endswith('Run: wuwei cruise budget')
                for line in capsys.readouterr().out.splitlines())
 

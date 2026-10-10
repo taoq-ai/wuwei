@@ -4,7 +4,7 @@ import json
 import sys
 
 from wuwei import workspace
-from wuwei.commands.status import attention
+from wuwei.commands.status import attention, surfaced
 
 # source: (text, command); {reason} is the row reason, {id} its first word.
 ACTIONS = {
@@ -24,6 +24,7 @@ ACTIONS = {
 def register(subparsers):
     parser = subparsers.add_parser('nudges', help='List open nudges and pages')
     parser.add_argument('--json', action='store_true', help='one JSON row per cause')
+    parser.add_argument('--all', action='store_true', help='every open cause, whatever nudges.mode says')
     parser.set_defaults(func=run)
 
 
@@ -44,6 +45,8 @@ def run(args):
     try:
         try:
             rows = attention(workspace.day_dir())
+            if not getattr(args, 'all', False):  # #742: a bare namespace in tests has no all
+                rows = surfaced(workspace.day_dir(), rows)[1]
         except FileNotFoundError:
             rows = []  # No day state yet means nothing is owed.
         if args.json:
