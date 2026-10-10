@@ -1334,3 +1334,57 @@ def test_day_shepherd_row(ws):
     state._write_state(lambda data: data.update(gate_approved=True), ws.root, reserved=False)
     found = row(doctor.diagnose(), 'shepherd')
     assert found['status'] == 'ok' and found['value'] == f'scheduled ({service}), last swept {workspace.now().isoformat()}'
+
+
+def second_install(ws, tmp_path):
+    """#601: a release extraction B beside the registered install A (ws.plugin)."""
+    b = tmp_path / 'extracted'
+    for name in ('bin', 'hooks', '.claude-plugin'):
+        (b / name).mkdir(parents=True)
+    stub(b / 'bin', 'wuwei')
+    (b / 'hooks/hooks.json').write_text(json.dumps({'hooks': {'PreToolUse': []}}))
+    (b / '.claude-plugin/plugin.json').write_text(json.dumps({'name': 'wuwei', 'version': '0.11.0'}))
+    (b / 'MANIFEST.sha256.sig').write_text('sig\n')
+    ws.mp.setattr(integrity, 'PLUGIN', b)
+    return b
+
+
+def test_hooks_row_reads_the_registration_from_either_launcher(ws, tmp_path):
+    second_install(ws, tmp_path)
+    found = row(doctor.diagnose(), 'hooks')
+    assert (found['status'], found['value']) == ('ok', 'registered in Claude Code')
+
+
+def test_two_installs_named_with_the_fix(ws, tmp_path):
+    a = ws.plugin
+    b = second_install(ws, tmp_path)
+    (ws.root / '.wuwei/executable').write_text(f"{b / 'bin/wuwei'}\n")
+    rows = doctor.diagnose()
+    found = row(rows, 'installs')
+    assert found['status'] == 'warn' and found['section'] == 'install'
+    assert f'{a} (registered' in found['value']
+    assert f'{b} (this launcher, named by .wuwei/executable)' in found['value']
+    assert found['fix'].startswith(f"{a / 'bin/wuwei'} init --upgrade") and str(b) in found['fix']
+    executable = row(rows, 'executable')
+    assert executable['status'] == 'fail' and str(a / 'bin/wuwei') in executable['value']
+    (ws.root / '.wuwei/executable').write_text(f"{a / 'bin/wuwei'}\n")
+    rows = doctor.diagnose()
+    assert row(rows, 'executable')['status'] == 'ok'
+    ws.mp.setattr(integrity, 'PLUGIN', a)
+    assert 'installs' not in names(doctor.diagnose(), 'install')
+
+
+def test_credentials_row_when_watch_and_doctor_disagree(ws):
+    # #601: the watch's last heartbeat and doctor read credentials the same way; a disagreement is a finding.
+    from wuwei import watch
+    assert 'credentials' not in names(doctor.diagnose(), 'day')  # no saved beat
+    watch.save(ws.root, {'heartbeat': {'probes': {'state': {'result': 'ok', 'value': 'ok'}}}})
+    assert 'credentials' not in names(doctor.diagnose(), 'day')
+    watch.save(ws.root, {'heartbeat': {'probes': {'config': {'result': 'ok', 'value': 'ok'}}}})
+    assert 'credentials' not in names(doctor.diagnose(), 'day')
+    watch.save(ws.root, {'heartbeat': {'probes': {'config': {
+        'result': 'failed', 'value': 'missing GITHUB_TRACKER_TOKEN'}}}})
+    found = row(doctor.diagnose(), 'credentials')
+    assert found['status'] == 'warn' and found['section'] == 'day'
+    assert 'failed missing GITHUB_TRACKER_TOKEN' in found['value'] and 'doctor reads ok ok' in found['value']
+    assert 'watch uninstall' in found['fix']

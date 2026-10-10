@@ -109,11 +109,16 @@ def check(payload):
             return 0, ''
     except (OSError, ValueError, TypeError, RuntimeError):
         return 2, 'wuwei traces: cannot determine workspace scope; run bin/wuwei doctor, which names the workspace problem'
+    inspect = False
     try:
         try:
+            step = 'the security material (.wuwei/security.json)'
             security_data = security.load(root)
+            step = 'the tool call for canary and honeytoken findings'
             findings = security.trace_findings(payload, root, security_data)
+            step = 'the events log (events.jsonl)'
             security.record(findings, root, 'tool_trace')
+            step = 'the tool payload for redaction'
             payload = dict(payload)
             transcript_path = payload.get('transcript_path')
             if 'agent_id' in payload:
@@ -128,13 +133,16 @@ def check(payload):
                 if redact(payload['session_id']) != original_session:
                     payload['session_id'] = hashlib.sha256(original_session.encode()).hexdigest()
 
-        except (OSError, ValueError, TypeError, KeyError, RuntimeError):
-            return 2, 'wuwei traces: cannot inspect or record workspace security evidence; run bin/wuwei doctor, then retry'
-        code, reason = _record(payload, root, findings, transcript_path)
-        if not code:
-            return 0, ''
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
+            # #601: never the message, which can carry private details.
+            inspect, reason = True, f'wuwei traces: {type(exc).__name__}: could not read {step}'
+        else:
+            code, reason = _record(payload, root, findings, transcript_path)
+            if not code:
+                return 0, ''
     except BaseException as exc:
-        reason = f'wuwei traces: {type(exc).__name__}: could not record tool span'
+        reason = f'wuwei traces: {type(exc).__name__}: could not record the tool span in traces.jsonl'
+    reason += _mismatch(root) + '; run bin/wuwei doctor, which names the fix'
     print(reason, file=sys.stderr)
     try:
         import hashlib
@@ -145,7 +153,30 @@ def check(payload):
     except BaseException as exc:
         print(f'wuwei traces: {type(exc).__name__}: could not log traces.gap; run bin/wuwei doctor',
               file=sys.stderr)
-    return (2, reason) if security_data is not None else (0, '')
+    code = 2 if inspect or security_data is not None else 0
+    return (code, reason) if code and _strict(root) else (0, '')
+
+
+def _strict(root):
+    """Strict refuses a traces failure; below it the reason and traces.gap are the warning (#601)."""
+    from wuwei import workspace
+    try:
+        return workspace.posture(workspace.load_config(root))[0] == 'strict'
+    except Exception:
+        return True  # an unreadable posture keeps the refusal
+
+
+def _mismatch(root):
+    """'; this hook runs A but .wuwei/executable names B' when they differ, else ''."""
+    from pathlib import Path
+    from wuwei import integrity
+    here, recorded = integrity.PLUGIN / 'bin/wuwei', integrity.recorded(root)
+    try:
+        if not recorded or Path(recorded).resolve() == here.resolve():
+            return ''
+    except (OSError, RuntimeError):
+        pass
+    return f'; this hook runs {here} but .wuwei/executable names {recorded}'
 
 
 GUARDS = [Guard('PostToolUse', None, check)]
