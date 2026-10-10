@@ -2098,6 +2098,9 @@ def live_head(monkeypatch, sha):
     class VCS:
         def head(self, tree, *, root):
             return registry.Result(0, {'sha': sha})
+
+        def status(self, tree, *, root):
+            return registry.Result(0, [])
     real = registry.load
     monkeypatch.setattr(registry, 'load', lambda kind, config: VCS() if kind == 'vcs' else real(kind, config))
 
