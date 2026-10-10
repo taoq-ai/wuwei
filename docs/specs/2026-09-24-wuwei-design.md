@@ -351,6 +351,14 @@ merges. A precondition that fails names the condition: no grant lifts it. With n
 `owner_only` under `strict` and `ask` otherwise. Granted merges are journaled, watched and
 undo-logged like auto-merges.
 
+Amended (owner, 2026-10-10, #675): `trust_surface` makes the security gate required instead of
+the item ineligible. A flagged item is eligible once `security` is in its recorded gate set and
+its verdict is PASS at the head, delta round included; until then the PR waits on the gate,
+never on the owner, and no grant changes that. `boundary_relevant` and `agent_surface` are
+unchanged. A diff touching a `[merge] owner_paths` glob, renames included, is merged by the
+owner in a host terminal whatever the grant, standing line or `merge.default_tier`; the reason
+names the path and the glob and prints the `gh pr merge` command.
+
 ### 4.7 Deployment ban (owner, 2026-09-28)
 
 WUWEI never deploys, in any profile, routine or remote command. Refused always, after the
@@ -1955,7 +1963,7 @@ topic x kind x grant state x umbrella x connector mode, and walks every guard re
 | --- | --- | --- | --- |
 | I1 | Under observe and guarded no path reaches a wall except the records floor | the reason corpus levelled by `hook.posture`; per case, `classify` and the deploy guard | Owned: config and integrity re-confirmation through the card record (the follow-up in `specs/530-posture-day`, Deferred). Exempt: the merge family (a session merge names `bin/wuwei merge`, #524; approval, `--admin`, branch protection and a shepherd merge stay the owner's), the heartbeat probe, `permissions.deny` (deferred), the owner's own Keep answer, owner-written block rows, day state recovery, unknown git (the hook levels it to a warning below strict); a broken config is records |
 | I2 | Every held message has a card path that leads to a send | per case, a held `classify` result; per posture, hold, the Draft card answered Send now, approve, the same call sends | Under strict the owner approves at the host |
-| I3 | A merge happens only at the head the gates checked with green required checks | per posture, the `pr` guard refuses a session `gh pr merge` and `--admin`, naming `bin/wuwei merge`; per posture x grant x head, `merge.execute` merges only at the gated, green head with a matching grant | #524; a grant lifts only auto-merge eligibility and pacing, never a 4.6 precondition |
+| I3 | A merge happens only at the head the gates checked with green required checks | per posture, the `pr` guard refuses a session `gh pr merge` and `--admin`, naming `bin/wuwei merge`; per posture x grant x head, `merge.execute` merges only at the gated, green head with a matching grant; per posture x tier x route (a `trust_surface` item with security PASS, with security FIX, with a `merge.owner_paths` path), `merge.execute` merges only the security PASS under the auto policy | #524; a grant lifts only auto-merge eligibility and pacing, never a 4.6 precondition; #675: a `trust_surface` item waits on its security gate, never on the owner; a `merge.owner_paths` path merges only by the owner's hand, whatever the grant |
 | I4 | A message to the owner's own DM always sends | per case, chat to the owner DM | |
 | I5 | No seat, default or hook creates a grant | per case, grant rows and `grants.standing` before and after the deploy guard and the record gate; the shipped config | A once grant is spent, never created; the shipped `merge.default_tier` is empty; `today` is written only by the owner's autonomy answer (#530) |
 | I6 | A seat never posts an owner disposition marker | per posture, an MCP payload and `gh pr comment` carrying `WUWEI parked ` | Records floor |

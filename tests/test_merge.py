@@ -104,24 +104,28 @@ def test_clean_has_head_bound_evidence(case):
     assert not any(call[0] == 'merge' for call in case[1].calls)
 
 
-def test_merge_uses_quality_delta_record(case):
-    root, _ = case
+def delta_record(root, fixed):
+    """The fixed gate's initial record is FIX at an older head and its delta PASS at SHA."""
     directory = workspace.day_dir(root) / 'decisions'
     records = {}
     for role in ('arch', 'quality', 'security'):
         path = directory / f'gate-item-7-{role}.md'
-        path.write_text(evidence(BASE) if role != 'quality' else
+        path.write_text(evidence(BASE) if role != fixed else
             evidence(BASE, 'FIX') + '- P1 | cli/example.py:12 | fails when empty | blocks: yes\n')
         records[f'item-7:{role}:initial'] = {
             'item': 'item-7', 'role': role, 'round': 'initial',
-            'verdict': 'FIX' if role == 'quality' else 'PASS', 'head': BASE,
-            'file': str(path.relative_to(root)), 'blocks': role == 'quality', 'notes': []}
-    delta = directory / 'gate-item-7-quality-delta.md'
+            'verdict': 'FIX' if role == fixed else 'PASS', 'head': BASE,
+            'file': str(path.relative_to(root)), 'blocks': role == fixed, 'notes': []}
+    delta = directory / f'gate-item-7-{fixed}-delta.md'
     delta.write_text(evidence(SHA))
-    records['item-7:quality:delta'] = {
-        'item': 'item-7', 'role': 'quality', 'round': 'delta', 'verdict': 'PASS',
+    records[f'item-7:{fixed}:delta'] = {
+        'item': 'item-7', 'role': fixed, 'round': 'delta', 'verdict': 'PASS',
         'head': SHA, 'file': str(delta.relative_to(root)), 'blocks': False, 'notes': []}
     state._write_state(lambda data: data.update(gate_verdicts=records), root, reserved=False)
+
+
+def test_merge_uses_quality_delta_record(case):
+    delta_record(case[0], 'quality')
     result = check(case)
     assert result.exit == 0, result
     assert any(row['path'].endswith('quality-delta.md') for row in result.data['verdicts'])
@@ -230,7 +234,7 @@ def test_policy_preconditions(case, change, hint):
              'created_at': '2026-09-29T10:00:00Z'}]}]
     elif change == 'risk': state._write_state(lambda data: data['items']['item-7']['flags'].update(agent_surface=True), root, reserved=False)
     elif change == 'forged-flags': state.append_event('plan.approved', {
-        'flags': {'item-7': {'trust_surface': True, 'boundary_relevant': False, 'agent_surface': False}},
+        'flags': {'item-7': {'trust_surface': False, 'boundary_relevant': False, 'agent_surface': True}},
         'approved_items': ['item-7']}, root)
     elif change == 'cycle':
         for _ in range(2): state.append_event('state.transition', {'item': 'item-7', 'phase': 'fix'}, root)
@@ -1109,3 +1113,137 @@ def test_size_exclude_counts_only_the_files_it_does_not_match(case, setting, pat
     host.results['pr'].data.update(additions=1010, changed_files=2)
     answer = check(case)
     assert answer.exit == code and hint in answer.reason, answer
+
+
+def flag(root, name='trust_surface', row=True):
+    """#675: one risk flag on item-7 in a plan.approved event and, with row, on the item row."""
+    flags = {key: key == name for key in state.ITEM_DEFAULTS['flags']}
+    if row:
+        state._write_state(lambda d: d['items']['item-7']['flags'].update(flags), root, reserved=False)
+    state.append_event('plan.approved', {'flags': {'item-7': flags}, 'approved_items': ['item-7']}, root)
+
+
+def merge_tier(root, tier):
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(f'\n[merge]\ndefault_tier = "{tier}"\n')
+
+
+@pytest.mark.parametrize('delta', [False, True])
+@pytest.mark.parametrize('tier', ['today', 'ask'])
+def test_trust_surface_with_security_pass_merges_under_the_normal_policy(case, tier, delta):
+    root, host = case
+    flag(root)
+    merge_tier(root, tier)
+    if delta:
+        delta_record(root, 'security')
+    result = check(case)
+    assert result.exit == 0 and result.data['head'] == SHA, result
+    assert policy().execute(REF, root).exit == 0
+    assert merged_calls(host) == [(REF, SHA)] and cards(root) == []
+    kinds = [row['kind'] for row in events(root) if row['kind'] in ('grant.used', 'merge.intent', 'merge.auto')]
+    assert kinds == ['merge.intent', 'merge.auto']
+
+
+@pytest.mark.parametrize('row', [True, False])
+def test_trust_surface_without_the_security_gate_is_refused(case, row):
+    root = case[0]
+    flag(root, row=row)
+    state._write_state(lambda d: d['items']['item-7'].update(
+        gates={'tier': 'light', 'roles': ['quality']}), root, reserved=False)
+    result = check(case)
+    assert result.exit == 1 and 'trust_surface needs the security gate' in result.reason, result
+
+
+@pytest.mark.parametrize('name', ['agent_surface', 'boundary_relevant'])
+def test_other_risk_flags_stay_ineligible(case, name):
+    flag(case[0], name)
+    result = check(case)
+    assert result.exit == 1 and 'item carries a risk flag' in result.reason, result
+
+
+def security_gate(root, verdict):
+    path = workspace.day_dir(root) / 'decisions/gate-item-7-security.md'
+    if verdict == 'missing':
+        path.unlink()
+    else:
+        path.write_text(evidence(SHA, 'FIX') + '- P1 | cli/example.py:12 | fails when empty | blocks: yes\n')
+
+
+def waits(result):
+    assert result.exit == 1 and result.reason.startswith('merge: waits on the gate:'), result
+    assert 'security' in result.reason
+    assert 'the owner merges' not in result.reason and 'ask the owner' not in result.reason
+
+
+@pytest.mark.parametrize('verdict', ['FIX', 'missing'])
+def test_trust_surface_waits_on_an_open_security_gate(case, verdict):
+    flag(case[0])
+    security_gate(case[0], verdict)
+    waits(check(case))
+
+
+@pytest.mark.parametrize('tier', ['ask', 'today'])
+def test_an_open_security_gate_waits_whatever_the_grant(case, tier):
+    root, host = granted_case(case, tier=tier)
+    flag(root)
+    security_gate(root, 'FIX')
+    waits(policy().execute(REF, root))
+    assert not merged_calls(host) and cards(root) == []
+    kinds = [row['kind'] for row in events(root)]
+    assert 'grant.used' not in kinds and kinds.count('merge.policy_blocked') == 1
+
+
+OWNED = 'cli/wuwei/guards/example.py'
+
+
+def owner_path(root, host, path=OWNED, previous=None, extra=''):
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(f'\n[merge]\nowner_paths = ["guards/*"]\n{extra}')
+    host.results['files'].data[0].update(path=path, previous_path=previous)
+
+
+def owned(result, path=OWNED):
+    assert result.exit == 1 and f'{path} matches merge.owner_paths guards/*' in result.reason, result
+    assert COMMAND in result.reason and 'in a host terminal' in result.reason
+
+
+def test_owner_paths_default_empty(case):
+    assert workspace.load_config(case[0])['merge']['owner_paths'] == []
+
+
+@pytest.mark.parametrize('grant', ['tier', 'standing', 'row'])
+def test_an_owner_path_is_merged_by_the_owner_whatever_the_grant(case, grant):
+    root, host = case
+    owner_path(root, host, extra='default_tier = "today"\n' if grant == 'tier' else '')
+    owned(check(case))
+    config_change(root, 'auto = true', 'auto = false')
+    if grant == 'standing':
+        standing_merge(root)
+    elif grant == 'row':
+        state._write_state(lambda d: d.setdefault('grants', {}).update({'D-9': {
+            'action': 'merge', 'target': 'repo:example/project', 'rule': 'merge', 'command': None,
+            'item': 'item-7', 'seat': None, 'planned': False, 'answered': 'today', 'spent': False}}),
+            root, reserved=False)
+    owned(policy().execute(REF, root))
+    assert not merged_calls(host) and cards(root) == []
+    assert not any(row['kind'] == 'grant.used' for row in events(root))
+
+
+def test_a_rename_from_an_owner_path_is_the_owners(case):
+    root, host = case
+    owner_path(root, host, path='src/a.py', previous=OWNED)
+    owned(check(case))
+
+
+def test_an_open_gate_is_named_before_the_owner_path(case):
+    root, host = case
+    owner_path(root, host)
+    security_gate(root, 'FIX')
+    waits(check(case))
+
+
+def test_an_unmatched_owner_path_merges_as_before(case):
+    root, host = case
+    owner_path(root, host, path='src/a.py')
+    assert check(case).exit == 0
+    assert policy().execute(REF, root).exit == 0 and merged_calls(host) == [(REF, SHA)]

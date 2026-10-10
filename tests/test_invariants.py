@@ -1294,3 +1294,35 @@ def test_merge_only_at_the_gated_green_head(case, posture, grant, head):
     used = [row for row in records(workspace.day_dir(root) / 'events.jsonl') if row['kind'] == 'grant.used']
     assert merged_calls(host) == ([(REF, SHA)] if expected else []), (posture, grant, head)
     assert bool(used) == expected, (posture, grant, head, used)
+
+
+@pytest.mark.parametrize('route', ['security-pass', 'security-fix', 'owner-path'])
+@pytest.mark.parametrize('tier', ['ask', 'today'])
+@pytest.mark.parametrize('posture', ['observe', 'guarded', 'strict'])
+def test_trust_surface_waits_on_its_gate_not_the_owner(case, posture, tier, route):
+    # I3 (#675): a trust_surface PR merges under the auto policy once its security gate passed
+    # at the head; an open gate waits on the gate and an owner path is the owner's, whatever the grant.
+    from test_merge import REF, SHA, cards, events, flag, merged_calls, owner_path, security_gate
+    from wuwei import merge
+    root, host = case
+    flag(root)
+    with (root / '.wuwei/config.toml').open('a') as stream:
+        stream.write(f'\n[security]\nposture = "{posture}"\n')
+    if route == 'owner-path':
+        owner_path(root, host, extra=f'default_tier = "{tier}"\n')
+    else:
+        with (root / '.wuwei/config.toml').open('a') as stream:
+            stream.write(f'\n[merge]\ndefault_tier = "{tier}"\n')
+    if route == 'security-fix':
+        security_gate(root, 'FIX')
+    result = merge.execute(REF, root)
+    case_id = (posture, tier, route, result)
+    if route == 'security-pass':
+        assert result.exit == 0 and merged_calls(host) == [(REF, SHA)], case_id
+        return
+    assert not merged_calls(host) and cards(root) == [], case_id
+    assert not any(row['kind'] == 'grant.used' for row in events(root)), case_id
+    if route == 'security-fix':
+        assert 'waits on the gate' in result.reason and 'the owner merges' not in result.reason, case_id
+    else:
+        assert 'matches merge.owner_paths' in result.reason, case_id
