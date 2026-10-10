@@ -3,6 +3,7 @@
 from hashlib import sha256
 import io
 import json
+import re
 
 import pytest
 
@@ -1233,7 +1234,8 @@ def test_decision_widget_passes_the_question_guard(ws):
         'Passes every must and scores 8 on Correctness.', 'The failure is fixed today.',
         'SOLID: Keeps single responsibility.', 'twelve-factor: No new config.',
         'YAGNI: Builds only the fix.', 'ponytail: Smallest diff that works.']
-    assert built['record'] == 'wuwei decide D-3 "<label>"'
+    fields = decision.evaluate(VALID)[0]
+    assert built['record'] == f'wuwei decide D-3 "<label>" --card {decision.card_hash("D-3", fields)}'
     assert ask(ws, built) == (0, '')
     swapped = VALID.replace('| 10 | 8 | 2 |', '| 10 | 2 | 8 |').replace('Recommendation: A', 'Recommendation: B')
     built = decision.record_widget('D-3', decision.evaluate(swapped)[0])
@@ -1244,6 +1246,19 @@ def test_decision_widget_passes_the_question_guard(ws):
         'Fix three (Recommended)', 'Fix one', 'Defer until tomorrow', 'Fix four']
     assert built['options'][0]['description'] == 'Scores 9.\nThree changes.'
     assert ask(ws, built) == (0, '')
+
+
+def test_card_hash_names_question_and_options():
+    # #599: the record command carries the card the owner saw: its Question and Options.
+    from wuwei import decision
+    fields = decision.evaluate(VALID)[0]
+    found = decision.card_hash('D-3', fields)
+    assert re.fullmatch(r'[0-9a-f]{12}', found) and found == decision.card_hash('D-3', dict(fields))
+    for key in ('Question', 'Options'):
+        assert decision.card_hash('D-3', {**fields, key: fields[key] + ' changed'}) != found
+    for old, new in (('Outcome: pending', 'Outcome: A'), ('Decided-by: seat', 'Decided-by: owner')):
+        assert decision.card_hash('D-3', decision.evaluate(VALID.replace(old, new))[0]) == found
+    assert decision.card_hash('D-3', decision.evaluate(VALID + 'Notes: later.\n')[0]) == found
 
 
 def test_widget_trims_by_verbosity():
